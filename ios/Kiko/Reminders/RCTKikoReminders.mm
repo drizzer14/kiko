@@ -1,5 +1,12 @@
 #import "RCTKikoReminders.h"
 
+// The generated Swift header declares every @objc class in the app target, and
+// its own `@import`s are skipped in Objective-C++ (no C++ modules), so the
+// frameworks those classes use must be imported before it.
+#import <React-RCTAppDelegate/RCTDefaultReactNativeFactoryDelegate.h>
+#import <UIKit/UIKit.h>
+#import <UserNotifications/UserNotifications.h>
+
 #import "Kiko-Swift.h"
 
 @implementation RCTKikoReminders
