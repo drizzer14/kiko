@@ -6,6 +6,7 @@ import {
   type AccountRow,
   accounts,
   holdings,
+  reminders,
   syncState,
   transactions,
 } from '@kiko/db';
@@ -284,12 +285,13 @@ export const accountsRepo = {
     }),
   /**
    * Delete a MANUAL account together with all of its holdings, every one of
-   * their transactions, and its `sync_state` cursor row (an account that ever
-   * attempted a Monobank sync, even a failed first Connect, carries one), in
+   * their transactions, its reminders, and its `sync_state` cursor row (an
+   * account that ever attempted a Monobank sync, even a failed first Connect,
+   * carries one), in
    * ONE op-sqlite transaction so a partial failure can never leave
    * orphaned holdings, ledger rows, or a stranded cursor behind (and so
    * foreign-key enforcement, ON per connection, is satisfied by deleting
-   * children before parents: transactions and `sync_state`, then holdings,
+   * children before parents: transactions, `sync_state` and reminders, then holdings,
    * then the account). A synced (monobank) account is owned by the bank
    * connection and is refused with a typed error; a missing id is a no-op
    * rather than an error.
@@ -336,6 +338,8 @@ export const accountsRepo = {
       // it here, before the account row goes — mirrors the order
       // `restoreDataSnapshot` already uses (`data-transfer/snapshot/restore-snapshot.ts`).
       await databaseTransaction.delete(syncState).where(eq(syncState.accountId, accountId));
+      // `reminders.account_id` is the same kind of NO ACTION foreign key.
+      await databaseTransaction.delete(reminders).where(eq(reminders.accountId, accountId));
       await clearLoanLinksForHoldingsDatabaseTransaction(
         databaseTransaction,
         accountHoldings.map((holding) => holding.id),
