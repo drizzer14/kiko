@@ -19,6 +19,25 @@
 // after a scratch-clone stash slip — and a heredoc whose delimiter is not
 // quoted (`<<EOF`, `<<-EOF`), after an unquoted heredoc ran backticked text
 // in its body as commands and left a stuck process.
+//
+// And it denies a `git apply`, `merge`, `rebase`, `pull`, `cherry-pick`,
+// `revert`, or `am` whose target is the main checkout (the payload's cwd, a
+// `cd` earlier in the command, git's `-C`/`--git-dir`/`--work-tree`, or a
+// `GIT_DIR=`/`GIT_WORK_TREE=` prefix): the hooks' dispatcher runs from
+// there, so a conflict marker in it once broke every hook in every session.
+// A fast-forward-only update and the recovery options stay allowed.
+//
+// Known limits: this guard stops ACCIDENTAL commands by cooperative agents.
+// It is a heuristic tokenizer, not a shell parser and not an adversarial
+// boundary: an exotic, obfuscated, or run-time-built form is a known limit,
+// not a bug. The one accepted-limits list lives in
+// `.claude/skills/kiko-linter/SKILL.md` (kill-guard entry, "Known limits").
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const MAIN_CHECKOUT_PATH = '/Users/drizzer14/Developer/Projects/pff-ios';
 
 const KILL_REASON =
   'Blocked: pkill, killall, and pattern or process-group kills are banned in this repo ' +
@@ -46,6 +65,17 @@ const HEREDOC_REASON_LINES = [
     'with printf, or write it to a scratchpad file with the Write tool.',
 ];
 
+const MAIN_CHECKOUT_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a git apply, merge, rebase, pull, cherry-pick, revert, or am ' +
+    'on the main checkout.',
+  `WHY IT MATTERS: the hooks of every session run from the main checkout (${MAIN_CHECKOUT_PATH}), ` +
+    'so a conflict marker there breaks every hook in every session.',
+  'HOW TO FIX:     do the real merge in a separate detached worktree, verify it, then ' +
+    `\`git -C ${MAIN_CHECKOUT_PATH} merge --ff-only <sha>\`. To recover a stuck operation there, ` +
+    '--abort, --quit, --skip, and --continue stay allowed.',
+  'DO NOT:         reach the main checkout through a script file, an alias, or a variable to get past this guard.',
+];
+
 function blockReason(reasonLines, detail) {
   const [what, ...rest] = reasonLines;
 
@@ -56,6 +86,7 @@ const REASON_BY_KIND = {
   kill: () => KILL_REASON,
   stash: (finding) => blockReason(STASH_REASON_LINES, finding.detail),
   heredoc: (finding) => blockReason(HEREDOC_REASON_LINES, finding.detail),
+  mainCheckout: (finding) => blockReason(MAIN_CHECKOUT_REASON_LINES, finding.detail),
 };
 
 const reasonFor = (finding) => REASON_BY_KIND[finding.kind](finding);
@@ -93,19 +124,52 @@ function trackParameterBraces(state, c) {
 // ---- heredocs: a body is data for its command, not shell text ----
 
 const HEREDOC_WORD = /^(?:'[^']*'|"(?:\\.|[^"\\])*"|\\.|[^\s;&|<>()'"\\])*/;
-const QUOTED_PART = /'([^']*)'|"((?:\\.|[^"\\])*)"|\\(.)/g;
+// A `$` before a single quote goes with the quotes in bash and zsh
+// (`<<$'EOF'` ends at `EOF`). Before a double quote it does in bash only:
+// zsh has no `$"…"` quoting, so there `<<$"EOF"` ends at `$EOF`.
+const QUOTED_PART = /\$?'([^']*)'|\$?"((?:\\.|[^"\\])*)"|\\(.)/g;
+// Inside double quotes a backslash escapes only these; before any other
+// character it stays.
+const DOUBLE_QUOTED_ESCAPE = /\\(["\\$`])/g;
+
+function removeQuote(_match, single, double, escaped) {
+  if (double !== undefined) return double.replace(DOUBLE_QUOTED_ESCAPE, '$1');
+
+  return single ?? escaped;
+}
+
+const removeQuoteAsZsh = (match, ...parts) =>
+  (match.startsWith('$"') ? '$' : '') + removeQuote(match, ...parts);
+
+const QUOTE_REMOVAL_BY_READING = { bash: removeQuote, zsh: removeQuoteAsZsh };
+
+// Which shell the current scan reads the text as, where bash and zsh differ:
+// a `$"…"` delimiter, a redirect's descriptor, and zsh's `>!` operator.
+// `decide` scans a command once per reading, because the same text runs
+// different commands in each (a heredoc body in one is code in the other).
+// A module-level setting, not a parameter, since every scanner below reads
+// heredocs or redirects and none of them should carry it;
+// `withShellReading` always restores it.
+let shellReading = 'bash';
+
+function withShellReading(reading, scan) {
+  const outer = shellReading;
+  shellReading = reading;
+  try {
+    return scan();
+  } finally {
+    shellReading = outer;
+  }
+}
 
 // The word after `<<`/`<<-`: its raw text, and the delimiter line that ends
-// the body (the word with its quotes removed).
+// the body (the word with its quotes removed, as the current reading does).
 function readHeredocWord(text, start) {
   const leading = text.slice(start).match(/^[ \t]*/)[0].length;
   const raw = text.slice(start + leading).match(HEREDOC_WORD)[0];
-  const delimiter = raw.replace(
-    QUOTED_PART,
-    (_match, single, double, escaped) => single ?? double ?? escaped,
-  );
+  const delimiter = raw.replace(QUOTED_PART, QUOTE_REMOVAL_BY_READING[shellReading]);
 
-  return { raw, delimiter, end: start + leading + raw.length };
+  return { raw, delimiters: [delimiter], end: start + leading + raw.length };
 }
 
 // Reads a `<<`, `<<-`, or `<<<` operator at `i` (a `<<<` here-string has no
@@ -113,7 +177,7 @@ function readHeredocWord(text, start) {
 function readHeredocOperator(text, i) {
   if (!text.startsWith('<<', i)) return null;
   const symbol = ['<<<', '<<-', '<<'].find((candidate) => text.startsWith(candidate, i));
-  if (symbol === '<<<') return { symbol, raw: '', delimiter: '', end: i + symbol.length };
+  if (symbol === '<<<') return { symbol, raw: '', delimiters: [], end: i + symbol.length };
 
   return { symbol, ...readHeredocWord(text, i + symbol.length) };
 }
@@ -122,21 +186,21 @@ function readHeredocOperator(text, i) {
 function queueHeredoc(state, operator, segmentIndex) {
   if (operator.raw === '') return;
   state.pending.push({
-    delimiter: operator.delimiter,
+    delimiters: operator.delimiters,
     stripTabs: operator.symbol === '<<-',
     segmentIndex,
   });
 }
 
-// One body starting at `start`: every line up to the one that equals the
-// delimiter (after its leading tabs, for `<<-`). Null when no line does.
+// One body starting at `start`: every line up to the first one that equals
+// the delimiter (after its leading tabs, for `<<-`). Null when no line does.
 function readHeredocBody(text, start, heredoc) {
   let lineStart = start;
   while (lineStart <= text.length) {
     const newline = text.indexOf('\n', lineStart);
     const lineEnd = newline === -1 ? text.length : newline;
     const line = text.slice(lineStart, lineEnd);
-    if ((heredoc.stripTabs ? line.replace(/^\t+/, '') : line) === heredoc.delimiter) {
+    if (heredoc.delimiters.includes(heredoc.stripTabs ? line.replace(/^\t+/, '') : line)) {
       return {
         body: text.slice(start, lineStart),
         end: newline === -1 ? text.length : newline + 1,
@@ -255,13 +319,19 @@ function isArithmetic(content) {
   return content.startsWith('(') && matchDelimited(content, 1, '(', ')').end === content.length - 1;
 }
 
+// Stands in a segment for a span's output.
+const SUBSHELL_PLACEHOLDER = '__SUBSHELL__';
+
+// Each nested span records the segment it appears in, so it runs in that
+// segment's directory. The placeholder is a word of its own, except as the
+// value of an assignment or option (`X=$(…)`), which it stays part of.
 function consumeSubshell(context, match, arithmetic) {
-  if (arithmetic) {
-    context.nested.push(...scanLevel(match.content).nested);
-  } else {
-    context.nested.push(match.content);
-  }
-  context.buf += ' __SUBSHELL__ ';
+  const segmentIndex = context.segments.length;
+  const texts = arithmetic
+    ? scanLevel(match.content).nested.map((entry) => entry.text)
+    : [match.content];
+  context.nested.push(...texts.map((text) => ({ text, segmentIndex })));
+  context.buf += `${context.buf.endsWith('=') ? '' : ' '}${SUBSHELL_PLACEHOLDER} `;
   context.i = match.end + 1;
 }
 
@@ -332,16 +402,56 @@ function stepDoubleQuote(context) {
   context.i++;
 }
 
-function endSegment(context, length) {
+function endSegment(context, length, closesSubshell = false) {
   context.segments.push(context.buf);
+  context.opens.push(context.segmentOpens);
+  context.closes.push(closesSubshell);
+  context.separators.push(context.text.slice(context.i, context.i + length));
   context.buf = '';
+  context.segmentOpens = 0;
   context.i += length;
+  context.wordStart = true;
 }
 
-// Consumes an unquoted `;`, `&&`, `||`, `|`, `&`, a subshell's closing `)`,
-// or a newline — after which the bodies of the heredocs its line opened are
-// taken aside — as a top-level segment separator. Returns false (and
-// consumes nothing) for anything else.
+// What can stand before a subshell's `(`: nothing, a `(`/`{` group opener,
+// `!`, or a reserved word. A `(` anywhere else (`ls (a|b)`, `=~ (a)`) is a
+// glob or regex group, and a `#` after its `)` is not a comment.
+const COMMAND_POSITION = /^(?:\s|[({!]|(?:if|then|elif|else|do|while|until)(?=\s))*$/;
+
+function openParen(context, atWordStart) {
+  const subshell = atWordStart && !context.inDoubleBracket && COMMAND_POSITION.test(context.buf);
+  context.parens.push(subshell);
+  if (subshell) context.segmentOpens++;
+}
+
+// Inside `[[ … ]]` a `(` is a pattern group, even after a `|` there splits
+// the segment.
+function trackDoubleBracket(context, atWordStart) {
+  const { text, i } = context;
+  if (!atWordStart) return;
+  if (context.inDoubleBracket) {
+    if (text.startsWith(']]', i)) context.inDoubleBracket = false;
+  } else if (/^\[\[\s/.test(text.slice(i, i + 3)) && COMMAND_POSITION.test(context.buf)) {
+    context.inDoubleBracket = true;
+  }
+}
+
+// The `&` of a redirect (`2>&1`, `>&-`, `<&3`, `&>file`, `&>>file`) and the
+// `|` of a clobbering one (`>|`, `2>|`, zsh's `>&|`) belong to the operator;
+// they never end the command, send it to the background, or pipe it. Only an
+// unquoted, unescaped `<` or `>` starts an operator (`redirectEnd`): after
+// `\>`, a `|` still pipes and a `&` still backgrounds.
+function isRedirectPart(context) {
+  const { text, i } = context;
+  if (text[i] === '|') return context.redirectEnd === i && text[i - 1] !== '<';
+
+  return context.redirectEnd === i || text[i + 1] === '>';
+}
+
+// Consumes an unquoted `;`, `&&`, `||`, `|`, `&`, a `)`, or a newline — after
+// which the bodies of the heredocs its line opened are taken aside — as a
+// top-level segment separator. Returns false (and consumes nothing) for
+// anything else.
 function consumeSeparator(context) {
   const { text, i } = context;
   const c = text[i];
@@ -356,7 +466,13 @@ function consumeSeparator(context) {
     });
     return true;
   }
-  if (';&|'.includes(c) || (c === ')' && context.braceDepth === 0)) {
+  if (c === ')' && context.braceDepth === 0) {
+    const closesSubshell = context.parens.pop() === true;
+    endSegment(context, 1, closesSubshell);
+    context.wordStart = closesSubshell;
+    return true;
+  }
+  if (c === ';' || ('|&'.includes(c) && !isRedirectPart(context))) {
     endSegment(context, 1);
     return true;
   }
@@ -401,11 +517,10 @@ function consumeAtWordStart(context) {
 function stepTopLevel(context) {
   const { text, i, n } = context;
   const c = text[i];
+  const atWordStart = context.wordStart;
   if (consumeAtWordStart(context)) return;
-  if (consumeSeparator(context)) {
-    context.wordStart = true;
-    return;
-  }
+  if (consumeSeparator(context)) return;
+  trackDoubleBracket(context, atWordStart);
   trackParameterBraces(context, c);
   context.wordStart = context.braceDepth === 0 && WORD_BOUNDARY.test(c);
   if (c === '\\' && i + 1 < n) {
@@ -422,6 +537,10 @@ function stepTopLevel(context) {
   }
   if (tryConsumeSubshell(context) || tryConsumeProcessSubstitution(context)) return;
   if (consumeHeredocOperator(context)) return;
+  if (c === '(' && context.braceDepth === 0) openParen(context, atWordStart);
+  if (c === '<' || c === '>' || (c === '&' && context.redirectEnd === i)) {
+    context.redirectEnd = i + 1;
+  }
   context.buf += c;
   context.i++;
 }
@@ -433,7 +552,9 @@ function stepTopLevel(context) {
 // quotes, where it never does) — for the caller to recurse into. A `#`
 // comment is dropped. A heredoc body is never part of a segment: `bodies`
 // holds each one with the index of the segment that reads it. `heredoc` is
-// the first top-level unquoted-delimiter heredoc operator, or null.
+// the first top-level unquoted-delimiter heredoc operator, or null. Per
+// segment, `opens` counts the subshells it opens and `closes` says whether
+// its `)` closed one, so a `cd` inside a subshell stays inside it.
 function scanLevel(text) {
   const context = {
     text,
@@ -448,6 +569,13 @@ function scanLevel(text) {
     braceDepth: 0,
     pending: [],
     bodies: [],
+    parens: [],
+    inDoubleBracket: false,
+    redirectEnd: -1,
+    segmentOpens: 0,
+    opens: [],
+    closes: [],
+    separators: [],
   };
   while (context.i < context.n) {
     if (context.quote === "'") {
@@ -460,16 +588,71 @@ function scanLevel(text) {
     }
     stepTopLevel(context);
   }
-  context.segments.push(context.buf);
+  endSegment(context, 0);
   return {
     segments: context.segments,
     nested: context.nested,
     heredoc: context.heredoc,
     bodies: context.bodies,
+    opens: context.opens,
+    closes: context.closes,
+    separators: context.separators,
   };
 }
 
 // ---- words: word-split one simple command respecting quotes ----
+
+// Ends the current word. The target of a redirect (`>/dev/null`,
+// `2> log`, `<<'EOF'`) is not a word of the command, so it is dropped; a
+// `<<<` here-string's target is kept aside, since a shell runs it as its
+// script (`bash <<< "…"`).
+function pushWord(context) {
+  if (context.started || context.cur !== '') {
+    if (context.redirectOperator === null) context.out.push(context.cur);
+    else if (context.redirectOperator === '<<<') context.hereStrings.push(context.cur);
+    context.redirectOperator = null;
+  }
+  context.cur = '';
+  context.started = false;
+  context.literal = false;
+}
+
+// `>`, `>>`, `>|`, `>&`, `<`, `<<`, `<<<`, `<>`, `<&`, `&>`, `&>>`, and in zsh
+// also the clobbering `>!`, `>>!`, `>&!`, `&>!` (`>!` in bash is `>` then a
+// word `!`); the word after it (glued or not) is its target. `-` is never
+// part of the operator, so `>&-` and `<<-EOF` read their target right.
+const REDIRECT_OPERATOR_BY_READING = {
+  bash: /&>>?|[<>][<>&|]*/y,
+  zsh: /&>>?[|!]?|>>?&?[|!]|[<>][<>&|]*/y,
+};
+
+// The descriptor a redirect names: bash reads any number before the
+// operator as one (`12>/dev/null`), zsh only a single digit (`kill 00>x`
+// runs `kill 00`).
+const DESCRIPTOR_BY_READING = { bash: /^\d+$/, zsh: /^\d$/ };
+
+// An unquoted `<`, `>`, or `&>` starts a redirect: a descriptor just before
+// it (after any `(`/`{` group opener) is part of the redirect (`2>&1`), any
+// other text is a word of its own (`cd dir>/dev/null`, zsh's `kill 00>x`).
+function tryStartRedirect(context) {
+  const { segment, i } = context;
+  if (segment[i] !== '<' && segment[i] !== '>' && segment[i] !== '&') return false;
+  const pattern = REDIRECT_OPERATOR_BY_READING[shellReading];
+  pattern.lastIndex = i;
+  const operator = pattern.exec(segment);
+  if (operator === null) return false;
+  const opener = context.literal ? '' : (context.cur.match(GROUP_OPENERS)?.[0] ?? '');
+  const descriptor = context.cur.slice(opener.length);
+  if (!context.literal && DESCRIPTOR_BY_READING[shellReading].test(descriptor)) {
+    context.cur = opener;
+    context.started = false;
+  }
+  pushWord(context);
+  context.i += operator[0].length;
+  context.redirectOperator = operator[0];
+
+  return true;
+}
 
 function stepWordQuoted(context) {
   const c = context.segment[context.i];
@@ -492,20 +675,27 @@ function stepWordUnquoted(context) {
   if (c === "'" || c === '"') {
     context.quote = c;
     context.started = true;
+    context.literal = true;
     context.i++;
     return;
   }
   if (/\s/.test(c)) {
-    if (context.started || context.cur !== '') context.out.push(context.cur);
-    context.cur = '';
-    context.started = false;
+    pushWord(context);
     context.i++;
+    return;
+  }
+  if (tryStartRedirect(context)) return;
+  // A backslash-newline is a line continuation: the shell drops both, so
+  // `a |\` then `pkill x` on the next line runs pkill.
+  if (c === '\\' && context.segment[context.i + 1] === '\n') {
+    context.i += 2;
     return;
   }
   if (c === '\\' && context.i + 1 < context.segment.length) {
     context.cur += context.segment[context.i + 1];
     context.i += 2;
     context.started = true;
+    context.literal = true;
     return;
   }
   context.cur += c;
@@ -514,9 +704,22 @@ function stepWordUnquoted(context) {
 }
 
 // Word-splits one simple-command segment respecting quotes (quotes group a
-// word; they do not survive into the token's value).
-function words(segment) {
-  const context = { segment, i: 0, cur: '', quote: null, started: false, out: [] };
+// word; they do not survive into the token's value). Redirects and their
+// targets are dropped, wherever they stand: `2>/dev/null pkill x` runs
+// pkill, and `kill 1234 &>/dev/null` has one target. `hereStrings` holds
+// the targets of its `<<<` redirects.
+function tokenize(segment) {
+  const context = {
+    segment,
+    i: 0,
+    cur: '',
+    quote: null,
+    started: false,
+    literal: false,
+    redirectOperator: null,
+    out: [],
+    hereStrings: [],
+  };
   while (context.i < context.segment.length) {
     if (context.quote) {
       stepWordQuoted(context);
@@ -524,20 +727,24 @@ function words(segment) {
     }
     stepWordUnquoted(context);
   }
-  if (context.started || context.cur !== '') context.out.push(context.cur);
-  return context.out;
+  pushWord(context);
+  return { words: context.out, hereStrings: context.hereStrings };
 }
+
+const words = (segment) => tokenize(segment).words;
 
 // ---- command-shape checks ----
 
 const basename = (token) => (token || '').split('/').pop();
 
-const PLAIN_PREFIXES = new Set(['nohup', 'exec', 'builtin']);
+const PLAIN_PREFIXES = new Set(['nohup', 'builtin']);
 
 // Wrappers that run the command after their own options, each with the
 // options that take their value as the NEXT word (`sudo -u me`, `nice -n 10`,
-// `xargs -n 1`). `timeout` also takes a duration after its options.
+// `xargs -n 1`, `exec -a name`). `timeout` also takes a duration after its
+// options.
 const OPTION_WRAPPERS = new Map([
+  ['exec', new Set(['-a'])],
   [
     'sudo',
     new Set(['-C', '-D', '-g', '-p', '-R', '-r', '-T', '-t', '-U', '-u', '--user', '--group']),
@@ -610,9 +817,11 @@ function unwrapSpecial(base, t) {
 // wrapper was stripped: a `kill`/`pkill`/`killall` reached through `xargs`
 // takes its targets from the piped-in input — from a pattern, by
 // construction — so it is denied unconditionally regardless of any static
-// args that follow it.
+// args that follow it. `environment` holds the `NAME=value` prefixes it
+// stripped (`GIT_DIR=…` changes where git writes).
 function unwrap(tokens) {
   let viaXargs = false;
+  const environment = {};
   let t = tokens;
   while (t.length > 0) {
     const word = t[0].replace(GROUP_OPENERS, '');
@@ -623,16 +832,25 @@ function unwrap(tokens) {
       continue;
     }
     if (isLeadIn(word)) {
+      recordAssignment(environment, word);
       t = t.slice(1);
       continue;
     }
-    if (!OPTION_WRAPPERS.has(base)) return { tokens: [word, ...t.slice(1)], viaXargs };
+    if (!OPTION_WRAPPERS.has(base)) {
+      return { tokens: [word, ...t.slice(1)], viaXargs, environment };
+    }
     viaXargs = viaXargs || base === 'xargs';
     t = skipOptions(t, OPTION_WRAPPERS.get(base));
     if (base === 'timeout') t = t.slice(1);
   }
 
-  return { tokens: t, viaXargs };
+  return { tokens: t, viaXargs, environment };
+}
+
+// A `NAME=value` prefix sets NAME for the command it leads into.
+function recordAssignment(environment, word) {
+  const assignment = word.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s);
+  if (assignment !== null) environment[assignment[1]] = assignment[2];
 }
 
 // `kill` parses at most one leading signal specifier — `-s SIG`, `-N`,
@@ -679,36 +897,328 @@ const GIT_OPTIONS_WITH_VALUE = new Set([
   '--super-prefix',
 ]);
 
-// A shell runs its `-c` string or, without `-c`, the heredoc bodies it reads
-// as its script.
-function queueShellScript(rest, nested, stdinBodies) {
+// The options that say where git runs and what it writes. `-C` stacks, and a
+// relative `--git-dir`/`--work-tree` resolves from the last `-C`, as git
+// reads them.
+const GIT_PATH_OPTIONS = new Map([
+  ['-C', 'directory'],
+  ['--git-dir', 'gitDirectory'],
+  ['--work-tree', 'workTree'],
+]);
+
+const MAIN_CHECKOUT_SUBCOMMANDS = new Set([
+  'apply',
+  'merge',
+  'rebase',
+  'pull',
+  'cherry-pick',
+  'revert',
+  'am',
+]);
+const HELP_OPTIONS = new Set(['-h', '--help']);
+const RECOVERY_SUBCOMMANDS = new Set(['merge', 'rebase', 'cherry-pick', 'revert', 'am']);
+const RECOVERY_OPTIONS = new Set([
+  '--abort',
+  '--quit',
+  '--skip',
+  '--continue',
+  '--resolved',
+  '--edit-todo',
+  '--show-current-patch',
+]);
+const FAST_FORWARD_SUBCOMMANDS = new Set(['merge', 'pull']);
+const APPLY_READ_ONLY_OPTIONS = new Set(['--check', '--stat', '--numstat', '--summary']);
+
+// What the main checkout may still run: help, recovery from a stuck
+// operation, an `apply` that only inspects, and the one update that cannot
+// conflict — a fast-forward with no option but `--ff-only`, since a later
+// `--no-ff` or `--rebase` would override it.
+function leavesMainCheckoutSafe(git) {
+  const { subcommand, arguments: parameters } = git;
+  const has = (options) => parameters.some((parameter) => options.has(parameter));
+  if (has(HELP_OPTIONS)) return true;
+  if (RECOVERY_SUBCOMMANDS.has(subcommand) && has(RECOVERY_OPTIONS)) return true;
+  if (subcommand === 'apply') {
+    return has(APPLY_READ_ONLY_OPTIONS) && !parameters.includes('--apply');
+  }
+
+  return (
+    FAST_FORWARD_SUBCOMMANDS.has(subcommand) &&
+    parameters.includes('--ff-only') &&
+    parameters.every((parameter) => parameter === '--ff-only' || !parameter.startsWith('-'))
+  );
+}
+
+// `~`, `$HOME`, and `${HOME}` at the start of a path, as the shell expands them.
+const HOME_PREFIX = /^(?:~|\$HOME|\$\{HOME\})(?=\/|$)/;
+
+// A path that needs the shell to expand anything else (`~user`, `$X`, a
+// glob, a `$(...)`) cannot be pinned down from the text.
+const UNRESOLVED_PATH = /^~|[$`*?[]|__SUBSHELL__/;
+
+// The normalized absolute path `target` names from `directory`, or null when
+// the text alone cannot tell.
+function resolveDirectory(directory, target) {
+  const expanded = target.replace(HOME_PREFIX, () => os.homedir());
+  if (UNRESOLVED_PATH.test(expanded)) return null;
+  if (path.isAbsolute(expanded)) return path.resolve(expanded);
+  if (directory === null) return null;
+
+  return path.resolve(directory, expanded);
+}
+
+// A Claude Code worktree nested at `<main>/.claude/worktrees/<name>` is a
+// separate worktree, the very place a merge belongs — but only when
+// `<name>/.git` exists; any other folder there is part of the main
+// checkout's own repository.
+function isNestedWorktree(directory, mainCheckoutPath) {
+  const prefix = `${mainCheckoutPath}/.claude/worktrees/`;
+  if (!directory.toLowerCase().startsWith(prefix.toLowerCase())) return false;
+  const name = directory.slice(prefix.length).split('/')[0];
+
+  return name !== '' && fs.existsSync(path.join(prefix, name, '.git'));
+}
+
+// APFS is case-insensitive, so `/users/…/PFF-IOS` is the same folder.
+function isInsideMainCheckout(directory, mainCheckoutPath) {
+  if (directory === null) return false;
+  const folded = directory.toLowerCase();
+  const main = mainCheckoutPath.toLowerCase();
+  if (folded !== main && !folded.startsWith(`${main}/`)) return false;
+
+  return !isNestedWorktree(directory, mainCheckoutPath);
+}
+
+function applyGitOption(invocation, option, next) {
+  const equals = option.indexOf('=');
+  const name = equals === -1 ? option : option.slice(0, equals);
+  const value = equals === -1 ? next : option.slice(equals + 1);
+  const field = GIT_PATH_OPTIONS.get(name);
+  if (field === undefined || value === undefined) return;
+  if (field === 'directory') invocation.directory = resolveDirectory(invocation.directory, value);
+  else invocation[field] = value;
+}
+
+// The subcommand after git's global options, its arguments, and the two
+// places it writes: its work tree and its git directory. A `GIT_DIR=` or
+// `GIT_WORK_TREE=` prefix counts until an option overrides it, as in git.
+function gitInvocation(rest, directory, environment) {
+  const invocation = {
+    directory,
+    gitDirectory: environment.GIT_DIR,
+    workTree: environment.GIT_WORK_TREE,
+  };
+  let i = 1;
+  while (i < rest.length && rest[i].startsWith('-')) {
+    const takesValue = takesNextWord(rest[i], GIT_OPTIONS_WITH_VALUE);
+    applyGitOption(invocation, rest[i], takesValue ? rest[i + 1] : undefined);
+    i += takesValue ? 2 : 1;
+  }
+  const locate = (raw) =>
+    raw === undefined ? invocation.directory : resolveDirectory(invocation.directory, raw);
+
+  return {
+    subcommand: rest[i],
+    arguments: rest.slice(i + 1),
+    targets: [locate(invocation.workTree), locate(invocation.gitDirectory)],
+  };
+}
+
+// One invocation per directory the command may run in; the subcommand is
+// the same in each.
+function gitFinding(segment, invocations, rules) {
+  const [git] = invocations;
+  if (git.subcommand === 'stash') return { kind: 'stash', detail: segment.trim() };
+  if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
+  const target = invocations
+    .flatMap((invocation) => invocation.targets)
+    .find((directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath));
+  if (target === undefined) return null;
+
+  return { kind: 'mainCheckout', detail: `${segment.trim()} (runs in ${target})` };
+}
+
+const DIRECTORY_CHANGERS = new Set(['cd', 'pushd', 'popd']);
+// `cd x || exit` ends the shell when the `cd` fails.
+const LEAVES_THE_SHELL = /^\s*(?:exit|return)(?:\s|$)/;
+
+const union = (first, second) => [...new Set([...first, ...second])];
+
+const resolveEach = (directories, target) =>
+  directories.map((directory) => resolveDirectory(directory, target));
+
+// `pushd dir` saves the current place; a bare `pushd` swaps with the saved
+// top; `+N`/`-N` rotations leave any saved place possible.
+function pushDirectory(location, target) {
+  const { directories, stack } = location;
+  if (target === undefined) {
+    if (stack.length === 0) return { directories, stack };
+    return { directories: stack.at(-1), stack: [...stack.slice(0, -1), directories] };
+  }
+  if (/^[+-]\d/.test(target)) return { directories: union(directories, stack.flat()), stack };
+
+  return { directories: resolveEach(directories, target), stack: [...stack, directories] };
+}
+
+function popDirectory(location, target) {
+  const { directories, stack } = location;
+  if (target !== undefined) return { directories: union(directories, stack.flat()), stack };
+  if (stack.length === 0) return { directories, stack };
+
+  return { directories: stack.at(-1), stack: stack.slice(0, -1) };
+}
+
+// Where a `cd`/`pushd`/`popd` leads: `cd -` goes back and a bare `cd` goes
+// home. Options are skipped (`words` already dropped any redirect).
+function changedDirectories(location, tokens) {
+  const command = basename(tokens[0]);
+  const target = tokens
+    .slice(1)
+    .find((token) => token === '-' || !token.startsWith('-') || /^[+-]\d/.test(token));
+  if (command === 'pushd') return pushDirectory(location, target);
+  if (command === 'popd') return popDirectory(location, target);
+  if (target === '-') return { directories: location.previous, stack: location.stack };
+
+  return { directories: resolveEach(location.directories, target ?? '~'), stack: location.stack };
+}
+
+// A span in command position that prints nothing leaves the next word as
+// the command (`$(true)cd dir`).
+function afterEmptySpans(tokens) {
+  let rest = tokens;
+  while (rest.length > 0 && rest[0].includes(SUBSHELL_PLACEHOLDER)) {
+    rest = unwrap(rest.slice(1)).tokens;
+  }
+
+  return rest;
+}
+
+// Where the shell may stand after one directory change, from the separators
+// around it:
+//   - before `&` or `|` it runs in a subshell and moves nothing;
+//   - after `||` or `|` it may not run (and after `|`, bash runs it in a
+//     subshell while zsh does not), so both places stay possible;
+//   - before `|| exit`/`|| return` only a successful change goes on;
+//   - before any other `||` the next command runs only if it failed;
+//   - after `&&` it runs only if the command before succeeded; the commands
+//     joined to it by `&&` share that fate, so the old place comes back into
+//     play at the next other separator (`fallback`).
+function moveDirectory(location, move) {
+  const tokens = afterEmptySpans(unwrap(words(move.segment)).tokens);
+  if (tokens.length === 0 || !DIRECTORY_CHANGERS.has(basename(tokens[0]))) return;
+  if (move.after === '&' || move.after === '|') return;
+  const change = changedDirectories(location, tokens);
+  const current = location.directories;
+  location.previous = current;
+  location.stack = change.stack;
+  if (move.before === '||' || move.before === '|') {
+    location.directories = union(current, change.directories);
+  } else if (move.after === '||' && !LEAVES_THE_SHELL.test(move.next)) {
+    location.directories = union(current, change.directories);
+  } else {
+    location.directories = change.directories;
+    // A second change in the same `&&` chain keeps every earlier place.
+    if (move.before === '&&') location.fallback = union(location.fallback ?? [], current);
+  }
+}
+
+// `a &&` at the end of a line continues on the next one: the blank segment
+// between the operator and the newline is not a command, so it neither
+// passes a separator nor hides the one before it.
+const CONTINUED_ON_NEXT_LINE = new Set(['&&', '||', '|']);
+
+// The old place of a change made after `&&` is possible again once a
+// separator other than `&&` passes.
+function settleFallback(location, separator) {
+  if (location.fallback === null || separator === '&&') return;
+  location.directories = union(location.directories, location.fallback);
+  location.fallback = null;
+}
+
+// A subshell's directory changes end with the subshell.
+function enterSubshells(location, count) {
+  const { directories, previous, stack, fallback } = location;
+  for (let open = 0; open < count; open++) {
+    location.saved.push({ directories, previous, stack, fallback });
+  }
+}
+
+function leaveSubshell(location) {
+  if (location.saved.length === 0) return;
+  Object.assign(location, location.saved.pop());
+}
+
+// A shell runs its `-c` string or, without `-c`, the heredoc bodies and
+// here-strings it reads as its script.
+function queueShellScript(rest, nested, stdinScripts) {
   const flagIndex = rest.findIndex((token, index) => index > 0 && SHELL_COMMAND_FLAG.test(token));
-  if (flagIndex === -1) nested.push(...stdinBodies);
+  if (flagIndex === -1) nested.push(...stdinScripts);
   else if (flagIndex + 1 < rest.length) nested.push(rest[flagIndex + 1]);
 }
 
-// Returns the finding for one simple command — `{ kind: 'kill' }` or
-// `{ kind: 'stash', detail }` — or null when it is safe. A shell's script
-// and `eval`'s joined arguments go to `nested` as command text.
-function segmentFinding(segment, nested, stdinBodies) {
-  const tokens = words(segment);
-  if (tokens.length === 0) return null;
+// The command names the checks below read.
+const GUARDED_COMMANDS = new Set(['kill', 'git', 'eval', ...SHELLS]);
 
-  const { tokens: rest, viaXargs } = unwrap(tokens);
+const isGuardedCommand = (base, rules) =>
+  rules.killCommands.has(base) || GUARDED_COMMANDS.has(base);
+
+// Every word a span's text shows, its own nested spans included.
+function spanWords(text, depth = 0) {
+  if (depth > 8) return [];
+  const { segments, nested } = scanLevel(text);
+
+  return [
+    ...segments.flatMap(words),
+    ...nested.flatMap((entry) => spanWords(entry.text, depth + 1)),
+  ];
+}
+
+// A `$(...)` or backtick span in command position runs what it prints, glued
+// to the text after it. The command is either a name the span's text shows
+// (`$(which pkill) x`), or, when it prints nothing, the next word
+// (`$(true)git stash`).
+function substitutedCommandFinding(command, context) {
+  const { tokens } = command;
+  const names = new Set(
+    context.spans
+      .flatMap((text) => spanWords(text))
+      .map(basename)
+      .filter((base) => isGuardedCommand(base, context.rules)),
+  );
+  for (const name of names) {
+    const finding = commandFinding({ ...command, tokens: [name, ...tokens.slice(1)] }, context);
+    if (finding !== null) return finding;
+  }
+  const after = unwrap(tokens.slice(1));
+
+  return commandFinding(
+    {
+      tokens: after.tokens,
+      viaXargs: command.viaXargs || after.viaXargs,
+      environment: { ...command.environment, ...after.environment },
+    },
+    context,
+  );
+}
+
+// The finding for one unwrapped command (see `segmentFinding`).
+function commandFinding(command, context) {
+  const { tokens: rest, viaXargs, environment } = command;
   if (rest.length === 0) return null;
+  if (rest[0].includes(SUBSHELL_PLACEHOLDER)) return substitutedCommandFinding(command, context);
   const base = basename(rest[0]);
 
   if (SHELLS.has(base)) {
-    queueShellScript(rest, nested, stdinBodies);
+    queueShellScript(rest, context.scripts, context.stdinScripts);
     return null;
   }
 
   if (base === 'eval') {
-    nested.push(rest.slice(1).join(' '));
+    context.scripts.push(rest.slice(1).join(' '));
     return null;
   }
 
-  if (base === 'pkill' || base === 'killall') return { kind: 'kill' };
+  if (context.rules.killCommands.has(base)) return { kind: 'kill' };
 
   if (base === 'kill') {
     const isPatternKill = viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget);
@@ -716,20 +1226,69 @@ function segmentFinding(segment, nested, stdinBodies) {
     return isPatternKill ? { kind: 'kill' } : null;
   }
 
-  if (base === 'git' && skipOptions(rest, GIT_OPTIONS_WITH_VALUE)[0] === 'stash') {
-    return { kind: 'stash', detail: segment.trim() };
+  if (base === 'git') {
+    const invocations = context.directories.map((directory) =>
+      gitInvocation(rest, directory, environment),
+    );
+
+    return gitFinding(context.segment, invocations, context.rules);
   }
 
   return null;
 }
 
-function firstFinding(lines, depth, checkHeredoc) {
+// Returns the finding for one simple command — `{ kind: 'kill' }`, or
+// `{ kind: 'stash' | 'mainCheckout', detail }` — or null when it is safe. A
+// shell's script and `eval`'s joined arguments go to `scripts` as command
+// text. `stdinBodies` are the heredoc bodies it reads, `spans` the text of
+// its `$(...)`/backtick spans, and `directories` the places it may run in
+// (null for one the text cannot pin down).
+function segmentFinding({ segment, scripts, stdinBodies, spans, directories, rules }) {
+  const { words: tokens, hereStrings } = tokenize(segment);
+  const stdinScripts = [...stdinBodies, ...hereStrings];
+
+  return commandFinding(unwrap(tokens), {
+    segment,
+    scripts,
+    stdinScripts,
+    spans,
+    directories,
+    rules,
+  });
+}
+
+function firstFinding(lines, depth, checkHeredoc, rules) {
   for (const line of lines) {
-    const finding = findDanger(line, depth + 1, checkHeredoc);
+    const finding = findDanger(line.text, depth + 1, checkHeredoc, line.directories, rules);
     if (finding !== null) return finding;
   }
 
   return null;
+}
+
+// The texts of `entries` (heredoc bodies or nested spans) that belong to a
+// segment, by its index. Grouped once per line, since a line can hold
+// thousands of segments.
+function textsBySegment(entries) {
+  const groups = new Map();
+  for (const { segmentIndex, text } of entries) {
+    if (!groups.has(segmentIndex)) groups.set(segmentIndex, []);
+    groups.get(segmentIndex).push(text);
+  }
+
+  return (index) => groups.get(index) ?? [];
+}
+
+// For each segment, the first non-blank segment after it ('' at the end).
+function followingCommands(segments) {
+  const following = [];
+  let next = '';
+  for (let index = segments.length - 1; index >= 0; index--) {
+    following[index] = next;
+    if (segments[index].trim() !== '') next = segments[index];
+  }
+
+  return following;
 }
 
 // Scans one full line of shell text (recursing into `$(...)`, backticks, a
@@ -739,28 +1298,86 @@ function firstFinding(lines, depth, checkHeredoc) {
 // run (`bash <<'EOF'`, `eval "$(cat <<'EOF' …)"`, `ssh host <<'EOF'`), so
 // each body is checked on its own for a kill or a git stash. Only a body a
 // shell reads as its script is also checked for an unquoted heredoc; any
-// other body is text, so a `<<word` in it is not an operator.
-function findDanger(line, depth, checkHeredoc = true) {
+// other body is text, so a `<<word` in it is not an operator. `directories`
+// are the places the line may start in; every nested line runs where its
+// segment does.
+function findDanger(line, depth, checkHeredoc, directories, rules) {
   if (depth > 8) return null; // guards against pathological nesting
-  const { segments, nested, heredoc, bodies } = scanLevel(line);
+  const { segments, nested, heredoc, bodies, opens, closes, separators } = scanLevel(line);
+  const location = { directories, previous: [null], stack: [], fallback: null, saved: [] };
+  const directoriesAt = [];
+  const scripts = [];
+  const bodiesAt = textsBySegment(bodies);
+  const spansAt = textsBySegment(nested);
+  const nextCommands = followingCommands(segments);
+  let before = '';
 
   for (const [index, segment] of segments.entries()) {
-    const stdinBodies = bodies
-      .filter((body) => body.segmentIndex === index)
-      .map((body) => body.text);
-    const finding = segmentFinding(segment, nested, stdinBodies);
+    enterSubshells(location, opens[index]);
+    const here = location.directories;
+    directoriesAt.push(here);
+    const segmentScripts = [];
+    const finding = segmentFinding({
+      segment,
+      scripts: segmentScripts,
+      stdinBodies: bodiesAt(index),
+      spans: spansAt(index),
+      directories: here,
+      rules,
+    });
     if (finding !== null) return finding;
+    scripts.push(...segmentScripts.map((text) => ({ text, directories: here })));
+    const after = separators[index];
+    const blank = segment.trim() === '';
+    if (!blank) {
+      moveDirectory(location, { segment, before, after, next: nextCommands[index] });
+      settleFallback(location, after);
+    }
+    if (closes[index]) leaveSubshell(location);
+    before = blank && CONTINUED_ON_NEXT_LINE.has(before) ? before : after;
   }
   if (checkHeredoc && heredoc !== null) return { kind: 'heredoc', detail: heredoc };
 
+  const inItsDirectory = (entry) => ({
+    text: entry.text,
+    directories: directoriesAt[entry.segmentIndex],
+  });
+
   return (
-    firstFinding(nested, depth, checkHeredoc) ??
-    firstFinding(
-      bodies.map((body) => body.text),
-      depth,
-      false,
-    )
+    firstFinding([...nested.map(inItsDirectory), ...scripts], depth, checkHeredoc, rules) ??
+    firstFinding(bodies.map(inItsDirectory), depth, false, rules)
   );
+}
+
+// ---- the decision ----
+
+const KILL_COMMANDS = ['pkill', 'killall'];
+
+// The hook's decision for one command: the first finding, or null.
+//
+// `options.cwd` is where the command starts. `options.sentinelKillCommands`
+// and `options.mainCheckoutPath` exist only for the tests and the sentinel
+// probe runner (scripts/checks/kill-guard-probe.sh): a probe that really runs
+// uses a harmless sentinel name in place of every kill word and a scratch
+// folder in place of the main checkout, and the guard judges it with those.
+// The hook entry point below never passes them.
+//
+// A `$"…"` heredoc delimiter ends at `EOF` in bash and at `$EOF` in zsh, so
+// every command is judged once per reading, and either finding counts. The
+// outer text cannot tell whether such a delimiter hides in a nested `-c` or
+// `eval` string (`\$\"EOF\"`), so both readings always run.
+function decide(command, options = {}) {
+  const rules = {
+    killCommands: new Set([...KILL_COMMANDS, ...(options.sentinelKillCommands ?? [])]),
+    mainCheckoutPath: options.mainCheckoutPath ?? MAIN_CHECKOUT_PATH,
+  };
+  const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
+  for (const reading of ['bash', 'zsh']) {
+    const finding = withShellReading(reading, () => findDanger(command, 0, true, [start], rules));
+    if (finding !== null) return finding;
+  }
+
+  return null;
 }
 
 // ---- hook entry point ----
@@ -775,15 +1392,18 @@ function main(raw) {
   const command = payload?.tool_input?.command;
   if (typeof command !== 'string' || command.trim() === '') return;
 
-  const finding = findDanger(command, 0);
+  const finding = decide(command, { cwd: payload.cwd });
   if (finding !== null) process.stdout.write(denyJson(reasonFor(finding)));
 }
 
-try {
-  const raw = require('node:fs').readFileSync(0, 'utf8');
-  main(raw);
-} catch {
-  // Never break the Bash tool: any unexpected failure here falls through to
-  // the unconditional exit 0 below with no output, i.e. allow.
+if (require.main === module) {
+  try {
+    main(fs.readFileSync(0, 'utf8'));
+  } catch {
+    // Never break the Bash tool: any unexpected failure here falls through to
+    // the unconditional exit 0 below with no output, i.e. allow.
+  }
+  process.exit(0);
 }
-process.exit(0);
+
+module.exports = { decide };

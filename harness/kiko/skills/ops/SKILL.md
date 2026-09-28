@@ -15,11 +15,13 @@ Rules:
   NEVER poll, tail, `cat`, or re-read its output / log / terminal in a
   loop. NEVER write a wait or poll script. NEVER re-launch it. NEVER
   dispatch a separate subagent just to watch it — you await the single
-  command's return yourself. This covers `check:deep`, `check:mutation`,
-  `osv.sh`, `check:all`, `check:knip`, `check:deps`, `check:typecheck`,
-  and any long build / `pod install` / device deploy. These emit no
-  useful incremental output, so polling them burns tokens for zero
-  signal.
+  command's return yourself. This covers `osv.sh`, `check:all`,
+  `check:knip`, `check:deps`, `check:typecheck`, and any long build /
+  `pod install` / device deploy. These emit no useful incremental
+  output, so polling them burns tokens for zero signal. A mutation run
+  (`check:deep`, `check:mutation`) is the one exception to running in
+  the foreground: run it detached and await its exit code (see
+  "Launching a mutation run" below).
 - **Mutation testing runs per SMALL change set only — never on a whole
   project or a whole release.** There is no whole-release deep gate. Set
   `KIKO_MUTATION_BASE` to the change set's own base commit so only its

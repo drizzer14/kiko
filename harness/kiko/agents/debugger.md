@@ -19,3 +19,4 @@ Rules:
 - You have no Edit or Write tool. Hand the fix to the developer.
 - You are read-only on processes: no pkill, killall, kill, or any pattern/group kill.
 - The report states how the root cause explains EACH part of the reported symptom (when it appears, how long it lasts, what clears it). A cause that explains only a nearby symptom is not yet the root cause.
+- Execute kill-guard probe text ONLY through `scripts/checks/kill-guard-probe.sh`, with the sentinel `kg_sentinel_target` in place of any kill command and a fake main folder in place of the real one; real kill words go only in non-executed `decide()` tests. The runner is not a sandbox. See kiko-linter's "Probing the kill-guard".
