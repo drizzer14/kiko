@@ -17,9 +17,12 @@ const loadNativeBiometrics = (): typeof ReactNativeBiometrics =>
 // kind to a switch-availability decision and a hint string.
 export type SensorStatus =
   | { kind: 'available'; biometryType: string | undefined }
-  // A passcode is set but no biometry is enrolled: the lock still works, through
-  // the passcode sheet (`allowDeviceCredentials`).
-  | { kind: 'passcodeOnly' }
+  // A passcode is set but biometry isn't usable: the lock still works, through
+  // the passcode sheet (`allowDeviceCredentials`). `notEnrolled` means the
+  // user never set up biometry; `biometryUnavailable` means a secure device
+  // whose biometry is off/locked out for another reason (denied permission,
+  // a temporary lockout) — different hint copy, same fallback.
+  | { kind: 'passcodeOnly'; reason: 'notEnrolled' | 'biometryUnavailable' }
   | { kind: 'passcodeNotSet' }
   | { kind: 'unavailable' };
 
@@ -124,7 +127,11 @@ export const isSensorAvailable = async (): Promise<SensorStatus> => {
   }
 
   if (hasCode(NOT_ENROLLED_CODES, info.errorCode)) {
-    return { kind: 'passcodeOnly' };
+    return { kind: 'passcodeOnly', reason: 'notEnrolled' };
+  }
+
+  if (info.isDeviceSecure === true) {
+    return { kind: 'passcodeOnly', reason: 'biometryUnavailable' };
   }
 
   return { kind: 'unavailable' };

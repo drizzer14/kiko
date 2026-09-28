@@ -37,6 +37,7 @@ export const uk: typeof en = {
       label: 'Блокування застосунку',
       requireFaceIdOrPasscode: 'Блокування Face ID або паролем',
       hint: {
+        biometryUnavailable: 'Face ID вимкнено для Кіко — буде використано пароль пристрою.',
         passcodeNotSet:
           'Встановіть пароль пристрою в Налаштуваннях iOS, щоб використовувати блокування застосунку.',
         passcodeOnly: 'Face ID не налаштовано — буде використано пароль пристрою.',

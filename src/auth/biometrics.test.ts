@@ -40,22 +40,30 @@ describe('isSensorAvailable', () => {
     expect(await isSensorAvailable()).toEqual({ kind: 'passcodeNotSet' });
   });
 
-  it('maps a secured device with no enrolled biometry to passcodeOnly', async () => {
+  it('maps a secured device with no enrolled biometry to passcodeOnly/notEnrolled', async () => {
     mockSensor.mockResolvedValue({
       available: false,
       isDeviceSecure: true,
       errorCode: 'BIOMETRY_NOT_ENROLLED',
     });
 
-    expect(await isSensorAvailable()).toEqual({ kind: 'passcodeOnly' });
+    expect(await isSensorAvailable()).toEqual({ kind: 'passcodeOnly', reason: 'notEnrolled' });
   });
 
-  it('maps missing biometric hardware to unavailable', async () => {
-    mockSensor.mockResolvedValue({
-      available: false,
-      isDeviceSecure: true,
-      errorCode: 'BIOMETRY_NOT_AVAILABLE',
-    });
+  it.each(['BIOMETRY_NOT_AVAILABLE', 'BIOMETRY_LOCKOUT'])(
+    'maps %s on a secure device to passcodeOnly/biometryUnavailable, never a greyed-out switch',
+    async (errorCode) => {
+      mockSensor.mockResolvedValue({ available: false, isDeviceSecure: true, errorCode });
+
+      expect(await isSensorAvailable()).toEqual({
+        kind: 'passcodeOnly',
+        reason: 'biometryUnavailable',
+      });
+    },
+  );
+
+  it('maps an unrecognized code with no confirmed device security to unavailable', async () => {
+    mockSensor.mockResolvedValue({ available: false, errorCode: 'BIOMETRY_NOT_AVAILABLE' });
 
     expect(await isSensorAvailable()).toEqual({ kind: 'unavailable' });
   });

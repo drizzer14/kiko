@@ -50,6 +50,7 @@ export const en = {
       label: 'App lock',
       requireFaceIdOrPasscode: 'Require Face ID or passcode',
       hint: {
+        biometryUnavailable: 'Face ID is off for Kiko — your device passcode will be used.',
         passcodeNotSet: 'Set a device passcode in iOS Settings to use app lock.',
         passcodeOnly: 'No Face ID enrolled — your device passcode will be used.',
         unavailable: 'Biometric hardware is unavailable on this device.',
