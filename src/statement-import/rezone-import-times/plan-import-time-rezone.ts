@@ -82,6 +82,7 @@ const baseAndOccurrenceOf = (key: string): { base: string; occurrence: number | 
 
 type RewrittenRow = {
   id: string;
+  holdingId: string;
   oldTime: number;
   newTime: number;
   newExternalId: string | null;
@@ -190,22 +191,21 @@ export const planImportTimeRezone = (
 
     return {
       id: row.id,
+      holdingId: row.holdingId,
       oldTime: row.time,
       newTime,
       newExternalId:
         rezoneDedupKey(row.externalId, row.time / 1000, newTime / 1000) ?? row.externalId,
     };
   });
-  const newTimeById = new Map(rewrittenRows.map((row) => [row.id, row.newTime]));
   const finalKeyById = resolveKeyCollisions(rewrittenRows);
 
   const newTimeByOldTimePerHolding = new Map<string, Map<number, number>>();
 
-  for (const row of importRows) {
-    const newTime = newTimeById.get(row.id) as number;
+  for (const row of rewrittenRows) {
     const perHolding = newTimeByOldTimePerHolding.get(row.holdingId) ?? new Map<number, number>();
 
-    perHolding.set(row.time, newTime);
+    perHolding.set(row.oldTime, row.newTime);
     newTimeByOldTimePerHolding.set(row.holdingId, perHolding);
   }
 
