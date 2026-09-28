@@ -21,10 +21,16 @@ import {
   settings,
   transactions,
 } from '@kiko/db';
+import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
+import {
+  computeDedupKeyBase,
+  mapParsedTransaction,
+  upgradeLegacyDedupKey,
+} from '@kiko/statement-import/mapping';
 import { DatabaseSync } from 'node:sqlite';
 import { SETTINGS_ID } from '@kiko/settings';
-import { mapParsedTransaction } from '@kiko/statement-import/mapping';
 import { monobankCsvFormat } from '@kiko/statement-import/formats/monobank-csv';
 import { applyMigrationsThrough, executingDrizzle } from '@kiko/test-support/real-sqlite';
 import { monobankFixtureInput } from '@kiko/statement-import/formats/format-test-fixtures';
@@ -39,14 +45,60 @@ const dedicatedMonobank = monobankCsvFormat.parse(monobankFixtureInput);
 // instant.
 const LEGACY_FIRST_MILLISECONDS = Date.UTC(2022, 3, 1, 5, 27, 35);
 const LEGACY_LAST_MILLISECONDS = Date.UTC(2023, 4, 12, 17, 30, 36);
+// A legacy (pre-`␟`) occurrence-suffixed key, on its own row so it never
+// interacts with the Monobank rows' own keys above.
+const LEGACY_SUFFIX_MILLISECONDS = Date.UTC(2026, 2, 3, 9, 45, 0);
+// A midnight (date-only) row and a noon row, same holding/amount/description,
+// that both rezone onto the exact same instant — the planner's own
+// collision-renumbering proof, exercised here through both real paths.
+const MIDNIGHT_LEGACY_MILLISECONDS = Date.UTC(2026, 2, 20, 0, 0, 0);
+const NOON_LEGACY_MILLISECONDS = Date.UTC(2026, 2, 20, 12, 0, 0);
+
+const MIGRATION_0043_SQL = readFileSync(
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0043_add_import_times_rezoned.sql'),
+  'utf8',
+);
+
+/** Mirrors `upgradeStoredDedupKeys`' own rewrite (`upgrade-stored-dedup-
+ * keys.ts`) against this file's real, in-process test database directly —
+ * that function's own export always goes through the app's real `write()`,
+ * which this file's module-level `jest.mock` only ever wires to the
+ * restore path's row-capturing fake, never to a raw `node:sqlite` instance.
+ * Needed so the LIVE path below runs the two upgrades in the SAME order
+ * production does (dedup-key upgrade, then rezone — `migrations.gate.tsx`),
+ * matching what the restore mirror already does unconditionally
+ * (`withLegacyDedupKeysUpgraded` before `withImportTimesRezoned`). */
+const upgradeLegacyDedupKeysIn = async (drizzleDatabase: typeof database): Promise<void> => {
+  const importRows = await drizzleDatabase
+    .select({
+      id: transactions.id,
+      holdingId: transactions.holdingId,
+      time: transactions.time,
+      amountMinorUnits: transactions.amountMinorUnits,
+      description: transactions.description,
+      source: transactions.source,
+      externalId: transactions.externalId,
+    })
+    .from(transactions)
+    .where(eq(transactions.source, 'import'));
+
+  for (const row of importRows) {
+    const upgraded = upgradeLegacyDedupKey(row);
+
+    if (upgraded !== null) {
+      await drizzleDatabase
+        .update(transactions)
+        .set({ externalId: upgraded })
+        .where(eq(transactions.id, row.id));
+    }
+  }
+};
 
 const openTestDatabase = (): DatabaseSync => {
   const rawDatabase = new DatabaseSync(':memory:');
 
   applyMigrationsThrough(rawDatabase, '0042_uah_star_rates');
-  rawDatabase.exec(
-    'ALTER TABLE `settings` ADD `import_times_rezoned` integer DEFAULT false NOT NULL;',
-  );
+  rawDatabase.exec(MIGRATION_0043_SQL);
   rawDatabase.exec('PRAGMA foreign_keys = ON;');
   rawDatabase
     .prepare("INSERT INTO accounts (id, name, kind) VALUES ('a-1', 'Monobank', 'bank')")
@@ -65,9 +117,11 @@ const openTestDatabase = (): DatabaseSync => {
   return rawDatabase;
 };
 
-/** Seeds the SAME legacy dataset `rezone-import-times.test.ts` proves the
- * live upgrade against: 2 Monobank import rows (legacy time + key) and one
- * holding stamped with the newest import row's own legacy time. */
+/** Seeds a realistic legacy dataset (pre-0043 shape): 2 Monobank import rows
+ * (legacy time + key), a legacy (pre-`␟`) occurrence-suffixed import row, a
+ * midnight/noon pair that collides once rezoned, 1 manual row, 1 monobank
+ * sync row, `h-1.balanceSetAt` equal to the newest import row's own legacy
+ * time, and `h-2.balanceSetAt` an unrelated manual stamp. */
 const seedLegacyData = async (drizzleDatabase: typeof database): Promise<void> => {
   const legacyFirstRow = mapParsedTransaction(
     { ...dedicatedMonobank.transactions[0], timeSeconds: LEGACY_FIRST_MILLISECONDS / 1000 },
@@ -79,16 +133,64 @@ const seedLegacyData = async (drizzleDatabase: typeof database): Promise<void> =
     'h-1',
     0,
   );
+  const legacySuffixBase = computeDedupKeyBase(
+    'h-1',
+    LEGACY_SUFFIX_MILLISECONDS / 1000,
+    -350,
+    'legacy suffix key',
+  );
+  const collisionRow = (timeSeconds: number) =>
+    mapParsedTransaction(
+      {
+        currency: 'UAH' as const,
+        amountMinorUnits: -450,
+        description: 'midnight-noon collision',
+        timeSeconds,
+      },
+      'h-1',
+      0,
+    );
 
   await drizzleDatabase.insert(settings).values({ id: SETTINGS_ID });
   await drizzleDatabase.insert(transactions).values([
     { id: 'tx-import-1', ...legacyFirstRow },
     { id: 'tx-import-2', ...legacyLastRow },
+    {
+      id: 'tx-import-legacy-suffix',
+      holdingId: 'h-1',
+      amountMinorUnits: -350,
+      time: LEGACY_SUFFIX_MILLISECONDS,
+      description: 'legacy suffix key',
+      source: 'import',
+      externalId: `${legacySuffixBase} 1`,
+    },
+    { id: 'tx-import-midnight', ...collisionRow(MIDNIGHT_LEGACY_MILLISECONDS / 1000) },
+    { id: 'tx-import-noon', ...collisionRow(NOON_LEGACY_MILLISECONDS / 1000) },
+    {
+      id: 'tx-manual-1',
+      holdingId: 'h-1',
+      amountMinorUnits: -500,
+      time: 1_700_000_000_000,
+      source: 'manual',
+      externalId: null,
+    },
+    {
+      id: 'tx-sync-1',
+      holdingId: 'h-1',
+      amountMinorUnits: -700,
+      time: 1_700_000_500_000,
+      source: 'monobank',
+      externalId: 'sync-ext-1',
+    },
   ]);
   await drizzleDatabase
     .update(holdings)
     .set({ balanceSetAt: LEGACY_LAST_MILLISECONDS })
     .where(eq(holdings.id, 'h-1'));
+  await drizzleDatabase
+    .update(holdings)
+    .set({ balanceSetAt: 1_790_000_000_123 })
+    .where(eq(holdings.id, 'h-2'));
 };
 
 const sortedById = <Row extends { id: string }>(rows: Row[]): Row[] =>
@@ -103,11 +205,15 @@ describe('a pre-0043 .kiko restore ends byte-equal to the live upgrade of the sa
 
     // The exported (pre-restore) snapshot: the SAME rows the live database
     // currently holds, before either path rewrites anything — settings
-    // carries no `importTimesRezoned` key at all, exactly a build-26 export.
+    // carries no `importTimesRezoned` key at all, matching a real pre-0043
+    // export.
     const preUpgradeTransactions = await drizzleDatabase.select().from(transactions);
     const preUpgradeHoldings = await drizzleDatabase.select().from(holdings);
 
-    // Path 1: the LIVE database upgrades itself.
+    // Path 1: the LIVE database upgrades itself, in production's own order
+    // (dedup-key upgrade, then rezone — see `upgradeLegacyDedupKeysIn`'s doc
+    // comment).
+    await upgradeLegacyDedupKeysIn(drizzleDatabase);
     await rezoneImportTimesIn(drizzleDatabase);
     const afterLiveUpgradeTransactions = sortedById(
       await drizzleDatabase.select().from(transactions),
@@ -116,7 +222,11 @@ describe('a pre-0043 .kiko restore ends byte-equal to the live upgrade of the sa
 
     // Path 2: a `.kiko` restore of the PRE-upgrade export, through the JS
     // mirrors (`withLegacyDedupKeysUpgraded`, `withImportTimesRezoned`).
-    const insertedRows: { transactions?: TransactionRow[]; holdings?: HoldingRow[] } = {};
+    const insertedRows: {
+      transactions?: TransactionRow[];
+      holdings?: HoldingRow[];
+      settings?: { importTimesRezoned: boolean }[];
+    } = {};
     mockDatabaseTransaction = {
       delete: () => Promise.resolve(),
       insert: (table: unknown) => ({
@@ -130,6 +240,13 @@ describe('a pre-0043 .kiko restore ends byte-equal to the live upgrade of the sa
 
           if (table === holdings) {
             insertedRows.holdings = [...(insertedRows.holdings ?? []), ...(rows as HoldingRow[])];
+          }
+
+          if (table === settings) {
+            insertedRows.settings = [
+              ...(insertedRows.settings ?? []),
+              ...(rows as { importTimesRezoned: boolean }[]),
+            ];
           }
 
           return Promise.resolve();
@@ -158,6 +275,9 @@ describe('a pre-0043 .kiko restore ends byte-equal to the live upgrade of the sa
 
     expect(afterRestoreTransactions).toEqual(afterLiveUpgradeTransactions);
     expect(afterRestoreHoldings).toEqual(afterLiveUpgradeHoldings);
+    // Both paths must end with the flag true — a restore replaces the whole
+    // database, so there is no live device left to retry.
+    expect(insertedRows.settings?.[0]?.importTimesRezoned).toBe(true);
   });
 
   it('dedups a re-import of the same digits on BOTH the live-upgraded and the restored database', async () => {
@@ -165,6 +285,7 @@ describe('a pre-0043 .kiko restore ends byte-equal to the live upgrade of the sa
     const drizzleDatabase = executingDrizzle<typeof database>(rawDatabase);
 
     await seedLegacyData(drizzleDatabase);
+    await upgradeLegacyDedupKeysIn(drizzleDatabase);
     await rezoneImportTimesIn(drizzleDatabase);
 
     const reimportedFirst = mapParsedTransaction(

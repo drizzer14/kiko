@@ -24,6 +24,7 @@ import { holdingValue } from '@kiko/holdings/holding-value';
 import { asBondMeta } from '@kiko/holdings/holding-metadata';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { computeDedupKeyBase } from '@kiko/statement-import/mapping';
+import { rezoneImportTime } from '@kiko/statement-import/rezone-import-times';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -908,6 +909,96 @@ describe('restoreDataSnapshot', () => {
 
       expect(insertedRows.transactions).toEqual([legacyShapedTransaction]);
       expect(insertedRows.settings).toEqual([alreadyMigratedSettingsRow]);
+    });
+  });
+
+  // Migration 0043's flag and its own restore mirror (`withImportTimesRezoned`
+  // in `restore-snapshot.ts`) — a pre-0043 snapshot's legacy import rows need
+  // the same rewrite a live device's launch-time rezone applies, and unlike
+  // the dedup-key upgrade above this ALSO rewrites an explicit `false`, since
+  // a restore replaces the whole database rather than leaving a live device's
+  // own next launch to retry.
+  describe('import time rezone (migration 0043 restore mirror)', () => {
+    const legacyTime = Date.UTC(2026, 5, 10, 8, 15, 0);
+    const legacyImportRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
+      id: 't1',
+      holdingId: 'h1',
+      time: legacyTime,
+      amountMinorUnits: -500,
+      description: 'coffee',
+      source: 'import',
+      externalId: `h1 ${legacyTime / 1000} -500 coffee`,
+      ...overrides,
+    });
+    const stampedHolding = { id: 'h1', balanceSetAt: legacyTime };
+
+    it('rezones every import row and holding stamp, and marks the settings row rezoned, when the flag is explicit false', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        // `dedupKeysUpgraded: true` keeps this section isolated from the
+        // separate dedup-key upgrade above, the same way that section pins
+        // `importTimesRezoned: true` to stay isolated from this one.
+        settings: [
+          { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: false },
+        ] as never,
+        holdings: [stampedHolding] as never,
+        transactions: [legacyImportRow()] as never,
+      });
+
+      const rezonedTime = rezoneImportTime(legacyTime);
+
+      expect(insertedRows.transactions).toEqual([
+        legacyImportRow({ time: rezonedTime, externalId: `h1 ${rezonedTime / 1000} -500 coffee` }),
+      ]);
+      expect(insertedRows.holdings).toEqual([{ id: 'h1', balanceSetAt: rezonedTime }]);
+      expect(insertedRows.settings).toEqual([
+        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+      ]);
+    });
+
+    it('leaves every row and the flag unchanged when importTimesRezoned is already true', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        settings: [
+          { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+        ] as never,
+        holdings: [stampedHolding] as never,
+        transactions: [legacyImportRow()] as never,
+      });
+
+      expect(insertedRows.transactions).toEqual([legacyImportRow()]);
+      expect(insertedRows.holdings).toEqual([stampedHolding]);
+      expect(insertedRows.settings).toEqual([
+        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+      ]);
+    });
+
+    it('rezones and marks the flag true when the settings row carries no importTimesRezoned key at all', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        settings: [{ id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true }] as never,
+        holdings: [stampedHolding] as never,
+        transactions: [legacyImportRow()] as never,
+      });
+
+      const rezonedTime = rezoneImportTime(legacyTime);
+
+      expect(insertedRows.transactions).toEqual([
+        legacyImportRow({ time: rezonedTime, externalId: `h1 ${rezonedTime / 1000} -500 coffee` }),
+      ]);
+      expect(insertedRows.holdings).toEqual([{ id: 'h1', balanceSetAt: rezonedTime }]);
+      expect(insertedRows.settings).toEqual([
+        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+      ]);
     });
   });
 
