@@ -184,7 +184,7 @@ export const BINANCE_HISTORY_CURSOR_FIELD = 'binanceHistoryCursor';
  * routine balance sync (which writes a fresh `{ syncedAt, ...}` metadata
  * object every run) never wipes a walk's own progress marker.
  */
-export const walkOwnedMetadataKeys = [BINANCE_HISTORY_CURSOR_FIELD] as const;
+const walkOwnedMetadataKeys = [BINANCE_HISTORY_CURSOR_FIELD] as const;
 
 export const binanceHistoryCursorOf = (metadata: unknown): number | null => {
   if (!isRecord(metadata)) {
