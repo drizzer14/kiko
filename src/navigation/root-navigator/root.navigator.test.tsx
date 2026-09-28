@@ -44,23 +44,6 @@ describe('RootNavigator', () => {
     expect((await findByTestId('tab-icon-SettingsTab')).props.sfSymbol).toBe('gear');
   });
 
-  // Statistics stays mounted while another tab shows (react-native-bottom-tabs
-  // keeps every visited tab loaded), so it alone opts into freezeOnBlur to stop
-  // recomputing off-screen; the other three tabs are cheap enough to leave
-  // unfrozen.
-  it('freezes only the Statistics tab on blur', async () => {
-    const { findByTestId } = await render(
-      <NavigationContainer theme={navigationDarkTheme}>
-        <RootNavigator />
-      </NavigationContainer>,
-    );
-
-    expect((await findByTestId('tab-icon-StatisticsTab')).props.freezeOnBlur).toBe(true);
-    expect((await findByTestId('tab-icon-HomeTab')).props.freezeOnBlur).not.toBe(true);
-    expect((await findByTestId('tab-icon-AccountsTab')).props.freezeOnBlur).not.toBe(true);
-    expect((await findByTestId('tab-icon-SettingsTab')).props.freezeOnBlur).not.toBe(true);
-  });
-
   // Bug B1: the native UITabBar rebuilds its styling on every tab's
   // `onAppear` (see react-native-bottom-tabs `TabAppearModifier`). With no
   // `tabBarStyle`, that rebuild calls `configureWithDefaultBackground()`,

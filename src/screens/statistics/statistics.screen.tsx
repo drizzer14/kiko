@@ -52,7 +52,6 @@ import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
 import type { Currency } from '@kiko/currency/currency';
 import { ibanOf } from '@kiko/holdings/holding-metadata';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -184,56 +183,46 @@ const StatisticsScreen: FC = () => {
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
-  // react-native-bottom-tabs keeps every visited tab mounted, so without this
-  // every one of this screen's own live queries — including the two feeding
-  // the O(T) internal-transfer match and the net-worth reconstruction — would
-  // keep re-running off-screen on every write while another tab shows.
-  // `cached: true` on each query below still serves the last-read rows the
-  // instant focus returns, so re-enabling never shows a loading flash.
-  const isFocused = useIsFocused();
-
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.listQuery(),
     ['accounts'],
-    isFocused,
+    true,
     { cached: true },
   );
   const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
     holdingsRepo.allQuery(),
     ['holdings'],
-    isFocused,
+    true,
     { cached: true },
   );
   const { data: rates, isLoading: ratesLoading } = useLiveQuery(
     ratesRepo.allQuery(),
     ['currency_rates'],
-    isFocused,
+    true,
     { cached: true },
   );
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
     settingsRepo.getQuery(),
     ['settings'],
-    isFocused,
+    true,
     { cached: true },
   );
   const {
     data: transactions,
     isLoading: transactionsLoading,
     isFresh: transactionsFresh,
-  } = useLiveQuery(transactionsRepo.listAllQuery(), ['transactions'], isFocused, {
-    cached: true,
-  });
+  } = useLiveQuery(transactionsRepo.listAllQuery(), ['transactions'], true, { cached: true });
   const {
     data: historyRows,
     isLoading: historyLoading,
     isFresh: historyFresh,
-  } = useLiveQuery(rateHistoryRepo.historyRowsQuery(), ['currency_rate_history'], isFocused, {
+  } = useLiveQuery(rateHistoryRepo.historyRowsQuery(), ['currency_rate_history'], true, {
     cached: true,
   });
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],
-    isFocused,
+    true,
     { cached: true },
   );
 
@@ -290,9 +279,9 @@ const StatisticsScreen: FC = () => {
   // reads run in parallel instead of price_points waiting on holdings. Only a
   // loan reads the linked-payments half of the book.
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
-    isFocused && (holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type))),
+    holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
     { cached: true },
-    isFocused && (holdingsLoading || holdings.some((holding) => holding.type === 'loan')),
+    holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
   );
   // Every chart (bar/pie/trend) must never render an empty state while any of
   // this screen's own queries is still on its first load (kiko-architecture's

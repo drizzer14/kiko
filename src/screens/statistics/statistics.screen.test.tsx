@@ -65,15 +65,6 @@ jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
-// The screen pauses its heavy live queries while blurred (see the "pausing
-// heavy live queries" describe below); every other test in this file renders
-// the screen as the active tab, so this defaults to focused.
-const mockUseIsFocused = jest.fn(() => true);
-jest.mock('@react-navigation/native', () => ({
-  ...jest.requireActual('@react-navigation/native'),
-  useIsFocused: () => mockUseIsFocused(),
-}));
-
 // The active-tab re-tap → scroll-to-top hook reads the navigation context, which
 // a standalone screen render lacks; stand it in with a spy so this test can
 // assert the screen hands it the scroll view's own ref.
@@ -2222,55 +2213,5 @@ describe('StatisticsScreen — the price_points gate', () => {
     setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'loan' }] });
     await renderScreen();
     expect(loanPaymentsCall()?.[2]).toBe(true);
-  });
-});
-
-// The screen never unmounts while another tab shows (react-native-bottom-tabs
-// keeps every visited tab loaded), so its own live queries — including the
-// two feeding the O(T) internal-transfer match and net-worth reconstruction —
-// must stop re-running off-screen instead of recomputing on every write while
-// Home is what the user actually sees.
-describe('StatisticsScreen — pausing heavy live queries while unfocused', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  afterEach(() => {
-    mockUseIsFocused.mockReturnValue(true);
-  });
-
-  it('disables every table-driving live query while the screen is not focused', async () => {
-    mockUseIsFocused.mockReturnValue(false);
-    setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
-
-    await renderScreen();
-
-    const enabledFor = (table: string): unknown =>
-      mockUseLiveQuery.mock.calls.find((call) => (call[1] as string[]).includes(table))?.[2];
-
-    for (const table of [
-      'accounts',
-      'holdings',
-      'currency_rates',
-      'settings',
-      'transactions',
-      'currency_rate_history',
-      'categories',
-      'price_points',
-    ]) {
-      expect(enabledFor(table)).toBe(false);
-    }
-  });
-
-  it('keeps the live queries enabled while the screen is focused', async () => {
-    mockUseIsFocused.mockReturnValue(true);
-
-    await renderScreen();
-
-    const enabledFor = (table: string): unknown =>
-      mockUseLiveQuery.mock.calls.find((call) => (call[1] as string[]).includes(table))?.[2];
-
-    expect(enabledFor('transactions')).toBe(true);
-    expect(enabledFor('currency_rate_history')).toBe(true);
   });
 });

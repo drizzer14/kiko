@@ -77,11 +77,6 @@ const RootNavigator: FC = () => {
         options={{
           title: t('statistics.title'),
           tabBarIcon: () => ({ sfSymbol: 'chart.xyaxis.line' }),
-          // Statistics stays mounted once visited (react-native-bottom-tabs
-          // keeps every loaded tab in the tree), and its own screen pauses its
-          // heavy live queries on blur — freezing it too stops react-freeze
-          // from re-rendering it off-screen on an unrelated state change.
-          freezeOnBlur: true,
         }}
       />
 
