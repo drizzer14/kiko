@@ -69,6 +69,14 @@ const seedAccount = (
   }
 };
 
+const seedManualTransaction = (accountId: string, createdAt: number): void => {
+  mockDatabase
+    .prepare(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, created_at) VALUES (?, ?, -100, ?, 'manual', ?)",
+    )
+    .run(`${accountId}-manual-${createdAt}`, `${accountId}-card`, createdAt, createdAt);
+};
+
 const seedReminder = (seed: ReminderSeed): void => {
   mockDatabase
     .prepare(
@@ -301,6 +309,53 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
 
     expect(reminderColumn('fired', 'last_snoozed_at')).toBeNull();
     expect(reminderColumn('pending', 'last_snoozed_at')).toBe(local(10, 1, 8));
+  });
+
+  it('drops a snooze once new data arrives after it, so its stale text never fires', async () => {
+    seedAccount('manual');
+    seedReminder({
+      id: 'snoozed',
+      accountId: 'manual',
+      kind: 'add_transactions',
+      lastSnoozedAt: local(10, 1, 20, 1),
+    });
+    seedManualTransaction('manual', local(10, 2, 12));
+
+    await syncReminders(english, local(10, 2, 13));
+
+    expect(lastReplace().keptSnoozeIds).toEqual([]);
+    expect(reminderColumn('snoozed', 'last_snoozed_at')).toBeNull();
+  });
+
+  it('plans the occurrence a data-stale snooze stood in for', async () => {
+    seedAccount('manual');
+    seedReminder({
+      id: 'snoozed',
+      accountId: 'manual',
+      kind: 'add_transactions',
+      lastSnoozedAt: local(10, 3, 9),
+    });
+    seedManualTransaction('manual', local(10, 3, 12));
+
+    await syncReminders(english, local(10, 3, 13));
+
+    expect(fireStamps('snoozed')).toEqual(['10-4 20:0', '10-5 20:0', '10-6 20:0', '10-7 20:0']);
+  });
+
+  it('keeps a snooze made after the latest data', async () => {
+    seedAccount('manual');
+    seedReminder({
+      id: 'snoozed',
+      accountId: 'manual',
+      kind: 'add_transactions',
+      lastSnoozedAt: local(10, 1, 20, 1),
+    });
+    seedManualTransaction('manual', local(10, 1, 19));
+
+    await syncReminders(english, local(10, 1, 21));
+
+    expect(lastReplace().keptSnoozeIds).toEqual(['snoozed']);
+    expect(reminderColumn('snoozed', 'last_snoozed_at')).toBe(local(10, 1, 20, 1));
   });
 
   it('clears the snooze of a reminder that is not scheduled, since iOS drops it too', async () => {

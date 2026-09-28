@@ -35,6 +35,15 @@ const lastDataAtOf = (row: PlanInputRow): number | null =>
     .with('add_transactions', () => row.lastManualAt)
     .exhaustive();
 
+// Smart skip for a snooze: data added after "Tomorrow" leaves its text stale
+// and the reminder no longer due, so iOS drops it (it is not in the kept list)
+// and the plan stops keeping its slot free.
+const hasDataSinceSnooze = (row: PlanInputRow): boolean => {
+  const lastDataAt = lastDataAtOf(row);
+
+  return row.lastSnoozedAt !== null && lastDataAt !== null && lastDataAt >= row.lastSnoozedAt;
+};
+
 const toPlanInput = (row: PlanInputRow, now: number): ReminderPlanInput => ({
   reminderId: row.id,
   accountId: row.accountId,
@@ -43,16 +52,17 @@ const toPlanInput = (row: PlanInputRow, now: number): ReminderPlanInput => ({
   activeSince: row.activeSince,
   lastEngagedAt: row.lastEngagedAt,
   lastDataAt: lastDataAtOf(row),
-  lastSnoozedAt: row.lastSnoozedAt,
+  lastSnoozedAt: hasDataSinceSnooze(row) ? null : row.lastSnoozedAt,
   now,
 });
 
-// iOS drops the snooze of a reminder that is not scheduled (it is not in the
-// kept list), so its stored time would otherwise skip an occurrence after a
-// resume with nothing firing in its place.
+// iOS drops the snooze of a reminder that is not scheduled or has data since
+// the snooze (neither is in the kept list), so its stored time would otherwise
+// skip an occurrence with nothing firing in its place.
 const isSnoozeStale = (row: PlanInputRow, now: number): boolean =>
   row.lastSnoozedAt !== null &&
   (!isSchedulable(row) ||
+    hasDataSinceSnooze(row) ||
     !isSnoozePending({ schedule: row.schedule, lastSnoozedAt: row.lastSnoozedAt, now }));
 
 // The paused notice only says the reminder has stopped; a tap on it is not a
@@ -92,8 +102,8 @@ export const syncReminders = async (
   }
 
   const rows = await remindersRepo.planInputsQuery();
-  const inputs = rows.filter(isSchedulable).map((row) => toPlanInput(row, now));
-  const plan = planAllReminders(inputs);
+  const schedulableRows = rows.filter(isSchedulable);
+  const plan = planAllReminders(schedulableRows.map((row) => toPlanInput(row, now)));
 
   await remindersRepo.markBackoffPaused(plan.backoffPauses);
   await remindersRepo.clearSnoozes(
@@ -101,7 +111,7 @@ export const syncReminders = async (
   );
   await remindersNative.replaceRequests(
     plan.requests.map((request) => toNativeRequest(request, t)),
-    inputs.map((input) => input.reminderId),
+    schedulableRows.filter((row) => !hasDataSinceSnooze(row)).map((row) => row.id),
   );
 
   return responses;
