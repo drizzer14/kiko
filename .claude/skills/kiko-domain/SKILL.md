@@ -1640,6 +1640,18 @@ slower than its schedule before the first link reads off by that
 difference until the user records a correction ("Update
 outstanding").
 
+Known limit: a MANUAL loan link (not the automatic ±7-day matcher) more
+than half an installment period late still maps to its nearest
+installment by due date (`installmentIndexOf`'s nearest-due-date
+mapping), the same mapping the anchor logic above reads from. When the
+link is that late, "nearest by due date" lands on a LATER installment
+than the one this payment actually paid down, so the anchor logic's
+"before the due date" guard no longer lines up with the payment's real
+target, and the principal for the installment in between is subtracted
+twice. Automatic links are not affected: the matcher's own ±7-day
+window is always well inside half a period, so it never picks the
+wrong installment in the first place.
+
 `holding-descriptor/loan/loan.descriptor.ts`'s valuation branch (`gross = net = -outstanding`,
 `principalOrCost = -principal`, interest/tax always 0 — a loan never
 accrues either AT VALUATION time) backs the net-worth assets-minus-debt

@@ -11,9 +11,10 @@ When you add any new dependency, it is pinned exact automatically; you do
 not need to pass `--save-exact` by hand.
 
 This governs NEW installs only. The existing `^` ranges already in
-`package.json` are **not** mass-converted to exact. Rewriting them would
-re-resolve the dependency tree during the 1.0.0 App Store freeze, which
-must not happen now.
+`package.json` are **not** mass-converted to exact yet. Rewriting them
+re-resolves the dependency tree, which the user has not scheduled; the
+exact-pin conversion of the existing ranges is pending a user decision
+(tracked as DEP-1 — do not do it unprompted).
 
 ## 7-day dependency minimum age (`min-release-age`)
 
@@ -53,7 +54,12 @@ suppress it.
 `check:deep`'s osv-scanner also flagged CVE GHSA-67mh-4wv8-2f99:
 esbuild <0.25.0, pulled in transitively by drizzle-kit's deprecated
 `@esbuild-kit/core-utils`. Same pattern as the other three: pinned
-via the `overrides` block in `package.json` to `^0.25.12`.
+via the `overrides` block in `package.json` to `^0.25.12`. That
+override is global, not scoped to drizzle-kit's dependency chain — it
+also overrides `tsx`'s own transitive `esbuild`, and `npm ls` reports
+it as an invalid/unmet dependency (`ELSPROBLEMS`) for that path even
+though the resolved version satisfies the CVE fix. Scoping the
+override to drizzle-kit only is deferred (tracked as DEP-2).
 
 ## `.env` is public-only
 
@@ -82,9 +88,11 @@ justification.
 
 `check:deep` will continue to flag 2 `image-size` advisories
 (GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr) at version 1.2.1, a
-transitive dev dependency of the React Native CLI toolchain. No
-patched release exists upstream yet, so there is nothing to pin via
-`overrides`. This is accepted debt, not a suppressed finding — do
+transitive dev dependency of the React Native CLI toolchain. A fixed
+`image-size` 2.x release now exists, but it cannot be pinned here yet:
+metro's own 1.x release line uses the pre-fix `image-size` 1.x API, so
+upgrading the transitive dependency alone breaks metro (tracked as
+SEC-8). This is accepted debt, not a suppressed finding — do
 not silence it. Re-run `bash scripts/checks/osv.sh` periodically (not
 `npm run check:deep`: its mutation step runs first and can stop at the
 mutation file cap before osv-scanner runs) and upgrade
