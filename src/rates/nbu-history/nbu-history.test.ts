@@ -17,6 +17,18 @@ const gbpRows: NbuRow[] = [
   { exchangedate: '02.09.2026', r030: 826, cc: 'GBP', rate: 51.5357, units: 1 },
 ];
 
+/** A fake clock/sleep pair, so a multi-currency fetch never waits out the real request-gate interval. */
+const fakeSleepDeps = (): { now: () => number; sleep: (milliseconds: number) => Promise<void> } => {
+  let elapsed = 0;
+
+  return {
+    now: () => elapsed,
+    sleep: async (milliseconds: number) => {
+      elapsed += milliseconds;
+    },
+  };
+};
+
 /** A fetch double that answers per-currency based on the `valcode` query param. */
 const makeFetch = (byValcode: Record<string, NbuRow[]>, okValcodes?: Set<string>): typeof fetch =>
   (async (url: string) => {
@@ -52,7 +64,7 @@ describe('fetchNbuHistory', () => {
       return { ok: true, status: 200, json: async () => (valcode === 'usd' ? usdRows : gbpRows) };
     }) as unknown as typeof fetch;
 
-    await fetchNbuHistory(['USD', 'GBP'], start, end, { fetchImpl: spyFetch });
+    await fetchNbuHistory(['USD', 'GBP'], start, end, { fetchImpl: spyFetch, ...fakeSleepDeps() });
 
     expect(urls).toHaveLength(2);
 
@@ -70,6 +82,7 @@ describe('fetchNbuHistory', () => {
   it('parses UAH-per-currency rows into day-normalized entries, tagged by currency', async () => {
     const result = await fetchNbuHistory(['USD', 'GBP'], start, end, {
       fetchImpl: makeFetch({ usd: usdRows, gbp: gbpRows }),
+      ...fakeSleepDeps(),
     });
 
     expect(result.entries).toContainEqual({
@@ -113,10 +126,11 @@ describe('fetchNbuHistory', () => {
     });
   });
 
-  it('drops a row with a zero units divisor or a non-finite rate', async () => {
+  it('drops a row with a zero units divisor, a non-finite rate, or a zero rate', async () => {
     const rows: NbuRow[] = [
       { exchangedate: '01.09.2026', r030: 840, cc: 'USD', rate: 40, units: 0 },
       { exchangedate: '02.09.2026', r030: 840, cc: 'USD', rate: Number.NaN, units: 1 },
+      { exchangedate: '03.09.2026', r030: 840, cc: 'USD', rate: 0, units: 1 },
     ];
     const result = await fetchNbuHistory(['USD'], start, end, {
       fetchImpl: makeFetch({ usd: rows }),
@@ -145,6 +159,7 @@ describe('fetchNbuHistory', () => {
   it('never rejects: a failed currency lands in failedCurrencies, the others still resolve', async () => {
     const result = await fetchNbuHistory(['USD', 'PLN'], start, end, {
       fetchImpl: makeFetch({ usd: usdRows }, new Set(['usd'])),
+      ...fakeSleepDeps(),
     });
 
     expect(result.entries.every((entry) => entry.base === 'USD')).toBe(true);

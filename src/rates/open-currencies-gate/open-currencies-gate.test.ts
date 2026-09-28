@@ -146,4 +146,24 @@ describe('historyCurrencies', () => {
       cryptoCurrencies: [],
     });
   });
+
+  it('still needs the base currency when held crypto is the only currency that differs from it', async () => {
+    mockSettingsRows = [{ baseCurrency: 'EUR' }];
+    mockCurrencyRows = [{ currency: 'EUR' }, { currency: 'BTC' }];
+
+    await expect(historyCurrencies()).resolves.toEqual({
+      fiatCurrencies: ['EUR', 'USD'],
+      cryptoCurrencies: ['BTC'],
+    });
+  });
+
+  it('needs the base currency for a crypto-only holder with no fiat held at all', async () => {
+    mockSettingsRows = [{ baseCurrency: 'GBP' }];
+    mockCurrencyRows = [{ currency: 'BTC' }];
+
+    await expect(historyCurrencies()).resolves.toEqual({
+      fiatCurrencies: ['GBP', 'USD'],
+      cryptoCurrencies: ['BTC'],
+    });
+  });
 });

@@ -577,6 +577,10 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
 
   const spanStart = days[0];
   const cryptoDays = Math.ceil((today - spanStart) / DAY_MS) + 1;
+  // A currency already known-empty this run has nothing left for NBU to
+  // answer differently — sending it again would re-request the same empty
+  // range on every single run for as long as Statistics stays mounted.
+  const fiatCurrenciesToFetch = fiatCurrencies.filter((currency) => !knownEmpty.has(currency));
   // Settle the two providers independently: CoinGecko's free tier can 401 a
   // long crypto span, and an all-or-nothing `Promise.all` would then discard the
   // NBU fiat rates too. Whichever source succeeds still contributes its anchors.
@@ -584,7 +588,7 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   // leg with nothing to convert/hold resolves to its own empty shape without
   // ever calling its fetch function.
   const [nbuResult, cryptoResult] = await Promise.allSettled([
-    runNbuLeg(fiatCurrencies, loadNbu, spanStart, today),
+    runNbuLeg(fiatCurrenciesToFetch, loadNbu, spanStart, today),
     runCryptoLeg(cryptoCurrencies, loadCrypto, cryptoDays),
   ]);
 

@@ -74,7 +74,7 @@ const rangeUrl = (valcode: string, start: number, end: number): string =>
   `${RANGE_ENDPOINT}?start=${toNbuDate(start)}&end=${toNbuDate(end)}&valcode=${valcode}` +
   `&sort=exchangedate&order=desc&json`;
 
-/** One row -> zero or one entry: a broken row (no units, a non-finite rate) is dropped, never stored. */
+/** One row -> zero or one entry: a broken row (no units, a non-finite or non-positive rate) is dropped, never stored. */
 const toEntry = (currency: Currency, row: NbuRangeRow): HistoryRateEntry[] => {
   if (row.units <= 0) {
     return [];
@@ -82,7 +82,7 @@ const toEntry = (currency: Currency, row: NbuRangeRow): HistoryRateEntry[] => {
 
   const rate = row.rate_per_unit ?? row.rate / row.units;
 
-  if (!Number.isFinite(rate)) {
+  if (!Number.isFinite(rate) || rate <= 0) {
     return [];
   }
 

@@ -15,8 +15,8 @@ export type OpenCurrencies = {
    * directly to check whether a currently-held currency still has no
    * `currency_rates` row at all, a case its own throttle must never suppress.
    * Optional (defaulting to `[]` at the one real call site) so a test double
-   * that only cares about `needsFiat`/`cryptoCurrencies` — `runBackfill`'s own
-   * gate use, which never reads this field — does not need to supply it too.
+   * that only cares about `needsFiat`/`cryptoCurrencies` does not need to
+   * supply it too.
    */
   nonBaseCurrencies?: Currency[];
 };
@@ -25,8 +25,8 @@ export type OpenCurrencies = {
  * kiko-architecture: app-open and refresh work is gated on data presence —
  * one `settings` read plus ONE cheap `SELECT DISTINCT currency` over active
  * holdings (`holdingsRepo.openCurrenciesQuery`), never a per-holding loop.
- * Shared by `refreshRates` (`rates-refresh.ts`) and `runBackfill`
- * (`history-backfill.ts`) — the SAME gate pattern for every refresh.
+ * Read directly by `refreshRates` (`rates-refresh.ts`); `historyCurrencies`
+ * below is the SAME gate pattern, scoped to what `runBackfill` needs instead.
  *
  * `needsFiat` covers BOTH a fiat holding in a different currency from the
  * base AND a held crypto currency (BTC/ETH/USDT is, in practice, never the
@@ -62,19 +62,12 @@ export type HistoryCurrencies = { fiatCurrencies: Currency[]; cryptoCurrencies: 
  * net-worth line's past buckets still need a closed holding's own currency
  * converted.
  *
- * `fiatCurrencies` is the union of every held fiat currency and the base
- * currency, minus `UAH` (the implicit pivot, never a stored `X:UAH` row's own
- * `base`) — the base's own history is needed to convert ANY foreign holding
- * into it — but ONLY when some held fiat currency genuinely differs from the
- * base; when every held fiat currency already equals the base (or none is
- * held at all), there is nothing to convert, so the set collapses to empty
- * even though the union would otherwise include the base. `USD` is added
- * afterward, unconditionally, whenever any crypto is held — crypto's own
- * `X:UAH` row composes through a `USD` anchor (kiko-pricing's "History
- * backfill"), regardless of whether any fiat conversion is otherwise needed.
- * A fiat currency that is the base but not itself the anchor for a live
- * holding still falls back to the bundled seed's flat rate rather than a
- * live fetch — an accepted flat-history trade-off for that case.
+ * `fiatCurrencies` is every held fiat currency plus the base, minus `UAH`
+ * (the implicit pivot, never a stored `X:UAH` row's own `base`), whenever any
+ * held currency — fiat OR crypto — differs from the base; otherwise there is
+ * nothing to convert and it stays empty. `USD` is added afterward,
+ * unconditionally, whenever any crypto is held — crypto's own `X:UAH` row
+ * composes through a `USD` anchor (kiko-pricing's "History backfill").
  */
 export const historyCurrencies = async (): Promise<HistoryCurrencies> => {
   const [settingsRows, currencyRows] = await Promise.all([
@@ -85,7 +78,7 @@ export const historyCurrencies = async (): Promise<HistoryCurrencies> => {
   const currencies = currencyRows.map((row) => row.currency);
   const heldFiat = currencies.filter(isFiat);
   const cryptoCurrencies = currencies.filter(isCrypto);
-  const needsFiatConversion = heldFiat.some((currency) => currency !== base);
+  const needsFiatConversion = currencies.some((currency) => currency !== base);
   const fiatCurrencies = needsFiatConversion
     ? [...new Set([...heldFiat, base])].filter((currency) => currency !== 'UAH')
     : [];

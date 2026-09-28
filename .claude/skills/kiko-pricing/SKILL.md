@@ -115,17 +115,15 @@ by a `createRequestGate` at `NBU_HISTORY_REQUEST_INTERVAL_MS = 250`)
 — one currency's HTTP failure lands in its own `failedCurrencies`
 list and never discards another currency's already-fetched rows; the
 function itself never rejects. `historyCurrencies()`
-(`open-currencies-gate.ts`, a sibling of `openCurrencies` above)
-decides WHICH fiat currencies are worth fetching: the union of every
-held fiat currency (open AND closed — a closed holding still needs
-its own past-bucket history, read via `holdingsRepo
-.historyCurrenciesQuery()`, which has no `closedAt`/archived-account
-filter) and the base currency, minus `UAH` — but only when some held
-fiat currency genuinely differs from the base (nothing to convert
-otherwise, even though the union would include the base); `USD` is
-then added unconditionally whenever any crypto is held, as the crypto
-anchor, regardless of whether any fiat conversion is otherwise
-needed.
+(`open-currencies-gate.ts`) decides WHICH fiat currencies are worth
+fetching: the union of every held fiat currency (open AND closed — a
+closed holding still needs its own past-bucket history, read via
+`holdingsRepo.historyCurrenciesQuery()`, which has no
+`closedAt`/archived-account filter) and the base currency, minus
+`UAH` — but only when some held currency, fiat OR crypto, genuinely
+differs from the base (nothing to convert otherwise, even though the
+union would include the base); `USD` is then added unconditionally
+whenever any crypto is held, as the crypto anchor.
 
 `composeHistoryRows` writes one `X:UAH` row per priced currency per
 day (every fiat currency NBU answered for, plus every held crypto) —

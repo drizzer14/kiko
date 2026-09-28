@@ -558,9 +558,10 @@ describe('runBackfill — a fiat currency NBU has no quote for', () => {
     expect(knownEmptyCurrencies.has('AFN')).toBe(true);
     expect(first.state).toBe('complete');
     expect(second.state).toBe('complete');
-    // Both runs still call NBU (there is no persisted resume day for AFN),
-    // but neither ever treats the empty answer as a failure to retry.
-    expect(nbuCalls).toHaveLength(2);
+    // The first run answers empty and never treats that as a failure to
+    // retry; the second run must not re-send AFN to NBU at all now that it
+    // is known-empty.
+    expect(nbuCalls).toHaveLength(1);
   });
 });
 

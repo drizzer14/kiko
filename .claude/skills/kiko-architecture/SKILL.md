@@ -506,21 +506,25 @@ never a per-holding loop — and skips its own work entirely when the
 gate says there is nothing to do.
 
 - **Rate/price refresh**: `openCurrencies()`
-  (`src/rates/open-currencies-gate/`) is the ONE gate implementation
-  `refreshRates` (`rates-refresh.ts`) and `runBackfill`
-  (`history-backfill.ts`) both read — the same gate pattern for every
-  refresh, not a per-call-site copy. It resolves `{ needsFiat,
+  (`src/rates/open-currencies-gate/`) is `refreshRates`'s
+  (`rates-refresh.ts`) own gate. It resolves `{ needsFiat,
   cryptoCurrencies }` from a single `settings` read plus
   `holdingsRepo.openCurrenciesQuery()` (a `SELECT DISTINCT currency`
   over ACTIVE holdings — open, and whose account is not archived,
-  mirroring `activeHoldings`). The fiat leg (Monobank/NBU, or NBU
-  history) runs only when `needsFiat` — some active holding's currency
-  differs from the base (display) currency, which also covers the
-  crypto leg's own USD:UAH anchor need, since a held crypto currency
-  always differs from a fiat base. The crypto leg (CoinGecko current
-  price or history) runs only for `cryptoCurrencies`, and
-  `fetchCryptoPrices`/`fetchCryptoHistory` fetch only those currencies,
-  never the full supported set. `refreshMetalPrices`
+  mirroring `activeHoldings`). The fiat leg (Monobank/NBU) runs only
+  when `needsFiat` — some active holding's currency differs from the
+  base (display) currency, which also covers the crypto leg's own
+  USD:UAH anchor need, since a held crypto currency always differs
+  from a fiat base. The crypto leg (CoinGecko current price) runs
+  only for `cryptoCurrencies`, and `fetchCryptoPrices` fetches only
+  those currencies, never the full supported set. `runBackfill`
+  (`history-backfill.ts`) reads the sibling `historyCurrencies()` gate
+  instead, scoped to EVERY holding (open and closed — the net-worth
+  line's past buckets still need a closed holding's own currency
+  converted): the same gate pattern, not a per-call-site copy, but its
+  own `{ fiatCurrencies, cryptoCurrencies }` result, fetched by
+  `fetchCryptoHistory` (and NBU history) for those currencies only.
+  `refreshMetalPrices`
   (`src/prices/metal-refresh/`) is the original template this
   generalizes: `earliestDays.size === 0` (no held metal) is a zero-
   network, zero-write early return, verified by test. It also reads
