@@ -101,20 +101,20 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `ssh host <<'EOF'`, `cat <<'EOF' | sh`); only a body that a shell
   without `-c` reads as its script is also checked for an unquoted
   heredoc. An unterminated body: the rest of the input is scanned as
-  shell (fail closed). Known false positive: a body line that literally
-  is a kill or `git stash` command denies, even when the body is only
-  written to a file — write such text with the Write tool, or commit
-  with `git commit -F <file>`.
-  Known limits (heuristic tokenizer, not a shell parser; read
-  `kill-guard.js` and its tests to re-verify): NOT denied are a stash or
-  kill reached through an alias, a function, a script file, or a
-  variable (`$CMD`); a shell `-c` flag is matched anywhere in the
-  arguments, not only before the command string (errs toward deny). A
-  nested unquoted heredoc inside a body that runs is denied only when
-  that body is a shell's stdin script (`bash <<'EOF'`); inside
-  `cat <<'EOF' | bash`, `eval "$(cat <<'EOF' …)"`, or
-  `bash -c "$(cat <<'EOF' …)"` it is not (a kill or `git stash` line in
-  such a body is still denied). Heredoc delimiter corner cases: quote
+  shell (fail closed).
+  A shell `-c` flag is matched anywhere in the arguments, not only
+  before the command string (errs toward deny). A nested unquoted
+  heredoc inside a body that runs is denied only when that body is a
+  shell's stdin script (`bash <<'EOF'`); a kill or `git stash` line in
+  any running body is still denied. Here-strings: a `<<<` target that a
+  shell without `-c` reads (`bash <<< "…"`) is its script, scanned like
+  a shell stdin body (kill, stash, unquoted heredoc). A command
+  substitution in command position (`$(which pkill) -f x`,
+  `` `true` git stash ``, `$(true)cd <main> && …`) is judged twice: as
+  each guarded name any span in the segment shows, and as the next word
+  (a span that prints nothing); so it denies when it names a kill
+  command or builds a main-checkout or stash git command.
+  `X=$(…) cmd` stays an assignment. Heredoc delimiter handling: quote
   removal drops a `$` before `'…'` (`$'EOF'` ends at `EOF` in both
   shells); `$"EOF"` differs by shell (bash ends at `EOF`, zsh at `$EOF`),
   so the guard ALWAYS scans every command once per shell reading (bash,
@@ -124,18 +124,22 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   double quotes, unescapes `\"`, `\\`, `\$`, and a backslash-backtick
   (`"E\"OF"` ends at `E"OF`); a delimiter line with trailing spaces does
   not end the body (bash agrees); bash's `EOF)` shorthand inside `$(` is
-  not recognized as the delimiter line. bash 3.2 (not zsh) can still run
-  a command after a heredoc inside `<(`/`$(` whose body holds an
-  unbalanced paren; the guard does not model that. bash 3.2 (zsh fails)
-  also runs the kill in `echo $( (echo a)#c ); pkill x` (pre-existing,
-  not denied). Redirect words: every redirect operator and its target
-  (read `words()` in `kill-guard.js` for the operator set) is dropped
-  wherever it sits — before the command word (`2>/dev/null pkill x`
-  denies), glued to a path, or detached (`cd dir>/dev/null` reads
-  `dir`). An unquoted number right before the operator is its
-  descriptor (`2>&1`); `-` is never part of the operator (`>&-`,
-  `<<-EOF`). So `kill <pid> 2>/dev/null` and `kill <pid> &>/dev/null`
-  are allowed. The agent rule stays
+  not recognized as the delimiter line. Redirect words: every redirect
+  operator and its target (read `tokenize()` and
+  `REDIRECT_OPERATOR_BY_READING` in `kill-guard.js` for the operator
+  sets) is dropped wherever it sits — before the command word
+  (`2>/dev/null pkill x` denies), glued to a path, or detached
+  (`cd dir>/dev/null` reads `dir`). The descriptor rule follows the
+  shell reading, and both readings are scanned: in the bash reading any
+  unquoted number right before `<`/`>` is the descriptor, in the zsh
+  reading only one digit is (so `kill 00>/dev/null` denies). A `(`/`{`
+  group opener is split off before that test (`(2>/dev/null pkill x)`
+  denies). A `|` or `&` right after an unescaped `<`/`>` belongs to the
+  operator: `>|`, `2>|`, `2>&1`, `<&3` are redirects, not pipes or
+  backgrounds; an escaped `\>` starts nothing. In the zsh reading `>!`,
+  `>>!`, `>&!`, `&>!` are redirects too. `-` is never part of the
+  operator (`>&-`, `<<-EOF`). So `kill <pid> 2>/dev/null` and
+  `kill <pid> &>/dev/null` are allowed. The agent rule stays
   absolute regardless: never `git stash` or pattern-kill in any form.
   Every deny carries the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape
   as plain text in the one JSON reason field; the kill deny keeps its
@@ -180,23 +184,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `git pull --ff-only [remote [ref]]` with no other option (strict,
   because a later `--no-ff`/`--rebase` overrides `--ff-only`). The way
   out: do the real merge in a separate detached worktree, verify it, then
-  `git -C <main> merge --ff-only <sha>`. Limits, NOT denied: a path
-  through another variable, `~user`, a glob, or a symlink; a git alias,
-  script, or function; `export GIT_DIR=…` as its own earlier command;
-  `env -C <main>`; `git -c pull.rebase=true pull --ff-only`. The
-  directory model leans to deny: a failed `cd typo; git merge` still
-  counts as moved, and `cd $VAR` counts as not main (limits);
-  `pushd -n`/`popd -n` count as moving; and from main,
-  `cd <wt> || { echo no; exit 1; }; git merge` is denied (the brace
-  group is not read as an exit).
-  Over-denied: `--git-dir=<main>/.git/worktrees/<name>`; a
-  `merge --ff-only` with any extra option (`-q`, `--no-edit`, `--`); and,
-  with cwd = main, a heredoc body line that is itself one of the covered
-  git commands (the same body-line false positive as kill and stash;
-  write such text with the Write tool). A help or recovery option lets
+  `git -C <main> merge --ff-only <sha>`. A help or recovery option lets
   the whole command through from ANY argument position, even as another
-  option's value, so a deliberate bypass such as
-  `git merge -m --abort x` passes and really merges (limit). A session
+  option's value (see the limits list). A session
   in the main checkout gets this deny only after the guard merges to
   main, because it runs main's own `kill-guard.js`.
 
@@ -212,8 +202,16 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   folder); no real command has the sentinel's name. The runner refuses
   (exit 2) text holding `kill` (covers pkill, killall, kill) or
   `pff-ios`, after it folds case, joins line continuations, drops
-  `$ ' " \ { } , ( )` and the backtick, and collapses `/./` and `//` (read the
-  runner for the exact set). The test-only env var
+  `$ ' " \ { } , ( )` and the backtick, and collapses `/./` and `//`;
+  it checks a second reading with every `$(…)`, backtick span, `${…}`,
+  `$name`, and special parameter taken out whole. It also refuses any
+  word-building construct: a glob character (`?`, `*`, `[`), a brace
+  alternative (`{a,b}`, `{a..b}`), any `$'…'` escape but `\n`, `\t`,
+  `\\`, `\'`, `\"`, and a `$(…)`, backtick span, `$@`, or `$*` glued to
+  other text in one word. So a probe with `[[ ]]`, a glob, or `$?`
+  cannot run through it; such a fact needs a sentinel spelling without
+  them, or stays parser-only (read the runner's header for the exact
+  set). The test-only env var
   `KIKO_PROBE_REFUSE_ALSO` adds refused words; the refusal tests use it
   with the sentinel and a fake folder (`kg/fake_main`). No real kill
   word and no real main path is ever handed to the runner; they appear
@@ -221,13 +219,48 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `decide(command, options)` options `sentinelKillCommands` and
   `mainCheckoutPath` are test-only: the hook entry passes only
   `{ cwd: payload.cwd }` and ignores both (tested in
-  `__tests__/kill-guard.test.ts`). The runner is NOT an OS sandbox: a
-  kill word built at run time (`a=pk; ${a}ill x`) is beyond any text
-  check, so probe authors always write the sentinel instead; and real
-  git stays reachable from a probe by a PATH edit or `/usr/bin/git`
-  (it then runs in the runner's empty scratch folder). Never write a runner that
+  `__tests__/kill-guard.test.ts`). Probe authors always write the
+  sentinel. Never write a runner that
   rewrites a kill word by string. Incident: such a runner once ran a
   real kill command because a line continuation dodged the rewrite.
+
+  Known limits (accepted; coordinator ruling). The kill-guard guards
+  cooperative agents against ACCIDENTAL commands; it is a heuristic
+  tokenizer, not a shell parser, and not an adversarial boundary.
+  Stopping rule: an exotic, obfuscated, or run-time-built form is a
+  known limit to list here, not a bug to fix. Re-verify each item in
+  `kill-guard.js`, `kill-guard-probe.sh`, and their tests.
+  - NOT denied: a kill or stash through an alias, a function, a script
+    file, or a variable (`$CMD`); a word built at run time
+    (`a=pk; ${a}ill x`, `$(printf pk)ill x`, `$(cat name.txt) x`); a
+    span glued after the command word (`git$(true) stash`); `exec`
+    oddities and other wrapper forms outside the `unwrap` sets.
+  - Main-checkout deny, NOT denied: a path through another variable,
+    `~user`, a glob, or a symlink; a git alias, script, or function;
+    `export GIT_DIR=…` as its own earlier command; `env -C <main>`;
+    `git -c pull.rebase=true pull --ff-only`; a help or recovery option
+    used as another option's value (`git merge -m --abort x` really
+    merges); `cd $VAR` (counts as not main).
+  - Nested unquoted heredoc in `cat <<'EOF' | bash`,
+    `eval "$(cat <<'EOF' …)"`, or `bash -c "$(cat <<'EOF' …)"`: not
+    denied. Heredoc delimiter corner cases beyond those modeled above
+    (bash's `EOF)` shorthand, trailing spaces).
+  - bash 3.2 only (zsh fails): a command after a heredoc inside
+    `<(`/`$(` whose body holds an unbalanced paren, and
+    `echo $( (echo a)#c ); pkill x`, both run and are not denied.
+  - Deny-leaning (over-denied): a failed `cd typo; git merge` counts as
+    moved; `pushd -n`/`popd -n` count as moving; from main,
+    `cd <wt> || { echo no; exit 1; }; git merge` (a brace group after
+    `||` is not read as an exit); `--git-dir=<main>/.git/worktrees/<name>`;
+    a `merge --ff-only` with any extra option; a heredoc body line that
+    literally is a covered command, even when only written to a file
+    (write such text with the Write tool, or `git commit -F <file>`);
+    every guarded name in any command-position span is tried
+    (`$(which python) git stash`, `$(git log --grep kill) 0` deny).
+  - Probe runner: not an OS sandbox. Its text checks cannot see a word
+    built from a variable holding text, or a main path that does not
+    spell `pff-ios`; real git stays reachable by a PATH edit or
+    `/usr/bin/git` (it runs in the empty scratch folder).
 
   A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
   (+ `pre-write-guard.js`) is the `PreToolUse` hook on `Edit|Write|MultiEdit` —

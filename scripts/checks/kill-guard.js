@@ -26,6 +26,12 @@
 // `GIT_DIR=`/`GIT_WORK_TREE=` prefix): the hooks' dispatcher runs from
 // there, so a conflict marker in it once broke every hook in every session.
 // A fast-forward-only update and the recovery options stay allowed.
+//
+// Known limits: this guard stops ACCIDENTAL commands by cooperative agents.
+// It is a heuristic tokenizer, not a shell parser and not an adversarial
+// boundary: an exotic, obfuscated, or run-time-built form is a known limit,
+// not a bug. The one accepted-limits list lives in
+// `.claude/skills/kiko-linter/SKILL.md` (kill-guard entry, "Known limits").
 
 const fs = require('node:fs');
 const os = require('node:os');
