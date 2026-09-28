@@ -23,6 +23,8 @@ import { styles } from '../account-detail.styles';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
 
+import { historyCursorOf, isBinanceHistoryBehind } from './binance-history-status';
+
 type CryptoSyncSectionProps = {
   account: AccountRow;
   holdings: HoldingRow[];
@@ -81,6 +83,12 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
   };
 
   if (connectedProvider !== undefined) {
+    // Only Binance imports a separate transaction history behind the balance —
+    // a wallet's balance IS the whole synced picture, so it never lags.
+    const historyBehind =
+      connectedProvider === 'binance' &&
+      isBinanceHistoryBehind(historyCursorOf(holdings), latestSyncedAt(holdings));
+
     return (
       <Box gap={3}>
         <Text variant="heading">{t('accountDetail.synchronization')}</Text>
@@ -99,6 +107,12 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
               })}
             </Text>
           </Box>
+
+          {historyBehind && (
+            <Text variant="caption" tone="textSecondary">
+              {t('accountDetail.binanceHistoryPending')}
+            </Text>
+          )}
 
           {/* Sync and Disconnect share a single row — the shared
               SyncDisconnectActionsRow (both the neutral `secondaryTonal`
