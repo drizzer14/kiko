@@ -51,7 +51,33 @@ ${ci_out}
 "
 fi
 
-# 3. Hallucinated / new-dependency flag: surface any change to the
+# 3. Exact pinning: no range spec (^, ~, *, x, >, <, ||, or a
+# space-separated range) in dependencies, devDependencies, or overrides —
+# see the pin-exact-dependency-versions rule.
+ranges_out="$(node "$DIR/deps-ranges.js" "$ROOT/package.json" 2>&1)"
+ranges_code=$?
+if [ "$ranges_code" -ne 0 ]; then
+  fail=1
+  details="${details}--- deps-ranges.js (range spec, not an exact pin) ---
+${ranges_out}
+
+"
+fi
+
+# 4. A resolved-but-invalid dependency tree: npm ls --all fails
+# (ELSPROBLEMS) when an override or a version conflict leaves some
+# installed package's own requirement unsatisfied.
+ls_out="$(npm ls --all 2>&1)"
+ls_code=$?
+if [ "$ls_code" -ne 0 ]; then
+  fail=1
+  details="${details}--- npm ls --all (resolved tree validity) ---
+${ls_out}
+
+"
+fi
+
+# 5. Hallucinated / new-dependency flag: surface any change to the
 # dependencies or devDependencies blocks since the last commit, for
 # human confirmation. This does not fail the check by itself.
 if git rev-parse --verify HEAD >/dev/null 2>&1; then
@@ -67,11 +93,11 @@ fi
 if [ "$fail" -ne 0 ]; then
   print_block \
     "Dependency hygiene" \
-    "depcheck or the lockfile integrity check failed." \
+    "depcheck, the lockfile integrity check, the exact-pin check, or npm ls failed." \
     "$details" \
-    "An unused dependency bloats the app and its attack surface. A broken lockfile means installs are not reproducible. A hallucinated dependency (a package name an LLM invented or mistyped) can be squatted by an attacker." \
-    "Remove the unused dependency; fix the lockfile with npm install; confirm any new dependency actually exists and is the one you meant. Re-run: npm run check:deps" \
-    "Do not add the dependency to depcheck ignores. Remove the unused dep; confirm any new dep is real."
+    "An unused dependency bloats the app and its attack surface. A broken lockfile means installs are not reproducible. A range spec (rather than an exact pin) lets the resolved tree drift silently between installs. An ELSPROBLEMS tree means some installed package's own requirement is unsatisfied. A hallucinated dependency (a package name an LLM invented or mistyped) can be squatted by an attacker." \
+    "Remove the unused dependency; fix the lockfile with npm install; pin any range spec to the exact version package-lock.json already resolves; scope an override to its real target package if it is making npm ls report another package invalid; confirm any new dependency actually exists and is the one you meant. Re-run: npm run check:deps" \
+    "Do not add the dependency to depcheck ignores. Remove the unused dep; confirm any new dep is real. Do not widen an exact pin back to a range to silence this check."
   exit 2
 fi
 harness_mark_pass "$ROOT" "deps" "$fp"
