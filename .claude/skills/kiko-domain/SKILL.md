@@ -893,15 +893,13 @@ side), so the ratio itself drifts — this broke the internal-transfers
 guard's `20x` threshold under a Stryker dry run even though nothing about
 the algorithm had regressed.
 
-Both guards were then rewritten to count real work through an optional
-injected counter parameter (`ValuerWorkCounter` / `CandidateVisitCounter`)
-— but that counter was itself a test-only hook living in shipping
-production code, which the App Store build must never carry (see
-"Guideline 5.6 — no hidden features" in the root `CLAUDE.md`: test/demo
-machinery must be ABSENT from the build, not merely dormant). Both
-guards were rewritten again to count the work from OUTSIDE production
-instead, with **zero counting code left in `holding-value-at.ts` or
-`internal-transfers.ts`**: the test feeds each function input ROWS whose
+The counting must happen from OUTSIDE production, with **zero counting
+code in `holding-value-at.ts` or `internal-transfers.ts`** — an injected
+counter parameter or debug flag on the production function is a
+test-only hook living in shipping code, which the App Store build must
+never carry (see "Guideline 5.6 — no hidden features" in the root
+`CLAUDE.md`: test/demo machinery must be ABSENT from the build, not
+merely dormant). The test instead feeds each function input ROWS whose
 own `time` (and, for holding-value-at, `amountMinorUnits`) fields are
 getters that increment a counter local to the test on every read. A
 function's real per-unit-of-work cost then shows up automatically as a
@@ -930,14 +928,15 @@ Each guard then asserts two things on the READ COUNT, never on elapsed
 time: (1) near-linear growth — doubling the row count keeps the count
 under 3x, checked at two doubling steps; (2) the count stays far below
 what the quadratic reference implementation reads the same way (under 5%
-of it). Which assertion actually catches which regression is NOT
-interchangeable between the two guards: for internal-transfers, the
-GROWTH check is the one that catches a scan-from-index-0/never-break
-regression; for holding-value-at, the RATIO check is the one that catches
-a per-bucket full rescan (the growth check cannot, because
-holding-value-at's bucket count is held FIXED while only the transaction
-count scales, so a per-bucket-times-N regression still looks linear in
-N). `internal-transfers.test.ts` additionally keeps a LOCAL,
+of it). For internal-transfers, BOTH the growth check and the ratio
+check catch a scan-from-index-0/never-break regression — the ratio
+check's own bound is measured at 45-46% against the quadratic
+reference on that regression, far over its 5% threshold. For
+holding-value-at, only the RATIO check catches a per-bucket full
+rescan; the growth check cannot, because holding-value-at's bucket
+count is held FIXED while only the transaction count scales, so a
+per-bucket-times-N regression still looks linear in N.
+`internal-transfers.test.ts` additionally keeps a LOCAL,
 self-contained mutant variant (never calling into the exported function)
 whose one window-exceeded line never breaks, proving the growth bound
 actually fails on a provably worse scan rather than passing regardless of

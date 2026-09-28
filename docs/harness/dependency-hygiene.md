@@ -10,16 +10,17 @@ npm writes the resolved version to `package.json` with no `^`/`~` range.
 When you add any new dependency, it is pinned exact automatically; you do
 not need to pass `--save-exact` by hand.
 
-**DEP-1 — done.** Every existing range spec in `dependencies`,
-`devDependencies`, and `overrides` is now converted to the EXACT version
-`package-lock.json` already resolved (tree-preserving — the conversion was
-verified to change zero resolved versions: `git diff package-lock.json`
-touches only the recorded specs, never a `"version"` line, and `npm ci
---dry-run` stays green). `npm run check:deps` now mechanizes this going
-forward: `scripts/checks/deps-ranges.js` fails on any range spec (`^`, `~`,
-`*`, `x`, `>`, `<`, `||`, or a space-separated range) reintroduced into any
-of those three blocks — see `__tests__/deps-ranges.test.ts` for its
-fixture coverage.
+Every spec in `dependencies`, `devDependencies`, `optionalDependencies`,
+`peerDependencies`, and `overrides` (at any nesting depth) must be the
+EXACT version `package-lock.json` already resolves. `npm run check:deps`
+mechanizes this going forward: `scripts/checks/deps-ranges.js` uses an
+ALLOWLIST, not a denylist — a spec passes only when it matches exact
+semver (`\d+\.\d+\.\d+` with an optional prerelease/build suffix), so a
+spec shape the denylist never enumerated (a bare major/minor version, an
+empty spec, a tag like `latest`, a git reference) still fails, and an
+exact prerelease spec is never misjudged as a range merely because one of
+its identifiers happens to contain a denylisted character. See
+`__tests__/deps-ranges.test.ts` for its fixture coverage.
 
 ## 7-day dependency minimum age (`min-release-age`)
 
@@ -62,13 +63,13 @@ esbuild <0.25.0, pulled in transitively by drizzle-kit's deprecated
 via the `overrides` block in `package.json`, to the exact version
 (`0.25.12`) already resolved there.
 
-**DEP-2 — done.** The override used to be global (`"esbuild":
-"^0.25.12"`), which also constrained `tsx`'s own, unrelated transitive
-`esbuild` and made `npm ls --all` report it invalid/unmet
-(`ELSPROBLEMS`) even though the resolved version satisfied the CVE fix.
-It is now scoped to its real target, `@esbuild-kit/core-utils` (the
-package whose own declared range, `~0.18.20`, is the stale/vulnerable
-one the override exists to fix):
+A global override (`"esbuild": "^0.25.12"`) would also constrain
+`tsx`'s own, unrelated transitive `esbuild` and make `npm ls --all`
+report it invalid/unmet (`ELSPROBLEMS`) even though the resolved
+version satisfies the CVE fix. The override is instead scoped to its
+real target, `@esbuild-kit/core-utils` (the package whose own declared
+range, `~0.18.20`, is the stale/vulnerable one the override exists to
+fix):
 
 ```json
 "overrides": {
