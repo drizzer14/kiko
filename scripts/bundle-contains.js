@@ -21,10 +21,11 @@ try {
   process.exit(2);
 }
 
-// Hermes stores a non-ASCII string literal as UTF-16LE, so a UTF-8-only
-// search would call a fresh bundle stale.
-const isAscii = Buffer.byteLength(needle, 'utf8') === needle.length;
-const encodings = isAscii ? ['utf8'] : ['utf8', 'utf16le'];
-const found = encodings.some((encoding) => bundle.includes(Buffer.from(needle, encoding)));
+// Hermes stores a whole string literal as UTF-16LE once any character in it
+// is non-ASCII, ASCII words included, so a UTF-8-only search would call a
+// fresh bundle stale.
+const found = ['utf8', 'utf16le'].some((encoding) =>
+  bundle.includes(Buffer.from(needle, encoding)),
+);
 
 process.exit(found ? 0 : 1);

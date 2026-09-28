@@ -76,17 +76,25 @@ const stubCalls = (fragment: string): string[] =>
         .filter((line) => line.includes(fragment))
     : [];
 
-const deploy = (launchOutcomes: string, expectedBundleString?: string): SpawnSyncReturns<string> =>
+// Dropped so a value in the shell that runs jest cannot turn the check on.
+const { EXPECT_BUNDLE_STRING: _callerBundleString, ...callerEnvironment } = process.env;
+
+const deploy = (
+  launchOutcomes: string,
+  bundleCheck: Record<string, string> = {},
+): SpawnSyncReturns<string> =>
   spawnSync('bash', [join(root, 'scripts', 'deploy-device.sh'), 'STUB-DEVICE'], {
     encoding: 'utf8',
     env: {
-      ...process.env,
+      ...callerEnvironment,
       PATH: `${join(root, 'stub-bin')}:${process.env.PATH ?? ''}`,
       KIKO_STUB_LOG: logPath(),
       KIKO_STUB_LAUNCH_OUTCOMES: launchOutcomes,
-      EXPECT_BUNDLE_STRING: expectedBundleString ?? '',
+      ...bundleCheck,
     },
   });
+
+const CYRILLIC_CHECK = { EXPECT_BUNDLE_STRING: 'Кіко' };
 
 describe('scripts/deploy-device.sh launch', () => {
   it('launches once when the first launch succeeds', () => {
@@ -101,8 +109,11 @@ describe('scripts/deploy-device.sh launch', () => {
   it('retries the launch once, 3 s after a failed first launch', () => {
     const result = deploy('fail,ok');
 
+    const firstFailure = result.stdout.indexOf('ERROR: The operation could not be completed.');
+
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('Launch retry');
+    expect(firstFailure).toBeGreaterThan(-1);
+    expect(firstFailure).toBeLessThan(result.stdout.indexOf('Launch retry'));
     expect(result.stdout).toContain('✓ App launched');
     expect(stubCalls('process launch')).toHaveLength(2);
     expect(stubCalls('sleep')).toEqual(['sleep 3']);
@@ -126,10 +137,17 @@ describe('scripts/deploy-device.sh bundle check', () => {
     expect(stubCalls('device install app')).toHaveLength(1);
   });
 
+  it('skips the check when EXPECT_BUNDLE_STRING is empty', () => {
+    const result = deploy('ok', { EXPECT_BUNDLE_STRING: '' });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Bundle check skipped (set EXPECT_BUNDLE_STRING)');
+  });
+
   it('installs when the bundle holds the string as UTF-16LE', () => {
     writeBundle(Buffer.from('Кіко', 'utf16le'));
 
-    const result = deploy('ok', 'Кіко');
+    const result = deploy('ok', CYRILLIC_CHECK);
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('✓ Bundle contains Кіко');
@@ -139,7 +157,7 @@ describe('scripts/deploy-device.sh bundle check', () => {
   it('stops before install when the bundle is stale', () => {
     writeBundle(Buffer.from('old bundle', 'utf8'));
 
-    const result = deploy('ok', 'Кіко');
+    const result = deploy('ok', CYRILLIC_CHECK);
 
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('FORCE_BUNDLING=1');
@@ -148,10 +166,11 @@ describe('scripts/deploy-device.sh bundle check', () => {
   });
 
   it('stops before install when the bundle file is missing', () => {
-    const result = deploy('ok', 'Кіко');
+    const result = deploy('ok', CYRILLIC_CHECK);
 
     expect(result.status).toBe(1);
     expect(result.stdout).toContain(join(APP_DIRECTORY, 'main.jsbundle'));
+    expect(result.stdout).toContain('(status 2)');
     expect(stubCalls('device install app')).toHaveLength(0);
   });
 });

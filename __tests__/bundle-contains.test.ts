@@ -56,6 +56,27 @@ describe('scripts/bundle-contains.js', () => {
     expect(run(bundlePath, CYRILLIC).status).toBe(0);
   });
 
+  // Hermes stores the WHOLE literal as UTF-16LE once any character in it is
+  // non-ASCII, so an ASCII search string can sit in UTF-16LE bytes.
+  it.each([
+    ['an em dash', 'No Face ID enrolled — set it up in Settings', 'No Face ID enrolled'],
+    ['a hryvnia sign', 'Balance ₴', 'Balance'],
+    ['an emoji surrogate pair', 'Paid 💸 today', 'Paid'],
+  ])('exits 0 for an ASCII string inside a UTF-16LE literal with %s', (_label, literal, needle) => {
+    const bundlePath = writeBundle(surround(Buffer.from(literal, 'utf16le')));
+
+    expect(run(bundlePath, needle).status).toBe(0);
+  });
+
+  it.each([
+    ['₴', 'Balance ₴'],
+    ['💸', 'Paid 💸 today'],
+  ])('exits 0 when the non-ASCII string %s is stored as UTF-16LE', (needle, literal) => {
+    const bundlePath = writeBundle(surround(Buffer.from(literal, 'utf16le')));
+
+    expect(run(bundlePath, needle).status).toBe(0);
+  });
+
   it('exits 1 when a Cyrillic string is absent from a UTF-16LE bundle', () => {
     const bundlePath = writeBundle(surround(Buffer.from('Борги', 'utf16le')));
 

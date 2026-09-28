@@ -4,7 +4,7 @@ set -euo pipefail
 # Build Release-AdHoc, check the bundle, install, and launch on an iPhone.
 # EXPECT_BUNDLE_STRING (or `make deploy EXPECT=<str>`): a string the built
 # main.jsbundle must contain, checked before install by
-# scripts/bundle-contains.js (UTF-8, plus UTF-16LE for non-ASCII). Unset:
+# scripts/bundle-contains.js (as UTF-8 and as UTF-16LE). Unset:
 # the check is skipped with one line. A value that contains a single quote
 # is not supported through `make deploy`. The launch is retried once.
 
@@ -131,7 +131,7 @@ else
       exit 1
       ;;
     *)
-      echo "Bundle check failed: no readable bundle at $BUNDLE_PATH"
+      echo "Bundle check failed (status $BUNDLE_STATUS): no readable bundle at $BUNDLE_PATH"
       exit 1
       ;;
   esac
@@ -163,6 +163,8 @@ launch_app() {
 LAUNCH_OUTPUT=$(launch_app)
 
 if ! echo "$LAUNCH_OUTPUT" | grep -q "Launched application"; then
+  echo "First launch attempt did not report success:"
+  echo "$LAUNCH_OUTPUT"
   echo "Launch retry…"
   sleep 3
   LAUNCH_OUTPUT=$(launch_app)
