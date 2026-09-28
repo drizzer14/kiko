@@ -8,7 +8,7 @@ export type RezoneTransactionInput = Pick<
 >;
 export type RezoneHoldingInput = Pick<HoldingRow, 'id' | 'balanceSetAt'>;
 
-export type ImportTimeRezonePlan = {
+type ImportTimeRezonePlan = {
   transactions: { id: string; time: number; externalId: string | null }[];
   holdings: { id: string; balanceSetAt: number }[];
 };

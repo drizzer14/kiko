@@ -853,8 +853,10 @@ describe('restoreDataSnapshot', () => {
     it('rewrites a legacy occurrence key and marks the settings row upgraded', async () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
-      // No `dedupKeysUpgraded` key at all — a pre-0041 export.
-      const legacySettingsRow = { id: 1, baseCurrency: 'UAH' };
+      // No `dedupKeysUpgraded` key at all — a pre-0041 export. Already
+      // `importTimesRezoned: true`, so this section stays isolated from the
+      // separate import-time rezone (its own describe block below).
+      const legacySettingsRow = { id: 1, baseCurrency: 'UAH', importTimesRezoned: true };
 
       await restoreDataSnapshot({
         ...emptySnapshot,
@@ -866,7 +868,7 @@ describe('restoreDataSnapshot', () => {
         legacyImportTransaction({ externalId: `${legacyBase}␟1` }),
       ]);
       expect(insertedRows.settings).toEqual([
-        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true },
+        { id: 1, baseCurrency: 'UAH', importTimesRezoned: true, dedupKeysUpgraded: true },
       ]);
     });
 
@@ -877,20 +879,25 @@ describe('restoreDataSnapshot', () => {
 
       await restoreDataSnapshot({
         ...emptySnapshot,
-        settings: [{ id: 1, baseCurrency: 'UAH' }] as never,
+        settings: [{ id: 1, baseCurrency: 'UAH', importTimesRezoned: true }] as never,
         transactions: [editedTransaction] as never,
       });
 
       expect(insertedRows.transactions).toEqual([editedTransaction]);
       expect(insertedRows.settings).toEqual([
-        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true },
+        { id: 1, baseCurrency: 'UAH', importTimesRezoned: true, dedupKeysUpgraded: true },
       ]);
     });
 
     it('leaves a snapshot that ALREADY carries dedupKeysUpgraded unchanged (a post-0041 export)', async () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
-      const alreadyMigratedSettingsRow = { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: false };
+      const alreadyMigratedSettingsRow = {
+        id: 1,
+        baseCurrency: 'UAH',
+        importTimesRezoned: true,
+        dedupKeysUpgraded: false,
+      };
       const legacyShapedTransaction = legacyImportTransaction();
 
       await restoreDataSnapshot({

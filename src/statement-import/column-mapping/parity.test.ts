@@ -23,6 +23,20 @@ jest.mock('@kiko/holdings/repo', () => ({
   },
 }));
 
+// `importParsedStatement` runs both one-shot statement-import rewrites
+// first (see `import-statement.ts`) — exhaustively proven on their own
+// (`upgrade-stored-dedup-keys.test.ts`, `rezone-import-times.test.ts`), so
+// this file only needs them to resolve as already-done, never a real write.
+jest.mock('@kiko/statement-import/upgrade-stored-dedup-keys', () => ({
+  upgradeStoredDedupKeys: () => Promise.resolve(),
+}));
+jest.mock('@kiko/statement-import/rezone-import-times', () => ({
+  rezoneImportTimes: () => Promise.resolve(),
+}));
+jest.mock('@kiko/settings', () => ({
+  settingsRepo: { getQuery: () => Promise.resolve([{ importTimesRezoned: true }]) },
+}));
+
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';

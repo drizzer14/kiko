@@ -39,6 +39,31 @@ jest.mock('@kiko/loans/use-loan-auto-link', () => ({
   runLoanAutoLink: () => mockRunLoanAutoLink(),
 }));
 
+// Both one-shot rewrites are exhaustively proven on their own
+// (`upgrade-stored-dedup-keys.test.ts`, `rezone-import-times.test.ts`); this
+// file only proves the WIRING — the call order, and the refusal when the
+// rezone step's own flag hasn't flipped afterward. Defaults keep every
+// pre-existing test below unaffected (both resolve, and the flag reads
+// already-rezoned). Mocked by the feature's own barrel path (never a
+// relative path out of this unit — kiko-code-style's "Feature imports"), the
+// same resolved module `import-statement.ts` itself imports.
+const mockUpgradeStoredDedupKeys = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/statement-import/upgrade-stored-dedup-keys', () => ({
+  upgradeStoredDedupKeys: () => mockUpgradeStoredDedupKeys(),
+}));
+
+const mockRezoneImportTimes = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/statement-import/rezone-import-times', () => ({
+  rezoneImportTimes: () => mockRezoneImportTimes(),
+}));
+
+let mockImportTimesRezoned = true;
+jest.mock('@kiko/settings', () => ({
+  settingsRepo: {
+    getQuery: () => Promise.resolve([{ importTimesRezoned: mockImportTimesRezoned }]),
+  },
+}));
+
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';
@@ -86,6 +111,9 @@ const readPrivatbankInput = async (): Promise<{
 beforeEach(() => {
   mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
   mockRunLoanAutoLink.mockClear();
+  mockUpgradeStoredDedupKeys.mockClear().mockResolvedValue(undefined);
+  mockRezoneImportTimes.mockClear().mockResolvedValue(undefined);
+  mockImportTimesRezoned = true;
 });
 
 // Regression fixture for the occurrence-index bug: two rows identical on
@@ -737,5 +765,58 @@ describe('importParsedStatement runs the loan auto-link matcher', () => {
     await importParsedStatement(parsed, 'holding-1');
 
     expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('importParsedStatement runs the one-shot statement-import rewrites first', () => {
+  const parsed = {
+    formatId: 'column-mapping' as const,
+    account: { currency: 'UAH' as const },
+    transactions: [
+      {
+        currency: 'UAH' as const,
+        amountMinorUnits: -1_000,
+        timeSeconds: 1_700_000_000,
+        description: 'Coffee',
+      },
+    ],
+  };
+
+  it('runs the dedup-key upgrade, then the import-time rezone, before writing any row', async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const { databaseTransaction } = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    const order: string[] = [];
+    mockUpgradeStoredDedupKeys.mockImplementation(async () => {
+      order.push('dedup-key-upgrade');
+    });
+    mockRezoneImportTimes.mockImplementation(async () => {
+      order.push('import-time-rezone');
+    });
+
+    const result = await importParsedStatement(parsed, 'holding-1');
+
+    expect(result.imported).toBe(1);
+    expect(order).toEqual(['dedup-key-upgrade', 'import-time-rezone']);
+  });
+
+  it('refuses the import, writing no row, when the rezone flag is still false afterward', async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const { databaseTransaction } = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    mockImportTimesRezoned = false;
+
+    await expect(importParsedStatement(parsed, 'holding-1')).rejects.toThrow(
+      'statement-import/rezone-pending',
+    );
+    expect(store.transactions).toEqual([]);
   });
 });

@@ -22,6 +22,7 @@ import type { Currency } from '@kiko/currency/currency';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
+import { planImportTimeRezone } from '@kiko/statement-import/rezone-import-times';
 
 import type { DataSnapshot } from './data-snapshot';
 
@@ -253,6 +254,65 @@ const withLegacyDedupKeysUpgraded = (
   };
 };
 
+/**
+ * Migration 0043's flag and its launch-time rewrite (`rezoneImportTimes`)
+ * only run on LIVE data — a `.kiko` restore REPLACES the whole
+ * `transactions`/`holdings`/`settings` tables, so a pre-0043 export's legacy
+ * (wall-clock-as-UTC) import times need the identical rewrite applied HERE,
+ * the same way `withLegacyDedupKeysUpgraded` mirrors migration 0041. Applied
+ * AFTER that upgrade, to the FINAL transaction set it produces.
+ *
+ * Unlike `withLegacyDedupKeysUpgraded`'s presence-only check, this ALSO
+ * rewrites an explicit `false` (a device that hadn't rezoned yet): a
+ * restore replaces the whole database, so there is no live device left to
+ * run its own next-launch retry the way a build with `importTimesRezoned:
+ * false` still has one — the restored database must be final at once. An
+ * absent settings row (an empty `settings: []` snapshot) is left alone
+ * entirely, same as `withLegacyDedupKeysUpgraded`.
+ */
+const withImportTimesRezoned = (
+  snapshotSettings: SettingsRow[],
+  snapshotTransactions: TransactionRow[],
+  snapshotHoldings: HoldingRow[],
+): { settings: SettingsRow[]; transactions: TransactionRow[]; holdings: HoldingRow[] } => {
+  const [settingsRow] = snapshotSettings;
+
+  if (settingsRow === undefined || settingsRow.importTimesRezoned === true) {
+    return {
+      settings: snapshotSettings,
+      transactions: snapshotTransactions,
+      holdings: snapshotHoldings,
+    };
+  }
+
+  const plan = planImportTimeRezone(
+    snapshotTransactions.filter((row) => row.source === 'import'),
+    snapshotHoldings.filter((holding) => holding.balanceSetAt !== null),
+  );
+  const rezonedTransactionById = new Map(plan.transactions.map((row) => [row.id, row]));
+  const rezonedBalanceSetAtById = new Map(
+    plan.holdings.map((holding) => [holding.id, holding.balanceSetAt]),
+  );
+
+  return {
+    settings: [{ ...settingsRow, importTimesRezoned: true }],
+    transactions: snapshotTransactions.map((row) => {
+      const rezoned = rezonedTransactionById.get(row.id);
+
+      return rezoned === undefined
+        ? row
+        : { ...row, time: rezoned.time, externalId: rezoned.externalId };
+    }),
+    holdings: snapshotHoldings.map((holding) => {
+      const rezonedBalanceSetAt = rezonedBalanceSetAtById.get(holding.id);
+
+      return rezonedBalanceSetAt === undefined
+        ? holding
+        : { ...holding, balanceSetAt: rezonedBalanceSetAt };
+    }),
+  };
+};
+
 /** The rate-row fields `withRatesNormalizedToUah` reads/rewrites; every other
  * field on `T` (e.g. `fetchedAt` on `currencyRates`, `day` on
  * `currencyRateHistory`) rides along verbatim from whichever row supplied it. */
@@ -444,14 +504,27 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
     const holdingsAfterLegacyBackfill = snapshot.holdings.map((holding) =>
       withLegacyBalanceSetAtBackfilled(holding, boundaries),
     );
-    const { holdings: holdingsToInsert, transactions: transactionsAfterStrayCleanup } =
+    const { holdings: holdingsAfterStrayCleanup, transactions: transactionsAfterStrayCleanup } =
       withStrayDepositBondBalanceCleaned(holdingsAfterLegacyBackfill, snapshot.transactions);
 
     // Independent of the two backfills above (a different table, a different
-    // migration) — applied last, to the FINAL transaction set the stray
-    // cleanup produced, since that's what actually gets inserted.
-    const { settings: settingsToInsert, transactions: transactionsToInsert } =
+    // migration) — applied to the FINAL transaction set the stray cleanup
+    // produced, since that's what actually gets inserted.
+    const { settings: dedupUpgradedSettings, transactions: dedupUpgradedTransactions } =
       withLegacyDedupKeysUpgraded(snapshot.settings, transactionsAfterStrayCleanup);
+
+    // Applied last, to the FINAL settings/transactions/holdings sets every
+    // step above produced — see its own doc comment for why it runs after
+    // the dedup-key upgrade.
+    const {
+      settings: settingsToInsert,
+      transactions: transactionsToInsert,
+      holdings: holdingsToInsert,
+    } = withImportTimesRezoned(
+      dedupUpgradedSettings,
+      dedupUpgradedTransactions,
+      holdingsAfterStrayCleanup,
+    );
 
     // Split into four sequential groups (rather than one 10-loop function) to
     // stay under the cognitive-complexity ceiling; overall parent-before-child

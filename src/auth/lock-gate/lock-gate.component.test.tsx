@@ -46,6 +46,9 @@ jest.mock('@kiko/crypto-sync/binance/migrate-binance-credential', () => ({
 jest.mock('@kiko/statement-import/upgrade-stored-dedup-keys/upgrade-stored-dedup-keys', () => ({
   upgradeStoredDedupKeys: () => Promise.resolve(),
 }));
+jest.mock('@kiko/statement-import/rezone-import-times/rezone-import-times', () => ({
+  rezoneImportTimes: () => Promise.resolve(),
+}));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { connectedQuery: () => Promise.resolve([]) },
 }));
