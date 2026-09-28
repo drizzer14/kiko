@@ -1,5 +1,7 @@
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 /**
  * A removed feature can leave a live-but-unread schema column behind
@@ -86,5 +88,22 @@ describe('settings schema columns', () => {
     );
 
     expect(readerless.sort()).toEqual([...DOCUMENTED_READERLESS_COLUMNS].sort());
+  });
+
+  it('adds import_times_rezoned via migration 0043, defaulting to false', () => {
+    const database = new DatabaseSync(':memory:');
+
+    applyAllMigrations(database);
+
+    const columnInfo = database.prepare('PRAGMA table_info(settings)').all() as {
+      name: string;
+      notnull: number;
+      dflt_value: string;
+    }[];
+    const importTimesRezoned = columnInfo.find((column) => column.name === 'import_times_rezoned');
+
+    expect(importTimesRezoned).toBeDefined();
+    expect(importTimesRezoned?.notnull).toBe(1);
+    expect(importTimesRezoned?.dflt_value).toBe('false');
   });
 });
