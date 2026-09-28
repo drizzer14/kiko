@@ -305,12 +305,11 @@ const StatisticsScreen: FC = () => {
   // "now" snapshot (the by-type bar, the account pie, the Debts total).
   // `netWorthHoldings` feeds the net-worth LINE instead: the same account
   // filter, but WITHOUT the `closedAt` filter — a closed holding still needs
-  // its real value on every bucket up to its own close day (buildNetWorthSeries
-  // zeros it only AFTER that day), so filtering it out entirely made it vanish
-  // from every past point the moment it closed (kiko-pricing: the history
-  // chart needs a closed holding's own past prices the same way it needs its
-  // past lots). Memoized so all four builders below key off a stable
-  // collection instead of a fresh array on every render.
+  // its real value on every bucket before it closed (`buildNetWorthSeries`
+  // zeros it only at/after the exact instant it closed), and kiko-pricing's
+  // history chart needs a closed holding's own past prices the same way it
+  // needs its own past lots. Memoized so all four builders below key off a
+  // stable collection instead of a fresh array on every render.
   const filtered = useMemo(() => {
     const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
     const filteredAccounts = visibleAccounts.filter((account) => {

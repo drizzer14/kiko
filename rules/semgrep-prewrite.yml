@@ -921,7 +921,7 @@ rules:
         - "src/transactions/row-description/**"
         - "src/transactions/default-description/**"
     pattern: defaultTransactionDescription(...)
-  # STAT-2: category-trend.ts's own `groupKey` folded with a bare
+  # category-trend.ts's own `groupKey` used to fold with a bare
   # `category?.toLowerCase() || defaultKey` — it caught a null/empty category
   # but not an UNRESOLVABLE one (a slug no longer in the categories table),
   # so a deleted seeded category rendered as two same-titled,

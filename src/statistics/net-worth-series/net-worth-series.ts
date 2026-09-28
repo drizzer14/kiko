@@ -91,10 +91,9 @@ const bondRecognitionsFor = (
  * `holdings` must include CLOSED holdings too, not just currently-open ones —
  * the caller applies its own account/name filter, but never a `closedAt`
  * filter, before calling this. A closed holding's value is zeroed only for
- * buckets AFTER its own close day (see the `holdingsWithValuer` build below);
- * every bucket up to and including the close day still reconstructs its real
- * historical value, so a closed holding's own past no longer vanishes from
- * the line the moment it closes.
+ * buckets at or after the exact instant it closed (see the
+ * `holdingsWithValuer` build below); every earlier bucket still reconstructs
+ * its real historical value.
  *
  * The rate table for a bucket is resolved so the line reconciles end-to-end:
  * - lookups are normalized to the bucket's UTC day (`toUtcMidnight`), since
@@ -181,16 +180,13 @@ export const buildNetWorthSeries = (input: {
   // Built ONCE per holding, not once per (holding, bucket) — see
   // `createHoldingValuer`'s own doc comment for why the per-bucket reduce/filter
   // it replaces was loop-invariant work repeated at every point. A closed
-  // holding's reconstructed value is zeroed for every bucket AT OR AFTER its
-  // own `closedAt` instant (a raw comparison, never a local-day one — a
-  // same-day compare left a holding closed earlier today still counted at
-  // the rightmost "now" bucket, while the screen's own now-snapshots exclude
-  // it as soon as it is closed at all): the caller now passes EVERY holding,
-  // not just currently-open ones, so a jar closed last month still
-  // contributes its real historical value up to the instant it closed,
-  // instead of vanishing from every past bucket the way an "open holdings
-  // only" filter did (kiko-pricing: the history chart needs a closed
-  // holding's own past prices the same way it needs its own past lots).
+  // holding's value is zeroed for every bucket AT OR AFTER its own
+  // `closedAt` instant — a raw instant compare, not a local-day one, keeps
+  // the rightmost "now" bucket consistent with the screen's other
+  // now-snapshots (open holdings only) even when the holding closed earlier
+  // the SAME day. `holdings` carries every holding regardless of `closedAt`
+  // (kiko-pricing: the history chart needs a closed holding's own past
+  // prices the same way it needs its own past lots).
   const holdingsWithValuer: { holding: SeriesHolding; valueAt: (t: number) => number }[] = [];
 
   for (const holding of valuationHoldings) {
