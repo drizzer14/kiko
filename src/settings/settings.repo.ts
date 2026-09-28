@@ -1,9 +1,10 @@
 import { eq } from 'drizzle-orm';
 import type { Currency } from '@kiko/currency/currency';
+import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
-import { type Repository, settings, database, write } from '@kiko/db';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
+import { type Repository, type SettingsRow, settings, database, write } from '@kiko/db';
 
 /** Settings is a single row, keyed at id = 1. */
 export const SETTINGS_ID = 1;
@@ -86,4 +87,35 @@ export const settingsRepo = {
         .set({ statementMappings: { ...existing, [key]: mapping } })
         .where(eq(settings.id, SETTINGS_ID));
     }),
+  /**
+   * Records that the user dismissed the `kind` reminder offer on this
+   * account, keeping every other dismissal. Read-modify-write inside one
+   * `write()`, the `saveStatementMapping` shape, since the column holds the
+   * whole map as one JSON blob.
+   */
+  dismissReminderOffer: (accountId: string, kind: ReminderKind) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ reminderOfferDismissals: settings.reminderOfferDismissals })
+        .from(settings)
+        .where(eq(settings.id, SETTINGS_ID));
+      const existing = rows[0]?.reminderOfferDismissals ?? {};
+      const dismissedKinds = existing[accountId] ?? [];
+
+      if (dismissedKinds.includes(kind)) {
+        return;
+      }
+
+      await databaseTransaction
+        .update(settings)
+        .set({ reminderOfferDismissals: { ...existing, [accountId]: [...dismissedKinds, kind] } })
+        .where(eq(settings.id, SETTINGS_ID));
+    }),
 } satisfies Repository;
+
+/** A dismissed reminder offer never comes back for that account. */
+export const isReminderOfferDismissed = (
+  settingsRow: Pick<SettingsRow, 'reminderOfferDismissals'>,
+  accountId: string,
+  kind: ReminderKind,
+): boolean => settingsRow.reminderOfferDismissals?.[accountId]?.includes(kind) ?? false;
