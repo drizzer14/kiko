@@ -87,6 +87,25 @@ const snoozeFireAt = (snoozedAt: number, minuteOfDay: number): LocalDateTime => 
   };
 };
 
+// The native snooze fires once, so a stored snooze time means nothing after
+// that minute.
+export const isSnoozePending = ({
+  schedule,
+  lastSnoozedAt,
+  now,
+}: Pick<ReminderPlanInput, 'schedule' | 'lastSnoozedAt' | 'now'>): boolean => {
+  if (!isReminderSchedule(schedule)) {
+    return false;
+  }
+
+  return (
+    foldMap(
+      maybe(lastSnoozedAt),
+      (snoozedAt) => toInstant(snoozeFireAt(snoozedAt, schedule.minuteOfDay)) > now,
+    ) ?? false
+  );
+};
+
 const previousOccurrenceInstant = (schedule: ReminderSchedule, instant: number): number =>
   foldMap(maybe(occurrenceAtOrBefore(schedule, instant - MINUTE_MS)), toInstant) ??
   Number.NEGATIVE_INFINITY;

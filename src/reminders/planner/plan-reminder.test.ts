@@ -1,7 +1,12 @@
 import type { LocalDateTime } from '@kiko/reminders/native';
 import { type ReminderSchedule, toInstant } from '@kiko/reminders/schedule';
 
-import { type PlannedRequest, type ReminderPlanInput, planReminder } from './plan-reminder';
+import {
+  isSnoozePending,
+  type PlannedRequest,
+  planReminder,
+  type ReminderPlanInput,
+} from './plan-reminder';
 
 // Instants are built through the local `Date` constructor so each fixture is a
 // wall-clock time on the host's own calendar, the same way the planner reads it.
@@ -283,5 +288,34 @@ describe('planReminder — an invalid stored schedule', () => {
     expect(
       planReminder(input({ schedule: { frequency: 'weekly', minuteOfDay: 9 * 60, weekdays: [] } })),
     ).toEqual({ requests: [], backoffPausedAt: null });
+  });
+});
+
+describe('isSnoozePending', () => {
+  const snoozedAt = local(2026, 9, 28, 20, 5);
+
+  it('is false when the reminder was never snoozed', () => {
+    expect(isSnoozePending(input({ lastSnoozedAt: null }))).toBe(false);
+  });
+
+  it('is true until the next day at the reminder’s time, and false from that minute on', () => {
+    expect(
+      isSnoozePending(input({ lastSnoozedAt: snoozedAt, now: local(2026, 9, 29, 19, 59) })),
+    ).toBe(true);
+    expect(isSnoozePending(input({ lastSnoozedAt: snoozedAt, now: local(2026, 9, 29, 20) }))).toBe(
+      false,
+    );
+  });
+
+  it('is false for a stored schedule that fails the guard', () => {
+    expect(
+      isSnoozePending(
+        input({
+          schedule: { frequency: 'weekly', minuteOfDay: 9 * 60, weekdays: [] },
+          lastSnoozedAt: snoozedAt,
+          now: local(2026, 9, 29, 8),
+        }),
+      ),
+    ).toBe(false);
   });
 });
