@@ -254,16 +254,9 @@ describe('calendarDaysBetween', () => {
   });
 });
 
-// A `process.env.TZ` set inside a test does not retarget `Date` in this Jest
-// environment (kiko-domain "Dates"), so these cases run on the host clock. The
-// first case fails on a host that does not observe Kyiv DST, instead of the
-// rest passing without ever crossing a transition.
+// These cases cross real Kyiv transitions only because jest.config.js pins the
+// suite to Europe/Kyiv; __tests__/jest-time-zone.test.ts fails if that pin breaks.
 describe('DST transitions (Europe/Kyiv)', () => {
-  it('runs on a clock that observes both Kyiv transitions', () => {
-    expect(new Date(2027, 2, 28, 3, 30).getHours()).toBe(4);
-    expect(local(2026, 10, 25, 5) - local(2026, 10, 25, 2)).toBe(4 * HOUR_MS);
-  });
-
   it('spring-forward: a 03:30 that does not exist still fires on that day, as 03:30', () => {
     expect(occurrenceAfter(daily(3 * 60 + 30), local(2027, 3, 27, 12))).toEqual(
       at(2027, 3, 28, 3, 30),
