@@ -738,8 +738,8 @@ describe('accountsRepo.remove', () => {
     await accountsRepo.remove('acc-1');
 
     // The holding's transactions are deleted first, then the account's own
-    // sync_state row (INT-1: an FK NO ACTION reference — deleting the account
-    // first would fail with a foreign key constraint error on any account that
+    // sync_state row (an FK NO ACTION reference — deleting the account first
+    // would fail with a foreign key constraint error on any account that
     // ever ran a Monobank sync, even a failed first one), then the holdings,
     // then the account row — proving the full cascade runs inside the one
     // transaction.

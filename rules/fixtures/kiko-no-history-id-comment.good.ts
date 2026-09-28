@@ -89,3 +89,11 @@ export const mimeWildcard = '*/*';
 // fetch, and the modal stays open only a brief moment — neither "per the"
 // nor a possessive "'s" follows "brief" here, so the new member never
 // opens a match.
+
+// 14. The debugger-report family (SYNC/INT/TWIN/TX/HOLD/BAK/STAT/AUTH/PERF/
+// SEC/DEP/DEPS/V/CS, each hyphen-glued to digits) requires an EXACT
+// uppercase prefix — ordinary prose using the same words differently never
+// opens a match: the sync step finishes before the int cast runs, and the
+// api moved from v1 to v2 with no breaking change (lowercase, no hyphen
+// glued to a digit).
+export const debuggerReportFamilyNearMiss = true;

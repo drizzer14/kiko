@@ -283,9 +283,9 @@ export const accountsRepo = {
     }),
   /**
    * Delete a MANUAL account together with all of its holdings, every one of
-   * their transactions, and its `sync_state` cursor row (INT-1 — an account
-   * that ever attempted a Monobank sync, even a failed first Connect, carries
-   * one), in ONE op-sqlite transaction so a partial failure can never leave
+   * their transactions, and its `sync_state` cursor row (an account that ever
+   * attempted a Monobank sync, even a failed first Connect, carries one), in
+   * ONE op-sqlite transaction so a partial failure can never leave
    * orphaned holdings, ledger rows, or a stranded cursor behind (and so
    * foreign-key enforcement, ON per connection, is satisfied by deleting
    * children before parents: transactions and `sync_state`, then holdings,
@@ -326,7 +326,7 @@ export const accountsRepo = {
           .delete(transactions)
           .where(eq(transactions.holdingId, holding.id));
       }
-      // INT-1: `sync_state.account_id` is an FK with NO ACTION (migration
+      // `sync_state.account_id` is an FK with NO ACTION (migration
       // `0027`), so deleting `accounts` while a row still references it throws
       // a foreign key constraint error and rolls back the whole delete — for
       // ANY account that ever ran a Monobank sync, including one whose very

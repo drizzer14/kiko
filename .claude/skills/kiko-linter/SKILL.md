@@ -545,6 +545,25 @@ problem: the digit is part of the id shape itself (`round-3`), so
 ordinary prose that says "a round trip" (no hyphenated digit) never
 matches at all — see `rules/fixtures/kiko-no-history-id-comment.good.ts`.
 
+**A hyphenated debugger/verifier-report family**
+(`(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|V|CS)-\d+`,
+2026-09-28) catches a debugger or verifier report's own finding id
+(`SYNC-1`, `INT-1`, `TWIN-4`, `DEPS-3`, …) left behind in a comment —
+the multi-round bug-hunt process names findings this way in its own
+`.superpowers/sdd/` raw reports, and a fix comment citing that id
+verbatim is exactly the "history, not WHY" shape this rule bans. Unlike
+the single-letter families above, every prefix here is a WHOLE WORD
+(never a bare letter), so it does NOT need the same standalone-token
+carve-out — "room R2" collides because "R" alone is a plausible
+English word-initial, but no ordinary sentence glues "SYNC"/"DEPS"/"TWIN"
+directly to a hyphen and digits by coincidence the way it can with a
+bare letter. `round-N`'s own digit-in-the-shape argument covers `V-N`/
+`CS-N` too. A repo-wide sweep found zero existing collisions before
+this family shipped as ERROR directly (no WARNING-first rollout was
+needed, unlike the original id families above) — see the fixture pair's
+new entries (`SYNC-1`, `DEPS-3` positive; a lowercase/unhyphenated
+`sync`/`int`/`v1`/`v2` negative probe) for the worked example.
+
 **`Phase N` is not a family member at all** — a bare `Phase\s\d+`
 collides with ordinary engineering prose no digit-anchoring can fix
 ("Phase 1 copies the rows; Phase 2 deletes the source only after

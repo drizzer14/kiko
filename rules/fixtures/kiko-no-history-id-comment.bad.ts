@@ -119,3 +119,12 @@ export const cacheNeverEvictsWarmEntry = true;
 // EXPECT-FINDING
 // the brief's residual gap is what this member closes.
 export const residualGapClosedByThisMember = true;
+
+// EXPECT-FINDING
+// SYNC-1: the failed card's own retry window must never widen past what the
+// failed run itself covered.
+export const failedRetryNeverWidensPastItsOwnRun = true;
+
+// EXPECT-FINDING
+// DEPS-3: the lockfile diff must be reviewed before a version bump lands.
+export const lockfileDiffReviewedBeforeBump = true;

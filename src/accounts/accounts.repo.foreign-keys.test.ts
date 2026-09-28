@@ -1,7 +1,7 @@
 // `accounts.repo.test.ts` doubles `write`'s op-sqlite transaction with a fake
 // handle that answers every select/insert/delete call but enforces NO
 // foreign key at all — it could not have caught the `sync_state` FK
-// violation this file protects (INT-1 / TWIN-4). This file instead applies
+// violation this file protects. This file instead applies
 // the REAL, shipped migration SQL (the same files `run-migrations.ts` loads)
 // to an in-process `node:sqlite` engine with `PRAGMA foreign_keys = ON`
 // (mirroring `db/client.ts`'s own per-connection PRAGMA), then mirrors
@@ -133,7 +133,7 @@ const rowCountFor = (
 /**
  * Mirrors `accountsRepo.remove`'s own delete sequence (`accounts.repo.ts`) as
  * raw SQL, in the SAME order: each holding's transactions, then the
- * account's `sync_state` row (INT-1), then holdings, then the account
+ * account's `sync_state` row, then holdings, then the account
  * itself. Loan-link clearing (an UPDATE, not a DELETE) is intentionally not
  * mirrored — it never touches a row this FK invariant cares about. Keep this
  * in sync by hand when `remove`'s delete order changes, the same way
@@ -155,7 +155,7 @@ const removeAccountLikeTheRepoDoes = (database: DatabaseSync, accountId: string)
   database.prepare('DELETE FROM accounts WHERE id = ?').run(accountId);
 };
 
-describe('accountsRepo.remove — real-SQLite foreign key invariant (INT-1)', () => {
+describe('accountsRepo.remove — real-SQLite foreign key invariant', () => {
   it('clears every table with a live foreign key to accounts, with FKs enforced', () => {
     const database = new DatabaseSync(':memory:');
     applyAllMigrations(database);
