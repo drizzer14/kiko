@@ -4,8 +4,11 @@ import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 
-import type { SeriesTransaction } from './holding-value-at';
-import { createHoldingValuer, type SeriesHolding } from './holding-value-at';
+import {
+  createHoldingValuer,
+  type SeriesHolding,
+  type SeriesTransaction,
+} from './holding-value-at';
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 0, 1);
@@ -62,7 +65,7 @@ const countedTransaction = (
   amountMinorUnits: number,
   readCounter: { reads: number },
 ): SeriesTransaction => {
-  const time = T0 + dayOffset * DAY + 12 * 60 * 60 * 1000;
+  const time = transaction(dayOffset, amountMinorUnits).time;
 
   return {
     get time() {

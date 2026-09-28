@@ -408,16 +408,14 @@ describe('internalTransferTxIds', () => {
       bucket: LocalCreditCandidate[],
       lowTime: number,
       highTime: number,
-    ): number => {
-      let withinWindowCount = 0;
-
+    ): void => {
       for (let cursor = lowerBoundByTime(bucket, lowTime); cursor < bucket.length; cursor += 1) {
-        if (bucket[cursor].transaction.time <= highTime) {
-          withinWindowCount += 1;
-        }
+        // Evaluated but never acted on: the regression this models is that a
+        // scan keeps going past the window instead of breaking once a
+        // candidate's time exceeds it, so only the `.time` read the counter
+        // observes needs to happen here.
+        bucket[cursor].transaction.time <= highTime;
       }
-
-      return withinWindowCount;
     };
 
     const countContinueMutantReads = (transactions: Transaction[]): number => {
