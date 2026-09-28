@@ -275,6 +275,19 @@ const rewriteOwnership = (holdingId: string, rewrite: OwnershipRewrite) =>
       .where(eq(holdings.id, holdingId));
   });
 
+// Skip the write entirely when the synced balance already matches —
+// `selectCardsToFetch` already skips a card whose bank-reported balance is
+// unchanged, but the daily full fetch still calls `setSyncedBalance` for
+// EVERY held card. Without this, that unconditional write fired the
+// `holdings` reactive-query hook for every subscriber, on every sync, for
+// every card, even though nothing changed. `IS NOT` (not `!=`), since a
+// never-synced-through holding's marker starts NULL and SQL's `!=` against
+// NULL is never true. Exported so
+// `holdings.repo.synced-balance-no-op.test.ts` can build the exact same
+// UPDATE statement Drizzle would, instead of hand-transcribing its SQL.
+export const syncedBalanceUpdateWhere = (holdingId: string, minorUnits: number) =>
+  and(eq(holdings.id, holdingId), sql`${holdings.syncedBalanceMinorUnits} IS NOT ${minorUnits}`);
+
 export const holdingsRepo = {
   // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
   // with `createdAt` as a stable tiebreak so rows sharing a rank keep a
@@ -344,9 +357,10 @@ export const holdingsRepo = {
    * `updateWithBalanceDelta` (an edit) and `accountsRepo.createCashAccount`
    * (a cash account's first holding) follow, so a holding's balance is
    * explained by its ledger from the moment it exists (kiko-domain). Without
-   * it, `holdingValueAt` (statistics/holding-value-at/holding-value-at.ts) back-derives an
-   * opening balance out of `balance - sum(transactions)` that no row accounts
-   * for, and the historical net-worth series carries an unexplained step.
+   * it, `createHoldingValuer` (statistics/holding-value-at/holding-value-at.ts)
+   * back-derives an opening balance out of `balance - sum(transactions)` that
+   * no row accounts for, and the historical net-worth series carries an
+   * unexplained step.
    * The row is inserted directly rather than through
    * `transactionsRepo.recordManual`, which would add the amount to the balance
    * this insert has already set. It is the SYNC upserts (`upsertMonobank` /
@@ -464,8 +478,9 @@ export const holdingsRepo = {
    *
    * WHY: kiko-domain's invariant is that a manual balance adjustment always
    * writes a manual transaction, so a holding's balance history stays derivable
-   * from its transactions. `holdingValueAt` (statistics/holding-value-at/holding-value-at.ts)
-   * back-derives each holding's opening balance as
+   * from its transactions. `createHoldingValuer`
+   * (statistics/holding-value-at/holding-value-at.ts) back-derives each
+   * holding's opening balance as
    * `currentBalance - sum(allTransactions)`, so a bare `set({ balanceMinorUnits })`
    * retroactively shifted the ENTIRE historical net-worth series by the delta,
    * with no ledger row to explain it, and left the holding-detail transaction
@@ -813,7 +828,7 @@ export const holdingsRepo = {
       await databaseTransaction
         .update(holdings)
         .set({ syncedBalanceMinorUnits: balance.minorUnits })
-        .where(eq(holdings.id, holdingId));
+        .where(syncedBalanceUpdateWhere(holdingId, balance.minorUnits));
     }),
   /**
    * Balance-provider counterpart of `upsertMonobank`: one live balance snapshot

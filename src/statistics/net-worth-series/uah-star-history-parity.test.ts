@@ -124,6 +124,7 @@ const holding = (over: Partial<SeriesHolding> & Pick<SeriesHolding, 'id'>): Seri
   type: 'cash',
   balanceMinorUnits: 0,
   metadata: null,
+  closedAt: null,
   ...over,
 });
 

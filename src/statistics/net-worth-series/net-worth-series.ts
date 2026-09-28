@@ -8,9 +8,13 @@ import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 import { asBondMeta, type BondMeta } from '@kiko/holdings/holding-metadata';
 import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history-repo';
 
+import {
+  createHoldingValuer,
+  type SeriesHolding,
+  type SeriesTransaction,
+} from '../holding-value-at';
 import { bucketTimes } from '../buckets';
 import { reconcileBondFunding } from '../reconcile-bond-funding';
-import { holdingValueAt, type SeriesHolding, type SeriesTransaction } from '../holding-value-at';
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;
 
@@ -79,10 +83,17 @@ const bondRecognitionsFor = (
 
 /**
  * Build the single converted net-worth line over `range`. For each day bucket
- * `t`, every holding is valued at `t` (via `holdingValueAt`, so past deposit
- * interest / bond coupons are correct) and converted to the base currency at
- * that day's rate table. Each point's `amount` is the absolute total in base
- * MAJOR units.
+ * `t`, every holding is valued at `t` (via `createHoldingValuer`, so past
+ * deposit interest / bond coupons are correct) and converted to the base
+ * currency at that day's rate table. Each point's `amount` is the absolute
+ * total in base MAJOR units.
+ *
+ * `holdings` must include CLOSED holdings too, not just currently-open ones —
+ * the caller applies its own account/name filter, but never a `closedAt`
+ * filter, before calling this. A closed holding's value is zeroed only for
+ * buckets at or after the exact instant it closed (see the
+ * `holdingsWithValuer` build below); every earlier bucket still reconstructs
+ * its real historical value.
  *
  * The rate table for a bucket is resolved so the line reconciles end-to-end:
  * - lookups are normalized to the bucket's UTC day (`toUtcMidnight`), since
@@ -166,6 +177,32 @@ export const buildNetWorthSeries = (input: {
     };
   });
 
+  // Built ONCE per holding, not once per (holding, bucket) — see
+  // `createHoldingValuer`'s own doc comment for why the per-bucket reduce/filter
+  // it replaces was loop-invariant work repeated at every point. A closed
+  // holding's value is zeroed for every bucket AT OR AFTER its own
+  // `closedAt` instant — a raw instant compare, not a local-day one, keeps
+  // the rightmost "now" bucket consistent with the screen's other
+  // now-snapshots (open holdings only) even when the holding closed earlier
+  // the SAME day. `holdings` carries every holding regardless of `closedAt`
+  // (kiko-pricing: the history chart needs a closed holding's own past
+  // prices the same way it needs its own past lots).
+  const holdingsWithValuer: { holding: SeriesHolding; valueAt: (t: number) => number }[] = [];
+
+  for (const holding of valuationHoldings) {
+    const rawValueAt = createHoldingValuer(
+      holding,
+      transactionsByHolding.get(holding.id) ?? [],
+      book,
+    );
+    const closedAt = holding.closedAt;
+
+    holdingsWithValuer.push({
+      holding,
+      valueAt: (t: number): number => (closedAt !== null && t >= closedAt ? 0 : rawValueAt(t)),
+    });
+  }
+
   const earliest = earliestRateTable(historyRows);
   const todayKey = toUtcMidnight(today ?? Date.now());
 
@@ -180,19 +217,11 @@ export const buildNetWorthSeries = (input: {
 
   const points = bucketTimes(range.from, range.to, bucketDays).map((t) => {
     const table = tableAt(t);
-    const total = valuationHoldings
-      .filter((holding) => canConvert(holding.currency, baseCurrency, table))
+    const total = holdingsWithValuer
+      .filter(({ holding }) => canConvert(holding.currency, baseCurrency, table))
       .reduce(
-        (sum, holding) => {
-          const value = holdingValueAt(
-            holding,
-            transactionsByHolding.get(holding.id) ?? [],
-            t,
-            book,
-          );
-
-          return sum.add(convert(Money.of(holding.currency, value), baseCurrency, table));
-        },
+        (sum, { holding, valueAt }) =>
+          sum.add(convert(Money.of(holding.currency, valueAt(t)), baseCurrency, table)),
         Money.of(baseCurrency, 0),
       );
 

@@ -1,6 +1,11 @@
+import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 
-import { type BreakdownTransaction, categoryColor } from '../category-breakdown';
+import {
+  type BreakdownTransaction,
+  buildCategoryBreakdown,
+  categoryColor,
+} from '../category-breakdown';
 
 import { buildCategoryMeasures, buildCategoryTrend, type TrendTransaction } from './category-trend';
 
@@ -12,7 +17,13 @@ const DISPLAY = buildCategoryDisplayMap([
 ]);
 
 // A fixed "today" reference, so every range is deterministic.
-const NOW = Date.UTC(2025, 2, 31, 12, 0, 0); // 2025-03-31, midday UTC
+// Picked well clear of both Kyiv DST transitions (2025 spring-forward 30
+// March, fall-back 26 October) — every range this file builds looks back at
+// most 14 days from NOW, and buckets now step by real CALENDAR days, so a
+// fixture straddling a transition would make its own hand-computed expected
+// bucket positions (`NOW - n * dayMs`) drift from the real (correct)
+// calendar-stepped ones by the transition's hour.
+const NOW = Date.UTC(2025, 6, 31, 12, 0, 0); // 2025-07-31, midday UTC
 const dayMs = 86_400_000;
 
 // The default test range: 3 days back from NOW to NOW, daily buckets — 4
@@ -62,6 +73,25 @@ describe('buildCategoryTrend', () => {
     for (let i = 1; i < points.length; i += 1) {
       expect(points[i].t - points[i - 1].t).toBe(dayMs);
     }
+  });
+
+  // A single-day range collapses to one period-start bucket, which a
+  // Polyline cannot draw a visible line from (a line needs >= 2 points) — the
+  // series must still carry a second point spanning the day, matching how a
+  // single-day range always rendered before the phantom-bucket fix.
+  it('renders a visible mark for a single-day range (at least two points)', () => {
+    const dayStart = NOW - 3 * dayMs;
+    const dayEnd = dayStart + dayMs - 1;
+    const series = buildTrend(
+      [transaction({ time: dayStart + 60 * 60 * 1000, amountMinorUnits: -20_00 })],
+      { range: { from: dayStart, to: dayEnd } },
+    );
+    const points = series[0].points;
+
+    expect(points.length).toBeGreaterThanOrEqual(2);
+    expect(points[0].t).toBe(dayStart);
+    expect(points[points.length - 1].t).toBe(dayEnd);
+    expect(points.some((point) => point.amount === 20)).toBe(true);
   });
 
   it('buckets a same-day expense into that bucket and no other, summing in major units', () => {
@@ -307,6 +337,7 @@ const buildMeasures = (
 ): ReturnType<typeof buildCategoryMeasures> =>
   buildCategoryMeasures({
     transactions,
+    categoryDisplay: DISPLAY,
     rateTable: {},
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
@@ -398,5 +429,173 @@ describe('buildCategoryMeasures', () => {
 
   it('returns an empty array for empty input', () => {
     expect(buildMeasures([])).toEqual([]);
+  });
+});
+
+// Production always calls with `range.to = endOfLocalDay(...)` — the LAST
+// millisecond of a day, never a period-start instant — unlike DEFAULT_RANGE
+// above, whose `to` happens to land exactly on what would be the next
+// period-start (so it never exercised this bug). This block uses the
+// production shape instead.
+describe('buildCategoryTrend / buildCategoryMeasures — no phantom trailing bucket', () => {
+  const today = startOfLocalDay(NOW);
+  const PRODUCTION_RANGE = { from: today - 2 * dayMs, to: endOfLocalDay(NOW) };
+
+  it('emits exactly one point per real period, with no phantom point past the last one', () => {
+    const series = buildTrend([transaction({ time: NOW, amountMinorUnits: -50_00 })], {
+      range: PRODUCTION_RANGE,
+    });
+    const points = series[0].points;
+
+    expect(points).toHaveLength(3);
+    expect(points[points.length - 1].t).toBe(today);
+  });
+
+  it("puts today's spend on the last (real) point, not a trailing zero after it", () => {
+    const series = buildTrend([transaction({ id: 'today', time: NOW, amountMinorUnits: -75_00 })], {
+      range: PRODUCTION_RANGE,
+    });
+
+    expect(series[0].points[series[0].points.length - 1]).toEqual({ t: today, amount: 75 });
+  });
+
+  it('keeps the sum of every series point equal to the category total', () => {
+    const series = buildTrend(
+      [
+        transaction({ id: 'a', time: today - 2 * dayMs, amountMinorUnits: -10_00 }),
+        transaction({ id: 'b', time: today - dayMs, amountMinorUnits: -20_00 }),
+        transaction({ id: 'c', time: NOW, amountMinorUnits: -30_00 }),
+      ],
+      { range: PRODUCTION_RANGE },
+    );
+    const pointSum = series[0].points.reduce((sum, point) => sum + point.amount, 0);
+
+    expect(pointSum).toBeCloseTo(60, 5);
+  });
+
+  it('reports a genuinely positive rising slope for climbing spend, unskewed by a phantom trailing zero', () => {
+    const measures = buildCategoryMeasures({
+      transactions: [
+        transaction({
+          id: 'a',
+          category: 'groceries',
+          amountMinorUnits: -10_00,
+          time: today - 2 * dayMs,
+        }),
+        transaction({
+          id: 'b',
+          category: 'groceries',
+          amountMinorUnits: -20_00,
+          time: today - dayMs,
+        }),
+        transaction({ id: 'c', category: 'groceries', amountMinorUnits: -30_00, time: today }),
+      ],
+      categoryDisplay: DISPLAY,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+      range: PRODUCTION_RANGE,
+      bucketDays: DEFAULT_BUCKET_DAYS,
+    });
+
+    // `total`/`risingSlope` are base MINOR units, so [-10_00, -20_00, -30_00]
+    // folds to per-bucket magnitudes [1000, 2000, 3000], whose least-squares
+    // slope is exactly 1000; the phantom-bucket bug appended a 4th (0) point,
+    // which flipped this same climbing spend to a NEGATIVE slope
+    // ([1000, 2000, 3000, 0] regresses to -200).
+    expect(measures[0].risingSlope).toBeCloseTo(1000, 5);
+  });
+});
+
+// Europe/Kyiv springs forward on 2025-03-30 (a 23-hour local day). `from` is
+// built from local Y/M/D fields, not `today - n * dayMs` (which would land
+// off real local midnight across the transition), matching how production
+// derives it.
+describe('buildCategoryTrend — spring-forward DST (Europe/Kyiv, 2025-03-30)', () => {
+  const withTimeZone = (zone: string, run: () => void): void => {
+    const previous = process.env.TZ;
+    process.env.TZ = zone;
+    run();
+    process.env.TZ = previous;
+  };
+
+  it('emits no phantom point across the transition, ends on the latest day’s spend, and sums to the category total', () => {
+    withTimeZone('Europe/Kyiv', () => {
+      const kyivNow = new Date(2025, 2, 31, 12, 0, 0).getTime();
+      const today = startOfLocalDay(kyivNow);
+      const range = { from: new Date(2025, 2, 29).getTime(), to: endOfLocalDay(kyivNow) };
+      const series = buildTrend(
+        [
+          transaction({
+            id: 'before',
+            time: new Date(2025, 2, 29, 10).getTime(),
+            amountMinorUnits: -10_00,
+          }),
+          transaction({
+            id: 'transition-day',
+            time: new Date(2025, 2, 30, 10).getTime(),
+            amountMinorUnits: -20_00,
+          }),
+          transaction({ id: 'today', time: kyivNow, amountMinorUnits: -30_00 }),
+        ],
+        { range },
+      );
+      const points = series[0].points;
+      const pointSum = points.reduce((sum, point) => sum + point.amount, 0);
+
+      expect(points).toHaveLength(3);
+      expect(points[points.length - 1]).toEqual({ t: today, amount: 30 });
+      expect(pointSum).toBeCloseTo(60, 5);
+    });
+  });
+});
+
+// category-trend.ts used to fold a category key with a bare
+// `category?.toLowerCase() || defaultKey` — unlike the donut
+// (`buildCategoryBreakdown`), which folds an UNRESOLVABLE slug (one no longer
+// in the category display map, e.g. a deleted seeded category sync keeps
+// re-writing) into the default too, via `resolveCategoryKey`. The trend kept
+// the stale slug as its own bucket, so a deleted category showed as two
+// separate "Other"-titled lines (same color, different key) instead of
+// folding into one.
+describe('buildCategoryTrend / buildCategoryMeasures — category-key fold parity with the donut', () => {
+  // 'dining' is not in DISPLAY — an unresolvable slug, the same shape a
+  // deleted seeded category leaves behind once sync keeps writing it.
+  const ghostCategoryExpense = transaction({
+    id: 'ghost',
+    category: 'dining',
+    amountMinorUnits: -40_00,
+    time: NOW,
+  });
+  const groceriesExpense = transaction({
+    id: 'g',
+    category: 'groceries',
+    amountMinorUnits: -10_00,
+    time: NOW,
+  });
+
+  it('folds an unresolvable category slug into the default key, the same way the donut does', () => {
+    const donutKeys = new Set(
+      buildCategoryBreakdown({
+        transactions: [ghostCategoryExpense, groceriesExpense],
+        categoryDisplay: DISPLAY,
+        rateTable: {},
+        baseCurrency: 'UAH',
+        defaultCategoryKey: 'other',
+      }).map((slice) => slice.key),
+    );
+    const trendKeys = new Set(
+      buildTrend([ghostCategoryExpense, groceriesExpense]).map((series) => series.key),
+    );
+
+    expect(trendKeys).toEqual(donutKeys);
+    expect(trendKeys.has('dining')).toBe(false);
+    expect(trendKeys.has('other')).toBe(true);
+  });
+
+  it('folds the same unresolvable slug into the default key for the Top-N measures too', () => {
+    const measures = buildMeasures([ghostCategoryExpense, groceriesExpense]);
+
+    expect(measures.map((measure) => measure.key).sort()).toEqual(['groceries', 'other']);
   });
 });

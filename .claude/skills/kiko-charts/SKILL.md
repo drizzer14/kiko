@@ -199,13 +199,18 @@ restating them here — and resolves each line's color the same way the
 donut does, via `resolveCategoryColor`. It no longer buckets by
 calendar month: it takes an explicit `range` (`{ from, to }`) and
 `bucketDays`, and folds every kept expense into
-`bucketTimes(range.from, range.to, bucketDays)` — the SAME bucket
-positions `buildNetWorthSeries` plots for the same `range`/`bucketDays`
-(see `src/statistics/buckets/`), so the trend chart honors the
-Statistics screen's own date-range picker rather than a fixed span, and
-zero-fills every bucket in that range for every series so all lines
-share one set of X positions even where a category had no spend in a
-given bucket. It sorts the returned series by total spend descending.
+`periodStartBucketTimes(range.from, range.to, bucketDays)` — PERIOD-START
+instants only (see `src/statistics/buckets/`), unlike
+`buildNetWorthSeries`' own `bucketTimes`, which also closes on `to`
+itself: a per-period series has no real value to put at that extra
+closing instant (every expense already folds into the period-start
+bucket that contains it), so keeping it produced a permanent phantom
+zero point at the end of every line, dragging down the Rising measure
+below. This lets the trend chart honor the Statistics screen's own
+date-range picker rather than a fixed span, and zero-fills every real
+bucket in that range for every series so all lines share one set of X
+positions even where a category had no spend in a given bucket. It
+sorts the returned series by total spend descending.
 Read `bucketDaysForSpan` (`src/statistics/buckets/`, how the screen
 picks day-vs-week bucketing from the active range) and `category-trend.ts`
 itself for the exact bucket math rather than trusting a restated

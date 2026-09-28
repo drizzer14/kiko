@@ -244,20 +244,26 @@ const StatisticsScreen: FC = () => {
   // memoization — only a re-focus advances it.
   const now = useFocusRefreshedNow();
 
-  // The date-range bounds default to the last 30 days on mount; a user pick
-  // can still set either to null (open-ended) via the date-range field.
-  const [dateFrom, setDateFrom] = useState<Date | null>(() => defaultDateRange(now).from);
-  const [dateTo, setDateTo] = useState<Date | null>(() => defaultDateRange(now).to);
+  // `customRange` holds an explicit user pick; `null` means "show the default
+  // (last-30-days) range". The default is derived FRESH from `now` on every
+  // render instead of being frozen once in a `useState` initializer — a tab
+  // stays mounted after it is left, so a range seeded only at mount (or at the
+  // last Clear) silently stopped including "today" from the next calendar day
+  // onward. A user pick still stays exactly as given, even one side left null
+  // (open-ended) via the date-range field.
+  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null } | null>(
+    null,
+  );
+  const defaultRange = defaultDateRange(now);
+  const dateFrom = customRange !== null ? customRange.from : defaultRange.from;
+  const dateTo = customRange !== null ? customRange.to : defaultRange.to;
 
   const applyDateRange = (from: Date | null, to: Date | null): void => {
-    setDateFrom(from);
-    setDateTo(to);
+    setCustomRange({ from, to });
   };
 
   const clearDateRange = (): void => {
-    const range = defaultDateRange();
-    setDateFrom(range.from);
-    setDateTo(range.to);
+    setCustomRange(null);
   };
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
@@ -295,8 +301,14 @@ const StatisticsScreen: FC = () => {
   );
 
   // Only non-archived accounts are ever shown; the account filter narrows within
-  // those, and a holding then feeds the charts only when it is open AND its
-  // account survived that filter. Memoized so all three builders below key off a
+  // those. `visibleHoldings` (open AND under a surviving account) feeds every
+  // "now" snapshot (the by-type bar, the account pie, the Debts total).
+  // `netWorthHoldings` feeds the net-worth LINE instead: the same account
+  // filter, but WITHOUT the `closedAt` filter — a closed holding still needs
+  // its real value on every bucket before it closed (`buildNetWorthSeries`
+  // zeros it only at/after the exact instant it closed), and kiko-pricing's
+  // history chart needs a closed holding's own past prices the same way it
+  // needs its own past lots. Memoized so all four builders below key off a
   // stable collection instead of a fresh array on every render.
   const filtered = useMemo(() => {
     const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
@@ -304,11 +316,12 @@ const StatisticsScreen: FC = () => {
       return selectedAccounts.size === 0 || selectedAccounts.has(account.name);
     });
     const filteredAccountIds = new Set(filteredAccounts.map((account) => account.id));
-    const visibleHoldings = holdings.filter((holding) => {
-      return holding.closedAt == null && filteredAccountIds.has(holding.accountId);
-    });
+    const netWorthHoldings = holdings.filter((holding) =>
+      filteredAccountIds.has(holding.accountId),
+    );
+    const visibleHoldings = netWorthHoldings.filter((holding) => holding.closedAt == null);
 
-    return { visibleAccounts, filteredAccounts, visibleHoldings };
+    return { visibleAccounts, filteredAccounts, visibleHoldings, netWorthHoldings };
   }, [accounts, holdings, selectedAccounts]);
 
   // The full transaction span drives the date field's default display, the line's
@@ -331,18 +344,22 @@ const StatisticsScreen: FC = () => {
   const spanStart = earliestTime ?? now;
 
   // The line's effective window: the picked range when set, otherwise the full
-  // transaction span (earliest transaction to now). Both bounds are TRUE local
-  // midnight (`startOfLocalDay`/`endOfLocalDay`, same helpers Home uses), never
-  // a UTC-anchored approximation — a Kyiv (UTC+2/+3) pick using `Date.UTC(y, m,
-  // d)` instead used to exclude the first 2-3 local hours of every picked day
-  // from this range, silently dropping them from the donut and the net-worth
-  // line. `buildNetWorthSeries` (below) does its OWN UTC-day normalization per
-  // bucket internally (`toUtcMidnight`, since `currency_rate_history.day` is
-  // UTC-midnight) — that is a rate LOOKUP KEY concern, entirely separate from
-  // these user-facing range bounds, and this screen has no other UTC-day-key
-  // use, so no local `utcDayKey`-style helper is needed here. The `to` bound
-  // extends to the end of its day so a same-day pick still captures that
-  // day's buckets, DST-correct on a 23/25-hour local day.
+  // transaction span (earliest transaction to now). A PICKED bound is TRUE
+  // local midnight (`startOfLocalDay`/`endOfLocalDay`, same helpers Home
+  // uses), never a UTC-anchored approximation — a Kyiv (UTC+2/+3) pick using
+  // `Date.UTC(y, m, d)` instead would exclude the first 2-3 local hours of
+  // every picked day from this range, silently dropping them from the donut
+  // and the net-worth line. The DEFAULT (unpicked) window is NOT
+  // midnight-aligned: `rangeFrom` falls back to `spanStart` (the earliest
+  // transaction's raw time, or `now` when there is none) and `rangeTo` falls
+  // back to `now` itself. `buildNetWorthSeries` (below) does its OWN UTC-day
+  // normalization per bucket internally (`toUtcMidnight`, since
+  // `currency_rate_history.day` is UTC-midnight) — that is a rate LOOKUP KEY
+  // concern, entirely separate from these user-facing range bounds, and this
+  // screen has no other UTC-day-key use, so no local `utcDayKey`-style helper
+  // is needed here. A picked `to` bound extends to the end of its day so a
+  // same-day pick still captures that day's buckets, DST-correct on a
+  // 23/25-hour local day.
   const rangeFrom = dateFrom !== null ? startOfLocalDay(dateFrom.getTime()) : spanStart;
   const rangeTo = dateTo !== null ? endOfLocalDay(dateTo.getTime()) : now;
 
@@ -525,7 +542,7 @@ const StatisticsScreen: FC = () => {
   const netWorth = useMemo(
     () =>
       buildNetWorthSeries({
-        holdings: filtered.visibleHoldings,
+        holdings: filtered.netWorthHoldings,
         transactionsByHolding: groupByHolding(transactions),
         historyRows,
         baseCurrency,
@@ -943,6 +960,7 @@ const StatisticsScreen: FC = () => {
     () =>
       buildCategoryMeasures({
         transactions: trendTransactions,
+        categoryDisplay: categoryByKey,
         rateTable,
         baseCurrency,
         defaultCategoryKey,
@@ -952,6 +970,7 @@ const StatisticsScreen: FC = () => {
       }),
     [
       trendTransactions,
+      categoryByKey,
       rateTable,
       baseCurrency,
       defaultCategoryKey,

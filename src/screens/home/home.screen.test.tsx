@@ -1,3 +1,25 @@
+// Wraps the REAL `groupByDay` in a spy-able `jest.fn` (never a stub) so a
+// test can assert it is not called again on a re-render that should have
+// stayed memo-stable, while every other test still gets its real grouping.
+// `mockGroupByDay` is only referenced inside a CLOSURE created by the
+// factory below, never dereferenced while the factory itself runs — the
+// factory (and every module it requires) executes before this file's own
+// `const` initializer does, so an immediate read here would see `undefined`.
+const mockGroupByDay = jest.fn();
+
+jest.mock('@kiko/transactions/group-by-day', () => {
+  const actual = jest.requireActual('@kiko/transactions/group-by-day');
+
+  return {
+    ...actual,
+    groupByDay: (...args: unknown[]) => {
+      mockGroupByDay(...args);
+
+      return actual.groupByDay(...args);
+    },
+  };
+});
+
 import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
@@ -850,6 +872,66 @@ describe('HomeScreen', () => {
     expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
     expect(getByText('Recent')).toBeTruthy();
     expect(queryByText('TooOld')).toBeNull();
+  });
+
+  // The default range used to be seeded once in a `useState` initializer, so
+  // a tab that stayed mounted overnight kept showing yesterday's window and
+  // silently dropped today's activity. The default must instead be derived
+  // fresh from `now` on every render, matching the Statistics screen's own fix.
+  it("advances the default range's end to include a transaction from the day after mount, once re-rendered", async () => {
+    const base = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(base);
+    const tomorrow = transaction({
+      id: 'tomorrow',
+      time: base + DAY_MS + 60 * 60 * 1000,
+      description: 'Tomorrow',
+    });
+    seed({ transactions: [tomorrow] });
+
+    const { getByText, queryByText, rerender } = await renderHome();
+
+    expect(queryByText('Tomorrow')).toBeNull();
+
+    nowSpy.mockReturnValue(base + DAY_MS);
+    await act(async () => {
+      await rerender(
+        <HomeScreen
+          navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+          route={asRouteProp<HomeProps['route']>('Home')}
+        />,
+      );
+    });
+
+    expect(getByText('Tomorrow')).toBeTruthy();
+
+    nowSpy.mockRestore();
+  });
+
+  // The default range is re-derived from `now` every render (see the test
+  // above), but `defaultDateRange` allocates fresh Date objects each call —
+  // using those objects directly as a dependency for the transaction
+  // filter/group memo made it (and the SectionList it feeds) rebuild on
+  // EVERY render, not just a day change. `groupByDay` (the section builder)
+  // must not run again on a re-render that does not change the day.
+  it('does not re-run the section grouping on a re-render on the same day', async () => {
+    const recent = transaction({ id: 't1', time: Date.now() - 2 * DAY_MS, description: 'Recent' });
+    seed({ transactions: [recent] });
+
+    mockGroupByDay.mockClear();
+
+    const { rerender } = await renderHome();
+    const callsAfterMount = mockGroupByDay.mock.calls.length;
+
+    await act(async () => {
+      await rerender(
+        <HomeScreen
+          navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+          route={asRouteProp<HomeProps['route']>('Home')}
+        />,
+      );
+    });
+
+    expect(mockGroupByDay.mock.calls.length).toBe(callsAfterMount);
   });
 
   it('renders an empty state when there are no transactions', async () => {

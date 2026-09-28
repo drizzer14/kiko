@@ -388,8 +388,8 @@ const rejectCryptoCashHolding = (snapshotHoldings: DataSnapshot['holdings']): vo
 };
 
 /**
- * Replaces every row in every one of the 10 logical tables with the given
- * snapshot's rows, inside ONE `write()` transaction — so a failure partway
+ * Replaces every row in every logical table (see `DataSnapshot`) with the
+ * given snapshot's rows, inside ONE `write()` transaction — so a failure partway
  * leaves the live database untouched (op-sqlite's transaction auto-rolls-back
  * on a thrown error, same guarantee every other `write()` caller relies on).
  *

@@ -3,6 +3,12 @@
 // dedicated bank formats (Monobank/PrivatBank's `DD.MM.YYYY HH:MM:SS`,
 // Sensebank's 2-digit-year `DD.MM.YY HH:MM`), plus a few common shorter/ISO
 // variants a manually-exported statement might carry instead.
+import maybe, { foldMap } from 'fnts/maybe';
+import {
+  utcMillisecondsIfRoundTrips,
+  type DateTimeParts,
+} from '@kiko/statement-import/parse-date-time';
+
 import type { TableCell } from './table-rows';
 
 export const dateFormatIds = [
@@ -13,14 +19,23 @@ export const dateFormatIds = [
   'YYYY-MM-DD HH:MM:SS',
   'YYYY-MM-DD',
   'MM/DD/YYYY',
+  'DD/MM/YYYY',
 ] as const;
 
 export type DateFormatId = (typeof dateFormatIds)[number];
 
 type DatePreset = {
   pattern: RegExp;
-  toSeconds: (match: RegExpExecArray) => number;
+  toParts: (match: RegExpExecArray) => DateTimeParts;
 };
+
+// Builds UTC seconds from parsed date/time PARTS, rejecting a rollover — an
+// out-of-range day ("31.02.2026"), month ("2026-13-45"), hour, or minute
+// silently rolling into a DIFFERENT, wrong calendar instant — through the
+// shared `utcMillisecondsIfRoundTrips` every bank-export date parser in this
+// project uses for the same round-trip check.
+const partsToSeconds = (parts: DateTimeParts): number | undefined =>
+  foldMap(maybe(utcMillisecondsIfRoundTrips(parts)), (milliseconds) => milliseconds / 1000);
 
 // Every preset reads UTC wall-clock parts — the same `parseDateTimeSeconds`
 // convention the dedicated formats use (`../parse-date-time`), never the host
@@ -30,60 +45,91 @@ type DatePreset = {
 const presets: Record<DateFormatId, DatePreset> = {
   'DD.MM.YYYY HH:MM:SS': {
     pattern: /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/,
-    toSeconds: ([, day, month, year, hour, minute, second]) =>
-      Date.UTC(
-        Number(year),
-        Number(month) - 1,
-        Number(day),
-        Number(hour),
-        Number(minute),
-        Number(second),
-      ) / 1000,
+    toParts: ([, day, month, year, hour, minute, second]) => ({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: Number(hour),
+      minute: Number(minute),
+      second: Number(second),
+    }),
   },
   'DD.MM.YYYY HH:MM': {
     pattern: /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2})$/,
-    toSeconds: ([, day, month, year, hour, minute]) =>
-      Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), 0) /
-      1000,
+    toParts: ([, day, month, year, hour, minute]) => ({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: Number(hour),
+      minute: Number(minute),
+      second: 0,
+    }),
   },
   'DD.MM.YYYY': {
     pattern: /^(\d{2})\.(\d{2})\.(\d{4})$/,
-    toSeconds: ([, day, month, year]) =>
-      Date.UTC(Number(year), Number(month) - 1, Number(day)) / 1000,
+    toParts: ([, day, month, year]) => ({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: 0,
+      minute: 0,
+      second: 0,
+    }),
   },
   'DD.MM.YY HH:MM': {
     pattern: /^(\d{2})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})$/,
-    toSeconds: ([, day, month, year, hour, minute]) =>
-      Date.UTC(
-        2000 + Number(year),
-        Number(month) - 1,
-        Number(day),
-        Number(hour),
-        Number(minute),
-        0,
-      ) / 1000,
+    toParts: ([, day, month, year, hour, minute]) => ({
+      year: 2000 + Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: Number(hour),
+      minute: Number(minute),
+      second: 0,
+    }),
   },
   'YYYY-MM-DD HH:MM:SS': {
     pattern: /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/,
-    toSeconds: ([, year, month, day, hour, minute, second]) =>
-      Date.UTC(
-        Number(year),
-        Number(month) - 1,
-        Number(day),
-        Number(hour),
-        Number(minute),
-        Number(second),
-      ) / 1000,
+    toParts: ([, year, month, day, hour, minute, second]) => ({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: Number(hour),
+      minute: Number(minute),
+      second: Number(second),
+    }),
   },
   'YYYY-MM-DD': {
     pattern: /^(\d{4})-(\d{2})-(\d{2})$/,
-    toSeconds: ([, year, month, day]) =>
-      Date.UTC(Number(year), Number(month) - 1, Number(day)) / 1000,
+    toParts: ([, year, month, day]) => ({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: 0,
+      minute: 0,
+      second: 0,
+    }),
   },
   'MM/DD/YYYY': {
     pattern: /^(\d{2})\/(\d{2})\/(\d{4})$/,
-    toSeconds: ([, month, day, year]) =>
-      Date.UTC(Number(year), Number(month) - 1, Number(day)) / 1000,
+    toParts: ([, month, day, year]) => ({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: 0,
+      minute: 0,
+      second: 0,
+    }),
+  },
+  'DD/MM/YYYY': {
+    pattern: /^(\d{2})\/(\d{2})\/(\d{4})$/,
+    toParts: ([, day, month, year]) => ({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: 0,
+      minute: 0,
+      second: 0,
+    }),
   },
 };
 
@@ -101,6 +147,7 @@ export const dateFormatExamples: Record<DateFormatId, string> = {
   'YYYY-MM-DD HH:MM:SS': '2026-12-31 23:59:59',
   'YYYY-MM-DD': '2026-12-31',
   'MM/DD/YYYY': '12/31/2026',
+  'DD/MM/YYYY': '31/12/2026',
 };
 
 /**
@@ -109,11 +156,13 @@ export const dateFormatExamples: Record<DateFormatId, string> = {
  * recoverable per-row `'date'` error (`applyColumnMapping`) rather than
  * aborting the whole import, unlike a dedicated format's own
  * `parseDateTimeSeconds`, which throws because its shape is fixed and known
- * in advance.
+ * in advance. A cell that matches the preset's SHAPE but describes an
+ * impossible calendar instant (`partsToSeconds`'s round-trip check) is the
+ * same kind of mismatch, not a distinct case.
  */
 export const parseDateWithFormat = (raw: TableCell, id: DateFormatId): number | undefined => {
   const preset = presets[id];
   const match = preset.pattern.exec(String(raw).trim());
 
-  return match ? preset.toSeconds(match) : undefined;
+  return match ? partsToSeconds(preset.toParts(match)) : undefined;
 };

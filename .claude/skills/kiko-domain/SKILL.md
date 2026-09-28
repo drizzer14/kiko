@@ -161,9 +161,10 @@ through one of them:
   holding, in the transaction that inserts the account and that
   holding.
 
-Why it matters concretely: `holdingValueAt`
-(`src/statistics/holding-value-at/holding-value-at.ts`) back-derives a holding's opening
-balance as `currentBalance - sum(allTransactions)`, so a balance written
+Why it matters concretely: `createHoldingValuer`
+(`src/statistics/holding-value-at/holding-value-at.ts`) back-derives a
+holding's opening balance as `currentBalance - sum(allTransactions)`, so a
+balance written
 without its ledger row retroactively shifts the ENTIRE historical
 net-worth series by that amount, and the holding-detail transaction list
 stops reconciling with its own displayed Value. None of the three routes
@@ -506,9 +507,24 @@ resolves through `resolveCategoryKey` / `resolveCategoryDisplay`
 or unknown-to-the-categories-table slug folding onto the **default**
 key (`settings.defaultCategoryKey`, read at the call site — never a
 separate "uncategorized" bucket). One fold, one place: the spending
-breakdown's `groupKey`, Home's `categoryKeyForRow`, and every color
-lookup all go through it, so a category can never render under two
-keys — and therefore two hues — at once.
+breakdown's `groupKey`, the spending TREND's own `groupKey`
+(`src/statistics/category-trend/`), Home's `categoryKeyForRow`, and
+every color lookup all go through it, so a category can never render
+under two keys — and therefore two hues — at once. The trend's
+`groupKey` used to fold with a bare `category?.toLowerCase() ||
+defaultKey` instead — it caught a null/empty category but not an
+UNRESOLVABLE one (a slug no longer in the categories table, e.g. a
+deleted seeded category sync keeps re-writing), so a deleted category
+rendered as two same-titled, differently-keyed lines on the trend chart
+while the donut correctly folded it into one. The same shape recurred at
+`holding-detail.screen.tsx`'s ledger-row icon color (the title/icon
+resolved through `resolveCategoryDisplay`, correctly folded, but the
+color's own fallback key was re-derived from the raw, unfolded category).
+A Semgrep rule (`kiko-no-bare-lowercase-category-fold`,
+`rules/semgrep-prewrite.yml`) now bans a bare `<category>?.toLowerCase()
+|| <default>` fold anywhere under `src/**` (widened from
+`src/statistics/**` once the second site turned up outside it) — use
+`resolveCategoryKey` instead.
 
 Writers hold up the other end: a category value is persisted only as
 the lowercase `categories.key` slug. `categoryForMcc`
@@ -596,6 +612,15 @@ the marker on its single debit leg). Three consequences hold together:
   `kiko-no-direct-default-transaction-description` Semgrep rule.
 - A repository input therefore carries holding IDs, never holding
   display names, for an exchange.
+- **Convert's counterpart never lands on a synced holding.** The
+  counterpart picker (`resolveConvertView` in the transaction form)
+  excludes every synced/syncable holding — a sync already owns that
+  holding's balance, and the counterpart is a NEW manual leg `save`
+  writes. `recordExchangeCounterpart` (`src/transactions/repo/`) enforces
+  the same rule again, in depth, inside the write itself: it re-reads the
+  counterpart's own holding+account INSIDE the transaction and throws
+  rather than trust a caller-supplied flag, since the write is reachable
+  directly, not only through the picker.
 
 ## App lock / security settings
 
@@ -636,6 +661,20 @@ length (no January-31 + 1 month rolling into March) while preserving
 whatever time-of-day the input carried — it does not force the result
 to local midnight, so a non-midnight input keeps its hour/minute/
 second/millisecond across the step.
+
+A bi-weekly (opening-day-anchored semi-monthly) deposit's capitalization
+tag is carried by the CREDIT INSTANT that produced it, never re-derived
+from the instant's own calendar month afterward — a collapsed mid-month
+credit (the opening day's `+1` boundary landing past the month's own
+length) moves onto the SAME instant as that month's own plain "1st"
+credit, and it keeps its capitalizing tag when it moves; re-deriving the
+tag from the moved instant's own month cannot tell the two apart and
+silently drops a capitalization every time the collapse happens. The
+period ending AT maturity always capitalizes too, even when maturity
+happens to coincide with what would otherwise be a plain,
+non-capitalizing credit (an opening day of 1) — read `biweeklyCredits`/
+`depositPeriods` in `src/holdings/interest/interest.ts` for the exact
+mechanism.
 
 Tests for these helpers use two input styles side by side in
 `src/holdings/`'s interest test, and both stay valid because `addMonths` preserves
@@ -787,6 +826,119 @@ is order-dependent — bonds are reconciled in a FIXED order (typed
 holdings array's own (user-controlled sort) order. A bond that loses the
 claim falls back to its own typed day/price, same as a genuinely unmatched
 bond.
+
+### Statistics series performance
+
+`buildNetWorthSeries` values every holding at every bucket, so anything
+loop-invariant per holding (not per bucket) must be computed ONCE, outside
+the per-bucket loop, not re-derived at every point. `createHoldingValuer`
+(`src/statistics/holding-value-at/`) is the ONLY holding-valuation entry
+point now — there is no separate single-call `holdingValueAt` anymore, it
+was deleted from production (its old body survives only as a local,
+un-exported `referenceHoldingValueAt` oracle inside
+`holding-value-at.test.ts`, the same "kept only as the parity oracle"
+pattern `internal-transfers.test.ts` uses for the algorithm IT replaced).
+Every call site — including a single-instant read like
+`holdingsRepo.updateWithBalanceDelta`'s own regression test — calls
+`createHoldingValuer(holding, transactions)(t)` instead; for a one-off read
+this pays the same per-holding setup cost `holdingValueAt` used to pay
+per call, which is negligible for a single call.
+
+`buildNetWorthSeries` also decides whether a holding's value counts at
+bucket `t` at all: the net-worth LINE is built from `filtered.netWorthHoldings`
+(every holding under an account the filter keeps, OPEN or CLOSED), and
+`createHoldingValuer`'s result is zeroed for any bucket `t >=
+holding.closedAt` (a raw instant compare, not a local-day one — see that
+builder's own doc comment for why a same-day compare broke the rightmost
+"now" point). Every OTHER "now" snapshot (the headline, the by-type bar,
+the account pie, the Debts total) reads `filtered.visibleHoldings` instead
+— open holdings only, under a non-archived account — so a closed holding
+contributes to the LINE's past but never to a current snapshot.
+
+`reconcile-bond-funding.ts`'s candidate-building pass was rewritten from a
+`.flatMap`/`.map`/`.filter` chain to a plain nested loop for the same
+reason (its own per-bucket cost, not this one — see that file's own doc
+comment), preserving the exact same holdings-then-transaction-index order
+the chain produced. `home.screen.tsx`'s `withinBounds`/`dateRangeBounds`
+follow the same principle: `dateRangeBounds(dateFrom, dateTo)` resolves the
+local-day bounds ONCE per filter run, and the `.filter` callback itself
+(`withinBounds`) does only a plain numeric comparison — no Date
+construction per transaction row. This shape (loop-invariant Date math
+inside a hot per-row callback) is mechanized by test, not by a Semgrep
+rule: `holding-value-at.test.ts`'s parity test against
+`referenceHoldingValueAt`, plus its DETERMINISTIC work-count guard, are
+what would catch a regression back to per-bucket Date recomputation — a
+static AST rule looking for `startOfLocalDay`/`endOfLocalDay`/`new
+Date(...)` inside an array callback could not tell a genuinely hot
+per-bucket call site from a one-off, harmless one (e.g.
+`reconcile-bond-funding.ts`'s own candidate-building pass, built once per
+net-worth-series call, not once per bucket), so it flagged both alike and
+was removed.
+
+**Speed guards count real work, never wall-clock time.** Both
+`holding-value-at.test.ts` (`createHoldingValuer` vs `referenceHoldingValueAt`)
+and `internal-transfers.test.ts` (`internalTransferTransactionIds` vs
+`referenceInternalTransferTransactionIds`) used to assert a RELATIVE
+`performance.now()` ratio ("the optimized side runs at least 20x faster
+than the reference over the same input") instead of a fixed millisecond
+budget, reasoning that a wall-clock SLA is only ever as tight as the
+slowest machine it tolerates. That reasoning was correct about an
+ABSOLUTE budget, but the relative-ratio version is still a wall-clock
+measurement, and wall-clock measurements are flaky under Jest for a
+second reason: Stryker's coverage instrumentation and general machine
+load slow the two timed sides of one comparison by DIFFERENT amounts (the
+instrumented/hot side is not slowed proportionally to the reference
+side), so the ratio itself drifts — this broke the internal-transfers
+guard's `20x` threshold under a Stryker dry run even though nothing about
+the algorithm had regressed. Both guards were rewritten to count real work
+through an optional injected counter instead of timing anything: each
+function takes an optional counter argument (`ValuerWorkCounter` /
+`CandidateVisitCounter`), incremented once per unit of real work (a row
+touched in the valuer's setup pass or a per-bucket binary-search step; a
+credit candidate actually visited in the transfer matcher) — the counter
+shapes differ per guard (`{ rowVisits }` for holding-value-at, `{
+candidateVisits }` for internal-transfers), not a generic `{ count: 0 }`;
+omitted, the parameter costs nothing measurable, so production call sites
+are untouched. Each guard then asserts two things on the COUNT, never on
+elapsed time: (1) near-linear growth — doubling the row count keeps the
+work count under 3x, checked at two doubling steps; (2) the count stays
+far below what the quadratic reference implementation reports the same
+way (under 5% of it, at thousands of rows). Which assertion actually
+catches which regression is NOT interchangeable between the two guards:
+for internal-transfers, the GROWTH check is the one that catches a
+scan-from-index-0 regression (the ratio check alone gives ~1.3% there,
+which passes); for holding-value-at, the RATIO check is the one that
+catches a per-bucket full rescan (the growth check cannot, because
+holding-value-at's bucket count is held FIXED while only the transaction
+count scales, so a per-bucket-times-N regression still looks linear in
+N). Any NEW speed guard in this codebase must follow the same shape:
+count real work through an injected counter or a pure helper that returns
+a work count, never
+`performance.now()`/`Date.now()` deltas.
+
+#### The "no custom range = derive the default from now" pattern
+
+Both Statistics and Home hold their active date range as `customRange`
+(`{ from: Date | null; to: Date | null } | null` — `null` means "show the
+default range"), never as `dateFrom`/`dateTo` state seeded once at mount.
+The DEFAULT range is derived fresh from `now` on every render
+(`defaultDateRange(now)`), not stored — `dateFrom`/`dateTo` are plain
+`const`s computed each render from `customRange ?? defaultDateRange(now)`,
+never `useState`. A range seeded once (the previous shape) froze at
+whatever `now` was at mount, so a tab left mounted overnight (both tabs
+stay mounted — kiko-architecture) silently stopped including "today" once
+a calendar day passed. `applyDateRange`/`clearDateRange` only ever write
+`customRange` (`clearDateRange` resets it to `null`, back to the default —
+never to a frozen "30 days as of Clear" snapshot). Statistics' own `now`
+already refreshes on focus (`useFocusRefreshedNow`); Home's `now` is a
+plain `Date.now()` read fresh every render. Deriving `dateFrom`/`dateTo`
+this way still needs care downstream: a memo that depends on them should
+key on their NUMERIC bounds (`dateRangeBounds(...)`'s own `{from, to}`
+output), not the `Date` objects themselves — two `Date` instances never
+compare equal by reference even when they hold the same instant, so keying
+a memo on the raw objects made it (and everything downstream of it)
+recompute on every render, not just a day change (see Home's own
+`filteredTransactions` memo).
 
 ## Price series and priced holdings
 
@@ -1455,14 +1607,23 @@ together.
   anchor (`ledgerAnchorAt`) is the latest correction on or before the
   instant (`loanAnchorAt`); with none, an `annuity`/`differentiated`
   loan anchors on the SCHEDULE outstanding (`loanOutstandingMinorAt`)
-  at the end of the local day before its FIRST linked payment, because
-  auto-links only reach back as far as the bank sync window and a
-  loan's earlier payments are often never linked. So the history never
-  steps up at the first link: it follows the schedule up to that day,
-  then drops by each linked payment's principal part. A `none` loan
-  (no schedule), or a first link on or before the start day, keeps the
-  principal at the start day. A payment on or before a correction's day
-  is already inside that correction. The ledger (the `LoanPlan` plus
+  at the EARLIER of (a) the end of the local day before its FIRST
+  linked payment and (b) the end of the local day before the due date
+  of the installment that payment maps to (`installmentIndexOf`'s own
+  nearest-due-date mapping, `loan-schedule.ts` — the same mapping
+  `loanInterestPerPaymentMinor` attributes that payment's interest by),
+  because auto-links only reach back as far as the bank sync window and
+  a loan's earlier payments are often never linked. Reading from before
+  the DUE date rather than before the payment itself is what keeps a
+  payment landing a few days late (a real-world norm, not an edge case)
+  from double-subtracting its own installment's principal — once by the
+  schedule anchor, once by the link — which had permanently understated
+  every loan with a late first link by one installment's principal. So
+  the history never steps up at the first link: it follows the schedule
+  up to that day, then drops by each linked payment's principal part. A
+  `none` loan (no schedule), or a first link on or before the start day,
+  keeps the principal at the start day. A payment on or before a
+  correction's day is already inside that correction. The ledger (the `LoanPlan` plus
   every paying-down payment with its day key and interest part) is built
   once per `PriceBook` and cached in a `WeakMap` keyed by the book, then
   by loan id + currency + the schedule terms (the loan form reads one
@@ -1478,6 +1639,18 @@ before the first link is the schedule's, so a loan paid off faster or
 slower than its schedule before the first link reads off by that
 difference until the user records a correction ("Update
 outstanding").
+
+Known limit: a MANUAL loan link (not the automatic ±7-day matcher) more
+than half an installment period late still maps to its nearest
+installment by due date (`installmentIndexOf`'s nearest-due-date
+mapping), the same mapping the anchor logic above reads from. When the
+link is that late, "nearest by due date" lands on a LATER installment
+than the one this payment actually paid down, so the anchor logic's
+"before the due date" guard no longer lines up with the payment's real
+target, and the principal for the installment in between is subtracted
+twice. Automatic links are not affected: the matcher's own ±7-day
+window is always well inside half a period, so it never picks the
+wrong installment in the first place.
 
 `holding-descriptor/loan/loan.descriptor.ts`'s valuation branch (`gross = net = -outstanding`,
 `principalOrCost = -principal`, interest/tax always 0 — a loan never
@@ -1658,7 +1831,12 @@ conflict path both the Monobank sync and statement import share) never
 refreshes any of the three loan-link columns on a re-sync — its
 `onConflictDoUpdate` `set` names only the bank-owned columns, the same
 exclusion `category`/`comment` already rely on (see that function's own
-existing doc comment). A settled-amount re-fetch of an already-linked payment
+existing doc comment). Its `setWhere` is derived from that SAME `set`
+column list (`BANK_OWNED_TRANSACTION_COLUMNS`), so the UPDATE — and the
+`transactions` reactive-query fire it would otherwise trigger — is skipped
+entirely when a re-fetched row is unchanged; the loan-link columns are
+excluded from that comparison too, since they are never in `set` either.
+A settled-amount re-fetch of an already-linked payment
 therefore keeps its link untouched. Its underlying insert
 (`insertDedupRowsDatabaseTransaction`) is chunked through `chunkForTable` (below) — a whole
 statement-import file or Monobank sync above a few thousand rows failed

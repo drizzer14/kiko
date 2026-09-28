@@ -22,6 +22,7 @@ import {
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -1100,6 +1101,36 @@ describe('HoldingDetailScreen', () => {
     // A null/unresolvable category falls back to the shared neutral display
     // (Uncategorized / creditcard), matching Home's neutral fallback.
     expect(getByLabelText('Uncategorized').props.name).toBe('creditcard');
+  });
+
+  // 'dining' is not in the categories table (a deleted seeded category sync
+  // keeps re-writing) — `resolveCategoryDisplay` already folds it onto the
+  // DEFAULT category's title/icon, but the icon's COLOR used to be resolved
+  // from the RAW unfolded slug instead of that same folded key, so an
+  // uncolored default category showed a DIFFERENT hash color than every
+  // other row correctly folded onto it.
+  it('resolves the ledger-row icon color through the same folded key as its title/icon, not the raw unresolvable slug', async () => {
+    seed(
+      cardHolding,
+      [
+        {
+          id: 'txn-ghost',
+          amountMinorUnits: -5000,
+          time: 1,
+          description: 'Dinner',
+          category: 'dining',
+          source: 'manual',
+        },
+      ],
+      [{ key: 'other', title: 'Other', icon: 'square.grid.2x2', color: null }],
+    );
+
+    const { getByLabelText } = await renderScreen();
+
+    const icon = getByLabelText('Other');
+
+    expect(icon.props.name).toBe('square.grid.2x2');
+    expect(icon.props.tintColor).toBe(categoryColor('other'));
   });
 
   it('opens the transaction form for the tapped row, keyed by its id', async () => {

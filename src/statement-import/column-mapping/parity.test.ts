@@ -249,6 +249,30 @@ describe('column-mapping parity (Sensebank CSV)', () => {
     ]);
     expect(statement.transactions.map(pick)).toEqual(dedicated.transactions.map(pick));
   });
+
+  // Sensebank's own amounts are comma-decimal ("1 250,00"); a user who never
+  // touches the decimal-separator chip stays on the screen's dot default
+  // (`column-mapping.screen.tsx`). Every genuine amount cell must then fail
+  // as a row error rather than land 100x too large in the ledger.
+  it('with the dot default left untouched, every mapped amount is either a row error or the correct value — never 100x', () => {
+    const { rows } = readTableRows(sensebankFixtureInput, ';');
+    const dedicated = sensebankCsvFormat.parse(sensebankFixtureInput);
+    const { statement, rowErrors } = applyColumnMapping(rows, {
+      ...mapping,
+      decimalSeparator: '.',
+    });
+
+    // Every one of Sensebank's own 6 rows carries a 2-decimal amount, which
+    // never lands in a real thousands-group position under the wrong dot
+    // default — so all 6 become 'amount' row errors (on top of the 2 date
+    // errors every mapping of this fixture already has), and NONE come
+    // through as a mapped transaction at all, let alone a 100x-too-large one.
+    expect(rowErrors).toHaveLength(dedicated.transactions.length + 2);
+    expect(
+      rowErrors.every((rowError) => rowError.reason === 'date' || rowError.reason === 'amount'),
+    ).toBe(true);
+    expect(statement.transactions).toEqual([]);
+  });
 });
 
 describe('column-mapping parity (PrivatBank XLSX)', () => {

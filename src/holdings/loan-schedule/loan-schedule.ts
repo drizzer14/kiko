@@ -216,8 +216,10 @@ type LinkedPayment = { time: number; amountMinorUnits: number };
 // The installment a payment pays: the one whose due date is NEAREST to the
 // payment's local day (an early or late payment still matches its intended
 // installment), or undefined when the loan has no schedule or the payment is
-// more than one period outside it (see `loanInterestPerPaymentMinor`).
-const installmentIndexOf = (
+// more than one period outside it (see `loanInterestPerPaymentMinor`). Also
+// read by `src/holdings/loan-ledger/`'s anchor so a late first link anchors
+// on the SAME installment its interest is attributed to.
+export const installmentIndexOf = (
   meta: LoanMeta,
   plan: LoanPlan,
   paymentTime: number,

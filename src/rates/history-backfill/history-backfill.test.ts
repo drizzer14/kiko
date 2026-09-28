@@ -805,6 +805,7 @@ describe('composeHistoryRows -> buildNetWorthSeries — a history day with a mis
       type: 'crypto_asset',
       balanceMinorUnits: 100_000_000, // 1 BTC
       metadata: null,
+      closedAt: null,
     };
 
     const series = buildNetWorthSeries({

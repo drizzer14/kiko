@@ -37,6 +37,7 @@ const holding = (over: Partial<HoldingRow> & Pick<HoldingRow, 'id'>): SeriesHold
   type: 'cash',
   balanceMinorUnits: 0,
   metadata: null,
+  closedAt: null,
   ...over,
 });
 
@@ -821,8 +822,8 @@ describe('buildNetWorthSeries', () => {
   });
 
   // Threading a real `PriceBook` through overrides the cost-basis
-  // fallback with the priced value — proving `book` reaches `holdingValueAt`
-  // through the whole builder, not just its own default.
+  // fallback with the priced value — proving `book` reaches
+  // `createHoldingValuer` through the whole builder, not just its own default.
   it('values a property at its priced value when a PriceBook is supplied, not its cost basis', () => {
     const propertyHolding = holding({
       id: 'prop',
@@ -1195,5 +1196,147 @@ describe('buildNetWorthSeries', () => {
 
     expect(series.points).toHaveLength(260);
     expect(performance.now() - startedAt).toBeLessThan(1_000);
+  });
+
+  describe('a closed holding', () => {
+    const openDay = D0;
+    const midDay = D1;
+    const closeDay = D2;
+    // A real `closedAt` is whatever instant the user tapped Close — never
+    // exactly local midnight — so every test below closes the holding
+    // MID-DAY, the same way `holdings.repo.ts`'s `closeMany` stamps it
+    // (`unixepoch() * 1000`).
+    const closedAt = closeDay + 12 * HOUR;
+    const afterCloseDay = D2 + DAY;
+    const range = { from: openDay, to: afterCloseDay };
+
+    it('keeps its real reconstructed value through its own close day, then zeros afterward', () => {
+      const jar = holding({ id: 'jar', currency: 'UAH', balanceMinorUnits: 1_000_00, closedAt });
+      // No transaction after openDay: the balance stays 1,000 for the whole
+      // range unless the closedAt gate zeroes it, so afterCloseDay reading 0
+      // can only come from that gate, never from a ledger row.
+      const ledger = new Map([['jar', [{ time: openDay, amountMinorUnits: 1_000_00 }]]]);
+
+      const series = buildNetWorthSeries({
+        holdings: [jar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+
+      expect(amountAt(series, openDay)).toBe(1_000);
+      expect(amountAt(series, midDay)).toBe(1_000);
+      // The close day's own bucket sits at LOCAL MIDNIGHT, strictly BEFORE
+      // the mid-day closedAt instant, so it still reads the real value.
+      expect(amountAt(series, closeDay)).toBe(1_000);
+      expect(amountAt(series, afterCloseDay)).toBe(0);
+    });
+
+    it('does not change any past point when a zero-balance holding is closed (parity with an equivalent still-open holding)', () => {
+      const ledger = new Map([
+        [
+          'jar',
+          [
+            { time: openDay, amountMinorUnits: 1_000_00 },
+            { time: midDay, amountMinorUnits: -1_000_00 }, // drained BEFORE the close
+          ],
+        ],
+      ]);
+      const openJar = holding({ id: 'jar', currency: 'UAH', balanceMinorUnits: 0 });
+      const closedJar = holding({
+        id: 'jar',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        closedAt,
+      });
+
+      const openSeries = buildNetWorthSeries({
+        holdings: [openJar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+      const closedSeries = buildNetWorthSeries({
+        holdings: [closedJar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+
+      for (const point of openSeries.points) {
+        if (point.t < closedAt) {
+          expect(amountAt(closedSeries, point.t)).toBe(point.amount);
+        }
+      }
+    });
+
+    it("zeros every bucket after the close day even when the holding's reconstructed balance would otherwise stay nonzero", () => {
+      const jar = holding({
+        id: 'jar',
+        currency: 'UAH',
+        balanceMinorUnits: 500_00,
+        closedAt,
+      });
+      // No transactions after openDay: the UN-zeroed reconstructed balance
+      // would read 500 forever, proving the zero comes from `closedAt`, not
+      // a ledger row.
+      const ledger = new Map([['jar', [{ time: openDay, amountMinorUnits: 500_00 }]]]);
+
+      const series = buildNetWorthSeries({
+        holdings: [jar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+
+      expect(amountAt(series, closeDay)).toBe(500);
+      expect(amountAt(series, afterCloseDay)).toBe(0);
+    });
+
+    // The screen's own "now" snapshots (the headline, the by-type bar, the
+    // account pie) read ONLY open holdings, so the moment a holding closes it
+    // is excluded from them entirely, however early or late that happens
+    // today. The line's own rightmost point (the "now" bucket, at the exact
+    // range end) must therefore also zero a holding closed EARLIER TODAY —
+    // comparing raw instants (`t >= closedAt`), not local days, is what makes
+    // that true: a local-day compare treats "today" as a single unit and
+    // would have kept counting the holding right up through today's bucket.
+    it('zeroes a holding closed earlier today at the rightmost ("now") point, matching the open-holdings-only headline', () => {
+      const closedToday = closeDay + 6 * HOUR;
+      const now = closeDay + 18 * HOUR; // later the SAME day
+      const closedJar = holding({
+        id: 'jar',
+        currency: 'UAH',
+        balanceMinorUnits: 500_00,
+        closedAt: closedToday,
+      });
+      const stillOpen = holding({ id: 'card', currency: 'UAH', balanceMinorUnits: 200_00 });
+      const ledger = new Map([['jar', [{ time: openDay, amountMinorUnits: 500_00 }]]]);
+
+      const series = buildNetWorthSeries({
+        holdings: [closedJar, stillOpen],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range: { from: openDay, to: now },
+        today: now,
+      });
+      // The equivalent open-holdings-only build a headline/bar/pie would use.
+      const headlineOnlySeries = buildNetWorthSeries({
+        holdings: [stillOpen],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range: { from: openDay, to: now },
+        today: now,
+      });
+
+      expect(amountAt(series, now)).toBe(amountAt(headlineOnlySeries, now));
+      expect(amountAt(series, now)).toBe(200);
+    });
   });
 });

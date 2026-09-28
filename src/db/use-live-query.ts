@@ -13,6 +13,17 @@ const toError = (caught: unknown): Error =>
 
 export const LIVE_QUERY_CACHE_LIMIT = 100;
 
+// `reactiveExecute` is registered ONLY as a change trigger (see the doc
+// comment below) — its own result rows are never read, since `runQuery`
+// re-fetches the mapped, typed rows through `query` itself on every fire.
+// Registering the REAL sql/params here would still make op-sqlite execute
+// the whole query on its worker and build a native HostObject per row on
+// every write, purely to hand the callback a result it then discards; a
+// constant, argument-less trigger produces the same fire-on-write behavior
+// for a fraction of the cost.
+const REACTIVE_TRIGGER_QUERY = 'SELECT 1';
+const REACTIVE_TRIGGER_ARGUMENTS: unknown[] = [];
+
 // The last settled rows per full query key (sql + params), shared by every
 // hook instance. A native-stack pop unmounts a screen, so reopening it is a
 // fresh mount: a hit here lets a DISPLAY screen's mount render its data on the
@@ -207,8 +218,8 @@ export function useLiveQuery<T>(
     const subscription = first(
       eitherSync<unknown, () => void>(() =>
         rawDatabase.reactiveExecute({
-          query: sql,
-          arguments: params,
+          query: REACTIVE_TRIGGER_QUERY,
+          arguments: REACTIVE_TRIGGER_ARGUMENTS,
           fireOn,
           callback: () => {
             // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runQuery folds a rejected read into a Left and never rejects

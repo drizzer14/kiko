@@ -17,14 +17,9 @@
 // new `accounts`-referencing column is caught by that generic assertion even
 // though `removeAccountLikeTheRepoDoes` below — a hand-mirror of
 // `accountsRepo.remove`'s own delete statements — was not updated for it.
-import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
-const MIGRATIONS_ROOT = join(__dirname, '..', '..', 'drizzle', 'migrations');
-const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
-
-type MigrationJournalEntry = { index: number; tag: string };
 type ForeignKeyListRow = { table: string; from: string };
 type TableInfoRow = {
   name: string;
@@ -32,24 +27,6 @@ type TableInfoRow = {
   notnull: number;
   dflt_value: string | null;
   pk: number;
-};
-
-const applyAllMigrations = (database: DatabaseSync): void => {
-  const journal = JSON.parse(
-    readFileSync(join(MIGRATIONS_ROOT, 'meta', '_journal.json'), 'utf8'),
-  ) as { entries: MigrationJournalEntry[] };
-
-  for (const entry of journal.entries) {
-    const sql = readFileSync(join(MIGRATIONS_ROOT, `${entry.tag}.sql`), 'utf8');
-    const statements = sql
-      .split(STATEMENT_BREAKPOINT)
-      .map((statement) => statement.trim())
-      .filter((statement) => statement !== '');
-
-    for (const statement of statements) {
-      database.exec(statement);
-    }
-  }
 };
 
 /** Every (table, column) pair whose column is a live foreign key into `accounts`. */

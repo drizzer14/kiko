@@ -921,3 +921,38 @@ rules:
         - "src/transactions/row-description/**"
         - "src/transactions/default-description/**"
     pattern: defaultTransactionDescription(...)
+  # category-trend.ts's own `groupKey` used to fold with a bare
+  # `category?.toLowerCase() || defaultKey` — it caught a null/empty category
+  # but not an UNRESOLVABLE one (a slug no longer in the categories table),
+  # so a deleted seeded category rendered as two same-titled,
+  # differently-keyed lines instead of folding into one, unlike the donut
+  # (`resolveCategoryKey`). The SAME shape recurred at
+  # `holding-detail.screen.tsx`'s ledger-row icon color, outside
+  # `src/statistics/**` — the rule now covers all of `src/**`. `paths.include`
+  # still draws nothing against a flat fixture (kiko-linter's "Semgrep
+  # facts"), so this rule's fixture pair stays NESTED at
+  # rules/fixtures/kiko-no-bare-lowercase-category-fold/src/statistics/ (that
+  # path is still a valid `src/**` match).
+  - id: kiko-no-bare-lowercase-category-fold
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A bare `<category>?.toLowerCase() || <default>` category fold only
+      catches a null/empty category, not an UNRESOLVABLE one (a slug no
+      longer in the categories table) — the donut and every other consumer
+      fold that case too, via `resolveCategoryKey`. Use
+      `resolveCategoryKey(category, categoryDisplay, defaultKey)` from
+      `@kiko/categories/category-display` instead.
+    metadata:
+      fix: "Use resolveCategoryKey(category, categoryDisplay, defaultKey) from @kiko/categories/category-display instead of a bare `?.toLowerCase() || default` fold."
+      skill: "kiko-domain › Category color resolution"
+    paths:
+      include:
+        - "src/**"
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+    patterns:
+      - pattern-either:
+          - pattern: $CATEGORY?.toLowerCase() || $DEFAULT
+          - pattern: $CATEGORY.toLowerCase() || $DEFAULT

@@ -95,6 +95,20 @@ describe('useLiveQuery', () => {
     expect(result.current.data).toEqual([{ id: 'a' }]);
   });
 
+  it('registers a constant trigger query instead of the real sql/params', async () => {
+    const query = settledQuery(['some-id'], [{ id: 'a' }]);
+
+    await renderHook(() => useLiveQuery(query, ['accounts']));
+
+    expect(mockReactiveExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: 'SELECT 1',
+        arguments: [],
+        fireOn: [{ table: 'accounts' }],
+      }),
+    );
+  });
+
   it('re-runs the Drizzle query (ignoring reactiveExecute raw rows) on a reactive fire', async () => {
     const { result } = await renderHook(() => useLiveQuery(fakeQuery, ['accounts']));
     mockRows.current = [{ id: 'b' }];

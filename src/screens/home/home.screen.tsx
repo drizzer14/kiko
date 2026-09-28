@@ -4,6 +4,7 @@ import {
   resolveCategoryDisplay,
   resolveCategoryKey,
 } from '@kiko/categories/category-display';
+import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
@@ -61,17 +62,32 @@ type HomeScreenProps = CompositeScreenProps<
   NativeBottomTabScreenProps<TabParamList, 'HomeTab'>
 >;
 
-// Whether a transaction time falls within the (inclusive) date range. A null
-// bound is open-ended on that side. The `to` bound is pushed to the end of its
-// calendar day — the last millisecond before the NEXT local midnight
-// (DST-correct; see `endOfLocalDay`) — so a same-day transaction any time
-// that day still matches, including on a 25-hour fall-back day.
-const withinDateRange = (time: number, from: Date | null, to: Date | null): boolean => {
-  if (from !== null && time < startOfLocalDay(from.getTime())) {
+type DateRangeBounds = { from: number | undefined; to: number | undefined };
+
+/**
+ * The (inclusive) date-range bounds as raw instants, resolved ONCE per range
+ * rather than once per transaction: `startOfLocalDay`/`endOfLocalDay` are
+ * loop-invariant for every row the filter below checks against the SAME
+ * `from`/`to`, so recomputing them per row was pure waste on a long list. The
+ * `to` bound is pushed to the end of its calendar day — the last millisecond
+ * before the NEXT local midnight (DST-correct; see `endOfLocalDay`) — so a
+ * same-day transaction any time that day still matches, including on a
+ * 25-hour fall-back day. A `null` side stays open-ended.
+ */
+const dateRangeBounds = (from: Date | null, to: Date | null): DateRangeBounds => ({
+  from: foldMap(maybe(from), (date) => startOfLocalDay(date.getTime())),
+  to: foldMap(maybe(to), (date) => endOfLocalDay(date.getTime())),
+});
+
+// Whether `time` falls within already-resolved (inclusive) bounds — a plain
+// numeric comparison, so the filter that calls this per row never re-derives
+// a local-day boundary from `from`/`to` for every transaction.
+const withinBounds = (time: number, bounds: DateRangeBounds): boolean => {
+  if (bounds.from !== undefined && time < bounds.from) {
     return false;
   }
 
-  if (to !== null && time > endOfLocalDay(to.getTime())) {
+  if (bounds.to !== undefined && time > bounds.to) {
     return false;
   }
 
@@ -195,23 +211,28 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // second, separately-timed `Date.now()` read.
   const now = Date.now();
 
-  // The date-range bounds; a null bound is ignored so the range is open-ended
-  // on that side. Both default to the last 30 days on mount — a user pick can
-  // still set either to null (open-ended) via the date-range field.
-  const [dateFrom, setDateFrom] = useState<Date | null>(() => defaultDateRange(now).from);
-  const [dateTo, setDateTo] = useState<Date | null>(() => defaultDateRange(now).to);
+  // `customRange` holds an explicit user pick; `null` means "show the default
+  // (last-30-days) range". The default is derived FRESH from `now` on every
+  // render instead of being frozen once in a `useState` initializer — this
+  // tab stays mounted after it is left, so a range seeded only at mount (or
+  // at the last Clear) silently stopped including "today" once a calendar day
+  // had passed. A user pick still stays exactly as given, even one side left
+  // null (open-ended) via the date-range field.
+  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null } | null>(
+    null,
+  );
+  const defaultRange = defaultDateRange(now);
+  const dateFrom = customRange !== null ? customRange.from : defaultRange.from;
+  const dateTo = customRange !== null ? customRange.to : defaultRange.to;
 
   const clearDateRange = (): void => {
-    const range = defaultDateRange();
-    setDateFrom(range.from);
-    setDateTo(range.to);
+    setCustomRange(null);
   };
 
   // The date-range modal commits both bounds at once on Apply; either may be
   // null when that side of the range is left open-ended.
   const applyDateRange = (from: Date | null, to: Date | null): void => {
-    setDateFrom(from);
-    setDateTo(to);
+    setCustomRange({ from, to });
   };
 
   // The `FILTER_ALL` chip clears the dimension; any other value toggles in/out.
@@ -373,18 +394,25 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     categoryKeyForRow,
     i18n.language,
   ]);
-  const filteredTransactions = useMemo(
-    () =>
-      transactions.filter((row) => {
-        const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
-        const matchesCategory =
-          selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
-        const matchesDate = withinDateRange(row.time, dateFrom, dateTo);
+  // Computed every render (cheap — two Date constructions, not the filter
+  // below), but its VALUES are what `filteredTransactions` keys its memo on:
+  // `bounds.from`/`bounds.to` are day-aligned numbers (`startOfLocalDay`/
+  // `endOfLocalDay`), so they only change once per calendar day even on the
+  // DEFAULT range, where `dateFrom`/`dateTo` are fresh `Date` objects on
+  // every render (see `defaultDateRange`) — keying the memo on those raw
+  // `Date` objects would re-run the filter (and the section grouping, and
+  // the SectionList it feeds) on every single render instead of once per day.
+  const { from: boundsFrom, to: boundsTo } = dateRangeBounds(dateFrom, dateTo);
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((row) => {
+      const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
+      const matchesCategory =
+        selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
+      const matchesDate = withinBounds(row.time, { from: boundsFrom, to: boundsTo });
 
-        return matchesAccount && matchesCategory && matchesDate;
-      }),
-    [transactions, selectedAccounts, selectedCategories, dateFrom, dateTo, categoryKeyForRow],
-  );
+      return matchesAccount && matchesCategory && matchesDate;
+    });
+  }, [transactions, selectedAccounts, selectedCategories, boundsFrom, boundsTo, categoryKeyForRow]);
 
   // Grouping/sorting happens after filtering, over the query's newest-first
   // order (transactionsRepo orders by time desc), so sections come out

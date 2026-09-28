@@ -154,9 +154,10 @@ and immediately if a sync starts failing with a TLS error.
   (`docs/superpowers/specs/2026-09-04-security-and-app-lock-design.md:198-203`)
   was built and then replaced, because a re-lock on every foreground made the
   app unusable for the quick balance checks it exists for. The app-switcher
-  redaction overlay (`ios/Kiko/AppDelegate.swift:55-86`) still protects the
-  thumbnail — it protects the snapshot, not the resumed app. Revisit only with
-  a deliberate decision to resurrect the grace period.
+  redaction overlay (`ios/Kiko/SceneDelegate.swift`, `showPrivacyOverlay`/
+  `hidePrivacyOverlay`) still protects the thumbnail — it protects the
+  snapshot, not the resumed app. Revisit only with a deliberate decision to
+  resurrect the grace period.
 - **`settings.lock_grace_seconds` is a legacy column with zero readers.** It
   survives from the abandoned grace-period design (migration
   `drizzle/migrations/0011_add_lock_settings.sql`), has no setter in
@@ -181,6 +182,29 @@ and immediately if a sync starts failing with a TLS error.
   Esplora instance — both larger changes than this warrants today. The address
   is format-validated before use (`bitcoin-address.ts:7-11`) and URL-encoded at
   the call site, so it cannot be used to inject a path.
+
+## Data export/import
+
+`src/data-transfer/` (`export-data.ts`, `import-data.ts`, `crypto/envelope.ts`,
+`secrets/`, `snapshot/`) builds and reads the `.kiko` export file. Every
+export is an AES-256-GCM envelope: a fresh random key and a fresh random
+12-byte nonce are generated per export (`crypto/generate-key.ts`,
+`crypto/envelope.ts`), and the key is returned to the caller for the user to
+save separately — it is never written into the file itself. Credentials
+(Monobank tokens, Binance API key/secret) are included only when the user
+opts in via `includeSecrets` (`secrets/read-secrets.ts`); the database
+encryption key is never exported.
+
+Open items, deferred (see `FINDINGS.md`):
+
+- **SEC-2** — the credential-inclusive export has no re-authentication step;
+  anyone holding an unlocked, still-running app can export every stored
+  credential.
+- **SEC-5** — the export key is copied to the general system pasteboard, with
+  no expiry and no local-only restriction.
+- **SEC-3** — on import, secrets are validated only after the database has
+  already been replaced.
+- **SEC-4** — import/restore can leave orphaned Keychain items behind.
 
 ## Next steps
 

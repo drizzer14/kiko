@@ -139,7 +139,22 @@ HH:MM:SS'` string (`table-rows.ts`'s `formatUtcDateTime`) before
 parsing, so a mapping pointed at an Excel date column behaves exactly
 like one pointed at a text date column. An XLSX number cell is used
 as-is (no reformatting) — only a `Date` cell gets this wall-clock
-conversion.
+conversion. Every bank-export date/time parser in this project —
+column mapping's own presets, `parseDateTimeSeconds`, and each
+dedicated format with its own date shape (Sensebank's `DD.MM.YY
+HH:MM`) — additionally ROUND-TRIPS every parsed component back through
+the built instant's own UTC getters via the ONE shared
+`utcMillisecondsIfRoundTrips` (`src/statement-import/parse-date-time/`, the
+same idea `parseLocalDate` already applies to a local-midnight day) —
+`Date.UTC` silently NORMALIZES an out-of-range day/month/hour/minute
+into a different, wrong instant instead of rejecting it (`31.02.2026`
+rolling into 3 March, `25/01/2026` read MM/DD-first rolling into
+2028), so a mismatch there is treated exactly like a shape mismatch:
+`undefined` (a recoverable row error) for column mapping, a thrown
+`StatementParseError` for a dedicated format.
+The preset set (`dateFormatIds`) includes both `MM/DD/YYYY` and
+`DD/MM/YYYY` — read that file directly for the current member list
+rather than trusting a count restated here.
 
 The mapped `ParsedStatement` reaches the DB through the SAME
 `importParsedStatement` (`src/statement-import/import-statement/`)
@@ -162,7 +177,15 @@ mapped, `resolveMappedClosingBalance` derives the parsed statement's
 `closingBalance` from it, using the SAME "row with the newest parsed
 time" rule Monobank CSV's own `resolveClosingBalance` uses, reading the cell with the mapping's own
 `decimalSeparator` (`parseAmountCell`, same as every other amount cell
-this mapping reads). A tie on the newest time is broken by FILE ORDER,
+this mapping reads). `parseAmountCell` (`amount.ts`) validates the
+OTHER separator's thousands-group shape, not just the groups after it —
+the LEADING group must also be 1-3 digits with no leading zero (a lone
+`'0'` is fine only when no group follows it) — so a cell whose decimal
+separator was actually misread as the grouping character (the wrong
+chip) parses to `NaN` instead of a value silently 100x too large or
+malformed; `applyColumnMapping` turns that into a recoverable per-row
+`'amount'` error, the same as any other unparseable cell. A tie on the
+newest time is broken by FILE ORDER,
 not "last one wins":
 `pickClosingBalanceRow` reads the resolved rows' own first-vs-last time
 to tell a newest-first file from an oldest-first one, then takes the

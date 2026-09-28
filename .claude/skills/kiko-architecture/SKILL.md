@@ -202,12 +202,18 @@ useLiveQuery(drizzleQuery, tables)
 
 It:
 
-1. Calls `drizzleQuery.toSQL()` to get `{ sql, params }`.
-2. Registers `db.reactiveExecute({ query, arguments, fireOn: tables,
-   callback })`.
-3. Maps the raw rows back to the typed result shape Drizzle would
-   have produced.
-4. Unsubscribes on unmount.
+1. Registers `db.reactiveExecute({ query: 'SELECT 1', arguments: [],
+   fireOn: tables, callback })` — a CONSTANT trigger, never the real
+   `drizzleQuery`/its params, on the same `fireOn` tables. op-sqlite
+   would otherwise execute the real query on its worker and build a
+   native HostObject per row on EVERY fire, purely to hand `callback`
+   a result it never reads (see step 2) — a constant trigger still
+   fires on the same writes for a fraction of the cost.
+2. Awaits `drizzleQuery` itself (a thenable, mapped to the typed
+   result shape Drizzle would have produced) once on mount and again
+   on every `callback` fire — this is the ONLY place the real rows
+   come from.
+3. Unsubscribes on unmount.
 
 `tables` is the list of table names the query depends on (matching
 `fireOn`) — get this list wrong and the query either never refreshes
@@ -662,6 +668,15 @@ The sync pipeline is deliberately functional, not OOP — see
      `addManyDedup`'s `onConflictDoUpdate` set for the exact
      refreshable columns, and `transactions.hold` in
      `src/db/schema.ts` for why a pending item is imported at all.
+     Its `setWhere` is DERIVED from that same `set` list
+     (`BANK_OWNED_TRANSACTION_COLUMNS`), never a second hand-typed
+     column list — see `transactions.repo.ts`'s own doc comment — so
+     the UPDATE is skipped entirely when a re-fetched row is
+     byte-identical to what is already stored, instead of firing the
+     `transactions` reactive-query hook for every subscriber on every
+     unchanged row. `holdingsRepo.setSyncedBalance` gets the same
+     treatment for its one column, via its own exported
+     `syncedBalanceUpdateWhere`.
    - The pipeline holds no JS-side "already imported" filter. One
      existed and was the bug: it dropped a re-fetched item before the
      database ever saw it, so a `hold: true` authorization's

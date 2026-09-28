@@ -1799,6 +1799,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     // original expense in the spending pie (nothing pairs it: the matched-pair
     // matcher requires one currency).
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
+      [{ accountId: 'acc-dst', metadata: null }], // the counterpart's own holding, read by the synced guard
+      [{ institution: null }], // the counterpart's own account, read by the synced guard
       [{ balanceMinorUnits: 2_000 }], // the new leg's balance read
       [{ source: 'manual' }], // the existing row, read INSIDE the transaction
     ]);
@@ -1822,6 +1824,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 
   it('never marks a SYNCED existing row (the bank owns it)', async () => {
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
+      [{ accountId: 'acc-dst', metadata: null }], // the counterpart's own holding, read by the synced guard
+      [{ institution: null }], // the counterpart's own account, read by the synced guard
       [{ balanceMinorUnits: 2_000 }],
       [{ source: 'monobank' }],
     ]);
@@ -1848,6 +1852,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     // read (the only select call this path makes) returns the term_deposit
     // row `appendDepositContributionDatabaseTransaction` expects.
     const { databaseTransaction, inserts } = makeExchangeDatabaseTransaction([
+      [{ accountId: 'acc-dep', metadata: null }], // the counterpart's own holding, read by the synced guard
+      [{ institution: null }], // the counterpart's own account, read by the synced guard
       [{ type: 'term_deposit', metadata: depositMeta }],
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1911,6 +1917,32 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         time: 1,
       }),
     ).rejects.toThrow();
+  });
+
+  // Defense in depth: the counterpart picker already excludes a synced
+  // holding, but a write reached directly (not through the picker)
+  // must refuse the same way — a sync already owns that holding's balance.
+  it('throws when the counterpart holding is synced, writing nothing', async () => {
+    const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
+      [{ accountId: 'sync-acc', metadata: { monobankId: 'mono-1' } }],
+      [{ institution: 'monobank' }],
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(
+      transactionsRepo.recordExchangeCounterpart({
+        direction: 'record-destination',
+        counterpartHoldingId: 'dst-1',
+        counterpartType: 'cash',
+        amountMinorUnits: 7_000,
+        existingTransactionId: 'existing-tx-1',
+        existingHoldingId: 'existing-1',
+        time: 123,
+      }),
+    ).rejects.toThrow();
+
+    expect(inserts).toHaveLength(0);
+    expect(updates).toHaveLength(0);
   });
 });
 
@@ -2016,6 +2048,10 @@ type ImportRowsTransactionOptions = {
   account?: Record<string, unknown>;
   syncBoundaryTime?: number | null;
   existing?: { source: string; externalId: string }[];
+  // The DB-side sum of EXISTING ledger rows (any source, already stored
+  // before this import) dated after the closing balance's own as-of — a
+  // re-import must not erase a later row the ledger already knows about.
+  existingPostClosingNetMinorUnits?: number;
 };
 
 const resolveImportRowsSelect = (
@@ -2033,6 +2069,10 @@ const resolveImportRowsSelect = (
 
   if (table === accounts) {
     return options.account ? [options.account] : [];
+  }
+
+  if (table === transactions && fields && 'net' in fields) {
+    return [{ net: options.existingPostClosingNetMinorUnits ?? 0 }];
   }
 
   if (table === transactions && fields && 'time' in fields) {
@@ -2392,6 +2432,87 @@ describe('transactionsRepo.importRows', () => {
       balanceSetAt: 1_000,
     });
   });
+
+  it('adds the net of EXISTING ledger rows dated after the closing balance’s own as-of, not just newly imported ones', async () => {
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
+      holding: { ...baseHolding, balanceMinorUnits: 0 },
+      account: unsyncedAccount,
+      syncBoundaryTime: null,
+      // An October manual row (-300.00) already sits in the ledger, after
+      // this September statement's own as-of.
+      existingPostClosingNetMinorUnits: -30_000,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await transactionsRepo.importRows({
+      holdingId: 'hold-1',
+      rows: [{ holdingId: 'hold-1', amountMinorUnits: -500, time: 1_000, source: 'import' }],
+      closingBalance: { minorUnits: 1_000_000, currency: 'UAH', asOfSeconds: 2 },
+    });
+
+    expect(captured.holdingSet).toEqual({
+      balanceMinorUnits: 970_000,
+      balanceSetAt: 2_000,
+    });
+  });
+
+  it('still adds the net of existing rows after as-of when balanceSetAt predates the statement', async () => {
+    const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
+      holding: { ...baseHolding, balanceMinorUnits: 500_00, balanceSetAt: 500 },
+      account: unsyncedAccount,
+      syncBoundaryTime: null,
+      existingPostClosingNetMinorUnits: -30_000,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await transactionsRepo.importRows({
+      holdingId: 'hold-1',
+      rows: [{ holdingId: 'hold-1', amountMinorUnits: -500, time: 1_000, source: 'import' }],
+      closingBalance: { minorUnits: 1_000_000, currency: 'UAH', asOfSeconds: 2 },
+    });
+
+    expect(captured.holdingSet).toEqual({
+      balanceMinorUnits: 970_000,
+      balanceSetAt: 2_000,
+    });
+  });
+
+  it.each([
+    { existingPostClosingNetMinorUnits: 0, newRowAmountMinorUnits: 0 },
+    { existingPostClosingNetMinorUnits: -30_000, newRowAmountMinorUnits: 0 },
+    { existingPostClosingNetMinorUnits: -30_000, newRowAmountMinorUnits: 5_000 },
+    { existingPostClosingNetMinorUnits: 12_000, newRowAmountMinorUnits: -7_000 },
+  ])(
+    'invariant: the written balance is the closing balance plus the sum of every row after as-of (existing $existingPostClosingNetMinorUnits, new $newRowAmountMinorUnits)',
+    async ({ existingPostClosingNetMinorUnits, newRowAmountMinorUnits }) => {
+      const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
+        holding: { ...baseHolding, balanceMinorUnits: 0 },
+        account: unsyncedAccount,
+        syncBoundaryTime: null,
+        existingPostClosingNetMinorUnits,
+      });
+      mockDatabaseTransaction = databaseTransaction;
+      const closingMinorUnits = 1_000_000;
+      const asOfSeconds = 2;
+
+      await transactionsRepo.importRows({
+        holdingId: 'hold-1',
+        rows: [
+          {
+            holdingId: 'hold-1',
+            amountMinorUnits: newRowAmountMinorUnits,
+            time: (asOfSeconds + 1) * 1_000,
+            source: 'import',
+          },
+        ],
+        closingBalance: { minorUnits: closingMinorUnits, currency: 'UAH', asOfSeconds },
+      });
+
+      expect(captured.holdingSet?.balanceMinorUnits).toBe(
+        closingMinorUnits + existingPostClosingNetMinorUnits + newRowAmountMinorUnits,
+      );
+    },
+  );
 
   // `holdingsRepo.create` stamps `holdings.balanceSetAt`
   // at create time for a non-zero typed opening balance, and

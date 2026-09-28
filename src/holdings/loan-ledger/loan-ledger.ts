@@ -1,10 +1,12 @@
 import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import { startOfLocalDay } from '@kiko/dates';
 import { dayKeyOf, type LoanLedgerPayment, type PriceBook } from '@kiko/prices/price-book';
 
 import {
   loanPlanOf,
   loanAnchorAt,
+  installmentIndexOf,
   loanOutstandingMinorAt,
   loanInterestPerPaymentMinor,
   type LoanPlan,
@@ -103,12 +105,13 @@ const paidOf = (entry: LedgerEntry): number => Math.abs(entry.payment.amountMino
 const principalOf = (entry: LedgerEntry): number => paidOf(entry) - entry.interestMinorUnits;
 
 // With no correction to count down from, a scheduled loan starts from what
-// its schedule says was outstanding on the day before its first linked
-// payment, not from the original principal: auto-links only reach back as far
-// as the bank sync window, so a loan's earlier payments are often never
-// linked and the principal would read far too high. A `none` loan has no
-// schedule to read, and a first payment on or before the start day leaves
-// nothing scheduled before it, so both keep the principal.
+// its schedule says was outstanding on the EARLIER of the day before its
+// first linked payment and the day before that payment's own mapped
+// installment's due date, not from the original principal: auto-links only
+// reach back as far as the bank sync window, so a loan's earlier payments are
+// often never linked and the principal would read far too high. A `none`
+// loan has no schedule to read, and a first payment on or before the start
+// day leaves nothing scheduled before it, so both keep the principal.
 const ledgerAnchorAt = (
   meta: LoanMeta,
   loan: LedgerLoan,
@@ -125,7 +128,21 @@ const ledgerAnchorAt = (
 
   const firstPaymentTime = Math.min(...counted.map((entry) => entry.payment.time));
   const endOfDayBeforeFirstPayment = startOfLocalDay(firstPaymentTime) - 1;
-  const dayKey = dayKeyOf(endOfDayBeforeFirstPayment);
+
+  // A payment days late still maps to its OWN installment's due date (the
+  // same nearest-due-date mapping its interest is attributed by), so the
+  // anchor must read the schedule from before THAT installment was due, not
+  // from before the payment itself landed — otherwise its principal is
+  // already subtracted once by the schedule and a second time by the link.
+  const firstInstallmentIndex = installmentIndexOf(meta, ledger.plan, firstPaymentTime);
+  const anchorInstant =
+    foldMap(maybe(firstInstallmentIndex), (index) =>
+      Math.min(
+        endOfDayBeforeFirstPayment,
+        startOfLocalDay(ledger.plan.installments[index].dueDate) - 1,
+      ),
+    ) ?? endOfDayBeforeFirstPayment;
+  const dayKey = dayKeyOf(anchorInstant);
 
   if (dayKey < anchor.dayKey) {
     return anchor;
@@ -133,13 +150,7 @@ const ledgerAnchorAt = (
 
   return {
     dayKey,
-    valueMinorUnits: loanOutstandingMinorAt(
-      meta,
-      loan.id,
-      book,
-      endOfDayBeforeFirstPayment,
-      ledger.plan,
-    ),
+    valueMinorUnits: loanOutstandingMinorAt(meta, loan.id, book, anchorInstant, ledger.plan),
     fromCorrection: false,
   };
 };
@@ -149,12 +160,13 @@ const ledgerAnchorAt = (
  * reads (card, detail, totals, statistics, net-worth history). With no
  * counted linked payment it is the schedule's `loanOutstandingMinorAt`,
  * unchanged. Otherwise it is the anchor (`ledgerAnchorAt`: the latest
- * correction on or before `instant`, else the schedule outstanding on the day
- * before the first linked payment, else the principal at the start day)
- * minus the principal part of each counted payment dated strictly after the
- * anchor's day — what was actually repaid, not what the schedule says was
- * due — clamped to never go below 0. 0 before the loan's start day, the same
- * as the schedule.
+ * correction on or before `instant`, else the schedule outstanding on the
+ * EARLIER of the day before the first linked payment and the day before that
+ * payment's own mapped installment's due date, else the principal at the
+ * start day) minus the principal part of each counted payment dated strictly
+ * after the anchor's day — what was actually repaid, not what the schedule
+ * says was due — clamped to never go below 0. 0 before the loan's start day,
+ * the same as the schedule.
  */
 export const loanLedgerOutstandingMinorAt = (
   meta: LoanMeta,
