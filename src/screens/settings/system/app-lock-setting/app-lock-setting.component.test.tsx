@@ -69,8 +69,8 @@ describe('AppLockSetting', () => {
     expect(await findByText('Biometric hardware is unavailable on this device.')).toBeTruthy();
   });
 
-  // An ON lock switch stays operable, so a user who denied Face ID permission
-  // can still reach the toggle to turn it off.
+  // An ON lock switch stays operable, so a device with no usable sensor at
+  // all can still reach the toggle to turn it off.
   it('never greys out an ON switch, even when the sensor reports unavailable', async () => {
     mockIsSensorAvailable.mockResolvedValue({ kind: 'unavailable' });
     const { findByRole } = await renderSetting({ lockEnabled: true });
@@ -97,7 +97,7 @@ describe('AppLockSetting', () => {
 
     expect(await findByRole('switch')).toBeEnabled();
     expect(
-      await findByText('Face ID is off for Kiko — your device passcode will be used.'),
+      await findByText("Face ID isn't available right now — your device passcode will be used."),
     ).toBeTruthy();
   });
 });

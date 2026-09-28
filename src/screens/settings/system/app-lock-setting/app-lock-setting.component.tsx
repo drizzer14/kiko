@@ -61,9 +61,10 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
   }, []);
 
   const hint = sensorHint(sensorStatus, t);
-  // An ON switch stays operable regardless of sensor status, so a denied-Face-ID
-  // device (`unavailable` while `lockEnabled`) can still reach the toggle to
-  // turn the lock off — see `canOfferLock`'s own doc comment for the OFF case.
+  // An ON switch stays operable regardless of sensor status, so a passcode
+  // removed while the app is running (`passcodeNotSet`) or a device with no
+  // usable sensor at all (`unavailable`) can still reach the toggle to turn
+  // the lock off — see `canOfferLock`'s own doc comment for the OFF case.
   const disabled = !lockEnabled && !canOfferLock(sensorStatus);
 
   return (

@@ -195,7 +195,7 @@ no prompt at all — iOS itself demands the OLD passcode before it lets
 the user remove one, so there is no owner authentication `confirmOwner`
 could run there, and refusing the toggle would just strand the user
 with no way to ever turn the lock off. This is the opposite of the data
-export's own `noPasscode` handling right above: turning the lock off
+export's own `noPasscode` handling below: turning the lock off
 treats it like a fresh authentication, while a credential export treats
 it as a refusal — the two call sites read the SAME `confirmOwner` result
 differently, on purpose, because only one of them has an iOS-side
@@ -204,17 +204,22 @@ passcode prompt standing in for the missing check.
 `confirmOwner` (`src/auth/confirm-owner/`) wraps `authenticate`
 (`src/auth/biometrics.ts`), which now classifies every iOS rejection
 correctly instead of folding it into a generic failure: a cancel/system-
-cancel/fallback tap resolves as `cancelled`, a biometry lockout as
-`lockout`, and a removed device passcode as `passcodeNotSet` — the real
-native module REJECTS these, it never resolves `{ success: false,
-errorCode }`, so the classification runs on the thrown `code` (or the
-resolved shape, for defense in depth). A secure device whose biometry is
-merely unusable (denied Face ID permission, a temporary lockout) reports
-`passcodeOnly` the same as an unenrolled device, so the Settings switch
-stays reachable through the passcode fallback instead of greying out —
-and an ON switch never greys out at all, regardless of sensor status, so
-a user who denied Face ID permission can still reach the toggle to turn
-the lock back off.
+cancel/fallback tap resolves as `cancelled`, and a biometry lockout as
+`lockout` — the real native module REJECTS these, it never resolves
+`{ success: false, errorCode }`, so the classification runs on the thrown
+`code` (or the resolved shape, for defense in depth). A rejection that
+would otherwise classify as a generic `failed` is disambiguated by a
+follow-up `isSensorAvailable()` query: if the passcode was just removed,
+that query now reports it, and `authenticate` resolves `passcodeNotSet`
+instead of the generic failure. A secure device whose biometry is merely
+unusable reports one of two distinct `passcodeOnly` reasons, each with
+its own Settings hint string: `notEnrolled` (biometry was never set up)
+or `biometryUnavailable` (denied Face ID permission, a temporary
+lockout). Either way the Settings switch stays reachable through the
+passcode fallback instead of greying out — and an ON switch never greys
+out at all, regardless of sensor status, so a passcode removed while the
+app is running, or a device with no usable sensor at all, can still
+reach the toggle to turn the lock back off.
 
 ## Data export/import
 
@@ -237,7 +242,7 @@ exports with no prompt at all, unchanged. A device with **no** device
 passcode has no owner authentication to run at all, and is refused outright
 (`auth.reauth.passcodeRequired`) rather than let through unauthenticated —
 this is the one call site where "no passcode" is a REFUSAL, not a pass. See
-"App lock re-authentication" below for the other call site, where the same
+"App lock re-authentication" above for the other call site, where the same
 "no passcode" result means the opposite.
 
 Open items, deferred (see `FINDINGS.md`):
