@@ -223,10 +223,6 @@ const nearestAtOrBefore = (timeline: HistoryRateEntry[], day: number): number | 
 
 const anchorKey = (base: Currency, quote: Currency) => `${base}:${quote}`;
 
-/** Every `X:UAH` anchor key's own `base`, split back out of `anchorKey`'s format. */
-const UAH_SUFFIX = ':UAH';
-const baseOfUahKey = (key: string): Currency => key.slice(0, -UAH_SUFFIX.length) as Currency;
-
 /**
  * Group anchor entries into ascending per-pair timelines so each target day can
  * carry the nearest prior rate forward.
@@ -250,24 +246,26 @@ const groupTimelines = (entries: HistoryRateEntry[]): Map<string, HistoryRateEnt
 
 /**
  * Build the UAH pivot for `day` from the anchor timelines: every fiat currency
- * with its OWN `X:UAH` anchor prices directly (any fiat NBU quotes, not a
- * hard-coded USD/EUR pair — the compose list is data-driven, read straight off
- * whichever `X:UAH` timelines are present), and every crypto through its own
- * `X:USD` timeline times the resolved `USD` price, so a crypto pair stays
- * consistent with fiat even when USD itself is not held.
+ * with its OWN `X:UAH` anchor prices directly — the compose list is
+ * data-driven, read straight off whichever `X:UAH` timelines are present —
+ * and every crypto through its own `X:USD` timeline times the resolved `USD`
+ * price, so a crypto pair stays consistent with fiat even when USD itself is
+ * not held.
  */
 const uahPriceAt = (timelines: Map<string, HistoryRateEntry[]>, day: number): UahPrice => {
   const price: UahPrice = { UAH: 1 };
 
-  for (const [key, timeline] of timelines) {
-    if (!key.endsWith(UAH_SUFFIX)) {
+  for (const timeline of timelines.values()) {
+    const anchor = timeline[0];
+
+    if (anchor === undefined || anchor.quote !== 'UAH') {
       continue;
     }
 
     const rate = nearestAtOrBefore(timeline, day);
 
     if (rate !== undefined) {
-      price[baseOfUahKey(key)] = rate;
+      price[anchor.base] = rate;
     }
   }
 
@@ -348,12 +346,6 @@ const runCryptoLeg = (
     ? loadCrypto(cryptoDays, cryptoCurrencies)
     : Promise.resolve(NO_CRYPTO_HISTORY);
 
-/** Every currently-held currency this run cares about: every fetched fiat currency plus every held crypto. */
-const heldCurrencies = (
-  fiatCurrencies: Currency[],
-  cryptoCurrencies: CryptoCurrency[],
-): Currency[] => [...fiatCurrencies, ...cryptoCurrencies];
-
 /**
  * The resume cursor for THIS run: the OLDEST last-backfilled day
  * among every currently-held currency, not one shared max across everything.
@@ -413,7 +405,9 @@ const resolveBackfillWindow = (
   knownEmpty: ReadonlySet<Currency>,
   callerLastBackfilledDay: number | null,
 ): { neverBackfilled: Currency[]; resumeFrom: number | null } => {
-  const held = heldCurrencies(fiatCurrencies, cryptoCurrencies);
+  // Every currently-held currency this run cares about: every fetched fiat
+  // currency plus every held crypto.
+  const held: Currency[] = [...fiatCurrencies, ...cryptoCurrencies];
   const neverBackfilled = held.filter(
     (currency) => lastBackfilledDayByCurrency[currency] === undefined && !knownEmpty.has(currency),
   );

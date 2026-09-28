@@ -757,12 +757,6 @@ describe('buildNetWorthSeries', () => {
     expect(series.startReference).toBe(100);
   });
 
-  // With no history rows yet (the backfill still running or offline), a
-  // mixed-currency user's foreign holding would otherwise just drop out of
-  // every past point while today's point (valued at the live rate table)
-  // keeps it — a misleading jump, not the loading/empty state the user saw
-  // before. Only a base-currency-only user (no holding ever needs a
-  // cross-rate) still gets points with no history rows.
   describe('the bundled fiat seed backs a currency with no history row', () => {
     const gbpSeedRate = FIAT_UAH_PRICE_SEED.GBP;
 
@@ -836,6 +830,12 @@ describe('buildNetWorthSeries', () => {
     });
   });
 
+  // With no history rows yet (the backfill still running or offline), a
+  // mixed-currency user's foreign holding would otherwise just drop out of
+  // every past point while today's point (valued at the live rate table)
+  // keeps it — a misleading jump, not the loading/empty state the user saw
+  // before. Only a base-currency-only user (no holding ever needs a
+  // cross-rate) still gets points with no history rows.
   it('returns an empty series for mixed holdings with no history rows, even though one holding shares the base currency', () => {
     const holdings = [
       holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 }), // $100.00, base
