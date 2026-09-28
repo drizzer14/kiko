@@ -188,25 +188,26 @@ project-level pointer to this section.
   launch.
 - **A data-only migration that reassigns rows between tables follows the
   SAME derive-then-mutate, restore-mirrored shape.** Migration
-  `0044_move_crypto_cash_holdings` moves a 1.0-era `cash` holding in a
-  crypto currency (`currency IN ('BTC', 'ETH', 'USDT')`, the frozen set a
-  1.0 build could create — pinned by its own test against
-  `cryptoCurrencyOptions`) onto a `crypto_asset` holding under a crypto
-  account, keeping the holding's own `id` so every transaction, exchange
-  leg, loan link, `price_points` row, and category override attached to
-  it stays attached. Crash-safe, additive-then-mutate order (no delete):
-  a TEMP table snapshots the affected holdings, a TEMP table captures the
-  reuse target BEFORE any account is created (so a just-created account
-  is never mistaken for a pre-existing one), an `INSERT OR IGNORE`
-  creates one `crypto-from-<source account id>` account per affected
-  source ONLY when no eligible account exists, then one `UPDATE` moves
-  the holdings. `run-migrations.ts`'s single transaction makes a crash
-  mid-run roll back cleanly; a second run finds nothing left to move.
-  `restore-snapshot.ts`'s `withCryptoCashHoldingsMoved` applies the
-  IDENTICAL rule to a `.kiko` restore, sharing the SAME deterministic
-  `crypto-from-` id, so restoring an already-migrated export is a no-op
-  for the account it would otherwise recreate. Next free migration index:
-  `0045`.
+  `0044_move_crypto_cash_holdings` (its own doc comment is the full
+  statement of the matching rule, including the archived-source
+  carve-out) moves a 1.0-era `cash` holding in a crypto currency onto a
+  `crypto_asset` holding under a crypto account, keeping the holding's own
+  `id` so every transaction, exchange leg, loan link, `price_points` row,
+  and category override attached to it stays attached. Crash-safe,
+  additive-then-mutate order (no delete): a TEMP table snapshots the
+  affected holdings, a TEMP table captures the reuse target BEFORE any
+  account is created (so a just-created account is never mistaken for a
+  pre-existing one), an `INSERT` creates one `crypto-from-<source account
+  id>` account per affected source needing its own, then one `UPDATE`
+  moves the holdings. `run-migrations.ts`'s single transaction makes a
+  crash mid-run roll back cleanly; a second run (or restoring an
+  already-migrated export) finds the affected set already empty — every
+  matching holding is already `crypto_asset` — so it is a true no-op, not
+  an effect of the `INSERT`'s own conflict handling. `restore-snapshot.ts`'s
+  `withCryptoCashHoldingsMoved` applies the IDENTICAL rule to a `.kiko`
+  restore, sharing the SAME deterministic `crypto-from-` id so the two
+  paths always agree on the same account for the same source. Next free
+  migration index: `0045`.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -782,7 +783,13 @@ The prior balance is read from the CRASH-SAFE marker
 `src/db/schema.ts`), **not** `holdings.balanceMinorUnits`. This is
 load-bearing and was a data-loss bug before: `upsertAllHoldings` overwrites
 `balanceMinorUnits` (the display balance) from client-info at the START
-of every run, BEFORE the per-card statement loop. A run that committed a
+of every run, BEFORE the per-card statement loop.
+
+KNOWN LIMIT: that same overwrite is client-info's balance field verbatim,
+with no credit-limit adjustment — a Monobank card that uses its credit
+limit shows this raw provider figure, not a spent/available distinction.
+
+A run that committed a
 card's new balance up front and was then interrupted (app background/kill)
 before importing that card's statements — and before the failed-set
 persist — left `balanceMinorUnits` == client-info, so a display-balance

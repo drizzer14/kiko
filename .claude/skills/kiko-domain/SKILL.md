@@ -134,13 +134,8 @@ implemented, and callers must skip it rather than assume every id resolves.
   `trendCategoryKeys` column (migration 0025 copies any saved keys across
   as a manual filter; the old column is pinned reader-less in
   `src/db/settings-columns.test.ts`). The Monobank token is never stored
-  here — see `kiko-architecture` for the Keychain rule.
-
-KNOWN LIMIT (Monobank sync): a Monobank card that uses its credit limit
-shows the raw balance — `upsertAllHoldings` writes client-info's balance
-field verbatim, with no credit-limit adjustment, so a credit card's
-displayed balance is its raw provider figure, not a spent/available
-distinction.
+  here — see `kiko-architecture` for the Keychain rule (its Monobank sync
+  section also carries the credit-limit known limit).
 
 A manual balance adjustment always writes a `manual` Transaction, so
 a holding's balance history stays derivable from its transactions.
@@ -478,18 +473,21 @@ cash-account form offer fiat only, and `holdingsRepo.create` and
 `accountsRepo.createCashAccount` throw. Statement import and the syncs
 never create a cash holding. An ALREADY-stored crypto cash holding (a
 1.0-era BTC/ETH/USDT `cash` holding) is migration `0044`'s job, not this
-rule's: `0044_move_crypto_cash_holdings.sql` moves it onto a
-`crypto_asset` holding under a crypto account — reusing the first
-unsynced, non-archived crypto account (`kind = 'crypto' AND institution
-IS NULL AND archived_at IS NULL`, ordered `sort_order, created_at, id`),
-or else creating one `crypto-from-<source account id>` account per
-affected source account — keeping the holding's own `id`, so every
-transaction, exchange leg, loan link, `price_points` row, and category
-override attached to it stays attached. `restore-snapshot.ts`'s
-`withCryptoCashHoldingsMoved` applies the IDENTICAL rule to a `.kiko`
-restore (replacing the outright refusal that path used to throw), sharing
-the SAME deterministic id so a restore of an already-migrated export is a
-no-op. See `kiko-architecture`'s migration bullets for the crash-safe order.
+rule's — `0044_move_crypto_cash_holdings.sql`'s doc comment is the full
+statement of the matching rule, including the archived-source carve-out.
+`restore-snapshot.ts`'s `withCryptoCashHoldingsMoved` applies the
+IDENTICAL rule to a `.kiko` restore, sharing the SAME deterministic id so
+both paths agree on the same account for the same source; a restore of an
+already-migrated export is a no-op because every matching holding is
+already `crypto_asset`. See `kiko-architecture`'s migration bullets for
+the crash-safe order.
+
+KNOWN LIMIT (migration 0044): the holding it moves is a MANUAL
+`crypto_asset`, so `cryptoAssetDescriptor`'s `exchange.createSource` and
+`createDestination` are both `false` — it can be picked as neither leg of
+a freshly CREATED Exchange, and it has no Split leg at all. To record a
+new purchase into it, log the outflow as a plain manual expense elsewhere
+and use Convert on that transaction instead.
 
 ## Category color resolution
 
