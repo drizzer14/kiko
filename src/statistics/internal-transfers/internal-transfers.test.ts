@@ -301,15 +301,25 @@ describe('internalTransferTxIds', () => {
     expect(multiCandidateDebitsSeen).toBeGreaterThan(0);
   });
 
-  it('stays well within budget on a large ledger', () => {
-    const ledger = randomLedger(mulberry32(7), 20_000);
-    const started = performance.now();
+  it('is at least 20x faster than the quadratic reference implementation on a large ledger', () => {
+    const ledger = randomLedger(mulberry32(7), 6_000);
+
+    const optimizedStarted = performance.now();
 
     internalTransferTransactionIds(ledger);
+    const optimizedElapsed = performance.now() - optimizedStarted;
 
-    // A loose budget (~5x a typical local run, well under 1s) — this asserts
-    // the algorithm stayed near-linear (it ran in ~50-100ms locally), not a
-    // tight wall-clock SLA a busier CI/dev machine could miss by noise alone.
-    expect(performance.now() - started).toBeLessThan(2_500);
+    const referenceStarted = performance.now();
+
+    referenceInternalTransferTransactionIds(ledger);
+    const referenceElapsed = performance.now() - referenceStarted;
+
+    // A RELATIVE guard, not a wall-clock SLA — an absolute millisecond budget
+    // is only ever as tight as the slowest machine it must tolerate. The
+    // quadratic reference is O(debits * T); the bucketed/binary-searched
+    // implementation is near O(T log T) — at this ledger size that ratio is
+    // dramatic on ANY machine, so asserting it directly catches a regression
+    // back to the quadratic shape regardless of absolute speed.
+    expect(optimizedElapsed).toBeLessThan(referenceElapsed / 20);
   });
 });
