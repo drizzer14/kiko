@@ -28,6 +28,7 @@ import {
   type DepositContribution,
   type ExchangeMetadataField,
   type SyncedMetadataField,
+  withWalkOwnedMetadataCarried,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
 import { isCurrencyAllowedForHoldingType } from '../holding-currency';
@@ -129,14 +130,21 @@ export type LoanPricePointOp =
 // name is written on insert and otherwise preserved on update — a user rename
 // survives a re-sync — with ONE exception: the transition rename, applied only
 // when the stored name still equals `renameFromDefault` (see provider.ts).
-const upsertByMetadataKey = async (
+//
+// The update branch also reads the row's OWN stored metadata (not just
+// `id`/`name`) so `withWalkOwnedMetadataCarried` can carry a walk-owned key
+// (currently only the Binance history cursor) over the caller's `merged`
+// object — a routine balance sync's `metadata: { syncedAt }` would otherwise
+// wipe it every run, since `merged` is built from the CALLER-supplied
+// `metadata` alone, never the stored row.
+export const upsertByMetadataKeyDatabaseTransaction = async (
   databaseTransaction: typeof database,
   { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
 ): Promise<void> => {
   const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
   const keyMatch = sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
   const existing = await databaseTransaction
-    .select({ id: holdings.id, name: holdings.name })
+    .select({ id: holdings.id, name: holdings.name, metadata: holdings.metadata })
     .from(holdings)
     .where(and(eq(holdings.accountId, rest.accountId), keyMatch))
     .limit(1);
@@ -151,7 +159,7 @@ const upsertByMetadataKey = async (
       .update(holdings)
       .set({
         balanceMinorUnits: rest.balanceMinorUnits ?? 0,
-        metadata: merged,
+        metadata: withWalkOwnedMetadataCarried(merged, current.metadata),
         ...(rename ? { name: rest.name } : {}),
       })
       .where(eq(holdings.id, current.id));
@@ -782,7 +790,7 @@ export const holdingsRepo = {
     }),
   upsertMonobank: ({ monobankId, ...rest }: MonobankHolding) =>
     write((databaseTransaction) =>
-      upsertByMetadataKey(databaseTransaction, {
+      upsertByMetadataKeyDatabaseTransaction(databaseTransaction, {
         ...rest,
         metadataField: 'monobankId',
         metadataKey: monobankId,
@@ -800,7 +808,7 @@ export const holdingsRepo = {
   upsertMonobankMany: (holdings: MonobankHolding[]) =>
     write(async (databaseTransaction) => {
       for (const { monobankId, ...rest } of holdings) {
-        await upsertByMetadataKey(databaseTransaction, {
+        await upsertByMetadataKeyDatabaseTransaction(databaseTransaction, {
           ...rest,
           metadataField: 'monobankId',
           metadataKey: monobankId,
@@ -849,7 +857,9 @@ export const holdingsRepo = {
    * number, not a statement.
    */
   upsertExchange: (holding: ExchangeHolding) =>
-    write((databaseTransaction) => upsertByMetadataKey(databaseTransaction, holding)),
+    write((databaseTransaction) =>
+      upsertByMetadataKeyDatabaseTransaction(databaseTransaction, holding),
+    ),
   /**
    * Upsert EVERY balance-provider snapshot from ONE sync run in a SINGLE
    * transaction, mirroring `upsertMonobankMany` — the per-balance
@@ -862,7 +872,7 @@ export const holdingsRepo = {
   upsertExchangeMany: (holdingsList: ExchangeHolding[]) =>
     write(async (databaseTransaction) => {
       for (const holding of holdingsList) {
-        await upsertByMetadataKey(databaseTransaction, holding);
+        await upsertByMetadataKeyDatabaseTransaction(databaseTransaction, holding);
       }
     }),
   /**

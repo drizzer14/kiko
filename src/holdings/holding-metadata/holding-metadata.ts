@@ -167,6 +167,56 @@ export const syncedAtOf = (metadata: unknown): number | null => {
   return isNumber(syncedAt) ? syncedAt : null;
 };
 
+/**
+ * The Binance history-walk watermark: every window ending at or before this
+ * instant is imported (`binance.transactions.ts`). Stored on the Spot
+ * holding's metadata rather than `sync_state.lastSyncAt` — that column
+ * already means the Monobank statement cursor for a Monobank account (see the
+ * `syncState` table comment in `db/schema.ts`), the same reason `SYNCED_AT_FIELD`
+ * above lives on the holding rather than `settings.lastSyncAt`.
+ */
+export const BINANCE_HISTORY_CURSOR_FIELD = 'binanceHistoryCursor';
+
+/**
+ * Metadata keys a sync WALK owns, as opposed to a balance snapshot — today
+ * only the Binance history cursor. `upsertByMetadataKey` (holdings.repo.ts)
+ * carries these over from the stored row on every balance-sync upsert, so a
+ * routine balance sync (which writes a fresh `{ syncedAt, ...}` metadata
+ * object every run) never wipes a walk's own progress marker.
+ */
+export const walkOwnedMetadataKeys = [BINANCE_HISTORY_CURSOR_FIELD] as const;
+
+export const binanceHistoryCursorOf = (metadata: unknown): number | null => {
+  if (!isRecord(metadata)) {
+    return null;
+  }
+
+  const cursor = metadata[BINANCE_HISTORY_CURSOR_FIELD];
+
+  return isNumber(cursor) ? cursor : null;
+};
+
+/**
+ * Copies any `walkOwnedMetadataKeys` present on `storedMetadata` onto
+ * `target`, overwriting whatever (or nothing) `target` already has for that
+ * key — the read-side counterpart of a balance sync's blanket metadata
+ * overwrite, so a walk's own progress marker survives it.
+ */
+export const withWalkOwnedMetadataCarried = (
+  target: Record<string, unknown>,
+  storedMetadata: unknown,
+): Record<string, unknown> => {
+  if (!isRecord(storedMetadata)) {
+    return target;
+  }
+
+  return walkOwnedMetadataKeys.reduce(
+    (accumulator, key) =>
+      key in storedMetadata ? { ...accumulator, [key]: storedMetadata[key] } : accumulator,
+    target,
+  );
+};
+
 const asContribution = (value: unknown): DepositContribution | null => {
   if (!isRecord(value)) {
     return null;
