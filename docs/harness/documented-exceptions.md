@@ -554,5 +554,7 @@ verified usage, not dead weight:
   `node_modules/@react-native/codegen/lib/cli/combine/combine-utils.js`),
   so the name cannot be kebab-case. `package.json` `codegenConfig.jsSrcsDir`
   points at that folder. Only `reminders-native.ts` loads it (lazily, via
-  `require`), and the barrel does not export it. Add another `Native*` spec
-  only for a new app TurboModule.
+  `require`), and the barrel does not export it; the
+  `kiko-no-native-reminders-module-import` Semgrep rule
+  (`rules/semgrep-prewrite.yml`) denies any other value import. Add another
+  `Native*` spec only for a new app TurboModule.

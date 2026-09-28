@@ -266,4 +266,53 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
     expect(reason).toContain('kiko-no-history-id-comment');
   });
+
+  // kiko-no-native-reminders-module-import is not in RULE_IDS_WITH_FIXTURES:
+  // its negative fixture's type-only imports name the spec by a path the
+  // feature-import rule rejects at the src/probe target, and a relative path
+  // there would not type-check from rules/fixtures/. These probes sit inside
+  // the native feature itself, where a relative import is legal. The quoted
+  // specifier is joined in, so this file never holds a loading call itself.
+  const nativeSpecSpecifier = "'./NativeKikoReminders'";
+
+  it.each([
+    [
+      'denies a value import next to the spec',
+      'src/reminders/native/probe.ts',
+      'import NativeKikoReminders from '.concat(
+        nativeSpecSpecifier,
+        ';\n\nexport const probe = NativeKikoReminders;\n',
+      ),
+      2,
+    ],
+    [
+      'allows a type-only import next to the spec',
+      'src/reminders/native/probe.ts',
+      'import type { Spec } from '.concat(nativeSpecSpecifier, ';\n\nexport type Probe = Spec;\n'),
+      0,
+    ],
+    [
+      'allows the lazy require in the wrapper itself',
+      'src/reminders/native/reminders-native.ts',
+      'export const load = (): unknown => require('.concat(nativeSpecSpecifier, ').default;\n'),
+      0,
+    ],
+  ])('kiko-no-native-reminders-module-import %s', (_name, relativeTarget, content, status) => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-native-module-'));
+    try {
+      const targetFile = join(project, ...relativeTarget.split('/'));
+      mkdirSync(join(targetFile, '..'), { recursive: true });
+
+      const result = runGuard(payloadFor(targetFile, content), project);
+
+      expect(result.status).toBe(status);
+
+      if (status === 2) {
+        const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+        expect(reason).toContain('kiko-no-native-reminders-module-import');
+      }
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
 });

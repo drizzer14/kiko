@@ -1532,6 +1532,17 @@ in memory for the crash history this fixed.
   "Tomorrow" action are lost. It must not touch `window` (see memory
   `scene-lifecycle-appdelegate-window-crash`). The center holds its delegate
   weakly, so the delegate is a `static let shared`.
+- **Only the wrapper loads the reminders TurboModule spec.**
+  `src/reminders/native/NativeKikoReminders.ts` calls
+  `TurboModuleRegistry.getEnforcing` at module load, which throws on a binary
+  built without the module. `reminders-native.ts` loads it with a lazy
+  `require` on first use, so importing reminders code can never crash the
+  app; every other module calls `remindersNative` from
+  `@kiko/reminders/native`, and a type is imported with `import type`. A test
+  reaches the global mock (`jest/setup.js`) through `jest.requireMock`.
+  `reminders-native.lazy-load.test.ts` proves the lazy load, and the Semgrep
+  rule `kiko-no-native-reminders-module-import` (`rules/semgrep-prewrite.yml`)
+  denies any other value import, re-export, `require`, or dynamic `import()`.
 - **An ObjC++ (`.mm`) file that imports `Kiko-Swift.h` must first import
   every framework the app target's `@objc` Swift classes use.** Xcode's
   generated `Kiko-Swift.h` declares EVERY `@objc` class in the app target,
