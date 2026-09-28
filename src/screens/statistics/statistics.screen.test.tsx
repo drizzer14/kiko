@@ -886,6 +886,61 @@ describe('StatisticsScreen', () => {
     nowSpy.mockRestore();
   });
 
+  it("does not re-enter immediately when a failed run's own partial write changes history at the SAME now", async () => {
+    // `runBackfill` upserts whatever rows DID compose even on an overall
+    // 'failed' outcome — that write's own live-query echo changes
+    // `historyRows`, and with it `lastBackfilledDayByCurrency` (a fresh
+    // object every time `historyRows` changes). If either were an effect
+    // dependency, this re-render alone — at the SAME `now`, with the span
+    // ref just cleared by the failure handler — would start a second run
+    // immediately: a permanent retry loop for a currency whose provider
+    // never answers, for as long as Statistics stays mounted.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+    mockRunBackfill.mockResolvedValueOnce({ state: 'failed', lastDay: null });
+
+    const focusModule = jest.requireMock(
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    const { rerender } = await renderScreen();
+
+    await waitFor(() => expect(mockRunBackfill).toHaveBeenCalledTimes(1));
+
+    // The failed run's own partial upsert lands: history now has a row, but
+    // `now` has NOT advanced — this must not, by itself, start another run.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [{ base: 'USD', quote: 'UAH', day: now, rate: '40' }],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    // A genuine later focus (`now` actually advances) still retries.
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    nowSpy.mockRestore();
+  });
+
   it("ignores a stale run's rejection once a later run has claimed a newly-extended span", async () => {
     // An older transaction extends `spanStart` EARLIER while run A is still
     // pending, so run B starts for the wider span before A ever settles. A's

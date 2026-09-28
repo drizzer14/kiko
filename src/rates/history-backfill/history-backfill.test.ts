@@ -258,7 +258,7 @@ describe('runBackfill', () => {
     expect(btcCalls[0]).toBeGreaterThanOrEqual(2);
   });
 
-  // TWIN-1 / SYNC-2: the fiat rates NBU already returned are still persisted
+  // The fiat rates NBU already returned are still persisted
   // (settled independently — a BTC failure must not discard them), but the
   // overall pass now reports `'failed'`, not `'complete'`: BTC's own fetch
   // failed and composed no row for it, so the caller must retry on the next
@@ -281,7 +281,7 @@ describe('runBackfill', () => {
     expect(status).toEqual({ state: 'failed', lastDay: null });
   });
 
-  // TWIN-1's "wider" case: crypto needs the SAME-run USD:UAH anchor
+  // The wider case: crypto needs the SAME-run USD:UAH anchor
   // (`composeHistoryRows`), so a rejected NBU leg blocks BTC too even though
   // CoinGecko itself answered — nothing composes, and the pass must report
   // `'failed'`, never `'complete'` with zero rows silently accepted as "done".
@@ -302,7 +302,7 @@ describe('runBackfill', () => {
     expect(captured).toHaveLength(0);
   });
 
-  // TWIN-1's original case: an UNATTEMPTED leg (no crypto held at all)
+  // The original case: an UNATTEMPTED leg (no crypto held at all)
   // previously resolved fulfilled with `NO_CRYPTO_HISTORY`, so the old
   // both-legs-rejected check never fired for a fiat-only user whose NBU
   // fetch failed — the pass reported `'complete'` and never retried for the
@@ -540,13 +540,13 @@ describe('runBackfill — a newly-held currency with no stored history yet', () 
   });
 });
 
-// SYNC-2: a currency that already has SOME stored rows (not the never-held
-// case above) but whose own leg keeps failing must not hide behind a
-// DIFFERENT currency's success once the global cursor reaches today —
-// end-to-end across two runs, re-deriving both cursors from the rows the
-// FIRST run actually persisted, the same way the real Statistics screen does
-// from `historyRowsQuery()`.
-describe('runBackfill — SYNC-2: a lagging currency with existing rows is not permanently gapped', () => {
+// A currency that already has SOME stored rows (not the never-held case
+// above) but whose own leg keeps failing must not hide behind a DIFFERENT
+// currency's success once the global cursor reaches today — end-to-end
+// across two runs, re-deriving both cursors from the rows the FIRST run
+// actually persisted, the same way the real Statistics screen does from
+// `historyRowsQuery()`.
+describe('runBackfill — a lagging currency with existing rows is not permanently gapped', () => {
   it('fetches crypto for the gap on the next run once fiat has already advanced past it', async () => {
     // Steady state before this test starts: USD/EUR/BTC all backfilled
     // together through day(0).
@@ -582,6 +582,9 @@ describe('runBackfill — SYNC-2: a lagging currency with existing rows is not p
       fetchCryptoHistory,
       upsertMany,
       openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
+      // Isolated from the module-level singleton, so an unrelated test's own
+      // known-empty bookkeeping can never leak into this one (or vice versa).
+      knownEmptyCurrencies: new Set(),
     });
 
     // Run 1: NBU succeeds and advances fiat all the way to today; the crypto
@@ -596,8 +599,8 @@ describe('runBackfill — SYNC-2: a lagging currency with existing rows is not p
     expect(firstRun.state).toBe('failed');
     // Fiat DID persist despite the overall 'failed' outcome.
     expect(historyRows.some((row) => row.base === 'USD' && row.day === day(2))).toBe(true);
-    // BTC's own history is unchanged — still stuck at day(0), exactly the
-    // permanent gap SYNC-2 reports.
+    // BTC's own history is unchanged — still stuck at day(0), the permanent
+    // gap a single shared cursor would otherwise leave forever.
     const btcRowsAfterFirstRun = historyRows.filter((row) => row.base === 'BTC');
     expect(Math.max(...btcRowsAfterFirstRun.map((row) => row.day))).toBe(day(0));
 
@@ -619,12 +622,43 @@ describe('runBackfill — SYNC-2: a lagging currency with existing rows is not p
 
     // The global max(day) across ALL stored rows already sits at today (from
     // fiat) — a global cursor would have computed `missingDays` as EMPTY and
-    // never re-asked CoinGecko at all. SYNC-2's per-currency minimum instead
+    // never re-asked CoinGecko at all. The per-currency minimum instead
     // drives the window from BTC's own (still day(0)) history, so the retry
     // actually re-covers the 2-day gap.
     expect(cryptoDaysRequested[1]).toBeGreaterThanOrEqual(2);
     expect(secondRun.state).toBe('complete');
     expect(historyRows.some((row) => row.base === 'BTC' && row.day === day(2))).toBe(true);
+  });
+});
+
+// `planBackfillRun` passes `resumeFrom: null` deliberately — not "nothing
+// known" but "treat this span as never run" — whenever an older transaction
+// extends `spanStart` EARLIER than any prior run covered, since the forward,
+// per-currency resume cursor cannot see a gap that opens BELOW the newest
+// stored day. That explicit null must win over the per-currency minimum
+// below it, or the days between the new, earlier `earliestDay` and whatever
+// day every held currency already reached are silently skipped.
+describe('runBackfill — an earlier-extension re-run (an explicit null lastBackfilledDay)', () => {
+  it('recomputes from earliestDay even though every held currency already has rows at today', async () => {
+    const nbuCalls: [number, number][] = [];
+    const deps: BackfillDeps = {
+      earliestDay: day(0),
+      lastBackfilledDay: null,
+      lastBackfilledDayByCurrency: { USD: day(5) },
+      today: day(5),
+      fetchNbuHistory: async (start, end) => {
+        nbuCalls.push([start, end]);
+
+        return [{ base: 'USD', quote: 'UAH', day: start, rate: 40, source: 'nbu' }];
+      },
+      fetchCryptoHistory: async () => answered([]),
+      upsertMany: async () => {},
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: [] }),
+    };
+
+    await runBackfill(deps);
+
+    expect(nbuCalls).toEqual([[day(0), day(5)]]);
   });
 });
 

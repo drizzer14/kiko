@@ -485,8 +485,8 @@ gate says there is nothing to do.
   never list `UAH` — without the filter, a base-USD user who holds
   UAH would read as permanently "unrated" and bypass the throttle on
   every sync instead of only a genuine gap.
-  The history backfill's resume cursor is PER CURRENCY (SYNC-2,
-  2026-09-28 fix), not one shared max(day) across every stored row:
+  The history backfill's resume cursor is PER CURRENCY, not one shared
+  max(day) across every stored row:
   `resolveResumeCursor` (`src/rates/history-backfill/history-backfill.ts`)
   takes the OLDEST last-backfilled day among every currently-held
   currency — fiat as its `USD` anchor, plus every held crypto — fed by
@@ -498,7 +498,12 @@ gate says there is nothing to do.
   today) is no longer masked by that other currency's progress — the
   minimum always reflects the most-lagging held currency, so its own
   gap keeps getting re-derived and re-fetched on every run instead of
-  going permanently stale. A currency whose providers all answered for
+  going permanently stale. That minimum is itself OVERRIDDEN by an
+  explicit `null` from the caller's own `lastBackfilledDay` — the signal
+  `planBackfillRun` sends when an older transaction extends the
+  transaction span earlier than any prior run covered, which the
+  per-currency minimum alone cannot see (kiko-pricing's "History
+  backfill" section has the full rule). A currency whose providers all answered for
   the whole span but returned no row for it (a held coin CoinGecko
   never returns) is kept in an in-memory `knownEmptyCurrenciesThisRun`
   set and excluded from that minimum, so Statistics does not refetch

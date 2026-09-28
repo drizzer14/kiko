@@ -48,7 +48,16 @@ export type BackfillStatus = {
 export type BackfillDeps = {
   /** Earliest day the app has data for (holding/transaction), any instant on it. */
   earliestDay: number;
-  /** The max day already stored, or null when history is empty. */
+  /**
+   * The max day already stored, or an EXPLICIT null — two distinct things a
+   * `null` can mean here: history is genuinely empty, OR the caller
+   * (`planBackfillRun`'s earlier-extension branch) deliberately wants this
+   * run to recompute the WHOLE span from `earliestDay`, overriding the
+   * per-currency minimum in `lastBackfilledDayByCurrency` below (which would
+   * otherwise see every held currency already at today and report nothing
+   * missing). Only affects the resume WINDOW; `state: 'complete'`'s returned
+   * `lastDay` still falls back to this value when nothing new persists.
+   */
   lastBackfilledDay?: number | null;
   /** Today, defaulting to the current UTC day. */
   today?: number;
@@ -67,7 +76,7 @@ export type BackfillDeps = {
    * Every currency's OWN last-backfilled day —
    * `deriveLastBackfilledDayByCurrency(historyRows)`, the SAME `historyRows`
    * the caller already reads for `lastBackfilledDay`, so this needs no new
-   * query. SYNC-2: the global `lastBackfilledDay` is one max(day) across ALL
+   * query. The global `lastBackfilledDay` is one max(day) across ALL
    * stored pairs, so once it reaches `today` (from whatever currency drove it
    * there), a DIFFERENT currency whose own leg kept failing — or one held for
    * the first time, with no row at all — hides behind that shared cursor and
@@ -317,7 +326,7 @@ const heldCurrencies = (needsFiat: boolean, cryptoCurrencies: CryptoCurrency[]):
   needsFiat ? ['USD', ...cryptoCurrencies] : cryptoCurrencies;
 
 /**
- * SYNC-2 — the resume cursor for THIS run: the OLDEST last-backfilled day
+ * The resume cursor for THIS run: the OLDEST last-backfilled day
  * among every currently-held currency, not one shared max across everything.
  * A single global cursor let one currency whose own leg kept failing hide
  * behind another currency's success (it never re-derives a gap once the
@@ -355,12 +364,25 @@ const resolveResumeCursor = (
   return minimum;
 };
 
-/** `resolveResumeCursor` plus the never-backfilled candidate list `recordKnownEmpty` needs, computed together so `runBackfill` itself stays a flat sequence. */
+/**
+ * `resolveResumeCursor` plus the never-backfilled candidate list
+ * `recordKnownEmpty` needs, computed together so `runBackfill` itself stays a
+ * flat sequence. `callerLastBackfilledDay` — the caller's OWN
+ * `deps.lastBackfilledDay` — overrides the per-currency minimum with an
+ * explicit `null` (recompute the whole span from `earliestDay`): the caller
+ * (`planBackfillRun`) passes exactly that when an older transaction extends
+ * the span EARLIER than any prior run covered, and the forward per-currency
+ * minimum cannot see a gap that opens BELOW the newest day every held
+ * currency already reached — it would otherwise report nothing missing and
+ * skip that earlier gap forever. A non-null caller value means no such
+ * earlier extension happened, so the per-currency minimum decides normally.
+ */
 const resolveBackfillWindow = (
   needsFiat: boolean,
   cryptoCurrencies: CryptoCurrency[],
   lastBackfilledDayByCurrency: Partial<Record<Currency, number>>,
   knownEmpty: ReadonlySet<Currency>,
+  callerLastBackfilledDay: number | null,
 ): { neverBackfilled: Currency[]; resumeFrom: number | null } => {
   const held = heldCurrencies(needsFiat, cryptoCurrencies);
   const neverBackfilled = held.filter(
@@ -369,7 +391,10 @@ const resolveBackfillWindow = (
 
   return {
     neverBackfilled,
-    resumeFrom: resolveResumeCursor(held, lastBackfilledDayByCurrency, knownEmpty),
+    resumeFrom:
+      callerLastBackfilledDay === null
+        ? null
+        : resolveResumeCursor(held, lastBackfilledDayByCurrency, knownEmpty),
   };
 };
 
@@ -379,8 +404,8 @@ const resolveBackfillWindow = (
  * answered, and never a coin in `failedCurrencies`: CoinGecko settles per
  * coin, so one coin's 200 fulfils the leg while another coin's own request
  * failed. A failed request is a network failure to retry, not an empty
- * answer. A currency that already HAD some rows (merely lagging, SYNC-2's
- * case) is never a candidate here — it keeps retrying every run through
+ * answer. A currency that already HAD some rows (merely lagging) is never a
+ * candidate here — it keeps retrying every run through
  * `resolveResumeCursor` instead of being permanently blacklisted.
  */
 const recordKnownEmpty = (
@@ -402,7 +427,7 @@ const recordKnownEmpty = (
 };
 
 /**
- * TWIN-1 / SYNC-2 — one outcome rule: every currency this run attempted to
+ * One outcome rule: every currency this run attempted to
  * resolve but did not, because its OWN provider leg rejected outright, or
  * (crypto only) its own per-coin request failed inside an otherwise-fulfilled
  * leg. A rejected NBU leg fails BOTH `USD` and `EUR` (composed from the same
@@ -502,6 +527,7 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     cryptoCurrencies,
     lastBackfilledDayByCurrency,
     knownEmpty,
+    lastBackfilledDay,
   );
 
   const days = missingDays(deps.earliestDay, resumeFrom, today);

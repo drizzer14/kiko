@@ -350,24 +350,46 @@ const StatisticsScreen: FC = () => {
   // from the history table itself (no extra persistence). Null when empty.
   const lastBackfilledDay = useMemo(() => deriveLastBackfilledDay(historyRows), [historyRows]);
   // Every currency's OWN last-backfilled day — `runBackfill`'s per-currency
-  // resume cursor (SYNC-2: a single global max(day) let one currency whose
-  // own leg kept failing, or one held for the first time, hide behind
-  // another currency's success and never re-fetch its own gap), derived from
-  // this SAME already-loaded `historyRows` read, no new query.
+  // resume cursor (a single global max(day) let one currency whose own leg
+  // kept failing, or one held for the first time, hide behind another
+  // currency's success and never re-fetch its own gap), derived from this
+  // SAME already-loaded `historyRows` read, no new query.
   const lastBackfilledDayByCurrency = useMemo(
     () => deriveLastBackfilledDayByCurrency(historyRows),
     [historyRows],
   );
+  // A run's own upsert — including a run that resolves 'failed' overall but
+  // still persisted the currencies that DID compose — changes `historyRows`,
+  // and with it these two values on the VERY NEXT render. Neither is an
+  // effect dependency below: the backfill effect reads them through these
+  // "latest" refs (the same stable-callback-with-fresh-data pattern
+  // `categories.screen.tsx`'s `orderedKeysRef` uses) instead, so that
+  // self-triggered re-render cannot re-enter the effect on its own — only a
+  // dependency that genuinely changed for an unrelated reason (`now`
+  // advancing on a real focus, `spanStart` moving) does. Without this, a
+  // failed run whose span ref was just cleared (below, to allow a LATER
+  // retry) would see its own write's echo immediately, at the SAME instant,
+  // and restart — a permanent request loop for a currency whose provider
+  // never answers, for as long as Statistics stays mounted.
+  const lastBackfilledDayRef = useRef(lastBackfilledDay);
+  lastBackfilledDayRef.current = lastBackfilledDay;
+  const lastBackfilledDayByCurrencyRef = useRef(lastBackfilledDayByCurrency);
+  lastBackfilledDayByCurrencyRef.current = lastBackfilledDayByCurrency;
 
   // Drive the incremental, non-blocking backfill and surface its status to the
   // line. It runs when there is a bounded span (transactions exist) with days
   // still to fill, AND re-runs when an older-dated transaction extends the span
   // EARLIER mid-session (`planBackfillRun` decides both, resuming from null on an
   // earlier extension so `missingDays` recomputes the whole span — the forward
-  // resume cursor cannot see a gap that opens below the newest stored day). The
-  // ref holds the `spanStart` the last run covered, so the re-render the
-  // backfill's own writes trigger (which advance `lastBackfilledDay`) does not
-  // re-enter for the same span. The bar and pie never wait on this.
+  // resume cursor cannot see a gap that opens below the newest stored day).
+  // That explicit `resumeFrom: null` is passed straight through as
+  // `lastBackfilledDay` below, and `runBackfill` itself must honor it as an
+  // override of its own per-currency minimum (`lastBackfilledDayByCurrency`)
+  // — otherwise a currency already at today hides the earlier gap this
+  // effect is trying to re-open. The ref holds the `spanStart` the last run
+  // covered, so the re-render the backfill's own writes trigger (which
+  // advance `lastBackfilledDay`) does not re-enter for the same span. The
+  // bar and pie never wait on this.
   const backfillRanForSpanRef = useRef<number | null>(null);
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>({
     state: 'idle',
@@ -419,7 +441,7 @@ const StatisticsScreen: FC = () => {
     const { run, resumeFrom } = planBackfillRun(
       spanStart,
       backfillRanForSpanRef.current,
-      lastBackfilledDay,
+      lastBackfilledDayRef.current,
     );
 
     if (!run) {
@@ -436,14 +458,14 @@ const StatisticsScreen: FC = () => {
     // owns that decision now, since it also has to check a newly-held or
     // lagging currency against `lastBackfilledDayByCurrency` — a check this
     // screen cannot replicate without `openCurrencies`'s own async read.
-    setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
+    setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDayRef.current });
     // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures every rejection as a Left, and the .then handler only sets state
     either<unknown, BackfillStatus>(() =>
       runBackfill({
         earliestDay: spanStart,
         lastBackfilledDay: resumeFrom,
         today: now,
-        lastBackfilledDayByCurrency,
+        lastBackfilledDayByCurrency: lastBackfilledDayByCurrencyRef.current,
       }),
     ).then((result) => {
       if (!isMountedRef.current || token !== runTokenRef.current) {
@@ -455,7 +477,7 @@ const StatisticsScreen: FC = () => {
         // being reported as done: clear the span ref so `planBackfillRun`
         // treats this span as never-run once `now` next advances.
         backfillRanForSpanRef.current = null;
-        setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDay });
+        setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDayRef.current });
 
         return;
       }
@@ -470,15 +492,7 @@ const StatisticsScreen: FC = () => {
       }
       setBackfillStatus(settled);
     });
-  }, [
-    transactions.length,
-    transactionsFresh,
-    historyFresh,
-    spanStart,
-    lastBackfilledDay,
-    now,
-    lastBackfilledDayByCurrency,
-  ]);
+  }, [transactions.length, transactionsFresh, historyFresh, spanStart, now]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on
   // the historical table. All three are memoized on their real inputs so they no
