@@ -113,24 +113,32 @@ export const isSensorAvailable = async (): Promise<SensorStatus> => {
     return { kind: 'unavailable' };
   }
 
-  // Annotated explicitly: `bifold` on a narrowed `Right` still leaves nothing
-  // for TypeScript to infer `LeftValue` from, and silently resolves to
-  // `unknown` without this.
-  const info: ReactNativeBiometrics.BiometricSensorInfo = bifold(result);
+  // Left `unknown`, not the native `BiometricSensorInfo` type: LockGate's
+  // caller depends on this function never throwing, and the type only
+  // describes what the native module PROMISES to resolve, not what a
+  // malformed build actually hands back — the same defensive stance as
+  // `thrownCode` below takes for a caught rejection.
+  const info: unknown = bifold(result);
 
-  if (info.available) {
-    return { kind: 'available', biometryType: info.biometryType };
+  if (typeof info !== 'object' || info === null) {
+    return { kind: 'unavailable' };
   }
 
-  if (info.isDeviceSecure === false || info.errorCode === PASSCODE_NOT_SET_CODE) {
+  const sensor = info as ReactNativeBiometrics.BiometricSensorInfo;
+
+  if (sensor.available) {
+    return { kind: 'available', biometryType: sensor.biometryType };
+  }
+
+  if (sensor.isDeviceSecure === false || sensor.errorCode === PASSCODE_NOT_SET_CODE) {
     return { kind: 'passcodeNotSet' };
   }
 
-  if (hasCode(NOT_ENROLLED_CODES, info.errorCode)) {
+  if (hasCode(NOT_ENROLLED_CODES, sensor.errorCode)) {
     return { kind: 'passcodeOnly', reason: 'notEnrolled' };
   }
 
-  if (info.isDeviceSecure === true) {
+  if (sensor.isDeviceSecure === true) {
     return { kind: 'passcodeOnly', reason: 'biometryUnavailable' };
   }
 

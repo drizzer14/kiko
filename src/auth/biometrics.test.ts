@@ -73,11 +73,22 @@ describe('isSensorAvailable', () => {
 
     expect(await isSensorAvailable()).toEqual({ kind: 'unavailable' });
   });
+
+  it('resolves to unavailable instead of throwing when the native module resolves a non-object value', async () => {
+    mockSensor.mockResolvedValueOnce(undefined);
+
+    expect(await isSensorAvailable()).toEqual({ kind: 'unavailable' });
+  });
 });
 
 describe('authenticate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // A `failed`-classified rejection falls through to a sensor query (see
+    // `authenticate`'s own doc comment) — give it a default so a test run in
+    // isolation (`-t`) never depends on a resolved value some earlier test in
+    // this file happened to leave on the mock.
+    mockSensor.mockResolvedValue({ available: true, biometryType: 'FaceID', isDeviceSecure: true });
   });
 
   it('always allows the device passcode as a fallback and titles the sheet with the prompt', async () => {
