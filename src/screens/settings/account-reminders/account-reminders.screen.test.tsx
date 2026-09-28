@@ -166,7 +166,7 @@ describe('AccountRemindersScreen — rows', () => {
     const { getByText } = await renderScreen();
 
     expect(getByText('Add transactions')).toBeTruthy();
-    expect(getByText('Not available while the account is connected to a bank.')).toBeTruthy();
+    expect(getByText('Available only for accounts you track by hand.')).toBeTruthy();
   });
 
   it('says saved reminders are not sent while the account is archived', async () => {

@@ -184,10 +184,20 @@ describe('ReminderRow', () => {
     expect(getByText('Not sent while the account is archived.')).toBeTruthy();
   });
 
-  it('says a reminder the account no longer allows is not available', async () => {
+  it('says an add-transactions reminder the account no longer allows needs a hand-kept account', async () => {
     const { getByText } = await renderRow({ available: false });
 
-    expect(getByText('Not available while the account is connected to a bank.')).toBeTruthy();
+    expect(getByText('Available only for accounts you track by hand.')).toBeTruthy();
+  });
+
+  it('says an import reminder the account no longer allows needs a statement import', async () => {
+    const { getByText } = await renderRow({
+      kind: 'statement_import',
+      reminder: saved({ kind: 'statement_import' }),
+      available: false,
+    });
+
+    expect(getByText('Available after you import a statement for this account.')).toBeTruthy();
   });
 
   it('deletes a saved reminder from the touch-and-hold menu, after the confirm', async () => {

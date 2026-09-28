@@ -40,14 +40,21 @@ const summaryOf = (reminder: SavedReminder | undefined, t: TFunction): string =>
     : t('reminders.off');
 };
 
+const unavailableCaption = (kind: ReminderKind, t: TFunction): string =>
+  match(kind)
+    .with('statement_import', () => t('reminders.unavailable.statementImport'))
+    .with('add_transactions', () => t('reminders.unavailable.addTransactions'))
+    .exhaustive();
+
 // Why a saved reminder is not sent right now; every reason that holds shows.
 const statusCaptions = (
+  kind: ReminderKind,
   reminder: SavedReminder,
   available: boolean,
   accountArchived: boolean,
   t: TFunction,
 ): string[] => [
-  ...(available ? [] : [t('reminders.notAvailable')]),
+  ...(available ? [] : [unavailableCaption(kind, t)]),
   ...(accountArchived ? [t('reminders.accountArchived')] : []),
   ...(reminder.pauseReason === 'backoff' ? [t('reminders.pausedAfterNoResponse')] : []),
 ];
@@ -89,7 +96,7 @@ const ReminderRow: FC<ReminderRowProps> = ({
   const label = kindLabel(kind, t);
   const saved = maybe(reminder);
   const captions =
-    foldMap(saved, (found) => statusCaptions(found, available, accountArchived, t)) ?? [];
+    foldMap(saved, (found) => statusCaptions(kind, found, available, accountArchived, t)) ?? [];
 
   return (
     <CardContextMenu name={label} deletable={reminder !== undefined} onDelete={onDelete}>

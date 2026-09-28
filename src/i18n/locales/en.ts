@@ -1084,7 +1084,10 @@ export const en = {
     turnOn: 'Turn on',
     pausedAfterNoResponse: 'Paused after 3 reminders with no response.',
     accountArchived: 'Not sent while the account is archived.',
-    notAvailable: 'Not available while the account is connected to a bank.',
+    unavailable: {
+      statementImport: 'Available after you import a statement for this account.',
+      addTransactions: 'Available only for accounts you track by hand.',
+    },
     enabledLabel: 'Reminder on',
     form: {
       createTitle: 'New Reminder',

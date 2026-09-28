@@ -861,7 +861,10 @@ export const uk: typeof en = {
     turnOn: 'Увімкнути',
     pausedAfterNoResponse: 'Призупинено після 3 нагадувань без відповіді.',
     accountArchived: 'Не надсилається, поки рахунок в архіві.',
-    notAvailable: 'Недоступно, поки рахунок підключено до банку.',
+    unavailable: {
+      statementImport: 'Доступно після того, як ви імпортуєте виписку для цього рахунку.',
+      addTransactions: 'Доступно лише для рахунків, які ви ведете вручну.',
+    },
     enabledLabel: 'Нагадування ввімкнено',
     form: {
       createTitle: 'Нове нагадування',

@@ -5,8 +5,8 @@ export type ReminderRowProps = {
   kind: ReminderKind;
   // Undefined while the account has no reminder of this kind.
   reminder: SavedReminder | undefined;
-  // False once the account no longer allows this kind (it was connected to a
-  // bank); the saved reminder stays listed so the user can still remove it.
+  // False once the account no longer allows this kind; the saved reminder
+  // stays listed so the user can still remove it.
   available: boolean;
   accountArchived: boolean;
   onOpen: () => void;
