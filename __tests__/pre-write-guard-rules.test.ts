@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 
 // Every other pre-write-guard test stubs semgrep entirely (see
 // pre-write-guard.test.ts), so nothing else in the suite proves
@@ -53,6 +53,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-pinned-change-bank-button-variant',
   'kiko-pinned-cancel-button-style',
   'kiko-no-direct-default-transaction-description',
+  'kiko-no-process-env-time-zone-in-test',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -64,6 +65,8 @@ const RULE_IDS_WITH_FIXTURES = [
 // same-name-as-the-rule-id default.
 const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number], string>> = {
   'kiko-no-literal-sync-error': 'kiko-no-literal-sync-error/src/monobank/sync-example',
+  'kiko-no-process-env-time-zone-in-test':
+    'kiko-no-process-env-time-zone-in-test/src/test-support/time-zone-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -72,6 +75,7 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
 // scope. A rule absent here probes at the default `src/probe`.
 const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number], string>> = {
   'kiko-no-literal-sync-error': 'src/monobank',
+  'kiko-no-process-env-time-zone-in-test': 'src/test-support',
 };
 
 function fixturePrefix(ruleId: string): string {
@@ -265,6 +269,62 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     expect(result.status).toBe(2);
     const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
     expect(reason).toContain('kiko-no-history-id-comment');
+  });
+
+  // kiko-no-process-env-time-zone-in-test is a WARNING, and the guard does
+  // not read severity: a NEW flip is denied in every test path it covers,
+  // while app source (where TZ is not a test sandbox copy) stays out of scope.
+  it.each([
+    ['src/probe/time-zone-probe.test.ts', 2],
+    ['src/probe/time-zone-probe.test.tsx', 2],
+    ['__tests__/time-zone-probe.ts', 2],
+    ['src/probe/time-zone-probe.ts', 0],
+  ])('kiko-no-process-env-time-zone-in-test on %s exits %s', (relativeTarget, status) => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-time-zone-'));
+    try {
+      const targetFile = join(project, ...relativeTarget.split('/'));
+      mkdirSync(join(targetFile, '..'), { recursive: true });
+      const content = "export const pin = (): void => {\n  process.env.TZ = 'UTC';\n};\n";
+
+      const result = runGuard(payloadFor(targetFile, content), project);
+
+      expect(result.status).toBe(status);
+
+      if (status === 2) {
+        const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+        expect(reason).toContain('kiko-no-process-env-time-zone-in-test');
+      }
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  // The existing in-test flips are removed by a later sweep; until then an
+  // edit to one of those files that adds no new flip must still land.
+  it('allows an edit to a test file whose time-zone flip already existed', () => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-time-zone-baseline-'));
+    try {
+      const targetDirectory = join(project, 'src', 'probe');
+      mkdirSync(targetDirectory, { recursive: true });
+      const targetFile = join(targetDirectory, 'time-zone-probe.test.ts');
+      const existing = "export const pin = (): void => {\n  process.env.TZ = 'UTC';\n};\n";
+      writeFileSync(targetFile, existing);
+      const payload = JSON.stringify({
+        tool_name: 'Edit',
+        tool_input: {
+          file_path: targetFile,
+          old_string: 'export const pin',
+          new_string: 'export const other = 1;\n\nexport const pin',
+        },
+      });
+
+      const result = runGuard(payload, project);
+
+      expect(result.stdout).toBe('');
+      expect(result.status).toBe(0);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 
   // kiko-no-native-reminders-module-import is not in RULE_IDS_WITH_FIXTURES:
