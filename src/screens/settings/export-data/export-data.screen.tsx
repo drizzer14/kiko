@@ -1,5 +1,6 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
+import { confirmOwner } from '@kiko/auth';
 import { Alert, Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { exportData } from '@kiko/data-transfer';
@@ -14,7 +15,6 @@ import Switch from '@kiko/design-system/components/switch';
 import SettingsRow from '@kiko/screens/settings/settings-row';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
-import { confirmOwner, type OwnerConfirmation } from '@kiko/auth';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -52,34 +52,34 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
   );
 
   const runExport = async (): Promise<void> => {
-    // Snapshot BEFORE the confirmOwner await, so a toggle flip while the
-    // prompt is open can never let an unauthenticated press export secrets.
-    const exportSecrets = includeSecrets;
+    if (includeSecrets) {
+      const owner = await confirmOwner(t('auth.reason.exportSecrets'));
 
-    if (exportSecrets) {
-      const owner: OwnerConfirmation = await confirmOwner(t('auth.reason.exportSecrets'));
-
-      match(owner)
-        .with({ kind: 'confirmed' }, () => undefined)
-        .with({ kind: 'cancelled' }, () => undefined)
+      const confirmed = match(owner)
+        .with({ kind: 'confirmed' }, () => true)
+        .with({ kind: 'cancelled' }, () => false)
         // No owner authentication exists on a passcode-less device — unlike
         // disabling the lock, there is no passcode sheet this could show, so
         // the export is refused rather than let through unauthenticated.
-        .with({ kind: 'noPasscode' }, () =>
-          Alert.alert(t('settings.dataExport.errorTitle'), t('auth.reauth.passcodeRequired')),
-        )
-        .with({ kind: 'failed' }, (result) =>
-          Alert.alert(t('auth.reauth.failedTitle'), t(result.hintKey)),
-        )
+        .with({ kind: 'noPasscode' }, () => {
+          Alert.alert(t('auth.reauth.passcodeRequiredTitle'), t('auth.reauth.passcodeRequired'));
+
+          return false;
+        })
+        .with({ kind: 'failed' }, (result) => {
+          Alert.alert(t('auth.reauth.failedTitle'), t(result.hintKey));
+
+          return false;
+        })
         .exhaustive();
 
-      if (owner.kind !== 'confirmed') {
+      if (!confirmed) {
         return;
       }
     }
 
     try {
-      const result = await exportData({ includeSecrets: exportSecrets });
+      const result = await exportData({ includeSecrets });
       setKeyBase64(result.keyBase64);
       setFileUri(result.fileUri);
       // A fresh key was never copied, so any "Copied" feedback left over from

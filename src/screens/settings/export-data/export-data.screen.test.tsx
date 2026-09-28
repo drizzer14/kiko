@@ -189,8 +189,8 @@ describe('ExportDataScreen', () => {
 
     await waitFor(() =>
       expect(alertSpy).toHaveBeenCalledWith(
-        'Export failed',
-        'Set a device passcode to export saved passwords & keys.',
+        'Device passcode required',
+        'Set a device passcode to export saved passwords & keys. An export without them still works.',
       ),
     );
     expect(mockExportData).not.toHaveBeenCalled();
@@ -220,10 +220,57 @@ describe('ExportDataScreen', () => {
       if (shouldExport) {
         await waitFor(() => expect(mockExportData).toHaveBeenCalledWith({ includeSecrets: true }));
       } else {
+        // `runExport` is still in flight until the Export button re-enables —
+        // asserting before then could pass on a call that just has not
+        // happened YET, not on a call that never will.
+        await waitFor(() => expect(getByTestId('settings-button-export')).toBeEnabled());
         expect(mockExportData).not.toHaveBeenCalledWith({ includeSecrets: true });
       }
     },
   );
+
+  it('collapses two presses started before confirmOwner resolves into one confirmOwner and one exportData call', async () => {
+    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
+    let resolveConfirmation: (confirmation: { kind: 'confirmed' }) => void = () => {};
+    mockConfirmOwner.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveConfirmation = resolve;
+        }),
+    );
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent(getByTestId('settings-switch-export-secrets'), 'valueChange', true);
+    await fireEvent.press(getByTestId('settings-button-export'));
+    await fireEvent.press(getByTestId('settings-button-export'));
+
+    await act(async () => {
+      resolveConfirmation({ kind: 'confirmed' });
+    });
+
+    await waitFor(() => expect(mockExportData).toHaveBeenCalledWith({ includeSecrets: true }));
+    expect(mockConfirmOwner).toHaveBeenCalledTimes(1);
+    expect(mockExportData).toHaveBeenCalledTimes(1);
+  });
+
+  it('exports only once when a cancelled second press follows a confirmed first press', async () => {
+    mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
+    mockConfirmOwner
+      .mockResolvedValueOnce({ kind: 'confirmed' })
+      .mockResolvedValueOnce({ kind: 'cancelled' });
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent(getByTestId('settings-switch-export-secrets'), 'valueChange', true);
+    await fireEvent.press(getByTestId('settings-button-export'));
+
+    await waitFor(() => expect(mockExportData).toHaveBeenCalledWith({ includeSecrets: true }));
+    await waitFor(() => expect(getByTestId('settings-button-export')).toBeEnabled());
+
+    await fireEvent.press(getByTestId('settings-button-export'));
+
+    await waitFor(() => expect(mockConfirmOwner).toHaveBeenCalledTimes(2));
+    expect(mockExportData).toHaveBeenCalledTimes(1);
+  });
 
   it('shares the generated file when Share File is pressed, as a file:// URL', async () => {
     mockExportData.mockResolvedValue({ fileUri: '/tmp/x.kiko', keyBase64: 'abc123==' });
