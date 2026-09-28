@@ -1,6 +1,5 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
-import { confirmOwner } from '@kiko/auth';
 import { Alert, Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { exportData } from '@kiko/data-transfer';
@@ -15,6 +14,7 @@ import Switch from '@kiko/design-system/components/switch';
 import SettingsRow from '@kiko/screens/settings/settings-row';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
+import { confirmOwner, type OwnerConfirmation } from '@kiko/auth';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -57,7 +57,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
     const exportSecrets = includeSecrets;
 
     if (exportSecrets) {
-      const owner = await confirmOwner(t('auth.reason.exportSecrets'));
+      const owner: OwnerConfirmation = await confirmOwner(t('auth.reason.exportSecrets'));
 
       match(owner)
         .with({ kind: 'confirmed' }, () => undefined)
