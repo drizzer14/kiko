@@ -485,17 +485,36 @@ gate says there is nothing to do.
   never list `UAH` — without the filter, a base-USD user who holds
   UAH would read as permanently "unrated" and bypass the throttle on
   every sync instead of only a genuine gap.
-  The history backfill resumes per currency: a newly held currency
-  with no history rows forces a run from the earliest day
-  (`src/rates/history-backfill/history-backfill.ts`) — once per app
-  run: a currency whose providers all answered for the whole span but
-  returned no row for it (a held coin CoinGecko never returns) is kept
-  in an in-memory `knownEmptyCurrenciesThisRun` set and no longer
-  resets the cursor, so Statistics does not refetch the full span on
-  every focus (a rejected leg is never recorded — it retries; nor is a
-  coin whose OWN CoinGecko request failed while another coin's succeeded:
-  `fetchCryptoHistory` settles per coin and returns `failedCurrencies`
-  beside its `entries`. The metal twin, `emptyBackwardFloorByMetal`,
+  The history backfill's resume cursor is PER CURRENCY, not one shared
+  max(day) across every stored row:
+  `resolveResumeCursor` (`src/rates/history-backfill/history-backfill.ts`)
+  takes the OLDEST last-backfilled day among every currently-held
+  currency — fiat as its `USD` anchor, plus every held crypto — fed by
+  `deriveLastBackfilledDayByCurrency(historyRows)`. A currency with no
+  stored day at all forces the whole span from the earliest day, same
+  as before; the fix is that a currency which already HAS some rows
+  but fell behind (its own provider leg kept failing while a DIFFERENT
+  currency's leg kept succeeding and advancing the shared max to
+  today) is no longer masked by that other currency's progress — the
+  minimum always reflects the most-lagging held currency, so its own
+  gap keeps getting re-derived and re-fetched on every run instead of
+  going permanently stale. That minimum is itself OVERRIDDEN by an
+  explicit `null` from the caller's own `lastBackfilledDay` — the signal
+  `planBackfillRun` sends when an older transaction extends the
+  transaction span earlier than any prior run covered, which the
+  per-currency minimum alone cannot see (kiko-pricing's "History
+  backfill" section has the full rule). A currency whose providers all answered for
+  the whole span but returned no row for it (a held coin CoinGecko
+  never returns) is kept in an in-memory `knownEmptyCurrenciesThisRun`
+  set and excluded from that minimum, so Statistics does not refetch
+  the full span on every focus (a rejected leg is never recorded — it
+  retries; nor is a coin whose OWN CoinGecko request failed while
+  another coin's succeeded: `fetchCryptoHistory` settles per coin and
+  returns `failedCurrencies` beside its `entries` — `runBackfill` itself
+  reports `'failed'`, never `'complete'`, whenever an attempted
+  currency's fetch failed and nothing composed for it this run (see
+  kiko-pricing's "History backfill" section for the full outcome rule).
+  The metal twin, `emptyBackwardFloorByMetal`,
   records only an ANSWERED empty backward range — a failed request
   throws before it is recorded). A create/restore
   that may add the first holding of a new currency or type triggers
@@ -743,11 +762,16 @@ fetch's from-window is derived from `lastFullSyncAt`
 (`fromCursorSeconds`), **not** the incremental `lastSyncAt` cursor —
 `lastSyncAt` advances on every clean run, including runs that skipped
 whole cards, so using it would re-fetch only the recent window and
-recover nothing. `lastFullSyncAt` now GRADUATES even on a partial
-failure — see "Robust graduation: `failedSyncMonobankIds`" below; this
-is a deliberate DIVERGENCE from `lastSyncAt`'s own partial-failure
-discipline (see "Partial-progress resilience across cards" below), not
-a copy of it.
+recover nothing. `lastFullSyncAt` graduates **only** on a fully clean
+full-fetch run — the SAME partial-failure discipline as `lastSyncAt`
+(see "Partial-progress resilience across cards" below), not a
+divergence from it: a card's own from-window widens back to THIS
+marker when its crash-safe marker is behind, so graduating it on a run
+that failed that very card would become the failed card's own retry
+cursor and permanently narrow away the window the failed run was
+supposed to cover. See "Robust graduation: `failedSyncMonobankIds`"
+below for the force-retry set that carries the actual fix for a
+persistently flaky card, and the cost it accepts instead.
 
 Migration `0021` originally added `lastFullSyncAt` (on `settings`) as
 NULL with no backfill, which would otherwise force every already-synced
@@ -807,38 +831,83 @@ read `runSyncInner` end to end rather than trusting a restated shape.
 
 ### Robust graduation: `failedSyncMonobankIds`
 
-Before this, `lastFullSyncAt` (above) graduated **only** on a fully
-clean full-fetch run. That made ONE persistently flaky card starve the
-periodic safety net forever: `lastFullSyncAt` froze, `shouldFullFetch`
-kept returning true past `FULL_FETCH_INTERVAL_MS`, and every run became
-a full N×60s fetch of every card — the balance-diff skip never got a
-chance to engage again.
+`lastFullSyncAt` (above) GRADUATES (advances to this run's ceiling)
+**only** on a fully clean full-fetch run — never on a partial failure.
+An earlier version of this fix made it graduate even on a partial
+failure, reasoning that ONE persistently flaky card would otherwise
+starve the periodic safety net forever (`lastFullSyncAt` frozen,
+`shouldFullFetch` stuck true past `FULL_FETCH_INTERVAL_MS`, every run a
+full N×60s fetch of every card). That reasoning missed a load-bearing
+consequence: `fromSecondsForCard` widens a failed or behind-marker
+card's OWN from-window back to `lastFullSyncAt`, so graduating the
+marker on the very run that failed that card made its next retry widen
+to the JUST-ADVANCED marker instead of the window the failed run itself
+needed to cover — permanently dropping the first-connect 31-day
+lookback, or the span since the prior clean full fetch, for that one
+card (the balance still looked right, because `holdings.balanceMinorUnits`
+is overwritten from client-info regardless — see "Balance-diff skip"
+above — so nothing else surfaced the gap). Graduating only on a fully
+clean run is the SAME discipline `lastSyncAt` already used (see
+"Partial-progress resilience across cards" below).
 
-The fix is `syncState.failedSyncMonobankIds` (per-connection; schema in
+A first-ever full fetch (both `lastSyncAt` and `lastFullSyncAt` null on
+entry) that fails is a SEPARATE case `resolveFullSyncAtToPersist`
+(`src/monobank/`) still handles: it ANCHORS `lastFullSyncAt` — to this
+run's own FROM cursor (`fromCursorSeconds`' null-cursor fallback,
+`toSeconds - DEFAULT_LOOKBACK_SECONDS`), never its ceiling — rather than
+leaving it null. Without this, a first sync that fails keeps the marker
+null forever (it never had a clean run to graduate from), so every
+retry's `fromCursorSeconds` null-cursor fallback recomputes fresh from
+`toSeconds`, which SLIDES FORWARD with the real clock — a user who
+reopens the app days after a failed first Connect gets a retry window
+that starts days later too, silently losing the days in between.
+Anchoring the FIRST attempt's own from-cursor keeps every later retry,
+however delayed, deriving the identical window; `lastSyncAt` staying
+null (it never advances on any failure) is what keeps `shouldFullFetch`
+forcing a full fetch on every one of those retries, so the anchor is
+never bypassed by a narrower incremental window in between. A periodic
+(non-first-sync) full fetch that fails never reaches this branch — it
+already had a real anchor before this run, which the graduation guard
+above already leaves untouched.
+
+There is no per-card cursor to divide the difference between cards, so
+the accepted trade-off stands: a persistently flaky card keeps the
+WHOLE account in full N×60s fetch mode, refetching every card from that
+one fixed start, until a run finally comes back fully clean — a cost
+that GROWS over time (the fixed start ages further behind `now` on
+every calendar day the card stays flaky, so each of those full fetches
+pages further back). A per-card retry-from cursor (e.g. persisted in
+`holdings.metadata` JSON, no schema change) would let `lastFullSyncAt`
+graduate normally for the OTHER cards while only the flaky one keeps
+retrying from its own anchor — a real improvement, but a tracked
+follow-up, not implemented here.
+
+`syncState.failedSyncMonobankIds` (per-connection; schema in
 `src/db/schema.ts` — originally added as global `settings.failedSyncMonobankIds`
 in migration `0023`, de-globalized to `syncState` by migrations `0027`/`0028`,
-same as `lastFullSyncAt` above): a persisted set of Monobank account ids whose
-statement fetch FAILED on the last run. The next run force-fetches
+same as `lastFullSyncAt` above) is a persisted set of Monobank account ids
+whose statement fetch FAILED on the last run. The next run force-fetches
 exactly those ids regardless of balance — the same carve-out shape as
-the outstanding-hold case in "Balance-diff skip" above — while
-`lastFullSyncAt` now graduates even when this run had a partial
-failure, as long as it was a full fetch. A card is dropped from the set
-the moment it succeeds, and the set is pruned to ids still present in
-client-info (so a removed card is not force-fetched forever). Read
-`nextFailedSet` and `isBalanceDiffSkip` (`src/monobank/`) for
-the exact set algebra rather than a restated one here.
+the outstanding-hold case in "Balance-diff skip" above — from the SAME
+un-advanced window the failed run used, re-covered idempotently (the
+`(source, external_id)` upsert dedups a re-fetch). A card is dropped
+from the set the moment it succeeds, and the set is pruned to ids still
+present in client-info (so a removed card is not force-fetched
+forever). Read `nextFailedSet`, `isBalanceDiffSkip`,
+`shouldGraduateFullSync`, and `resolveFullSyncAtToPersist`
+(`src/monobank/`) for the exact set algebra, the graduation guard, and
+the first-sync anchor case rather than a restated one here.
 
-This is a genuine divergence, not a relaxation of the existing
-discipline: the statement CURSOR (`syncState.lastSyncAt`) still advances
-**only** on a fully clean run (unchanged "Partial-progress resilience
-across cards" behavior below), so a force-fetched card's window is
-re-derived from that un-advanced cursor and re-covered idempotently
-(the `(source, external_id)` upsert). Only the full-fetch MARKER now
-graduates early — the thing that was starving, not the thing that
-protects against data loss. Read the end-of-run sequence in
-`runSyncInner` (`src/monobank/`) for the exact ordering: the
-failed-set persist and the `lastFullSyncAt` stamp both happen BEFORE
-the partial-failure throw.
+The statement CURSOR (`syncState.lastSyncAt`) advances **only** on a
+fully clean run too (unchanged "Partial-progress resilience across
+cards" behavior below) — both cursors share the SAME graduation
+discipline: neither GRADUATES (advances past problems) until the run
+that would graduate it is fully clean. Read the end-of-run sequence in
+`runSyncInner` (`src/monobank/`) for the exact ordering: the failed-set
+persist happens BEFORE the partial-failure throw; `lastFullSyncAt`'s
+own write is gated by `resolveFullSyncAtToPersist`, which returns a
+value on a partial failure ONLY for the first-sync anchor case above —
+every other partial failure leaves it untouched, same as the cursor.
 
 `runSyncInner` also emits one diagnostic per run —
 `console.warn('[monobank sync] done', {isFullFetch, cards, fetched,

@@ -116,15 +116,61 @@ days, and `runBackfill` fetches, composes and upserts them, returning
 a `BackfillStatus`. A failed run must NEVER be reported as `'complete'`,
 in either of the two ways it can fail: `runBackfill` settles NBU and
 CoinGecko independently (`Promise.allSettled`) and resolves `'failed'`
-itself (a Right value, `lastDay` unchanged) when BOTH reject for the
-span — only one provider rejecting still composes from whichever
-succeeded, the existing partial-history behavior; a rejected
-`runBackfill` PROMISE (any other failure) is instead caught by the
-screen's own catch arm into the same `'failed'` state. Either way the
-screen resets its span ref, so `planBackfillRun` treats the span as
-never-run and retries it on the next focus refresh, instead of leaving
-the line permanently stuck on stale/partial history. The screen's own
-effect must guard its async settle against a REAL unmount only (an
+itself (a Right value, `lastDay` unchanged) whenever an ATTEMPTED leg
+rejected and the currencies it owns did not end up composed this run
+(`unresolvedFailures`) — NOT only when BOTH legs reject. An earlier
+version resolved `'failed'` only on a double rejection, so an
+UNATTEMPTED leg (no crypto held at all)
+resolved fulfilled and silently masked a fiat-only user's failed NBU
+fetch as `'complete'`, and a crypto leg that itself succeeded still
+composed zero rows whenever the SAME-run NBU leg failed (`composeHistoryRows`
+needs the same-run `USD:UAH` anchor to price a crypto pair), so
+"only one leg rejected" was never a safe signal that real progress
+happened. Any rows that DID compose (e.g. fiat succeeded while crypto
+failed) are still persisted before the `'failed'` return — a partial
+success is never re-fetched on retry. A rejected `runBackfill` PROMISE
+(any other failure) is instead caught by the screen's own catch arm
+into the same `'failed'` state. Either way the screen resets its span
+ref, so `planBackfillRun` treats the span as never-run and retries it
+on the next focus refresh, instead of leaving the line permanently
+stuck on stale/partial history.
+
+The resume cursor itself is now PER CURRENCY, not one shared
+max(day) across every stored row (`resolveResumeCursor`, fed by
+`deriveLastBackfilledDayByCurrency(historyRows)` — the SAME
+`historyRows` the screen already reads for `deriveLastBackfilledDay`,
+so this needs no new query): it is the OLDEST last-backfilled day
+among every currently-held currency (fiat as its `USD` anchor, plus
+every held crypto), never the newest. A single shared cursor let a
+currency whose OWN leg kept failing hide behind a different
+currency's success — once the shared max(day) reached today (from
+whatever currency drove it there), `missingDays` reported nothing
+missing at all, and the lagging currency's own gap (e.g. one held
+coin's history stalled at an earlier day while NBU kept advancing to
+today) was never re-derived, staying permanently gapped. Resuming from
+the per-currency MINIMUM instead means the most-lagging held currency
+always drives the window; the idempotent `(base, quote, day)` upsert
+makes re-covering an already-current currency in that same wider
+window free. A currency with no stored day at all still forces the
+whole span (`null`), same as before, UNLESS `knownEmptyCurrencies`
+already confirmed it has no data to give — see that set's own doc
+comment in `history-backfill.ts` for the retry-vs-remembered-empty
+distinction (a REJECTED leg or a per-coin `failedCurrencies` entry is
+never recorded as known-empty; only a leg that fully answered yet
+composed nothing for a NEVER-backfilled currency is).
+
+The caller's own `lastBackfilledDay` OVERRIDES that per-currency
+minimum with an explicit `null` — `resolveBackfillWindow` checks it
+first. `planBackfillRun` passes exactly that null whenever an older
+transaction extends `spanStart` EARLIER than any prior run covered (see
+below): the forward, per-currency minimum cannot see a gap that opens
+BELOW the newest day every held currency already reached, so without
+this override it would report nothing missing and silently skip the
+newly-opened earlier span forever. A non-null caller value means no
+such earlier extension happened, so the per-currency minimum decides
+normally.
+
+The screen's own effect must guard its async settle against a REAL unmount only (an
 `isMounted`-style ref flipped inside its own unmount-only effect) — a
 dep-change cleanup (a refocus advancing `now`, the same trigger that
 drives the retry above) fires the identical cleanup lifecycle event and
@@ -140,6 +186,23 @@ which the span-ref check above already turns into a no-op) and
 captured locally for that run's own `.then`, tells the two apart: a
 settle applies only when its captured token still matches the ref's
 current value.
+
+The effect's own dependency array deliberately EXCLUDES
+`lastBackfilledDay`/`lastBackfilledDayByCurrency`, even though the
+effect body needs both: a run's own upsert — including one that
+resolves `'failed'` overall but still persisted the currencies that DID
+compose — changes `historyRows`, and with it these two
+`historyRows`-derived values, on the VERY NEXT render. If either were a
+dependency, that self-triggered re-render would re-enter the effect
+immediately, at the SAME `now`, with the span ref just cleared by the
+failure handler to allow a LATER retry — a permanent request loop for a
+currency whose provider never answers, for as long as Statistics stays
+mounted. The effect instead reads both through "latest" refs (`useRef`
+assigned directly during render, the same pattern `categories.screen.tsx`'s
+`orderedKeysRef` uses for a stable callback that still sees fresh data),
+so only a dependency that genuinely changed for an unrelated reason
+(`now` advancing on a real focus, `spanStart` moving) re-enters it — the
+effect's own write echoing back through `historyRows` cannot.
 
 ## `price_points` table and `PriceBook`
 

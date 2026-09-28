@@ -2,7 +2,7 @@ import { match } from 'ts-pattern';
 import {
   type BackfillStatus,
   deriveLastBackfilledDay,
-  derivePresentCurrencies,
+  deriveLastBackfilledDayByCurrency,
   planBackfillRun,
   runBackfill,
 } from '@kiko/rates/history-backfill';
@@ -349,21 +349,45 @@ const StatisticsScreen: FC = () => {
   // The resume point for the backfill: the newest day already stored, derived
   // from the history table itself (no extra persistence). Null when empty.
   const lastBackfilledDay = useMemo(() => deriveLastBackfilledDay(historyRows), [historyRows]);
-  // Every currency with at least one stored row — `runBackfill`'s own gap
-  // check against a currency held NOW but never itself backfilled (a new
-  // coin, or fiat conversion needed for the first time), derived from this
+  // Every currency's OWN last-backfilled day — `runBackfill`'s per-currency
+  // resume cursor (a single global max(day) let one currency whose own leg
+  // kept failing, or one held for the first time, hide behind another
+  // currency's success and never re-fetch its own gap), derived from this
   // SAME already-loaded `historyRows` read, no new query.
-  const presentCurrencies = useMemo(() => derivePresentCurrencies(historyRows), [historyRows]);
+  const lastBackfilledDayByCurrency = useMemo(
+    () => deriveLastBackfilledDayByCurrency(historyRows),
+    [historyRows],
+  );
+  // A run's own upsert — including a run that resolves 'failed' overall but
+  // still persisted the currencies that DID compose — changes `historyRows`,
+  // and with it these two values on the VERY NEXT render. Neither is an
+  // effect dependency below: the backfill effect reads them through these
+  // "latest" refs (the same stable-callback-with-fresh-data pattern
+  // `categories.screen.tsx`'s `orderedKeysRef` uses) instead, so that
+  // self-triggered re-render cannot re-enter the effect on its own — only a
+  // dependency that genuinely changed for an unrelated reason (`now`
+  // advancing on a real focus, `spanStart` moving) does. Without this, a
+  // failed run whose span ref was just cleared (below, to allow a LATER
+  // retry) would see its own write's echo immediately, at the SAME instant,
+  // and restart — a permanent request loop for a currency whose provider
+  // never answers, for as long as Statistics stays mounted.
+  const lastBackfilledDayRef = useRef(lastBackfilledDay);
+  lastBackfilledDayRef.current = lastBackfilledDay;
+  const lastBackfilledDayByCurrencyRef = useRef(lastBackfilledDayByCurrency);
+  lastBackfilledDayByCurrencyRef.current = lastBackfilledDayByCurrency;
 
   // Drive the incremental, non-blocking backfill and surface its status to the
   // line. It runs when there is a bounded span (transactions exist) with days
   // still to fill, AND re-runs when an older-dated transaction extends the span
   // EARLIER mid-session (`planBackfillRun` decides both, resuming from null on an
   // earlier extension so `missingDays` recomputes the whole span — the forward
-  // resume cursor cannot see a gap that opens below the newest stored day). The
-  // ref holds the `spanStart` the last run covered, so the re-render the
-  // backfill's own writes trigger (which advance `lastBackfilledDay`) does not
-  // re-enter for the same span. The bar and pie never wait on this.
+  // resume cursor cannot see a gap that opens below the newest stored day).
+  // See `resolveBackfillWindow` (`history-backfill.ts`) for why `runBackfill`
+  // must honor that explicit null as an override of its own per-currency
+  // minimum. The ref holds the `spanStart` the last run
+  // covered, so the re-render the backfill's own writes trigger (which
+  // advance `lastBackfilledDay`) does not re-enter for the same span. The
+  // bar and pie never wait on this.
   const backfillRanForSpanRef = useRef<number | null>(null);
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>({
     state: 'idle',
@@ -415,13 +439,16 @@ const StatisticsScreen: FC = () => {
     const { run, resumeFrom } = planBackfillRun(
       spanStart,
       backfillRanForSpanRef.current,
-      lastBackfilledDay,
+      lastBackfilledDayRef.current,
     );
 
     if (!run) {
       return;
     }
 
+    // Captured so a failed settle below can RESTORE it, not just clear it to
+    // null — see that restore's own comment for why the distinction matters.
+    const spanCoveredBeforeThisRun = backfillRanForSpanRef.current;
     // Mark this span covered BEFORE the async run so the write's own re-render
     // (which advances lastBackfilledDay) does not re-enter for the same span.
     backfillRanForSpanRef.current = spanStart;
@@ -429,17 +456,17 @@ const StatisticsScreen: FC = () => {
     const token = runTokenRef.current;
 
     // No local "nothing missing" shortcut here any more: `runBackfill` itself
-    // owns that decision now, since it also has to check a newly-held
-    // currency against `presentCurrencies` — a check this screen cannot
-    // replicate without `openCurrencies`'s own async read.
-    setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDay });
+    // owns that decision now, since it also has to check a newly-held or
+    // lagging currency against `lastBackfilledDayByCurrency` — a check this
+    // screen cannot replicate without `openCurrencies`'s own async read.
+    setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDayRef.current });
     // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures every rejection as a Left, and the .then handler only sets state
     either<unknown, BackfillStatus>(() =>
       runBackfill({
         earliestDay: spanStart,
         lastBackfilledDay: resumeFrom,
         today: now,
-        presentCurrencies,
+        lastBackfilledDayByCurrency: lastBackfilledDayByCurrencyRef.current,
       }),
     ).then((result) => {
       if (!isMountedRef.current || token !== runTokenRef.current) {
@@ -448,10 +475,10 @@ const StatisticsScreen: FC = () => {
 
       if (isLeft(result)) {
         // A rejected run must retry on the next focus refresh instead of
-        // being reported as done: clear the span ref so `planBackfillRun`
-        // treats this span as never-run once `now` next advances.
-        backfillRanForSpanRef.current = null;
-        setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDay });
+        // being reported as done: RESTORE the span ref to what it covered
+        // BEFORE this run, not null — see the restore below for why.
+        backfillRanForSpanRef.current = spanCoveredBeforeThisRun;
+        setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDayRef.current });
 
         return;
       }
@@ -462,19 +489,21 @@ const StatisticsScreen: FC = () => {
       const settled: BackfillStatus = bifold(result);
 
       if (settled.state === 'failed') {
-        backfillRanForSpanRef.current = null;
+        // Restore, don't clear to null: a FIRST-ever run's pre-run value was
+        // already null, so this still reads as never-run next time. But an
+        // EARLIER-EXTENSION run's pre-run value was the OLD (later) spanStart
+        // — clearing to null instead would make the next planBackfillRun call
+        // take its "never run" branch, which resumes from the CURRENT
+        // lastBackfilledDay (already advanced by an earlier successful run)
+        // rather than recomputing the whole span — silently losing the
+        // newly-opened earlier gap forever. Restoring the old spanStart keeps
+        // `spanStart < ranForSpanStart` true, so the SAME earlier-extension
+        // branch (resumeFrom: null) fires again on the next retry.
+        backfillRanForSpanRef.current = spanCoveredBeforeThisRun;
       }
       setBackfillStatus(settled);
     });
-  }, [
-    transactions.length,
-    transactionsFresh,
-    historyFresh,
-    spanStart,
-    lastBackfilledDay,
-    now,
-    presentCurrencies,
-  ]);
+  }, [transactions.length, transactionsFresh, historyFresh, spanStart, now]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on
   // the historical table. All three are memoized on their real inputs so they no

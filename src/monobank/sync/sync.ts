@@ -120,9 +120,13 @@ type SyncStateSnapshot = Pick<
  *   the cursor — on every run that REACHED Monobank with at least one card
  *   succeeding (INCLUDING a partial failure), so the user sees a fresh time even
  *   when the cursor deliberately stays put to re-cover a failed card.
- * - `setLastFullSyncAt` stamps the last-full-fetch time; written on a full-fetch
- *   run even when one card failed, so a flaky card cannot strand the account in
- *   permanent full-fetch mode.
+ * - `setLastFullSyncAt` stamps the last-full-fetch time; GRADUATED (advanced
+ *   to this run's ceiling) only on a fully clean full-fetch run — a partial
+ *   failure must not graduate it, or the failed card's own retry would widen
+ *   to this just-advanced marker and lose whatever window the failed run
+ *   itself was covering. A failed full fetch with no anchor at all yet (a
+ *   true first sync) still ANCHORS it, to this run's own from-cursor rather
+ *   than its ceiling — see `resolveFullSyncAtToPersist`'s own doc.
  * - `setFailedSyncMonobankIds` persists the force-fetch set for the NEXT run,
  *   stored as null when empty. Written on BOTH the clean and the partial-failure
  *   path, before the partial-failure throw.
@@ -536,6 +540,55 @@ const shouldFullFetch = (
   lastFullSyncAt: number | null,
 ): boolean =>
   !lastSyncAt || lastFullSyncAt == null || now() - lastFullSyncAt >= FULL_FETCH_INTERVAL_MS;
+
+/**
+ * Whether `lastFullSyncAt` graduates this run: a full fetch where EVERY card
+ * succeeded, never a partial failure — see the call site for why.
+ */
+const shouldGraduateFullSync = (isFullFetch: boolean, failureCount: number): boolean =>
+  isFullFetch && failureCount === 0;
+
+/**
+ * The `lastFullSyncAt` value to persist after this run, or `null` to leave it
+ * unchanged. Two cases write a value:
+ *
+ * - A fully clean full fetch GRADUATES it to this run's ceiling
+ *   (`shouldGraduateFullSync`) — the normal case.
+ * - A FAILED full fetch that started with NO anchor at all (`lastFullSyncAt`
+ *   was null on entry — a true first sync) still ANCHORS it, but to this
+ *   run's own FROM cursor, not its ceiling. Without this, a first-ever sync
+ *   that fails keeps `lastFullSyncAt` null, so every card's from-window keeps
+ *   falling back to `fromCursorSeconds`' null-cursor default
+ *   (`toSeconds - DEFAULT_LOOKBACK_SECONDS`) — which SLIDES FORWARD with the
+ *   real clock on every retry, permanently losing however many days passed
+ *   between the failed attempt and a delayed retry (the balance still looks
+ *   right, since it is overwritten from client-info regardless). Anchoring
+ *   the FROM the first attempt used keeps every later retry, however
+ *   delayed, deriving the identical window. `lastSyncAt` staying null (it
+ *   never advances on any failure) is what keeps `shouldFullFetch` forcing a
+ *   full fetch on every one of those retries, so this anchor is never lost
+ *   to a narrower incremental window in between. A periodic (non-first-sync)
+ *   full fetch that fails never reaches this branch — it already had a real
+ *   anchor before this run, which the graduation guard above already leaves
+ *   untouched on failure.
+ */
+const resolveFullSyncAtToPersist = (
+  isFullFetch: boolean,
+  failureCount: number,
+  lastSyncAt: number | null,
+  lastFullSyncAt: number | null,
+  toSeconds: number,
+): number | null => {
+  if (shouldGraduateFullSync(isFullFetch, failureCount)) {
+    return toSeconds * 1000;
+  }
+
+  if (failureCount > 0 && lastFullSyncAt === null) {
+    return fromCursorSeconds(isFullFetch, lastSyncAt, lastFullSyncAt, toSeconds) * 1000;
+  }
+
+  return null;
+};
 
 /**
  * The balance-diff skip predicate: skip a card's statement fetch only when this
@@ -1242,31 +1295,30 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     await deps.syncStateRepo.setFailedSyncMonobankIds(accountId, failedIdsToPersist(newFailedIds));
   }
 
-  // GRADUATE the full-fetch marker EVEN ON A PARTIAL FAILURE. This runs
-  // BEFORE the throw below, so a full fetch where one card
-  // failed still advances `lastFullSyncAt` and does NOT get stuck re-running a
-  // slow N×60s full fetch every time (which starved the balance-diff skip once
-  // the marker aged past `FULL_FETCH_INTERVAL_MS`). Nothing is lost: the failed
-  // card is force-fetched next run via `failedSyncMonobankIds`, and because the
-  // cursor (`setLastSyncAt` below) stays put on a partial failure, that
-  // force-fetch derives its window from the un-advanced `lastSyncAt` and
-  // re-covers the failed card's window; dedup keeps it idempotent. Stamped with
-  // the queried ceiling (`toSeconds * 1000`), matching `setLastSyncAt`'s
-  // convention, so the next full fetch resumes precisely where this one ended.
-  if (isFullFetch) {
-    await deps.syncStateRepo.setLastFullSyncAt(accountId, toSeconds * 1000);
+  // The full-fetch marker to persist, if any — see `resolveFullSyncAtToPersist`'s
+  // own doc for the graduate/leave-untouched/anchor cases.
+  const fullSyncAtToPersist = resolveFullSyncAtToPersist(
+    isFullFetch,
+    failures.length,
+    lastSyncAt,
+    lastFullSyncAt,
+    toSeconds,
+  );
+
+  if (fullSyncAtToPersist !== null) {
+    await deps.syncStateRepo.setLastFullSyncAt(accountId, fullSyncAtToPersist);
   }
 
   if (failures.length > 0) {
-    // Partial failure: do NOT advance the shared cursor, so the failed card's
-    // window is re-covered on the next run. A re-fetch is idempotent — the
-    // (source, external_id) upsert refreshes an existing row rather than
-    // inserting a duplicate — so nothing already imported is lost or
-    // re-imported (`addTransactions` reports 0 new for a re-fetched item).
-    // Surface the failure so the caller shows an error and the user retries.
-    // Everything above (display stamp, failed-set persist, full-fetch
-    // graduation) already ran, so the failed card is force-fetched next run
-    // without stranding the account in permanent full-fetch mode.
+    // Partial failure: do NOT advance the shared statement cursor, so the
+    // failed card's window is re-covered on the next run. A re-fetch is
+    // idempotent — the (source, external_id) upsert refreshes an existing
+    // row rather than inserting a duplicate — so nothing already imported is
+    // lost or re-imported (`addTransactions` reports 0 new for a re-fetched
+    // item). Surface the failure so the caller shows an error and the user
+    // retries. Everything above that must still run on a partial failure
+    // (display stamp, failed-set persist, the full-fetch marker resolution)
+    // already did.
     throw failures[0];
   }
 
