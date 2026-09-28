@@ -1,3 +1,4 @@
+import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
 
@@ -28,6 +29,13 @@ export type TransactionFormParams =
   | { transactionId: string }
   | { duplicateOfTransactionId: string }
   | Record<string, never>;
+
+/**
+ * The reminder form edits a saved reminder by its id, or creates the one
+ * reminder of `kind` an account can have. The union keeps the two entry points
+ * mutually exclusive.
+ */
+export type ReminderFormParams = { reminderId: string } | { accountId: string; kind: ReminderKind };
 
 export type HomeStackParamList = {
   Home: undefined;
@@ -97,6 +105,11 @@ export type AccountsStackParamList = {
   // detail's Share changes list. `day` is the change's `dayKeyOf` key; the
   // repo re-reads the list inside its write rather than trusting a row.
   OwnershipChangeForm: { holdingId: string; day: number };
+  // The account's own reminders page, reached from the bell in the account
+  // detail header. `name` is the account's name at navigation time, like
+  // AccountDetail's.
+  AccountReminders: { accountId: string; name: string };
+  ReminderForm: ReminderFormParams;
   // The shared statement-import preview + target-holding screen, reached
   // from the in-app document-picker entry point (`account-detail.screen.tsx`'s
   // `pickAndOpenStatement`) with a resolved local `filePath` and the owning
