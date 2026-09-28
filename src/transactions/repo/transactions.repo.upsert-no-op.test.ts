@@ -10,46 +10,13 @@
 // never enforces real SQLite upsert/WHERE semantics, so only a real engine
 // can prove `setWhere` actually suppresses a no-op UPDATE (and still applies
 // a genuine one).
-import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
 import { transactions } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
-import { drizzle } from 'drizzle-orm/sqlite-proxy';
+import { applyAllMigrations, toSqlOnlyDrizzle } from '@kiko/test-support/real-sqlite';
 
 import { bankOwnedTransactionSet, bankOwnedTransactionSetWhere } from './transactions.repo';
 
-const neverCalled = async (): Promise<{ rows: unknown[] }> => {
-  throw new Error('the sqlite-proxy callback must never run — this instance is toSQL()-only');
-};
-
-const proxyDb = drizzle(neverCalled);
-
-// The REAL insert Drizzle builds names every column of the real `transactions`
-// table (defaulting the ones this test never sets), so the test database must
-// have that table's REAL, full shape too — the ACTUAL shipped migration SQL
-// (the same files `run-migrations.ts` loads), applied to a real, in-process
-// `node:sqlite` engine, mirroring `accounts.repo.foreign-keys.test.ts`'s own
-// "real engine, not a hand-mirrored schema" precedent.
-const MIGRATIONS_ROOT = join(__dirname, '..', '..', '..', 'drizzle', 'migrations');
-const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
-
-const applyAllMigrations = (database: DatabaseSync): void => {
-  const journal = JSON.parse(
-    readFileSync(join(MIGRATIONS_ROOT, 'meta', '_journal.json'), 'utf8'),
-  ) as { entries: { tag: string }[] };
-
-  for (const entry of journal.entries) {
-    const sql = readFileSync(join(MIGRATIONS_ROOT, `${entry.tag}.sql`), 'utf8');
-    const statements = sql
-      .split(STATEMENT_BREAKPOINT)
-      .map((statement) => statement.trim())
-      .filter((statement) => statement !== '');
-
-    for (const statement of statements) {
-      database.exec(statement);
-    }
-  }
-};
+const proxyDb = toSqlOnlyDrizzle();
 
 type Row = {
   id: string;
@@ -80,9 +47,13 @@ const upsertSql = (row: Row): { sql: string; params: unknown[] } =>
     })
     .toSQL();
 
-// `client.ts` enables `PRAGMA foreign_keys` in production, so `holding_id`
-// needs a real target row — a minimal account + holding, matching
-// `accounts.repo.foreign-keys.test.ts`'s own real-FK setup.
+// The REAL insert Drizzle builds names every column of the real `transactions`
+// table (defaulting the ones this test never sets), so the test database must
+// have that table's REAL, full shape too — hence `applyAllMigrations`, not a
+// hand-mirrored subset of the schema. `client.ts` also enables `PRAGMA
+// foreign_keys` in production, so `holding_id` needs a real target row — a
+// minimal account + holding, matching `accounts.repo.foreign-keys.test.ts`'s
+// own real-FK setup.
 const openTestDatabase = (): DatabaseSync => {
   const database = new DatabaseSync(':memory:');
 

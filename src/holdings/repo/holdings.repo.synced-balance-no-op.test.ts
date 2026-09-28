@@ -11,40 +11,13 @@
 // write is skipped when the synced balance already matches (and still
 // applies when it does not). Mirrors `accounts.repo.foreign-keys.test.ts`'s
 // own "real engine, not a hand-mirrored schema" precedent.
-import { join } from 'node:path';
 import { holdings } from '@kiko/db';
-import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { drizzle } from 'drizzle-orm/sqlite-proxy';
+import { applyAllMigrations, toSqlOnlyDrizzle } from '@kiko/test-support/real-sqlite';
 
 import { syncedBalanceUpdateWhere } from './holdings.repo';
 
-const neverCalled = async (): Promise<{ rows: unknown[] }> => {
-  throw new Error('the sqlite-proxy callback must never run — this instance is toSQL()-only');
-};
-
-const proxyDb = drizzle(neverCalled);
-
-const MIGRATIONS_ROOT = join(__dirname, '..', '..', '..', 'drizzle', 'migrations');
-const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
-
-const applyAllMigrations = (database: DatabaseSync): void => {
-  const journal = JSON.parse(
-    readFileSync(join(MIGRATIONS_ROOT, 'meta', '_journal.json'), 'utf8'),
-  ) as { entries: { tag: string }[] };
-
-  for (const entry of journal.entries) {
-    const sql = readFileSync(join(MIGRATIONS_ROOT, `${entry.tag}.sql`), 'utf8');
-    const statements = sql
-      .split(STATEMENT_BREAKPOINT)
-      .map((statement) => statement.trim())
-      .filter((statement) => statement !== '');
-
-    for (const statement of statements) {
-      database.exec(statement);
-    }
-  }
-};
+const proxyDb = toSqlOnlyDrizzle();
 
 // The exact statement `setSyncedBalance` builds — mirrors it precisely,
 // since it reuses that function's own exported `syncedBalanceUpdateWhere`
