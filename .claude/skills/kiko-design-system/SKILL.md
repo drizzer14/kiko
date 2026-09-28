@@ -863,7 +863,10 @@ new component can land between reviews of this skill:
   delete-affordance pattern; a new deletable card/row wraps in this
   rather than reintroducing a swipe gesture. No swipe actions anywhere:
   row edit/delete = long-press `CardContextMenu` (`kiko-no-swipe-action`,
-  see kiko-gestures).
+  see kiko-gestures). A form has no in-form Delete: the entity is
+  deleted only from its page's `CardContextMenu`, so nothing under
+  `src/screens/forms/` imports `ConfirmSheet`
+  (`kiko-no-confirm-sheet-in-form`, `rules/semgrep-prewrite.yml`).
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.

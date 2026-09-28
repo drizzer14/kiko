@@ -1029,3 +1029,26 @@ rules:
       - pattern-either:
           - pattern: process.env.TZ = $ZONE
           - pattern: process.env['TZ'] = $ZONE
+  # kiko-design-system's CardContextMenu: a form has no in-form Delete. An
+  # entity is deleted only from its page's touch-and-hold CardContextMenu,
+  # which owns the ConfirmSheet, so a form never imports the sheet at all
+  # (a type-only import too: it plans a confirm the form must not own).
+  # `paths.include` is path-prefixed, so the fixture pair is NESTED. ERROR
+  # from the start: the tree had no finding when the rule landed.
+  - id: kiko-no-confirm-sheet-in-form
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      A form has no in-form Delete, so it never imports `ConfirmSheet`. An
+      entity is deleted only from its page's touch-and-hold
+      `CardContextMenu`, which raises the confirm itself — see
+      kiko-design-system's "Component set (CardContextMenu)".
+    metadata:
+      fix: "Remove the `ConfirmSheet` import from the form; wrap the entity's card or row on its page in `CardContextMenu` with `onDelete` instead."
+      skill: "kiko-design-system › Component set (CardContextMenu)"
+    paths:
+      include:
+        - "src/screens/forms/**"
+    patterns:
+      - pattern-regex: |-
+          (?m)(?:^[ \t]*(?:import|export)\b[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?confirm-sheet(?:/[^'"]*)?['"]
