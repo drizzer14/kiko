@@ -1065,6 +1065,28 @@ export const en = {
     xlsNotSupported:
       'Old .xls files are not supported. Save the file as .xlsx or CSV and try again.',
   },
+  reminders: {
+    // A notification can show on the lock screen, so its text never holds an
+    // account name, an identifier or an amount, and its title never names the
+    // app. English selects _one/_other; the _few/_many forms exist only to
+    // mirror Ukrainian's plural set (see uk.ts).
+    notification: {
+      statementImportTitle: 'Statement import',
+      statementImportBody_one: '{{count}} day since your last statement import.',
+      statementImportBody_few: '{{count}} days since your last statement import.',
+      statementImportBody_many: '{{count}} days since your last statement import.',
+      statementImportBody_other: '{{count}} days since your last statement import.',
+      statementImportBodyNoData: 'No statements imported yet.',
+      addTransactionsTitle: 'Transactions',
+      addTransactionsBody_one: '{{count}} day since you last added a transaction.',
+      addTransactionsBody_few: '{{count}} days since you last added a transaction.',
+      addTransactionsBody_many: '{{count}} days since you last added a transaction.',
+      addTransactionsBody_other: '{{count}} days since you last added a transaction.',
+      addTransactionsBodyNoData: 'No transactions added yet.',
+      pausedTitle: 'Reminders paused',
+      pausedBody: 'Turn them on again in Kiko.',
+    },
+  },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility
   // label) and matched against the search query. Keyed by letter code so a
