@@ -29,7 +29,9 @@ export const en = {
     },
     reauth: {
       failedTitle: "Couldn't confirm it's you",
-      passcodeRequired: 'Set a device passcode to export saved passwords & keys.',
+      passcodeRequired:
+        'Set a device passcode to export saved passwords & keys. An export without them still works.',
+      passcodeRequiredTitle: 'Device passcode required',
     },
     unlock: 'Unlock',
     unlockPrompt: 'Unlock Kiko',
@@ -60,7 +62,8 @@ export const en = {
       label: 'App lock',
       requireFaceIdOrPasscode: 'Require Face ID or passcode',
       hint: {
-        biometryUnavailable: 'Face ID is off for Kiko — your device passcode will be used.',
+        biometryUnavailable:
+          "Face ID isn't available right now — your device passcode will be used.",
         passcodeNotSet: 'Set a device passcode in iOS Settings to use app lock.',
         passcodeOnly: 'No Face ID enrolled — your device passcode will be used.',
         unavailable: 'Biometric hardware is unavailable on this device.',

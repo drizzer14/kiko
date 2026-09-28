@@ -18,7 +18,9 @@ export const uk: typeof en = {
     },
     reauth: {
       failedTitle: 'Не вдалося підтвердити, що це ви',
-      passcodeRequired: 'Встановіть пароль пристрою, щоб експортувати збережені паролі й ключі.',
+      passcodeRequired:
+        'Встановіть пароль пристрою, щоб експортувати збережені паролі й ключі. Експорт без них усе одно працює.',
+      passcodeRequiredTitle: 'Потрібен пароль пристрою',
     },
     unlock: 'Розблокувати',
     unlockPrompt: 'Розблокувати Кіко',
@@ -45,7 +47,7 @@ export const uk: typeof en = {
       label: 'Блокування застосунку',
       requireFaceIdOrPasscode: 'Блокування Face ID або паролем',
       hint: {
-        biometryUnavailable: 'Face ID вимкнено для Кіко — буде використано пароль пристрою.',
+        biometryUnavailable: 'Face ID зараз недоступний — буде використано пароль пристрою.',
         passcodeNotSet:
           'Встановіть пароль пристрою в Налаштуваннях iOS, щоб використовувати блокування застосунку.',
         passcodeOnly: 'Face ID не налаштовано — буде використано пароль пристрою.',
