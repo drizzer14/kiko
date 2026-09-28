@@ -84,8 +84,13 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
   if (connectedProvider !== undefined) {
     // Only Binance imports a separate transaction history behind the balance —
-    // a wallet's balance IS the whole synced picture, so it never lags.
+    // a wallet's balance IS the whole synced picture, so it never lags. Hidden
+    // while a sync is in flight: `syncedAt` moves the instant the balance leg
+    // commits, but the history walk's own cursor only catches up a few seconds
+    // later (a SEPARATE, slower step), so the caption would otherwise flash on
+    // every sync after more than a day away.
     const historyBehind =
+      !isSyncing &&
       connectedProvider === 'binance' &&
       isBinanceHistoryBehind(historyCursorOf(holdings), latestSyncedAt(holdings));
 

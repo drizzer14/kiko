@@ -1,7 +1,6 @@
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import { binanceHistoryCursorOf } from '@kiko/holdings/holding-metadata';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The Binance history-walk watermark among an account's holdings. Only the

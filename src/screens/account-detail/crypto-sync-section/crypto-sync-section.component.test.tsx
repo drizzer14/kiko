@@ -367,6 +367,29 @@ describe('CryptoSyncSection', () => {
     ).toBeNull();
   });
 
+  it('hides the lagging-history caption while a sync is in flight, even when the history walk is behind', async () => {
+    mockUseCryptoSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
+
+    const { queryByText } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'binance' })}
+        holdings={[
+          holding({
+            binanceAsset: 'BTC',
+            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY,
+            syncedAt: CONNECTED_WALLET_SYNCED_AT,
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      queryByText('Some Binance deposit and withdrawal history is not imported yet.', {
+        exact: false,
+      }),
+    ).toBeNull();
+  });
+
   it('never shows the Binance caption for a wallet account', async () => {
     const { queryByText } = await renderConnectedWallet();
 
