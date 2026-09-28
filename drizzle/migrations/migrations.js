@@ -44,6 +44,7 @@ import m0039 from './0039_seed_loan_interest_category.sql';
 import m0040 from './0040_cleanup_stray_deposit_bond_balance.sql';
 import m0041 from './0041_add_dedup_key_upgraded.sql';
 import m0042 from './0042_uah_star_rates.sql';
+import m0045 from './0045_add_reminders.sql';
 
 export default {
   journal,
@@ -91,5 +92,6 @@ export default {
     m0040,
     m0041,
     m0042,
+    m0045,
   },
 };

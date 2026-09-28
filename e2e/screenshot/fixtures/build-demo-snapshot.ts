@@ -80,6 +80,7 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     // there is nothing for `upgradeLegacyDedupKey` to rewrite — `true` skips
     // that pass entirely on import, the same as a real post-upgrade device.
     dedupKeysUpgraded: true,
+    reminderOfferDismissals: null,
   },
 ];
 
