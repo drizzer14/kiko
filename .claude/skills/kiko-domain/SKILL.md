@@ -1546,14 +1546,23 @@ together.
   anchor (`ledgerAnchorAt`) is the latest correction on or before the
   instant (`loanAnchorAt`); with none, an `annuity`/`differentiated`
   loan anchors on the SCHEDULE outstanding (`loanOutstandingMinorAt`)
-  at the end of the local day before its FIRST linked payment, because
-  auto-links only reach back as far as the bank sync window and a
-  loan's earlier payments are often never linked. So the history never
-  steps up at the first link: it follows the schedule up to that day,
-  then drops by each linked payment's principal part. A `none` loan
-  (no schedule), or a first link on or before the start day, keeps the
-  principal at the start day. A payment on or before a correction's day
-  is already inside that correction. The ledger (the `LoanPlan` plus
+  at the EARLIER of (a) the end of the local day before its FIRST
+  linked payment and (b) the end of the local day before the due date
+  of the installment that payment maps to (`installmentIndexOf`'s own
+  nearest-due-date mapping, `loan-schedule.ts` — the same mapping
+  `loanInterestPerPaymentMinor` attributes that payment's interest by),
+  because auto-links only reach back as far as the bank sync window and
+  a loan's earlier payments are often never linked. Reading from before
+  the DUE date rather than before the payment itself is what keeps a
+  payment landing a few days late (a real-world norm, not an edge case)
+  from double-subtracting its own installment's principal — once by the
+  schedule anchor, once by the link — which had permanently understated
+  every loan with a late first link by one installment's principal. So
+  the history never steps up at the first link: it follows the schedule
+  up to that day, then drops by each linked payment's principal part. A
+  `none` loan (no schedule), or a first link on or before the start day,
+  keeps the principal at the start day. A payment on or before a
+  correction's day is already inside that correction. The ledger (the `LoanPlan` plus
   every paying-down payment with its day key and interest part) is built
   once per `PriceBook` and cached in a `WeakMap` keyed by the book, then
   by loan id + currency + the schedule terms (the loan form reads one

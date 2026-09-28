@@ -241,6 +241,31 @@ describe('loanLedgerOutstandingMinorAt', () => {
         loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, corrected, secondLinked.dueDate),
       ).toBe(30_000_000 - secondLinked.principalMinorUnits - extra);
     });
+
+    it.each([1, 2, 3, 7])(
+      'matches the schedule with no step when the first link lands %d day(s) after its due date',
+      (daysLate) => {
+        const latePaymentTime = addDays(firstLinked.dueDate, daysLate);
+        const lateBook = bookWith([
+          { time: latePaymentTime, amountMinorUnits: -firstLinked.paymentMinorUnits },
+        ]);
+
+        expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, lateBook, latePaymentTime)).toBe(
+          firstLinked.balanceMinorUnits,
+        );
+      },
+    );
+
+    it('matches the schedule with no step when the first link lands before its due date', () => {
+      const earlyPaymentTime = addDays(firstLinked.dueDate, -2);
+      const earlyBook = bookWith([
+        { time: earlyPaymentTime, amountMinorUnits: -firstLinked.paymentMinorUnits },
+      ]);
+
+      expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, earlyBook, earlyPaymentTime)).toBe(
+        firstLinked.balanceMinorUnits,
+      );
+    });
   });
 
   // Both payments map to the first installment, so they share its interest

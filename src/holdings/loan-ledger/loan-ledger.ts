@@ -1,10 +1,12 @@
 import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import { startOfLocalDay } from '@kiko/dates';
 import { dayKeyOf, type LoanLedgerPayment, type PriceBook } from '@kiko/prices/price-book';
 
 import {
   loanPlanOf,
   loanAnchorAt,
+  installmentIndexOf,
   loanOutstandingMinorAt,
   loanInterestPerPaymentMinor,
   type LoanPlan,
@@ -125,7 +127,22 @@ const ledgerAnchorAt = (
 
   const firstPaymentTime = Math.min(...counted.map((entry) => entry.payment.time));
   const endOfDayBeforeFirstPayment = startOfLocalDay(firstPaymentTime) - 1;
-  const dayKey = dayKeyOf(endOfDayBeforeFirstPayment);
+
+  // A payment days late still maps to its OWN installment's due date (the
+  // same nearest-due-date mapping its interest is attributed by), so the
+  // anchor must read the schedule from before THAT installment was due, not
+  // from before the payment itself landed — otherwise its principal is
+  // already subtracted once by the schedule and a second time by the link.
+  const firstInstallmentIndex = installmentIndexOf(meta, ledger.plan, firstPaymentTime);
+  const endOfDayBeforeDueDate = foldMap(
+    maybe(firstInstallmentIndex),
+    (index) => startOfLocalDay(ledger.plan.installments[index].dueDate) - 1,
+  );
+  const anchorInstant =
+    endOfDayBeforeDueDate === undefined
+      ? endOfDayBeforeFirstPayment
+      : Math.min(endOfDayBeforeFirstPayment, endOfDayBeforeDueDate);
+  const dayKey = dayKeyOf(anchorInstant);
 
   if (dayKey < anchor.dayKey) {
     return anchor;
@@ -133,13 +150,7 @@ const ledgerAnchorAt = (
 
   return {
     dayKey,
-    valueMinorUnits: loanOutstandingMinorAt(
-      meta,
-      loan.id,
-      book,
-      endOfDayBeforeFirstPayment,
-      ledger.plan,
-    ),
+    valueMinorUnits: loanOutstandingMinorAt(meta, loan.id, book, anchorInstant, ledger.plan),
     fromCorrection: false,
   };
 };
