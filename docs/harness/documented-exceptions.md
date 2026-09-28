@@ -267,6 +267,15 @@ verified usage, not dead weight:
   in `ignore` above, so Knip never walks into it and reports it as an
   unused file. It is reached exactly as far as those two checkers are,
   and exercised through their tests.
+- **`knip.json` `ignore`**: `scripts/checks/deps-ranges.js` — the same
+  shape as `guard-replay.js`/`import-order.js` above.
+  `scripts/checks/deps.sh` (part of `check:deps`) reaches it only via a
+  `node` invocation, never a static `import`/`require`, and never a
+  package.json script Knip's static scan can see, so Knip's
+  reachability graph reports it as unused. Exercised directly by
+  `__tests__/deps-ranges.test.ts`, which spawns the script as a child
+  process against a fixture `package.json`, not an import, so Jest's
+  coverage does not make Knip see it as reachable either.
 - **`scripts/checks/feature-imports.js`'s `TEST_ONLY` allowlist**
   (`kiko-feature-imports`): the paths below may be imported deep, through
   `@kiko/<path>`, and only by a test file. No barrel may export them
