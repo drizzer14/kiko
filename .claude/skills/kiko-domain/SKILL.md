@@ -893,21 +893,27 @@ guard's `20x` threshold under a Stryker dry run even though nothing about
 the algorithm had regressed. Both guards were rewritten to count real work
 through an optional injected counter instead of timing anything: each
 function takes an optional counter argument (`ValuerWorkCounter` /
-`CandidateVisitCounter`), a plain `{ count: 0 }`-shaped object incremented
-once per unit of real work (a row touched in the valuer's setup pass or a
-per-bucket binary-search step; a credit candidate actually visited in the
-transfer matcher) — omitted, the parameter costs nothing measurable, so
-production call sites are untouched. Each guard then asserts two things on
-the COUNT, never on elapsed time: (1) near-linear growth — doubling the
-row count keeps the work count under 3x, checked at two doubling steps;
-(2) the count stays far below what the quadratic reference implementation
-reports the same way (under 5% of it, at thousands of rows) — this second
-assertion is the one that actually catches a reversion to the quadratic
-shape (growth alone can look linear even in the quadratic reference when
-the bucket/window count is held fixed while only the row count scales, so
-it does not substitute for the direct reference comparison). Any NEW speed
-guard in this codebase must follow the same shape: count real work through
-an injected counter or a pure helper that returns a work count, never
+`CandidateVisitCounter`), incremented once per unit of real work (a row
+touched in the valuer's setup pass or a per-bucket binary-search step; a
+credit candidate actually visited in the transfer matcher) — the counter
+shapes differ per guard (`{ rowVisits }` for holding-value-at, `{
+candidateVisits }` for internal-transfers), not a generic `{ count: 0 }`;
+omitted, the parameter costs nothing measurable, so production call sites
+are untouched. Each guard then asserts two things on the COUNT, never on
+elapsed time: (1) near-linear growth — doubling the row count keeps the
+work count under 3x, checked at two doubling steps; (2) the count stays
+far below what the quadratic reference implementation reports the same
+way (under 5% of it, at thousands of rows). Which assertion actually
+catches which regression is NOT interchangeable between the two guards:
+for internal-transfers, the GROWTH check is the one that catches a
+scan-from-index-0 regression (the ratio check alone gives ~1.3% there,
+which passes); for holding-value-at, the RATIO check is the one that
+catches a per-bucket full rescan (the growth check cannot, because
+holding-value-at's bucket count is held FIXED while only the transaction
+count scales, so a per-bucket-times-N regression still looks linear in
+N). Any NEW speed guard in this codebase must follow the same shape:
+count real work through an injected counter or a pure helper that returns
+a work count, never
 `performance.now()`/`Date.now()` deltas.
 
 #### The "no custom range = derive the default from now" pattern
