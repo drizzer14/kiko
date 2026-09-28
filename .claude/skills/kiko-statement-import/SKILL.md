@@ -177,7 +177,15 @@ mapped, `resolveMappedClosingBalance` derives the parsed statement's
 `closingBalance` from it, using the SAME "row with the newest parsed
 time" rule Monobank CSV's own `resolveClosingBalance` uses, reading the cell with the mapping's own
 `decimalSeparator` (`parseAmountCell`, same as every other amount cell
-this mapping reads). A tie on the newest time is broken by FILE ORDER,
+this mapping reads). `parseAmountCell` (`amount.ts`) validates the
+OTHER separator's thousands-group shape, not just the groups after it —
+the LEADING group must also be 1-3 digits with no leading zero (a lone
+`'0'` is fine only when no group follows it) — so a cell whose decimal
+separator was actually misread as the grouping character (the wrong
+chip) parses to `NaN` instead of a value silently 100x too large or
+malformed; `applyColumnMapping` turns that into a recoverable per-row
+`'amount'` error, the same as any other unparseable cell. A tie on the
+newest time is broken by FILE ORDER,
 not "last one wins":
 `pickClosingBalanceRow` reads the resolved rows' own first-vs-last time
 to tell a newest-first file from an oldest-first one, then takes the

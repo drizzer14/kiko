@@ -612,6 +612,15 @@ the marker on its single debit leg). Three consequences hold together:
   `kiko-no-direct-default-transaction-description` Semgrep rule.
 - A repository input therefore carries holding IDs, never holding
   display names, for an exchange.
+- **Convert's counterpart never lands on a synced holding.** The
+  counterpart picker (`resolveConvertView` in the transaction form)
+  excludes every synced/syncable holding — a sync already owns that
+  holding's balance, and the counterpart is a NEW manual leg `save`
+  writes. `recordExchangeCounterpart` (`src/transactions/repo/`) enforces
+  the same rule again, in depth, inside the write itself: it re-reads the
+  counterpart's own holding+account INSIDE the transaction and throws
+  rather than trust a caller-supplied flag, since the write is reachable
+  directly, not only through the picker.
 
 ## App lock / security settings
 
@@ -652,6 +661,20 @@ length (no January-31 + 1 month rolling into March) while preserving
 whatever time-of-day the input carried — it does not force the result
 to local midnight, so a non-midnight input keeps its hour/minute/
 second/millisecond across the step.
+
+A bi-weekly (opening-day-anchored semi-monthly) deposit's capitalization
+tag is carried by the CREDIT INSTANT that produced it, never re-derived
+from the instant's own calendar month afterward — a collapsed mid-month
+credit (the opening day's `+1` boundary landing past the month's own
+length) moves onto the SAME instant as that month's own plain "1st"
+credit, and it keeps its capitalizing tag when it moves; re-deriving the
+tag from the moved instant's own month cannot tell the two apart and
+silently drops a capitalization every time the collapse happens. The
+period ending AT maturity always capitalizes too, even when maturity
+happens to coincide with what would otherwise be a plain,
+non-capitalizing credit (an opening day of 1) — read `biweeklyCredits`/
+`depositPeriods` in `src/holdings/interest/interest.ts` for the exact
+mechanism.
 
 Tests for these helpers use two input styles side by side in
 `src/holdings/`'s interest test, and both stay valid because `addMonths` preserves
