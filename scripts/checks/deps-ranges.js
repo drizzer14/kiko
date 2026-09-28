@@ -1,79 +1,66 @@
 #!/usr/bin/env node
 
-// Mechanizes the pin-exact-dependency-versions rule: no range spec (^, ~,
-// *, x, >, <, ||, or a space-separated range like "1.0.0 - 2.0.0") in
-// package.json's dependencies, devDependencies, or overrides blocks — every
-// spec must be the exact version npm already resolves. A hand-rolled
-// scanner over the parsed manifest, not Semgrep: this is a JSON-shape rule
-// (walk two named object blocks, and one level into a nested override
-// object), not a source-code pattern Semgrep matches against.
+// Mechanizes the pin-exact-dependency-versions rule: every dependencies,
+// devDependencies, optionalDependencies, peerDependencies, and overrides
+// entry (however deeply overrides nests, to scope an override to a
+// parent/grandparent/... chain) must be an exact semver pin. This is an
+// ALLOWLIST of the one spec shape npm resolves to a single version, not a
+// denylist of range syntax — a denylist misses any range shape it does
+// not already know about (a bare major/minor version, an empty spec, a
+// tag like "latest", a git/github reference, ...) and can also
+// misfire on an exact spec that merely contains a denylisted character
+// (an exact prerelease identifier containing the letter x).
 
 const fs = require('node:fs');
 
-// Any of these appearing in a spec string means it is a RANGE, not an
-// exact version: ^ ~ * (caret/tilde/wildcard ranges), x/X (an npm
-// "1.2.x" partial-wildcard range), < > (comparator ranges), || (an
-// alternation of ranges), or any whitespace (a space-separated range like
-// "1.0.0 - 2.0.0", or an npm "1.2.3 <2.0.0" comparator range).
-const RANGE_INDICATOR = /[\^~*<>]|[xX]|\|\||\s/;
+const EXACT_SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 
-const isRangeSpec = (spec) => typeof spec === 'string' && RANGE_INDICATOR.test(spec);
+const isExactSpec = (spec) => typeof spec === 'string' && EXACT_SEMVER.test(spec);
 
-// The nested shape of one override entry: `{ "parent": { "dep": "spec" } }`,
-// npm's syntax for scoping an override to a specific parent package.
-const findNestedOverrideViolations = (parentName, nestedOverrides) => {
-  const violations = [];
-
-  for (const [nestedName, nestedSpec] of Object.entries(nestedOverrides)) {
-    if (isRangeSpec(nestedSpec)) {
-      violations.push({ block: `overrides.${parentName}`, name: nestedName, spec: nestedSpec });
+// One recursive walk covers every checked block: dependencies and its
+// siblings are always a flat { name: spec } map, but overrides nests to
+// arbitrary depth, so the same walk has to recurse into a plain object
+// value regardless of which top-level block it started from. Anything
+// that is neither a string nor a plain object (a number, boolean, null,
+// or array) is not a version spec npm can resolve, so it is a violation
+// too.
+const walk = (value, path, violations) => {
+  if (typeof value === 'string') {
+    if (!isExactSpec(value)) {
+      violations.push({ path, spec: value });
     }
+
+    return;
   }
 
-  return violations;
-};
-
-// `overrides` may nest one level (see `findNestedOverrideViolations`)
-// alongside plain `{ "dep": "spec" }` entries — both shapes are checked.
-const findOverrideViolations = (overrides) => {
-  const violations = [];
-
-  for (const [name, value] of Object.entries(overrides)) {
-    if (typeof value === 'string') {
-      if (isRangeSpec(value)) {
-        violations.push({ block: 'overrides', name, spec: value });
-      }
-
-      continue;
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    for (const [name, nested] of Object.entries(value)) {
+      walk(nested, `${path}.${name}`, violations);
     }
 
-    if (value && typeof value === 'object') {
-      violations.push(...findNestedOverrideViolations(name, value));
-    }
+    return;
   }
 
-  return violations;
+  violations.push({ path, spec: JSON.stringify(value) });
 };
+
+const CHECKED_BLOCKS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+  'overrides',
+];
 
 const findRangeSpecs = (packageJson) => {
   const violations = [];
 
-  for (const block of ['dependencies', 'devDependencies']) {
+  for (const block of CHECKED_BLOCKS) {
     const map = packageJson[block];
 
-    if (!map) {
-      continue;
+    if (map) {
+      walk(map, block, violations);
     }
-
-    for (const [name, spec] of Object.entries(map)) {
-      if (isRangeSpec(spec)) {
-        violations.push({ block, name, spec });
-      }
-    }
-  }
-
-  if (packageJson.overrides) {
-    violations.push(...findOverrideViolations(packageJson.overrides));
   }
 
   return violations;
@@ -95,7 +82,7 @@ function runCli() {
   }
 
   for (const violation of violations) {
-    process.stdout.write(`${violation.block}.${violation.name}: ${violation.spec}\n`);
+    process.stdout.write(`${violation.path}: ${violation.spec}\n`);
   }
 
   process.exit(1);

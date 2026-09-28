@@ -100,4 +100,75 @@ describe('scripts/checks/deps-ranges.js', () => {
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('overrides.esbuild: ^0.25.12');
   });
+
+  it('fails "latest"', () => {
+    const result = runCheck({ dependencies: { react: 'latest' } });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('dependencies.react: latest');
+  });
+
+  it('fails an empty spec (any version)', () => {
+    const result = runCheck({ dependencies: { react: '' } });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('dependencies.react: ');
+  });
+
+  it('fails a partial version missing the patch component', () => {
+    const result = runCheck({ dependencies: { react: '1.2' } });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('dependencies.react: 1.2');
+  });
+
+  it('fails a bare major version', () => {
+    const result = runCheck({ dependencies: { react: '1' } });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('dependencies.react: 1');
+  });
+
+  it('fails a github reference', () => {
+    const result = runCheck({ dependencies: { react: 'github:a/b' } });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('dependencies.react: github:a/b');
+  });
+
+  it('passes an exact prerelease version whose identifier contains the letter x', () => {
+    const result = runCheck({ dependencies: { react: '1.0.0-experimental.1' } });
+
+    expect(result.status).toBe(0);
+  });
+
+  it('fails a range spec nested two levels deep in overrides', () => {
+    const result = runCheck({
+      overrides: { a: { b: { c: '^1.0.0' } } },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('overrides.a.b.c: ^1.0.0');
+  });
+
+  it('fails a range spec in optionalDependencies', () => {
+    const result = runCheck({ optionalDependencies: { fsevents: '^2.3.0' } });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('optionalDependencies.fsevents: ^2.3.0');
+  });
+
+  it('fails a range spec in peerDependencies', () => {
+    const result = runCheck({ peerDependencies: { react: '^19.0.0' } });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('peerDependencies.react: ^19.0.0');
+  });
+
+  it('fails a non-string, non-object override value', () => {
+    const result = runCheck({ overrides: { esbuild: 42 } });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('overrides.esbuild: 42');
+  });
 });
