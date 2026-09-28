@@ -966,6 +966,60 @@ describe('StatisticsScreen', () => {
     nowSpy.mockRestore();
   });
 
+  it('re-runs the backfill when a new currency is held mid-session, but not for an unrelated holdings change', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+    });
+
+    const { rerender } = await renderScreen();
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    // A new GBP holding appears while Statistics stays mounted — the held
+    // currency set changed, so the backfill must re-run even though the
+    // transaction span itself did not move.
+    const GBP_HOLDING: Holding = {
+      id: 'h5',
+      accountId: 'b',
+      currency: 'GBP',
+      type: 'card',
+      balanceMinorUnits: 1_000,
+      metadata: null,
+      closedAt: null,
+    };
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, GBP_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    // An unrelated holdings change (a balance update) with the SAME currency
+    // set must not start a third run.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, { ...GBP_HOLDING, balanceMinorUnits: 2_000 }],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+  });
+
   it("ignores a stale run's rejection once a later run has claimed a newly-extended span", async () => {
     // An older transaction extends `spanStart` EARLIER while run A is still
     // pending, so run B starts for the wider span before A ever settles. A's

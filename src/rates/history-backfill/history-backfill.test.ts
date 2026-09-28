@@ -67,28 +67,58 @@ describe('deriveLastBackfilledDay', () => {
 
 describe('planBackfillRun', () => {
   it('runs from the incremental resume cursor on the first run', () => {
-    expect(planBackfillRun(day(0), null, day(2))).toEqual({ run: true, resumeFrom: day(2) });
+    expect(planBackfillRun(day(0), null, day(2), false)).toEqual({
+      run: true,
+      resumeFrom: day(2),
+    });
   });
 
   it('re-runs from null (the whole span) when the span extends EARLIER mid-session', () => {
     // A prior run already covered from day(5); an older transaction drops
     // spanStart to day(0). Resuming forward from the newest stored day cannot
     // see the gap below it, so the re-run must recompute the full span.
-    expect(planBackfillRun(day(0), day(5), day(9))).toEqual({ run: true, resumeFrom: null });
+    expect(planBackfillRun(day(0), day(5), day(9), false)).toEqual({
+      run: true,
+      resumeFrom: null,
+    });
   });
 
-  it('does not re-run when the span is unchanged or moves later', () => {
-    expect(planBackfillRun(day(5), day(5), day(9))).toEqual({ run: false, resumeFrom: null });
-    expect(planBackfillRun(day(7), day(5), day(9))).toEqual({ run: false, resumeFrom: null });
+  it('does not re-run when the span is unchanged or moves later and the currency set is unchanged', () => {
+    expect(planBackfillRun(day(5), day(5), day(9), false)).toEqual({
+      run: false,
+      resumeFrom: null,
+    });
+    expect(planBackfillRun(day(7), day(5), day(9), false)).toEqual({
+      run: false,
+      resumeFrom: null,
+    });
   });
 
   it('the earlier-extension re-run actually reaches the freshly-opened earlier days', () => {
     // Proving the fix end-to-end: with resumeFrom null, missingDays spans the
     // FULL range from the new earlier spanStart — the earlier gap the forward
     // cursor skipped is now covered.
-    const { resumeFrom } = planBackfillRun(day(0), day(5), day(9));
+    const { resumeFrom } = planBackfillRun(day(0), day(5), day(9), false);
 
     expect(missingDays(day(0), resumeFrom, day(2))).toEqual([day(0), day(1), day(2)]);
+  });
+
+  // A new currency appears mid-session (the user adds a GBP holding while
+  // Statistics is mounted) — the backfill must re-run for the changed
+  // currency set, without a restart, even though the span itself did not
+  // move earlier.
+  it('re-runs, resuming from the incremental cursor, when the held currency set changes', () => {
+    expect(planBackfillRun(day(5), day(5), day(9), true)).toEqual({
+      run: true,
+      resumeFrom: day(9),
+    });
+  });
+
+  it('an earlier-extension still recomputes the whole span even when the currency set also changed', () => {
+    expect(planBackfillRun(day(0), day(5), day(9), true)).toEqual({
+      run: true,
+      resumeFrom: null,
+    });
   });
 });
 

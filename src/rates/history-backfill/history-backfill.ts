@@ -159,20 +159,27 @@ export const missingDays = (
 
 /**
  * Decide whether the incremental backfill must (re)run for `spanStart`, and from
- * where. It runs when it has never run (`ranForSpanStart === null`) or when
+ * where. It runs when it has never run (`ranForSpanStart === null`), when
  * `spanStart` has moved strictly EARLIER than a prior run covered — an older
- * transaction appeared mid-session, opening a gap BELOW the newest stored day.
- * On that earlier-extension case it resumes from `null` so `missingDays`
- * recomputes the WHOLE span from `spanStart` (the idempotent upsert skips the
- * already-stored newer days); `missingDays`' forward cursor resumes ABOVE the
- * newest stored day and structurally cannot see the freshly-opened earlier gap
- * otherwise. A first, forward run keeps the incremental `lastBackfilledDay`
- * resume so it fetches only the new days.
+ * transaction appeared mid-session, opening a gap BELOW the newest stored day
+ * — or when `currenciesChanged` (a new currency is held now that was not
+ * covered by the run this span already ran for — the caller derives this from
+ * its own held-currency key, e.g. a GBP holding added while Statistics stays
+ * mounted). On the earlier-extension case it resumes from `null` so
+ * `missingDays` recomputes the WHOLE span from `spanStart` (the idempotent
+ * upsert skips the already-stored newer days); `missingDays`' forward cursor
+ * resumes ABOVE the newest stored day and structurally cannot see the
+ * freshly-opened earlier gap otherwise. A first, forward run — including one
+ * triggered only by `currenciesChanged` — keeps the incremental
+ * `lastBackfilledDay` resume, so `runBackfill`'s own per-currency cursor
+ * widens the window for the new currency without redoing an already-current
+ * one.
  */
 export const planBackfillRun = (
   spanStart: number,
   ranForSpanStart: number | null,
   lastBackfilledDay: number | null,
+  currenciesChanged: boolean,
 ): { run: boolean; resumeFrom: number | null } => {
   if (ranForSpanStart === null) {
     return { run: true, resumeFrom: lastBackfilledDay };
@@ -180,6 +187,10 @@ export const planBackfillRun = (
 
   if (spanStart < ranForSpanStart) {
     return { run: true, resumeFrom: null };
+  }
+
+  if (currenciesChanged) {
+    return { run: true, resumeFrom: lastBackfilledDay };
   }
 
   return { run: false, resumeFrom: null };

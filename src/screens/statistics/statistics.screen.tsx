@@ -393,19 +393,36 @@ const StatisticsScreen: FC = () => {
   const lastBackfilledDayByCurrencyRef = useRef(lastBackfilledDayByCurrency);
   lastBackfilledDayByCurrencyRef.current = lastBackfilledDayByCurrency;
 
+  // The distinct set of currencies the backfill's own history must now cover:
+  // every held holding's currency plus the base, sorted so the key stays
+  // stable regardless of holdings-array order (a drag reorder must never look
+  // like a currency change). Recomputed on every holdings/base change, so a
+  // holding added or removed mid-session (a new GBP holding, say) changes this
+  // key even though `spanStart` itself did not move.
+  const historyCurrencyKey = useMemo(
+    () =>
+      [...new Set([...holdings.map((holding) => holding.currency), baseCurrency])].sort().join(','),
+    [holdings, baseCurrency],
+  );
+
   // Drive the incremental, non-blocking backfill and surface its status to the
   // line. It runs when there is a bounded span (transactions exist) with days
-  // still to fill, AND re-runs when an older-dated transaction extends the span
-  // EARLIER mid-session (`planBackfillRun` decides both, resuming from null on an
-  // earlier extension so `missingDays` recomputes the whole span — the forward
-  // resume cursor cannot see a gap that opens below the newest stored day).
+  // still to fill, when an older-dated transaction extends the span EARLIER
+  // mid-session, OR when the held currency set changes mid-session (a new
+  // holding's currency the last run never covered) — `planBackfillRun` decides
+  // all three, resuming from null only on an earlier extension so `missingDays`
+  // recomputes the whole span — the forward resume cursor cannot see a gap
+  // that opens below the newest stored day; a currency-set change instead
+  // resumes from the ordinary incremental cursor, since `runBackfill`'s own
+  // per-currency window already widens for the new currency on its own.
   // See `resolveBackfillWindow` (`history-backfill.ts`) for why `runBackfill`
-  // must honor that explicit null as an override of its own per-currency
-  // minimum. The ref holds the `spanStart` the last run
-  // covered, so the re-render the backfill's own writes trigger (which
-  // advance `lastBackfilledDay`) does not re-enter for the same span. The
-  // bar and pie never wait on this.
+  // must honor an explicit null as an override of its own per-currency
+  // minimum. Both refs hold what the last run covered, so the re-render the
+  // backfill's own writes trigger (which advance `lastBackfilledDay`) does not
+  // re-enter for the same span/currency set. The bar and pie never wait on
+  // this.
   const backfillRanForSpanRef = useRef<number | null>(null);
+  const backfillRanForCurrencyKeyRef = useRef<string | null>(null);
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>({
     state: 'idle',
     lastDay: null,
@@ -453,22 +470,30 @@ const StatisticsScreen: FC = () => {
       return;
     }
 
+    const currenciesChanged =
+      backfillRanForCurrencyKeyRef.current !== null &&
+      backfillRanForCurrencyKeyRef.current !== historyCurrencyKey;
     const { run, resumeFrom } = planBackfillRun(
       spanStart,
       backfillRanForSpanRef.current,
       lastBackfilledDayRef.current,
+      currenciesChanged,
     );
 
     if (!run) {
       return;
     }
 
-    // Captured so a failed settle below can RESTORE it, not just clear it to
-    // null — see that restore's own comment for why the distinction matters.
+    // Captured so a failed settle below can RESTORE both, not just clear them
+    // to null — see that restore's own comment for why the distinction
+    // matters.
     const spanCoveredBeforeThisRun = backfillRanForSpanRef.current;
-    // Mark this span covered BEFORE the async run so the write's own re-render
-    // (which advances lastBackfilledDay) does not re-enter for the same span.
+    const currencyKeyCoveredBeforeThisRun = backfillRanForCurrencyKeyRef.current;
+    // Mark this span AND currency set covered BEFORE the async run so the
+    // write's own re-render (which advances lastBackfilledDay) does not
+    // re-enter for the same span/currency set.
     backfillRanForSpanRef.current = spanStart;
+    backfillRanForCurrencyKeyRef.current = historyCurrencyKey;
     runTokenRef.current += 1;
     const token = runTokenRef.current;
 
@@ -492,9 +517,10 @@ const StatisticsScreen: FC = () => {
 
       if (isLeft(result)) {
         // A rejected run must retry on the next focus refresh instead of
-        // being reported as done: RESTORE the span ref to what it covered
+        // being reported as done: RESTORE both refs to what they covered
         // BEFORE this run, not null — see the restore below for why.
         backfillRanForSpanRef.current = spanCoveredBeforeThisRun;
+        backfillRanForCurrencyKeyRef.current = currencyKeyCoveredBeforeThisRun;
         setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDayRef.current });
 
         return;
@@ -520,7 +546,7 @@ const StatisticsScreen: FC = () => {
       }
       setBackfillStatus(settled);
     });
-  }, [transactions.length, transactionsFresh, historyFresh, spanStart, now]);
+  }, [transactions.length, transactionsFresh, historyFresh, spanStart, now, historyCurrencyKey]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on
   // the historical table. All three are memoized on their real inputs so they no
