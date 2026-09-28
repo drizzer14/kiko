@@ -843,17 +843,49 @@ local-day bounds ONCE per filter run, and the `.filter` callback itself
 construction per transaction row. This shape (loop-invariant Date math
 inside a hot per-row callback) is mechanized by test, not by a Semgrep
 rule: `holding-value-at.test.ts`'s parity test against
-`referenceHoldingValueAt`, plus its RELATIVE speed guard (asserting
-`createHoldingValuer` runs at least 20x faster than
-`referenceHoldingValueAt` over the same many-bucket input, not a fixed
-millisecond budget — a wall-clock SLA is only ever as tight as the
-slowest machine it tolerates), are what would catch a regression back
-to per-bucket Date recomputation — a static AST rule
-looking for `startOfLocalDay`/`endOfLocalDay`/`new Date(...)` inside an
-array callback could not tell a genuinely hot per-bucket call site from a
-one-off, harmless one (e.g. `reconcile-bond-funding.ts`'s own
-candidate-building pass, built once per net-worth-series call, not once
-per bucket), so it flagged both alike and was removed.
+`referenceHoldingValueAt`, plus its DETERMINISTIC work-count guard, are
+what would catch a regression back to per-bucket Date recomputation — a
+static AST rule looking for `startOfLocalDay`/`endOfLocalDay`/`new
+Date(...)` inside an array callback could not tell a genuinely hot
+per-bucket call site from a one-off, harmless one (e.g.
+`reconcile-bond-funding.ts`'s own candidate-building pass, built once per
+net-worth-series call, not once per bucket), so it flagged both alike and
+was removed.
+
+**Speed guards count real work, never wall-clock time.** Both
+`holding-value-at.test.ts` (`createHoldingValuer` vs `referenceHoldingValueAt`)
+and `internal-transfers.test.ts` (`internalTransferTransactionIds` vs
+`referenceInternalTransferTransactionIds`) used to assert a RELATIVE
+`performance.now()` ratio ("the optimized side runs at least 20x faster
+than the reference over the same input") instead of a fixed millisecond
+budget, reasoning that a wall-clock SLA is only ever as tight as the
+slowest machine it tolerates. That reasoning was correct about an
+ABSOLUTE budget, but the relative-ratio version is still a wall-clock
+measurement, and wall-clock measurements are flaky under Jest for a
+second reason: Stryker's coverage instrumentation and general machine
+load slow the two timed sides of one comparison by DIFFERENT amounts (the
+instrumented/hot side is not slowed proportionally to the reference
+side), so the ratio itself drifts — this broke the internal-transfers
+guard's `20x` threshold under a Stryker dry run even though nothing about
+the algorithm had regressed. Both guards were rewritten to count real work
+through an optional injected counter instead of timing anything: each
+function takes an optional counter argument (`ValuerWorkCounter` /
+`CandidateVisitCounter`), a plain `{ count: 0 }`-shaped object incremented
+once per unit of real work (a row touched in the valuer's setup pass or a
+per-bucket binary-search step; a credit candidate actually visited in the
+transfer matcher) — omitted, the parameter costs nothing measurable, so
+production call sites are untouched. Each guard then asserts two things on
+the COUNT, never on elapsed time: (1) near-linear growth — doubling the
+row count keeps the work count under 3x, checked at two doubling steps;
+(2) the count stays far below what the quadratic reference implementation
+reports the same way (under 5% of it, at thousands of rows) — this second
+assertion is the one that actually catches a reversion to the quadratic
+shape (growth alone can look linear even in the quadratic reference when
+the bucket/window count is held fixed while only the row count scales, so
+it does not substitute for the direct reference comparison). Any NEW speed
+guard in this codebase must follow the same shape: count real work through
+an injected counter or a pure helper that returns a work count, never
+`performance.now()`/`Date.now()` deltas.
 
 #### The "no custom range = derive the default from now" pattern
 

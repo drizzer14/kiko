@@ -1,3 +1,4 @@
+import type { CandidateVisitCounter } from './internal-transfers';
 import { internalTransferTransactionIds, TRANSFER_MATCH_WINDOW_MS } from './internal-transfers';
 
 type Transaction = {
@@ -18,12 +19,21 @@ const transaction = (
 
 const T = 1_000_000_000_000;
 
+const recordVisit = (visitCounter: CandidateVisitCounter | undefined): void => {
+  if (visitCounter) {
+    visitCounter.candidateVisits += 1;
+  }
+};
+
 // The quadratic implementation this module replaced, kept here ONLY as the
 // parity oracle: it is trivially correct by inspection (a direct
 // transcription of the greedy rule in this module's own doc comment), so a
 // fuzz test comparing the optimized implementation against it proves the
 // rewrite kept EXACTLY the same matching order and result.
-const referenceInternalTransferTransactionIds = (transactions: Transaction[]): Set<string> => {
+const referenceInternalTransferTransactionIds = (
+  transactions: Transaction[],
+  visitCounter?: CandidateVisitCounter,
+): Set<string> => {
   const matchedIds = new Set<string>();
   const consumedCredits = new Set<number>();
 
@@ -34,6 +44,8 @@ const referenceInternalTransferTransactionIds = (transactions: Transaction[]): S
 
     for (let index = 0; index < transactions.length; index += 1) {
       const credit = transactions[index];
+
+      recordVisit(visitCounter);
 
       if (consumedCredits.has(index) || credit.amountMinorUnits <= 0) {
         continue;
@@ -77,15 +89,24 @@ const CURRENCIES: Transaction['currency'][] = ['BTC', 'USD', 'EUR', 'UAH'];
 // drawn from small pools (so genuine transfer pairs and coincidental
 // same-amount collisions both occur), and times are spread over a wide range
 // with an occasional near-duplicate cluster (so some pairs land just inside,
-// or just outside, the 2-minute match window).
-const randomLedger = (random: () => number, size: number): Transaction[] => {
+// or just outside, the 2-minute match window). `timeRangeMs` defaults to a
+// FIXED span (matching a fixed-size ledger); the growth-guard test below
+// scales it WITH `size` instead, so packing more rows into the same fixed
+// span doesn't inflate same-bucket candidate density on its own — a real
+// user's ledger growing means a wider transaction history, not the same
+// history sampled more densely.
+const randomLedger = (
+  random: () => number,
+  size: number,
+  timeRangeMs = 1_000_000_000,
+): Transaction[] => {
   const holdingIds = ['h1', 'h2', 'h3', 'h4'];
   const amountPool = [1000, 2500, 5000, 10_000, 25_000];
 
   return Array.from({ length: size }, (_, index) => {
     const amountMagnitude = amountPool[Math.floor(random() * amountPool.length)];
     const sign = random() < 0.5 ? -1 : 1;
-    const baseTime = T + Math.floor(random() * 1_000_000_000);
+    const baseTime = T + Math.floor(random() * timeRangeMs);
     // 1-in-3 rows lands within a tight cluster around a shared anchor so the
     // window boundary itself gets exercised, not just widely-scattered rows.
     const time =
@@ -263,25 +284,43 @@ describe('internalTransferTxIds', () => {
     }
   });
 
-  it('is at least 20x faster than the quadratic reference implementation on a large ledger', () => {
-    const ledger = randomLedger(mulberry32(7), 6_000);
+  // A DETERMINISTIC work-count guard, not a wall-clock timing — coverage
+  // instrumentation and machine load skew the two timed sides of a speed
+  // comparison by different amounts, which made a wall-clock version of this
+  // guard flaky under Stryker. Counting each credit candidate the matcher
+  // actually visits is immune to both, and still catches a regression back
+  // to the quadratic full-array scan (see the next test).
+  it('visits a near-linear number of credit candidates as the ledger grows', () => {
+    // Same rows-per-millisecond density at every size (see `randomLedger`'s
+    // own comment) — otherwise a fixed time span alone would inflate
+    // candidate density as `size` grows, independent of the matcher itself.
+    const MS_PER_ROW = 1_000_000_000 / 6_000;
 
-    const optimizedStarted = performance.now();
+    const candidateVisitsFor = (size: number): number => {
+      const visitCounter: CandidateVisitCounter = { candidateVisits: 0 };
+      const ledger = randomLedger(mulberry32(7), size, size * MS_PER_ROW);
 
-    internalTransferTransactionIds(ledger);
-    const optimizedElapsed = performance.now() - optimizedStarted;
+      internalTransferTransactionIds(ledger, visitCounter);
 
-    const referenceStarted = performance.now();
+      return visitCounter.candidateVisits;
+    };
 
-    referenceInternalTransferTransactionIds(ledger);
-    const referenceElapsed = performance.now() - referenceStarted;
+    const base = candidateVisitsFor(2_500);
+    const doubled = candidateVisitsFor(5_000);
+    const quadrupled = candidateVisitsFor(10_000);
 
-    // A RELATIVE guard, not a wall-clock SLA — an absolute millisecond budget
-    // is only ever as tight as the slowest machine it must tolerate. The
-    // quadratic reference is O(debits * T); the bucketed/binary-searched
-    // implementation is near O(T log T) — at this ledger size that ratio is
-    // dramatic on ANY machine, so asserting it directly catches a regression
-    // back to the quadratic shape regardless of absolute speed.
-    expect(optimizedElapsed).toBeLessThan(referenceElapsed / 20);
+    expect(doubled).toBeLessThan(base * 3);
+    expect(quadrupled).toBeLessThan(doubled * 3);
+  });
+
+  it('visits far fewer credit candidates than the quadratic reference implementation scans, on the same ledger', () => {
+    const ledger = randomLedger(mulberry32(7), 10_000);
+    const optimizedVisits: CandidateVisitCounter = { candidateVisits: 0 };
+    const referenceVisits: CandidateVisitCounter = { candidateVisits: 0 };
+
+    internalTransferTransactionIds(ledger, optimizedVisits);
+    referenceInternalTransferTransactionIds(ledger, referenceVisits);
+
+    expect(optimizedVisits.candidateVisits).toBeLessThan(referenceVisits.candidateVisits * 0.05);
   });
 });
