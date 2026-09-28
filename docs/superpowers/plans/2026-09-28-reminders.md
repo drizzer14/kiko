@@ -4,7 +4,7 @@
 
 **Goal:** User-configured local reminders (statement import; add transactions) per account, with smart skip, back-off, a Settings list, a per-account page, contextual offers, tap routing, and a "Tomorrow" snooze.
 
-**Architecture:** An app-local TurboModule (Swift core + a thin ObjC++ adapter) wraps `UNUserNotificationCenter`. JS owns every decision: a pure planner turns reminder rows + per-account data timestamps into at most 64 one-off calendar requests (floating local time), and a scheduler replaces the pending set on launch, foreground, background, language change, and every reminder write. Storage is one additive migration (a `reminders` table + one `settings` JSON column).
+**Architecture:** An app-local TurboModule (Swift core + a thin ObjC++ adapter) wraps `UNUserNotificationCenter`. JS owns every decision: a pure planner turns reminder rows + per-account data timestamps into at most 64 one-off calendar requests (floating local time), and a scheduler replaces the pending set on launch, foreground, background, language change, and every reminder write. Storage is one additive migration: a `reminders` table (including `last_snoozed_at`) and two nullable `settings` columns (`reminder_offer_dismissals` JSON, `notifications_deliverable_since` integer).
 
 **Tech Stack:** RN 0.87.1 New Architecture (app-level `codegenConfig`), Swift + ObjC++, op-sqlite + Drizzle, i18next, fnts, ts-pattern, Jest/RNTL.
 
@@ -158,6 +158,8 @@ export const SNOOZE_IDENTIFIER_PREFIX = 'kiko.snooze.';
 ## CS-B — Storage, planner, scheduler, app wiring
 
 Base: CS-A tip. Start only when the migration gate above is understood. Developing under the placeholder is fine. Merging and deploying wait for the gate.
+
+As built, CS-B differs from the snippets below (snooze storage `last_snoozed_at`, `deliverableSince` anchor, `requestIdentifier` on responses, `clearSnoozes`, kept snoozes exclude reminders with data since the snooze). Read `src/reminders/` and kiko-architecture "Reminders (local notifications)" before building on them.
 
 ### Task B1: Schema + migration NNNN (developer; tests first)
 

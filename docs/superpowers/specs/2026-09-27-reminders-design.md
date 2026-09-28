@@ -22,13 +22,29 @@ Status: research done; user decisions recorded; PRIORITY: first item of 1.2 (use
 - Interruption level: Passive or Active; NEVER Time Sensitive (HIG: only for events within an hour).
 - Permission: request full authorization only when the user saves the FIRST reminder; never at launch. Optional pre-alert screen: ONE "Continue" button, no Cancel, no "Allow" label (HIG Privacy). If denied: keep the reminder, show a non-modal banner with a button that opens iOS Settings (UIApplication.openSettingsURLString).
 - Re-schedule all pending requests on every app launch/foreground (reboot/update/time-zone behavior is not documented by Apple; 64 pending-request limit per app; one repeating request counts once).
-- Storage: new additive migration; reminder rules in a new table (per account + global) rather than settings columns, since each account has its own reminders; settingsRepo-style repo. Mind the op-sqlite single queue on app open.
+- Storage: new additive migration; reminder rules in a new `reminders` table, one row per (account, kind) — no global reminder; two nullable `settings` columns hold non-rule state (offer dismissals, notifications-deliverable-since); settingsRepo-style repo. Mind the op-sqlite single queue on app open.
 - No aps-environment entitlement, no UIBackgroundModes needed for local notifications. Check PrivacyInfo.xcprivacy if UserDefaults is used in the native module.
 - Compliance: 2.5.4 (local notifications allowed), 2.5.16 (content relates to app), 4.5.4, 5.1.2(i) (never required); 5.6: the Reminders UI ships visible, no flag gating.
 - Contextual offer: shown only when the account has no reminder yet; one-time and dismissible per account (a dismissal is remembered, so the offer never repeats as nagging); it is an in-app, non-modal prompt, never a notification; it opens that account's reminder page prefilled with the matching type (import or add transactions).
 
 ## Known limits
 - Non-Gregorian device calendar (Buddhist, Japanese, Hebrew, Islamic, …): a scheduled reminder never fires, because the trigger's floating year/month/day components (Gregorian, from JS) are matched against `Calendar.current`. Accepted for 1.2 under the only-user directive (decision 8); fix = in `KikoRemindersCenter.swift`, when `Calendar.current.identifier != .gregorian`, convert the Gregorian components to `Calendar.current` components (era included), still with no time zone. The "Tomorrow" snooze is unaffected (it uses `Calendar.current` throughout).
+- Old backup: a `.kiko` from before reminders has no `reminders` key and restores with no reminders (`snapshot.reminders ?? []`). A restored reminder keeps its old `activeSince`/`lastEngagedAt`, so its first re-plan after restore can back-off pause it (task 2/5 M1; task 4/5's restore re-plan may address it).
+- Drain-then-write: `drainResponses` empties the native queue before `recordEngagements` commits. If that one write fails, those taps are lost (logged), and back-off may count a tapped fire as ignored. The fix needs a native "ack after commit" API.
+- Time change between a "Tomorrow" tap and the snooze: the planner frees the slot at the CURRENT `minuteOfDay`, but the native snooze fires at the OLD time. That day gets one notification, at the old time, and never a duplicate.
+- A restore copies `notifications_deliverable_since` from the source device (the settings row is restored whole). The first sync on a device without permission clears it.
+- A queued response saved by an older development build (no `requestIdentifier`) is dropped by the JS parser. Development builds of this unmerged feature only.
+- The ignored count starts at the first sync that sees permission, not when the user turned it on, so a pause can come later than expected; early only in the permission off-then-on-while-closed case below.
+- More than 64 pending requests (20+ reminders): `planAllReminders` keeps the earliest 64, so a reminder's paused notice can be cut, and the reminder then pauses with no notice shown.
+- A "Tomorrow" snooze copies the original body natively, so its day count is one day stale.
+- A reminder that fires while Kiko is open shows the text of the last re-plan; a transaction added minutes before does not change it (a data write triggers no re-plan).
+- `planInputsQuery` drives from the `transactions_source` index and scans every import/manual row: a performance cost, not a correctness issue.
+- The "Tomorrow" action (options `[]`) may run while the device is locked; the DB key read can then fail with errSecInteractionNotAllowed. Task 5/5 device test; fix = `.authenticationRequired` if it reproduces.
+- Permission off then on while the app is closed can pause a reminder early.
+- A queued "Reminders paused" notice delivered after the user re-enables notifications is misleading.
+- A crash between `clearSnoozes` and `replaceRequests` can cause one duplicate notification.
+- A narrow race between the response drain and the request replace can free a new snooze's slot once.
+- Spring-forward: a nonexistent local time (for example 03:30 on the Kyiv spring-forward day) is sent as-is; whether iOS fires or skips it is unverified (device test).
 
 ## Open items for the planner
 - Manual account = accounts.institution IS NULL (isSyncedAccount in src/holdings/deletable/deletable.ts); resolved by user decision 6 — import reminders apply to any account with >=1 statement import, including synced accounts; add-transaction reminders stay manual-only.
