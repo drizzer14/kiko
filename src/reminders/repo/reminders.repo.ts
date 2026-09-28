@@ -12,7 +12,7 @@ import { match } from 'ts-pattern';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { NotificationResponse } from '@kiko/reminders/native';
 import type { ReminderKind, ReminderSchedule } from '@kiko/reminders/schedule';
-import { and, asc, eq, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, exists, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 
 type BackoffPause = { reminderId: string; pausedAt: number };
 
@@ -52,6 +52,15 @@ const lastDataByAccount = () =>
     .groupBy(holdings.accountId)
     .as('last_data');
 
+// Any holding of the account counts. The account is a value for one account's
+// page, or the reminder's own column for the correlated check across the list.
+const importsOf = (accountId: string | SQLiteColumn) =>
+  database
+    .select({ id: transactions.id })
+    .from(transactions)
+    .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+    .where(and(eq(holdings.accountId, accountId), eq(transactions.source, 'import')));
+
 export const remindersRepo = {
   hasAnyQuery: () => database.select({ id: reminders.id }).from(reminders).limit(1),
   listByAccountQuery: (accountId: string) =>
@@ -60,16 +69,26 @@ export const remindersRepo = {
       .from(reminders)
       .where(eq(reminders.accountId, accountId))
       .orderBy(asc(reminders.kind)),
+  // `exists`, not a join, so an account with many imports still reads each
+  // reminder once.
+  listWithAccountQuery: () =>
+    database
+      .select({
+        reminder: reminders,
+        account: {
+          name: accounts.name,
+          institution: accounts.institution,
+          archivedAt: accounts.archivedAt,
+        },
+        hasImport: exists(importsOf(reminders.accountId)).mapWith(Boolean),
+      })
+      .from(reminders)
+      .innerJoin(accounts, eq(accounts.id, reminders.accountId))
+      .orderBy(asc(accounts.sortOrder), asc(accounts.createdAt), asc(accounts.id)),
   byIdQuery: (reminderId: string) =>
     database.select().from(reminders).where(eq(reminders.id, reminderId)).limit(1),
-  // Any holding of the account; one row is enough to know.
-  hasImportQuery: (accountId: string) =>
-    database
-      .select({ id: transactions.id })
-      .from(transactions)
-      .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
-      .where(and(eq(holdings.accountId, accountId), eq(transactions.source, 'import')))
-      .limit(1),
+  // One row is enough to know.
+  hasImportQuery: (accountId: string) => importsOf(accountId).limit(1),
   create: (input: NewReminder): Promise<string> =>
     write(async (databaseTransaction) => {
       const reminderId = id();

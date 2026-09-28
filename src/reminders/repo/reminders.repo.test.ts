@@ -41,13 +41,24 @@ const openDatabase = (): DatabaseSync => {
 
 const insertAccount = (
   id: string,
-  options: { institution?: string | null; archivedAt?: number | null } = {},
+  options: {
+    name?: string;
+    institution?: string | null;
+    archivedAt?: number | null;
+    sortOrder?: number;
+  } = {},
 ): void => {
   mockDatabase
     .prepare(
-      "INSERT INTO accounts (id, name, kind, institution, archived_at) VALUES (?, 'Account', 'bank', ?, ?)",
+      "INSERT INTO accounts (id, name, kind, institution, archived_at, sort_order) VALUES (?, ?, 'bank', ?, ?, ?)",
     )
-    .run(id, options.institution ?? null, options.archivedAt ?? null);
+    .run(
+      id,
+      options.name ?? 'Account',
+      options.institution ?? null,
+      options.archivedAt ?? null,
+      options.sortOrder ?? 0,
+    );
 };
 
 const insertHolding = (id: string, accountId: string): void => {
@@ -353,6 +364,55 @@ describe('remindersRepo.listByAccountQuery', () => {
       activeSince: ACTIVE_SINCE,
       pauseReason: 'backoff',
     });
+  });
+});
+
+describe('remindersRepo.listWithAccountQuery', () => {
+  it('reads every reminder with its account, in the accounts list order', async () => {
+    insertAccount('account-1', { name: 'Cash', sortOrder: 2 });
+    insertAccount('account-2', {
+      name: 'Card',
+      institution: 'monobank',
+      archivedAt: 5,
+      sortOrder: 1,
+    });
+    insertAccount('account-3', { name: 'No reminders', sortOrder: 0 });
+    insertReminder('reminder-1', 'account-1', 'add_transactions');
+    insertReminder('reminder-2', 'account-2', 'statement_import', { pause_reason: 'backoff' });
+
+    const rows = await remindersRepo.listWithAccountQuery();
+
+    expect(rows.map(({ reminder }) => reminder.id)).toEqual(['reminder-2', 'reminder-1']);
+    expect(rows[0]).toEqual({
+      reminder: expect.objectContaining({
+        id: 'reminder-2',
+        accountId: 'account-2',
+        kind: 'statement_import',
+        schedule: { frequency: 'daily', minuteOfDay: 1200 },
+        pauseReason: 'backoff',
+      }),
+      account: { name: 'Card', institution: 'monobank', archivedAt: 5 },
+      hasImport: false,
+    });
+  });
+
+  it('knows whether each reminder’s account has a statement import', async () => {
+    insertAccount('account-1', { sortOrder: 0 });
+    insertAccount('account-2', { sortOrder: 1 });
+    insertHolding('holding-1', 'account-1');
+    insertHolding('holding-2', 'account-2');
+    insertTransaction('import-1', 'holding-1', 'import', 1_000);
+    insertTransaction('import-2', 'holding-1', 'import', 2_000);
+    insertTransaction('manual', 'holding-2', 'manual', 1_000);
+    insertReminder('reminder-1', 'account-1', 'statement_import');
+    insertReminder('reminder-2', 'account-2', 'add_transactions');
+
+    const rows = await remindersRepo.listWithAccountQuery();
+
+    expect(rows.map(({ reminder, hasImport }) => [reminder.id, hasImport])).toEqual([
+      ['reminder-1', true],
+      ['reminder-2', false],
+    ]);
   });
 });
 
