@@ -8,20 +8,14 @@ import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 
 import {
-  openCurrencies as defaultOpenCurrencies,
-  type OpenCurrencies,
+  historyCurrencies as defaultHistoryCurrencies,
+  type HistoryCurrencies,
 } from '../open-currencies-gate';
-import { fetchNbuHistory } from '../nbu-history';
+import { type NbuHistory, fetchNbuHistory } from '../nbu-history';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 import { type CryptoHistory, fetchCryptoHistory } from '../coingecko-history';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-// The fiat anchors NBU quotes (USD/EUR against UAH) plus every crypto, derived
-// from currency.ts so a newly added crypto composes chart history automatically.
-// UAH itself is never listed: it is the implicit pivot, never a stored `X:UAH`
-// row's own `base`.
-const allCurrencies: Currency[] = ['USD', 'EUR', ...currencyOptions.filter(isCrypto)];
 
 /** A row ready for `rateHistoryRepo.upsertMany` (rate stored as text). */
 type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;
@@ -61,17 +55,18 @@ export type BackfillDeps = {
   lastBackfilledDay?: number | null;
   /** Today, defaulting to the current UTC day. */
   today?: number;
-  fetchNbuHistory?: (start: number, end: number) => Promise<HistoryRateEntry[]>;
+  fetchNbuHistory?: (currencies: Currency[], start: number, end: number) => Promise<NbuHistory>;
   fetchCryptoHistory?: (days: number, currencies: CryptoCurrency[]) => Promise<CryptoHistory>;
   upsertMany?: (rows: NewHistoryRow[]) => Promise<void>;
   /**
    * The data-presence gate (kiko-architecture: app-open/refresh work is
    * gated on data presence — no request or query for data the user does not
-   * have), shared with `refreshRates` (`rates-refresh.ts`) — see
-   * `open-currencies-gate.ts`. Defaults to a real read of `settingsRepo` +
-   * `holdingsRepo`'s one cheap `openCurrenciesQuery`.
+   * have), shared with the screen's own read of it — see
+   * `open-currencies-gate.ts`'s `historyCurrencies`. Defaults to a real read
+   * of `settingsRepo` + `holdingsRepo`'s `historyCurrenciesQuery` (every
+   * holding, open and closed).
    */
-  openCurrencies?: () => Promise<OpenCurrencies>;
+  historyCurrencies?: () => Promise<HistoryCurrencies>;
   /**
    * Every currency's OWN last-backfilled day —
    * `deriveLastBackfilledDayByCurrency(historyRows)`, the SAME `historyRows`
@@ -217,6 +212,10 @@ const nearestAtOrBefore = (timeline: HistoryRateEntry[], day: number): number | 
 
 const anchorKey = (base: Currency, quote: Currency) => `${base}:${quote}`;
 
+/** Every `X:UAH` anchor key's own `base`, split back out of `anchorKey`'s format. */
+const UAH_SUFFIX = ':UAH';
+const baseOfUahKey = (key: string): Currency => key.slice(0, -UAH_SUFFIX.length) as Currency;
+
 /**
  * Group anchor entries into ascending per-pair timelines so each target day can
  * carry the nearest prior rate forward.
@@ -239,22 +238,29 @@ const groupTimelines = (entries: HistoryRateEntry[]): Map<string, HistoryRateEnt
 };
 
 /**
- * Build the UAH pivot for `day` from the anchor timelines: USD/EUR anchor to UAH
- * directly, every crypto through its USD price so crypto pairs stay consistent
- * with fiat.
+ * Build the UAH pivot for `day` from the anchor timelines: every fiat currency
+ * with its OWN `X:UAH` anchor prices directly (any fiat NBU quotes, not a
+ * hard-coded USD/EUR pair — the compose list is data-driven, read straight off
+ * whichever `X:UAH` timelines are present), and every crypto through its own
+ * `X:USD` timeline times the resolved `USD` price, so a crypto pair stays
+ * consistent with fiat even when USD itself is not held.
  */
 const uahPriceAt = (timelines: Map<string, HistoryRateEntry[]>, day: number): UahPrice => {
   const price: UahPrice = { UAH: 1 };
-  const usd = nearestAtOrBefore(timelines.get('USD:UAH') ?? [], day);
-  const eur = nearestAtOrBefore(timelines.get('EUR:UAH') ?? [], day);
 
-  if (usd !== undefined) {
-    price.USD = usd;
+  for (const [key, timeline] of timelines) {
+    if (!key.endsWith(UAH_SUFFIX)) {
+      continue;
+    }
+
+    const rate = nearestAtOrBefore(timeline, day);
+
+    if (rate !== undefined) {
+      price[baseOfUahKey(key)] = rate;
+    }
   }
 
-  if (eur !== undefined) {
-    price.EUR = eur;
-  }
+  const usd = price.USD;
 
   if (usd !== undefined) {
     for (const crypto of currencyOptions.filter(isCrypto)) {
@@ -270,12 +276,13 @@ const uahPriceAt = (timelines: Map<string, HistoryRateEntry[]>, day: number): Ua
 };
 
 /**
- * Compose one `X:UAH` row per priced currency (USD/EUR plus every crypto) for
- * each target day from the day's UAH-anchored prices (mirrors the per-run
- * pivot in `rates-refresh.ts`, per historical day instead) — never a cross
- * row between two non-UAH currencies; a cross rate resolves at READ TIME
- * through the UAH pivot (`rateBetween`/`rateTableAt`). A row is emitted only
- * when that day's own price resolves. Rates are stored as strings, never floats.
+ * Compose one `X:UAH` row per priced currency (every fiat NBU answered for,
+ * plus every crypto) for each target day from the day's UAH-anchored prices
+ * (mirrors the per-run pivot in `rates-refresh.ts`, per historical day instead)
+ * — never a cross row between two non-UAH currencies; a cross rate resolves at
+ * READ TIME through the UAH pivot (`rateBetween`/`rateTableAt`). A row is
+ * emitted only when that day's own price resolves. Rates are stored as
+ * strings, never floats.
  */
 export const composeHistoryRows = (
   entries: HistoryRateEntry[],
@@ -287,7 +294,11 @@ export const composeHistoryRows = (
   for (const day of days) {
     const price = uahPriceAt(timelines, day);
 
-    for (const base of allCurrencies) {
+    for (const base of Object.keys(price) as Currency[]) {
+      if (base === 'UAH') {
+        continue;
+      }
+
       const rate = price[base];
 
       if (rate === undefined) {
@@ -300,13 +311,18 @@ export const composeHistoryRows = (
   return rows;
 };
 
-/** The NBU leg, gated on `needsFiat` — `[]` without ever calling `loadNbu`. */
+/** The NBU leg, gated on a non-empty fiat set — `NO_NBU_HISTORY` without ever calling `loadNbu`. */
+const NO_NBU_HISTORY: NbuHistory = { entries: [], failedCurrencies: [] };
+
 const runNbuLeg = (
-  needsFiat: boolean,
-  loadNbu: (start: number, end: number) => Promise<HistoryRateEntry[]>,
+  fiatCurrencies: Currency[],
+  loadNbu: (currencies: Currency[], start: number, end: number) => Promise<NbuHistory>,
   spanStart: number,
   today: number,
-): Promise<HistoryRateEntry[]> => (needsFiat ? loadNbu(spanStart, today) : Promise.resolve([]));
+): Promise<NbuHistory> =>
+  fiatCurrencies.length > 0
+    ? loadNbu(fiatCurrencies, spanStart, today)
+    : Promise.resolve(NO_NBU_HISTORY);
 
 /** A crypto leg that requested nothing: no entries, no failed coin. */
 const NO_CRYPTO_HISTORY: CryptoHistory = { entries: [], failedCurrencies: [] };
@@ -321,9 +337,11 @@ const runCryptoLeg = (
     ? loadCrypto(cryptoDays, cryptoCurrencies)
     : Promise.resolve(NO_CRYPTO_HISTORY);
 
-/** Every currently-held currency, fiat represented by its `USD` anchor (EUR always composes alongside it, same NBU leg). */
-const heldCurrencies = (needsFiat: boolean, cryptoCurrencies: CryptoCurrency[]): Currency[] =>
-  needsFiat ? ['USD', ...cryptoCurrencies] : cryptoCurrencies;
+/** Every currently-held currency this run cares about: every fetched fiat currency plus every held crypto. */
+const heldCurrencies = (
+  fiatCurrencies: Currency[],
+  cryptoCurrencies: CryptoCurrency[],
+): Currency[] => [...fiatCurrencies, ...cryptoCurrencies];
 
 /**
  * The resume cursor for THIS run: the OLDEST last-backfilled day
@@ -378,13 +396,13 @@ const resolveResumeCursor = (
  * earlier extension happened, so the per-currency minimum decides normally.
  */
 const resolveBackfillWindow = (
-  needsFiat: boolean,
+  fiatCurrencies: Currency[],
   cryptoCurrencies: CryptoCurrency[],
   lastBackfilledDayByCurrency: Partial<Record<Currency, number>>,
   knownEmpty: ReadonlySet<Currency>,
   callerLastBackfilledDay: number | null,
 ): { neverBackfilled: Currency[]; resumeFrom: number | null } => {
-  const held = heldCurrencies(needsFiat, cryptoCurrencies);
+  const held = heldCurrencies(fiatCurrencies, cryptoCurrencies);
   const neverBackfilled = held.filter(
     (currency) => lastBackfilledDayByCurrency[currency] === undefined && !knownEmpty.has(currency),
   );
@@ -401,11 +419,11 @@ const resolveBackfillWindow = (
 /**
  * Adds to `knownEmpty` every NEVER-backfilled held currency (no stored day at
  * all) this whole-span run composed no row for — only when EVERY provider leg
- * answered, and never a coin in `failedCurrencies`: CoinGecko settles per
- * coin, so one coin's 200 fulfils the leg while another coin's own request
- * failed. A failed request is a network failure to retry, not an empty
- * answer. A currency that already HAD some rows (merely lagging) is never a
- * candidate here — it keeps retrying every run through
+ * answered, and never a currency in `failedCurrencies`: NBU and CoinGecko both
+ * settle per currency, so one currency's 200 fulfils the leg while another's
+ * own request failed. A failed request is a network failure to retry, not an
+ * empty answer. A currency that already HAD some rows (merely lagging) is
+ * never a candidate here — it keeps retrying every run through
  * `resolveResumeCursor` instead of being permanently blacklisted.
  */
 const recordKnownEmpty = (
@@ -427,25 +445,27 @@ const recordKnownEmpty = (
 };
 
 /**
- * One outcome rule: every currency this run attempted to
- * resolve but did not, because its OWN provider leg rejected outright, or
- * (crypto only) its own per-coin request failed inside an otherwise-fulfilled
- * leg. A rejected NBU leg fails BOTH `USD` and `EUR` (composed from the same
- * fetch); it also transitively blocks every crypto row (`composeHistoryRows`
- * needs the SAME-run `USD` anchor to price a crypto pair), so nothing further
- * needs to special-case that dependency here — a failed NBU leg alone already
- * leaves every crypto currency out of `composed` too.
+ * One outcome rule: every currency this run attempted to resolve but did not,
+ * because its OWN provider leg rejected outright, or its own per-currency
+ * request failed inside an otherwise-fulfilled leg. A rejected NBU leg
+ * (defensive only — the real `fetchNbuHistory` settles per currency and never
+ * rejects) fails EVERY fiat currency this run attempted; it also
+ * transitively blocks every crypto row (`composeHistoryRows` needs the
+ * SAME-run `USD` anchor to price a crypto pair), so nothing further needs to
+ * special-case that dependency here — a failed NBU leg alone already leaves
+ * every crypto currency out of `composed` too.
  */
 const unresolvedFailures = (
-  needsFiat: boolean,
+  fiatCurrencies: Currency[],
+  nbuResult: PromiseSettledResult<NbuHistory>,
+  nbu: NbuHistory,
   cryptoCurrencies: CryptoCurrency[],
-  nbuResult: PromiseSettledResult<HistoryRateEntry[]>,
   cryptoResult: PromiseSettledResult<CryptoHistory>,
   crypto: CryptoHistory,
   composed: ReadonlySet<Currency>,
 ): Currency[] => {
   const failed: Currency[] = [
-    ...(needsFiat && nbuResult.status === 'rejected' ? (['USD', 'EUR'] as Currency[]) : []),
+    ...(nbuResult.status === 'rejected' ? fiatCurrencies : nbu.failedCurrencies),
     ...(cryptoResult.status === 'rejected' ? cryptoCurrencies : crypto.failedCurrencies),
   ];
 
@@ -459,31 +479,32 @@ const unresolvedFailures = (
  * early returns.
  */
 const composeAndClassify = (
-  needsFiat: boolean,
+  fiatCurrencies: Currency[],
   cryptoCurrencies: CryptoCurrency[],
   neverBackfilled: Currency[],
   days: number[],
-  nbuResult: PromiseSettledResult<HistoryRateEntry[]>,
+  nbuResult: PromiseSettledResult<NbuHistory>,
   cryptoResult: PromiseSettledResult<CryptoHistory>,
   knownEmpty: Set<Currency>,
 ): { rows: NewHistoryRow[]; failures: Currency[] } => {
-  const nbu = nbuResult.status === 'fulfilled' ? nbuResult.value : [];
+  const nbu = nbuResult.status === 'fulfilled' ? nbuResult.value : NO_NBU_HISTORY;
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : NO_CRYPTO_HISTORY;
-  const rows = composeHistoryRows([...nbu, ...crypto.entries], days);
+  const rows = composeHistoryRows([...nbu.entries, ...crypto.entries], days);
 
   recordKnownEmpty(
     [nbuResult, cryptoResult],
     neverBackfilled,
     rows,
-    crypto.failedCurrencies,
+    [...nbu.failedCurrencies, ...crypto.failedCurrencies],
     knownEmpty,
   );
 
   const composed = new Set(rows.map((row) => row.base));
   const failures = unresolvedFailures(
-    needsFiat,
-    cryptoCurrencies,
+    fiatCurrencies,
     nbuResult,
+    nbu,
+    cryptoCurrencies,
     cryptoResult,
     crypto,
     composed,
@@ -503,27 +524,27 @@ const composeAndClassify = (
  * composed for it this run (`unresolvedFailures`) — never `complete` while a
  * currency this run was supposed to resolve stays silently unresolved. Any rows
  * that DID compose this run are still persisted before a `failed` return, so a
- * partial success (e.g. fiat succeeded while crypto failed) is never re-fetched
- * on retry.
+ * partial success (e.g. one fiat currency succeeded while another failed) is
+ * never re-fetched on retry.
  */
 export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> => {
   const today = toUtcMidnight(deps.today ?? Date.now());
   const lastBackfilledDay = deps.lastBackfilledDay ?? null;
 
-  const openCurrencies = deps.openCurrencies ?? defaultOpenCurrencies;
-  const { needsFiat, cryptoCurrencies } = await openCurrencies();
+  const historyCurrencies = deps.historyCurrencies ?? defaultHistoryCurrencies;
+  const { fiatCurrencies, cryptoCurrencies } = await historyCurrencies();
 
   // kiko-architecture: no request or query for data the user does not have —
-  // nothing active that differs from the base currency, and no crypto held,
-  // means neither leg has anything to fetch this run.
-  if (!needsFiat && cryptoCurrencies.length === 0) {
+  // no fiat currency needs converting and no crypto held, means neither leg
+  // has anything to fetch this run.
+  if (fiatCurrencies.length === 0 && cryptoCurrencies.length === 0) {
     return { state: 'complete', lastDay: lastBackfilledDay };
   }
 
   const knownEmpty = deps.knownEmptyCurrencies ?? knownEmptyCurrenciesThisRun;
   const lastBackfilledDayByCurrency = deps.lastBackfilledDayByCurrency ?? {};
   const { neverBackfilled, resumeFrom } = resolveBackfillWindow(
-    needsFiat,
+    fiatCurrencies,
     cryptoCurrencies,
     lastBackfilledDayByCurrency,
     knownEmpty,
@@ -536,7 +557,8 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     return { state: 'complete', lastDay: lastBackfilledDay };
   }
 
-  const loadNbu = deps.fetchNbuHistory ?? ((start, end) => fetchNbuHistory(start, end));
+  const loadNbu =
+    deps.fetchNbuHistory ?? ((currencies, start, end) => fetchNbuHistory(currencies, start, end));
   const loadCrypto =
     deps.fetchCryptoHistory ??
     ((count, currencies) => fetchCryptoHistory(count, fetch, currencies));
@@ -547,16 +569,16 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   // Settle the two providers independently: CoinGecko's free tier can 401 a
   // long crypto span, and an all-or-nothing `Promise.all` would then discard the
   // NBU fiat rates too. Whichever source succeeds still contributes its anchors.
-  // Each leg is ALSO gated individually on `openCurrencies`'s own verdict: a
-  // leg with nothing to convert/hold resolves to `[]` without ever calling
-  // its fetch function.
+  // Each leg is ALSO gated individually on `historyCurrencies`'s own verdict: a
+  // leg with nothing to convert/hold resolves to its own empty shape without
+  // ever calling its fetch function.
   const [nbuResult, cryptoResult] = await Promise.allSettled([
-    runNbuLeg(needsFiat, loadNbu, spanStart, today),
+    runNbuLeg(fiatCurrencies, loadNbu, spanStart, today),
     runCryptoLeg(cryptoCurrencies, loadCrypto, cryptoDays),
   ]);
 
   const { rows, failures } = composeAndClassify(
-    needsFiat,
+    fiatCurrencies,
     cryptoCurrencies,
     neverBackfilled,
     days,

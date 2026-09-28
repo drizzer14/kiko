@@ -56,7 +56,7 @@ const dayIndexFor = (t: number): number => {
   return Math.min(Math.max(raw, 0), SPAN_DAYS - 1);
 };
 
-const fetchNbuHistory = async (start: number, end: number) => {
+const fetchNbuHistory = async (_currencies: Currency[], start: number, end: number) => {
   const rows: { base: Currency; quote: Currency; day: number; rate: number; source: 'nbu' }[] = [];
 
   for (let index = 0; index < SPAN_DAYS; index += 1) {
@@ -69,7 +69,7 @@ const fetchNbuHistory = async (start: number, end: number) => {
     rows.push({ base: 'EUR', quote: 'UAH', day, rate: eurAtDay(index), source: 'nbu' });
   }
 
-  return rows;
+  return { entries: rows, failedCurrencies: [] };
 };
 
 const fetchCryptoHistory = async () => {
@@ -109,7 +109,7 @@ const buildHistoryRows = async (): Promise<HistoryRow[]> => {
     upsertMany: async (rows) => {
       captured.push(...rows);
     },
-    openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
+    historyCurrencies: async () => ({ fiatCurrencies: ['USD', 'EUR'], cryptoCurrencies: ['BTC'] }),
   });
 
   if (status.state !== 'complete') {
