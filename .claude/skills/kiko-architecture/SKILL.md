@@ -1357,15 +1357,91 @@ than restated here:
   background import, not Monobank's 60s). `sleep` is a `BinanceTransactionSyncDeps`
   seam so a test paces instantly; there is no `gate` seam (same rationale
   as Monobank — the gate is built from `now`/`sleep`).
-- **Incremental cursor, no schema column.** The window start is derived
-  from the newest already-imported Binance transaction time
-  (`transactionsRepo.latestSyncedTimeQuery(holdingId, 'binance')`), minus
-  a one-day overlap, and never earlier than a 2017 floor. A first sync
-  (no imported row) walks the full history from the floor; a steady-state
-  re-sync always re-scans at least the last 89-day window, so a
-  late-settling withdrawal is still caught. This mirrors Monobank's
-  incremental-and-cheap philosophy without adding a per-holding cursor
-  column.
+- **The watermark: a walk-owned key on the Spot holding's metadata, NOT
+  `sync_state`.** `sync_state.last_sync_at` already means the Monobank
+  statement-window cursor for a Monobank account (the table's own doc
+  comment in `db/schema.ts`; no crypto-sync code has ever read or written
+  it), so the history walk does not reuse it — the same reasoning that
+  puts a balance sync's own `SYNCED_AT_FIELD` stamp on the holding rather
+  than `settings.lastSyncAt`. The watermark instead lives at
+  `holdings.metadata.binanceHistoryCursor` on the Spot holding (the one
+  deposits/withdrawals attach to): "every window ending at or before this
+  instant is imported." `binanceHistoryCursorOf` /
+  `holdingsRepo.setBinanceHistoryCursor` (`holding-metadata.ts`,
+  `holdings.repo.ts`) are the reader/writer; `resolveStartTime`'s window-start
+  formula is UNCHANGED from before this walk — it is now fed the watermark
+  (falling back to the legacy `latestTransactionTime` cursor only when the
+  holding has never carried one) instead of only ever reading the newest
+  imported row's own time. A steady-state re-sync still always re-scans at
+  least the last 89-day window, so a late-settling withdrawal is still
+  caught; a first sync (no watermark, no imported row either) walks the
+  full history from the 2017 floor; a LEGACY holding (imported before this
+  walk existed: some transactions, no watermark yet) starts from the
+  legacy cursor exactly as before, then adopts the watermark from its very
+  first committed window.
+- **`upsertByMetadataKeyDatabaseTransaction` carries the watermark across a
+  balance sync.** A balance sync's own upsert (`runBalanceSyncInner` ->
+  `upsertExchangeMany`) writes a FRESH `{ syncedAt }` metadata object on
+  every run, for every provider — a blind overwrite that would otherwise
+  wipe `binanceHistoryCursor` the instant the NEXT balance sync ran (the
+  Binance arm always runs balance-then-history in the same invocation, so
+  this bites on literally every subsequent sync). The upsert now reads the
+  stored row's metadata inside the same write and carries over any
+  `walkOwnedMetadataKeys` entry (today only the history cursor) the
+  caller's own object doesn't set; every other key is still fully replaced
+  exactly as before. This is a no-op for Monobank/wallet holdings, which
+  never carry a walk-owned key.
+- **Per-window commit order, crash-safe.** The walk goes oldest -> newest.
+  A window's rows commit (`transactionsRepo.addManyDedup`) BEFORE its
+  watermark advances (`setBinanceHistoryCursor`) — two SEPARATE writes, not
+  one transaction, so a crash between them just re-imports that window
+  idempotently on the next run rather than losing progress or re-marking
+  a window that never actually committed.
+- **A withdraw-history call budget, refreshed from Binance's own header.**
+  At most `WITHDRAW_CALLS_PER_RUN_FALLBACK` (9) withdraw-history calls per
+  run, or fewer once `X-SAPI-USED-UID-WEIGHT-1M` (parsed by
+  `fetchWithdrawHistory`, returned alongside `rows` as
+  `WithdrawHistoryPage`) shows the per-minute weight ceiling
+  (`UID_WEIGHT_BUDGET_1M`) is within one more call's weight
+  (`WITHDRAW_UID_WEIGHT`) of being spent. Deposits page UNBOUNDED (only the
+  withdraw endpoint is budgeted — it is the one that tripped the original
+  429). A window whose withdrawals cannot be FULLY paged within the
+  remaining budget is not committed and not marked; the next run redoes it
+  from the same, unmoved watermark. `syncBinanceTransactions` returns
+  `{ imported, complete }` — `complete: false` means history remains
+  behind and a later run (or sync press) resumes from the watermark.
+- **A 429/418 sets a per-account cooldown and stops cleanly, without
+  failing the balance sync.** `signedRequest` (`binance.client.ts`) throws
+  `BinanceRateLimitError(status, retryAfterMs)` for a 429 or 418, checked
+  BEFORE the body is read (`retryAfterMs` from `Retry-After`, seconds ->
+  ms, defaulting to 60s on a missing/non-positive header). The walk catches
+  ONLY this error type, sets a module-level `cooldownUntilByAccount` entry
+  to `now + retryAfterMs`, and returns `complete: false` without
+  rethrowing — every EARLIER window's commit stays in place. Any OTHER
+  error still rethrows (unchanged: the Binance arm's own `either` wrapper
+  logs it and never fails the balance sync). A run started while its
+  account is still cooling down makes ZERO Binance requests.
+- **Disconnect clears the watermark, not the whole metadata object.**
+  `disconnectCryptoAccount`'s Binance path calls
+  `holdingsRepo.clearBinanceHistoryCursor(accountId)` (built on
+  `withoutWalkOwnedMetadata`) BEFORE `accountsRepo.disconnect` — a failure
+  after the clear only causes a harmless re-walk from the floor. It strips
+  ONLY `binanceHistoryCursor`; `binanceAsset`/`walletAddress` are
+  untouched, so a SAME-account reconnect still re-adopts the holding
+  (`upsertByMetadataKeyDatabaseTransaction`'s match-by-key). Connecting a
+  DIFFERENT Binance account afterward walks its own history from the
+  floor instead of inheriting a stale watermark.
+- **The lagging-history caption.** `isBinanceHistoryBehind` /
+  `historyCursorOf` (`screens/account-detail/crypto-sync-section/binance-history-status.ts`)
+  derive purely from the account's own `holdings` (already a screen prop —
+  no extra query): `historyCursorOf` scans for whichever holding carries
+  `binanceHistoryCursor` (only Spot ever does), `isBinanceHistoryBehind`
+  compares it against `latestSyncedAt(holdings)` (the existing balance-sync
+  stamp), true when never caught up (`null` cursor) or behind by more than
+  a day, false before the account's own first balance sync. `CryptoSyncSection`
+  renders the `accountDetail.binanceHistoryPending` caption under the
+  status line only when `connectedProvider === 'binance'`, so a wallet
+  account never evaluates or shows it.
 - **Settled records only, on the Spot holding.** Only a credited deposit
   (`status === 1`) and a completed withdrawal (`status === 6`) are
   imported — a pending/rejected record never shows as a balance movement.
