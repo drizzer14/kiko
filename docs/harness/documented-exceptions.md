@@ -146,6 +146,11 @@ verified usage, not dead weight:
   scope. Revisit or remove this exception if the two charts' structure
   ever diverges enough that the duplication is no longer a deliberate
   mirror.
+- **`knip.json` `entry`** (an entry point, not an ignore):
+  `scripts/bundle-contains.js` — the bundle freshness checker that only
+  `scripts/deploy-device.sh` runs (`node scripts/bundle-contains.js`), so
+  Knip sees no importer and reports it as an unused file. It is a real
+  executable entry point; as an `entry` Knip still analyzes it.
 - **`knip.json` `ignore`**: `scripts/checks/kill-guard.js` — the PreToolUse
   hook script that `scripts/checks/kill-guard.sh` invokes (`node
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
