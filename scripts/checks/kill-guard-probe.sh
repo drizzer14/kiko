@@ -23,7 +23,8 @@
 #     it. It runs in the runner's empty scratch folder, which is no
 #     repository, unless the probe text leads it elsewhere (see the limits
 #     below);
-#   - this runner REFUSES (exit 2, before any shell starts) probe text that:
+#   - this runner REFUSES (exit 2, before any shell starts) probe text in
+#     the listed spellings only (not every word-building construct):
 #       - holds a glob character (`?`, `*`, `[`), a brace expansion
 #         (`{a,b}`, `{a..b}`), or, inside `$'…'`, any backslash escape but
 #         `\n`, `\t`, `\\`, `\'`, `\"` (so no hex, octal, or `\u`/`\U` code point);
@@ -39,7 +40,11 @@
 #     Limits (the checks above are text checks, not a sandbox): a word the
 #     probe builds from a variable that holds text (`a=pk; ${a}ill`) is
 #     beyond them, and so is any path to the main checkout that does not
-#     spell `pff-ios`. Callers write the sentinel and a scratch folder,
+#     spell `pff-ios`. These word-building forms also pass the checks: a
+#     plain `'…$'` string right before an ANSI-C `$'…'` word (its closing
+#     `$'` is read as an ANSI-C opener), a brace alternative holding a
+#     quoted space (`{g,' '}`), and a command substitution whose output is
+#     the word (`$(printf '…\141…')`). Callers write the sentinel and a scratch folder,
 #     never a kill word or the main checkout.
 # The probe runs with `eval`, as the Bash tool runs a command, in an empty
 # scratch folder under a clean environment, with stdin from /dev/null. The

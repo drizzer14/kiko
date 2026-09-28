@@ -112,8 +112,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   substitution in command position (`$(which pkill) -f x`,
   `` `true` git stash ``, `$(true)cd <main> && …`) is judged twice: as
   each guarded name any span in the segment shows, and as the next word
-  (a span that prints nothing); so it denies when it names a kill
-  command or builds a main-checkout or stash git command.
+  (a span that prints nothing); so it denies these unquoted,
+  space-separated forms when a span names a kill command or builds a
+  main-checkout or stash git command. A span glued before the name
+  inside quotes is not covered (see the limits list).
   `X=$(…) cmd` stays an assignment. Heredoc delimiter handling: quote
   removal drops a `$` before `'…'` (`$'EOF'` ends at `EOF` in both
   shells); `$"EOF"` differs by shell (bash ends at `EOF`, zsh at `$EOF`),
@@ -204,8 +206,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `pff-ios`, after it folds case, joins line continuations, drops
   `$ ' " \ { } , ( )` and the backtick, and collapses `/./` and `//`;
   it checks a second reading with every `$(…)`, backtick span, `${…}`,
-  `$name`, and special parameter taken out whole. It also refuses any
-  word-building construct: a glob character (`?`, `*`, `[`), a brace
+  `$name`, and special parameter taken out whole. It also refuses the
+  listed spellings (not every word-building construct; see the limits
+  list): a glob character (`?`, `*`, `[`), a brace
   alternative (`{a,b}`, `{a..b}`), any `$'…'` escape but `\n`, `\t`,
   `\\`, `\'`, `\"`, and a `$(…)`, backtick span, `$@`, or `$*` glued to
   other text in one word. So a probe with `[[ ]]`, a glob, or `$?`
@@ -233,14 +236,20 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   - NOT denied: a kill or stash through an alias, a function, a script
     file, or a variable (`$CMD`); a word built at run time
     (`a=pk; ${a}ill x`, `$(printf pk)ill x`, `$(cat name.txt) x`); a
-    span glued after the command word (`git$(true) stash`); `exec`
-    oddities and other wrapper forms outside the `unwrap` sets.
+    span glued after the command word (`git$(true) stash`); a span
+    glued before the name inside quotes (`"$(true)git" stash`,
+    `"$(true)cd" <main> && git merge x`); text piped into a shell
+    (`echo "… x" | bash`, `cat <<< "… x" | bash`,
+    `bash -c "$(cat)" <<< "… x"`); an ANSI-C here-string into a shell
+    (`bash <<< $'… x'`); `exec` oddities and other wrapper forms
+    outside the `unwrap` sets.
   - Main-checkout deny, NOT denied: a path through another variable,
     `~user`, a glob, or a symlink; a git alias, script, or function;
     `export GIT_DIR=…` as its own earlier command; `env -C <main>`;
     `git -c pull.rebase=true pull --ff-only`; a help or recovery option
     used as another option's value (`git merge -m --abort x` really
-    merges); `cd $VAR` (counts as not main).
+    merges); `cd $VAR` (counts as not main); a span as the `cd` target
+    (`cd "$(echo <main>)" && git merge x`).
   - Nested unquoted heredoc in `cat <<'EOF' | bash`,
     `eval "$(cat <<'EOF' …)"`, or `bash -c "$(cat <<'EOF' …)"`: not
     denied. Heredoc delimiter corner cases beyond those modeled above
@@ -256,10 +265,15 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     literally is a covered command, even when only written to a file
     (write such text with the Write tool, or `git commit -F <file>`);
     every guarded name in any command-position span is tried
-    (`$(which python) git stash`, `$(git log --grep kill) 0` deny).
+    (`$(which python) git stash`, `$(git log --grep kill) 0` deny); from
+    main, `"$(git rev-parse --show-toplevel)/x.sh" merge` (the quoted
+    span plus path is one word, read as git).
   - Probe runner: not an OS sandbox. Its text checks cannot see a word
     built from a variable holding text, or a main path that does not
-    spell `pff-ios`; real git stays reachable by a PATH edit or
+    spell `pff-ios`; nor a plain `'…$'` string right before an ANSI-C
+    `$'…'` word, a brace alternative holding a quoted space
+    (`{g,' '}`), or a command substitution whose output is the word
+    (`$(printf '…\141…')`); real git stays reachable by a PATH edit or
     `/usr/bin/git` (it runs in the empty scratch folder).
 
   A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
