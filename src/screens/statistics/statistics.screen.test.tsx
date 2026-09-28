@@ -1020,6 +1020,63 @@ describe('StatisticsScreen', () => {
     expect(mockRunBackfill).toHaveBeenCalledTimes(2);
   });
 
+  it('retries a newly-held currency on the next focus after its own first run resolved failed', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+    });
+
+    const focusModule = jest.requireMock(
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    const { rerender } = await renderScreen();
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    // A new GBP holding appears, and its own run resolves `Right('failed')`
+    // (every provider rejected) rather than the promise itself rejecting.
+    const GBP_HOLDING: Holding = {
+      id: 'h6',
+      accountId: 'b',
+      currency: 'GBP',
+      type: 'card',
+      balanceMinorUnits: 1_000,
+      metadata: null,
+      closedAt: null,
+    };
+    mockRunBackfill.mockResolvedValueOnce({ state: 'failed', lastDay: null });
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, GBP_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+
+    // The next focus (`now` advancing, same holdings) must still retry GBP
+    // rather than treating its failed run as already covered.
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(3);
+
+    nowSpy.mockRestore();
+  });
+
   it("ignores a stale run's rejection once a later run has claimed a newly-extended span", async () => {
     // An older transaction extends `spanStart` EARLIER while run A is still
     // pending, so run B starts for the wider span before A ever settles. A's

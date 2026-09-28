@@ -541,8 +541,11 @@ const StatisticsScreen: FC = () => {
         // rather than recomputing the whole span — silently losing the
         // newly-opened earlier gap forever. Restoring the old spanStart keeps
         // `spanStart < ranForSpanStart` true, so the SAME earlier-extension
-        // branch (resumeFrom: null) fires again on the next retry.
+        // branch (resumeFrom: null) fires again on the next retry. The
+        // currency key must restore the same way, or a currency-set change
+        // that failed reads as already covered and never retries.
         backfillRanForSpanRef.current = spanCoveredBeforeThisRun;
+        backfillRanForCurrencyKeyRef.current = currencyKeyCoveredBeforeThisRun;
       }
       setBackfillStatus(settled);
     });
