@@ -1072,6 +1072,77 @@ describe('StatisticsScreen', () => {
     expect(queryByTestId('net-worth-line-loading')).toBeNull();
   });
 
+  it('recomputes the whole span from the new earliest day on a later focus, after an earlier-span retry itself failed', async () => {
+    // History is already fully backfilled through `now` — the exact state
+    // that lets a WRONG "never run" retry silently accept as "nothing
+    // missing" once the span ref loses track of the earlier-extension it was
+    // covering.
+    const alreadyBackfilledThroughNow: HistoryRow[] = [
+      { base: 'USD', quote: 'UAH', day: now, rate: '40' },
+    ];
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: alreadyBackfilledThroughNow,
+    });
+    mockRunBackfill.mockResolvedValueOnce({ state: 'complete', lastDay: now });
+
+    const focusModule = jest.requireMock(
+      '@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
+    ) as {
+      useFocusRefreshedNow: () => number;
+    };
+    const nowSpy = jest.spyOn(focusModule, 'useFocusRefreshedNow').mockReturnValue(now);
+
+    const { rerender } = await renderScreen();
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+
+    // An older transaction extends spanStart EARLIER; the earlier-extension
+    // retry that this triggers FAILS.
+    mockRunBackfill.mockResolvedValueOnce({ state: 'failed', lastDay: null });
+    const olderTransaction: Transaction = {
+      id: 't-older',
+      holdingId: 'h1',
+      time: TRANSACTIONS[0].time - 10 * DAY,
+      amountMinorUnits: 10_000,
+    };
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: [olderTransaction, ...TRANSACTIONS],
+      history: alreadyBackfilledThroughNow,
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(2);
+    const earlierSpan = mockRunBackfill.mock.calls[1]?.[0] as { earliestDay: number };
+
+    // A later focus retries. It must recompute the WHOLE new span again
+    // (`lastBackfilledDay: null`), not silently defer to the CURRENT
+    // lastBackfilledDay (already at `now`) as "nothing missing" — which
+    // would only ever fetch the newest day and lose the newly-opened
+    // earlier gap for good.
+    mockRunBackfill.mockResolvedValueOnce({ state: 'complete', lastDay: now });
+    nowSpy.mockReturnValue(now + DAY);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(3);
+    expect(mockRunBackfill.mock.calls[2]?.[0]).toMatchObject({
+      earliestDay: earlierSpan.earliestDay,
+      lastBackfilledDay: null,
+    });
+
+    nowSpy.mockRestore();
+  });
+
   it('drops the deselected account from both the bar and the pie when the filter narrows', async () => {
     const { getByTestId, queryByTestId } = await renderScreen();
 

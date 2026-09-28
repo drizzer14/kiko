@@ -382,11 +382,9 @@ const StatisticsScreen: FC = () => {
   // EARLIER mid-session (`planBackfillRun` decides both, resuming from null on an
   // earlier extension so `missingDays` recomputes the whole span — the forward
   // resume cursor cannot see a gap that opens below the newest stored day).
-  // That explicit `resumeFrom: null` is passed straight through as
-  // `lastBackfilledDay` below, and `runBackfill` itself must honor it as an
-  // override of its own per-currency minimum (`lastBackfilledDayByCurrency`)
-  // — otherwise a currency already at today hides the earlier gap this
-  // effect is trying to re-open. The ref holds the `spanStart` the last run
+  // See `resolveBackfillWindow` (`history-backfill.ts`) for why `runBackfill`
+  // must honor that explicit null as an override of its own per-currency
+  // minimum. The ref holds the `spanStart` the last run
   // covered, so the re-render the backfill's own writes trigger (which
   // advance `lastBackfilledDay`) does not re-enter for the same span. The
   // bar and pie never wait on this.
@@ -448,6 +446,9 @@ const StatisticsScreen: FC = () => {
       return;
     }
 
+    // Captured so a failed settle below can RESTORE it, not just clear it to
+    // null — see that restore's own comment for why the distinction matters.
+    const spanCoveredBeforeThisRun = backfillRanForSpanRef.current;
     // Mark this span covered BEFORE the async run so the write's own re-render
     // (which advances lastBackfilledDay) does not re-enter for the same span.
     backfillRanForSpanRef.current = spanStart;
@@ -474,9 +475,9 @@ const StatisticsScreen: FC = () => {
 
       if (isLeft(result)) {
         // A rejected run must retry on the next focus refresh instead of
-        // being reported as done: clear the span ref so `planBackfillRun`
-        // treats this span as never-run once `now` next advances.
-        backfillRanForSpanRef.current = null;
+        // being reported as done: RESTORE the span ref to what it covered
+        // BEFORE this run, not null — see the restore below for why.
+        backfillRanForSpanRef.current = spanCoveredBeforeThisRun;
         setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDayRef.current });
 
         return;
@@ -488,7 +489,17 @@ const StatisticsScreen: FC = () => {
       const settled: BackfillStatus = bifold(result);
 
       if (settled.state === 'failed') {
-        backfillRanForSpanRef.current = null;
+        // Restore, don't clear to null: a FIRST-ever run's pre-run value was
+        // already null, so this still reads as never-run next time. But an
+        // EARLIER-EXTENSION run's pre-run value was the OLD (later) spanStart
+        // — clearing to null instead would make the next planBackfillRun call
+        // take its "never run" branch, which resumes from the CURRENT
+        // lastBackfilledDay (already advanced by an earlier successful run)
+        // rather than recomputing the whole span — silently losing the
+        // newly-opened earlier gap forever. Restoring the old spanStart keeps
+        // `spanStart < ranForSpanStart` true, so the SAME earlier-extension
+        // branch (resumeFrom: null) fires again on the next retry.
+        backfillRanForSpanRef.current = spanCoveredBeforeThisRun;
       }
       setBackfillStatus(settled);
     });
