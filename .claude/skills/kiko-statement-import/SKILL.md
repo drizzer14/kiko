@@ -185,15 +185,11 @@ helpers, never a raw constructor call.
   this writing; if it ever is, `@kiko/dates`'s `kyiv-wall-clock.ts` is
   the one place to update, with an effective-date guard alongside
   `kyivOffsetHours`.
-- A stored import row records no format, so the one-time upgrade
-  (`rezoneImportTimes`) reads EVERY legacy row as this device's own
-  zone, never Kyiv's — a re-import of an OLD file through a NAMED
-  format therefore dedups against the upgraded row only when the
-  device's own zone offset at upgrade time happened to equal Kyiv's;
-  outside the Kyiv zone, such a re-import can add duplicate rows. A
-  re-import of the same old file through column mapping always dedups
-  on the same device, since both the upgrade and column mapping read
-  the same (device) zone.
+- Upgrade reads legacy rows in the device zone; a named-format
+  re-import of an old file outside Kyiv can duplicate.
+- Unverified on device: in a Kyiv-zone autumn repeated hour, a column-mapped
+  03:xx wall clock must resolve to the EARLIER of its two real instants —
+  only proven against Node's own ICU/`Date` so far, never against Hermes'.
 
 The mapped `ParsedStatement` reaches the DB through the SAME
 `importParsedStatement` (`src/statement-import/import-statement/`)
