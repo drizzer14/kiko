@@ -921,48 +921,6 @@ rules:
         - "src/transactions/row-description/**"
         - "src/transactions/default-description/**"
     pattern: defaultTransactionDescription(...)
-  # PERF-2: `holding-value-at.ts`'s per-bucket `.filter`/`.reduce` used to call
-  # `startOfLocalDay` on both sides for EVERY row on EVERY bucket a multi-year
-  # net-worth line samples — loop-invariant work repeated at every point (fixed
-  # by precomputing a per-holding prefix sum once, see
-  # `createHoldingValuer`). `paths.include` on `src/statistics/**` draws
-  # nothing against a flat fixture (kiko-linter's "Semgrep facts"), so this
-  # rule's fixture pair is NESTED at
-  # rules/fixtures/kiko-no-date-math-in-array-callback/src/statistics/ instead
-  # — see `scripts/checks/semgrep-rules.sh`'s nested-fixture support.
-  - id: kiko-no-date-math-in-array-callback
-    languages: [typescript]
-    severity: ERROR
-    message: >
-      `startOfLocalDay`/`endOfLocalDay`/`new Date(...)` runs inside a
-      `.filter`/`.map`/`.reduce`/`.some`/`.every` callback under
-      `src/statistics/**`. Precompute the local-day key (or any other derived
-      Date value) ONCE per row, outside the callback, instead — recomputing it
-      per row on every call was the loop-invariant cost PERF-2 removed from
-      `holding-value-at.ts`/`net-worth-series.ts`.
-    metadata:
-      fix: "Precompute the Date-derived value once per row outside the array callback (e.g. a prefix-sum keyed by local day built with a plain loop), not inside .filter/.map/.reduce/.some/.every."
-      skill: "kiko-domain › Statistics series performance"
-    paths:
-      include:
-        - "src/statistics/**"
-      exclude:
-        - "*.test.ts"
-    patterns:
-      - pattern-either:
-          - pattern: $ARR.filter($CALLBACK)
-          - pattern: $ARR.map($CALLBACK)
-          - pattern: $ARR.reduce($CALLBACK)
-          - pattern: $ARR.reduce($CALLBACK, ...)
-          - pattern: $ARR.some($CALLBACK)
-          - pattern: $ARR.every($CALLBACK)
-      - metavariable-pattern:
-          metavariable: $CALLBACK
-          patterns:
-            - pattern-either:
-                - pattern: <... startOfLocalDay(...) ...>
-                - pattern: <... endOfLocalDay(...) ...>
-                - pattern: <... new Date(...) ...>
   # STAT-2: category-trend.ts's own `groupKey` folded with a bare
   # `category?.toLowerCase() || defaultKey` — it caught a null/empty category
   # but not an UNRESOLVABLE one (a slug no longer in the categories table),

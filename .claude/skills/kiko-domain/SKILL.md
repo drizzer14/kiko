@@ -812,22 +812,24 @@ original single-call function) stays, unchanged in behavior, for the
 one-off call sites that value a holding at a single instant rather than a
 whole bucketed series.
 
-A Semgrep rule (`kiko-no-date-math-in-array-callback`,
-`rules/semgrep-prewrite.yml`) mechanizes the general shape this bug took:
-`startOfLocalDay`/`endOfLocalDay`/`new Date(...)` inside a
-`.filter`/`.map`/`.reduce`/`.some`/`.every` callback anywhere under
-`src/statistics/**` is an ERROR — precompute the Date-derived value once per
-row (a plain loop, a `Map` keyed by row, or a value hoisted above the
-callback) instead. `reconcile-bond-funding.ts`'s candidate-building pass
-was rewritten from a `.flatMap`/`.map`/`.filter` chain to a plain nested
-loop for the same reason, preserving the exact same holdings-then-
-transaction-index order the chain produced.
-
-`home.screen.tsx`'s `withinBounds`/`dateRangeBounds` follow the same
-principle even though Home is outside the rule's `src/statistics/**` scope:
-`dateRangeBounds(dateFrom, dateTo)` resolves the local-day bounds ONCE per
-filter run, and the `.filter` callback itself (`withinBounds`) does only a
-plain numeric comparison — no Date construction per transaction row.
+`reconcile-bond-funding.ts`'s candidate-building pass was rewritten from a
+`.flatMap`/`.map`/`.filter` chain to a plain nested loop for the same
+reason (its own per-bucket cost, not this one — see that file's own doc
+comment), preserving the exact same holdings-then-transaction-index order
+the chain produced. `home.screen.tsx`'s `withinBounds`/`dateRangeBounds`
+follow the same principle: `dateRangeBounds(dateFrom, dateTo)` resolves the
+local-day bounds ONCE per filter run, and the `.filter` callback itself
+(`withinBounds`) does only a plain numeric comparison — no Date
+construction per transaction row. This shape (loop-invariant Date math
+inside a hot per-row callback) is mechanized by test, not by a Semgrep
+rule: `holding-value-at.test.ts`'s parity test against the original
+`holdingValueAt` plus its scaling test are what would catch a regression
+back to per-bucket Date recomputation — a static AST rule looking for
+`startOfLocalDay`/`endOfLocalDay`/`new Date(...)` inside an array callback
+could not tell a genuinely hot per-bucket call site from a one-off,
+harmless one (e.g. `reconcile-bond-funding.ts`'s own candidate-building
+pass, built once per net-worth-series call, not once per bucket), so it
+flagged both alike and was removed.
 
 ## Price series and priced holdings
 
