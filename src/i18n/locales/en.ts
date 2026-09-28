@@ -1078,6 +1078,8 @@ export const en = {
       addTransactions: 'Reminds you to add new transactions to this account.',
     },
     emptyNoKinds: 'Reminders appear here after you import a statement for this account.',
+    emptyList: 'No reminders yet',
+    emptyHint: 'Set up a reminder from an account’s page.',
     off: 'Off',
     on: 'On',
     turnOff: 'Turn off',

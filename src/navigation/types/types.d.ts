@@ -170,6 +170,8 @@ export type SettingsStackParamList = {
   Categories: undefined;
   ExportData: undefined;
   ImportData: undefined;
+  Reminders: undefined;
+  ReminderForm: ReminderFormParams;
 };
 
 export type StatisticsStackParamList = {
