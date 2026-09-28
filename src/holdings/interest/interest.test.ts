@@ -386,6 +386,62 @@ describe('biweeklyCreditDates — opening-day-anchored semi-monthly boundaries',
   });
 });
 
+describe('depositLedger bi-weekly capitalization — one per calendar month, every opening day', () => {
+  // Every opening day 1..31, over BOTH a leap (2024) and a non-leap (2023)
+  // year, so the collapsed mid-credit (openingDay+1 past the month end — 28
+  // in non-leap Feb, 29, 30, 31) is exercised the same way a real user's
+  // opening day would be. A 12-month, 12%, bi-weekly, recap-ON deposit
+  // capitalizes exactly once per calendar month over its whole life — never
+  // fewer, regardless of which day it opened on: 11 REGULAR (mid-credit)
+  // capitalizations strictly before maturity, plus the unconditional trailing
+  // period that always closes exactly AT maturity (`depositPeriods`'s own
+  // rule) for the 12th.
+  const openingDays = Array.from({ length: 31 }, (_, index) => index + 1);
+  const years = [2023, 2024] as const;
+  const cases = years.flatMap((year) => openingDays.map((day): [number, number] => [day, year]));
+
+  it.each(cases)(
+    'opened on day %s of year %s still capitalizes once per elapsed month',
+    (day, year) => {
+      const start = local(year, 0, day);
+      const termMonths = 12;
+      const maturity = addMonths(start, termMonths);
+      const ledger = depositLedger(
+        [{ amountMinor: 10_000_000, date: start }],
+        12,
+        'bi-weekly',
+        termMonths,
+        maturity,
+      );
+
+      const capitalizations = ledger.accruals.filter((accrual) => accrual.capitalized);
+      // Opening on the exact 1st is a SEPARATE, pre-existing edge unrelated to
+      // the collapse this table exists to pin: maturity then coincides with
+      // December's own plain "1st" credit (never capitalizing) instead of
+      // falling after it, so no unconditional trailing period is appended —
+      // one fewer capitalization than every other opening day, on both the
+      // old and the fixed code.
+      const expectedCapitalizations = day === 1 ? termMonths - 1 : termMonths;
+
+      expect(capitalizations).toHaveLength(expectedCapitalizations);
+    },
+  );
+
+  it('reproduces the reported fixture: 100,000.00 at 12% for 12 months, opened 31 Jan, is no longer stuck at the bare principal by July', () => {
+    const start = local(2026, 0, 31);
+    const now = local(2026, 6, 20);
+    const ledger = depositLedger(
+      [{ amountMinor: 10_000_000, date: start }],
+      12,
+      'bi-weekly',
+      12,
+      now,
+    );
+
+    expect(ledger.currentValueMinor).not.toBe(10_000_000);
+  });
+});
+
 describe('bondCouponDates — mid-month-15th + exact-maturity, stepped back from maturity', () => {
   it('reproduces the Monobank screenshot (semiannual, matures 14 Oct 2026)', () => {
     // Purchase 18 Sep 2025, matures 14 Oct 2026, 6-month coupons. The maturity
