@@ -7,7 +7,8 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 // harness/kiko/hooks/hooks.json under the Bash tool. It reads the hook's
 // tool_input JSON payload from stdin, tokenizes the command line (dropping
 // `#` comments, and recursing into $(...)/backticks, a shell's `-c`/`-lc`
-// argument, and an `eval` string),
+// argument, a heredoc or here-string a shell reads as its script, and an
+// `eval` string),
 // and prints the documented deny JSON when the command is a pkill/killall,
 // a kill/pkill/killall reached through a pattern (xargs, a subshell), or a
 // process-group/broadcast kill (0, a negative pid, `--` then a negative
@@ -110,6 +111,25 @@ const BLOCKED_COMMANDS: string[] = [
   'exec -a name pkill x',
   'echo hi |\\\npkill x',
   'ls (a|b)#c |\\\npkill x',
+  'kill 00>/dev/null',
+  'kill -9 000>/dev/null',
+  'kill 1234 00>/dev/null',
+  '12>/dev/null pkill x',
+  '>|/dev/null pkill x',
+  '2>|/dev/null pkill x',
+  'echo \\>| pkill x',
+  'echo \\>& pkill x',
+  '(2>/dev/null pkill x)',
+  '>! /dev/null pkill x',
+  '>>! /dev/null pkill x',
+  'bash <<< "pkill x"',
+  "sh <<<'pkill x'",
+  'zsh <<< "sudo pkill x"',
+  '$(which pkill) -f foo',
+  '`command -v killall` Simulator',
+  '"$(which pkill)" -f foo',
+  '$(true)pkill x',
+  '$(command -v kill) -9 -1',
 ];
 
 const ALLOWED_COMMANDS: string[] = [
@@ -140,6 +160,17 @@ const ALLOWED_COMMANDS: string[] = [
   "cat <<$'EOF'\nit's\nEOF",
   'cat <<"E\\"OF"\nit\'s\nE"OF',
   'exec -a name npm test',
+  'kill 1234 0>/dev/null',
+  'kill 1234 10>/dev/null',
+  'kill $PID 2>&1',
+  'echo x >| pkill',
+  'echo x >! pkill',
+  'bash <<< "npm test"',
+  '$(git rev-parse HEAD)',
+  'echo $(date)',
+  '$(command -v kill) 1234',
+  'PID=$(pgrep -f metro)',
+  'X=$(command -v pkill) npm test',
 ];
 
 // A git stash in any directory — this repository, a worktree, or a scratch
@@ -196,6 +227,10 @@ const STASH_COMMANDS: string[] = [
   'case x in a) git stash ;; esac',
   'exec -a name git stash',
   'npm test &&\\\ngit stash',
+  '(2>/dev/null git stash)',
+  '$(true)git stash',
+  '`true` git stash',
+  'bash <<< "git stash"',
 ];
 
 const HEREDOC_COMMANDS: string[] = [
@@ -212,6 +247,7 @@ const HEREDOC_COMMANDS: string[] = [
   'cat <<.\nhello\n.',
   'git commit -m "$(cat <<\'EOF\'\nfix: thing (see #12)\nEOF\n)" && cat > f.md <<EOF\n`x`\nEOF',
   "bash <<'EOF'\ncat <<X\n`x`\nX\nEOF",
+  "bash <<< 'cat <<X\nhello\nX'",
 ];
 
 const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
@@ -328,6 +364,15 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [WORKTREE, `cd > /dev/null ${MAIN_CHECKOUT} && git merge feat/x`],
   [MAIN_CHECKOUT, 'git fetch && cd /tmp/a && make && cd /tmp/b; git merge feat/x'],
   [MAIN_CHECKOUT, 'false &&\ncd /tmp; git merge feat/x'],
+  [WORKTREE, `cd ${MAIN_CHECKOUT} >|/dev/null && git merge feat/x`],
+  [WORKTREE, `cd ${MAIN_CHECKOUT} 2>|/dev/null && git merge feat/x`],
+  [WORKTREE, `pushd ${MAIN_CHECKOUT} >|/dev/null; git merge feat/x`],
+  [MAIN_CHECKOUT, '>|/dev/null git merge feat/x'],
+  [MAIN_CHECKOUT, '(2>/dev/null git merge feat/x)'],
+  [MAIN_CHECKOUT, '>! /dev/null git merge feat/x'],
+  [MAIN_CHECKOUT, '$(true)git merge feat/x'],
+  [MAIN_CHECKOUT, 'git 10>/dev/null merge feat/x'],
+  [WORKTREE, `$(true)cd ${MAIN_CHECKOUT} && git merge feat/x`],
   // No `.git` there: not a worktree, so git would run in the main checkout.
   [`${MAIN_CHECKOUT}/.claude/worktrees/agent-1`, 'git merge feat/x'],
   [MAIN_CHECKOUT, `cd ${MAIN_CHECKOUT}/.claude/worktrees/agent-1 && git rebase main`],
