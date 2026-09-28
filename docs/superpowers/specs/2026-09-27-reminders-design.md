@@ -1,5 +1,5 @@
 # Reminders (user-configured, local notifications) — design, 1.2
-Status: research done 2026-09-27; USER DECISIONS recorded; needs a plan (kiko:planner) when 1.2 starts. Target release: 1.2 (after Round A).
+Status: research done; user decisions recorded; PRIORITY: first item of 1.2 (user 2026-09-28); plan in progress
 
 ## User decisions (2026-09-27, user's own words summarized)
 1. Scope: BOTH reminder types — (a) import a bank statement, (b) add transactions to a manual account.
@@ -7,6 +7,8 @@ Status: research done 2026-09-27; USER DECISIONS recorded; needs a plan (kiko:pl
 3. Release 1.2.
 4. Own native module (Swift, wraps UNUserNotificationCenter + a thin TurboModule spec), NOT expo-notifications, NOT notifee (archived 2026-04-07).
 5. Placement: a Settings > Reminders page (list of all reminders, edit/pause/delete) AND each account gets its OWN reminder control page, reached from the place closest to that account (the account detail screen). Contextual offer at TWO moments (user's addition 2026-09-28): (a) after a statement import completes, and (b) after the user adds a MANUAL transaction to an account that already has prior similar transactions (a sign the user logs this account by hand regularly).
+6. Import reminders are allowed on ANY account that has had at least one statement import, including bank-synced accounts (for example Monobank); add-transaction reminders stay for manual accounts (accounts.institution IS NULL).
+7. Trigger (b) of the contextual offer: the offer appears when the user adds the SECOND manual transaction on an account, that is at least ONE earlier source='manual' transaction on the same account within the last 30 days (coordinator's reading of the user's answer "3 but 2x" / "for the second transaction"; the user may still correct it). No category/payee matching.
 
 ## Design
 - Frame: a reminder the USER sets up in Kiko on the user's own schedule — useful, never noise.
@@ -25,10 +27,10 @@ Status: research done 2026-09-27; USER DECISIONS recorded; needs a plan (kiko:pl
 - Contextual offer: shown only when the account has no reminder yet; one-time and dismissible per account (a dismissal is remembered, so the offer never repeats as nagging); it is an in-app, non-modal prompt, never a notification; it opens that account's reminder page prefilled with the matching type (import or add transactions).
 
 ## Open items for the planner
-- Manual account = accounts.institution IS NULL (isSyncedAccount in src/holdings/deletable/deletable.ts). Should import reminders also apply to synced accounts that import statements? (ask the user)
+- Manual account = accounts.institution IS NULL (isSyncedAccount in src/holdings/deletable/deletable.ts); resolved by user decision 6 — import reminders apply to any account with >=1 statement import, including synced accounts; add-transaction reminders stay manual-only.
 - Device tests: reboot, app update, time-zone change, DST.
 - Competitor gaps not verified: Spendee, Monefy, Money Lover, CoinKeeper, Day One, Daylio.
-- Define "prior similar transactions" for trigger (b) — for example, at least N earlier source='manual' transactions on the same account (and optionally the same category or payee) within a recent window; confirm N and the matching rule with the user.
+- "Prior similar transactions" for trigger (b) resolved by user decision 7 — offer fires on the second manual transaction (>=1 earlier source='manual' transaction on the same account within the last 30 days); no category/payee matching.
 
 ## Sources (checked 2026-09-27)
 - HIG Notifications / Managing notifications / Privacy: https://developer.apple.com/design/human-interface-guidelines/notifications , .../managing-notifications , .../privacy (text read via https://developer.apple.com/tutorials/data/design/human-interface-guidelines/<page>.json)
