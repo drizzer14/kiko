@@ -66,13 +66,21 @@ fi
 
 # 4. A resolved-but-invalid dependency tree: npm ls --all fails
 # (ELSPROBLEMS) when an override or a version conflict leaves some
-# installed package's own requirement unsatisfied.
-ls_out="$(npm ls --all 2>&1)"
+# installed package's own requirement unsatisfied. The full tree can run
+# to thousands of lines, so only the lines npm itself marks as the
+# problem (its stderr, plus any tree line npm tags "invalid:"/"missing:")
+# belong in the failure block.
+ls_stderr_file="$(mktemp)"
+ls_stdout="$(npm ls --all 2>"$ls_stderr_file")"
 ls_code=$?
+ls_stderr="$(cat "$ls_stderr_file" 2>/dev/null)"
+rm -f "$ls_stderr_file"
 if [ "$ls_code" -ne 0 ]; then
   fail=1
+  ls_problem_lines="$(printf '%s\n' "$ls_stdout" | grep -E 'invalid:|missing:')"
   details="${details}--- npm ls --all (resolved tree validity) ---
-${ls_out}
+${ls_stderr}
+${ls_problem_lines}
 
 "
 fi
