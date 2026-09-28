@@ -107,11 +107,11 @@ const midCredit = (year: number, monthIndex: number, openingDay: number): number
 
 /** One bi-weekly credit instant, tagged with whether the bank capitalizes on
  * it — the mid-month (openingDay+1) credit does, the plain 1st-of-month
- * credit does not. Exported so `depositPeriods` can read the tag straight off
+ * credit does not. `depositPeriods` (same file) reads the tag straight off
  * the instant that PRODUCED it, rather than re-deriving it from the instant's
  * own value (see `biweeklyCredits`'s own comment for why that re-derivation is
  * unsound). */
-export type BiweeklyCredit = { instant: number; capitalizes: boolean };
+type BiweeklyCredit = { instant: number; capitalizes: boolean };
 
 // The ordered, tagged capitalization ("credit") instants for an
 // opening-day-anchored semi-monthly ("bi-weekly") deposit that are strictly
@@ -134,7 +134,7 @@ export type BiweeklyCredit = { instant: number; capitalizes: boolean };
 // 31's collapsed mid-credit and Feb's own "1st" credit are the identical
 // Feb-1 instant — which is what silently dropped a capitalization every time
 // the mid-credit collapsed.
-export const biweeklyCredits = (start: number, end: number): BiweeklyCredit[] => {
+const biweeklyCredits = (start: number, end: number): BiweeklyCredit[] => {
   const openingDay = new Date(start).getDate();
   const first = new Date(start);
   let year = first.getFullYear();
