@@ -185,6 +185,21 @@ describe('SystemScreen — turning the lock off re-authenticates', () => {
     resolveConfirm({ kind: 'confirmed' });
     await waitFor(() => expect(mockSetLockEnabled).toHaveBeenCalledWith(false));
   });
+
+  it('re-arms the toggle after confirmAndDisable rejects, so a retry can run', async () => {
+    mockConfirmOwner.mockRejectedValueOnce(new Error('boom'));
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', false);
+
+    await waitFor(() => expect(mockConfirmOwner).toHaveBeenCalledTimes(1));
+
+    mockConfirmOwner.mockResolvedValueOnce({ kind: 'confirmed' });
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', false);
+
+    await waitFor(() => expect(mockConfirmOwner).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockSetLockEnabled).toHaveBeenCalledWith(false));
+  });
 });
 
 describe('SystemScreen — loading gate', () => {

@@ -1,7 +1,7 @@
-import { useRef } from 'react';
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import { Alert } from 'react-native';
+import { confirmOwner } from '@kiko/auth';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
@@ -9,7 +9,7 @@ import { useDataReady, useLiveQuery } from '@kiko/db';
 import Card from '@kiko/design-system/components/card';
 import Screen from '@kiko/design-system/components/screen';
 import SettingsRow from '@kiko/screens/settings/settings-row';
-import { confirmOwner, type OwnerConfirmation } from '@kiko/auth';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import LanguageSwitch from '@kiko/design-system/components/language-switch';
@@ -41,41 +41,24 @@ const SystemScreen: FC<SystemScreenProps> = () => {
     settingsRepo.setLanguage(language);
   };
 
-  const disablingLock = useRef(false);
+  const confirmAndDisable = async (): Promise<void> => {
+    const confirmation = await confirmOwner(t('auth.reason.disableLock'));
+
+    match(confirmation)
+      // A device with no passcode has no owner authentication to run at
+      // all — iOS itself asks for the old passcode before it removes one.
+      .with({ kind: 'confirmed' }, { kind: 'noPasscode' }, () => settingsRepo.setLockEnabled(false))
+      .with({ kind: 'cancelled' }, () => undefined)
+      .with({ kind: 'failed' }, (result) =>
+        Alert.alert(t('auth.reauth.failedTitle'), t(result.hintKey)),
+      )
+      .exhaustive();
+  };
+
+  const { onPress: disableLock } = useSubmitOnce(confirmAndDisable);
 
   const handleToggleLock = (enabled: boolean): void => {
-    if (enabled) {
-      settingsRepo.setLockEnabled(true);
-
-      return;
-    }
-
-    if (disablingLock.current) {
-      return;
-    }
-
-    disablingLock.current = true;
-
-    const confirmAndDisable = async (): Promise<void> => {
-      const confirmation: OwnerConfirmation = await confirmOwner(t('auth.reason.disableLock'));
-
-      match(confirmation)
-        // A device with no passcode has no owner authentication to run at
-        // all — iOS itself asks for the old passcode before it removes one.
-        .with({ kind: 'confirmed' }, { kind: 'noPasscode' }, () =>
-          settingsRepo.setLockEnabled(false),
-        )
-        .with({ kind: 'cancelled' }, () => undefined)
-        .with({ kind: 'failed' }, (result) =>
-          Alert.alert(t('auth.reauth.failedTitle'), t(result.hintKey)),
-        )
-        .exhaustive();
-
-      disablingLock.current = false;
-    };
-
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) confirmOwner never rejects; confirmAndDisable re-arms its own in-flight ref
-    confirmAndDisable();
+    enabled ? settingsRepo.setLockEnabled(true) : disableLock();
   };
 
   // The effective language shown as selected: the explicit choice if set,
