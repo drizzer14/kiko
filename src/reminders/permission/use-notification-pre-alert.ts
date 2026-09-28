@@ -4,7 +4,7 @@ import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 
 import { useNotificationPermission } from './use-notification-permission';
 
-type NotificationPreAlert = {
+export type NotificationPreAlert = {
   status: NotificationAuthorization | undefined;
   // Shows the pre-alert; iOS is asked once it has closed.
   open: () => void;
