@@ -507,6 +507,49 @@ describe('buildCategoryTrend / buildCategoryMeasures — no phantom trailing buc
   });
 });
 
+// Europe/Kyiv springs forward on 2025-03-30 (a 23-hour local day). `from` is
+// built from local Y/M/D fields, not `today - n * dayMs` (which would land
+// off real local midnight across the transition), matching how production
+// derives it.
+describe('buildCategoryTrend — spring-forward DST (Europe/Kyiv, 2025-03-30)', () => {
+  const withTimeZone = (zone: string, run: () => void): void => {
+    const previous = process.env.TZ;
+    process.env.TZ = zone;
+    run();
+    process.env.TZ = previous;
+  };
+
+  it('emits no phantom point across the transition, ends on the latest day’s spend, and sums to the category total', () => {
+    withTimeZone('Europe/Kyiv', () => {
+      const kyivNow = new Date(2025, 2, 31, 12, 0, 0).getTime();
+      const today = startOfLocalDay(kyivNow);
+      const range = { from: new Date(2025, 2, 29).getTime(), to: endOfLocalDay(kyivNow) };
+      const series = buildTrend(
+        [
+          transaction({
+            id: 'before',
+            time: new Date(2025, 2, 29, 10).getTime(),
+            amountMinorUnits: -10_00,
+          }),
+          transaction({
+            id: 'transition-day',
+            time: new Date(2025, 2, 30, 10).getTime(),
+            amountMinorUnits: -20_00,
+          }),
+          transaction({ id: 'today', time: kyivNow, amountMinorUnits: -30_00 }),
+        ],
+        { range },
+      );
+      const points = series[0].points;
+      const pointSum = points.reduce((sum, point) => sum + point.amount, 0);
+
+      expect(points).toHaveLength(3);
+      expect(points[points.length - 1]).toEqual({ t: today, amount: 30 });
+      expect(pointSum).toBeCloseTo(60, 5);
+    });
+  });
+});
+
 // category-trend.ts used to fold a category key with a bare
 // `category?.toLowerCase() || defaultKey` — unlike the donut
 // (`buildCategoryBreakdown`), which folds an UNRESOLVABLE slug (one no longer
