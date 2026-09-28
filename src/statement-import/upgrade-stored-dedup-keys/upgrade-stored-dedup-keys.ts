@@ -28,6 +28,14 @@ const UPGRADE_CHUNK_SIZE = 500;
  * the read. Read-then-write inside ONE `write()` transaction: a failure
  * partway leaves the flag at `false`, so the NEXT launch retries the whole
  * upgrade rather than silently leaving some rows unrewritten.
+ *
+ * `MigrationsGate` runs `rezoneImportTimes`
+ * (`../rezone-import-times/rezone-import-times.ts`) right after this step,
+ * never before it — though `rezoneDedupKey`'s own token rewrite matches a
+ * key's time token whether or not THIS upgrade has already run, so the two
+ * steps don't depend on each other for correctness, only for which
+ * occurrence-suffix style (legacy ` n` or injective `␟n`) a not-yet-upgraded
+ * key still carries when the rezone step reads it.
  */
 export const upgradeStoredDedupKeys = (): Promise<void> =>
   write(async (databaseTransaction) => {
