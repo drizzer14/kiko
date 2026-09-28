@@ -567,8 +567,16 @@ export const withCryptoCashHoldingsMoved = (
  * `balanceSetAt` key on its holdings at all, and without this the restored
  * holding would come back with a NULL boundary the live database never
  * actually had, undoing migration 0036's own backfill for that user.
+ *
+ * Resolves with the count of accounts actually INSERTED — not
+ * `snapshot.accounts.length` — because `withCryptoCashHoldingsMoved` can add
+ * one beyond what the snapshot itself carried; the caller (`import-data.ts`)
+ * surfaces this count to the user, and a file that restores 3 accounts but
+ * leaves 4 on the Accounts screen would look like data loss, not a bonus.
  */
-export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
+export const restoreDataSnapshot = (
+  snapshot: DataSnapshot,
+): Promise<{ accountsRestored: number }> =>
   write(async (databaseTransaction) => {
     // Runs first, before either table is inserted — see
     // `withCryptoCashHoldingsMoved`'s own doc comment.
@@ -698,4 +706,6 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
     await insertOverridesTransactionsSyncState();
     await insertRatesAndSettings();
     await insertBondRegister();
+
+    return { accountsRestored: accountsAfterCryptoCashMove.length };
   });

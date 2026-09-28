@@ -148,7 +148,7 @@ export const importData = async (options: {
     throw new Error(INVALID_FILE_MESSAGE);
   }
 
-  await restoreDataSnapshot(payload.tables);
+  const { accountsRestored } = await restoreDataSnapshot(payload.tables);
   await restoreExportSecrets(payload.secrets);
 
   // A restored foreign-currency/metal/crypto holding needs its price/rate
@@ -175,7 +175,7 @@ export const importData = async (options: {
   runLoanAutoLink();
 
   return {
-    accountsRestored: payload.tables.accounts.length,
+    accountsRestored,
     holdingsRestored: payload.tables.holdings.length,
     transactionsRestored: payload.tables.transactions.length,
     languageRestored: payload.tables.settings.at(0)?.language ?? null,
