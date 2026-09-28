@@ -989,6 +989,58 @@ describe('holdingsRepo.clearBinanceHistoryCursor', () => {
   });
 });
 
+describe('holdingsRepo.setBinanceHistoryCursor', () => {
+  it('merges the cursor into the stored metadata, preserving every other key', async () => {
+    const updates: Record<string, unknown>[] = [];
+    mockDatabaseTransaction = {
+      select: () => ({
+        from: () => ({
+          where: async () => [{ metadata: { binanceAsset: 'BTC', syncedAt: 500 } }],
+        }),
+      }),
+      update: () => ({
+        set: (values: Record<string, unknown>) => ({
+          where: () => {
+            updates.push(values);
+
+            return Promise.resolve();
+          },
+        }),
+      }),
+    };
+
+    await holdingsRepo.setBinanceHistoryCursor('h-spot', 1_704_326_400_000);
+
+    expect(updates).toEqual([
+      { metadata: { binanceAsset: 'BTC', syncedAt: 500, binanceHistoryCursor: 1_704_326_400_000 } },
+    ]);
+  });
+
+  it('writes the cursor alone when the holding had no metadata yet', async () => {
+    const updates: Record<string, unknown>[] = [];
+    mockDatabaseTransaction = {
+      select: () => ({
+        from: () => ({
+          where: async () => [{ metadata: null }],
+        }),
+      }),
+      update: () => ({
+        set: (values: Record<string, unknown>) => ({
+          where: () => {
+            updates.push(values);
+
+            return Promise.resolve();
+          },
+        }),
+      }),
+    };
+
+    await holdingsRepo.setBinanceHistoryCursor('h-spot', 1_000);
+
+    expect(updates).toEqual([{ metadata: { binanceHistoryCursor: 1_000 } }]);
+  });
+});
+
 describe('holdings remove', () => {
   it('deletes a manual holding and its transactions in one transaction', async () => {
     const store: Store = {

@@ -30,6 +30,7 @@ import {
   type SyncedMetadataField,
   withoutWalkOwnedMetadata,
   withWalkOwnedMetadataCarried,
+  BINANCE_HISTORY_CURSOR_FIELD,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
 import { isCurrencyAllowedForHoldingType } from '../holding-currency';
@@ -844,6 +845,26 @@ export const holdingsRepo = {
           .set({ metadata: stripped })
           .where(eq(holdings.id, row.id));
       }
+    }),
+  /**
+   * Advance the Binance history-walk cursor on one holding's metadata,
+   * merging it into whatever is currently stored rather than replacing the
+   * whole object — the write-side counterpart of `withWalkOwnedMetadataCarried`,
+   * which only stops a DIFFERENT write (a balance sync) from wiping this value;
+   * this is the one call that actually sets it.
+   */
+  setBinanceHistoryCursor: (holdingId: string, cursorMs: number) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ metadata: holdings.metadata })
+        .from(holdings)
+        .where(eq(holdings.id, holdingId));
+      const stored = (rows.at(0)?.metadata as Record<string, unknown> | null) ?? {};
+
+      await databaseTransaction
+        .update(holdings)
+        .set({ metadata: { ...stored, [BINANCE_HISTORY_CURSOR_FIELD]: cursorMs } })
+        .where(eq(holdings.id, holdingId));
     }),
   /**
    * Advance the crash-safe statement-import marker (`syncedBalanceMinorUnits`,
