@@ -4,7 +4,7 @@
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
-  const { executingClient } = jest.requireActual('@kiko/test-support/real-sqlite');
+  const { executingClient } = require('@kiko/test-support/real-sqlite');
   const client = executingClient(() => mockDatabase);
 
   return { database: client.database, write: jest.fn(client.write) };
