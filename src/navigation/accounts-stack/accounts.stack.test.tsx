@@ -81,6 +81,14 @@ describe('AccountsStack', () => {
     expect(titleByScreen().OwnershipChangeForm).toBe('Edit Share Change');
   });
 
+  it('gives the account reminders page a static "Reminders" title', () => {
+    expect(titleByScreen().AccountReminders).toBe('Reminders');
+  });
+
+  it('gives the reminder form the create title, which an edit replaces', () => {
+    expect(titleByScreen().ReminderForm).toBe('New Reminder');
+  });
+
   it('leaves the detail screens without a static title (they set it dynamically)', () => {
     const titles = titleByScreen();
     expect(titles.AccountDetail).toBeUndefined();

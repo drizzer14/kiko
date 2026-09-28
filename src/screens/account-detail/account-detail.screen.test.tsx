@@ -995,6 +995,27 @@ describe('AccountDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'a' });
   });
 
+  it('offers a Reminders bell left of Edit that opens this account’s reminders', async () => {
+    setLiveData({ accounts: [account({ name: 'Cash box' })], holdings: [] });
+    const { navigation } = await renderScreen();
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.headerRight,
+    );
+
+    mockButtonProps.length = 0;
+
+    const { getByLabelText } = await render(call[0].headerRight());
+
+    expect(mockButtonProps.map((props) => props.icon)).toEqual(['bell', 'pencil']);
+
+    await fireEvent.press(getByLabelText('Reminders'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountReminders', {
+      accountId: 'a',
+      name: 'Cash box',
+    });
+  });
+
   it('offers a Disconnect action on a connected account and confirms via the themed sheet before disconnecting', async () => {
     mockDisconnect.mockResolvedValue(undefined);
     setLiveData({

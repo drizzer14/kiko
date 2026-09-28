@@ -130,10 +130,23 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     navigation.setOptions({
       title: accountName,
       headerRight: () => (
-        <EditHeaderButton onPress={() => navigation.navigate('AccountForm', { accountId })} />
+        <Box direction="row">
+          <Button
+            variant="ghost"
+            size="compact"
+            fullWidth={false}
+            icon="bell"
+            accessibilityLabel={t('reminders.rowLabel')}
+            testID="reminders-header-button"
+            onPress={() =>
+              navigation.navigate('AccountReminders', { accountId, name: accountName })
+            }
+          />
+          <EditHeaderButton onPress={() => navigation.navigate('AccountForm', { accountId })} />
+        </Box>
       ),
     });
-  }, [navigation, accountName, accountId]);
+  }, [navigation, accountName, accountId, t]);
 
   const activeHoldings = holdings.filter((holding) => holding.closedAt == null);
 
