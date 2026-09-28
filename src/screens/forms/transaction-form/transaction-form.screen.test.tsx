@@ -1123,6 +1123,10 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
 
     const utils = await renderEmptyCreate();
 
+    // Proves h-crypto (BTC) really is the seeded primary holding, before
+    // asserting on the Exchange option that follows FROM its type.
+    expect(amountSuffixWithin(utils).getByText('₿')).toBeTruthy();
+
     await fireEvent.press(utils.getByLabelText('Type'));
     expect(utils.queryByText('Exchange')).toBeNull();
   });
