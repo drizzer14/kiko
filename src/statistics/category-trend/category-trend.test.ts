@@ -17,7 +17,13 @@ const DISPLAY = buildCategoryDisplayMap([
 ]);
 
 // A fixed "today" reference, so every range is deterministic.
-const NOW = Date.UTC(2025, 2, 31, 12, 0, 0); // 2025-03-31, midday UTC
+// Picked well clear of both Kyiv DST transitions (2025 spring-forward 30
+// March, fall-back 26 October) — every range this file builds looks back at
+// most 14 days from NOW, and buckets now step by real CALENDAR days, so a
+// fixture straddling a transition would make its own hand-computed expected
+// bucket positions (`NOW - n * dayMs`) drift from the real (correct)
+// calendar-stepped ones by the transition's hour.
+const NOW = Date.UTC(2025, 6, 31, 12, 0, 0); // 2025-07-31, midday UTC
 const dayMs = 86_400_000;
 
 // The default test range: 3 days back from NOW to NOW, daily buckets — 4

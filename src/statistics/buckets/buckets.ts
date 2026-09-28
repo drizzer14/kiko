@@ -12,14 +12,40 @@ const DAILY_BUCKET_DAYS = 1;
 export const bucketDaysForSpan = (spanMs: number): number =>
   spanMs > COARSE_BUCKET_THRESHOLD_DAYS * DAY_MS ? WEEKLY_BUCKET_DAYS : DAILY_BUCKET_DAYS;
 
+// The instant `index * bucketDays` CALENDAR DAYS after `from`, built from
+// LOCAL Y/M/D fields (never `from + index * bucketDays * DAY_MS`) — a fixed
+// ms step drifts across a DST change: a fall-back day is 25 hours, so
+// stepping by a flat 24h landed an hour EARLY (23:00 the previous calendar
+// day) for every bucket after it, eventually producing a duplicate calendar
+// day or an extra bucket. `from`'s own time-of-day fields are preserved, so
+// a range with no DST crossing steps by exactly `bucketDays * DAY_MS`, same
+// as before. `new Date(y, m, d + n, ...)` normalizes a day past the month's
+// end, so no month/year wrap is needed.
+const calendarDayStep = (from: number, index: number, bucketDays: number): number => {
+  const date = new Date(from);
+
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() + index * bucketDays,
+    date.getHours(),
+    date.getMinutes(),
+    date.getSeconds(),
+    date.getMilliseconds(),
+  ).getTime();
+};
+
 // The bucket instants across the range: `from`, then one per `bucketDays` step,
 // always closing on `to` so the window's start and end are both represented.
 export const bucketTimes = (from: number, to: number, bucketDays: number): number[] => {
-  const step = bucketDays * DAY_MS;
   const times: number[] = [];
+  let index = 0;
+  let t = from;
 
-  for (let t = from; t < to; t += step) {
+  while (t < to) {
     times.push(t);
+    index += 1;
+    t = calendarDayStep(from, index, bucketDays);
   }
   times.push(to);
 
@@ -49,11 +75,14 @@ export const bucketTimes = (from: number, to: number, bucketDays: number): numbe
  * point is reintroduced there.
  */
 export const periodStartBucketTimes = (from: number, to: number, bucketDays: number): number[] => {
-  const step = bucketDays * DAY_MS;
   const times: number[] = [];
+  let index = 0;
+  let t = from;
 
-  for (let t = from; t <= to; t += step) {
+  while (t <= to) {
     times.push(t);
+    index += 1;
+    t = calendarDayStep(from, index, bucketDays);
   }
 
   if (times.length === 1 && times[0] !== to) {
