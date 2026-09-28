@@ -1,5 +1,7 @@
 import type { FC } from 'react';
-import { Share } from 'react-native';
+import { match } from 'ts-pattern';
+import { confirmOwner } from '@kiko/auth';
+import { Alert, Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { exportData } from '@kiko/data-transfer';
 import { useEffect, useRef, useState } from 'react';
@@ -50,8 +52,34 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
   );
 
   const runExport = async (): Promise<void> => {
+    // Snapshot BEFORE the confirmOwner await, so a toggle flip while the
+    // prompt is open can never let an unauthenticated press export secrets.
+    const exportSecrets = includeSecrets;
+
+    if (exportSecrets) {
+      const owner = await confirmOwner(t('auth.reason.exportSecrets'));
+
+      match(owner)
+        .with({ kind: 'confirmed' }, () => undefined)
+        .with({ kind: 'cancelled' }, () => undefined)
+        // No owner authentication exists on a passcode-less device — unlike
+        // disabling the lock, there is no passcode sheet this could show, so
+        // the export is refused rather than let through unauthenticated.
+        .with({ kind: 'noPasscode' }, () =>
+          Alert.alert(t('settings.dataExport.errorTitle'), t('auth.reauth.passcodeRequired')),
+        )
+        .with({ kind: 'failed' }, (result) =>
+          Alert.alert(t('auth.reauth.failedTitle'), t(result.hintKey)),
+        )
+        .exhaustive();
+
+      if (owner.kind !== 'confirmed') {
+        return;
+      }
+    }
+
     try {
-      const result = await exportData({ includeSecrets });
+      const result = await exportData({ includeSecrets: exportSecrets });
       setKeyBase64(result.keyBase64);
       setFileUri(result.fileUri);
       // A fresh key was never copied, so any "Copied" feedback left over from
