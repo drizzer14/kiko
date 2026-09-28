@@ -279,6 +279,54 @@ describe('syncBinanceTransactions', () => {
     expect(result.complete).toBe(false);
   });
 
+  it('the watermark wins over a much older legacy latest — the headline "cursor beats latest" rule', async () => {
+    // A holding whose watermark is nearly caught up (2 hours behind now), but
+    // whose legacy `latestTransactionTime` (a pre-watermark imported row) is
+    // stuck in 2019. `resolveStartTime` must be fed the WATERMARK, never the
+    // stale `latest` — swapping `cursor ?? latest` for `latest ?? cursor`
+    // would walk from 2019 instead and fail this test.
+    const fetchDepositHistory = emptyDepositFetch();
+    const cursor = NOW - 2 * 60 * 60 * 1000;
+    const deps = makeDeps({
+      listHoldings: async () =>
+        [
+          { id: 'h-spot', metadata: { binanceAsset: 'BTC', binanceHistoryCursor: cursor } },
+        ] as unknown as HoldingRow[],
+      latestTransactionTime: async () => Date.UTC(2019, 0, 1),
+      fetchDepositHistory,
+    });
+
+    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+
+    const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
+    expect(windows).toHaveLength(1);
+    expect(windows[0].startTime).toBe(NOW - 89 * DAY);
+    expect(windows[0].endTime).toBe(NOW);
+  });
+
+  it('a same-account reconnect after a disconnect (watermark reset to the floor) walks from the floor, even with an old latest set', async () => {
+    // Mirrors what a disconnect now leaves behind (item 1: the watermark is
+    // RESET to `HISTORY_FLOOR_MS`, not stripped) — a stale `latest` from
+    // before the disconnect must not pull the walk forward past the floor.
+    const fetchDepositHistory = emptyDepositFetch();
+    const deps = makeDeps({
+      listHoldings: async () =>
+        [
+          {
+            id: 'h-spot',
+            metadata: { binanceAsset: 'BTC', binanceHistoryCursor: HISTORY_FLOOR_MS },
+          },
+        ] as unknown as HoldingRow[],
+      latestTransactionTime: async () => NOW - 10 * DAY,
+      fetchDepositHistory,
+    });
+
+    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+
+    const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
+    expect(windows[0].startTime).toBe(HISTORY_FLOOR_MS);
+  });
+
   it('imports nothing but still advances the watermark when the window holds no settled records', async () => {
     const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY });
 

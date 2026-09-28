@@ -44,11 +44,6 @@ export class BinanceRateLimitError extends Error {
   }
 }
 
-const rateLimitStatuses = [429, 418] as const;
-
-const isRateLimitStatus = (status: number): status is (typeof rateLimitStatuses)[number] =>
-  (rateLimitStatuses as readonly number[]).includes(status);
-
 /**
  * Binance sends `Retry-After` in seconds. Anything missing, non-numeric, or
  * non-positive falls back to this default rather than a zero or negative wait.
@@ -137,7 +132,7 @@ const signedRequestPage = async (
     },
   );
 
-  if (isRateLimitStatus(response.status)) {
+  if (response.status === 429 || response.status === 418) {
     throw new BinanceRateLimitError(response.status, retryAfterMsFromHeaders(response.headers));
   }
 

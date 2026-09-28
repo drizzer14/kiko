@@ -17,6 +17,7 @@ import {
   type WithdrawHistoryPage,
 } from './binance.client';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
+import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
 const BINANCE_ASSET = 'BTC';
 
@@ -73,10 +74,12 @@ const MAX_PAGES_PER_WINDOW = 50;
 export const BINANCE_REQUEST_INTERVAL_MS = 350;
 
 /**
- * At most this many withdraw-history calls per run when Binance's own weight
- * header (`X-SAPI-USED-UID-WEIGHT-1M`) is unavailable — the safety net a
- * first-sync's wide window walk relies on so one run never trips the weight
- * limit even without ever seeing the header.
+ * At most this many withdraw-history calls per run — `canAffordOneWithdrawCall`
+ * applies this cap UNCONDITIONALLY, whether or not Binance's own weight header
+ * (`X-SAPI-USED-UID-WEIGHT-1M`) is present; the header, when it IS reported,
+ * can only tighten the budget further (stopping sooner), never loosen it past
+ * this fallback. The safety net a first-sync's wide window walk relies on so
+ * one run never trips the weight limit even without ever seeing the header.
  */
 export const WITHDRAW_CALLS_PER_RUN_FALLBACK = 9;
 
@@ -85,16 +88,6 @@ export const WITHDRAW_UID_WEIGHT = 18_000;
 
 /** Binance's own per-minute UID weight ceiling — what `X-SAPI-USED-UID-WEIGHT-1M` is measured against. */
 export const UID_WEIGHT_BUDGET_1M = 180_000;
-
-/**
- * Per-account cooldown set by a 429/418, so a resumed run makes ZERO Binance
- * requests until `Retry-After` passes. Module-level (not a `SyncDeps` seam),
- * because it must survive across SEPARATE `syncBinanceTransactions`
- * invocations within this app process — the same reason Monobank's request
- * gate lives outside `SyncDeps` (`src/monobank/`). No exported reset (no test
- * code in `src/`): a test uses a distinct account id per case.
- */
-const cooldownUntilByAccount = new Map<string, number>();
 
 /**
  * The imported-transaction shape the sync hands to `transactionsRepo.addManyDedup`.
@@ -366,6 +359,10 @@ const fetchWithdrawalsInWindow = async (
     }
 
     await gate.wait();
+    // Known limit: the budget resets each RUN, not each window, so a window
+    // needing more than `WITHDRAW_CALLS_PER_RUN_FALLBACK` (9) pages here
+    // (over 9,000 withdrawals in one 89-day span) would hit `exhausted` on
+    // every run and never complete — unrealistic for a personal account.
     const page = await deps.fetchWithdrawHistory(
       apiKey,
       secret,
@@ -426,7 +423,7 @@ const runOneWindow = async (
     withdrawn = await fetchWithdrawalsInWindow(context, window, budget);
   } catch (error) {
     if (error instanceof BinanceRateLimitError) {
-      cooldownUntilByAccount.set(accountId, deps.now() + error.retryAfterMs);
+      setBinanceCooldownUntil(accountId, deps.now() + error.retryAfterMs);
 
       return { kind: 'stop', budget };
     }
@@ -460,9 +457,8 @@ const runSync = async (
   accountId: string,
 ): Promise<{ imported: number; complete: boolean }> => {
   const now = deps.now();
-  const cooldownUntil = cooldownUntilByAccount.get(accountId);
 
-  if (cooldownUntil !== undefined && now < cooldownUntil) {
+  if (isBinanceCoolingDown(accountId, now)) {
     return { imported: 0, complete: false };
   }
 
