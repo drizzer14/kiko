@@ -730,7 +730,7 @@ export const transactionsRepo = {
   recordExchangeCounterpart: (input: ExchangeCounterpartInput) =>
     write(async (databaseTransaction) => {
       // Defense in depth: the picker already excludes a synced/syncable
-      // holding (item 6), but this write is reachable directly, so it
+      // holding, but this write is reachable directly, so it
       // re-reads the counterpart's OWN holding+account here, inside the
       // transaction, rather than trust a caller-supplied flag — a sync
       // already owns that holding's balance, and a manual leg written onto

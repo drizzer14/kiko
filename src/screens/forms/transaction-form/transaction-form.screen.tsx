@@ -1027,9 +1027,9 @@ const resolveConvertView = (
   const direction = existing ? exchangeConvertDirection(existing.amountMinorUnits) : null;
   // An expense-sourced convert picks a DESTINATION (wider: excludes bond/jar);
   // an income-sourced convert picks a SOURCE (wider: cash/card only). Excludes
-  // the existing holding, closed holdings, and a synced/syncable holding
-  // (item 6 — the counterpart is a NEW manual leg `save` writes, and a sync
-  // already owns that holding's balance), and carries account names.
+  // the existing holding, closed holdings, and a synced/syncable holding —
+  // the counterpart is a NEW manual leg `save` writes, and a sync already
+  // owns that holding's balance — and carries account names.
   const syncableIds = syncedHoldingIds(holdings, accountById);
   const options = buildExchangeOptions(
     holdings,

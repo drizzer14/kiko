@@ -2674,8 +2674,8 @@ const CONVERT_ACCOUNTS: Account[] = [{ id: 'acc-wallet', name: 'Wallet' }];
 // destination/source rules (card qualifies both ways) — its account is
 // connected to a sync AND it carries that source's metadata key, so
 // `isSyncedHolding` is true and the convert counterpart picker must exclude
-// it (item 6 — a sync owns that holding's balance, so Save could otherwise
-// write a manual leg onto it).
+// it — a sync owns that holding's balance, so Save could otherwise
+// write a manual leg onto it.
 const CONVERT_SYNCED_HOLDING: Holding = {
   id: 'synced-card-1',
   currency: 'USD',
@@ -2840,7 +2840,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     expect(queryByText('BTC Wallet')).toBeNull(); // crypto NOT a source
   });
 
-  it('excludes a synced/syncable holding from the convert counterpart picker (item 6)', async () => {
+  it('excludes a synced/syncable holding from the convert counterpart picker', async () => {
     setLiveData(
       [...CONVERT_HOLDINGS, CONVERT_SYNCED_HOLDING],
       CONVERT_TRANSACTIONS['expense-manual'],

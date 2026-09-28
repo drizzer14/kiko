@@ -1920,7 +1920,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
   });
 
   // Defense in depth: the counterpart picker already excludes a synced
-  // holding (item 6), but a write reached directly (not through the picker)
+  // holding, but a write reached directly (not through the picker)
   // must refuse the same way — a sync already owns that holding's balance.
   it('throws when the counterpart holding is synced, writing nothing', async () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
