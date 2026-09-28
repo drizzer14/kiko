@@ -20,6 +20,11 @@ Rules:
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Edit files under `src/` and `__tests__/` only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs) — that skips the PreToolUse pre-write guard.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
+- Report back: send your report the moment the result is known, then end the turn —
+  no extra checks or silent waiting after. Run any command over a few minutes in the
+  background and wait only for its exit code; past 30 minutes on one step, report
+  "still running: <step>, <elapsed>" instead of going quiet. Lead with pass/fail, then
+  the files changed and the verify result.
 - Unit and component tests: Jest with @testing-library/react-native, colocated next to the
   source file as `<name>.test.ts(x)` (e.g. `<name>.component.test.tsx`) — not in a `__tests__/`
   directory. See `kiko-code-style`'s "File suffixes" section for the exact naming.
