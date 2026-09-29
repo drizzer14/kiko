@@ -143,12 +143,20 @@ never a merge command that runs unconditionally after a separate test
 step:
 
 ```
-if ! git merge-tree --write-tree --name-only <into> <from> | grep -q CONFLICT; then
+if git merge-tree --write-tree <into> <from> >/dev/null; then
   git merge --no-ff <from> ...
 else
-  <send the conflicts to an agent>
+  <stop and report: exit 1 = conflicts (send them to an agent); any other exit = merge-tree error>
 fi
 ```
+
+Gate on the exit code, never on grepping the output for `CONFLICT`:
+exit 0 = clean, exit 1 = conflicts, any other exit = error (the output
+is then unspecified, so a grep reads the error as clean). Both non-zero
+cases stop. Verify in `git help merge-tree`, "EXIT STATUS". On success
+`--write-tree` prints the merged tree id on stdout; capture stdout
+instead of discarding it where the tree id is needed (it is a tree, not
+a commit).
 
 (Incident: a merge ran after a failed conflict test and left a
 conflicted merge in next.)
