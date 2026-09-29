@@ -93,6 +93,53 @@ malformed input) is fail-closed by design — it means fix the guard's
 own input or report the guard bug, never bypass it with an override
 comment.
 
+## Merge pattern: one conditional, gated on the conflict test
+
+A merge runs only when the conflict test passes, in ONE conditional —
+never a merge command that runs unconditionally after a separate test
+step:
+
+```
+if ! git merge-tree --write-tree --name-only <into> <from> | grep -q CONFLICT; then
+  git merge --no-ff <from> ...
+else
+  <send the conflicts to an agent>
+fi
+```
+
+(Incident: a merge ran after a failed conflict test and left a
+conflicted merge in next.)
+
+## Stacked merge points for gated tracks
+
+When a track's change sets fall behind a gate on `next` (for example a
+migration index that later change sets must build on), build the merge
+points in a scratch worktree (`git worktree add`, detached):
+
+1. Merge `next` into the last commit of the first change set (T1) to
+   get merge point 1.
+2. Merge each later change set's last commit into the previous merge
+   point (T2 into point 1, T3 into point 2, ...).
+3. Make `check:all` (or the relevant verify) green at each point before
+   building the next one.
+4. Each (previous point, point) pair is a mutation pair — run
+   `check:deep`/mutation on it per the small-change-set rule above.
+5. Fast-forward the track branch to the last point with
+   `git merge --ff-only`.
+
+Example (2026-09-29, Reminders track): T3 `7d3cb4c1`, T4 `6d39f3d3`, T5
+`3b267bf5` — three stacked merge points built and gated this way before
+the track branch fast-forwarded.
+
+## Mutation base after a track merged next
+
+Once a track has merged into `next`, set `KIKO_MUTATION_BASE` to
+`next`'s own sha for that track's mutation run, so only the track's own
+files mutate — not everything `next` already contains. (One line; this
+does not contradict the "Mutation testing: small change sets only"
+section above, which sets the base to the change set's OWN base commit
+before it has merged.)
+
 ## Merge conflicts vs the pre-write guard
 
 Resolve conflict markers with Edit/Write as usual; resolving one whole
