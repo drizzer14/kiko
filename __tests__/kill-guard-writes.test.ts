@@ -1,0 +1,275 @@
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+
+// The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
+// writes into src/, __tests__/, or rules/ of any worktree of this repository
+// (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node
+// one-liner) skips the pre-write guard, which sees only Edit/Write/MultiEdit,
+// so the hook denies it and points at Edit/Write.
+//
+// Every text here is judged, never run: `decide` is called in node as a
+// parser only, and the hook rows only pipe JSON into kill-guard.sh. The
+// sentinel is a fake repository in a scratch folder, passed through the
+// test-only `projectRoot` option, so no row names a real file to write.
+const SCRIPT = join(__dirname, '../scripts/checks/kill-guard.sh');
+const GUARD = join(__dirname, '../scripts/checks/kill-guard.js');
+const REPOSITORY_ROOT = join(__dirname, '..');
+
+const DECIDE_SCRIPT = [
+  'const { decide } = require(process.argv[1]);',
+  'const finding = decide(process.argv[2], JSON.parse(process.argv[3]));',
+  'process.stdout.write(finding === null ? "allow" : finding.kind);',
+].join('\n');
+
+// A fake repository: `main` (its own .git folder), `worktree` (a linked
+// worktree of main, a .git file), `other` (an unrelated repository), and
+// `plain` (no repository at all).
+const SCRATCH = mkdtempSync(join(tmpdir(), 'guard-writes-'));
+const MAIN = join(SCRATCH, 'main');
+const WORKTREE = join(SCRATCH, 'worktree');
+const OTHER = join(SCRATCH, 'other');
+const PLAIN = join(SCRATCH, 'plain');
+
+for (const folder of [
+  'main/.git/worktrees/worktree',
+  'main/src',
+  'main/__tests__',
+  'main/rules',
+  'main/scripts',
+  'main/docs/src',
+  'main/node_modules/package/src',
+  'worktree/src',
+  'other/.git',
+  'other/src',
+  'plain/src',
+]) {
+  mkdirSync(join(SCRATCH, folder), { recursive: true });
+}
+writeFileSync(join(MAIN, '.git/worktrees/worktree/commondir'), '../..\n');
+writeFileSync(join(WORKTREE, '.git'), `gitdir: ${join(MAIN, '.git/worktrees/worktree')}\n`);
+
+const decide = (command: string, options: Record<string, unknown> = {}): string =>
+  spawnSync(
+    'node',
+    ['-e', DECIDE_SCRIPT, GUARD, command, JSON.stringify({ projectRoot: MAIN, ...options })],
+    { encoding: 'utf8' },
+  ).stdout;
+
+const decideInMain = (command: string): string => decide(command, { cwd: MAIN });
+
+const DENIED_SED_AND_PERL: string[] = [
+  "sed -i 's/a/b/' src/x.ts",
+  "sed -i '' 's/a/b/' src/x.ts",
+  "sed -i.bak 's/a/b/' src/x.ts",
+  "sed -i -e 's/a/b/' __tests__/x.test.ts",
+  "sed --in-place 's/a/b/' rules/semgrep-mobile.yml",
+  "sed --in-place=.bak -e 's/a/b/' src/x.ts",
+  "sed -Ei 's/a/b/' src/x.ts",
+  "sed -n -i 's/a/b/p' src/x.ts",
+  "gsed -i 's/a/b/' src/x.ts",
+  "sed -i 's/a/b/' /tmp/fine.txt src/x.ts",
+  "sed -i 's/a/b/' src/*.ts",
+  "sed -i 's/a/b/' ./src/x.ts",
+  "sed -i 's/a/b/' SRC/x.ts",
+  `sed -i 's/a/b/' ${MAIN}/src/x.ts`,
+  `sed -i 's/a/b/' ${WORKTREE}/src/x.ts`,
+  "sed -i 's/a/b/' ../worktree/src/x.ts",
+  "cd src && sed -i 's/a/b/' x.ts",
+  "perl -pi -e 's/a/b/' src/x.ts",
+  "perl -i -pe 's/a/b/' src/x.ts",
+  "perl -pi.bak -e 's/a/b/' src/x.ts",
+  "perl -0pi -e 's/a/b/' src/x.ts",
+  "perl -i.orig -p -e 's/a/b/' rules/x.yml",
+  "perl -pie 's/a/b/' src/x.ts",
+];
+
+const DENIED_REDIRECTS: string[] = [
+  'echo x > src/x.ts',
+  'echo x >> src/x.ts',
+  'echo x 1> src/x.ts',
+  'echo x &> src/x.ts',
+  'echo x &>> src/x.ts',
+  'echo x >| src/x.ts',
+  'echo x >& src/x.ts',
+  'echo x 2> src/log.txt',
+  'echo x <> src/x.ts',
+  'echo x >src/x.ts',
+  'echo x > "src/x.ts"',
+  'printf x>>__tests__/a.test.ts',
+  ': > rules/a.yml',
+  '> src/x.ts',
+  'echo x >! src/x.ts',
+  "cat <<'EOF' > src/x.ts\nbody\nEOF",
+  "cat > src/x.ts <<'EOF'\nbody\nEOF",
+  'git show HEAD:src/x.ts > src/x.ts',
+  `echo x > ${WORKTREE}/__tests__/x.test.ts`,
+  'echo x > "$ROOT/src/x.ts"',
+];
+
+const DENIED_TEE: string[] = [
+  'echo x | tee src/x.ts',
+  'tee -a src/x.ts < /tmp/in.txt',
+  'echo x | tee /tmp/a.txt src/b.ts >/dev/null',
+  'echo x | sudo tee src/x.ts',
+  'echo x | tee --append rules/x.yml',
+];
+
+const DENIED_INTERPRETERS: string[] = [
+  `python3 -c "open('src/x.ts','w').write('x')"`,
+  `python -c "open('src/x.ts', 'a').write('x')"`,
+  `python3.12 -c "open('rules/x.yml', mode='w')"`,
+  `python3 -c "from pathlib import Path; Path('src/x.ts').write_text('x')"`,
+  `python3 -c "import sys; open(sys.argv[1], 'w').write('x')" src/x.ts`,
+  `python3 -c "p = 'src/x.ts'; open(p, 'w').write('x')"`,
+  `python3 -c "import os; open(os.path.join('src', 'x.ts'), 'w')"`,
+  `python3 -c "open(f'src/{name}.ts', 'w')"`,
+  "python3 - <<'EOF'\nopen('src/x.ts', 'w').write('x')\nEOF",
+  "python3 <<'EOF'\nopen('__tests__/x.test.ts', 'w').write('x')\nEOF",
+  `python3 <<< "open('src/x.ts', 'w').write('x')"`,
+  `node -e "require('fs').writeFileSync('src/x.ts', 'x')"`,
+  `node -e "require('fs').appendFileSync('__tests__/x.test.ts', 'x')"`,
+  `node -e "require('fs').promises.writeFile('src/x.ts', 'x')"`,
+  `node --eval "fs.writeFileSync('src/x.ts', 'x')"`,
+  `node --eval="fs.writeFileSync('src/x.ts', 'x')"`,
+  `node -e "require('fs').createWriteStream('rules/x.yml')"`,
+  `node -e "require('fs').writeFileSync(process.argv[1], 'x')" src/x.ts`,
+  `node -e 'require("fs").writeFileSync(\`src/\${name}.ts\`, "x")'`,
+  "node <<'EOF'\nrequire('fs').writeFileSync('src/x.ts', 'x')\nEOF",
+];
+
+const DENIED_NESTED: string[] = [
+  `sh -c "sed -i 's/a/b/' src/x.ts"`,
+  "bash -c 'echo x > src/x.ts'",
+  "bash -lc 'echo x | tee src/x.ts'",
+  "bash <<'EOF'\necho x > src/x.ts\nEOF",
+  'eval "echo x > src/x.ts"',
+  'echo $(echo x > src/x.ts)',
+  'true && echo x > src/x.ts',
+  '(cd src && echo x > y.ts)',
+  'echo x | tee >(cat > src/x.ts)',
+  `bash -c "python3 -c \\"open('src/x.ts', 'w')\\""`,
+  "grep -rl foo src | xargs sed -i 's/foo/bar/'",
+  "find src -name '*.ts' -exec sed -i 's/a/b/' {} +",
+  "find . -name '*.ts' -exec perl -pi -e 's/a/b/' {} \\;",
+  "$(which sed) -i 's/a/b/' src/x.ts",
+];
+
+const ALLOWED: string[] = [
+  "grep '>' src/x.ts",
+  'echo "a > src/b"',
+  "echo 'x >> src/y'",
+  'echo a \\> src/b',
+  'cat src/x.ts 2>/dev/null',
+  'grep foo src/x.ts > /tmp/out.txt',
+  'cat src/x.ts > /tmp/out.txt',
+  "sed -n '1,5p' src/x.ts",
+  "sed 's/a/b/' src/x.ts > /tmp/x.ts",
+  "sed -i '' 's/a/b/' /tmp/x.txt",
+  "sed -e 's/src/lib/' src/x.ts",
+  "perl -ne 'print' src/x.ts",
+  "perl -pe 's/a/b/' src/x.ts > /tmp/x.ts",
+  'tee /tmp/log.txt < src/x.ts',
+  'cat src/x.ts | tee /tmp/copy.ts',
+  'echo x > /dev/null',
+  'echo x 2>&1',
+  'echo x >&2',
+  'ls >&-',
+  'echo x > scripts/out.txt',
+  'echo x > docs/src/x.md',
+  'echo x > node_modules/package/src/x.js',
+  `echo x > ${OTHER}/src/x.ts`,
+  `echo x > ${PLAIN}/src/x.ts`,
+  `echo x > ${SCRATCH}/rules.txt`,
+  'git diff > /tmp/change.diff',
+  'git show HEAD:src/x.ts',
+  'npx biome check --write src/x.ts',
+  'npm run check:import-order -- --write',
+  'node scripts/checks/import-order.js --write src/x.ts',
+  `python3 -c "print(open('src/x.ts').read())"`,
+  `python3 -c "open('/tmp/x.ts', 'w').write(open('src/x.ts').read())"`,
+  `node -e "console.log(require('fs').readFileSync('src/x.ts', 'utf8'))"`,
+  `node -e "require('fs').writeFileSync('/tmp/x.ts', require('fs').readFileSync('src/a.ts'))"`,
+  'python3 scripts/tool.py src/a.ts',
+  "cat > /tmp/notes.md <<'EOF'\necho x > src/x.ts\nsed -i 's/a/b/' src/x.ts\nEOF",
+  'git commit -m "$(cat <<\'EOF\'\nfix: stop > src/x redirects\nEOF\n)"',
+  'npx jest __tests__/x.test.ts > /tmp/out.txt 2>&1',
+  'diff <(cat src/a.ts) <(cat src/b.ts)',
+  'cat <<< "x > src/y"',
+  "find src -name '*.ts' -exec grep -l foo {} +",
+  "find /tmp/x -exec sed -i 's/a/b/' {} +",
+  `sed -i 's/a/b/' ${MAIN}/scripts/x.sh`,
+  "sed -i 's/a/b/' /tmp/src.txt",
+];
+
+describe('kill-guard shell-write deny (parser only, fake repository)', () => {
+  it.each([
+    ...DENIED_SED_AND_PERL,
+    ...DENIED_REDIRECTS,
+    ...DENIED_TEE,
+    ...DENIED_INTERPRETERS,
+    ...DENIED_NESTED,
+  ])('denies: %s', (command) => {
+    expect(decideInMain(command)).toBe('shellWrite');
+  });
+
+  it.each(ALLOWED)('allows: %s', (command) => {
+    expect(decideInMain(command)).toBe('allow');
+  });
+
+  it('reads a relative tree path as a write into it when the payload names no cwd', () => {
+    expect(decide('echo x > src/x.ts')).toBe('shellWrite');
+    expect(decide('echo x > /tmp/x.ts')).toBe('allow');
+  });
+
+  it('denies from a subfolder of a worktree', () => {
+    expect(decide('echo x > x.ts', { cwd: join(MAIN, 'src') })).toBe('shellWrite');
+    expect(decide('echo x > x.ts', { cwd: join(MAIN, 'scripts') })).toBe('allow');
+  });
+
+  it('counts a tree only at the root of a worktree of this repository', () => {
+    expect(decide('echo x > src/x.ts', { cwd: WORKTREE })).toBe('shellWrite');
+    expect(decide('echo x > src/x.ts', { cwd: OTHER })).toBe('allow');
+    expect(decide('echo x > src/x.ts', { cwd: PLAIN })).toBe('allow');
+  });
+});
+
+const run = (payload: string): SpawnSyncReturns<string> =>
+  spawnSync('bash', [SCRIPT], { input: payload, encoding: 'utf8' });
+
+const payloadIn = (directory: string, command: string, extra: Record<string, unknown> = {}) =>
+  JSON.stringify({ cwd: directory, tool_input: { command, ...extra }, ...extra });
+
+const BLOCK_LABELS = ['WHAT FAILED:', 'DETAILS:', 'WHY IT MATTERS:', 'HOW TO FIX:', 'DO NOT:'];
+
+describe('scripts/checks/kill-guard.sh shell-write deny (hook entry)', () => {
+  it('denies a write into this repository with the standard block, pointing at Edit/Write', () => {
+    const result = run(payloadIn(REPOSITORY_ROOT, "sed -i '' 's/a/b/' src/App.tsx"));
+
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout.trim());
+    const reason: string = parsed.hookSpecificOutput.permissionDecisionReason;
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(BLOCK_LABELS.filter((label) => !reason.includes(label))).toEqual([]);
+    expect(reason).toContain(join(REPOSITORY_ROOT, 'src/App.tsx'));
+    expect(reason).toContain('Edit or Write');
+  });
+
+  it.each(['echo x > /tmp/out.txt', 'cat src/App.tsx > /dev/null', "sed -n '1p' src/App.tsx"])(
+    'allows: %s',
+    (command) => {
+      const result = run(payloadIn(REPOSITORY_ROOT, command));
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+    },
+  );
+
+  it('ignores a projectRoot option in its payload', () => {
+    const result = run(payloadIn(MAIN, 'echo x > src/x.ts', { projectRoot: MAIN }));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('');
+  });
+});
