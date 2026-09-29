@@ -41,7 +41,7 @@ export const OPERATION_CREDIT_WORD = 'Кредит';
 // `ownEdrpou` (**`Ід.код`**, column index 16 — NOTE: the header does NOT
 // literally say `ЄДРПОУ` the way ProCredit/Ukrsib do) and
 // `correspondentCode` (**`Код контрагента`**, column index 7) — both read
-// only to skip, per the plan's EDRPOU disposition (no
+// only to skip (no
 // ParsedTransaction/ParsedAccountHint field exists for it). Date is SPLIT
 // across `operationDate` + `operationTime` (the ONE format studied where
 // date and time are NOT combined in one field) — join then reuse the shared

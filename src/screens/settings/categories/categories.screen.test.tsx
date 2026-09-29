@@ -162,8 +162,7 @@ describe('CategoriesScreen', () => {
 
     // One Card per category — not a single shared surface housing every row.
     expect(getAllByTestId('category-card')).toHaveLength(SEEDED_CATEGORIES.length);
-    // The add-category form is not mounted until the footer action is tapped
-    // (review decision 19 — the inline collapsed row is gone).
+    // The add-category form is not mounted until the footer action is tapped.
     expect(queryByTestId('add-category-card')).toBeNull();
 
     await fireEvent.press(getByText('Add category'));

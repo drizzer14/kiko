@@ -23,8 +23,7 @@ const DEFAULT_ICON = genericEntitySymbol.category;
 
 type AddCategoryRowProps = {
   // Runs once the form has saved or been cancelled, so the Categories screen
-  // (which owns whether this form is mounted at all — review decision 19)
-  // collapses back to its footer "Add category" action.
+  // (which owns whether this form is mounted at all) collapses back to its footer "Add category" action.
   onCollapse: () => void;
 };
 

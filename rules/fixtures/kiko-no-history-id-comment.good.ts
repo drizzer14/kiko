@@ -103,3 +103,11 @@ export const debuggerReportFamilyNearMiss = true;
 // statement-import feature reads) are real domain vocabulary, not a
 // debugger-report id.
 export const technicalTermRegressionLock = 'UTF-8, SHA-256, ISO-8601, Windows-1251';
+
+// 16. The plan-history members need a citation shape (a numbered decision,
+// a possessive, a "doc" suffix, or a "per"/"by" lead-in), so domain prose
+// about an import plan, a user's decision, or a database commit stays silent:
+// Compute the plan (pure). The rezone plan runs once per import, a decision
+// the user makes on the review sheet, and each batch commits in one
+// transaction.
+export const planHistoryMembersNearMiss = true;

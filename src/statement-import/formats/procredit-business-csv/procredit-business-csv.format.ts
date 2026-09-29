@@ -19,7 +19,7 @@ import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../bu
 // line — the real fixture carries "variant 1"
 // (`Код ID НБУ` as column 2); variant 2 (`Надавач платіжних послуг`) is
 // UNVERIFIED against any real fixture bytes, but this 59-char prefix matches
-// both, per the plan.
+// both.
 export const DETECT_PREFIX = 'ЄДРПОУ;Код ID НБУ;Рахунок;Валюта;Дата операції;Код операції';
 
 // 0-based column indices against a `;`-delimited data row (17
@@ -28,7 +28,7 @@ export const DETECT_PREFIX = 'ЄДРПОУ;Код ID НБУ;Рахунок;Ва�
 // diverges from Ukrsibbank business's otherwise-identical layout — see
 // `FOP_BUSINESS_COLUMN_BASE`'s own doc comment. FOP fields: `ownEdrpou` (the
 // account HOLDER's own EDRPOU) and `correspondentEdrpou` (the counterparty's
-// EDRPOU) — read only to skip, per the plan's EDRPOU disposition (no
+// EDRPOU) — read only to skip (no
 // ParsedTransaction/ParsedAccountHint field exists for it).
 export const COLUMN = {
   ...FOP_BUSINESS_COLUMN_BASE,

@@ -1,7 +1,6 @@
 // The two curated SF Symbol picker pools that replace the former single shared
 // 138-entry CURATED_ICONS pool. The rework SPLITS the picker options into two
-// distinct sets, each governing one flow (see the plan doc
-// docs/superpowers/plans/2026-09-14-app-wide-icon-rework.md §3.0.1 / §3.0.2).
+// distinct sets, each governing one flow.
 // Editing an icon is deliberately a pick from a closed list rather than free
 // text: the app renders every icon through SymbolIcon/SFSymbolView, whose tint
 // path only handles known-good names, so an arbitrary user string could resolve
@@ -12,13 +11,13 @@
 // is not required to be a member of the picker options, and must never be
 // filtered or remapped to force pool membership.
 //
-// Both lists are copied VERBATIM from the plan doc's embedded collection exports
-// (the "Kiko Entities" and "Kiko Categories" SF Symbols app library
-// collections). Lives beside the modal — the pools' primary consumer — so they
-// have one home; the screen call sites import the matching pool and thread it
-// through the shared identity field → IconEditor → IconPickerModal.
+// Both lists are copied VERBATIM from the curated "Kiko Entities" and "Kiko
+// Categories" SF Symbols collections. Lives beside the modal — the pools'
+// primary consumer — so they have one home; the screen call sites import the
+// matching pool and thread it through the shared identity field → IconEditor
+// → IconPickerModal.
 
-// §3.0.1 Kiko Entities pool (62) — the account/holding IconEditor pool, opened
+// Kiko Entities pool (62) — the account/holding IconEditor pool, opened
 // from the account form and the holding form. Does NOT include the per-KIND
 // type-defaults; those stay decided in the central entity-symbols map.
 export const KIKO_ENTITIES_ICONS = [
@@ -86,7 +85,7 @@ export const KIKO_ENTITIES_ICONS = [
   'yensign',
 ] as const;
 
-// §3.0.2 Kiko Categories pool (78) — the category picker pool. Every seeded
+// Kiko Categories pool (78) — the category picker pool. Every seeded
 // category default IS a member of this pool, so each of the 10 default icons
 // (e.g. Utilities `bolt`, Other `square.grid.2x2`, Transfers
 // `arrow.left.arrow.right`) is selectable in the picker. `percent`
@@ -94,8 +93,8 @@ export const KIKO_ENTITIES_ICONS = [
 // own LATER migration, 0039 — not part of `SEEDED_CATEGORIES`, see that
 // fixture's own comment), added here for the same reason. The generic
 // category glyph a new category starts on (`genericEntitySymbol.category`
-// in @kiko/holdings/entity-symbols) is added beyond the plan doc's
-// collection so a user who picks another icon can pick it back.
+// in @kiko/holdings/entity-symbols) is added beyond the curated collection so
+// a user who picks another icon can pick it back.
 export const KIKO_CATEGORIES_ICONS = [
   'airplane',
   'antenna.radiowaves.left.and.right',

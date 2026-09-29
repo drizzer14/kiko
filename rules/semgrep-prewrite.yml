@@ -250,8 +250,8 @@ rules:
     languages: [typescript]
     severity: ERROR
     message: >
-      A comment cites a task id, review-round id, spec/decision id, or a bug
-      number. kiko-code-style's "Comments: WHY only, never history": that
+      A comment cites a task id, review-round id, spec/decision id, a bug
+      number, or a plan (a plan doc, a numbered decision, a separate commit). kiko-code-style's "Comments: WHY only, never history": that
       belongs in the commit message that made the change, or the skill
       section that owns the rule — never left behind in a comment. Drop the
       id and keep the WHY; if nothing but history remains, delete the
@@ -270,8 +270,8 @@ rules:
         - "drizzle.config.ts"
     patterns:
       - pattern-either:
-          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//.*\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|section\s[A-Z]\.\d|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS)-\d+|device[- ]feedback|on-device\sreview|USER-DECISION)\b'
-          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*(?:(?!\*/)[\s\S])*?\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|section\s[A-Z]\.\d|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS)-\d+|device[- ]feedback|on-device\sreview|USER-DECISION)\b(?:(?!\*/)[\s\S])*?\*/'
+          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//.*\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|section\s[A-Z]\.\d|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS)-\d+|device[- ]feedback|on-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommit|(?:later|follow-up|previous|next)\scommit|per\sthe\splan|the\splan''s|plan\sdoc|by\sthe\splan\b)\b'
+          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*(?:(?!\*/)[\s\S])*?\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|section\s[A-Z]\.\d|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS)-\d+|device[- ]feedback|on-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommit|(?:later|follow-up|previous|next)\scommit|per\sthe\splan|the\splan''s|plan\sdoc|by\sthe\splan\b)\b(?:(?!\*/)[\s\S])*?\*/'
   # kiko-design-system's "Token categories" — a component reads a color TOKEN
   # (theme.colors.*/palette.ts), never a raw hex/rgba() string literal. The
   # pattern anchors on the AST shape of a quoted string literal itself

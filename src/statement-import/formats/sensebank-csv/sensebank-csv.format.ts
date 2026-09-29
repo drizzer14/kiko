@@ -51,8 +51,7 @@ export const HEADER_ROW = [
 // section/subtotal marker between (or after) the repeated header+rows
 // blocks. Verified against the real fixture: TWO "Деталізація операцій…"
 // lines are present (one per block); "Вклади гарантуються" is NOT present in
-// this particular fixture but is still guarded per the plan's own C.2 fact
-// (a deposit-guarantee disclaimer footer uabean's own importer also skips).
+// this particular fixture but is still guarded (a deposit-guarantee disclaimer footer uabean's own importer also skips).
 export const SECTION_SKIP_PREFIX = 'Деталізація операцій';
 export const GUARANTEE_SKIP_PREFIX = 'Вклади гарантуються';
 

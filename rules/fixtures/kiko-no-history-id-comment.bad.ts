@@ -128,3 +128,31 @@ export const failedRetryNeverWidensPastItsOwnRun = true;
 // EXPECT-FINDING
 // DEPS-3: the lockfile diff must be reviewed before a version bump lands.
 export const lockfileDiffReviewedBeforeBump = true;
+
+// EXPECT-FINDING
+// A negative balance is rejected (review decision 18), never clamped to 0.
+export const negativeBalanceRejected = true;
+
+// EXPECT-FINDING
+// Decision 6: an archived category keeps its own sort position.
+export const archivedCategoryKeepsPosition = true;
+
+// EXPECT-FINDING
+// The icon rename lands in a separate commit so this diff stays reviewable.
+export const iconRenameLandsSeparately = true;
+
+// EXPECT-FINDING
+// The legacy column is dropped in a follow-up commit, once nothing reads it.
+export const legacyColumnDroppedLater = true;
+
+// EXPECT-FINDING
+// The rows stay unsorted, per the plan's disposition for this import.
+export const rowsStayUnsorted = true;
+
+// EXPECT-FINDING
+// Keep the plan doc's exports stable: the picker reads them by name.
+export const pickerReadsExportsByName = true;
+
+// EXPECT-FINDING
+/* Only one pool per kind, as confirmed by the plan. */
+export const onePoolPerKind = true;

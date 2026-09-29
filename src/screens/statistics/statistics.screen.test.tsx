@@ -1872,7 +1872,7 @@ describe('StatisticsScreen', () => {
     // `utilities` is a seeded default category (so its title translates), but
     // THREE_EXPENSES never spends against it — it never reaches
     // `allCategorySlices`, the same gap `selectedCategories` already handles
-    // for the category donut (review decision 17).
+    // for the category donut.
     setLiveData({
       accounts: [CASH, BANK],
       holdings: [UAH_HOLDING, USD_HOLDING],

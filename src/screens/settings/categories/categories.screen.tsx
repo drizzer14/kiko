@@ -382,7 +382,7 @@ const categoryKeyExtractor = (category: CategoryRow): string => category.key;
 const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
-  // Whether the "Add category" form is mounted (review decision 19): the
+  // Whether the "Add category" form is mounted: the
   // screen owns this, not AddCategoryRow — the footer's own "Add category"
   // action is the only way in, and the form's Save/Cancel are the only ways
   // out (both call `collapseAddCategoryForm` below).

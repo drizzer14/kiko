@@ -753,7 +753,10 @@ spec/decision id (`spec 6.2`, `D14`), bug number, `USER-DECISION`,
 `Requirement X`, `controller ruling N`, `section X.N`, `task brief`/
 `parity brief` (with an optional `'s`), `Review Focus N`, `Minor N`,
 `audit N`, `RULING RN`, `fix round N`, `round-N`, `device[- ]feedback`,
-or `on-device review` left behind in a `src/**` comment. Two
+`on-device review`, or a plan citation (`[Dd]ecisions? N`, `separate
+commit`, `later`/`follow-up`/`previous`/`next commit`, `per the plan`,
+`the plan's`, `plan doc`, `by the plan`) left behind in a `src/**`
+comment. Two
 `pattern-regex` arms, one per comment syntax —
 a single regex spanning both `//` and `/* */` would have to
 special-case where a line comment ends and a block comment does not.
@@ -880,6 +883,29 @@ possessive, no "per the" lead-in) or "a brief native spinner" (plain
 adjective use, no "the"/"per the" at all). Fixture pair: the `.bad.ts`
 positive shapes ("per the brief, …", "the brief's residual gap …")
 and the `.good.ts` negative probe covering both adjective shapes.
+
+**The plan-history members (2026-09-29) need a citation shape, never a
+bare `the plan` or `plan`.** `the plan` is domain prose in this codebase:
+the rezone import computes and loads a plan (`rezone-import-times.ts`:
+"Compute the plan (pure).", "Load the plan"), and the reminders planner
+builds one (`sync-reminders.ts`: "the plan stops keeping its slot
+free"). So each member requires a shape only a citation takes: a
+numbered decision (`decision 18`, `Decision 6:`), a possessive (`the
+plan's disposition`), a `doc` suffix (`plan doc`), or a `per`/`by`
+lead-in (`per the plan`, `by the plan`). A bare `decision` (no digit)
+stays silent too ("a decision the user makes"). The group's trailing
+`\b` keeps `commit` from matching `commits` ("each batch commits in one
+transaction"). Fixture pair: the seven plan-history pins in `.bad.ts`
+and item 16 in `.good.ts`.
+
+**`next commit` can collide with database prose.** `commit` is also a
+SQL transaction commit, so a real sentence like "the next commit
+flushes the batch" is syntactically identical to a "lands in the next
+commit" citation. It is the same standalone-token class as `D2` above:
+accepted, not narrowed. The src tree has 0 such sentences today; if
+one appears, reword it ("the following transaction commit"). The same
+holds for `the plan's` in the reminders planner: write "the plan keeps
+its slot", never "the plan's slot".
 
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 
