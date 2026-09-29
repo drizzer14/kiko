@@ -84,6 +84,27 @@ untouched by the override now, and `npm ls --all` exits clean.
 `scripts/checks/deps.sh` runs `npm ls --all` on every pass, so a
 regression back to an unscoped override fails `check:deps` immediately.
 
+`bash scripts/checks/osv.sh` also flagged `fast-uri` 3.1.6
+(GHSA-58mr-gqgx-xq4g, GHSA-qw65-cvwx-89v3), a dev-only dependency
+pulled in by the overridden `ajv` (via `@stryker-mutator/core`).
+It is pinned to the fixed `3.1.8` through a nested override scoped
+to `ajv`, the same scoping as the `esbuild` pin above. The `"."` key
+keeps the `ajv` pin itself:
+
+```json
+"overrides": {
+  "ajv": {
+    ".": "8.18.0",
+    "fast-uri": "3.1.8"
+  }
+}
+```
+
+To pin a transitive dependency under a package that is itself
+overridden, turn the override into an object: `"."` carries the
+package's own pin and the child key carries the transitive pin. A second
+top-level key for the same package is not valid.
+
 ## `.env` is public-only
 
 `react-native-dotenv` inlines every `.env` value into the JS bundle at

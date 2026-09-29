@@ -27,6 +27,14 @@
 // there, so a conflict marker in it once broke every hook in every session.
 // A fast-forward-only update and the recovery options stay allowed.
 //
+// And it denies a shell write into `src/`, `__tests__/`, or `rules/` at the
+// root of any worktree of this repository — `sed -i`, `perl -i`, a `>`/`>>`
+// (or `>|`, `&>`, `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner
+// (or one fed by a heredoc) that opens a file for writing, and `xargs`
+// running an in-place edit — because the pre-write guard sees only
+// Edit/Write/MultiEdit, so such a write lands unchecked. A heredoc body that
+// no shell or interpreter runs is text, never checked for writes.
+//
 // Known limits: this guard stops ACCIDENTAL commands by cooperative agents.
 // It is a heuristic tokenizer, not a shell parser and not an adversarial
 // boundary: an exotic, obfuscated, or run-time-built form is a known limit,
@@ -76,6 +84,23 @@ const MAIN_CHECKOUT_REASON_LINES = [
   'DO NOT:         reach the main checkout through a script file, an alias, or a variable to get past this guard.',
 ];
 
+const SHELL_WRITE_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, or rules/ of a worktree ' +
+    'of this repository.',
+  'WHY IT MATTERS: the pre-write guard (scripts/checks/pre-write-guard.sh) sees only the Edit, ' +
+    'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
+    'or a python or node one-liner lands unchecked; guard-replay only catches it at Stop, after ' +
+    'the fact.',
+  'HOW TO FIX:     use the Edit or Write tool for that file. A path the guard cannot resolve (a ' +
+    'variable, a glob) counts when a folder in it is named src, rules, or __tests__: write the ' +
+    'literal path, or use another folder name. Reading it, a redirect to /dev/null or to a path ' +
+    'outside those trees (your scratchpad, /tmp), git itself (without a redirect into those ' +
+    "trees), and a formatter or fixer writing on its own (npx biome check --write, the harness's " +
+    'import-order --write) stay allowed.',
+  'DO NOT:         route the write through a variable, a script file, a shell fed by a pipe, or ' +
+    'another tool (cp, mv, dd) to get past this guard.',
+];
+
 function blockReason(reasonLines, detail) {
   const [what, ...rest] = reasonLines;
 
@@ -87,6 +112,7 @@ const REASON_BY_KIND = {
   stash: (finding) => blockReason(STASH_REASON_LINES, finding.detail),
   heredoc: (finding) => blockReason(HEREDOC_REASON_LINES, finding.detail),
   mainCheckout: (finding) => blockReason(MAIN_CHECKOUT_REASON_LINES, finding.detail),
+  shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
 };
 
 const reasonFor = (finding) => REASON_BY_KIND[finding.kind](finding);
@@ -603,13 +629,15 @@ function scanLevel(text) {
 // ---- words: word-split one simple command respecting quotes ----
 
 // Ends the current word. The target of a redirect (`>/dev/null`,
-// `2> log`, `<<'EOF'`) is not a word of the command, so it is dropped; a
-// `<<<` here-string's target is kept aside, since a shell runs it as its
-// script (`bash <<< "…"`).
+// `2> log`, `<<'EOF'`) is not a word of the command, so it is kept aside
+// with its operator (the shell-write check reads where it writes); a `<<<`
+// here-string's target is kept apart, since a shell runs it as its script
+// (`bash <<< "…"`).
 function pushWord(context) {
   if (context.started || context.cur !== '') {
     if (context.redirectOperator === null) context.out.push(context.cur);
     else if (context.redirectOperator === '<<<') context.hereStrings.push(context.cur);
+    else context.redirects.push({ operator: context.redirectOperator, target: context.cur });
     context.redirectOperator = null;
   }
   context.cur = '';
@@ -707,7 +735,8 @@ function stepWordUnquoted(context) {
 // word; they do not survive into the token's value). Redirects and their
 // targets are dropped, wherever they stand: `2>/dev/null pkill x` runs
 // pkill, and `kill 1234 &>/dev/null` has one target. `hereStrings` holds
-// the targets of its `<<<` redirects.
+// the targets of its `<<<` redirects, `redirects` every other redirect's
+// operator and target.
 function tokenize(segment) {
   const context = {
     segment,
@@ -719,6 +748,7 @@ function tokenize(segment) {
     redirectOperator: null,
     out: [],
     hereStrings: [],
+    redirects: [],
   };
   while (context.i < context.segment.length) {
     if (context.quote) {
@@ -728,7 +758,7 @@ function tokenize(segment) {
     stepWordUnquoted(context);
   }
   pushWord(context);
-  return { words: context.out, hereStrings: context.hereStrings };
+  return { words: context.out, hereStrings: context.hereStrings, redirects: context.redirects };
 }
 
 const words = (segment) => tokenize(segment).words;
@@ -1038,6 +1068,409 @@ function gitFinding(segment, invocations, rules) {
   return { kind: 'mainCheckout', detail: `${segment.trim()} (runs in ${target})` };
 }
 
+// ---- shell writes into src/, __tests__/, and rules/ ----
+
+// The folders, at the root of any worktree of this repository, that only
+// Edit/Write may change: the pre-write guard sees no other tool.
+const WRITE_GUARDED_TREES = new Set(['src', '__tests__', 'rules']);
+
+// The repository whose worktrees count: the one this file lives in.
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+
+// The git directory every worktree of a repository shares: `<root>/.git`
+// itself, or, for a linked worktree, what its `.git` file's `gitdir` names
+// through `commondir`. Case-folded, since APFS folds case. Null when it
+// cannot be read.
+function gitCommonDirectory(root) {
+  try {
+    const entry = path.join(root, '.git');
+    if (fs.statSync(entry).isDirectory()) return fs.realpathSync.native(entry).toLowerCase();
+    const pointer = fs
+      .readFileSync(entry, 'utf8')
+      .match(/^gitdir:\s*(.+)$/m)[1]
+      .trim();
+    const gitDirectory = path.resolve(root, pointer);
+    const commonFile = path.join(gitDirectory, 'commondir');
+    const common = fs.existsSync(commonFile)
+      ? path.resolve(gitDirectory, fs.readFileSync(commonFile, 'utf8').trim())
+      : gitDirectory;
+
+    return fs.realpathSync.native(common).toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+// Whether `directory` is the root of a worktree of this repository. A `.git`
+// whose repository cannot be read counts (fail closed).
+function isProjectWorktree(directory, rules) {
+  if (!fs.existsSync(path.join(directory, '.git'))) return false;
+  const common = gitCommonDirectory(directory);
+
+  return (
+    common === null ||
+    rules.projectCommonDirectory === null ||
+    common === rules.projectCommonDirectory
+  );
+}
+
+// Whether the absolute `target` lies inside a tree at the root of a worktree
+// of this repository. APFS folds case, so `SRC/x` is `src/x`.
+function isInsideGuardedTree(target, rules) {
+  const segments = target.split('/');
+
+  return segments.some(
+    (segment, index) =>
+      index > 0 &&
+      index < segments.length - 1 &&
+      WRITE_GUARDED_TREES.has(segment.toLowerCase()) &&
+      isProjectWorktree(segments.slice(0, index).join('/') || '/', rules),
+  );
+}
+
+// A path the text cannot pin down (a variable, a glob, a span, a relative
+// path from an unknown directory) counts when any folder in it is named
+// like a tree (fail closed).
+function namesGuardedTree(target) {
+  const segments = target.split('/');
+
+  return segments.some(
+    (segment, index) =>
+      index < segments.length - 1 && WRITE_GUARDED_TREES.has(segment.toLowerCase()),
+  );
+}
+
+// The first of `targets` that lands inside a tree from any directory the
+// command may run in (resolved when the text allows), as `{ verb, where }`
+// for the deny's DETAILS, or null.
+function firstGuardedWrite(targets, directories, rules, verb = 'writes') {
+  for (const target of targets) {
+    for (const directory of directories) {
+      const resolved = resolveDirectory(directory, target);
+      if (resolved === null && namesGuardedTree(target)) return { verb, where: target };
+      if (resolved !== null && isInsideGuardedTree(resolved, rules)) {
+        return { verb, where: resolved };
+      }
+    }
+  }
+
+  return null;
+}
+
+// A redirect that opens its target for writing: any operator with a `>` in
+// it (`>`, `>>`, `>|`, `&>`, `<>`, zsh's `>!`), except a `>&` that
+// duplicates a descriptor (`2>&1`, `>&-`).
+const isWritingRedirect = ({ operator, target }) =>
+  operator.includes('>') && !(operator.endsWith('&') && /^(?:\d+|-)$/.test(target));
+
+const isOptionWord = (word) => word.length > 1 && word.startsWith('-');
+
+// Splits a command's words into its options (each read by `readOption`,
+// which says how many following words it takes as `skip`) and its
+// operands. `--` ends the options, and so does the first operand when
+// `operandEndsOptions` (perl, where the rest is the script's).
+function splitOptions(parameters, readOption, operandEndsOptions = false) {
+  const options = [];
+  const operands = [];
+  let index = 0;
+  while (index < parameters.length) {
+    const word = parameters[index];
+    if (word === '--' || (operandEndsOptions && !isOptionWord(word))) {
+      operands.push(...parameters.slice(word === '--' ? index + 1 : index));
+      break;
+    }
+    if (!isOptionWord(word)) {
+      operands.push(word);
+      index++;
+      continue;
+    }
+    const option = readOption(word, parameters[index + 1]);
+    options.push(option);
+    index += 1 + (option.skip ?? 0);
+  }
+
+  return { options, operands };
+}
+
+// A BSD backup extension after a bare `-i`: empty (`-i ''`) or dotted.
+const isBackupExtension = (word) => word === '' || (word ?? '').startsWith('.');
+
+// One sed option word: whether it edits in place (`-i`, `-i.bak`, `-Ei`,
+// `--in-place[=.bak]`) or supplies the script (`-e`, `-f`, `--expression`,
+// `--file`), and how many next words it takes — the script's value, or
+// BSD's backup extension after a bare `-i` (`-i ''`).
+function readSedOption(word, next) {
+  if (word.startsWith('--')) {
+    const script = /^--(?:expression|file)(=)?/.exec(word);
+
+    return {
+      inPlace: word.startsWith('--in-place'),
+      script: script !== null,
+      skip: script !== null && script[1] === undefined ? 1 : 0,
+    };
+  }
+  const letters = word.slice(1);
+  const inPlaceAt = letters.indexOf('i');
+  const scriptAt = (inPlaceAt === -1 ? letters : letters.slice(0, inPlaceAt)).search(/[ef]/);
+  const scriptValueNext = scriptAt !== -1 && scriptAt === letters.length - 1;
+  const extensionNext =
+    scriptAt === -1 && inPlaceAt === letters.length - 1 && isBackupExtension(next);
+
+  return {
+    inPlace: inPlaceAt !== -1 && scriptAt === -1,
+    script: scriptAt !== -1,
+    skip: scriptValueNext || extensionNext ? 1 : 0,
+  };
+}
+
+// Perl switches whose value is glued on (`-MFoo`, `-I dir`): nothing after
+// them in the word is another switch.
+const PERL_GLUED_VALUE = new Set([...'MmIxdDCFV']);
+
+// One perl switch word: `-i` (any group holding it, `-pi.bak`) edits in
+// place; `-e`/`-E` supplies the code, from the next word when it ends the
+// group. Digits (`-0777`, `-l015`) belong to the switch before them.
+function readPerlSwitches(word) {
+  const letters = word.slice(1).replace(/\d+/g, '');
+  for (const [at, letter] of [...letters].entries()) {
+    if (letter === 'i') return { inPlace: true };
+    if (letter === 'e' || letter === 'E') {
+      return { code: true, skip: at === letters.length - 1 ? 1 : 0 };
+    }
+    if (PERL_GLUED_VALUE.has(letter)) return {};
+  }
+
+  return {};
+}
+
+// The files an in-place edit writes: every operand but the script, which
+// is the first operand when no option supplied it.
+function inPlaceFiles({ options, operands }, suppliesScript) {
+  if (!options.some((option) => option.inPlace)) return null;
+
+  return options.some(suppliesScript) ? operands : operands.slice(1);
+}
+
+const SED_COMMANDS = new Set(['sed', 'gsed']);
+
+// The files a command writes (`sed -i`, `perl -i`, `tee`), or null when it
+// is none of them or does not edit in place.
+function writtenFiles(base, parameters) {
+  if (SED_COMMANDS.has(base)) {
+    return inPlaceFiles(splitOptions(parameters, readSedOption), (option) => option.script);
+  }
+  if (base === 'perl') {
+    return inPlaceFiles(splitOptions(parameters, readPerlSwitches, true), (option) => option.code);
+  }
+  if (base === 'tee') return splitOptions(parameters, () => ({})).operands;
+
+  return null;
+}
+
+// Reads the options of a python or node command up to its code: the `-c` /
+// `-e` word, or, with no script file (or `-`), its stdin — a heredoc body
+// or here-string. `readOption` names each option's kind: `code`, `module`
+// (runs a module, not examined), `value` (takes the next word unless
+// glued), or `flag`. Returns the code and the words after it (`sys.argv`,
+// `process.argv`), or null for a script file or a module.
+function interpreterProgram(parameters, stdinScripts, readOption) {
+  let index = 0;
+  while (index < parameters.length && isOptionWord(parameters[index])) {
+    const option = readOption(parameters[index]);
+    const valueWords = option.glued === undefined ? 1 : 0;
+    if (option.kind === 'code') {
+      return {
+        code: option.glued ?? parameters[index + 1] ?? '',
+        argv: parameters.slice(index + 1 + valueWords),
+      };
+    }
+    if (option.kind === 'module') return null;
+    index += 1 + (option.kind === 'value' ? valueWords : 0);
+  }
+  const script = parameters[index];
+  if (script !== undefined && script !== '-') return null;
+
+  return { code: stdinScripts.join('\n'), argv: parameters.slice(index + 1) };
+}
+
+const PYTHON_OPTION_KINDS = { c: 'code', m: 'module', W: 'value', X: 'value' };
+
+function readPythonOption(word) {
+  if (word.startsWith('--')) return { kind: 'flag' };
+  const letters = word.slice(1);
+  const at = letters.search(/[cmWX]/);
+  if (at === -1) return { kind: 'flag' };
+
+  return { kind: PYTHON_OPTION_KINDS[letters[at]], glued: letters.slice(at + 1) || undefined };
+}
+
+const NODE_CODE_OPTIONS = new Set(['--eval', '--print']);
+const NODE_VALUE_OPTIONS = new Set([
+  '-r',
+  '--require',
+  '--import',
+  '-C',
+  '--conditions',
+  '--loader',
+  '--experimental-loader',
+  '--input-type',
+  '--env-file',
+  '--title',
+]);
+
+function readNodeOption(word) {
+  const equals = word.indexOf('=');
+  const name = equals === -1 ? word : word.slice(0, equals);
+  const glued = equals === -1 ? undefined : word.slice(equals + 1);
+  if (NODE_CODE_OPTIONS.has(name) || /^-[ep]+$/.test(word)) return { kind: 'code', glued };
+
+  return { kind: NODE_VALUE_OPTIONS.has(name) ? 'value' : 'flag', glued };
+}
+
+const PYTHON_COMMAND = /^python[\d.]*$/;
+const NODE_COMMANDS = new Set(['node', 'nodejs']);
+
+function interpreterProgramOf(base, parameters, stdinScripts) {
+  if (PYTHON_COMMAND.test(base)) {
+    return interpreterProgram(parameters, stdinScripts, readPythonOption);
+  }
+  if (NODE_COMMANDS.has(base)) return interpreterProgram(parameters, stdinScripts, readNodeOption);
+
+  return null;
+}
+
+// A python or node call that writes the file its first argument names;
+// `open`/`openSync` only with a writing mode.
+const WRITE_CALL =
+  /\b(openSync|open|writeFileSync|writeFile|appendFileSync|appendFile|createWriteStream)\s*\(/g;
+const OPEN_CALL = /^open(?:Sync)?$/;
+// A mode string that opens for writing: `'w'`, `'a'`, `'x'`, `'r+'`, `'wb'`.
+const WRITING_MODE = /(['"])[rbt]*[wax+][rbtwax+]*\1/;
+// pathlib's `.write_text(`/`.write_bytes(` names its file in the receiver.
+const PATHLIB_WRITE = /\.write_(?:text|bytes)\s*\(/g;
+// A string literal, with python's r/b/f/u prefixes, or a JS template.
+const STRING_LITERAL = /(?:\b[rRbBuUfF]{1,2})?(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
+const WHOLE_STRING_LITERAL = /^\s*(?:[rRbBuUfF]{1,2})?(['"`])((?:\\.|(?!\1)[^\\])*)\1\s*$/s;
+
+// The text of a call's first argument and of the rest, split at the first
+// comma outside quotes and brackets.
+function splitFirstArgument(content) {
+  const state = { depth: 0, quote: null };
+  for (let index = 0; index < content.length; index++) {
+    const character = content[index];
+    if (state.quote === null) {
+      if (endsFirstArgument(state, character)) {
+        return [content.slice(0, index), content.slice(index + 1)];
+      }
+    } else if (character === '\\') index++;
+    else if (character === state.quote) state.quote = null;
+  }
+
+  return [content, ''];
+}
+
+// One character outside quotes: it opens a quote, moves the bracket depth,
+// or, as a comma at depth 0, ends the first argument.
+function endsFirstArgument(state, character) {
+  if ('\'"`'.includes(character)) state.quote = character;
+  else if ('([{'.includes(character)) state.depth++;
+  else if (')]}'.includes(character)) state.depth--;
+
+  return character === ',' && state.depth === 0;
+}
+
+// The text of the statement before `index`: pathlib's receiver
+// (`Path('…')`, `p`).
+function statementBefore(code, index) {
+  const start = Math.max(code.lastIndexOf(';', index), code.lastIndexOf('\n', index)) + 1;
+
+  return code.slice(start, index);
+}
+
+// The first argument of each write call in `code` (for pathlib, the
+// receiver), as text.
+function writeCallTargets(code) {
+  const targets = [];
+  for (const match of code.matchAll(WRITE_CALL)) {
+    const { content } = matchDelimited(code, match.index + match[0].length, '(', ')');
+    const [first, rest] = splitFirstArgument(content);
+    if (!OPEN_CALL.test(match[1]) || WRITING_MODE.test(rest)) targets.push(first);
+  }
+  for (const match of code.matchAll(PATHLIB_WRITE)) {
+    targets.push(statementBefore(code, match.index));
+  }
+
+  return targets;
+}
+
+const literalsOf = (text) => [...text.matchAll(STRING_LITERAL)].map((match) => match[2]);
+
+const BARE_NAME = /^\s*[A-Za-z_$][\w$]*\s*$/;
+const ARGV_READ = /\b(?:sys|process)\.argv\b/;
+
+// The paths the write calls in `program` may write. A string-literal target
+// writes that path (`certain`). A bare variable may hold any string literal
+// in the code; an expression may build its path from its own literals,
+// alone or joined by `/` (`os.path.join('src', 'x.ts')`), and, when it
+// reads `sys.argv`/`process.argv`, from the words after the code
+// (`possible`). The code's literals are read once, however many calls.
+function writeCallCandidates({ code, argv }) {
+  const certain = new Set();
+  const possible = new Set();
+  let throughVariable = false;
+  for (const target of writeCallTargets(code)) {
+    const literal = WHOLE_STRING_LITERAL.exec(target);
+    if (literal !== null) certain.add(literal[2]);
+    else if (BARE_NAME.test(target)) throughVariable = true;
+    else for (const candidate of expressionPaths(target, argv)) possible.add(candidate);
+  }
+  if (throughVariable) for (const literal of literalsOf(code)) possible.add(literal);
+
+  return { certain, possible };
+}
+
+function expressionPaths(expression, argv) {
+  const own = literalsOf(expression);
+
+  return [...own, own.join('/'), ...(ARGV_READ.test(expression) ? argv : [])];
+}
+
+function interpreterWrite(program, directories, rules) {
+  const { certain, possible } = writeCallCandidates(program);
+
+  return (
+    firstGuardedWrite([...certain], directories, rules) ??
+    firstGuardedWrite([...possible], directories, rules, 'may write')
+  );
+}
+
+// What `xargs` hands an in-place edit comes from its input, so it may be
+// any file.
+const XARGS_WRITE = { verb: 'writes', where: 'the files xargs reads from its input' };
+
+// Where one unwrapped command writes inside a tree, or null.
+function commandWrite({ tokens, viaXargs }, { directories, rules, stdinScripts }) {
+  const base = basename(tokens[0]);
+  const parameters = tokens.slice(1);
+  const files = writtenFiles(base, parameters);
+  if (files !== null) return viaXargs ? XARGS_WRITE : firstGuardedWrite(files, directories, rules);
+  const program = interpreterProgramOf(base, parameters, stdinScripts);
+  if (program === null) return null;
+
+  return interpreterWrite(program, directories, rules);
+}
+
+const shellWriteFinding = (segment, { verb, where }) => ({
+  kind: 'shellWrite',
+  detail: `${segment.trim()} (${verb} ${where})`,
+});
+
+const isWriteCommand = (base) =>
+  SED_COMMANDS.has(base) ||
+  ['perl', 'tee'].includes(base) ||
+  PYTHON_COMMAND.test(base) ||
+  NODE_COMMANDS.has(base);
+
 const DIRECTORY_CHANGERS = new Set(['cd', 'pushd', 'popd']);
 // `cd x || exit` ends the shell when the `cd` fails.
 const LEAVES_THE_SHELL = /^\s*(?:exit|return)(?:\s|$)/;
@@ -1160,7 +1593,7 @@ function queueShellScript(rest, nested, stdinScripts) {
 const GUARDED_COMMANDS = new Set(['kill', 'git', 'eval', ...SHELLS]);
 
 const isGuardedCommand = (base, rules) =>
-  rules.killCommands.has(base) || GUARDED_COMMANDS.has(base);
+  rules.killCommands.has(base) || GUARDED_COMMANDS.has(base) || isWriteCommand(base);
 
 // Every word a span's text shows, its own nested spans included.
 function spanWords(text, depth = 0) {
@@ -1234,20 +1667,31 @@ function commandFinding(command, context) {
     return gitFinding(context.segment, invocations, context.rules);
   }
 
-  return null;
+  if (!context.rules.checkWrites) return null;
+  const write = commandWrite(command, context);
+  if (write === null) return null;
+
+  return shellWriteFinding(context.segment, write);
+}
+
+// Where a segment's redirects write inside a tree, or null.
+function redirectWrite(redirects, directories, rules) {
+  if (!rules.checkWrites) return null;
+  const targets = redirects.filter(isWritingRedirect).map((redirect) => redirect.target);
+
+  return firstGuardedWrite(targets, directories, rules);
 }
 
 // Returns the finding for one simple command — `{ kind: 'kill' }`, or
-// `{ kind: 'stash' | 'mainCheckout', detail }` — or null when it is safe. A
-// shell's script and `eval`'s joined arguments go to `scripts` as command
-// text. `stdinBodies` are the heredoc bodies it reads, `spans` the text of
-// its `$(...)`/backtick spans, and `directories` the places it may run in
-// (null for one the text cannot pin down).
+// `{ kind: 'stash' | 'mainCheckout' | 'shellWrite', detail }` — or null
+// when it is safe. A shell's script and `eval`'s joined arguments go to
+// `scripts` as command text. `stdinBodies` are the heredoc bodies it reads,
+// `spans` the text of its `$(...)`/backtick spans, and `directories` the
+// places it may run in (null for one the text cannot pin down).
 function segmentFinding({ segment, scripts, stdinBodies, spans, directories, rules }) {
-  const { words: tokens, hereStrings } = tokenize(segment);
+  const { words: tokens, hereStrings, redirects } = tokenize(segment);
   const stdinScripts = [...stdinBodies, ...hereStrings];
-
-  return commandFinding(unwrap(tokens), {
+  const finding = commandFinding(unwrap(tokens), {
     segment,
     scripts,
     stdinScripts,
@@ -1255,6 +1699,11 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, directories, rul
     directories,
     rules,
   });
+  if (finding !== null) return finding;
+  const write = redirectWrite(redirects, directories, rules);
+  if (write === null) return null;
+
+  return shellWriteFinding(segment, write);
 }
 
 function firstFinding(lines, depth, checkHeredoc, rules) {
@@ -1298,9 +1747,10 @@ function followingCommands(segments) {
 // run (`bash <<'EOF'`, `eval "$(cat <<'EOF' …)"`, `ssh host <<'EOF'`), so
 // each body is checked on its own for a kill or a git stash. Only a body a
 // shell reads as its script is also checked for an unquoted heredoc; any
-// other body is text, so a `<<word` in it is not an operator. `directories`
-// are the places the line may start in; every nested line runs where its
-// segment does.
+// other body is text, so a `<<word` in it is not an operator, and it is not
+// checked for shell writes either (a commit message or a notes file that
+// shows `sed -i` or `> src/…` writes nothing). `directories` are the places
+// the line may start in; every nested line runs where its segment does.
 function findDanger(line, depth, checkHeredoc, directories, rules) {
   if (depth > 8) return null; // guards against pathological nesting
   const { segments, nested, heredoc, bodies, opens, closes, separators } = scanLevel(line);
@@ -1345,7 +1795,7 @@ function findDanger(line, depth, checkHeredoc, directories, rules) {
 
   return (
     firstFinding([...nested.map(inItsDirectory), ...scripts], depth, checkHeredoc, rules) ??
-    firstFinding(bodies.map(inItsDirectory), depth, false, rules)
+    firstFinding(bodies.map(inItsDirectory), depth, false, { ...rules, checkWrites: false })
   );
 }
 
@@ -1360,7 +1810,9 @@ const KILL_COMMANDS = ['pkill', 'killall'];
 // probe runner (scripts/checks/kill-guard-probe.sh): a probe that really runs
 // uses a harmless sentinel name in place of every kill word and a scratch
 // folder in place of the main checkout, and the guard judges it with those.
-// The hook entry point below never passes them.
+// `options.projectRoot` is test-only too: a fake repository in a scratch
+// folder stands in for this one, so the shell-write tests never name a real
+// file. The hook entry point below never passes any of them.
 //
 // A `$"…"` heredoc delimiter ends at `EOF` in bash and at `$EOF` in zsh, so
 // every command is judged once per reading, and either finding counts. The
@@ -1370,6 +1822,8 @@ function decide(command, options = {}) {
   const rules = {
     killCommands: new Set([...KILL_COMMANDS, ...(options.sentinelKillCommands ?? [])]),
     mainCheckoutPath: options.mainCheckoutPath ?? MAIN_CHECKOUT_PATH,
+    projectCommonDirectory: gitCommonDirectory(options.projectRoot ?? PROJECT_ROOT),
+    checkWrites: true,
   };
   const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
   for (const reading of ['bash', 'zsh']) {

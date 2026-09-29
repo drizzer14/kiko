@@ -4,6 +4,7 @@ import {
   withFrequency,
   draftToSchedule,
   draftFromSchedule,
+  everyDaysPluralCount,
   validateReminderDraft,
 } from '@kiko/reminders/rules';
 import {
@@ -241,7 +242,7 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
           value={draft.everyDaysText}
           onChangeText={(everyDaysText) => updateDraft({ everyDaysText })}
           keyboardType="number-pad"
-          suffix={t('forms.units.days')}
+          suffix={t('forms.units.days', { count: everyDaysPluralCount(draft.everyDaysText) })}
           required
           error={errors.interval}
           inputRef={intervalInputRef}

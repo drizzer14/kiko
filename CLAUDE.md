@@ -126,6 +126,13 @@ worktree, verify it, then run
 `git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
 See kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits.
 
+The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
+redirect, `tee`, a python/node one-liner) into `src/`, `__tests__/`, or
+`rules/` of any worktree of this repository, because the pre-write guard
+sees only Edit/Write/MultiEdit: use Edit or Write. Reads, git itself, and
+a formatter's own `--write` stay allowed. See kiko-linter's "SHELL-WRITE
+deny" for the full rule, limits, and where it is live.
+
 A second `PreToolUse` matcher (`Edit|Write|MultiEdit`, beside the
 `Bash` matcher above) runs `scripts/checks/pre-write-guard.sh`: it
 rebuilds the proposed post-edit content and denies the write when a

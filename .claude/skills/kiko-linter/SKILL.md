@@ -192,6 +192,35 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   in the main checkout gets this deny only after the guard merges to
   main, because it runs main's own `kill-guard.js`.
 
+  SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
+  MultiEdit, so a file a Bash command writes lands unchecked until
+  guard-replay at Stop). Rule: deny a Bash write into `src/`,
+  `__tests__/`, or `rules/` (`WRITE_GUARDED_TREES`) — a writing redirect,
+  an in-place `sed`/`perl`, `tee`, a python/node one-liner write call,
+  or an in-place edit behind `xargs` (any file) — at the top level or in
+  the nested text the other denies reach, except a heredoc body no shell
+  or interpreter reads (text: a commit message, a notes file). Read
+  `commandWrite`, `writtenFiles`, `isWritingRedirect`, and
+  `writeCallCandidates` in `kill-guard.js` for the closed sets; a write
+  call with a literal target "writes" it, one with a variable or
+  expression target "may write" (a bare variable: any literal in the
+  code; an expression: its own literals, plus argv when it reads
+  `sys.argv`/`process.argv`). Worktree test (`isProjectWorktree`): the
+  tree must sit at the root of a folder whose `.git` shares this
+  checkout's common git directory (an unreadable `.git` counts), so
+  another repository's `src/` or a `src/` without `.git` beside it
+  passes. Paths resolve from the payload `cwd` and the tracked
+  `cd`/`pushd`, case-folded; a path the text cannot resolve (a `$VAR`,
+  a glob, a span, a relative path with no known directory) denies when
+  a folder in it is named like a tree. Allowed: reads, a redirect to
+  `/dev/null` or outside the trees, git itself, a script file, and a
+  formatter's or fixer's own `--write` (guard-replay re-checks what it
+  changes at Stop). Rows: `__tests__/kill-guard-writes.test.ts`
+  (`projectRoot` is a test-only `decide` option). Where it is live:
+  `dispatch.sh` runs `kill-guard.js` from the Bash call's own worktree,
+  so `hooks.json` is unchanged and no plugin reinstall is needed; a
+  session in the main checkout gets it only after the merge to main.
+
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
   EXECUTES shell text runs ONLY through the committed runner
   `scripts/checks/kill-guard-probe.sh bash|zsh '<probe>'` (read its
@@ -254,6 +283,33 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     `eval "$(cat <<'EOF' …)"`, or `bash -c "$(cat <<'EOF' …)"`: not
     denied. Heredoc delimiter corner cases beyond those modeled above
     (bash's `EOF)` shorthand, trailing spaces).
+  - Shell-write deny, NOT denied: a path held in a variable or loop
+    variable (`sed -i … "$f"`, `for f in …; do … > "$f"; done`) unless
+    its text names a tree folder; a `cd` into a tree through a variable
+    then a relative path (`cd $VAR/src && echo x > y.ts`; plain
+    `cd $VAR && echo x > src/…` IS denied); `eval` of a built string;
+    base64 or otherwise encoded code; a path built at run time in the
+    interpreter beyond joined literals (`Path('src') / 'x'`,
+    `'src/' + name`); a script file that writes (`python3 tool.py`,
+    `node x.js`, `bash x.sh`); text piped into a shell or interpreter
+    (`cat <<'EOF' | bash`, `echo … | python3`); `perl -e` code (its
+    `open(… ">" …)` is not checked); any `find … -exec` in-place edit
+    (`find src -exec sed -i … {} +`, `find … -exec sh -c 'sed -i …
+    "$1"' _ {} \;`); `xargs -I{} sh -c '… {}'` (the `{}` is not read as
+    the input); other writers and tools — `cp`, `mv`, `dd of=`,
+    `install`, `rsync`, `ln`, `truncate`, `touch`, `patch`, `awk`'s own
+    `print >`, `ruby -i`/`-e`, `ex`/`vim -c`, a `npx`/`uv run` wrapper
+    around python or node, and a python/node write API outside the
+    listed calls (`shutil`, `os.open`, `fs.writeSync` on an fd,
+    `fs.cpSync`); a symlink into a tree.
+  - Shell-write deny, deny-leaning (over-denied): any in-place edit or
+    `tee` behind `xargs`, whatever the files; a `$VAR`/glob path that
+    names a folder `src`, `__tests__`, or `rules` anywhere
+    (`> "$TMPDIR/src/x"`); a relative tree path when the payload has no
+    `cwd`; an interpreter one-liner that writes through a BARE variable
+    while any string literal in it names a tree file (it may only read
+    that file; DETAILS says "may write"); `sed -i` run GNU-style on
+    macOS (`sed -i 's/a/b/' f`, which BSD sed rejects).
   - bash 3.2 only (zsh fails): a command after a heredoc inside
     `<(`/`$(` whose body holds an unbalanced paren, and
     `echo $( (echo a)#c ); pkill x`, both run and are not denied.
@@ -1192,11 +1248,14 @@ a new tree. See `conflictSides`, `afterTreesFor`, and
 
 ## Pre-write guard replay on the Stop tier
 
-The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. A Bash or
-python write (a heredoc, `sed -i`, a script) and a commit of it reach
-disk unchecked. A Bash deny hook is the wrong fix: legitimate commands
-write source too (the `--write` fixers, `git merge`). The replay
-catches these writes after they land instead.
+The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
+kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
+forms into `src/`, `__tests__/`, and `rules/`. It allows the `--write`
+fixers and git itself, which write source legitimately. What it does
+not see still reaches disk unchecked: a script file that writes,
+`cp`/`mv`, `find -exec`, a path held in a variable, and a commit of any
+of these (see its Known limits). The replay catches those writes after
+they land.
 
 - **Where.** `scripts/checks/guard-replay.sh` (+ `guard-replay.js`, the
   planner and runner). `medium.sh` runs it on `Stop`/`SubagentStop`

@@ -481,7 +481,10 @@ export const uk: typeof en = {
       valueOutPlaceholder: '100,00',
     },
     units: {
-      days: 'дн.',
+      days_one: 'день',
+      days_few: 'дні',
+      days_many: 'днів',
+      days_other: 'дня',
       grams: 'г',
       months: 'міс.',
       percent: '%',
@@ -883,7 +886,7 @@ export const uk: typeof en = {
     enabledLabel: 'Нагадування ввімкнено',
     form: {
       createTitle: 'Нове нагадування',
-      editTitle: 'Редагування нагадування',
+      editTitle: 'Редагувати нагадування',
       frequency: 'Повторення',
       frequencyDaily: 'Щодня',
       frequencyWeekly: 'Щотижня',
@@ -913,7 +916,7 @@ export const uk: typeof en = {
     },
     offer: {
       statementImportMessage: 'Нагадати про імпорт наступної виписки?',
-      addTransactionsMessage: 'Нагадувати додавати транзакції до цього рахунку?',
+      addTransactionsMessage: 'Нагадувати про додавання транзакцій до цього рахунку?',
       setUp: 'Налаштувати нагадування',
       dismiss: 'Не зараз',
     },

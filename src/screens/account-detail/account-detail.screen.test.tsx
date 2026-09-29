@@ -1219,6 +1219,25 @@ describe('AccountDetailScreen — reminder offer', () => {
     expect(getByText('Want a reminder to add transactions to this account?')).toBeTruthy();
   });
 
+  describe('in Ukrainian', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('shows the add-transactions message from the Ukrainian catalogue', async () => {
+      offerOf('add_transactions');
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByText } = await renderScreen();
+
+      expect(getByText('Нагадувати про додавання транзакцій до цього рахунку?')).toBeTruthy();
+    });
+  });
+
   it('Set up opens the reminder form for that kind and clears the import offer', async () => {
     offerOf('statement_import');
     const { getByText, navigation } = await renderScreen(afterImportRoute);

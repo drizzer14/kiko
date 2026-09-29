@@ -1,5 +1,5 @@
 # Reminders (user-configured, local notifications) — design, 1.2
-Status: implemented on branch reminders (tasks 1/5-5/5); pending device tests and the user's key review
+Status: implemented on branch reminders (tasks 1/5-5/5); pending device tests; user key review done 2026-09-29
 
 ## User decisions (2026-09-27, user's own words summarized)
 1. Scope: BOTH reminder types — (a) import a bank statement, (b) add transactions to a manual account.
@@ -55,13 +55,15 @@ Status: implemented on branch reminders (tasks 1/5-5/5); pending device tests an
 - A restored `last_snoozed_at` from another device keeps that slot free until it goes stale, although this device has no such snooze request: after a cross-device restore inside a snooze window, at most one occurrence is missed.
 - On a cold first visit of a day (no cache), the offer card can appear after the balance and holdings have rendered and push the content down (device check). A revisit is served from the cache. Fix if noticeable: a readiness flag from the hook that joins the page's `isReady`.
 
-## Decisions pending the user (overnight defaults, 2026-09-29)
-- At most one reminder offer per visit of the account page; after the user decides one offer, the other does not show until the next visit. If wrong: two offers in a row after dismissing the import offer.
-- Balance rows do not count toward the add-transactions offer (opening-balance and balance-edit rows: manual, no category, no transfer marker). If wrong: a new cash account with an opening balance plus one entry gets an offer.
-- No in-form Delete: a reminder is deleted only from its page row's touch-and-hold menu (`kiko-no-confirm-sheet-in-form`).
-- The empty-state caption (`reminders.emptyNoKinds`) on the account's reminders page; the bell stays on every account.
-- The one-holding shortcut: an add-transactions tap opens `TransactionForm` directly only when the account has exactly one open holding and that holding takes transactions (not ledgerless: card, cash, crypto asset, jar). For a single deposit, bond, property item, metal or loan holding, the tap opens the account page. If wrong: a deposit-only account's tap opens a form for a holding that takes no transactions.
-- A tap on the "Reminders paused" notice opens that account's Reminders page (`AccountReminders`, above the account page), where the user can turn the reminder on again. If wrong: the tap opens only the account page.
+## Decisions (user, 2026-09-29)
+The user accepted all six overnight defaults as built ("accept all defaults").
+1. A synced account with no statement import keeps the bell; its Reminders page shows the empty-state caption `reminders.emptyNoKinds` (the caption keeps its final "."). The bell stays on every account.
+2. No in-form Delete: a reminder is deleted only from its page row's touch-and-hold menu (`kiko-no-confirm-sheet-in-form`).
+3. At most one reminder offer per visit of the account page; after the user decides one offer, the other does not show until the next visit.
+4. Balance rows do not count toward the add-transactions offer (opening-balance and balance-edit rows: manual, no category, no transfer marker).
+5. The one-holding shortcut: only an add-transactions tap opens `TransactionForm` directly, and only when the account has exactly one open holding and that holding takes transactions (not ledgerless: card, cash, crypto asset, jar). For a single deposit, bond, property item, metal or loan holding, the tap opens the account page.
+6. A tap on the "Reminders paused" notice opens that account's Reminders page (`AccountReminders`, above the account page), where the user can turn the reminder on again.
+7. Every-N-days unit: `forms.units.days` is a plural key (en `days_one`/`days_other`, plus `_few`/`_many` duplicates of the plural form, kept for the `typeof en` parity rule; uk `days_one`/`days_few`/`days_many`/`days_other` = день/дні/днів/дня). Its count is the interval field value via `everyDaysPluralCount` (`src/reminders/rules/reminder-draft.ts`); an empty or non-whole field gives count 0 (uk "днів", en "days"). Read the locale files for the current strings.
 
 ## Open items for the planner
 - Manual account = accounts.institution IS NULL (isSyncedAccount in src/holdings/deletable/deletable.ts); resolved by user decision 6 — import reminders apply to any account with >=1 statement import, including synced accounts; add-transaction reminders stay manual-only.

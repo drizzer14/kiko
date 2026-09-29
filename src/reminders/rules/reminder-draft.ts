@@ -37,19 +37,30 @@ const KIND_DEFAULTS: Record<
 
 const WHOLE_NUMBER = /^\d+$/;
 
-const parseEveryDays = (text: string): number | undefined => {
+const parseWholeNumber = (text: string): number | undefined => {
   const trimmed = text.trim();
 
-  if (!WHOLE_NUMBER.test(trimmed)) {
-    return undefined;
-  }
+  return WHOLE_NUMBER.test(trimmed) ? Number(trimmed) : undefined;
+};
 
-  const everyDays = Number(trimmed);
+const parseEveryDays = (text: string): number | undefined => {
+  const everyDays = parseWholeNumber(text);
 
-  return everyDays >= INTERVAL_MINIMUM_DAYS && everyDays <= INTERVAL_MAXIMUM_DAYS
+  return everyDays !== undefined &&
+    everyDays >= INTERVAL_MINIMUM_DAYS &&
+    everyDays <= INTERVAL_MAXIMUM_DAYS
     ? everyDays
     : undefined;
 };
+
+// 0 picks the form a unit takes with no number before it: "днів" in
+// Ukrainian, "days" in English.
+const NO_NUMBER_PLURAL_COUNT = 0;
+
+// The count for the plural "days" unit beside the interval field, so the
+// unit agrees with what the user typed, even outside the allowed range.
+export const everyDaysPluralCount = (everyDaysText: string): number =>
+  parseWholeNumber(everyDaysText) ?? NO_NUMBER_PLURAL_COUNT;
 
 // The weekday and interval fields start empty; `withFrequency` fills them the
 // first time the user switches to that frequency.
