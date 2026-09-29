@@ -73,7 +73,7 @@ const INITIAL_KIND: Kind = 'bank';
 // (a kind-derived icon) is applied by the account list rows when the stored icon
 // is null; here the account has no kind context worth deriving from yet, so the
 // generic account reference (`tray`) reads as "unset" — never the retired
-// `square.grid.2x2`, per the icon rework's generic-account decision (§2.1).
+// `square.grid.2x2`.
 const FALLBACK_ICON = genericEntitySymbol.account;
 
 // The cash-only initial value field's own two error reasons — a blank or

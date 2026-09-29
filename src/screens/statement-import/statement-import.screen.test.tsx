@@ -636,8 +636,8 @@ describe('StatementImportScreen', () => {
     ).toBeTruthy();
   });
 
-  // Section C.2's KEY DESIGN: Sensebank (and, later, the FOP CSVs) is
-  // cp1251-encoded, not UTF-8. The screen must try decoding
+  // Sensebank (and the FOP CSVs) is cp1251-encoded, not UTF-8. The screen
+  // must try decoding
   // the picked file's bytes as UTF-8 first (Monobank's existing path); if NO
   // format recognizes that text, it must retry decoding the SAME bytes as
   // cp1251 before giving up.

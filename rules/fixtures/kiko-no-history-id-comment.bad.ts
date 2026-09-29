@@ -156,3 +156,23 @@ export const pickerReadsExportsByName = true;
 // EXPECT-FINDING
 /* Only one pool per kind, as confirmed by the plan. */
 export const onePoolPerKind = true;
+
+// EXPECT-FINDING
+// Section C.2: the export's own date column is already in the local zone.
+export const dateColumnIsLocal = true;
+
+// EXPECT-FINDING
+// The opening balance stays editable after creation (section 6.2).
+export const openingBalanceStaysEditable = true;
+
+// EXPECT-FINDING
+// The picker lists every currency, not only the account's own (§2.1).
+export const pickerListsEveryCurrency = true;
+
+// EXPECT-FINDING
+/* Section 12.4 keeps the fee on its own line. */
+export const feeOnItsOwnLine = true;
+
+// EXPECT-FINDING
+/* Rows without a counterparty stay in the list (§3). */
+export const rowsWithoutCounterpartyStay = true;

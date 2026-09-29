@@ -12,12 +12,11 @@ import type { StatementFormat } from '@kiko/statement-import/parser';
 
 import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
-// Section C.3: "Detect signature — file content starts with the first 59
-// characters of the header line (uabean's own truncation point, chosen to
-// match BOTH of its two accepted header variants, which diverge after that
-// point)". Verified byte-for-byte against the real fixture's own header
-// line — the real fixture carries "variant 1"
-// (`Код ID НБУ` as column 2); variant 2 (`Надавач платіжних послуг`) is
+// Detect signature: file content starts with the first 59 characters of the
+// header line (uabean's own truncation point, chosen to match BOTH of its
+// two accepted header variants, which diverge after that point). Verified
+// byte-for-byte against the real fixture's own header line — the real
+// fixture carries "variant 1" (`Код ID НБУ` as column 2); variant 2 (`Надавач платіжних послуг`) is
 // UNVERIFIED against any real fixture bytes, but this 59-char prefix matches
 // both.
 export const DETECT_PREFIX = 'ЄДРПОУ;Код ID НБУ;Рахунок;Валюта;Дата операції;Код операції';

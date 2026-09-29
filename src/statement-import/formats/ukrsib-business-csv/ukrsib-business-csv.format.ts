@@ -10,8 +10,8 @@ import type { StatementFormat } from '@kiko/statement-import/parser';
 
 import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
-// Section C.3: "Detect signature — file content matches the FULL literal
-// header line; fields are DOUBLE-QUOTED." **[VERIFY LIVE]** this exact
+// Detect signature: file content matches the FULL literal header line;
+// fields are DOUBLE-QUOTED. **[VERIFY LIVE]** this exact
 // glyph against a real export before shipping — this string is transcribed
 // verbatim from uabean's importer (not a real Ukrsib export Kiko has seen),
 // including the header's

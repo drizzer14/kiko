@@ -24,15 +24,15 @@ import {
   resolveSoleColumnValue,
 } from '../business-csv';
 
-// Section C.3: "Detect signature — file content matches the FULL literal
-// header line" (unquoted, unlike Ukrsib business — verified against the real
-// fixture's own first line).
+// Detect signature: file content matches the FULL literal header line
+// (unquoted, unlike Ukrsib business — verified against the real fixture's
+// own first line).
 export const FULL_HEADER_LINE =
   'Наш рахунок;Наш IBAN;Операція;Рахунок;IBAN;МФО банку контрагента;Найменування контрагента;Код контрагента;Призначення платежу;Дата проведення;Номер документа;Сума;Валюта;Час проведення;Дата документа;Дата архівування;Ід.код;Найменування;МФО';
 
-// Section C.3: "Structurally different from ProCredit/Ukrsib business: ONE
-// unsigned `Сума` column plus a SEPARATE `Операція` word column (`Дебет` or
-// `Кредит`) that determines the sign — not a debit/credit two-COLUMN pair."
+// Structurally different from ProCredit/Ukrsib business: ONE unsigned `Сума`
+// column plus a SEPARATE `Операція` word column (`Дебет` or `Кредит`) that
+// determines the sign — not a debit/credit two-COLUMN pair.
 export const OPERATION_DEBIT_WORD = 'Дебет';
 export const OPERATION_CREDIT_WORD = 'Кредит';
 
@@ -98,7 +98,7 @@ const parseRowAmountMinorUnits = (
   throw new StatementParseError(`Unrecognized ${FORMAT_LABEL} Операція word: "${operation}"`);
 };
 
-// Section C.3: the ONE format studied where date and time are NOT combined
+// The ONE format studied where date and time are NOT combined
 // in one field — `Дата проведення` + `Час проведення` are joined into a
 // single "DD.MM.YYYY HH:MM:SS" string before reusing the shared
 // `parseDateTimeSeconds` helper, exactly like ProCredit/Ukrsib business's own

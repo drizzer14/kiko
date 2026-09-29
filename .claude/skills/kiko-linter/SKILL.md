@@ -750,7 +750,9 @@ hand-rolled checker (and fixer)" below. The comment-history check is
 Mechanizes kiko-code-style's "Comments: WHY only, never history": no
 task id (`T28`), `Task N`, review-round id (`I1`/`M2`/`N3`/`U7`),
 spec/decision id (`spec 6.2`, `D14`), bug number, `USER-DECISION`,
-`Requirement X`, `controller ruling N`, `section X.N`, `task brief`/
+`Requirement X`, `controller ruling N`, `Section X.N`/`section X.N`
+(a letter or number before the dot: `Section C.2`, `section 6.2`), a
+`§N` section sign (`§2.1`, `§3`), `task brief`/
 `parity brief` (with an optional `'s`), `Review Focus N`, `Minor N`,
 `audit N`, `RULING RN`, `fix round N`, `round-N`, `device[- ]feedback`,
 `on-device review`, or a plan citation (`[Dd]ecisions? N`, `separate
@@ -897,6 +899,18 @@ stays silent too ("a decision the user makes"). The group's trailing
 `\b` keeps `commit` from matching `commits` ("each batch commits in one
 transaction"). Fixture pair: the seven plan-history pins in `.bad.ts`
 and item 16 in `.good.ts`.
+
+**The section members (2026-09-29) need a number.** `[Ss]ection\s[A-Z0-9]+\.\d+`
+fires only on a word "section" followed by a dotted number, so a
+"Section" header row, "2 sections", and "subsection 2.1" (no word
+boundary before "section") stay silent. `§\d` sits OUTSIDE the `\b(...)`
+group in both arms: `§` is not a word character, so a `\b` before it
+would need a letter or digit right before the sign and miss "(§2.1)". An
+external standard's section (`RFC 4231 §4.3`) is the same
+standalone-token class as `D2` above: accepted, not narrowed. Cite the
+test case or the heading instead ("RFC 4231 test case 2"). Fixture
+pair: the five section pins at the end of `.bad.ts` and item 17 in
+`.good.ts`.
 
 **`next commit` can collide with database prose.** `commit` is also a
 SQL transaction commit, so a real sentence like "the next commit
