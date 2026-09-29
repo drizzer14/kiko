@@ -100,6 +100,11 @@ keeps the `ajv` pin itself:
 }
 ```
 
+To pin a transitive dependency under a package that is itself
+overridden, turn the override into an object: `"."` carries the
+package's own pin and the child key carries the transitive pin. A second
+top-level key for the same package is not valid.
+
 ## `.env` is public-only
 
 `react-native-dotenv` inlines every `.env` value into the JS bundle at

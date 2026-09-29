@@ -314,7 +314,13 @@ A numeric field's unit goes in `TextField`'s `suffix`, never in its
 label — "Annual rate" with a `%` suffix, not "Annual rate %" — so the
 label never doubles the unit the field already shows. Currency fields
 pass the currency glyph; every other unit is a `forms.units.*` key
-(percent, months, pieces, grams, troy ounces). A metal quantity follows
+(read `forms.units` in `src/i18n/locales/en.ts` for the current set; do
+not copy it here). A unit shown beside a number the user types is a
+PLURAL key, and `t()` gets that number as `count`, so the unit agrees
+with it: `forms.units.days` via `everyDaysPluralCount`
+(`src/reminders/rules/reminder-draft.ts`) gives "1 day / 7 days" and
+"21 день / 2 дні / 5 днів". An empty or non-whole value gives count 0,
+the form with no number (en "days", uk "днів"). A metal quantity follows
 its own unit (`metalUnitSuffix`, `src/screens/forms/metal-unit-suffix/`,
 shared by the create form and the Lot form); a field whose holding has
 no unit passes none. `fieldSuffix` (`src/test-support/field-suffix.ts`)

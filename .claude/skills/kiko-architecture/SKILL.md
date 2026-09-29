@@ -1637,10 +1637,13 @@ what a change must keep.
 - **Rules.** `src/reminders/rules/` is pure.
   `eligibleReminderKinds(account, hasImport)`: import reminders need a
   statement import (synced accounts included); add-transactions
-  reminders need a non-synced account. The form draft: `defaultDraft(kind)`,
-  `draftFromSchedule`, `withFrequency` (switching to weekly preselects
-  today's weekday, and to every-N-days preselects 7),
-  `validateReminderDraft`, `draftToSchedule(draft, today)`. The page
+  reminders need a non-synced account. The form draft helpers are exported
+  from `src/reminders/rules/reminder-draft.ts` (read it for the current
+  set). `withFrequency` preselects today's weekday when switching to
+  weekly and 7 when switching to every-N-days. The interval field's
+  plural "days" suffix takes its count from `everyDaysPluralCount` (the
+  typed text), not from the validated interval, so the unit agrees with
+  what the user typed even out of range. The page
   lists eligible kinds plus any saved kind that is no longer eligible
   (with a per-kind `reminders.unavailable.*` caption). When there are
   none, it shows the `reminders.emptyNoKinds` caption.

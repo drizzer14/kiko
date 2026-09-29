@@ -70,6 +70,20 @@ app is `statistics.trendFilter.button.manual` (the trend Filters button's
 i18next resolves the right form per language at `t('...', { count })` time;
 init uses the default JSON v4 plural format (see `src/i18n/init/init.ts`).
 
+**A unit label beside a number field is a plural key.** A `TextField`
+`suffix` unit is a plural key, and `t()` is called with `count` = the typed
+number (see `forms.units.days` + `everyDaysPluralCount`). A fixed unit
+string ('дн.', 'days') reads wrong at 1, 2-4 and 21 in Ukrainian.
+Abbreviated units ('г', '%', 'шт.', 'міс.') do not decline and stay single
+keys (read `forms.units` in `src/i18n/locales/uk.ts` for the current set).
+
+**Ukrainian `_other` is the FRACTION form only.** `Intl.PluralRules('uk')`
+gives 'other' only for non-integers (for example 1.5 -> 'дня'). A
+whole-number field never reaches it. For "no number" (an empty field),
+pass count 0, which selects `_many` in uk ('днів') and `_other` in en
+('days'). Never write the general plural into uk `_other` expecting it to
+be the default form.
+
 ## Catalogue typing: `typeof en`, never `as const`
 
 `src/i18n/i18next.d.ts` types `t()`/`useTranslation()` off `typeof en`

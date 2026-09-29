@@ -584,7 +584,7 @@ New top-level section `reminders` (CS in brackets). Title Case keys go into `TIT
 | `notification.pausedBody` [B] | Turn them on again in Kiko. | Увімкніть їх знову в Кіко. |
 | `notification.hiddenPreviewsPlaceholder` [D] | Reminder | Нагадування |
 | `notification.snoozeAction` [D] | Tomorrow | Завтра |
-| `forms.units.days_one` / `_other` (en), `_one` / `_few` / `_many` / `_other` (uk) [C1] | day / days | день / дні / днів / дня (count = `everyDaysPluralCount`; empty -> 0 -> днів) |
+| `forms.units.days_one` / `_other` (en, plus `_few` / `_many` duplicates kept for the `typeof en` parity rule), `_one` / `_few` / `_many` / `_other` (uk) [C1] | day / days | день / дні / днів / дня (count = `everyDaysPluralCount`; empty -> 0 -> днів) |
 
 Reused: `calendar.weekday.*`, `common.save`, `common.cancel`, `common.delete`.
 
