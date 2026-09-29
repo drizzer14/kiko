@@ -1068,7 +1068,7 @@ rules:
       (`@kiko/dates`) for column mapping.
     metadata:
       fix: "Use kyivInstantMillisecondsIfRoundTrips (named formats) or deviceWallClockToLocalMilliseconds (column mapping) instead of Date.UTC/new Date(year, month, ...)."
-      skill: "kiko-statement-import › Every date-format preset"
+      skill: "kiko-statement-import › Column mapping"
     paths:
       include:
         - "src/statement-import/**"

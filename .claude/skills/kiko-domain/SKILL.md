@@ -981,7 +981,10 @@ flagged, review items: a Date built in a helper the inner callback calls,
 a `do ... while` loop, a nested iteration written as two plain loops, and
 an inner pass over a member or chained collection that IS loop-invariant
 (`rows.filter(…).map(…)` or `this.rows.map(…)` inside a per-bucket
-callback).
+callback). Known false positive: a plain identifier bound per outer item
+(`const rows = holding.rows;` inside the loop, then `rows.map(…)`) fires
+even though the traversal is linear. Iterate the member directly
+(`holding.rows.map(…)`).
 
 **Speed guards count real work, never wall-clock time — and never a
 production test hook.** Both `holding-value-at.test.ts`

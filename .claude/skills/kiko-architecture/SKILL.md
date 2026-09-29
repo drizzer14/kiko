@@ -443,9 +443,7 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   LOGS the failure through `logFailure` (`@kiko/diagnostics`), tagged
   `[useLiveQuery] query failed: <sql>`: the placeholder text from
   `toSQL()` and the error's name and code, never the params or the
-  message (kiko-compliance "5.1.5 / data storage") — previously a
-  rejected query set `error` with no diagnostic anywhere a device log
-  could see, and no screen read `error` at all. So a `useDataReady`
+  message (kiko-compliance "5.1.5 / data storage"). So a `useDataReady`
   gate never spins forever on a genuinely failed query; it just never
   shows the raw error either (no consumer reads `error` today). A
   rejection for a KEY THAT JUST CHANGED (the previously applied key
@@ -1723,9 +1721,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   in a state no create path allows. `restoreDataSnapshot`'s
   `withCryptoCashHoldingsMoved` applies the SAME reuse-or-create rule,
   sharing the SAME deterministic `crypto-from-<source id>` account id the
-  SQL migration derives — this is what makes a restore of an
-  already-migrated export a no-op instead of creating a duplicate
-  account. Runs FIRST (before `withLegacyBalanceSetAtBackfilled` and
+  SQL migration derives, so both paths pick the same account for the
+  same source. A restore of an already-migrated export is a no-op
+  because its affected set is empty (no `cash` holding in a crypto
+  currency is left; `restore-snapshot.ts`'s early return), not because
+  of the shared id. Runs FIRST (before `withLegacyBalanceSetAtBackfilled` and
   every later backfill), feeding its own output into every step after it,
   since it is the one step that can add a NEW account row.
 - **A value that lives inside `holdings.metadata` needs NO restore

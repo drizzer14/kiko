@@ -191,6 +191,11 @@ does not contradict the "Mutation testing: small change sets only"
 section above, which sets the base to the change set's OWN base commit
 before it has merged.)
 
+A change set that merged `next` mid-way, or that stacks on earlier
+unmerged change sets, takes as its mutation base the `next` tip that
+already contains every earlier change set; otherwise the merge-base
+diff also counts the earlier sets' files against the 30 cap.
+
 ## Merge conflicts vs the pre-write guard
 
 Resolve conflict markers with Edit/Write as usual; resolving one whole
