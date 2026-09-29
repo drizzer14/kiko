@@ -381,14 +381,14 @@ of the package, with no moment and no recyclerlistview.
 
 A type-only import from the root is fine, because Babel erases it:
 `import type { DateData, CalendarProps } from 'react-native-calendars';`
-(DateField, DateRangeField, `kiko-calendar.props.d.ts`). A mixed import
+(for example, `kiko-calendar.props.d.ts`). A mixed import
 with an inline `type` modifier (`import { LocaleConfig, type DateData }`)
 is a value import and is not allowed.
 
 Jest: the manual mock `__mocks__/react-native-calendars/src/calendar.tsx`
 renders the deep `Calendar` as a plain `View` that keeps every prop, so a
 test reads `testID`/`markedDates` and calls `onDayPress` directly.
-`jest.config.js` must not change for this. The `jest.mock` in
+The mock needs no `jest.config.js` change. The `jest.mock` in
 `jest/setup.js` covers only the bare root specifier.
 `kiko-calendar.day-cell-color.test.tsx` deep-imports the real day
 renderers, and neither mock intercepts them.

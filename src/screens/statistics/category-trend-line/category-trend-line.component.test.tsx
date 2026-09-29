@@ -192,36 +192,25 @@ describe('CategoryTrendLine', () => {
   // axis labels must be read off LOCAL calendar fields, exactly like
   // net-worth-line's own axis. On a POSITIVE-UTC-offset device (e.g. Kyiv),
   // reading UTC fields instead renders the start date one day EARLY: local
-  // midnight Jan 15 is still Jan 14 in UTC there. Pinning the process TZ to a
-  // positive-offset zone at runtime is the deterministic proof: reading UTC
-  // fields would render '14.01', not the correct local day '15.01'.
+  // midnight Jan 15 is still Jan 14 in UTC there. The suite runs on Kyiv, so
+  // reading UTC fields would render '14.01', not the correct local day '15.01'.
   it('labels the start bucket with the LOCAL calendar day, not the UTC day, on a positive-offset device', async () => {
-    const originalTz = process.env.TZ;
-    process.env.TZ = 'Europe/Kyiv';
-    try {
-      const localSeries: CategoryTrendSeries[] = [
-        {
-          key: 'groceries',
-          title: 'Groceries',
-          color: '#ff0000',
-          points: [
-            { t: new Date(2025, 0, 15).getTime(), amount: 10 },
-            { t: new Date(2025, 0, 17).getTime(), amount: 20 },
-          ],
-        },
-      ];
-      const { getByTestId } = await render(
-        <CategoryTrendLine series={localSeries} baseCurrency="UAH" />,
-      );
+    const localSeries: CategoryTrendSeries[] = [
+      {
+        key: 'groceries',
+        title: 'Groceries',
+        color: '#ff0000',
+        points: [
+          { t: new Date(2025, 0, 15).getTime(), amount: 10 },
+          { t: new Date(2025, 0, 17).getTime(), amount: 20 },
+        ],
+      },
+    ];
+    const { getByTestId } = await render(
+      <CategoryTrendLine series={localSeries} baseCurrency="UAH" />,
+    );
 
-      expect(getByTestId('category-trend-line-x-tick-0.00')).toHaveTextContent('15.01');
-    } finally {
-      if (originalTz === undefined) {
-        delete process.env.TZ;
-      } else {
-        process.env.TZ = originalTz;
-      }
-    }
+    expect(getByTestId('category-trend-line-x-tick-0.00')).toHaveTextContent('15.01');
   });
 
   it('collapses the X axis to a single date when every point shares one instant', async () => {

@@ -124,7 +124,9 @@ Mechanized: `kiko-no-raw-error-in-console` (`rules/semgrep-prewrite.yml`,
 ERROR). It flags a `console.*` argument that is not a string, template, or
 object literal, and a string or template literal joined with `+` anywhere
 inside an argument (`console.warn('[x] failed: ' + error)`, because
-`String(error)` includes the message). Known limit: an object literal that
+`String(error)` includes the message). The `+` arm also fires on a literal
+joined to a number or count (`'[x] count: ' + count`). Write a template
+instead (`` `[x] count: ${count}` ``). Known limit: an object literal that
 nests the error (`{ error }`) or a template that interpolates it passes
 the rule; review catches those.
 

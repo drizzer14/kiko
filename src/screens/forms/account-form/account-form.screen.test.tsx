@@ -1096,7 +1096,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('does not save a token or sync when the bank row create rejects', async () => {
-    // Mirrors the crypto create-reject coverage (C-1) for the bank-specific
+    // Mirrors the crypto create-reject coverage for the bank-specific
     // connectMonobank closure: a failed create must short-circuit BEFORE
     // saveToken/sync ever run, and connectMonobank must resolve to false (its
     // own try/catch), not throw or resolve true.
@@ -1473,7 +1473,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('clears the create latch when a field-Connect create rejects, so Save re-attempts (no silent no-op)', async () => {
-    // C-1: a rejected insert (DB locked/disk full) must not leave the one-shot
+    // A rejected insert (DB locked/disk full) must not leave the one-shot
     // latch set — otherwise Save would take the UPDATE branch, match no row, and
     // silently goBack while no account exists. The first create rejects; the row
     // was never inserted, so Save must run a fresh CREATE (not a no-op update).
@@ -1499,7 +1499,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('locks the kind switch once a crypto source is connected, so Save cannot orphan the row', async () => {
-    // C-3: connecting a source inserts the crypto row. Switching to Bank/Cash
+    // Connecting a source inserts the crypto row. Switching to Bank/Cash
     // afterwards would route Save to a SECOND create and orphan that row, so the
     // kind field is disabled once connected — pressing it is inert, and Save
     // stays on the crypto UPDATE path.

@@ -88,20 +88,10 @@ describe('bondRegisterRepo', () => {
 });
 
 describe('refreshBondRegisterIfStale', () => {
-  // The gate compares `dayKeyOf`'s LOCAL calendar day. A raw `Date.UTC(...)`
-  // instant only keeps its intended same-day/next-day labeling for a
-  // UTC-1..UTC+3 host offset (the original bug this review round fixed), and
-  // mid-test `process.env.TZ = '<zone>'` pinning (the pattern several other
-  // date tests in this repo use, e.g. `price-book.test.ts`) does NOT
-  // reliably re-target `Date`'s local getters inside this project's Jest
-  // environment (`jest-environment-node`'s VM context appears to snapshot
-  // the ICU timezone at worker start and ignore a later env mutation —
-  // verified directly: `Intl.DateTimeFormat().resolvedOptions().timeZone`
-  // inside a test still reports the ORIGINAL host zone after reassigning
-  // `process.env.TZ`). So these instants are built through the LOCAL `Date`
-  // constructor instead: `day1`/`laterSameDay` always share one local
-  // calendar day, and `nextDay` always falls on the next one, regardless of
-  // the host's actual timezone — genuinely deterministic, not pinned.
+  // The gate compares `dayKeyOf`'s LOCAL calendar day, so these instants are
+  // built through the local `Date` constructor: `day1`/`laterSameDay` then
+  // share one local calendar day and `nextDay` falls on the next one on any
+  // host zone, where a `Date.UTC(...)` instant could shift across midnight.
   const day1 = new Date(2026, 8, 24, 10, 0, 0).getTime();
   const laterSameDay = new Date(2026, 8, 24, 20, 0, 0).getTime();
   const nextDay = new Date(2026, 8, 25, 1, 0, 0).getTime();

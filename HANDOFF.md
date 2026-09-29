@@ -343,7 +343,7 @@ done). Sonnet blocked until 2026-09-27 16:00 (roles on opus).
   overnight-list.md. Next P3. SWAP 2: session 2 handed over at 30% (clean boundary); SESSION 3 = terminal
   feat-assets-debts-3 (term_4c0077aa...), watcher ctxwatch.sh at 70%.
   Session 3: P3 T22-T24 done, T25 ISIN mode in re-review; P4 T26 done, T27 running; tip 5513ccf; migration 0037
-  bond_register. Parked for final review: ~8 TZ-pinned Jest tests may not prove TZ (process.env.TZ mid-test).
+  bond_register. Resolved by Round A task 13/13 (6fe86bf4, 7c1ae560, 3397f9b1): no-op per-test TZ flips removed; kiko-no-process-env-time-zone-in-test is ERROR.
   Review notes must name a live ISIN (e.g. UA4000234215). No archive before T27+T28.
   P3 DONE (drift 4a5c77e; also touched harness developer.md/qa.md). verify green 322/3825 at 020585e. 18 P3 keys +
   defaults in overnight-list.md.

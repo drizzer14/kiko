@@ -122,3 +122,10 @@ export const sectionMembersNearMiss = true;
 // this planning window open, and this planner also skips a muted slot.
 // A row in this planned transfer and the 2026-09-11 import run stay silent.
 export const laterPlanMembersNearMiss = true;
+
+// 19. The hyphenated single-letter ids need a digit right after the hyphen,
+// and the id letter needs a word boundary before it: a T-shirt size, a
+// U-turn, UTF-8, UTC-1, GMT-5, and a NEWS-1 feed or a renewal NEW-look
+// banner stay silent, as do a lowercase t-1 and a NEW row. `D` takes no
+// hyphen, because day D-1 is the day before the purchase day D.
+export const hyphenatedIdNearMiss = 'T-shirt, U-turn, UTF-8, UTC-1, GMT-5';

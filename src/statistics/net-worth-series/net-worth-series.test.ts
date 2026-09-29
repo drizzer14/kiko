@@ -669,56 +669,34 @@ describe('buildNetWorthSeries', () => {
     expect(amountAt(series, dayD2)).toBe(200);
   });
 
-  describe('under an explicit non-host timezone (Kiritimati, UTC+14)', () => {
-    // Every cross-day fixture above relies on the IMPLICIT host process
-    // timezone (this repo's dev machine runs Europe/Kyiv, UTC+2/+3) via
-    // `addLocalDays`/`startOfLocalDay`, which read `new Date(...)` in whatever
-    // zone the process happens to be in. Pin an explicit, extreme, DST-free,
-    // non-Kyiv, non-UTC offset so the same funding-day recognition is proven
-    // independent of which machine runs the suite — not merely passing by
-    // coincidence of the dev box's zone (a CI runner defaulting to UTC would
-    // never have exercised the local-day arithmetic at all).
-    const originalTz = process.env.TZ;
+  it('recognizes the funding-debit day across a one-day gap between local midnights', () => {
+    const purchaseDay = startOfLocalDay(Date.UTC(2026, 0, 10, 12));
+    const debitDay = addLocalDays(purchaseDay, -1); // funded one calendar day earlier
+    const debitTime = debitDay + 6 * HOUR;
+    const purchaseDate = purchaseDay + 18 * HOUR;
 
-    beforeAll(() => {
-      process.env.TZ = 'Pacific/Kiritimati';
+    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 0 });
+    const bond = bondFor({
+      id: 'bond',
+      currency: 'USD',
+      faceValueMinorUnits: 10_000,
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000,
     });
 
-    afterAll(() => {
-      process.env.TZ = originalTz;
+    const series = buildNetWorthSeries({
+      holdings: [cash, bond],
+      transactionsByHolding: new Map([['cash', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: debitDay, to: purchaseDay },
     });
 
-    it('still recognizes the funding-debit day across a one-day gap', () => {
-      const purchaseDay = startOfLocalDay(Date.UTC(2026, 0, 10, 12));
-      const debitDay = addLocalDays(purchaseDay, -1); // funded one calendar day earlier
-      const debitTime = debitDay + 6 * HOUR;
-      const purchaseDate = purchaseDay + 18 * HOUR;
-
-      const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 0 });
-      const bond = bondFor({
-        id: 'bond',
-        currency: 'USD',
-        faceValueMinorUnits: 10_000,
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000,
-      });
-
-      const series = buildNetWorthSeries({
-        holdings: [cash, bond],
-        transactionsByHolding: new Map([
-          ['cash', [{ time: debitTime, amountMinorUnits: -10_000 }]],
-        ]),
-        historyRows: [uahUsd(D0, '0.025')],
-        baseCurrency: 'USD',
-        range: { from: debitDay, to: purchaseDay },
-      });
-
-      // The money left on the debit day, so the bond's cost is recognized from
-      // there and net worth is $100 flat on both the debit day and the typed
-      // purchase day — no dip, even under this far-flung timezone.
-      expect(amountAt(series, debitDay)).toBe(100);
-      expect(amountAt(series, purchaseDay)).toBe(100);
-    });
+    // The money left on the debit day, so the bond's cost is recognized from
+    // there and net worth is $100 flat on both the debit day and the typed
+    // purchase day — no dip.
+    expect(amountAt(series, debitDay)).toBe(100);
+    expect(amountAt(series, purchaseDay)).toBe(100);
   });
 
   // A base-currency-only user (no foreign holding, ever) never gets a

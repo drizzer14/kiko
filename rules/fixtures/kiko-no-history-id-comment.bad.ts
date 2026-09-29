@@ -204,3 +204,19 @@ export const accountsShareCursor = true;
 // EXPECT-FINDING
 /* One row per account (2026-09-11 multi-account plan). */
 export const oneRowPerAccount = true;
+
+// EXPECT-FINDING
+// The tooltip clears on the next tap (T-32).
+export const tooltipClearsOnNextTap = true;
+
+// EXPECT-FINDING
+/* The legend keeps its order (M-3). */
+export const legendKeepsOrder = true;
+
+// EXPECT-FINDING
+// Regression guard (NEW-1): the end tick reads the picked day.
+export const endTickReadsPickedDay = true;
+
+// EXPECT-FINDING
+/* The start tick reads the picked day (NEW-12). */
+export const startTickReadsPickedDay = true;

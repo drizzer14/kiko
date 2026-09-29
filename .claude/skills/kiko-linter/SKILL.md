@@ -770,18 +770,11 @@ hand-rolled checker (and fixer)" below. The comment-history check is
 ## `kiko-no-history-id-comment`
 
 Mechanizes kiko-code-style's "Comments: WHY only, never history": no
-task id (`T28`), `Task N`, review-round id (`I1`/`M2`/`N3`/`U7`),
-spec/decision id (`spec 6.2`, `D14`), bug number, `USER-DECISION`,
-`Requirement X`, `controller ruling N`, `Section X.N`/`section X.N`
-(a letter or number before the dot: `Section C.2`, `section 6.2`), a
-`§N` section sign (`§2.1`, `§3`, `§ 3`), `task brief`/
-`parity brief` (with an optional `'s`), `Review Focus N`, `Minor N`,
-`audit N`, `RULING RN`, `fix round N`, `round-N`, `device[- ]feedback`,
-`on-device review`, or a plan citation (`[Dd]ecisions? N`, `separate
-commit(s)`, `later`/`follow-up`/`previous`/`next commit`, `per the plan`,
-`the plan's`, `plan doc`, `by the plan`, `in this plan`, `this plan also`,
-a dated plan name like `2026-09-11 multi-account plan`) left behind in a `src/**`
-comment. Two
+task id, review-round id, spec/decision id, or plan citation left
+behind in a `src/**` comment. The member list is the two
+`pattern-regex` arms of `kiko-no-history-id-comment` in
+`rules/semgrep-prewrite.yml`. Read them for the current set; the
+fixture pair shows each member. Two
 `pattern-regex` arms, one per comment syntax —
 a single regex spanning both `//` and `/* */` would have to
 special-case where a line comment ends and a block comment does not.
@@ -874,6 +867,18 @@ the original id families above) — see the fixture pair's own entries
 negative probe, plus a `UTF-8`/`SHA-256`/`ISO-8601`/`Windows-1251`
 regression lock against real WORD-digit technical vocabulary) for the
 worked example.
+
+**Hyphenated single-letter ids and `NEW-N` (2026-09-29).** The
+single-letter families take an optional hyphen (`T-?\d{1,3}`), so a
+`T-32`, `C-1`, or `M-3` id is caught like `T32`, and the hyphenated
+report family gained `NEW` (`NEW-1`). `D` is the one letter WITHOUT the
+hyphen: "day D-1" is the day before the purchase day D in the
+net-worth and holding-value tests, a real domain token. The leading
+`\b` still keeps `UTF-8`/`UTC-1`/`GMT-5` silent (no boundary before the
+letter), and a `T-shirt`/`U-turn` has no digit after the hyphen.
+`NEW-\d+` needs the hyphen right after `NEW`, so `NEWS-1` does not
+match. Fixture pair: the four hyphen pins at the end of `.bad.ts`
+and item 19 in `.good.ts`.
 
 **`Phase N` is not a family member at all** — a bare `Phase\s\d+`
 collides with ordinary engineering prose no digit-anchoring can fix
@@ -1492,10 +1497,12 @@ mechanizable (see harness-workflow's "Classify every finding").
      `severity: WARNING`. The pre-write guard denies any NEW finding
      whatever its severity, while `check:security` only surfaces
      WARNING (Class B) without failing. Example:
-     `kiko-no-process-env-time-zone-in-test`. Promote it to ERROR when
-     `check:security` reports 0 findings for that rule id (not when a
-     grep is empty). Record the promotion condition in the rule's
-     comment and in `docs/harness/review-to-biome-inventory.md`.
+     `kiko-no-process-env-time-zone-in-test` landed as WARNING with 26
+     findings and was promoted to ERROR after the sweep. Promote such a
+     rule to ERROR when `check:security` reports 0 findings for that
+     rule id (not when a grep is empty). Record the promotion condition
+     in the rule's comment and in
+     `docs/harness/review-to-biome-inventory.md`.
      `metadata.skill` uses `"<skill> › <heading>"`. A finding without
      `metadata.skill` makes the guard deny "could not check".
    - The guard, `check:security`, and `check:rules` load the whole file.
@@ -1507,6 +1514,11 @@ mechanizable (see harness-workflow's "Classify every finding").
    - Add the id to `RULE_IDS_WITH_FIXTURES` in
      `__tests__/pre-write-guard-rules.test.ts`; a path-scoped rule also
      needs `NESTED_FIXTURE_PREFIXES` and `PROBE_DIRECTORIES` entries.
+   - A legitimate existing site in a file the rule targets gets a
+     per-line `// nosemgrep: <id> OVERRIDE(<reason>)`, never a file
+     entry in `paths.exclude`. A whole-file exclude hides the rule from
+     its own motivating file. `paths.exclude` is for a helper's own sink
+     file or a whole out-of-scope tree.
 3. **Node rule.**
    - Write `scripts/checks/<name>.js`: exit 0 clean, exit 1 with
      findings on stdout. Any other exit, a signal, stderr output, or

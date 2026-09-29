@@ -30,13 +30,12 @@ verified usage, not dead weight:
   never imported from source, so Knip's static scan cannot see the usage.
 - **`tsconfig.json` `compilerOptions.types`**: the base
   `@react-native/typescript-config` pins `types: ["jest"]`, which
-  drops the Node ambient globals and module typings that four test
+  drops the Node ambient globals and module typings that three test
   files legitimately use — `src/db/schema.category-overrides.test.ts`
   and `src/categories/repo/categories.repo.test.ts` read
-  `drizzle/migrations` through `node:fs` + `__dirname`,
+  `drizzle/migrations` through `node:fs` + `__dirname`, and
   `__tests__/info-plist.test.ts` reads `ios/Kiko/Info.plist` the same
-  way, and `src/holdings/interest/interest.test.ts` sets `process.env.TZ` to
-  force a DST-observing zone. Jest runs on Node, so these are real,
+  way. Jest runs on Node, so these are real,
   available globals, not a shim; the list is widened to
   `["jest", "node"]` (never to `[]`, which would admit every
   `@types/*` package in `node_modules` and silently weaken the

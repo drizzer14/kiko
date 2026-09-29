@@ -557,49 +557,33 @@ describe('NetWorthLine', () => {
     expect(transform).toEqual([{ translateX: '-50%' }]);
   });
 
-  // Regression guard (NEW-1): the "tomorrow as the end date" symptom exists only
-  // on `main`, where the range bounds were UTC-anchored (an inline `startOfLocalDay`
-  // returning `Date.UTC(...)` plus a fixed `+ DAY_MS - 1`). On this branch the
-  // range is built from `startOfLocalDay`/`endOfLocalDay` (`src/dates/local-day.ts`),
-  // which return TRUE LOCAL instants — a local midnight and a local end-of-day —
-  // so the chart's bucket `t` values are true-local, and formatting them in the
-  // device-local zone (the shipped `formatAxisTime`) already reads the picked
-  // calendar day. This guard drives points through the real range-bound helpers
-  // in a positive-offset zone (Europe/Kyiv, UTC+) and asserts the start and end
-  // ticks read the picked days — proving the bug is already fixed here and
-  // catching a regression (e.g. a stray `timeZone: 'UTC'` on `formatAxisTime`)
-  // that would shift the start tick a day back. It is a guard, not a TDD
-  // RED->GREEN fix: no source change is needed on this branch. Node re-reads TZ
-  // per Date op, so pinning it for the render is enough even when the host runs
-  // in UTC.
-  it('labels the X-axis extremes with the picked local calendar days in a positive-offset zone (NEW-1)', async () => {
-    const originalTz = process.env.TZ;
-    process.env.TZ = 'Europe/Kyiv';
-    try {
-      // The real range bounds a Sep 5 -> Sep 7 2026 pick produces on-device.
-      const fromT = startOfLocalDay(new Date(2026, 8, 5).getTime());
-      const toT = endOfLocalDay(new Date(2026, 8, 7).getTime());
-      const rangePoints: NetWorthPoint[] = [
-        { t: fromT, amount: 100 },
-        { t: startOfLocalDay(new Date(2026, 8, 6).getTime()), amount: 300 },
-        { t: toT, amount: 200 },
-      ];
-      const { getByTestId } = await render(
-        <NetWorthLine points={rangePoints} startReference={200} baseCurrency="USD" />,
-      );
+  // Regression guard: UTC-anchored range bounds (a `Date.UTC(...)` midnight
+  // plus a fixed `+ DAY_MS - 1`) made the axis show tomorrow as the end date.
+  // `startOfLocalDay`/`endOfLocalDay` (`src/dates/local-day.ts`) return true
+  // local instants, so formatting them in the device-local zone (the shipped
+  // `formatAxisTime`) reads the picked calendar day. This guard drives points
+  // through the real range-bound helpers in a positive-offset zone (the suite
+  // runs on Europe/Kyiv) and asserts the start and end ticks read the picked
+  // days, so a stray `timeZone: 'UTC'` on `formatAxisTime` that would shift
+  // the start tick a day back fails here.
+  it('labels the X-axis extremes with the picked local calendar days in a positive-offset zone', async () => {
+    // The real range bounds a Sep 5 -> Sep 7 2026 pick produces on-device.
+    const fromT = startOfLocalDay(new Date(2026, 8, 5).getTime());
+    const toT = endOfLocalDay(new Date(2026, 8, 7).getTime());
+    const rangePoints: NetWorthPoint[] = [
+      { t: fromT, amount: 100 },
+      { t: startOfLocalDay(new Date(2026, 8, 6).getTime()), amount: 300 },
+      { t: toT, amount: 200 },
+    ];
+    const { getByTestId } = await render(
+      <NetWorthLine points={rangePoints} startReference={200} baseCurrency="USD" />,
+    );
 
-      expect(getByTestId('net-worth-line-x-tick-0.00')).toHaveTextContent('05.09');
-      expect(getByTestId('net-worth-line-x-tick-1.00')).toHaveTextContent('07.09');
-      // The new numeric day.month format (this task's change) applies to the
-      // middle label too, not just the two range extremes.
-      expect(getByTestId('net-worth-line-x-tick-0.50')).toHaveTextContent(/^\d{2}\.\d{2}$/);
-    } finally {
-      if (originalTz === undefined) {
-        delete process.env.TZ;
-      } else {
-        process.env.TZ = originalTz;
-      }
-    }
+    expect(getByTestId('net-worth-line-x-tick-0.00')).toHaveTextContent('05.09');
+    expect(getByTestId('net-worth-line-x-tick-1.00')).toHaveTextContent('07.09');
+    // The numeric day.month format applies to the middle label too, not just
+    // the two range extremes.
+    expect(getByTestId('net-worth-line-x-tick-0.50')).toHaveTextContent(/^\d{2}\.\d{2}$/);
   });
 
   // Crossing data at the component level: net worth starts ABOVE the start

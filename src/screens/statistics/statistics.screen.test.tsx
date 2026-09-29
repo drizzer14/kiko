@@ -1527,10 +1527,9 @@ describe('StatisticsScreen', () => {
     const MINUTE = 60_000;
     // The screen's own `rangeFrom` is the shared `startOfLocalDay` — TRUE
     // local midnight of the default range's `from` date, the SAME helper
-    // `defaultDateRange` itself uses to seed `from` (statistics.screen.tsx
-    // used to anchor this to `Date.UTC` instead, matching the rate-history
-    // bucket system — that was the T-32 follow-up bug: a positive-UTC-offset
-    // locale had its first 2-3 local hours of every day silently excluded).
+    // `defaultDateRange` itself uses to seed `from` (a `Date.UTC` anchor would
+    // silently exclude the first 2-3 local hours of every day in a
+    // positive-UTC-offset locale).
     // Mirror the screen's exact calculation here (idempotent since `dateFrom`
     // is already local midnight) so a UTC-offset host doesn't misplace the
     // straddling legs.
@@ -1582,16 +1581,8 @@ describe('StatisticsScreen', () => {
   // (`Date.UTC(y, m, d)` built from the picked day's LOCAL y/m/d) sits 2-3
   // hours AFTER true local midnight. A transaction shortly after true local
   // midnight then falls before that UTC-anchored bound and drops out of the
-  // range entirely — the T-32 follow-up bug this regression test targets.
+  // range entirely.
   describe('local-day range start in a positive-UTC-offset zone (Kyiv)', () => {
-    const originalTz = process.env.TZ;
-    beforeAll(() => {
-      process.env.TZ = 'Europe/Kyiv';
-    });
-    afterAll(() => {
-      process.env.TZ = originalTz;
-    });
-
     it('includes a 00:30 local expense on the range’s first day in the category pie', async () => {
       const MINUTE = 60_000;
       const dateFrom = defaultDateRange(now).from;

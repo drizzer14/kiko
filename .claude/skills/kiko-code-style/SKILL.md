@@ -160,11 +160,10 @@ A comment explains only WHY, and only when the code cannot show it on
 its own — never restate what the code already does. This applies to
 tests and skills too, not only application code.
 
-No history in a comment: no task id (`T28`), no review-round id (`I1`,
-`M2`, `N3`), no spec section number (`spec 6.2`, `D14`), no plan
-citation (`decision N`, `per the plan`, `plan doc`, `separate commit`,
-`in this plan`, a dated plan name),
-and no "changed because …" narrative. That belongs in the commit message that
+No history in a comment: no task id (`T28`), no review-round id (`I1`),
+no spec section number (`spec 6.2`), no plan citation (`per the plan`),
+and no "changed because …" narrative (the full set is the
+`kiko-no-history-id-comment` rule's regex in `rules/semgrep-prewrite.yml`). That belongs in the commit message that
 made the change, or in the skill section that owns the rule — never
 in a comment left behind in the code. Mechanized in `src/**` by the
 `kiko-no-history-id-comment` Semgrep rule (ERROR) — see the
@@ -547,7 +546,7 @@ body calls into — `Alert.alert(t(titleKey), t(messageKey))` — instead
 of repeating that shape at every write-failure `catch` across the
 forms and sync screens. Reach for it first; hand-write `Alert.alert`
 directly only when the copy needs a dynamic value the two static keys
-can't express (see `settings/import-data.screen.tsx`'s
+can't express (see `src/screens/settings/import-data/import-data.screen.tsx`'s
 `runImport`, which folds the caught error into one of two DIFFERENT
 message keys before calling `Alert.alert` itself).
 

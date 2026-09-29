@@ -79,19 +79,12 @@ describe('dayKeyOf', () => {
   });
 
   it('reads the LOCAL calendar date, not the UTC one — Kyiv local midnight on a DST day', () => {
-    const originalTz = process.env.TZ;
-    process.env.TZ = 'Europe/Kyiv';
+    // 2026-03-30 is already Kyiv summer time (DST starts 2026-03-29), so
+    // local midnight on 2026-03-30 is 2026-03-29T21:00:00Z — a naive
+    // UTC-getter read would misresolve this to the 29th.
+    const kyivLocalMidnight = new Date(2026, 2, 30).getTime();
 
-    try {
-      // 2026-03-30 is already Kyiv summer time (DST starts 2026-03-29), so
-      // local midnight on 2026-03-30 is 2026-03-29T21:00:00Z — a naive
-      // UTC-getter read would misresolve this to the 29th.
-      const kyivLocalMidnight = new Date(2026, 2, 30).getTime();
-
-      expect(dayKeyOf(kyivLocalMidnight)).toBe(Date.UTC(2026, 2, 30));
-    } finally {
-      process.env.TZ = originalTz;
-    }
+    expect(dayKeyOf(kyivLocalMidnight)).toBe(Date.UTC(2026, 2, 30));
   });
 });
 
@@ -117,18 +110,11 @@ describe('priceAt', () => {
   });
 
   it('resolves a Kyiv local-midnight DST instant to its own local-day point', () => {
-    const originalTz = process.env.TZ;
-    process.env.TZ = 'Europe/Kyiv';
+    const dstDay = Date.UTC(2026, 2, 30);
+    const dstBook = buildPriceBook([point(AAPL, dstDay, '200.00')]);
+    const kyivLocalMidnight = new Date(2026, 2, 30).getTime();
 
-    try {
-      const dstDay = Date.UTC(2026, 2, 30);
-      const dstBook = buildPriceBook([point(AAPL, dstDay, '200.00')]);
-      const kyivLocalMidnight = new Date(2026, 2, 30).getTime();
-
-      expect(priceAt(dstBook, AAPL, kyivLocalMidnight)?.price).toBe('200.00');
-    } finally {
-      process.env.TZ = originalTz;
-    }
+    expect(priceAt(dstBook, AAPL, kyivLocalMidnight)?.price).toBe('200.00');
   });
 });
 

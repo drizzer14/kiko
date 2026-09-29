@@ -340,7 +340,7 @@ describe('categoryColor', () => {
   });
 });
 
-// T-21: the ten categories `0002_seed_categories.sql` seeds hash onto the
+// The ten categories `0002_seed_categories.sql` seeds hash onto the
 // 8-entry `chartSeries` palette with FOUR collisions (verified: shopping,
 // entertainment, transfers, other all land on #0A84FF). Migration
 // `0017_default_category_colors.sql` gives eight of the ten seeded keys an
@@ -359,7 +359,7 @@ describe('categoryColor', () => {
 // against `SEEDED_CATEGORIES` and every color against
 // `theme.colors.entityColors`; this file owns the chart-layer contract —
 // `resolveCategoryColor` given those real pairs.
-describe('seeded category colors (T-21)', () => {
+describe('seeded category colors', () => {
   const seeded: Record<string, string> = Object.fromEntries(
     readSeedCategoryColors().map(({ key, color }) => [key, color]),
   );
