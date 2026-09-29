@@ -25,7 +25,8 @@ export const ukrainianCardinalCategory = (count: number): PluralCategory => {
   return 'many';
 };
 
-const defaultCategory = (count: number): PluralCategory => (count === 1 ? 'one' : 'other');
+const defaultCategory = (count: number): PluralCategory =>
+  Math.abs(count) === 1 ? 'one' : 'other';
 
 /** The part of `Intl.PluralRules` that i18next calls. */
 class FallbackPluralRules {

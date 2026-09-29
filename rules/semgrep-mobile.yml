@@ -244,6 +244,34 @@ rules:
       - pattern-either:
           - pattern: new TextDecoder(...)
           - pattern: new TextEncoder(...)
+  # Hermes on iOS has no `Intl.PluralRules`. `src/i18n/plural-rules/` installs
+  # a minimal fallback before `i18next.init` that covers only the cardinal
+  # rules of the shipped languages (proven equal to CLDR per shipped locale
+  # by `plural-rules.shipped-locales.test.ts`), so any other direct use
+  # either crashes on the device or silently gets the one-or-other rule.
+  # Plurals go through i18next's `count`; a new plural need goes into that
+  # module, which is the rule's one excluded path. Test files are exempted
+  # for the same reason as the TextDecoder rule above: Jest runs on Node,
+  # which has the real global, and a test that simulates Hermes must save,
+  # delete and restore it (`src/i18n/init/init.plural-rules.test.ts`).
+  - id: kiko-no-direct-intl-plural-rules
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `Intl.PluralRules` is banned outside src/i18n/plural-rules/ — Hermes on
+      iOS has none, and the installed fallback covers only the shipped
+      languages' cardinal rules. Use i18next's `count` for a plural string, or
+      add the rule you need to src/i18n/plural-rules/.
+    paths:
+      exclude:
+        - "src/i18n/plural-rules/**"
+        - "*.test.ts"
+        - "*.test.tsx"
+    patterns:
+      - pattern-either:
+          - pattern: Intl.PluralRules
+          - pattern: $GLOBAL.Intl.PluralRules
+          - pattern: const { PluralRules } = Intl;
   # ---- Class B: override-eligible finding (severity WARNING) ----
   - id: kiko-webview-injectedjs-dynamic
     languages: [typescript, javascript]
