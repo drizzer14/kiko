@@ -989,12 +989,16 @@ inferred type at all.
 ## JSX spread: no `{}` fallback
 
 A JSX spread never falls back to an empty object (`{...(x ?? {})}`,
-`{...(on ? x : {})}`), because TypeScript reads `X | {}` as X with every
+`{...(x || {})}`, `{...(on ? x : {})}` in either branch order), because
+TypeScript reads `X | {}` as X with every
 prop optional and stops enforcing a discriminated union's
 required-together props; fall back to a named literal that sets the
 discriminant instead (`NO_SWITCH = { trailing: undefined }` in
 `reminder-row.component.tsx`). Mechanized:
-`kiko-no-empty-object-jsx-spread` (`rules/semgrep-prewrite.yml`).
+`kiko-no-empty-object-jsx-spread` (`rules/semgrep-prewrite.yml`). Not
+mechanized: a spread of `X | undefined` with no fallback
+(`{...foldMap(...)}`) loses the tie the same way but needs types to
+spot, so it stays a review item.
 
 ## Externalize hardcoded config
 

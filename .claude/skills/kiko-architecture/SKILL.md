@@ -571,7 +571,9 @@ gate says there is nothing to do.
   created.
 - **Reminders re-plan**: `syncReminders` reads
   `remindersRepo.hasAnyQuery()` (`LIMIT 1`) before any plan-input query
-  — see "Reminders (local notifications)".
+  — see "Reminders (local notifications)". `drainReminderResponses` runs
+  before it and touches the database only when the native queue holds
+  responses (`recordEngagements` returns early on an empty list).
 
 ## Bulk insert: chunk when row count is caller- or API-controlled
 
@@ -1659,7 +1661,9 @@ what a change must keep.
   `kiko.reminder` category (the one "Tomorrow" action) and the paused
   notice `kiko.reminder.notice` (no action); the ids are
   `REMINDER_CATEGORY_IDENTIFIER`/`NOTICE_CATEGORY_IDENTIFIER` in
-  `reminders-native.ts` and must equal the Swift ones. Then it gates
+  `reminders-native.ts` and must equal
+  `reminderCategoryIdentifier`/`noticeCategoryIdentifier` in
+  `ios/Kiko/Reminders/KikoRemindersCenter.swift`. Then it gates
   on `hasAnyQuery` (no
   reminders -> `replaceRequests([], [])` and no plan-input query).
   Then it syncs `notifications_deliverable_since` from
@@ -1680,10 +1684,13 @@ what a change must keep.
   the queue no longer holds them. The `onResponse` subscribe loads the
   native module synchronously, so it is wrapped in `eitherSync`: on a
   binary without the module it logs once, gets a no-op `remove`, and
-  `drainReminderResponses` then also rejects on every trigger, so each one
-  logs "re-plan failed" and plans nothing, without crashing the app
-  (`use-reminder-scheduler.lazy-load.test.ts`).
-- **Tap routing.** Every re-plan hands the responses its drain returned to
+  on a real binary without the module, `drainReminderResponses` then also
+  rejects on every trigger, so each one logs "re-plan failed" and plans
+  nothing, without crashing the app. `use-reminder-scheduler.lazy-load.test.ts`
+  pins only the mount: no throw, one log, and the other triggers still run
+  (it mocks the scheduler).
+- **Tap routing.** Every re-plan whose drain succeeded hands the responses
+  it returned to
   `routeLatestResponse(responses, navigationRef)`
   (`src/reminders/routing/`), so every trigger routes. It routes the latest `open` response (the
   last one in the queue, which appends in tap order); a snooze never
@@ -1691,11 +1698,11 @@ what a change must keep.
   or deleted with its account) routes nowhere. `routeFor` is pure: an
   import reminder opens `AccountDetail` with `intent: 'importStatement'`;
   add transactions with exactly ONE open holding, of a type that takes
-  transactions (`!isLedgerlessHoldingType(type)`, from
-  `@kiko/holdings/holding-descriptor`: card, cash, crypto asset, jar),
-  opens `TransactionForm { holdingId }` above `AccountDetail`, and
-  otherwise `AccountDetail` only (one open deposit, bond, property item,
-  metal or loan included);
+  transactions (`!isLedgerlessHoldingType(type)`,
+  `src/holdings/holding-descriptor/holding-descriptors.ts`; grep
+  `ledgerless: true` for the current ledgerless set), opens
+  `TransactionForm { holdingId }` above `AccountDetail`, and otherwise
+  `AccountDetail` only (a single ledgerless holding included);
   the paused notice opens `AccountReminders` above `AccountDetail`. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
   Accounts stack: the routes it has now (or `Accounts` while the tab has
@@ -1704,7 +1711,8 @@ what a change must keep.
   the stack reads them (`route-response.navigator.test.tsx`, on the real
   routers). The tapped account's page, when already on top, takes the new
   params in place. Before `navigationRef.isReady()` (a tap that launched
-  the app) the route waits for the container's `ready` event.
+  the app) the route waits for the container's `ready` event. Routes that
+  waited all navigate in the same tick, so the newest one's stack wins.
   `navigationRef` (`src/navigation/navigation-ref/`) is the
   `NavigationContainer` ref in `AppRoot`, below `LockGate`, so nothing
   routes before unlock. No URL scheme and no `linking` prop. On
