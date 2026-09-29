@@ -28,6 +28,7 @@ import TimeField from '@kiko/screens/forms/time-field';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import WeekdayField from '@kiko/screens/forms/weekday-field';
+import type { ReminderFormParams } from '@kiko/navigation/types';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
@@ -36,14 +37,17 @@ import { useNotificationPreAlert } from '@kiko/reminders/permission';
 import SelectField from '@kiko/design-system/components/select-field';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
-import type { AccountsStackParamList, ReminderFormParams } from '@kiko/navigation/types';
 import NotificationPreAlertSheet from '@kiko/design-system/components/notification-pre-alert-sheet';
 
-type ReminderFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'ReminderForm'>;
+// Registered in both the Accounts and Settings stacks, so the props name only
+// what the form reads, which either stack's props satisfy.
+type ReminderFormScreenProps = {
+  route: { params: ReminderFormParams };
+  navigation: { goBack: () => void; setOptions: (options: { title: string }) => void };
+};
 
 type ReminderFrequency = ReminderSchedule['frequency'];
 

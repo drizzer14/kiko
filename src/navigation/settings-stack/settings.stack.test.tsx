@@ -58,4 +58,10 @@ describe('SettingsStack', () => {
     expect(titles.ExportData).toBe('Export Data');
     expect(titles.ImportData).toBe('Import Data');
   });
+
+  it('registers the reminders list and the reminder form it opens', () => {
+    const titles = titleByScreen();
+    expect(titles.Reminders).toBe('Reminders');
+    expect(titles.ReminderForm).toBe('New Reminder');
+  });
 });
