@@ -1668,9 +1668,35 @@ what a change must keep.
 - **Mount.** `useReminderScheduler()`
   (`src/reminders/use-reminder-scheduler/`) runs in `AppRoot`
   (`App.tsx`), below `MigrationsGate` and `LockGate`. It re-plans on
-  mount, on AppState `active` and `background`, and on an i18n
-  `languageChanged` event. It is single-flight with at most one queued
-  follow-up via `replanReminders`, and it never rejects (a failure is logged).
+  mount, on AppState `active` and `background`, on an i18n
+  `languageChanged` event, and on `remindersNative.onResponse` (a tap
+  that lands after the `active` re-plan drained the queue). It is
+  single-flight with at most one queued follow-up via `replanReminders`,
+  and it never rejects (a failed sync or route is logged).
+- **Tap routing.** Every re-plan hands the responses its sync drained to
+  `routeLatestResponse(responses, navigationRef)`
+  (`src/reminders/routing/`), so every trigger routes and nothing else
+  reads the native queue. It routes the latest `open` response (by
+  `respondedAt`); a snooze never routes. A reminder that is gone (deleted,
+  or deleted with its account) routes nowhere. `routeFor` is pure: an
+  import reminder opens `AccountDetail` with `intent: 'importStatement'`;
+  add transactions with exactly ONE open holding opens `TransactionForm
+  { holdingId }` above `AccountDetail`, and otherwise `AccountDetail` only;
+  the paused notice opens `AccountReminders` above `AccountDetail`. The
+  navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
+  Accounts stack: the routes it has now (or `Accounts` while the tab has
+  not mounted), then the new ones. Two nested navigates back to back lose
+  the first, because the second replaces the tab's nested params before
+  the stack reads them (`route-response.navigator.test.tsx`, on the real
+  routers). The tapped account's page, when already on top, takes the new
+  params in place. Before `navigationRef.isReady()` (a tap that launched
+  the app) the route waits for the container's `ready` event.
+  `navigationRef` (`src/navigation/navigation-ref/`) is the
+  `NavigationContainer` ref in `AppRoot`, below `LockGate`, so nothing
+  routes before unlock. No URL scheme and no `linking` prop. On
+  `intent: 'importStatement'`, `AccountDetail` waits for its loading gate,
+  clears the param, then opens the file picker once, on a bank account
+  only.
 - **Account delete.** `accountsRepo.remove` deletes the account's
   `reminders` rows in the same transaction, before the account row (NO
   ACTION FK), next to the `sync_state` delete.
