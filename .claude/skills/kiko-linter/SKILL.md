@@ -544,6 +544,29 @@ reasoning.
   the enclosing statement, so an `EXPECT-FINDING` pin cannot land there
   (`kiko-no-hand-built-selectable-row`'s fixture cannot pin at all).
 
+## Semgrep facts verified on 2026-09-29 (`kiko-no-needless-async-either-thunk`)
+
+- Semgrep IGNORES the `async` keyword of an arrow function in a
+  pattern: `const $F = async () => $B` also matches
+  `const f = () => …`, and `either(async () => $F())` also matches
+  `either(() => f())`. `async function $F(...) { ... }` DOES require
+  the keyword. To require an async arrow, capture the initializer
+  (`const $F = $INITIALIZER;`) and filter it with
+  `metavariable-regex` (`^(async\b|useCallback\(\s*async\b)`).
+- A `pattern-inside` that opens with `...` before a common statement
+  (`...` / `const $F = $INITIALIZER;` / `...`) is quadratic on a large
+  file: each `const` opens a range on both sides. It ran 63 s on
+  `transaction-form.screen.tsx` (2818 lines) and the guard denied
+  "could not check" on every write to it. Without the leading `...`
+  it ran 2 s. Drop the leading `...` whenever the declaration must
+  come before the use anyway (a `const`). Keep it only for a rare
+  statement that hoists (`async function`). Run the guard speed check
+  in "Adding a pre-write guard rule" for every new statement-sequence
+  rule; the fixtures are too small to show this.
+- `either(async (...$REST) => $F(...$REST))` matches nothing when the
+  target's rest parameter has a type annotation
+  (`(...rest: []) => …`); write `(...$REST: $TYPE)`.
+
 ## Class A vs Class B
 
 `rules/semgrep-mobile.yml` groups rules into two severities, both

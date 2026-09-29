@@ -441,7 +441,19 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
   (`either(async () => …)`); otherwise that throw escapes `either`
   entirely instead of becoming a Left. `eitherSync(() => R)` has no
   such gap — it wraps the call in a real `try`/`catch`, so a plain
-  synchronous thunk is fine. Unwrap the result with `bifoldr`/
+  synchronous thunk is fine. The other way round: when the function is
+  itself `async`, it already turns its own throw into a rejection, so
+  pass it directly (`either(drainReminderResponses)`, not
+  `either(async () => drainReminderResponses())` or
+  `either(async () => await drainReminderResponses())`). Keep the
+  wrapper for a plain function that can throw synchronously
+  (`account-form.screen.tsx`'s `ensureAccount`), for a call that passes
+  arguments, and for a method call (`either(repo.load)` loses `this`).
+  The Semgrep rule `kiko-no-needless-async-either-thunk` enforces this
+  when the function is declared `async` in the same file
+  (`async function f`, `const f = async ...`, or
+  `const f = useCallback(async ...)`). It cannot see whether an
+  imported function or a parameter is async, so review those by hand. Unwrap the result with `bifoldr`/
   `bifoldMap` first (see above); reach for `isLeft` + `bifold` only
   once the Left branch itself throws or returns early. Normalize the
   left channel with the **two-argument** `first(result, toError)` —

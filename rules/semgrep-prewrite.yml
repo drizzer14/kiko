@@ -1118,3 +1118,57 @@ rules:
       - metavariable-regex:
           metavariable: $FALLBACK
           regex: '^\{\s*\}$'
+  # kiko-code-style's "`fnts` FIRST": a thunk that only calls one function is
+  # a needless wrapper around it. fnts' `either(value)` runs `value()` OUTSIDE
+  # its own promise chain, so `either(f)` catches the same failures as
+  # `either(async () => f())` only when `f` itself is `async`: a plain `f`
+  # that throws synchronously escapes `either(f)` but becomes a Left inside
+  # the async wrapper (account-form's `ensureAccount` needs its wrapper). So
+  # the rule fires only for a bare-identifier `f` declared `async` in the same
+  # file: `async function f`, `const f = async ...`, or
+  # `const f = useCallback(async ...)`. An imported `f` or a parameter cannot
+  # be proven async here, so it stays a review item. Semgrep ignores the
+  # `async` keyword of an arrow in a pattern (`const $F = async () => $B`
+  # matches a plain arrow too, and the thunk patterns below also match a
+  # plain `() => f()`, which is the same needless wrapper), hence the
+  # captured initializer plus `metavariable-regex`. The identifier regex on
+  # `$F` keeps a method call (`repo.load()`, which would lose `this`) out.
+  # The `const` arm has no leading `...`: with it, every `const` in a large
+  # screen opened a statement range on both sides, and Semgrep ran 63 s on
+  # transaction-form.screen.tsx (a guard "could not check" deny); without
+  # it, 2 s. A `const` cannot be used before its declaration anyway, so only
+  # the hoisted `async function` arm keeps it.
+  # ERROR from the start: the tree had no finding when the rule landed.
+  - id: kiko-no-needless-async-either-thunk
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      This thunk passed to `either` only calls `$F`, which is declared
+      `async` in this file, so the wrapper adds nothing: `either($F)` calls it
+      the same way and captures the same rejections as a Left — see
+      kiko-code-style's "`fnts` FIRST".
+    metadata:
+      fix: "Pass the async function itself: `either(f)` instead of `either(async () => f())` or `either(async () => await f())`."
+      skill: "kiko-code-style › `fnts` FIRST"
+    patterns:
+      - pattern-either:
+          - pattern: "either(async () => $F())"
+          - pattern: "either(async () => await $F())"
+          - pattern: "either(async () => { return $F(); })"
+          - pattern: "either(async () => { return await $F(); })"
+          - pattern: "either(async (...$REST: $TYPE) => $F(...$REST))"
+      - metavariable-regex:
+          metavariable: $F
+          regex: '^[A-Za-z_$][\w$]*$'
+      - pattern-either:
+          - pattern-inside: |
+              ...
+              async function $F(...) { ... }
+              ...
+          - patterns:
+              - pattern-inside: |
+                  const $F = $INITIALIZER;
+                  ...
+              - metavariable-regex:
+                  metavariable: $INITIALIZER
+                  regex: '^(async\b|useCallback\(\s*async\b)'

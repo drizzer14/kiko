@@ -56,6 +56,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-process-env-time-zone-in-test',
   'kiko-no-confirm-sheet-in-form',
   'kiko-no-empty-object-jsx-spread',
+  'kiko-no-needless-async-either-thunk',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
