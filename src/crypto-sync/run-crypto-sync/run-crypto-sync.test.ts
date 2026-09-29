@@ -69,12 +69,16 @@ describe('runCryptoSync', () => {
 
   it('still resolves with the balance result when the transaction import fails', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    mockSyncBinanceTransactions.mockRejectedValue(new Error('Too much request weight used'));
+    mockSyncBinanceTransactions.mockRejectedValue(new Error('Too much request weight used SECRET'));
 
     const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
 
     expect(result).toEqual({ syncedHoldings: 1 });
-    expect(warn).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('[binance sync] transaction history import failed', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
     warn.mockRestore();
   });
 

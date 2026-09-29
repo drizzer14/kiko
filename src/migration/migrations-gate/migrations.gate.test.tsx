@@ -150,7 +150,7 @@ describe('MigrationsGate', () => {
   });
 
   it('still renders children when the dedup-key upgrade rejects, rather than sending the whole launch to the error state', async () => {
-    mockUpgradeStoredDedupKeys.mockRejectedValue(new Error('disk full'));
+    mockUpgradeStoredDedupKeys.mockRejectedValue(new Error('disk full SECRET'));
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { findByText, queryByTestId } = await render(
@@ -166,11 +166,16 @@ describe('MigrationsGate', () => {
     // retries — this gate just must not block on it meanwhile.
     expect(await findByText('ready')).toBeTruthy();
     expect(queryByTestId('migrations-gate-error')).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[migrations-gate] dedup-key upgrade failed, will retry next launch',
+      { name: 'Error', code: undefined },
+    );
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('SECRET');
     warnSpy.mockRestore();
   });
 
   it('still renders children when the import-time rezone rejects, rather than sending the whole launch to the error state', async () => {
-    mockRezoneImportTimes.mockRejectedValue(new Error('disk full'));
+    mockRezoneImportTimes.mockRejectedValue(new Error('disk full SECRET'));
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { findByText, queryByTestId } = await render(
@@ -185,6 +190,11 @@ describe('MigrationsGate', () => {
     // new-convention row could land next to an un-rezoned one.
     expect(await findByText('ready')).toBeTruthy();
     expect(queryByTestId('migrations-gate-error')).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[migrations-gate] import-time rezone failed, will retry next launch',
+      { name: 'Error', code: undefined },
+    );
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('SECRET');
     warnSpy.mockRestore();
   });
 

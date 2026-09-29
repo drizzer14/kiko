@@ -251,7 +251,7 @@ describe('binanceProvider — Funding holding', () => {
 
   it('skips ONLY the Funding holding on error; Spot and Earn still write', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '1', locked: '0' }]); // Spot 1
-    deps.fetchFundingAsset.mockRejectedValue(new Error('Binance request failed: 401'));
+    deps.fetchFundingAsset.mockRejectedValue(new Error('Binance request failed: 401 SECRET'));
     deps.fetchFlexiblePosition.mockResolvedValue({
       rows: [{ asset: 'BTC', totalAmount: '0.1' }],
       total: 1,
@@ -259,12 +259,19 @@ describe('binanceProvider — Funding holding', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     let balances: Awaited<ReturnType<typeof binanceProvider.fetchBalances>>;
+    let loggedCalls: string;
     try {
       balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+      expect(warn).toHaveBeenCalledWith('[binance sync] skipped the funding wallet', {
+        name: 'Error',
+        code: undefined,
+      });
+      loggedCalls = JSON.stringify(warn.mock.calls);
     } finally {
       warn.mockRestore();
     }
 
+    expect(loggedCalls).not.toContain('SECRET');
     // No Funding holding is written — its existing balance (if any) is left
     // untouched rather than clobbered with a fabricated zero.
     expect(byKey(balances, 'BTC:funding')).toBeUndefined();

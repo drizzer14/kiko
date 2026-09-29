@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import { logFailure } from '@kiko/diagnostics';
 import either, { bifold, isLeft } from 'fnts/either';
 
 import { type BalanceSyncResult, runBalanceSync } from '../sync';
@@ -22,8 +23,7 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
   const imported = await either(() => syncBinanceTransactions({ targetAccountId }));
 
   if (isLeft(imported)) {
-    // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) the balance sync succeeded; log that this run could not import its Binance transaction history so a device log shows what was dropped.
-    console.warn('[binance sync] transaction history import failed', bifold(imported));
+    logFailure('[binance sync] transaction history import failed', bifold(imported));
   }
 
   return result;

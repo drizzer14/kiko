@@ -440,8 +440,10 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   path marks the key applied (`appliedKey.current = myKey`) exactly
   like the success path does, verified in `use-live-query.test.ts`'s
   "clears isLoading when the first query fails" case — and now also
-  LOGS the failure (`console.warn('[useLiveQuery] query failed', sql,
-  error)`, behind a justified `noConsole` OVERRIDE) — previously a
+  LOGS the failure through `logFailure` (`@kiko/diagnostics`), tagged
+  `[useLiveQuery] query failed: <sql>`: the placeholder text from
+  `toSQL()` and the error's name and code, never the params or the
+  message (kiko-compliance "5.1.5 / data storage") — previously a
   rejected query set `error` with no diagnostic anywhere a device log
   could see, and no screen read `error` at all. So a `useDataReady`
   gate never spins forever on a genuinely failed query; it just never
@@ -1347,8 +1349,9 @@ restated here:
   wallet runs through `walletSatoshis`, which returns `null` (NOT 0) on a
   missing API-key permission, a throttle, or a malformed body: `appendWallet`
   then OMITS that holding, leaving any existing one at its last-good balance
-  rather than clobbering it with a fabricated 0, and logs one `console.warn`
-  (behind a justified `noConsole` OVERRIDE). A successful read of 0 writes 0
+  rather than clobbering it with a fabricated 0, and logs one `logFailure`
+  (`@kiko/diagnostics`: the wallet in the tag, the error's name and code
+  only). A successful read of 0 writes 0
   ONLY when a holding for that wallet already exists (to zero an emptied
   wallet); an all-zero never-used wallet creates no empty holding. A Spot-only
   key still writes the Spot holding.
@@ -1382,8 +1385,8 @@ SEPARATE step imports the ledger: `syncBinanceTransactions`
 (`src/crypto-sync/binance/binance.transactions.ts`), which
 `runCryptoSync`'s Binance arm runs AFTER the balance sync so the Spot
 holding already exists. It is SUPPLEMENTARY — the arm captures it in an
-`either` and only logs a diagnostic `console.warn` (behind a justified
-`noConsole` OVERRIDE) on failure, so a 429 or a permission gap never
+`either` and only logs the failure through `logFailure`
+(`@kiko/diagnostics`, name and code only), so a 429 or a permission gap never
 fails the balance sync. TRADES are deliberately out of scope for this
 milestone; only DEPOSIT and WITHDRAWAL history is imported.
 

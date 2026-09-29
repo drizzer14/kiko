@@ -228,14 +228,18 @@ describe('useAutoSync', () => {
   });
 
   it('swallows an error thrown while reading the connected accounts (but still logs it)', async () => {
-    mockListQuery.mockRejectedValue(new Error('read boom'));
+    mockListQuery.mockRejectedValue(new Error('read boom SECRET'));
 
     await expect(renderHook(() => useAutoSync())).resolves.toBeDefined();
 
     await waitFor(() => expect(mockListQuery).toHaveBeenCalled());
     await waitFor(() =>
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('auto-sync'), expect.anything()),
+      expect(warnSpy).toHaveBeenCalledWith('[refresh-market-data] auto-sync refresh failed', {
+        name: 'Error',
+        code: undefined,
+      }),
     );
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('SECRET');
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
     expect(mockCryptoRun).not.toHaveBeenCalled();

@@ -98,10 +98,17 @@ describe('runLoanAutoLink', () => {
   });
 
   it('swallows a read failure and never rejects', async () => {
-    mockLoanHoldingsQuery.mockRejectedValue(new Error('db unavailable'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockLoanHoldingsQuery.mockRejectedValue(new Error('db unavailable SECRET'));
 
     await expect(runLoanAutoLink(NOW)).resolves.toBeUndefined();
     expect(mockSetAutoLoanLinks).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('[loan-auto-link] failed', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+    warn.mockRestore();
   });
 
   it('defaults now to the current time when not given', async () => {

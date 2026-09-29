@@ -2,6 +2,7 @@ import { identity } from 'fnts';
 import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
+import { logFailure } from '@kiko/diagnostics';
 import either, { bifoldMap } from 'fnts/either';
 
 import type { BalanceProvider, ProviderBalance } from '../provider';
@@ -214,8 +215,7 @@ const walletSatoshis = async (
   return bifoldMap(
     attempt,
     (error) => {
-      // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) one wallet's failure (a missing API-key permission, a throttle) must skip only that wallet, not break the whole Binance sync; log which one so a device log shows what was dropped.
-      console.warn(`[binance sync] skipped the ${wallet} wallet`, error);
+      logFailure(`[binance sync] skipped the ${wallet} wallet`, error);
 
       return null;
     },

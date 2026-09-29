@@ -1,14 +1,10 @@
 import { minOf } from '@kiko/numbers';
+import { logFailure } from '@kiko/diagnostics';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
 
 import { MS_PER_DAY, matchLoanPayments, WINDOW_BEFORE_DAYS } from '../payment-matcher';
-
-const warnLoanAutoLinkFailure = (reason: unknown): void => {
-  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a failed loan-payment auto-link has no UI surface of its own — log it so a device log shows what silently failed; the next sync/import retries it, same precedent as refresh-market-data.ts's warnRefreshFailure.
-  console.warn('[loan-auto-link] failed', reason);
-};
 
 /**
  * Runs the loan-payment auto-link matcher (`src/loans/payment-matcher/`)
@@ -102,6 +98,6 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
       })),
     );
   } catch (error) {
-    warnLoanAutoLinkFailure(error);
+    logFailure('[loan-auto-link] failed', error);
   }
 };

@@ -1210,3 +1210,34 @@ rules:
       - pattern-regex: (?m)^[ \t]*(?:import|export)\s+(?!type\b)[^;'"]*?\bfrom\s+['"]react-native-calendars['"]
       - pattern-regex: (?m)^[ \t]*import\s+['"]react-native-calendars['"]
       - pattern-regex: \b(?:require|import)\(\s*['"]react-native-calendars['"]\s*\)
+  # kiko-compliance's "5.1.5 / data storage": an error object's message and
+  # cause can carry user data, and React Native forwards every console level
+  # to os_log in Release. A `metavariable-pattern` with `pattern-not: "{...}"`
+  # does not drop an object-literal argument, so the argument's own text is
+  # filtered instead: a string, template, or object literal passes; anything
+  # else (an identifier, a call, a member) fires. `log-failure.ts` is the
+  # sanitizing sink, which passes its `tag` parameter through. Tests are
+  # excluded because they log nothing that ships. ERROR from the start: the
+  # sweep removed every finding in the same commit.
+  - id: kiko-no-raw-error-in-console
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A `console.*` argument that is not a string, template, or object
+      literal can be an error object: a DrizzleQueryError's message carries
+      the SQL params (bank descriptions, amounts), and React Native logs every
+      level to os_log in Release. Log a failure with `logFailure(tag, error)`
+      from `@kiko/diagnostics` (name and code only).
+    metadata:
+      fix: "Replace console.*(…, error) with logFailure('[tag] what failed', error) from @kiko/diagnostics; pass only literals (a string/template tag, an object literal of counts) to console.* directly."
+      skill: "kiko-compliance › 5.1.5 / data storage — secrets never in `.env`, logs, or the DB"
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/diagnostics/log-failure.ts"
+    patterns:
+      - pattern: console.$M(..., $ARG, ...)
+      - metavariable-regex:
+          metavariable: $ARG
+          regex: ^(?!['"`{])

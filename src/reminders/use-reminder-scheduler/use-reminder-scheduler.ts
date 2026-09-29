@@ -1,6 +1,7 @@
 import { identity } from 'fnts';
 import { useEffect } from 'react';
 import { i18n } from '@kiko/i18n/init';
+import { logFailure } from '@kiko/diagnostics';
 import { AppState, type AppStateStatus } from 'react-native';
 import { routeLatestResponse } from '@kiko/reminders/routing';
 import { navigationRef } from '@kiko/navigation/navigation-ref';
@@ -12,8 +13,7 @@ import { type NotificationResponse, remindersNative } from '@kiko/reminders/nati
 const REPLAN_STATES: readonly AppStateStatus[] = ['active', 'background'];
 
 export const warnReplanFailure = (reason: unknown): void => {
-  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a failed reminder re-plan has no UI surface; log it so a device log shows what failed, and the next trigger re-plans again
-  console.warn('[reminders] re-plan failed', reason);
+  logFailure('[reminders] re-plan failed', reason);
 };
 
 const warnOnFailure = async (task: () => Promise<void>): Promise<void> => {
@@ -91,8 +91,7 @@ const subscribeToResponses = (): Subscription =>
   bifoldMap(
     eitherSync<unknown, Subscription>(() => remindersNative.onResponse(replanReminders)),
     (reason) => {
-      // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a missing tap listener has no UI surface; log it so a device log shows why a warm tap does not re-plan
-      console.warn('[reminders] notification response listener unavailable', reason);
+      logFailure('[reminders] notification response listener unavailable', reason);
 
       return NO_SUBSCRIPTION;
     },

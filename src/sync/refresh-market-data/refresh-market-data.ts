@@ -4,6 +4,7 @@ import {
   type RefreshDeps,
 } from '@kiko/rates/rates-refresh';
 import { ratesRepo } from '@kiko/rates/repo';
+import { logFailure } from '@kiko/diagnostics';
 import { refreshMetalPrices } from '@kiko/prices/metal-refresh';
 import either, { bifold, isLeft, left, right, type Either } from 'fnts/either';
 
@@ -39,14 +40,13 @@ export type RefreshMarketDataDeps = {
 };
 
 /**
- * The one `console.warn` call site for a failed rate or metal refresh — the
- * narrowest default: log and return a Left only, no UI and no new string; a
- * banner/toast would add translation keys and need key review. Exported so
- * a test can spy on `console.warn` directly rather than parse output.
+ * The one log call site for a failed rate or metal refresh — the narrowest
+ * default: log and return a Left only, no UI and no new string; a
+ * banner/toast would add translation keys and need key review. The next
+ * refresh tries again.
  */
 export const warnRefreshFailure = (step: RefreshStep, reason: unknown): void => {
-  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a failed rate/metal refresh has no UI surface — log it so a device log shows what silently failed; the next refresh tries again (precedent: run-crypto-sync.ts's identical OVERRIDE for a swallowed Binance transaction-import failure).
-  console.warn(`[refresh-market-data] ${step} refresh failed`, reason);
+  logFailure(`[refresh-market-data] ${step} refresh failed`, reason);
 };
 
 /**

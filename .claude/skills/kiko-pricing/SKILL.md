@@ -683,7 +683,8 @@ then arrives sees the lock already free and starts a SECOND fan-out
 `refreshRates`'s own `'failed'`/`'partial'` `RatesRefreshOutcome`, mirroring
 `BackfillStatus`) is no longer silently dropped: it is collected,
 logged through the ONE exported `warnRefreshFailure(step, reason)`
-(a justified `console.warn`, no UI, no new string — the narrowest
+(through `logFailure` from `@kiko/diagnostics`, name and code only; no
+UI, no new string — the narrowest
 default), and returned as a `Left`. `throttled` reads
 `ratesRepo.latestFetchedAt()` first (a failed read is logged too and
 the run proceeds unthrottled); `metals` gates whether

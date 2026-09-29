@@ -561,6 +561,15 @@ verified usage, not dead weight:
   covers any test that imports the root. The flat fixture pair proves the
   rule in `check:rules`.
 
+- **`kiko-no-raw-error-in-console` (`rules/semgrep-prewrite.yml`) excludes
+  `src/diagnostics/log-failure.ts`, `*.test.ts`, and `*.test.tsx`.**
+  `log-failure.ts` is the sanitizing sink: its one `console.warn(tag, { name,
+  code })` passes the `tag` parameter, an identifier, which the rule cannot
+  tell from an error object. `log-failure.test.ts` pins what the sink logs
+  (name and code only; a planted secret in the message never reaches the
+  spy). Tests are excluded because a test's console output never ships in
+  the app. The flat fixture pair proves the rule in `check:rules`.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`

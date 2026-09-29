@@ -250,11 +250,16 @@ describe('useReminderScheduler', () => {
 
   it('logs a failed route and still re-plans on the next trigger', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    mockRouteLatestResponse.mockRejectedValueOnce(new Error('database is locked'));
+    mockRouteLatestResponse.mockRejectedValueOnce(new Error('database is locked SECRET'));
 
     await renderHook(() => useReminderScheduler());
 
     expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[reminders] re-plan failed', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
 
     await transition('active');
 

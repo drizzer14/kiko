@@ -40,7 +40,10 @@ describe('useReminderScheduler on a binary without the native module', () => {
 
     expect(mockSyncReminders).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]?.[1])).toContain('KikoReminders is not in this binary');
+    expect(warn).toHaveBeenCalledWith('[reminders] notification response listener unavailable', {
+      name: 'Error',
+      code: undefined,
+    });
 
     await unmount();
 

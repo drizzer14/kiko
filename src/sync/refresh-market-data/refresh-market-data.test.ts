@@ -40,7 +40,10 @@ describe('refreshMarketData', () => {
     expect(isLeft(result)).toBe(true);
     expect(bifold(result)).toEqual([{ step: 'rates', reason: failed }]);
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('rates'), failed);
+    expect(warnSpy).toHaveBeenCalledWith('[refresh-market-data] rates refresh failed', {
+      name: 'object',
+      code: undefined,
+    });
   });
 
   it('resolves a Left with one failure and one warn when the rates outcome is partial', async () => {
@@ -52,11 +55,14 @@ describe('refreshMarketData', () => {
 
     expect(isLeft(result)).toBe(true);
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('rates'), partial);
+    expect(warnSpy).toHaveBeenCalledWith('[refresh-market-data] rates refresh failed', {
+      name: 'object',
+      code: undefined,
+    });
   });
 
   it('resolves a Left with one failure and one warn when refreshMetalPrices rejects', async () => {
-    const metalsError = new Error('nbu metals offline');
+    const metalsError = new Error('nbu metals offline SECRET');
     const result = await refreshMarketData(
       { throttled: true, metals: true },
       makeDeps({ refreshMetalPrices: () => Promise.reject(metalsError) }),
@@ -64,7 +70,11 @@ describe('refreshMarketData', () => {
 
     expect(isLeft(result)).toBe(true);
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('metals'), metalsError);
+    expect(warnSpy).toHaveBeenCalledWith('[refresh-market-data] metals refresh failed', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('SECRET');
   });
 
   it('never calls refreshMetalPrices when metals is false', async () => {
@@ -147,7 +157,10 @@ describe('refreshMarketData', () => {
 
     expect(receivedLastRefreshAt).toBeNull();
     expect(isLeft(result)).toBe(true);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('rates'), readError);
+    expect(warnSpy).toHaveBeenCalledWith('[refresh-market-data] rates refresh failed', {
+      name: 'Error',
+      code: undefined,
+    });
   });
 
   it('resolves (never rejects) when refreshRates itself rejects', async () => {
@@ -159,7 +172,10 @@ describe('refreshMarketData', () => {
       ),
     ).resolves.toBeDefined();
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('rates'), runError);
+    expect(warnSpy).toHaveBeenCalledWith('[refresh-market-data] rates refresh failed', {
+      name: 'Error',
+      code: undefined,
+    });
   });
 
   // The two steps read/write disjoint tables (currency_rates vs price_points),
