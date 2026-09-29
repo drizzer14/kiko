@@ -1013,7 +1013,7 @@ describe('StatementImportScreen — Done closes the sheet before navigating', ()
     expect(view.navigation.goBack).not.toHaveBeenCalled();
   });
 
-  it('navigates once the sheet reports onClosed', async () => {
+  it('navigates once the sheet reports onClosed, asking the account page for the import reminder offer', async () => {
     const view = await importSuccessfully();
 
     await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
@@ -1022,7 +1022,7 @@ describe('StatementImportScreen — Done closes the sheet before navigating', ()
     // instance.
     expect(view.navigation.popTo).toHaveBeenCalledWith(
       'AccountDetail',
-      { accountId: 'a', name: 'My Monobank card' },
+      { accountId: 'a', name: 'My Monobank card', reminderOffer: 'afterImport' },
       { merge: true },
     );
     expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());

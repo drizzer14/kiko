@@ -837,6 +837,19 @@ new component can land between reviews of this skill:
   action button. The button renders only when BOTH `actionLabel` and
   `onAction` are given. Read `notice-banner.props.d.ts` for the props.
   First consumer: the per-account reminders page's permission notice.
+- **ReminderOfferCard** (`src/design-system/components/reminder-offer-card/`)
+  — the NoticeBanner family's two-action sibling: an inline, non-modal
+  invitation (never a notification, sheet, or alert, and never an
+  error/warning tone). A `Card` (solid `surface` fill, hairline border,
+  `md` radius) with `padding={3}` and the banner's `spacing(2)` gap, a
+  `body` `textPrimary` message, then a wrapping row of a `primary` `small`
+  accept and a `secondaryTonal` `small` dismiss (the user's "ghost" = faint
+  tint), both `fullWidth={false}`, 44pt taps via `small`'s hitSlop. Read
+  `reminder-offer-card.props.d.ts` for the props (all required but
+  `testID`). Differs from NoticeBanner: a content Card (not the
+  `surfaceHigh` `sm` block), body primary text (not caption secondary),
+  and two required actions (not one optional tonal one). First
+  consumer: `AccountDetail`'s reminder offer.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE

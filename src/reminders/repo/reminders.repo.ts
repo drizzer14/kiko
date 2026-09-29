@@ -8,11 +8,24 @@ import {
   transactions,
   write,
 } from '@kiko/db';
+import {
+  and,
+  asc,
+  countDistinct,
+  eq,
+  exists,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import { match } from 'ts-pattern';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { NotificationResponse } from '@kiko/reminders/native';
 import type { ReminderKind, ReminderSchedule } from '@kiko/reminders/schedule';
-import { and, asc, eq, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 
 type BackoffPause = { reminderId: string; pausedAt: number };
 
@@ -52,6 +65,38 @@ const lastDataByAccount = () =>
     .groupBy(holdings.accountId)
     .as('last_data');
 
+// Any holding of the account counts. The account is a value for one account's
+// page, or the reminder's own column for the correlated check across the list.
+const importsOf = (accountId: string | SQLiteColumn) =>
+  database
+    .select({ id: transactions.id })
+    .from(transactions)
+    .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+    .where(and(eq(holdings.accountId, accountId), eq(transactions.source, 'import')));
+
+// A balance the user sets (an opening balance, a balance edit) is written as
+// a manual row with no category and neither transfer marker. A transaction
+// the user enters always has one of the three: the form asks for a category.
+const enteredByUser = or(
+  isNotNull(transactions.category),
+  isNotNull(transactions.exchangeCounterpartHoldingId),
+  isNotNull(transactions.changeGroupId),
+);
+
+// One key per thing the user entered. `created_at` is stamped per statement
+// in whole seconds, so the rows of one write can be a second apart: a payment
+// and its change returns share their change group, and the two legs of an
+// exchange share its time and the pair of holdings.
+const entryKey = sql`coalesce(
+  ${transactions.changeGroupId},
+  case when ${transactions.exchangeCounterpartHoldingId} is not null then
+    ${transactions.time}
+    || ':' || min(${transactions.holdingId}, ${transactions.exchangeCounterpartHoldingId})
+    || ':' || max(${transactions.holdingId}, ${transactions.exchangeCounterpartHoldingId})
+  end,
+  ${transactions.createdAt}
+)`;
+
 export const remindersRepo = {
   hasAnyQuery: () => database.select({ id: reminders.id }).from(reminders).limit(1),
   listByAccountQuery: (accountId: string) =>
@@ -60,16 +105,39 @@ export const remindersRepo = {
       .from(reminders)
       .where(eq(reminders.accountId, accountId))
       .orderBy(asc(reminders.kind)),
+  // `exists`, not a join, so an account with many imports still reads each
+  // reminder once.
+  listWithAccountQuery: () =>
+    database
+      .select({
+        reminder: reminders,
+        account: {
+          name: accounts.name,
+          institution: accounts.institution,
+          archivedAt: accounts.archivedAt,
+        },
+        hasImport: exists(importsOf(reminders.accountId)).mapWith(Boolean),
+      })
+      .from(reminders)
+      .innerJoin(accounts, eq(accounts.id, reminders.accountId))
+      .orderBy(asc(accounts.sortOrder), asc(accounts.createdAt), asc(accounts.id)),
   byIdQuery: (reminderId: string) =>
     database.select().from(reminders).where(eq(reminders.id, reminderId)).limit(1),
-  // Any holding of the account; one row is enough to know.
-  hasImportQuery: (accountId: string) =>
+  // One row is enough to know.
+  hasImportQuery: (accountId: string) => importsOf(accountId).limit(1),
+  manualEntryDaysQuery: (accountId: string, since: number) =>
     database
-      .select({ id: transactions.id })
+      .select({ entries: countDistinct(entryKey) })
       .from(transactions)
       .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
-      .where(and(eq(holdings.accountId, accountId), eq(transactions.source, 'import')))
-      .limit(1),
+      .where(
+        and(
+          eq(holdings.accountId, accountId),
+          eq(transactions.source, 'manual'),
+          gte(transactions.createdAt, since),
+          enteredByUser,
+        ),
+      ),
   create: (input: NewReminder): Promise<string> =>
     write(async (databaseTransaction) => {
       const reminderId = id();
@@ -121,6 +189,16 @@ export const remindersRepo = {
         .set({ pausedAt: null, pauseReason: null, activeSince: now, updatedAt: now })
         .where(and(eq(reminders.id, reminderId), isNotNull(reminders.pausedAt)));
     });
+  },
+  // After a backup restore: the restored start is from another time or
+  // device, so every reminder sent since then would count as ignored. A pause
+  // stays, as the backup had it.
+  restartIgnoredCounts: async (): Promise<void> => {
+    const now = Date.now();
+
+    await write((databaseTransaction) =>
+      databaseTransaction.update(reminders).set({ activeSince: now }),
+    );
   },
   remove: async (reminderId: string): Promise<void> => {
     await write((databaseTransaction) =>

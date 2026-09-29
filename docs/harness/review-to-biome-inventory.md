@@ -269,6 +269,12 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | `kiko-no-date-utc-in-statement-import` | A bank wall-clock read directly through `Date.UTC(...)` or the local-time `new Date($Y, $M, ...)` constructor bypasses both zone readings this project settled on (`kyivInstantMillisecondsIfRoundTrips` for a named format, `deviceWallClockToLocalMilliseconds` for column mapping) — neither rejects a rollover, and a raw `Date.UTC` call silently reads the wall clock in the wrong zone entirely | Semgrep (`rules/semgrep-prewrite.yml`, also loaded by `check:security`/`check:rules`) | `paths.include: src/statement-import/**`, excluding `*.test.ts`/`*.test.tsx`. Its fixture pair is nested at `rules/fixtures/kiko-no-date-utc-in-statement-import/src/statement-import/` (kiko-linter's "Semgrep facts" — a flat fixture draws nothing against this narrower `paths.include`). See `kiko-statement-import`'s "Every date-format preset" for the two sanctioned readers. |
 
+### Enforced — reminders task 4/5 review (JSX spread fallback)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-empty-object-jsx-spread` | A JSX spread of `X \| {}` makes TypeScript treat every prop of X as optional, so a discriminated union's required-together props (the `SettingsRowProps` tie above) stop being enforced (kiko-code-style "JSX spread: no `{}` fallback") | Semgrep (TS, ERROR, `rules/semgrep-prewrite.yml`, also loaded by `check:security`/`check:rules`) | `pattern-either` of a JSX attribute spread `{...($V ?? $F)}`, `{...($V \|\| $F)}`, `{...($C ? $V : $F)}` and `{...($C ? $F : $V)}` on a self-closing or a child-bearing element, plus `metavariable-regex` `^\{\s*\}$` on `$F`: a pattern `{}` matches ANY object literal, so without the filter SelectableRow's two-filled-branch ternary was a false positive (pinned in the good fixture). An object spread outside JSX is out of scope. A spread of `X \| undefined` (`{...foldMap(…)}` with no fallback) loses the tie the same way but needs types to spot, so it stays a review item. `paths.include` `src/**/*.tsx` is path-prefixed, so the fixture pair is NESTED (`rules/fixtures/kiko-no-empty-object-jsx-spread/src/screens/settings/`), built from the `NO_SWITCH` case. ERROR from the start: 0 findings in the tree when it landed, so no sweep. |
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:

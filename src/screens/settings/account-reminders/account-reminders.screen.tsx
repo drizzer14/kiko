@@ -1,6 +1,4 @@
 import type { FC } from 'react';
-import { match } from 'ts-pattern';
-import { Linking } from 'react-native';
 import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
@@ -11,12 +9,11 @@ import Text from '@kiko/design-system/components/text';
 import Screen from '@kiko/design-system/components/screen';
 import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import ReminderRow from '@kiko/screens/settings/reminder-row';
-import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
-import { useNotificationPreAlert } from '@kiko/reminders/permission';
+import { usePermissionNotice } from '@kiko/reminders/permission';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import NoticeBanner from '@kiko/design-system/components/notice-banner';
-import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
+import { writeThenReplan } from '@kiko/reminders/use-reminder-scheduler';
 import { type ReminderKind, reminderKinds } from '@kiko/reminders/schedule';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import NotificationPreAlertSheet from '@kiko/design-system/components/notification-pre-alert-sheet';
@@ -25,8 +22,6 @@ type AccountRemindersScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
   'AccountReminders'
 >;
-
-type Notice = { message: string; actionLabel: string; onAction: () => void };
 
 // One row per reminder the account can have, plus any saved reminder the
 // account no longer allows, so the user can still see and remove it. The
@@ -54,7 +49,7 @@ const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, naviga
     { cached: true },
   );
   const isReady = useDataReady(accountLoading, remindersLoading, importLoading);
-  const preAlert = useNotificationPreAlert();
+  const { notice, sheet } = usePermissionNotice(reminders.length > 0);
 
   if (!isReady) {
     return (
@@ -71,33 +66,6 @@ const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, naviga
   const kinds = reminderKinds.filter(
     (kind) => eligibleKinds.includes(kind) || reminderOf(kind) !== undefined,
   );
-
-  const notice = match(reminders.length > 0 ? preAlert.status : undefined)
-    .returnType<Notice | undefined>()
-    .with('denied', () => ({
-      message: t('reminders.permission.deniedMessage'),
-      actionLabel: t('reminders.permission.openSettings'),
-      onAction: () => Linking.openSettings(),
-    }))
-    .with('notDetermined', () => ({
-      message: t('reminders.permission.notDeterminedMessage'),
-      actionLabel: t('reminders.permission.turnOn'),
-      onAction: preAlert.open,
-    }))
-    .with('authorized', undefined, () => undefined)
-    .exhaustive();
-
-  const writeThenReplan = async (write: () => Promise<void>): Promise<void> => {
-    try {
-      await write();
-    } catch {
-      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
-
-      return;
-    }
-
-    replanReminders();
-  };
 
   return (
     <>
@@ -131,11 +99,13 @@ const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, naviga
                 }
                 onPausedChange={(paused) =>
                   foldMap(maybe(saved), ({ id }) =>
-                    writeThenReplan(() => remindersRepo.setPaused(id, paused)),
+                    writeThenReplan(() => remindersRepo.setPaused(id, paused), t),
                   )
                 }
                 onDelete={() =>
-                  foldMap(maybe(saved), ({ id }) => writeThenReplan(() => remindersRepo.remove(id)))
+                  foldMap(maybe(saved), ({ id }) =>
+                    writeThenReplan(() => remindersRepo.remove(id), t),
+                  )
                 }
               />
             );
@@ -143,7 +113,7 @@ const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, naviga
         </Box>
       </Screen>
 
-      <NotificationPreAlertSheet {...preAlert.sheet} />
+      <NotificationPreAlertSheet {...sheet} />
     </>
   );
 };

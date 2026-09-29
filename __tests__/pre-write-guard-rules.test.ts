@@ -55,6 +55,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-direct-default-transaction-description',
   'kiko-no-process-env-time-zone-in-test',
   'kiko-no-confirm-sheet-in-form',
+  'kiko-no-empty-object-jsx-spread',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -69,6 +70,8 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
   'kiko-no-process-env-time-zone-in-test':
     'kiko-no-process-env-time-zone-in-test/src/test-support/time-zone-example',
   'kiko-no-confirm-sheet-in-form': 'kiko-no-confirm-sheet-in-form/src/screens/forms/form-example',
+  'kiko-no-empty-object-jsx-spread':
+    'kiko-no-empty-object-jsx-spread/src/screens/settings/settings-row-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -79,6 +82,7 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-literal-sync-error': 'src/monobank',
   'kiko-no-process-env-time-zone-in-test': 'src/test-support',
   'kiko-no-confirm-sheet-in-form': 'src/screens/forms',
+  'kiko-no-empty-object-jsx-spread': 'src/screens/settings',
 };
 
 function fixturePrefix(ruleId: string): string {

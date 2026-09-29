@@ -50,7 +50,10 @@ export type AccountsStackParamList = {
   // the screen's own live query resolves — with no async title toggle that would
   // briefly blank the back button. The screen still prefers its live-queried
   // name once loaded, so a rename made on the edit form flows back through.
-  AccountDetail: { accountId: string; name: string };
+  // `reminderOffer` is set only by a finished statement import, so the page
+  // offers an import reminder then; the page clears it once the offer is
+  // decided.
+  AccountDetail: { accountId: string; name: string; reminderOffer?: 'afterImport' };
   HoldingDetail: { holdingId: string; name: string };
   // The account/holding forms double as CREATE and EDIT screens. An entity id in
   // the params (`accountId` here, `holdingId` on HoldingForm) switches the form
@@ -170,6 +173,8 @@ export type SettingsStackParamList = {
   Categories: undefined;
   ExportData: undefined;
   ImportData: undefined;
+  Reminders: undefined;
+  ReminderForm: ReminderFormParams;
 };
 
 export type StatisticsStackParamList = {

@@ -414,6 +414,15 @@ Base: CS-B tip.
 
 ## CS-C2 — Settings list, contextual offers, restore re-plan
 
+As built, CS-C2 differs from the snippets below:
+- `emptyList`/`emptyHint` landed in C2.1. The permission notice and the write-then-re-plan step are shared (`usePermissionNotice`, `writeThenReplan`). `ReminderForm` has a structural props type, because it is in both stacks.
+- The dismiss button is `secondaryTonal` small, not ghost (the user's "ghost" = faint tint).
+- `useReminderOffer({ accountId, account, settings, trigger })` returns `{ kind, dismiss }`. It takes the page's own rows, has no `accept`/`openForm` (the screen navigates itself), and does no reads without a trigger.
+- `manualEntryDaysQuery` counts distinct entry keys (`coalesce(change_group_id, time + sorted holding pair, created_at)`) over user-entered rows only (category or transfer marker set), not `COUNT(DISTINCT created_at)` over all manual rows. The window starts at local midnight.
+- No offer on an archived account. At most one offer per visit (`offerDecided` latch on AccountDetail).
+- The restore calls `replanRestoredReminders()` (`restartIgnoredCounts`, then `replanReminders`) before the restored language is applied, not `syncReminders(t)`.
+Read `src/reminders/`, the screens, and kiko-architecture 'Reminders (local notifications)' before building on them.
+
 Base: CS-C1 tip.
 
 ### Task C2.1: Settings > Reminders (developer; tests first)

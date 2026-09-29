@@ -864,6 +864,8 @@ export const uk: typeof en = {
     },
     emptyNoKinds:
       'Нагадування з’являться тут після того, як ви імпортуєте виписку для цього рахунку.',
+    emptyList: 'Нагадувань ще немає',
+    emptyHint: 'Налаштуйте нагадування на сторінці рахунку.',
     off: 'Вимкнено',
     on: 'Увімкнено',
     turnOff: 'Вимкнути',
@@ -904,6 +906,12 @@ export const uk: typeof en = {
       openSettings: 'Відкрити налаштування iOS',
       notDeterminedMessage: 'Увімкніть сповіщення, щоб нагадування з’являлися.',
       turnOn: 'Увімкнути сповіщення',
+    },
+    offer: {
+      statementImportMessage: 'Нагадати про імпорт наступної виписки?',
+      addTransactionsMessage: 'Нагадувати додавати транзакції до цього рахунку?',
+      setUp: 'Налаштувати нагадування',
+      dismiss: 'Не зараз',
     },
     // "об" only before 11 ("об одинадцятій"); every other hour takes "о".
     schedule: {

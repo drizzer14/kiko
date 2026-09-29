@@ -1090,6 +1090,8 @@ export const en = {
       addTransactions: 'Reminds you to add new transactions to this account.',
     },
     emptyNoKinds: 'Reminders appear here after you import a statement for this account.',
+    emptyList: 'No reminders yet',
+    emptyHint: 'Set up a reminder from an account’s page.',
     off: 'Off',
     on: 'On',
     turnOff: 'Turn off',
@@ -1130,6 +1132,12 @@ export const en = {
       openSettings: 'Open iOS settings',
       notDeterminedMessage: 'Turn on notifications so your reminders can appear.',
       turnOn: 'Turn on notifications',
+    },
+    offer: {
+      statementImportMessage: 'Want a reminder to import your next statement?',
+      addTransactionsMessage: 'Want a reminder to add transactions to this account?',
+      setUp: 'Set up reminder',
+      dismiss: 'Not now',
     },
     // A notification can show on the lock screen, so its text never holds an
     // account name, an identifier or an amount, and its title never names the

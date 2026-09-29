@@ -7,7 +7,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 // Background too, so smart skip sees the newest data before the app sleeps.
 const REPLAN_STATES: readonly AppStateStatus[] = ['active', 'background'];
 
-const warnReplanFailure = (reason: unknown): void => {
+export const warnReplanFailure = (reason: unknown): void => {
   // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a failed reminder re-plan has no UI surface; log it so a device log shows what failed, and the next trigger re-plans again
   console.warn('[reminders] re-plan failed', reason);
 };
