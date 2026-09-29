@@ -949,6 +949,10 @@ new component can land between reviews of this skill:
   nullable value) and derives its own gradient from that hex via
   `entityIconTileGradient`. An optional `size` mirrors `SymbolIcon`'s
   own, defaulting to the `body` icon-size token when omitted.
+  Consumers: the account card, the holding card, and the Settings >
+  Reminders account heading (2026-09-30, user request), where the
+  tile sits left of the `heading` name, both centered, and carries no
+  `accessibilityLabel` because the name beside it already reads it.
 - **Switch** — a toggle that wraps RN's `Switch` with theme track/thumb
   colors. With `label` it renders a labeled row (label left, toggle
   right). Without `label` it is a bare toggle whose label sits

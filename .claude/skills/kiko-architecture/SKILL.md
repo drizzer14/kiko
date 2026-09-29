@@ -1844,8 +1844,11 @@ what a change must keep.
   ReminderFormParams` plus the `goBack`/`setOptions` it reads), not
   `NativeStackScreenProps` of one stack. `Reminders`
   (`src/screens/settings/reminders/`, Settings stack) lists every
-  reminder under a heading for its account name, with the same
-  `ReminderRow` and no Add (reminders are created from an account's
+  reminder under a heading for its account: the account's
+  `EntityIconTile` (its stored icon/color, else the kind defaults, as
+  on the account card) beside its name, so `listWithAccountQuery`
+  reads the account's `kind`, `icon`, and `color` too. It uses the
+  same `ReminderRow` and has no Add (reminders are created from an account's
   page). It opens from its own Settings card directly below System
   (`settings-row-reminders`). The account page is reached from a
   native `bell` bar item in `AccountDetail`'s

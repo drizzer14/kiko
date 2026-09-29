@@ -422,7 +422,14 @@ describe('remindersRepo.listWithAccountQuery', () => {
         schedule: { frequency: 'daily', minuteOfDay: 1200 },
         pauseReason: 'backoff',
       }),
-      account: { name: 'Card', institution: 'monobank', archivedAt: 5 },
+      account: {
+        name: 'Card',
+        kind: 'bank',
+        icon: null,
+        color: null,
+        institution: 'monobank',
+        archivedAt: 5,
+      },
       hasImport: false,
     });
   });

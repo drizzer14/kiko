@@ -8,4 +8,12 @@ export const styles = StyleSheet.create(() => ({
   emptyText: {
     textAlign: 'center',
   },
+  // Centered on the tile, as the account card centers its name beside it.
+  accountHeading: {
+    alignItems: 'center',
+  },
+  // A `Text` does not shrink in a row, so its own box lets a long name wrap.
+  accountName: {
+    flex: 1,
+  },
 }));

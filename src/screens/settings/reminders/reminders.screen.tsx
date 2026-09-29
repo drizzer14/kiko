@@ -9,11 +9,15 @@ import Divider from '@kiko/design-system/components/divider';
 import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import ReminderRow from '@kiko/screens/settings/reminder-row';
 import { usePermissionNotice } from '@kiko/reminders/permission';
+import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import NoticeBanner from '@kiko/design-system/components/notice-banner';
 import { writeThenReplan } from '@kiko/reminders/use-reminder-scheduler';
 import { type ReminderKind, reminderKinds } from '@kiko/reminders/schedule';
+import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type ReminderRow as SavedReminder, useDataReady, useLiveQuery } from '@kiko/db';
 import NotificationPreAlertSheet from '@kiko/design-system/components/notification-pre-alert-sheet';
@@ -27,6 +31,8 @@ type ListedReminder = Awaited<ReturnType<typeof remindersRepo.listWithAccountQue
 type AccountGroup = {
   accountId: string;
   name: string;
+  icon: string;
+  color: string;
   archived: boolean;
   eligibleKinds: ReminderKind[];
   reminders: SavedReminder[];
@@ -41,6 +47,8 @@ const groupByAccount = (rows: readonly ListedReminder[]): AccountGroup[] =>
         const group = groups.get(reminder.accountId) ?? {
           accountId: reminder.accountId,
           name: account.name,
+          icon: account.icon ?? accountKindSymbol[account.kind],
+          color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
           archived: account.archivedAt !== null,
           eligibleKinds: eligibleReminderKinds(account, hasImport),
           reminders: [],
@@ -107,7 +115,13 @@ const RemindersScreen: FC<RemindersScreenProps> = ({ navigation }) => {
               {index > 0 && <Divider testID="reminders-account-divider" spacing={2} />}
 
               <Box testID={`reminders-account-${group.accountId}`} gap={3}>
-                <Text variant="heading">{group.name}</Text>
+                <Box direction="row" gap={3} style={styles.accountHeading}>
+                  <EntityIconTile name={group.icon} color={group.color} />
+
+                  <Box style={styles.accountName}>
+                    <Text variant="heading">{group.name}</Text>
+                  </Box>
+                </Box>
 
                 <Box gap={4}>
                   {group.reminders.map((reminder) => (

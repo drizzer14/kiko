@@ -5,13 +5,15 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
-import type { ReminderRow } from '@kiko/db';
 import { remindersRepo } from '@kiko/reminders/repo';
+import type { AccountRow, ReminderRow } from '@kiko/db';
 import { remindersNative } from '@kiko/reminders/native';
 import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
+import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
+import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -40,12 +42,37 @@ jest.mock('@kiko/reminders/repo/reminders.repo', () => ({
 const authorizationStatus = jest.spyOn(remindersNative, 'authorizationStatus');
 const requestAuthorization = jest.spyOn(remindersNative, 'requestAuthorization');
 
-type Account = { name: string; institution: string | null; archivedAt: number | null };
+jest.mock('@kiko/design-system/components/entity-icon-tile', () => {
+  const { Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ name, color }: { name: string; color: string }) => (
+      <RNText>{`tile:${name}:${color}`}</RNText>
+    ),
+  };
+});
+
+type Account = Pick<AccountRow, 'name' | 'kind' | 'icon' | 'color' | 'institution' | 'archivedAt'>;
 
 type ListedReminder = { reminder: ReminderRow; account: Account; hasImport: boolean };
 
-const CASH: Account = { name: 'Cash', institution: null, archivedAt: null };
-const CARD: Account = { name: 'Card', institution: 'monobank', archivedAt: null };
+const CASH: Account = {
+  name: 'Cash',
+  kind: 'cash',
+  icon: null,
+  color: null,
+  institution: null,
+  archivedAt: null,
+};
+const CARD: Account = {
+  name: 'Card',
+  kind: 'bank',
+  icon: 'creditcard',
+  color: '#AF52DE',
+  institution: 'monobank',
+  archivedAt: null,
+};
 
 const reminder = (overrides: Partial<ReminderRow> = {}): ReminderRow => ({
   id: 'r-1',
@@ -127,6 +154,24 @@ describe('RemindersScreen — list', () => {
       'Card',
       'Cash',
     ]);
+  });
+
+  it('shows each account’s icon tile beside its name', async () => {
+    seed([
+      listed({ id: 'r-1', accountId: 'a-2', kind: 'statement_import' }, CARD, true),
+      listed({ id: 'r-2', accountId: 'a-1', kind: 'add_transactions' }, CASH),
+    ]);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(
+      within(getByTestId('reminders-account-a-2')).getByText('tile:creditcard:#AF52DE'),
+    ).toBeTruthy();
+    expect(
+      within(getByTestId('reminders-account-a-1')).getByText(
+        `tile:${accountKindSymbol.cash}:${defaultAccountColor.cash}`,
+      ),
+    ).toBeTruthy();
   });
 
   it('separates the accounts with a divider, and only between them', async () => {

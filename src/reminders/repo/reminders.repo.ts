@@ -113,6 +113,9 @@ export const remindersRepo = {
         reminder: reminders,
         account: {
           name: accounts.name,
+          kind: accounts.kind,
+          icon: accounts.icon,
+          color: accounts.color,
           institution: accounts.institution,
           archivedAt: accounts.archivedAt,
         },
