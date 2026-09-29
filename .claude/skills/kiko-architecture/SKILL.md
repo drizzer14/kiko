@@ -1680,8 +1680,12 @@ what a change must keep.
   `respondedAt`); a snooze never routes. A reminder that is gone (deleted,
   or deleted with its account) routes nowhere. `routeFor` is pure: an
   import reminder opens `AccountDetail` with `intent: 'importStatement'`;
-  add transactions with exactly ONE open holding opens `TransactionForm
-  { holdingId }` above `AccountDetail`, and otherwise `AccountDetail` only;
+  add transactions with exactly ONE open holding, of a type that takes
+  transactions (`!isLedgerlessHoldingType(type)`, from
+  `@kiko/holdings/holding-descriptor`: card, cash, crypto asset, jar),
+  opens `TransactionForm { holdingId }` above `AccountDetail`, and
+  otherwise `AccountDetail` only (one open deposit, bond, property item,
+  metal or loan included);
   the paused notice opens `AccountReminders` above `AccountDetail`. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
   Accounts stack: the routes it has now (or `Accounts` while the tab has

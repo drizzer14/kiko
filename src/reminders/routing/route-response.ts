@@ -1,13 +1,14 @@
-import type { AccountRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
 import { isMatching, match, P } from 'ts-pattern';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { remindersRepo } from '@kiko/reminders/repo';
+import type { AccountRow, HoldingRow } from '@kiko/db';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import { pausedNoticeIdentifier } from '@kiko/reminders/planner';
 import type { NotificationResponse } from '@kiko/reminders/native';
 import type { NavigationContainerRef } from '@react-navigation/native';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { AccountsStackParamList, TabParamList } from '@kiko/navigation/types';
 
 type ReminderRoute = {
@@ -30,12 +31,13 @@ export const latestOpenResponse = (
     );
 
 // The paused notice says the reminder has stopped, so its tap opens the page
-// where the user can resume it.
+// where the user can resume it. A holding that takes no transactions (a
+// deposit, a bond, a property item, a metal, a loan) has no form to open.
 export const routeFor = (
   response: NotificationResponse,
   kind: ReminderKind,
   account: Pick<AccountRow, 'id' | 'name'> | undefined,
-  openHoldingIds: readonly string[],
+  openHoldings: readonly Pick<HoldingRow, 'id' | 'type'>[],
 ): ReminderRoute | undefined =>
   foldMap(maybe(account), ({ id: accountId, name }): ReminderRoute => {
     const accountDetail = { accountId, name };
@@ -50,11 +52,11 @@ export const routeFor = (
         accountDetail: { ...accountDetail, intent: 'importStatement' },
       }))
       .with('add_transactions', () =>
-        match(openHoldingIds)
+        match(openHoldings)
           .returnType<ReminderRoute>()
-          .with([P.string], ([holdingId]) => ({
+          .with([{ type: P.when((type) => !isLedgerlessHoldingType(type)) }], ([{ id }]) => ({
             accountDetail,
-            next: { screen: 'TransactionForm', params: { holdingId } },
+            next: { screen: 'TransactionForm', params: { holdingId: id } },
           }))
           .otherwise(() => ({ accountDetail })),
       )
@@ -142,9 +144,9 @@ export const routeLatestResponse = async (
 
   const [account] = await accountsRepo.byIdQuery(reminder.accountId);
   const holdings = await holdingsRepo.listByAccountQuery(reminder.accountId);
-  const openHoldingIds = holdings.filter(({ closedAt }) => closedAt === null).map(({ id }) => id);
+  const openHoldings = holdings.filter(({ closedAt }) => closedAt === null);
 
-  foldMap(maybe(routeFor(response, reminder.kind, account, openHoldingIds)), (route) =>
+  foldMap(maybe(routeFor(response, reminder.kind, account, openHoldings)), (route) =>
     navigateTo(route, navigationRef),
   );
 };

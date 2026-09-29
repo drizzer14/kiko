@@ -129,11 +129,17 @@ const seedAccount = (accountId: string, name: string, kind = 'cash'): void => {
   run('INSERT INTO accounts (id, name, kind) VALUES (?, ?, ?)', accountId, name, kind);
 };
 
-const seedHolding = (holdingId: string, accountId: string, closedAt: number | null = null) => {
+const seedHolding = (
+  holdingId: string,
+  accountId: string,
+  closedAt: number | null = null,
+  type = 'cash',
+) => {
   run(
-    "INSERT INTO holdings (id, account_id, name, type, currency, closed_at) VALUES (?, ?, 'Wallet', 'cash', 'UAH', ?)",
+    "INSERT INTO holdings (id, account_id, name, type, currency, closed_at) VALUES (?, ?, 'Wallet', ?, 'UAH', ?)",
     holdingId,
     accountId,
+    type,
     closedAt,
   );
 };
@@ -260,6 +266,18 @@ describe('reminder tap routing (real router)', () => {
       expect(focusedTab()).toBe('HomeTab');
       expect(accountsStack()).toEqual([]);
     });
+  });
+
+  it('opens only the account when its one open holding takes no transactions', async () => {
+    seedHolding('deposit', 'cash', null, 'term_deposit');
+    await renderApp();
+
+    await route([tap('add-cash')]);
+
+    expect(accountsStack()).toEqual([
+      onStack('Accounts'),
+      onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+    ]);
   });
 
   const openAccount = async (accountId: string, name: string): Promise<void> => {

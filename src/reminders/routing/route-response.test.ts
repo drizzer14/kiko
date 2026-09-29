@@ -3,6 +3,8 @@ import type { NotificationResponse } from '@kiko/reminders/native';
 import { latestOpenResponse, routeFor } from './route-response';
 
 const CASH = { id: 'cash', name: 'Cash' };
+const WALLET = { id: 'wallet', type: 'cash' } as const;
+const DEPOSIT = { id: 'deposit', type: 'term_deposit' } as const;
 
 const tap = (overrides: Partial<NotificationResponse> = {}): NotificationResponse => ({
   reminderId: 'reminder-1',
@@ -18,28 +20,29 @@ describe('routeFor', () => {
   it.each(['statement_import', 'add_transactions'] as const)(
     'goes nowhere for a %s tap whose account is gone',
     (kind) => {
-      expect(routeFor(tap(), kind, undefined, ['holding-1'])).toBeUndefined();
+      expect(routeFor(tap(), kind, undefined, [WALLET])).toBeUndefined();
     },
   );
 
   it('opens the account and asks it to show the file picker for an import reminder', () => {
-    expect(routeFor(tap(), 'statement_import', CASH, ['holding-1'])).toEqual({
+    expect(routeFor(tap(), 'statement_import', CASH, [WALLET])).toEqual({
       accountDetail: { accountId: 'cash', name: 'Cash', intent: 'importStatement' },
     });
   });
 
   it('opens the new-transaction form above the account when it has one open holding', () => {
-    expect(routeFor(tap(), 'add_transactions', CASH, ['holding-1'])).toEqual({
+    expect(routeFor(tap(), 'add_transactions', CASH, [WALLET])).toEqual({
       accountDetail: { accountId: 'cash', name: 'Cash' },
-      next: { screen: 'TransactionForm', params: { holdingId: 'holding-1' } },
+      next: { screen: 'TransactionForm', params: { holdingId: 'wallet' } },
     });
   });
 
   it.each([
-    ['no', []],
-    ['two', ['holding-1', 'holding-2']],
-  ])('opens only the account for an add-transactions tap with %s open holdings', (_count, ids) => {
-    expect(routeFor(tap(), 'add_transactions', CASH, ids)).toEqual({
+    ['no open holdings', []],
+    ['two open holdings', [WALLET, { id: 'jar', type: 'jar' } as const]],
+    ['one open holding that takes no transactions', [DEPOSIT]],
+  ])('opens only the account for an add-transactions tap with %s', (_holdings, openHoldings) => {
+    expect(routeFor(tap(), 'add_transactions', CASH, openHoldings)).toEqual({
       accountDetail: { accountId: 'cash', name: 'Cash' },
     });
   });
@@ -47,7 +50,7 @@ describe('routeFor', () => {
   it.each(['statement_import', 'add_transactions'] as const)(
     'opens the account reminders page for a tap on the %s paused notice',
     (kind) => {
-      expect(routeFor(pausedNoticeTap, kind, CASH, ['holding-1'])).toEqual({
+      expect(routeFor(pausedNoticeTap, kind, CASH, [WALLET])).toEqual({
         accountDetail: { accountId: 'cash', name: 'Cash' },
         next: { screen: 'AccountReminders', params: { accountId: 'cash', name: 'Cash' } },
       });
