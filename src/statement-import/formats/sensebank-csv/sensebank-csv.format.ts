@@ -21,13 +21,13 @@ import { parseAmount } from '@kiko/currency/parse';
 import { type Currency, isCurrency } from '@kiko/currency/currency';
 import { kyivInstantMillisecondsIfRoundTrips } from '@kiko/statement-import/parse-date-time';
 
-// Section C.2: "Detect signature — file content starts with the literal
-// preamble line `Виписка за рахунком;;;;;;;`". Verified byte-for-byte
+// Detect signature: file content starts with the literal preamble line
+// `Виписка за рахунком;;;;;;;`. Verified byte-for-byte
 // against the real fixture's first line.
 export const SENSEBANK_PREAMBLE = 'Виписка за рахунком;;;;;;;';
 
-// Section C.2: "an account line matching `Рахунок (\w+) \((\w+)\)` → IBAN +
-// CURRENCY". Verified against the real fixture's 4th line:
+// An account line matching `Рахунок (\w+) \((\w+)\)` → IBAN + CURRENCY.
+// Verified against the real fixture's 4th line:
 // "Рахунок UA111111111111111111111111111 (UAH);;;;;;;".
 export const ACCOUNT_LINE_PATTERN = /Рахунок (\w+) \((\w+)\)/;
 
@@ -47,12 +47,12 @@ export const HEADER_ROW = [
   'Cума зарахування',
 ] as const;
 
-// Section C.2: skip every line starting with either literal prefix — a
-// section/subtotal marker between (or after) the repeated header+rows
-// blocks. Verified against the real fixture: TWO "Деталізація операцій…"
-// lines are present (one per block); "Вклади гарантуються" is NOT present in
-// this particular fixture but is still guarded per the plan's own C.2 fact
-// (a deposit-guarantee disclaimer footer uabean's own importer also skips).
+// Skip every line starting with either literal prefix — a section/subtotal
+// marker between (or after) the repeated header+rows blocks. Verified against
+// the real fixture: TWO "Деталізація операцій…" lines are present (one per
+// block); "Вклади гарантуються" is NOT present in this particular fixture but
+// is still guarded (a deposit-guarantee disclaimer footer uabean's own
+// importer also skips).
 export const SECTION_SKIP_PREFIX = 'Деталізація операцій';
 export const GUARANTEE_SKIP_PREFIX = 'Вклади гарантуються';
 
@@ -69,7 +69,7 @@ export const COLUMN = {
   credit: 7,
 } as const;
 
-// Section C.2: "DD.MM.YY HH:MM (2-digit year)" — deliberately NOT the shared
+// "DD.MM.YY HH:MM" (2-digit year) — deliberately NOT the shared
 // `parseDateTimeSeconds` helper (Monobank/PrivatBank's `DD.MM.YYYY
 // HH:MM:SS`, seconds precision) — Sensebank has its own 2-digit-year,
 // minute-precision shape.
@@ -104,7 +104,7 @@ const resolveAccount = (rows: string[][]): { currency: Currency; iban: string } 
   );
 };
 
-// Section C.2: "DD.MM.YY HH:MM (2-digit year)" — its own parse, deliberately
+// "DD.MM.YY HH:MM" (2-digit year) — its own parse, deliberately
 // not the shared `parseDateTimeSeconds` helper (see `SENSEBANK_DATE_PATTERN`'s
 // doc comment above), but the same shared `kyivInstantMillisecondsIfRoundTrips`
 // reads the wall clock as Europe/Kyiv local time and rejects a rollover — an
@@ -173,7 +173,7 @@ const parseDataRow = (row: string[], currency: Currency): ParsedTransaction => (
   mcc: parseMcc(row[COLUMN.mcc]),
 });
 
-// Section C.2: the file can carry ONE OR MORE repeated header+rows blocks
+// The file can carry ONE OR MORE repeated header+rows blocks
 // under the one account (a block per card). A row only counts as data while
 // "inside" a block — after its own `HEADER_ROW` line and before the next
 // section/footer skip line — so every preamble/metadata line before the

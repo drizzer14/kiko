@@ -11,7 +11,7 @@
 // field transparently with no config change needed, so the same row reader
 // serves both. Every column beyond the six this core actually reads
 // (account/currency/operationDate/debit/credit/paymentPurpose) is read only
-// to locate/skip (the EDRPOU pair, per the plan's disposition) and stays
+// to locate/skip (the EDRPOU pair) and stays
 // entirely in each format's own `COLUMN` export, never duplicated here.
 import {
   type ParsedStatement,

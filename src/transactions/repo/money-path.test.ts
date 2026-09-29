@@ -15,22 +15,13 @@ jest.mock('@kiko/db/client', () => {
 
 import { startOfLocalDay } from '@kiko/dates';
 import { holdings, transactions } from '@kiko/db';
+import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { buildCategoryTrend } from '@kiko/statistics/category-trend';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import { buildCategoryBreakdown } from '@kiko/statistics/category-breakdown';
 
 import { transactionsRepo } from './transactions.repo';
-
-// A real LOCAL-CALENDAR-DAY step back from `t` — never `t - n * dayMs`, which
-// can land off a real local-midnight boundary when the span crosses a DST
-// change. Matches what `statistics.screen.tsx` itself always passes as
-// `range.from` (`startOfLocalDay(dateFrom.getTime())`).
-const localDaysBefore = (t: number, days: number): number => {
-  const date = new Date(t);
-
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() - days).getTime();
-};
 
 // A fake database-transaction handle capturing inserts + balance updates in call order, answering
 // both the chained `.where(...).limit(1)` and the bare `await where(...)`
@@ -224,7 +215,7 @@ describe('Money-path guard: split-change + convert prefill', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'groceries',
-      range: { from: localDaysBefore(now, 3), to: now },
+      range: { from: startOfLocalDay(localDaysFrom(now, -3)), to: now },
       bucketDays: 1,
     });
 

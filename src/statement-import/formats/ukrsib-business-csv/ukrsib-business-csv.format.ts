@@ -5,16 +5,16 @@
 // `__fixtures__/synthetic-ukrsib-business-sample.csv` is HAND-AUTHORED
 // synthetic data (all-fake account/EDRPOU numbers, "Test Merchant"
 // descriptions), written as real cp1251 bytes, same placeholder-style
-// convention the other hand-authored fixtures in this plan use.
+// convention the other hand-authored statement fixtures use.
 import type { StatementFormat } from '@kiko/statement-import/parser';
 
 import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';
 
-// Section C.3: "Detect signature — file content matches the FULL literal
-// header line; fields are DOUBLE-QUOTED." **[VERIFY LIVE]** this exact
+// Detect signature: file content matches the FULL literal header line;
+// fields are DOUBLE-QUOTED. **[VERIFY LIVE]** this exact
 // glyph against a real export before shipping — this string is transcribed
-// verbatim from the plan's own C.3 fact table (itself sourced from uabean's
-// importer, not a real Ukrsib export Kiko has seen), including the header's
+// verbatim from uabean's importer (not a real Ukrsib export Kiko has seen),
+// including the header's
 // OWN trailing `;` (an 18th, always-empty trailing column every data row
 // also carries, per this format's hand-authored fixture).
 //
@@ -37,7 +37,7 @@ export const OPERATSII_WORD = 'операцiї';
 // diverges from ProCredit business's otherwise-identical layout — see
 // `FOP_BUSINESS_COLUMN_BASE`'s own doc comment. FOP fields: `ownEdrpou` (the
 // account HOLDER's own EDRPOU) and `correspondentEdrpou` (the counterparty's
-// EDRPOU) — read only to skip, per the plan's EDRPOU disposition (no
+// EDRPOU) — read only to skip (no
 // ParsedTransaction/ParsedAccountHint field exists for it).
 export const COLUMN = {
   ...FOP_BUSINESS_COLUMN_BASE,

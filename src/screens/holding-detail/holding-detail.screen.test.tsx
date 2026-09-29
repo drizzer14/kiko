@@ -22,6 +22,7 @@ import {
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
@@ -1816,7 +1817,6 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('groups the ledger by day with Today/Yesterday separators, newest day first', async () => {
-    const day = 24 * 60 * 60 * 1000;
     const now = Date.now();
     // Ordered newest-first, matching the repo query's own `desc(time)` order.
     seed(cardHolding, [
@@ -1824,7 +1824,7 @@ describe('HoldingDetailScreen', () => {
       {
         id: 'x2',
         amountMinorUnits: -5000,
-        time: now - day,
+        time: localDaysFrom(now, -1),
         description: 'YesterdayTxn',
         source: 'manual',
       },
@@ -1858,7 +1858,9 @@ describe('HoldingDetailScreen', () => {
       {
         id: 'x2',
         amountMinorUnits: -3000,
-        time: now - 60 * 1000,
+        // Local midnight stays on today at any hour; a fixed minute back from
+        // `now` falls on yesterday when the suite runs just after midnight.
+        time: startOfLocalDay(now),
         description: 'SecondToday',
         source: 'manual',
       },
@@ -1875,9 +1877,7 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('renders an explicit DD.MM.YYYY date separator for an older day (not Today/Yesterday)', async () => {
-    const day = 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    const older = now - 5 * day;
+    const older = localDaysFrom(Date.now(), -5);
     const expectedHeader = formatDate(older);
     seed(cardHolding, [
       { id: 'x1', amountMinorUnits: -5000, time: older, description: 'OldTxn', source: 'manual' },

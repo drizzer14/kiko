@@ -161,8 +161,10 @@ its own — never restate what the code already does. This applies to
 tests and skills too, not only application code.
 
 No history in a comment: no task id (`T28`), no review-round id (`I1`,
-`M2`, `N3`), no spec section number (`spec 6.2`, `D14`), and no
-"changed because …" narrative. That belongs in the commit message that
+`M2`, `N3`), no spec section number (`spec 6.2`, `D14`), no plan
+citation (`decision N`, `per the plan`, `plan doc`, `separate commit`,
+`in this plan`, a dated plan name),
+and no "changed because …" narrative. That belongs in the commit message that
 made the change, or in the skill section that owns the rule — never
 in a comment left behind in the code. Mechanized in `src/**` by the
 `kiko-no-history-id-comment` Semgrep rule (ERROR) — see the
@@ -1094,6 +1096,47 @@ automatically by Jest with no `jest.mock()` call needed. Read
 assuming a package is already covered — a package added to
 `package.json` without also being added there will fail its first
 test with an unhelpful parse error, not an obviously-related one.
+
+## Tests read a module, never a source file's text
+
+A test never reads a `.ts`/`.tsx` source file's text to derive what it
+expects. Stryker rewrites every mutable source in its sandbox, so the
+text the test reads is instrumented code, and a parse of it breaks the
+dry run (`settings-columns.test.ts` split `schema.ts`'s text;
+`title-keys.call-sites.test.ts` read literal call arguments). Import
+the module and read its structure instead: drizzle's
+`getTableColumns(settings)` for a table's columns, an exported list
+for a set of keys.
+
+A data fixture is fine: name it by its own non-TypeScript extension in
+the path (`join(__dirname, '__fixtures__/sample.csv')`, or a `const`
+bound to that join), or read it from `drizzle/migrations/`.
+
+Semgrep `kiko-no-source-text-read-in-test` (`rules/semgrep-prewrite.yml`)
+enforces this in every `*.test.ts(x)` and `src/test-support/**`. It
+flags a `readFileSync`/`readFile`/`createReadStream` call whose path it
+cannot prove is a non-TypeScript file, so a walked or computed path is
+flagged too. Four tests keep one text read each by a documented
+per-line override (`// nosemgrep: kiko-no-source-text-read-in-test
+OVERRIDE(<reason>)` on the line above that read), never a whole-file
+exclude, so a new read in the same file is still denied. Three search
+src text for a word or a literal that Stryker's instrumentation keeps
+(`settings-columns.test.ts`, `title-keys.call-sites.test.ts`,
+`0044-move-crypto-cash-holdings.test.ts`), and
+`generate-demo-kiko.test.ts` reads its `.kiko` fixtures by a name from a
+table. Harness tests under `__tests__/` are out of scope: they read
+rules, scripts, docs, and temp projects.
+
+Known limits:
+
+- A harness test that walks `src/` (`one-component-per-file.test.ts`)
+  is not checked.
+- A join rooted at `drizzle/migrations` is not extension-checked, so
+  `join(MIGRATIONS_ROOT, '..', '..', 'src', 'db', 'schema.ts')` passes.
+  Never climb out of the migrations folder in a path.
+- A template path (`` `${__dirname}/x.csv` ``) fires even with a
+  non-TypeScript extension: the rule reads only a string literal or a
+  join. A safe false positive: write `join(__dirname, 'x.csv')`.
 
 ## Reviewed, and deliberately not changed
 

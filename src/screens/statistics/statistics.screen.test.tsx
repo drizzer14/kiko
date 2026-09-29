@@ -46,6 +46,7 @@ jest.mock('@react-navigation/native', () => ({
 import { i18n } from '@kiko/i18n/init';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import { formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
@@ -267,9 +268,9 @@ const UAH_HOLDING_2: Holding = {
 const USD_UAH_RATE: Rate = { base: 'USD', quote: 'UAH', rate: '40' };
 
 const TRANSACTIONS: Transaction[] = [
-  { id: 't1', holdingId: 'h1', time: now - 3 * DAY, amountMinorUnits: 50_000 },
-  { id: 't2', holdingId: 'h1', time: now - DAY, amountMinorUnits: 50_000 },
-  { id: 't3', holdingId: 'h2', time: now - 3 * DAY, amountMinorUnits: 5_000 },
+  { id: 't1', holdingId: 'h1', time: localDaysFrom(now, -3), amountMinorUnits: 50_000 },
+  { id: 't2', holdingId: 'h1', time: localDaysFrom(now, -1), amountMinorUnits: 50_000 },
+  { id: 't3', holdingId: 'h2', time: localDaysFrom(now, -3), amountMinorUnits: 5_000 },
 ];
 
 // A historical USD->UAH row dated before the transaction span, so `rateTableAt`
@@ -300,14 +301,14 @@ const EXPENSES: Transaction[] = [
   {
     id: 'e1',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -300_00,
     category: 'groceries',
   },
   {
     id: 'e2',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -100_00,
     category: 'transport',
   },
@@ -334,21 +335,21 @@ const THREE_EXPENSES: Transaction[] = [
   {
     id: 'x1',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -300_00,
     category: 'groceries',
   },
   {
     id: 'x2',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -100_00,
     category: 'transport',
   },
   {
     id: 'x3',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -50_00,
     category: 'transfers',
   },
@@ -376,14 +377,14 @@ const SELF_TRANSFER: Transaction[] = [
   {
     id: 'st-out',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -200_00,
     category: 'transfers',
   },
   {
     id: 'st-in',
     holdingId: 'h3',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: 200_00,
     category: 'transfers',
   },
@@ -429,7 +430,7 @@ const MCC_MOVEMENTS: Transaction[] = [
   {
     id: 'm-cash',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -500_00,
     category: 'cash',
     mcc: 6011,
@@ -438,7 +439,7 @@ const MCC_MOVEMENTS: Transaction[] = [
   {
     id: 'm-own',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -200_00,
     category: 'transfers',
     mcc: 4829,
@@ -447,7 +448,7 @@ const MCC_MOVEMENTS: Transaction[] = [
   {
     id: 'm-p2p',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -150_00,
     category: 'transfers',
     mcc: 4829,
@@ -465,7 +466,7 @@ const EXCHANGE_LEGS: Transaction[] = [
   {
     id: 'ex-out',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -10_000_00,
     category: null,
     exchangeCounterpartHoldingId: 'h2',
@@ -473,7 +474,7 @@ const EXCHANGE_LEGS: Transaction[] = [
   {
     id: 'ex-in',
     holdingId: 'h2',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: 240_00,
     category: null,
     exchangeCounterpartHoldingId: 'h1',
@@ -498,7 +499,7 @@ const CONVERT_LEGS: Transaction[] = [
   {
     id: 'cv-existing',
     holdingId: 'h1',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: -10_000_00,
     category: 'transport',
     exchangeCounterpartHoldingId: 'h2',
@@ -506,7 +507,7 @@ const CONVERT_LEGS: Transaction[] = [
   {
     id: 'cv-new',
     holdingId: 'h2',
-    time: now - 2 * DAY,
+    time: localDaysFrom(now, -2),
     amountMinorUnits: 240_00,
     category: null,
     exchangeCounterpartHoldingId: 'h1',
@@ -831,7 +832,7 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('net-worth-line-empty')).toBeTruthy();
     expect(mockRunBackfill).toHaveBeenCalledTimes(1);
 
-    nowSpy.mockReturnValue(now + DAY);
+    nowSpy.mockReturnValue(localDaysFrom(now, 1));
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
@@ -872,7 +873,7 @@ describe('StatisticsScreen', () => {
     // in-flight run settles. `backfillRanForSpanRef` already covers this
     // span, so this re-render starts no second run of its own — the first
     // run is still the only one pending.
-    nowSpy.mockReturnValue(now + DAY);
+    nowSpy.mockReturnValue(localDaysFrom(now, 1));
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
@@ -889,7 +890,7 @@ describe('StatisticsScreen', () => {
 
     // The next focus retries the SAME span (the ref was reset on the reject).
     const firstSpan = mockRunBackfill.mock.calls[0]?.[0] as { earliestDay: number };
-    nowSpy.mockReturnValue(now + 2 * DAY);
+    nowSpy.mockReturnValue(localDaysFrom(now, 2));
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
@@ -930,7 +931,7 @@ describe('StatisticsScreen', () => {
     expect(mockRunBackfill).toHaveBeenCalledTimes(1);
 
     const firstSpan = mockRunBackfill.mock.calls[0]?.[0] as { earliestDay: number };
-    nowSpy.mockReturnValue(now + DAY);
+    nowSpy.mockReturnValue(localDaysFrom(now, 1));
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
@@ -988,7 +989,7 @@ describe('StatisticsScreen', () => {
     expect(mockRunBackfill).toHaveBeenCalledTimes(1);
 
     // A genuine later focus (`now` actually advances) still retries.
-    nowSpy.mockReturnValue(now + DAY);
+    nowSpy.mockReturnValue(localDaysFrom(now, 1));
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
@@ -1099,7 +1100,7 @@ describe('StatisticsScreen', () => {
 
     // The next focus (`now` advancing, same holdings) must still retry GBP
     // rather than treating its failed run as already covered.
-    nowSpy.mockReturnValue(now + DAY);
+    nowSpy.mockReturnValue(localDaysFrom(now, 1));
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
@@ -1170,7 +1171,7 @@ describe('StatisticsScreen', () => {
     // nor (see the refocus below) the span ref run B already claimed.
     expect(getByTestId('net-worth-line-loading')).toBeTruthy();
 
-    nowSpy.mockReturnValue(now + DAY);
+    nowSpy.mockReturnValue(localDaysFrom(now, 1));
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
@@ -1297,7 +1298,7 @@ describe('StatisticsScreen', () => {
     // would only ever fetch the newest day and lose the newly-opened
     // earlier gap for good.
     mockRunBackfill.mockResolvedValueOnce({ state: 'complete', lastDay: now });
-    nowSpy.mockReturnValue(now + DAY);
+    nowSpy.mockReturnValue(localDaysFrom(now, 1));
     await act(async () => {
       rerender(<StatisticsScreen />);
     });
@@ -1370,21 +1371,21 @@ describe('StatisticsScreen', () => {
         {
           id: 'c1',
           holdingId: 'h1',
-          time: now - 2 * DAY,
+          time: localDaysFrom(now, -2),
           amountMinorUnits: -940_00,
           category: 'groceries',
         },
         {
           id: 'c2',
           holdingId: 'h1',
-          time: now - 2 * DAY,
+          time: localDaysFrom(now, -2),
           amountMinorUnits: -50_00,
           category: 'transport',
         },
         {
           id: 'c3',
           holdingId: 'h1',
-          time: now - 2 * DAY,
+          time: localDaysFrom(now, -2),
           amountMinorUnits: -10_00,
           category: 'transfers',
         },
@@ -1699,7 +1700,7 @@ describe('StatisticsScreen', () => {
 
     await pressFilter(getByTestId, CATEGORY_FILTER, 'groceries');
 
-    // Narrow the range to TODAY — outside the EXPENSES' `now - 2 * DAY`
+    // Narrow the range to TODAY — outside the EXPENSES' two-days-ago
     // timestamp — so every category (groceries included) drops out of the
     // range-scoped slices. The selection itself is untouched by the narrowing.
     await act(async () => {
@@ -1753,14 +1754,14 @@ describe('StatisticsScreen', () => {
     const insideRangeExpense: Transaction = {
       id: 'inside-range',
       holdingId: 'h1',
-      time: now - 5 * DAY,
+      time: localDaysFrom(now, -5),
       amountMinorUnits: -100_00,
       category: 'groceries',
     };
     const outsideRangeExpense: Transaction = {
       id: 'outside-range',
       holdingId: 'h1',
-      time: now - 60 * DAY,
+      time: localDaysFrom(now, -60),
       amountMinorUnits: -900_00,
       category: 'groceries',
     };
@@ -1872,7 +1873,7 @@ describe('StatisticsScreen', () => {
     // `utilities` is a seeded default category (so its title translates), but
     // THREE_EXPENSES never spends against it — it never reaches
     // `allCategorySlices`, the same gap `selectedCategories` already handles
-    // for the category donut (review decision 17).
+    // for the category donut.
     setLiveData({
       accounts: [CASH, BANK],
       holdings: [UAH_HOLDING, USD_HOLDING],
@@ -2002,11 +2003,11 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-empty')).toBeTruthy();
 
     await act(async () => {
-      advanceFocusedNow(now + DAY);
+      advanceFocusedNow(localDaysFrom(now, 1));
     });
 
     const centerTotal = within(getByTestId('category-pie-center-total'));
-    const advancedRange = defaultDateRange(now + DAY);
+    const advancedRange = defaultDateRange(localDaysFrom(now, 1));
 
     expect(centerTotal.getByText('50.00 ₴')).toBeTruthy();
     expect(
@@ -2061,7 +2062,7 @@ describe('StatisticsScreen', () => {
       const linkedPayment: Transaction = {
         id: 'lp1',
         holdingId: 'h1',
-        time: now - 2 * DAY,
+        time: localDaysFrom(now, -2),
         amountMinorUnits: -12_000_00,
         category: 'groceries',
         loanHoldingId: 'loan1',
@@ -2088,7 +2089,7 @@ describe('StatisticsScreen', () => {
       const informalPayment: Transaction = {
         id: 'lp2',
         holdingId: 'h1',
-        time: now - 2 * DAY,
+        time: localDaysFrom(now, -2),
         amountMinorUnits: -12_000_00,
         category: 'groceries',
         loanHoldingId: 'loan-informal',
@@ -2114,7 +2115,7 @@ describe('StatisticsScreen', () => {
       const unlinkedPayment: Transaction = {
         id: 'lp3',
         holdingId: 'h1',
-        time: now - 2 * DAY,
+        time: localDaysFrom(now, -2),
         amountMinorUnits: -12_000_00,
         category: 'groceries',
       };
@@ -2140,7 +2141,7 @@ describe('StatisticsScreen', () => {
       const danglingPayment: Transaction = {
         id: 'lp4',
         holdingId: 'h1',
-        time: now - 2 * DAY,
+        time: localDaysFrom(now, -2),
         amountMinorUnits: -12_000_00,
         category: 'groceries',
         loanHoldingId: 'ghost-loan',
@@ -2168,7 +2169,7 @@ describe('StatisticsScreen', () => {
       const linkedPayment: Transaction = {
         id: 'lp1',
         holdingId: 'h1',
-        time: now - 2 * DAY,
+        time: localDaysFrom(now, -2),
         amountMinorUnits: -12_000_00,
         category: 'groceries',
         loanHoldingId: 'loan1',
@@ -2491,7 +2492,7 @@ describe('StatisticsScreen — paused while hidden', () => {
     stub.writeWhileHidden({
       transactions: [
         ...TRANSACTIONS,
-        { id: 't4', holdingId: 'h1', time: now - DAY, amountMinorUnits: 25_00 },
+        { id: 't4', holdingId: 'h1', time: localDaysFrom(now, -1), amountMinorUnits: 25_00 },
       ],
     });
     await act(async () => {
@@ -2501,7 +2502,7 @@ describe('StatisticsScreen — paused while hidden', () => {
 
     // The return: the deferred write applies (a real focus's own read) AND
     // `now` refreshes (a real focus's own setNow) — together, ONE recompute.
-    advanceFocusedNow(now + DAY);
+    advanceFocusedNow(localDaysFrom(now, 1));
     mockUseIsFocused.mockReturnValue(true);
     await act(async () => {
       rerender(<StatisticsScreen />);
@@ -2518,7 +2519,7 @@ describe('StatisticsScreen — paused while hidden', () => {
       rerender(<StatisticsScreen />);
     });
 
-    advanceFocusedNow(now + DAY);
+    advanceFocusedNow(localDaysFrom(now, 1));
     mockUseIsFocused.mockReturnValue(true);
     await act(async () => {
       rerender(<StatisticsScreen />);

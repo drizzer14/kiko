@@ -42,7 +42,7 @@ describe('resolveSymbolName', () => {
   it('leaves a symbol with an explicit fallback but no known minimum unchanged (defers to native fallback)', () => {
     // We cannot know an arbitrary symbol's minimum iOS in JS, so a non-mapped
     // symbol is passed through unchanged; SFSymbolView's native `fallbackName`
-    // is the runtime net for it (§3.0.5).
+    // is the runtime net for it.
     expect(resolveSymbolName('some.newer.symbol', 'older.symbol', 16)).toBe('some.newer.symbol');
   });
 });

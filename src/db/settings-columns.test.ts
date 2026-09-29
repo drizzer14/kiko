@@ -83,6 +83,8 @@ describe('settings schema columns', () => {
     const columns = settingsColumns();
     expect(columns.length).toBeGreaterThan(0);
 
+    // Only whole-word column names are searched, and Stryker keeps every identifier.
+    // nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(whole-word name search)
     const sources = sourceFiles(SRC_ROOT).map((file) => readFileSync(file, 'utf8'));
     const readerless = columns.filter(
       (column) => !sources.some((source) => new RegExp(`\\b${column}\\b`).test(source)),

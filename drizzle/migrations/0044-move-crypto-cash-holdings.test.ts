@@ -510,8 +510,10 @@ describe('migration 0044: moves a crypto cash holding into a crypto account', ()
     // either. If a second place ever hard-codes this prefix, that is the
     // one spot such a collision could be introduced, so this asserts the
     // prefix appears in NO file but the two below (test files excluded, as
-    // a fixture's own hard-coded id is not a production writer).
+    // a fixture's own hard-coded id is not a production writer). Stryker keeps
+    // the original string literal beside its mutant, so the search still finds it.
     const matches = repoFilesUnder(join(REPO_ROOT, 'drizzle'), join(REPO_ROOT, 'src'))
+      // nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(string literal search)
       .filter((file) => readFileSync(file, 'utf8').includes('crypto-from-'))
       .map((file) => relative(REPO_ROOT, file))
       .sort();

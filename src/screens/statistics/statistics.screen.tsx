@@ -919,7 +919,7 @@ const StatisticsScreen: FC = () => {
     // above (e.g. the range moves to a week with no spending in it) — union it
     // back in from `categoryByKey` so both menus still list it, checked,
     // rather than silently hiding a selection the user can then never find and
-    // uncheck (review decision 17: KEEP a hidden selection visible).
+    // uncheck (a hidden selection stays visible).
     const manualTrendKeys = appliedTrendFilter.mode === 'manual' ? appliedTrendFilter.keys : [];
 
     for (const key of new Set([...selectedCategories, ...manualTrendKeys])) {

@@ -658,6 +658,28 @@ reasoning.
   target's rest parameter has a type annotation
   (`(...rest: []) => …`); write `(...$REST: $TYPE)`.
 
+## Semgrep facts verified on 2026-09-29 (`kiko-no-source-text-read-in-test`)
+
+- With `options: { symbolic_propagation: true }`, a top-level
+  `pattern-not: $READ($JOIN(..., "=~/\.csv$/"), ...)` also drops
+  `readFileSync(FIXTURE_PATH)` when `const FIXTURE_PATH = join(…,
+  'x.csv')`, and it sees through two levels
+  (`join(migrationsDir, name)` with `migrationsDir` a `const` join).
+  The same filter as a `metavariable-pattern` on the path argument does
+  NOT see through the `const`: every identifier path fired.
+- A pattern on `readFileSync(...)` also matches a renamed named import
+  (`import { readFileSync as read }`), a default or namespace import
+  (`fs.readFileSync`), `require('node:fs').readFileSync`, and
+  `fs.promises.readFile` via `$FS.readFile(...)`.
+- A metavariable callee `$READ(...)` also matches a member call
+  (`fs.readFileSync(…)`, `fs.promises.readFile(…)`), so a
+  `pattern-not: $READ(...)` needs no `$FS.$READ(...)` twin. The good
+  fixture's `fs.` reads pin this.
+- Semgrep skipped every file when it scanned a DIRECTORY under the
+  scratchpad (`paths.scanned` was empty, no error); naming the file
+  scanned it. Scan a probe file by its path, and read `paths.scanned`
+  before trusting a zero.
+
 ## Class A vs Class B
 
 `rules/semgrep-mobile.yml` groups rules into two severities, both
@@ -750,10 +772,16 @@ hand-rolled checker (and fixer)" below. The comment-history check is
 Mechanizes kiko-code-style's "Comments: WHY only, never history": no
 task id (`T28`), `Task N`, review-round id (`I1`/`M2`/`N3`/`U7`),
 spec/decision id (`spec 6.2`, `D14`), bug number, `USER-DECISION`,
-`Requirement X`, `controller ruling N`, `section X.N`, `task brief`/
+`Requirement X`, `controller ruling N`, `Section X.N`/`section X.N`
+(a letter or number before the dot: `Section C.2`, `section 6.2`), a
+`§N` section sign (`§2.1`, `§3`, `§ 3`), `task brief`/
 `parity brief` (with an optional `'s`), `Review Focus N`, `Minor N`,
 `audit N`, `RULING RN`, `fix round N`, `round-N`, `device[- ]feedback`,
-or `on-device review` left behind in a `src/**` comment. Two
+`on-device review`, or a plan citation (`[Dd]ecisions? N`, `separate
+commit(s)`, `later`/`follow-up`/`previous`/`next commit`, `per the plan`,
+`the plan's`, `plan doc`, `by the plan`, `in this plan`, `this plan also`,
+a dated plan name like `2026-09-11 multi-account plan`) left behind in a `src/**`
+comment. Two
 `pattern-regex` arms, one per comment syntax —
 a single regex spanning both `//` and `/* */` would have to
 special-case where a line comment ends and a block comment does not.
@@ -880,6 +908,52 @@ possessive, no "per the" lead-in) or "a brief native spinner" (plain
 adjective use, no "the"/"per the" at all). Fixture pair: the `.bad.ts`
 positive shapes ("per the brief, …", "the brief's residual gap …")
 and the `.good.ts` negative probe covering both adjective shapes.
+
+**The plan-history members (2026-09-29) need a citation shape, never a
+bare `the plan` or `plan`.** `the plan` is domain prose in this codebase:
+the rezone import computes and loads a plan (`rezone-import-times.ts`:
+"Compute the plan (pure).", "Load the plan"), and the reminders planner
+builds one (`sync-reminders.ts`: "the plan stops keeping its slot
+free"). So each member requires a shape only a citation takes: a
+numbered decision (`decision 18`, `Decision 6:`), a possessive (`the
+plan's disposition`), a `doc` suffix (`plan doc`), or a `per`/`by`
+lead-in (`per the plan`, `by the plan`). A bare `decision` (no digit)
+stays silent too ("a decision the user makes"). The group's trailing
+`\b` keeps a bare `commit` member from matching `commits` ("each batch
+commits in one transaction"); only `[Ss]eparate\scommits?` takes the
+plural, because "separate commits" is a citation and "separate" never
+leads a database sentence. `in this plan`, `this plan also`, and a
+dated plan name (`\d{4}-\d{2}-\d{2}\s[\w-]+\splan`, "(2026-09-11
+multi-account plan)") are citation shapes too: the rezone and
+reminders code says "the plan" or "this planner", never "in this plan".
+Fixture pair: the plan-history pins in `.bad.ts` and items 16 and 18 in
+`.good.ts`.
+
+**The section members (2026-09-29) need a number.** `[Ss]ection\s[A-Z0-9]+\.\d+`
+fires only on a word "section" followed by a dotted number, so a
+"Section" header row, "2 sections", and "subsection 2.1" (no word
+boundary before "section") stay silent. `§\s?\d` sits OUTSIDE the `\b(...)`
+group in both arms: `§` is not a word character, so a `\b` before it
+would need a letter or digit right before the sign and miss "(§2.1)".
+The optional space also catches a spaced "(§ 3)". An
+external standard's section (`RFC 4231 §4.3`) is the same
+standalone-token class as `D2` above: accepted, not narrowed. Cite the
+test case or the heading instead ("RFC 4231 test case 2"). Fixture
+pair: the five section pins at the end of `.bad.ts` and item 17 in
+`.good.ts`.
+
+**`next commit` can collide with database prose.** `commit` is also a
+SQL transaction commit, so a real sentence like "the next commit
+flushes the batch" is syntactically identical to a "lands in the next
+commit" citation. It is the same standalone-token class as `D2` above:
+accepted, not narrowed. The src tree has 0 such sentences today; if
+one appears, reword it ("the following transaction commit"). The same
+holds for `the plan's` in the reminders planner: write "the plan keeps
+its slot", never "the plan's slot". `by the plan` and `per the plan` are
+the same class: "the slot chosen by the plan" or "decided by the plan
+owner" in rezone or reminders prose is syntactically a citation. The
+src tree has 0 such sentences today; if one appears, reword it ("the
+slot the plan chose").
 
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 
@@ -1467,7 +1541,9 @@ mechanizable (see harness-workflow's "Classify every finding").
    for the full shape.
 6. **Override form.** See "Override forms and where each is honored".
 7. **Docs.**
-   - A row in `docs/harness/review-to-biome-inventory.md` (always).
+   - A row in `docs/harness/review-to-biome-inventory.md` (always; its
+     first cell is the exact rule id, see "Every mechanized finding gets
+     an inventory row").
    - `docs/harness/documented-exceptions.md` for any new exclude or
      allowlist entry.
    - The CLAUDE.md checks table and `check:all` list only for a new
@@ -1542,7 +1618,9 @@ To change a pinned value, do one of these:
 
 `docs/harness/review-to-biome-inventory.md` tracks every review
 finding that has been (or could be) mechanized into a Biome/Semgrep/
-shell rule. A new rule of any kind gets a row there — including the
+shell rule. A new rule of any kind gets a row there — enforced for
+every Semgrep rule id by `__tests__/rule-inventory.test.ts` (the first
+cell holds the exact rule id) — including the
 basename-pattern `paths.include` scope, so a future rule copying the
 row as a template inherits the correct (non-path-prefixed) form
 instead of a stale mistake. A finding that is deliberately **not**

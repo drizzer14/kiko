@@ -103,3 +103,22 @@ export const debuggerReportFamilyNearMiss = true;
 // statement-import feature reads) are real domain vocabulary, not a
 // debugger-report id.
 export const technicalTermRegressionLock = 'UTF-8, SHA-256, ISO-8601, Windows-1251';
+
+// 16. The plan-history members need a citation shape (a numbered decision,
+// a possessive, a "doc" suffix, or a "per"/"by" lead-in), so domain prose
+// about an import plan, a user's decision, or a database commit stays silent:
+// Compute the plan (pure). The rezone plan runs once per import, a decision
+// the user makes on the review sheet, and each batch commits in one
+// transaction.
+export const planHistoryMembersNearMiss = true;
+
+// 17. The section members need a number after the word: a "Section" header
+// row, a section list, 2 sections, and the settings subsection 2.1 of a
+// statement stay silent, as does a lone § sign with no digit after it.
+export const sectionMembersNearMiss = true;
+
+// 18. The later plan and commit members need their whole citation shape:
+// Separate committed rows from pending ones. The reminders planner keeps
+// this planning window open, and this planner also skips a muted slot.
+// A row in this planned transfer and the 2026-09-11 import run stay silent.
+export const laterPlanMembersNearMiss = true;

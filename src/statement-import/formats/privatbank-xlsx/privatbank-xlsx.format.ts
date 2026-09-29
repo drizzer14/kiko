@@ -41,7 +41,7 @@ export const COLUMN = {
   balanceCurrency: 9,
 } as const;
 
-// uabean's own map, confirmed incomplete by the plan
+// uabean's own map, which is incomplete
 // — `[VERIFY LIVE]` the full abbreviation set (e.g. фунт/GBP is deliberately
 // absent — an unmapped word surfaces as a recoverable `unresolvedRows` entry
 // below, never a throw).

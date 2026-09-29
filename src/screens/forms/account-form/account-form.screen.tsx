@@ -73,7 +73,7 @@ const INITIAL_KIND: Kind = 'bank';
 // (a kind-derived icon) is applied by the account list rows when the stored icon
 // is null; here the account has no kind context worth deriving from yet, so the
 // generic account reference (`tray`) reads as "unset" — never the retired
-// `square.grid.2x2`, per the icon rework's generic-account decision (§2.1).
+// `square.grid.2x2`.
 const FALLBACK_ICON = genericEntitySymbol.account;
 
 // The cash-only initial value field's own two error reasons — a blank or
@@ -81,7 +81,7 @@ const FALLBACK_ICON = genericEntitySymbol.account;
 // (a cash balance can never be negative, but 0 is a valid typed value). Pure —
 // no closure — kept at module scope per kiko-code-style's helper placement
 // rule, and to keep this branching out of AccountFormScreen's own cognitive
-// complexity score (review decision 18).
+// complexity score.
 type InitialValueIssue = 'missing' | 'negative' | null;
 
 const initialValueIssue = (rawValue: string): InitialValueIssue => {
@@ -197,8 +197,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // OR a blocked Save — never a per-field flag: each field's own error below
   // still derives from ONLY its own value, this just gates when either can
   // first show, so a fresh create form shows no error before the user has
-  // tried to submit (review decision 18 for the initial value — it used to be
-  // silently clamped to 0 instead of surfacing a reason).
+  // tried to submit.
   const [attemptedSave, setAttemptedSave] = useState(false);
   // DEVICE BUG fix (root cause): while the currency sheet's search field can
   // be focused, this screen's background ScrollView must NOT react to the
@@ -451,9 +450,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
       if (kind === 'cash') {
         // `initialValueInvalid` (checked in `scrollTargets` above) already
-        // blocked Save on a blank or negative value (review decision 18: it
-        // used to be silently clamped to 0 instead of surfacing a reason), so
-        // reaching here means it is a valid amount.
+        // blocked Save on a blank or negative value, so reaching here means it
+        // is a valid amount.
         await accountsRepo.createCashAccount({
           name: trimmedName,
           currency,

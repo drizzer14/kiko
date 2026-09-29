@@ -62,6 +62,10 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-raw-error-in-console',
   'kiko-no-clipboard-set-string',
   'kiko-no-per-bucket-date-in-statistics',
+  'kiko-no-bare-lowercase-category-fold',
+  'kiko-no-date-utc-in-statement-import',
+  'kiko-no-source-text-read-in-test',
+  'kiko-no-fixed-day-offset-on-real-clock-in-test',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -80,6 +84,14 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
     'kiko-no-empty-object-jsx-spread/src/screens/settings/settings-row-example',
   'kiko-no-per-bucket-date-in-statistics':
     'kiko-no-per-bucket-date-in-statistics/src/statistics/bucket-example',
+  'kiko-no-bare-lowercase-category-fold':
+    'kiko-no-bare-lowercase-category-fold/src/statistics/category-fold-example',
+  'kiko-no-date-utc-in-statement-import':
+    'kiko-no-date-utc-in-statement-import/src/statement-import/date-example',
+  'kiko-no-source-text-read-in-test':
+    'kiko-no-source-text-read-in-test/src/test-support/source-read-example',
+  'kiko-no-fixed-day-offset-on-real-clock-in-test':
+    'kiko-no-fixed-day-offset-on-real-clock-in-test/src/test-support/day-offset-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -92,6 +104,10 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-confirm-sheet-in-form': 'src/screens/forms',
   'kiko-no-empty-object-jsx-spread': 'src/screens/settings',
   'kiko-no-per-bucket-date-in-statistics': 'src/statistics',
+  'kiko-no-bare-lowercase-category-fold': 'src/statistics',
+  'kiko-no-date-utc-in-statement-import': 'src/statement-import',
+  'kiko-no-source-text-read-in-test': 'src/test-support',
+  'kiko-no-fixed-day-offset-on-real-clock-in-test': 'src/test-support',
 };
 
 function fixturePrefix(ruleId: string): string {
@@ -340,6 +356,56 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
 
       expect(result.stdout).toBe('');
       expect(result.status).toBe(0);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  const sourceReadProbe = [
+    "import { readFileSync } from 'node:fs';",
+    '',
+    "export const schemaText = (): string => readFileSync(`${__dirname}/schema.ts`, 'utf8');",
+    '',
+  ].join('\n');
+
+  const dayOffsetProbe = [
+    'const DAY_MS = 86_400_000;',
+    '',
+    'export const tomorrow = (): number => Date.now() + DAY_MS;',
+    '',
+  ].join('\n');
+
+  // Both rules guard test code only. A co-located test is where a source read
+  // or a real-clock fixture lands; app source reads files and the real clock at
+  // runtime on purpose, and a harness test under __tests__/ reads rules,
+  // scripts and docs, which mutation testing never rewrites. A test that keeps
+  // one overridden read is still checked on every other line.
+  const sourceRead = 'kiko-no-source-text-read-in-test';
+  const dayOffset = 'kiko-no-fixed-day-offset-on-real-clock-in-test';
+
+  it.each([
+    [sourceRead, 'src/probe/source-read-probe.test.ts', 2, sourceReadProbe],
+    [sourceRead, 'src/probe/source-read-probe.test.tsx', 2, sourceReadProbe],
+    [sourceRead, 'src/db/settings-columns.test.ts', 2, sourceReadProbe],
+    [sourceRead, 'src/probe/source-read-probe.ts', 0, sourceReadProbe],
+    [sourceRead, '__tests__/source-read-probe.test.ts', 0, sourceReadProbe],
+    [dayOffset, 'src/probe/day-offset-probe.test.ts', 2, dayOffsetProbe],
+    [dayOffset, 'src/probe/day-offset-probe.test.tsx', 2, dayOffsetProbe],
+    [dayOffset, 'src/probe/day-offset-probe.ts', 0, dayOffsetProbe],
+  ])('%s on %s exits %s', (ruleId, target, status, content) => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-test-scope-'));
+    try {
+      const targetFile = join(project, ...target.split('/'));
+      mkdirSync(join(targetFile, '..'), { recursive: true });
+
+      const result = runGuard(payloadFor(targetFile, content), project);
+
+      expect(result.status).toBe(status);
+
+      if (status === 2) {
+        const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+        expect(reason).toContain(ruleId);
+      }
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

@@ -250,8 +250,8 @@ rules:
     languages: [typescript]
     severity: ERROR
     message: >
-      A comment cites a task id, review-round id, spec/decision id, or a bug
-      number. kiko-code-style's "Comments: WHY only, never history": that
+      A comment cites a task id, review-round id, spec/decision id, a bug
+      number, or a plan (a plan doc, a numbered decision, a separate commit). kiko-code-style's "Comments: WHY only, never history": that
       belongs in the commit message that made the change, or the skill
       section that owns the rule — never left behind in a comment. Drop the
       id and keep the WHY; if nothing but history remains, delete the
@@ -270,8 +270,8 @@ rules:
         - "drizzle.config.ts"
     patterns:
       - pattern-either:
-          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//.*\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|section\s[A-Z]\.\d|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS)-\d+|device[- ]feedback|on-device\sreview|USER-DECISION)\b'
-          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*(?:(?!\*/)[\s\S])*?\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|section\s[A-Z]\.\d|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS)-\d+|device[- ]feedback|on-device\sreview|USER-DECISION)\b(?:(?!\*/)[\s\S])*?\*/'
+          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//.*(?:§\s?\d|\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|[Ss]ection\s[A-Z0-9]+\.\d+|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS)-\d+|device[- ]feedback|on-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:later|follow-up|previous|next)\scommit|per\sthe\splan|the\splan''s|plan\sdoc|by\sthe\splan\b|in\sthis\splan|this\splan\salso|\d{4}-\d{2}-\d{2}\s[\w-]+\splan)\b)'
+          - pattern-regex: '^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*(?:(?!\*/)[\s\S])*?(?:§\s?\d|\b(T\d{1,3}|I\d{1,3}|M\d{1,3}|N\d{1,3}|U\d{1,3}|D\d{1,3}|R\d{1,3}|F\d{1,3}|G\d{1,3}|C\d{1,3}|bug\s\d+|spec\s\d|Task\s\d+|Requirement\s[A-Z]|[Cc]ontroller\sruling\s\d+|[Ss]ection\s[A-Z0-9]+\.\d+|(?:task|parity)\sbrief(?:''s)?|per\sthe\sbrief|the\sbrief''s|Review\sFocus\s\d+|Minor\s\d+|audit\s\d+|RULING\sR\d+|fix\sround\s\d+|round-\d+|(?:SYNC|INT|TWIN|TX|HOLD|BAK|STAT|AUTH|PERF|SEC|DEP|DEPS|CS)-\d+|device[- ]feedback|on-device\sreview|USER-DECISION|[Dd]ecisions?\s\d+|[Ss]eparate\scommits?|(?:later|follow-up|previous|next)\scommit|per\sthe\splan|the\splan''s|plan\sdoc|by\sthe\splan\b|in\sthis\splan|this\splan\salso|\d{4}-\d{2}-\d{2}\s[\w-]+\splan)\b)(?:(?!\*/)[\s\S])*?\*/'
   # kiko-design-system's "Token categories" — a component reads a color TOKEN
   # (theme.colors.*/palette.ts), never a raw hex/rgba() string literal. The
   # pattern anchors on the AST shape of a quoted string literal itself
@@ -1332,3 +1332,120 @@ rules:
             - pattern: startOfLocalDay(...)
             - pattern: endOfLocalDay(...)
             - pattern: parseLocalDate(...)
+  # kiko-code-style's "Tests read a module, never a source file's text":
+  # Stryker rewrites every mutable `.ts`/`.tsx` source in its sandbox, so a
+  # test that reads that source's TEXT sees instrumented code and its parse
+  # breaks the dry run. A read is flagged unless its path provably ends in a
+  # non-TypeScript extension or sits under drizzle/migrations (which holds no
+  # mutable source); a walked or computed path cannot be proven and is
+  # flagged. `symbolic_propagation` lets the top-level `pattern-not` see
+  # through a `const` path; a `metavariable-pattern` on the path does not.
+  # `paths.include` is path-prefixed, so the fixture pair is NESTED. The
+  # exclude and each per-line override are documented exceptions
+  # (docs/harness/documented-exceptions.md).
+  - id: kiko-no-source-text-read-in-test
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A test reads a file whose path is not provably a data fixture. If it is
+      a `.ts`/`.tsx` source, Stryker's instrumented copy of that file breaks
+      the test's parse. Import the module and read its structure instead, or
+      name the fixture by its non-TypeScript file name — see kiko-code-style's
+      "Tests read a module, never a source file's text".
+    metadata:
+      fix: "Import the module and read its structure (e.g. getTableColumns(table)); for a data fixture, name the file with its own extension in the join (join(__dirname, '__fixtures__/sample.csv'))."
+      skill: "kiko-code-style › Tests read a module, never a source file's text"
+    options:
+      symbolic_propagation: true
+    paths:
+      include:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/test-support/**"
+      exclude:
+        - "__tests__/**"
+    patterns:
+      - pattern-either:
+          - pattern: readFileSync(...)
+          - pattern: $FS.readFileSync(...)
+          - pattern: readFile(...)
+          - pattern: $FS.readFile(...)
+          - pattern: createReadStream(...)
+          - pattern: $FS.createReadStream(...)
+      - pattern-not: $READ("=~/\.(?!tsx?$)\w+$/", ...)
+      - pattern-not: $READ($JOIN(..., "=~/\.(?!tsx?$)\w+$/"), ...)
+      - pattern-not: $READ($JOIN($PARENT(..., "=~/(^|\/)drizzle\/migrations$/"), ...), ...)
+      - pattern-not: $READ($JOIN($PARENT(..., 'drizzle', 'migrations'), ...), ...)
+  # kiko-domain's "Dates": a local day is 23 or 25 hours on a DST change, and
+  # a fixed offset from the REAL clock also crosses a second midnight when the
+  # suite runs late at night (`Date.now() + DAY_MS + 1 h` after 23:00), so the
+  # fixture lands on the wrong local day and the test fails only at some
+  # hours. A fixed offset from a pinned constant is deterministic under the
+  # jest.config.js zone pin and passes. `startOfLocalDay(Date.now() + DAY_MS)`
+  # still fires: the sum itself can land two local days ahead. A span is
+  # "day-sized" by its text: "day" as a whole camelCase/snake_case part, so
+  # `startOfToday` and `holiday` are not spans; or 86_400_000, 24 * 60 * 60,
+  # 60 * 60 * 24.
+  # `paths.include` is path-prefixed, so the fixture pair is NESTED.
+  - id: kiko-no-fixed-day-offset-on-real-clock-in-test
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A test adds or subtracts a fixed day span to the real clock. A local day
+      is 23 or 25 hours across DST, and a late-night run crosses a second
+      midnight, so the fixture lands on the wrong local day at some hours.
+      Step local calendar days, or pin the clock — see kiko-domain's "Dates".
+    metadata:
+      fix: "Step calendar days from local date fields (const date = new Date(time); date.setDate(date.getDate() + days)), or pin the clock with jest.setSystemTime / a fixed constant and offset from that."
+      skill: "kiko-domain › Dates"
+    paths:
+      include:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/test-support/**"
+    patterns:
+      - pattern-either:
+          - pattern: Date.now() + $SPAN
+          - pattern: Date.now() - $SPAN
+          - pattern: $SPAN + Date.now()
+          - pattern: new Date().getTime() + $SPAN
+          - pattern: new Date().getTime() - $SPAN
+          - pattern: $SPAN + new Date().getTime()
+          - patterns:
+              - pattern-either:
+                  - pattern: $LEFT + $SPAN
+                  - pattern: $LEFT - $SPAN
+              - metavariable-pattern:
+                  metavariable: $LEFT
+                  pattern-either:
+                    - pattern: Date.now() + $OFFSET
+                    - pattern: Date.now() - $OFFSET
+                    - pattern: new Date().getTime() + $OFFSET
+                    - pattern: new Date().getTime() - $OFFSET
+          - patterns:
+              - pattern-either:
+                  - pattern: $NOW + $SPAN
+                  - pattern: $NOW - $SPAN
+                  - pattern: $SPAN + $NOW
+                  - pattern: $NOW += $SPAN
+                  - pattern: $NOW -= $SPAN
+                  - pattern: $NOW + $OFFSET + $SPAN
+                  - pattern: $NOW - $OFFSET + $SPAN
+                  - pattern: $NOW + $OFFSET - $SPAN
+                  - pattern: $NOW - $OFFSET - $SPAN
+              - pattern-either:
+                  - pattern-inside: |
+                      const $NOW = Date.now();
+                      ...
+                  - pattern-inside: |
+                      let $NOW = Date.now();
+                      ...
+      - metavariable-regex:
+          metavariable: $SPAN
+          regex: ^.*(?:(?<![A-Za-z0-9])[Dd]ays?(?![a-z])|(?<=[a-z0-9])Days?(?![a-z])|(?<![A-Z])DAYS?(?![A-Z])|86_?400_?000|24\s*\*\s*60\s*\*\s*60|60\s*\*\s*60\s*\*\s*24)
+      - pattern-not-inside: |
+          jest.setSystemTime(...);
+          ...
+      - pattern-not-inside: |
+          jest.useFakeTimers({..., now: $PINNED, ...});
+          ...

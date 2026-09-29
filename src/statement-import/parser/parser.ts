@@ -146,9 +146,9 @@ export type StatementFormatInput = {
   text: string;
   fileName: string;
   /** Pre-parsed spreadsheet rows for a binary format (PrivatBank XLSX is the
-   * only one in this plan's scope) — `read-excel-file`'s API is entirely
-   * `Promise`-based (confirmed against its published `.d.ts`, no synchronous
-   * entry point exists anywhere in the package), which cannot run inside a
+   * only one) — `read-excel-file`'s API is entirely `Promise`-based
+   * (confirmed against its published `.d.ts`, no synchronous entry point
+   * exists anywhere in the package), which cannot run inside a
    * `StatementFormat`'s synchronous `detect`/`parse` (`registry.ts`'s
    * `Array.prototype.find` and this screen's render path are both
    * synchronous, and changing that would ripple through this format's already
@@ -156,7 +156,7 @@ export type StatementFormatInput = {
    * async `read-excel-file` call ONCE, ahead of time, and hands the already
    * resolved rows through here — `detect`/`parse` for a spreadsheet format
    * then stay perfectly synchronous, operating on plain, already-resolved
-   * data. A text format (every CSV in this plan) never sets this and keeps
+   * data. A text format (every CSV format) never sets this and keeps
    * using `text` exactly as before — this field is purely additive. */
   sheetRows?: SpreadsheetCellValue[][];
 };

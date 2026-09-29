@@ -590,6 +590,34 @@ verified usage, not dead weight:
   exclude hides nothing today. The nested fixture pair proves the rule in
   `check:rules`.
 
+- **`kiko-no-source-text-read-in-test` (`rules/semgrep-prewrite.yml`)
+  excludes `__tests__/**`, and four tests carry one per-line override.**
+  The exclude: harness tests read rules, scripts, docs, and temp projects,
+  never a mutable source; their paths are mostly computed, so the rule
+  would fire on nearly every one.
+
+  Each override is a
+  `// nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(<reason>)` line
+  directly above the ONE read the rule cannot prove is a non-TypeScript
+  fixture. None of these reads parses text that Stryker's instrumentation
+  changes. Every other read in the same file is still checked, so a new
+  source-text read there is denied:
+  - `src/db/settings-columns.test.ts`: reads the column names from
+    `getTableColumns(settings)` and searches src text only for each
+    name as a whole word; Stryker keeps every original identifier.
+  - `src/i18n/locales/title-keys.call-sites.test.ts`: unwraps Stryker's
+    `stryMutAct_…() ? "" : (stryCov_…(), 'key')` argument shape, and its
+    own "survives Stryker mutation-testing instrumentation" case pins it.
+  - `drizzle/migrations/0044-move-crypto-cash-holdings.test.ts`: searches
+    `drizzle/` and `src/` text for the literal `crypto-from-`; Stryker
+    keeps the original string beside its mutant.
+  - `e2e/screenshot/fixtures/generate-demo-kiko.test.ts`: reads its
+    `.kiko` fixtures by a `fileName` from the `LANGUAGES` table, which
+    the rule cannot resolve through the loop.
+
+  The nested fixture pair proves the rule in `check:rules`;
+  `__tests__/pre-write-guard-rules.test.ts` proves the scope.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`

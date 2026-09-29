@@ -128,3 +128,79 @@ export const failedRetryNeverWidensPastItsOwnRun = true;
 // EXPECT-FINDING
 // DEPS-3: the lockfile diff must be reviewed before a version bump lands.
 export const lockfileDiffReviewedBeforeBump = true;
+
+// EXPECT-FINDING
+// A negative balance is rejected (review decision 18), never clamped to 0.
+export const negativeBalanceRejected = true;
+
+// EXPECT-FINDING
+// Decision 6: an archived category keeps its own sort position.
+export const archivedCategoryKeepsPosition = true;
+
+// EXPECT-FINDING
+// The icon rename lands in a separate commit so this diff stays reviewable.
+export const iconRenameLandsSeparately = true;
+
+// EXPECT-FINDING
+// The legacy column is dropped in a follow-up commit, once nothing reads it.
+export const legacyColumnDroppedLater = true;
+
+// EXPECT-FINDING
+// The rows stay unsorted, per the plan's disposition for this import.
+export const rowsStayUnsorted = true;
+
+// EXPECT-FINDING
+// Keep the plan doc's exports stable: the picker reads them by name.
+export const pickerReadsExportsByName = true;
+
+// EXPECT-FINDING
+/* Only one pool per kind, as confirmed by the plan. */
+export const onePoolPerKind = true;
+
+// EXPECT-FINDING
+// Section C.2: the export's own date column is already in the local zone.
+export const dateColumnIsLocal = true;
+
+// EXPECT-FINDING
+// The opening balance stays editable after creation (section 6.2).
+export const openingBalanceStaysEditable = true;
+
+// EXPECT-FINDING
+// The picker lists every currency, not only the account's own (§2.1).
+export const pickerListsEveryCurrency = true;
+
+// EXPECT-FINDING
+/* Section 12.4 keeps the fee on its own line. */
+export const feeOnItsOwnLine = true;
+
+// EXPECT-FINDING
+/* Rows without a counterparty stay in the list (§3). */
+export const rowsWithoutCounterpartyStay = true;
+
+// EXPECT-FINDING
+// The icon rename and the copy fix land in separate commits.
+export const iconRenameAndCopyFixSplit = true;
+
+// EXPECT-FINDING
+// A pending row keeps its own amount (§ 4).
+export const pendingRowKeepsAmount = true;
+
+// EXPECT-FINDING
+/* The fee row stays hidden (§ 2.3). */
+export const feeRowStaysHidden = true;
+
+// EXPECT-FINDING
+// Only the checking account is imported in this plan.
+export const onlyCheckingImported = true;
+
+// EXPECT-FINDING
+// The field keeps its label; this plan also ships the picker sheet.
+export const fieldKeepsLabel = true;
+
+// EXPECT-FINDING
+// Every account shares one sync cursor (2026-09-11 multi-account plan).
+export const accountsShareCursor = true;
+
+// EXPECT-FINDING
+/* One row per account (2026-09-11 multi-account plan). */
+export const oneRowPerAccount = true;

@@ -61,13 +61,12 @@ const unknownOperationWordInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against, pinned here — verified against
-// the REAL fixture's bytes. Alfa's 19-column layout is
-// genuinely unique in this plan (no shared base with ProCredit/Ukrsib
-// business, unlike those two), so instead of a hand-typed literal
-// duplicating the plain object below, every index is independently derived
-// from splitting the REAL header text itself — still a full pin against
-// drift, but structured differently so it does not restate
+// `detect`/`parse` against, pinned here — verified against the REAL fixture's
+// bytes. Alfa's 19-column layout is unique among the business formats (no
+// shared base with ProCredit/Ukrsib business, unlike those two), so instead of
+// a hand-typed literal duplicating the plain object below, every index is
+// independently derived from splitting the REAL header text itself — still a
+// full pin against drift, but structured differently so it does not restate
 // `alfa-business-csv.format.ts`'s own object literal token for token.
 describe('alfa-business-csv format constants', () => {
   it('anchors the full literal header line exactly, matching the real fixture', () => {
