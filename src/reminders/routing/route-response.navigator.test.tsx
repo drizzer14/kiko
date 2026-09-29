@@ -250,8 +250,8 @@ describe('reminder tap routing (real router)', () => {
 
     it('routes only the latest of two queued taps', async () => {
       await routeTap([
-        tap('import-bank', { respondedAt: 2000 }),
         tap('add-cash', { respondedAt: 1000 }),
+        tap('import-bank', { respondedAt: 2000 }),
       ]);
 
       expect(accountsStack()).toEqual([

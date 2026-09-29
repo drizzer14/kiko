@@ -1684,8 +1684,9 @@ what a change must keep.
   (`use-reminder-scheduler.lazy-load.test.ts`).
 - **Tap routing.** Every re-plan hands the responses its drain returned to
   `routeLatestResponse(responses, navigationRef)`
-  (`src/reminders/routing/`), so every trigger routes. It routes the latest `open` response (by
-  `respondedAt`); a snooze never routes. A reminder that is gone (deleted,
+  (`src/reminders/routing/`), so every trigger routes. It routes the latest `open` response (the
+  last one in the queue, which appends in tap order); a snooze never
+  routes. A reminder that is gone (deleted,
   or deleted with its account) routes nowhere. `routeFor` is pure: an
   import reminder opens `AccountDetail` with `intent: 'importStatement'`;
   add transactions with exactly ONE open holding, of a type that takes

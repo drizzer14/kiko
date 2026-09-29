@@ -71,11 +71,10 @@ describe('latestOpenResponse', () => {
     expect(latestOpenResponse([tap({ action: 'snooze' })])).toBeUndefined();
   });
 
-  it('picks the latest tap, whatever the queue order', () => {
+  it('picks the last tap in the queue, which holds them in tap order', () => {
     const earlier = tap({ reminderId: 'earlier', respondedAt: 1000 });
     const later = tap({ reminderId: 'later', respondedAt: 2000 });
 
-    expect(latestOpenResponse([later, earlier])).toBe(later);
     expect(latestOpenResponse([earlier, later])).toBe(later);
   });
 

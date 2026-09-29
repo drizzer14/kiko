@@ -19,16 +19,12 @@ type ReminderRoute = {
     | { screen: 'AccountReminders'; params: AccountsStackParamList['AccountReminders'] };
 };
 
+// The native queue appends each response as it comes, so the last is the
+// latest.
 export const latestOpenResponse = (
   responses: readonly NotificationResponse[],
 ): NotificationResponse | undefined =>
-  responses
-    .filter((response) => response.action === 'open')
-    .reduce<NotificationResponse | undefined>(
-      (latest, response) =>
-        latest === undefined || response.respondedAt >= latest.respondedAt ? response : latest,
-      undefined,
-    );
+  responses.filter((response) => response.action === 'open').at(-1);
 
 // The paused notice says the reminder has stopped, so its tap opens the page
 // where the user can resume it. A holding that takes no transactions (a
