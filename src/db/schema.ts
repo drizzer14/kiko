@@ -4,6 +4,7 @@ import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { type ReminderKind, type ReminderSchedule, reminderKinds } from '@kiko/reminders/schedule';
 
 // The currency columns below are TS-enum-typed text columns (SQLite stores plain
 // text; drizzle's `enum` is a compile-time constraint, no CHECK, so widening it
@@ -394,6 +395,17 @@ export const settings = sqliteTable('settings', {
   // entirely absent key (a pre-0043 `.kiko` export) as `false` too — see
   // `restore-snapshot.ts`.
   importTimesRezoned: integer('import_times_rezoned', { mode: 'boolean' }).notNull().default(false),
+  // The reminder offers the user dismissed, as a map from `accounts.id` to the
+  // dismissed kinds, so a dismissed offer never comes back for that account.
+  // NULL means nothing dismissed yet.
+  reminderOfferDismissals: text('reminder_offer_dismissals', { mode: 'json' }).$type<
+    Record<string, ReminderKind[]>
+  >(),
+  // When the reminder sync first saw iOS allow this app's notifications, since
+  // they were last off. The ignored-reminder count starts no earlier, because
+  // a reminder iOS never showed was not ignored. NULL while they are off, or
+  // before the first sync.
+  notificationsDeliverableSince: integer('notifications_deliverable_since'),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;
@@ -516,3 +528,38 @@ export const bondRegister = sqliteTable('bond_register', {
 });
 
 export type BondRegisterRow = typeof bondRegister.$inferSelect;
+
+/**
+ * One user-configured local reminder per `(account, kind)`. `schedule` is the
+ * whole `ReminderSchedule` as JSON, since the planner reads it at once.
+ * `activeSince` is when the reminder last started counting: data older than it
+ * never skips an occurrence. `lastEngagedAt` is the latest tap on one of its
+ * notifications, which resets the ignored-fire count. `lastSnoozedAt` is the
+ * latest "Tomorrow" tap while that snooze is still pending, so every later
+ * re-plan can skip the regular occurrence the snooze stands in for; the
+ * native queue that reported the tap is drained only once. `pausedAt` with
+ * `pauseReason` is either a user pause or the automatic back-off pause.
+ */
+export const reminders = sqliteTable(
+  'reminders',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id')
+      .notNull()
+      .references(() => accounts.id),
+    kind: text('kind', { enum: reminderKinds }).notNull(),
+    schedule: text('schedule', { mode: 'json' }).$type<ReminderSchedule>().notNull(),
+    pausedAt: integer('paused_at'),
+    pauseReason: text('pause_reason', { enum: ['user', 'backoff'] }),
+    activeSince: integer('active_since').notNull(),
+    lastEngagedAt: integer('last_engaged_at'),
+    lastSnoozedAt: integer('last_snoozed_at'),
+    createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => ({
+    accountKind: uniqueIndex('reminders_account_kind').on(table.accountId, table.kind),
+  }),
+);
+
+export type ReminderRow = typeof reminders.$inferSelect;

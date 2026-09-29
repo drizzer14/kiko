@@ -8,6 +8,7 @@ import type {
   CurrencyRateRow,
   HoldingRow,
   PricePointRow,
+  ReminderRow,
   SettingsRow,
   SyncStateRow,
   TransactionRow,
@@ -31,4 +32,5 @@ export type DataSnapshot = {
   categoryOverrides: CategoryOverrideRow[];
   pricePoints: PricePointRow[];
   bondRegister: BondRegisterRow[];
+  reminders: ReminderRow[];
 };

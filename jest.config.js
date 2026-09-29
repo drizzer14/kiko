@@ -4,6 +4,15 @@
 // explicit `ENVFILE` still wins.
 process.env.ENVFILE = process.env.ENVFILE || '.env.test';
 
+// Local-calendar and DST tests assert Europe/Kyiv wall-clock times, so every
+// host must run them on that zone. A `process.env.TZ` set inside a test only
+// writes the test sandbox's own copy of `process.env` and never retargets
+// `Date`, so the pin lives here: this file loads in the process that runs the
+// tests in-band (Stryker's jest runner, a single-file `jest` run) and before
+// `jest` forks its workers, which inherit the environment. It overrides the
+// host `TZ` on purpose.
+process.env.TZ = 'Europe/Kyiv';
+
 module.exports = {
   preset: '@react-native/jest-preset',
   setupFiles: ['./jest/setup.js'],

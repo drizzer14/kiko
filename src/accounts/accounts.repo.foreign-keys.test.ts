@@ -110,7 +110,7 @@ const rowCountFor = (
 /**
  * Mirrors `accountsRepo.remove`'s own delete sequence (`accounts.repo.ts`) as
  * raw SQL, in the SAME order: each holding's transactions, then the
- * account's `sync_state` row, then holdings, then the account
+ * account's `sync_state` row and reminders, then holdings, then the account
  * itself. Loan-link clearing (an UPDATE, not a DELETE) is intentionally not
  * mirrored — it never touches a row this FK invariant cares about. Keep this
  * in sync by hand when `remove`'s delete order changes, the same way
@@ -128,6 +128,7 @@ const removeAccountLikeTheRepoDoes = (database: DatabaseSync, accountId: string)
     database.prepare('DELETE FROM transactions WHERE holding_id = ?').run(holdingId);
   }
   database.prepare('DELETE FROM sync_state WHERE account_id = ?').run(accountId);
+  database.prepare('DELETE FROM reminders WHERE account_id = ?').run(accountId);
   database.prepare('DELETE FROM holdings WHERE account_id = ?').run(accountId);
   database.prepare('DELETE FROM accounts WHERE id = ?').run(accountId);
 };
@@ -144,10 +145,11 @@ describe('accountsRepo.remove — real-SQLite foreign key invariant', () => {
     const referencingTables = tablesReferencingAccounts(database);
     // A schema change that stopped referencing `accounts` entirely would make
     // every later assertion here vacuous (trivially true over zero tables),
-    // so pin the two known today as a floor — a future migration only grows
+    // so pin the three known today as a floor — a future migration only grows
     // this list.
     expect(referencingTables.map((entry) => entry.table).sort()).toEqual([
       'holdings',
+      'reminders',
       'sync_state',
     ]);
 
@@ -179,5 +181,25 @@ describe('accountsRepo.remove — real-SQLite foreign key invariant', () => {
     expect(() => database.prepare("DELETE FROM accounts WHERE id = 'acc-1'").run()).toThrow(
       /FOREIGN KEY constraint failed/,
     );
+  });
+
+  it('deletes an account with a reminder, and leaves no reminder behind', () => {
+    const database = new DatabaseSync(':memory:');
+    applyAllMigrations(database);
+    database.exec('PRAGMA foreign_keys = ON;');
+    database
+      .prepare("INSERT INTO accounts (id, name, kind) VALUES ('acc-1', 'Test', 'bank')")
+      .run();
+    database
+      .prepare(
+        "INSERT INTO reminders (id, account_id, kind, schedule, active_since) VALUES ('reminder-1', 'acc-1', 'add_transactions', '{}', 0)",
+      )
+      .run();
+
+    expect(() => database.prepare("DELETE FROM accounts WHERE id = 'acc-1'").run()).toThrow(
+      /FOREIGN KEY constraint failed/,
+    );
+    expect(() => removeAccountLikeTheRepoDoes(database, 'acc-1')).not.toThrow();
+    expect(database.prepare('SELECT COUNT(*) AS count FROM reminders').get()).toEqual({ count: 0 });
   });
 });

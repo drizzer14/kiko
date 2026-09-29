@@ -28,3 +28,8 @@ Rules:
 - You are read-only; you do not stop processes at all — no pkill, killall, kill, or
   any pattern/group kill.
 - Flag any diff that alters a user-approved visual (locked decisions live in `kiko-design-system`) unless the user explicitly approved the change.
+- Execute kill-guard probe text ONLY through `scripts/checks/kill-guard-probe.sh`, with the sentinel `kg_sentinel_target` in place of any kill command and a fake main folder in place of the real one; real kill words go only in non-executed `decide()` tests. The runner is not a sandbox. See kiko-linter's "Probing the kill-guard".
+- Report back: send your findings the moment the review is done, then end the turn —
+  no extra checks or silent waiting after. Run any long-running check in the background
+  and wait only for its exit code; past 30 minutes on one step, report "still running:
+  <step>, <elapsed>" instead of going quiet. Lead with the pass/fail verdict, then findings.

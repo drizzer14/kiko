@@ -206,8 +206,10 @@ project-level pointer to this section.
   an effect of the `INSERT`'s own conflict handling. `restore-snapshot.ts`'s
   `withCryptoCashHoldingsMoved` applies the IDENTICAL rule to a `.kiko`
   restore, sharing the SAME deterministic `crypto-from-` id so the two
-  paths always agree on the same account for the same source. Next free
-  migration index: `0045`.
+  paths always agree on the same account for the same source.
+  `0045_add_reminders` (additive: the `reminders` table and two
+  `settings` columns) directly follows `0044` on the `reminders` branch.
+  Next free migration index: `0046`.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -615,6 +617,9 @@ gate says there is nothing to do.
   background poll, so it never reads the throttle cursor. An EDIT never
   needs this trigger — a holding's type and currency are immutable once
   created.
+- **Reminders re-plan**: `syncReminders` reads
+  `remindersRepo.hasAnyQuery()` (`LIMIT 1`) before any plan-input query
+  — see "Reminders (local notifications)".
 
 ## Bulk insert: chunk when row count is caller- or API-controlled
 
@@ -656,9 +661,10 @@ have their own, older, pre-existing chunking — don't assume they use
 
 ## Repository module shape
 
-One functional module per entity: `accountsRepo`, `holdingsRepo`,
-`transactionsRepo`, `ratesRepo`, `settingsRepo`. A repository is a
-plain module of exported functions, not a class.
+One functional module per entity: each `*.repo.ts` under `src/` ends
+`satisfies Repository` (`src/db/repository.d.ts`); grep that for the
+current set. A repository is a plain module of exported functions,
+not a class.
 
 - **Read functions return a Drizzle query builder**, not already-
   executed data — the caller passes that query straight into
@@ -1622,8 +1628,10 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   (`DatabaseSync`, built into the Node 22 runtime this project already
   requires) — the strongest available evidence for a migration that
   deletes real rows, since op-sqlite itself is a native module unavailable
-  under Jest; every other migration's test coverage here stays at the
-  plumbing level (`run-migrations.test.ts`) or the restore-side JS mirror.
+  under Jest; `applyAllMigrations`
+  (`src/test-support/real-sqlite.ts`) applies every shipped migration
+  to `node:sqlite` in journal order; a new migration's test uses it
+  (see `src/db/schema.reminders.test.ts`).
 - **A launch-time upgrade step (not a migration) needs the SAME restore-side
   mirror as a migration's own backfill.** Migration 0041's flag
   (`settings.dedupKeysUpgraded`) and its launch-time rewrite
@@ -1693,6 +1701,71 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   on a wrong key or tampered ciphertext — see the file for the exact error
   strings. State nothing about the envelope beyond what `envelope.ts` shows.
 
+## Reminders (local notifications)
+
+`src/reminders/` owns user-set local reminders. Each unit's header
+comment holds its rules; this section says where each part lives and
+what a change must keep.
+
+- **Storage.** Table `reminders` (`src/db/schema.ts`): one row per
+  `(account_id, kind)` (unique index `reminders_account_kind`;
+  `account_id` is NOT NULL, so there is no global reminder), a NO
+  ACTION foreign key to `accounts`. `schedule` is the whole
+  `ReminderSchedule` as JSON; the planner re-validates it with
+  `isReminderSchedule`, since a restored row may carry another build's
+  shape. `last_snoozed_at` is the latest "Tomorrow" tap while that
+  snooze is still pending. Two nullable `settings` columns hold state
+  that is not a rule: `reminder_offer_dismissals` (JSON map account id
+  -> dismissed kinds; `settingsRepo.dismissReminderOffer` /
+  `isReminderOfferDismissed`) and `notifications_deliverable_since`
+  (`settingsRepo.notificationsDeliverableSinceQuery` /
+  `setNotificationsDeliverableSince`). Read `schema.ts` for the
+  columns; do not copy them here.
+- **Repository.** `remindersRepo`
+  (`src/reminders/repo/reminders.repo.ts`): `hasAnyQuery` (the `LIMIT
+  1` gate), `planInputsQuery` (ONE query: reminders joined to
+  accounts, plus the latest `import` and `manual` transaction
+  `created_at` per reminder account), and the writes
+  `recordEngagements`, `markBackoffPaused`, `clearSnoozes`.
+- **Planner.** `planReminder` / `planAllReminders`
+  (`src/reminders/planner/`) are pure; the rules are in
+  `plan-reminder.ts`'s header. The ignored count starts at the latest
+  of `activeSince`, `deliverableSince`, `lastEngagedAt` and
+  `lastDataAt`; `lastSnoozedAt` frees the regular occurrence at the
+  snooze minute. The sync passes `lastSnoozedAt: null` once data
+  arrived at or after the snooze.
+- **Scheduler.** `syncReminders(t, now?)`
+  (`src/reminders/scheduler/sync-reminders.ts`) drains the native
+  response queue and stores the engagements FIRST (a tap on the paused
+  notice is not engagement). Then it gates on `hasAnyQuery` (no
+  reminders -> `replaceRequests([], [])` and no plan-input query).
+  Then it syncs `notifications_deliverable_since` from
+  `authorizationStatus()` (written only when it changes; while iOS
+  cannot show notifications, nothing is back-off paused), plans,
+  persists back-off pauses, clears stale snoozes, and replaces the
+  pending requests.
+- **Mount.** `useReminderScheduler()`
+  (`src/reminders/use-reminder-scheduler/`) runs in `AppRoot`
+  (`App.tsx`), below `MigrationsGate` and `LockGate`. It re-plans on
+  mount, on AppState `active` and `background`, and on an i18n
+  `languageChanged` event. It is single-flight with at most one queued
+  follow-up, and it never rejects (a failure is logged).
+- **Account delete.** `accountsRepo.remove` deletes the account's
+  `reminders` rows in the same transaction, before the account row (NO
+  ACTION FK), next to the `sync_state` delete.
+- **Backup/restore.** `DataSnapshot.reminders` is read ordered by
+  `id`. `restoreDataSnapshot` deletes `reminders` before
+  `holdings`/`accounts` and inserts them last, with `snapshot.reminders
+  ?? []`, so a pre-reminders `.kiko` restores with no reminders. The
+  settings row is restored whole, so both reminder settings columns
+  come from the backup
+  (`restore-across-reminders-migration.test.ts` pins the old-backup
+  case).
+- SQLite's multi-argument `max(a, b)` returns NULL as soon as one
+  argument is NULL; for "latest of a column and a value" use
+  `coalesce(max(col, v), col, v)` (see `latest()` in
+  `reminders.repo.ts`).
+
 ## Native iOS shell
 
 `ios/Kiko/AppDelegate.swift` + `ios/Kiko/SceneDelegate.swift` implement the
@@ -1709,6 +1782,35 @@ logic use the `UIWindowSceneDelegate` equivalents (`sceneWillResignActive`,
 `ios27-crash-uiscene-lifecycle-gap` and `scene-lifecycle-appdelegate-window-crash`
 in memory for the crash history this fixed.
 
+- **The notification delegate is set in `AppDelegate`.**
+  `UNUserNotificationCenter.current().delegate = KikoNotificationDelegate.shared`
+  must stay in `application(_:didFinishLaunchingWithOptions:)`, before
+  `return true`. Set later, a tap that cold-launches the app and a background
+  "Tomorrow" action are lost. It must not touch `window` (see memory
+  `scene-lifecycle-appdelegate-window-crash`). The center holds its delegate
+  weakly, so the delegate is a `static let shared`.
+- **Only the wrapper loads the reminders TurboModule spec.**
+  `src/reminders/native/NativeKikoReminders.ts` calls
+  `TurboModuleRegistry.getEnforcing` at module load, which throws on a binary
+  built without the module. `reminders-native.ts` loads it with a lazy
+  `require` on first use, so importing reminders code can never crash the
+  app; every other module calls `remindersNative` from
+  `@kiko/reminders/native`, and a type is imported with `import type`. A test
+  reaches the global mock (`jest/setup.js`) through `jest.requireMock`.
+  `reminders-native.lazy-load.test.ts` proves the lazy load, and the Semgrep
+  rule `kiko-no-native-reminders-module-import` (`rules/semgrep-prewrite.yml`)
+  denies any other value import, re-export, `require`, or dynamic `import()`.
+- **An ObjC++ (`.mm`) file that imports `Kiko-Swift.h` must first import
+  every framework the app target's `@objc` Swift classes use.** Xcode's
+  generated `Kiko-Swift.h` declares EVERY `@objc` class in the app target,
+  internal ones included (`AppDelegate`, `SceneDelegate`, `ReactNativeDelegate`,
+  `KikoNotificationDelegate`, …). Its own `@import` lines sit inside
+  `#if __has_feature(objc_modules)`, which is off in Objective-C++, so they
+  are skipped. See the import block before `#import "Kiko-Swift.h"` in
+  `ios/Kiko/Reminders/RCTKikoReminders.mm` for the current set. When a new
+  `@objc` Swift class uses another framework in a signature, add that
+  framework's import there. Do not turn on `-fcxx-modules` instead: it
+  changes how the React C++ headers compile.
 - **Biometric Keychain reads need `NSFaceIDUsageDescription`.** A
   `BIOMETRY_CURRENT_SET` Keychain read SIGABRTs without it. Verify the key is
   present in `ios/Kiko/Info.plist` before adding or changing any biometric

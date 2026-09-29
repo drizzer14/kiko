@@ -11,6 +11,7 @@ import {
   type HoldingRow,
   holdings,
   pricePoints,
+  reminders,
   type SettingsRow,
   settings,
   syncState,
@@ -551,7 +552,8 @@ export const withCryptoCashHoldingsMoved = (
  * Delete order is child-before-parent, insert order is parent-before-child —
  * `PRAGMA foreign_keys = ON` (set once per connection in `db/client.ts`)
  * rejects a delete/insert that violates a `holdings.accountId`,
- * `transactions.holdingId`, or `syncState.accountId` reference otherwise
+ * `transactions.holdingId`, `syncState.accountId`, or `reminders.accountId`
+ * reference otherwise
  * (the same ordering `accountsRepo.remove` hand-codes for one account).
  *
  * `snapshot.pricePoints` is read defensively with `?? []`: `price_points`
@@ -586,6 +588,7 @@ export const restoreDataSnapshot = (
     const deleteAllTables = async (): Promise<void> => {
       await databaseTransaction.delete(transactions);
       await databaseTransaction.delete(syncState);
+      await databaseTransaction.delete(reminders);
       await databaseTransaction.delete(holdings);
       await databaseTransaction.delete(accounts);
       await databaseTransaction.delete(categoryOverrides);
@@ -701,11 +704,21 @@ export const restoreDataSnapshot = (
       }
     };
 
+    // `?? []`: an export from before reminders existed carries no
+    // `reminders` key, and restores with no reminders. Runs after the
+    // accounts insert, which a reminder's `accountId` references.
+    const insertReminders = async (): Promise<void> => {
+      for (const part of chunkForTable(reminders, snapshot.reminders ?? [])) {
+        await databaseTransaction.insert(reminders).values(part);
+      }
+    };
+
     await deleteAllTables();
     await insertAccountsHoldingsCategories();
     await insertOverridesTransactionsSyncState();
     await insertRatesAndSettings();
     await insertBondRegister();
+    await insertReminders();
 
     return { accountsRestored: accountsAfterCryptoCashMove.length };
   });

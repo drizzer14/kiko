@@ -17,6 +17,11 @@ Rules:
   subagent-driven-development, dispatching-parallel-agents, verification-before-completion,
   finishing-a-development-branch.
 - On completion, an orchestrator or role agent SendMessages the coordinator session that dispatched the work with the result (the final commit sha and a one-line summary). This is the standing default, so an orchestrator brief does not need to restate it.
+- Every dispatch names an expected duration. When that time passes with no report,
+  the orchestrator checks the agent itself (its output so far, its worktree state) —
+  it does not keep waiting silently. The coordinator is not the watchdog for role
+  agents; each role agent's own "Report back" rule (see its agent file) is what makes
+  it send its result the moment it is known instead of going quiet.
 - "DEFAULT, pending user" means apply it now, not merely record the decision and leave the old behavior in place. A change that states a DEFAULT ruling must change the code in that same change — a later change should never have to circle back to actually apply a decision an earlier one only annotated.
 
 ## Skill drift rule
@@ -53,6 +58,17 @@ to merge) names the change set's base sha and confirms the file count
 after excludes is within `MUTATION_FILE_CAP` (read it in
 `scripts/checks/mutation.sh`); a larger batch splits into change sets
 with their own bases.
+
+## Merging into main
+
+Never merge, rebase, pull (except `--ff-only`), cherry-pick, revert,
+am, or apply in the main checkout
+(`/Users/drizzer14/Developer/Projects/pff-ios`): every session's hooks
+run from it, so a conflict marker there breaks every hook. The
+kill-guard denies these (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
+real merge, conflicts and all, in a separate detached worktree, verify
+it there, then fast-forward main:
+`git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
 
 ## Read-only agents return their report
 

@@ -15,11 +15,13 @@ Rules:
   NEVER poll, tail, `cat`, or re-read its output / log / terminal in a
   loop. NEVER write a wait or poll script. NEVER re-launch it. NEVER
   dispatch a separate subagent just to watch it — you await the single
-  command's return yourself. This covers `check:deep`, `check:mutation`,
-  `osv.sh`, `check:all`, `check:knip`, `check:deps`, `check:typecheck`,
-  and any long build / `pod install` / device deploy. These emit no
-  useful incremental output, so polling them burns tokens for zero
-  signal.
+  command's return yourself. This covers `osv.sh`, `check:all`,
+  `check:knip`, `check:deps`, `check:typecheck`, and any long build /
+  `pod install` / device deploy. These emit no useful incremental
+  output, so polling them burns tokens for zero signal. A mutation run
+  (`check:deep`, `check:mutation`) is the one exception to running in
+  the foreground: run it detached and await its exit code (see
+  "Launching a mutation run" below).
 - **Mutation testing runs per SMALL change set only — never on a whole
   project or a whole release.** There is no whole-release deep gate. Set
   `KIKO_MUTATION_BASE` to the change set's own base commit so only its
@@ -103,20 +105,34 @@ motivated it. Summary — every step is required, not optional:
 1. Build with `FORCE_BUNDLING=1` (a Release device build can otherwise
    reuse a stale cached `main.jsbundle` and silently ship old JS).
 2. Check the built `main.jsbundle` for a known-new string before
-   installing. This is the only proof that the bundle regenerated. Pick
-   an ASCII string: Hermes stores a non-ASCII string (Cyrillic, ₴, …) as
-   UTF-16LE, so a plain grep misses it and reads a fresh bundle as
-   stale. For a non-ASCII string use
-   `python3 -c "import sys; print('<str>'.encode('utf-16-le') in open(sys.argv[1],'rb').read())" <bundle>`.
+   installing. This is the only proof that the bundle regenerated. Run
+   `make deploy EXPECT='<string>'` (or set `EXPECT_BUNDLE_STRING` for
+   `npm run deploy:device`): the script runs `scripts/bundle-contains.js`
+   on `main.jsbundle` after the build and before install. It searches
+   every string as UTF-8 AND as UTF-16LE: Hermes stores a WHOLE string
+   literal as UTF-16LE when any character in it is non-ASCII (em dash,
+   curly quote, ₴), including that literal's ASCII words, so a plain
+   grep misses them. A missing string or bundle stops the deploy before
+   install. With no string set, the script prints one "Bundle check
+   skipped" line and continues, so always pass one. Through
+   `make deploy EXPECT=…` only: a value that contains a single quote is
+   not supported (set `EXPECT_BUNDLE_STRING` directly for that), and
+   make expands a `$` in the value — write `$$`. Read `scripts/deploy-device.sh` for the exact
+   exit behavior. Fallback for a hand-built bundle only:
+   `node scripts/bundle-contains.js <bundle> '<str>'`.
 3. Install with `devicectl`, not `xcodebuild ... install -destination
    generic/platform=iOS` — the latter reports SUCCEEDED without
    reaching the physical device.
 4. Verify the install actually replaced the app: the new
    `installationURL` container UUID must differ from the prior install.
-5. Launch with `devicectl device process launch`.
-6. Use an external `-derivedDataPath`, never an in-worktree `build/` or
-   `ios/DerivedData` — those trip the repo's gitleaks secrets scan (see
-   root `CLAUDE.md`'s "Documented exceptions").
+5. Launch with `devicectl device process launch`. The script retries
+   the launch once after 3 s before it reports a failure.
+6. Derived data: the script builds into the in-worktree `ios/build`
+   (gitignored, and allowlisted in `.gitleaks.toml`, so the secrets scan
+   passes). For an ad-hoc hand-run `xcodebuild`, use `ios/build` or an
+   external `-derivedDataPath`; never another in-worktree path such as
+   `build/` or `ios/DerivedData` — those trip the gitleaks scan (see
+   `docs/harness/documented-exceptions.md`).
 
 Always pass the physical iPhone UDID explicitly (`deploy-device.sh
 <udid>` or `DEVICE_ID`). Never pick "the connected device" — a booted

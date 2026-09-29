@@ -15,6 +15,7 @@ import {
   currencyRates,
   holdings,
   pricePoints,
+  reminders,
   settings,
   syncState,
   transactions,
@@ -51,6 +52,8 @@ const tableNameOf = (table: unknown): string => {
   if (table === pricePoints) return 'pricePoints';
 
   if (table === bondRegister) return 'bondRegister';
+
+  if (table === reminders) return 'reminders';
   throw new Error('unknown table');
 };
 
@@ -91,6 +94,7 @@ const emptySnapshot: DataSnapshot = {
   categoryOverrides: [],
   pricePoints: [],
   bondRegister: [],
+  reminders: [],
 };
 
 describe('restoreDataSnapshot', () => {
@@ -126,6 +130,7 @@ describe('restoreDataSnapshot', () => {
     expect(deletedTables).toEqual([
       'transactions',
       'syncState',
+      'reminders',
       'holdings',
       'accounts',
       'categoryOverrides',
@@ -338,6 +343,47 @@ describe('restoreDataSnapshot', () => {
     expect(Object.keys(insertedRows)).not.toContain('bondRegister');
   });
 
+  it('inserts a snapshot reminders row after its account', async () => {
+    const insertedTables: string[] = [];
+    const insertedRows: Record<string, unknown[]> = {};
+
+    mockDatabaseTransaction = {
+      delete: () => Promise.resolve(),
+      insert: (table: unknown) => ({
+        values: (rows: unknown[]) => {
+          insertedTables.push(tableNameOf(table));
+          insertedRows[tableNameOf(table)] = rows;
+
+          return Promise.resolve();
+        },
+      }),
+    };
+
+    await restoreDataSnapshot({
+      ...emptySnapshot,
+      accounts: [{ id: 'a1' }] as never,
+      reminders: [{ id: 'reminder-1', accountId: 'a1', lastSnoozedAt: 5 }] as never,
+    });
+
+    expect(insertedRows.reminders).toEqual([
+      { id: 'reminder-1', accountId: 'a1', lastSnoozedAt: 5 },
+    ]);
+    expect(insertedTables.indexOf('reminders')).toBeGreaterThan(insertedTables.indexOf('accounts'));
+  });
+
+  // Known limit: an export made before reminders existed restores with no
+  // reminders at all.
+  it('restores an empty reminders table for a legacy snapshot with no reminders field', async () => {
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+    const legacySnapshot = { ...emptySnapshot } as unknown as Record<string, unknown>;
+    delete legacySnapshot.reminders;
+
+    await restoreDataSnapshot(legacySnapshot as unknown as DataSnapshot);
+
+    expect(Object.keys(insertedRows)).not.toContain('reminders');
+  });
+
   // A chunk size fixed in rows (2000), rather than derived from a table's
   // column count, broke silently the moment a later migration added 3
   // columns to `transactions` (15 -> 18): 2000 rows x 18 columns = 36000
@@ -463,6 +509,7 @@ describe('restoreDataSnapshot', () => {
     expect(deletedTables).toEqual([
       'transactions',
       'syncState',
+      'reminders',
       'holdings',
       'accounts',
       'categoryOverrides',

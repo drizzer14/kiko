@@ -83,6 +83,8 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     // Same reasoning: no imported row exists for `planImportTimeRezone` to
     // rewrite either, so `true` skips that pass too.
     importTimesRezoned: true,
+    reminderOfferDismissals: null,
+    notificationsDeliverableSince: null,
   },
 ];
 
@@ -233,5 +235,6 @@ export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
     categoryOverrides: [],
     pricePoints: buildPricePoints(dataset),
     bondRegister: dataset.bondRegister,
+    reminders: [],
   };
 };

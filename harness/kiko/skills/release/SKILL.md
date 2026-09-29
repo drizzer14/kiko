@@ -15,6 +15,19 @@ Preconditions:
   normalization is allowed).
 - `npm run check:all` is green.
 
+Merging into `main` (coordinator ruling): never apply, merge, rebase,
+pull, cherry-pick, revert, or am in the main checkout (what passes:
+`-h`/`--help`, the recovery options such as `--abort`/`--continue`,
+`git apply --check`/`--stat`, and the `merge --ff-only`/`pull
+--ff-only` update forms; see `RECOVERY_OPTIONS` there; the closed set is
+`MAIN_CHECKOUT_SUBCOMMANDS` in `scripts/checks/kill-guard.js`)
+(`/Users/drizzer14/Developer/Projects/pff-ios`); every session's hooks
+run from it, so a conflict marker there breaks every hook. The
+kill-guard denies it (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
+real merge, conflicts and all, in a separate detached worktree, verify
+it there (`npm run check:all`), then fast-forward main:
+`git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
+
 Who does what: the coordinator drives Part A (steps 1-5), `kiko:ops`
 does step 6, the user does step 8. The skill stops at step 8 — nobody
 uploads to the App Store on the user's behalf.

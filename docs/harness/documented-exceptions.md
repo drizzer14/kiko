@@ -146,6 +146,11 @@ verified usage, not dead weight:
   scope. Revisit or remove this exception if the two charts' structure
   ever diverges enough that the duplication is no longer a deliberate
   mirror.
+- **`knip.json` `entry`** (an entry point, not an ignore):
+  `scripts/bundle-contains.js` — the bundle freshness checker that only
+  `scripts/deploy-device.sh` runs (`node scripts/bundle-contains.js`), so
+  Knip sees no importer and reports it as an unused file. It is a real
+  executable entry point; as an `entry` Knip still analyzes it.
 - **`knip.json` `ignore`**: `scripts/checks/kill-guard.js` — the PreToolUse
   hook script that `scripts/checks/kill-guard.sh` invokes (`node
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
@@ -541,3 +546,15 @@ verified usage, not dead weight:
   `rules/fixtures/` pair is not named like a test file and still proves the
   rule in `check:rules`; `__tests__/pre-write-guard-rules.test.ts` proves
   the exclusion.
+
+- **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
+  `.ts` file name in `src/`.** React Native codegen reads a spec file only
+  if its basename matches `/^(Native.+|.+NativeComponent)/`
+  (case-sensitive) and has exactly one dot (see `filterJSFile` in
+  `node_modules/@react-native/codegen/lib/cli/combine/combine-utils.js`),
+  so the name cannot be kebab-case. `package.json` `codegenConfig.jsSrcsDir`
+  points at that folder. Only `reminders-native.ts` loads it (lazily, via
+  `require`), and the barrel does not export it; the
+  `kiko-no-native-reminders-module-import` Semgrep rule
+  (`rules/semgrep-prewrite.yml`) denies any other value import. Add another
+  `Native*` spec only for a new app TurboModule.

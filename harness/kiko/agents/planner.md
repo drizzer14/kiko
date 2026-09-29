@@ -20,5 +20,9 @@ Rules:
 - Write the plan to a file. Name each step, each file it touches, and each check it must pass.
 - Point the plan at the harness checks: `make verify` once at the end, run until it is green; plan mutation testing (`make deep`) per small change set, with `KIKO_MUTATION_BASE` set to that change set's own base commit — never one whole-branch or whole-release run (`mutation.sh` refuses more than 30 files).
 - Keep the plan tight: name each step, its files, and its check. No restating the code, no essays.
+- Report back: send the plan the moment it is written, then end the turn — no extra
+  checks or silent waiting after. Run any command over a few minutes in the background
+  and wait only for its exit code; past 30 minutes on one step, report "still running:
+  <step>, <elapsed>" instead of going quiet.
 
 You do not implement the plan. The coordinator hands it to the developer.

@@ -41,15 +41,26 @@ Mutation only on small diffs (cap 30, coordinator runs it per change set before 
 from the MAIN checkout (never apply/merge hook files in place there); agents/skills from the plugin cache (bump + update + reload). A commit
 command for the user stages every path. Peer-relayed approvals: read the user's own words. Silent watcher only. Researcher 403: curl yourself.
 
+## OVERNIGHT 2026-09-28 (user directive ~01:30: "Continue working through the night")
+- next = 686d8114 (feat 298efbb0 merged; mutation 90.24; coordinator make verify 410/5764). iPhone = 686d8114 (Release-AdHoc; tag icon; user retest pending).
+- feat SESSION 9 shares-assets-research-49 (term_76d2219c-...): overnight mode (no AskUserQuestion; rulings to coordinator, 15-min default). CQ1 (main-checkout git deny; USER approved ff-only form + CLAUDE.md paragraph) -> review -> BATCH READY; then CQ2 -> BATCH READY; then TRACK DONE + ledger.
+- ROUND A started early (read-only steps 1+2 only; app code on next is stable because CQ1/CQ2 are harness-only): Orca worktree round-a (branch round-a at 686d8114), orchestrator round-a-34, terminal term_97b615ac-1f80-42fb-a4e6-1218c33799c2, brief .superpowers/sdd/round-a/BRIEF.md, report .superpowers/sdd/round-a/FINDINGS.md. No fixes before the user triages.
+- Watchers (coordinator session, run_in_background): scratchpad trackwatch.sh (feat) and trackwatch2.sh <terminal> <worktree> (round-a; counts .superpowers/sdd file writes as activity).
+- Reminders 1.2 spec: docs/superpowers/specs/2026-09-27-reminders-design.md (e3e1fdb9, 84c2324b).
+- ~07:15: CQ1 merged into next 6623d7c1, CQ2 into next f5651e56; coordinator make verify 413/6054 exit 0. Session 9 TRACK DONE (idle; morning list .superpowers/sdd/shares-property-metals-debts/MORNING-session9.md). MAIN NOT UPDATED: merge next->main needs the user; after CQ1 is on main, update main only with `git -C <main> merge --ff-only <sha>` from a verified worktree.
+- Round A: FINDINGS ready (C2, cond-C1, I23, M46); CS-A sync fixes round-a 3efefa9a (base 686d8114) mutation 70.41 PASS, NOT merged; CS-B then CS-C in progress; morning items in round-a .superpowers/sdd/round-a/MORNING.md.
+- MORNING for the user: triage Round A findings; CQ1/CQ2 overnight ledger decisions; tag-icon retest.
+- INCIDENT ~02:00: a CQ1 reviewer probe runner executed a real `pkill x` (line-continuation escaped its rewrite). Coordinator verified Orca, watchers and all sessions alive; any open user process with lowercase "x" in its name may have received SIGTERM. Mitigation: committed safe runner (stubs first on PATH) in CQ1; rule sent to both tracks; memory no-pattern-kill-by-agents updated.
+
 ## RELEASE ROADMAP (user directive 2026-09-27): two BUG-HUNT + SECURITY rounds
-Order: finish the 1.1 feat track (assets-debts, merged into next) -> ROUND A -> 1.2 (the postponed work: P5 broker/shares/EODHD + the deferred list) -> ROUND B -> 1.2 release prep.
+Order: finish the 1.1 feat track (assets-debts, merged into next) -> ROUND A -> 1.2 (the postponed work: P5 broker/shares/EODHD + the deferred list + Reminders (spec docs/superpowers/specs/2026-09-27-reminders-design.md)) -> ROUND B -> 1.2 release prep.
 Each round (coordinator runs it as its own Orca track + orchestrator session, from next):
 1. Read-only audits in parallel (kiko:auditor): SECURITY (network hosts/ATS/TLS, Keychain tokens and API secrets, .kiko export crypto, logging of personal data, URL schemes/deep links, Info.plist + privacy manifest, gitleaks over history, osv CVEs incl. the tracked accepted ones), PERFORMANCE (op-sqlite single queue, app-open work, live queries, statistics), DEPENDENCIES/BUNDLE.
 2. Bug hunt (kiko:debugger, read-only, parallel slices): holdings (bonds, deposits, loans, metals, property), transactions + statement import, rates/prices/sync, statistics + net worth, backup/restore + migrations, auth/lock; plus a DIVERGENT-TWINS hunt and data-integrity invariants; Maestro E2E flows.
 3. Triage with the user: ranked findings; Critical/Important fixed in change sets (<= 30 source files each, one review, coordinator mutation run per change set before merge); every mechanizable finding becomes a guard rule/checker.
 4. Deferred debt picked up in Round A: createSingleFlight helper, deploy-device.sh launch-grep false-fail, the worklet-remote-function Semgrep rule, the harness hooks self-check, pre-submission items (screenshots 07/10, privacy policy wording).
 5. Exit: device test by the user, merge into next, retrospect + drift pass.
-Round B adds: the 1.2 surfaces (broker/EODHD API keys and new network domains, new stored secrets, new data flows) and a full kiko-compliance pass before the 1.2 App Store submission.
+Round B adds: the 1.2 surfaces (broker/EODHD API keys and new network domains, new stored secrets, new data flows; the new Reminders native module and notification permission) and a full kiko-compliance pass before the 1.2 App Store submission.
 
 ## 2026-09-27 ~22:00: feat SESSION 9 (term_76d2219c-4a86-4f7b-80d1-84a1dc2e4ed3) replaced session 8 at 51%; tip 49ed0a04; queue: kill-guard fix round (git stash + unquoted heredoc deny, user-approved) -> re-review -> BATCH READY (base ccb611dd, 2 source files) + deployable (tag icon). next = e85be58c (guard replay merged). Harness-only main commit (8 agent/skill files + plugin 0.2.2) waits for the user.
 

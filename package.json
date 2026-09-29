@@ -112,5 +112,15 @@
   },
   "op-sqlite": {
     "sqlcipher": true
+  },
+  "codegenConfig": {
+    "name": "KikoSpecs",
+    "type": "modules",
+    "jsSrcsDir": "src/reminders/native",
+    "ios": {
+      "modulesProvider": {
+        "KikoReminders": "RCTKikoReminders"
+      }
+    }
   }
 }

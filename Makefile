@@ -16,8 +16,8 @@ help: ## List available targets
 
 # --- Build & deploy (physical iPhone) ---
 
-deploy: ## Build Release-AdHoc + install on the connected iPhone (pod install auto-runs on build failure)
-	npm run deploy:device $(DEVICE)
+deploy: ## Build Release-AdHoc + install on the connected iPhone (pod install auto-runs on build failure; EXPECT='<str>' checks the bundle for <str> before install, no single quotes in <str> (use EXPECT_BUNDLE_STRING), write $$ for $)
+	$(if $(EXPECT),EXPECT_BUNDLE_STRING='$(EXPECT)' )npm run deploy:device $(DEVICE)
 
 pods: ## Install CocoaPods in ios/
 	cd ios && pod install
