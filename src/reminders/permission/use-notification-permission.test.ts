@@ -87,11 +87,16 @@ describe('useNotificationPermission', () => {
 
     const { result } = await renderHook(() => useNotificationPermission());
 
-    authorizationStatus.mockRejectedValue(new Error('native module missing'));
+    authorizationStatus.mockRejectedValue(new Error('native module missing SECRET'));
     await transition('active');
 
     expect(result.current.status).toBe('authorized');
     expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[reminders] notification permission failed', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
 
     warn.mockRestore();
   });

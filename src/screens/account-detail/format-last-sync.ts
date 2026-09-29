@@ -1,3 +1,4 @@
+import { maxOf } from '@kiko/numbers';
 import type { TFunction } from 'i18next';
 import type { HoldingRow } from '@kiko/db';
 import { formatDateTime } from '@kiko/dates';
@@ -26,5 +27,5 @@ export const latestSyncedAt = (holdings: Pick<HoldingRow, 'metadata'>[]): number
     .map((holding) => syncedAtOf(holding.metadata))
     .filter((stamp): stamp is number => stamp !== null);
 
-  return stamps.length > 0 ? Math.max(...stamps) : null;
+  return stamps.length > 0 ? maxOf(stamps) : null;
 };

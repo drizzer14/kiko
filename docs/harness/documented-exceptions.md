@@ -549,6 +549,47 @@ verified usage, not dead weight:
   rule in `check:rules`; `__tests__/pre-write-guard-rules.test.ts` proves
   the exclusion.
 
+- **`kiko-no-math-min-max-spread` (`rules/semgrep-prewrite.yml`) excludes
+  `*.test.ts` and `*.test.tsx`.** `transaction-span.test.ts` and
+  `min-max.test.ts` assert that `Math.min(...values)` throws a RangeError
+  on a large array, the premise that makes `minOf`/`maxOf` necessary, so
+  they must spell out the spread. `__tests__/pre-write-guard-rules.test.ts`
+  proves the exclusion; the flat fixture pair still proves the rule.
+
+- **`kiko-no-root-calendars-value-import` (`rules/semgrep-prewrite.yml`)
+  excludes `*.test.ts` and `*.test.tsx`.** The rule exists for bundle size,
+  and Jest never bundles, so a test's root import costs nothing. The
+  `jest.mock('react-native-calendars', ...)` in `jest/setup.js` still
+  covers any test that imports the root. The flat fixture pair proves the
+  rule in `check:rules`.
+
+- **`kiko-no-raw-error-in-console` (`rules/semgrep-prewrite.yml`) excludes
+  `src/diagnostics/log-failure.ts`, `*.test.ts`, and `*.test.tsx`.**
+  `log-failure.ts` is the sanitizing sink: its one `console.warn(tag, { name,
+  code })` passes the `tag` parameter, an identifier, which the rule cannot
+  tell from an error object. `log-failure.test.ts` pins what the sink logs
+  (name and code only; a planted secret in the message never reaches the
+  spy). Tests are excluded because a test's console output never ships in
+  the app. The flat fixture pair proves the rule in `check:rules`.
+
+- **`kiko-no-clipboard-set-string` (`rules/semgrep-prewrite.yml`) excludes
+  `src/clipboard/copy-sensitive-text.ts`, `*.test.ts`, and `*.test.tsx`.**
+  `copy-sensitive-text.ts` is the one sanctioned pasteboard write: its
+  `Clipboard.setString(value)` is the call the rule bans everywhere else, so
+  a later local-only, expiring copy changes only that body.
+  `copy-sensitive-text.test.ts` pins that it writes the value once. Tests are
+  excluded because they only drive the Jest clipboard mock and never ship.
+  The flat fixture pair proves the rule in `check:rules`.
+
+- **`kiko-no-per-bucket-date-in-statistics` (`rules/semgrep-prewrite.yml`)
+  excludes `*.test.ts` and `*.test.tsx`.** The rule exists for the cost of a
+  Statistics render, and test code never runs in one. A parity oracle in a
+  test (the `referenceHoldingValueAt` pattern in `holding-value-at.test.ts`)
+  may keep the slow per-bucket shape on purpose. Measured on 2026-09-29: the
+  rule without the exclude draws 0 findings in `src/statistics` tests, so the
+  exclude hides nothing today. The nested fixture pair proves the rule in
+  `check:rules`.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`

@@ -1,3 +1,4 @@
+import { logFailure } from '@kiko/diagnostics';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import either, { bifold, type Either, eitherSync, first, isLeft, isRight } from 'fnts/either';
 
@@ -196,8 +197,10 @@ export function useLiveQuery<T>(
       if (isLeft(settled)) {
         const caughtError: Error = bifold(settled);
 
-        // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a rejected reactive query would otherwise fail silently — the screen only sees `error` if it happens to read it — so log the failing query's SQL and the error itself here, the one place every consumer's failure passes through.
-        console.warn('[useLiveQuery] query failed', sql, caughtError);
+        // A rejected reactive query would otherwise fail silently — the screen
+        // only sees `error` if it happens to read it — and every consumer's
+        // failure passes through here. `sql` holds placeholders, never params.
+        logFailure(`[useLiveQuery] query failed: ${sql}`, caughtError);
         setError(caughtError);
 
         // A re-keyed query's rejection must not keep showing the OLD key's

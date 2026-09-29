@@ -20,6 +20,7 @@ declare module 'react-native-svg' {
 }
 
 import { formatDayMonth } from '@kiko/dates';
+import { maxOf, minOf } from '@kiko/numbers';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
@@ -123,16 +124,16 @@ const niceFloor = (value: number, span: number): number => {
 
 const buildScales = (points: NetWorthPoint[], startReference: number, height: number): Scales => {
   const times = points.map((point) => point.t);
-  const minTime = Math.min(...times);
-  const maxTime = Math.max(...times);
+  const minTime = minOf(times);
+  const maxTime = maxOf(times);
   const timeSpan = maxTime - minTime || 1;
   // Include the reference so the dashed baseline always falls on-screen — it is
   // the net worth at the range start, so it is one of the plotted values, and
   // keeping it in the set both anchors the baseline and cannot push the floor
   // above it.
   const values = [...points.map((point) => point.amount), startReference];
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
+  const minValue = minOf(values);
+  const maxValue = maxOf(values);
   // The Y domain runs from the net worth's OWN minimum — floored to a nearby
   // round number — up to its own maximum. Earlier this was anchored symmetrically
   // on `startReference` (`[startReference ± halfRange]`), which pushed the bottom
@@ -177,8 +178,8 @@ type Tick = { key: string; value: number };
 // label text.
 export const buildTicks = (points: NetWorthPoint[], startReference: number): Tick[] => {
   const values = [...points.map((point) => point.amount), startReference];
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
+  const minValue = minOf(values);
+  const maxValue = maxOf(values);
 
   // A zero-width range is the flat/degenerate case (every amount equal to
   // `startReference` — a single point, or a balance that never moved): collapse
@@ -421,8 +422,8 @@ const bandExtremes = (
   const belowYs = ys.filter((y) => y >= referenceY);
 
   return {
-    greenTopY: aboveYs.length > 0 ? Math.min(...aboveYs) : referenceY,
-    redBottomY: belowYs.length > 0 ? Math.max(...belowYs) : referenceY,
+    greenTopY: aboveYs.length > 0 ? minOf(aboveYs) : referenceY,
+    redBottomY: belowYs.length > 0 ? maxOf(belowYs) : referenceY,
   };
 };
 

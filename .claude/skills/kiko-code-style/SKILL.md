@@ -1028,6 +1028,36 @@ mechanized: a spread of `X | undefined` with no fallback
 (`{...foldMap(...)}`) loses the tie the same way but needs types to
 spot, so it stays a review item.
 
+## No Math.min/Math.max over a spread array
+
+`Math.min(...xs)` and `Math.max(...xs)` pass every element as a call
+argument, so a large enough array (a long ledger, a 200k-row statement
+file, a full-history chart series) throws `RangeError: Maximum call
+stack size exceeded`. `Math.max.apply(null, xs)` does the same. Use
+`minOf(xs)`/`maxOf(xs)` from `@kiko/numbers`:
+
+```ts
+// wrong
+const earliest = Math.min(...times);
+const nextSortOrder = Math.max(-1, ...rows.map((row) => row.sortOrder)) + 1;
+
+// correct
+import { maxOf, minOf } from '@kiko/numbers';
+
+const earliest = minOf(times);
+const nextSortOrder = Math.max(-1, maxOf(rows.map((row) => row.sortOrder))) + 1;
+```
+
+They are exact drop-ins: an empty array gives `Infinity`/`-Infinity`,
+a `NaN` element gives `NaN`, and `-0` sorts below `0`, the same as
+`Math.min`/`Math.max`. So keep each call site's own empty guard; the
+swap changes nothing else. A fixed argument list (`Math.max(left,
+right)`, `Math.min(Math.max(value, 0), 1)`) stays as it is.
+
+Mechanized: `kiko-no-math-min-max-spread` (`rules/semgrep-prewrite.yml`,
+ERROR). Test files are out of scope, because a test that pins the
+RangeError must spell out the spread.
+
 ## Externalize hardcoded config
 
 A hardcoded config value — including a plain public URL, not just a

@@ -1,5 +1,6 @@
 import { type FC, memo } from 'react';
 import { formatDayMonth } from '@kiko/dates';
+import { maxOf, minOf } from '@kiko/numbers';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
@@ -74,11 +75,11 @@ const allPointsOf = (series: CategoryTrendSeries[]): CategoryTrendSeries['points
 const buildScales = (series: CategoryTrendSeries[], height: number): Scales => {
   const points = allPointsOf(series);
   const times = points.map((point) => point.t);
-  const minTime = Math.min(...times);
-  const maxTime = Math.max(...times);
+  const minTime = minOf(times);
+  const maxTime = maxOf(times);
   const timeSpan = maxTime - minTime || 1;
   // Rooted at 0 (spending has no baseline); headroom only above the peak.
-  const maxValue = Math.max(...points.map((point) => point.amount), 0);
+  const maxValue = Math.max(maxOf(points.map((point) => point.amount)), 0);
   const valuePad = (maxValue || 1) * VALUE_PADDING_RATIO;
   const paddedSpan = maxValue + valuePad || 1;
   const plotWidth = VIEW_WIDTH - PADDING_X * 2;

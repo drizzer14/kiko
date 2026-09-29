@@ -1,4 +1,5 @@
 import { AppState } from 'react-native';
+import { logFailure } from '@kiko/diagnostics';
 import either, { bifoldMap } from 'fnts/either';
 import { useCallback, useEffect, useState } from 'react';
 import { type NotificationAuthorization, remindersNative } from '@kiko/reminders/native';
@@ -9,8 +10,7 @@ type NotificationPermission = {
 };
 
 const warnPermissionFailure = (reason: unknown): void => {
-  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a failed permission read or request has no UI surface of its own; log it so a device log shows what failed
-  console.warn('[reminders] notification permission failed', reason);
+  logFailure('[reminders] notification permission failed', reason);
 };
 
 /**

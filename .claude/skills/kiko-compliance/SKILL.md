@@ -101,6 +101,56 @@ that section. A secret belongs in the iOS Keychain
 for the existing Keychain-backed examples (the Monobank token, the
 SQLCipher database key in `src/db/keys/db-key.ts`).
 
+A log line is a leak path even without a secret in the code: React Native
+forwards every `console` level to os_log in a Release build, and an error
+object's message can carry user data (a DrizzleQueryError's message holds
+the SQL params: bank descriptions, amounts). So a swallowed failure logs
+through `logFailure(tag, error)` from `@kiko/diagnostics`, which logs only
+the error's `name` and a string or number `code`, in every build. Never its
+message, cause, or params. Pass `console.*` only literals: a string or
+template tag, and an object literal of counts or ids.
+
+```ts
+// wrong
+console.warn('[binance sync] transaction history import failed', error);
+
+// correct
+import { logFailure } from '@kiko/diagnostics';
+
+logFailure('[binance sync] transaction history import failed', error);
+```
+
+Mechanized: `kiko-no-raw-error-in-console` (`rules/semgrep-prewrite.yml`,
+ERROR). It flags a `console.*` argument that is not a string, template, or
+object literal, and a string or template literal joined with `+` anywhere
+inside an argument (`console.warn('[x] failed: ' + error)`, because
+`String(error)` includes the message). Known limit: an object literal that
+nests the error (`{ error }`) or a template that interpolates it passes
+the rule; review catches those.
+
+The pasteboard is a leak path too: a value copied there has no expiry, and
+Universal Clipboard can sync it to the user's other devices. So a secret
+(the export key) reaches the pasteboard only through
+`copySensitiveText(value)` from `@kiko/clipboard`, the one pasteboard write
+in the app. Never call `Clipboard.setString`/`setStrings` directly. Reads
+(`Clipboard.getString()`, `ClipboardTextField`'s paste) stay allowed.
+
+```ts
+// wrong
+Clipboard.setString(keyBase64);
+
+// correct
+import { copySensitiveText } from '@kiko/clipboard';
+
+copySensitiveText(keyBase64);
+```
+
+Mechanized: `kiko-no-clipboard-set-string` (`rules/semgrep-prewrite.yml`,
+ERROR), on any receiver. Known limit: the export key goes to the general
+pasteboard; Universal Clipboard can sync it; a local-only expiring copy
+needs a native module. A write through a destructured method or
+`useClipboard()`'s setter passes the rule; review catches those.
+
 ## Encryption export compliance
 
 `ios/Kiko/Info.plist`'s `ITSAppUsesNonExemptEncryption` is `false` —
@@ -202,6 +252,12 @@ confirm the relevant check ran and stayed green:
 - `scripts/checks/plist.sh` (`check:plist`) — ATS pinning, arbitrary
   loads, empty usage-description strings.
 - `gitleaks` (`check:secrets`) — a committed secret.
+- `kiko-no-raw-error-in-console` (Semgrep, pre-write guard and
+  `check:security`) — a non-literal `console.*` argument (see "5.1.5 /
+  data storage" for its known limit).
+- `kiko-no-clipboard-set-string` (Semgrep, pre-write guard and
+  `check:security`) — a pasteboard write outside `copySensitiveText` (see
+  "5.1.5 / data storage" for its known limit).
 
 Everything else on this page is reviewer judgment: completeness,
 metadata accuracy, privacy-label freshness, an encryption-declaration

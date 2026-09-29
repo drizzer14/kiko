@@ -5,6 +5,7 @@
 // (`importParsedStatement`, dedup, the preview screen) treats a mapped file
 // identically to a recognized bank export.
 import { match } from 'ts-pattern';
+import { maxOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { type Currency, isCurrency } from '@kiko/currency/currency';
@@ -283,7 +284,7 @@ const pickClosingBalanceRow = (
     return undefined;
   }
 
-  const maxTime = Math.max(...candidates.map((candidate) => candidate.timeSeconds));
+  const maxTime = maxOf(candidates.map((candidate) => candidate.timeSeconds));
   const tied = candidates.filter((candidate) => candidate.timeSeconds === maxTime);
   const parseCell = (candidate: ClosingBalanceCandidate) =>
     parseAmountCell(candidate.row[balanceColumn] ?? '', decimalSeparator);

@@ -297,16 +297,19 @@ describe('useLiveQuery', () => {
     warnSpy.mockRestore();
   });
 
-  it('logs a rejected query instead of failing silently', async () => {
+  it('logs a rejected query by its SQL text and error name, never its params or message', async () => {
     const warnSpy = silenceWarnings();
+    const leakingQuery = queryDouble(['SECRET'], (_resolve, reject) =>
+      reject(new Error('Failed query: SELECT * FROM accounts WHERE id = ? params: SECRET')),
+    );
 
-    await renderHook(() => useLiveQuery(rejectingQuery(), ['accounts']));
+    await renderHook(() => useLiveQuery(leakingQuery, ['accounts']));
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[useLiveQuery]'),
-      expect.anything(),
-      expect.objectContaining({ message: 'boom' }),
+      '[useLiveQuery] query failed: SELECT * FROM accounts WHERE id = ?',
+      { name: 'Error', code: undefined },
     );
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('SECRET');
     warnSpy.mockRestore();
   });
 });

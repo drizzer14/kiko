@@ -1,3 +1,4 @@
+import { minOf } from '@kiko/numbers';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { startOfLocalDay } from '@kiko/dates';
@@ -126,7 +127,7 @@ const ledgerAnchorAt = (
     return anchor;
   }
 
-  const firstPaymentTime = Math.min(...counted.map((entry) => entry.payment.time));
+  const firstPaymentTime = minOf(counted.map((entry) => entry.payment.time));
   const endOfDayBeforeFirstPayment = startOfLocalDay(firstPaymentTime) - 1;
 
   // A payment days late still maps to its OWN installment's due date (the

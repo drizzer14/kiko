@@ -1,3 +1,5 @@
+import { minOf } from '@kiko/numbers';
+
 import { splitInterestTaxMinor } from '../tax';
 import type { BondPayment, BondCouponFrequency, CompoundingFrequency } from '../holding-metadata';
 
@@ -83,7 +85,7 @@ export const accruedMajor = (
 type ContributionMajor = { amountMajor: number; date: number };
 
 export const depositMaturity = (contributions: { date: number }[], termMonths: number): number =>
-  addMonths(Math.min(...contributions.map((c) => c.date)), termMonths);
+  addMonths(minOf(contributions.map((c) => c.date)), termMonths);
 
 // The number of days in the calendar month that `instant` falls in.
 const daysInMonth = (year: number, monthIndex: number): number =>

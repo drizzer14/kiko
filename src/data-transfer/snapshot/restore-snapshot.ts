@@ -20,6 +20,7 @@ import {
   write,
   chunkForTable,
 } from '@kiko/db';
+import { maxOf } from '@kiko/numbers';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { isFiat, type Currency } from '@kiko/currency/currency';
 import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
@@ -204,7 +205,8 @@ const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRo
     return snapshotCategories;
   }
 
-  const sortOrder = Math.max(-1, ...snapshotCategories.map((category) => category.sortOrder)) + 1;
+  const sortOrder =
+    Math.max(-1, maxOf(snapshotCategories.map((category) => category.sortOrder))) + 1;
 
   return [
     ...snapshotCategories,

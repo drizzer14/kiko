@@ -3,6 +3,7 @@ import { i18n } from '@kiko/i18n/init';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import { logFailure } from '@kiko/diagnostics';
 import Box from '@kiko/design-system/components/box';
 import { initDatabase, runMigrations } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
@@ -133,9 +134,8 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
           // failure (upgrade-stored-dedup-keys.ts's own doc comment), so the
           // NEXT launch retries automatically — caught and reported here the
           // same way every other best-effort background failure in this app
-          // is (console.warn), never a new UI state.
-          // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) this catch is what keeps the failure from surfacing anywhere else (see the doc comment above) — logging it here is the only trace a failed rewrite leaves.
-          console.warn('[migrations-gate] dedup-key upgrade failed, will retry next launch', error);
+          // is (logFailure), never a new UI state.
+          logFailure('[migrations-gate] dedup-key upgrade failed, will retry next launch', error);
         }),
       )
       .then(() =>
@@ -147,11 +147,7 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
           // again (and refuses the import if it still fails) before writing
           // any new row, so nothing under the new convention ever lands next
           // to an un-rezoned one.
-          // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) this catch is what keeps the failure from surfacing anywhere else (see the doc comment above) — logging it here is the only trace a failed rewrite leaves.
-          console.warn(
-            '[migrations-gate] import-time rezone failed, will retry next launch',
-            error,
-          );
+          logFailure('[migrations-gate] import-time rezone failed, will retry next launch', error);
         }),
       )
       .then(() => {

@@ -1,4 +1,5 @@
 import { formatDate } from '@kiko/dates';
+import { maxOf, minOf } from '@kiko/numbers';
 
 import type { ParsedStatement, ParsedTransaction } from '../parser';
 
@@ -50,8 +51,8 @@ export type PreviewStats = {
  */
 export const previewStats = (parsed: ParsedStatement, displayName: string): PreviewStats => {
   const times = parsed.transactions.map((transaction) => transaction.timeSeconds);
-  const minSeconds = Math.min(...times);
-  const maxSeconds = Math.max(...times);
+  const minSeconds = minOf(times);
+  const maxSeconds = maxOf(times);
   const maskedCardHints = Array.from(
     new Set(
       parsed.transactions

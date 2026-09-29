@@ -891,17 +891,50 @@ the chain produced. `home.screen.tsx`'s `withinBounds`/`dateRangeBounds`
 follow the same principle: `dateRangeBounds(dateFrom, dateTo)` resolves the
 local-day bounds ONCE per filter run, and the `.filter` callback itself
 (`withinBounds`) does only a plain numeric comparison — no Date
-construction per transaction row. This shape (loop-invariant Date math
-inside a hot per-row callback) is mechanized by test, not by a Semgrep
-rule: `holding-value-at.test.ts`'s parity test against
+construction per transaction row. The tests remain the main guard for
+this shape (loop-invariant Date math inside a hot per-row callback):
+`holding-value-at.test.ts`'s parity test against
 `referenceHoldingValueAt`, plus its DETERMINISTIC work-count guard, are
-what would catch a regression back to per-bucket Date recomputation — a
-static AST rule looking for `startOfLocalDay`/`endOfLocalDay`/`new
-Date(...)` inside an array callback could not tell a genuinely hot
-per-bucket call site from a one-off, harmless one (e.g.
-`reconcile-bond-funding.ts`'s own candidate-building pass, built once per
-net-worth-series call, not once per bucket), so it flagged both alike and
-was removed.
+what would catch a regression back to per-bucket Date recomputation.
+
+Under `src/statistics/**` (tests excluded), never build a Date per row
+inside a per-bucket iteration. The Semgrep rule
+`kiko-no-per-bucket-date-in-statistics` (`rules/semgrep-prewrite.yml`,
+ERROR) fires on `new Date(...)`, `Date.parse(...)`, `startOfLocalDay`,
+`endOfLocalDay`, or `parseLocalDate` inside an array-method callback
+(`filter`/`map`/`flatMap`/`reduce`/`reduceRight`/`forEach`/`some`/
+`every`/`find*`/`sort`/`toSorted`) that itself sits inside a `for` or
+`while` loop, or inside another array callback (expression or block body):
+
+```ts
+// Wrong: startOfLocalDay runs buckets × rows times.
+buckets.map((bucket) => rows.filter((row) => startOfLocalDay(row.time) <= bucket).length);
+
+// Correct: build each row's day key once, then compare plain numbers.
+const days = rows.map((row) => startOfLocalDay(row.time));
+buckets.map((bucket) => days.filter((day) => day <= bucket).length);
+```
+
+The rule catches this NESTED shape only, and only when the inner pass
+iterates a plain identifier (`rows`): a collection that stays the same for
+every outer item. A one-off per-row pass
+(`rows.map((row) => startOfLocalDay(row.time))`), a per-bucket Date
+(`buckets.map((bucket) => new Date(bucket))`), a day key hoisted above a
+`.filter`, and a linear nested traversal stay silent. A linear traversal
+is an inner pass over the outer item's own member or over a chained
+collection, such as
+`holdings.flatMap((holding) => holding.rows.map((row) => startOfLocalDay(row.time)))`
+or `(byId.get(holding.id) ?? []).filter(…).map(…)`: each row is visited
+once. That is why it does not repeat the false positive of its removed
+predecessor, `kiko-no-date-math-in-array-callback`, which flagged every
+Date inside an array callback and so could not tell a hot per-bucket call
+site from a one-off pass built once per series call (the pre-rewrite
+`reconcile-bond-funding.ts` chain stays silent under this rule). Not
+flagged, review items: a Date built in a helper the inner callback calls,
+a `do ... while` loop, a nested iteration written as two plain loops, and
+an inner pass over a member or chained collection that IS loop-invariant
+(`rows.filter(…).map(…)` or `this.rows.map(…)` inside a per-bucket
+callback).
 
 **Speed guards count real work, never wall-clock time — and never a
 production test hook.** Both `holding-value-at.test.ts`

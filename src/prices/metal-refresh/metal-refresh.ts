@@ -1,3 +1,4 @@
+import { minOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { HoldingRow, PricePointRow } from '@kiko/db';
@@ -84,7 +85,7 @@ const earliestLotDayByMetal = (holdings: readonly HeldHolding[]): Map<Metal, num
       continue;
     }
 
-    const earliestDay = Math.min(...meta.lots.map((lot) => lot.day));
+    const earliestDay = minOf(meta.lots.map((lot) => lot.day));
     const existing = days.get(meta.metal);
 
     if (existing === undefined || earliestDay < existing) {

@@ -86,12 +86,17 @@ describe('replanRestoredReminders', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     const restart = jest
       .spyOn(remindersRepo, 'restartIgnoredCounts')
-      .mockRejectedValue(new Error('disk full'));
+      .mockRejectedValue(new Error('disk full SECRET'));
 
     await expect(replanRestoredReminders()).resolves.toBeUndefined();
 
     await waitFor(() => expect(replaceRequests).toHaveBeenCalledTimes(1));
     expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[reminders] re-plan failed', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
 
     restart.mockRestore();
     warn.mockRestore();

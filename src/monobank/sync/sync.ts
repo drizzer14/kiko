@@ -1,3 +1,4 @@
+import { minOf } from '@kiko/numbers';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
@@ -483,7 +484,7 @@ const fetchAllStatements = async (
     if (hitCap) {
       // On a capped page the next ceiling is the earliest item's own second,
       // not one second before it (see the doc comment above).
-      const earliestItemSecond = Math.min(...items.map((item) => item.time));
+      const earliestItemSecond = minOf(items.map((item) => item.time));
       // Guard: if the earliest item's second is not strictly earlier than the
       // window just queried, the whole capped page shares that ceiling
       // second — reusing it verbatim would re-issue the identical query

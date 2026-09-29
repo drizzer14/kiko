@@ -362,6 +362,43 @@ table path is kept. The remaining device-unverified point is only
 misorders the calendar's cosmetic Sunday/Monday column choice, never a
 financial figure.
 
+### Calendar import path
+
+`KikoCalendar` imports `Calendar` by its deep path, the package's default
+export there:
+
+```ts
+import Calendar from 'react-native-calendars/src/calendar';
+```
+
+Never value-import from the package root (`import { Calendar } from
+'react-native-calendars'`). The root re-exports every component (Agenda,
+CalendarList, ExpandableCalendar, the timeline), and Metro does not
+tree-shake, so one root value import ships all of them. The root pulls
+about 704 K of lodash source, 219 K of the package, 172 K of moment, and
+137 K of recyclerlistview. The deep path pulls 144 K of lodash and 60 K
+of the package, with no moment and no recyclerlistview.
+
+A type-only import from the root is fine, because Babel erases it:
+`import type { DateData, CalendarProps } from 'react-native-calendars';`
+(DateField, DateRangeField, `kiko-calendar.props.d.ts`). A mixed import
+with an inline `type` modifier (`import { LocaleConfig, type DateData }`)
+is a value import and is not allowed.
+
+Jest: the manual mock `__mocks__/react-native-calendars/src/calendar.tsx`
+renders the deep `Calendar` as a plain `View` that keeps every prop, so a
+test reads `testID`/`markedDates` and calls `onDayPress` directly.
+`jest.config.js` must not change for this. The `jest.mock` in
+`jest/setup.js` covers only the bare root specifier.
+`kiko-calendar.day-cell-color.test.tsx` deep-imports the real day
+renderers, and neither mock intercepts them.
+
+Enforced by the `kiko-no-root-calendars-value-import` pre-write guard
+rule (Semgrep, ERROR). It flags any root `import`/`export ... from`, a
+bare root side-effect import, and `require()` or dynamic `import()` of the
+root, but lets `import type`/`export type` through. Test files are
+excluded, because Jest never bundles.
+
 ## Component set
 
 Every shared component here follows `kiko-code-style`'s "One component
