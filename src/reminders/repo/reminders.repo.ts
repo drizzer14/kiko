@@ -83,6 +83,20 @@ const enteredByUser = or(
   isNotNull(transactions.changeGroupId),
 );
 
+// One key per thing the user entered. `created_at` is stamped per statement
+// in whole seconds, so the rows of one write can be a second apart: a payment
+// and its change returns share their change group, and the two legs of an
+// exchange share its time and the pair of holdings.
+const entryKey = sql`coalesce(
+  ${transactions.changeGroupId},
+  case when ${transactions.exchangeCounterpartHoldingId} is not null then
+    ${transactions.time}
+    || ':' || min(${transactions.holdingId}, ${transactions.exchangeCounterpartHoldingId})
+    || ':' || max(${transactions.holdingId}, ${transactions.exchangeCounterpartHoldingId})
+  end,
+  ${transactions.createdAt}
+)`;
+
 export const remindersRepo = {
   hasAnyQuery: () => database.select({ id: reminders.id }).from(reminders).limit(1),
   listByAccountQuery: (accountId: string) =>
@@ -111,11 +125,9 @@ export const remindersRepo = {
     database.select().from(reminders).where(eq(reminders.id, reminderId)).limit(1),
   // One row is enough to know.
   hasImportQuery: (accountId: string) => importsOf(accountId).limit(1),
-  // Distinct creation times, because both legs of a transfer are written with
-  // the same one: a transfer is one entry by the user.
   manualEntryDaysQuery: (accountId: string, since: number) =>
     database
-      .select({ entries: countDistinct(transactions.createdAt) })
+      .select({ entries: countDistinct(entryKey) })
       .from(transactions)
       .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
       .where(

@@ -30,6 +30,13 @@ const run = (statement: string, ...parameters: string[]): void => {
 const entries = async (accountId = 'account'): Promise<number> =>
   (await remindersRepo.manualEntryDaysQuery(accountId, SINCE)).at(0)?.entries ?? 0;
 
+const createdAtCount = (): number =>
+  (
+    mockDatabase.prepare('SELECT count(DISTINCT created_at) AS count FROM transactions').get() as {
+      count: number;
+    }
+  ).count;
+
 const enter = (holdingId: string, amountMinorUnits = -100): Promise<void> =>
   transactionsRepo.recordManual({ holdingId, amountMinorUnits, time: TIME, category: 'food' });
 
@@ -80,6 +87,31 @@ describe('remindersRepo.manualEntryDaysQuery on the real write paths', () => {
     await enter('pocket');
 
     expect(await entries()).toBe(2);
+  });
+
+  it('counts an exchange between two holdings of the account once, though its legs are seconds apart', async () => {
+    await exchange('wallet', 'pocket');
+
+    expect(createdAtCount()).toBe(2);
+    expect(await entries()).toBe(1);
+  });
+
+  it('counts two exchanges between the same holdings at different times, and an entry, as three', async () => {
+    await exchange('wallet', 'pocket');
+    await exchange('pocket', 'wallet', TIME + 60_000);
+    await enter('wallet');
+
+    expect(await entries()).toBe(3);
+  });
+
+  it('counts a payment and its change returns once', async () => {
+    await transactionsRepo.recordManualWithReturns({
+      payment: { holdingId: 'wallet', amountMinorUnits: -500, time: TIME, category: 'food' },
+      returns: [{ holdingId: 'pocket', amountMinorUnits: 100 }],
+    });
+
+    expect(createdAtCount()).toBe(2);
+    expect(await entries()).toBe(1);
   });
 
   it('counts an exchange with another account, which has no category, on each side', async () => {

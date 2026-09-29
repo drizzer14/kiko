@@ -509,13 +509,6 @@ describe('remindersRepo.manualEntryDaysQuery', () => {
     expect(await remindersRepo.manualEntryDaysQuery('account-1', SINCE)).toEqual([{ entries: 2 }]);
   });
 
-  it('counts the two legs of a transfer, which share their creation time, once', async () => {
-    insertTransaction('transfer-out', 'holding-1', 'manual', SINCE + 1);
-    insertTransaction('transfer-in', 'holding-2', 'manual', SINCE + 1);
-
-    expect(await remindersRepo.manualEntryDaysQuery('account-1', SINCE)).toEqual([{ entries: 1 }]);
-  });
-
   it('leaves out entries made before the given time', async () => {
     insertTransaction('before', 'holding-1', 'manual', SINCE - 1);
     insertTransaction('at', 'holding-1', 'manual', SINCE);

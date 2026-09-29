@@ -182,15 +182,6 @@ describe('useReminderOffer — manual activity', () => {
     expect(kindsSeen).not.toContain('add_transactions');
   });
 
-  it('counts the two legs of a transfer as one entry', async () => {
-    addEntry('cash', 'manual', TODAY);
-    addEntry('cash', 'manual', TODAY);
-
-    const { kindsSeen } = await renderOffer('cash', 'manualActivity');
-
-    expect(kindsSeen).not.toContain('add_transactions');
-  });
-
   it('leaves out imported entries', async () => {
     addEntry('cash', 'manual', TODAY);
     addEntry('cash', 'import', YESTERDAY);
