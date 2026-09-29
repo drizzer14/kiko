@@ -146,19 +146,4 @@ export const executingClient = (resolveDatabase: () => DatabaseSync): ExecutingC
  * run its real query-builder calls directly against this in a test.
  */
 export const executingDrizzle = <Database>(database: DatabaseSync): Database =>
-  drizzle(async (sql, params, method) => {
-    const statement = database.prepare(sql);
-    const bound = params as SqlParameter[];
-
-    if (method === 'run') {
-      statement.run(...bound);
-
-      return { rows: [] };
-    }
-
-    const rows = (statement.all(...bound) as Record<string, unknown>[]).map((row) =>
-      Object.values(row),
-    );
-
-    return { rows: method === 'get' ? (rows[0] ?? []) : rows };
-  }) as unknown as Database;
+  executingClient(() => database).database as unknown as Database;
