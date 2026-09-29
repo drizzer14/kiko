@@ -1340,8 +1340,9 @@ rules:
   # mutable source); a walked or computed path cannot be proven and is
   # flagged. `symbolic_propagation` lets the top-level `pattern-not` see
   # through a `const` path; a `metavariable-pattern` on the path does not.
-  # `paths.include` is path-prefixed, so the fixture pair is NESTED. Each
-  # exclude is a documented exception (docs/harness/documented-exceptions.md).
+  # `paths.include` is path-prefixed, so the fixture pair is NESTED. The
+  # exclude and each per-line override are documented exceptions
+  # (docs/harness/documented-exceptions.md).
   - id: kiko-no-source-text-read-in-test
     languages: [typescript]
     severity: ERROR
@@ -1363,10 +1364,6 @@ rules:
         - "src/test-support/**"
       exclude:
         - "__tests__/**"
-        - "src/db/settings-columns.test.ts"
-        - "src/i18n/locales/title-keys.call-sites.test.ts"
-        - "drizzle/migrations/0044-move-crypto-cash-holdings.test.ts"
-        - "e2e/screenshot/fixtures/generate-demo-kiko.test.ts"
     patterns:
       - pattern-either:
           - pattern: readFileSync(...)

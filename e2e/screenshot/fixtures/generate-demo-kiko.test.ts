@@ -116,6 +116,8 @@ describe('the committed demo .kiko fixtures decrypt back to the current dataset'
   for (const { language, fileName } of LANGUAGES) {
     it(`${fileName} decrypts to buildDemoSnapshot(buildScreenshotDataset('${language}')), with no secrets block`, () => {
       const envelope: ExportEnvelope = JSON.parse(
+        // The file name comes from the LANGUAGES table, so the rule cannot see its extension.
+        // nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(.kiko fixture from a table)
         readFileSync(join(FIXTURES_DIR, fileName), 'utf8'),
       );
       const plaintext = decryptEnvelope(envelope, key);

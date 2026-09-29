@@ -367,6 +367,7 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
   it.each([
     ['src/probe/source-read-probe.test.ts', 2],
     ['src/probe/source-read-probe.test.tsx', 2],
+    ['src/db/settings-columns.test.ts', 2],
     ['src/probe/source-read-probe.ts', 0],
     ['__tests__/source-read-probe.test.ts', 0],
   ])('kiko-no-source-text-read-in-test on %s exits %s', (relativeTarget, status) => {

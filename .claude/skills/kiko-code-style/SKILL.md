@@ -1115,14 +1115,27 @@ Semgrep `kiko-no-source-text-read-in-test` (`rules/semgrep-prewrite.yml`)
 enforces this in every `*.test.ts(x)` and `src/test-support/**`. It
 flags a `readFileSync`/`readFile`/`createReadStream` call whose path it
 cannot prove is a non-TypeScript file, so a walked or computed path is
-flagged too. Four tests keep a text read by a documented exception:
-three search src text for a word or a literal that Stryker's
-instrumentation keeps (`settings-columns.test.ts`,
-`title-keys.call-sites.test.ts`, `0044-move-crypto-cash-holdings.test.ts`),
-and `generate-demo-kiko.test.ts` reads its `.kiko` fixtures by a name
-from a table. Harness tests under `__tests__/` are out of scope: they
-read rules, scripts, docs, and temp projects. Known gap: a harness test
-that walks `src/` (`one-component-per-file.test.ts`) is not checked.
+flagged too. Four tests keep one text read each by a documented
+per-line override (`// nosemgrep: kiko-no-source-text-read-in-test
+OVERRIDE(<reason>)` on the line above that read), never a whole-file
+exclude, so a new read in the same file is still denied. Three search
+src text for a word or a literal that Stryker's instrumentation keeps
+(`settings-columns.test.ts`, `title-keys.call-sites.test.ts`,
+`0044-move-crypto-cash-holdings.test.ts`), and
+`generate-demo-kiko.test.ts` reads its `.kiko` fixtures by a name from a
+table. Harness tests under `__tests__/` are out of scope: they read
+rules, scripts, docs, and temp projects.
+
+Known limits:
+
+- A harness test that walks `src/` (`one-component-per-file.test.ts`)
+  is not checked.
+- A join rooted at `drizzle/migrations` is not extension-checked, so
+  `join(MIGRATIONS_ROOT, '..', '..', 'src', 'db', 'schema.ts')` passes.
+  Never climb out of the migrations folder in a path.
+- A template path (`` `${__dirname}/x.csv` ``) fires even with a
+  non-TypeScript extension: the rule reads only a string literal or a
+  join. A safe false positive: write `join(__dirname, 'x.csv')`.
 
 ## Reviewed, and deliberately not changed
 

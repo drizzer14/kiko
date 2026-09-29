@@ -290,7 +290,9 @@ const sitesInSource = (fileName: string, text: string): HeadingSite[] => {
     });
 };
 
+// strykerUnwrapped reads the original key back out of an instrumented call.
 const headingSitesIn = (file: string): HeadingSite[] =>
+  // nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(unwraps Stryker instrumentation)
   sitesInSource(file, readFileSync(file, 'utf8'));
 
 const headingSites = sourceFiles(SOURCE_ROOT).flatMap(headingSitesIn);

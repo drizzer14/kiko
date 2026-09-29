@@ -591,12 +591,17 @@ verified usage, not dead weight:
   `check:rules`.
 
 - **`kiko-no-source-text-read-in-test` (`rules/semgrep-prewrite.yml`)
-  excludes `__tests__/**` and four tests.** Each keeps a file read the
-  rule cannot prove is a non-TypeScript fixture, and none of them parses
-  text that Stryker's instrumentation changes:
-  - `__tests__/**`: harness tests read rules, scripts, docs, and temp
-    projects, never a mutable source; their paths are mostly computed,
-    so the rule would fire on nearly every one.
+  excludes `__tests__/**`, and four tests carry one per-line override.**
+  The exclude: harness tests read rules, scripts, docs, and temp projects,
+  never a mutable source; their paths are mostly computed, so the rule
+  would fire on nearly every one.
+
+  Each override is a
+  `// nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(<reason>)` line
+  directly above the ONE read the rule cannot prove is a non-TypeScript
+  fixture. None of these reads parses text that Stryker's instrumentation
+  changes. Every other read in the same file is still checked, so a new
+  source-text read there is denied:
   - `src/db/settings-columns.test.ts`: reads the column names from
     `getTableColumns(settings)` and searches src text only for each
     name as a whole word; Stryker keeps every original identifier.
