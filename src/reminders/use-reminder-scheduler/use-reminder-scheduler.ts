@@ -17,7 +17,7 @@ export const warnReplanFailure = (reason: unknown): void => {
 };
 
 const warnOnFailure = async (task: () => Promise<void>): Promise<void> => {
-  const result = await either<unknown, void>(async () => task());
+  const result = await either<unknown, void>(task);
 
   if (isLeft(result)) {
     warnReplanFailure(bifold(result));
@@ -30,9 +30,7 @@ const warnOnFailure = async (task: () => Promise<void>): Promise<void> => {
 // the queue no longer holds them. A failed drain plans nothing, because the
 // plan's ignored count must see the taps first.
 const replan = async (): Promise<void> => {
-  const drained = await either<unknown, NotificationResponse[]>(async () =>
-    drainReminderResponses(),
-  );
+  const drained = await either<unknown, NotificationResponse[]>(drainReminderResponses);
 
   if (isLeft(drained)) {
     warnReplanFailure(bifold(drained));
@@ -86,7 +84,9 @@ type Subscription = { remove: () => void };
 const NO_SUBSCRIPTION: Subscription = { remove: () => undefined };
 
 // The subscribe loads the native module synchronously, which throws on a
-// binary built without it; the app runs on, re-planned by the other triggers.
+// binary built without it; drainReminderResponses then also rejects on every
+// trigger, so each one logs "re-plan failed" and plans nothing, without
+// crashing the app.
 const subscribeToResponses = (): Subscription =>
   bifoldMap(
     eitherSync<unknown, Subscription>(() => remindersNative.onResponse(replanReminders)),

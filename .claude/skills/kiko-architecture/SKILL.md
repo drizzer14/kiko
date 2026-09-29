@@ -1680,7 +1680,8 @@ what a change must keep.
   the queue no longer holds them. The `onResponse` subscribe loads the
   native module synchronously, so it is wrapped in `eitherSync`: on a
   binary without the module it logs once, gets a no-op `remove`, and
-  the other triggers still re-plan
+  `drainReminderResponses` then also rejects on every trigger, so each one
+  logs "re-plan failed" and plans nothing, without crashing the app
   (`use-reminder-scheduler.lazy-load.test.ts`).
 - **Tap routing.** Every re-plan hands the responses its drain returned to
   `routeLatestResponse(responses, navigationRef)`

@@ -305,7 +305,7 @@ describe('drainReminderResponses', () => {
 });
 
 describe('syncReminders — responses, back-off, and snoozes', () => {
-  it('keeps a reminder paused when the user taps its paused notice, and returns the tap', async () => {
+  it('keeps a reminder paused when the user taps its paused notice', async () => {
     seedAccount('manual');
     seedReminder({ id: 'ignored', accountId: 'manual', kind: 'add_transactions' });
     drainedResponses = [

@@ -1,4 +1,9 @@
 import {
+  type LocalDateTime,
+  type NotificationResponse,
+  REMINDER_IDENTIFIER_PREFIX,
+} from '@kiko/reminders/native';
+import {
   calendarDaysBetween,
   isReminderSchedule,
   occurrenceAfter,
@@ -8,8 +13,6 @@ import {
   toInstant,
 } from '@kiko/reminders/schedule';
 import maybe, { foldMap } from 'fnts/maybe';
-import type { NotificationResponse } from '@kiko/reminders/native';
-import { type LocalDateTime, REMINDER_IDENTIFIER_PREFIX } from '@kiko/reminders/native';
 
 // The planning rules:
 // - The anchor is the latest of `activeSince`, `deliverableSince`,
