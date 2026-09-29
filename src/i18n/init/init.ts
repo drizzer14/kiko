@@ -3,6 +3,9 @@ import { initReactI18next } from 'react-i18next';
 
 import { en, uk } from '../locales';
 import { deviceLanguage } from '../device-language';
+import { installPluralRulesFallback } from '../plural-rules';
+
+installPluralRulesFallback();
 
 // Mirrors src/design-system/unistyles/unistyles.ts: a side-effect module imported first
 // in App.tsx, before any component that calls useTranslation renders, so the

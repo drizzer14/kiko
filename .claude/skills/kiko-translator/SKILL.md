@@ -84,6 +84,21 @@ pass count 0, which selects `_many` in uk ('днів') and `_other` in en
 ('days'). Never write the general plural into uk `_other` expecting it to
 be the default form.
 
+**Hermes on iOS has no `Intl.PluralRules`; the fallback makes uk plurals
+work on the device.** Without it, i18next catches the failed constructor
+and uses a one-or-other rule, so every uk plural except count 1 shows the
+wrong form on the device ('2 днів', '21 днів'). `installPluralRulesFallback`
+(`src/i18n/plural-rules/`) runs in `src/i18n/init/init.ts` before
+`i18next.init` and installs a minimal `Intl.PluralRules` only where none
+exists: the uk cardinal rule (`ukrainianCardinalCategory`, proven equal to
+Node's CLDR data in its test) and one-or-other for every other locale and
+for ordinals. A new plural language needs its rule added there. Jest runs
+on Node, which HAS `Intl.PluralRules`, so a Jest green on a plural proves
+nothing about the device. `src/i18n/init/init.plural-rules.test.ts`
+deletes `Intl.PluralRules` and loads a fresh i18n; add a case there for a
+new plural key or language, and never assert device plural behavior with
+`new Intl.PluralRules(...)` in a test.
+
 ## Catalogue typing: `typeof en`, never `as const`
 
 `src/i18n/i18next.d.ts` types `t()`/`useTranslation()` off `typeof en`

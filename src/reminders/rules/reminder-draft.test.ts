@@ -1,3 +1,4 @@
+import { ukrainianCardinalCategory } from '@kiko/i18n/plural-rules';
 import { isReminderSchedule, type LocalDay } from '@kiko/reminders/schedule';
 
 import {
@@ -231,8 +232,8 @@ describe('everyDaysPluralCount', () => {
     (everyDaysText) => {
       const count = everyDaysPluralCount(everyDaysText);
 
-      expect(new Intl.PluralRules('uk').select(count)).toBe('many');
-      expect(new Intl.PluralRules('en').select(count)).toBe('other');
+      expect(count).toBe(0);
+      expect(ukrainianCardinalCategory(count)).toBe('many');
     },
   );
 });
