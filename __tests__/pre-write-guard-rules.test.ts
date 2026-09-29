@@ -65,6 +65,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-bare-lowercase-category-fold',
   'kiko-no-date-utc-in-statement-import',
   'kiko-no-source-text-read-in-test',
+  'kiko-no-fixed-day-offset-on-real-clock-in-test',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -89,6 +90,8 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
     'kiko-no-date-utc-in-statement-import/src/statement-import/date-example',
   'kiko-no-source-text-read-in-test':
     'kiko-no-source-text-read-in-test/src/test-support/source-read-example',
+  'kiko-no-fixed-day-offset-on-real-clock-in-test':
+    'kiko-no-fixed-day-offset-on-real-clock-in-test/src/test-support/day-offset-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -104,6 +107,7 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-bare-lowercase-category-fold': 'src/statistics',
   'kiko-no-date-utc-in-statement-import': 'src/statement-import',
   'kiko-no-source-text-read-in-test': 'src/test-support',
+  'kiko-no-fixed-day-offset-on-real-clock-in-test': 'src/test-support',
 };
 
 function fixturePrefix(ruleId: string): string {
@@ -384,6 +388,37 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       if (status === 2) {
         const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
         expect(reason).toContain('kiko-no-source-text-read-in-test');
+      }
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  // App source reads the real clock on purpose and steps days with the date
+  // helpers; the ban is on a test fixture built from the real clock.
+  it.each([
+    ['src/probe/day-offset-probe.test.ts', 2],
+    ['src/probe/day-offset-probe.test.tsx', 2],
+    ['src/probe/day-offset-probe.ts', 0],
+  ])('kiko-no-fixed-day-offset-on-real-clock-in-test on %s exits %s', (relativeTarget, status) => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-day-offset-'));
+    try {
+      const targetFile = join(project, ...relativeTarget.split('/'));
+      mkdirSync(join(targetFile, '..'), { recursive: true });
+      const content = [
+        'const DAY_MS = 86_400_000;',
+        '',
+        'export const tomorrow = (): number => Date.now() + DAY_MS;',
+        '',
+      ].join('\n');
+
+      const result = runGuard(payloadFor(targetFile, content), project);
+
+      expect(result.status).toBe(status);
+
+      if (status === 2) {
+        const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+        expect(reason).toContain('kiko-no-fixed-day-offset-on-real-clock-in-test');
       }
     } finally {
       rmSync(project, { recursive: true, force: true });

@@ -750,6 +750,28 @@ fixtures with the local `Date` constructor (`new Date(y, m - 1, d,
 ...)`), not `Date.UTC`, unless the value is a normalized UTC calendar
 day (see `dayKeyOf`).
 
+Never build a test fixture as the real clock plus or minus a fixed day
+span (`Date.now() + DAY_MS`, `now - 2 * DAY` where `now = Date.now()`).
+A local day is 23 or 25 hours across a DST change, and a late-night run
+crosses a second midnight (`Date.now() + DAY_MS + 1 h` after 23:00), so
+the fixture lands on the wrong local day and the test fails only at
+some hours. Step local calendar days instead
+(`const date = new Date(time); date.setDate(date.getDate() + days)` —
+the `localDaysFrom` helper in `home.screen.test.tsx` and
+`statistics.screen.test.tsx`), or offset from a pinned instant (a fixed
+constant, `jest.setSystemTime`, or `jest.useFakeTimers({ now })`).
+Wrapping the sum in `startOfLocalDay` does not fix it: the sum itself
+can land two local days ahead. Semgrep
+`kiko-no-fixed-day-offset-on-real-clock-in-test`
+(`rules/semgrep-prewrite.yml`) enforces this in every `*.test.ts(x)` and
+`src/test-support/**`. It reads a span as a day span by its text (a
+`DAY` name, `86_400_000`, or `24 * 60 * 60`). Not flagged: an offset
+from a value derived from the clock (`TRANSACTIONS[0].time - 10 * DAY`)
+and a sub-day offset (`now - 60 * 1000` right after midnight). Flagged
+even though pinned: a pin in a `beforeEach` (the exemption sees a pin
+earlier in the same block only), so bind the pinned instant to a
+constant and offset from that.
+
 ## Net worth
 
 **Net worth = Σ asset values − Σ debt outstanding**, in the base

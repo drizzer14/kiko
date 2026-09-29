@@ -1381,3 +1381,56 @@ rules:
       - pattern-not: $FS.$READ($JOIN(..., "=~/\.(?!tsx?$)\w+$/"), ...)
       - pattern-not: $READ($JOIN($PARENT(..., "=~/(^|\/)drizzle\/migrations$/"), ...), ...)
       - pattern-not: $READ($JOIN($PARENT(..., 'drizzle', 'migrations'), ...), ...)
+  # kiko-domain's "Dates": a local day is 23 or 25 hours on a DST change, and
+  # a fixed offset from the REAL clock also crosses a second midnight when the
+  # suite runs late at night (`Date.now() + DAY_MS + 1 h` after 23:00), so the
+  # fixture lands on the wrong local day and the test fails only at some
+  # hours. A fixed offset from a pinned constant is deterministic under the
+  # jest.config.js zone pin and passes. `startOfLocalDay(Date.now() + DAY_MS)`
+  # still fires: the sum itself can land two local days ahead. A span is
+  # "day-sized" by its text (a DAY name, 86_400_000, or 24 * 60 * 60).
+  # `paths.include` is path-prefixed, so the fixture pair is NESTED.
+  - id: kiko-no-fixed-day-offset-on-real-clock-in-test
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A test adds or subtracts a fixed day span to the real clock. A local day
+      is 23 or 25 hours across DST, and a late-night run crosses a second
+      midnight, so the fixture lands on the wrong local day at some hours.
+      Step local calendar days, or pin the clock — see kiko-domain's "Dates".
+    metadata:
+      fix: "Step calendar days from local date fields (const date = new Date(time); date.setDate(date.getDate() + days)), or pin the clock with jest.setSystemTime / a fixed constant and offset from that."
+      skill: "kiko-domain › Dates"
+    paths:
+      include:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/test-support/**"
+    patterns:
+      - pattern-either:
+          - pattern: Date.now() + $SPAN
+          - pattern: Date.now() - $SPAN
+          - pattern: $SPAN + Date.now()
+          - patterns:
+              - pattern-either:
+                  - pattern: $NOW + $SPAN
+                  - pattern: $NOW - $SPAN
+                  - pattern: $SPAN + $NOW
+                  - pattern: $NOW += $SPAN
+                  - pattern: $NOW -= $SPAN
+              - pattern-either:
+                  - pattern-inside: |
+                      const $NOW = Date.now();
+                      ...
+                  - pattern-inside: |
+                      let $NOW = Date.now();
+                      ...
+      - metavariable-regex:
+          metavariable: $SPAN
+          regex: (?i)^.*(day|86_?400_?000|24\s*\*\s*60\s*\*\s*60)
+      - pattern-not-inside: |
+          jest.setSystemTime(...);
+          ...
+      - pattern-not-inside: |
+          jest.useFakeTimers({..., now: $PINNED, ...});
+          ...

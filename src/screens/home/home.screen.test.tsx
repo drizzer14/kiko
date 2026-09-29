@@ -26,10 +26,10 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { formatDate, defaultDateRange } from '@kiko/dates';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '@kiko/test-support/mock-text-tone';
-import { DAY_MS, formatDate, defaultDateRange } from '@kiko/dates';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 import { resolveBottomClearance } from '@kiko/design-system/components/screen';
@@ -261,6 +261,15 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
   ...overrides,
 });
 
+// Steps local calendar days, never a fixed `days * DAY_MS`: a DST day is 23 or
+// 25 hours, so a fixed offset near midnight lands on the neighbouring day.
+const localDaysFrom = (time: number, days: number): number => {
+  const date = new Date(time);
+  date.setDate(date.getDate() + days);
+
+  return date.getTime();
+};
+
 // Seed the live data with the standard single Monobank account + UAH holding,
 // letting each test override only the dimension it exercises.
 const seed = (data: LiveData = {}): void =>
@@ -361,7 +370,7 @@ describe('HomeScreen', () => {
   it('renders the transaction time as zero-padded HH:MM', async () => {
     // 2 days ago, at a fixed hour/minute — well inside the screen's default
     // last-30-days window, unlike a fixed historical date would be.
-    const at = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    const at = new Date(localDaysFrom(Date.now(), -2));
     at.setHours(9, 5, 0, 0);
     seed({ transactions: [transaction({ time: at.getTime() })] });
     const { getByText } = await renderHome();
@@ -371,7 +380,7 @@ describe('HomeScreen', () => {
   it.each(['term_deposit', 'bond'])(
     'hides the HH:MM time on a %s row (deposits and bonds are not time-specific)',
     async (holdingType) => {
-      const at = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+      const at = new Date(localDaysFrom(Date.now(), -2));
       at.setHours(9, 5, 0, 0);
       seed({ transactions: [transaction({ time: at.getTime(), holdingType })] });
       const { queryByText } = await renderHome();
@@ -814,8 +823,16 @@ describe('HomeScreen', () => {
   });
 
   it('defaults the date-range field to the last 30 days, filtering out an older transaction', async () => {
-    const recent = transaction({ id: 't1', time: Date.now() - 2 * DAY_MS, description: 'Recent' });
-    const tooOld = transaction({ id: 't2', time: Date.now() - 40 * DAY_MS, description: 'TooOld' });
+    const recent = transaction({
+      id: 't1',
+      time: localDaysFrom(Date.now(), -2),
+      description: 'Recent',
+    });
+    const tooOld = transaction({
+      id: 't2',
+      time: localDaysFrom(Date.now(), -40),
+      description: 'TooOld',
+    });
     seed({ transactions: [recent, tooOld] });
 
     const { getByText, queryByText } = await renderHome();
@@ -830,8 +847,16 @@ describe('HomeScreen', () => {
   });
 
   it('resets the date range to the 30-day default (not all-time) when Clear is pressed', async () => {
-    const recent = transaction({ id: 't1', time: Date.now() - 2 * DAY_MS, description: 'Recent' });
-    const tooOld = transaction({ id: 't2', time: Date.now() - 40 * DAY_MS, description: 'TooOld' });
+    const recent = transaction({
+      id: 't1',
+      time: localDaysFrom(Date.now(), -2),
+      description: 'Recent',
+    });
+    const tooOld = transaction({
+      id: 't2',
+      time: localDaysFrom(Date.now(), -40),
+      description: 'TooOld',
+    });
     seed({ transactions: [recent, tooOld] });
 
     const { getByLabelText, getByTestId, getByText, queryByText } = await renderHome();
@@ -900,7 +925,7 @@ describe('HomeScreen', () => {
 
     expect(queryByText('Tomorrow')).toBeNull();
 
-    nowSpy.mockReturnValue(base + DAY_MS);
+    nowSpy.mockReturnValue(localDaysFrom(base, 1));
     await act(async () => {
       await rerender(
         <HomeScreen
@@ -922,7 +947,11 @@ describe('HomeScreen', () => {
   // EVERY render, not just a day change. `groupByDay` (the section builder)
   // must not run again on a re-render that does not change the day.
   it('does not re-run the section grouping on a re-render on the same day', async () => {
-    const recent = transaction({ id: 't1', time: Date.now() - 2 * DAY_MS, description: 'Recent' });
+    const recent = transaction({
+      id: 't1',
+      time: localDaysFrom(Date.now(), -2),
+      description: 'Recent',
+    });
     seed({ transactions: [recent] });
 
     mockGroupByDay.mockClear();
@@ -958,13 +987,12 @@ describe('HomeScreen', () => {
   });
 
   it('groups the list by day with Today/Yesterday separators, newest day first', async () => {
-    const day = 24 * 60 * 60 * 1000;
     const now = Date.now();
     // Ordered newest-first as the repo query (orderBy time desc) delivers them.
     seed({
       transactions: [
         transaction({ id: 't1', time: now, description: 'TodayTxn' }),
-        transaction({ id: 't2', time: now - day, description: 'YesterdayTxn' }),
+        transaction({ id: 't2', time: localDaysFrom(now, -1), description: 'YesterdayTxn' }),
       ],
     });
     const { getByText, getAllByText } = await renderHome();
@@ -982,12 +1010,11 @@ describe('HomeScreen', () => {
   });
 
   it('keeps the gap above the first day-group header equal to the section gap (no doubled top pad)', async () => {
-    const day = 24 * 60 * 60 * 1000;
     const now = Date.now();
     seed({
       transactions: [
         transaction({ id: 't1', time: now, description: 'TodayTxn' }),
-        transaction({ id: 't2', time: now - day, description: 'YesterdayTxn' }),
+        transaction({ id: 't2', time: localDaysFrom(now, -1), description: 'YesterdayTxn' }),
       ],
     });
     const { getAllByTestId, getByTestId } = await renderHome();
@@ -1007,9 +1034,7 @@ describe('HomeScreen', () => {
   });
 
   it('renders an explicit DD.MM.YYYY date separator for an older day (not Today/Yesterday)', async () => {
-    const day = 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    const older = now - 5 * day;
+    const older = localDaysFrom(Date.now(), -5);
     const expectedHeader = formatDate(
       new Date(
         new Date(older).getFullYear(),

@@ -135,6 +135,15 @@ const startMonthsAgo = (monthsAgo: number): number => {
   return Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsAgo, 1);
 };
 
+// Steps local calendar days, never a fixed `days * DAY_MS`: a DST day is 23 or
+// 25 hours, so a fixed offset near midnight lands on the neighbouring day.
+const localDaysFrom = (time: number, days: number): number => {
+  const date = new Date(time);
+  date.setDate(date.getDate() + days);
+
+  return date.getTime();
+};
+
 const annuityLoanMeta: LoanMeta = {
   kind: 'car_loan',
   principalMinorUnits: 100_000_00,
@@ -1816,7 +1825,6 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('groups the ledger by day with Today/Yesterday separators, newest day first', async () => {
-    const day = 24 * 60 * 60 * 1000;
     const now = Date.now();
     // Ordered newest-first, matching the repo query's own `desc(time)` order.
     seed(cardHolding, [
@@ -1824,7 +1832,7 @@ describe('HoldingDetailScreen', () => {
       {
         id: 'x2',
         amountMinorUnits: -5000,
-        time: now - day,
+        time: localDaysFrom(now, -1),
         description: 'YesterdayTxn',
         source: 'manual',
       },
@@ -1875,9 +1883,7 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('renders an explicit DD.MM.YYYY date separator for an older day (not Today/Yesterday)', async () => {
-    const day = 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    const older = now - 5 * day;
+    const older = localDaysFrom(Date.now(), -5);
     const expectedHeader = formatDate(older);
     seed(cardHolding, [
       { id: 'x1', amountMinorUnits: -5000, time: older, description: 'OldTxn', source: 'manual' },

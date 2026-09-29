@@ -675,8 +675,19 @@ describe('AccountsScreen', () => {
     // installment boundary, so the loan's outstanding balance WOULD differ
     // if `now` had advanced) must still show the SAME total.
     it('keeps the Debts total stable across a re-render that is not a focus event', async () => {
-      const THIRTY_ONE_DAYS_MS = 31 * 24 * 60 * 60 * 1000;
-      let clock = Date.now();
+      // Calendar months from the local date fields, not a fixed-millisecond
+      // span, so the loan start and the jump land on the intended local days
+      // whatever the wall-clock time and any DST change in between.
+      const mountedAt = new Date();
+      const localMonthsFromMount = (months: number): number =>
+        new Date(
+          mountedAt.getFullYear(),
+          mountedAt.getMonth() + months,
+          mountedAt.getDate(),
+          mountedAt.getHours(),
+          mountedAt.getMinutes(),
+        ).getTime();
+      let clock = mountedAt.getTime();
       jest.spyOn(Date, 'now').mockImplementation(() => clock);
 
       setLiveData({
@@ -686,7 +697,7 @@ describe('AccountsScreen', () => {
             metadata: {
               kind: 'mortgage',
               principalMinorUnits: 500_000,
-              startDate: clock - THIRTY_ONE_DAYS_MS * 3,
+              startDate: localMonthsFromMount(-3),
               annualRatePct: 10,
               termMonths: 120,
               schedule: 'annuity',
@@ -711,7 +722,7 @@ describe('AccountsScreen', () => {
       });
       const firstTotal = within(getByTestId('accounts-debts-total')).getByText(/₴/).props.children;
 
-      clock += THIRTY_ONE_DAYS_MS * 2;
+      clock = localMonthsFromMount(2);
       await act(async () => rerender(buildElement()));
 
       const secondTotal = within(getByTestId('accounts-debts-total')).getByText(/₴/).props.children;
