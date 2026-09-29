@@ -293,23 +293,22 @@ one for the other:
   read if the query went dirty while paused, zero if it did not; the
   MOUNT read always runs regardless of `paused`, since a screen can be
   mounted unfocused (a deep link, a restore) and still needs its first
-  real data. Toggling `paused` never re-subscribes.
-  `statistics.screen.tsx` passes `paused: !isFocused` (`useIsFocused`
-  from `@react-navigation/native`) to every one of its own
-  `useLiveQuery`/`usePriceBook` calls, because with NEITHER option a
-  background tab's own writes (a sync importing rows while the user
-  stays on Home) still call `setData` — a state update the tab's own
-  React tree applies even while hidden, recomputing every `useMemo`
-  chained off that data on the JS thread the visible tab needs. An
-  earlier attempt passed `isFocused` as `enabled` instead, wrapped
-  in `react-freeze`'s `freezeOnBlur` to hide the resulting blank-frame
-  reset: `enabled: false` itself returns `[]` (a blank chart) and
-  drops the subscription, so returning to the tab re-reads and
-  recomputes everything from scratch even when nothing changed, and
-  `freezeOnBlur`'s own `Suspense` boundary adds a second blank-frame
-  risk on the unhide, which is why it was reverted. `paused` avoids
-  both: no state change while hidden means no re-render to freeze in
-  the first place.
+  real data. Toggling `paused` never re-subscribes. `statistics.screen.tsx`
+  passes `paused: !isFocused` (`useIsFocused` from
+  `@react-navigation/native`) to every one of its own
+  `useLiveQuery`/`usePriceBook` calls: `enabled: false` unsubscribes and
+  returns `[]`, the wrong contract for a tab that stays mounted and must
+  show its last rows the instant it regains focus — use `paused`, not
+  `enabled`, for a hidden-but-mounted tab.
+
+  **Device check** (a real device or profiler catches what a mocked Jest
+  test cannot): 10 fast/slow Home↔Statistics switches show no blank frame;
+  a profiler on a debug build shows no Statistics render/memo work while
+  hidden during a Home sync; a dirty return shows exactly one update and
+  the JS-thread stall it causes on a 3-year ledger; a clean return shows
+  exactly one recompute (check whether the net-worth line's own animation
+  replays); no backfill request fires while hidden, only after the fresh
+  read lands; an unfocused mount still loads its charts.
 
 ### op-sqlite's ONE worker thread — every query, whole-app, one queue
 
