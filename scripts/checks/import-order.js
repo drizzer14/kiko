@@ -479,12 +479,27 @@ function isNamespaceImport(statementLines) {
   return /^\s*import\s+(type\s+)?([\w$]+\s*,\s*)?\*\s*as\b/.test(statementLines.join(' '));
 }
 
+// A bare side-effect import beside only `import type` declarations is the
+// one import that runs the module (Babel erases `import type`, and
+// useImportType forbids folding it into a value import), so it does not
+// count against them.
+function duplicateCount(declarations) {
+  const sideEffects = declarations.filter(isSideEffectImport);
+  const named = declarations.filter((statementLines) => !isSideEffectImport(statementLines));
+
+  if (sideEffects.length > 0 && named.length > 0 && named.every(isTypeOnlyImport)) {
+    return Math.max(sideEffects.length, named.length);
+  }
+
+  return declarations.length;
+}
+
 // kiko-code-style's "one import per specifier": a type-only and a value
 // import of one module merge into one declaration with the inline `type`
 // modifier, so any two declarations of one specifier fail, whatever their
-// kind.
+// kind, except a bare side-effect import beside type-only ones.
 function checkDuplicateSpecifiers(items, violations) {
-  const counts = new Map();
+  const declarationsBySpecifier = new Map();
 
   for (const item of items) {
     const specifier = specifierOf(item.statementLines);
@@ -493,10 +508,14 @@ function checkDuplicateSpecifiers(items, violations) {
       continue;
     }
 
-    counts.set(specifier, (counts.get(specifier) ?? 0) + 1);
+    const declarations = declarationsBySpecifier.get(specifier) ?? [];
+    declarations.push(item.statementLines);
+    declarationsBySpecifier.set(specifier, declarations);
   }
 
-  for (const [specifier, count] of counts) {
+  for (const [specifier, declarations] of declarationsBySpecifier) {
+    const count = duplicateCount(declarations);
+
     if (count > 1) {
       violations.push(
         `duplicate import of '${specifier}' (${count} declarations) — merge them into one import, with an inline \`type\` modifier on each type name when it mixes types and values`,

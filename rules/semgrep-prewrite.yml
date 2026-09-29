@@ -1118,28 +1118,16 @@ rules:
       - metavariable-regex:
           metavariable: $FALLBACK
           regex: '^\{\s*\}$'
-  # kiko-code-style's "`fnts` FIRST": a thunk that only calls one function is
-  # a needless wrapper around it. fnts' `either(value)` runs `value()` OUTSIDE
-  # its own promise chain, so `either(f)` catches the same failures as
-  # `either(async () => f())` only when `f` itself is `async`: a plain `f`
-  # that throws synchronously escapes `either(f)` but becomes a Left inside
-  # the async wrapper (account-form's `ensureAccount` needs its wrapper). So
-  # the rule fires only for a bare-identifier `f` declared `async` in the same
-  # file: `async function f`, `const f = async ...`, or
-  # `const f = useCallback(async ...)`. An imported `f` or a parameter cannot
-  # be proven async here, so it stays a review item. Semgrep ignores the
-  # `async` keyword of an arrow in a pattern (`const $F = async () => $B`
-  # matches a plain arrow too, and the thunk patterns below also match a
-  # plain `() => f()`, which is the same needless wrapper), hence the
-  # captured initializer plus `metavariable-regex`. The identifier regex on
-  # `$F` keeps a method call (`repo.load()`, which would lose `this`) out.
-  # Neither `pattern-inside` opens with `...`: with it, every `const` in a
-  # large screen opened a statement range on both sides, and Semgrep ran 63 s
-  # on transaction-form.screen.tsx (a guard "could not check" deny); even the
-  # rarer `async function` arm cost 0.15-0.26 s per large file with it, which
-  # timed out in check:security's full-tree scan. Known limit: a call placed
-  # BEFORE a hoisted `async function f` declaration is not flagged.
-  # ERROR from the start: the tree had no finding when the rule landed.
+  # kiko-code-style's "`fnts` FIRST": fnts' `either(value)` runs `value()`
+  # OUTSIDE its own promise chain, so `either(f)` catches the same failures
+  # as `either(async () => f())` only when `f` itself is `async`; a plain `f`
+  # that throws synchronously needs the wrapper (account-form's
+  # `ensureAccount`). Hence the rule fires only for a bare identifier `f`
+  # (a method call would lose `this`) declared `async` in this file. Semgrep
+  # ignores an arrow's `async` in a pattern, hence the captured initializer
+  # plus `metavariable-regex`. Never open either `pattern-inside` with `...`:
+  # it times out on large files. Timings and the known limit: kiko-linter's
+  # "Semgrep facts verified on 2026-09-29".
   - id: kiko-no-needless-async-either-thunk
     languages: [typescript]
     severity: ERROR

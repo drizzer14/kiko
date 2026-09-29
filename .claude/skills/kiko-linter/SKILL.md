@@ -557,15 +557,16 @@ reasoning.
   (`...` / `const $F = $INITIALIZER;` / `...`) is quadratic on a large
   file: each `const` opens a range on both sides. It ran 63 s on
   `transaction-form.screen.tsx` (2818 lines) and the guard denied
-  "could not check" on every write to it. Without the leading `...`
-  it ran 2 s. Even the rarer `async function $F` arm with a leading
-  `...` cost 0.15-0.26 s per large file, and under `check:security`'s
-  full-tree load it hit the per-rule timeout on
-  `holding-form.screen.test.tsx` (4173 lines), which fails the gate.
-  The guard speed check did not show that. So open no `pattern-inside`
-  with `...`: write `<declaration>` / `...` (about 0.01 s) and accept
-  the known false negative for a use placed before a hoisted
-  declaration. For every new statement-sequence rule, run both the
+  "could not check" on every write to it. Even the rarer
+  `async function $F` arm with a leading `...` cost 0.15-0.26 s of rule
+  match time per large file, and under `check:security`'s full-tree
+  load it hit the per-rule timeout on `holding-form.screen.test.tsx`
+  (4173 lines), which fails the gate. The guard speed check did not
+  show that. So open no `pattern-inside` with `...`: write
+  `<declaration>` / `...`. The rule then costs at most 0.08 s of rule
+  match time per file (Semgrep `--time`, `match_times`, not wall time),
+  and it accepts a known false negative: a use placed before a hoisted
+  `async function` declaration is not flagged. For every new statement-sequence rule, run both the
   guard speed check in "Adding a pre-write guard rule" AND a
   whole-tree `npm run check:security`; the fixtures are too small to
   show either cost.
@@ -942,7 +943,12 @@ it. When you merge a duplicate by hand, delete the old pair BEFORE you
 insert the merged line in its sorted position; the other order briefly
 makes three declarations, which the guard denies. A namespace import
 is exempt (it cannot share a declaration with named imports). A bare
-side-effect import beside a named import of the same module counts.
+side-effect import beside a VALUE import of the same module counts. A
+bare side-effect import beside only `import type` declarations does
+not (`duplicateCount`): Babel erases `import type`, so deleting the
+bare import would stop the module from running, and `useImportType`
+forbids folding it into a value import. Two type-only declarations
+beside it still fail.
 Biome 2.5.11 has no lint rule for this: only the `organizeImports`
 assist merges duplicates, and it is off here. `--write` never merges a
 duplicate, because the merged line needs rewrapping at Biome's line

@@ -259,6 +259,10 @@ describe('scripts/checks/import-order.sh', () => {
         'two imports split by a side-effect barrier',
         "import { useState } from 'react';\nimport 'setup';\nimport { useEffect } from 'react';\n",
       ],
+      [
+        'a bare side-effect import and a value import',
+        "import 'react';\nimport { useState } from 'react';\n",
+      ],
     ])('fails %s of one specifier', (_shape, imports) => {
       const result = runCheck(`${imports}\nexport const Foo = 1;\n`);
 
@@ -272,6 +276,30 @@ describe('scripts/checks/import-order.sh', () => {
       );
 
       expect(result.status).toBe(0);
+    });
+
+    // Babel erases `import type`, so the bare import is the only one that
+    // runs the module, and useImportType forbids folding it into a value import.
+    it('passes a bare side-effect import beside a type-only import of one module', () => {
+      const result = runCheck(
+        "import '@kiko/design-system/unistyles';\n" +
+          "import type { AppThemes } from '@kiko/design-system/unistyles';\n" +
+          '\nexport const Foo = 1;\n',
+      );
+
+      expect(result.status).toBe(0);
+    });
+
+    it('still fails two type-only imports beside a bare side-effect import of one module', () => {
+      const result = runCheck(
+        "import 'react';\n" +
+          "import type { FC } from 'react';\n" +
+          "import type { ReactNode } from 'react';\n" +
+          '\nexport const Foo = 1;\n',
+      );
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("duplicate import of 'react' (2 declarations)");
     });
 
     it('passes a namespace import beside a named import, which one declaration cannot hold', () => {

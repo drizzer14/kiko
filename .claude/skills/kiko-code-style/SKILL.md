@@ -645,11 +645,15 @@ import { type FC, useState } from 'react';
 One import declaration per module specifier. Never import one module
 twice (value+value, type+type, or a `import type` beside a value
 import); merge them into one declaration as above. A bare side-effect
-import of a module you also import names from is redundant, because
-the named import already runs the module: delete it, and keep the
-named import at its position. A namespace import (`import * as X`)
-is the one exception, because it cannot share a declaration with
-named imports. The import-order check (`import-order.js`) enforces
+import beside a VALUE import of the same module is redundant, because
+the value import already runs the module: delete it, and keep the
+value import at its position. Two exceptions. A bare side-effect
+import beside only `import type` declarations of that module stays
+(`import '@kiko/design-system/unistyles';` plus
+`import type { AppThemes } from '@kiko/design-system/unistyles';`):
+Babel erases `import type`, so the bare import is the only one that
+runs the module. A namespace import (`import * as X`) cannot share a
+declaration with named imports. The import-order check (`import-order.js`) enforces
 this at the fast tier, in `check:import-order`, and in the pre-write
 guard. Its `--write` mode never merges a duplicate, so merge it by
 hand.
