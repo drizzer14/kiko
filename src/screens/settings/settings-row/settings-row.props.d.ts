@@ -5,9 +5,10 @@ type SettingsRowBaseProps = ViewProps & {
   // The SF Symbol name for the row's optional leading icon.
   icon?: string;
   label: string;
-  // Full-width content rendered below the label, for a non-navigating row
-  // (e.g. the inline base-currency switch, or a hint caption below a
-  // `trailing` toggle).
+  // The row's body. On a static row it is full width below the label (e.g.
+  // the inline base-currency switch, or a hint caption below a `trailing`
+  // toggle); on a pressable row it wraps beside the control and chevron,
+  // which center on the label and body together.
   children?: ReactNode;
 };
 

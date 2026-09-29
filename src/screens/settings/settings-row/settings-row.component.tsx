@@ -10,10 +10,12 @@ import { chevronSize } from './settings-row.chevron';
 import type { SettingsRowProps } from './settings-row.props';
 
 // A single full-width row inside a Settings GlassSurface card: an optional
-// leading icon, a label, and either a trailing chevron (a navigating row, e.g.
-// the Categories row) or full-width `children` rendered below the label (a
-// non-navigating row, e.g. the inline base-currency switch). This is the ONE
-// row shape every Settings card is built from, so adding another setting is a
+// leading icon, a label, an optional `trailing` control, a chevron on a
+// navigating row (e.g. the Categories row), and optional `children` as a body.
+// On a static row the body is full width below the label (e.g. the inline
+// base-currency switch); on a navigating row it wraps beside the control and
+// chevron, which center on it (e.g. a reminder card). This is the ONE row
+// shape every Settings card is built from, so adding another setting is a
 // one-line addition rather than a new bespoke block.
 const SettingsRow: FC<SettingsRowProps> = ({
   icon,
@@ -76,8 +78,8 @@ const SettingsRow: FC<SettingsRowProps> = ({
   }
 
   // A tappable row with a body under its label centers its switch and chevron
-  // on the whole card, as a UIKit cell centers its accessory view; a
-  // single-line row keeps its header layout.
+  // on the whole card, as a UIKit cell centers its accessory view; a row
+  // without a body keeps its first-line header layout.
   if (children !== undefined) {
     return (
       <Pressable accessibilityRole="button" onPress={onPress} {...props}>

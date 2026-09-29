@@ -42,8 +42,9 @@ export const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
   },
   // An inline `trailing` control (e.g. a Switch), pinned to the row's
-  // trailing edge on the same line as the label — a small leading gap keeps
-  // it from crowding a long label that wraps up against it.
+  // trailing edge on the same line as the label, or, on a pressable row with
+  // a body, centered beside the body that wraps next to it. A small leading
+  // gap keeps it from crowding a long label or body that wraps up against it.
   trailing: {
     marginLeft: theme.spacing(3),
   },
