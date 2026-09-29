@@ -5,7 +5,7 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { remindersRepo } from '@kiko/reminders/repo';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import type { ReminderKind } from '@kiko/reminders/schedule';
-import { pausedNoticeIdentifier } from '@kiko/reminders/planner';
+import { isPausedNoticeResponse } from '@kiko/reminders/planner';
 import type { NotificationResponse } from '@kiko/reminders/native';
 import type { NavigationContainerRef } from '@react-navigation/native';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
@@ -42,7 +42,7 @@ export const routeFor = (
   foldMap(maybe(account), ({ id: accountId, name }): ReminderRoute => {
     const accountDetail = { accountId, name };
 
-    if (response.requestIdentifier === pausedNoticeIdentifier(response.reminderId)) {
+    if (isPausedNoticeResponse(response)) {
       return { accountDetail, next: { screen: 'AccountReminders', params: accountDetail } };
     }
 

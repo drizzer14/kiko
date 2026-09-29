@@ -4,10 +4,10 @@ import {
   remindersNative,
 } from '@kiko/reminders/native';
 import {
+  isPausedNoticeResponse,
   isSnoozePending,
   type PlannedRequest,
   planAllReminders,
-  pausedNoticeIdentifier,
   type ReminderPlanInput,
 } from '@kiko/reminders/planner';
 import { match } from 'ts-pattern';
@@ -74,8 +74,7 @@ const isSnoozeStale = (row: PlanInputRow, now: number): boolean =>
 // The paused notice only says the reminder has stopped; a tap on it is not a
 // sign the reminder helps, so it neither resumes the reminder nor restarts the
 // ignored count. Only resuming in the app does.
-const isEngagement = (response: NotificationResponse): boolean =>
-  response.requestIdentifier !== pausedNoticeIdentifier(response.reminderId);
+const isEngagement = (response: NotificationResponse): boolean => !isPausedNoticeResponse(response);
 
 // iOS shows nothing while notifications are off, so no reminder was ignored
 // then: the count starts at the first sync that sees them allowed, and never

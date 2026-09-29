@@ -2,6 +2,7 @@ import type { LocalDateTime } from '@kiko/reminders/native';
 import { type ReminderSchedule, toInstant } from '@kiko/reminders/schedule';
 
 import {
+  isPausedNoticeResponse,
   isSnoozePending,
   type PlannedRequest,
   planReminder,
@@ -343,6 +344,37 @@ describe('isSnoozePending', () => {
           now: local(2026, 9, 29, 8),
         }),
       ),
+    ).toBe(false);
+  });
+});
+
+describe('isPausedNoticeResponse', () => {
+  const planned = planReminder(input({ now: local(2026, 9, 25, 21) })).requests;
+  const tapOn = ({ reminderId, identifier }: PlannedRequest) => ({
+    reminderId,
+    requestIdentifier: identifier,
+  });
+
+  it('is true for a tap on the paused notice the plan scheduled', () => {
+    const notice = planned.find(({ variant }) => variant === 'pausedNotice');
+
+    expect(notice).toBeDefined();
+    expect(isPausedNoticeResponse(tapOn(notice as PlannedRequest))).toBe(true);
+  });
+
+  it('is false for a tap on any of the reminder’s own notifications', () => {
+    const reminders = planned.filter(({ variant }) => variant === 'reminder');
+
+    expect(reminders).not.toHaveLength(0);
+    expect(reminders.some((request) => isPausedNoticeResponse(tapOn(request)))).toBe(false);
+  });
+
+  it('is false for another reminder’s paused notice identifier', () => {
+    expect(
+      isPausedNoticeResponse({
+        reminderId: 'reminder-2',
+        requestIdentifier: 'kiko.reminder.reminder-1.paused',
+      }),
     ).toBe(false);
   });
 });
