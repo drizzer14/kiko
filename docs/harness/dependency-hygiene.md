@@ -105,6 +105,19 @@ overridden, turn the override into an object: `"."` carries the
 package's own pin and the child key carries the transitive pin. A second
 top-level key for the same package is not valid.
 
+`bash scripts/checks/osv.sh` also flagged `joi` 17.13.6
+(GHSA-6h2x-m376-mqjq, CVSS 7.5), a dev-only dependency pulled in by
+`@react-native-community/cli` -> `@react-native-community/cli-config`
+and `@react-native-community/cli-types`. Both parents request
+`^17.2.1`, which accepts the fixed `17.13.7`, and no existing override
+covers them, so it is pinned with a top-level override:
+
+```json
+"overrides": {
+  "joi": "17.13.7"
+}
+```
+
 ## `.env` is public-only
 
 `react-native-dotenv` inlines every `.env` value into the JS bundle at
