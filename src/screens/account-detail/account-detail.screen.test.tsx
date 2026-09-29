@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { State } from 'react-native-gesture-handler';
 import type { ComponentProps, ReactNode } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
@@ -114,6 +114,12 @@ jest.mock('@react-navigation/native', () => ({
 }));
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
+}));
+// The offer's rules are proven on a real database in its own suite; here the
+// screen's wiring of the card is under test. No offer unless a test sets one.
+const mockUseReminderOffer = jest.fn();
+jest.mock('@kiko/reminders/offer', () => ({
+  useReminderOffer: (...args: unknown[]) => mockUseReminderOffer(...args),
 }));
 // `BankSyncSection` (real, unmocked here) calls `useSync` once per render for
 // its sole shipped provider (Guideline 5.6 remediation: Monobank-only).
@@ -304,11 +310,11 @@ const multiCurrencyData = {
  * queries so a test can assert on `navigation.navigate` without re-wiring the
  * boilerplate. Live data is seeded per-test (or by `beforeEach`) before this.
  */
-const renderScreen = async () => {
+const renderScreen = async (screenRoute: AccountDetailProps['route'] = route) => {
   const navigation = navigationSpy();
   const view = await render(
     <AccountDetailScreen
-      route={route}
+      route={screenRoute}
       navigation={asNavigationProp<AccountDetailProps['navigation']>(navigation)}
     />,
     { wrapper: GestureRootWrapper },
@@ -1135,6 +1141,120 @@ describe('AccountDetailScreen', () => {
     // the grown valuation the breakdown would instead show 1,000.00 ₴, leaving
     // only the single headline match.
     expect(getAllByText(/1,077\.00 ₴/).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('AccountDetailScreen — reminder offer', () => {
+  const mockDismiss = jest.fn();
+
+  // The hook's contract: accept hands the account and kind to the screen's
+  // form opener.
+  const offerOf = (kind: 'statement_import' | 'add_transactions'): void => {
+    mockUseReminderOffer.mockImplementation(
+      (
+        accountId: string,
+        _trigger: string,
+        openForm: (form: { accountId: string; kind: string }) => void,
+      ) => ({ kind, accept: () => openForm({ accountId, kind }), dismiss: mockDismiss }),
+    );
+  };
+
+  const triggers = (): string[] => [
+    ...new Set(
+      mockUseReminderOffer.mock.calls.map(([accountId, trigger]) => `${accountId} ${trigger}`),
+    ),
+  ];
+
+  const afterImportRoute = asRouteProp<AccountDetailProps['route']>('AccountDetail', {
+    accountId: 'a',
+    name: 'Cash',
+    reminderOffer: 'afterImport',
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseReminderOffer.mockReset();
+    mockButtonProps.length = 0;
+    mockDismiss.mockResolvedValue(undefined);
+    setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [] });
+  });
+
+  it('asks for the import offer when a finished import sent the page here', async () => {
+    await renderScreen(afterImportRoute);
+
+    expect(triggers()).toEqual(['a afterImport']);
+  });
+
+  it('asks for the manual-entry offer otherwise', async () => {
+    await renderScreen();
+
+    expect(triggers()).toEqual(['a manualActivity']);
+  });
+
+  it('shows no offer card while there is no offer', async () => {
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('reminder-offer')).toBeNull();
+  });
+
+  it('shows the import offer first in the page content', async () => {
+    offerOf('statement_import');
+    const { getByTestId } = await renderScreen(afterImportRoute);
+    const content = getByTestId('account-detail-content');
+
+    expect(
+      within(content).getByText('Want a reminder to import your next statement?'),
+    ).toBeTruthy();
+    expect(content.children[0]).toBe(getByTestId('reminder-offer'));
+  });
+
+  it('shows the add-transactions message for the manual-entry offer', async () => {
+    offerOf('add_transactions');
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Want a reminder to add transactions to this account?')).toBeTruthy();
+  });
+
+  it('Set up opens the reminder form for that kind and clears the import offer', async () => {
+    offerOf('statement_import');
+    const { getByText, navigation } = await renderScreen(afterImportRoute);
+
+    await fireEvent.press(getByText('Set up reminder'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('ReminderForm', {
+      accountId: 'a',
+      kind: 'statement_import',
+    });
+    expect(navigation.setParams).toHaveBeenCalledWith({ reminderOffer: undefined });
+  });
+
+  it('Not now dismisses the offer, then clears the import offer', async () => {
+    offerOf('statement_import');
+    const { getByText, navigation } = await renderScreen(afterImportRoute);
+
+    await fireEvent.press(getByText('Not now'));
+
+    await waitFor(() =>
+      expect(navigation.setParams).toHaveBeenCalledWith({ reminderOffer: undefined }),
+    );
+    expect(mockDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed Not now shows the save-error alert and keeps the offer', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockDismiss.mockRejectedValue(new Error('database is locked'));
+    offerOf('statement_import');
+    const { getByText, getByTestId, navigation } = await renderScreen(afterImportRoute);
+
+    await fireEvent.press(getByText('Not now'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+    expect(navigation.setParams).not.toHaveBeenCalled();
+    expect(getByTestId('reminder-offer')).toBeTruthy();
+
+    alertSpy.mockRestore();
   });
 });
 

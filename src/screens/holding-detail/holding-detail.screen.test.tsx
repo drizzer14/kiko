@@ -174,6 +174,10 @@ const mockUseLiveQuery = jest.fn();
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
+const mockUseReminderOffer = jest.fn();
+jest.mock('@kiko/reminders/offer', () => ({
+  useReminderOffer: (...args: unknown[]) => mockUseReminderOffer(...args),
+}));
 jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
@@ -387,6 +391,21 @@ const renderScreen = () =>
 describe('HoldingDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  // The user placed the manual-entry offer on the account page only.
+  it('never shows the reminder offer, even when the account has one', async () => {
+    mockUseReminderOffer.mockReturnValue({
+      kind: 'add_transactions',
+      accept: jest.fn(),
+      dismiss: jest.fn(),
+    });
+    seed(cashHolding);
+
+    const { queryByText } = await renderScreen();
+
+    expect(mockUseReminderOffer).not.toHaveBeenCalled();
+    expect(queryByText(i18n.t('reminders.offer.addTransactionsMessage'))).toBeNull();
   });
 
   it('sets the header title to the holding name', async () => {

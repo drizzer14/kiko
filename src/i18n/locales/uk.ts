@@ -898,6 +898,12 @@ export const uk: typeof en = {
       notDeterminedMessage: 'Увімкніть сповіщення, щоб нагадування з’являлися.',
       turnOn: 'Увімкнути сповіщення',
     },
+    offer: {
+      statementImportMessage: 'Нагадати про імпорт наступної виписки?',
+      addTransactionsMessage: 'Нагадувати додавати транзакції до цього рахунку?',
+      setUp: 'Налаштувати нагадування',
+      dismiss: 'Не зараз',
+    },
     // "об" only before 11 ("об одинадцятій"); every other hour takes "о".
     schedule: {
       at: 'о',

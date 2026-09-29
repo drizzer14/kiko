@@ -1121,6 +1121,12 @@ export const en = {
       notDeterminedMessage: 'Turn on notifications so your reminders can appear.',
       turnOn: 'Turn on notifications',
     },
+    offer: {
+      statementImportMessage: 'Want a reminder to import your next statement?',
+      addTransactionsMessage: 'Want a reminder to add transactions to this account?',
+      setUp: 'Set up reminder',
+      dismiss: 'Not now',
+    },
     // A notification can show on the lock screen, so its text never holds an
     // account name, an identifier or an amount, and its title never names the
     // app. English selects _one/_other; the _few/_many forms exist only to
