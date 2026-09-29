@@ -844,11 +844,12 @@ new component can land between reviews of this skill:
   `md` radius) with `padding={3}` and the banner's `spacing(2)` gap, a
   `body` `textPrimary` message, then a wrapping row of a `primary` `small`
   accept and a `secondaryTonal` `small` dismiss (the user's "ghost" = faint
-  tint), both `fullWidth={false}`, 44pt taps via `small`'s hitSlop. Props:
-  `message`, `acceptLabel`, `dismissLabel`, `onAccept`, `onDismiss`,
-  `testID?`. Differs from NoticeBanner: a content Card (not the
+  tint), both `fullWidth={false}`, 44pt taps via `small`'s hitSlop. Read
+  `reminder-offer-card.props.d.ts` for the props (all required but
+  `testID`). Differs from NoticeBanner: a content Card (not the
   `surfaceHigh` `sm` block), body primary text (not caption secondary),
-  and two required actions (not one optional tonal one).
+  and two required actions (not one optional tonal one). First
+  consumer: `AccountDetail`'s reminder offer.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE

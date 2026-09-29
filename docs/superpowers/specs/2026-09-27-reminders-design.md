@@ -29,7 +29,7 @@ Status: research done; user decisions recorded; PRIORITY: first item of 1.2 (use
 
 ## Known limits
 - Non-Gregorian device calendar (Buddhist, Japanese, Hebrew, Islamic, …): a scheduled reminder never fires, because the trigger's floating year/month/day components (Gregorian, from JS) are matched against `Calendar.current`. Accepted for 1.2 under the only-user directive (decision 8); fix = in `KikoRemindersCenter.swift`, when `Calendar.current.identifier != .gregorian`, convert the Gregorian components to `Calendar.current` components (era included), still with no time zone. The "Tomorrow" snooze is unaffected (it uses `Calendar.current` throughout).
-- Old backup: a `.kiko` from before reminders has no `reminders` key and restores with no reminders (`snapshot.reminders ?? []`). A restored reminder keeps its old `activeSince`/`lastEngagedAt`, so its first re-plan after restore can back-off pause it (task 2/5 M1; task 4/5's restore re-plan may address it).
+- Old backup: a `.kiko` from before reminders has no `reminders` key and restores with no reminders (`snapshot.reminders ?? []`). After a restore, `replanRestoredReminders` restarts every reminder's ignored count (`activeSince = now`) before the first re-plan, so a restored reminder is not back-off paused for the time the backup was away.
 - Drain-then-write: `drainResponses` empties the native queue before `recordEngagements` commits. If that one write fails, those taps are lost (logged), and back-off may count a tapped fire as ignored. The fix needs a native "ack after commit" API.
 - Time change between a "Tomorrow" tap and the snooze: the planner frees the slot at the CURRENT `minuteOfDay`, but the native snooze fires at the OLD time. That day gets one notification, at the old time, and never a duplicate.
 - A restore copies `notifications_deliverable_since` from the source device (the settings row is restored whole). The first sync on a device without permission clears it.
@@ -45,12 +45,25 @@ Status: research done; user decisions recorded; PRIORITY: first item of 1.2 (use
 - A crash between `clearSnoozes` and `replaceRequests` can cause one duplicate notification.
 - A narrow race between the response drain and the request replace can free a new snooze's slot once.
 - Spring-forward: a nonexistent local time (for example 03:30 on the Kyiv spring-forward day) is sent as-is; whether iOS fires or skips it is unverified (device test).
+- The offer counts a categorized opening-balance or balance-edit row, when the user later sets a category on it (`setCategory`). This can only cause an extra offer, never a missed one.
+- Two separate exchanges between the same two holdings with the same `time` in ms count as one entry for the offer (the form seeds `time` from `Date.now()`, so this needs the same picked instant twice).
+- Editing the date of one leg of an exchange gives the legs different `time`s, so that transfer counts twice for the offer. This can only cause an extra offer.
+- After a restore, the ignored-count restart (`activeSince = now`) also turns off the smart skip for the next occurrence: data from before the restart never skips, so that occurrence fires even if data arrived since the previous one.
+- Restore race: a re-plan that started between the restore's commit and the `restartIgnoredCounts` write (for example, the app went to the background at that moment) can still back-off pause a restored reminder. Closing it inside `restoreDataSnapshot`'s transaction would break the pinned restore round-trip.
+- A restored `last_snoozed_at` from another device keeps that slot free until it goes stale, although this device has no such snooze request: after a cross-device restore inside a snooze window, at most one occurrence is missed.
+- On a cold first visit of a day (no cache), the offer card can appear after the balance and holdings have rendered and push the content down (device check). A revisit is served from the cache. Fix if noticeable: a readiness flag from the hook that joins the page's `isReady`.
+
+## Decisions pending the user (overnight defaults, 2026-09-29)
+- At most one reminder offer per visit of the account page; after the user decides one offer, the other does not show until the next visit. If wrong: two offers in a row after dismissing the import offer.
+- Balance rows do not count toward the add-transactions offer (opening-balance and balance-edit rows: manual, no category, no transfer marker). If wrong: a new cash account with an opening balance plus one entry gets an offer.
+- No in-form Delete: a reminder is deleted only from its page row's touch-and-hold menu (`kiko-no-confirm-sheet-in-form`).
+- The empty-state caption (`reminders.emptyNoKinds`) on the account's reminders page; the bell stays on every account.
 
 ## Open items for the planner
 - Manual account = accounts.institution IS NULL (isSyncedAccount in src/holdings/deletable/deletable.ts); resolved by user decision 6 — import reminders apply to any account with >=1 statement import, including synced accounts; add-transaction reminders stay manual-only.
 - Device tests: reboot, app update, time-zone change, DST.
 - Competitor gaps not verified: Spendee, Monefy, Money Lover, CoinKeeper, Day One, Daylio.
-- "Prior similar transactions" for trigger (b) resolved by user decision 7 — offer fires on the second manual transaction (>=1 earlier source='manual' transaction on the same account within the last 30 days); no category/payee matching.
+- "Prior similar transactions" for trigger (b) resolved by user decision 7 — as built: at least 2 distinct user-entered entries (a transfer or a payment with change counts once; balance rows excluded) created since local midnight 30 days ago.
 
 ## Sources (checked 2026-09-27)
 - HIG Notifications / Managing notifications / Privacy: https://developer.apple.com/design/human-interface-guidelines/notifications , .../managing-notifications , .../privacy (text read via https://developer.apple.com/tutorials/data/design/human-interface-guidelines/<page>.json)
