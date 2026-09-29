@@ -378,7 +378,7 @@ Base: CS-B tip.
 **Files:**
 - Create: `src/screens/forms/weekday-field/weekday-field.component.tsx`, `weekday-field.props.d.ts`, `index.ts`. It is a label + ChipRow in multi mode + `FieldError`.
 - Create: `src/screens/forms/reminder-form/reminder-form.screen.tsx`, `index.ts`. Params `{ reminderId: string } | { accountId: string; kind: ReminderKind }`.
-  - Fields: a `SegmentedControl` for frequency (it changes the form's fields, so the tabs-vs-chips rule applies); by frequency, `WeekdayField`, a `SelectField` for day of month 1..31 with a hint, or a `TextField` for the interval with the `forms.units.days` suffix; `TimeField`. TimeField's `value` = today at `minuteOfDay`, and `onChange` keeps only the hours and minutes.
+  - Fields: a `SegmentedControl` for frequency (it changes the form's fields, so the tabs-vs-chips rule applies); by frequency, `WeekdayField`, a `SelectField` for day of month 1..31 with a hint, or a `TextField` for the interval with the plural `forms.units.days` suffix (count = `everyDaysPluralCount`); `TimeField`. TimeField's `value` = today at `minuteOfDay`, and `onChange` keeps only the hours and minutes.
   - Footer: Save (`useSubmitOnce`, validate on press, never disabled for validation). In edit mode, Delete (`ConfirmSheet destructive`).
   - Save flow: write → if `status === 'notDetermined'`, show the pre-alert `BottomSheet` (title, message, ONE `Continue` Button; a scrim dismiss also continues) → `request()` → `syncReminders(t)` → `goBack()`. If the status is denied, save and go back all the same (the page shows the banner).
 - Create: `src/screens/settings/reminder-row/reminder-row.component.tsx`, `reminder-row.props.d.ts`, `index.ts`. It is a `SettingsRow` with the kind label and the summary or `Off`. A trailing `Switch` (on = not paused) appears when the reminder exists. Tapping opens the form. A `CardContextMenu` delete appears when the reminder exists. Captions: `pausedAfterNoResponse`, `accountArchived`, `notAvailable`.
@@ -541,7 +541,7 @@ New top-level section `reminders` (CS in brackets). Title Case keys go into `TIT
 | `notAvailable` [C1] | Not available while the account is connected to a bank. | Недоступно, поки рахунок підключено до банку. |
 | `enabledLabel` [C1] | Reminder on | Нагадування ввімкнено |
 | `form.createTitle` (T) [C1] | New Reminder | Нове нагадування |
-| `form.editTitle` (T) [C1] | Edit Reminder | Редагування нагадування |
+| `form.editTitle` (T) [C1] | Edit Reminder | Редагувати нагадування |
 | `form.frequency` [C1] | Repeat | Повторення |
 | `form.frequencyDaily` [C1] | Daily | Щодня |
 | `form.frequencyWeekly` [C1] | Weekly | Щотижня |
@@ -572,7 +572,7 @@ New top-level section `reminders` (CS in brackets). Title Case keys go into `TIT
 | `permission.notDeterminedMessage` [C1] | Turn on notifications so your reminders can appear. | Увімкніть сповіщення, щоб нагадування з’являлися. |
 | `permission.turnOn` [C1] | Turn on notifications | Увімкнути сповіщення |
 | `offer.statementImportMessage` [C2] | Want a reminder to import your next statement? | Нагадати про імпорт наступної виписки? |
-| `offer.addTransactionsMessage` [C2] | Want a reminder to add transactions to this account? | Нагадувати додавати транзакції до цього рахунку? |
+| `offer.addTransactionsMessage` [C2] | Want a reminder to add transactions to this account? | Нагадувати про додавання транзакцій до цього рахунку? |
 | `offer.setUp` [C2] | Set up reminder | Налаштувати нагадування |
 | `offer.dismiss` [C2] | Not now | Не зараз |
 | `notification.statementImportTitle` [B] | Statement import | Імпорт виписки |
@@ -584,7 +584,7 @@ New top-level section `reminders` (CS in brackets). Title Case keys go into `TIT
 | `notification.pausedBody` [B] | Turn them on again in Kiko. | Увімкніть їх знову в Кіко. |
 | `notification.hiddenPreviewsPlaceholder` [D] | Reminder | Нагадування |
 | `notification.snoozeAction` [D] | Tomorrow | Завтра |
-| `forms.units.days` [C1] | days | дн. |
+| `forms.units.days_one` / `_other` (en), `_one` / `_few` / `_many` / `_other` (uk) [C1] | day / days | день / дні / днів / дня (count = `everyDaysPluralCount`; empty -> 0 -> днів) |
 
 Reused: `calendar.weekday.*`, `common.save`, `common.cancel`, `common.delete`.
 
