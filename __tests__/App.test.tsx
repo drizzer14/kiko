@@ -4,7 +4,8 @@
 
 import type { ReactNode } from 'react';
 import { remindersNative } from '@kiko/reminders/native';
-import { render, waitFor } from '@testing-library/react-native';
+import { navigationRef } from '@kiko/navigation/navigation-ref';
+import { act, render, waitFor } from '@testing-library/react-native';
 
 // MigrationsGate pulls in the op-sqlite native binding, which has no jest
 // binary; stub it to render its children as if migrations already succeeded.
@@ -14,11 +15,27 @@ jest.mock('@kiko/migration/migrations-gate', () => ({
 }));
 
 // LockGate reads settings through useLiveQuery; stub it as a passthrough so the
-// boot smoke test reaches Home exactly as MigrationsGate is stubbed.
-jest.mock('@kiko/auth/lock-gate/lock-gate.component', () => ({
-  __esModule: true,
-  default: ({ children }: { children: ReactNode }) => children,
-}));
+// boot smoke test reaches Home exactly as MigrationsGate is stubbed. A test
+// that needs the lock up starts it locked and unlocks it through `mockLock`.
+const mockLock: { startsLocked: boolean; unlock: () => void } = {
+  startsLocked: false,
+  unlock: () => undefined,
+};
+
+jest.mock('@kiko/auth/lock-gate/lock-gate.component', () => {
+  const { useState } = require('react');
+
+  return {
+    __esModule: true,
+    default: ({ children }: { children: ReactNode }) => {
+      const [isLocked, setLocked] = useState(mockLock.startsLocked);
+
+      mockLock.unlock = () => setLocked(false);
+
+      return isLocked ? null : children;
+    },
+  };
+});
 
 // The real Settings screen (wired into RootNavigator, rendered inside App)
 // also pulls in db/client directly (via useLiveQuery), which opens a real
@@ -79,6 +96,10 @@ jest.mock('@kiko/db/use-live-query', () => ({
 import App from '../App';
 
 describe('App', () => {
+  afterEach(() => {
+    mockLock.startsLocked = false;
+  });
+
   it('boots to the Home screen', async () => {
     const { findByText } = await render(<App />);
     expect(await findByText('Home')).toBeTruthy();
@@ -90,5 +111,22 @@ describe('App', () => {
     await render(<App />);
 
     await waitFor(() => expect(replaceRequests).toHaveBeenCalledWith([], []));
+  });
+
+  it('reads no notification tap and has no navigator to route to until the app is unlocked', async () => {
+    const drainResponses = jest.spyOn(remindersNative, 'drainResponses');
+    mockLock.startsLocked = true;
+
+    await render(<App />);
+
+    expect(drainResponses).not.toHaveBeenCalled();
+    expect(navigationRef.isReady()).toBe(false);
+
+    await act(async () => {
+      mockLock.unlock();
+    });
+
+    await waitFor(() => expect(drainResponses).toHaveBeenCalledTimes(1));
+    expect(navigationRef.isReady()).toBe(true);
   });
 });
