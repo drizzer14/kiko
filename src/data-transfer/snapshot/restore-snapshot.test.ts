@@ -509,6 +509,7 @@ describe('restoreDataSnapshot', () => {
     expect(deletedTables).toEqual([
       'transactions',
       'syncState',
+      'reminders',
       'holdings',
       'accounts',
       'categoryOverrides',

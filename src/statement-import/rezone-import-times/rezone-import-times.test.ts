@@ -1,11 +1,9 @@
-import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
-import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { SETTINGS_ID } from '@kiko/settings';
 import { type database, holdings, settings, transactions } from '@kiko/db';
 import { monobankCsvFormat } from '@kiko/statement-import/formats/monobank-csv';
-import { applyMigrationsThrough, executingDrizzle } from '@kiko/test-support/real-sqlite';
+import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
 import { monobankFixtureInput } from '@kiko/statement-import/formats/format-test-fixtures';
 
 import { mapParsedTransaction } from '../mapping';
@@ -22,23 +20,16 @@ const dedicatedMonobank = monobankCsvFormat.parse(monobankFixtureInput);
 const LEGACY_FIRST_MILLISECONDS = Date.UTC(2022, 3, 1, 5, 27, 35);
 const LEGACY_LAST_MILLISECONDS = Date.UTC(2023, 4, 12, 17, 30, 36);
 
-const MIGRATION_0043_SQL = readFileSync(
-  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0043_add_import_times_rezoned.sql'),
-  'utf8',
-);
-
-// Applies every migration through 0042 (the pre-rezone shape every real
-// legacy row was ever written under), then 0043's OWN SQL directly — never
-// `applyMigrationsThrough` a second time, which always replays from journal
-// entry 0 and would re-run 0000-0042 (duplicate-column errors). Seeding
-// through the real, EXECUTING Drizzle instance below writes every column
-// Drizzle's own schema knows about (including `import_times_rezoned`), so
-// the column must already exist by the time seeding runs.
+// Applies every migration, as `MigrationsGate` does before it runs the
+// rezone. Seeding and reading through the real, EXECUTING Drizzle instance
+// below names every column Drizzle's own schema knows about (including
+// `import_times_rezoned` and the later reminders columns), so each of them
+// must already exist. The legacy rows are seeded after the migrations, so
+// the data-only migrations have nothing to move.
 const openTestDatabase = (): DatabaseSync => {
   const rawDatabase = new DatabaseSync(':memory:');
 
-  applyMigrationsThrough(rawDatabase, '0042_uah_star_rates');
-  rawDatabase.exec(MIGRATION_0043_SQL);
+  applyAllMigrations(rawDatabase);
   rawDatabase.exec('PRAGMA foreign_keys = ON;');
   rawDatabase
     .prepare("INSERT INTO accounts (id, name, kind) VALUES ('a-1', 'Monobank', 'bank')")

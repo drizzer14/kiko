@@ -113,6 +113,12 @@ describe('restoring across the reminders migration', () => {
         updatedAt: 2,
       },
     ]);
-    expect(restored).toEqual(exported);
+    // This database never ran `MigrationsGate`, so the export carries
+    // `importTimesRezoned: false`; a restore rezones such a backup at once
+    // (`withImportTimesRezoned`), as no live device is left to retry it.
+    expect(restored).toEqual({
+      ...exported,
+      settings: exported.settings.map((row) => ({ ...row, importTimesRezoned: true })),
+    });
   });
 });
