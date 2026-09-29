@@ -259,6 +259,17 @@ describe('useReminderOffer — manual activity', () => {
     expect(readManualEntries()).toBe(false);
   });
 
+  it('offers nothing on an archived account, whose reminder would never be sent', async () => {
+    addEntry('cash', 'manual', YESTERDAY);
+    addEntry('cash', 'manual', TODAY);
+    run('UPDATE accounts SET archived_at = ? WHERE id = ?', YESTERDAY, 'cash');
+
+    const { kindsSeen } = await renderOffer('cash', 'manualActivity');
+
+    expect(kindsSeen).not.toContain('add_transactions');
+    expect(readManualEntries()).toBe(false);
+  });
+
   it('offers nothing for an account that no longer exists', async () => {
     const { kindsSeen } = await renderOffer('deleted', 'manualActivity');
 
@@ -276,6 +287,16 @@ describe('useReminderOffer — after an import', () => {
 
     expect(result.current?.kind).toBe('statement_import');
     expect(readManualEntries()).toBe(false);
+  });
+
+  it('offers nothing on an archived account', async () => {
+    addAccount('card', 'monobank');
+    addEntry('card', 'import', TODAY);
+    run('UPDATE accounts SET archived_at = ? WHERE id = ?', YESTERDAY, 'card');
+
+    const { kindsSeen } = await renderOffer('card', 'afterImport');
+
+    expect(kindsSeen).not.toContain('statement_import');
   });
 
   it('offers nothing while the account has no import', async () => {

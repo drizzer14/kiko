@@ -38,10 +38,11 @@ const kindOf = (trigger: ReminderOfferTrigger): ReminderKind =>
 
 /**
  * The in-app offer to set up a reminder, after an import or on the second
- * manual entry in 30 days. It shows only while the account can have that
- * kind, has none yet, and the user has not dismissed it there. The trigger's
- * own read waits for that, so a decided offer costs no transactions read, and
- * a synced account never reads its manual entries.
+ * manual entry in 30 days. It shows only while the account is not archived
+ * (its reminder would never be sent), can have that kind, has none yet, and
+ * the user has not dismissed it there. The trigger's own read waits for that,
+ * so a decided offer costs no transactions read, and a synced account never
+ * reads its manual entries.
  */
 export const useReminderOffer = (
   accountId: string,
@@ -77,6 +78,7 @@ export const useReminderOffer = (
   const undecided =
     accountReady &&
     account !== undefined &&
+    account.archivedAt === null &&
     !reminders.some((reminder) => reminder.kind === kind) &&
     !dismissed;
   const { data: imports, isLoading: importLoading } = useLiveQuery(
