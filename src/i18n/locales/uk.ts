@@ -832,6 +832,26 @@ export const uk: typeof en = {
     xlsNotSupported:
       'Старі файли .xls не підтримуються. Збережіть файл як .xlsx або CSV і спробуйте ще раз.',
   },
+  reminders: {
+    // i18next's uk plural rule: _one (1, 21 день), _few (2-4 дні), _many (0,
+    // 5-20 днів), _other (fractional, unreachable here).
+    notification: {
+      statementImportTitle: 'Імпорт виписки',
+      statementImportBody_one: '{{count}} день від останнього імпорту виписки.',
+      statementImportBody_few: '{{count}} дні від останнього імпорту виписки.',
+      statementImportBody_many: '{{count}} днів від останнього імпорту виписки.',
+      statementImportBody_other: '{{count}} дня від останнього імпорту виписки.',
+      statementImportBodyNoData: 'Жодної виписки ще не імпортовано.',
+      addTransactionsTitle: 'Транзакції',
+      addTransactionsBody_one: '{{count}} день відтоді, як ви востаннє додали транзакцію.',
+      addTransactionsBody_few: '{{count}} дні відтоді, як ви востаннє додали транзакцію.',
+      addTransactionsBody_many: '{{count}} днів відтоді, як ви востаннє додали транзакцію.',
+      addTransactionsBody_other: '{{count}} дня відтоді, як ви востаннє додали транзакцію.',
+      addTransactionsBodyNoData: 'Жодної транзакції ще не додано.',
+      pausedTitle: 'Нагадування призупинено',
+      pausedBody: 'Увімкніть їх знову в Кіко.',
+    },
+  },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the
   // currency; authored Ukrainian names for the codes NBU does not quote (see the

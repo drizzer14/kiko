@@ -30,10 +30,18 @@ Rules:
   directory. See `kiko-code-style`'s "File suffixes" section for the exact naming.
 - iOS end-to-end tests: Maestro YAML flows.
 - A test must assert real behavior. An assertion-free test fails the Stryker check.
-- A repository test with no live database drives the real repo functions
-  through a fake transaction handle: mock `write` (and `select` when a
-  read path is under test) via `jest.mock('@kiko/db/client')`, back it
-  with a plain-array store, and let the REAL repository function run
+- A repository test whose SQL matters (a join, an aggregate, NULL
+  handling, a foreign key, an upsert) runs the REAL repo on a real
+  migrated database: `jest.mock('@kiko/db/client', () =>
+  executingClient(() => mockDatabase))` with a `node:sqlite`
+  `DatabaseSync` prepared by `applyAllMigrations`, both from
+  `src/test-support/real-sqlite.ts` (see
+  `src/reminders/repo/reminders.repo.test.ts`). Prefer this over a
+  fake.
+  Otherwise, a repository test drives the real repo functions through
+  a fake transaction handle: mock `write` (and `select` when a read
+  path is under test) via `jest.mock('@kiko/db/client')`, back it with
+  a plain-array store, and let the REAL repository function run
   against that fake. See `src/holdings/repo/holdings.repo.test.ts` for
   the canonical shape; extend it, don't invent a second style. Span the
   fake across two repos in one store when a test exercises both (e.g. a

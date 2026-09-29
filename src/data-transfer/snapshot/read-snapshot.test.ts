@@ -14,7 +14,7 @@ jest.mock('@kiko/db/client', () => ({
 import { readDataSnapshot } from './read-snapshot';
 
 describe('readDataSnapshot', () => {
-  it('reads all eleven tables, in order, into the matching snapshot fields', async () => {
+  it('reads all twelve tables, in order, into the matching snapshot fields', async () => {
     mockResultQueue = [
       [{ id: 'a1' }], // accounts
       [{ id: 'h1' }], // holdings
@@ -27,6 +27,7 @@ describe('readDataSnapshot', () => {
       [{ normalizedName: 'x' }], // categoryOverrides
       [{ instrument: 'share:AAPL', day: 1 }], // pricePoints
       [{ isin: 'UA4000234215' }], // bondRegister
+      [{ id: 'reminder-1' }], // reminders
     ];
 
     const snapshot = await readDataSnapshot();
@@ -42,10 +43,11 @@ describe('readDataSnapshot', () => {
     expect(snapshot.categoryOverrides).toEqual([{ normalizedName: 'x' }]);
     expect(snapshot.pricePoints).toEqual([{ instrument: 'share:AAPL', day: 1 }]);
     expect(snapshot.bondRegister).toEqual([{ isin: 'UA4000234215' }]);
+    expect(snapshot.reminders).toEqual([{ id: 'reminder-1' }]);
   });
 
   it('returns empty arrays for tables with no rows', async () => {
-    mockResultQueue = [[], [], [], [], [], [], [], [], [], [], []];
+    mockResultQueue = [[], [], [], [], [], [], [], [], [], [], [], []];
 
     const snapshot = await readDataSnapshot();
 

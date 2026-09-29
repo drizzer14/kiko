@@ -202,3 +202,21 @@ jest.mock('@react-native-documents/picker', () => ({
   pick: jest.fn(() => Promise.reject({ code: 'OPERATION_CANCELED' })),
   types: { csv: 'text/csv', xlsx: 'application/xlsx', plainText: 'text/plain', allFiles: '*/*' },
 }));
+
+// The app's own reminders TurboModule resolves `KikoReminders` with
+// `TurboModuleRegistry.getEnforcing` when first loaded, which throws under
+// react-test-renderer (no native binary) — the same class of failure as the
+// native-binding mocks above. Registered globally so any test that reaches the
+// reminders wrapper transitively gets a working stub. Defaults model a fresh
+// install: permission not asked yet, nothing queued.
+jest.mock('@kiko/reminders/native/NativeKikoReminders', () => ({
+  __esModule: true,
+  default: {
+    authorizationStatus: jest.fn(async () => 'notDetermined'),
+    requestAuthorization: jest.fn(async () => true),
+    replaceRequests: jest.fn(async () => undefined),
+    registerCategories: jest.fn(() => undefined),
+    drainResponses: jest.fn(async () => '[]'),
+    onResponse: jest.fn(() => ({ remove: jest.fn() })),
+  },
+}));

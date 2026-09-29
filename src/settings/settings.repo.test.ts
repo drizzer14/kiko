@@ -14,7 +14,7 @@ jest.mock('@kiko/db/client', () => {
 import { database } from '@kiko/db';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 
-import { settingsRepo } from './settings.repo';
+import { isReminderOfferDismissed, settingsRepo } from './settings.repo';
 
 /**
  * A fake `write`-transaction handle backed by a plain array, standing in for
@@ -197,5 +197,47 @@ describe('settingsRepo', () => {
     await settingsRepo.saveStatementMapping('bank:monobank', replacement);
 
     expect(store[0].statementMappings).toEqual({ 'bank:monobank': replacement });
+  });
+
+  it('dismissReminderOffer adds the kind for the account and keeps every other dismissal', async () => {
+    const store: Record<string, unknown>[] = [
+      { id: 1, reminderOfferDismissals: { 'account-1': ['add_transactions'], 'account-2': [] } },
+    ];
+    mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
+
+    await settingsRepo.dismissReminderOffer('account-1', 'statement_import');
+    await settingsRepo.dismissReminderOffer('account-3', 'add_transactions');
+
+    expect(store[0].reminderOfferDismissals).toEqual({
+      'account-1': ['add_transactions', 'statement_import'],
+      'account-2': [],
+      'account-3': ['add_transactions'],
+    });
+  });
+
+  it('dismissReminderOffer records a kind once, however often it is dismissed', async () => {
+    const store: Record<string, unknown>[] = [{ id: 1, reminderOfferDismissals: null }];
+    mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
+
+    await settingsRepo.dismissReminderOffer('account-1', 'statement_import');
+    await settingsRepo.dismissReminderOffer('account-1', 'statement_import');
+
+    expect(store[0].reminderOfferDismissals).toEqual({ 'account-1': ['statement_import'] });
+  });
+});
+
+describe('isReminderOfferDismissed', () => {
+  it('is false while nothing was ever dismissed', () => {
+    expect(
+      isReminderOfferDismissed({ reminderOfferDismissals: null }, 'account-1', 'statement_import'),
+    ).toBe(false);
+  });
+
+  it('is true only for the dismissed kind on the dismissed account', () => {
+    const settingsRow = { reminderOfferDismissals: { 'account-1': ['statement_import' as const] } };
+
+    expect(isReminderOfferDismissed(settingsRow, 'account-1', 'statement_import')).toBe(true);
+    expect(isReminderOfferDismissed(settingsRow, 'account-1', 'add_transactions')).toBe(false);
+    expect(isReminderOfferDismissed(settingsRow, 'account-2', 'statement_import')).toBe(false);
   });
 });

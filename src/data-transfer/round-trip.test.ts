@@ -137,6 +137,21 @@ const fixturePayload = (): ExportPayload => ({
         fetchedAt: 1700000000000,
       } as never,
     ],
+    reminders: [
+      {
+        id: 'r1',
+        accountId: 'a1',
+        kind: 'add_transactions',
+        schedule: { frequency: 'daily', minuteOfDay: 1200 },
+        pausedAt: null,
+        pauseReason: null,
+        activeSince: 1700000000000,
+        lastEngagedAt: null,
+        lastSnoozedAt: 1700000000000,
+        createdAt: 1700000000000,
+        updatedAt: 1700000000000,
+      },
+    ],
   },
   secrets: {
     monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],

@@ -1,4 +1,5 @@
 import UIKit
+import UserNotifications
 import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
@@ -26,6 +27,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     self.launchOptions = launchOptions
 
     excludeDatabaseFilesFromBackup()
+
+    // Before launch finishes, or a tap that cold-launches the app and a
+    // background notification action are lost.
+    UNUserNotificationCenter.current().delegate = KikoNotificationDelegate.shared
 
     return true
   }

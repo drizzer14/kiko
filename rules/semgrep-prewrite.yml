@@ -956,6 +956,79 @@ rules:
       - pattern-either:
           - pattern: $CATEGORY?.toLowerCase() || $DEFAULT
           - pattern: $CATEGORY.toLowerCase() || $DEFAULT
+  # kiko-architecture's "Native iOS shell": the reminders TurboModule spec
+  # (`NativeKikoReminders.ts`) calls `TurboModuleRegistry.getEnforcing` at
+  # module load, which throws on a binary built without the module. Only the
+  # wrapper (`reminders-native.ts`) may load it, lazily on first use, so that
+  # importing reminders code can never crash the app at startup; `jest/setup.js`
+  # mocks it. A `pattern-regex`, not an AST pattern, because a module path is a
+  # plain string literal. It covers a value `import ... from`, a side-effect
+  # `import '...'`, a value `export ... from`, `require(...)` and a dynamic
+  # `import(...)`. `import type` / `export type` stay allowed (Babel erases
+  # them): the `(?!\s+type\b)` lookahead sits right after the keyword, so extra
+  # whitespace cannot backtrack past it. An `import`/`export` statement must
+  # start its line (Biome's formatting guarantees it), and nothing between the
+  # keyword and `from` may hold a quote. Without both, the word "import" in a
+  # comment or a string matched across lines up to a later quoted path.
+  # `jest.mock`/`doMock`/`requireMock` name the file without loading it, so
+  # they never match. The module name must end the path (optionally with
+  # `.ts`), so a sibling like `NativeKikoRemindersX` never matches. The block
+  # scalar keeps the regex free of YAML escaping.
+  - id: kiko-no-native-reminders-module-import
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Only `src/reminders/native/reminders-native.ts` may load the
+      `NativeKikoReminders` TurboModule spec, lazily on first use:
+      `TurboModuleRegistry.getEnforcing` throws at module load on a binary
+      built without the module. Call `remindersNative` from
+      `@kiko/reminders/native` instead; a type-only `import type` is fine.
+    metadata:
+      fix: "Call `remindersNative` from `@kiko/reminders/native` (or use `import type` for a type); never value-import `NativeKikoReminders`."
+      skill: "kiko-architecture › Native iOS shell"
+    paths:
+      exclude:
+        - "src/reminders/native/reminders-native.ts"
+        - "jest/setup.js"
+    patterns:
+      - pattern-regex: |-
+          (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?NativeKikoReminders(?:\.tsx?)?['"]
+  # kiko-domain's "Dates": `jest.config.js` pins `process.env.TZ` to
+  # Europe/Kyiv at config load, and Jest gives each test sandbox its own copy
+  # of `process.env`, so an assignment in a test file, a `beforeAll`, or a
+  # test-support helper never reaches Node's TZ setter: `Date` stays on Kyiv
+  # and a test that names another zone silently does not test it. WARNING,
+  # not ERROR, only while the existing in-test flips are still in the tree
+  # (a later sweep removes them): `check:security` surfaces them without
+  # failing. Promote this rule to ERROR once `check:security` reports no
+  # finding for it. The pre-write guard ignores severity, so a NEW flip is
+  # already denied today. `paths.include` names the test paths because app
+  # code never assigns TZ at all; the `src/test-support/**` entry is
+  # path-prefixed, so the fixture pair is NESTED. `jest.config.js` is the one
+  # place the pin belongs.
+  - id: kiko-no-process-env-time-zone-in-test
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      Assigning `process.env.TZ` in a test is a silent no-op: Jest gives each
+      test sandbox its own copy of `process.env`, so `Date` stays on the
+      Europe/Kyiv zone `jest.config.js` pins. Inject the offset or zone into
+      the code under test instead — see kiko-domain's "Dates".
+    metadata:
+      fix: "Remove the `process.env.TZ` assignment and inject the offset or zone into the code under test instead."
+      skill: "kiko-domain › Dates"
+    paths:
+      include:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/test-support/**"
+        - "__tests__/**"
+      exclude:
+        - "jest.config.js"
+    patterns:
+      - pattern-either:
+          - pattern: process.env.TZ = $ZONE
+          - pattern: process.env['TZ'] = $ZONE
   # A bank wall-clock read directly through `Date.UTC(...)` or the local-time
   # `new Date($Y, $M, ...)` constructor bypasses both zone readings this
   # project settled on (`kyivInstantMillisecondsIfRoundTrips` for a named

@@ -8,6 +8,7 @@ import {
   currencyRates,
   holdings,
   pricePoints,
+  reminders,
   settings,
   syncState,
   transactions,
@@ -52,4 +53,5 @@ export const readDataSnapshot = async (): Promise<DataSnapshot> => ({
     .from(pricePoints)
     .orderBy(asc(pricePoints.instrument), asc(pricePoints.day)),
   bondRegister: await database.select().from(bondRegister).orderBy(asc(bondRegister.isin)),
+  reminders: await database.select().from(reminders).orderBy(asc(reminders.id)),
 });

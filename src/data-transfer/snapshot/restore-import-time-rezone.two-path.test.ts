@@ -21,9 +21,7 @@ import {
   settings,
   transactions,
 } from '@kiko/db';
-import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
-import { readFileSync } from 'node:fs';
 import {
   computeDedupKeyBase,
   mapParsedTransaction,
@@ -32,7 +30,7 @@ import {
 import { DatabaseSync } from 'node:sqlite';
 import { SETTINGS_ID } from '@kiko/settings';
 import { monobankCsvFormat } from '@kiko/statement-import/formats/monobank-csv';
-import { applyMigrationsThrough, executingDrizzle } from '@kiko/test-support/real-sqlite';
+import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
 import { monobankFixtureInput } from '@kiko/statement-import/formats/format-test-fixtures';
 import { rezoneImportTime, rezoneImportTimesIn } from '@kiko/statement-import/rezone-import-times';
 
@@ -53,11 +51,6 @@ const LEGACY_SUFFIX_MILLISECONDS = Date.UTC(2026, 2, 3, 9, 45, 0);
 // collision-renumbering proof, exercised here through both real paths.
 const MIDNIGHT_LEGACY_MILLISECONDS = Date.UTC(2026, 2, 20, 0, 0, 0);
 const NOON_LEGACY_MILLISECONDS = Date.UTC(2026, 2, 20, 12, 0, 0);
-
-const MIGRATION_0043_SQL = readFileSync(
-  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0043_add_import_times_rezoned.sql'),
-  'utf8',
-);
 
 /** Mirrors `upgradeStoredDedupKeys`' own rewrite (`upgrade-stored-dedup-
  * keys.ts`) against this file's real, in-process test database directly —
@@ -94,11 +87,13 @@ const upgradeLegacyDedupKeysIn = async (drizzleDatabase: typeof database): Promi
   }
 };
 
+// Applies every migration, as `MigrationsGate` does before it runs the
+// rezone: seeding through the EXECUTING Drizzle instance names every column
+// Drizzle's own schema knows about, including the later reminders columns.
 const openTestDatabase = (): DatabaseSync => {
   const rawDatabase = new DatabaseSync(':memory:');
 
-  applyMigrationsThrough(rawDatabase, '0042_uah_star_rates');
-  rawDatabase.exec(MIGRATION_0043_SQL);
+  applyAllMigrations(rawDatabase);
   rawDatabase.exec('PRAGMA foreign_keys = ON;');
   rawDatabase
     .prepare("INSERT INTO accounts (id, name, kind) VALUES ('a-1', 'Monobank', 'bank')")
@@ -266,6 +261,7 @@ describe('a pre-0043 .kiko restore ends byte-equal to the live upgrade of the sa
       categoryOverrides: [],
       pricePoints: [],
       bondRegister: [],
+      reminders: [],
     };
 
     await restoreDataSnapshot(snapshot);

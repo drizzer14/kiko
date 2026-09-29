@@ -546,3 +546,15 @@ verified usage, not dead weight:
   `rules/fixtures/` pair is not named like a test file and still proves the
   rule in `check:rules`; `__tests__/pre-write-guard-rules.test.ts` proves
   the exclusion.
+
+- **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
+  `.ts` file name in `src/`.** React Native codegen reads a spec file only
+  if its basename matches `/^(Native.+|.+NativeComponent)/`
+  (case-sensitive) and has exactly one dot (see `filterJSFile` in
+  `node_modules/@react-native/codegen/lib/cli/combine/combine-utils.js`),
+  so the name cannot be kebab-case. `package.json` `codegenConfig.jsSrcsDir`
+  points at that folder. Only `reminders-native.ts` loads it (lazily, via
+  `require`), and the barrel does not export it; the
+  `kiko-no-native-reminders-module-import` Semgrep rule
+  (`rules/semgrep-prewrite.yml`) denies any other value import. Add another
+  `Native*` spec only for a new app TurboModule.

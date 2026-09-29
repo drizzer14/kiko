@@ -122,6 +122,7 @@ const emptySnapshot: DataSnapshot = {
   categoryOverrides: [],
   pricePoints: [],
   bondRegister: [],
+  reminders: [],
 };
 
 describe('restoring a build-25-shaped snapshot, then importing an older statement', () => {

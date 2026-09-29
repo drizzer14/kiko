@@ -46,6 +46,7 @@ import m0041 from './0041_add_dedup_key_upgraded.sql';
 import m0042 from './0042_uah_star_rates.sql';
 import m0043 from './0043_add_import_times_rezoned.sql';
 import m0044 from './0044_move_crypto_cash_holdings.sql';
+import m0045 from './0045_add_reminders.sql';
 
 export default {
   journal,
@@ -95,5 +96,6 @@ export default {
     m0042,
     m0043,
     m0044,
+    m0045,
   },
 };

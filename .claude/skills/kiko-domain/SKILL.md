@@ -723,17 +723,32 @@ get-date convention before picking UTC vs. local for the parse.
 device-local getters — silently shifting maturity (and every derived
 coupon date) back a day west of UTC.
 
-Do not pin `process.env.TZ` mid-test to simulate a different
-timezone: in this project's `jest-environment-node`, a `TZ` mutation
-mid-test does not retarget `Date`/`Intl` local getters (confirmed in
-`bond-register.repo.test.ts` and ~8 other pre-existing "TZ-pinned"
-test files — `price-book.test.ts`, `local-day.test.ts`,
-`interest.test.ts`, `format.test.ts`, the category-trend-line/
-net-worth-line component tests, `statistics.screen.test.tsx`,
-`net-worth-series.test.ts`). These tests may not prove what they claim
-about local-day boundaries. Build fixed instants through the local
-`Date` constructor directly instead — never add a new test that pins
-`TZ` to simulate a timezone.
+The whole Jest suite runs on Europe/Kyiv: `jest.config.js` sets
+`process.env.TZ = 'Europe/Kyiv'` at load time, before the workers
+fork, and inside Stryker's in-band test-runner process. It overrides
+the host zone. `__tests__/jest-time-zone.test.ts` fails if the pin
+breaks (it expects UTC+2 in January and UTC+3 in July). A test can
+therefore assert Kyiv wall-clock times and Kyiv DST transitions
+(spring-forward on the last Sunday of March, fall-back on the last
+Sunday of October) directly, with no guard of its own.
+
+Never set `process.env.TZ` inside a test file (`beforeAll`, a
+`withTimeZone` helper, or mid-test). Jest gives each test sandbox its
+own copy of `process.env`, so the assignment never reaches Node's TZ
+setter and `Date` stays on Kyiv. Every existing in-test flip (`grep
+-rln "process.env.TZ" src`) has no effect; one that names a
+non-Kyiv zone (for example `format.test.ts`'s America/Los_Angeles,
+`net-worth-series.test.ts`'s Pacific/Kiritimati) does not test the
+zone it names. A test that needs another zone's behavior must inject
+the offset or zone into the code under test explicitly.
+
+The pin does not make a test zone-correct. Many holdings, prices,
+rates, and statistics suites build fixtures with `Date.UTC(...)`
+midnights and pass them to local-day code. They pass only because
+Kyiv is east of UTC, and they fail on a west-of-UTC clock. Build new
+fixtures with the local `Date` constructor (`new Date(y, m - 1, d,
+...)`), not `Date.UTC`, unless the value is a normalized UTC calendar
+day (see `dayKeyOf`).
 
 ## Net worth
 

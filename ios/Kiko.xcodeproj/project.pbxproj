@@ -7,9 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09FACA2736966ED378308585 /* KikoNotificationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE12D2C758379F41F4A4360B /* KikoNotificationDelegate.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		172FE3757FEBCA087CDF114A /* KikoRemindersCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F84C8312D8608C69CCC2C8 /* KikoRemindersCenter.swift */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		846F14066B8C2CA6E5707F03 /* RCTKikoReminders.mm in Sources */ = {isa = PBXBuildFile; fileRef = E130C34F45D22CC8AC8844DF /* RCTKikoReminders.mm */; };
 		9F1A2B3C4D5E6F708192A3B5 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F1A2B3C4D5E6F708192A3B4 /* SceneDelegate.swift */; };
 		AF302165096A0E369EF46EF3 /* libPods-Kiko.a in Frameworks */ = {isa = PBXBuildFile; fileRef = EB644446D98F6DD2E63A735C /* libPods-Kiko.a */; };
 		C4919CFE9414F1AE8AF0D959 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
@@ -26,7 +29,11 @@
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Kiko/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		82B8A86134DE0544CF48D278 /* Pods-Kiko.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Kiko.debug.xcconfig"; path = "Target Support Files/Pods-Kiko/Pods-Kiko.debug.xcconfig"; sourceTree = "<group>"; };
 		9F1A2B3C4D5E6F708192A3B4 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneDelegate.swift; path = Kiko/SceneDelegate.swift; sourceTree = "<group>"; };
+		A878FE55AAC0FE191A56C4CB /* RCTKikoReminders.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = RCTKikoReminders.h; sourceTree = "<group>"; };
 		B23A81201A6576C1474D2FB8 /* Kiko.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = Kiko/Kiko.entitlements; sourceTree = "<group>"; };
+		DE12D2C758379F41F4A4360B /* KikoNotificationDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KikoNotificationDelegate.swift; sourceTree = "<group>"; };
+		E130C34F45D22CC8AC8844DF /* RCTKikoReminders.mm */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.cpp.objcpp; path = RCTKikoReminders.mm; sourceTree = "<group>"; };
+		E9F84C8312D8608C69CCC2C8 /* KikoRemindersCenter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KikoRemindersCenter.swift; sourceTree = "<group>"; };
 		EB644446D98F6DD2E63A735C /* libPods-Kiko.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Kiko.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -53,6 +60,7 @@
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
 				B23A81201A6576C1474D2FB8 /* Kiko.entitlements */,
+				9278B2E61310F744B45A862E /* Reminders */,
 			);
 			name = Kiko;
 			sourceTree = "<group>";
@@ -93,6 +101,18 @@
 				13B07F961A680F5B00A75B9A /* Kiko.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		9278B2E61310F744B45A862E /* Reminders */ = {
+			isa = PBXGroup;
+			children = (
+				E9F84C8312D8608C69CCC2C8 /* KikoRemindersCenter.swift */,
+				DE12D2C758379F41F4A4360B /* KikoNotificationDelegate.swift */,
+				A878FE55AAC0FE191A56C4CB /* RCTKikoReminders.h */,
+				E130C34F45D22CC8AC8844DF /* RCTKikoReminders.mm */,
+			);
+			name = Reminders;
+			path = Kiko/Reminders;
 			sourceTree = "<group>";
 		};
 		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
@@ -271,6 +291,9 @@
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
 				9F1A2B3C4D5E6F708192A3B5 /* SceneDelegate.swift in Sources */,
+				172FE3757FEBCA087CDF114A /* KikoRemindersCenter.swift in Sources */,
+				09FACA2736966ED378308585 /* KikoNotificationDelegate.swift in Sources */,
+				846F14066B8C2CA6E5707F03 /* RCTKikoReminders.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
