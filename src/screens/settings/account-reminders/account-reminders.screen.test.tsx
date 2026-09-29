@@ -1,7 +1,7 @@
 import { Linking } from 'react-native';
 import type { ComponentProps } from 'react';
 import { State } from 'react-native-gesture-handler';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
@@ -12,6 +12,7 @@ import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
+import { useNotificationPermission } from '@kiko/reminders/permission';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -303,5 +304,23 @@ describe('AccountRemindersScreen — notification permission', () => {
     await waitFor(() => expect(mockSyncReminders).toHaveBeenCalled());
     await waitFor(() => expect(queryByText(notDeterminedMessage)).toBeNull());
     expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('hides the notice once the reminder form’s prompt turns notifications on', async () => {
+    authorizationStatus.mockResolvedValue('notDetermined');
+    seed({ account: MANUAL, reminders: [reminder()] });
+
+    const { findByText, queryByText } = await renderScreen();
+
+    expect(await findByText(notDeterminedMessage)).toBeTruthy();
+
+    const form = await renderHook(() => useNotificationPermission());
+
+    authorizationStatus.mockResolvedValue('authorized');
+    await act(async () => {
+      await form.result.current.request();
+    });
+
+    expect(queryByText(notDeterminedMessage)).toBeNull();
   });
 });

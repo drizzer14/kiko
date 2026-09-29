@@ -1809,8 +1809,14 @@ what a change must keep.
   included (a user ruling). en has both keys as 'at'.
 - **Permission.** `useNotificationPermission()`
   (`src/reminders/permission/`) returns `{ status, request }` and never
-  rejects. It reads the status on mount and on every AppState `active`,
-  and exposes no public refresh. `useNotificationPreAlert(onAnswered?)`
+  rejects. `status` is ONE module-level store read through
+  `useSyncExternalStore` (the `src/monobank/sync-status/` pattern), so a
+  read or an answer in one instance re-renders every mounted one: the
+  reminder form's prompt clears the list's notice with no AppState
+  change. Never hold it in per-component `useState` (the notice then
+  stayed until tapped). It reads the status on mount and on every
+  AppState `active` (for a change made in iOS Settings), and exposes no
+  public refresh. `useNotificationPreAlert(onAnswered?)`
   is the one ask flow: pre-alert sheet, then `request()` after the
   sheet has closed, then `replanReminders()`, then `onAnswered`. iOS is
   asked only (a) on a form save while `status === 'notDetermined'` or

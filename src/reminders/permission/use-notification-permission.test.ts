@@ -80,6 +80,31 @@ describe('useNotificationPermission', () => {
     expect(result.current.status).toBe('denied');
   });
 
+  it.each<[NotificationAuthorization, boolean]>([
+    ['authorized', true],
+    ['denied', false],
+  ])(
+    'a request answered %s in one instance updates every mounted instance',
+    async (answer, granted) => {
+      requestAuthorization.mockImplementation(async () => {
+        nativeStatus = answer;
+
+        return granted;
+      });
+
+      const first = await renderHook(() => useNotificationPermission());
+      const second = await renderHook(() => useNotificationPermission());
+
+      expect(second.result.current.status).toBe('notDetermined');
+
+      await act(async () => {
+        await first.result.current.request();
+      });
+
+      expect(second.result.current.status).toBe(answer);
+    },
+  );
+
   it('keeps the last status and never rejects when the native read fails', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
