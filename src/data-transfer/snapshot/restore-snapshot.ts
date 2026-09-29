@@ -1,6 +1,7 @@
 // src/data-transfer/snapshot/restore-snapshot.ts
 import {
   accounts,
+  type AccountRow,
   bondRegister,
   type CategoryRow,
   categories,
@@ -19,10 +20,10 @@ import {
   write,
   chunkForTable,
 } from '@kiko/db';
-import type { Currency } from '@kiko/currency/currency';
 import { entityColorsDark } from '@kiko/design-system/palette';
+import { isFiat, type Currency } from '@kiko/currency/currency';
 import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
-import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
+import { planImportTimeRezone } from '@kiko/statement-import/rezone-import-times';
 
 import type { DataSnapshot } from './data-snapshot';
 
@@ -254,6 +255,65 @@ const withLegacyDedupKeysUpgraded = (
   };
 };
 
+/**
+ * Migration 0043's flag and its launch-time rewrite (`rezoneImportTimes`)
+ * only run on LIVE data — a `.kiko` restore REPLACES the whole
+ * `transactions`/`holdings`/`settings` tables, so a pre-0043 export's legacy
+ * (wall-clock-as-UTC) import times need the identical rewrite applied HERE,
+ * the same way `withLegacyDedupKeysUpgraded` mirrors migration 0041. Applied
+ * AFTER that upgrade, to the FINAL transaction set it produces.
+ *
+ * Unlike `withLegacyDedupKeysUpgraded`'s presence-only check, this ALSO
+ * rewrites an explicit `false` (a device that hadn't rezoned yet): a
+ * restore replaces the whole database, so there is no live device left to
+ * run its own next-launch retry the way a build with `importTimesRezoned:
+ * false` still has one — the restored database must be final at once. An
+ * absent settings row (an empty `settings: []` snapshot) is left alone
+ * entirely, same as `withLegacyDedupKeysUpgraded`.
+ */
+const withImportTimesRezoned = (
+  snapshotSettings: SettingsRow[],
+  snapshotTransactions: TransactionRow[],
+  snapshotHoldings: HoldingRow[],
+): { settings: SettingsRow[]; transactions: TransactionRow[]; holdings: HoldingRow[] } => {
+  const [settingsRow] = snapshotSettings;
+
+  if (settingsRow === undefined || settingsRow.importTimesRezoned === true) {
+    return {
+      settings: snapshotSettings,
+      transactions: snapshotTransactions,
+      holdings: snapshotHoldings,
+    };
+  }
+
+  const plan = planImportTimeRezone(
+    snapshotTransactions.filter((row) => row.source === 'import'),
+    snapshotHoldings.filter((holding) => holding.balanceSetAt !== null),
+  );
+  const rezonedTransactionById = new Map(plan.transactions.map((row) => [row.id, row]));
+  const rezonedBalanceSetAtById = new Map(
+    plan.holdings.map((holding) => [holding.id, holding.balanceSetAt]),
+  );
+
+  return {
+    settings: [{ ...settingsRow, importTimesRezoned: true }],
+    transactions: snapshotTransactions.map((row) => {
+      const rezoned = rezonedTransactionById.get(row.id);
+
+      return rezoned === undefined
+        ? row
+        : { ...row, time: rezoned.time, externalId: rezoned.externalId };
+    }),
+    holdings: snapshotHoldings.map((holding) => {
+      const rezonedBalanceSetAt = rezonedBalanceSetAtById.get(holding.id);
+
+      return rezonedBalanceSetAt === undefined
+        ? holding
+        : { ...holding, balanceSetAt: rezonedBalanceSetAt };
+    }),
+  };
+};
+
 /** The rate-row fields `withRatesNormalizedToUah` reads/rewrites; every other
  * field on `T` (e.g. `fetchedAt` on `currencyRates`, `day` on
  * `currencyRateHistory`) rides along verbatim from whichever row supplied it. */
@@ -371,21 +431,110 @@ const withRatesNormalizedToUah = <T extends NormalizableRateRow>(
   return normalized;
 };
 
-// A cash holding is fiat-only (see `isCurrencyAllowedForHoldingType`). A file
-// carrying one in a crypto currency is refused whole, before any table is
-// touched, rather than restored into a state no create path allows. The
-// `data-transfer/crypto-cash-holding` prefix is what `import-data.screen.tsx`
-// maps to its own error copy.
-const rejectCryptoCashHolding = (snapshotHoldings: DataSnapshot['holdings']): void => {
-  const rejected = snapshotHoldings.find(
-    (holding) => !isCurrencyAllowedForHoldingType(holding.type, holding.currency),
+/** The reuse target: the first unsynced (`institution === null`),
+ * non-archived crypto account, sorted `(sortOrder, createdAt, id)` — the
+ * SAME rule migration 0044's `crypto_cash_reuse` TEMP table applies. String
+ * comparison on `id` matches SQLite's own BINARY collation for ASCII ids. */
+const cryptoCashReuseTarget = (snapshotAccounts: AccountRow[]): AccountRow | undefined =>
+  snapshotAccounts
+    .filter(
+      (account) =>
+        account.kind === 'crypto' && account.institution === null && account.archivedAt === null,
+    )
+    .sort((left, right) => {
+      if (left.sortOrder !== right.sortOrder) {
+        return left.sortOrder - right.sortOrder;
+      }
+
+      if (left.createdAt !== right.createdAt) {
+        return left.createdAt - right.createdAt;
+      }
+
+      if (left.id === right.id) {
+        return 0;
+      }
+
+      return left.id < right.id ? -1 : 1;
+    })[0];
+
+/**
+ * Mirrors migration 0044 (`drizzle/migrations/0044_move_crypto_cash_holdings.sql`
+ * — that file's doc comment is the full statement of the matching rule,
+ * including the archived-source carve-out) for a `.kiko` restore: a `cash`
+ * holding in a crypto currency (`!isFiat`, the same set the SQL's frozen
+ * `IN ('BTC', 'ETH', 'USDT')` pins for a 1.0 build —
+ * `0044-move-crypto-cash-holdings.test.ts` proves the two lists agree)
+ * moves onto a crypto account, using the SAME deterministic
+ * `crypto-from-<source id>` id so the two paths agree on the same account
+ * for the same source. `affected` is empty for an already-migrated export
+ * (or a second restore of the same file) — every matching holding is
+ * already `crypto_asset` — so a snapshot with nothing affected returns the
+ * SAME array references, a true no-op. Runs FIRST, before either table is
+ * inserted.
+ */
+export const withCryptoCashHoldingsMoved = (
+  snapshotAccounts: AccountRow[],
+  snapshotHoldings: HoldingRow[],
+): { accounts: AccountRow[]; holdings: HoldingRow[] } => {
+  const affected = snapshotHoldings.filter(
+    (holding) => holding.type === 'cash' && !isFiat(holding.currency),
   );
 
-  if (rejected !== undefined) {
-    throw new Error(
-      `data-transfer/crypto-cash-holding: a cash holding cannot hold ${rejected.currency}`,
-    );
+  if (affected.length === 0) {
+    return { accounts: snapshotAccounts, holdings: snapshotHoldings };
   }
+
+  const reuseTarget = cryptoCashReuseTarget(snapshotAccounts);
+  const accountsById = new Map(snapshotAccounts.map((account) => [account.id, account]));
+  const newAccountBySourceId = new Map<string, AccountRow>();
+
+  // An archived source's holding never joins a live reuse target — it would
+  // resurface under an account the user cannot see it moved out of. Only a
+  // NON-archived source with no reuse target needs its own new account.
+  for (const holding of affected) {
+    const source = accountsById.get(holding.accountId);
+
+    if (source === undefined || newAccountBySourceId.has(source.id)) {
+      continue;
+    }
+
+    if (reuseTarget !== undefined && source.archivedAt === null) {
+      continue;
+    }
+
+    newAccountBySourceId.set(source.id, {
+      id: `crypto-from-${source.id}`,
+      name: source.name,
+      kind: 'crypto',
+      institution: null,
+      bankId: null,
+      icon: null,
+      color: null,
+      sortOrder: source.sortOrder,
+      archivedAt: source.archivedAt,
+      createdAt: source.createdAt,
+    });
+  }
+
+  const targetAccountIdFor = (sourceAccountId: string): string => {
+    const source = accountsById.get(sourceAccountId);
+
+    if (reuseTarget !== undefined && source?.archivedAt === null) {
+      return reuseTarget.id;
+    }
+
+    return newAccountBySourceId.get(sourceAccountId)?.id ?? `crypto-from-${sourceAccountId}`;
+  };
+  const affectedIds = new Set(affected.map((holding) => holding.id));
+
+  return {
+    accounts: [...snapshotAccounts, ...newAccountBySourceId.values()],
+    holdings: snapshotHoldings.map((holding) =>
+      affectedIds.has(holding.id)
+        ? { ...holding, accountId: targetAccountIdFor(holding.accountId), type: 'crypto_asset' }
+        : holding,
+    ),
+  };
 };
 
 /**
@@ -414,15 +563,27 @@ const rejectCryptoCashHolding = (snapshotHoldings: DataSnapshot['holdings']): vo
  * legacy import must still restore cleanly, with an EMPTY `price_points`
  * table, rather than throw on the missing key.
  *
- * `snapshot.holdings` is passed through `withLegacyBalanceSetAtBackfilled`
- * (above) before insert, for the same reason: a build-25-shaped `.kiko` file
- * carries no `balanceSetAt` key on its holdings at all, and without this the
- * restored holding would come back with a NULL boundary the live database
- * never actually had, undoing migration 0036's own backfill for that user.
+ * `snapshot.holdings` is passed through `withCryptoCashHoldingsMoved` and
+ * then `withLegacyBalanceSetAtBackfilled` (both above) before insert — the
+ * latter for the same reason: a build-25-shaped `.kiko` file carries no
+ * `balanceSetAt` key on its holdings at all, and without this the restored
+ * holding would come back with a NULL boundary the live database never
+ * actually had, undoing migration 0036's own backfill for that user.
+ *
+ * Resolves with the count of accounts actually INSERTED — not
+ * `snapshot.accounts.length` — because `withCryptoCashHoldingsMoved` can add
+ * one beyond what the snapshot itself carried; the caller (`import-data.ts`)
+ * surfaces this count to the user, and a file that restores 3 accounts but
+ * leaves 4 on the Accounts screen would look like data loss, not a bonus.
  */
-export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
+export const restoreDataSnapshot = (
+  snapshot: DataSnapshot,
+): Promise<{ accountsRestored: number }> =>
   write(async (databaseTransaction) => {
-    rejectCryptoCashHolding(snapshot.holdings);
+    // Runs first, before either table is inserted — see
+    // `withCryptoCashHoldingsMoved`'s own doc comment.
+    const { accounts: accountsAfterCryptoCashMove, holdings: holdingsAfterCryptoCashMove } =
+      withCryptoCashHoldingsMoved(snapshot.accounts, snapshot.holdings);
 
     const deleteAllTables = async (): Promise<void> => {
       await databaseTransaction.delete(transactions);
@@ -443,24 +604,40 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
     // into the exact stray shape migration 0040 cleans), then the stray
     // cleanup — computed ONCE, ahead of both insert groups below, since it
     // decides what BOTH `holdings` and `transactions` actually insert.
+    // Fed the crypto-cash-move's OWN holdings, not the snapshot's original
+    // ones, so a moved holding's `crypto_asset` type/account rides through
+    // every later step below.
     const boundaries = balanceSetAtBoundariesByHoldingId(snapshot.transactions);
-    const holdingsAfterLegacyBackfill = snapshot.holdings.map((holding) =>
+    const holdingsAfterLegacyBackfill = holdingsAfterCryptoCashMove.map((holding) =>
       withLegacyBalanceSetAtBackfilled(holding, boundaries),
     );
-    const { holdings: holdingsToInsert, transactions: transactionsAfterStrayCleanup } =
+    const { holdings: holdingsAfterStrayCleanup, transactions: transactionsAfterStrayCleanup } =
       withStrayDepositBondBalanceCleaned(holdingsAfterLegacyBackfill, snapshot.transactions);
 
     // Independent of the two backfills above (a different table, a different
-    // migration) — applied last, to the FINAL transaction set the stray
-    // cleanup produced, since that's what actually gets inserted.
-    const { settings: settingsToInsert, transactions: transactionsToInsert } =
+    // migration) — applied to the FINAL transaction set the stray cleanup
+    // produced, since that's what actually gets inserted.
+    const { settings: dedupUpgradedSettings, transactions: dedupUpgradedTransactions } =
       withLegacyDedupKeysUpgraded(snapshot.settings, transactionsAfterStrayCleanup);
+
+    // Applied last, to the FINAL settings/transactions/holdings sets every
+    // step above produced — see its own doc comment for why it runs after
+    // the dedup-key upgrade.
+    const {
+      settings: settingsToInsert,
+      transactions: transactionsToInsert,
+      holdings: holdingsToInsert,
+    } = withImportTimesRezoned(
+      dedupUpgradedSettings,
+      dedupUpgradedTransactions,
+      holdingsAfterStrayCleanup,
+    );
 
     // Split into four sequential groups (rather than one 10-loop function) to
     // stay under the cognitive-complexity ceiling; overall parent-before-child
     // insert order is unchanged because the groups themselves run in order.
     const insertAccountsHoldingsCategories = async (): Promise<void> => {
-      for (const part of chunkForTable(accounts, snapshot.accounts)) {
+      for (const part of chunkForTable(accounts, accountsAfterCryptoCashMove)) {
         await databaseTransaction.insert(accounts).values(part);
       }
 
@@ -542,4 +719,6 @@ export const restoreDataSnapshot = (snapshot: DataSnapshot): Promise<void> =>
     await insertRatesAndSettings();
     await insertBondRegister();
     await insertReminders();
+
+    return { accountsRestored: accountsAfterCryptoCashMove.length };
   });

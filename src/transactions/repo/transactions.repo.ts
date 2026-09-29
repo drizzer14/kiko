@@ -1201,24 +1201,13 @@ export const transactionsRepo = {
    * current balance, moving every PAST value the net-worth series
    * reconstructs for this holding by the same untracked amount.
    *
-   * The eligibility comparison (`asOfSeconds * 1000 >= boundary`) is itself
-   * imprecise: `parseDateTimeSeconds` (`parse-date-time.ts`) reads a bank
-   * export's wall-clock timestamp with `Date.UTC(...)` directly, with no
-   * timezone offset applied — Ukraine is UTC+2/UTC+3, so every `asOfSeconds`
-   * (and every imported row's own `time`) is actually 2-3 hours LATER than
-   * the transaction's true UTC instant (the wall-clock digits get read as if
-   * they were already UTC, so a Kyiv-local instant is stamped 2-3 hours
-   * ahead of its real UTC value). Comparisons between two statement-derived
-   * times stay self-consistent (both carry the same skew), but a comparison
-   * against a genuinely-UTC boundary (e.g. a manual entry or edit
-   * timestamped with the real `Date.now()`) can land on the wrong side of
-   * this gate when the two times are within that 2-3 hour window: a balance
-   * hand-set at 12:00 Kyiv time, followed by a same-day PrivatBank or
-   * Sensebank import, sees its own 10:00-12:00 Kyiv rows parsed as at/after
-   * the boundary and counted as CURRENT — double-counting an amount the
-   * hand-set balance already reflects. Monobank is safe from this: its
-   * closing balance overwrites the balance outright instead of adding a net
-   * delta on top of an already-correct hand-set figure.
+   * Imported times are real instants (a named format's own Kyiv reading,
+   * `parse-date-time.ts`; column mapping's own device reading), so the
+   * eligibility comparison (`asOfSeconds * 1000 >= boundary`) against a
+   * genuinely-UTC boundary (a manual entry or edit timestamped with the real
+   * `Date.now()`) is exact. A legacy stored row, and an import-set
+   * `balanceSetAt`, are moved onto the same real-instant convention once by
+   * `rezoneImportTimes` (`statement-import/rezone-import-times/`).
    *
    * `insertDedupRowsDatabaseTransaction`'s `(source, external_id)` dedup key includes
    * `source` — a row from ANOTHER source (a `manual` entry, a `monobank`

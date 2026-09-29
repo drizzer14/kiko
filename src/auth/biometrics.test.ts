@@ -40,22 +40,30 @@ describe('isSensorAvailable', () => {
     expect(await isSensorAvailable()).toEqual({ kind: 'passcodeNotSet' });
   });
 
-  it('maps a secured device with no enrolled biometry to passcodeOnly', async () => {
+  it('maps a secured device with no enrolled biometry to passcodeOnly/notEnrolled', async () => {
     mockSensor.mockResolvedValue({
       available: false,
       isDeviceSecure: true,
       errorCode: 'BIOMETRY_NOT_ENROLLED',
     });
 
-    expect(await isSensorAvailable()).toEqual({ kind: 'passcodeOnly' });
+    expect(await isSensorAvailable()).toEqual({ kind: 'passcodeOnly', reason: 'notEnrolled' });
   });
 
-  it('maps missing biometric hardware to unavailable', async () => {
-    mockSensor.mockResolvedValue({
-      available: false,
-      isDeviceSecure: true,
-      errorCode: 'BIOMETRY_NOT_AVAILABLE',
-    });
+  it.each(['BIOMETRY_NOT_AVAILABLE', 'BIOMETRY_LOCKOUT'])(
+    'maps %s on a secure device to passcodeOnly/biometryUnavailable, never a greyed-out switch',
+    async (errorCode) => {
+      mockSensor.mockResolvedValue({ available: false, isDeviceSecure: true, errorCode });
+
+      expect(await isSensorAvailable()).toEqual({
+        kind: 'passcodeOnly',
+        reason: 'biometryUnavailable',
+      });
+    },
+  );
+
+  it('maps an unrecognized code with no confirmed device security to unavailable', async () => {
+    mockSensor.mockResolvedValue({ available: false, errorCode: 'BIOMETRY_NOT_AVAILABLE' });
 
     expect(await isSensorAvailable()).toEqual({ kind: 'unavailable' });
   });
@@ -65,11 +73,22 @@ describe('isSensorAvailable', () => {
 
     expect(await isSensorAvailable()).toEqual({ kind: 'unavailable' });
   });
+
+  it('resolves to unavailable instead of throwing when the native module resolves a non-object value', async () => {
+    mockSensor.mockResolvedValueOnce(undefined);
+
+    expect(await isSensorAvailable()).toEqual({ kind: 'unavailable' });
+  });
 });
 
 describe('authenticate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // A `failed`-classified rejection falls through to a sensor query (see
+    // `authenticate`'s own doc comment) — give it a default so a test run in
+    // isolation (`-t`) never depends on a resolved value some earlier test in
+    // this file happened to leave on the mock.
+    mockSensor.mockResolvedValue({ available: true, biometryType: 'FaceID', isDeviceSecure: true });
   });
 
   it('always allows the device passcode as a fallback and titles the sheet with the prompt', async () => {
@@ -91,30 +110,46 @@ describe('authenticate', () => {
     expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'success' });
   });
 
-  it.each(['USER_CANCEL', 'SYSTEM_CANCEL', 'USER_FALLBACK'])(
-    'maps %s to cancelled',
-    async (errorCode) => {
-      mockAuthenticate.mockResolvedValue({ success: false, errorCode });
-
-      expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'cancelled' });
-    },
-  );
-
   it.each([
-    'BIOMETRY_LOCKOUT',
-    'BIOMETRY_LOCKOUT_PERMANENT',
-    'FACE_ID_LOCKOUT',
-    'TOUCH_ID_LOCKOUT',
-  ])('maps %s to lockout', async (errorCode) => {
-    mockAuthenticate.mockResolvedValue({ success: false, errorCode });
+    ['USER_CANCEL', 'cancelled'],
+    ['SYSTEM_CANCEL', 'cancelled'],
+    ['USER_FALLBACK', 'cancelled'],
+    ['BIOMETRY_LOCKOUT', 'lockout'],
+    ['FACE_ID_LOCKOUT', 'lockout'],
+    ['PASSCODE_NOT_SET', 'passcodeNotSet'],
+  ])('classifies a native rejection with code %s as %s', async (code, kind) => {
+    mockAuthenticate.mockRejectedValue(Object.assign(new Error(code), { code }));
 
-    expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'lockout' });
+    expect((await authenticate('Unlock Kiko')).kind).toBe(kind);
   });
 
-  it('maps PASSCODE_NOT_SET', async () => {
-    mockAuthenticate.mockResolvedValue({ success: false, errorCode: 'PASSCODE_NOT_SET' });
+  it('reports passcodeNotSet when the passcode was removed (BIOMETRY_NOT_AVAILABLE + insecure device)', async () => {
+    mockAuthenticate.mockRejectedValue(
+      Object.assign(new Error(), { code: 'BIOMETRY_NOT_AVAILABLE' }),
+    );
+    mockSensor.mockResolvedValue({
+      available: false,
+      isDeviceSecure: false,
+      errorCode: 'BIOMETRY_NOT_AVAILABLE',
+    });
 
     expect(await authenticate('Unlock Kiko')).toEqual({ kind: 'passcodeNotSet' });
+  });
+
+  it('keeps failed for BIOMETRY_NOT_AVAILABLE on a secure device', async () => {
+    mockAuthenticate.mockRejectedValue(
+      Object.assign(new Error(), { code: 'BIOMETRY_NOT_AVAILABLE' }),
+    );
+    mockSensor.mockResolvedValue({
+      available: false,
+      isDeviceSecure: true,
+      errorCode: 'BIOMETRY_NOT_AVAILABLE',
+    });
+
+    expect(await authenticate('Unlock Kiko')).toEqual({
+      kind: 'failed',
+      code: 'BIOMETRY_NOT_AVAILABLE',
+    });
   });
 
   it('maps any other failure to failed with its code', async () => {

@@ -253,6 +253,17 @@ const cardHolding = {
   balanceMinorUnits: 0,
 };
 
+// A holding migration 0044 (or its restore mirror) moved a cash exchange
+// leg's counterpart onto — it keeps rendering its existing leg label even
+// though it can no longer be picked as a new Exchange's source.
+const cryptoAssetHolding = {
+  id: 'h-1',
+  name: 'Cold wallet',
+  type: 'crypto_asset',
+  currency: 'BTC',
+  balanceMinorUnits: 0,
+};
+
 // A recapitalizing deposit whose earliest contribution is well in the past, so
 // the breakdown carries non-zero gross/interest/tax at Date.now().
 const depositHolding = {
@@ -717,6 +728,31 @@ describe('HoldingDetailScreen', () => {
 
     expect(getByText('Exchange to Savings')).toBeTruthy();
     expect(queryByText('Everyday card expense')).toBeNull();
+  });
+
+  it('renders an existing exchange leg label on a crypto_asset holding, unchanged by the type', async () => {
+    // A crypto_asset holding (e.g. one migration 0044 moved a cash holding
+    // onto) keeps its OWN existing exchange leg — the label rendering reads
+    // the row's own marker, never the holding's current type.
+    seed(
+      cryptoAssetHolding,
+      [
+        {
+          id: 'x3',
+          amountMinorUnits: -5000,
+          time: 1,
+          description: '',
+          exchangeCounterpartHoldingId: 'h-2',
+          source: 'manual',
+        },
+      ],
+      [],
+      [{ id: 'h-2', name: 'Savings', type: 'cash', currency: 'USD', balanceMinorUnits: 0 }],
+    );
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Exchange to Savings')).toBeTruthy();
   });
 
   it('pins the Add transaction action to the screen footer', async () => {

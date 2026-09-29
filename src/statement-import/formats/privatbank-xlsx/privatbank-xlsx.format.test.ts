@@ -199,13 +199,13 @@ describe('privatbankXlsxFormat.parse', () => {
 
     expect(second.description).toBe('Test Merchant Two');
     expect(second.amountMinorUnits).toBe(5_000);
-    expect(second.timeSeconds).toBe(1_751_455_845);
+    expect(second.timeSeconds).toBe(1_751_445_045);
   });
 
   it('parses the DD.MM.YYYY HH:MM:SS date as UTC', async () => {
     const parsed = privatbankXlsxFormat.parse(await fixtureInput());
 
-    expect(parsed.transactions[0].timeSeconds).toBe(1_751_364_900);
+    expect(parsed.transactions[0].timeSeconds).toBe(1_751_354_100);
   });
 
   it('carries no mcc on any row (PrivatBank has none)', async () => {

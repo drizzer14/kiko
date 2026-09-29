@@ -80,6 +80,9 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     // there is nothing for `upgradeLegacyDedupKey` to rewrite — `true` skips
     // that pass entirely on import, the same as a real post-upgrade device.
     dedupKeysUpgraded: true,
+    // Same reasoning: no imported row exists for `planImportTimeRezone` to
+    // rewrite either, so `true` skips that pass too.
+    importTimesRezoned: true,
     reminderOfferDismissals: null,
     notificationsDeliverableSince: null,
   },

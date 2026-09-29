@@ -183,6 +183,44 @@ and immediately if a sync starts failing with a TLS error.
   is format-validated before use (`bitcoin-address.ts:7-11`) and URL-encoded at
   the call site, so it cannot be used to inject a path.
 
+## App lock re-authentication
+
+Turning `settings.lockEnabled` OFF also gates on `confirmOwner`
+(`system.screen.tsx`, `handleToggleLock`): turning the lock ON stays
+instant and prompt-free, unchanged, but turning it OFF re-confirms the
+device owner first, so a still-unlocked app left unattended can't be
+disarmed by anyone who picks it up. A cancelled or failed prompt leaves
+the switch back on. A device with **no** device passcode proceeds with
+no prompt at all — iOS itself demands the OLD passcode before it lets
+the user remove one, so there is no owner authentication `confirmOwner`
+could run there, and refusing the toggle would just strand the user
+with no way to ever turn the lock off. This is the opposite of the data
+export's own `noPasscode` handling below: turning the lock off
+treats it like a fresh authentication, while a credential export treats
+it as a refusal — the two call sites read the SAME `confirmOwner` result
+differently, on purpose, because only one of them has an iOS-side
+passcode prompt standing in for the missing check.
+
+`confirmOwner` (`src/auth/confirm-owner/`) wraps `authenticate`
+(`src/auth/biometrics.ts`), which now classifies every iOS rejection
+correctly instead of folding it into a generic failure: a cancel/system-
+cancel/fallback tap resolves as `cancelled`, and a biometry lockout as
+`lockout` — the real native module REJECTS these, it never resolves
+`{ success: false, errorCode }`, so the classification runs on the thrown
+`code` (or the resolved shape, for defense in depth). A rejection that
+would otherwise classify as a generic `failed` is disambiguated by a
+follow-up `isSensorAvailable()` query: if the passcode was just removed,
+that query now reports it, and `authenticate` resolves `passcodeNotSet`
+instead of the generic failure. A secure device whose biometry is merely
+unusable reports one of two distinct `passcodeOnly` reasons, each with
+its own Settings hint string: `notEnrolled` (biometry was never set up)
+or `biometryUnavailable` (denied Face ID permission, a temporary
+lockout). Either way the Settings switch stays reachable through the
+passcode fallback instead of greying out — and an ON switch never greys
+out at all, regardless of sensor status, so a passcode removed while the
+app is running, or a device with no usable sensor at all, can still
+reach the toggle to turn the lock back off.
+
 ## Data export/import
 
 `src/data-transfer/` (`export-data.ts`, `import-data.ts`, `crypto/envelope.ts`,
@@ -195,11 +233,20 @@ save separately — it is never written into the file itself. Credentials
 opts in via `includeSecrets` (`secrets/read-secrets.ts`); the database
 encryption key is never exported.
 
+**Re-authentication now gates a credential export.** `export-data.screen.tsx`
+calls `confirmOwner` (`src/auth/confirm-owner/`) before `exportData` ever runs
+with `includeSecrets: true`, so a still-unlocked, still-running app can no
+longer hand out every stored credential with no further check. A cancelled or
+failed prompt shows no key card and no file; `includeSecrets: false` still
+exports with no prompt at all, unchanged. A device with **no** device
+passcode has no owner authentication to run at all, and is refused outright
+(`auth.reauth.passcodeRequired`) rather than let through unauthenticated —
+this is the one call site where "no passcode" is a REFUSAL, not a pass. See
+"App lock re-authentication" above for the other call site, where the same
+"no passcode" result means the opposite.
+
 Open items, deferred (see `FINDINGS.md`):
 
-- **SEC-2** — the credential-inclusive export has no re-authentication step;
-  anyone holding an unlocked, still-running app can export every stored
-  credential.
 - **SEC-5** — the export key is copied to the general system pasteboard, with
   no expiry and no local-only restriction.
 - **SEC-3** — on import, secrets are validated only after the database has

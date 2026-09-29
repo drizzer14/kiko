@@ -37,5 +37,9 @@ Rules:
   severity, and a one- or two-sentence proposed fix in words.
 - Be honest about coverage: state what you verified vs what you only estimated (performance
   claims you did not profile especially). Rank findings most-severe first.
-- Report your findings back in your return message. You persist nothing yourself — the
-  orchestrator hands a durable audit doc to the scribe, and hands fixes to the developer.
+- Report your findings back in your return message the moment the audit is done, then
+  end the turn — no extra checks or silent waiting after. Run any long-running scan in
+  the background and wait only for its exit code; past 30 minutes on one step, report
+  "still running: <step>, <elapsed>" instead of going quiet. You persist nothing
+  yourself — the orchestrator hands a durable audit doc to the scribe, and hands fixes
+  to the developer.

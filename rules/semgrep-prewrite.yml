@@ -1052,3 +1052,33 @@ rules:
     patterns:
       - pattern-regex: |-
           (?m)(?:^[ \t]*(?:import|export)\b[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?confirm-sheet(?:/[^'"]*)?['"]
+  # A bank wall-clock read directly through `Date.UTC(...)` or the local-time
+  # `new Date($Y, $M, ...)` constructor bypasses both zone readings this
+  # project settled on (`kyivInstantMillisecondsIfRoundTrips` for a named
+  # format, `deviceWallClockToLocalMilliseconds` for column mapping) —
+  # neither rejects a rollover, and a `Date.UTC` one silently reads the wall
+  # clock in the wrong zone entirely. `paths.include` draws nothing against a
+  # flat fixture (kiko-linter's "Semgrep facts"), so this rule's fixture pair
+  # is NESTED at rules/fixtures/kiko-no-date-utc-in-statement-import/src/statement-import/.
+  - id: kiko-no-date-utc-in-statement-import
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `Date.UTC(...)`/a local-time `new Date(year, month, ...)` constructor
+      call in statement-import bypasses the project's own zone readings. Use
+      `kyivInstantMillisecondsIfRoundTrips` (`@kiko/statement-import/parse-date-time`)
+      for a named bank format, or `deviceWallClockToLocalMilliseconds`
+      (`@kiko/dates`) for column mapping.
+    metadata:
+      fix: "Use kyivInstantMillisecondsIfRoundTrips (named formats) or deviceWallClockToLocalMilliseconds (column mapping) instead of Date.UTC/new Date(year, month, ...)."
+      skill: "kiko-statement-import › Every date-format preset"
+    paths:
+      include:
+        - "src/statement-import/**"
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+    patterns:
+      - pattern-either:
+          - pattern: Date.UTC(...)
+          - pattern: new Date($Y, $M, ...)
