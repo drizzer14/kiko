@@ -184,10 +184,18 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           />
         </Card>
 
+        <Card testID="settings-card-reminders" padding={3}>
+          <SettingsRow
+            testID="settings-row-reminders"
+            icon="bell"
+            label={t('reminders.rowLabel')}
+            onPress={() => navigation.navigate('Reminders')}
+          />
+        </Card>
+
         {/* Import and Export share one card as a single "data transfer" group,
-            positioned directly BELOW System — it previously sat LAST, after
-            Categories. Import first (the more common entry point — bringing
-            existing data in) then Export.
+            near the top, below System and Reminders. Import first (the more
+            common entry point — bringing existing data in) then Export.
             Each row now carries its own explicit vertical padding
             (`dataTransferRowStyle`, matching the Card's own padding=3 the
             OTHER single-row cards get for free) with the Card's own padding

@@ -1,4 +1,3 @@
-import type { RefObject } from 'react';
 import {
   asBondMeta,
   type BondKind,
@@ -14,11 +13,11 @@ import { parseAmount } from '@kiko/currency/parse';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
-import { useCallback, useMemo, useRef, useState } from 'react';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { type BondTerms, currentCouponPct } from '@kiko/bonds/nbu-register';
+import { type RefObject, useCallback, useMemo, useRef, useState } from 'react';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
 import { useBondIsinMode, type IsinReasonKey } from '../use-bond-isin-mode';

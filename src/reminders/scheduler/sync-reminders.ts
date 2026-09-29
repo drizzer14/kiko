@@ -4,10 +4,10 @@ import {
   remindersNative,
 } from '@kiko/reminders/native';
 import {
+  isPausedNoticeResponse,
   isSnoozePending,
   type PlannedRequest,
   planAllReminders,
-  pausedNoticeIdentifier,
   type ReminderPlanInput,
 } from '@kiko/reminders/planner';
 import { match } from 'ts-pattern';
@@ -74,8 +74,7 @@ const isSnoozeStale = (row: PlanInputRow, now: number): boolean =>
 // The paused notice only says the reminder has stopped; a tap on it is not a
 // sign the reminder helps, so it neither resumes the reminder nor restarts the
 // ignored count. Only resuming in the app does.
-const isEngagement = (response: NotificationResponse): boolean =>
-  response.requestIdentifier !== pausedNoticeIdentifier(response.reminderId);
+const isEngagement = (response: NotificationResponse): boolean => !isPausedNoticeResponse(response);
 
 // iOS shows nothing while notifications are off, so no reminder was ignored
 // then: the count starts at the first sync that sees them allowed, and never
@@ -105,24 +104,35 @@ const toNativeRequest = (request: PlannedRequest, t: TFunction): NativeReminderR
 });
 
 /**
- * Replaces the pending notifications with a fresh plan and returns the
- * responses drained from the native queue. With no reminders it runs one
- * `LIMIT 1` read and no plan-input query, since it runs on every app open.
+ * Empties the native response queue, stores its engagements, and returns the
+ * responses. It is the one reader of that queue; run it before
+ * `syncReminders`, whose ignored count reads the engagements.
  */
-export const syncReminders = async (
-  t: TFunction,
-  now: number = Date.now(),
-): Promise<NotificationResponse[]> => {
+export const drainReminderResponses = async (): Promise<NotificationResponse[]> => {
   const responses = await remindersNative.drainResponses();
 
-  // The drain has already emptied the native queue, so the engagements are
-  // stored before any later step can fail.
   await remindersRepo.recordEngagements(responses.filter(isEngagement));
+
+  return responses;
+};
+
+/**
+ * Replaces the pending notifications with a fresh plan. With no reminders it
+ * runs one `LIMIT 1` read and no plan-input query, since it runs on every app
+ * open.
+ */
+export const syncReminders = async (t: TFunction, now: number = Date.now()): Promise<void> => {
+  // Registered on every sync, before any request is added, so the "Tomorrow"
+  // title and the hidden-preview body follow a language change too.
+  remindersNative.registerCategories(
+    t('reminders.notification.snoozeAction'),
+    t('reminders.notification.hiddenPreviewsPlaceholder'),
+  );
 
   if ((await remindersRepo.hasAnyQuery()).length === 0) {
     await remindersNative.replaceRequests([], []);
 
-    return responses;
+    return;
   }
 
   const deliverableSince = await syncDeliverableSince(now);
@@ -140,6 +150,4 @@ export const syncReminders = async (
     plan.requests.map((request) => toNativeRequest(request, t)),
     schedulableRows.filter((row) => !hasDataSinceSnooze(row)).map((row) => row.id),
   );
-
-  return responses;
 };

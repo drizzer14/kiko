@@ -1,4 +1,3 @@
-import type { RefObject } from 'react';
 import {
   asTermDepositMeta,
   type CompoundingFrequency,
@@ -11,9 +10,9 @@ import {
 } from '@kiko/screens/forms/term-reasons';
 import type { HoldingRow } from '@kiko/db';
 import { parseAmount } from '@kiko/currency/parse';
-import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
+import { type RefObject, useCallback, useRef, useState } from 'react';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 

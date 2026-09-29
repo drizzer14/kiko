@@ -22,8 +22,8 @@ export type ReminderSchedule =
 
 const LAST_MINUTE_OF_DAY = 24 * 60 - 1;
 const LONGEST_MONTH_DAYS = 31;
-const INTERVAL_MINIMUM_DAYS = 2;
-const INTERVAL_MAXIMUM_DAYS = 365;
+export const INTERVAL_MINIMUM_DAYS = 2;
+export const INTERVAL_MAXIMUM_DAYS = 365;
 
 const isIntegerBetween = (value: unknown, minimum: number, maximum: number): value is number =>
   Number.isInteger(value) && (value as number) >= minimum && (value as number) <= maximum;

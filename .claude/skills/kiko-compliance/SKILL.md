@@ -54,6 +54,10 @@ with no ledger of its own (deposit, bond, property, metal, loan) values
 to non-zero through the app's own valuation. A diff that adds an account
 kind or a holding type must add it to the dataset and regenerate both
 `.kiko` files (`KIKO_REGEN_DEMO=1 npx jest
+e2e/screenshot/fixtures/generate-demo-kiko.test.ts`), or any change to
+the snapshot shape: a new table, a new `settings` column, or a changed
+column default. Regenerate in the same commit as the migration
+(`KIKO_REGEN_DEMO=1 npx jest
 e2e/screenshot/fixtures/generate-demo-kiko.test.ts`). A new visible
 feature that is not a new kind or type (a new metadata option, a new
 linked-row flow) is still a judgment question: does the dataset show it?
@@ -113,7 +117,7 @@ skill or the harness makes for you.
 ## Permissions — a new native capability needs a usage-description string
 
 Ask: does this diff call a native API that prompts for a permission
-(camera, biometrics, file access, notifications)? `ios/Kiko/Info.plist`
+(camera, biometrics, file access)? `ios/Kiko/Info.plist`
 needs a matching `NS*UsageDescription` key with a real, non-empty
 string (see the existing `NSFaceIDUsageDescription` entry for the
 shape). `npm run check:plist` (`scripts/checks/plist.sh`) fails on an
@@ -122,6 +126,12 @@ is MISSING entirely — a missing key crashes the app at the permission
 request instead (SIGABRT for Face ID, verified) rather than failing
 this check, so confirm the key exists at all, not only that
 `check:plist` is green.
+
+Local notifications (`UNUserNotificationCenter` authorization) need NO
+Info.plist key. Ask for them only after a HIG pre-alert
+(`NotificationPreAlertSheet`) at a moment the user chose. Never request
+Time Sensitive or critical alerts: `KikoRemindersCenter.swift` rejects
+unknown interruption levels.
 
 ## ATS — no new arbitrary-loads domain, pinning stays intact
 

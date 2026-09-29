@@ -7,17 +7,20 @@
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
-import { isCurrency } from '@kiko/currency/currency';
-import type { Currency } from '@kiko/currency/currency';
+import { type Currency, isCurrency } from '@kiko/currency/currency';
 import { CURRENCY_WORD_MAP } from '@kiko/statement-import/formats/privatbank-xlsx';
 
-import { StatementParseError, type ParsedStatement } from '../parser';
-import type { ClosingBalance, ParsedAccountHint, ParsedTransaction } from '../parser';
+import {
+  StatementParseError,
+  type ParsedStatement,
+  type ClosingBalance,
+  type ParsedAccountHint,
+  type ParsedTransaction,
+} from '../parser';
 
 import { parseAmountCell } from './amount';
 import type { TableCell } from './table-rows';
-import type { DateFormatId } from './date-formats';
-import { parseDateWithFormat } from './date-formats';
+import { type DateFormatId, parseDateWithFormat } from './date-formats';
 
 // Matches the ISO 13616 IBAN shape: 2 uppercase letters (country code), 2
 // check digits, then the BBAN (11-30 alphanumerics) — the same shape a

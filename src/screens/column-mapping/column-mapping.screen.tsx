@@ -2,7 +2,6 @@ import { match } from 'ts-pattern';
 import * as RNFS from 'react-native-fs';
 import { useLiveQuery } from '@kiko/db';
 import type { TFunction } from 'i18next';
-import type { FC, RefObject } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import {
   scrollToField,
@@ -30,7 +29,6 @@ import {
 } from '@kiko/statement-import/column-mapping';
 import { bifoldr, eitherSync } from 'fnts/either';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { useEffect, useRef, useState } from 'react';
 import {
   fileNameOf,
   isXlsxFile,
@@ -49,6 +47,7 @@ import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { supportedFormatNames } from '@kiko/statement-import/registry';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { type FC, type RefObject, useEffect, useRef, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ImportResultSheet from '@kiko/design-system/components/import-result-sheet';
 import { previewStats, type PreviewStats } from '@kiko/statement-import/preview-stats';
@@ -853,7 +852,11 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     navigatedAwayRef.current = true;
 
     if (account) {
-      navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
+      navigation.popTo(
+        'AccountDetail',
+        { accountId, name: account.name, reminderOffer: 'afterImport' },
+        { merge: true },
+      );
 
       return;
     }

@@ -60,6 +60,10 @@ const PROPER_NOUNS = new Set([
   'Ukrainian',
 ]);
 
+// A capital letter that stands for a number the user picks ("Every N days"),
+// written the way a count placeholder is conventionally written.
+const NUMBER_PLACEHOLDER_LETTERS = new Set(['N']);
+
 const EXEMPT_KEY_PREFIXES = ['currencyNames.', 'language.'];
 const EXEMPT_KEYS = new Set(['settings.footer.copyrightHolder']);
 
@@ -146,7 +150,9 @@ const sentenceCaseViolations = (value: string): string[] => {
     const isCapitalized = /^[A-Z]/.test(word);
     const isAcronymLike = /^[A-Z0-9]{2,}/.test(word);
 
-    if (isCapitalized && !isSentenceStart && !isAcronymLike && !PROPER_NOUNS.has(word)) {
+    const isKeptAsWritten = PROPER_NOUNS.has(word) || NUMBER_PLACEHOLDER_LETTERS.has(word);
+
+    if (isCapitalized && !isSentenceStart && !isAcronymLike && !isKeptAsWritten) {
       violations.push(word);
     }
 

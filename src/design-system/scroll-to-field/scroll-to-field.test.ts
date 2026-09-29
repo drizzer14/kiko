@@ -1,7 +1,6 @@
-import { Keyboard } from 'react-native';
 import { createElement, type ReactNode } from 'react';
-import type { ScrollViewInstance } from 'react-native';
 import { renderHook } from '@testing-library/react-native';
+import { Keyboard, type ScrollViewInstance } from 'react-native';
 import { HeaderHeightContext } from '@react-navigation/elements';
 
 import {

@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
+import { type ReactElement, useState } from 'react';
 import Text from '@kiko/design-system/components/text';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import FieldTrigger from '@kiko/design-system/components/field-trigger';

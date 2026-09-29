@@ -7,8 +7,7 @@
 // resolution, and NaN-guarded amount parsing are identical).
 import Papa from 'papaparse';
 import { parseAmount } from '@kiko/currency/parse';
-import { isCurrency } from '@kiko/currency/currency';
-import type { Currency } from '@kiko/currency/currency';
+import { type Currency, isCurrency } from '@kiko/currency/currency';
 import { StatementParseError } from '@kiko/statement-import/parser';
 
 // Splits `text` into `;`-delimited rows — `papaparse` de-quotes a

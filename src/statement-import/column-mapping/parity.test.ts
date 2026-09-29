@@ -55,8 +55,7 @@ import { importParsedStatement } from '../import-statement';
 import type { ParsedTransaction, StatementFormatInput } from '../parser';
 
 import { readTableRows } from './table-rows';
-import { applyColumnMapping } from './apply-column-mapping';
-import type { ColumnMapping } from './apply-column-mapping';
+import { applyColumnMapping, type ColumnMapping } from './apply-column-mapping';
 
 /** A row as `importRows`'s upsert sees it — same minimal shape
  * `import-statement.test.ts` uses for its own fake transaction handle, plus

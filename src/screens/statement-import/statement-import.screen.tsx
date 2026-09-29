@@ -1,4 +1,3 @@
-import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import type {
   ParsedStatement,
@@ -24,7 +23,6 @@ import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { bifoldr, eitherSync } from 'fnts/either';
-import { useRef, useEffect, useState } from 'react';
 import {
   fileNameOf,
   isXlsxFile,
@@ -36,6 +34,7 @@ import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import Screen from '@kiko/design-system/components/screen';
+import { useRef, useEffect, useState, type FC } from 'react';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { previewStats } from '@kiko/statement-import/preview-stats';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
@@ -436,7 +435,11 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     const account = accountRows.at(0);
 
     if (account) {
-      navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
+      navigation.popTo(
+        'AccountDetail',
+        { accountId, name: account.name, reminderOffer: 'afterImport' },
+        { merge: true },
+      );
 
       return;
     }

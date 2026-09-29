@@ -559,6 +559,7 @@ export const en = {
     // The unit a numeric field shows after its value (`TextField`'s
     // `suffix`), never inside its label.
     units: {
+      days: 'days',
       grams: 'g',
       months: 'mo',
       percent: '%',
@@ -1078,6 +1079,66 @@ export const en = {
       'Old .xls files are not supported. Save the file as .xlsx or CSV and try again.',
   },
   reminders: {
+    rowLabel: 'Reminders',
+    title: 'Reminders',
+    kind: {
+      statementImport: 'Statement import',
+      addTransactions: 'Add transactions',
+    },
+    kindHint: {
+      statementImport: 'Reminds you to import a new statement for this account.',
+      addTransactions: 'Reminds you to add new transactions to this account.',
+    },
+    emptyNoKinds: 'Reminders appear here after you import a statement for this account.',
+    emptyList: 'No reminders yet',
+    emptyHint: 'Set up a reminder from an account’s page.',
+    off: 'Off',
+    on: 'On',
+    turnOff: 'Turn off',
+    turnOn: 'Turn on',
+    pausedAfterNoResponse: 'Paused after 3 reminders with no response.',
+    accountArchived: 'Not sent while the account is archived.',
+    unavailable: {
+      statementImport: 'Available after you import a statement for this account.',
+      addTransactions: 'Available only for accounts you track by hand.',
+    },
+    enabledLabel: 'Reminder on',
+    form: {
+      createTitle: 'New Reminder',
+      editTitle: 'Edit Reminder',
+      frequency: 'Repeat',
+      frequencyDaily: 'Daily',
+      frequencyWeekly: 'Weekly',
+      frequencyMonthly: 'Monthly',
+      frequencyInterval: 'Every N days',
+      time: 'Time',
+      timeSheetTitle: 'Time',
+      timePlaceholder: 'Select a time',
+      weekdays: 'Days',
+      weekdaysError: 'No days selected.',
+      dayOfMonth: 'Day of month',
+      dayOfMonthSheetTitle: 'Day of Month',
+      dayOfMonthPlaceholder: 'Select a day',
+      dayOfMonthHint: 'In shorter months, the reminder comes on the last day.',
+      intervalDays: 'Repeat every',
+      intervalDaysError: 'Enter a number of days from 2 to 365.',
+    },
+    permission: {
+      preAlertTitle: 'Reminder Notifications',
+      preAlertMessage:
+        'Kiko shows your reminders as notifications at the times you choose. Next, iOS asks whether to allow them.',
+      continue: 'Continue',
+      deniedMessage: 'Notifications are off for Kiko, so reminders can’t appear.',
+      openSettings: 'Open iOS settings',
+      notDeterminedMessage: 'Turn on notifications so your reminders can appear.',
+      turnOn: 'Turn on notifications',
+    },
+    offer: {
+      statementImportMessage: 'Want a reminder to import your next statement?',
+      addTransactionsMessage: 'Want a reminder to add transactions to this account?',
+      setUp: 'Set up reminder',
+      dismiss: 'Not now',
+    },
     // A notification can show on the lock screen, so its text never holds an
     // account name, an identifier or an amount, and its title never names the
     // app. English selects _one/_other; the _few/_many forms exist only to
@@ -1097,6 +1158,21 @@ export const en = {
       addTransactionsBodyNoData: 'No transactions added yet.',
       pausedTitle: 'Reminders paused',
       pausedBody: 'Turn them on again in Kiko.',
+      hiddenPreviewsPlaceholder: 'Reminder',
+      snoozeAction: 'Tomorrow',
+    },
+    // English says "at" at every hour; the pair exists for Ukrainian's о/об
+    // (see uk.ts).
+    schedule: {
+      at: 'at',
+      atEleven: 'at',
+      daily: 'Every day at {{time}}',
+      weekly: '{{days}} at {{time}}',
+      monthly: 'Day {{day}} of every month at {{time}}',
+      interval_one: 'Every {{count}} days at {{time}}',
+      interval_few: 'Every {{count}} days at {{time}}',
+      interval_many: 'Every {{count}} days at {{time}}',
+      interval_other: 'Every {{count}} days at {{time}}',
     },
   },
   // The human-readable display name per ISO currency code, shown alongside the

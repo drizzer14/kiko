@@ -1,5 +1,4 @@
-import { isValidElement } from 'react';
-import type { ReactElement } from 'react';
+import { isValidElement, type ReactElement } from 'react';
 
 // The real screens wired into this stack pull in db/client, which opens a real
 // op-sqlite connection at module load. op-sqlite has no Jest binary, so stub it
@@ -79,6 +78,14 @@ describe('AccountsStack', () => {
 
   it('gives the share-change form a static "Edit Share Change" title', () => {
     expect(titleByScreen().OwnershipChangeForm).toBe('Edit Share Change');
+  });
+
+  it('gives the account reminders page a static "Reminders" title', () => {
+    expect(titleByScreen().AccountReminders).toBe('Reminders');
+  });
+
+  it('gives the reminder form the create title, which an edit replaces', () => {
+    expect(titleByScreen().ReminderForm).toBe('New Reminder');
   });
 
   it('leaves the detail screens without a static title (they set it dynamically)', () => {

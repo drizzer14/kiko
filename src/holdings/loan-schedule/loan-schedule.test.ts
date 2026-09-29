@@ -8,8 +8,8 @@ import {
   loanInstallments,
   loanOutstandingMinorAt,
   loanInterestPerPaymentMinor,
+  type LoanInstallment,
 } from './loan-schedule';
-import type { LoanInstallment } from './loan-schedule';
 
 const HOLDING_ID = 'loan-1';
 

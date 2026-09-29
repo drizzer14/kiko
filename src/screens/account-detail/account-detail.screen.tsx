@@ -1,5 +1,6 @@
-import type { FC } from 'react';
-import { useLayoutEffect } from 'react';
+import either from 'fnts/either';
+import { match } from 'ts-pattern';
+import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import Sortable from 'react-native-sortables';
@@ -13,6 +14,7 @@ import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import { useAnimatedRef } from 'react-native-reanimated';
+import { useReminderOffer } from '@kiko/reminders/offer';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import { isSyncedHolding } from '@kiko/holdings/deletable';
 import Button from '@kiko/design-system/components/button';
@@ -20,6 +22,8 @@ import Screen from '@kiko/design-system/components/screen';
 import { sumByCurrency } from '@kiko/rates/currency-totals';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
+import type { ReminderKind } from '@kiko/reminders/schedule';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
@@ -34,6 +38,8 @@ import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import EditHeaderButton from '@kiko/design-system/components/edit-header-button';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
+import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
@@ -59,10 +65,16 @@ const accountIdentity = (
     color: resolveEntityColor(found.color, defaultAccountColor[found.kind]),
   }));
 
+const offerMessage = (kind: ReminderKind, t: TFunction): string =>
+  match(kind)
+    .with('statement_import', () => t('reminders.offer.statementImportMessage'))
+    .with('add_transactions', () => t('reminders.offer.addTransactionsMessage'))
+    .exhaustive();
+
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
-  const { accountId, name: initialName } = route.params;
+  const { accountId, name: initialName, reminderOffer, intent } = route.params;
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
@@ -112,6 +124,35 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     priceBookLoading,
   );
   const account = accounts.at(0);
+  // At most one offer per visit: once one is decided, clearing the import
+  // param would otherwise fall back to the manual-entry offer at once.
+  const [offerDecided, setOfferDecided] = useState(false);
+  // After the page's own reads, so they queue first on op-sqlite's one worker;
+  // above the loading gate, so a cached offer is there on the first ready frame.
+  const offer = useReminderOffer({
+    accountId,
+    account,
+    settings: settingsRows.at(0),
+    trigger: offerDecided ? undefined : (reminderOffer ?? 'manualActivity'),
+  });
+  const acceptOffer = (kind: ReminderKind): void => {
+    setOfferDecided(true);
+    navigation.navigate('ReminderForm', { accountId, kind });
+    navigation.setParams({ reminderOffer: undefined });
+  };
+  // A failed write keeps the offer on screen, so the user can try again.
+  const dismissOffer = async (dismiss: () => Promise<void>): Promise<void> => {
+    try {
+      await dismiss();
+    } catch {
+      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+
+      return;
+    }
+
+    setOfferDecided(true);
+    navigation.setParams({ reminderOffer: undefined });
+  };
 
   // The nav title shows the account NAME only — the native large title, the
   // standard iOS pattern (the identity icon now sits beside the Balance amount
@@ -130,10 +171,23 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     navigation.setOptions({
       title: accountName,
       headerRight: () => (
-        <EditHeaderButton onPress={() => navigation.navigate('AccountForm', { accountId })} />
+        <Box direction="row">
+          <Button
+            variant="ghost"
+            size="compact"
+            fullWidth={false}
+            icon="bell"
+            accessibilityLabel={t('reminders.rowLabel')}
+            testID="reminders-header-button"
+            onPress={() =>
+              navigation.navigate('AccountReminders', { accountId, name: accountName })
+            }
+          />
+          <EditHeaderButton onPress={() => navigation.navigate('AccountForm', { accountId })} />
+        </Box>
       ),
     });
-  }, [navigation, accountName, accountId]);
+  }, [navigation, accountName, accountId, t]);
 
   const activeHoldings = holdings.filter((holding) => holding.closedAt == null);
 
@@ -186,7 +240,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // XLSX lands later and must not need this list revisited). A
   // cancelled picker rejects with `OPERATION_CANCELED` — caught and
   // swallowed here, not surfaced as an error.
-  const pickAndOpenStatement = async (): Promise<void> => {
+  const bankId = account?.bankId;
+  const pickAndOpenStatement = useCallback(async (): Promise<void> => {
     let results: Awaited<ReturnType<typeof pick>>;
 
     try {
@@ -225,9 +280,24 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     navigation.navigate('StatementImport', {
       filePath: copied.status === 'success' ? copied.localUri : picked.uri,
       accountId,
-      expectedFormatId: statementFormatIdForBank(account?.bankId),
+      expectedFormatId: statementFormatIdForBank(bankId),
     });
-  };
+  }, [navigation, accountId, bankId]);
+
+  // A tap on an import reminder opens the picker once the page can show the
+  // import; the cleared param keeps a later render from opening it again.
+  useEffect(() => {
+    if (intent !== 'importStatement' || !isReady) {
+      return;
+    }
+
+    navigation.setParams({ intent: undefined });
+
+    if (isBankAccount) {
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures a failed copy, which then leaves the page as it was, the same as after the Import statement button
+      either(pickAndOpenStatement);
+    }
+  }, [intent, isReady, isBankAccount, navigation, pickAndOpenStatement]);
 
   if (!isReady) {
     // The SAME Screen mode/props as the ready branch below (`scroll` +
@@ -269,6 +339,17 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       }
     >
       <Box gap={4} testID="account-detail-content">
+        {offer && (
+          <ReminderOfferCard
+            testID="reminder-offer"
+            message={offerMessage(offer.kind, t)}
+            acceptLabel={t('reminders.offer.setUp')}
+            dismissLabel={t('reminders.offer.dismiss')}
+            onAccept={() => acceptOffer(offer.kind)}
+            onDismiss={() => dismissOffer(offer.dismiss)}
+          />
+        )}
+
         <Box gap={1} style={styles.balanceBlock}>
           <EntityAmountHeader
             label={t('accountDetail.balanceLabel')}

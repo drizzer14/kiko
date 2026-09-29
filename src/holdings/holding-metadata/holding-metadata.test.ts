@@ -13,14 +13,12 @@ import {
   hasStoredBondPurchasePrice,
   syncedAtOf,
   walletAddressOf,
-} from './holding-metadata';
-import type {
-  BondMeta,
-  CompoundingFrequency,
-  LoanMeta,
-  MetalMeta,
-  PropertyMeta,
-  TermDepositMeta,
+  type BondMeta,
+  type CompoundingFrequency,
+  type LoanMeta,
+  type MetalMeta,
+  type PropertyMeta,
+  type TermDepositMeta,
 } from './holding-metadata';
 
 describe('asTermDepositMeta', () => {
