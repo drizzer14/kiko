@@ -30,7 +30,7 @@
 ## Migration index (read before CS-B)
 
 - Runner (`src/db/run-migrations.ts`): `COUNT(*)` of `__drizzle_migrations` = applied entries; applies `journal.entries.slice(count)` in journal ORDER; resolves each entry's SQL by `m${idx.padStart(4,'0')}` in `drizzle/migrations/migrations.js`. So journal POSITION decides what runs, `idx` decides which SQL. Indexes are a namespace shared by every branch.
-- Round A owns 0043 and 0044; as of next 49097442 neither is on next. This plan uses **NNNN = next free index at BATCH READY time (expected 0045)**.
+- As built: 0043 and 0044 (Round A) are on next, and `0045_add_reminders` follows 0044 on next (next 61644398). The next free migration index is **0046**.
 - HARD GATE: CS-B merges into next, and any build containing CS-B is deployed to a device, ONLY after next's journal tail already contains 0043 and 0044, with NNNN directly after that tail. If the tail is different at that time, renumber.
 - Files that change on renumber: `drizzle/migrations/NNNN_add_reminders.sql` (file name), `drizzle/migrations/meta/NNNN_snapshot.json` (file name; `prevId` = the id of the newest snapshot on next), `drizzle/migrations/meta/_journal.json` (entry `idx` and `tag`, placed last), `drizzle/migrations/migrations.js` (import line + `mNNNN` key), `src/db/schema.reminders.test.ts` (the tag string). The scribe then updates kiko-architecture's "Next free migration index" line. If Round A added a snapshot, delete these four artifacts, merge next, and re-run `npx drizzle-kit generate --name add_reminders` rather than hand-edit `prevId`.
 
