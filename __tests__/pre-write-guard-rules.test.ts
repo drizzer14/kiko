@@ -60,6 +60,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-math-min-max-spread',
   'kiko-no-root-calendars-value-import',
   'kiko-no-raw-error-in-console',
+  'kiko-no-clipboard-set-string',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (

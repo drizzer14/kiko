@@ -1241,3 +1241,29 @@ rules:
       - metavariable-regex:
           metavariable: $ARG
           regex: ^(?!['"`{])
+  # kiko-compliance's "5.1.5 / data storage": the copied value is a secret
+  # (the export key), and a direct write leaves it on the general pasteboard
+  # with no expiry. The receiver is a metavariable so a renamed default import
+  # still fires. Reads (`getString`) stay allowed: `ClipboardTextField` pastes.
+  # `copy-sensitive-text.ts` is the one sanctioned write. Tests are excluded
+  # because they only drive the Jest mock. ERROR from the start: the sweep
+  # removed every finding in the same commit.
+  - id: kiko-no-clipboard-set-string
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A direct pasteboard write puts the value on the general pasteboard with
+      no expiry, and Universal Clipboard can sync it to other devices. Copy
+      through `copySensitiveText` (`@kiko/clipboard`), the one pasteboard
+      write in the app.
+    metadata:
+      fix: "Call copySensitiveText(value) from @kiko/clipboard instead of Clipboard.setString/setStrings."
+      skill: "kiko-compliance › 5.1.5 / data storage — secrets never in `.env`, logs, or the DB"
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/clipboard/copy-sensitive-text.ts"
+    pattern-either:
+      - pattern: $C.setString(...)
+      - pattern: $C.setStrings(...)

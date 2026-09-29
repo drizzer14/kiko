@@ -3,10 +3,10 @@ import { confirmOwner } from '@kiko/auth';
 import { Alert, Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { exportData } from '@kiko/data-transfer';
+import { copySensitiveText } from '@kiko/clipboard';
 import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
-import Clipboard from '@react-native-clipboard/clipboard';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import Switch from '@kiko/design-system/components/switch';
@@ -109,7 +109,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
 
   const handleCopyKey = (): void => {
     if (keyBase64 !== undefined) {
-      Clipboard.setString(keyBase64);
+      copySensitiveText(keyBase64);
       setCopied(true);
       clearTimeout(copiedTimeoutRef.current);
       copiedTimeoutRef.current = setTimeout(() => {

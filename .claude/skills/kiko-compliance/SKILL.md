@@ -126,6 +126,29 @@ object literal. Known limit: an object literal that nests the error
 (`{ error }`) or a template that interpolates it passes the rule; review
 catches those.
 
+The pasteboard is a leak path too: a value copied there has no expiry, and
+Universal Clipboard can sync it to the user's other devices. So a secret
+(the export key) reaches the pasteboard only through
+`copySensitiveText(value)` from `@kiko/clipboard`, the one pasteboard write
+in the app. Never call `Clipboard.setString`/`setStrings` directly. Reads
+(`Clipboard.getString()`, `ClipboardTextField`'s paste) stay allowed.
+
+```ts
+// wrong
+Clipboard.setString(keyBase64);
+
+// correct
+import { copySensitiveText } from '@kiko/clipboard';
+
+copySensitiveText(keyBase64);
+```
+
+Mechanized: `kiko-no-clipboard-set-string` (`rules/semgrep-prewrite.yml`,
+ERROR), on any receiver. Known limit: the export key goes to the general
+pasteboard; Universal Clipboard can sync it; a local-only expiring copy
+needs a native module. A write through a destructured method or
+`useClipboard()`'s setter passes the rule; review catches those.
+
 ## Encryption export compliance
 
 `ios/Kiko/Info.plist`'s `ITSAppUsesNonExemptEncryption` is `false` —
@@ -230,6 +253,9 @@ confirm the relevant check ran and stayed green:
 - `kiko-no-raw-error-in-console` (Semgrep, pre-write guard and
   `check:security`) — a non-literal `console.*` argument (see "5.1.5 /
   data storage" for its known limit).
+- `kiko-no-clipboard-set-string` (Semgrep, pre-write guard and
+  `check:security`) — a pasteboard write outside `copySensitiveText` (see
+  "5.1.5 / data storage" for its known limit).
 
 Everything else on this page is reviewer judgment: completeness,
 metadata accuracy, privacy-label freshness, an encryption-declaration

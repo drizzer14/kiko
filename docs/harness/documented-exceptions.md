@@ -570,6 +570,15 @@ verified usage, not dead weight:
   spy). Tests are excluded because a test's console output never ships in
   the app. The flat fixture pair proves the rule in `check:rules`.
 
+- **`kiko-no-clipboard-set-string` (`rules/semgrep-prewrite.yml`) excludes
+  `src/clipboard/copy-sensitive-text.ts`, `*.test.ts`, and `*.test.tsx`.**
+  `copy-sensitive-text.ts` is the one sanctioned pasteboard write: its
+  `Clipboard.setString(value)` is the call the rule bans everywhere else, so
+  a later local-only, expiring copy changes only that body.
+  `copy-sensitive-text.test.ts` pins that it writes the value once. Tests are
+  excluded because they only drive the Jest clipboard mock and never ship.
+  The flat fixture pair proves the rule in `check:rules`.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`
