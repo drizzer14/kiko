@@ -266,6 +266,51 @@ It:
 `fireOn`) — get this list wrong and the query either never refreshes
 or refreshes on unrelated writes.
 
+### `paused` vs `enabled`: a hidden-but-mounted tab defers reads, it does not disable them
+
+Both options stop `useLiveQuery` from doing work, but for different
+callers and with a different resulting contract — never substitute
+one for the other:
+
+- **`enabled: false`** (`LiveQueryOptions`'s sibling argument, not part
+  of `LiveQueryOptions` itself) is for data the screen structurally
+  does not need right now (a gate like `needsPriceBook`/loan-only
+  reads — see "App-open and refresh work is gated on data presence"
+  below). It skips the read AND the subscription entirely: `data`
+  reads `[]`, `isLoading` reads `false`. Flipping it back to `true`
+  re-subscribes and re-reads from scratch.
+- **`paused: true`** (`LiveQueryOptions.paused`) is for a screen that
+  is mounted but not visible right now — a background tab under a
+  native tab bar, which stays mounted the whole time the app is open.
+  The subscription STAYS (a write elsewhere still fires the reactive
+  callback); only the READ that fire would start is deferred, and
+  marks the query dirty instead. `data` keeps its last rows (never
+  `[]`), `isLoading` stays `false`, and `isFresh` turns `false` for a
+  dirty query (so a `backfillRanForSpanRef`-style effect guard —
+  "Local state on a cached display screen follows the row" above —
+  keeps working across a pause exactly the way it already does across
+  an ordinary cached mount). Flipping back to `false` runs exactly ONE
+  read if the query went dirty while paused, zero if it did not; the
+  MOUNT read always runs regardless of `paused`, since a screen can be
+  mounted unfocused (a deep link, a restore) and still needs its first
+  real data. Toggling `paused` never re-subscribes.
+  `statistics.screen.tsx` passes `paused: !isFocused` (`useIsFocused`
+  from `@react-navigation/native`) to every one of its own
+  `useLiveQuery`/`usePriceBook` calls, because with NEITHER option a
+  background tab's own writes (a sync importing rows while the user
+  stays on Home) still call `setData` — a state update the tab's own
+  React tree applies even while hidden, recomputing every `useMemo`
+  chained off that data on the JS thread the visible tab needs. An
+  earlier attempt passed `isFocused` as `enabled` instead, wrapped
+  in `react-freeze`'s `freezeOnBlur` to hide the resulting blank-frame
+  reset: `enabled: false` itself returns `[]` (a blank chart) and
+  drops the subscription, so returning to the tab re-reads and
+  recomputes everything from scratch even when nothing changed, and
+  `freezeOnBlur`'s own `Suspense` boundary adds a second blank-frame
+  risk on the unhide, which is why it was reverted. `paused` avoids
+  both: no state change while hidden means no re-render to freeze in
+  the first place.
+
 ### op-sqlite's ONE worker thread — every query, whole-app, one queue
 
 op-sqlite runs every query for the WHOLE APP on a single worker thread
