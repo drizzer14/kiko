@@ -19,6 +19,20 @@ const transition = async (state: AppStateStatus): Promise<void> => {
   });
 };
 
+// The next native read stays pending until the test settles it.
+const heldRead = (): { settle: (status: NotificationAuthorization) => void } => {
+  let settle: (status: NotificationAuthorization) => void = () => undefined;
+
+  authorizationStatus.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+  );
+
+  return { settle: (status) => settle(status) };
+};
+
 beforeEach(() => {
   appStateListeners.length = 0;
   nativeStatus = 'notDetermined';
@@ -142,6 +156,46 @@ describe('useNotificationPermission', () => {
     expect(warn).toHaveBeenCalledTimes(1);
 
     warn.mockRestore();
+  });
+
+  it('drops a read that started before an answer and settled after it', async () => {
+    const { result } = await renderHook(() => useNotificationPermission());
+    const staleRead = heldRead();
+
+    requestAuthorization.mockImplementation(async () => {
+      nativeStatus = 'authorized';
+
+      return true;
+    });
+
+    await transition('active');
+    await act(async () => {
+      await result.current.request();
+    });
+    await act(async () => {
+      staleRead.settle('notDetermined');
+    });
+
+    expect(result.current.status).toBe('authorized');
+  });
+
+  it('forgets the status once no instance is mounted, so a remount never shows a stale one', async () => {
+    nativeStatus = 'denied';
+
+    const { unmount } = await renderHook(() => useNotificationPermission());
+
+    await unmount();
+
+    const remountRead = heldRead();
+    const { result } = await renderHook(() => useNotificationPermission());
+
+    expect(result.current.status).toBeUndefined();
+
+    await act(async () => {
+      remountRead.settle('authorized');
+    });
+
+    expect(result.current.status).toBe('authorized');
   });
 
   it('stops listening once unmounted', async () => {

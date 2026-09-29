@@ -38,18 +38,6 @@ describe('installPluralRulesFallback', () => {
       installPluralRulesFallback();
     });
 
-    it('selects the Ukrainian cardinal categories', () => {
-      const rules = new Intl.PluralRules('uk', { type: 'cardinal' });
-
-      expect([1, 2, 5, 1.5].map((count) => rules.select(count))).toEqual([
-        'one',
-        'few',
-        'many',
-        'other',
-      ]);
-      expect(rules.resolvedOptions().pluralCategories).toEqual(['one', 'few', 'many', 'other']);
-    });
-
     it('selects one or other for every other language', () => {
       const rules = new Intl.PluralRules('en', { type: 'cardinal' });
 

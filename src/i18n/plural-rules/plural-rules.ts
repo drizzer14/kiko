@@ -29,20 +29,22 @@ const defaultCategory = (count: number): PluralCategory => (count === 1 ? 'one' 
 
 /** The part of `Intl.PluralRules` that i18next calls. */
 class FallbackPluralRules {
-  private readonly isUkrainianCardinal: boolean;
+  readonly #isUkrainianCardinal: boolean;
 
   constructor(locale?: string, options?: Intl.PluralRulesOptions) {
-    this.isUkrainianCardinal = locale?.split('-')[0] === 'uk' && options?.type !== 'ordinal';
+    this.#isUkrainianCardinal = locale?.split('-')[0] === 'uk' && options?.type !== 'ordinal';
   }
 
   select(count: number): PluralCategory {
-    return this.isUkrainianCardinal ? ukrainianCardinalCategory(count) : defaultCategory(count);
+    return this.#isUkrainianCardinal ? ukrainianCardinalCategory(count) : defaultCategory(count);
   }
 
   // A fresh array per call: i18next sorts it in place.
   resolvedOptions(): { pluralCategories: PluralCategory[] } {
     return {
-      pluralCategories: [...(this.isUkrainianCardinal ? UKRAINIAN_CATEGORIES : DEFAULT_CATEGORIES)],
+      pluralCategories: [
+        ...(this.#isUkrainianCardinal ? UKRAINIAN_CATEGORIES : DEFAULT_CATEGORIES),
+      ],
     };
   }
 }

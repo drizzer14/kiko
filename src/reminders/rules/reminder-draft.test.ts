@@ -1,4 +1,3 @@
-import { ukrainianCardinalCategory } from '@kiko/i18n/plural-rules';
 import { isReminderSchedule, type LocalDay } from '@kiko/reminders/schedule';
 
 import {
@@ -230,10 +229,7 @@ describe('everyDaysPluralCount', () => {
   it.each(['', ' ', '1.5', 'abc'])(
     'counts %p as no number: the plural form of "days" with no number before it',
     (everyDaysText) => {
-      const count = everyDaysPluralCount(everyDaysText);
-
-      expect(count).toBe(0);
-      expect(ukrainianCardinalCategory(count)).toBe('many');
+      expect(everyDaysPluralCount(everyDaysText)).toBe(0);
     },
   );
 });

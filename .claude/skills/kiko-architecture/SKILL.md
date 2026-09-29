@@ -1816,7 +1816,13 @@ what a change must keep.
   change. Never hold it in per-component `useState` (the notice then
   stayed until tapped). It reads the status on mount and on every
   AppState `active` (for a change made in iOS Settings), and exposes no
-  public refresh. `useNotificationPreAlert(onAnswered?)`
+  public refresh. A generation counter, bumped on every publish, drops a
+  read that started before a newer answer (the system prompt itself
+  fires AppState `active`, so its read races `request()`). When the last
+  instance unmounts the store resets to `undefined`: nothing watched
+  iOS Settings meanwhile, so a remount never shows a stale status (this
+  also isolates tests, with no test-only reset export).
+  `useNotificationPreAlert(onAnswered?)`
   is the one ask flow: pre-alert sheet, then `request()` after the
   sheet has closed, then `replanReminders()`, then `onAnswered`. iOS is
   asked only (a) on a form save while `status === 'notDetermined'` or
