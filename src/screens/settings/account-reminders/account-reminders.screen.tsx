@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { remindersRepo } from '@kiko/reminders/repo';
 import Box from '@kiko/design-system/components/box';
 import { useDataReady, useLiveQuery } from '@kiko/db';
-import Text from '@kiko/design-system/components/text';
 import Screen from '@kiko/design-system/components/screen';
 import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import ReminderRow from '@kiko/screens/settings/reminder-row';
@@ -42,13 +41,7 @@ const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, naviga
     true,
     { cached: true },
   );
-  const { data: imports, isLoading: importLoading } = useLiveQuery(
-    remindersRepo.hasImportQuery(accountId),
-    ['transactions', 'holdings'],
-    true,
-    { cached: true },
-  );
-  const isReady = useDataReady(accountLoading, remindersLoading, importLoading);
+  const isReady = useDataReady(accountLoading, remindersLoading);
   const { notice, sheet } = usePermissionNotice(reminders.length > 0);
 
   if (!isReady) {
@@ -60,8 +53,7 @@ const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, naviga
   }
 
   const account = accounts.at(0);
-  const eligibleKinds =
-    foldMap(maybe(account), (found) => eligibleReminderKinds(found, imports.length > 0)) ?? [];
+  const eligibleKinds = foldMap(maybe(account), eligibleReminderKinds) ?? [];
   const reminderOf = (kind: ReminderKind) => reminders.find((saved) => saved.kind === kind);
   const kinds = reminderKinds.filter(
     (kind) => eligibleKinds.includes(kind) || reminderOf(kind) !== undefined,
@@ -74,12 +66,6 @@ const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, naviga
           {foldMap(maybe(notice), (shown) => (
             <NoticeBanner {...shown} testID="account-reminders-notice" />
           ))}
-
-          {kinds.length === 0 && (
-            <Text variant="caption" tone="textSecondary">
-              {t('reminders.emptyNoKinds')}
-            </Text>
-          )}
 
           {kinds.map((kind) => {
             const saved = reminderOf(kind);

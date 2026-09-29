@@ -1774,10 +1774,12 @@ what a change must keep.
   columns; do not copy them here.
 - **Repository.** `remindersRepo` (`src/reminders/repo/reminders.repo.ts`).
   Page reads: `listByAccountQuery`, `byIdQuery`, `hasImportQuery`
-  (`LIMIT 1`, any holding of the account), `listWithAccountQuery`
-  (every reminder with its account's name/institution/archivedAt and a
-  correlated `exists` import flag, in accounts-list order:
-  `sort_order`, `created_at`, `id`), and `manualEntryDaysQuery(accountId,
+  (`LIMIT 1`, any holding of the account; only the after-import offer
+  reads it), `listWithAccountQuery`
+  (every reminder with its account's name/institution/archivedAt, in
+  accounts-list order: `sort_order`, `created_at`, `id`; it reads no
+  transactions, so the list subscribes to `reminders` and `accounts`
+  only), and `manualEntryDaysQuery(accountId,
   since)` (see "Offer"). Restore: `restartIgnoredCounts` (one `UPDATE
   reminders SET active_since = now`; the pause, engagement and snooze
   columns are kept). User writes: `create`,
@@ -1789,18 +1791,24 @@ what a change must keep.
   `recordEngagements`, `markBackoffPaused`, `clearSnoozes`. Read the
   file for signatures.
 - **Rules.** `src/reminders/rules/` is pure.
-  `eligibleReminderKinds(account, hasImport)`: import reminders need a
-  statement import (synced accounts included); add-transactions
-  reminders need a non-synced account. The form draft helpers are exported
+  `eligibleReminderKinds(account)`: an import reminder is allowed on
+  every account, synced ones and ones with no import yet included (user
+  decision 2026-09-30); add-transactions reminders need a non-synced
+  account. The scheduler's `isSchedulable` uses the same function, so a
+  reminder the page shows as unavailable is never scheduled. With no
+  import yet, an import reminder plans as usual with a null day count
+  (body `reminders.notification.statementImportBodyNoData`); the first
+  import is its first `lastDataAt`. The form draft helpers are exported
   from `src/reminders/rules/reminder-draft.ts` (read it for the current
   set). `withFrequency` preselects today's weekday when switching to
   weekly and 7 when switching to every-N-days. The interval field's
   plural "days" suffix takes its count from `everyDaysPluralCount` (the
   typed text), not from the validated interval, so the unit agrees with
   what the user typed even out of range. The page
-  lists eligible kinds plus any saved kind that is no longer eligible
-  (with a per-kind `reminders.unavailable.*` caption). When there are
-  none, it shows the `reminders.emptyNoKinds` caption.
+  lists eligible kinds plus any saved kind that is no longer eligible.
+  Only an add-transactions reminder can be unavailable (on a synced
+  account); its row shows `reminders.unavailable.addTransactions`. The
+  page always lists at least the import kind, so it has no empty state.
 - **Summary.** `describeSchedule(schedule, t, firstDay)`
   (`src/reminders/schedule/describe-schedule.ts`) reads the time on the
   24-hour clock. The uk preposition comes from `{{at}}`:
@@ -1871,7 +1879,8 @@ what a change must keep.
   while the account is not archived, can have that kind
   (`eligibleReminderKinds`), has no reminder of that kind, and was not
   dismissed there (`isReminderOfferDismissed`). Each trigger read waits
-  for that decision. `afterImport` reads `hasImportQuery`.
+  for that decision. `afterImport` reads `hasImportQuery` and needs a
+  row: the import is the trigger (eligibility itself needs no import).
   `manualActivity` reads `manualEntryDaysQuery` only for an eligible
   (non-synced) account and needs at least 2 entries. The window starts
   at local midnight 30 calendar days back and is fixed once per mount.

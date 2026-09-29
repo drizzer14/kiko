@@ -43,14 +43,14 @@ type AccountGroup = {
 const groupByAccount = (rows: readonly ListedReminder[]): AccountGroup[] =>
   [
     ...rows
-      .reduce((groups, { reminder, account, hasImport }) => {
+      .reduce((groups, { reminder, account }) => {
         const group = groups.get(reminder.accountId) ?? {
           accountId: reminder.accountId,
           name: account.name,
           icon: account.icon ?? accountKindSymbol[account.kind],
           color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
           archived: account.archivedAt !== null,
-          eligibleKinds: eligibleReminderKinds(account, hasImport),
+          eligibleKinds: eligibleReminderKinds(account),
           reminders: [],
         };
 
@@ -73,7 +73,7 @@ const RemindersScreen: FC<RemindersScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { data: rows, isLoading } = useLiveQuery(
     remindersRepo.listWithAccountQuery(),
-    ['reminders', 'accounts', 'transactions', 'holdings'],
+    ['reminders', 'accounts'],
     true,
     { cached: true },
   );

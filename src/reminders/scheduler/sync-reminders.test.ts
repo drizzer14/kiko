@@ -165,7 +165,7 @@ describe('syncReminders — the app-open gate', () => {
 });
 
 describe('syncReminders — which reminders are scheduled', () => {
-  it('skips a paused reminder, an archived account, synced manual entry, and an account with no import', async () => {
+  it('skips a paused reminder, an archived account, and synced manual entry', async () => {
     seedAccount('manual');
     seedAccount('archived', { archivedAt: local(9, 1) });
     seedAccount('synced', { institution: 'monobank', importedAt: local(9, 30) });
@@ -185,13 +185,39 @@ describe('syncReminders — which reminders are scheduled', () => {
     expect(scheduledIds().sort()).toEqual(['active', 'synced-import']);
   });
 
-  it('never schedules an import reminder on an account with no import', async () => {
-    seedAccount('manual');
-    seedReminder({ id: 'import', accountId: 'manual', kind: 'statement_import' });
+  it.each([
+    ['a manual', undefined],
+    ['a synced', 'monobank'],
+  ])(
+    'schedules an import reminder on %s account with no import yet, saying so',
+    async (_label, institution) => {
+      seedAccount('account-1', { institution });
+      seedReminder({ id: 'import', accountId: 'account-1', kind: 'statement_import' });
+
+      await syncReminders(english, NOW);
+
+      expect(lastReplace().requests.map(({ identifier, body }) => [identifier, body])).toEqual([
+        ['kiko.reminder.import.202610012000', 'No statements imported yet.'],
+        ['kiko.reminder.import.202610022000', 'No statements imported yet.'],
+        ['kiko.reminder.import.202610032000', 'No statements imported yet.'],
+        ['kiko.reminder.import.paused', 'Turn them on again in Kiko.'],
+      ]);
+    },
+  );
+
+  it('skips the next occurrence after the first import and restarts the ignored count', async () => {
+    seedAccount('manual', { importedAt: local(10, 1, 11) });
+    seedReminder({
+      id: 'import',
+      accountId: 'manual',
+      kind: 'statement_import',
+      activeSince: local(9, 20, 10),
+    });
 
     await syncReminders(english, NOW);
 
-    expect(lastReplace()).toEqual({ requests: [], keptSnoozeIds: [] });
+    expect(fireStamps('import')).toEqual(['10-2 20:0', '10-3 20:0', '10-4 20:0', '10-5 20:0']);
+    expect(reminderColumn('import', 'paused_at')).toBeNull();
   });
 
   it('keeps the snoozes of exactly the scheduled reminders', async () => {
@@ -305,6 +331,17 @@ describe('drainReminderResponses', () => {
 });
 
 describe('syncReminders — responses, back-off, and snoozes', () => {
+  const seedSnoozeAndEntry = (snoozedAt: number, enteredAt: number): void => {
+    seedAccount('manual');
+    seedReminder({
+      id: 'snoozed',
+      accountId: 'manual',
+      kind: 'add_transactions',
+      lastSnoozedAt: snoozedAt,
+    });
+    seedManualTransaction('manual', enteredAt);
+  };
+
   it('keeps a reminder paused when the user taps its paused notice', async () => {
     seedAccount('manual');
     seedReminder({ id: 'ignored', accountId: 'manual', kind: 'add_transactions' });
@@ -390,14 +427,7 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
   });
 
   it('drops a snooze once new data arrives after it, so its stale text never fires', async () => {
-    seedAccount('manual');
-    seedReminder({
-      id: 'snoozed',
-      accountId: 'manual',
-      kind: 'add_transactions',
-      lastSnoozedAt: local(10, 1, 20, 1),
-    });
-    seedManualTransaction('manual', local(10, 2, 12));
+    seedSnoozeAndEntry(local(10, 1, 20, 1), local(10, 2, 12));
 
     await syncReminders(english, local(10, 2, 13));
 
@@ -406,14 +436,7 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
   });
 
   it('plans the occurrence a data-stale snooze stood in for', async () => {
-    seedAccount('manual');
-    seedReminder({
-      id: 'snoozed',
-      accountId: 'manual',
-      kind: 'add_transactions',
-      lastSnoozedAt: local(10, 3, 9),
-    });
-    seedManualTransaction('manual', local(10, 3, 12));
+    seedSnoozeAndEntry(local(10, 3, 9), local(10, 3, 12));
 
     await syncReminders(english, local(10, 3, 13));
 
@@ -421,14 +444,7 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
   });
 
   it('keeps a snooze made after the latest data', async () => {
-    seedAccount('manual');
-    seedReminder({
-      id: 'snoozed',
-      accountId: 'manual',
-      kind: 'add_transactions',
-      lastSnoozedAt: local(10, 1, 20, 1),
-    });
-    seedManualTransaction('manual', local(10, 1, 19));
+    seedSnoozeAndEntry(local(10, 1, 20, 1), local(10, 1, 19));
 
     await syncReminders(english, local(10, 1, 21));
 

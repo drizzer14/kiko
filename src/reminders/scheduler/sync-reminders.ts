@@ -15,20 +15,14 @@ import type { TFunction } from 'i18next';
 import { settingsRepo } from '@kiko/settings';
 import { remindersRepo } from '@kiko/reminders/repo';
 import { reminderContent } from '@kiko/reminders/content';
-import { isSyncedAccount } from '@kiko/holdings/deletable';
+import { eligibleReminderKinds } from '@kiko/reminders/rules';
 
 type PlanInputRow = Awaited<ReturnType<typeof remindersRepo.planInputsQuery>>[number];
 
-// Import reminders include synced accounts, whose statements the user can
-// still import; entering transactions by hand on a synced account is not
-// something to remind about.
+// The same rule as the reminder pages, so a reminder the page lists as not
+// sent is never scheduled. An import reminder with no import yet is sent too.
 const isSchedulable = (row: PlanInputRow): boolean =>
-  row.pausedAt === null &&
-  row.archivedAt === null &&
-  match(row.kind)
-    .with('statement_import', () => row.lastImportAt !== null)
-    .with('add_transactions', () => !isSyncedAccount(row))
-    .otherwise(() => false);
+  row.pausedAt === null && row.archivedAt === null && eligibleReminderKinds(row).includes(row.kind);
 
 const lastDataAtOf = (row: PlanInputRow): number | null =>
   match(row.kind)

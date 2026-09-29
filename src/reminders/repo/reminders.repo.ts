@@ -13,7 +13,6 @@ import {
   asc,
   countDistinct,
   eq,
-  exists,
   gte,
   inArray,
   isNotNull,
@@ -65,15 +64,6 @@ const lastDataByAccount = () =>
     .groupBy(holdings.accountId)
     .as('last_data');
 
-// Any holding of the account counts. The account is a value for one account's
-// page, or the reminder's own column for the correlated check across the list.
-const importsOf = (accountId: string | SQLiteColumn) =>
-  database
-    .select({ id: transactions.id })
-    .from(transactions)
-    .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
-    .where(and(eq(holdings.accountId, accountId), eq(transactions.source, 'import')));
-
 // A balance the user sets (an opening balance, a balance edit) is written as
 // a manual row with no category and neither transfer marker. A transaction
 // the user enters always has one of the three: the form asks for a category.
@@ -105,8 +95,6 @@ export const remindersRepo = {
       .from(reminders)
       .where(eq(reminders.accountId, accountId))
       .orderBy(asc(reminders.kind)),
-  // `exists`, not a join, so an account with many imports still reads each
-  // reminder once.
   listWithAccountQuery: () =>
     database
       .select({
@@ -119,15 +107,20 @@ export const remindersRepo = {
           institution: accounts.institution,
           archivedAt: accounts.archivedAt,
         },
-        hasImport: exists(importsOf(reminders.accountId)).mapWith(Boolean),
       })
       .from(reminders)
       .innerJoin(accounts, eq(accounts.id, reminders.accountId))
       .orderBy(asc(accounts.sortOrder), asc(accounts.createdAt), asc(accounts.id)),
   byIdQuery: (reminderId: string) =>
     database.select().from(reminders).where(eq(reminders.id, reminderId)).limit(1),
-  // One row is enough to know.
-  hasImportQuery: (accountId: string) => importsOf(accountId).limit(1),
+  // Any holding of the account counts; one row is enough to know.
+  hasImportQuery: (accountId: string) =>
+    database
+      .select({ id: transactions.id })
+      .from(transactions)
+      .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+      .where(and(eq(holdings.accountId, accountId), eq(transactions.source, 'import')))
+      .limit(1),
   manualEntryDaysQuery: (accountId: string, since: number) =>
     database
       .select({ entries: countDistinct(entryKey) })

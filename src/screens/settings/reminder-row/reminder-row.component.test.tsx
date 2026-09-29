@@ -7,31 +7,16 @@ import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
-import type { ReminderRow as SavedReminder } from '@kiko/db';
+import { savedReminder } from '@kiko/test-support/saved-reminder';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 
 import ReminderRow from '.';
 import type { ReminderRowProps } from './reminder-row.props';
 
-const saved = (overrides: Partial<SavedReminder> = {}): SavedReminder => ({
-  id: 'r-1',
-  accountId: 'a-1',
-  kind: 'add_transactions',
-  schedule: { frequency: 'daily', minuteOfDay: 20 * 60 },
-  pausedAt: null,
-  pauseReason: null,
-  activeSince: 0,
-  lastEngagedAt: null,
-  lastSnoozedAt: null,
-  createdAt: 0,
-  updatedAt: 0,
-  ...overrides,
-});
-
 const renderRow = async (overrides: Partial<ReminderRowProps> = {}) => {
   const props: ReminderRowProps = {
     kind: 'add_transactions',
-    reminder: saved(),
+    reminder: savedReminder(),
     available: true,
     accountArchived: false,
     onOpen: jest.fn(),
@@ -74,7 +59,7 @@ describe('ReminderRow', () => {
   });
 
   it('reads a stored schedule of an unknown shape as Off instead of failing', async () => {
-    const restored = saved({ schedule: { frequency: 'hourly' } as never });
+    const restored = savedReminder({ schedule: { frequency: 'hourly' } as never });
     const { getByText } = await renderRow({ reminder: restored });
 
     expect(getByText('Off')).toBeTruthy();
@@ -93,7 +78,9 @@ describe('ReminderRow', () => {
 
     expect(active.getByLabelText('Reminder on').props.value).toBe(true);
 
-    const paused = await renderRow({ reminder: saved({ pausedAt: 1, pauseReason: 'user' }) });
+    const paused = await renderRow({
+      reminder: savedReminder({ pausedAt: 1, pauseReason: 'user' }),
+    });
 
     expect(paused.getByLabelText('Reminder on').props.value).toBe(false);
   });
@@ -107,7 +94,7 @@ describe('ReminderRow', () => {
     expect(onPausedChange).toHaveBeenLastCalledWith(true);
 
     const paused = await renderRow({
-      reminder: saved({ pausedAt: 1, pauseReason: 'backoff' }),
+      reminder: savedReminder({ pausedAt: 1, pauseReason: 'backoff' }),
       onPausedChange,
     });
 
@@ -132,7 +119,7 @@ describe('ReminderRow', () => {
 
   it('gives VoiceOver the off state and a Turn on action on a paused reminder', async () => {
     const { getByRole, props } = await renderRow({
-      reminder: saved({ pausedAt: 1, pauseReason: 'user' }),
+      reminder: savedReminder({ pausedAt: 1, pauseReason: 'user' }),
     });
     const row = getByRole('button', { name: /Add transactions/ });
 
@@ -164,7 +151,7 @@ describe('ReminderRow', () => {
 
   it('says a reminder paused itself after no response', async () => {
     const { getByText } = await renderRow({
-      reminder: saved({ pausedAt: 1, pauseReason: 'backoff' }),
+      reminder: savedReminder({ pausedAt: 1, pauseReason: 'backoff' }),
     });
 
     expect(getByText('Paused after 3 reminders with no response.')).toBeTruthy();
@@ -172,7 +159,7 @@ describe('ReminderRow', () => {
 
   it('does not blame no response for a pause the user made', async () => {
     const { queryByText } = await renderRow({
-      reminder: saved({ pausedAt: 1, pauseReason: 'user' }),
+      reminder: savedReminder({ pausedAt: 1, pauseReason: 'user' }),
     });
 
     expect(queryByText('Paused after 3 reminders with no response.')).toBeNull();
@@ -188,16 +175,6 @@ describe('ReminderRow', () => {
     const { getByText } = await renderRow({ available: false });
 
     expect(getByText('Available only for accounts you track by hand.')).toBeTruthy();
-  });
-
-  it('says an import reminder the account no longer allows needs a statement import', async () => {
-    const { getByText } = await renderRow({
-      kind: 'statement_import',
-      reminder: saved({ kind: 'statement_import' }),
-      available: false,
-    });
-
-    expect(getByText('Available after you import a statement for this account.')).toBeTruthy();
   });
 
   it('deletes a saved reminder from the touch-and-hold menu, after the confirm', async () => {

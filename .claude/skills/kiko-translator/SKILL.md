@@ -231,7 +231,7 @@ trailing punctuation is decided by its UI ROLE, not habit:
   option descriptions/subtitles, captions/hints, errors, toast/alert
   bodies, even for a one-word fragment (`isinNotInRegister`: "Not in
   the NBU register."); a full-sentence empty-page explanation shown as
-  a caption (`reminders.emptyNoKinds`). Note that the user's key review
+  a caption (`reminders.emptyHint`). Note that the user's key review
   decides it (no test checks it yet).
 
 The mechanized invariant lives in

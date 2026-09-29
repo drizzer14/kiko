@@ -74,13 +74,13 @@ export const useReminderOffer = ({
     account.archivedAt === null &&
     !reminders.some((reminder) => reminder.kind === kind) &&
     !isReminderOfferDismissed(settings, accountId, kind);
+  const eligible = undecided && eligibleReminderKinds(account).includes(kind);
   const { data: imports, isLoading: importLoading } = useLiveQuery(
     remindersRepo.hasImportQuery(accountId),
     ['transactions', 'holdings'],
-    undecided && trigger === 'afterImport',
+    undecided && trigger === 'afterImport' && eligible,
     { cached: true },
   );
-  const eligible = undecided && eligibleReminderKinds(account, imports.length > 0).includes(kind);
   const { data: manualEntries, isLoading: manualEntriesLoading } = useLiveQuery(
     remindersRepo.manualEntryDaysQuery(accountId, since),
     ['transactions', 'holdings'],
@@ -89,7 +89,7 @@ export const useReminderOffer = ({
   );
   const triggerReady = useDataReady(importLoading, manualEntriesLoading);
   const triggered = match(trigger)
-    .with('afterImport', () => true)
+    .with('afterImport', () => imports.length > 0)
     .with('manualActivity', () => (manualEntries.at(0)?.entries ?? 0) >= MANUAL_ACTIVITY_ENTRIES)
     .with(undefined, () => false)
     .exhaustive();

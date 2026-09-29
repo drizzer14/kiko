@@ -430,27 +430,7 @@ describe('remindersRepo.listWithAccountQuery', () => {
         institution: 'monobank',
         archivedAt: 5,
       },
-      hasImport: false,
     });
-  });
-
-  it('knows whether each reminder’s account has a statement import', async () => {
-    insertAccount('account-1', { sortOrder: 0 });
-    insertAccount('account-2', { sortOrder: 1 });
-    insertHolding('holding-1', 'account-1');
-    insertHolding('holding-2', 'account-2');
-    insertTransaction('import-1', 'holding-1', 'import', 1_000);
-    insertTransaction('import-2', 'holding-1', 'import', 2_000);
-    insertTransaction('manual', 'holding-2', 'manual', 1_000);
-    insertReminder('reminder-1', 'account-1', 'statement_import');
-    insertReminder('reminder-2', 'account-2', 'add_transactions');
-
-    const rows = await remindersRepo.listWithAccountQuery();
-
-    expect(rows.map(({ reminder, hasImport }) => [reminder.id, hasImport])).toEqual([
-      ['reminder-1', true],
-      ['reminder-2', false],
-    ]);
   });
 });
 

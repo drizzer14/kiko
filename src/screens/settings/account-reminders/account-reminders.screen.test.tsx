@@ -1,4 +1,3 @@
-import { Linking } from 'react-native';
 import type { ComponentProps } from 'react';
 import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
@@ -6,12 +5,17 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import type { ReminderRow } from '@kiko/db';
+import {
+  NOT_DETERMINED_NOTICE,
+  permissionNoticeCases,
+} from '@kiko/test-support/permission-notice-cases';
 import { remindersRepo } from '@kiko/reminders/repo';
 import { remindersNative } from '@kiko/reminders/native';
 import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
+import { savedReminder } from '@kiko/test-support/saved-reminder';
 import { useNotificationPermission } from '@kiko/reminders/permission';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -40,9 +44,6 @@ jest.mock('@kiko/reminders/repo/reminders.repo', () => ({
     listByAccountQuery: (accountId: string) => ({
       toSQL: () => ({ sql: 'reminders', params: [accountId] }),
     }),
-    hasImportQuery: (accountId: string) => ({
-      toSQL: () => ({ sql: 'import', params: [accountId] }),
-    }),
     setPaused: jest.fn(async () => undefined),
     remove: jest.fn(async () => undefined),
   },
@@ -56,31 +57,10 @@ type Account = { id: string; institution: string | null; archivedAt: number | nu
 const MANUAL: Account = { id: 'a-1', institution: null, archivedAt: null };
 const SYNCED: Account = { id: 'a-1', institution: 'monobank', archivedAt: null };
 
-const reminder = (overrides: Partial<ReminderRow> = {}): ReminderRow => ({
-  id: 'r-1',
-  accountId: 'a-1',
-  kind: 'add_transactions',
-  schedule: { frequency: 'daily', minuteOfDay: 20 * 60 },
-  pausedAt: null,
-  pauseReason: null,
-  activeSince: 0,
-  lastEngagedAt: null,
-  lastSnoozedAt: null,
-  createdAt: 0,
-  updatedAt: 0,
-  ...overrides,
-});
-
-const seed = (data: {
-  account?: Account;
-  reminders?: ReminderRow[];
-  hasImport?: boolean;
-  loading?: boolean;
-}): void => {
+const seed = (data: { account?: Account; reminders?: ReminderRow[]; loading?: boolean }): void => {
   const resultByTable: Record<string, unknown[]> = {
     accounts: [data.account ?? MANUAL],
     reminders: data.reminders ?? [],
-    transactions: data.hasImport ? [{ id: 't-1' }] : [],
   };
 
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
@@ -112,26 +92,8 @@ beforeEach(() => {
 });
 
 describe('AccountRemindersScreen — rows', () => {
-  it('offers only add-transactions on a manual account with no import', async () => {
-    seed({ account: MANUAL, hasImport: false });
-
-    const { getByText, queryByText } = await renderScreen();
-
-    expect(getByText('Add transactions')).toBeTruthy();
-    expect(queryByText('Statement import')).toBeNull();
-  });
-
-  it('offers only statement import on a synced account with an import', async () => {
-    seed({ account: SYNCED, hasImport: true });
-
-    const { getByText, queryByText } = await renderScreen();
-
-    expect(getByText('Statement import')).toBeTruthy();
-    expect(queryByText('Add transactions')).toBeNull();
-  });
-
-  it('lists import first on a manual account with an import', async () => {
-    seed({ account: MANUAL, hasImport: true });
+  it('lists both kinds, import first, on a manual account before any import', async () => {
+    seed({ account: MANUAL });
 
     const { getAllByText } = await renderScreen();
 
@@ -140,30 +102,27 @@ describe('AccountRemindersScreen — rows', () => {
     ).toEqual(['Statement import', 'Add transactions']);
   });
 
-  it('explains an empty page on a synced account with no import', async () => {
-    seed({ account: SYNCED, hasImport: false });
+  it('offers only statement import on a synced account, before any import', async () => {
+    seed({ account: SYNCED });
 
     const { getByText, queryByText } = await renderScreen();
 
-    expect(
-      getByText('Reminders appear here after you import a statement for this account.'),
-    ).toBeTruthy();
-    expect(queryByText('Statement import')).toBeNull();
+    expect(getByText('Statement import')).toBeTruthy();
     expect(queryByText('Add transactions')).toBeNull();
   });
 
-  it('shows no empty caption while a row is listed', async () => {
-    seed({ account: SYNCED, hasImport: false, reminders: [reminder()] });
+  it('reads no transactions to decide which kinds it offers', async () => {
+    seed({ account: SYNCED });
 
-    const { queryByText } = await renderScreen();
+    await renderScreen();
 
-    expect(
-      queryByText('Reminders appear here after you import a statement for this account.'),
-    ).toBeNull();
+    expect(mockUseLiveQuery.mock.calls.map(([, tables]) => tables)).not.toContainEqual(
+      expect.arrayContaining(['transactions']),
+    );
   });
 
   it('keeps a saved reminder the account no longer allows, and says why', async () => {
-    seed({ account: SYNCED, hasImport: false, reminders: [reminder()] });
+    seed({ account: SYNCED, reminders: [savedReminder()] });
 
     const { getByText } = await renderScreen();
 
@@ -172,7 +131,7 @@ describe('AccountRemindersScreen — rows', () => {
   });
 
   it('says saved reminders are not sent while the account is archived', async () => {
-    seed({ account: { ...MANUAL, archivedAt: 1 }, reminders: [reminder()] });
+    seed({ account: { ...MANUAL, archivedAt: 1 }, reminders: [savedReminder()] });
 
     const { getByText } = await renderScreen();
 
@@ -202,7 +161,7 @@ describe('AccountRemindersScreen — rows', () => {
   });
 
   it('opens a saved reminder by its id', async () => {
-    seed({ account: MANUAL, reminders: [reminder()] });
+    seed({ account: MANUAL, reminders: [savedReminder()] });
 
     const { getByText } = await renderScreen();
 
@@ -212,7 +171,7 @@ describe('AccountRemindersScreen — rows', () => {
   });
 
   it('pauses a reminder from its switch, then re-plans', async () => {
-    seed({ account: MANUAL, reminders: [reminder()] });
+    seed({ account: MANUAL, reminders: [savedReminder()] });
 
     const { getByLabelText } = await renderScreen();
 
@@ -223,7 +182,7 @@ describe('AccountRemindersScreen — rows', () => {
   });
 
   it('deletes a reminder from the touch-and-hold menu, then re-plans', async () => {
-    seed({ account: MANUAL, reminders: [reminder()] });
+    seed({ account: MANUAL, reminders: [savedReminder()] });
 
     const { getByTestId } = await renderScreen();
 
@@ -242,77 +201,23 @@ describe('AccountRemindersScreen — rows', () => {
 });
 
 describe('AccountRemindersScreen — notification permission', () => {
-  const deniedMessage = 'Notifications are off for Kiko, so reminders can’t appear.';
-  const notDeterminedMessage = 'Turn on notifications so your reminders can appear.';
+  permissionNoticeCases({
+    renderList: (withReminder) => {
+      seed({ account: MANUAL, reminders: withReminder ? [savedReminder()] : [] });
 
-  it('shows no notice while notifications are allowed', async () => {
-    seed({ account: MANUAL, reminders: [reminder()] });
-
-    const { queryByText } = await renderScreen();
-
-    await waitFor(() => expect(authorizationStatus).toHaveBeenCalled());
-    expect(queryByText(deniedMessage)).toBeNull();
-    expect(queryByText(notDeterminedMessage)).toBeNull();
-  });
-
-  it('opens iOS Settings from the notice when notifications are denied', async () => {
-    authorizationStatus.mockResolvedValue('denied');
-    seed({ account: MANUAL, reminders: [reminder()] });
-
-    const { findByText, getByText } = await renderScreen();
-
-    expect(await findByText(deniedMessage)).toBeTruthy();
-
-    await fireEvent.press(getByText('Open iOS settings'));
-
-    expect(Linking.openSettings).toHaveBeenCalledTimes(1);
-  });
-
-  it('shows no notice while there is no reminder to deliver', async () => {
-    authorizationStatus.mockResolvedValue('denied');
-    seed({ account: MANUAL, reminders: [] });
-
-    const { queryByText } = await renderScreen();
-
-    await waitFor(() => expect(authorizationStatus).toHaveBeenCalled());
-    expect(queryByText(deniedMessage)).toBeNull();
-  });
-
-  it('asks iOS through the pre-alert when a restored reminder has never asked', async () => {
-    authorizationStatus.mockResolvedValue('notDetermined');
-    seed({ account: MANUAL, reminders: [reminder()] });
-
-    const { findByText, getByText, getByTestId, queryByText } = await renderScreen();
-
-    expect(await findByText(notDeterminedMessage)).toBeTruthy();
-
-    await fireEvent.press(getByText('Turn on notifications'));
-
-    expect(getByText('Reminder Notifications')).toBeTruthy();
-    expect(requestAuthorization).not.toHaveBeenCalled();
-
-    const reportClosed: () => void = getByTestId('notification-pre-alert-sheet-modal').props
-      .onDismiss;
-
-    authorizationStatus.mockResolvedValue('authorized');
-    await fireEvent.press(getByText('Continue'));
-    await act(async () => {
-      reportClosed();
-    });
-
-    await waitFor(() => expect(requestAuthorization).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(mockSyncReminders).toHaveBeenCalled());
-    await waitFor(() => expect(queryByText(notDeterminedMessage)).toBeNull());
-    expect(navigation.goBack).not.toHaveBeenCalled();
+      return renderScreen();
+    },
+    syncReminders: mockSyncReminders,
+    afterPreAlert: () => expect(navigation.goBack).not.toHaveBeenCalled(),
   });
 
   it('hides the notice once the reminder form’s prompt turns notifications on', async () => {
     authorizationStatus.mockResolvedValue('notDetermined');
-    seed({ account: MANUAL, reminders: [reminder()] });
+    seed({ account: MANUAL, reminders: [savedReminder()] });
 
     const { findByText, queryByText } = await renderScreen();
 
-    expect(await findByText(notDeterminedMessage)).toBeTruthy();
+    expect(await findByText(NOT_DETERMINED_NOTICE)).toBeTruthy();
 
     const form = await renderHook(() => useNotificationPermission());
 
@@ -321,6 +226,6 @@ describe('AccountRemindersScreen — notification permission', () => {
       await form.result.current.request();
     });
 
-    expect(queryByText(notDeterminedMessage)).toBeNull();
+    expect(queryByText(NOT_DETERMINED_NOTICE)).toBeNull();
   });
 });
