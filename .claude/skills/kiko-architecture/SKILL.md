@@ -1677,7 +1677,11 @@ what a change must keep.
   and it never rejects (a failed drain, plan or route is logged). A
   failed drain plans and routes nothing, since the plan must see the
   engagements first. A failed plan still routes the drained taps, since
-  the queue no longer holds them.
+  the queue no longer holds them. The `onResponse` subscribe loads the
+  native module synchronously, so it is wrapped in `eitherSync`: on a
+  binary without the module it logs once, gets a no-op `remove`, and
+  the other triggers still re-plan
+  (`use-reminder-scheduler.lazy-load.test.ts`).
 - **Tap routing.** Every re-plan hands the responses its drain returned to
   `routeLatestResponse(responses, navigationRef)`
   (`src/reminders/routing/`), so every trigger routes. It routes the latest `open` response (by

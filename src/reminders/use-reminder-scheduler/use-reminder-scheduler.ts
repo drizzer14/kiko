@@ -1,9 +1,10 @@
+import { identity } from 'fnts';
 import { useEffect } from 'react';
 import { i18n } from '@kiko/i18n/init';
-import either, { bifold, isLeft } from 'fnts/either';
 import { AppState, type AppStateStatus } from 'react-native';
 import { routeLatestResponse } from '@kiko/reminders/routing';
 import { navigationRef } from '@kiko/navigation/navigation-ref';
+import either, { bifold, bifoldMap, eitherSync, isLeft } from 'fnts/either';
 import { drainReminderResponses, syncReminders } from '@kiko/reminders/scheduler';
 import { type NotificationResponse, remindersNative } from '@kiko/reminders/native';
 
@@ -80,6 +81,24 @@ const singleFlight = (task: () => Promise<void>): (() => void) => {
  */
 export const replanReminders = singleFlight(replan);
 
+type Subscription = { remove: () => void };
+
+const NO_SUBSCRIPTION: Subscription = { remove: () => undefined };
+
+// The subscribe loads the native module synchronously, which throws on a
+// binary built without it; the app runs on, re-planned by the other triggers.
+const subscribeToResponses = (): Subscription =>
+  bifoldMap(
+    eitherSync<unknown, Subscription>(() => remindersNative.onResponse(replanReminders)),
+    (reason) => {
+      // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) a missing tap listener has no UI surface; log it so a device log shows why a warm tap does not re-plan
+      console.warn('[reminders] notification response listener unavailable', reason);
+
+      return NO_SUBSCRIPTION;
+    },
+    identity,
+  );
+
 /**
  * Keeps the pending reminder notifications in step with the data: re-plans on
  * mount, when the app becomes active or goes to the background, when the
@@ -118,7 +137,7 @@ export const useReminderScheduler = (): void => {
   // A tap on a warm app can land after the `active` re-plan has drained the
   // queue; this re-plan drains it.
   useEffect(() => {
-    const subscription = remindersNative.onResponse(replanReminders);
+    const subscription = subscribeToResponses();
 
     return () => {
       subscription.remove();
