@@ -16,6 +16,33 @@ jest.mock('@kiko/rates/history-backfill', () => {
   return { ...actual, runBackfill: (...args: unknown[]) => mockRunBackfill(...args) };
 });
 
+// Spies on the real builder (kept working, unlike `runBackfill` above) so a
+// paused-while-hidden test can pin exactly how many times the heavy net-worth
+// recompute ran, without also having to fake its own math.
+const mockBuildNetWorthSeries = jest.fn();
+
+jest.mock('@kiko/statistics/net-worth-series', () => {
+  const actual = jest.requireActual('@kiko/statistics/net-worth-series');
+
+  return {
+    ...actual,
+    buildNetWorthSeries: (...args: unknown[]) => {
+      mockBuildNetWorthSeries(...args);
+
+      return actual.buildNetWorthSeries(...args);
+    },
+  };
+});
+
+// A standalone screen render has no real navigation focus context; default
+// focused (matches every other test in this file), overridden per test.
+const mockUseIsFocused = jest.fn(() => true);
+
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useIsFocused: () => mockUseIsFocused(),
+}));
+
 import { i18n } from '@kiko/i18n/init';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
@@ -2331,5 +2358,146 @@ describe('StatisticsScreen — the price_points gate', () => {
     setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'loan' }] });
     await renderScreen();
     expect(loanPaymentsCall()?.[2]).toBe(true);
+  });
+});
+
+// While another tab shows, Statistics keeps its subscriptions but defers
+// every read, so a write elsewhere causes no re-render, no memo recompute,
+// and no state change here — `paused`, not `enabled` (which would
+// unsubscribe and drop to `[]`, see kiko-architecture).
+describe('StatisticsScreen — paused while hidden', () => {
+  const PAUSED_TABLES = [
+    'accounts',
+    'holdings',
+    'currency_rates',
+    'settings',
+    'transactions',
+    'currency_rate_history',
+    'categories',
+  ];
+
+  const callFor = (table: string) =>
+    mockUseLiveQuery.mock.calls.find((call) => (call[1] as string[])[0] === table);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsFocused.mockReturnValue(true);
+    seedFull();
+  });
+
+  it('pauses the 7 direct live queries while unfocused, without changing their own enabled argument', async () => {
+    mockUseIsFocused.mockReturnValue(false);
+    await renderScreen();
+
+    for (const table of PAUSED_TABLES) {
+      const call = callFor(table);
+
+      expect(call?.[2]).toBe(true);
+      expect(call?.[3]).toEqual({ cached: true, paused: true });
+    }
+  });
+
+  it('unpauses the 7 direct live queries while focused', async () => {
+    await renderScreen();
+
+    for (const table of PAUSED_TABLES) {
+      expect(callFor(table)?.[3]).toEqual({ cached: true, paused: false });
+    }
+  });
+
+  it('pauses usePriceBook the same way while unfocused', async () => {
+    mockUseIsFocused.mockReturnValue(false);
+    await renderScreen();
+
+    expect(callFor('price_points')?.[3]).toEqual({ cached: true, paused: true });
+  });
+
+  it('never lets a query on this screen skip the paused flag', async () => {
+    await renderScreen();
+
+    expect(mockUseLiveQuery.mock.calls.length).toBeGreaterThan(0);
+
+    for (const call of mockUseLiveQuery.mock.calls) {
+      const options = call[3] as Record<string, unknown> | undefined;
+
+      expect(options !== undefined && 'paused' in options).toBe(true);
+    }
+  });
+
+  it('does not recompute the net-worth series on a blur/focus rerender with unchanged data', async () => {
+    const { rerender } = await renderScreen();
+    expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(1);
+
+    mockUseIsFocused.mockReturnValue(false);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    mockUseIsFocused.mockReturnValue(true);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-trigger the backfill on a blur/focus toggle alone, with unchanged data', async () => {
+    const { rerender } = await renderScreen();
+    const callsBefore = mockRunBackfill.mock.calls.length;
+
+    mockUseIsFocused.mockReturnValue(false);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    mockUseIsFocused.mockReturnValue(true);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill.mock.calls.length).toBe(callsBefore);
+  });
+
+  // The mocked `useLiveQuery` here cannot reproduce a real paused/dirty
+  // subscription, but it CAN reproduce the exact isFresh sequence a real one
+  // would report across a return: still cached (not fresh) on the very
+  // render the unpause happens, fresh only once its one deferred read has
+  // applied — so this pins that the backfill's own isFresh guards still
+  // hold on a return to a stale render, whatever caused it.
+  it('waits for the fresh re-read after a return before running the backfill on data that changed while hidden', async () => {
+    mockUseIsFocused.mockReturnValue(false);
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+      isCached: { transactions: true, currency_rate_history: true },
+    });
+
+    const { rerender } = await renderScreen();
+    expect(mockRunBackfill).not.toHaveBeenCalled();
+
+    // The return itself: focus flips back, but the deferred read has not
+    // applied yet — still not fresh, so this stale render must not start it.
+    mockUseIsFocused.mockReturnValue(true);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+    expect(mockRunBackfill).not.toHaveBeenCalled();
+
+    // The one deferred read settles: both queries are fresh now.
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: [],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalled();
   });
 });
