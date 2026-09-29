@@ -4,6 +4,7 @@ import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import { convert, type RateTable } from '@kiko/rates/conversion';
+import { FIAT_RATE_SEED_TABLE } from '@kiko/rates/fiat-rate-seed';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 import { asBondMeta, type BondMeta } from '@kiko/holdings/holding-metadata';
 import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history-repo';
@@ -102,7 +103,11 @@ const bondRecognitionsFor = (
  * - the nearest row AT OR BEFORE that day is used (`rateTableAt`, carrying
  *   weekends/holidays forward), backstopped by each pair's EARLIEST stored row
  *   (`earliestRateTable`) so buckets before a pair's first history day still
- *   value foreign holdings instead of silently dropping them;
+ *   value foreign holdings instead of silently dropping them, which is in turn
+ *   backstopped by the bundled static `FIAT_RATE_SEED_TABLE` so a fiat
+ *   currency with NO history row at all yet (the backfill only fetches the
+ *   currencies actually used) never drops a holding out of a past bucket —
+ *   precedence, weakest first: seed < earliest < at-or-before < live today;
  * - the CURRENT-day bucket(s) are valued at the live `rateTable` when supplied,
  *   so the line's rightmost "now" point matches the headline / bar / pie, which
  *   use the same live (monobank BUY) rates rather than the day's NBU official one.
@@ -208,7 +213,16 @@ export const buildNetWorthSeries = (input: {
 
   const tableAt = (t: number): RateTable => {
     const dayKey = toUtcMidnight(t);
-    const historical = { ...earliest, ...rateTableAt(historyRows, dayKey) };
+    // Precedence, weakest first: the bundled static seed (covers every fiat
+    // currency, so one with no history row yet never drops a holding out of
+    // a past bucket), then each pair's earliest stored row (backfills before
+    // its own first history day), then the day's own nearest-at-or-before
+    // row — a real historical rate always wins over the flat seed.
+    const historical = {
+      ...FIAT_RATE_SEED_TABLE,
+      ...earliest,
+      ...rateTableAt(historyRows, dayKey),
+    };
     // The current (and any future) bucket reconciles with the live app rates.
     return liveRateTable !== undefined && dayKey >= todayKey
       ? { ...historical, ...liveRateTable }

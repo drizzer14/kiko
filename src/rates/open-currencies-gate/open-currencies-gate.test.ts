@@ -5,10 +5,13 @@ jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => Promise.resolve(mockSettingsRows) },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
-  holdingsRepo: { openCurrenciesQuery: () => Promise.resolve(mockCurrencyRows) },
+  holdingsRepo: {
+    openCurrenciesQuery: () => Promise.resolve(mockCurrencyRows),
+    historyCurrenciesQuery: () => Promise.resolve(mockCurrencyRows),
+  },
 }));
 
-import { openCurrencies } from './open-currencies-gate';
+import { openCurrencies, historyCurrencies } from './open-currencies-gate';
 
 describe('openCurrencies', () => {
   beforeEach(() => {
@@ -87,6 +90,80 @@ describe('openCurrencies', () => {
       needsFiat: true,
       cryptoCurrencies: ['BTC'],
       nonBaseCurrencies: ['USD', 'BTC'],
+    });
+  });
+});
+
+describe('historyCurrencies', () => {
+  beforeEach(() => {
+    mockSettingsRows = [{ baseCurrency: 'UAH' }];
+    mockCurrencyRows = [];
+  });
+
+  it('reports nothing when every held currency (or none at all) already matches the UAH base', async () => {
+    mockCurrencyRows = [{ currency: 'UAH' }];
+
+    await expect(historyCurrencies()).resolves.toEqual({
+      fiatCurrencies: [],
+      cryptoCurrencies: [],
+    });
+  });
+
+  it('needs the foreign held currency, base UAH', async () => {
+    mockCurrencyRows = [{ currency: 'UAH' }, { currency: 'GBP' }];
+
+    await expect(historyCurrencies()).resolves.toEqual({
+      fiatCurrencies: ['GBP'],
+      cryptoCurrencies: [],
+    });
+  });
+
+  it("needs the base currency's own history to convert a foreign holding into it", async () => {
+    mockSettingsRows = [{ baseCurrency: 'GBP' }];
+    mockCurrencyRows = [{ currency: 'UAH' }];
+
+    await expect(historyCurrencies()).resolves.toEqual({
+      fiatCurrencies: ['GBP'],
+      cryptoCurrencies: [],
+    });
+  });
+
+  it('adds USD as the crypto anchor even with no other fiat held', async () => {
+    mockCurrencyRows = [{ currency: 'BTC' }];
+
+    await expect(historyCurrencies()).resolves.toEqual({
+      fiatCurrencies: ['USD'],
+      cryptoCurrencies: ['BTC'],
+    });
+  });
+
+  it('reports nothing when every held fiat currency already matches a non-UAH base', async () => {
+    mockSettingsRows = [{ baseCurrency: 'EUR' }];
+    mockCurrencyRows = [{ currency: 'EUR' }];
+
+    await expect(historyCurrencies()).resolves.toEqual({
+      fiatCurrencies: [],
+      cryptoCurrencies: [],
+    });
+  });
+
+  it('still needs the base currency when held crypto is the only currency that differs from it', async () => {
+    mockSettingsRows = [{ baseCurrency: 'EUR' }];
+    mockCurrencyRows = [{ currency: 'EUR' }, { currency: 'BTC' }];
+
+    await expect(historyCurrencies()).resolves.toEqual({
+      fiatCurrencies: ['EUR', 'USD'],
+      cryptoCurrencies: ['BTC'],
+    });
+  });
+
+  it('needs the base currency for a crypto-only holder with no fiat held at all', async () => {
+    mockSettingsRows = [{ baseCurrency: 'GBP' }];
+    mockCurrencyRows = [{ currency: 'BTC' }];
+
+    await expect(historyCurrencies()).resolves.toEqual({
+      fiatCurrencies: ['GBP', 'USD'],
+      cryptoCurrencies: ['BTC'],
     });
   });
 });

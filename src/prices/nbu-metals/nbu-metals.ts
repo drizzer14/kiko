@@ -134,8 +134,8 @@ const toHistoryPoint = (metal: Metal, row: NbuRangeMetalRow): NbuMetalHistoryPoi
 /**
  * Fetch one metal's official UAH price history over `[start, end]` from
  * NBU's public range endpoint — one request per metal, mirroring
- * `nbu-history.ts`'s USD/EUR fetch. Used for the one-time backfill from a
- * metal holding's earliest lot day (`metal-refresh.ts`).
+ * `nbu-history.ts`'s per-currency fiat fetch. Used for the one-time backfill
+ * from a metal holding's earliest lot day (`metal-refresh.ts`).
  */
 export const fetchNbuMetalHistory = async (
   metal: Metal,
