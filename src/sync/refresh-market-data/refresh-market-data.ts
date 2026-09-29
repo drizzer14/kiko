@@ -40,7 +40,7 @@ export type RefreshMarketDataDeps = {
 };
 
 /**
- * The one log call site for a failed rate or metal refresh — the narrowest
+ * The one log call site for a rejected rate or metal refresh — the narrowest
  * default: log and return a Left only, no UI and no new string; a
  * banner/toast would add translation keys and need key review. The next
  * refresh tries again.
@@ -56,8 +56,9 @@ export const warnRefreshFailure = (step: RefreshStep, reason: unknown): void => 
  * `Promise.allSettled([refreshRates(...), refreshMetalPrices()])`. Never
  * rejects — every step runs under `Promise.allSettled`, so a rejected
  * promise (or `refreshRates`'s own `'failed'`/`'partial'` outcome) is
- * collected as a `RefreshFailure`, logged through `warnRefreshFailure`, and
- * returned as a `Left`; a fully successful run (or a `'skipped'`/`'refreshed'`
+ * collected as a `RefreshFailure`, logged (a rejection through
+ * `warnRefreshFailure`, an outcome with its state and failed legs in the
+ * tag), and returned as a `Left`; a fully successful run (or a `'skipped'`/`'refreshed'`
  * rates outcome with no metals failure) returns a `Right`.
  *
  * `throttled` reads `ratesRepo.latestFetchedAt()` FIRST, before either step
@@ -78,11 +79,16 @@ export const refreshMarketData = async (
   const failures: RefreshFailure[] = [];
   let lastRefreshAt: number | null = null;
 
+  const collectFailure = (failure: RefreshFailure): void => {
+    failures.push(failure);
+    warnRefreshFailure(failure.step, failure.reason);
+  };
+
   if (options.throttled) {
     const cursor = await either<unknown, number | null>(loadLatestFetchedAt);
 
     if (isLeft(cursor)) {
-      failures.push({ step: 'rates', reason: bifold(cursor) });
+      collectFailure({ step: 'rates', reason: bifold(cursor) });
     } else {
       lastRefreshAt = bifold(cursor);
     }
@@ -94,17 +100,19 @@ export const refreshMarketData = async (
   ]);
 
   if (ratesSettled.status === 'rejected') {
-    failures.push({ step: 'rates', reason: ratesSettled.reason });
+    collectFailure({ step: 'rates', reason: ratesSettled.reason });
   } else if (ratesSettled.value.state === 'failed' || ratesSettled.value.state === 'partial') {
+    const { state, failedLegs } = ratesSettled.value;
+
     failures.push({ step: 'rates', reason: ratesSettled.value });
+    // An outcome is a plain object with no name or code, so the sink alone
+    // would log only `object`; its state and legs are closed enums with no
+    // user data, so they are safe in the tag.
+    logFailure(`[refresh-market-data] rates ${state}: ${failedLegs.join(',')}`, ratesSettled.value);
   }
 
   if (options.metals && metalsSettled.status === 'rejected') {
-    failures.push({ step: 'metals', reason: metalsSettled.reason });
-  }
-
-  for (const failure of failures) {
-    warnRefreshFailure(failure.step, failure.reason);
+    collectFailure({ step: 'metals', reason: metalsSettled.reason });
   }
 
   return failures.length > 0 ? left(failures) : right(undefined);

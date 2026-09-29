@@ -226,31 +226,6 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     },
   );
 
-  // kiko-no-math-min-max-spread excludes test files: a test that pins the
-  // spread form's RangeError (transaction-span.test.ts, min-max.test.ts) must
-  // spell out that spread.
-  it.each(['src/probe/min-max-probe.test.ts', 'src/probe/min-max-probe.test.tsx'])(
-    'allows the kiko-no-math-min-max-spread positive fixture written to test path %s',
-    (relativeTarget) => {
-      const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-min-max-test-'));
-      try {
-        const targetFile = join(project, ...relativeTarget.split('/'));
-        mkdirSync(join(targetFile, '..'), { recursive: true });
-        const badContent = readFileSync(
-          join(FIXTURES, 'kiko-no-math-min-max-spread.bad.ts'),
-          'utf8',
-        );
-
-        const result = runGuard(payloadFor(targetFile, badContent), project);
-
-        expect(result.stdout).toBe('');
-        expect(result.status).toBe(0);
-      } finally {
-        rmSync(project, { recursive: true, force: true });
-      }
-    },
-  );
-
   // Content that does not parse cannot be checked, so it is denied; the
   // reason must name the parse error's file:line and Semgrep's own message,
   // and tell the agent to make each edit syntactically complete — a

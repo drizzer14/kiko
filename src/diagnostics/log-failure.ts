@@ -1,6 +1,4 @@
-type FailureCode = string | number | undefined;
-
-const codeOf = (error: unknown): FailureCode => {
+const codeOf = (error: unknown): string | number | undefined => {
   if (typeof error !== 'object' || error === null || !Object.hasOwn(error, 'code')) {
     return undefined;
   }

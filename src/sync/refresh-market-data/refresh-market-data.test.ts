@@ -40,7 +40,7 @@ describe('refreshMarketData', () => {
     expect(isLeft(result)).toBe(true);
     expect(bifold(result)).toEqual([{ step: 'rates', reason: failed }]);
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith('[refresh-market-data] rates refresh failed', {
+    expect(warnSpy).toHaveBeenCalledWith('[refresh-market-data] rates failed: fiat', {
       name: 'object',
       code: undefined,
     });
@@ -55,7 +55,7 @@ describe('refreshMarketData', () => {
 
     expect(isLeft(result)).toBe(true);
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith('[refresh-market-data] rates refresh failed', {
+    expect(warnSpy).toHaveBeenCalledWith('[refresh-market-data] rates partial: crypto', {
       name: 'object',
       code: undefined,
     });
