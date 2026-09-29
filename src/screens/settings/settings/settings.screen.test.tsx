@@ -165,7 +165,7 @@ describe('SettingsScreen', () => {
     expect(within(categoriesCard).queryByTestId('settings-row-base-currency')).toBeNull();
   });
 
-  it('renders the System navigation card at the very top, then Import/Export directly below it', async () => {
+  it('renders the System navigation card at the very top, then Reminders, then Import/Export', async () => {
     const { getByTestId, getAllByTestId } = await renderScreen();
 
     expect(getByTestId('settings-card-system')).toBeTruthy();
@@ -174,14 +174,12 @@ describe('SettingsScreen', () => {
     // `Card` renders a single flat node per testID (no inner `-base` layer the
     // way `GlassSurface` used to), but the filter is kept defensively so this
     // assertion only ever compares top-level card order.
-    //
-    // The Import/Export group moves to sit directly BELOW System — it
-    // previously rendered LAST, after Categories.
     const cardOrder = getAllByTestId(/^settings-card-/)
       .map((node) => node.props.testID as string)
       .filter((testID) => !testID.endsWith('-base'));
     expect(cardOrder).toEqual([
       'settings-card-system',
+      'settings-card-reminders',
       'settings-card-data-transfer',
       'settings-card-base-currency',
       'settings-card-categories',
@@ -273,6 +271,21 @@ describe('SettingsScreen', () => {
     await fireEvent.press(getByTestId('settings-row-system'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('System');
+  });
+
+  it('navigates to the Reminders list from its own bell row', async () => {
+    const navigation = navigationSpy();
+    const { getByTestId, root } = await renderScreen(navigation);
+
+    const card = getByTestId('settings-card-reminders');
+
+    expect(within(card).getByText('Reminders')).toBeTruthy();
+    // The bell glyph is unique to this row, so a whole-tree lookup suffices.
+    expect(root?.queryAll((node) => node.props.name === 'bell').length).toBeGreaterThan(0);
+
+    await fireEvent.press(within(card).getByTestId('settings-row-reminders'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('Reminders');
   });
 
   it('no longer renders the Language card (it moved to the System sub-screen)', async () => {

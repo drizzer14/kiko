@@ -21,10 +21,13 @@ const ACTIVE_SINCE = new Date(2026, 8, 1, 12, 0).getTime();
 
 type StoredReminder = {
   id: string;
+  schedule: string;
+  active_since: number;
   paused_at: number | null;
   pause_reason: string | null;
   last_engaged_at: number | null;
   last_snoozed_at: number | null;
+  updated_at: number;
 };
 
 const openDatabase = (): DatabaseSync => {
@@ -38,13 +41,24 @@ const openDatabase = (): DatabaseSync => {
 
 const insertAccount = (
   id: string,
-  options: { institution?: string | null; archivedAt?: number | null } = {},
+  options: {
+    name?: string;
+    institution?: string | null;
+    archivedAt?: number | null;
+    sortOrder?: number;
+  } = {},
 ): void => {
   mockDatabase
     .prepare(
-      "INSERT INTO accounts (id, name, kind, institution, archived_at) VALUES (?, 'Account', 'bank', ?, ?)",
+      "INSERT INTO accounts (id, name, kind, institution, archived_at, sort_order) VALUES (?, ?, 'bank', ?, ?, ?)",
     )
-    .run(id, options.institution ?? null, options.archivedAt ?? null);
+    .run(
+      id,
+      options.name ?? 'Account',
+      options.institution ?? null,
+      options.archivedAt ?? null,
+      options.sortOrder ?? 0,
+    );
 };
 
 const insertHolding = (id: string, accountId: string): void => {
@@ -63,7 +77,7 @@ const insertTransaction = (
 ): void => {
   mockDatabase
     .prepare(
-      'INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id, created_at) VALUES (?, ?, -100, ?, ?, ?, ?)',
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id, category, created_at) VALUES (?, ?, -100, ?, ?, ?, 'food', ?)",
     )
     .run(id, holdingId, createdAt, source, id, createdAt);
 };
@@ -72,7 +86,9 @@ const insertReminder = (
   id: string,
   accountId: string,
   kind: string,
-  columns: Partial<Omit<StoredReminder, 'id'>> = {},
+  columns: Partial<
+    Pick<StoredReminder, 'paused_at' | 'pause_reason' | 'last_engaged_at' | 'last_snoozed_at'>
+  > = {},
 ): void => {
   mockDatabase
     .prepare(
@@ -94,9 +110,13 @@ const insertReminder = (
 const storedReminder = (id: string): StoredReminder =>
   mockDatabase
     .prepare(
-      'SELECT id, paused_at, pause_reason, last_engaged_at, last_snoozed_at FROM reminders WHERE id = ?',
+      'SELECT id, schedule, active_since, paused_at, pause_reason, last_engaged_at, last_snoozed_at, updated_at FROM reminders WHERE id = ?',
     )
     .get(id) as StoredReminder;
+
+const reminderCount = (): number =>
+  (mockDatabase.prepare('SELECT count(*) AS count FROM reminders').get() as { count: number })
+    .count;
 
 beforeEach(() => {
   mockDatabase = openDatabase();
@@ -301,6 +321,37 @@ describe('remindersRepo.markBackoffPaused', () => {
   });
 });
 
+describe('remindersRepo.restartIgnoredCounts', () => {
+  it('restarts every reminder from now in one write, and keeps its pause and engagement', async () => {
+    const now = new Date(2026, 8, 29, 9, 0).getTime();
+    const dateNow = jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    insertAccount('account-1');
+    insertAccount('account-2');
+    insertReminder('reminder-1', 'account-1', 'statement_import', {
+      paused_at: 600,
+      pause_reason: 'backoff',
+      last_engaged_at: 500,
+      last_snoozed_at: 550,
+    });
+    insertReminder('reminder-2', 'account-2', 'add_transactions');
+
+    await remindersRepo.restartIgnoredCounts();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(storedReminder('reminder-1')).toMatchObject({
+      active_since: now,
+      paused_at: 600,
+      pause_reason: 'backoff',
+      last_engaged_at: 500,
+      last_snoozed_at: 550,
+    });
+    expect(storedReminder('reminder-2').active_since).toBe(now);
+
+    dateNow.mockRestore();
+  });
+});
+
 describe('remindersRepo.clearSnoozes', () => {
   beforeEach(() => {
     insertAccount('account-1');
@@ -321,5 +372,324 @@ describe('remindersRepo.clearSnoozes', () => {
     await remindersRepo.clearSnoozes([]);
 
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe('remindersRepo.listByAccountQuery', () => {
+  it('reads the reminders of one account only, each with its parsed schedule', async () => {
+    insertAccount('account-1');
+    insertAccount('account-2');
+    insertReminder('reminder-1', 'account-1', 'statement_import', { pause_reason: 'backoff' });
+    insertReminder('reminder-2', 'account-1', 'add_transactions');
+    insertReminder('reminder-3', 'account-2', 'add_transactions');
+
+    const rows = await remindersRepo.listByAccountQuery('account-1');
+
+    expect(rows.map(({ id, kind }) => ({ id, kind }))).toEqual([
+      { id: 'reminder-2', kind: 'add_transactions' },
+      { id: 'reminder-1', kind: 'statement_import' },
+    ]);
+    expect(rows[1]).toMatchObject({
+      accountId: 'account-1',
+      schedule: { frequency: 'daily', minuteOfDay: 1200 },
+      activeSince: ACTIVE_SINCE,
+      pauseReason: 'backoff',
+    });
+  });
+});
+
+describe('remindersRepo.listWithAccountQuery', () => {
+  it('reads every reminder with its account, in the accounts list order', async () => {
+    insertAccount('account-1', { name: 'Cash', sortOrder: 2 });
+    insertAccount('account-2', {
+      name: 'Card',
+      institution: 'monobank',
+      archivedAt: 5,
+      sortOrder: 1,
+    });
+    insertAccount('account-3', { name: 'No reminders', sortOrder: 0 });
+    insertReminder('reminder-1', 'account-1', 'add_transactions');
+    insertReminder('reminder-2', 'account-2', 'statement_import', { pause_reason: 'backoff' });
+
+    const rows = await remindersRepo.listWithAccountQuery();
+
+    expect(rows.map(({ reminder }) => reminder.id)).toEqual(['reminder-2', 'reminder-1']);
+    expect(rows[0]).toEqual({
+      reminder: expect.objectContaining({
+        id: 'reminder-2',
+        accountId: 'account-2',
+        kind: 'statement_import',
+        schedule: { frequency: 'daily', minuteOfDay: 1200 },
+        pauseReason: 'backoff',
+      }),
+      account: { name: 'Card', institution: 'monobank', archivedAt: 5 },
+      hasImport: false,
+    });
+  });
+
+  it('knows whether each reminder’s account has a statement import', async () => {
+    insertAccount('account-1', { sortOrder: 0 });
+    insertAccount('account-2', { sortOrder: 1 });
+    insertHolding('holding-1', 'account-1');
+    insertHolding('holding-2', 'account-2');
+    insertTransaction('import-1', 'holding-1', 'import', 1_000);
+    insertTransaction('import-2', 'holding-1', 'import', 2_000);
+    insertTransaction('manual', 'holding-2', 'manual', 1_000);
+    insertReminder('reminder-1', 'account-1', 'statement_import');
+    insertReminder('reminder-2', 'account-2', 'add_transactions');
+
+    const rows = await remindersRepo.listWithAccountQuery();
+
+    expect(rows.map(({ reminder, hasImport }) => [reminder.id, hasImport])).toEqual([
+      ['reminder-1', true],
+      ['reminder-2', false],
+    ]);
+  });
+});
+
+describe('remindersRepo.byIdQuery', () => {
+  it('reads the one reminder, or nothing once it is gone', async () => {
+    insertAccount('account-1');
+    insertReminder('reminder-1', 'account-1', 'statement_import');
+
+    expect(await remindersRepo.byIdQuery('reminder-1')).toMatchObject([
+      { id: 'reminder-1', kind: 'statement_import' },
+    ]);
+    expect(await remindersRepo.byIdQuery('deleted')).toEqual([]);
+  });
+});
+
+describe('remindersRepo.hasImportQuery', () => {
+  beforeEach(() => {
+    insertAccount('account-1');
+    insertAccount('account-2');
+    insertHolding('holding-1', 'account-1');
+    insertHolding('holding-2', 'account-1');
+    insertHolding('holding-3', 'account-2');
+  });
+
+  it('finds an import on any holding of the account', async () => {
+    insertTransaction('import', 'holding-2', 'import', 1_000);
+
+    expect(await remindersRepo.hasImportQuery('account-1')).toHaveLength(1);
+  });
+
+  it('finds nothing from manual or synced entries, or from another account', async () => {
+    insertTransaction('manual', 'holding-1', 'manual', 1_000);
+    insertTransaction('synced', 'holding-1', 'monobank', 1_000);
+    insertTransaction('other-import', 'holding-3', 'import', 1_000);
+
+    expect(await remindersRepo.hasImportQuery('account-1')).toEqual([]);
+  });
+
+  it('reads at most one row, however many imports exist', async () => {
+    insertTransaction('import-1', 'holding-1', 'import', 1_000);
+    insertTransaction('import-2', 'holding-2', 'import', 2_000);
+
+    expect(await remindersRepo.hasImportQuery('account-1')).toHaveLength(1);
+    expect(remindersRepo.hasImportQuery('account-1').toSQL().sql).toMatch(/limit \?$/);
+  });
+});
+
+describe('remindersRepo.manualEntryDaysQuery', () => {
+  const SINCE = new Date(2026, 8, 1, 12, 0).getTime();
+
+  beforeEach(() => {
+    insertAccount('account-1');
+    insertAccount('account-2');
+    insertHolding('holding-1', 'account-1');
+    insertHolding('holding-2', 'account-1');
+    insertHolding('holding-3', 'account-2');
+  });
+
+  it('counts the manual entries on every holding of the account since the given time', async () => {
+    insertTransaction('manual-1', 'holding-1', 'manual', SINCE);
+    insertTransaction('manual-2', 'holding-2', 'manual', SINCE + 1);
+
+    expect(await remindersRepo.manualEntryDaysQuery('account-1', SINCE)).toEqual([{ entries: 2 }]);
+  });
+
+  it('leaves out entries made before the given time', async () => {
+    insertTransaction('before', 'holding-1', 'manual', SINCE - 1);
+    insertTransaction('at', 'holding-1', 'manual', SINCE);
+
+    expect(await remindersRepo.manualEntryDaysQuery('account-1', SINCE)).toEqual([{ entries: 1 }]);
+  });
+
+  it('leaves out imported and synced entries, and the entries of other accounts', async () => {
+    insertTransaction('import', 'holding-1', 'import', SINCE + 1);
+    insertTransaction('synced', 'holding-2', 'monobank', SINCE + 2);
+    insertTransaction('other-manual', 'holding-3', 'manual', SINCE + 3);
+
+    expect(await remindersRepo.manualEntryDaysQuery('account-1', SINCE)).toEqual([{ entries: 0 }]);
+  });
+});
+
+describe('remindersRepo writes', () => {
+  const NOW = new Date(2026, 8, 29, 18, 30).getTime();
+  const WEEKLY = { frequency: 'weekly', minuteOfDay: 540, weekdays: [1, 4] } as const;
+
+  let dateNow: jest.SpyInstance;
+
+  beforeEach(() => {
+    dateNow = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    insertAccount('account-1');
+  });
+
+  afterEach(() => {
+    dateNow.mockRestore();
+  });
+
+  describe('create', () => {
+    it('stores an active reminder counted from now, in one write', async () => {
+      const reminderId = await remindersRepo.create({
+        accountId: 'account-1',
+        kind: 'add_transactions',
+        schedule: WEEKLY,
+      });
+
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(storedReminder(reminderId)).toMatchObject({
+        schedule: JSON.stringify(WEEKLY),
+        active_since: NOW,
+        paused_at: null,
+        pause_reason: null,
+        last_engaged_at: null,
+        last_snoozed_at: null,
+      });
+    });
+
+    it('refuses a second reminder of the same kind on the account', async () => {
+      insertReminder('reminder-1', 'account-1', 'add_transactions');
+
+      await expect(
+        remindersRepo.create({
+          accountId: 'account-1',
+          kind: 'add_transactions',
+          schedule: WEEKLY,
+        }),
+      ).rejects.toThrow();
+      expect(reminderCount()).toBe(1);
+    });
+  });
+
+  describe('update', () => {
+    it('stores the schedule and counts the reminder from now again, in one write', async () => {
+      insertReminder('reminder-1', 'account-1', 'statement_import');
+
+      await remindersRepo.update('reminder-1', WEEKLY);
+
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(storedReminder('reminder-1')).toMatchObject({
+        schedule: JSON.stringify(WEEKLY),
+        active_since: NOW,
+        updated_at: NOW,
+      });
+    });
+
+    it('clears a back-off pause', async () => {
+      insertReminder('reminder-1', 'account-1', 'statement_import', {
+        paused_at: 700,
+        pause_reason: 'backoff',
+      });
+
+      await remindersRepo.update('reminder-1', WEEKLY);
+
+      expect(storedReminder('reminder-1')).toMatchObject({ paused_at: null, pause_reason: null });
+    });
+
+    it('keeps a pause the user made', async () => {
+      insertReminder('reminder-1', 'account-1', 'statement_import', {
+        paused_at: 700,
+        pause_reason: 'user',
+      });
+
+      await remindersRepo.update('reminder-1', WEEKLY);
+
+      expect(storedReminder('reminder-1')).toMatchObject({ paused_at: 700, pause_reason: 'user' });
+    });
+
+    it('keeps a pending snooze and the last engagement', async () => {
+      insertReminder('reminder-1', 'account-1', 'statement_import', {
+        last_engaged_at: 400,
+        last_snoozed_at: 400,
+      });
+
+      await remindersRepo.update('reminder-1', WEEKLY);
+
+      expect(storedReminder('reminder-1')).toMatchObject({
+        last_engaged_at: 400,
+        last_snoozed_at: 400,
+      });
+    });
+  });
+
+  describe('setPaused', () => {
+    it('pauses for the user now, in one write, and keeps the active-since time', async () => {
+      insertReminder('reminder-1', 'account-1', 'statement_import');
+
+      await remindersRepo.setPaused('reminder-1', true);
+
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(storedReminder('reminder-1')).toMatchObject({
+        paused_at: NOW,
+        pause_reason: 'user',
+        active_since: ACTIVE_SINCE,
+      });
+    });
+
+    it('keeps the time and reason of a pause already in place', async () => {
+      insertReminder('reminder-1', 'account-1', 'statement_import', {
+        paused_at: 700,
+        pause_reason: 'backoff',
+      });
+
+      await remindersRepo.setPaused('reminder-1', true);
+
+      expect(storedReminder('reminder-1')).toMatchObject({
+        paused_at: 700,
+        pause_reason: 'backoff',
+      });
+    });
+
+    it.each(['user', 'backoff'])(
+      'resumes a %s pause and counts the reminder from now again',
+      async (pauseReason) => {
+        insertReminder('reminder-1', 'account-1', 'statement_import', {
+          paused_at: 700,
+          pause_reason: pauseReason,
+        });
+
+        await remindersRepo.setPaused('reminder-1', false);
+
+        expect(storedReminder('reminder-1')).toMatchObject({
+          paused_at: null,
+          pause_reason: null,
+          active_since: NOW,
+          updated_at: NOW,
+        });
+      },
+    );
+
+    it('leaves a reminder that is not paused alone on resume', async () => {
+      insertReminder('reminder-1', 'account-1', 'statement_import');
+
+      await remindersRepo.setPaused('reminder-1', false);
+
+      expect(storedReminder('reminder-1').active_since).toBe(ACTIVE_SINCE);
+    });
+  });
+
+  describe('remove', () => {
+    it('deletes only that reminder, in one write', async () => {
+      insertReminder('reminder-1', 'account-1', 'statement_import');
+      insertReminder('reminder-2', 'account-1', 'add_transactions');
+
+      await remindersRepo.remove('reminder-1');
+
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(storedReminder('reminder-1')).toBeUndefined();
+      expect(reminderCount()).toBe(1);
+    });
   });
 });

@@ -1,7 +1,6 @@
-import { Keyboard } from 'react-native';
-import type { ScrollViewInstance, View } from 'react-native';
 import { HeaderHeightContext } from '@react-navigation/elements';
 import { type ComponentRef, type RefObject, useContext } from 'react';
+import { Keyboard, type ScrollViewInstance, type View } from 'react-native';
 
 // The field's own host INSTANCE (what a `View` ref actually resolves to,
 // carrying `measure`/`measureLayout`) — not the `View` component type

@@ -1,3 +1,4 @@
+import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
 
@@ -29,6 +30,13 @@ export type TransactionFormParams =
   | { duplicateOfTransactionId: string }
   | Record<string, never>;
 
+/**
+ * The reminder form edits a saved reminder by its id, or creates the one
+ * reminder of `kind` an account can have. The union keeps the two entry points
+ * mutually exclusive.
+ */
+export type ReminderFormParams = { reminderId: string } | { accountId: string; kind: ReminderKind };
+
 export type HomeStackParamList = {
   Home: undefined;
   TransactionForm: TransactionFormParams;
@@ -42,7 +50,16 @@ export type AccountsStackParamList = {
   // the screen's own live query resolves — with no async title toggle that would
   // briefly blank the back button. The screen still prefers its live-queried
   // name once loaded, so a rename made on the edit form flows back through.
-  AccountDetail: { accountId: string; name: string };
+  // `reminderOffer` is set only by a finished statement import, so the page
+  // offers an import reminder then; the page clears it once the offer is
+  // decided. `intent: 'importStatement'` is set only by a tap on an import
+  // reminder, so the page opens the file picker once, then clears it.
+  AccountDetail: {
+    accountId: string;
+    name: string;
+    reminderOffer?: 'afterImport';
+    intent?: 'importStatement';
+  };
   HoldingDetail: { holdingId: string; name: string };
   // The account/holding forms double as CREATE and EDIT screens. An entity id in
   // the params (`accountId` here, `holdingId` on HoldingForm) switches the form
@@ -97,6 +114,11 @@ export type AccountsStackParamList = {
   // detail's Share changes list. `day` is the change's `dayKeyOf` key; the
   // repo re-reads the list inside its write rather than trusting a row.
   OwnershipChangeForm: { holdingId: string; day: number };
+  // The account's own reminders page, reached from the bell in the account
+  // detail header. `name` is the account's name at navigation time, like
+  // AccountDetail's.
+  AccountReminders: { accountId: string; name: string };
+  ReminderForm: ReminderFormParams;
   // The shared statement-import preview + target-holding screen, reached
   // from the in-app document-picker entry point (`account-detail.screen.tsx`'s
   // `pickAndOpenStatement`) with a resolved local `filePath` and the owning
@@ -157,6 +179,8 @@ export type SettingsStackParamList = {
   Categories: undefined;
   ExportData: undefined;
   ImportData: undefined;
+  Reminders: undefined;
+  ReminderForm: ReminderFormParams;
 };
 
 export type StatisticsStackParamList = {

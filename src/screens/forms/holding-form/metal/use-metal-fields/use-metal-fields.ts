@@ -1,4 +1,3 @@
-import type { RefObject } from 'react';
 import {
   asMetalMeta,
   type Metal,
@@ -10,8 +9,8 @@ import { Money } from '@kiko/currency/money';
 import type { Lot } from '@kiko/holdings/lots';
 import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
-import { useCallback, useRef, useState } from 'react';
 import type { TextInputInstance } from 'react-native';
+import { type RefObject, useCallback, useRef, useState } from 'react';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { normalizeDecimal, shiftDecimal, trimDecimal } from '@kiko/currency/decimal';
 

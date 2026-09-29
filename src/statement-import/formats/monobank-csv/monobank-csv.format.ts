@@ -2,18 +2,17 @@
 // src/statement-import/NOTICE.md. No uabean source is copied; independent
 // TypeScript implementation.
 import Papa from 'papaparse';
-import type {
-  ClosingBalance,
-  ParsedStatement,
-  ParsedTransaction,
-  StatementFormat,
-  StatementFormatInput,
+import {
+  type ClosingBalance,
+  type ParsedStatement,
+  type ParsedTransaction,
+  type StatementFormat,
+  type StatementFormatInput,
+  StatementParseError,
 } from '@kiko/statement-import/parser';
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
-import { isCurrency } from '@kiko/currency/currency';
-import type { Currency } from '@kiko/currency/currency';
-import { StatementParseError } from '@kiko/statement-import/parser';
+import { type Currency, isCurrency } from '@kiko/currency/currency';
 import { parseDateTimeSeconds } from '@kiko/statement-import/parse-date-time';
 
 // `—` (U+2014 em dash) marks an absent optional column (commission,

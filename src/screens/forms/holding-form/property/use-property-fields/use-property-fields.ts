@@ -7,7 +7,6 @@ import {
   type OwnershipChange,
   type OwnershipShare,
 } from '@kiko/holdings/ownership';
-import type { RefObject } from 'react';
 import {
   asPropertyMeta,
   propertyCategoryOf,
@@ -26,9 +25,9 @@ import {
 } from '@kiko/screens/forms/property-ownership';
 import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
-import { useCallback, useRef, useState } from 'react';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import type { TextInputInstance } from 'react-native';
+import { type RefObject, useCallback, useRef, useState } from 'react';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 

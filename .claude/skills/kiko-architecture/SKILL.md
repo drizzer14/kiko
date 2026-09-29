@@ -208,8 +208,8 @@ project-level pointer to this section.
   restore, sharing the SAME deterministic `crypto-from-` id so the two
   paths always agree on the same account for the same source.
   `0045_add_reminders` (additive: the `reminders` table and two
-  `settings` columns) directly follows `0044` on the `reminders` branch.
-  Next free migration index: `0046`.
+  `settings` columns) follows `0044` on `next`. Next free migration
+  index: `0046`.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -664,7 +664,9 @@ gate says there is nothing to do.
   created.
 - **Reminders re-plan**: `syncReminders` reads
   `remindersRepo.hasAnyQuery()` (`LIMIT 1`) before any plan-input query
-  — see "Reminders (local notifications)".
+  — see "Reminders (local notifications)". `drainReminderResponses` runs
+  before it and touches the database only when the native queue holds
+  responses (`recordEngagements` returns early on an empty list).
 
 ## Bulk insert: chunk when row count is caller- or API-controlled
 
@@ -1766,12 +1768,106 @@ what a change must keep.
   (`settingsRepo.notificationsDeliverableSinceQuery` /
   `setNotificationsDeliverableSince`). Read `schema.ts` for the
   columns; do not copy them here.
-- **Repository.** `remindersRepo`
-  (`src/reminders/repo/reminders.repo.ts`): `hasAnyQuery` (the `LIMIT
-  1` gate), `planInputsQuery` (ONE query: reminders joined to
-  accounts, plus the latest `import` and `manual` transaction
-  `created_at` per reminder account), and the writes
-  `recordEngagements`, `markBackoffPaused`, `clearSnoozes`.
+- **Repository.** `remindersRepo` (`src/reminders/repo/reminders.repo.ts`).
+  Page reads: `listByAccountQuery`, `byIdQuery`, `hasImportQuery`
+  (`LIMIT 1`, any holding of the account), `listWithAccountQuery`
+  (every reminder with its account's name/institution/archivedAt and a
+  correlated `exists` import flag, in accounts-list order:
+  `sort_order`, `created_at`, `id`), and `manualEntryDaysQuery(accountId,
+  since)` (see "Offer"). Restore: `restartIgnoredCounts` (one `UPDATE
+  reminders SET active_since = now`; the pause, engagement and snooze
+  columns are kept). User writes: `create`,
+  `update` (a changed schedule restarts `activeSince` and ends a
+  back-off pause, but not a user pause; it keeps a pending snooze,
+  because iOS keeps it), `setPaused` (resume restarts `activeSince`; a
+  no-op when already in the target state), and `remove`. The re-plan
+  side is unchanged: `hasAnyQuery`, `planInputsQuery`,
+  `recordEngagements`, `markBackoffPaused`, `clearSnoozes`. Read the
+  file for signatures.
+- **Rules.** `src/reminders/rules/` is pure.
+  `eligibleReminderKinds(account, hasImport)`: import reminders need a
+  statement import (synced accounts included); add-transactions
+  reminders need a non-synced account. The form draft: `defaultDraft(kind)`,
+  `draftFromSchedule`, `withFrequency` (switching to weekly preselects
+  today's weekday, and to every-N-days preselects 7),
+  `validateReminderDraft`, `draftToSchedule(draft, today)`. The page
+  lists eligible kinds plus any saved kind that is no longer eligible
+  (with a per-kind `reminders.unavailable.*` caption). When there are
+  none, it shows the `reminders.emptyNoKinds` caption.
+- **Summary.** `describeSchedule(schedule, t, firstDay)`
+  (`src/reminders/schedule/describe-schedule.ts`) reads the time on the
+  24-hour clock. The uk preposition comes from `{{at}}`:
+  `reminders.schedule.atEleven` ('об') for 11:00-11:59 ONLY, and
+  `reminders.schedule.at` ('о') for every other hour, 23:xx and 1:xx
+  included (a user ruling). en has both keys as 'at'.
+- **Permission.** `useNotificationPermission()`
+  (`src/reminders/permission/`) returns `{ status, request }` and never
+  rejects. It reads the status on mount and on every AppState `active`,
+  and exposes no public refresh. `useNotificationPreAlert(onAnswered?)`
+  is the one ask flow: pre-alert sheet, then `request()` after the
+  sheet has closed, then `replanReminders()`, then `onAnswered`. iOS is
+  asked only (a) on a form save while `status === 'notDetermined'` or
+  (b) from a reminders list's NoticeBanner. `usePermissionNotice(hasReminders)`
+  (`src/reminders/permission/`) builds that notice and the pre-alert
+  sheet props for BOTH lists (the account page and Settings >
+  Reminders). With no saved reminder there is no notice. A
+  denied status still saves; the page's banner then offers
+  `Linking.openSettings()`.
+- **Re-plan after a write.** `replanReminders` (exported from
+  `src/reminders/use-reminder-scheduler/`) is the module-level
+  single-flight trigger that the scheduler hook ALSO uses. Every
+  reminder write (form save, pause, delete, permission answer) calls it
+  rather than `syncReminders` directly, so an older re-plan can never
+  overwrite a newer one. A page write goes through `writeThenReplan(write, t)`
+  (same unit): a failed write shows the save-error alert and does not
+  re-plan. After a backup restore, call `replanRestoredReminders()`
+  instead (see "Backup/restore").
+- **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
+  params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
+  (`src/screens/settings/account-reminders/`, params `{ accountId,
+  name }`) — `AccountReminders` is registered in the Accounts stack.
+  `ReminderForm` is registered in BOTH the Accounts and Settings
+  stacks, so its props type is structural (`route.params:
+  ReminderFormParams` plus the `goBack`/`setOptions` it reads), not
+  `NativeStackScreenProps` of one stack. `Reminders`
+  (`src/screens/settings/reminders/`, Settings stack) lists every
+  reminder under a heading for its account name, with the same
+  `ReminderRow` and no Add (reminders are created from an account's
+  page). It opens from its own Settings card directly below System
+  (`settings-row-reminders`). The account page is reached from a
+  `bell` ghost Button in `AccountDetail`'s `headerRight`, shown on
+  EVERY account. The form has NO Delete: a reminder is deleted only
+  from the page row's touch-and-hold `CardContextMenu`, the same as a
+  transaction.
+- **Offer.** `useReminderOffer({ accountId, account, settings, trigger })`
+  (`src/reminders/offer/`) returns `{ kind, dismiss }` or `undefined`.
+  It takes the page's OWN account and settings rows, because a second
+  subscription would queue the same reads again on op-sqlite's one
+  worker. With no `trigger`, it does no reads. The offer shows only
+  while the account is not archived, can have that kind
+  (`eligibleReminderKinds`), has no reminder of that kind, and was not
+  dismissed there (`isReminderOfferDismissed`). Each trigger read waits
+  for that decision. `afterImport` reads `hasImportQuery`.
+  `manualActivity` reads `manualEntryDaysQuery` only for an eligible
+  (non-synced) account and needs at least 2 entries. The window starts
+  at local midnight 30 calendar days back and is fixed once per mount.
+  `manualEntryDaysQuery` counts only rows the user entered: `source =
+  'manual'` AND (`category` OR `exchange_counterpart_holding_id` OR
+  `change_group_id` set); opening-balance and balance-edit rows have
+  none of these. It counts one key per entry: `coalesce(change_group_id,
+  time || sorted holding pair, created_at)`, so a transfer's legs, or a
+  payment and its change returns, count once even a second apart in
+  `created_at`. Wiring: `AccountDetail` passes `route.params.reminderOffer
+  ?? 'manualActivity'`. `reminderOffer?: 'afterImport'` is set by the
+  `popTo` of BOTH import screens (`statement-import.screen.tsx`,
+  `column-mapping.screen.tsx`). A per-mount `offerDecided` latch, set
+  on accept and on a successful dismiss, makes the trigger `undefined`,
+  so a visit shows at most ONE offer. Accept and dismiss both clear the
+  param. A failed dismiss shows the save-error alert and keeps the
+  card. The card (`ReminderOfferCard`) sits first in
+  `account-detail-content`. The hook runs above the page's loading
+  gate, so a cached offer is there on the first ready frame. There is
+  no offer on holding detail (user decision Q9).
 - **Planner.** `planReminder` / `planAllReminders`
   (`src/reminders/planner/`) are pure; the rules are in
   `plan-reminder.ts`'s header. The ignored count starts at the latest
@@ -1779,10 +1875,22 @@ what a change must keep.
   `lastDataAt`; `lastSnoozedAt` frees the regular occurrence at the
   snooze minute. The sync passes `lastSnoozedAt: null` once data
   arrived at or after the snooze.
-- **Scheduler.** `syncReminders(t, now?)`
-  (`src/reminders/scheduler/sync-reminders.ts`) drains the native
-  response queue and stores the engagements FIRST (a tap on the paused
-  notice is not engagement). Then it gates on `hasAnyQuery` (no
+- **Scheduler.** `src/reminders/scheduler/sync-reminders.ts` has two
+  steps, run in this order by every re-plan. `drainReminderResponses()`
+  is the ONE reader of the native response queue: it drains it, stores
+  the engagements (a tap on the paused notice is not engagement), and
+  returns the responses. `syncReminders(t, now?)` does not touch the
+  queue. It calls `registerCategories` with
+  the active language's `reminders.notification.snoozeAction` and
+  `hiddenPreviewsPlaceholder` on EVERY sync, before any
+  `replaceRequests`. `reminderContent` gives a reminder the
+  `kiko.reminder` category (the one "Tomorrow" action) and the paused
+  notice `kiko.reminder.notice` (no action); the ids are
+  `REMINDER_CATEGORY_IDENTIFIER`/`NOTICE_CATEGORY_IDENTIFIER` in
+  `reminders-native.ts` and must equal
+  `reminderCategoryIdentifier`/`noticeCategoryIdentifier` in
+  `ios/Kiko/Reminders/KikoRemindersCenter.swift`. Then it gates
+  on `hasAnyQuery` (no
   reminders -> `replaceRequests([], [])` and no plan-input query).
   Then it syncs `notifications_deliverable_since` from
   `authorizationStatus()` (written only when it changes; while iOS
@@ -1792,9 +1900,51 @@ what a change must keep.
 - **Mount.** `useReminderScheduler()`
   (`src/reminders/use-reminder-scheduler/`) runs in `AppRoot`
   (`App.tsx`), below `MigrationsGate` and `LockGate`. It re-plans on
-  mount, on AppState `active` and `background`, and on an i18n
-  `languageChanged` event. It is single-flight with at most one queued
-  follow-up, and it never rejects (a failure is logged).
+  mount, on AppState `active` and `background`, on an i18n
+  `languageChanged` event, and on `remindersNative.onResponse` (a tap
+  that lands after the `active` re-plan drained the queue). It is
+  single-flight with at most one queued follow-up via `replanReminders`,
+  and it never rejects (a failed drain, plan or route is logged). A
+  failed drain plans and routes nothing, since the plan must see the
+  engagements first. A failed plan still routes the drained taps, since
+  the queue no longer holds them. The `onResponse` subscribe loads the
+  native module synchronously, so it is wrapped in `eitherSync`: on a
+  binary without the module it logs once, gets a no-op `remove`, and
+  on a real binary without the module, `drainReminderResponses` then also
+  rejects on every trigger, so each one logs "re-plan failed" and plans
+  nothing, without crashing the app. `use-reminder-scheduler.lazy-load.test.ts`
+  pins only the mount: no throw, one log, and the other triggers still run
+  (it mocks the scheduler).
+- **Tap routing.** Every re-plan whose drain succeeded hands the responses
+  it returned to
+  `routeLatestResponse(responses, navigationRef)`
+  (`src/reminders/routing/`), so every trigger routes. It routes the latest `open` response (the
+  last one in the queue, which appends in tap order); a snooze never
+  routes. A reminder that is gone (deleted,
+  or deleted with its account) routes nowhere. `routeFor` is pure: an
+  import reminder opens `AccountDetail` with `intent: 'importStatement'`;
+  add transactions with exactly ONE open holding, of a type that takes
+  transactions (`!isLedgerlessHoldingType(type)`,
+  `src/holdings/holding-descriptor/holding-descriptors.ts`; grep
+  `ledgerless: true` for the current ledgerless set), opens
+  `TransactionForm { holdingId }` above `AccountDetail`, and otherwise
+  `AccountDetail` only (a single ledgerless holding included);
+  the paused notice opens `AccountReminders` above `AccountDetail`. The
+  navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
+  Accounts stack: the routes it has now (or `Accounts` while the tab has
+  not mounted), then the new ones. Two nested navigates back to back lose
+  the first, because the second replaces the tab's nested params before
+  the stack reads them (`route-response.navigator.test.tsx`, on the real
+  routers). The tapped account's page, when already on top, takes the new
+  params in place. Before `navigationRef.isReady()` (a tap that launched
+  the app) the route waits for the container's `ready` event. Routes that
+  waited all navigate in the same tick, so the newest one's stack wins.
+  `navigationRef` (`src/navigation/navigation-ref/`) is the
+  `NavigationContainer` ref in `AppRoot`, below `LockGate`, so nothing
+  routes before unlock. No URL scheme and no `linking` prop. On
+  `intent: 'importStatement'`, `AccountDetail` waits for its loading gate,
+  clears the param, then opens the file picker once, on a bank account
+  only.
 - **Account delete.** `accountsRepo.remove` deletes the account's
   `reminders` rows in the same transaction, before the account row (NO
   ACTION FK), next to the `sync_state` delete.
@@ -1803,9 +1953,18 @@ what a change must keep.
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders
   ?? []`, so a pre-reminders `.kiko` restores with no reminders. The
   settings row is restored whole, so both reminder settings columns
-  come from the backup
-  (`restore-across-reminders-migration.test.ts` pins the old-backup
-  case).
+  come from the backup (`restore-across-reminders-migration.test.ts`
+  pins the old-backup case). After a successful `importData`,
+  `ImportData` awaits `replanRestoredReminders()`
+  (`src/reminders/use-reminder-scheduler/`) BEFORE it applies the
+  restored language: the language change re-plans too, and that
+  re-plan must see the restarted counts. The helper runs
+  `restartIgnoredCounts()` first (counted from the backup, every
+  reminder would read as ignored and back-off pause at once), then
+  `replanReminders()`. A failed restart is logged and still re-plans;
+  it never rejects. Do not move the restart into
+  `restoreDataSnapshot`'s transaction: that breaks the exact round-trip
+  pinned by the test above.
 - SQLite's multi-argument `max(a, b)` returns NULL as soon as one
   argument is NULL; for "latest of a column and a value" use
   `coalesce(max(col, v), col, v)` (see `latest()` in

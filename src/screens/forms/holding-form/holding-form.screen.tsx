@@ -1,5 +1,4 @@
 import { match } from 'ts-pattern';
-import { View } from 'react-native';
 import {
   creatableHoldingTypesForAccount,
   type HoldingType,
@@ -34,10 +33,10 @@ import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
 import CurrencyField from '@kiko/design-system/components/currency-field';
-import type { ScrollViewInstance, TextInputInstance } from 'react-native';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
+import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
 import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';

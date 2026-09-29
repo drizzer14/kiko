@@ -2,9 +2,11 @@ import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import SystemScreen from '@kiko/screens/settings/system';
 import SettingsScreen from '@kiko/screens/settings/settings';
+import RemindersScreen from '@kiko/screens/settings/reminders';
 import CategoriesScreen from '@kiko/screens/settings/categories';
 import ExportDataScreen from '@kiko/screens/settings/export-data';
 import ImportDataScreen from '@kiko/screens/settings/import-data';
+import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import type { SettingsStackParamList } from '../types';
@@ -49,6 +51,18 @@ const SettingsStack: FC = () => {
         name="ImportData"
         component={ImportDataScreen}
         options={{ title: t('settings.dataImport.title') }}
+      />
+
+      <Stack.Screen
+        name="Reminders"
+        component={RemindersScreen}
+        options={{ title: t('reminders.title') }}
+      />
+
+      <Stack.Screen
+        name="ReminderForm"
+        component={ReminderFormScreen}
+        options={{ title: t('reminders.form.createTitle') }}
       />
     </Stack.Navigator>
   );

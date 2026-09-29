@@ -37,7 +37,9 @@ Import UI a real export would use.
 
 ## Regenerating
 
-Run this after any change to `screenshot-seed.ts` or `build-demo-snapshot.ts`:
+Run this after any change to `screenshot-seed.ts` or `build-demo-snapshot.ts`,
+or any change to the snapshot shape: a new table, a new `settings` column,
+or a changed column default. Regenerate in the same commit as the migration:
 
 ```bash
 KIKO_REGEN_DEMO=1 npx jest e2e/screenshot/fixtures/generate-demo-kiko.test.ts

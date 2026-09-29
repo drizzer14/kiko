@@ -1,6 +1,13 @@
 import type { HoldingRow } from '@kiko/db';
 
 import {
+  type BinanceDeposit,
+  BinanceRateLimitError,
+  type BinanceWithdrawal,
+  HISTORY_PAGE_LIMIT,
+  type HistoryWindow,
+} from './binance.client';
+import {
   BINANCE_REQUEST_INTERVAL_MS,
   type BinanceTransactionRow,
   type BinanceTransactionSyncDeps,
@@ -11,8 +18,6 @@ import {
   WITHDRAW_CALLS_PER_RUN_FALLBACK,
   WITHDRAW_UID_WEIGHT,
 } from './binance.transactions';
-import { BinanceRateLimitError, HISTORY_PAGE_LIMIT } from './binance.client';
-import type { BinanceDeposit, BinanceWithdrawal, HistoryWindow } from './binance.client';
 
 const NOW = 1_704_326_400_000; // 2024-01-04T00:00:00Z
 const DAY = 86_400_000;

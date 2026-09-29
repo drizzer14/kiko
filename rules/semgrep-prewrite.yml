@@ -1029,6 +1029,29 @@ rules:
       - pattern-either:
           - pattern: process.env.TZ = $ZONE
           - pattern: process.env['TZ'] = $ZONE
+  # kiko-design-system's CardContextMenu: a form has no in-form Delete. An
+  # entity is deleted only from its page's touch-and-hold CardContextMenu,
+  # which owns the ConfirmSheet, so a form never imports the sheet at all
+  # (a type-only import too: it plans a confirm the form must not own).
+  # `paths.include` is path-prefixed, so the fixture pair is NESTED. ERROR
+  # from the start: the tree had no finding when the rule landed.
+  - id: kiko-no-confirm-sheet-in-form
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      A form has no in-form Delete, so it never imports `ConfirmSheet`. An
+      entity is deleted only from its page's touch-and-hold
+      `CardContextMenu`, which raises the confirm itself — see
+      kiko-design-system's "Component set (CardContextMenu)".
+    metadata:
+      fix: "Remove the `ConfirmSheet` import from the form; wrap the entity's card or row on its page in `CardContextMenu` with `onDelete` instead."
+      skill: "kiko-design-system › Component set (CardContextMenu)"
+    paths:
+      include:
+        - "src/screens/forms/**"
+    patterns:
+      - pattern-regex: |-
+          (?m)(?:^[ \t]*(?:import|export)\b[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?confirm-sheet(?:/[^'"]*)?['"]
   # A bank wall-clock read directly through `Date.UTC(...)` or the local-time
   # `new Date($Y, $M, ...)` constructor bypasses both zone readings this
   # project settled on (`kyivInstantMillisecondsIfRoundTrips` for a named
@@ -1059,3 +1082,81 @@ rules:
       - pattern-either:
           - pattern: Date.UTC(...)
           - pattern: new Date($Y, $M, ...)
+  # kiko-code-style's "JSX spread: no `{}` fallback": TypeScript merges a JSX
+  # spread of `X | {}` into one shape with every prop of X optional, so a
+  # discriminated union's required-together props (SettingsRowProps: a
+  # pressable row's `trailing` needs `accessibilityActions` and
+  # `onAccessibilityAction`) stop being enforced and the row compiles without
+  # them. A pattern `{}` matches ANY object literal, so the fallback is
+  # captured and `metavariable-regex` keeps only a truly empty one; a ternary
+  # of two filled objects (SelectableRow's glyph) stays clean. An object
+  # spread outside JSX checks no component's props and is out of scope.
+  # `paths.include` is path-prefixed, so the fixture pair is NESTED. ERROR
+  # from the start: the tree had no finding when the rule landed.
+  - id: kiko-no-empty-object-jsx-spread
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A JSX spread whose fallback is `{}` makes every prop of the spread
+      value optional, so a discriminated union's required-together props
+      stop being enforced. Fall back to a non-empty literal that names the
+      discriminant (`NO_SWITCH = { trailing: undefined }` in
+      `reminder-row.component.tsx`) — see kiko-code-style's "JSX spread: no
+      `{}` fallback".
+    metadata:
+      fix: "Replace the `{}` fallback with a named constant that sets the discriminant, e.g. `const NO_SWITCH = { trailing: undefined }` and `{...(props ?? NO_SWITCH)}`."
+      skill: "kiko-code-style › JSX spread: no `{}` fallback"
+    paths:
+      include:
+        - "src/**/*.tsx"
+    patterns:
+      - pattern-either:
+          - pattern: "<$ELEMENT ... {...($VALUE ?? $FALLBACK)} ... />"
+          - pattern: "<$ELEMENT ... {...($VALUE || $FALLBACK)} ... />"
+          - pattern: "<$ELEMENT ... {...($CONDITION ? $VALUE : $FALLBACK)} ... />"
+          - pattern: "<$ELEMENT ... {...($CONDITION ? $FALLBACK : $VALUE)} ... />"
+      - metavariable-regex:
+          metavariable: $FALLBACK
+          regex: '^\{\s*\}$'
+  # kiko-code-style's "`fnts` FIRST": fnts' `either(value)` runs `value()`
+  # OUTSIDE its own promise chain, so `either(f)` catches the same failures
+  # as `either(async () => f())` only when `f` itself is `async`; a plain `f`
+  # that throws synchronously needs the wrapper (account-form's
+  # `ensureAccount`). Hence the rule fires only for a bare identifier `f`
+  # (a method call would lose `this`) declared `async` in this file. Semgrep
+  # ignores an arrow's `async` in a pattern, hence the captured initializer
+  # plus `metavariable-regex`. Never open either `pattern-inside` with `...`:
+  # it times out on large files. Timings and the known limit: kiko-linter's
+  # "Semgrep facts verified on 2026-09-29".
+  - id: kiko-no-needless-async-either-thunk
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      This thunk passed to `either` only calls `$F`, which is declared
+      `async` in this file, so the wrapper adds nothing: `either($F)` calls it
+      the same way and captures the same rejections as a Left — see
+      kiko-code-style's "`fnts` FIRST".
+    metadata:
+      fix: "Pass the async function itself: `either(f)` instead of `either(async () => f())` or `either(async () => await f())`."
+      skill: "kiko-code-style › `fnts` FIRST"
+    patterns:
+      - pattern-either:
+          - pattern: "either(async () => $F())"
+          - pattern: "either(async () => await $F())"
+          - pattern: "either(async () => { return $F(); })"
+          - pattern: "either(async () => { return await $F(); })"
+          - pattern: "either(async (...$REST: $TYPE) => $F(...$REST))"
+      - metavariable-regex:
+          metavariable: $F
+          regex: '^[A-Za-z_$][\w$]*$'
+      - pattern-either:
+          - pattern-inside: |
+              async function $F(...) { ... }
+              ...
+          - patterns:
+              - pattern-inside: |
+                  const $F = $INITIALIZER;
+                  ...
+              - metavariable-regex:
+                  metavariable: $INITIALIZER
+                  regex: '^(async\b|useCallback\(\s*async\b)'

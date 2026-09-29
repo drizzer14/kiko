@@ -8,10 +8,12 @@ import ColumnMappingScreen from '@kiko/screens/column-mapping';
 import AccountFormScreen from '@kiko/screens/forms/account-form';
 import HoldingFormScreen from '@kiko/screens/forms/holding-form';
 import StatementImportScreen from '@kiko/screens/statement-import';
+import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import PricePointFormScreen from '@kiko/screens/forms/price-point-form';
 import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
 import ContributionFormScreen from '@kiko/screens/forms/contribution-form';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import AccountRemindersScreen from '@kiko/screens/settings/account-reminders';
 import OwnershipChangeFormScreen from '@kiko/screens/forms/ownership-change-form';
 
 import type { AccountsStackParamList } from '../types';
@@ -93,6 +95,18 @@ const AccountsStack: FC = () => {
         name="OwnershipChangeForm"
         component={OwnershipChangeFormScreen}
         options={{ title: t('forms.ownershipChange.title') }}
+      />
+
+      <Stack.Screen
+        name="AccountReminders"
+        component={AccountRemindersScreen}
+        options={{ title: t('reminders.title') }}
+      />
+
+      <Stack.Screen
+        name="ReminderForm"
+        component={ReminderFormScreen}
+        options={{ title: t('reminders.form.createTitle') }}
       />
 
       <Stack.Screen

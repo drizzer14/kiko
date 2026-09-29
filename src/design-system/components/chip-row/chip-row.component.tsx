@@ -7,31 +7,49 @@ import Text from '../text';
 import FieldLabel from '../field-label';
 
 import { styles } from './chip-row.styles';
-import type { ChipRowProps } from './chip-row.props';
+import type { ChipRowProps, ChipRowSelection } from './chip-row.props';
 
 // The chip's visible height sits below the 44pt HIG tap-target floor on
 // purpose (the compact chip look). This hitSlop restores the 44pt tap target
 // the same way Button's `small` size does: (44 - 34) / 2 = 5pt per edge.
 const CHIP_HIT_SLOP = { top: 5, bottom: 5 } as const;
 
-// A labeled single-select chip row: the kind and currency pickers are otherwise
-// identical Pressable/Text JSX, so this reusable component renders either from
-// its options/selected/onSelect props instead of duplicating the markup. An
-// optional `labels` map humanizes id-like values (term_deposit -> Term Deposit)
-// for display while `onSelect` keeps reporting the underlying value; an optional
-// `label` renders a caption above the chips so it reads as a labeled field. This
-// is the ONE chips component in the app — a value selection that leaves the
-// form the same (see the SegmentedControl entry in kiko-design-system for the
+type ResolvedSelection<Option extends string | number> = {
+  isSelected: (option: Option) => boolean;
+  press: (option: Option) => void;
+};
+
+// Both modes share one chip look, so only "is this chip on" and "who hears the
+// tap" differ; resolving them once keeps the chip markup mode-agnostic.
+const resolveSelection = <Option extends string | number>(
+  selection: ChipRowSelection<Option>,
+): ResolvedSelection<Option> => {
+  if (selection.selectedValues !== undefined) {
+    const { selectedValues, onToggle } = selection;
+
+    return { isSelected: (option) => selectedValues.includes(option), press: onToggle };
+  }
+
+  const { selected, onSelect } = selection;
+
+  return { isSelected: (option) => selected === option, press: onSelect };
+};
+
+// A labeled chip row: the kind and currency pickers are otherwise identical
+// Pressable/Text JSX, so this reusable component renders either from its
+// options and selection props instead of duplicating the markup. It is
+// single-select (`selected`/`onSelect`) or multi-select
+// (`selectedValues`/`onToggle`) with the same chip look. An optional `labels`
+// map humanizes id-like values (term_deposit -> Term Deposit) for display while
+// the callback keeps reporting the underlying value; an optional `label`
+// renders a caption above the chips so it reads as a labeled field. This is the
+// ONE chips component in the app — a value selection that leaves the form the
+// same (see the SegmentedControl entry in kiko-design-system for the
 // tabs-vs-chips split).
-const ChipRow = <Option extends string | number>({
-  options,
-  selected,
-  onSelect,
-  label,
-  labels,
-  labelVariant = 'body',
-}: ChipRowProps<Option>): ReactElement => {
+const ChipRow = <Option extends string | number>(props: ChipRowProps<Option>): ReactElement => {
+  const { options, label, labels, labelVariant = 'body' } = props;
   const { theme } = useUnistyles();
+  const { isSelected: isOptionSelected, press } = resolveSelection(props);
 
   return (
     <Box gap={1}>
@@ -39,14 +57,14 @@ const ChipRow = <Option extends string | number>({
 
       <Box style={styles.chipRow} gap={2}>
         {options.map((option) => {
-          const isSelected = selected === option;
+          const isSelected = isOptionSelected(option);
 
           return (
             <Pressable
               key={option}
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
-              onPress={() => onSelect(option)}
+              onPress={() => press(option)}
               hitSlop={CHIP_HIT_SLOP}
               style={[
                 styles.chip,

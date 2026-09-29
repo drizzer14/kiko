@@ -1,5 +1,3 @@
-import type { FC } from 'react';
-import { useState } from 'react';
 import { match } from 'ts-pattern';
 import {
   type BalanceProviderId,
@@ -7,6 +5,7 @@ import {
   providerDisplayName,
 } from '@kiko/crypto-sync/provider';
 import type { TFunction } from 'i18next';
+import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';

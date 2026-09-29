@@ -1,8 +1,7 @@
 import { StatementParseError } from '../parser';
 
 import type { TableCell } from './table-rows';
-import { applyColumnMapping } from './apply-column-mapping';
-import type { ColumnMapping } from './apply-column-mapping';
+import { applyColumnMapping, type ColumnMapping } from './apply-column-mapping';
 
 // Column mapping reads a date/time cell as THIS DEVICE's own local time
 // (never Kyiv's), so every expected value below is built through the SAME

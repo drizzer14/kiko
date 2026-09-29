@@ -4,19 +4,18 @@
 // is an independent TypeScript implementation, and the fixture this format is
 // tested against (`__fixtures__/synthetic-privatbank-sample.xlsx`) is
 // hand-authored synthetic data, never uabean's real-looking sample.
-import type {
-  ParsedStatement,
-  ParsedTransaction,
-  SpreadsheetCellValue,
-  StatementFormat,
-  StatementFormatInput,
-  UnresolvedStatementRow,
+import {
+  type ParsedStatement,
+  type ParsedTransaction,
+  type SpreadsheetCellValue,
+  type StatementFormat,
+  type StatementFormatInput,
+  StatementParseError,
+  type UnresolvedStatementRow,
 } from '@kiko/statement-import/parser';
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
-import { isCurrency } from '@kiko/currency/currency';
-import type { Currency } from '@kiko/currency/currency';
-import { StatementParseError } from '@kiko/statement-import/parser';
+import { type Currency, isCurrency } from '@kiko/currency/currency';
 import { parseDateTimeSeconds } from '@kiko/statement-import/parse-date-time';
 
 // The exact PrivatBank detect signature: cell A1 of the

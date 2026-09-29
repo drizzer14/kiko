@@ -72,8 +72,7 @@ import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
 import { ukrsibBusinessFixtureInput } from '@kiko/statement-import/formats/format-test-fixtures';
 
 import { StatementParseError } from '../parser';
-import { applyColumnMapping } from '../column-mapping';
-import type { ColumnMapping } from '../column-mapping';
+import { applyColumnMapping, type ColumnMapping } from '../column-mapping';
 
 import { importStatement, importParsedStatement } from './import-statement';
 

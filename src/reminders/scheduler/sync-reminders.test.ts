@@ -22,7 +22,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { remindersRepo } from '@kiko/reminders/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
-import { syncReminders } from './sync-reminders';
+import { drainReminderResponses, syncReminders } from './sync-reminders';
 
 const local = (month: number, day: number, hour = 0, minute = 0): number =>
   new Date(2026, month - 1, day, hour, minute).getTime();
@@ -44,6 +44,7 @@ let drainedResponses: NotificationResponse[] = [];
 let authorization: NotificationAuthorization = 'authorized';
 
 const replaceRequests = jest.spyOn(remindersNative, 'replaceRequests');
+const registerCategories = jest.spyOn(remindersNative, 'registerCategories');
 
 jest.spyOn(remindersNative, 'drainResponses').mockImplementation(async () => drainedResponses);
 jest.spyOn(remindersNative, 'authorizationStatus').mockImplementation(async () => authorization);
@@ -221,11 +222,61 @@ describe('syncReminders — which reminders are scheduled', () => {
       body: '1 day since your last statement import.',
       interruptionLevel: 'active',
       threadIdentifier: 'statement_import',
+      categoryIdentifier: 'kiko.reminder',
     });
+  });
+
+  it('gives the "Tomorrow" category to the reminders and not to the paused notice', async () => {
+    seedAccount('manual');
+    seedReminder({ id: 'reminder-1', accountId: 'manual', kind: 'add_transactions' });
+
+    await syncReminders(english, NOW);
+
+    expect(
+      lastReplace().requests.map(({ identifier, categoryIdentifier }) => [
+        identifier,
+        categoryIdentifier,
+      ]),
+    ).toEqual([
+      ['kiko.reminder.reminder-1.202610012000', 'kiko.reminder'],
+      ['kiko.reminder.reminder-1.202610022000', 'kiko.reminder'],
+      ['kiko.reminder.reminder-1.202610032000', 'kiko.reminder'],
+      ['kiko.reminder.reminder-1.paused', 'kiko.reminder.notice'],
+    ]);
   });
 });
 
-describe('syncReminders — responses, back-off, and snoozes', () => {
+describe('syncReminders — notification categories', () => {
+  it.each([
+    { language: 'en', snoozeTitle: 'Tomorrow', placeholder: 'Reminder' },
+    { language: 'uk', snoozeTitle: 'Завтра', placeholder: 'Нагадування' },
+  ])(
+    'registers the categories in the active language ($language) before it replaces the requests',
+    async ({ language, snoozeTitle, placeholder }) => {
+      seedAccount('manual');
+      seedReminder({ id: 'reminder-1', accountId: 'manual', kind: 'add_transactions' });
+
+      await syncReminders(i18n.getFixedT(language), NOW);
+
+      expect(registerCategories.mock.calls).toEqual([[snoozeTitle, placeholder]]);
+      expect(registerCategories.mock.invocationCallOrder[0]).toBeLessThan(
+        replaceRequests.mock.invocationCallOrder[0] as number,
+      );
+    },
+  );
+
+  it('registers them on every sync, with no reminders too, so a language change re-words them', async () => {
+    await syncReminders(english, NOW);
+    await syncReminders(i18n.getFixedT('uk'), NOW);
+
+    expect(registerCategories.mock.calls).toEqual([
+      ['Tomorrow', 'Reminder'],
+      ['Завтра', 'Нагадування'],
+    ]);
+  });
+});
+
+describe('drainReminderResponses', () => {
   it('records a tap as engagement and returns the drained responses', async () => {
     seedAccount('manual');
     seedReminder({ id: 'reminder-1', accountId: 'manual', kind: 'add_transactions' });
@@ -238,12 +289,23 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
       },
     ];
 
-    await expect(syncReminders(english, NOW)).resolves.toEqual(drainedResponses);
+    await expect(drainReminderResponses()).resolves.toEqual(drainedResponses);
 
     expect(reminderColumn('reminder-1', 'last_engaged_at')).toBe(local(10, 1, 9));
   });
 
-  it('keeps a reminder paused when the user taps its paused notice, and returns the tap', async () => {
+  it('is not part of the plan, which leaves the response queue to it', async () => {
+    seedAccount('manual');
+    seedReminder({ id: 'reminder-1', accountId: 'manual', kind: 'add_transactions' });
+
+    await syncReminders(english, NOW);
+
+    expect(remindersNative.drainResponses).not.toHaveBeenCalled();
+  });
+});
+
+describe('syncReminders — responses, back-off, and snoozes', () => {
+  it('keeps a reminder paused when the user taps its paused notice', async () => {
     seedAccount('manual');
     seedReminder({ id: 'ignored', accountId: 'manual', kind: 'add_transactions' });
     drainedResponses = [
@@ -255,7 +317,8 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
       },
     ];
 
-    await expect(syncReminders(english, local(10, 4, 20, 6))).resolves.toEqual(drainedResponses);
+    await expect(drainReminderResponses()).resolves.toEqual(drainedResponses);
+    await syncReminders(english, local(10, 4, 20, 6));
 
     expect(reminderColumn('ignored', 'last_engaged_at')).toBeNull();
     expect(reminderColumn('ignored', 'paused_at')).toBe(local(10, 4, 20));
@@ -291,12 +354,13 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
       },
     ];
 
+    await drainReminderResponses();
     await syncReminders(english, NOW);
 
     expect(reminderColumn('snoozed', 'last_snoozed_at')).toBe(local(10, 1, 8));
+    expect(reminderColumn('snoozed', 'last_engaged_at')).toBe(local(10, 1, 8));
     expect(fireStamps('snoozed')).toEqual(['10-1 20:0', '10-3 20:0', '10-4 20:0']);
 
-    drainedResponses = [];
     await syncReminders(english, NOW);
 
     expect(fireStamps('snoozed')).toEqual(['10-1 20:0', '10-3 20:0', '10-4 20:0']);

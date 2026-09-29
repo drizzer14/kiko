@@ -1,4 +1,9 @@
 import {
+  type LocalDateTime,
+  type NotificationResponse,
+  REMINDER_IDENTIFIER_PREFIX,
+} from '@kiko/reminders/native';
+import {
   calendarDaysBetween,
   isReminderSchedule,
   occurrenceAfter,
@@ -8,7 +13,6 @@ import {
   toInstant,
 } from '@kiko/reminders/schedule';
 import maybe, { foldMap } from 'fnts/maybe';
-import { type LocalDateTime, REMINDER_IDENTIFIER_PREFIX } from '@kiko/reminders/native';
 
 // The planning rules:
 // - The anchor is the latest of `activeSince`, `deliverableSince`,
@@ -148,8 +152,12 @@ const ordinalSlots = (input: ReminderPlanInput): Slot[] => {
 const requestIdentifier = (reminderId: string, suffix: string): string =>
   REMINDER_IDENTIFIER_PREFIX.concat(reminderId, '.', suffix);
 
-export const pausedNoticeIdentifier = (reminderId: string): string =>
+const pausedNoticeIdentifier = (reminderId: string): string =>
   requestIdentifier(reminderId, 'paused');
+
+export const isPausedNoticeResponse = (
+  response: Pick<NotificationResponse, 'reminderId' | 'requestIdentifier'>,
+): boolean => response.requestIdentifier === pausedNoticeIdentifier(response.reminderId);
 
 const toRequest = (
   input: ReminderPlanInput,

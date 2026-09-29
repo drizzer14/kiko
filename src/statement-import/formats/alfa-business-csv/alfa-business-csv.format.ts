@@ -7,14 +7,14 @@
 // (`__fixtures__/uabean-alfa-business-sample.csv`) IS uabean's own real
 // sample — confirmed SYNTHETIC (`XYZ COMPANY`/`JOHN DOE` placeholders,
 // all-1s IBANs/EDRPOU, literal `[REDACTED]` markers in description text).
-import type {
-  ParsedStatement,
-  ParsedTransaction,
-  StatementFormat,
-  StatementFormatInput,
+import {
+  type ParsedStatement,
+  type ParsedTransaction,
+  type StatementFormat,
+  type StatementFormatInput,
+  StatementParseError,
 } from '@kiko/statement-import/parser';
 import { Money } from '@kiko/currency/money';
-import { StatementParseError } from '@kiko/statement-import/parser';
 import { parseDateTimeSeconds } from '@kiko/statement-import/parse-date-time';
 
 import {

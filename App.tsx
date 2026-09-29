@@ -12,6 +12,7 @@ import { useAutoSync } from '@kiko/sync/use-auto-sync';
 import RootNavigator from '@kiko/navigation/root-navigator';
 import MigrationsGate from '@kiko/migration/migrations-gate';
 import { NavigationContainer } from '@react-navigation/native';
+import { navigationRef } from '@kiko/navigation/navigation-ref';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -34,7 +35,7 @@ const AppRoot: FC = () => {
   useReminderScheduler();
 
   return (
-    <NavigationContainer theme={navigationDarkTheme}>
+    <NavigationContainer ref={navigationRef} theme={navigationDarkTheme}>
       <RootNavigator />
     </NavigationContainer>
   );

@@ -1,7 +1,6 @@
 import { MONOBANK_API_ENDPOINT } from '@env';
-import type { Currency } from '@kiko/currency/currency';
-import { fiatCurrencyOptions } from '@kiko/currency/currency';
 import { currencyFromCode } from '@kiko/monobank/currency-code';
+import { type Currency, fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import type { RateEntry } from '../conversion';
 

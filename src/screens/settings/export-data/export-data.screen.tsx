@@ -1,10 +1,8 @@
-import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import { confirmOwner } from '@kiko/auth';
 import { Alert, Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { exportData } from '@kiko/data-transfer';
-import { useEffect, useRef, useState } from 'react';
 import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
@@ -12,6 +10,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import Switch from '@kiko/design-system/components/switch';
+import { type FC, useEffect, useRef, useState } from 'react';
 import SettingsRow from '@kiko/screens/settings/settings-row';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';

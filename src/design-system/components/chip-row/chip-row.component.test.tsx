@@ -67,3 +67,52 @@ describe('ChipRow', () => {
     expect(getByText('bank').props.testID).toBe('text-tone-textPrimary');
   });
 });
+
+describe('ChipRow multi-select mode', () => {
+  it('marks every value in selectedValues as selected and the rest as unselected', async () => {
+    const { getByText } = await render(
+      <ChipRow options={options} selectedValues={['bank', 'crypto']} onToggle={jest.fn()} />,
+    );
+
+    expect(getByText('bank').parent?.props.accessibilityState.selected).toBe(true);
+    expect(getByText('crypto').parent?.props.accessibilityState.selected).toBe(true);
+    expect(getByText('cash').parent?.props.accessibilityState.selected).toBe(false);
+  });
+
+  it('reports a tap on a selected or an unselected chip through onToggle', async () => {
+    const onToggle = jest.fn();
+    const { getByText } = await render(
+      <ChipRow options={options} selectedValues={['bank']} onToggle={onToggle} />,
+    );
+
+    await fireEvent.press(getByText('bank'));
+    await fireEvent.press(getByText('cash'));
+
+    expect(onToggle.mock.calls).toEqual([['bank'], ['cash']]);
+  });
+
+  it('keeps the single-select chip look for each selected and unselected chip', async () => {
+    const { getByText } = await render(
+      <ChipRow options={options} selectedValues={['bank', 'crypto']} onToggle={jest.fn()} />,
+    );
+
+    const selectedChip = StyleSheet.flatten(getByText('crypto').parent?.props.style);
+    const unselectedChip = StyleSheet.flatten(getByText('cash').parent?.props.style);
+    expect(selectedChip.backgroundColor).toBe(darkTheme.colors.accent);
+    expect(unselectedChip.backgroundColor).toBe(darkTheme.colors.neutralSubtle);
+    expect(selectedChip.minHeight).toBe(34);
+    expect(getByText('crypto').parent?.props.hitSlop).toEqual({ top: 5, bottom: 5 });
+    expect(getByText('crypto').props.testID).toBe('text-tone-onAccent');
+    expect(getByText('cash').props.testID).toBe('text-tone-textPrimary');
+  });
+
+  it('renders no chip selected for an empty selectedValues list', async () => {
+    const { getByText } = await render(
+      <ChipRow options={options} selectedValues={[]} onToggle={jest.fn()} />,
+    );
+
+    for (const option of options) {
+      expect(getByText(option).parent?.props.accessibilityState.selected).toBe(false);
+    }
+  });
+});

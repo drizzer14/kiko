@@ -441,7 +441,19 @@ instead of hand-rolled `try`/`catch` plus manual `Error` normalization:
   (`either(async () => …)`); otherwise that throw escapes `either`
   entirely instead of becoming a Left. `eitherSync(() => R)` has no
   such gap — it wraps the call in a real `try`/`catch`, so a plain
-  synchronous thunk is fine. Unwrap the result with `bifoldr`/
+  synchronous thunk is fine. The other way round: when the function is
+  itself `async`, it already turns its own throw into a rejection, so
+  pass it directly (`either(drainReminderResponses)`, not
+  `either(async () => drainReminderResponses())` or
+  `either(async () => await drainReminderResponses())`). Keep the
+  wrapper for a plain function that can throw synchronously
+  (`account-form.screen.tsx`'s `ensureAccount`), for a call that passes
+  arguments, and for a method call (`either(repo.load)` loses `this`).
+  The Semgrep rule `kiko-no-needless-async-either-thunk` enforces this
+  when the function is declared `async` in the same file
+  (`async function f`, `const f = async ...`, or
+  `const f = useCallback(async ...)`). It cannot see whether an
+  imported function or a parameter is async, so review those by hand. Unwrap the result with `bifoldr`/
   `bifoldMap` first (see above); reach for `isLeft` + `bifold` only
   once the Left branch itself throws or returns early. Normalize the
   left channel with the **two-argument** `first(result, toError)` —
@@ -629,6 +641,22 @@ import:
 ```ts
 import { type FC, useState } from 'react';
 ```
+
+One import declaration per module specifier. Never import one module
+twice (value+value, type+type, or a `import type` beside a value
+import); merge them into one declaration as above. A bare side-effect
+import beside a VALUE import of the same module is redundant, because
+the value import already runs the module: delete it, and keep the
+value import at its position. Two exceptions. A bare side-effect
+import beside only `import type` declarations of that module stays
+(`import '@kiko/design-system/unistyles';` plus
+`import type { AppThemes } from '@kiko/design-system/unistyles';`):
+Babel erases `import type`, so the bare import is the only one that
+runs the module. A namespace import (`import * as X`) cannot share a
+declaration with named imports. The import-order check (`import-order.js`) enforces
+this at the fast tier, in `check:import-order`, and in the pre-write
+guard. Its `--write` mode never merges a duplicate, so merge it by
+hand.
 
 Never import a type without `type` — Biome's `noUnusedImports` plus
 the project's `isolatedModules`-style TypeScript config both expect
@@ -985,6 +1013,20 @@ object to the annotation's own type immediately, so every method's
 precise inferred parameter and return types are lost to callers;
 `satisfies` checks the same shape constraint without touching the
 inferred type at all.
+
+## JSX spread: no `{}` fallback
+
+A JSX spread never falls back to an empty object (`{...(x ?? {})}`,
+`{...(x || {})}`, `{...(on ? x : {})}` in either branch order), because
+TypeScript reads `X | {}` as X with every
+prop optional and stops enforcing a discriminated union's
+required-together props; fall back to a named literal that sets the
+discriminant instead (`NO_SWITCH = { trailing: undefined }` in
+`reminder-row.component.tsx`). Mechanized:
+`kiko-no-empty-object-jsx-spread` (`rules/semgrep-prewrite.yml`). Not
+mechanized: a spread of `X | undefined` with no fallback
+(`{...foldMap(...)}`) loses the tie the same way but needs types to
+spot, so it stays a review item.
 
 ## Externalize hardcoded config
 

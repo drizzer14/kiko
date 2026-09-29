@@ -263,6 +263,25 @@ The established patterns grouped under this heading:
   `categoryOptions` and its twin, `trend-filter-field.component.tsx`'s
   `manualRows`, which has no display data for a hidden key and falls
   back to the bare slug as its label).
+- **SettingsRow** (`src/screens/settings/settings-row/`): `onPress`
+  makes the row a `Pressable` (with a chevron). `trailing` pins an
+  inline control to the label's line. The two can be combined
+  (`ReminderRow`: tap opens the form, the trailing Switch pauses).
+  **Rule:** on iOS an accessible `Pressable` groups its children into
+  ONE VoiceOver element, so a control inside a pressable row cannot be
+  reached. A row that passes both `onPress` and an interactive
+  `trailing` must give the row itself the control's
+  `accessibilityValue`, plus an `accessibilityActions` entry and
+  `onAccessibilityAction` for it (see `pauseAccessibility` in
+  `reminder-row.component.tsx`). The props type enforces the two action
+  props: `SettingsRowProps` is a union, so a row with both `onPress` and
+  a `trailing` does not compile without `accessibilityActions` and
+  `onAccessibilityAction` (the `accessibilityValue` stays a review
+  item). Build the switch and its actions in ONE object and spread it
+  (`reminder-row.component.tsx`'s `NO_SWITCH` fallback shows why the
+  fallback is not `{}`). RNTL `getByLabelText` still finds the
+  inner Switch, so a green test does not prove VoiceOver can reach it;
+  list a device check.
 - A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
   `WalletAddressField`, `src/design-system/components/`) is a PRIMARY
   action, so it follows the same form validation model as a Save
@@ -811,6 +830,35 @@ new component can land between reviews of this skill:
   confirm surface in the app — a delete/destructive confirmation routes
   through it rather than a native `ActionSheetIOS` or a hand-rolled
   `Modal`.
+- **NoticeBanner** (`src/design-system/components/notice-banner/`) — an
+  inline, non-modal notice for a state the user can keep working
+  around (never an alert or sheet): a `surfaceHigh` box, a `caption`
+  `textSecondary` message, and an optional `secondaryTonal` `small`
+  action button. The button renders only when BOTH `actionLabel` and
+  `onAction` are given. Read `notice-banner.props.d.ts` for the props.
+  First consumer: the per-account reminders page's permission notice.
+- **ReminderOfferCard** (`src/design-system/components/reminder-offer-card/`)
+  — the NoticeBanner family's two-action sibling: an inline, non-modal
+  invitation (never a notification, sheet, or alert, and never an
+  error/warning tone). A `Card` (solid `surface` fill, hairline border,
+  `md` radius) with `padding={3}` and the banner's `spacing(2)` gap, a
+  `body` `textPrimary` message, then a wrapping row of a `primary` `small`
+  accept and a `secondaryTonal` `small` dismiss (the user's "ghost" = faint
+  tint), both `fullWidth={false}`, 44pt taps via `small`'s hitSlop. Read
+  `reminder-offer-card.props.d.ts` for the props (all required but
+  `testID`). Differs from NoticeBanner: a content Card (not the
+  `surfaceHigh` `sm` block), body primary text (not caption secondary),
+  and two required actions (not one optional tonal one). First
+  consumer: `AccountDetail`'s reminder offer.
+- **NotificationPreAlertSheet**
+  (`src/design-system/components/notification-pre-alert-sheet/`) — the
+  HIG pre-alert shown before the iOS notification prompt. It has ONE
+  Continue button, never Cancel and never 'Allow', and a scrim dismiss
+  continues too. The caller asks iOS from `onClosed` (the Modal's own
+  `onDismiss`), so the system prompt never lands on a sheet that is
+  still closing. Screens do not wire it by hand: they spread
+  `useNotificationPreAlert().sheet` onto it (see kiko-architecture
+  'Reminders').
 - **CardContextMenu** (`src/design-system/components/card-context-menu/`)
   — wraps a grid/list card in a touch-and-hold delete (and, when an
   `onDuplicate` and/or `onEdit` handler is passed, an Edit/Duplicate/
@@ -828,7 +876,10 @@ new component can land between reviews of this skill:
   delete-affordance pattern; a new deletable card/row wraps in this
   rather than reintroducing a swipe gesture. No swipe actions anywhere:
   row edit/delete = long-press `CardContextMenu` (`kiko-no-swipe-action`,
-  see kiko-gestures).
+  see kiko-gestures). A form has no in-form Delete: the entity is
+  deleted only from its page's `CardContextMenu`, so nothing under
+  `src/screens/forms/` imports `ConfirmSheet`
+  (`kiko-no-confirm-sheet-in-form`, `rules/semgrep-prewrite.yml`).
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.
@@ -839,8 +890,11 @@ new component can land between reviews of this skill:
   nullable value) and derives its own gradient from that hex via
   `entityIconTileGradient`. An optional `size` mirrors `SymbolIcon`'s
   own, defaulting to the `body` icon-size token when omitted.
-- **Switch** — a labeled toggle wrapping RN's `Switch` with theme
-  track/thumb colors.
+- **Switch** — a toggle that wraps RN's `Switch` with theme track/thumb
+  colors. With `label` it renders a labeled row (label left, toggle
+  right). Without `label` it is a bare toggle whose label sits
+  elsewhere in the row, and it must then get `accessibilityLabel` so
+  VoiceOver names it.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
   theme tokens. Its disabled chrome (border/background/opacity) comes
   from the shared `disabledFieldStyle(theme)` helper
@@ -967,7 +1021,12 @@ new component can land between reviews of this skill:
   `undefined` for a PICK LIST with no single-select toggle semantics —
   `DescriptionSuggestions` passes `undefined` so no chip ever renders
   highlighted, rather than faking it with a value (`''`) that matches
-  nothing; `labels` is an optional value -> display-text map;
+  nothing. ChipRow is single-select (`selected`/`onSelect`) OR
+  multi-select (`selectedValues`/`onToggle`), with the same chip look.
+  The props type is a union and the two modes cannot be mixed
+  (`chip-row.props.d.ts`). In multi mode the owner builds the new set:
+  `onToggle` only reports the tapped value. Example: `WeekdayField`
+  (`src/screens/forms/weekday-field/`). `labels` is an optional value -> display-text map;
   `labelVariant` (default `'body'`) drops the chip label a type step
   for a value sitting under its own larger section label (the
   trend-filter sheet's amount/measure rows pass `'caption'`). The chip
@@ -1074,31 +1133,19 @@ new component can land between reviews of this skill:
   against this rule before adding or changing one — do not assume a
   control's existing type is correct, and never move a control between
   `ChipRow`/`SegmentedControl`/`SelectField` as an unrequested DEFAULT
-  without a specific instruction naming that control. Current app state:
-  - `SegmentedControl` (changes fields): the column-mapping screen's
-    amount-mode/currency-mode selectors (`AmountFields`/`CurrencyFields`);
-    the Bond form's ISIN/Manual mode (`BondIsinSection`,
-    `src/screens/forms/holding-form/bond/bond-isin-section/`); the Loan
-    form's schedule selector (`LoanSection` — `none` hides the
-    rate/term fields); the Lot form's Buy/Sell toggle (`LotFormScreen`
-    — Buy alone shows the Total-cost field); the property form's
-    ownership Percent/Fraction mode (`OwnershipField` — Percent shows one
-    field, Fraction two); the account-detail crypto
-    sync form's Wallet/Binance source toggle (`CryptoSyncForm` — each
-    shows a different credential field); the Statistics trend-filter
-    sheet's Top/Manual mode (`TrendFilterField` — Top shows the
-    amount/measure controls, Manual shows the category list; this one
-    ALSO passes `labelVariant="caption"` — it sits directly under its
-    own larger `SectionHeader`, so it stays visually subordinate to
-    that header rather than reading as a competing peer of it, the
-    same label-above-value hierarchy `ChipRow`'s `labelVariant` follows
-    elsewhere in the same sheet).
-  - `ChipRow` (leaves the form the same): the column-mapping screen's
-    encoding, delimiter, and decimal-separator pickers; the holding
-    form's metal form/unit chips, the deposit/loan term's Months/Years
-    chips (`TermField`), and the term-deposit Compounding chips; the Manual-mode bond-kind chips
-    (`ManualBondFields`); the Statistics trend-filter sheet's amount
-    (1-5) and by-measure pills; the Settings `LanguageSwitch`.
+  without a specific instruction naming that control. Current app state
+  (a representative sample, not the closed set — grep `<SegmentedControl`
+  / `<ChipRow` for the current consumers):
+  - `SegmentedControl` (changes fields): the reminder form's Repeat
+    (frequency) selector (`ReminderFormScreen` — each frequency shows
+    its own field: weekdays, day of month, or interval); the Bond
+    form's ISIN/Manual mode (`BondIsinSection`,
+    `src/screens/forms/holding-form/bond/bond-isin-section/`); the Lot
+    form's Buy/Sell toggle (`LotFormScreen` — Buy alone shows the
+    Total-cost field).
+  - `ChipRow` (leaves the form the same): the reminder form's weekday
+    picker (`WeekdayField`, multi-select); the holding form's metal
+    form/unit chips.
   - `SelectField` (long list, regardless of field-change): the
     property-category and loan-kind pickers (6 and 4 options — too
     wide for a `ChipRow`); the bond coupon-frequency picker (shared by

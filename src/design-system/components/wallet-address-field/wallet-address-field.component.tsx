@@ -4,9 +4,8 @@ import { isValidBitcoinAddress } from '@kiko/crypto-sync/btc-wallet';
 
 import Box from '../box';
 import Button from '../button';
-import SyncStatusLine from '../sync-status-line';
-import type { SyncStatus } from '../sync-status-line';
 import ClipboardTextField from '../clipboard-text-field';
+import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
 
 import { styles } from './wallet-address-field.styles';
 

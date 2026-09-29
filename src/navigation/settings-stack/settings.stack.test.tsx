@@ -1,5 +1,4 @@
-import { isValidElement } from 'react';
-import type { ReactElement } from 'react';
+import { isValidElement, type ReactElement } from 'react';
 
 // The real screens wired into this stack pull in db/client, which opens a real
 // op-sqlite connection at module load. op-sqlite has no Jest binary, so stub it
@@ -57,5 +56,11 @@ describe('SettingsStack', () => {
     expect(titles.Categories).toBe('Categories');
     expect(titles.ExportData).toBe('Export Data');
     expect(titles.ImportData).toBe('Import Data');
+  });
+
+  it('registers the reminders list and the reminder form it opens', () => {
+    const titles = titleByScreen();
+    expect(titles.Reminders).toBe('Reminders');
+    expect(titles.ReminderForm).toBe('New Reminder');
   });
 });

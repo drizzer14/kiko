@@ -122,8 +122,11 @@ string:
   is unambiguously one of the three Title Case roles above.
 - **Keep as written** — proper nouns and brand names (Kiko/Кіко,
   Monobank, Binance, Diia/Дія, Apple, NBU/НБУ, Keychain, Face ID,
-  iOS), acronyms (ISIN, API, CSV, BTC, ISO codes), and a unit in
-  parentheses cases per the rule of the role it sits inside.
+  iOS), acronyms (ISIN, API, CSV, BTC, ISO codes), a unit in
+  parentheses cases per the rule of the role it sits inside, and a
+  capital letter standing for a user-chosen number ("Every N days" /
+  "Кожні N днів"; `NUMBER_PLACEHOLDER_LETTERS` in
+  `en.casing-by-role.test.ts`).
 - **uk is sentence case everywhere** — Ukrainian never switches to
   Title Case for a screen title or a section heading the way English
   does; see the next section.
@@ -187,8 +190,9 @@ A second, independent axis from casing — every catalogue string's
 trailing punctuation is decided by its UI ROLE, not habit:
 
 - **No final "."** — titles, headings, sheet titles, buttons,
-  chips/options, menu items, field labels, placeholders, empty
-  states, alert titles, progress/status text (e.g.
+  chips/options, menu items, field labels, placeholders, empty-state
+  headlines (a short phrase: "No reminders yet"), alert titles,
+  progress/status text (e.g.
   `home.syncingHoldings`), and a `"Label: {{value}}"` string (e.g.
   `migration.error: 'Migration error: {{message}}'`). A sheet title
   phrased as a real question (`settings.dataImport.confirmTitle`,
@@ -197,7 +201,9 @@ trailing punctuation is decided by its UI ROLE, not habit:
 - **Final "." always** (or "?" when the body is itself a question) —
   option descriptions/subtitles, captions/hints, errors, toast/alert
   bodies, even for a one-word fragment (`isinNotInRegister`: "Not in
-  the NBU register.").
+  the NBU register."); a full-sentence empty-page explanation shown as
+  a caption (`reminders.emptyNoKinds`). Note that the user's key review
+  decides it (no test checks it yet).
 
 The mechanized invariant lives in
 `src/i18n/locales/en.final-stop-by-role.test.ts` (checks both `en` and
@@ -223,6 +229,12 @@ always-period role (option subtitles and toast/alert bodies with no
 `*Message`/`*Hint` suffix have no equally reliable name/path/value
 signal to check by pattern) — add a new key to the SAME role's
 existing sibling keys' punctuation, by hand, per the DECISION above.
+
+The uk preposition before a time is "о", except "об" before 11 ("об
+одинадцятій"), ONLY for 11:xx on the 24-hour clock. Never hard-code it
+in a sentence that interpolates a time; split it into `{{at}}` (the
+`reminders.schedule.at`/`atEleven` pattern, with en keeping both as
+"at").
 
 ## Ukrainian is sentence case — no blanket `textTransform`
 
