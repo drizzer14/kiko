@@ -167,6 +167,16 @@ export const remindersRepo = {
         .where(and(eq(reminders.id, reminderId), isNotNull(reminders.pausedAt)));
     });
   },
+  // After a backup restore: the restored start is from another time or
+  // device, so every reminder sent since then would count as ignored. A pause
+  // stays, as the backup had it.
+  restartIgnoredCounts: async (): Promise<void> => {
+    const now = Date.now();
+
+    await write((databaseTransaction) =>
+      databaseTransaction.update(reminders).set({ activeSince: now }),
+    );
+  },
   remove: async (reminderId: string): Promise<void> => {
     await write((databaseTransaction) =>
       databaseTransaction.delete(reminders).where(eq(reminders.id, reminderId)),

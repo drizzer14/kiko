@@ -321,6 +321,37 @@ describe('remindersRepo.markBackoffPaused', () => {
   });
 });
 
+describe('remindersRepo.restartIgnoredCounts', () => {
+  it('restarts every reminder from now in one write, and keeps its pause and engagement', async () => {
+    const now = new Date(2026, 8, 29, 9, 0).getTime();
+    const dateNow = jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    insertAccount('account-1');
+    insertAccount('account-2');
+    insertReminder('reminder-1', 'account-1', 'statement_import', {
+      paused_at: 600,
+      pause_reason: 'backoff',
+      last_engaged_at: 500,
+      last_snoozed_at: 550,
+    });
+    insertReminder('reminder-2', 'account-2', 'add_transactions');
+
+    await remindersRepo.restartIgnoredCounts();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(storedReminder('reminder-1')).toMatchObject({
+      active_since: now,
+      paused_at: 600,
+      pause_reason: 'backoff',
+      last_engaged_at: 500,
+      last_snoozed_at: 550,
+    });
+    expect(storedReminder('reminder-2').active_since).toBe(now);
+
+    dateNow.mockRestore();
+  });
+});
+
 describe('remindersRepo.clearSnoozes', () => {
   beforeEach(() => {
     insertAccount('account-1');
