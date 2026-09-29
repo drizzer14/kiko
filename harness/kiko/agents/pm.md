@@ -18,3 +18,7 @@ Rules:
 - You never edit app source. You never run a git-mutating or worktree-mutating command (no commit, add, checkout, restore, stash, clean, merge, rebase, push, or worktree add/remove). You only read.
   You do not stop processes at all — no pkill, killall, kill, or any pattern/group kill.
 - Keep the full snapshot ready to hand the coordinator on request.
+- Report back the moment the snapshot is ready, then end the turn — no extra checks or
+  silent waiting after. Run any long git/Orca query in the background and wait only for
+  its exit code; past 30 minutes on one step, report "still running: <step>, <elapsed>"
+  instead of going quiet.

@@ -1,3 +1,4 @@
+import { settingsRepo } from '@kiko/settings';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -10,7 +11,9 @@ import {
   type ParsedStatementSource,
 } from '../parser';
 import { detectFormat } from '../registry';
+import { rezoneImportTimes } from '../rezone-import-times';
 import { computeDedupKey, mapParsedTransaction } from '../mapping';
+import { upgradeStoredDedupKeys } from '../upgrade-stored-dedup-keys';
 
 export type ImportResult = {
   formatId: ParsedStatementSource;
@@ -50,6 +53,30 @@ export const importParsedStatement = async (
   parsed: ParsedStatement,
   holdingId: string,
 ): Promise<ImportResult> => {
+  // Both one-shot statement-import rewrites are no-ops once their own flag
+  // is already `true` (the common case, after the FIRST import following
+  // launch). Running them here too — not just from `MigrationsGate`, which
+  // already awaits both before the app becomes usable — covers the device
+  // whose gate-time rezone FAILED (its own `write()` failed, caught by the
+  // gate's own `.catch`, leaving the flag `false`): this gives it one more
+  // chance right before writing any new import row. If the rezone step
+  // still hasn't flipped its flag afterward, refuse the import outright
+  // rather than writing new-convention rows next to not-yet-rezoned
+  // old-convention ones — the screen's existing generic import-failure copy
+  // covers this, so no new i18n key is needed. The dedup-key upgrade has no
+  // matching explicit check: a persistently failing rewrite here throws and
+  // blocks the import with that same generic error too, which is
+  // acceptable — the row it would have rewritten stays reachable under its
+  // legacy key either way.
+  await upgradeStoredDedupKeys();
+  await rezoneImportTimes();
+
+  const rezoneStatus = await settingsRepo.getQuery();
+
+  if (rezoneStatus.at(0)?.importTimesRezoned !== true) {
+    throw new Error('statement-import/rezone-pending');
+  }
+
   const holdingRows = await holdingsRepo.byIdQuery(holdingId);
   const holding = holdingRows.at(0);
 

@@ -1,5 +1,7 @@
 import type { FC } from 'react';
-import { Share } from 'react-native';
+import { match } from 'ts-pattern';
+import { confirmOwner } from '@kiko/auth';
+import { Alert, Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { exportData } from '@kiko/data-transfer';
 import { useEffect, useRef, useState } from 'react';
@@ -50,6 +52,32 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
   );
 
   const runExport = async (): Promise<void> => {
+    if (includeSecrets) {
+      const owner = await confirmOwner(t('auth.reason.exportSecrets'));
+
+      const confirmed = match(owner)
+        .with({ kind: 'confirmed' }, () => true)
+        .with({ kind: 'cancelled' }, () => false)
+        // No owner authentication exists on a passcode-less device — unlike
+        // disabling the lock, there is no passcode sheet this could show, so
+        // the export is refused rather than let through unauthenticated.
+        .with({ kind: 'noPasscode' }, () => {
+          Alert.alert(t('auth.reauth.passcodeRequiredTitle'), t('auth.reauth.passcodeRequired'));
+
+          return false;
+        })
+        .with({ kind: 'failed' }, (result) => {
+          Alert.alert(t('auth.reauth.failedTitle'), t(result.hintKey));
+
+          return false;
+        })
+        .exhaustive();
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
     try {
       const result = await exportData({ includeSecrets });
       setKeyBase64(result.keyBase64);

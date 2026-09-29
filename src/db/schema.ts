@@ -385,6 +385,16 @@ export const settings = sqliteTable('settings', {
   // `restoreDataSnapshot` treats an entirely absent key (a pre-0041 `.kiko`
   // export) as `false` too — see `restore-snapshot.ts`.
   dedupKeysUpgraded: integer('dedup_keys_upgraded', { mode: 'boolean' }).notNull().default(false),
+  // One-shot flag: has this device already rewritten its stored statement-
+  // import rows' `time` (and the matching dedup-key token) from the legacy
+  // "wall clock written as UTC" convention to a real instant
+  // (`statement-import/rezone-import-times/`'s `planImportTimeRezone`)?
+  // Migration 0043 adds this column defaulting to `false` (unrun);
+  // `MigrationsGate` flips it to `true` after the one-time rewrite, the same
+  // shape `dedupKeysUpgraded` above uses. `restoreDataSnapshot` treats an
+  // entirely absent key (a pre-0043 `.kiko` export) as `false` too — see
+  // `restore-snapshot.ts`.
+  importTimesRezoned: integer('import_times_rezoned', { mode: 'boolean' }).notNull().default(false),
   // The reminder offers the user dismissed, as a map from `accounts.id` to the
   // dismissed kinds, so a dismissed offer never comes back for that account.
   // NULL means nothing dismissed yet.

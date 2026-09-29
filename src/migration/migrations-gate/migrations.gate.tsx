@@ -8,6 +8,7 @@ import { initDatabase, runMigrations } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
 import { migrateLegacyToken } from '@kiko/monobank/token';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
+import { rezoneImportTimes } from '@kiko/statement-import/rezone-import-times';
 import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance';
 import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
 import { upgradeStoredDedupKeys } from '@kiko/statement-import/upgrade-stored-dedup-keys';
@@ -106,13 +107,15 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     // read (the auto-sync hook mounts only on success): first the legacy
     // (pre-`kiko`) -> global move, then the global -> per-account move that binds
     // the Monobank token to its connected account, then the equivalent global ->
-    // per-account move for the Binance credentials. The dedup-key upgrade runs
-    // last of the one-shot migrations, since it only needs the settings row
-    // (already ensured above) and touches no Keychain state the credential
-    // migrations depend on — its own `.catch` below (unlike every migration
-    // ahead of it) keeps its failure from reaching the chain's own `.catch`,
-    // since it is the one non-critical step here (see that `.catch`'s doc
-    // comment).
+    // per-account move for the Binance credentials. The dedup-key upgrade
+    // runs next, since it only needs the settings row (already ensured above)
+    // and touches no Keychain state the credential migrations depend on; the
+    // device-zone rezone step runs right after it — a not-yet-␟-upgraded
+    // key's time token still rewrites correctly either order, but this keeps
+    // the two one-shot statement-import upgrades adjacent. Both steps' own `.catch`
+    // below (unlike every migration ahead of them) keeps a failure from
+    // reaching the chain's own `.catch`, since each is non-critical here (see
+    // that `.catch`'s doc comment).
     initDatabase()
       .then(runMigrations)
       .then(() => settingsRepo.ensure())
@@ -133,6 +136,22 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
           // is (console.warn), never a new UI state.
           // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) this catch is what keeps the failure from surfacing anywhere else (see the doc comment above) — logging it here is the only trace a failed rewrite leaves.
           console.warn('[migrations-gate] dedup-key upgrade failed, will retry next launch', error);
+        }),
+      )
+      .then(() =>
+        rezoneImportTimes().catch((error: unknown) => {
+          // Non-critical, same reasoning as the dedup-key upgrade above: a
+          // failed rewrite must never send the WHOLE launch to this gate's
+          // error state — every stored row is still reachable under its
+          // legacy time, and `importParsedStatement` runs this same step
+          // again (and refuses the import if it still fails) before writing
+          // any new row, so nothing under the new convention ever lands next
+          // to an un-rezoned one.
+          // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) this catch is what keeps the failure from surfacing anywhere else (see the doc comment above) — logging it here is the only trace a failed rewrite leaves.
+          console.warn(
+            '[migrations-gate] import-time rezone failed, will retry next launch',
+            error,
+          );
         }),
       )
       .then(() => {

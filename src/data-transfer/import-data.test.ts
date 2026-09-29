@@ -64,7 +64,7 @@ const encryptedFixture = (): { fileText: string; keyBase64: string } => {
 describe('importData', () => {
   beforeEach(() => {
     mockReadFile.mockReset();
-    mockRestoreDataSnapshot.mockReset().mockResolvedValue(undefined);
+    mockRestoreDataSnapshot.mockReset().mockResolvedValue({ accountsRestored: 1 });
     mockRestoreExportSecrets.mockReset().mockResolvedValue(undefined);
     mockRefreshMarketData.mockClear();
     mockRefreshMarketData.mockResolvedValue(right(undefined));
@@ -158,6 +158,22 @@ describe('importData', () => {
   // (import-data.screen.tsx `runImport`) — if the imported settings row
   // carries a different language, the caller needs it BEFORE building that
   // alert so it can switch i18n first. See the file header comment.
+  // Migration 0044's restore mirror can insert one MORE account than the
+  // file itself carried (a `crypto-from-<source>` account) — the summary
+  // must reflect what was actually restored, not `payload.tables.accounts
+  // .length`, or the Accounts screen would show one more account than the
+  // success message just claimed.
+  it("returns the actually-restored account count, not the file's own account count", async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    mockRestoreDataSnapshot.mockResolvedValue({ accountsRestored: 2 });
+
+    const summary = await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(payload.tables.accounts).toHaveLength(1);
+    expect(summary.accountsRestored).toBe(2);
+  });
+
   it('returns the imported settings row language as languageRestored', async () => {
     const key = generateExportKey();
     const payloadWithLanguage = {

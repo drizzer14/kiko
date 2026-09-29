@@ -21,6 +21,18 @@ export const en = {
       failed: 'Authentication failed. Try again.',
     },
     locked: 'Locked',
+    // The reason string each re-authentication prompt titles its system
+    // sheet with (`confirmOwner(reason)`), one per sensitive action.
+    reason: {
+      disableLock: 'Turn off app lock',
+      exportSecrets: 'Export your saved passwords & keys',
+    },
+    reauth: {
+      failedTitle: "Couldn't confirm it's you",
+      passcodeRequired:
+        'Set a device passcode to export saved passwords & keys. An export without them still works.',
+      passcodeRequiredTitle: 'Device passcode required',
+    },
     unlock: 'Unlock',
     unlockPrompt: 'Unlock Kiko',
     usePasscode: 'Use passcode',
@@ -50,6 +62,8 @@ export const en = {
       label: 'App lock',
       requireFaceIdOrPasscode: 'Require Face ID or passcode',
       hint: {
+        biometryUnavailable:
+          "Face ID isn't available right now — your device passcode will be used.",
         passcodeNotSet: 'Set a device passcode in iOS Settings to use app lock.',
         passcodeOnly: 'No Face ID enrolled — your device passcode will be used.',
         unavailable: 'Biometric hardware is unavailable on this device.',
@@ -86,8 +100,6 @@ export const en = {
       confirmMessage:
         'Importing replaces every account, holding, transaction, and category currently in Kiko with the contents of this file. This cannot be undone.',
       confirmTitle: 'Replace All Data?',
-      cryptoCashHoldingError:
-        'This file has a cash holding in a cryptocurrency. Cash holdings take regular currencies only, so the file cannot be imported.',
       description: 'Choose a Kiko export file and enter its encryption key to restore your data.',
       errorTitle: 'Import failed',
       importButton: 'Import data',

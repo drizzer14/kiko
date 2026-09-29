@@ -15,6 +15,7 @@ const mockMigrateLegacyToken = jest.fn<Promise<void>, []>();
 const mockMigratePerAccountToken = jest.fn<Promise<void>, [string | undefined]>();
 const mockMigratePerAccountBinance = jest.fn<Promise<void>, [string | undefined]>();
 const mockUpgradeStoredDedupKeys = jest.fn<Promise<void>, []>();
+const mockRezoneImportTimes = jest.fn<Promise<void>, []>();
 const mockConnectedQuery = jest.fn<Promise<{ id: string }[]>, [string?]>();
 // Backs `settingsRepo.getQuery()` for `applyPersistedLanguage`. A test sets
 // `mockGetSettings.mockResolvedValue(...)` / `mockRejectedValueOnce(...)`
@@ -32,6 +33,9 @@ jest.mock('@kiko/crypto-sync/binance/migrate-binance-credential', () => ({
 }));
 jest.mock('@kiko/statement-import/upgrade-stored-dedup-keys/upgrade-stored-dedup-keys', () => ({
   upgradeStoredDedupKeys: () => mockUpgradeStoredDedupKeys(),
+}));
+jest.mock('@kiko/statement-import/rezone-import-times/rezone-import-times', () => ({
+  rezoneImportTimes: () => mockRezoneImportTimes(),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { connectedQuery: (institution?: string) => mockConnectedQuery(institution) },
@@ -63,6 +67,7 @@ describe('MigrationsGate', () => {
     mockMigratePerAccountToken.mockResolvedValue(undefined);
     mockMigratePerAccountBinance.mockResolvedValue(undefined);
     mockUpgradeStoredDedupKeys.mockResolvedValue(undefined);
+    mockRezoneImportTimes.mockResolvedValue(undefined);
     mockConnectedQuery.mockResolvedValue([]);
     (settingsRepo.ensure as jest.Mock).mockResolvedValue(undefined);
     mockGetSettings.mockResolvedValue([]);
@@ -120,13 +125,16 @@ describe('MigrationsGate', () => {
     expect(mockMigratePerAccountBinance).toHaveBeenCalledWith('acc-binance');
   });
 
-  it('runs the dedup-key upgrade once, after the credential migrations', async () => {
+  it('runs the dedup-key upgrade once, after the credential migrations, then the import-time rezone', async () => {
     const order: string[] = [];
     mockMigratePerAccountBinance.mockImplementation(async () => {
       order.push('binance-credential');
     });
     mockUpgradeStoredDedupKeys.mockImplementation(async () => {
       order.push('dedup-key-upgrade');
+    });
+    mockRezoneImportTimes.mockImplementation(async () => {
+      order.push('import-time-rezone');
     });
 
     const { findByText } = await render(
@@ -137,7 +145,8 @@ describe('MigrationsGate', () => {
 
     expect(await findByText('ready')).toBeTruthy();
     expect(mockUpgradeStoredDedupKeys).toHaveBeenCalledTimes(1);
-    expect(order).toEqual(['binance-credential', 'dedup-key-upgrade']);
+    expect(mockRezoneImportTimes).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['binance-credential', 'dedup-key-upgrade', 'import-time-rezone']);
   });
 
   it('still renders children when the dedup-key upgrade rejects, rather than sending the whole launch to the error state', async () => {
@@ -155,6 +164,25 @@ describe('MigrationsGate', () => {
     // user out. Its own `write()` transaction (upgrade-stored-dedup-keys.ts)
     // leaves the flag at `false` on any rejection, so the next launch
     // retries — this gate just must not block on it meanwhile.
+    expect(await findByText('ready')).toBeTruthy();
+    expect(queryByTestId('migrations-gate-error')).toBeNull();
+    warnSpy.mockRestore();
+  });
+
+  it('still renders children when the import-time rezone rejects, rather than sending the whole launch to the error state', async () => {
+    mockRezoneImportTimes.mockRejectedValue(new Error('disk full'));
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { findByText, queryByTestId } = await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    // Same non-critical reasoning as the dedup-key upgrade above: every
+    // stored row is still reachable under its legacy time, and
+    // `importParsedStatement` retries (and refuses on failure) before any
+    // new-convention row could land next to an un-rezoned one.
     expect(await findByText('ready')).toBeTruthy();
     expect(queryByTestId('migrations-gate-error')).toBeNull();
     warnSpy.mockRestore();

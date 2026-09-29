@@ -1,12 +1,17 @@
-import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { Alert, StyleSheet } from 'react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import SystemScreen from './system.screen';
+
+const mockConfirmOwner = jest.fn();
+jest.mock('@kiko/auth/confirm-owner', () => ({
+  confirmOwner: (...args: unknown[]) => mockConfirmOwner(...args),
+}));
 
 type SystemProps = ComponentProps<typeof SystemScreen>;
 
@@ -95,12 +100,105 @@ describe('SystemScreen', () => {
     expect(getByText('🇬🇧 English').parent?.props.accessibilityState.selected).toBe(false);
   });
 
-  it('calls setLockEnabled when the App Lock switch is toggled', async () => {
+  it('turns the lock on directly, with no re-authentication', async () => {
     const { getByTestId } = await renderScreen();
 
     await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', true);
 
     expect(mockSetLockEnabled).toHaveBeenCalledWith(true);
+    expect(mockConfirmOwner).not.toHaveBeenCalled();
+  });
+});
+
+describe('SystemScreen — turning the lock off re-authenticates', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLiveQueryData = [{ baseCurrency: 'UAH', lockEnabled: true }];
+    mockLiveQueryIsLoading = false;
+  });
+
+  it('confirms the owner with the disable-lock reason, then turns the lock off', async () => {
+    mockConfirmOwner.mockResolvedValue({ kind: 'confirmed' });
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', false);
+
+    await waitFor(() => expect(mockSetLockEnabled).toHaveBeenCalledWith(false));
+    expect(mockConfirmOwner).toHaveBeenCalledWith('Turn off app lock');
+  });
+
+  // A device with no passcode has no owner authentication to run at all —
+  // blocking the lock-off here would leave no way to ever turn it off again.
+  it('turns the lock off with no alert when the device has no passcode', async () => {
+    mockConfirmOwner.mockResolvedValue({ kind: 'noPasscode' });
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', false);
+
+    await waitFor(() => expect(mockSetLockEnabled).toHaveBeenCalledWith(false));
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('leaves the lock on when the owner cancels, with no alert', async () => {
+    mockConfirmOwner.mockResolvedValue({ kind: 'cancelled' });
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', false);
+
+    await waitFor(() => expect(mockConfirmOwner).toHaveBeenCalled());
+    expect(mockSetLockEnabled).not.toHaveBeenCalled();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('leaves the lock on and alerts when owner confirmation fails', async () => {
+    mockConfirmOwner.mockResolvedValue({ kind: 'failed', hintKey: 'auth.hint.failed' });
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', false);
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        "Couldn't confirm it's you",
+        'Authentication failed. Try again.',
+      ),
+    );
+    expect(mockSetLockEnabled).not.toHaveBeenCalled();
+  });
+
+  it('confirms the owner only once for two OFF toggles before the first settles', async () => {
+    let resolveConfirm: (confirmation: { kind: string }) => void = () => {};
+    mockConfirmOwner.mockReturnValue(
+      new Promise((resolve) => {
+        resolveConfirm = resolve;
+      }),
+    );
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', false);
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', false);
+
+    expect(mockConfirmOwner).toHaveBeenCalledTimes(1);
+
+    resolveConfirm({ kind: 'confirmed' });
+    await waitFor(() => expect(mockSetLockEnabled).toHaveBeenCalledWith(false));
+  });
+
+  it('re-arms the toggle after confirmAndDisable rejects, so a retry can run', async () => {
+    mockConfirmOwner.mockRejectedValueOnce(new Error('boom'));
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', false);
+
+    await waitFor(() => expect(mockConfirmOwner).toHaveBeenCalledTimes(1));
+
+    mockConfirmOwner.mockResolvedValueOnce({ kind: 'confirmed' });
+    await fireEvent(getByTestId('settings-switch-app-lock'), 'valueChange', false);
+
+    await waitFor(() => expect(mockConfirmOwner).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockSetLockEnabled).toHaveBeenCalledWith(false));
   });
 });
 

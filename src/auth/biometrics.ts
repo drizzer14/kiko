@@ -17,9 +17,12 @@ const loadNativeBiometrics = (): typeof ReactNativeBiometrics =>
 // kind to a switch-availability decision and a hint string.
 export type SensorStatus =
   | { kind: 'available'; biometryType: string | undefined }
-  // A passcode is set but no biometry is enrolled: the lock still works, through
-  // the passcode sheet (`allowDeviceCredentials`).
-  | { kind: 'passcodeOnly' }
+  // A passcode is set but biometry isn't usable: the lock still works, through
+  // the passcode sheet (`allowDeviceCredentials`). `notEnrolled` means the
+  // user never set up biometry; `biometryUnavailable` means a secure device
+  // whose biometry is off/locked out for another reason (denied permission,
+  // a temporary lockout) — different hint copy, same fallback.
+  | { kind: 'passcodeOnly'; reason: 'notEnrolled' | 'biometryUnavailable' }
   | { kind: 'passcodeNotSet' }
   | { kind: 'unavailable' };
 
@@ -48,6 +51,24 @@ const PASSCODE_NOT_SET_CODE = 'PASSCODE_NOT_SET';
 
 const hasCode = (codes: readonly string[], code: string | undefined): boolean =>
   code !== undefined && codes.includes(code);
+
+// Shared between a native REJECTION (the real iOS shape) and a resolved
+// `success: false` result, so both classify identically off the same code.
+const classifyCode = (code: string | undefined): AuthResult => {
+  if (hasCode(CANCEL_CODES, code)) {
+    return { kind: 'cancelled' };
+  }
+
+  if (hasCode(LOCKOUT_CODES, code)) {
+    return { kind: 'lockout' };
+  }
+
+  if (code === PASSCODE_NOT_SET_CODE) {
+    return { kind: 'passcodeNotSet' };
+  }
+
+  return { kind: 'failed', code };
+};
 
 // A caught value from `either`'s left channel: either the native module's own
 // rejection (which may carry `code` or `errorCode`) or the plain `Error` a
@@ -92,21 +113,33 @@ export const isSensorAvailable = async (): Promise<SensorStatus> => {
     return { kind: 'unavailable' };
   }
 
-  // Annotated explicitly: `bifold` on a narrowed `Right` still leaves nothing
-  // for TypeScript to infer `LeftValue` from, and silently resolves to
-  // `unknown` without this.
-  const info: ReactNativeBiometrics.BiometricSensorInfo = bifold(result);
+  // Left `unknown`, not the native `BiometricSensorInfo` type: LockGate's
+  // caller depends on this function never throwing, and the type only
+  // describes what the native module PROMISES to resolve, not what a
+  // malformed build actually hands back — the same defensive stance as
+  // `thrownCode` below takes for a caught rejection.
+  const info: unknown = bifold(result);
 
-  if (info.available) {
-    return { kind: 'available', biometryType: info.biometryType };
+  if (typeof info !== 'object' || info === null) {
+    return { kind: 'unavailable' };
   }
 
-  if (info.isDeviceSecure === false || info.errorCode === PASSCODE_NOT_SET_CODE) {
+  const sensor = info as ReactNativeBiometrics.BiometricSensorInfo;
+
+  if (sensor.available) {
+    return { kind: 'available', biometryType: sensor.biometryType };
+  }
+
+  if (sensor.isDeviceSecure === false || sensor.errorCode === PASSCODE_NOT_SET_CODE) {
     return { kind: 'passcodeNotSet' };
   }
 
-  if (hasCode(NOT_ENROLLED_CODES, info.errorCode)) {
-    return { kind: 'passcodeOnly' };
+  if (hasCode(NOT_ENROLLED_CODES, sensor.errorCode)) {
+    return { kind: 'passcodeOnly', reason: 'notEnrolled' };
+  }
+
+  if (sensor.isDeviceSecure === true) {
+    return { kind: 'passcodeOnly', reason: 'biometryUnavailable' };
   }
 
   return { kind: 'unavailable' };
@@ -134,7 +167,19 @@ export const authenticate = async (prompt: string): Promise<AuthResult> => {
   );
 
   if (isLeft(result)) {
-    return { kind: 'failed', code: thrownCode(bifold(result)) };
+    const classified = classifyCode(thrownCode(bifold(result)));
+
+    if (classified.kind !== 'failed') {
+      return classified;
+    }
+
+    // A native rejection classified as an unspecific `failed` may really mean
+    // the passcode was just removed — the sensor query disambiguates the two,
+    // since a plain "authentication failed" carries no such distinction of
+    // its own.
+    const sensorStatus = await isSensorAvailable();
+
+    return sensorStatus.kind === 'passcodeNotSet' ? { kind: 'passcodeNotSet' } : classified;
   }
 
   // Same annotation gotcha as `isSensorAvailable`'s `info`.
@@ -144,17 +189,5 @@ export const authenticate = async (prompt: string): Promise<AuthResult> => {
     return { kind: 'success' };
   }
 
-  if (hasCode(CANCEL_CODES, authResult.errorCode)) {
-    return { kind: 'cancelled' };
-  }
-
-  if (hasCode(LOCKOUT_CODES, authResult.errorCode)) {
-    return { kind: 'lockout' };
-  }
-
-  if (authResult.errorCode === PASSCODE_NOT_SET_CODE) {
-    return { kind: 'passcodeNotSet' };
-  }
-
-  return { kind: 'failed', code: authResult.errorCode };
+  return classifyCode(authResult.errorCode);
 };

@@ -154,7 +154,7 @@ describe('alfaBusinessCsvFormat.parse', () => {
 
     expect(first.currency).toBe('GBP');
     expect(first.amountMinorUnits).toBe(-101_823);
-    expect(first.timeSeconds).toBe(1_614_780_014);
+    expect(first.timeSeconds).toBe(1_614_772_814);
   });
 
   // Row 2: "...;Кредит;...;5018.23;GBP;09:47:52;..." — word-column "Кредит"
@@ -165,7 +165,7 @@ describe('alfaBusinessCsvFormat.parse', () => {
 
     expect(second.currency).toBe('GBP');
     expect(second.amountMinorUnits).toBe(501_823);
-    expect(second.timeSeconds).toBe(1_614_764_872);
+    expect(second.timeSeconds).toBe(1_614_757_672);
   });
 
   // Row 3 switches currency to UAH within the same file — proves per-row
@@ -176,7 +176,7 @@ describe('alfaBusinessCsvFormat.parse', () => {
 
     expect(third.currency).toBe('UAH');
     expect(third.amountMinorUnits).toBe(3_944_747);
-    expect(third.timeSeconds).toBe(1_614_782_414);
+    expect(third.timeSeconds).toBe(1_614_775_214);
   });
 
   it('parses the last row exactly (word-column Дебет → negative, GBP)', () => {
@@ -185,7 +185,7 @@ describe('alfaBusinessCsvFormat.parse', () => {
 
     expect(last.currency).toBe('GBP');
     expect(last.amountMinorUnits).toBe(-501_823);
-    expect(last.timeSeconds).toBe(1_614_764_872);
+    expect(last.timeSeconds).toBe(1_614_757_672);
   });
 
   it("detects the account currency hint (GBP) from the file's first row", () => {

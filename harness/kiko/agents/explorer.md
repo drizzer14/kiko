@@ -14,3 +14,4 @@ Rules:
 - You have no Bash, Edit, or Write tool. You only read.
 - For parallel searches, the coordinator uses superpowers:dispatching-parallel-agents.
 - Verify a negative claim ("does not exist", "none found") with Glob using a dotfile pattern plus Grep over the whole tree, including hidden paths, before you report it.
+- Report back the moment the search is done, then end the turn. No extra checks or waiting after.

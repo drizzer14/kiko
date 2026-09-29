@@ -256,6 +256,12 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | `kiko-no-process-env-time-zone-in-test` | `jest.config.js` pins `process.env.TZ` to Europe/Kyiv at config load (`47858d8a`); Jest gives each test sandbox its own `process.env` copy, so an assignment in a test file, `beforeAll`, or helper is a silent no-op and a test naming another zone does not test it (kiko-domain "Dates") | Semgrep (TS, **WARNING**/Class B for now, `rules/semgrep-prewrite.yml`) | `pattern-either` of `process.env.TZ = $ZONE` and `process.env['TZ'] = $ZONE`; `paths.include` `*.test.ts`, `*.test.tsx`, `src/test-support/**`, `__tests__/**`, `paths.exclude` `jest.config.js`. The path-prefixed include makes the fixture pair NESTED (`rules/fixtures/kiko-no-process-env-time-zone-in-test/src/test-support/`). **No sweep in this commit**: 26 existing flips in 11 test files (a later track removes them) stay as `check:security` Class B findings, which do not fail. The pre-write guard ignores severity, so it already denies a NEW flip. **Promote to ERROR** once `check:security` reports no finding for this rule. |
 
+### Enforced — round-a CS-F (device-zone import-time rezone)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-date-utc-in-statement-import` | A bank wall-clock read directly through `Date.UTC(...)` or the local-time `new Date($Y, $M, ...)` constructor bypasses both zone readings this project settled on (`kyivInstantMillisecondsIfRoundTrips` for a named format, `deviceWallClockToLocalMilliseconds` for column mapping) — neither rejects a rollover, and a raw `Date.UTC` call silently reads the wall clock in the wrong zone entirely | Semgrep (`rules/semgrep-prewrite.yml`, also loaded by `check:security`/`check:rules`) | `paths.include: src/statement-import/**`, excluding `*.test.ts`/`*.test.tsx`. Its fixture pair is nested at `rules/fixtures/kiko-no-date-utc-in-statement-import/src/statement-import/` (kiko-linter's "Semgrep facts" — a flat fixture draws nothing against this narrower `paths.include`). See `kiko-statement-import`'s "Every date-format preset" for the two sanctioned readers. |
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:

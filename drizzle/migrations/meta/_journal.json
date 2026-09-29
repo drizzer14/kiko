@@ -304,9 +304,23 @@
       "breakpoints": true
     },
     {
+      "idx": 43,
+      "version": "6",
+      "when": 1790617553621,
+      "tag": "0043_add_import_times_rezoned",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1790700000000,
+      "tag": "0044_move_crypto_cash_holdings",
+      "breakpoints": true
+    },
+    {
       "idx": 45,
       "version": "6",
-      "when": 1790624097468,
+      "when": 1790644084553,
       "tag": "0045_add_reminders",
       "breakpoints": true
     }

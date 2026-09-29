@@ -112,7 +112,13 @@ else (an edited description, a bank-issued id) untouched.
 `upgrade-stored-dedup-keys.ts`'s `upgradeStoredDedupKeys` is the launch
 step `MigrationsGate` runs it under — see `kiko-architecture`'s
 "Storage" section for the migration/gate mechanism and "Data transfer"
-for the restore-side mirror.
+for the restore-side mirror. `rezone-import-times/`'s
+`rezoneImportTimes` runs right after it (also from
+`importParsedStatement`, before any import): it rewrites a stored
+import row's `time` from the legacy wall-clock-as-UTC convention to a
+real instant, and the dedup key's time token along with it
+(`rezoneDedupKey`) — see "Column mapping" below for the zone reading
+itself.
 
 ## Column mapping
 
@@ -131,30 +137,59 @@ column mapping is offered only once `detectFormat` fails or the
 account's `bankId` disagrees with the detected format (see
 `statement-import.screen.tsx`).
 
-Every date-format preset in `date-formats.ts` reads UTC wall-clock
-parts (`Date.UTC(...)`), the same convention `parseDateTimeSeconds`
-already uses for a dedicated format — a real spreadsheet `Date` cell is
-read off its own UTC parts into that identical combined `'YYYY-MM-DD
-HH:MM:SS'` string (`table-rows.ts`'s `formatUtcDateTime`) before
-parsing, so a mapping pointed at an Excel date column behaves exactly
-like one pointed at a text date column. An XLSX number cell is used
-as-is (no reformatting) — only a `Date` cell gets this wall-clock
-conversion. Every bank-export date/time parser in this project —
-column mapping's own presets, `parseDateTimeSeconds`, and each
-dedicated format with its own date shape (Sensebank's `DD.MM.YY
-HH:MM`) — additionally ROUND-TRIPS every parsed component back through
-the built instant's own UTC getters via the ONE shared
-`utcMillisecondsIfRoundTrips` (`src/statement-import/parse-date-time/`, the
-same idea `parseLocalDate` already applies to a local-midnight day) —
-`Date.UTC` silently NORMALIZES an out-of-range day/month/hour/minute
-into a different, wrong instant instead of rejecting it (`31.02.2026`
-rolling into 3 March, `25/01/2026` read MM/DD-first rolling into
-2028), so a mismatch there is treated exactly like a shape mismatch:
-`undefined` (a recoverable row error) for column mapping, a thrown
-`StatementParseError` for a dedicated format.
-The preset set (`dateFormatIds`) includes both `MM/DD/YYYY` and
-`DD/MM/YYYY` — read that file directly for the current member list
-rather than trusting a count restated here.
+Every dedicated bank format reads its raw wall clock as Europe/Kyiv
+local time (`parse-date-time.ts`'s `kyivInstantMillisecondsIfRoundTrips`,
+built on `@kiko/dates`'s hand-rolled `kyivWallClockToUtcMilliseconds` —
+no `Intl`, since Hermes' timeZone support is unverified on device and
+Jest runs Node's own ICU). Column mapping reads the SAME shape of
+digits as THIS DEVICE's own local time instead
+(`date-formats.ts`'s `partsToSeconds`, built on `@kiko/dates`'s
+`deviceWallClockToLocalMilliseconds`) — a manually-mapped file has no
+dedicated format to trust a bank identity from, so it could be from any
+bank, in any zone. A real spreadsheet `Date` cell is read off its own
+UTC parts into that identical combined `'YYYY-MM-DD HH:MM:SS'` string
+(`table-rows.ts`'s `formatUtcDateTime`) before parsing — those UTC
+digits ARE the cell's own wall clock, so a mapping pointed at an Excel
+date column behaves exactly like one pointed at a text date column. An
+XLSX number cell is used as-is (no reformatting) — only a `Date` cell
+gets this wall-clock conversion. A wall clock of exactly `00:00:00` (a
+date-only preset, or an XLSX `Date` cell with no time part) reads as
+noon instead, in whichever zone that path uses, so the same calendar
+day shows from UTC-9 to UTC+12. Every bank-export date/time parser in
+this project — column mapping's own presets, `parseDateTimeSeconds`,
+and each dedicated format with its own date shape (Sensebank's
+`DD.MM.YY HH:MM`) — additionally rejects a rollover: `Date.UTC` (and
+the local-time `Date` constructor) silently NORMALIZES an out-of-range
+day/month/hour/minute into a different, wrong instant instead of
+rejecting it (`31.02.2026` rolling into 3 March, `25/01/2026` read
+MM/DD-first rolling into 2028), so both zone readers validate the
+digits independently of any zone (`@kiko/dates`'s
+`isRealCalendarInstant`) before resolving them, and a mismatch there is
+treated exactly like a shape mismatch: `undefined` (a recoverable row
+error) for column mapping, a thrown `StatementParseError` for a
+dedicated format. The preset set (`dateFormatIds`) includes both
+`MM/DD/YYYY` and `DD/MM/YYYY` — read that file directly for the current
+member list rather than trusting a count restated here.
+
+A Semgrep rule (`kiko-no-date-utc-in-statement-import`,
+`rules/semgrep-prewrite.yml`) forbids `Date.UTC(...)` and the
+local-time `new Date($Y, $M, ...)` constructor anywhere in
+`src/statement-import/**` (tests excluded) — every date/time read in
+this feature must go through one of the two `@kiko/dates` zone
+helpers, never a raw constructor call.
+
+**Known limits:**
+- The hand-rolled Kyiv DST rule (last Sunday of March/October, 01:00
+  UTC) is valid from 1996 onward and has no expiry date coded in. A
+  2024 Rada bill to abolish Ukraine's DST has not been signed as of
+  this writing; if it ever is, `@kiko/dates`'s `kyiv-wall-clock.ts` is
+  the one place to update, with an effective-date guard alongside
+  `kyivOffsetHours`.
+- Upgrade reads legacy rows in the device zone; a named-format
+  re-import of an old file outside Kyiv can duplicate.
+- Unverified on device: in a Kyiv-zone autumn repeated hour, a column-mapped
+  03:xx wall clock must resolve to the EARLIER of its two real instants —
+  only proven against Node's own ICU/`Date` so far, never against Hermes'.
 
 The mapped `ParsedStatement` reaches the DB through the SAME
 `importParsedStatement` (`src/statement-import/import-statement/`)

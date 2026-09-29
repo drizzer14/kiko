@@ -1828,10 +1828,17 @@ describe('StatisticsScreen', () => {
   it("advances the default range's end to include a transaction from the day after mount, once refocused", async () => {
     mockNow = now;
 
+    // Calendar-day stepping (never `now + DAY`), so the fixture lands on the
+    // local day after mount even when the suite runs right at a local
+    // midnight boundary.
+    const dayAfterMount = new Date(now);
+    dayAfterMount.setDate(dayAfterMount.getDate() + 1);
+    dayAfterMount.setHours(1, 0, 0, 0);
+
     const tomorrow: Transaction = {
       id: 'tomorrow',
       holdingId: 'h1',
-      time: now + DAY + 60 * 60 * 1000,
+      time: dayAfterMount.getTime(),
       amountMinorUnits: -50_00,
       category: 'groceries',
     };
