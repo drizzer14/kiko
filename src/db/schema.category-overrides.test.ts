@@ -98,7 +98,7 @@ describe('transaction-hold migration', () => {
   });
 });
 
-// T-21: the ten categories `0002_seed_categories.sql` seeds carry a null
+// The ten categories `0002_seed_categories.sql` seeds carry a null
 // `color`, so the chart layer's `categoryColor` hash (`statistics/category-
 // breakdown.ts`) is what actually colors them — and over these exact ten keys
 // that hash collapses to five hues (four categories render an identical blue).

@@ -445,9 +445,9 @@ const upsertAllHoldings = async (
  * before it: any item sharing that exact second that did not fit in the page
  * would otherwise be excluded from every later window and never imported.
  * The resulting one-second overlap is free — the `(source, external_id)`
- * unique index makes a re-fetched item idempotent (an upsert since T-16, a
- * skip before it). When a response does not hit the cap we step to the
- * previous 31-day window instead.
+ * unique index makes a re-fetched item idempotent (an upsert). When a
+ * response does not hit the cap we step to the previous 31-day window
+ * instead.
  */
 const fetchAllStatements = async (
   deps: SyncDeps,

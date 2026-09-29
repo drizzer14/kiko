@@ -875,6 +875,18 @@ negative probe, plus a `UTF-8`/`SHA-256`/`ISO-8601`/`Windows-1251`
 regression lock against real WORD-digit technical vocabulary) for the
 worked example.
 
+**Hyphenated single-letter ids and `NEW-N` (2026-09-29).** The
+single-letter families take an optional hyphen (`T-?\d{1,3}`), so a
+`T-32`, `C-1`, or `M-3` id is caught like `T32`, and the hyphenated
+report family gained `NEW` (`NEW-1`). `D` is the one letter WITHOUT the
+hyphen: "day D-1" is the day before the purchase day D in the
+net-worth and holding-value tests, a real domain token. The leading
+`\b` still keeps `UTF-8`/`UTC-1`/`GMT-5` silent (no boundary before the
+letter), and a `T-shirt`/`U-turn` has no digit after the hyphen.
+`NEW-\d+` needs the hyphen right after `NEW`, so `NEWS-1` does not
+match. Fixture pair: the four hyphen pins at the end of `.bad.ts`
+and item 19 in `.good.ts`.
+
 **`Phase N` is not a family member at all** — a bare `Phase\s\d+`
 collides with ordinary engineering prose no digit-anchoring can fix
 ("Phase 1 copies the rows; Phase 2 deletes the source only after

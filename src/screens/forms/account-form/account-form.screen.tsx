@@ -278,8 +278,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // A failed insert (DB locked, disk full) must not poison the session: clear
       // the latch so a retry — or the Save fallback — re-attempts, rather than
       // leaving the ref non-null and sending Save down the UPDATE branch, which
-      // would match no row and silently no-op while the user believes they saved
-      // (C-1). Re-throw so the caller still sees the failure.
+      // would match no row and silently no-op while the user believes they
+      // saved. Re-throw so the caller still sees the failure.
       accountCreate.current = null;
       setAccountRowStarted(false);
       throw error;
@@ -330,7 +330,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // screen, the DB, or a log. A create failure is caught here (via
   // `accountEnsured`) and surfaced to the field as a `false` (not-connected)
   // result, so the field shows its "could not connect" status instead of an
-  // unhandled rejection that would leave it stuck on "checking" (C-2); the ref
+  // unhandled rejection that would leave it stuck on "checking"; the ref
   // reset above lets the next Connect retry.
   const connectWallet = async (address: string): Promise<boolean> => {
     if (!(await accountEnsured())) {

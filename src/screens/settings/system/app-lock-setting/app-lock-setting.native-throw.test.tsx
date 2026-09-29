@@ -5,7 +5,7 @@ import '@kiko/i18n/init';
 
 import AppLockSetting from './app-lock-setting.component';
 
-// T-15 regression: proves the fix end to end, through the REAL
+// Regression guard: proves the fix end to end, through the REAL
 // `../../../../auth/biometrics.isSensorAvailable` (only the native module itself
 // is mocked, unlike `app-lock-setting.component.test.tsx`, which mocks the
 // wrapper directly). `AppLockSetting`'s `isSensorAvailable().then(...)`
