@@ -447,6 +447,39 @@ describe('useLiveQuery — the paused option', () => {
     expect(result.current.data).toEqual([{ id: 'b' }]);
   });
 
+  it('keeps isFresh false when an in-flight read settles after a LATER fire marks it dirty, until the deferred read catches up', async () => {
+    const { query, resolvers } = pendingQuery();
+    const { result, rerender } = await renderPausable(query, false);
+    await settle(resolvers[0], [{ id: 'a' }]);
+    expect(result.current.isFresh).toBe(true);
+
+    // Started while still unpaused: in flight the instant the pause below
+    // takes effect.
+    await fireReactive();
+
+    await act(async () => {
+      await rerender({ paused: true });
+    });
+
+    // A LATER write while paused: marks dirty, deferred (no read of its own).
+    await fireReactive();
+    expect(resolvers).toHaveLength(2);
+
+    // The EARLIER in-flight read (started before the dirty mark) settles: it
+    // does not reflect the later write, so it must not report fresh.
+    await settle(resolvers[1], [{ id: 'stale-in-flight' }]);
+    expect(result.current.data).toEqual([{ id: 'stale-in-flight' }]);
+    expect(result.current.isFresh).toBe(false);
+
+    await act(async () => {
+      await rerender({ paused: false });
+    });
+    expect(resolvers).toHaveLength(3);
+
+    await settle(resolvers[2], [{ id: 'caught-up' }]);
+    expect(result.current.isFresh).toBe(true);
+  });
+
   it('runs exactly one read per key (2 total), never a redundant extra one, when params change while paused with a fire already pending', async () => {
     const first = pendingQuery(['a']);
     const second = pendingQuery(['b']);

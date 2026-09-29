@@ -138,9 +138,6 @@ export function useLiveQuery<T>(
   // inside the effect that does not re-run when `paused` toggles (see that
   // effect's own deps) and so cannot read a fresh prop value directly.
   const pausedRef = useRef(paused);
-  useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
   // Set by the reactive callback when a fire is deferred while paused;
   // cleared the moment the deferred read actually runs, on unpause.
   const dirtyRef = useRef(false);
@@ -149,9 +146,12 @@ export function useLiveQuery<T>(
   // `paused` itself and re-subscribing.
   const runQueryRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
-  // Unpausing runs the ONE deferred read, if any; a clean unpause (nothing
-  // fired while paused) reads nothing.
+  // Refreshes `pausedRef` for the callback above, then — unpausing only —
+  // runs the ONE deferred read, if any; a clean unpause (nothing fired while
+  // paused) reads nothing.
   useEffect(() => {
+    pausedRef.current = paused;
+
     if (!paused && dirtyRef.current) {
       dirtyRef.current = false;
       // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runQuery folds a rejected read into a Left and never rejects
@@ -212,7 +212,13 @@ export function useLiveQuery<T>(
 
       const rows: T[] = bifold(settled);
 
-      freshKey.current = myKey;
+      // An in-flight read started before a LATER fire marked the query dirty
+      // (while paused) does not reflect that later write — it must not mark
+      // this key fresh, or `isFresh` would report the (stale) applied rows
+      // as current while a deferred read is still owed.
+      if (!dirtyRef.current) {
+        freshKey.current = myKey;
+      }
       setData(rows);
       setError(undefined);
     };
