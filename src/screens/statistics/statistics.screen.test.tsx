@@ -16,6 +16,33 @@ jest.mock('@kiko/rates/history-backfill', () => {
   return { ...actual, runBackfill: (...args: unknown[]) => mockRunBackfill(...args) };
 });
 
+// Spies on the real builder (kept working, unlike `runBackfill` above) so a
+// paused-while-hidden test can pin exactly how many times the heavy net-worth
+// recompute ran, without also having to fake its own math.
+const mockBuildNetWorthSeries = jest.fn();
+
+jest.mock('@kiko/statistics/net-worth-series', () => {
+  const actual = jest.requireActual('@kiko/statistics/net-worth-series');
+
+  return {
+    ...actual,
+    buildNetWorthSeries: (...args: unknown[]) => {
+      mockBuildNetWorthSeries(...args);
+
+      return actual.buildNetWorthSeries(...args);
+    },
+  };
+});
+
+// A standalone screen render has no real navigation focus context; default
+// focused (matches every other test in this file), overridden per test.
+const mockUseIsFocused = jest.fn(() => true);
+
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useIsFocused: () => mockUseIsFocused(),
+}));
+
 import { i18n } from '@kiko/i18n/init';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
@@ -159,26 +186,31 @@ type LiveData = {
   isCached?: Partial<Record<string, boolean>>;
 };
 
+// Shared by `setLiveData` below and by the paused-while-hidden describe
+// block's own read-tracking stub — one place maps a `LiveData` fixture onto
+// the table keys `useLiveQuery` calls key off, so both stay in sync.
+const buildLiveDataByTable = (data: LiveData): Record<string, unknown[]> => ({
+  accounts: data.accounts ?? [],
+  holdings: data.holdings ?? [],
+  currency_rates: data.rates ?? [],
+  settings: data.settings ?? [{ baseCurrency: 'UAH' }],
+  // SQLite returns NULL, never undefined, for a column a row does not set, so
+  // default every nullable marker the screen reads the same way — an
+  // `undefined` here would be a fixture artefact the device never produces.
+  transactions: (data.transactions ?? []).map((row) => ({
+    exchangeCounterpartHoldingId: null,
+    loanHoldingId: null,
+    ...row,
+  })),
+  currency_rate_history: data.history ?? [],
+  categories: data.categories ?? [],
+  price_points: [],
+});
+
 // Feed each `useLiveQuery` call by the first table name it watches — the screen's
 // queries each key off a distinct table.
 const setLiveData = (data: LiveData): void => {
-  const byTable: Record<string, unknown[]> = {
-    accounts: data.accounts ?? [],
-    holdings: data.holdings ?? [],
-    currency_rates: data.rates ?? [],
-    settings: data.settings ?? [{ baseCurrency: 'UAH' }],
-    // SQLite returns NULL, never undefined, for a column a row does not set, so
-    // default every nullable marker the screen reads the same way — an
-    // `undefined` here would be a fixture artefact the device never produces.
-    transactions: (data.transactions ?? []).map((row) => ({
-      exchangeCounterpartHoldingId: null,
-      loanHoldingId: null,
-      ...row,
-    })),
-    currency_rate_history: data.history ?? [],
-    categories: data.categories ?? [],
-    price_points: [],
-  };
+  const byTable = buildLiveDataByTable(data);
   const isLoadingByTable = data.isLoading ?? {};
   const isCachedByTable = data.isCached ?? {};
 
@@ -2331,5 +2363,167 @@ describe('StatisticsScreen — the price_points gate', () => {
     setLiveData({ holdings: [{ ...UAH_HOLDING, type: 'loan' }] });
     await renderScreen();
     expect(loanPaymentsCall()?.[2]).toBe(true);
+  });
+});
+
+// While another tab shows, Statistics keeps its subscriptions but defers
+// every read, so a write elsewhere causes no re-render, no memo recompute,
+// and no state change here — `paused`, not `enabled` (which would
+// unsubscribe and drop to `[]`, see kiko-architecture).
+describe('StatisticsScreen — paused while hidden', () => {
+  const PAUSED_TABLES = [
+    'accounts',
+    'holdings',
+    'currency_rates',
+    'settings',
+    'transactions',
+    'currency_rate_history',
+    'categories',
+  ];
+
+  const callFor = (table: string) =>
+    mockUseLiveQuery.mock.calls.find((call) => (call[1] as string[])[0] === table);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsFocused.mockReturnValue(true);
+    seedFull();
+  });
+
+  it('pauses the 7 direct live queries while unfocused, without changing their own enabled argument', async () => {
+    mockUseIsFocused.mockReturnValue(false);
+    await renderScreen();
+
+    for (const table of PAUSED_TABLES) {
+      const call = callFor(table);
+
+      expect(call?.[2]).toBe(true);
+      expect(call?.[3]).toEqual({ cached: true, paused: true });
+    }
+  });
+
+  it('unpauses the 7 direct live queries while focused', async () => {
+    await renderScreen();
+
+    for (const table of PAUSED_TABLES) {
+      expect(callFor(table)?.[3]).toEqual({ cached: true, paused: false });
+    }
+  });
+
+  it('pauses usePriceBook the same way while unfocused', async () => {
+    mockUseIsFocused.mockReturnValue(false);
+    await renderScreen();
+
+    expect(callFor('price_points')?.[3]).toEqual({ cached: true, paused: true });
+  });
+
+  it('never lets a query on this screen skip the paused flag', async () => {
+    await renderScreen();
+
+    expect(mockUseLiveQuery.mock.calls.length).toBeGreaterThan(0);
+
+    for (const call of mockUseLiveQuery.mock.calls) {
+      const options = call[3] as Record<string, unknown> | undefined;
+
+      expect(options !== undefined && 'paused' in options).toBe(true);
+    }
+  });
+
+  // Mirrors use-live-query.ts's own paused/dirty contract (see
+  // use-live-query.test.ts's "paused option" describe block): a call made
+  // with `paused: true` never applies a pending write and hands back the
+  // SAME array reference; a call made with `paused: false` applies the one
+  // pending write, if any, as a NEW reference, and otherwise (nothing
+  // pending) also keeps the same reference — so a screen render downstream
+  // of this stub only sees new data exactly when the real hook would have
+  // read one. `writeWhileHidden` simulates another tab's write landing
+  // while this table is paused, without itself forcing a render (a real
+  // write is a native-side event, never a React state update here).
+  const createPausedAwareLiveQuery = (
+    initial: LiveData,
+  ): { writeWhileHidden: (overrides: Record<string, unknown[]>) => void } => {
+    const committed = buildLiveDataByTable(initial);
+    const pending = new Map<string, unknown[]>();
+
+    mockUseLiveQuery.mockImplementation(
+      (_query: unknown, tables: string[], _enabled: boolean, options?: { paused?: boolean }) => {
+        const table = tables[0];
+
+        if (!(options?.paused ?? false) && pending.has(table)) {
+          committed[table] = pending.get(table) as unknown[];
+          pending.delete(table);
+        }
+
+        return { data: committed[table] ?? [], isLoading: false, isFresh: true };
+      },
+    );
+
+    return {
+      writeWhileHidden: (overrides: Record<string, unknown[]>): void => {
+        for (const [table, rows] of Object.entries(overrides)) {
+          pending.set(table, rows);
+        }
+      },
+    };
+  };
+
+  it('recomputes the net-worth series exactly once for a hidden-tab write, applied together with the now refresh on return — never while still paused', async () => {
+    const stub = createPausedAwareLiveQuery({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+    });
+
+    const { rerender } = await renderScreen();
+    expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(1);
+
+    mockUseIsFocused.mockReturnValue(false);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+    expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(1);
+
+    // A write elsewhere while this tab is hidden: deferred, so a render that
+    // is still paused must not pick it up — this is what would catch a
+    // regression that reads eagerly regardless of `paused`.
+    stub.writeWhileHidden({
+      transactions: [
+        ...TRANSACTIONS,
+        { id: 't4', holdingId: 'h1', time: now - DAY, amountMinorUnits: 25_00 },
+      ],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+    expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(1);
+
+    // The return: the deferred write applies (a real focus's own read) AND
+    // `now` refreshes (a real focus's own setNow) — together, ONE recompute.
+    advanceFocusedNow(now + DAY);
+    mockUseIsFocused.mockReturnValue(true);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+    expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not re-trigger the backfill on a blur/focus toggle alone, even once the now dependency refreshes on the return', async () => {
+    const { rerender } = await renderScreen();
+    const callsBefore = mockRunBackfill.mock.calls.length;
+
+    mockUseIsFocused.mockReturnValue(false);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    advanceFocusedNow(now + DAY);
+    mockUseIsFocused.mockReturnValue(true);
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill.mock.calls.length).toBe(callsBefore);
   });
 });

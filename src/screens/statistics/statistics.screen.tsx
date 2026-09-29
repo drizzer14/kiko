@@ -52,6 +52,7 @@ import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import type { Currency } from '@kiko/currency/currency';
 import { ibanOf } from '@kiko/holdings/holding-metadata';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -183,47 +184,58 @@ const StatisticsScreen: FC = () => {
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
 
+  // Deliberately `paused` (not `enabled`) while another tab shows: the
+  // subscription stays and a write elsewhere only marks each query dirty, so
+  // hiding this tab causes no read, no state change, and no memo recompute —
+  // `enabled: false` would instead unsubscribe and drop every chart to empty
+  // (see kiko-architecture's `useLiveQuery` pattern section for the design).
+  const isFocused = useIsFocused();
+  const liveOptions = { cached: true, paused: !isFocused } as const;
+
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.listQuery(),
     ['accounts'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
     holdingsRepo.allQuery(),
     ['holdings'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: rates, isLoading: ratesLoading } = useLiveQuery(
     ratesRepo.allQuery(),
     ['currency_rates'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
     settingsRepo.getQuery(),
     ['settings'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const {
     data: transactions,
     isLoading: transactionsLoading,
     isFresh: transactionsFresh,
-  } = useLiveQuery(transactionsRepo.listAllQuery(), ['transactions'], true, { cached: true });
+  } = useLiveQuery(transactionsRepo.listAllQuery(), ['transactions'], true, liveOptions);
   const {
     data: historyRows,
     isLoading: historyLoading,
     isFresh: historyFresh,
-  } = useLiveQuery(rateHistoryRepo.historyRowsQuery(), ['currency_rate_history'], true, {
-    cached: true,
-  });
+  } = useLiveQuery(
+    rateHistoryRepo.historyRowsQuery(),
+    ['currency_rate_history'],
+    true,
+    liveOptions,
+  );
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],
     true,
-    { cached: true },
+    liveOptions,
   );
 
   // An empty set means "all accounts"; any names in it narrow all three charts.
@@ -280,7 +292,7 @@ const StatisticsScreen: FC = () => {
   // loan reads the linked-payments half of the book.
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
-    { cached: true },
+    liveOptions,
     holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
   );
   // Every chart (bar/pie/trend) must never render an empty state while any of

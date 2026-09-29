@@ -68,6 +68,14 @@ export type LiveQueryOptions = {
    * would latch it. Defaults to `false`.
    */
   cached?: boolean;
+  /**
+   * `true` keeps the subscription but DEFERS reads: a reactive fire only
+   * marks the query dirty (no read, no state change). `data` keeps its last
+   * rows. `isFresh` is false while dirty. Flipping to `false` runs ONE read
+   * if dirty, none if clean. The mount read always runs. Not the same as
+   * `enabled` (which unsubscribes and returns `[]`). Defaults to `false`.
+   */
+  paused?: boolean;
 };
 
 /**
@@ -93,7 +101,7 @@ export function useLiveQuery<T>(
    * existing call site is unaffected.
    */
   enabled = true,
-  { cached = false }: LiveQueryOptions = {},
+  { cached = false, paused = false }: LiveQueryOptions = {},
 ): { data: T[]; error?: Error; isLoading: boolean; isFresh: boolean } {
   const { sql, params } = query.toSQL();
   const paramsKey = JSON.stringify(params);
@@ -126,6 +134,30 @@ export function useLiveQuery<T>(
   // THIS mount. A display screen gates a write it derives from its rows (a
   // drag reorder) on `isFresh`, since cached rows can be one read old.
   const freshKey = useRef<string | undefined>(undefined);
+  // Mirrors `paused` for the reactive callback below, which is defined once
+  // inside the effect that does not re-run when `paused` toggles (see that
+  // effect's own deps) and so cannot read a fresh prop value directly.
+  const pausedRef = useRef(paused);
+  // Set by the reactive callback when a fire is deferred while paused;
+  // cleared the moment the deferred read actually runs, on unpause.
+  const dirtyRef = useRef(false);
+  // Assigned inside the main effect below so unpausing can call the SAME
+  // runQuery closure that effect subscribed with, without depending on
+  // `paused` itself and re-subscribing.
+  const runQueryRef = useRef<(() => Promise<void>) | undefined>(undefined);
+
+  // Refreshes `pausedRef` for the callback above, then — unpausing only —
+  // runs the ONE deferred read, if any; a clean unpause (nothing fired while
+  // paused) reads nothing.
+  useEffect(() => {
+    pausedRef.current = paused;
+
+    if (!paused && dirtyRef.current) {
+      dirtyRef.current = false;
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runQuery folds a rejected read into a Left and never rejects
+      runQueryRef.current?.();
+    }
+  }, [paused]);
   // isLoading is derived, not stored: true whenever the CURRENT render's
   // sql+paramsKey has no applied result yet — true on first mount and true
   // again the instant the key changes (a dependent query re-keying off data
@@ -148,6 +180,12 @@ export function useLiveQuery<T>(
     let alive = true;
 
     const myKey = currentKey;
+
+    // A fresh subscription (a re-key while paused, or enabled flipping back
+    // on) always runs its own mount read below — any dirty flag left over
+    // from a torn-down subscription is now stale and must not also trigger
+    // a second, redundant read on the next unpause.
+    dirtyRef.current = false;
 
     // Apply one accepted, still-mounted result to this hook's state.
     const applySettled = (settled: Either<Error, T[]>): void => {
@@ -174,7 +212,13 @@ export function useLiveQuery<T>(
 
       const rows: T[] = bifold(settled);
 
-      freshKey.current = myKey;
+      // An in-flight read started before a LATER fire marked the query dirty
+      // (while paused) does not reflect that later write — it must not mark
+      // this key fresh, or `isFresh` would report the (stale) applied rows
+      // as current while a deferred read is still owed.
+      if (!dirtyRef.current) {
+        freshKey.current = myKey;
+      }
       setData(rows);
       setError(undefined);
     };
@@ -212,6 +256,8 @@ export function useLiveQuery<T>(
       }
     };
 
+    runQueryRef.current = runQuery;
+
     // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runQuery folds a rejected read into a Left and never rejects
     runQuery();
 
@@ -222,6 +268,13 @@ export function useLiveQuery<T>(
           arguments: REACTIVE_TRIGGER_ARGUMENTS,
           fireOn,
           callback: () => {
+            if (pausedRef.current) {
+              dirtyRef.current = true;
+              freshKey.current = undefined;
+
+              return;
+            }
+
             // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runQuery folds a rejected read into a Left and never rejects
             runQuery();
           },
@@ -235,6 +288,7 @@ export function useLiveQuery<T>(
 
       return () => {
         alive = false;
+        runQueryRef.current = undefined;
       };
     }
 
@@ -243,6 +297,7 @@ export function useLiveQuery<T>(
     return () => {
       alive = false;
       unsubscribe();
+      runQueryRef.current = undefined;
     };
   }, [sql, paramsKey, fireOn, enabled]);
 

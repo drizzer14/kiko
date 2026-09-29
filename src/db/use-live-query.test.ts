@@ -311,6 +311,238 @@ describe('useLiveQuery', () => {
   });
 });
 
+// kiko-architecture: a screen that is mounted but hidden (a background tab)
+// keeps its subscription and its last rows, deferring only the READ a
+// reactive fire would otherwise start — unlike `enabled`, which unsubscribes
+// and drops to `[]` (see the block above).
+describe('useLiveQuery — the paused option', () => {
+  beforeEach(() => {
+    mockRows.current = [{ id: 'a' }];
+    mockReactiveCallback.current = undefined;
+    mockReactiveExecute.mockClear();
+    mockUnsubscribe.mockClear();
+    clearLiveQueryCache();
+  });
+
+  const renderPausable = (query: ReturnType<typeof queryDouble>, initialPaused: boolean) =>
+    renderHook(
+      ({ paused }: { paused: boolean }) => useLiveQuery(query, ['accounts'], true, { paused }),
+      { initialProps: { paused: initialPaused } },
+    );
+
+  it('runs no read and keeps the same data reference across many reactive fires while paused', async () => {
+    const { query, resolvers } = pendingQuery();
+    const { result, rerender } = await renderPausable(query, false);
+    await settle(resolvers[0], [{ id: 'a' }]);
+    const dataBeforePause = result.current.data;
+
+    await act(async () => {
+      await rerender({ paused: true });
+    });
+
+    for (let fireCount = 0; fireCount < 5; fireCount += 1) {
+      await fireReactive();
+    }
+
+    expect(resolvers).toHaveLength(1);
+    expect(result.current.data).toBe(dataBeforePause);
+  });
+
+  it('runs exactly one read on unpause when a fire happened while paused, and applies its rows', async () => {
+    const { query, resolvers } = pendingQuery();
+    const { result, rerender } = await renderPausable(query, false);
+    await settle(resolvers[0], [{ id: 'a' }]);
+
+    await act(async () => {
+      await rerender({ paused: true });
+    });
+    await fireReactive();
+    expect(resolvers).toHaveLength(1);
+
+    await act(async () => {
+      await rerender({ paused: false });
+    });
+    expect(resolvers).toHaveLength(2);
+
+    await settle(resolvers[1], [{ id: 'b' }]);
+    expect(result.current.data).toEqual([{ id: 'b' }]);
+  });
+
+  it('runs no read on unpause when nothing fired while paused', async () => {
+    const { query, resolvers } = pendingQuery();
+    const { rerender } = await renderPausable(query, false);
+    await settle(resolvers[0], [{ id: 'a' }]);
+
+    await act(async () => {
+      await rerender({ paused: true });
+    });
+    await act(async () => {
+      await rerender({ paused: false });
+    });
+
+    expect(resolvers).toHaveLength(1);
+  });
+
+  it('reports isFresh false right after an unpause with a deferred read still pending, keeping the last rows, then true once it settles', async () => {
+    const { query, resolvers } = pendingQuery();
+    const { result, rerender } = await renderPausable(query, false);
+    await settle(resolvers[0], [{ id: 'a' }]);
+    expect(result.current.isFresh).toBe(true);
+
+    await act(async () => {
+      await rerender({ paused: true });
+    });
+    await fireReactive();
+
+    await act(async () => {
+      await rerender({ paused: false });
+    });
+
+    expect(result.current.isFresh).toBe(false);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toEqual([{ id: 'a' }]);
+
+    await settle(resolvers[1], [{ id: 'b' }]);
+    expect(result.current.isFresh).toBe(true);
+    expect(result.current.data).toEqual([{ id: 'b' }]);
+  });
+
+  it('still runs the mount read when paused is true from the very first render', async () => {
+    const { query, resolvers } = pendingQuery();
+
+    await renderHook(() => useLiveQuery(query, ['accounts'], true, { paused: true }));
+
+    expect(resolvers).toHaveLength(1);
+  });
+
+  it('never re-subscribes or unsubscribes when paused toggles', async () => {
+    const { rerender } = await renderPausable(fakeQuery, false);
+    expect(mockReactiveExecute).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await rerender({ paused: true });
+    });
+    await act(async () => {
+      await rerender({ paused: false });
+    });
+
+    expect(mockReactiveExecute).toHaveBeenCalledTimes(1);
+    expect(mockUnsubscribe).not.toHaveBeenCalled();
+  });
+
+  it('still applies a read already in flight before the pause settles', async () => {
+    const { query, resolvers } = pendingQuery();
+    const { result, rerender } = await renderPausable(query, false);
+    await settle(resolvers[0], [{ id: 'a' }]);
+
+    // Started while still unpaused: this read is already in flight the
+    // instant the pause below takes effect.
+    await fireReactive();
+
+    await act(async () => {
+      await rerender({ paused: true });
+    });
+
+    await settle(resolvers[1], [{ id: 'b' }]);
+    expect(result.current.data).toEqual([{ id: 'b' }]);
+  });
+
+  it('keeps isFresh false when an in-flight read settles after a LATER fire marks it dirty, until the deferred read catches up', async () => {
+    const { query, resolvers } = pendingQuery();
+    const { result, rerender } = await renderPausable(query, false);
+    await settle(resolvers[0], [{ id: 'a' }]);
+    expect(result.current.isFresh).toBe(true);
+
+    // Started while still unpaused: in flight the instant the pause below
+    // takes effect.
+    await fireReactive();
+
+    await act(async () => {
+      await rerender({ paused: true });
+    });
+
+    // A LATER write while paused: marks dirty, deferred (no read of its own).
+    await fireReactive();
+    expect(resolvers).toHaveLength(2);
+
+    // The EARLIER in-flight read (started before the dirty mark) settles: it
+    // does not reflect the later write, so it must not report fresh.
+    await settle(resolvers[1], [{ id: 'stale-in-flight' }]);
+    expect(result.current.data).toEqual([{ id: 'stale-in-flight' }]);
+    expect(result.current.isFresh).toBe(false);
+
+    await act(async () => {
+      await rerender({ paused: false });
+    });
+    expect(resolvers).toHaveLength(3);
+
+    await settle(resolvers[2], [{ id: 'caught-up' }]);
+    expect(result.current.isFresh).toBe(true);
+  });
+
+  it('runs exactly one read per key (2 total), never a redundant extra one, when params change while paused with a fire already pending', async () => {
+    const first = pendingQuery(['a']);
+    const second = pendingQuery(['b']);
+    const { rerender } = await renderHook(
+      ({ query, paused }: { query: ReturnType<typeof queryDouble>; paused: boolean }) =>
+        useLiveQuery(query, ['accounts'], true, { paused }),
+      { initialProps: { query: first.query, paused: false } },
+    );
+    await settle(first.resolvers[0], [{ id: 'a' }]);
+
+    await act(async () => {
+      await rerender({ query: first.query, paused: true });
+    });
+    await fireReactive();
+    expect(first.resolvers).toHaveLength(1);
+
+    // The params change re-subscribes for a NEW key while still paused: its
+    // own mount read must not leave the OLD key's dirty flag to fire a
+    // second, redundant read once this unpauses.
+    await act(async () => {
+      await rerender({ query: second.query, paused: true });
+    });
+    expect(second.resolvers).toHaveLength(1);
+
+    await act(async () => {
+      await rerender({ query: second.query, paused: false });
+    });
+
+    expect(first.resolvers).toHaveLength(1);
+    expect(second.resolvers).toHaveLength(1);
+  });
+
+  it('runs no read on unpause once disabled while paused with a fire already pending', async () => {
+    const { query, resolvers } = pendingQuery();
+    const { rerender } = await renderHook(
+      ({ paused, enabled }: { paused: boolean; enabled: boolean }) =>
+        useLiveQuery(query, ['accounts'], enabled, { paused }),
+      { initialProps: { paused: false, enabled: true } },
+    );
+    await settle(resolvers[0], [{ id: 'a' }]);
+
+    await act(async () => {
+      await rerender({ paused: true, enabled: true });
+    });
+    await fireReactive();
+    expect(resolvers).toHaveLength(1);
+
+    // Disabled while still paused and dirty: the subscription tears down.
+    await act(async () => {
+      await rerender({ paused: true, enabled: false });
+    });
+
+    // Unpausing a disabled query must never run a read for data it no
+    // longer needs — the torn-down runner must not fire.
+    await act(async () => {
+      await rerender({ paused: false, enabled: false });
+    });
+
+    expect(resolvers).toHaveLength(1);
+    expect(mockUnsubscribe).toHaveBeenCalled();
+  });
+});
+
 // kiko-architecture: no request or query for data the user does not have. A
 // caller (e.g. usePriceBook) can disable the query entirely — never a
 // per-holding loop, and never a screen stuck "not ready" forever.

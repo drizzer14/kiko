@@ -266,6 +266,50 @@ It:
 `fireOn`) — get this list wrong and the query either never refreshes
 or refreshes on unrelated writes.
 
+### `paused` vs `enabled`: a hidden-but-mounted tab defers reads, it does not disable them
+
+Both options stop `useLiveQuery` from doing work, but for different
+callers and with a different resulting contract — never substitute
+one for the other:
+
+- **`enabled: false`** (`LiveQueryOptions`'s sibling argument, not part
+  of `LiveQueryOptions` itself) is for data the screen structurally
+  does not need right now (a gate like `needsPriceBook`/loan-only
+  reads — see "App-open and refresh work is gated on data presence"
+  below). It skips the read AND the subscription entirely: `data`
+  reads `[]`, `isLoading` reads `false`. Flipping it back to `true`
+  re-subscribes and re-reads from scratch.
+- **`paused: true`** (`LiveQueryOptions.paused`) is for a screen that
+  is mounted but not visible right now — a background tab under a
+  native tab bar, which stays mounted the whole time the app is open.
+  The subscription STAYS (a write elsewhere still fires the reactive
+  callback); only the READ that fire would start is deferred, and
+  marks the query dirty instead. `data` keeps its last rows (never
+  `[]`), `isLoading` stays `false`, and `isFresh` turns `false` for a
+  dirty query (so a `backfillRanForSpanRef`-style effect guard —
+  "Local state on a cached display screen follows the row" above —
+  keeps working across a pause exactly the way it already does across
+  an ordinary cached mount). Flipping back to `false` runs exactly ONE
+  read if the query went dirty while paused, zero if it did not; the
+  MOUNT read always runs regardless of `paused`, since a screen can be
+  mounted unfocused (a deep link, a restore) and still needs its first
+  real data. Toggling `paused` never re-subscribes. `statistics.screen.tsx`
+  passes `paused: !isFocused` (`useIsFocused` from
+  `@react-navigation/native`) to every one of its own
+  `useLiveQuery`/`usePriceBook` calls: `enabled: false` unsubscribes and
+  returns `[]`, the wrong contract for a tab that stays mounted and must
+  show its last rows the instant it regains focus — use `paused`, not
+  `enabled`, for a hidden-but-mounted tab.
+
+  **Device check** (a real device or profiler catches what a mocked Jest
+  test cannot): 10 fast/slow Home↔Statistics switches show no blank frame;
+  a profiler on a debug build shows no Statistics render/memo work while
+  hidden during a Home sync; a dirty return shows exactly one update and
+  the JS-thread stall it causes on a 3-year ledger; a clean return shows
+  exactly one recompute (check whether the net-worth line's own animation
+  replays); no backfill request fires while hidden, only after the fresh
+  read lands; an unfocused mount still loads its charts.
+
 ### op-sqlite's ONE worker thread — every query, whole-app, one queue
 
 op-sqlite runs every query for the WHOLE APP on a single worker thread
