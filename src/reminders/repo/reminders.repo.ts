@@ -8,11 +8,23 @@ import {
   transactions,
   write,
 } from '@kiko/db';
+import {
+  and,
+  asc,
+  countDistinct,
+  eq,
+  exists,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import { match } from 'ts-pattern';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { NotificationResponse } from '@kiko/reminders/native';
 import type { ReminderKind, ReminderSchedule } from '@kiko/reminders/schedule';
-import { and, asc, eq, exists, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 
 type BackoffPause = { reminderId: string; pausedAt: number };
 
@@ -89,6 +101,20 @@ export const remindersRepo = {
     database.select().from(reminders).where(eq(reminders.id, reminderId)).limit(1),
   // One row is enough to know.
   hasImportQuery: (accountId: string) => importsOf(accountId).limit(1),
+  // Distinct creation times, because both legs of a transfer are written with
+  // the same one: a transfer is one entry by the user.
+  manualEntryDaysQuery: (accountId: string, since: number) =>
+    database
+      .select({ entries: countDistinct(transactions.createdAt) })
+      .from(transactions)
+      .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+      .where(
+        and(
+          eq(holdings.accountId, accountId),
+          eq(transactions.source, 'manual'),
+          gte(transactions.createdAt, since),
+        ),
+      ),
   create: (input: NewReminder): Promise<string> =>
     write(async (databaseTransaction) => {
       const reminderId = id();

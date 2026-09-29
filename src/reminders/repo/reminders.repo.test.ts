@@ -460,6 +460,47 @@ describe('remindersRepo.hasImportQuery', () => {
   });
 });
 
+describe('remindersRepo.manualEntryDaysQuery', () => {
+  const SINCE = new Date(2026, 8, 1, 12, 0).getTime();
+
+  beforeEach(() => {
+    insertAccount('account-1');
+    insertAccount('account-2');
+    insertHolding('holding-1', 'account-1');
+    insertHolding('holding-2', 'account-1');
+    insertHolding('holding-3', 'account-2');
+  });
+
+  it('counts the manual entries on every holding of the account since the given time', async () => {
+    insertTransaction('manual-1', 'holding-1', 'manual', SINCE);
+    insertTransaction('manual-2', 'holding-2', 'manual', SINCE + 1);
+
+    expect(await remindersRepo.manualEntryDaysQuery('account-1', SINCE)).toEqual([{ entries: 2 }]);
+  });
+
+  it('counts the two legs of a transfer, which share their creation time, once', async () => {
+    insertTransaction('transfer-out', 'holding-1', 'manual', SINCE + 1);
+    insertTransaction('transfer-in', 'holding-2', 'manual', SINCE + 1);
+
+    expect(await remindersRepo.manualEntryDaysQuery('account-1', SINCE)).toEqual([{ entries: 1 }]);
+  });
+
+  it('leaves out entries made before the given time', async () => {
+    insertTransaction('before', 'holding-1', 'manual', SINCE - 1);
+    insertTransaction('at', 'holding-1', 'manual', SINCE);
+
+    expect(await remindersRepo.manualEntryDaysQuery('account-1', SINCE)).toEqual([{ entries: 1 }]);
+  });
+
+  it('leaves out imported and synced entries, and the entries of other accounts', async () => {
+    insertTransaction('import', 'holding-1', 'import', SINCE + 1);
+    insertTransaction('synced', 'holding-2', 'monobank', SINCE + 2);
+    insertTransaction('other-manual', 'holding-3', 'manual', SINCE + 3);
+
+    expect(await remindersRepo.manualEntryDaysQuery('account-1', SINCE)).toEqual([{ entries: 0 }]);
+  });
+});
+
 describe('remindersRepo writes', () => {
   const NOW = new Date(2026, 8, 29, 18, 30).getTime();
   const WEEKLY = { frequency: 'weekly', minuteOfDay: 540, weekdays: [1, 4] } as const;
