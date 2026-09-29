@@ -1160,3 +1160,27 @@ rules:
               - metavariable-regex:
                   metavariable: $INITIALIZER
                   regex: '^(async\b|useCallback\(\s*async\b)'
+  # kiko-code-style's "No Math.min/Math.max over a spread array": a spread
+  # call puts every element on the call stack, so it throws a RangeError on a
+  # long ledger or a large statement file, and `.apply` does the same. A
+  # spread anywhere in the argument list fires, so `Math.max(0, ...xs)` is
+  # caught too. Tests are excluded because `transaction-span.test.ts` and
+  # `min-max.test.ts` assert that RangeError on purpose. ERROR from the start:
+  # the sweep removed every finding in the same commit.
+  - id: kiko-no-math-min-max-spread
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `Math.min`/`Math.max` over a spread array puts every element on the call
+      stack and throws a RangeError on a large array (a long ledger, a 200k-row
+      statement file). Use `minOf`/`maxOf` from `@kiko/numbers`.
+    metadata:
+      fix: "Replace Math.min(...xs)/Math.max(...xs) with minOf(xs)/maxOf(xs) from @kiko/numbers (Math.max(k, ...xs) → Math.max(k, maxOf(xs)))."
+      skill: "kiko-code-style › No Math.min/Math.max over a spread array"
+    paths:
+      exclude: ["*.test.ts", "*.test.tsx"]
+    pattern-either:
+      - pattern: Math.min(..., ...$XS, ...)
+      - pattern: Math.max(..., ...$XS, ...)
+      - pattern: Math.min.apply(...)
+      - pattern: Math.max.apply(...)

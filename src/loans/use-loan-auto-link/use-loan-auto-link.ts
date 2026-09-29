@@ -1,3 +1,4 @@
+import { minOf } from '@kiko/numbers';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
@@ -56,7 +57,7 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
       return;
     }
 
-    const earliestStartDate = Math.min(...loanMetas.map((meta) => meta.startDate));
+    const earliestStartDate = minOf(loanMetas.map((meta) => meta.startDate));
     const currencies = [...new Set(loanHoldingRows.map((row) => row.currency))];
 
     const [candidateRows, linkedPaymentRows] = await Promise.all([

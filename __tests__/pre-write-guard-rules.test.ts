@@ -57,6 +57,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-confirm-sheet-in-form',
   'kiko-no-empty-object-jsx-spread',
   'kiko-no-needless-async-either-thunk',
+  'kiko-no-math-min-max-spread',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -205,6 +206,31 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
         mkdirSync(join(targetFile, '..'), { recursive: true });
         const badContent = readFileSync(
           join(FIXTURES, 'kiko-worklet-directive-required.bad.ts'),
+          'utf8',
+        );
+
+        const result = runGuard(payloadFor(targetFile, badContent), project);
+
+        expect(result.stdout).toBe('');
+        expect(result.status).toBe(0);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // kiko-no-math-min-max-spread excludes test files: a test that pins the
+  // spread form's RangeError (transaction-span.test.ts, min-max.test.ts) must
+  // spell out that spread.
+  it.each(['src/probe/min-max-probe.test.ts', 'src/probe/min-max-probe.test.tsx'])(
+    'allows the kiko-no-math-min-max-spread positive fixture written to test path %s',
+    (relativeTarget) => {
+      const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-min-max-test-'));
+      try {
+        const targetFile = join(project, ...relativeTarget.split('/'));
+        mkdirSync(join(targetFile, '..'), { recursive: true });
+        const badContent = readFileSync(
+          join(FIXTURES, 'kiko-no-math-min-max-spread.bad.ts'),
           'utf8',
         );
 

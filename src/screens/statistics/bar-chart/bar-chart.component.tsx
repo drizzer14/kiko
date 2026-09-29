@@ -1,6 +1,7 @@
 import { match } from 'ts-pattern';
 import { View } from 'react-native';
 import { type FC, memo } from 'react';
+import { maxOf } from '@kiko/numbers';
 import type { TFunction } from 'i18next';
 import { Rect, Svg } from 'react-native-svg';
 import { Money } from '@kiko/currency/money';
@@ -117,7 +118,7 @@ const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
   // read the real figure. Guarded non-zero: `buildTypeBreakdown` filters
   // `amount !== 0`, but an empty-after-filter list is handled above and a
   // defensive `|| 1` keeps the division total.
-  const scale = Math.max(...data.map((slice) => Math.abs(slice.amount))) || 1;
+  const scale = maxOf(data.map((slice) => Math.abs(slice.amount))) || 1;
 
   return (
     <Box style={styles.container}>

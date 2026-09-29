@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import { minOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { LocalDateTime } from '@kiko/reminders/native';
 
@@ -54,7 +55,7 @@ const firstDayOnOrAfter = (schedule: ReminderSchedule, from: LocalDay): LocalDay
         (weekday) => (weekday - weekdayOf(from) + WEEK_DAYS) % WEEK_DAYS,
       );
 
-      return addDays(from, Math.min(...daysAhead));
+      return addDays(from, minOf(daysAhead));
     })
     .with({ frequency: 'monthly' }, ({ dayOfMonth }) => {
       const thisMonth = monthlyDay(from, dayOfMonth);
@@ -77,7 +78,7 @@ const lastDayOnOrBefore = (schedule: ReminderSchedule, to: LocalDay): LocalDay |
     .with({ frequency: 'weekly' }, ({ weekdays }) => {
       const daysBack = weekdays.map((weekday) => (weekdayOf(to) - weekday + WEEK_DAYS) % WEEK_DAYS);
 
-      return addDays(to, -Math.min(...daysBack));
+      return addDays(to, -minOf(daysBack));
     })
     .with({ frequency: 'monthly' }, ({ dayOfMonth }) => {
       const thisMonth = monthlyDay(to, dayOfMonth);

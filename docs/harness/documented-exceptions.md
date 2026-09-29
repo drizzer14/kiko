@@ -547,6 +547,13 @@ verified usage, not dead weight:
   rule in `check:rules`; `__tests__/pre-write-guard-rules.test.ts` proves
   the exclusion.
 
+- **`kiko-no-math-min-max-spread` (`rules/semgrep-prewrite.yml`) excludes
+  `*.test.ts` and `*.test.tsx`.** `transaction-span.test.ts` and
+  `min-max.test.ts` assert that `Math.min(...values)` throws a RangeError
+  on a large array, the premise that makes `minOf`/`maxOf` necessary, so
+  they must spell out the spread. `__tests__/pre-write-guard-rules.test.ts`
+  proves the exclusion; the flat fixture pair still proves the rule.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`
