@@ -1,5 +1,5 @@
 # Reminders (user-configured, local notifications) — design, 1.2
-Status: research done; user decisions recorded; PRIORITY: first item of 1.2 (user 2026-09-28); plan in progress
+Status: implemented on branch reminders (tasks 1/5-5/5); pending device tests and the user's key review
 
 ## User decisions (2026-09-27, user's own words summarized)
 1. Scope: BOTH reminder types — (a) import a bank statement, (b) add transactions to a manual account.
@@ -30,7 +30,7 @@ Status: research done; user decisions recorded; PRIORITY: first item of 1.2 (use
 ## Known limits
 - Non-Gregorian device calendar (Buddhist, Japanese, Hebrew, Islamic, …): a scheduled reminder never fires, because the trigger's floating year/month/day components (Gregorian, from JS) are matched against `Calendar.current`. Accepted for 1.2 under the only-user directive (decision 8); fix = in `KikoRemindersCenter.swift`, when `Calendar.current.identifier != .gregorian`, convert the Gregorian components to `Calendar.current` components (era included), still with no time zone. The "Tomorrow" snooze is unaffected (it uses `Calendar.current` throughout).
 - Old backup: a `.kiko` from before reminders has no `reminders` key and restores with no reminders (`snapshot.reminders ?? []`). After a restore, `replanRestoredReminders` restarts every reminder's ignored count (`activeSince = now`) before the first re-plan, so a restored reminder is not back-off paused for the time the backup was away.
-- Drain-then-write: `drainResponses` empties the native queue before `recordEngagements` commits. If that one write fails, those taps are lost (logged), and back-off may count a tapped fire as ignored. The fix needs a native "ack after commit" API.
+- Drain-then-write: `drainReminderResponses` empties the native queue before `recordEngagements` commits. If that write fails, the drain rejects: those taps are lost (logged), they are neither recorded nor routed, and back-off may count a tapped fire as ignored. A failed LATER plan step (`authorizationStatus`, `planInputsQuery`, `replaceRequests`) still routes the drained taps. The fix needs a native "ack after commit" API.
 - Time change between a "Tomorrow" tap and the snooze: the planner frees the slot at the CURRENT `minuteOfDay`, but the native snooze fires at the OLD time. That day gets one notification, at the old time, and never a duplicate.
 - A restore copies `notifications_deliverable_since` from the source device (the settings row is restored whole). The first sync on a device without permission clears it.
 - A queued response saved by an older development build (no `requestIdentifier`) is dropped by the JS parser. Development builds of this unmerged feature only.
@@ -48,6 +48,8 @@ Status: research done; user decisions recorded; PRIORITY: first item of 1.2 (use
 - The offer counts a categorized opening-balance or balance-edit row, when the user later sets a category on it (`setCategory`). This can only cause an extra offer, never a missed one.
 - Two separate exchanges between the same two holdings with the same `time` in ms count as one entry for the offer (the form seeds `time` from `Date.now()`, so this needs the same picked instant twice).
 - Editing the date of one leg of an exchange gives the legs different `time`s, so that transfer counts twice for the offer. This can only cause an extra offer.
+- A binary without the `KikoReminders` native module plans nothing and routes nothing. Every trigger logs "re-plan failed", and the response subscribe logs once. The app does not crash.
+- An import-reminder tap opens the file picker from an effect on `AccountDetail` once its loading gate is ready. That can be during the push transition; whether the picker then presents or silently does not show is unverified (device check).
 - After a restore, the ignored-count restart (`activeSince = now`) also turns off the smart skip for the next occurrence: data from before the restart never skips, so that occurrence fires even if data arrived since the previous one.
 - Restore race: a re-plan that started between the restore's commit and the `restartIgnoredCounts` write (for example, the app went to the background at that moment) can still back-off pause a restored reminder. Closing it inside `restoreDataSnapshot`'s transaction would break the pinned restore round-trip.
 - A restored `last_snoozed_at` from another device keeps that slot free until it goes stale, although this device has no such snooze request: after a cross-device restore inside a snooze window, at most one occurrence is missed.
@@ -58,6 +60,8 @@ Status: research done; user decisions recorded; PRIORITY: first item of 1.2 (use
 - Balance rows do not count toward the add-transactions offer (opening-balance and balance-edit rows: manual, no category, no transfer marker). If wrong: a new cash account with an opening balance plus one entry gets an offer.
 - No in-form Delete: a reminder is deleted only from its page row's touch-and-hold menu (`kiko-no-confirm-sheet-in-form`).
 - The empty-state caption (`reminders.emptyNoKinds`) on the account's reminders page; the bell stays on every account.
+- The one-holding shortcut: an add-transactions tap opens `TransactionForm` directly only when the account has exactly one open holding and that holding takes transactions (not ledgerless: card, cash, crypto asset, jar). For a single deposit, bond, property item, metal or loan holding, the tap opens the account page. If wrong: a deposit-only account's tap opens a form for a holding that takes no transactions.
+- A tap on the "Reminders paused" notice opens that account's Reminders page (`AccountReminders`, above the account page), where the user can turn the reminder on again. If wrong: the tap opens only the account page.
 
 ## Open items for the planner
 - Manual account = accounts.institution IS NULL (isSyncedAccount in src/holdings/deletable/deletable.ts); resolved by user decision 6 — import reminders apply to any account with >=1 statement import, including synced accounts; add-transaction reminders stay manual-only.

@@ -467,6 +467,14 @@ Base: CS-C1 tip.
 
 ## CS-D — Tap routing, snooze category, hidden-preview placeholder
 
+As built, CS-D differs from the snippets below:
+- `navigateTo` does ONE `navigate('AccountsTab', { state: { routes, index } })` with the whole Accounts stack: the routes it has now (keys kept), or `[Accounts]` while the tab has not mounted, then `AccountDetail`, then the next screen. It does not do two nested navigates, because on the real routers the second replaces the tab's nested params before the stack reads the first. The tapped account's page, when already on top, takes the new params in place. Before `isReady()`, it waits for the `ready` event.
+- `routeFor(response, kind, account, openHoldings: Pick<HoldingRow, 'id' | 'type'>[])`; the one-holding shortcut applies only to a holding that is not ledgerless (`isLedgerlessHoldingType`). A paused-notice tap opens `AccountReminders` above `AccountDetail`.
+- `sync-reminders.ts` has two steps: `drainReminderResponses()` (the one reader of the queue; it stores engagements and returns the responses) and `syncReminders(t, now?): Promise<void>`. `replan` drains, then plans, then routes. A failed drain plans and routes nothing. A failed plan still routes.
+- `registerCategories` runs on every sync, before the `hasAnyQuery` gate. The category ids are `REMINDER_CATEGORY_IDENTIFIER`/`NOTICE_CATEGORY_IDENTIFIER` in `reminders-native.ts`.
+- The `onResponse` subscribe is wrapped in `eitherSync` (no-op `remove`, one log). `isPausedNoticeResponse` (`@kiko/reminders/planner`) is shared by the routing and the engagement filter; `pausedNoticeIdentifier` is private.
+Read `src/reminders/`, the screens, and kiko-architecture 'Reminders (local notifications)' before building on them.
+
 Base: CS-C2 tip. JS only (the native side is in CS-A).
 
 ### Task D1: Categories + request metadata (developer; tests first)

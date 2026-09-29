@@ -27,6 +27,7 @@ jest.mock('@kiko/db/use-live-query', () => ({
 }));
 jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
   syncReminders: (...args: unknown[]) => mockSyncReminders(...args),
+  drainReminderResponses: async () => [],
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {

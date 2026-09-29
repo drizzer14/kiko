@@ -613,7 +613,9 @@ gate says there is nothing to do.
   created.
 - **Reminders re-plan**: `syncReminders` reads
   `remindersRepo.hasAnyQuery()` (`LIMIT 1`) before any plan-input query
-  — see "Reminders (local notifications)".
+  — see "Reminders (local notifications)". `drainReminderResponses` runs
+  before it and touches the database only when the native queue holds
+  responses (`recordEngagements` returns early on an empty list).
 
 ## Bulk insert: chunk when row count is caller- or API-controlled
 
@@ -1723,10 +1725,22 @@ what a change must keep.
   `lastDataAt`; `lastSnoozedAt` frees the regular occurrence at the
   snooze minute. The sync passes `lastSnoozedAt: null` once data
   arrived at or after the snooze.
-- **Scheduler.** `syncReminders(t, now?)`
-  (`src/reminders/scheduler/sync-reminders.ts`) drains the native
-  response queue and stores the engagements FIRST (a tap on the paused
-  notice is not engagement). Then it gates on `hasAnyQuery` (no
+- **Scheduler.** `src/reminders/scheduler/sync-reminders.ts` has two
+  steps, run in this order by every re-plan. `drainReminderResponses()`
+  is the ONE reader of the native response queue: it drains it, stores
+  the engagements (a tap on the paused notice is not engagement), and
+  returns the responses. `syncReminders(t, now?)` does not touch the
+  queue. It calls `registerCategories` with
+  the active language's `reminders.notification.snoozeAction` and
+  `hiddenPreviewsPlaceholder` on EVERY sync, before any
+  `replaceRequests`. `reminderContent` gives a reminder the
+  `kiko.reminder` category (the one "Tomorrow" action) and the paused
+  notice `kiko.reminder.notice` (no action); the ids are
+  `REMINDER_CATEGORY_IDENTIFIER`/`NOTICE_CATEGORY_IDENTIFIER` in
+  `reminders-native.ts` and must equal
+  `reminderCategoryIdentifier`/`noticeCategoryIdentifier` in
+  `ios/Kiko/Reminders/KikoRemindersCenter.swift`. Then it gates
+  on `hasAnyQuery` (no
   reminders -> `replaceRequests([], [])` and no plan-input query).
   Then it syncs `notifications_deliverable_since` from
   `authorizationStatus()` (written only when it changes; while iOS
@@ -1736,9 +1750,51 @@ what a change must keep.
 - **Mount.** `useReminderScheduler()`
   (`src/reminders/use-reminder-scheduler/`) runs in `AppRoot`
   (`App.tsx`), below `MigrationsGate` and `LockGate`. It re-plans on
-  mount, on AppState `active` and `background`, and on an i18n
-  `languageChanged` event. It is single-flight with at most one queued
-  follow-up via `replanReminders`, and it never rejects (a failure is logged).
+  mount, on AppState `active` and `background`, on an i18n
+  `languageChanged` event, and on `remindersNative.onResponse` (a tap
+  that lands after the `active` re-plan drained the queue). It is
+  single-flight with at most one queued follow-up via `replanReminders`,
+  and it never rejects (a failed drain, plan or route is logged). A
+  failed drain plans and routes nothing, since the plan must see the
+  engagements first. A failed plan still routes the drained taps, since
+  the queue no longer holds them. The `onResponse` subscribe loads the
+  native module synchronously, so it is wrapped in `eitherSync`: on a
+  binary without the module it logs once, gets a no-op `remove`, and
+  on a real binary without the module, `drainReminderResponses` then also
+  rejects on every trigger, so each one logs "re-plan failed" and plans
+  nothing, without crashing the app. `use-reminder-scheduler.lazy-load.test.ts`
+  pins only the mount: no throw, one log, and the other triggers still run
+  (it mocks the scheduler).
+- **Tap routing.** Every re-plan whose drain succeeded hands the responses
+  it returned to
+  `routeLatestResponse(responses, navigationRef)`
+  (`src/reminders/routing/`), so every trigger routes. It routes the latest `open` response (the
+  last one in the queue, which appends in tap order); a snooze never
+  routes. A reminder that is gone (deleted,
+  or deleted with its account) routes nowhere. `routeFor` is pure: an
+  import reminder opens `AccountDetail` with `intent: 'importStatement'`;
+  add transactions with exactly ONE open holding, of a type that takes
+  transactions (`!isLedgerlessHoldingType(type)`,
+  `src/holdings/holding-descriptor/holding-descriptors.ts`; grep
+  `ledgerless: true` for the current ledgerless set), opens
+  `TransactionForm { holdingId }` above `AccountDetail`, and otherwise
+  `AccountDetail` only (a single ledgerless holding included);
+  the paused notice opens `AccountReminders` above `AccountDetail`. The
+  navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
+  Accounts stack: the routes it has now (or `Accounts` while the tab has
+  not mounted), then the new ones. Two nested navigates back to back lose
+  the first, because the second replaces the tab's nested params before
+  the stack reads them (`route-response.navigator.test.tsx`, on the real
+  routers). The tapped account's page, when already on top, takes the new
+  params in place. Before `navigationRef.isReady()` (a tap that launched
+  the app) the route waits for the container's `ready` event. Routes that
+  waited all navigate in the same tick, so the newest one's stack wins.
+  `navigationRef` (`src/navigation/navigation-ref/`) is the
+  `NavigationContainer` ref in `AppRoot`, below `LockGate`, so nothing
+  routes before unlock. No URL scheme and no `linking` prop. On
+  `intent: 'importStatement'`, `AccountDetail` waits for its loading gate,
+  clears the param, then opens the file picker once, on a bank account
+  only.
 - **Account delete.** `accountsRepo.remove` deletes the account's
   `reminders` rows in the same transaction, before the account row (NO
   ACTION FK), next to the `sync_state` delete.
