@@ -558,11 +558,17 @@ reasoning.
   file: each `const` opens a range on both sides. It ran 63 s on
   `transaction-form.screen.tsx` (2818 lines) and the guard denied
   "could not check" on every write to it. Without the leading `...`
-  it ran 2 s. Drop the leading `...` whenever the declaration must
-  come before the use anyway (a `const`). Keep it only for a rare
-  statement that hoists (`async function`). Run the guard speed check
-  in "Adding a pre-write guard rule" for every new statement-sequence
-  rule; the fixtures are too small to show this.
+  it ran 2 s. Even the rarer `async function $F` arm with a leading
+  `...` cost 0.15-0.26 s per large file, and under `check:security`'s
+  full-tree load it hit the per-rule timeout on
+  `holding-form.screen.test.tsx` (4173 lines), which fails the gate.
+  The guard speed check did not show that. So open no `pattern-inside`
+  with `...`: write `<declaration>` / `...` (about 0.01 s) and accept
+  the known false negative for a use placed before a hoisted
+  declaration. For every new statement-sequence rule, run both the
+  guard speed check in "Adding a pre-write guard rule" AND a
+  whole-tree `npm run check:security`; the fixtures are too small to
+  show either cost.
 - `either(async (...$REST) => $F(...$REST))` matches nothing when the
   target's rest parameter has a type annotation
   (`(...rest: []) => …`); write `(...$REST: $TYPE)`.

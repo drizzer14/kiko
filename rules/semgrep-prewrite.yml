@@ -1133,11 +1133,12 @@ rules:
   # plain `() => f()`, which is the same needless wrapper), hence the
   # captured initializer plus `metavariable-regex`. The identifier regex on
   # `$F` keeps a method call (`repo.load()`, which would lose `this`) out.
-  # The `const` arm has no leading `...`: with it, every `const` in a large
-  # screen opened a statement range on both sides, and Semgrep ran 63 s on
-  # transaction-form.screen.tsx (a guard "could not check" deny); without
-  # it, 2 s. A `const` cannot be used before its declaration anyway, so only
-  # the hoisted `async function` arm keeps it.
+  # Neither `pattern-inside` opens with `...`: with it, every `const` in a
+  # large screen opened a statement range on both sides, and Semgrep ran 63 s
+  # on transaction-form.screen.tsx (a guard "could not check" deny); even the
+  # rarer `async function` arm cost 0.15-0.26 s per large file with it, which
+  # timed out in check:security's full-tree scan. Known limit: a call placed
+  # BEFORE a hoisted `async function f` declaration is not flagged.
   # ERROR from the start: the tree had no finding when the rule landed.
   - id: kiko-no-needless-async-either-thunk
     languages: [typescript]
@@ -1162,7 +1163,6 @@ rules:
           regex: '^[A-Za-z_$][\w$]*$'
       - pattern-either:
           - pattern-inside: |
-              ...
               async function $F(...) { ... }
               ...
           - patterns:

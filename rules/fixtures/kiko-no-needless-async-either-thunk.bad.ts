@@ -52,11 +52,3 @@ export const nestedScope = async () => {
   // EXPECT-FINDING
   return either(async () => readLatest());
 };
-
-export const beforeDeclaration = async () =>
-  // EXPECT-FINDING
-  either(async () => hoisted());
-
-async function hoisted(): Promise<number> {
-  return 1;
-}
