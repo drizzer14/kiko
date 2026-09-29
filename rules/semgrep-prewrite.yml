@@ -1052,3 +1052,39 @@ rules:
     patterns:
       - pattern-regex: |-
           (?m)(?:^[ \t]*(?:import|export)\b[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?confirm-sheet(?:/[^'"]*)?['"]
+  # kiko-code-style's "JSX spread: no `{}` fallback": TypeScript merges a JSX
+  # spread of `X | {}` into one shape with every prop of X optional, so a
+  # discriminated union's required-together props (SettingsRowProps: a
+  # pressable row's `trailing` needs `accessibilityActions` and
+  # `onAccessibilityAction`) stop being enforced and the row compiles without
+  # them. A pattern `{}` matches ANY object literal, so the fallback is
+  # captured and `metavariable-regex` keeps only a truly empty one; a ternary
+  # of two filled objects (SelectableRow's glyph) stays clean. An object
+  # spread outside JSX checks no component's props and is out of scope.
+  # `paths.include` is path-prefixed, so the fixture pair is NESTED. ERROR
+  # from the start: the tree had no finding when the rule landed.
+  - id: kiko-no-empty-object-jsx-spread
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A JSX spread whose fallback is `{}` makes every prop of the spread
+      value optional, so a discriminated union's required-together props
+      stop being enforced. Fall back to a non-empty literal that names the
+      discriminant (`NO_SWITCH = { trailing: undefined }` in
+      `reminder-row.component.tsx`) — see kiko-code-style's "JSX spread: no
+      `{}` fallback".
+    metadata:
+      fix: "Replace the `{}` fallback with a named constant that sets the discriminant, e.g. `const NO_SWITCH = { trailing: undefined }` and `{...(props ?? NO_SWITCH)}`."
+      skill: "kiko-code-style › JSX spread: no `{}` fallback"
+    paths:
+      include:
+        - "src/**/*.tsx"
+    patterns:
+      - pattern-either:
+          - pattern: "<$ELEMENT ... {...($VALUE ?? $FALLBACK)} ... />"
+          - pattern: "<$ELEMENT ... {...($VALUE || $FALLBACK)} ... />"
+          - pattern: "<$ELEMENT ... {...($CONDITION ? $VALUE : $FALLBACK)} ... />"
+          - pattern: "<$ELEMENT ... {...($CONDITION ? $FALLBACK : $VALUE)} ... />"
+      - metavariable-regex:
+          metavariable: $FALLBACK
+          regex: '^\{\s*\}$'
