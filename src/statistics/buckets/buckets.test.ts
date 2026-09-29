@@ -82,17 +82,6 @@ describe('periodStartBucketTimes', () => {
 });
 
 describe('DST correctness (Europe/Kyiv, autumn fall-back)', () => {
-  let originalTz: string | undefined;
-
-  beforeAll(() => {
-    originalTz = process.env.TZ;
-    process.env.TZ = 'Europe/Kyiv';
-  });
-
-  afterAll(() => {
-    process.env.TZ = originalTz;
-  });
-
   // Kyiv's 2026 fall-back (last Sunday of October) falls inside this
   // 31-day, one-bucket-per-day span — a fixed-DAY_MS step used to land an
   // hour early (23:00 the previous calendar day) for every bucket after it,

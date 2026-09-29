@@ -91,8 +91,7 @@ describe('refreshBondRegisterIfStale', () => {
   // The gate compares `dayKeyOf`'s LOCAL calendar day. A raw `Date.UTC(...)`
   // instant only keeps its intended same-day/next-day labeling for a
   // UTC-1..UTC+3 host offset (the original bug this review round fixed), and
-  // mid-test `process.env.TZ = '<zone>'` pinning (the pattern several other
-  // date tests in this repo use, e.g. `price-book.test.ts`) does NOT
+  // mid-test `process.env.TZ = '<zone>'` pinning does NOT
   // reliably re-target `Date`'s local getters inside this project's Jest
   // environment (`jest-environment-node`'s VM context appears to snapshot
   // the ICU timezone at worker start and ignore a later env mutation —

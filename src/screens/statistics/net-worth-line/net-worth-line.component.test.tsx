@@ -569,37 +569,26 @@ describe('NetWorthLine', () => {
   // ticks read the picked days — proving the bug is already fixed here and
   // catching a regression (e.g. a stray `timeZone: 'UTC'` on `formatAxisTime`)
   // that would shift the start tick a day back. It is a guard, not a TDD
-  // RED->GREEN fix: no source change is needed on this branch. Node re-reads TZ
-  // per Date op, so pinning it for the render is enough even when the host runs
-  // in UTC.
+  // RED->GREEN fix: no source change is needed on this branch. The suite runs
+  // on Kyiv, so the render already happens in a positive-offset zone.
   it('labels the X-axis extremes with the picked local calendar days in a positive-offset zone (NEW-1)', async () => {
-    const originalTz = process.env.TZ;
-    process.env.TZ = 'Europe/Kyiv';
-    try {
-      // The real range bounds a Sep 5 -> Sep 7 2026 pick produces on-device.
-      const fromT = startOfLocalDay(new Date(2026, 8, 5).getTime());
-      const toT = endOfLocalDay(new Date(2026, 8, 7).getTime());
-      const rangePoints: NetWorthPoint[] = [
-        { t: fromT, amount: 100 },
-        { t: startOfLocalDay(new Date(2026, 8, 6).getTime()), amount: 300 },
-        { t: toT, amount: 200 },
-      ];
-      const { getByTestId } = await render(
-        <NetWorthLine points={rangePoints} startReference={200} baseCurrency="USD" />,
-      );
+    // The real range bounds a Sep 5 -> Sep 7 2026 pick produces on-device.
+    const fromT = startOfLocalDay(new Date(2026, 8, 5).getTime());
+    const toT = endOfLocalDay(new Date(2026, 8, 7).getTime());
+    const rangePoints: NetWorthPoint[] = [
+      { t: fromT, amount: 100 },
+      { t: startOfLocalDay(new Date(2026, 8, 6).getTime()), amount: 300 },
+      { t: toT, amount: 200 },
+    ];
+    const { getByTestId } = await render(
+      <NetWorthLine points={rangePoints} startReference={200} baseCurrency="USD" />,
+    );
 
-      expect(getByTestId('net-worth-line-x-tick-0.00')).toHaveTextContent('05.09');
-      expect(getByTestId('net-worth-line-x-tick-1.00')).toHaveTextContent('07.09');
-      // The new numeric day.month format (this task's change) applies to the
-      // middle label too, not just the two range extremes.
-      expect(getByTestId('net-worth-line-x-tick-0.50')).toHaveTextContent(/^\d{2}\.\d{2}$/);
-    } finally {
-      if (originalTz === undefined) {
-        delete process.env.TZ;
-      } else {
-        process.env.TZ = originalTz;
-      }
-    }
+    expect(getByTestId('net-worth-line-x-tick-0.00')).toHaveTextContent('05.09');
+    expect(getByTestId('net-worth-line-x-tick-1.00')).toHaveTextContent('07.09');
+    // The new numeric day.month format (this task's change) applies to the
+    // middle label too, not just the two range extremes.
+    expect(getByTestId('net-worth-line-x-tick-0.50')).toHaveTextContent(/^\d{2}\.\d{2}$/);
   });
 
   // Crossing data at the component level: net worth starts ABOVE the start

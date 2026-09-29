@@ -50,16 +50,6 @@ describe('daysBetween', () => {
   });
 
   describe('DST-safe whole-day counting (Kyiv spring-forward)', () => {
-    const originalTz = process.env.TZ;
-    beforeAll(() => {
-      // Force a DST-observing zone so the spring-forward is actually exercised
-      // even when the test host runs in UTC. Node re-reads TZ per Date op.
-      process.env.TZ = 'Europe/Kyiv';
-    });
-    afterAll(() => {
-      process.env.TZ = originalTz;
-    });
-
     it('counts 20 calendar days across the last-Sunday-of-March DST change', () => {
       // A bi-weekly Mar 12 -> Apr 1 2024 period straddles Kyiv's spring-forward
       // (Sun 31 Mar). The two local-midnight instants are 19h short of 20*24h,

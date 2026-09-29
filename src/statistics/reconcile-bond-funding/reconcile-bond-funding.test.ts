@@ -155,35 +155,22 @@ describe('reconcileBondFunding', () => {
     });
   });
 
-  // Node re-reads `TZ` per `Date` operation, so it is safe to flip it around a
-  // single assertion rather than for the whole file (matches
-  // `src/dates/local-day.test.ts`'s own pattern) — restore it afterwards so
-  // later tests in the same run are unaffected.
-  const withTimeZone = (zone: string, run: () => void): void => {
-    const previous = process.env.TZ;
-    process.env.TZ = zone;
-    run();
-    process.env.TZ = previous;
-  };
-
   it('matches a debit exactly 7 local days away across a fall-back DST change', () => {
-    withTimeZone('Europe/Kyiv', () => {
-      // Europe/Kyiv falls back on 2026-10-25 (that local day is 25 hours), so
-      // the raw ms between Oct 20 and Oct 27 local midnight is 169h, one hour
-      // OVER the 7*24h window — a purely ms-based comparison would wrongly
-      // reject a debit that is exactly 7 CALENDAR days away.
-      const typedDay = new Date(2026, 9, 20).getTime();
-      const boundaryDay = new Date(2026, 9, 27).getTime();
-      const meta = bondMeta({ purchaseDate: typedDay });
-      const holdings = [cardHolding('card', 'USD')];
-      const transactionsByHolding = new Map([
-        ['card', [transaction(boundaryDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
-      ]);
+    // Europe/Kyiv falls back on 2026-10-25 (that local day is 25 hours), so
+    // the raw ms between Oct 20 and Oct 27 local midnight is 169h, one hour
+    // OVER the 7*24h window — a purely ms-based comparison would wrongly
+    // reject a debit that is exactly 7 CALENDAR days away.
+    const typedDay = new Date(2026, 9, 20).getTime();
+    const boundaryDay = new Date(2026, 9, 27).getTime();
+    const meta = bondMeta({ purchaseDate: typedDay });
+    const holdings = [cardHolding('card', 'USD')];
+    const transactionsByHolding = new Map([
+      ['card', [transaction(boundaryDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
+    ]);
 
-      expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
-        recognitionDay: boundaryDay,
-        recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
-      });
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toEqual({
+      recognitionDay: boundaryDay,
+      recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
     });
   });
 

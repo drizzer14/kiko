@@ -1584,14 +1584,6 @@ describe('StatisticsScreen', () => {
   // midnight then falls before that UTC-anchored bound and drops out of the
   // range entirely — the T-32 follow-up bug this regression test targets.
   describe('local-day range start in a positive-UTC-offset zone (Kyiv)', () => {
-    const originalTz = process.env.TZ;
-    beforeAll(() => {
-      process.env.TZ = 'Europe/Kyiv';
-    });
-    afterAll(() => {
-      process.env.TZ = originalTz;
-    });
-
     it('includes a 00:30 local expense on the range’s first day in the category pie', async () => {
       const MINUTE = 60_000;
       const dateFrom = defaultDateRange(now).from;

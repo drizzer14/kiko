@@ -16,22 +16,12 @@ describe('formatDate', () => {
   });
 
   it('reads UTC calendar fields when timeZone is UTC, not local ones', () => {
-    // Mirrors formatDayMonth's own UTC test: a `price_points.day`-style value
-    // is a UTC-midnight epoch standing for a LOCAL calendar day, so reading it
-    // back must use the UTC accessors regardless of the host's own timezone.
-    const originalTz = process.env.TZ;
-    process.env.TZ = 'America/Los_Angeles';
-    try {
-      const utcMidnight = Date.UTC(2026, 0, 15);
+    // 23:00 UTC on Jan 15 is already Jan 16 on the Kyiv clock the suite runs
+    // on, so only the UTC accessors read Jan 15 back from it.
+    const lateUtcEvening = Date.UTC(2026, 0, 15, 23);
 
-      expect(formatDate(utcMidnight, { timeZone: 'UTC' })).toBe('15.01.2026');
-    } finally {
-      if (originalTz === undefined) {
-        delete process.env.TZ;
-      } else {
-        process.env.TZ = originalTz;
-      }
-    }
+    expect(formatDate(lateUtcEvening, { timeZone: 'UTC' })).toBe('15.01.2026');
+    expect(formatDate(lateUtcEvening)).toBe('16.01.2026');
   });
 });
 
@@ -51,22 +41,12 @@ describe('formatDayMonth', () => {
   });
 
   it('reads UTC calendar fields when timeZone is UTC, not local ones', () => {
-    // A UTC-midnight instant on Jan 15 is still Jan 14 local in a negative-
-    // offset zone: the UTC accessor must read the UTC day regardless of the
-    // host's own timezone.
-    const originalTz = process.env.TZ;
-    process.env.TZ = 'America/Los_Angeles';
-    try {
-      const utcMidnight = Date.UTC(2026, 0, 15);
+    // 23:00 UTC on Jan 15 is already Jan 16 on the Kyiv clock the suite runs
+    // on, so only the UTC accessors read Jan 15 back from it.
+    const lateUtcEvening = Date.UTC(2026, 0, 15, 23);
 
-      expect(formatDayMonth(utcMidnight, { timeZone: 'UTC' })).toBe('15.01');
-    } finally {
-      if (originalTz === undefined) {
-        delete process.env.TZ;
-      } else {
-        process.env.TZ = originalTz;
-      }
-    }
+    expect(formatDayMonth(lateUtcEvening, { timeZone: 'UTC' })).toBe('15.01');
+    expect(formatDayMonth(lateUtcEvening)).toBe('16.01');
   });
 });
 
