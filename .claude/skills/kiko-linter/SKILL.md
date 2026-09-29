@@ -1220,11 +1220,14 @@ a new tree. See `conflictSides`, `afterTreesFor`, and
 
 ## Pre-write guard replay on the Stop tier
 
-The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. A Bash or
-python write (a heredoc, `sed -i`, a script) and a commit of it reach
-disk unchecked. A Bash deny hook is the wrong fix: legitimate commands
-write source too (the `--write` fixers, `git merge`). The replay
-catches these writes after they land instead.
+The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
+kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
+forms into `src/`, `__tests__/`, and `rules/`. It allows the `--write`
+fixers and git itself, which write source legitimately. What it does
+not see still reaches disk unchecked: a script file that writes,
+`cp`/`mv`, `find -exec`, a path held in a variable, and a commit of any
+of these (see its Known limits). The replay catches those writes after
+they land.
 
 - **Where.** `scripts/checks/guard-replay.sh` (+ `guard-replay.js`, the
   planner and runner). `medium.sh` runs it on `Stop`/`SubagentStop`
