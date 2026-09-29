@@ -61,6 +61,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-root-calendars-value-import',
   'kiko-no-raw-error-in-console',
   'kiko-no-clipboard-set-string',
+  'kiko-no-per-bucket-date-in-statistics',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -77,6 +78,8 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
   'kiko-no-confirm-sheet-in-form': 'kiko-no-confirm-sheet-in-form/src/screens/forms/form-example',
   'kiko-no-empty-object-jsx-spread':
     'kiko-no-empty-object-jsx-spread/src/screens/settings/settings-row-example',
+  'kiko-no-per-bucket-date-in-statistics':
+    'kiko-no-per-bucket-date-in-statistics/src/statistics/bucket-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -88,6 +91,7 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-process-env-time-zone-in-test': 'src/test-support',
   'kiko-no-confirm-sheet-in-form': 'src/screens/forms',
   'kiko-no-empty-object-jsx-spread': 'src/screens/settings',
+  'kiko-no-per-bucket-date-in-statistics': 'src/statistics',
 };
 
 function fixturePrefix(ruleId: string): string {

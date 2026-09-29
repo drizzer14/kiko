@@ -1267,3 +1267,55 @@ rules:
     pattern-either:
       - pattern: $C.setString(...)
       - pattern: $C.setStrings(...)
+  # kiko-domain's "Statistics series performance": a Date built per row
+  # INSIDE a per-bucket iteration is O(buckets x rows) on every Statistics
+  # render. Only the nested shape fires; a one-off per-row pass stays silent,
+  # because flagging every Date in an array callback could not tell the two
+  # apart. The outer iteration is a `for`/`while` loop or another array
+  # callback, with an expression body or a block body (the deep-expression
+  # operator does not reach a block's non-return statements, hence the
+  # separate block arm). Tests are excluded: a parity oracle in a test may
+  # keep the slow per-bucket shape on purpose, and test code never runs in a
+  # Statistics render. ERROR from the start: 0 findings in src.
+  - id: kiko-no-per-bucket-date-in-statistics
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A Date is built inside an array callback that itself runs once per
+      bucket (inside another array callback or a loop): O(buckets × rows)
+      Date work on every Statistics render. Precompute each row's day key
+      ONCE, outside the per-bucket iteration.
+    metadata:
+      fix: "Build the per-row day key (startOfLocalDay/new Date) once before the bucket loop (a Map or prefix sum), then compare plain numbers inside it."
+      skill: "kiko-domain › Statistics series performance"
+    paths:
+      include: ["src/statistics/**"]
+      exclude: ["*.test.ts", "*.test.tsx"]
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-inside: |
+                  for (...) { ... }
+              - pattern: $XS.$M2(..., (...) => <... $DATE ...>, ...)
+          - patterns:
+              - pattern-inside: |
+                  while (...) { ... }
+              - pattern: $XS.$M2(..., (...) => <... $DATE ...>, ...)
+          - pattern: $OUTER.$M1(..., (...) => <... $XS.$M2(..., (...) => <... $DATE ...>, ...) ...>, ...)
+          - pattern: |
+              $OUTER.$M1(..., (...) => {
+                ...
+                $XS.$M2(..., (...) => <... $DATE ...>, ...);
+                ...
+              }, ...)
+      - metavariable-regex:
+          metavariable: $M2
+          regex: ^(filter|map|flatMap|reduce|reduceRight|forEach|some|every|find|findIndex|findLast|findLastIndex|sort|toSorted)$
+      - metavariable-pattern:
+          metavariable: $DATE
+          pattern-either:
+            - pattern: new Date(...)
+            - pattern: Date.parse(...)
+            - pattern: startOfLocalDay(...)
+            - pattern: endOfLocalDay(...)
+            - pattern: parseLocalDate(...)

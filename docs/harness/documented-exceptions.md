@@ -579,6 +579,15 @@ verified usage, not dead weight:
   excluded because they only drive the Jest clipboard mock and never ship.
   The flat fixture pair proves the rule in `check:rules`.
 
+- **`kiko-no-per-bucket-date-in-statistics` (`rules/semgrep-prewrite.yml`)
+  excludes `*.test.ts` and `*.test.tsx`.** The rule exists for the cost of a
+  Statistics render, and test code never runs in one. A parity oracle in a
+  test (the `referenceHoldingValueAt` pattern in `holding-value-at.test.ts`)
+  may keep the slow per-bucket shape on purpose. Measured on 2026-09-29: the
+  rule without the exclude draws 0 findings in `src/statistics` tests, so the
+  exclude hides nothing today. The nested fixture pair proves the rule in
+  `check:rules`.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`
