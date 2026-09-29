@@ -78,6 +78,9 @@ const AccountDetailStub: FC<NativeStackScreenProps<AccountsStackParamList, 'Acco
 }) => (
   <>
     <Text testID="screen-account-detail">AccountDetail {route.params.accountId}</Text>
+
+    <Text testID="account-detail-reminder-offer">{route.params.reminderOffer ?? 'none'}</Text>
+
     <Pressable
       testID="push-statement-import"
       onPress={() =>
@@ -85,6 +88,14 @@ const AccountDetailStub: FC<NativeStackScreenProps<AccountsStackParamList, 'Acco
       }
     >
       <Text>Import statement</Text>
+    </Pressable>
+
+    {/* Mirrors account-detail.screen.tsx's clear after the offer is decided. */}
+    <Pressable
+      testID="clear-reminder-offer"
+      onPress={() => navigation.setParams({ reminderOffer: undefined })}
+    >
+      <Text>Not now</Text>
     </Pressable>
   </>
 );
@@ -156,7 +167,11 @@ const StatementImportStub: FC<
         onPress={() =>
           navigation.popTo(
             'AccountDetail',
-            { accountId: route.params.accountId ?? 'acc-1', name: 'Acc' },
+            {
+              accountId: route.params.accountId ?? 'acc-1',
+              name: 'Acc',
+              reminderOffer: 'afterImport',
+            },
             { merge: true },
           )
         }
@@ -226,7 +241,7 @@ const ColumnMappingStub: FC<NativeStackScreenProps<AccountsStackParamList, 'Colu
         onPress={() =>
           navigation.popTo(
             'AccountDetail',
-            { accountId: route.params.accountId, name: 'Acc' },
+            { accountId: route.params.accountId, name: 'Acc', reminderOffer: 'afterImport' },
             { merge: true },
           )
         }
@@ -350,6 +365,29 @@ describe('statement-import return-navigation (real router)', () => {
     expect(routeNames()).toEqual(['AccountDetail']);
     expect(view.queryAllByTestId('screen-account-detail')).toHaveLength(1);
   });
+
+  it.each([
+    ['the preview', ['push-statement-import', 'done']],
+    ['Map Columns', ['push-statement-import', 'push-column-mapping', 'done-column-mapping']],
+  ])(
+    'Done from %s hands the import reminder offer to the existing AccountDetail, which can clear it',
+    async (_path, presses) => {
+      const view = await renderNavigator();
+
+      expect(view.getByTestId('account-detail-reminder-offer')).toHaveTextContent('none');
+
+      for (const testID of presses) {
+        await fireEvent.press(view.getByTestId(testID));
+      }
+
+      expect(routeNames()).toEqual(['AccountDetail']);
+      expect(view.getByTestId('account-detail-reminder-offer')).toHaveTextContent('afterImport');
+
+      await fireEvent.press(view.getByTestId('clear-reminder-offer'));
+
+      expect(view.getByTestId('account-detail-reminder-offer')).toHaveTextContent('none');
+    },
+  );
 
   it('a saved-mapping write while the pushed ColumnMapping sheet is open does not swap out the live instance', async () => {
     const view = await renderNavigator();

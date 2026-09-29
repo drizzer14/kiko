@@ -436,7 +436,11 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     const account = accountRows.at(0);
 
     if (account) {
-      navigation.popTo('AccountDetail', { accountId, name: account.name }, { merge: true });
+      navigation.popTo(
+        'AccountDetail',
+        { accountId, name: account.name, reminderOffer: 'afterImport' },
+        { merge: true },
+      );
 
       return;
     }

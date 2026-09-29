@@ -911,14 +911,14 @@ describe('ColumnMappingScreen — Done closes the sheet before navigating', () =
     expect(view.navigation.goBack).not.toHaveBeenCalled();
   });
 
-  it('navigates once the sheet reports onClosed', async () => {
+  it('navigates once the sheet reports onClosed, asking the account page for the import reminder offer', async () => {
     const view = await renderMonobankImportSuccess();
 
     await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
 
     expect(view.navigation.popTo).toHaveBeenCalledWith(
       'AccountDetail',
-      { accountId: 'a', name: 'Monobank' },
+      { accountId: 'a', name: 'Monobank', reminderOffer: 'afterImport' },
       { merge: true },
     );
     expect(view.navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
