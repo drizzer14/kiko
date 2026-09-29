@@ -1,8 +1,9 @@
 import { StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { render } from '@testing-library/react-native';
-// Deep import, deliberately bypassing the app-wide `jest.mock('react-native-calendars', ...)`
-// in jest/setup.js (which only intercepts the bare `'react-native-calendars'` specifier).
+// Deep import, deliberately bypassing both Calendar mocks: jest/setup.js intercepts only the
+// bare `'react-native-calendars'` specifier, and __mocks__/react-native-calendars/src/calendar.tsx
+// only `'react-native-calendars/src/calendar'`.
 // These are the actual, unmocked day-cell renderers KikoCalendar's `theme` and `markedDates`
 // props drive — BasicDay for the single-day sheet (DateField, default markingType), PeriodDay
 // for the range sheet (DateRangeField, markingType="period"). Rendering them for real is the

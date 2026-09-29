@@ -1,8 +1,8 @@
 import type { FC } from 'react';
-import { Calendar } from 'react-native-calendars';
 import { useUnistyles } from 'react-native-unistyles';
 import { deviceRegion } from '@kiko/i18n/device-region';
 import { weekStartFor } from '@kiko/calendar/week-start';
+import Calendar from 'react-native-calendars/src/calendar';
 
 import CalendarHeader from '../calendar-header';
 

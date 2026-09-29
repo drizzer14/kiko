@@ -1184,3 +1184,29 @@ rules:
       - pattern: Math.max(..., ...$XS, ...)
       - pattern: Math.min.apply(...)
       - pattern: Math.max.apply(...)
+  # kiko-design-system's "Calendar import path": the package root re-exports
+  # every component, and Metro keeps them all, so one root value import ships
+  # moment, recyclerlistview, and all of lodash. `pattern-regex`, not an AST
+  # `pattern-not: import type ...`: that `pattern-not` also removes the value
+  # import, so the rule would report nothing. The `(?!type\b)` lookahead lets
+  # `import type`/`export type` from the root through, and the `[^;'"]*?`
+  # span reaches across a multi-line specifier list. Tests are excluded
+  # because Jest never bundles. ERROR from the start: the sweep removed every
+  # finding in the same commit.
+  - id: kiko-no-root-calendars-value-import
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A value import from the root of `react-native-calendars` bundles the
+      whole package (Agenda, lists, moment, recyclerlistview, all of lodash).
+      Import `Calendar` from `react-native-calendars/src/calendar`; types may
+      still come from the root with `import type`.
+    metadata:
+      fix: "Use `import Calendar from 'react-native-calendars/src/calendar'`; keep root imports type-only (`import type { DateData } from 'react-native-calendars'`)."
+      skill: "kiko-design-system › Calendar import path"
+    paths:
+      exclude: ["*.test.ts", "*.test.tsx"]
+    pattern-either:
+      - pattern-regex: (?m)^[ \t]*(?:import|export)\s+(?!type\b)[^;'"]*?\bfrom\s+['"]react-native-calendars['"]
+      - pattern-regex: (?m)^[ \t]*import\s+['"]react-native-calendars['"]
+      - pattern-regex: \b(?:require|import)\(\s*['"]react-native-calendars['"]\s*\)

@@ -31,10 +31,11 @@ const pad2 = (value: number): string => value.toString().padStart(2, '0');
 const iso = (date: Date): string =>
   `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 
-// The react-native-calendars mock (jest/setup.js) renders Calendar as a plain
-// View that preserves `onDayPress` as a prop, so a test drives a day tap by
-// calling that prop directly with a DateData-shaped object. Only year/month/day
-// are read by the field; month is 1-based, matching react-native-calendars.
+// The Calendar manual mock (__mocks__/react-native-calendars/src/calendar.tsx)
+// renders Calendar as a plain View that preserves `onDayPress` as a prop, so a
+// test drives a day tap by calling that prop directly with a DateData-shaped
+// object. Only year/month/day are read by the field; month is 1-based, matching
+// react-native-calendars.
 type ReactTestInstanceProps = { onDayPress: (day: unknown) => void };
 
 const dayData = (date: Date): { year: number; month: number; day: number } => ({

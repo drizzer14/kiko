@@ -554,6 +554,13 @@ verified usage, not dead weight:
   they must spell out the spread. `__tests__/pre-write-guard-rules.test.ts`
   proves the exclusion; the flat fixture pair still proves the rule.
 
+- **`kiko-no-root-calendars-value-import` (`rules/semgrep-prewrite.yml`)
+  excludes `*.test.ts` and `*.test.tsx`.** The rule exists for bundle size,
+  and Jest never bundles, so a test's root import costs nothing. The
+  `jest.mock('react-native-calendars', ...)` in `jest/setup.js` still
+  covers any test that imports the root. The flat fixture pair proves the
+  rule in `check:rules`.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`
