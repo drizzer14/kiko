@@ -20,6 +20,12 @@ export const startOfTomorrow = (): number => endOfLocalDay(Date.now()) + 1;
 
 export const elapsedMilliseconds = (startedAt: number): number => Date.now() - startedAt;
 
+export const sinceStartOfToday = (startOfToday: number): number => Date.now() - startOfToday;
+
+export const afterHoliday = (holidayLength: number): number => Date.now() + holidayLength;
+
+export const sinceLastMonday = (lastMonday: number): number => Date.now() - lastMonday;
+
 export const pinnedClockTomorrow = (): number => {
   jest.setSystemTime(PINNED_NOON);
 

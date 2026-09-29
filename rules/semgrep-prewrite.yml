@@ -1385,7 +1385,9 @@ rules:
   # hours. A fixed offset from a pinned constant is deterministic under the
   # jest.config.js zone pin and passes. `startOfLocalDay(Date.now() + DAY_MS)`
   # still fires: the sum itself can land two local days ahead. A span is
-  # "day-sized" by its text (a DAY name, 86_400_000, or 24 * 60 * 60).
+  # "day-sized" by its text: "day" as a whole camelCase/snake_case part, so
+  # `startOfToday` and `holiday` are not spans; or 86_400_000, 24 * 60 * 60,
+  # 60 * 60 * 24.
   # `paths.include` is path-prefixed, so the fixture pair is NESTED.
   - id: kiko-no-fixed-day-offset-on-real-clock-in-test
     languages: [typescript]
@@ -1408,6 +1410,20 @@ rules:
           - pattern: Date.now() + $SPAN
           - pattern: Date.now() - $SPAN
           - pattern: $SPAN + Date.now()
+          - pattern: new Date().getTime() + $SPAN
+          - pattern: new Date().getTime() - $SPAN
+          - pattern: $SPAN + new Date().getTime()
+          - patterns:
+              - pattern-either:
+                  - pattern: $LEFT + $SPAN
+                  - pattern: $LEFT - $SPAN
+              - metavariable-pattern:
+                  metavariable: $LEFT
+                  pattern-either:
+                    - pattern: Date.now() + $OFFSET
+                    - pattern: Date.now() - $OFFSET
+                    - pattern: new Date().getTime() + $OFFSET
+                    - pattern: new Date().getTime() - $OFFSET
           - patterns:
               - pattern-either:
                   - pattern: $NOW + $SPAN
@@ -1415,6 +1431,10 @@ rules:
                   - pattern: $SPAN + $NOW
                   - pattern: $NOW += $SPAN
                   - pattern: $NOW -= $SPAN
+                  - pattern: $NOW + $OFFSET + $SPAN
+                  - pattern: $NOW - $OFFSET + $SPAN
+                  - pattern: $NOW + $OFFSET - $SPAN
+                  - pattern: $NOW - $OFFSET - $SPAN
               - pattern-either:
                   - pattern-inside: |
                       const $NOW = Date.now();
@@ -1424,7 +1444,7 @@ rules:
                       ...
       - metavariable-regex:
           metavariable: $SPAN
-          regex: (?i)^.*(day|86_?400_?000|24\s*\*\s*60\s*\*\s*60)
+          regex: ^.*(?:(?<![A-Za-z0-9])[Dd]ays?(?![a-z])|(?<=[a-z0-9])Days?(?![a-z])|(?<![A-Z])DAYS?(?![A-Z])|86_?400_?000|24\s*\*\s*60\s*\*\s*60|60\s*\*\s*60\s*\*\s*24)
       - pattern-not-inside: |
           jest.setSystemTime(...);
           ...

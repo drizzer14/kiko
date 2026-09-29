@@ -764,12 +764,25 @@ Wrapping the sum in `startOfLocalDay` does not fix it: the sum itself
 can land two local days ahead. Semgrep
 `kiko-no-fixed-day-offset-on-real-clock-in-test`
 (`rules/semgrep-prewrite.yml`) enforces this in every `*.test.ts(x)` and
-`src/test-support/**`. It reads a span as a day span by its text (a
-`DAY` name, `86_400_000`, or `24 * 60 * 60`). Not flagged: an offset
-from a value derived from the clock (`TRANSACTIONS[0].time - 10 * DAY`)
-and a sub-day offset (`now - 60 * 1000` right after midnight). Flagged
-even though pinned: a pin in a `beforeEach` (the exemption sees a pin
-earlier in the same block only), so bind the pinned instant to a
+`src/test-support/**`. It reads the clock as `Date.now()`,
+`new Date().getTime()`, or a `const`/`let` bound to `Date.now()`, also
+behind a first offset (`Date.now() + HOUR + DAY_MS`). It reads a span
+as a day span by its text: "day" as a whole camelCase or snake_case
+part (`DAY`, `DAY_MS`, `dayMs`, `msPerDay`, `days`), `86_400_000`,
+`24 * 60 * 60`, or `60 * 60 * 24`. A word that only contains "day"
+(`startOfToday`, `holiday`, `Monday`) is not a day span.
+
+Known limits, not flagged:
+
+- An offset from a value derived from the clock
+  (`TRANSACTIONS[0].time - 10 * DAY`).
+- A sub-day offset (`now - 60 * 1000` right after midnight).
+- A clock read assigned later, not at the declaration
+  (`let now; beforeEach(() => { now = Date.now(); })`, then
+  `now + DAY_MS`). The rule sees only `const`/`let now = Date.now()`.
+
+Flagged even though pinned: a pin in a `beforeEach` (the exemption sees
+a pin earlier in the same block only), so bind the pinned instant to a
 constant and offset from that.
 
 ## Net worth
