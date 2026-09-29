@@ -1,6 +1,6 @@
 import { settingsRepo } from '@kiko/settings';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { isCrypto, type Currency, type CryptoCurrency } from '@kiko/currency/currency';
+import { isFiat, isCrypto, type Currency, type CryptoCurrency } from '@kiko/currency/currency';
 
 /** The data-presence gate result a rate/price refresh reads before running. */
 export type OpenCurrencies = {
@@ -15,8 +15,8 @@ export type OpenCurrencies = {
    * directly to check whether a currently-held currency still has no
    * `currency_rates` row at all, a case its own throttle must never suppress.
    * Optional (defaulting to `[]` at the one real call site) so a test double
-   * that only cares about `needsFiat`/`cryptoCurrencies` — `runBackfill`'s own
-   * gate use, which never reads this field — does not need to supply it too.
+   * that only cares about `needsFiat`/`cryptoCurrencies` does not need to
+   * supply it too.
    */
   nonBaseCurrencies?: Currency[];
 };
@@ -25,8 +25,8 @@ export type OpenCurrencies = {
  * kiko-architecture: app-open and refresh work is gated on data presence —
  * one `settings` read plus ONE cheap `SELECT DISTINCT currency` over active
  * holdings (`holdingsRepo.openCurrenciesQuery`), never a per-holding loop.
- * Shared by `refreshRates` (`rates-refresh.ts`) and `runBackfill`
- * (`history-backfill.ts`) — the SAME gate pattern for every refresh.
+ * Read directly by `refreshRates` (`rates-refresh.ts`); `historyCurrencies`
+ * below is the SAME gate pattern, scoped to what `runBackfill` needs instead.
  *
  * `needsFiat` covers BOTH a fiat holding in a different currency from the
  * base AND a held crypto currency (BTC/ETH/USDT is, in practice, never the
@@ -49,4 +49,43 @@ export const openCurrencies = async (): Promise<OpenCurrencies> => {
     cryptoCurrencies: currencies.filter(isCrypto),
     nonBaseCurrencies,
   };
+};
+
+/** The history-backfill gate result: exactly the fiat/crypto currencies whose own NBU/CoinGecko range history is worth fetching. */
+export type HistoryCurrencies = { fiatCurrencies: Currency[]; cryptoCurrencies: CryptoCurrency[] };
+
+/**
+ * The history backfill's own data-presence gate (kiko-architecture) — a
+ * sibling of `openCurrencies` above, scoped to what NBU history is worth
+ * fetching rather than what a live rate refresh needs. Reads EVERY holding,
+ * open and closed (`holdingsRepo.historyCurrenciesQuery`), because the
+ * net-worth line's past buckets still need a closed holding's own currency
+ * converted.
+ *
+ * `fiatCurrencies` is every held fiat currency plus the base, minus `UAH`
+ * (the implicit pivot, never a stored `X:UAH` row's own `base`), whenever any
+ * held currency — fiat OR crypto — differs from the base; otherwise there is
+ * nothing to convert and it stays empty. `USD` is added afterward,
+ * unconditionally, whenever any crypto is held — crypto's own `X:UAH` row
+ * composes through a `USD` anchor (kiko-pricing's "History backfill").
+ */
+export const historyCurrencies = async (): Promise<HistoryCurrencies> => {
+  const [settingsRows, currencyRows] = await Promise.all([
+    settingsRepo.getQuery(),
+    holdingsRepo.historyCurrenciesQuery(),
+  ]);
+  const base = settingsRows.at(0)?.baseCurrency ?? 'UAH';
+  const currencies = currencyRows.map((row) => row.currency);
+  const heldFiat = currencies.filter(isFiat);
+  const cryptoCurrencies = currencies.filter(isCrypto);
+  const needsFiatConversion = currencies.some((currency) => currency !== base);
+  const fiatCurrencies = needsFiatConversion
+    ? [...new Set([...heldFiat, base])].filter((currency) => currency !== 'UAH')
+    : [];
+
+  if (cryptoCurrencies.length > 0 && !fiatCurrencies.includes('USD')) {
+    fiatCurrencies.push('USD');
+  }
+
+  return { fiatCurrencies, cryptoCurrencies };
 };

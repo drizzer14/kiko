@@ -5,8 +5,10 @@
 // load — `jest/setup.js` mocks `@op-engineering/op-sqlite` globally, so this
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
 import { startOfLocalDay } from '@kiko/dates';
+import { Money, toMajor } from '@kiko/currency/money';
 import { mapStatementItem } from '@kiko/monobank/sync';
 import { buildPriceBook } from '@kiko/prices/price-book';
+import { FIAT_UAH_PRICE_SEED } from '@kiko/rates/fiat-rate-seed';
 import type { CurrencyRateHistoryRow, HoldingRow } from '@kiko/db';
 import type { MonobankStatementItem } from '@kiko/monobank/monobank-types';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
@@ -753,6 +755,79 @@ describe('buildNetWorthSeries', () => {
 
     expect(series.points.map((point) => point.amount)).toEqual([100, 100, 100]);
     expect(series.startReference).toBe(100);
+  });
+
+  describe('the bundled fiat seed backs a currency with no history row', () => {
+    const gbpSeedRate = FIAT_UAH_PRICE_SEED.GBP;
+
+    if (gbpSeedRate === undefined) {
+      throw new Error('fixture assumption broken: FIAT_UAH_PRICE_SEED has no GBP entry');
+    }
+
+    it('values a GBP holding at the seed rate when only a different currency has history', () => {
+      const holdings = [
+        holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 1_000_000 }), // 10,000.00 UAH
+        holding({ id: 'gbp', currency: 'GBP', balanceMinorUnits: 100_000 }), // 1,000.00 GBP
+      ];
+      // Only a USD history row exists — present just to pass the no-history
+      // gate; GBP has NO stored row at all, historical or earliest.
+      const historyRows = [uahUsd(D0, '0.025')];
+
+      const series = buildNetWorthSeries({
+        holdings,
+        transactionsByHolding: new Map(),
+        historyRows,
+        baseCurrency: 'UAH',
+        range: { from: D0, to: D1 },
+      });
+
+      // 10,000 UAH + 1,000 GBP * the bundled seed's GBP-in-UAH price.
+      const expected = 10_000 + 1_000 * gbpSeedRate;
+      expect(series.points.map((point) => point.amount)).toEqual([expected, expected]);
+    });
+
+    it('converts every holding into a foreign base currency when both legs have real history', () => {
+      const holdings = [
+        holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 1_000_000 }), // 10,000.00 UAH
+        holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 100_000 }), // 1,000.00 USD
+      ];
+      const historyRows: HistoryRow[] = [
+        { base: 'USD', quote: 'UAH', day: D0, rate: '40' },
+        { base: 'GBP', quote: 'UAH', day: D0, rate: '55' },
+      ];
+
+      const series = buildNetWorthSeries({
+        holdings,
+        transactionsByHolding: new Map(),
+        historyRows,
+        baseCurrency: 'GBP',
+        range: { from: D0, to: D0 },
+      });
+
+      // 10,000 UAH / 55 (UAH->GBP) + 1,000 USD * 40 / 55 (USD->UAH->GBP), each
+      // leg rounded to GBP's own 2-decimal minor-unit scale before summing —
+      // matching how `convert` builds each leg's own `Money`.
+      const expected =
+        Money.fromMajor('GBP', 10_000 / 55).minorUnits +
+        Money.fromMajor('GBP', (1_000 * 40) / 55).minorUnits;
+      expect(series.points[0]?.amount).toBe(toMajor(expected, 'GBP'));
+    });
+
+    it('prefers a real stored GBP history row over the bundled seed value', () => {
+      const holdings = [holding({ id: 'gbp', currency: 'GBP', balanceMinorUnits: 100_00 })]; // 100.00 GBP
+      const historyRows: HistoryRow[] = [{ base: 'GBP', quote: 'UAH', day: D0, rate: '999' }];
+
+      const series = buildNetWorthSeries({
+        holdings,
+        transactionsByHolding: new Map(),
+        historyRows,
+        baseCurrency: 'UAH',
+        range: { from: D0, to: D0 },
+      });
+
+      // 100 GBP * the STORED 999 rate, never the seed's 60.326.
+      expect(series.points[0]?.amount).toBe(100 * 999);
+    });
   });
 
   // With no history rows yet (the backfill still running or offline), a

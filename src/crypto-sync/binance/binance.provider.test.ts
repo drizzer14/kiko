@@ -1,15 +1,18 @@
+import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
 
 import type { SyncTarget } from '../provider';
 
 import {
   type BinanceAccount,
+  BinanceRateLimitError,
   fetchAccount,
   fetchFlexiblePosition,
   fetchFundingAsset,
   fetchLockedPosition,
 } from './binance.client';
 import { readCredentials } from './binance.credentials';
+import { setBinanceCooldownUntil } from './binance.cooldown';
 import { type BinanceDeps, binanceProvider, defaultBinanceDeps } from './binance.provider';
 
 // The credentials module imports react-native-keychain, whose native binding is
@@ -184,6 +187,46 @@ describe('binanceProvider — Spot holding', () => {
     const deps = makeDeps([{ asset: 'BTC', free: 'x', locked: '0' }]);
 
     await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(/Binance/);
+  });
+
+  it('surfaces a Spot 429/418 as the localized binanceRequestFailed message, not the raw rate-limit text', async () => {
+    // A distinct account id: this 429 sets the SHARED cooldown (item 3), which
+    // must not leak into a later test that reuses `emptyTarget`'s account id.
+    const target: SyncTarget = { accountId: 'acc-spot-429', holdings: [] };
+    const deps = makeDeps([]);
+    deps.fetchAccount.mockRejectedValue(new BinanceRateLimitError(429, 5_000));
+
+    await expect(binanceProvider.fetchBalances(deps, target)).rejects.toThrow(
+      i18n.t('accountDetail.binanceRequestFailed', { status: 429, detail: '' }),
+    );
+  });
+});
+
+describe('binanceProvider — shared 429/418 cooldown', () => {
+  it('makes ZERO Binance requests while the account is still cooling down from an earlier 429/418', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '0.5', locked: '0' }]);
+    const target: SyncTarget = { accountId: 'acc-cooldown-provider', holdings: [] };
+    setBinanceCooldownUntil(target.accountId, NOW + 60_000);
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(balances).toEqual([]);
+    expect(deps.readCredentials).not.toHaveBeenCalled();
+    expect(deps.fetchAccount).not.toHaveBeenCalled();
+    expect(deps.fetchFundingAsset).not.toHaveBeenCalled();
+    expect(deps.fetchFlexiblePosition).not.toHaveBeenCalled();
+    expect(deps.fetchLockedPosition).not.toHaveBeenCalled();
+  });
+
+  it('makes requests again once the cooldown instant has passed', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '0.5', locked: '0' }]);
+    const target: SyncTarget = { accountId: 'acc-cooldown-provider-2', holdings: [] };
+    setBinanceCooldownUntil(target.accountId, NOW);
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 50_000_000 });
+    expect(deps.fetchAccount).toHaveBeenCalledTimes(1);
   });
 });
 

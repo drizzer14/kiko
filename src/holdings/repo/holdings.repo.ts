@@ -28,6 +28,9 @@ import {
   type DepositContribution,
   type ExchangeMetadataField,
   type SyncedMetadataField,
+  withWalkOwnedMetadataCarried,
+  BINANCE_HISTORY_CURSOR_FIELD,
+  withWalkOwnedMetadataResetToFloor,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
 import { isCurrencyAllowedForHoldingType } from '../holding-currency';
@@ -129,6 +132,13 @@ export type LoanPricePointOp =
 // name is written on insert and otherwise preserved on update — a user rename
 // survives a re-sync — with ONE exception: the transition rename, applied only
 // when the stored name still equals `renameFromDefault` (see provider.ts).
+//
+// The update branch also reads the row's OWN stored metadata (not just
+// `id`/`name`) so `withWalkOwnedMetadataCarried` can carry a walk-owned key
+// (currently only the Binance history cursor) over the caller's `merged`
+// object — a routine balance sync's `metadata: { syncedAt }` would otherwise
+// wipe it every run, since `merged` is built from the CALLER-supplied
+// `metadata` alone, never the stored row.
 const upsertByMetadataKey = async (
   databaseTransaction: typeof database,
   { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
@@ -136,7 +146,7 @@ const upsertByMetadataKey = async (
   const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
   const keyMatch = sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
   const existing = await databaseTransaction
-    .select({ id: holdings.id, name: holdings.name })
+    .select({ id: holdings.id, name: holdings.name, metadata: holdings.metadata })
     .from(holdings)
     .where(and(eq(holdings.accountId, rest.accountId), keyMatch))
     .limit(1);
@@ -151,7 +161,7 @@ const upsertByMetadataKey = async (
       .update(holdings)
       .set({
         balanceMinorUnits: rest.balanceMinorUnits ?? 0,
-        metadata: merged,
+        metadata: withWalkOwnedMetadataCarried(merged, current.metadata),
         ...(rename ? { name: rest.name } : {}),
       })
       .where(eq(holdings.id, current.id));
@@ -322,6 +332,16 @@ export const holdingsRepo = {
       .from(holdings)
       .innerJoin(accounts, eq(holdings.accountId, accounts.id))
       .where(and(isNull(holdings.closedAt), isNull(accounts.archivedAt))),
+  /**
+   * The DISTINCT currencies among EVERY holding, open AND closed — the
+   * history currency gate's own input (`historyCurrencies`,
+   * `open-currencies-gate.ts`): a closed holding still needs its own
+   * `X:UAH` history rows for the net-worth line's past buckets, so this
+   * query has no `closedAt`/archived-account filter at all, unlike
+   * `openCurrenciesQuery` above.
+   */
+  historyCurrenciesQuery: () =>
+    database.selectDistinct({ currency: holdings.currency }).from(holdings),
   /**
    * Every OPEN loan holding — the loan-payment matcher's own gate query
    * (`src/loans/payment-matcher/`, `src/loans/use-loan-auto-link/`): it reads
@@ -796,6 +816,71 @@ export const holdingsRepo = {
           metadataKey: monobankId,
         });
       }
+    }),
+  /**
+   * Reset the Binance history-walk cursor to `floorMs` on every holding of one
+   * account — called on a Binance disconnect so a stale, FORWARD watermark
+   * cannot leak into a reconnected DIFFERENT Binance account's fresh walk
+   * (which would otherwise fall back to `latestTransactionTime` and skip that
+   * account's own older history). Every OTHER metadata key (`binanceAsset`
+   * among them) is untouched, so a same-account reconnect still re-adopts the
+   * row and simply re-walks from the floor (idempotent). A holding that never
+   * carried the key is skipped entirely — no redundant write, no reactive
+   * `holdings` fire for it.
+   */
+  resetBinanceHistoryCursor: (accountId: string, floorMs: number) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ id: holdings.id, metadata: holdings.metadata })
+        .from(holdings)
+        .where(eq(holdings.accountId, accountId));
+
+      for (const row of rows) {
+        const reset = withWalkOwnedMetadataResetToFloor(row.metadata, floorMs);
+
+        if (reset === undefined) {
+          continue;
+        }
+
+        await databaseTransaction
+          .update(holdings)
+          .set({ metadata: reset })
+          .where(eq(holdings.id, row.id));
+      }
+    }),
+  /**
+   * Advance the Binance history-walk cursor on one holding's metadata,
+   * merging it into whatever is currently stored rather than replacing the
+   * whole object — the write-side counterpart of `withWalkOwnedMetadataCarried`,
+   * which only stops a DIFFERENT write (a balance sync) from wiping this value;
+   * this is the one call that actually sets it. A walk holds the account's
+   * credentials for its whole run, so a disconnect can commit WHILE a walk is
+   * still in flight; the read-then-write below checks, inside the SAME write,
+   * that the holding's account is STILL `institution = 'binance'` and is a
+   * no-op otherwise — a late-arriving window commit from a walk started
+   * before the disconnect must never resurrect a watermark on an
+   * already-disconnected account (undoing `resetBinanceHistoryCursor`'s own
+   * floor write, which runs as part of that same disconnect).
+   */
+  setBinanceHistoryCursor: (holdingId: string, cursorMs: number) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ metadata: holdings.metadata, institution: accounts.institution })
+        .from(holdings)
+        .innerJoin(accounts, eq(holdings.accountId, accounts.id))
+        .where(eq(holdings.id, holdingId));
+      const row = rows.at(0);
+
+      if (row === undefined || row.institution !== 'binance') {
+        return;
+      }
+
+      const stored = (row.metadata as Record<string, unknown> | null) ?? {};
+
+      await databaseTransaction
+        .update(holdings)
+        .set({ metadata: { ...stored, [BINANCE_HISTORY_CURSOR_FIELD]: cursorMs } })
+        .where(eq(holdings.id, holdingId));
     }),
   /**
    * Advance the crash-safe statement-import marker (`syncedBalanceMinorUnits`,

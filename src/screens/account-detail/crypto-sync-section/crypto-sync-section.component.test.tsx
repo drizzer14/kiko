@@ -135,6 +135,7 @@ const setConnected = (connected: { btc_wallet?: AccountRow[]; binance?: AccountR
 };
 
 const CONNECTED_WALLET_SYNCED_AT = 1_700_000_000_000;
+const DAY = 86_400_000;
 
 // Shared by every "already connected to a wallet" test below — each one only
 // differs in what it asserts afterward, never in how the section itself is
@@ -322,6 +323,81 @@ describe('CryptoSyncSection', () => {
 
     expect(getByText('Syncing…')).toBeTruthy();
     expect(getByText('Binance request failed: 401')).toBeTruthy();
+  });
+
+  it('shows the lagging-history caption when the Binance history walk is more than a day behind the balance sync', async () => {
+    const { getByText } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'binance' })}
+        holdings={[
+          holding({
+            binanceAsset: 'BTC',
+            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY,
+            syncedAt: CONNECTED_WALLET_SYNCED_AT,
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      getByText('Some Binance deposit and withdrawal history is not imported yet.', {
+        exact: false,
+      }),
+    ).toBeTruthy();
+  });
+
+  it('shows no caption once the Binance history walk is caught up', async () => {
+    const { queryByText } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'binance' })}
+        holdings={[
+          holding({
+            binanceAsset: 'BTC',
+            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 2 * 60 * 60 * 1000,
+            syncedAt: CONNECTED_WALLET_SYNCED_AT,
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      queryByText('Some Binance deposit and withdrawal history is not imported yet.', {
+        exact: false,
+      }),
+    ).toBeNull();
+  });
+
+  it('hides the lagging-history caption while a sync is in flight, even when the history walk is behind', async () => {
+    mockUseCryptoSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
+
+    const { queryByText } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'binance' })}
+        holdings={[
+          holding({
+            binanceAsset: 'BTC',
+            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY,
+            syncedAt: CONNECTED_WALLET_SYNCED_AT,
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      queryByText('Some Binance deposit and withdrawal history is not imported yet.', {
+        exact: false,
+      }),
+    ).toBeNull();
+  });
+
+  it('never shows the Binance caption for a wallet account', async () => {
+    const { queryByText } = await renderConnectedWallet();
+
+    expect(
+      queryByText('Some Binance deposit and withdrawal history is not imported yet.', {
+        exact: false,
+      }),
+    ).toBeNull();
   });
 });
 

@@ -2,18 +2,22 @@ import type { HoldingRow } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { binanceHistoryCursorOf } from '@kiko/holdings/holding-metadata';
 import { createRequestGate, type RequestGate } from '@kiko/monobank/throttle';
 
 import {
   type BinanceDeposit,
+  BinanceRateLimitError,
   type BinanceWithdrawal,
   type FetchAccountOptions,
   fetchDepositHistory,
   fetchWithdrawHistory,
   HISTORY_PAGE_LIMIT,
   type HistoryWindow,
+  type WithdrawHistoryPage,
 } from './binance.client';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
+import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
 const BINANCE_ASSET = 'BTC';
 
@@ -70,6 +74,22 @@ const MAX_PAGES_PER_WINDOW = 50;
 export const BINANCE_REQUEST_INTERVAL_MS = 350;
 
 /**
+ * At most this many withdraw-history calls per run — `canAffordOneWithdrawCall`
+ * applies this cap UNCONDITIONALLY, whether or not Binance's own weight header
+ * (`X-SAPI-USED-UID-WEIGHT-1M`) is present; the header, when it IS reported,
+ * can only tighten the budget further (stopping sooner), never loosen it past
+ * this fallback. The safety net a first-sync's wide window walk relies on so
+ * one run never trips the weight limit even without ever seeing the header.
+ */
+export const WITHDRAW_CALLS_PER_RUN_FALLBACK = 9;
+
+/** The SAPI weight one withdraw-history call costs, per Binance's own documented weight table. */
+export const WITHDRAW_UID_WEIGHT = 18_000;
+
+/** Binance's own per-minute UID weight ceiling — what `X-SAPI-USED-UID-WEIGHT-1M` is measured against. */
+export const UID_WEIGHT_BUDGET_1M = 180_000;
+
+/**
  * The imported-transaction shape the sync hands to `transactionsRepo.addManyDedup`.
  * `source: 'binance'` + `externalId` is the `(source, external_id)` unique key
  * the upsert dedupes on, so a re-sync refreshes rather than duplicates.
@@ -95,8 +115,11 @@ export type BinanceTransactionSyncDeps = {
   fetchImpl: typeof fetch;
   readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
   listHoldings: (accountId: string) => Promise<HoldingRow[]>;
+  /** The legacy fallback cursor: only consulted when the holding carries no watermark yet. */
   latestTransactionTime: (holdingId: string) => Promise<number | undefined>;
   addTransactions: (rows: BinanceTransactionRow[]) => Promise<number>;
+  /** Advances the walk's own watermark once a window's rows have committed. */
+  writeHistoryCursor: (holdingId: string, cursorMs: number) => Promise<void>;
   fetchDepositHistory: (
     apiKey: string,
     secret: string,
@@ -108,7 +131,7 @@ export type BinanceTransactionSyncDeps = {
     secret: string,
     window: HistoryWindow,
     options?: FetchAccountOptions,
-  ) => Promise<BinanceWithdrawal[]>;
+  ) => Promise<WithdrawHistoryPage>;
 };
 
 const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
@@ -120,6 +143,8 @@ const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
   latestTransactionTime: async (holdingId) =>
     (await transactionsRepo.latestSyncedTimeQuery(holdingId, 'binance')).at(0)?.time,
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
+  writeHistoryCursor: (holdingId, cursorMs) =>
+    holdingsRepo.setBinanceHistoryCursor(holdingId, cursorMs),
   fetchDepositHistory,
   fetchWithdrawHistory,
 };
@@ -289,33 +314,73 @@ type WindowContext = {
   apiKey: string;
   secret: string;
   options: FetchAccountOptions;
-  spotId: string;
-  accountId: string;
 };
 
-/** Collect and map every settled deposit + withdrawal in one window. */
-const windowRows = async (
+/** The withdraw-history call budget spent so far this run. */
+type WithdrawBudget = { callsUsed: number; lastUsedWeight: number | undefined };
+
+const NO_WITHDRAW_CALLS_YET: WithdrawBudget = { callsUsed: 0, lastUsedWeight: undefined };
+
+/**
+ * Whether one more withdraw-history call is affordable: under the fallback
+ * call count, AND (the header's last-reported weight is unknown, OR spending
+ * one more call's weight still stays under Binance's per-minute ceiling).
+ */
+const canAffordOneWithdrawCall = (budget: WithdrawBudget): boolean =>
+  budget.callsUsed < WITHDRAW_CALLS_PER_RUN_FALLBACK &&
+  (budget.lastUsedWeight === undefined ||
+    budget.lastUsedWeight + WITHDRAW_UID_WEIGHT <= UID_WEIGHT_BUDGET_1M);
+
+type WithdrawWindowResult = {
+  rows: BinanceWithdrawal[];
+  budget: WithdrawBudget;
+  /** `true` when the budget ran out before a short (final) page was reached. */
+  exhausted: boolean;
+};
+
+/**
+ * Offset-page one window's withdrawals, spending the run's shared budget one
+ * call at a time and refreshing it from each response's own reported weight.
+ * Stops (`exhausted: true`) the instant the NEXT page is unaffordable, rather
+ * than fetching partial data the caller must not commit.
+ */
+const fetchWithdrawalsInWindow = async (
   context: WindowContext,
   window: { start: number; end: number },
-): Promise<BinanceTransactionRow[]> => {
-  const { deps, gate, apiKey, secret, options, spotId, accountId } = context;
-  const deposits = await fetchAllInWindow(
-    gate,
-    (page) => deps.fetchDepositHistory(apiKey, secret, page, options),
-    window.start,
-    window.end,
-  );
-  const withdrawals = await fetchAllInWindow(
-    gate,
-    (page) => deps.fetchWithdrawHistory(apiKey, secret, page, options),
-    window.start,
-    window.end,
-  );
+  startingBudget: WithdrawBudget,
+): Promise<WithdrawWindowResult> => {
+  const { deps, gate, apiKey, secret, options } = context;
+  const rows: BinanceWithdrawal[] = [];
+  let budget = startingBudget;
 
-  return [
-    ...deposits.map((record) => depositRow(spotId, accountId, record)),
-    ...withdrawals.map((record) => withdrawalRow(spotId, accountId, record)),
-  ].filter((row): row is BinanceTransactionRow => row !== null);
+  for (let pageIndex = 0; pageIndex < MAX_PAGES_PER_WINDOW; pageIndex += 1) {
+    if (!canAffordOneWithdrawCall(budget)) {
+      return { rows, budget, exhausted: true };
+    }
+
+    await gate.wait();
+    // Known limit: the budget resets each RUN, not each window, so a window
+    // needing more than `WITHDRAW_CALLS_PER_RUN_FALLBACK` (9) pages here
+    // (over 9,000 withdrawals in one 89-day span) would hit `exhausted` on
+    // every run and never complete — unrealistic for a personal account.
+    const page = await deps.fetchWithdrawHistory(
+      apiKey,
+      secret,
+      { startTime: window.start, endTime: window.end, offset: pageIndex * HISTORY_PAGE_LIMIT },
+      options,
+    );
+    budget = {
+      callsUsed: budget.callsUsed + 1,
+      lastUsedWeight: page.usedUidWeight1m ?? budget.lastUsedWeight,
+    };
+    rows.push(...page.rows);
+
+    if (page.rows.length < HISTORY_PAGE_LIMIT) {
+      return { rows, budget, exhausted: false };
+    }
+  }
+
+  return { rows, budget, exhausted: false };
 };
 
 /** The `metadata.binanceAsset` key stored on a holding, if any. */
@@ -325,23 +390,94 @@ const binanceKeyOf = (holding: HoldingRow): string | undefined => {
   return typeof key === 'string' ? key : undefined;
 };
 
+/** One window's outcome: committed (rows durable, watermark advanced) or a clean stop. */
+type WindowOutcome =
+  | { kind: 'committed'; imported: number; budget: WithdrawBudget }
+  | { kind: 'stop'; budget: WithdrawBudget };
+
+/**
+ * Run one window: fetch deposits (unbounded) + withdrawals (budgeted), then
+ * either commit (rows first, watermark second — crash-safe: a crash between
+ * the two just re-imports idempotently next run) or stop cleanly without
+ * committing. A `BinanceRateLimitError` sets the account's cooldown and stops;
+ * any other error rethrows, leaving every EARLIER window's commit in place.
+ */
+const runOneWindow = async (
+  context: WindowContext,
+  accountId: string,
+  spot: HoldingRow,
+  window: { start: number; end: number },
+  budget: WithdrawBudget,
+): Promise<WindowOutcome> => {
+  const { deps, gate, apiKey, secret, options } = context;
+  let deposits: BinanceDeposit[];
+  let withdrawn: WithdrawWindowResult;
+
+  try {
+    deposits = await fetchAllInWindow(
+      gate,
+      (page) => deps.fetchDepositHistory(apiKey, secret, page, options),
+      window.start,
+      window.end,
+    );
+    withdrawn = await fetchWithdrawalsInWindow(context, window, budget);
+  } catch (error) {
+    if (error instanceof BinanceRateLimitError) {
+      setBinanceCooldownUntil(accountId, deps.now() + error.retryAfterMs);
+
+      return { kind: 'stop', budget };
+    }
+
+    throw error;
+  }
+
+  if (withdrawn.exhausted) {
+    // Not committed and not marked — the next run redoes this window from the
+    // SAME (unmoved) cursor.
+    return { kind: 'stop', budget: withdrawn.budget };
+  }
+
+  const rows = [
+    ...deposits.map((record) => depositRow(spot.id, accountId, record)),
+    ...withdrawn.rows.map((record) => withdrawalRow(spot.id, accountId, record)),
+  ].filter((row): row is BinanceTransactionRow => row !== null);
+  let imported = 0;
+
+  if (rows.length > 0) {
+    imported = await deps.addTransactions(rows);
+  }
+
+  await deps.writeHistoryCursor(spot.id, window.end);
+
+  return { kind: 'committed', imported, budget: withdrawn.budget };
+};
+
 const runSync = async (
   deps: BinanceTransactionSyncDeps,
   accountId: string,
-): Promise<{ imported: number }> => {
+): Promise<{ imported: number; complete: boolean }> => {
+  const now = deps.now();
+
+  if (isBinanceCoolingDown(accountId, now)) {
+    return { imported: 0, complete: false };
+  }
+
   const holdings = await deps.listHoldings(accountId);
   const spot = holdings.find((holding) => binanceKeyOf(holding) === SPOT_KEY);
   const credentials = await deps.readCredentials(accountId);
 
   if (spot === undefined || credentials === undefined) {
-    return { imported: 0 };
+    return { imported: 0, complete: true };
   }
 
   const { apiKey, secret } = credentials;
   const options: FetchAccountOptions = { fetchImpl: deps.fetchImpl, now: deps.now };
-  const endTime = deps.now();
+  const endTime = now;
+  // The watermark takes priority; a holding that never had one (legacy data,
+  // or a first sync) falls back to the newest already-imported record.
+  const cursor = binanceHistoryCursorOf(spot.metadata);
   const latest = await deps.latestTransactionTime(spot.id);
-  const windows = buildWindows(resolveStartTime(latest, endTime), endTime);
+  const windows = buildWindows(resolveStartTime(cursor ?? latest, endTime), endTime);
   // ONE gate per invocation, threaded through every deposit/withdraw request so
   // the whole run stays under the Binance weight limit — mirrors the per-token
   // gate `runSync` builds in `src/monobank/sync.ts`.
@@ -350,38 +486,41 @@ const runSync = async (
     now: deps.now,
     sleep: deps.sleep,
   });
-  const context: WindowContext = {
-    deps,
-    gate,
-    apiKey,
-    secret,
-    options,
-    spotId: spot.id,
-    accountId,
-  };
-  const rows: BinanceTransactionRow[] = [];
+  const context: WindowContext = { deps, gate, apiKey, secret, options };
+  let imported = 0;
+  let budget = NO_WITHDRAW_CALLS_YET;
 
   for (const window of windows) {
-    rows.push(...(await windowRows(context, window)));
+    if (!canAffordOneWithdrawCall(budget)) {
+      return { imported, complete: false };
+    }
+
+    const outcome = await runOneWindow(context, accountId, spot, window, budget);
+    budget = outcome.budget;
+
+    if (outcome.kind === 'stop') {
+      return { imported, complete: false };
+    }
+
+    imported += outcome.imported;
   }
 
-  if (rows.length === 0) {
-    return { imported: 0 };
-  }
-
-  return { imported: await deps.addTransactions(rows) };
+  return { imported, complete: true };
 };
 
 /**
  * Fetch BTC deposit + withdrawal history from Binance and import it as
- * transactions for the account's Spot holding, idempotently. Runs AFTER the
- * balance sync (which creates/updates the Spot holding), so the holding it
- * attaches to already exists. A missing Spot holding or missing credentials is a
- * no-op; a history request failure rejects, so the caller can log it without
- * failing the balance sync.
+ * transactions for the account's Spot holding, idempotently, walking oldest
+ * window first and committing each window's rows before advancing the
+ * watermark past it. Runs AFTER the balance sync (which creates/updates the
+ * Spot holding), so the holding it attaches to already exists. A missing Spot
+ * holding, missing credentials, or an active post-429/418 cooldown is a no-op.
+ * `complete: false` means history remains behind and a later run will resume
+ * from the watermark; a history request failure OTHER than a rate limit
+ * rejects, so the caller can log it without failing the balance sync.
  */
 export const syncBinanceTransactions = (
   request: { targetAccountId: string },
   overrides: Partial<BinanceTransactionSyncDeps> = {},
-): Promise<{ imported: number }> =>
+): Promise<{ imported: number; complete: boolean }> =>
   runSync({ ...defaultBinanceTransactionDeps, ...overrides }, request.targetAccountId);
