@@ -559,7 +559,10 @@ export const en = {
     // The unit a numeric field shows after its value (`TextField`'s
     // `suffix`), never inside its label.
     units: {
-      days: 'days',
+      days_one: 'day',
+      days_few: 'days',
+      days_many: 'days',
+      days_other: 'days',
       grams: 'g',
       months: 'mo',
       percent: '%',

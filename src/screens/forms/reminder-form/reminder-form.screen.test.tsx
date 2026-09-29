@@ -2,7 +2,7 @@ import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 import { remindersRepo } from '@kiko/reminders/repo';
 import { remindersNative } from '@kiko/reminders/native';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
@@ -383,6 +383,67 @@ describe('ReminderFormScreen — notification permission', () => {
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
     expect(requestAuthorization).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ReminderFormScreen — localization', () => {
+  const enterEveryDays = async (screen: Screen, everyDaysText: string): Promise<void> => {
+    await fireEvent.press(screen.getByText(i18n.t('reminders.form.frequencyInterval')));
+    await fireEvent.changeText(
+      screen.getByLabelText(i18n.t('reminders.form.intervalDays')),
+      everyDaysText,
+    );
+  };
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it.each([
+    ['1', 'day'],
+    ['7', 'days'],
+    ['21', 'days'],
+    ['', 'days'],
+  ])('reads %p days as %p in English', async (everyDaysText, suffix) => {
+    const screen = await renderCreate();
+
+    await enterEveryDays(screen, everyDaysText);
+
+    expect(screen.getByText(suffix)).toBeTruthy();
+  });
+
+  // Ukrainian's "other" form ("дня") is only for a fraction, which the
+  // whole-number field treats as no number.
+  it.each([
+    ['21', 'день'],
+    ['2', 'дні'],
+    ['22', 'дні'],
+    ['5', 'днів'],
+    ['11', 'днів'],
+    ['', 'днів'],
+    ['1.5', 'днів'],
+  ])('reads %p days as %p in Ukrainian', async (everyDaysText, suffix) => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const screen = await renderCreate();
+
+    await enterEveryDays(screen, everyDaysText);
+
+    expect(screen.getByText(suffix)).toBeTruthy();
+  });
+
+  it('titles the edit screen from the Ukrainian catalogue', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    await renderEdit({ frequency: 'daily', minuteOfDay: 8 * 60 });
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Редагувати нагадування' });
   });
 });
 

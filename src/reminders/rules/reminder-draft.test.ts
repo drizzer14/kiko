@@ -5,6 +5,7 @@ import {
   draftFromSchedule,
   draftToSchedule,
   type ReminderDraft,
+  everyDaysPluralCount,
   validateReminderDraft,
   withFrequency,
 } from '.';
@@ -213,4 +214,25 @@ describe('withFrequency', () => {
     expect(withFrequency(draft, 'daily', TODAY)).toEqual({ ...draft, frequency: 'daily' });
     expect(withFrequency(draft, 'monthly', TODAY)).toEqual({ ...draft, frequency: 'monthly' });
   });
+});
+
+describe('everyDaysPluralCount', () => {
+  it.each([
+    ['1', 1],
+    ['2', 2],
+    [' 22 ', 22],
+    ['400', 400],
+  ])('counts %p as %p, in or out of the allowed range', (everyDaysText, count) => {
+    expect(everyDaysPluralCount(everyDaysText)).toBe(count);
+  });
+
+  it.each(['', ' ', '1.5', 'abc'])(
+    'counts %p as no number: the plural form of "days" with no number before it',
+    (everyDaysText) => {
+      const count = everyDaysPluralCount(everyDaysText);
+
+      expect(new Intl.PluralRules('uk').select(count)).toBe('many');
+      expect(new Intl.PluralRules('en').select(count)).toBe('other');
+    },
+  );
 });
