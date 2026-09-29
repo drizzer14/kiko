@@ -636,11 +636,10 @@ describe('StatementImportScreen', () => {
     ).toBeTruthy();
   });
 
-  // Sensebank (and the FOP CSVs) is cp1251-encoded, not UTF-8. The screen
-  // must try decoding
-  // the picked file's bytes as UTF-8 first (Monobank's existing path); if NO
-  // format recognizes that text, it must retry decoding the SAME bytes as
-  // cp1251 before giving up.
+  // Sensebank (and the FOP CSVs) is cp1251-encoded, not UTF-8. The screen must
+  // try decoding the picked file's bytes as UTF-8 first (Monobank's existing
+  // path); if NO format recognizes that text, it must retry decoding the SAME
+  // bytes as cp1251 before giving up.
   describe('cp1251 decode fallback (Sensebank)', () => {
     beforeEach(() => {
       sensebankDetectFormatCalls.length = 0;

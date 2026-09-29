@@ -770,12 +770,13 @@ task id (`T28`), `Task N`, review-round id (`I1`/`M2`/`N3`/`U7`),
 spec/decision id (`spec 6.2`, `D14`), bug number, `USER-DECISION`,
 `Requirement X`, `controller ruling N`, `Section X.N`/`section X.N`
 (a letter or number before the dot: `Section C.2`, `section 6.2`), a
-`§N` section sign (`§2.1`, `§3`), `task brief`/
+`§N` section sign (`§2.1`, `§3`, `§ 3`), `task brief`/
 `parity brief` (with an optional `'s`), `Review Focus N`, `Minor N`,
 `audit N`, `RULING RN`, `fix round N`, `round-N`, `device[- ]feedback`,
 `on-device review`, or a plan citation (`[Dd]ecisions? N`, `separate
-commit`, `later`/`follow-up`/`previous`/`next commit`, `per the plan`,
-`the plan's`, `plan doc`, `by the plan`) left behind in a `src/**`
+commit(s)`, `later`/`follow-up`/`previous`/`next commit`, `per the plan`,
+`the plan's`, `plan doc`, `by the plan`, `in this plan`, `this plan also`,
+a dated plan name like `2026-09-11 multi-account plan`) left behind in a `src/**`
 comment. Two
 `pattern-regex` arms, one per comment syntax —
 a single regex spanning both `//` and `/* */` would have to
@@ -914,16 +915,23 @@ numbered decision (`decision 18`, `Decision 6:`), a possessive (`the
 plan's disposition`), a `doc` suffix (`plan doc`), or a `per`/`by`
 lead-in (`per the plan`, `by the plan`). A bare `decision` (no digit)
 stays silent too ("a decision the user makes"). The group's trailing
-`\b` keeps `commit` from matching `commits` ("each batch commits in one
-transaction"). Fixture pair: the seven plan-history pins in `.bad.ts`
-and item 16 in `.good.ts`.
+`\b` keeps a bare `commit` member from matching `commits` ("each batch
+commits in one transaction"); only `[Ss]eparate\scommits?` takes the
+plural, because "separate commits" is a citation and "separate" never
+leads a database sentence. `in this plan`, `this plan also`, and a
+dated plan name (`\d{4}-\d{2}-\d{2}\s[\w-]+\splan`, "(2026-09-11
+multi-account plan)") are citation shapes too: the rezone and
+reminders code says "the plan" or "this planner", never "in this plan".
+Fixture pair: the plan-history pins in `.bad.ts` and items 16 and 18 in
+`.good.ts`.
 
 **The section members (2026-09-29) need a number.** `[Ss]ection\s[A-Z0-9]+\.\d+`
 fires only on a word "section" followed by a dotted number, so a
 "Section" header row, "2 sections", and "subsection 2.1" (no word
-boundary before "section") stay silent. `§\d` sits OUTSIDE the `\b(...)`
+boundary before "section") stay silent. `§\s?\d` sits OUTSIDE the `\b(...)`
 group in both arms: `§` is not a word character, so a `\b` before it
-would need a letter or digit right before the sign and miss "(§2.1)". An
+would need a letter or digit right before the sign and miss "(§2.1)".
+The optional space also catches a spaced "(§ 3)". An
 external standard's section (`RFC 4231 §4.3`) is the same
 standalone-token class as `D2` above: accepted, not narrowed. Cite the
 test case or the heading instead ("RFC 4231 test case 2"). Fixture
@@ -937,7 +945,11 @@ commit" citation. It is the same standalone-token class as `D2` above:
 accepted, not narrowed. The src tree has 0 such sentences today; if
 one appears, reword it ("the following transaction commit"). The same
 holds for `the plan's` in the reminders planner: write "the plan keeps
-its slot", never "the plan's slot".
+its slot", never "the plan's slot". `by the plan` and `per the plan` are
+the same class: "the slot chosen by the plan" or "decided by the plan
+owner" in rezone or reminders prose is syntactically a citation. The
+src tree has 0 such sentences today; if one appears, reword it ("the
+slot the plan chose").
 
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 

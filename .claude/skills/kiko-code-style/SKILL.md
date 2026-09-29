@@ -162,7 +162,8 @@ tests and skills too, not only application code.
 
 No history in a comment: no task id (`T28`), no review-round id (`I1`,
 `M2`, `N3`), no spec section number (`spec 6.2`, `D14`), no plan
-citation (`decision N`, `per the plan`, `plan doc`, `separate commit`),
+citation (`decision N`, `per the plan`, `plan doc`, `separate commit`,
+`in this plan`, a dated plan name),
 and no "changed because …" narrative. That belongs in the commit message that
 made the change, or in the skill section that owns the rule — never
 in a comment left behind in the code. Mechanized in `src/**` by the

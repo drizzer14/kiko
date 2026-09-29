@@ -1,6 +1,4 @@
-// The two curated SF Symbol picker pools that replace the former single shared
-// 138-entry CURATED_ICONS pool. The rework SPLITS the picker options into two
-// distinct sets, each governing one flow.
+// The two curated SF Symbol picker pools, each governing one flow.
 // Editing an icon is deliberately a pick from a closed list rather than free
 // text: the app renders every icon through SymbolIcon/SFSymbolView, whose tint
 // path only handles known-good names, so an arbitrary user string could resolve

@@ -40,9 +40,8 @@ const captionFor = (entry: (typeof bankCatalog)[number], t: TFunction): string =
 // and CategoryField use) that opens a BottomSheet listing every
 // `bankCatalog` entry — ALWAYS every entry, never conditionally hidden
 // (Guideline 5.6). Selecting a row reports the id and closes the sheet; the
-// trigger stays visible and re-openable afterward (no vanish-after-select —
-// see the account-detail BankSyncSection fix this plan also ships for the
-// SAME class of bug there).
+// trigger stays visible and re-openable afterward (no vanish-after-select,
+// the same guard the account-detail BankSyncSection keeps).
 const BankTypeField: FC<BankTypeFieldProps> = ({
   label,
   sheetTitle,

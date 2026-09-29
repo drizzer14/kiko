@@ -116,3 +116,9 @@ export const planHistoryMembersNearMiss = true;
 // row, a section list, 2 sections, and the settings subsection 2.1 of a
 // statement stay silent, as does a lone § sign with no digit after it.
 export const sectionMembersNearMiss = true;
+
+// 18. The later plan and commit members need their whole citation shape:
+// Separate committed rows from pending ones. The reminders planner keeps
+// this planning window open, and this planner also skips a muted slot.
+// A row in this planned transfer and the 2026-09-11 import run stay silent.
+export const laterPlanMembersNearMiss = true;

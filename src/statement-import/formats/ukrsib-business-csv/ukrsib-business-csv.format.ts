@@ -5,7 +5,7 @@
 // `__fixtures__/synthetic-ukrsib-business-sample.csv` is HAND-AUTHORED
 // synthetic data (all-fake account/EDRPOU numbers, "Test Merchant"
 // descriptions), written as real cp1251 bytes, same placeholder-style
-// convention the other hand-authored fixtures in this plan use.
+// convention the other hand-authored statement fixtures use.
 import type { StatementFormat } from '@kiko/statement-import/parser';
 
 import { createColumnarBusinessCsvFormat, FOP_BUSINESS_COLUMN_BASE } from '../business-csv';

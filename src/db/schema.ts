@@ -261,7 +261,7 @@ export const settings = sqliteTable('settings', {
   id: integer('id').primaryKey(),
   baseCurrency: text('base_currency', { enum: currencyOptions }).notNull().default('UAH'),
   // SUPERSEDED (retained): the global Monobank statement CURSOR. De-globalized
-  // to the per-connection `syncState` table (2026-09-11 multi-account plan);
+  // to the per-connection `syncState` table so each account keeps its own;
   // migration 0028 backfills the connected account's row from it. The sync no
   // longer writes it and no `settings` setter remains. Deliberately NOT dropped
   // (migrations here are additive-only — same class as `appearance` /
@@ -298,7 +298,7 @@ export const settings = sqliteTable('settings', {
     .notNull()
     .default('system'),
   // SUPERSEDED (retained): the global DISPLAY "last synced" timestamp. Moved to
-  // per-connection `syncState.lastSyncDisplayAt` (2026-09-11 multi-account plan);
+  // per-connection `syncState.lastSyncDisplayAt` so each account keeps its own;
   // migration 0028 backfills it. The sync no longer writes it and account-detail
   // now reads `syncState`. Retained (additive-only migrations). The description
   // below still documents the live semantics, which now hold on `syncState`.
@@ -315,7 +315,7 @@ export const settings = sqliteTable('settings', {
   // falls back to `lastSyncAt`.
   lastSyncDisplayAt: integer('last_sync_display_at'),
   // SUPERSEDED (retained): the global last-FULL-fetch marker. Moved to
-  // per-connection `syncState.lastFullSyncAt` (2026-09-11 multi-account plan);
+  // per-connection `syncState.lastFullSyncAt` so each account keeps its own;
   // migration 0028 backfills it. The sync no longer writes it. Retained
   // (additive-only migrations). The description below documents the live
   // semantics, which now hold on `syncState`.
@@ -353,7 +353,7 @@ export const settings = sqliteTable('settings', {
   // is no clear-to-null path from the UI, but the setter accepts null).
   trendFilter: text('trend_filter', { mode: 'json' }).$type<TrendFilter>(),
   // SUPERSEDED (retained): the global force-retry set. Moved to per-connection
-  // `syncState.failedSyncMonobankIds` (2026-09-11 multi-account plan); migration
+  // `syncState.failedSyncMonobankIds` so each account keeps its own; migration
   // 0028 backfills it. The sync no longer writes it. Retained (additive-only
   // migrations). The description below documents the live semantics, which now
   // hold on `syncState`.

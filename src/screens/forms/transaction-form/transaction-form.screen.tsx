@@ -1453,9 +1453,9 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
 
       {/* The category picker is ALWAYS editable on an income/expense row —
         even on a synced row — since a category edit propagates to every
-        same-name transaction and to future imports, unlike
-        the bank-owned amount/sign. Exchange has no category: both legs'
-        descriptions are fixed, auto-generated copy. */}
+        same-name transaction and to future imports, unlike the bank-owned
+        amount/sign. Exchange has no category: both legs' descriptions are
+        fixed, auto-generated copy. */}
       {!props.isExchange && (
         <View ref={props.categoryFieldRef}>
           <Box gap={1}>

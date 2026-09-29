@@ -176,3 +176,31 @@ export const feeOnItsOwnLine = true;
 // EXPECT-FINDING
 /* Rows without a counterparty stay in the list (§3). */
 export const rowsWithoutCounterpartyStay = true;
+
+// EXPECT-FINDING
+// The icon rename and the copy fix land in separate commits.
+export const iconRenameAndCopyFixSplit = true;
+
+// EXPECT-FINDING
+// A pending row keeps its own amount (§ 4).
+export const pendingRowKeepsAmount = true;
+
+// EXPECT-FINDING
+/* The fee row stays hidden (§ 2.3). */
+export const feeRowStaysHidden = true;
+
+// EXPECT-FINDING
+// Only the checking account is imported in this plan.
+export const onlyCheckingImported = true;
+
+// EXPECT-FINDING
+// The field keeps its label; this plan also ships the picker sheet.
+export const fieldKeepsLabel = true;
+
+// EXPECT-FINDING
+// Every account shares one sync cursor (2026-09-11 multi-account plan).
+export const accountsShareCursor = true;
+
+// EXPECT-FINDING
+/* One row per account (2026-09-11 multi-account plan). */
+export const oneRowPerAccount = true;
