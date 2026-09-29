@@ -25,15 +25,17 @@ const SettingsRow: FC<SettingsRowProps> = ({
 }) => {
   const { theme } = useUnistyles();
 
-  const header = (
-    <Box direction="row" style={styles.header}>
-      <Box direction="row" gap={3} style={styles.rowLead}>
-        {icon !== undefined && <SymbolIcon name={icon} tone="textSecondary" />}
-        <Box style={styles.label}>
-          <Text variant="body">{label}</Text>
-        </Box>
+  const lead = (
+    <Box direction="row" gap={3} style={styles.rowLead}>
+      {icon !== undefined && <SymbolIcon name={icon} tone="textSecondary" />}
+      <Box style={styles.label}>
+        <Text variant="body">{label}</Text>
       </Box>
+    </Box>
+  );
 
+  const end = (
+    <>
       {trailing !== undefined && <Box style={styles.trailing}>{trailing}</Box>}
 
       {onPress !== undefined && (
@@ -53,6 +55,14 @@ const SettingsRow: FC<SettingsRowProps> = ({
           <SymbolIcon name="chevron.right" tone="textSecondary" size={chevronSize(theme)} />
         </Box>
       )}
+    </>
+  );
+
+  const header = (
+    <Box direction="row" style={styles.header}>
+      {lead}
+
+      {end}
     </Box>
   );
 
@@ -65,10 +75,28 @@ const SettingsRow: FC<SettingsRowProps> = ({
     );
   }
 
+  // A tappable row with a body under its label centers its switch and chevron
+  // on the whole card, as a UIKit cell centers its accessory view; a
+  // single-line row keeps its header layout.
+  if (children !== undefined) {
+    return (
+      <Pressable accessibilityRole="button" onPress={onPress} {...props}>
+        <Box direction="row" style={styles.centeredEnd}>
+          <Box style={styles.body}>
+            {lead}
+
+            {children}
+          </Box>
+
+          {end}
+        </Box>
+      </Pressable>
+    );
+  }
+
   return (
     <Pressable accessibilityRole="button" onPress={onPress} {...props}>
       {header}
-      {children}
     </Pressable>
   );
 };

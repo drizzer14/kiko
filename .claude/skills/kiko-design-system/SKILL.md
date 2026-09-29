@@ -267,6 +267,12 @@ The established patterns grouped under this heading:
   makes the row a `Pressable` (with a chevron). `trailing` pins an
   inline control to the label's line. The two can be combined
   (`ReminderRow`: tap opens the form, the trailing Switch pauses).
+  Vertical alignment (2026-09-30, user request): a row's `trailing`
+  and chevron sit on the label's FIRST line, except on a pressable row
+  with `children` (a body under the label — today only `ReminderRow`,
+  on both reminders pages), which centers them on the label and body
+  together, as a UIKit cell centers its accessory view; the body then
+  wraps beside them instead of running under the switch.
   **Rule:** on iOS an accessible `Pressable` groups its children into
   ONE VoiceOver element, so a control inside a pressable row cannot be
   reached. A row that passes both `onPress` and an interactive

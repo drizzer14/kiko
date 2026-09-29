@@ -16,7 +16,8 @@ type SettingsRowBaseProps = ViewProps & {
 // `trailing` is an inline control on the SAME line as the label, pinned to the
 // row's trailing edge and top-aligned to the label's first line (a toggle
 // reads as one row with its label, not stacked below it the way a
-// picker/segmented control does).
+// picker/segmented control does). A pressable row with `children` centers the
+// control and chevron on the label and body together instead.
 type SettingsRowStaticProps = SettingsRowBaseProps & {
   onPress?: undefined;
   trailing?: ReactNode;

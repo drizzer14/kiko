@@ -13,6 +13,16 @@ export const styles = StyleSheet.create((theme) => ({
     // first line, so `flex-start` here does not make it ride high.
     alignItems: 'flex-start',
   },
+  // A tappable row with a body below its label: the switch and chevron center
+  // on the label and body together, not on the label's first line.
+  centeredEnd: {
+    alignItems: 'center',
+  },
+  // The label and the body below it, taking the width the switch and chevron
+  // leave so the body wraps beside them.
+  body: {
+    flex: 1,
+  },
   // The leading cluster of a row: icon + label, kept together on the left so
   // the header's space-between only splits this cluster from the chevron.
   rowLead: {

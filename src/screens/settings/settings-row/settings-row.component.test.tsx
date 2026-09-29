@@ -1,5 +1,5 @@
 import { Text as RNText, StyleSheet } from 'react-native';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 import Card from '@kiko/design-system/components/card';
@@ -143,6 +143,44 @@ describe('SettingsRow', () => {
     expect(getByText('Include saved passwords & keys')).toBeTruthy();
     expect(getByTestId('trailing-switch')).toBeTruthy();
     expect(getByText('Hint text below the row')).toBeTruthy();
+  });
+
+  it('centers the switch and chevron of a pressable row on its label and body together', async () => {
+    const { getByTestId } = await render(
+      <SettingsRow
+        icon="bell"
+        label="Add transactions"
+        onPress={jest.fn()}
+        trailing={<RNText testID="trailing-switch">toggle</RNText>}
+        accessibilityActions={[{ name: 'toggle', label: 'Turn off' }]}
+        onAccessibilityAction={jest.fn()}
+      >
+        <RNText testID="row-body">Every day at 20:00</RNText>
+      </SettingsRow>,
+    );
+
+    const row = ancestorWithStyle(getByTestId('trailing-switch'), 'alignItems');
+
+    expect(StyleSheet.flatten(row.props.style).alignItems).toBe('center');
+    expect(within(row).getByTestId('row-body')).toBeTruthy();
+    expect(
+      within(row).getByTestId('settings-row-chevron', { includeHiddenElements: true }),
+    ).toBeTruthy();
+  });
+
+  it('keeps the trailing control of a static row on its label’s first line', async () => {
+    const { getByTestId } = await render(
+      <SettingsRow
+        label="Include saved passwords & keys"
+        trailing={<RNText testID="trailing-switch">toggle</RNText>}
+      >
+        <RNText>Hint text below the row</RNText>
+      </SettingsRow>,
+    );
+
+    const header = ancestorWithStyle(getByTestId('trailing-switch'), 'alignItems');
+
+    expect(StyleSheet.flatten(header.props.style).alignItems).toBe('flex-start');
   });
 
   // iOS reads an accessible Pressable and its children as ONE VoiceOver
