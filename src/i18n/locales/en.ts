@@ -1146,6 +1146,8 @@ export const en = {
       addTransactionsBodyNoData: 'No transactions added yet.',
       pausedTitle: 'Reminders paused',
       pausedBody: 'Turn them on again in Kiko.',
+      hiddenPreviewsPlaceholder: 'Reminder',
+      snoozeAction: 'Tomorrow',
     },
     // English says "at" at every hour; the pair exists for Ukrainian's о/об
     // (see uk.ts).

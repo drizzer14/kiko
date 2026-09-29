@@ -29,6 +29,7 @@ describe('reminderContent — reminders', () => {
       body: '9 days since your last statement import.',
       interruptionLevel: 'active',
       threadIdentifier: 'statement_import',
+      categoryIdentifier: 'kiko.reminder',
     });
   });
 
@@ -38,6 +39,7 @@ describe('reminderContent — reminders', () => {
       body: '9 days since you last added a transaction.',
       interruptionLevel: 'active',
       threadIdentifier: 'add_transactions',
+      categoryIdentifier: 'kiko.reminder',
     });
   });
 
@@ -96,6 +98,7 @@ describe('reminderContent — the paused notice', () => {
         body: 'Turn them on again in Kiko.',
         interruptionLevel: 'passive',
         threadIdentifier: kind,
+        categoryIdentifier: 'kiko.reminder.notice',
       });
       expect(reminderContent(notice, ukrainian)).toMatchObject({
         title: 'Нагадування призупинено',
@@ -111,6 +114,7 @@ describe('reminderContent — lock-screen safety, every text in both languages',
     (['reminder', 'pausedNotice'] as const).flatMap((variant) =>
       [english, ukrainian].flatMap((t) =>
         counts.map((count) => ({
+          variant,
           content: reminderContent(request({ kind, variant, daysSinceData: count }), t),
           shownCount: variant === 'reminder' ? count : null,
         })),
@@ -120,6 +124,22 @@ describe('reminderContent — lock-screen safety, every text in both languages',
 
   it('covers every kind, variant, language and count', () => {
     expect(cases).toHaveLength(2 * 2 * 2 * counts.length);
+  });
+
+  // "Tomorrow" belongs to a reminder only: the paused notice is the last word,
+  // with nothing left to put off.
+  it('gives only a reminder the category with the "Tomorrow" action', () => {
+    for (const { variant, content } of cases) {
+      expect(content.categoryIdentifier).toBe(
+        variant === 'reminder' ? 'kiko.reminder' : 'kiko.reminder.notice',
+      );
+    }
+  });
+
+  it('never asks for a time-sensitive delivery', () => {
+    for (const { content } of cases) {
+      expect(['active', 'passive']).toContain(content.interruptionLevel);
+    }
   });
 
   it('holds no number but the day count', () => {

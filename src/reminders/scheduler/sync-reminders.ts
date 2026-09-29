@@ -119,6 +119,13 @@ export const syncReminders = async (
   // stored before any later step can fail.
   await remindersRepo.recordEngagements(responses.filter(isEngagement));
 
+  // Registered on every sync, before any request is added, so the "Tomorrow"
+  // title and the hidden-preview body follow a language change too.
+  remindersNative.registerCategories(
+    t('reminders.notification.snoozeAction'),
+    t('reminders.notification.hiddenPreviewsPlaceholder'),
+  );
+
   if ((await remindersRepo.hasAnyQuery()).length === 0) {
     await remindersNative.replaceRequests([], []);
 

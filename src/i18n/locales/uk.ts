@@ -842,6 +842,8 @@ export const uk: typeof en = {
       addTransactionsBodyNoData: 'Жодної транзакції ще не додано.',
       pausedTitle: 'Нагадування призупинено',
       pausedBody: 'Увімкніть їх знову в Кіко.',
+      hiddenPreviewsPlaceholder: 'Нагадування',
+      snoozeAction: 'Завтра',
     },
     rowLabel: 'Нагадування',
     title: 'Нагадування',

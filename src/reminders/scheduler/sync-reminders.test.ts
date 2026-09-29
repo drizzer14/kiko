@@ -44,6 +44,7 @@ let drainedResponses: NotificationResponse[] = [];
 let authorization: NotificationAuthorization = 'authorized';
 
 const replaceRequests = jest.spyOn(remindersNative, 'replaceRequests');
+const registerCategories = jest.spyOn(remindersNative, 'registerCategories');
 
 jest.spyOn(remindersNative, 'drainResponses').mockImplementation(async () => drainedResponses);
 jest.spyOn(remindersNative, 'authorizationStatus').mockImplementation(async () => authorization);
@@ -221,7 +222,57 @@ describe('syncReminders — which reminders are scheduled', () => {
       body: '1 day since your last statement import.',
       interruptionLevel: 'active',
       threadIdentifier: 'statement_import',
+      categoryIdentifier: 'kiko.reminder',
     });
+  });
+
+  it('gives the "Tomorrow" category to the reminders and not to the paused notice', async () => {
+    seedAccount('manual');
+    seedReminder({ id: 'reminder-1', accountId: 'manual', kind: 'add_transactions' });
+
+    await syncReminders(english, NOW);
+
+    expect(
+      lastReplace().requests.map(({ identifier, categoryIdentifier }) => [
+        identifier,
+        categoryIdentifier,
+      ]),
+    ).toEqual([
+      ['kiko.reminder.reminder-1.202610012000', 'kiko.reminder'],
+      ['kiko.reminder.reminder-1.202610022000', 'kiko.reminder'],
+      ['kiko.reminder.reminder-1.202610032000', 'kiko.reminder'],
+      ['kiko.reminder.reminder-1.paused', 'kiko.reminder.notice'],
+    ]);
+  });
+});
+
+describe('syncReminders — notification categories', () => {
+  it.each([
+    { language: 'en', snoozeTitle: 'Tomorrow', placeholder: 'Reminder' },
+    { language: 'uk', snoozeTitle: 'Завтра', placeholder: 'Нагадування' },
+  ])(
+    'registers the categories in the active language ($language) before it replaces the requests',
+    async ({ language, snoozeTitle, placeholder }) => {
+      seedAccount('manual');
+      seedReminder({ id: 'reminder-1', accountId: 'manual', kind: 'add_transactions' });
+
+      await syncReminders(i18n.getFixedT(language), NOW);
+
+      expect(registerCategories.mock.calls).toEqual([[snoozeTitle, placeholder]]);
+      expect(registerCategories.mock.invocationCallOrder[0]).toBeLessThan(
+        replaceRequests.mock.invocationCallOrder[0] as number,
+      );
+    },
+  );
+
+  it('registers them on every sync, with no reminders too, so a language change re-words them', async () => {
+    await syncReminders(english, NOW);
+    await syncReminders(i18n.getFixedT('uk'), NOW);
+
+    expect(registerCategories.mock.calls).toEqual([
+      ['Tomorrow', 'Reminder'],
+      ['Завтра', 'Нагадування'],
+    ]);
   });
 });
 
@@ -294,6 +345,7 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
     await syncReminders(english, NOW);
 
     expect(reminderColumn('snoozed', 'last_snoozed_at')).toBe(local(10, 1, 8));
+    expect(reminderColumn('snoozed', 'last_engaged_at')).toBe(local(10, 1, 8));
     expect(fireStamps('snoozed')).toEqual(['10-1 20:0', '10-3 20:0', '10-4 20:0']);
 
     drainedResponses = [];

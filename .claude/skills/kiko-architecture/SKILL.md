@@ -1650,7 +1650,15 @@ what a change must keep.
 - **Scheduler.** `syncReminders(t, now?)`
   (`src/reminders/scheduler/sync-reminders.ts`) drains the native
   response queue and stores the engagements FIRST (a tap on the paused
-  notice is not engagement). Then it gates on `hasAnyQuery` (no
+  notice is not engagement). Then it calls `registerCategories` with
+  the active language's `reminders.notification.snoozeAction` and
+  `hiddenPreviewsPlaceholder` on EVERY sync, before any
+  `replaceRequests`. `reminderContent` gives a reminder the
+  `kiko.reminder` category (the one "Tomorrow" action) and the paused
+  notice `kiko.reminder.notice` (no action); the ids are
+  `REMINDER_CATEGORY_IDENTIFIER`/`NOTICE_CATEGORY_IDENTIFIER` in
+  `reminders-native.ts` and must equal the Swift ones. Then it gates
+  on `hasAnyQuery` (no
   reminders -> `replaceRequests([], [])` and no plan-input query).
   Then it syncs `notifications_deliverable_since` from
   `authorizationStatus()` (written only when it changes; while iOS

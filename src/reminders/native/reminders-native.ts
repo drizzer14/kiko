@@ -6,6 +6,11 @@ import type { Spec } from './NativeKikoReminders';
 export const REMINDER_IDENTIFIER_PREFIX = 'kiko.reminder.';
 export const SNOOZE_IDENTIFIER_PREFIX = 'kiko.snooze.';
 
+// `registerCategories` gives these the "Tomorrow" action and the hidden-preview
+// body; they must equal the identifiers `KikoRemindersCenter.swift` registers.
+export const REMINDER_CATEGORY_IDENTIFIER = 'kiko.reminder';
+export const NOTICE_CATEGORY_IDENTIFIER = 'kiko.reminder.notice';
+
 export type NotificationAuthorization = 'notDetermined' | 'denied' | 'authorized';
 
 // A floating wall-clock time with no time zone, so a reminder keeps firing at
