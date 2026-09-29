@@ -544,6 +544,34 @@ reasoning.
   the enclosing statement, so an `EXPECT-FINDING` pin cannot land there
   (`kiko-no-hand-built-selectable-row`'s fixture cannot pin at all).
 
+## Semgrep facts verified on 2026-09-28 (the Round A guard rules)
+
+1. `pattern-not: import type { $X } from 'm'` also matches the VALUE
+   import `import { X } from 'm'`, so the rule removed every finding
+   and reported nothing. Use `pattern-regex` with a `(?!type\b)`
+   lookahead after `import`/`export` instead
+   (`kiko-no-root-calendars-value-import`).
+2. `pattern-not: "{...}"` in a `metavariable-pattern` does NOT exclude
+   an object-literal argument. Filter the argument's own text with
+   ``metavariable-regex: ^(?!['"`{])`` instead
+   (`kiko-no-raw-error-in-console`).
+3. A deep-expression pattern
+   `$O.$M(..., (...) => <... $X.$N(..., (...) => <... $DATE ...>, ...) ...>, ...)`
+   reports the OUTER call's line, so its `EXPECT-FINDING` pin goes above
+   the outer call, not above the inner one
+   (`kiko-no-per-bucket-date-in-statistics`).
+4. Inside an arrow with a BLOCK body, the deep-expression operator
+   `<... $X ...>` reaches only the block's `return` statement, not a
+   `const` initializer or an expression statement. To match a block-body
+   callback, add a separate statement-sequence arm:
+   `$O.$M(..., (...) => {` / `...` / `$X.$N(..., (...) => <... $DATE ...>, ...);`
+   / `...` / `}, ...)`. That arm also matches the inner call as a `const`
+   initializer, and it reports the outer call's line. Do
+   not scope with `pattern-inside: $O.$M(..., (...) => { ... }, ...)`
+   instead: `{ ... }` also matches an EXPRESSION body, so a one-off
+   `rows.map((row) => new Date(row))` matches itself and fires
+   (`kiko-no-per-bucket-date-in-statistics`).
+
 ## Semgrep facts verified on 2026-09-29 (`kiko-no-needless-async-either-thunk`)
 
 - Semgrep IGNORES the `async` keyword of an arrow function in a
