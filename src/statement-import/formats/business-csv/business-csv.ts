@@ -13,15 +13,15 @@
 // (account/currency/operationDate/debit/credit/paymentPurpose) is read only
 // to locate/skip (the EDRPOU pair, per the plan's disposition) and stays
 // entirely in each format's own `COLUMN` export, never duplicated here.
-import type {
-  ParsedStatement,
-  ParsedTransaction,
-  StatementFormat,
-  StatementFormatId,
-  StatementFormatInput,
+import {
+  type ParsedStatement,
+  type ParsedTransaction,
+  type StatementFormat,
+  type StatementFormatId,
+  type StatementFormatInput,
+  StatementParseError,
 } from '@kiko/statement-import/parser';
 import { Money } from '@kiko/currency/money';
-import { StatementParseError } from '@kiko/statement-import/parser';
 import { parseDateTimeSeconds } from '@kiko/statement-import/parse-date-time';
 
 import {

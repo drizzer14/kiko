@@ -1,5 +1,4 @@
-import { isValidElement } from 'react';
-import type { ReactElement } from 'react';
+import { isValidElement, type ReactElement } from 'react';
 
 // The real screens wired into this stack pull in db/client, which opens a real
 // op-sqlite connection at module load. op-sqlite has no Jest binary, so stub it

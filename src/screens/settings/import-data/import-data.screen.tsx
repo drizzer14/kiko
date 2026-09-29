@@ -1,7 +1,6 @@
-import type { FC } from 'react';
-import { useState } from 'react';
 import { Alert } from 'react-native';
 import { i18n } from '@kiko/i18n/init';
+import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { importData } from '@kiko/data-transfer';
 import Box from '@kiko/design-system/components/box';

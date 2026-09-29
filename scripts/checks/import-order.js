@@ -473,16 +473,50 @@ function groupKindOf(items) {
   return kinds.size === 1 ? [...kinds][0] : null;
 }
 
+// `import * as X` cannot share a declaration with a named import, so a
+// namespace import never counts toward a duplicate specifier.
+function isNamespaceImport(statementLines) {
+  return /^\s*import\s+(type\s+)?([\w$]+\s*,\s*)?\*\s*as\b/.test(statementLines.join(' '));
+}
+
+// kiko-code-style's "one import per specifier": a type-only and a value
+// import of one module merge into one declaration with the inline `type`
+// modifier, so any two declarations of one specifier fail, whatever their
+// kind.
+function checkDuplicateSpecifiers(items, violations) {
+  const counts = new Map();
+
+  for (const item of items) {
+    const specifier = specifierOf(item.statementLines);
+
+    if (specifier === null || isNamespaceImport(item.statementLines)) {
+      continue;
+    }
+
+    counts.set(specifier, (counts.get(specifier) ?? 0) + 1);
+  }
+
+  for (const [specifier, count] of counts) {
+    if (count > 1) {
+      violations.push(
+        `duplicate import of '${specifier}' (${count} declarations) — merge them into one import, with an inline \`type\` modifier on each type name when it mixes types and values`,
+      );
+    }
+  }
+}
+
 function checkImportOrder(source) {
   const lines = source.split('\n');
   const { entries } = parseHeaderEntries(lines, skipPrelude(lines));
   const groups = splitIntoGroups(entries);
   const violations = [];
+  const headerItems = [];
   let previousRank = -1;
   let previousGroupKind = null;
 
   groups.forEach((groupEntries, groupIndex) => {
     const { items } = analyzeGroup(groupEntries);
+    headerItems.push(...items);
 
     for (const partition of partitionAtBarriers(items)) {
       if (partition.kind === 'barrier') {
@@ -495,6 +529,8 @@ function checkImportOrder(source) {
     const groupKind = groupKindOf(items);
     previousGroupKind = checkGroupAdjacency(groupIndex, groupKind, previousGroupKind, violations);
   });
+
+  checkDuplicateSpecifiers(headerItems, violations);
 
   return violations;
 }

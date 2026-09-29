@@ -757,7 +757,7 @@ const NODE_RULES = [
   {
     ruleId: 'kiko-import-order',
     extensions: ['.ts', '.tsx'],
-    fix: 'run `node scripts/checks/import-order.js --write <file>`, or reorder the groups by hand: external, then ../**, then ./**, each ascending by ending-line length',
+    fix: 'run `node scripts/checks/import-order.js --write <file>`, or reorder the groups by hand: external, then ../**, then ./**, each ascending by ending-line length; merge two imports of one specifier into one by hand, with an inline `type` modifier on each type name',
     skill: 'kiko-code-style › Import ordering',
     projectCheck: 'check:import-order',
     run: (filePath) =>

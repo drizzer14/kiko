@@ -1,9 +1,11 @@
 import { match } from 'ts-pattern';
+import {
+  createNativeStackNavigator,
+  type NativeStackScreenProps,
+} from '@react-navigation/native-stack';
 import { Pressable, Text } from 'react-native';
 import { type FC, useRef, useState, useEffect } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 
 import '@kiko/design-system/unistyles';

@@ -1,4 +1,3 @@
-import '@kiko/i18n/init';
 import { i18n } from '@kiko/i18n/init';
 
 import { transactionRowDescription } from './row-description';

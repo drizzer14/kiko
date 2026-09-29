@@ -1,6 +1,5 @@
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
 import { i18n } from '@kiko/i18n/init';
 
 import MappingResult from './mapping-result.component';

@@ -15,6 +15,10 @@ import {
   TabRouter,
   useNavigationBuilder,
 } from '@react-navigation/native';
+import {
+  createNativeStackNavigator,
+  type NativeStackScreenProps,
+} from '@react-navigation/native-stack';
 import { Text, View } from 'react-native';
 import { DatabaseSync } from 'node:sqlite';
 import { type FC, type ReactNode, useState } from 'react';
@@ -22,8 +26,6 @@ import { act, render } from '@testing-library/react-native';
 import { navigationRef } from '@kiko/navigation/navigation-ref';
 import type { NotificationResponse } from '@kiko/reminders/native';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { resetTabStackOnBlur } from '@kiko/navigation/reset-tab-stack-on-blur';
 import type { AccountsStackParamList, TabParamList } from '@kiko/navigation/types';
 

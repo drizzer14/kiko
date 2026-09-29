@@ -4,9 +4,8 @@ import { fetchClientInfo } from '@kiko/monobank/client';
 
 import Box from '../box';
 import Button from '../button';
-import SyncStatusLine from '../sync-status-line';
-import type { SyncStatus } from '../sync-status-line';
 import MonobankTokenInput from '../monobank-token-input';
+import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
 
 import { styles } from './monobank-connect-field.styles';
 

@@ -899,6 +899,27 @@ is caught by construction instead of needing its own new tracking
 list — never a silent no-op that reads as "nothing to fix" while a
 violation is still there.
 
+**Duplicate specifier.** `checkDuplicateSpecifiers` counts every
+declaration in the leading import header by its exact specifier
+string and flags a specifier with two or more
+(`duplicate import of '<specifier>' (<n> declarations)`). It is a
+finding of this same analyzer, not a separate check, so it runs
+everywhere the analyzer runs: the fast tier, `check:import-order`,
+and the pre-write guard's `kiko-import-order` Node rule. The
+`matchedText` carries no line number, so an unrelated edit in a file
+with a pre-existing duplicate is not a new finding. Adding a third
+declaration changes the count and so the text, and the guard denies
+it. When you merge a duplicate by hand, delete the old pair BEFORE you
+insert the merged line in its sorted position; the other order briefly
+makes three declarations, which the guard denies. A namespace import
+is exempt (it cannot share a declaration with named imports). A bare
+side-effect import beside a named import of the same module counts.
+Biome 2.5.11 has no lint rule for this: only the `organizeImports`
+assist merges duplicates, and it is off here. `--write` never merges a
+duplicate, because the merged line needs rewrapping at Biome's line
+width and a placement for any glued comment. The general re-check
+above reports it as `left for hand fix`.
+
 ## `kiko-no-switch` — an AST `switch` pattern, not a keyword regex
 
 `kiko-no-switch` (`rules/semgrep-prewrite.yml`, Class A) mechanizes

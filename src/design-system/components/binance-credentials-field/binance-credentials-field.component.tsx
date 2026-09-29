@@ -7,9 +7,8 @@ import { fetchAccount, saveCredentials } from '@kiko/crypto-sync/binance';
 import Box from '../box';
 import Text from '../text';
 import Button from '../button';
-import SyncStatusLine from '../sync-status-line';
-import type { SyncStatus } from '../sync-status-line';
 import ClipboardTextField from '../clipboard-text-field';
+import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
 
 import { styles } from './binance-credentials-field.styles';
 

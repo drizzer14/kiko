@@ -1,4 +1,3 @@
-import type { RefObject } from 'react';
 import {
   asLoanMeta,
   type LoanKind,
@@ -17,12 +16,12 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
-import { useCallback, useRef, useState } from 'react';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import type { TextInputInstance } from 'react-native';
 import { normalizeIban } from '@kiko/loans/payment-matcher';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import { dayKeyOf, type PriceBook } from '@kiko/prices/price-book';
+import { type RefObject, useCallback, useRef, useState } from 'react';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { holdingsRepo, type LoanPricePointOp } from '@kiko/holdings/repo';

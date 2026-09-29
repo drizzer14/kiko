@@ -630,6 +630,18 @@ import:
 import { type FC, useState } from 'react';
 ```
 
+One import declaration per module specifier. Never import one module
+twice (value+value, type+type, or a `import type` beside a value
+import); merge them into one declaration as above. A bare side-effect
+import of a module you also import names from is redundant, because
+the named import already runs the module: delete it, and keep the
+named import at its position. A namespace import (`import * as X`)
+is the one exception, because it cannot share a declaration with
+named imports. The import-order check (`import-order.js`) enforces
+this at the fast tier, in `check:import-order`, and in the pre-write
+guard. Its `--write` mode never merges a duplicate, so merge it by
+hand.
+
 Never import a type without `type` — Biome's `noUnusedImports` plus
 the project's `isolatedModules`-style TypeScript config both expect
 the type/value distinction to be explicit.

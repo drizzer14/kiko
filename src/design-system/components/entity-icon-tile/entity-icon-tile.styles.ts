@@ -1,5 +1,4 @@
-import { StyleSheet } from 'react-native-unistyles';
-import type { UnistylesThemes } from 'react-native-unistyles';
+import { StyleSheet, type UnistylesThemes } from 'react-native-unistyles';
 
 // The registered app theme — same pattern as disabled-field-style.ts's
 // `AppTheme`: a plain function needs the concrete theme shape to compute a

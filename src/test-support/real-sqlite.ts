@@ -12,8 +12,7 @@
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
-import { drizzle } from 'drizzle-orm/sqlite-proxy';
-import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy';
+import { drizzle, type SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy';
 
 const MIGRATIONS_ROOT = join(__dirname, '..', '..', 'drizzle', 'migrations');
 const STATEMENT_BREAKPOINT = '--> statement-breakpoint';

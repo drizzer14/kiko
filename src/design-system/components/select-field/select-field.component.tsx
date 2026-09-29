@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import type { ReactElement } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
+import { type ReactElement, useState } from 'react';
 
 import Box from '../box';
 import Text from '../text';

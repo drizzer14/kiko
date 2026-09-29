@@ -1,5 +1,3 @@
-import { useState } from 'react';
-import type { FC, ReactNode } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useSync } from '@kiko/sync/use-sync';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +6,7 @@ import { saveToken } from '@kiko/monobank/token';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { type AccountRow, useLiveQuery } from '@kiko/db';
+import { type FC, type ReactNode, useState } from 'react';
 import Button from '@kiko/design-system/components/button';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { bankProviderRegistry } from '@kiko/bank-sync/registry';

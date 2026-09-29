@@ -1317,6 +1317,36 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
     expect(reason).not.toContain('check:security');
   });
 
+  it('denies an edit that imports one specifier twice (kiko-import-order)', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'example.ts');
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: targetFile,
+        content: [
+          "import type { FC } from 'react';",
+          "import { useState } from 'react';",
+          '',
+          'export const value = 1;',
+          '',
+        ].join('\n'),
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-import-order');
+    expect(reason).toContain("duplicate import of 'react' (2 declarations)");
+  });
+
   it('allows an unrelated edit in a file whose import order was already broken', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);

@@ -1,5 +1,4 @@
-import { open } from '@op-engineering/op-sqlite';
-import type { DB } from '@op-engineering/op-sqlite';
+import { type DB, open } from '@op-engineering/op-sqlite';
 
 /**
  * LEGACY (pre-`kiko` rename) on-device database name. This literal is the

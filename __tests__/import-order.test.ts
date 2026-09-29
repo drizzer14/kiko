@@ -237,6 +237,60 @@ describe('scripts/checks/import-order.sh', () => {
     expect(result.status).toBe(0);
   });
 
+  describe('duplicate module specifier', () => {
+    it.each([
+      [
+        'a type import and a value import',
+        "import type { FC } from 'react';\nimport { useState } from 'react';\n",
+      ],
+      [
+        'two value imports',
+        "import { useState } from 'react';\nimport { useEffect } from 'react';\n",
+      ],
+      [
+        'two type imports',
+        "import type { FC } from 'react';\nimport type { ReactNode } from 'react';\n",
+      ],
+      [
+        'a default import and a named import',
+        "import React from 'react';\nimport { useState } from 'react';\n",
+      ],
+      [
+        'two imports split by a side-effect barrier',
+        "import { useState } from 'react';\nimport 'setup';\nimport { useEffect } from 'react';\n",
+      ],
+    ])('fails %s of one specifier', (_shape, imports) => {
+      const result = runCheck(`${imports}\nexport const Foo = 1;\n`);
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("duplicate import of 'react' (2 declarations)");
+    });
+
+    it('passes one import that mixes a type and a value with the inline `type` modifier', () => {
+      const result = runCheck(
+        "import { type FC, useState } from 'react';\n\nexport const Foo = 1;\n",
+      );
+
+      expect(result.status).toBe(0);
+    });
+
+    it('passes a namespace import beside a named import, which one declaration cannot hold', () => {
+      const result = runCheck(
+        "import * as React from 'react';\nimport { useState } from 'react';\n\nexport const Foo = 1;\n",
+      );
+
+      expect(result.status).toBe(0);
+    });
+
+    it('passes two different specifiers that share a prefix', () => {
+      const result = runCheck(
+        "import { a } from './a';\nimport { b } from './a/b';\n\nexport const Foo = 1;\n",
+      );
+
+      expect(result.status).toBe(0);
+    });
+  });
+
   it('exits 0 on a non-.ts/.tsx file', () => {
     const file = join(directory, 'fixture.md');
     writeFileSync(file, '# not typescript\n');
@@ -468,6 +522,27 @@ describe('scripts/checks/import-order.js --write', () => {
     expect(result.status).not.toBe(0);
     expect(result.stdout).toContain(
       `left for hand fix: ${file} group 2: consecutive with group 1, both external — merge into one group`,
+    );
+    expect(readFileSync(file, 'utf8')).toBe(source);
+  });
+
+  // Merging two declarations means rewrapping the merged one at Biome's line
+  // width and choosing where each glued comment goes, so --write leaves a
+  // duplicate for a hand fix instead.
+  it('leaves a duplicate specifier for a hand fix and reports it', () => {
+    const source =
+      "import type { FC } from 'react';\n" +
+      "import { useState } from 'react';\n" +
+      '\n' +
+      'export const Foo = 1;\n';
+    const file = join(directory, 'fixture.ts');
+    writeFileSync(file, source);
+
+    const result = spawnSync('node', [ANALYZER, '--write', file], { encoding: 'utf8' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain(
+      `left for hand fix: ${file} duplicate import of 'react' (2 declarations)`,
     );
     expect(readFileSync(file, 'utf8')).toBe(source);
   });
