@@ -16,12 +16,13 @@ describe('formatDate', () => {
   });
 
   it('reads UTC calendar fields when timeZone is UTC, not local ones', () => {
-    // 23:00 UTC on Jan 15 is already Jan 16 on the Kyiv clock the suite runs
-    // on, so only the UTC accessors read Jan 15 back from it.
-    const lateUtcEvening = Date.UTC(2026, 0, 15, 23);
+    // 23:00 UTC on Dec 31 is already Jan 1 of the next year on the Kyiv clock
+    // the suite runs on, so the day, month and year each differ between the
+    // UTC and the local accessors.
+    const lateUtcNewYearsEve = Date.UTC(2026, 11, 31, 23);
 
-    expect(formatDate(lateUtcEvening, { timeZone: 'UTC' })).toBe('15.01.2026');
-    expect(formatDate(lateUtcEvening)).toBe('16.01.2026');
+    expect(formatDate(lateUtcNewYearsEve, { timeZone: 'UTC' })).toBe('31.12.2026');
+    expect(formatDate(lateUtcNewYearsEve)).toBe('01.01.2027');
   });
 });
 
@@ -41,12 +42,13 @@ describe('formatDayMonth', () => {
   });
 
   it('reads UTC calendar fields when timeZone is UTC, not local ones', () => {
-    // 23:00 UTC on Jan 15 is already Jan 16 on the Kyiv clock the suite runs
-    // on, so only the UTC accessors read Jan 15 back from it.
-    const lateUtcEvening = Date.UTC(2026, 0, 15, 23);
+    // 23:00 UTC on Dec 31 is already Jan 1 on the Kyiv clock the suite runs
+    // on, so both the day and the month differ between the UTC and the local
+    // accessors.
+    const lateUtcNewYearsEve = Date.UTC(2026, 11, 31, 23);
 
-    expect(formatDayMonth(lateUtcEvening, { timeZone: 'UTC' })).toBe('15.01');
-    expect(formatDayMonth(lateUtcEvening)).toBe('16.01');
+    expect(formatDayMonth(lateUtcNewYearsEve, { timeZone: 'UTC' })).toBe('31.12');
+    expect(formatDayMonth(lateUtcNewYearsEve)).toBe('01.01');
   });
 });
 
