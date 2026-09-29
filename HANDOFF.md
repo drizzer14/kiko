@@ -35,11 +35,19 @@ the same scratchpad, brief-feat9.txt.
    then /reload-plugins in every running session. Afterwards merge main into next (clean; keeps next ahead of main).
 5. When the 1.1 feat track is closed: ROUND A bug hunt + security (plan: "RELEASE ROADMAP" below). Then 1.2 (P5 broker/shares/EODHD +
    deferred list), then ROUND B.
+6. HARNESS SYNC after Round A's drift pass (user decision 2026-09-28): port the generic parts to github drizzer14/harness (last sync c950940, 2026-09-27) via an orchestrator session in an Orca worktree of ~/Developer/Projects/harness; one review; coordinator runs npm test, fast-forwards main, pushes after the user's OK. Scope: kill-guard main-checkout ff-only rule + parser fixes + known limits (CQ1; main path configurable); sentinel probe runner kill-guard-probe.sh + tests; deps-ranges.js + deps.sh range/ELSPROBLEMS checks (CS-D); report-back rule in all role agents + expected-duration rule (plugin 0.2.4); user-questions-via-coordinator rule (harness-workflow); the numbered-task-names rule (Task N/M); mutation lessons (wall-clock guards and tests that parse the text of a mutated file both break under Stryker); suite-wide Jest TZ pin pattern (no per-test pins); the rule-inventory Jest invariant and any generic JS rules from Round A CS-L. NOT generic: deploy-device.sh UTF-16 check, Kiko category/Date.UTC Semgrep rules.
 
 ### Rules learned this run (all in memory)
 Mutation only on small diffs (cap 30, coordinator runs it per change set before merge); no whole-release deep gate. Hooks: the dispatcher runs
 from the MAIN checkout (never apply/merge hook files in place there); agents/skills from the plugin cache (bump + update + reload). A commit
 command for the user stages every path. Peer-relayed approvals: read the user's own words. Silent watcher only. Researcher 403: curl yourself.
+
+## OVERNIGHT 2026-09-29 (user: "Continue working overnight")
+- next = 9956d521 (CQ1, CQ2, Round A tasks 1-5/13, main docs, plugin 0.2.4). main = 9212f591 (docs + harness rules); merge next->main waits for the user (ff-only).
+- Round A (round-a-b7, term_f33cae3e, worktree round-a): tasks 6/13+7/13 (migrations 0043+0044, base 0f92e062, tip bdedd922) mutation RUNNING in deep-gate; then merge the whole range into next at once, make verify, tell Reminders. Queue: 8/13 H all-fiat history (running), 9/13 I Binance, 10/13 K PERF-3, 11/13 L1 + 12/13 L2 guard rules, 13/13 M TZ tests (+ TZ-flip rule WARNING->ERROR). CS-J deferred.
+- Reminders (reminders-c9, term_471334f3, worktree reminders): tasks 1/5 (mutation 96) + 2/5 (migration 0045 placeholder, reviewed) wait for 0043/0044 on next -> merge next, renumber, green make verify, BATCH READY (report file count from base 2bc3f9e5). Task 3/5 in progress, then 4/5, 5/5.
+- Rules: user questions via coordinator; overnight = orchestrators use their recommended default, marked "OVERNIGHT DEFAULT, pending user"; numbered task names "task N/M"; report-back rule; gauge-only watchers (scratchpad gaugewatch.sh) on both terminals.
+- Morning for the user: overnight defaults; new i18n keys; the combined device session (CS-E prompts, Reminders module, 0043/0044 with a .kiko export first, SYNC-4, PERF-3); HARNESS SYNC after Round A (HANDOFF step 6).
 
 ## OVERNIGHT 2026-09-28 (user directive ~01:30: "Continue working through the night")
 - next = 686d8114 (feat 298efbb0 merged; mutation 90.24; coordinator make verify 410/5764). iPhone = 686d8114 (Release-AdHoc; tag icon; user retest pending).
