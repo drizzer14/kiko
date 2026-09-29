@@ -1332,3 +1332,52 @@ rules:
             - pattern: startOfLocalDay(...)
             - pattern: endOfLocalDay(...)
             - pattern: parseLocalDate(...)
+  # kiko-code-style's "Tests read a module, never a source file's text":
+  # Stryker rewrites every mutable `.ts`/`.tsx` source in its sandbox, so a
+  # test that reads that source's TEXT sees instrumented code and its parse
+  # breaks the dry run. A read is flagged unless its path provably ends in a
+  # non-TypeScript extension or sits under drizzle/migrations (which holds no
+  # mutable source); a walked or computed path cannot be proven and is
+  # flagged. `symbolic_propagation` lets the top-level `pattern-not` see
+  # through a `const` path; a `metavariable-pattern` on the path does not.
+  # `paths.include` is path-prefixed, so the fixture pair is NESTED. Each
+  # exclude is a documented exception (docs/harness/documented-exceptions.md).
+  - id: kiko-no-source-text-read-in-test
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A test reads a file whose path is not provably a data fixture. If it is
+      a `.ts`/`.tsx` source, Stryker's instrumented copy of that file breaks
+      the test's parse. Import the module and read its structure instead, or
+      name the fixture by its non-TypeScript file name — see kiko-code-style's
+      "Tests read a module, never a source file's text".
+    metadata:
+      fix: "Import the module and read its structure (e.g. getTableColumns(table)); for a data fixture, name the file with its own extension in the join (join(__dirname, '__fixtures__/sample.csv'))."
+      skill: "kiko-code-style › Tests read a module, never a source file's text"
+    options:
+      symbolic_propagation: true
+    paths:
+      include:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/test-support/**"
+      exclude:
+        - "__tests__/**"
+        - "src/db/settings-columns.test.ts"
+        - "src/i18n/locales/title-keys.call-sites.test.ts"
+        - "drizzle/migrations/0044-move-crypto-cash-holdings.test.ts"
+        - "e2e/screenshot/fixtures/generate-demo-kiko.test.ts"
+    patterns:
+      - pattern-either:
+          - pattern: readFileSync(...)
+          - pattern: $FS.readFileSync(...)
+          - pattern: readFile(...)
+          - pattern: $FS.readFile(...)
+          - pattern: createReadStream(...)
+          - pattern: $FS.createReadStream(...)
+      - pattern-not: $READ("=~/\.(?!tsx?$)\w+$/", ...)
+      - pattern-not: $FS.$READ("=~/\.(?!tsx?$)\w+$/", ...)
+      - pattern-not: $READ($JOIN(..., "=~/\.(?!tsx?$)\w+$/"), ...)
+      - pattern-not: $FS.$READ($JOIN(..., "=~/\.(?!tsx?$)\w+$/"), ...)
+      - pattern-not: $READ($JOIN($PARENT(..., "=~/(^|\/)drizzle\/migrations$/"), ...), ...)
+      - pattern-not: $READ($JOIN($PARENT(..., 'drizzle', 'migrations'), ...), ...)

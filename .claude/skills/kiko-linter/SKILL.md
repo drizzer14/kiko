@@ -658,6 +658,24 @@ reasoning.
   target's rest parameter has a type annotation
   (`(...rest: []) => …`); write `(...$REST: $TYPE)`.
 
+## Semgrep facts verified on 2026-09-29 (`kiko-no-source-text-read-in-test`)
+
+- With `options: { symbolic_propagation: true }`, a top-level
+  `pattern-not: $READ($JOIN(..., "=~/\.csv$/"), ...)` also drops
+  `readFileSync(FIXTURE_PATH)` when `const FIXTURE_PATH = join(…,
+  'x.csv')`, and it sees through two levels
+  (`join(migrationsDir, name)` with `migrationsDir` a `const` join).
+  The same filter as a `metavariable-pattern` on the path argument does
+  NOT see through the `const`: every identifier path fired.
+- A pattern on `readFileSync(...)` also matches a renamed named import
+  (`import { readFileSync as read }`), a default or namespace import
+  (`fs.readFileSync`), `require('node:fs').readFileSync`, and
+  `fs.promises.readFile` via `$FS.readFile(...)`.
+- Semgrep skipped every file when it scanned a DIRECTORY under the
+  scratchpad (`paths.scanned` was empty, no error); naming the file
+  scanned it. Scan a probe file by its path, and read `paths.scanned`
+  before trusting a zero.
+
 ## Class A vs Class B
 
 `rules/semgrep-mobile.yml` groups rules into two severities, both

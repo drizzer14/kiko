@@ -1096,6 +1096,34 @@ assuming a package is already covered — a package added to
 `package.json` without also being added there will fail its first
 test with an unhelpful parse error, not an obviously-related one.
 
+## Tests read a module, never a source file's text
+
+A test never reads a `.ts`/`.tsx` source file's text to derive what it
+expects. Stryker rewrites every mutable source in its sandbox, so the
+text the test reads is instrumented code, and a parse of it breaks the
+dry run (`settings-columns.test.ts` split `schema.ts`'s text;
+`title-keys.call-sites.test.ts` read literal call arguments). Import
+the module and read its structure instead: drizzle's
+`getTableColumns(settings)` for a table's columns, an exported list
+for a set of keys.
+
+A data fixture is fine: name it by its own non-TypeScript extension in
+the path (`join(__dirname, '__fixtures__/sample.csv')`, or a `const`
+bound to that join), or read it from `drizzle/migrations/`.
+
+Semgrep `kiko-no-source-text-read-in-test` (`rules/semgrep-prewrite.yml`)
+enforces this in every `*.test.ts(x)` and `src/test-support/**`. It
+flags a `readFileSync`/`readFile`/`createReadStream` call whose path it
+cannot prove is a non-TypeScript file, so a walked or computed path is
+flagged too. Four tests keep a text read by a documented exception:
+three search src text for a word or a literal that Stryker's
+instrumentation keeps (`settings-columns.test.ts`,
+`title-keys.call-sites.test.ts`, `0044-move-crypto-cash-holdings.test.ts`),
+and `generate-demo-kiko.test.ts` reads its `.kiko` fixtures by a name
+from a table. Harness tests under `__tests__/` are out of scope: they
+read rules, scripts, docs, and temp projects. Known gap: a harness test
+that walks `src/` (`one-component-per-file.test.ts`) is not checked.
+
 ## Reviewed, and deliberately not changed
 
 Two review comments were raised and rejected during a past review —

@@ -298,6 +298,12 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | (kill-guard) SHELL-WRITE deny | Agents wrote `src/` with Bash or `sed` (3+ slips; caught only at Stop by the replay) | PreToolUse Bash hook (`scripts/checks/kill-guard.js`, `WRITE_GUARDED_TREES`); rows in `__tests__/kill-guard-writes.test.ts` | Common forms only; see kiko-linter "SHELL-WRITE deny" and its Known limits. guard-replay stays the backstop. |
 
+### Enforced — Round A retrospect (test-file guard rules)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-source-text-read-in-test` | A test that reads a `.ts`/`.tsx` source's TEXT and parses it broke Stryker's dry run twice (`settings-columns.test.ts`, `title-keys.call-sites.test.ts`): Stryker instruments that same file in its sandbox (kiko-code-style "Tests read a module, never a source file's text") | Semgrep (TS, ERROR, `rules/semgrep-prewrite.yml`, also loaded by `check:security`/`check:rules`) | `readFileSync`/`readFile`/`createReadStream`, bare or on any receiver (Semgrep resolves an import alias, a default import, `require('node:fs')`, and `fs.promises`). A read passes only when its path is a string literal, or a join whose last argument is one, ending in a non-TypeScript extension (`"=~/\.(?!tsx?$)\w+$/"`), or a join under a directory built from `drizzle/migrations` (no mutable source there). `options.symbolic_propagation` lets these top-level `pattern-not`s see through a `const` path (a `metavariable-pattern` on the path does not). A walked or computed path cannot be proven and fires. `paths.include` `*.test.ts`, `*.test.tsx`, `src/test-support/**`; nested fixture pair `rules/fixtures/kiko-no-source-text-read-in-test/src/test-support/`. `paths.exclude`: `__tests__/**` (harness tests read rules, scripts, docs, and temp projects) and 4 tests with a documented text read (see `docs/harness/documented-exceptions.md`). Sweep: 0 sites fixed; the 4 hits are the excludes. Known limits: a harness test that walks `src/` (`one-component-per-file.test.ts`) is not checked; a read through `openSync`/`readSync`, or through a method renamed by destructuring (`const { readFileSync: read } = fs`), is not flagged. |
+
 ### Rule index — rules shipped before the inventory invariant
 
 `__tests__/rule-inventory.test.ts` fails when a Semgrep rule id in `rules/*.yml` has no row whose first cell is that exact id. These rules shipped before that test, so each gets its row here.

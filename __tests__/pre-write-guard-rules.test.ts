@@ -64,6 +64,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-per-bucket-date-in-statistics',
   'kiko-no-bare-lowercase-category-fold',
   'kiko-no-date-utc-in-statement-import',
+  'kiko-no-source-text-read-in-test',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -86,6 +87,8 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
     'kiko-no-bare-lowercase-category-fold/src/statistics/category-fold-example',
   'kiko-no-date-utc-in-statement-import':
     'kiko-no-date-utc-in-statement-import/src/statement-import/date-example',
+  'kiko-no-source-text-read-in-test':
+    'kiko-no-source-text-read-in-test/src/test-support/source-read-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -100,6 +103,7 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-per-bucket-date-in-statistics': 'src/statistics',
   'kiko-no-bare-lowercase-category-fold': 'src/statistics',
   'kiko-no-date-utc-in-statement-import': 'src/statement-import',
+  'kiko-no-source-text-read-in-test': 'src/test-support',
 };
 
 function fixturePrefix(ruleId: string): string {
@@ -348,6 +352,39 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
 
       expect(result.stdout).toBe('');
       expect(result.status).toBe(0);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  // A co-located test is where a source read lands; app source reads files at
+  // runtime on purpose, and a harness test under __tests__/ reads rules,
+  // scripts and docs, which mutation testing never rewrites.
+  it.each([
+    ['src/probe/source-read-probe.test.ts', 2],
+    ['src/probe/source-read-probe.test.tsx', 2],
+    ['src/probe/source-read-probe.ts', 0],
+    ['__tests__/source-read-probe.test.ts', 0],
+  ])('kiko-no-source-text-read-in-test on %s exits %s', (relativeTarget, status) => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-source-read-'));
+    try {
+      const targetFile = join(project, ...relativeTarget.split('/'));
+      mkdirSync(join(targetFile, '..'), { recursive: true });
+      const content = [
+        "import { readFileSync } from 'node:fs';",
+        '',
+        "export const schemaText = (): string => readFileSync(`${__dirname}/schema.ts`, 'utf8');",
+        '',
+      ].join('\n');
+
+      const result = runGuard(payloadFor(targetFile, content), project);
+
+      expect(result.status).toBe(status);
+
+      if (status === 2) {
+        const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+        expect(reason).toContain('kiko-no-source-text-read-in-test');
+      }
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
