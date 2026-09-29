@@ -987,34 +987,43 @@ describe('AccountDetailScreen', () => {
     expect(queryByLabelText('Color violet')).toBeNull();
   });
 
+  const headerRightItems = (navigation: ReturnType<typeof navigationSpy>) => {
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.unstable_headerRightItems,
+    );
+
+    expect(call).toBeDefined();
+
+    return call[0].unstable_headerRightItems({ canGoBack: true });
+  };
+
   it('offers an Edit action in the header that opens the account edit form', async () => {
     setLiveData({ accounts: [account()], holdings: [] });
     const { navigation } = await renderScreen();
-    // The Edit affordance sits at the header top-right (via setOptions
-    // headerRight). Render it and press it: it opens this account's edit form.
-    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
-      ([options]) => options.headerRight,
+    const edit = headerRightItems(navigation).find(
+      (item: { type: string }) => item.type === 'custom',
     );
-    expect(call).toBeDefined();
-    const { getByText } = await render(call[0].headerRight());
+
+    const { getByText } = await render(edit.element);
+
     await fireEvent.press(getByText('Edit'));
+
     expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'a' });
   });
 
-  it('offers a Reminders bell left of Edit that opens this account’s reminders', async () => {
+  it('offers a Reminders bell as its own header item, left of Edit', async () => {
     setLiveData({ accounts: [account({ name: 'Cash box' })], holdings: [] });
     const { navigation } = await renderScreen();
-    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
-      ([options]) => options.headerRight,
-    );
+    const items = headerRightItems(navigation);
 
-    mockButtonProps.length = 0;
+    expect(items.map((item: { type: string }) => item.type)).toEqual(['button', 'custom']);
+    expect(items[0]).toMatchObject({
+      icon: { type: 'sfSymbol', name: 'bell' },
+      accessibilityLabel: 'Reminders',
+      sharesBackground: false,
+    });
 
-    const { getByLabelText } = await render(call[0].headerRight());
-
-    expect(mockButtonProps.map((props) => props.icon)).toEqual(['bell', 'pencil']);
-
-    await fireEvent.press(getByLabelText('Reminders'));
+    items[0].onPress();
 
     expect(navigation.navigate).toHaveBeenCalledWith('AccountReminders', {
       accountId: 'a',

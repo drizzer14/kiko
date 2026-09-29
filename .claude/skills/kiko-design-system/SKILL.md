@@ -282,6 +282,22 @@ The established patterns grouped under this heading:
   fallback is not `{}`). RNTL `getByLabelText` still finds the
   inner Switch, so a green test does not prove VoiceOver can reach it;
   list a device check.
+- **Header bar items** (2026-09-30, user request: the bell separate
+  from Edit). iOS 26+ draws adjacent bar button items in ONE shared
+  glass capsule, and the HIG (Toolbars, "Item groupings") warns that a
+  symbol next to a text-labelled action reads as one combined action —
+  separate them. A header with a symbol action beside `EditHeaderButton`
+  uses `unstable_headerRightItems`, listed left to right: the symbol
+  action as a native `type: 'button'` item (`icon: { type: 'sfSymbol' }`,
+  `accessibilityLabel`, `tintColor: theme.colors.textPrimary` to match
+  the ghost Edit label, `sharesBackground: false` so it gets its own
+  capsule), then Edit as a `type: 'custom'` item. Do not use a
+  `type: 'spacing'` item to split them: native-stack 7.18.9 sends it
+  with no index, so react-native-screens inserts it at the trailing
+  edge. A native item takes no `testID`; a test reads the item list
+  from `setOptions` and calls its `onPress`. First consumer:
+  `AccountDetail` (bell, then Edit). A header with Edit alone keeps
+  `headerRight` (`HoldingDetail`).
 - A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
   `WalletAddressField`, `src/design-system/components/`) is a PRIMARY
   action, so it follows the same form validation model as a Save

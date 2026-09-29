@@ -167,27 +167,33 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // the Balance amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon
   // slot below) rather than in the nav title.
   const identity = accountIdentity(account);
+  // Adjacent bar items share one glass capsule on iOS 26+, and the HIG
+  // (Toolbars, "Item groupings") warns that a symbol next to a text-labelled
+  // action reads as one combined action. The bell is therefore a native bar
+  // item that does not share its background, so it gets a capsule of its own;
+  // header items run left to right, keeping it left of Edit.
   useLayoutEffect(() => {
     navigation.setOptions({
       title: accountName,
-      headerRight: () => (
-        <Box direction="row">
-          <Button
-            variant="ghost"
-            size="compact"
-            fullWidth={false}
-            icon="bell"
-            accessibilityLabel={t('reminders.rowLabel')}
-            testID="reminders-header-button"
-            onPress={() =>
-              navigation.navigate('AccountReminders', { accountId, name: accountName })
-            }
-          />
-          <EditHeaderButton onPress={() => navigation.navigate('AccountForm', { accountId })} />
-        </Box>
-      ),
+      unstable_headerRightItems: () => [
+        {
+          type: 'button',
+          label: t('reminders.rowLabel'),
+          accessibilityLabel: t('reminders.rowLabel'),
+          icon: { type: 'sfSymbol', name: 'bell' },
+          tintColor: theme.colors.textPrimary,
+          sharesBackground: false,
+          onPress: () => navigation.navigate('AccountReminders', { accountId, name: accountName }),
+        },
+        {
+          type: 'custom',
+          element: (
+            <EditHeaderButton onPress={() => navigation.navigate('AccountForm', { accountId })} />
+          ),
+        },
+      ],
     });
-  }, [navigation, accountName, accountId, t]);
+  }, [navigation, accountName, accountId, t, theme.colors.textPrimary]);
 
   const activeHoldings = holdings.filter((holding) => holding.closedAt == null);
 

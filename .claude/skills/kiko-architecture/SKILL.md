@@ -1848,8 +1848,10 @@ what a change must keep.
   `ReminderRow` and no Add (reminders are created from an account's
   page). It opens from its own Settings card directly below System
   (`settings-row-reminders`). The account page is reached from a
-  `bell` ghost Button in `AccountDetail`'s `headerRight`, shown on
-  EVERY account. The form has NO Delete: a reminder is deleted only
+  native `bell` bar item in `AccountDetail`'s
+  `unstable_headerRightItems`, left of Edit in its own glass capsule
+  (see kiko-design-system's "Header bar items"), shown on EVERY
+  account. The form has NO Delete: a reminder is deleted only
   from the page row's touch-and-hold `CardContextMenu`, the same as a
   transaction.
 - **Offer.** `useReminderOffer({ accountId, account, settings, trigger })`

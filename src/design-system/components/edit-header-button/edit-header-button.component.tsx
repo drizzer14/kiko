@@ -5,8 +5,9 @@ import Button from '../button';
 
 // The header-right "Edit" affordance shared by the account- and holding-detail
 // screens: the shared borderless (ghost) Button — compact and self-hugging,
-// with a leading pencil glyph — wired via navigation.setOptions
-// `headerRight` so it sits at the top-right, opposite the back button.
+// with a leading pencil glyph — wired via navigation.setOptions (`headerRight`,
+// or a `custom` entry in `unstable_headerRightItems` beside a native bar item)
+// so it sits at the top-right, opposite the back button.
 // Pressing it opens the entity's dedicated edit form. Reuses the shared
 // Button rather than a hand-rolled nav-bar text control so its label and icon
 // tint stay a single source of truth with every other button in the app,
