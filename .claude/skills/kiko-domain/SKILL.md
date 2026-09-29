@@ -134,7 +134,8 @@ implemented, and callers must skip it rather than assume every id resolves.
   `trendCategoryKeys` column (migration 0025 copies any saved keys across
   as a manual filter; the old column is pinned reader-less in
   `src/db/settings-columns.test.ts`). The Monobank token is never stored
-  here — see `kiko-architecture` for the Keychain rule.
+  here — see `kiko-architecture` for the Keychain rule (its Monobank sync
+  section also carries the credit-limit known limit).
 
 A manual balance adjustment always writes a `manual` Transaction, so
 a holding's balance history stays derivable from its transactions.
@@ -202,9 +203,9 @@ showed the real imported rows.
 
 `importRows`'s own doc comment (`transactions.repo.ts`) is the ONE
 full statement of the exact rule — the boundary, `holdings.balanceSetAt`,
-the closing-balance override, the wall-clock skew, the synced-holding
-exception, and why no migration repairs pre-fix data — read it there
-rather than trusting a restated summary here.
+the closing-balance override, the synced-holding exception, and why no
+migration repairs pre-fix data — read it there rather than trusting a
+restated summary here.
 
 ## `property_item` / `metal` create-form sections
 
@@ -464,17 +465,29 @@ derive from `currencyOptions` rather than carrying their own literal
 list. A Drizzle `text({ enum: [...] })` is a TS-only compile-time
 hint, not a DB constraint, so changing the set needs no migration.
 
-**A cash holding is fiat-only.** `src/holdings/holding-currency/` owns
-the rule (`holdingCurrencyOptions` for a create picker,
+**A cash holding is fiat-only for every NEW write.** `src/holdings/holding-currency/`
+owns the rule (`holdingCurrencyOptions` for a create picker,
 `isCurrencyAllowedForHoldingType` for a write). Every path that can
 create a cash holding rejects a crypto currency: the holding form and
-cash-account form offer fiat only, `holdingsRepo.create` and
-`accountsRepo.createCashAccount` throw, and a `.kiko` restore refuses
-the whole file before touching a table
-(`data-transfer/crypto-cash-holding` prefix, mapped to
-`settings.dataImport.cryptoCashHoldingError`). Statement import and
-the syncs never create a cash holding. No migration exists for an
-already-stored crypto cash holding.
+cash-account form offer fiat only, and `holdingsRepo.create` and
+`accountsRepo.createCashAccount` throw. Statement import and the syncs
+never create a cash holding. An ALREADY-stored crypto cash holding (a
+1.0-era BTC/ETH/USDT `cash` holding) is migration `0044`'s job, not this
+rule's — `0044_move_crypto_cash_holdings.sql`'s doc comment is the full
+statement of the matching rule, including the archived-source carve-out.
+`restore-snapshot.ts`'s `withCryptoCashHoldingsMoved` applies the
+IDENTICAL rule to a `.kiko` restore, sharing the SAME deterministic id so
+both paths agree on the same account for the same source; a restore of an
+already-migrated export is a no-op because every matching holding is
+already `crypto_asset`. See `kiko-architecture`'s migration bullets for
+the crash-safe order.
+
+KNOWN LIMIT (migration 0044): the holding it moves is a MANUAL
+`crypto_asset`, so `cryptoAssetDescriptor`'s `exchange.createSource` and
+`createDestination` are both `false` — it can be picked as neither leg of
+a freshly CREATED Exchange, and it has no Split leg at all. To record a
+new purchase into it, log the outflow as a plain manual expense elsewhere
+and use Convert on that transaction instead.
 
 ## Category color resolution
 

@@ -236,15 +236,37 @@ const headingSlots = (node: ts.Node): ts.Node[] => {
 
 const oneLine = (node: ts.Node): string => node.getText().replace(/\s+/g, ' ').trim();
 
-const headingSitesIn = (file: string): HeadingSite[] => {
+const isStringLiteralLike = (node: ts.Node): node is ts.StringLiteralLike =>
+  ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
+
+// Stryker's mutation-testing instrumentation rewrites a literal call
+// argument `'key'` into `stryMutAct_x("n") ? "" : (stryCov_x("n"), 'key')` —
+// a conditional whose "mutant inactive" branch is a parenthesized comma
+// sequence ending in the original literal. This walks through that shape
+// (and any nesting of it) to reach the literal underneath, so a heading key
+// is still read correctly from the instrumented copy of a file Stryker's
+// own test run reads off disk, not only from the pristine source.
+const strykerUnwrapped = (node: ts.Node): ts.Node => {
+  if (ts.isParenthesizedExpression(node)) {
+    return strykerUnwrapped(node.expression);
+  }
+
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+    return strykerUnwrapped(node.right);
+  }
+
+  return ts.isConditionalExpression(node) ? strykerUnwrapped(node.whenFalse) : node;
+};
+
+const sitesInSource = (fileName: string, text: string): HeadingSite[] => {
   const source = ts.createSourceFile(
-    file,
-    readFileSync(file, 'utf8'),
+    fileName,
+    text,
     ts.ScriptTarget.Latest,
     true,
     ts.ScriptKind.TSX,
   );
-  const relativePath = relative(SOURCE_ROOT, file);
+  const relativePath = relative(SOURCE_ROOT, fileName);
 
   return headingSlots(source)
     .flatMap(headingLeaves)
@@ -257,17 +279,18 @@ const headingSitesIn = (file: string): HeadingSite[] => {
       }
 
       const [firstArgument] = leaf.arguments;
-      const isLiteral =
-        firstArgument !== undefined &&
-        (ts.isStringLiteral(firstArgument) || ts.isNoSubstitutionTemplateLiteral(firstArgument));
+      const literal = foldMap(maybe(firstArgument), strykerUnwrapped);
 
       return {
         site,
-        key: isLiteral ? firstArgument.text : undefined,
+        key: literal !== undefined && isStringLiteralLike(literal) ? literal.text : undefined,
         siteId: `${relativePath}#${foldMap(maybe(firstArgument), oneLine) ?? ''}`,
       };
     });
 };
+
+const headingSitesIn = (file: string): HeadingSite[] =>
+  sitesInSource(file, readFileSync(file, 'utf8'));
 
 const headingSites = sourceFiles(SOURCE_ROOT).flatMap(headingSitesIn);
 
@@ -336,5 +359,31 @@ describe('TITLE_KEYS covers every heading, sheet-title, and nav-title call site'
 
     expect(unmapped).toEqual([]);
     expect(unforwarded).toEqual([]);
+  });
+});
+
+describe('reading a heading key survives Stryker mutation-testing instrumentation', () => {
+  it('still reads the literal key through the instrumented conditional-comma shape', () => {
+    const sites = sitesInSource(
+      'fixture-stryker-instrumented.tsx',
+      `const Heading = () => (
+        <Text variant="heading">
+          {t(stryMutAct_9fa48("114") ? "" : (stryCov_9fa48("114"), 'settings.dataImport.confirmTitle'))}
+        </Text>
+      );`,
+    );
+
+    expect(sites.map((site) => site.key)).toEqual(['settings.dataImport.confirmTitle']);
+  });
+
+  it('still treats a genuinely dynamic call site as non-literal', () => {
+    const sites = sitesInSource(
+      'fixture-dynamic.tsx',
+      `const Heading = (props) => (
+        <Text variant="heading">{t(props.someKey)}</Text>
+      );`,
+    );
+
+    expect(sites.map((site) => site.key)).toEqual([undefined]);
   });
 });

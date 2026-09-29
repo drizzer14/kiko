@@ -161,8 +161,53 @@ project-level pointer to this section.
   `src/data-transfer/snapshot/restore-snapshot.ts`'s
   `withRatesNormalizedToUah` applies the IDENTICAL rule to a `.kiko`
   restore, so a pre-star export normalizes exactly like a live device
-  upgrade rather than reintroducing dead cross rows. Next free
-  migration index: `0043`.
+  upgrade rather than reintroducing dead cross rows.
+- **A stored value that needs a hand-rolled zone reading, not just a
+  flag flip, still follows the flag-plus-launch-step shape.** Migration
+  `0043_add_import_times_rezoned` only adds
+  `settings.import_times_rezoned` (defaulting to `false`) — a stored
+  statement-import row's `time` was written as if its bank wall clock
+  were UTC, and rewriting it needs a real zone reading no SQL
+  expression can perform. `rezoneImportTimes`
+  (`statement-import/rezone-import-times/`) runs after
+  `upgradeStoredDedupKeys` in `MigrationsGate`, and again as the first
+  step of `importParsedStatement` (refusing the import if the flag is
+  still `false` afterward, so a new-convention row never lands next to
+  a not-yet-rezoned one): reads every `source = 'import'` row's legacy
+  `time` back as THIS DEVICE's own local zone (`planImportTimeRezone`,
+  pure), then rewrites `time` and the dedup key's time token through a
+  two-phase temp-key SQL update (SQLite checks UNIQUE per row even
+  inside one UPDATE, so a direct final-key write can transiently
+  collide with a row not yet rewritten), and moves a holding's
+  `balanceSetAt` only when it equals one of that holding's OWN import
+  rows' old time. `restore-snapshot.ts`'s `withImportTimesRezoned`
+  mirrors the identical planner for a `.kiko` restore, applied after
+  `withLegacyDedupKeysUpgraded` — unlike that mirror's presence-only
+  check, it ALSO rewrites an explicit `false`, since a restore replaces
+  the whole database and leaves no live device to retry on its own next
+  launch.
+- **A data-only migration that reassigns rows between tables follows the
+  SAME derive-then-mutate, restore-mirrored shape.** Migration
+  `0044_move_crypto_cash_holdings` (its own doc comment is the full
+  statement of the matching rule, including the archived-source
+  carve-out) moves a 1.0-era `cash` holding in a crypto currency onto a
+  `crypto_asset` holding under a crypto account, keeping the holding's own
+  `id` so every transaction, exchange leg, loan link, `price_points` row,
+  and category override attached to it stays attached. Crash-safe,
+  additive-then-mutate order (no delete): a TEMP table snapshots the
+  affected holdings, a TEMP table captures the reuse target BEFORE any
+  account is created (so a just-created account is never mistaken for a
+  pre-existing one), an `INSERT` creates one `crypto-from-<source account
+  id>` account per affected source needing its own, then one `UPDATE`
+  moves the holdings. `run-migrations.ts`'s single transaction makes a
+  crash mid-run roll back cleanly; a second run (or restoring an
+  already-migrated export) finds the affected set already empty — every
+  matching holding is already `crypto_asset` — so it is a true no-op, not
+  an effect of the `INSERT`'s own conflict handling. `restore-snapshot.ts`'s
+  `withCryptoCashHoldingsMoved` applies the IDENTICAL rule to a `.kiko`
+  restore, sharing the SAME deterministic `crypto-from-` id so the two
+  paths always agree on the same account for the same source. Next free
+  migration index: `0045`.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -738,7 +783,13 @@ The prior balance is read from the CRASH-SAFE marker
 `src/db/schema.ts`), **not** `holdings.balanceMinorUnits`. This is
 load-bearing and was a data-loss bug before: `upsertAllHoldings` overwrites
 `balanceMinorUnits` (the display balance) from client-info at the START
-of every run, BEFORE the per-card statement loop. A run that committed a
+of every run, BEFORE the per-card statement loop.
+
+KNOWN LIMIT: that same overwrite is client-info's balance field verbatim,
+with no credit-limit adjustment — a Monobank card that uses its credit
+limit shows this raw provider figure, not a spent/available distinction.
+
+A run that committed a
 card's new balance up front and was then interrupted (app background/kill)
 before importing that card's statements — and before the failed-set
 persist — left `balanceMinorUnits` == client-info, so a display-balance
@@ -1485,6 +1536,34 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   balanceSetAt/stray-balance backfills above, so order between them
   doesn't matter — it runs last only because it has to act on what's
   actually being inserted).
+- **A launch-time upgrade step whose rewrite needs a real zone reading
+  gets the SAME restore-side mirror, applied AFTER the dedup-key
+  upgrade.** Migration 0043's flag (`settings.importTimesRezoned`) and
+  its launch-time rewrite (`rezoneImportTimes`) only run on live data —
+  a `.kiko` restore REPLACES the whole `transactions`/`holdings`/`settings`
+  tables, so a pre-0043 export's legacy (wall-clock-as-UTC) import times
+  need the identical rewrite applied on restore too.
+  `restoreDataSnapshot`'s `withImportTimesRezoned` mirrors the SAME pure
+  planner (`planImportTimeRezone`) the launch step runs, applied to the
+  FINAL settings/transactions/holdings sets `withLegacyDedupKeysUpgraded`
+  produces. UNLIKE that mirror's presence-only check, this one ALSO
+  rewrites an explicit `false` — a restore replaces the whole database,
+  so there is no live device left to retry the rewrite on its own next
+  launch, and the restored database must be final at once.
+- **A migration that reassigns rows between tables gets the SAME
+  restore-side mirror, run FIRST.** Migration 0044 moves a 1.0-era `cash`
+  holding in a crypto currency onto a `crypto_asset` holding under a
+  crypto account — a `.kiko` restore REPLACES the whole `accounts`/
+  `holdings` tables, so a pre-0044 export's stray crypto cash holding
+  needs the identical move applied on restore too, or it would land back
+  in a state no create path allows. `restoreDataSnapshot`'s
+  `withCryptoCashHoldingsMoved` applies the SAME reuse-or-create rule,
+  sharing the SAME deterministic `crypto-from-<source id>` account id the
+  SQL migration derives — this is what makes a restore of an
+  already-migrated export a no-op instead of creating a duplicate
+  account. Runs FIRST (before `withLegacyBalanceSetAtBackfilled` and
+  every later backfill), feeding its own output into every step after it,
+  since it is the one step that can add a NEW account row.
 - **A value that lives inside `holdings.metadata` needs NO restore
   mirror.** A property's dated ownership share (`metadata.ownership`,
   kiko-pricing "Ownership share") rides in the opaque JSON column: a

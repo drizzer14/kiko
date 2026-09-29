@@ -1102,6 +1102,35 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
     expect(utils.getByText('Exchange')).toBeTruthy();
   });
 
+  it('does not surface the Exchange type option when the primary holding is a crypto_asset', async () => {
+    // A crypto_asset holding (e.g. one migration 0044 moved a cash holding
+    // onto) is no longer an exchange SOURCE — `cryptoAssetDescriptor`'s
+    // `exchange.createSource` is `false`, unlike the cash holding it may have
+    // come from.
+    const cryptoHoldings = [
+      {
+        id: 'h-crypto',
+        currency: 'BTC' as const,
+        balanceMinorUnits: 0,
+        type: 'crypto_asset',
+        name: 'Cold wallet',
+        accountId: 'a1',
+        sortOrder: 0,
+        createdAt: 1,
+      },
+    ];
+    setLiveData(cryptoHoldings, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h-crypto');
+
+    const utils = await renderEmptyCreate();
+
+    // Proves h-crypto (BTC) really is the seeded primary holding, before
+    // asserting on the Exchange option that follows FROM its type.
+    expect(amountSuffixWithin(utils).getByText('₿')).toBeTruthy();
+
+    await fireEvent.press(utils.getByLabelText('Type'));
+    expect(utils.queryByText('Exchange')).toBeNull();
+  });
+
   it('renders the Exchange and Split type glyphs once the extra modes surface', async () => {
     setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h1');
 

@@ -24,6 +24,7 @@ import { holdingValue } from '@kiko/holdings/holding-value';
 import { asBondMeta } from '@kiko/holdings/holding-metadata';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { computeDedupKeyBase } from '@kiko/statement-import/mapping';
+import { rezoneImportTime } from '@kiko/statement-import/rezone-import-times';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -393,34 +394,182 @@ describe('restoreDataSnapshot', () => {
   // keys — SQLite then defaults the missing columns itself (null / false),
   // exactly like every other nullable column added after `transactions` first
   // shipped (`counterIban`, `changeGroupId`).
-  it('rejects a snapshot with a cash holding in a crypto currency, deleting and inserting nothing', async () => {
-    const touchedTables: string[] = [];
+  // Mirrors migration 0044: a cash holding in a crypto currency moves onto
+  // a new crypto account, the same as a live device upgrade.
+  it('moves a cash holding in a crypto currency onto a new crypto account, deleting and inserting every table', async () => {
+    const deletedTables: string[] = [];
+    const insertedTables: string[] = [];
+    const insertedRows: Record<string, unknown[]> = {};
+
     mockDatabaseTransaction = {
       delete: (table: unknown) => {
-        touchedTables.push(tableNameOf(table));
+        deletedTables.push(tableNameOf(table));
 
         return Promise.resolve();
       },
       insert: (table: unknown) => ({
-        values: () => {
-          touchedTables.push(tableNameOf(table));
+        values: (rows: unknown[]) => {
+          const name = tableNameOf(table);
+          insertedTables.push(name);
+          insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
 
           return Promise.resolve();
         },
       }),
     };
 
-    await expect(
-      restoreDataSnapshot({
-        ...emptySnapshot,
-        accounts: [{ id: 'a1', kind: 'cash' }] as never,
-        holdings: [
-          { id: 'h1', accountId: 'a1', type: 'cash', currency: 'UAH' },
-          { id: 'h2', accountId: 'a1', type: 'cash', currency: 'BTC' },
-        ] as never,
-      }),
-    ).rejects.toThrow(/^data-transfer\/crypto-cash-holding: .*BTC/);
-    expect(touchedTables).toEqual([]);
+    const sourceAccount = {
+      id: 'a1',
+      name: 'Wallet',
+      kind: 'cash',
+      institution: null,
+      bankId: null,
+      icon: null,
+      color: null,
+      sortOrder: 0,
+      archivedAt: null,
+      createdAt: 1_700_000_000_000,
+    };
+    const fiatHolding = {
+      id: 'h1',
+      accountId: 'a1',
+      name: 'Cash',
+      type: 'cash',
+      currency: 'UAH',
+      icon: null,
+      color: null,
+      balanceMinorUnits: 0,
+      syncedBalanceMinorUnits: null,
+      balanceSetAt: null,
+      metadata: null,
+      sortOrder: 0,
+      closedAt: null,
+      createdAt: 1_700_000_000_000,
+    };
+    const cryptoCashHolding = {
+      ...fiatHolding,
+      id: 'h2',
+      name: 'Tether',
+      currency: 'BTC',
+      balanceMinorUnits: 12_345,
+    };
+
+    await restoreDataSnapshot({
+      ...emptySnapshot,
+      accounts: [sourceAccount] as never,
+      holdings: [fiatHolding, cryptoCashHolding] as never,
+    });
+
+    expect(deletedTables).toEqual([
+      'transactions',
+      'syncState',
+      'holdings',
+      'accounts',
+      'categoryOverrides',
+      'categories',
+      'currencyRateHistory',
+      'currencyRates',
+      'settings',
+      'pricePoints',
+      'bondRegister',
+    ]);
+    expect(insertedTables).toEqual(['accounts', 'holdings', 'categories']);
+    expect(insertedRows.accounts).toEqual([
+      sourceAccount,
+      {
+        id: 'crypto-from-a1',
+        name: 'Wallet',
+        kind: 'crypto',
+        institution: null,
+        bankId: null,
+        icon: null,
+        color: null,
+        sortOrder: 0,
+        archivedAt: null,
+        createdAt: 1_700_000_000_000,
+      },
+    ]);
+    expect(insertedRows.holdings).toEqual([
+      fiatHolding,
+      { ...cryptoCashHolding, accountId: 'crypto-from-a1', type: 'crypto_asset' },
+    ]);
+  });
+
+  // Ruling: an archived source account's holding never joins a LIVE reuse
+  // target — it would resurface under an account the user cannot see it
+  // moved out of. It gets its own `crypto-from-<source id>` account,
+  // carrying the source's own archivedAt, exactly like the no-eligible-
+  // target case, even though an eligible reuse target exists elsewhere.
+  it('never moves an archived source holding onto a live reuse target', async () => {
+    const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    const reuseTargetAccount = {
+      id: 'cold',
+      name: 'Cold',
+      kind: 'crypto',
+      institution: null,
+      bankId: null,
+      icon: null,
+      color: null,
+      sortOrder: 0,
+      archivedAt: null,
+      createdAt: 1_700_000_000_000,
+    };
+    const archivedSourceAccount = {
+      id: 'old-wallet',
+      name: 'Old wallet',
+      kind: 'cash',
+      institution: null,
+      bankId: null,
+      icon: null,
+      color: null,
+      sortOrder: 5,
+      archivedAt: 1_690_000_000_000,
+      createdAt: 1_600_000_000_000,
+    };
+    const archivedSourceHolding = {
+      id: 'h-usdt',
+      accountId: 'old-wallet',
+      name: 'Tether',
+      type: 'cash',
+      currency: 'USDT',
+      icon: null,
+      color: null,
+      balanceMinorUnits: 100,
+      syncedBalanceMinorUnits: null,
+      balanceSetAt: null,
+      metadata: null,
+      sortOrder: 0,
+      closedAt: null,
+      createdAt: 1_600_000_000_000,
+    };
+
+    await restoreDataSnapshot({
+      ...emptySnapshot,
+      accounts: [reuseTargetAccount, archivedSourceAccount] as never,
+      holdings: [archivedSourceHolding] as never,
+    });
+
+    expect(insertedRows.accounts).toEqual([
+      reuseTargetAccount,
+      archivedSourceAccount,
+      {
+        id: 'crypto-from-old-wallet',
+        name: 'Old wallet',
+        kind: 'crypto',
+        institution: null,
+        bankId: null,
+        icon: null,
+        color: null,
+        sortOrder: 5,
+        archivedAt: 1_690_000_000_000,
+        createdAt: 1_600_000_000_000,
+      },
+    ]);
+    expect(insertedRows.holdings).toEqual([
+      { ...archivedSourceHolding, accountId: 'crypto-from-old-wallet', type: 'crypto_asset' },
+    ]);
   });
 
   it('restores a crypto currency on a crypto_asset holding', async () => {
@@ -853,8 +1002,10 @@ describe('restoreDataSnapshot', () => {
     it('rewrites a legacy occurrence key and marks the settings row upgraded', async () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
-      // No `dedupKeysUpgraded` key at all — a pre-0041 export.
-      const legacySettingsRow = { id: 1, baseCurrency: 'UAH' };
+      // No `dedupKeysUpgraded` key at all — a pre-0041 export. Already
+      // `importTimesRezoned: true`, so this section stays isolated from the
+      // separate import-time rezone (its own describe block below).
+      const legacySettingsRow = { id: 1, baseCurrency: 'UAH', importTimesRezoned: true };
 
       await restoreDataSnapshot({
         ...emptySnapshot,
@@ -866,7 +1017,7 @@ describe('restoreDataSnapshot', () => {
         legacyImportTransaction({ externalId: `${legacyBase}␟1` }),
       ]);
       expect(insertedRows.settings).toEqual([
-        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true },
+        { id: 1, baseCurrency: 'UAH', importTimesRezoned: true, dedupKeysUpgraded: true },
       ]);
     });
 
@@ -877,20 +1028,25 @@ describe('restoreDataSnapshot', () => {
 
       await restoreDataSnapshot({
         ...emptySnapshot,
-        settings: [{ id: 1, baseCurrency: 'UAH' }] as never,
+        settings: [{ id: 1, baseCurrency: 'UAH', importTimesRezoned: true }] as never,
         transactions: [editedTransaction] as never,
       });
 
       expect(insertedRows.transactions).toEqual([editedTransaction]);
       expect(insertedRows.settings).toEqual([
-        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true },
+        { id: 1, baseCurrency: 'UAH', importTimesRezoned: true, dedupKeysUpgraded: true },
       ]);
     });
 
     it('leaves a snapshot that ALREADY carries dedupKeysUpgraded unchanged (a post-0041 export)', async () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
-      const alreadyMigratedSettingsRow = { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: false };
+      const alreadyMigratedSettingsRow = {
+        id: 1,
+        baseCurrency: 'UAH',
+        importTimesRezoned: true,
+        dedupKeysUpgraded: false,
+      };
       const legacyShapedTransaction = legacyImportTransaction();
 
       await restoreDataSnapshot({
@@ -901,6 +1057,96 @@ describe('restoreDataSnapshot', () => {
 
       expect(insertedRows.transactions).toEqual([legacyShapedTransaction]);
       expect(insertedRows.settings).toEqual([alreadyMigratedSettingsRow]);
+    });
+  });
+
+  // Migration 0043's flag and its own restore mirror (`withImportTimesRezoned`
+  // in `restore-snapshot.ts`) — a pre-0043 snapshot's legacy import rows need
+  // the same rewrite a live device's launch-time rezone applies, and unlike
+  // the dedup-key upgrade above this ALSO rewrites an explicit `false`, since
+  // a restore replaces the whole database rather than leaving a live device's
+  // own next launch to retry.
+  describe('import time rezone (migration 0043 restore mirror)', () => {
+    const legacyTime = Date.UTC(2026, 5, 10, 8, 15, 0);
+    const legacyImportRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
+      id: 't1',
+      holdingId: 'h1',
+      time: legacyTime,
+      amountMinorUnits: -500,
+      description: 'coffee',
+      source: 'import',
+      externalId: `h1 ${legacyTime / 1000} -500 coffee`,
+      ...overrides,
+    });
+    const stampedHolding = { id: 'h1', balanceSetAt: legacyTime };
+
+    it('rezones every import row and holding stamp, and marks the settings row rezoned, when the flag is explicit false', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        // `dedupKeysUpgraded: true` keeps this section isolated from the
+        // separate dedup-key upgrade above, the same way that section pins
+        // `importTimesRezoned: true` to stay isolated from this one.
+        settings: [
+          { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: false },
+        ] as never,
+        holdings: [stampedHolding] as never,
+        transactions: [legacyImportRow()] as never,
+      });
+
+      const rezonedTime = rezoneImportTime(legacyTime);
+
+      expect(insertedRows.transactions).toEqual([
+        legacyImportRow({ time: rezonedTime, externalId: `h1 ${rezonedTime / 1000} -500 coffee` }),
+      ]);
+      expect(insertedRows.holdings).toEqual([{ id: 'h1', balanceSetAt: rezonedTime }]);
+      expect(insertedRows.settings).toEqual([
+        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+      ]);
+    });
+
+    it('leaves every row and the flag unchanged when importTimesRezoned is already true', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        settings: [
+          { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+        ] as never,
+        holdings: [stampedHolding] as never,
+        transactions: [legacyImportRow()] as never,
+      });
+
+      expect(insertedRows.transactions).toEqual([legacyImportRow()]);
+      expect(insertedRows.holdings).toEqual([stampedHolding]);
+      expect(insertedRows.settings).toEqual([
+        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+      ]);
+    });
+
+    it('rezones and marks the flag true when the settings row carries no importTimesRezoned key at all', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await restoreDataSnapshot({
+        ...emptySnapshot,
+        settings: [{ id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true }] as never,
+        holdings: [stampedHolding] as never,
+        transactions: [legacyImportRow()] as never,
+      });
+
+      const rezonedTime = rezoneImportTime(legacyTime);
+
+      expect(insertedRows.transactions).toEqual([
+        legacyImportRow({ time: rezonedTime, externalId: `h1 ${rezonedTime / 1000} -500 coffee` }),
+      ]);
+      expect(insertedRows.holdings).toEqual([{ id: 'h1', balanceSetAt: rezonedTime }]);
+      expect(insertedRows.settings).toEqual([
+        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+      ]);
     });
   });
 

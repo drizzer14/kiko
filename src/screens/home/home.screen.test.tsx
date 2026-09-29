@@ -881,9 +881,17 @@ describe('HomeScreen', () => {
   it("advances the default range's end to include a transaction from the day after mount, once re-rendered", async () => {
     const base = Date.now();
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(base);
+
+    // Calendar-day stepping (never `base + DAY_MS`), so the fixture lands on
+    // the local day after mount even when the suite runs right at a local
+    // midnight boundary.
+    const dayAfterMount = new Date(base);
+    dayAfterMount.setDate(dayAfterMount.getDate() + 1);
+    dayAfterMount.setHours(1, 0, 0, 0);
+
     const tomorrow = transaction({
       id: 'tomorrow',
-      time: base + DAY_MS + 60 * 60 * 1000,
+      time: dayAfterMount.getTime(),
       description: 'Tomorrow',
     });
     seed({ transactions: [tomorrow] });

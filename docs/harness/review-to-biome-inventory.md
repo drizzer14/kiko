@@ -244,6 +244,12 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | `kiko-no-bare-lowercase-category-fold` | category-trend.ts's `groupKey` folded a stored category with a bare `category?.toLowerCase() \|\| defaultKey` — catches a null/empty category but not an UNRESOLVABLE one (a slug no longer in the categories table), unlike the donut's `resolveCategoryKey`; the same shape recurred at `holding-detail.screen.tsx`'s ledger-row icon color | Semgrep (`rules/semgrep-prewrite.yml`, also loaded by `check:security`/`check:rules`) | `paths.include: src/**` (widened from `src/statistics/**` once the same shape turned up outside it), excluding `*.test.ts`/`*.test.tsx`. Its fixture pair stays nested at `rules/fixtures/kiko-no-bare-lowercase-category-fold/src/statistics/` (kiko-linter's "Semgrep facts" — a flat fixture draws nothing against ANY `paths.include`, however broad), since that path still matches `src/**`. Flags `$CATEGORY?.toLowerCase() \|\| $DEFAULT` and the non-optional-chained form. |
 
+### Enforced — round-a CS-F (device-zone import-time rezone)
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-no-date-utc-in-statement-import` | A bank wall-clock read directly through `Date.UTC(...)` or the local-time `new Date($Y, $M, ...)` constructor bypasses both zone readings this project settled on (`kyivInstantMillisecondsIfRoundTrips` for a named format, `deviceWallClockToLocalMilliseconds` for column mapping) — neither rejects a rollover, and a raw `Date.UTC` call silently reads the wall clock in the wrong zone entirely | Semgrep (`rules/semgrep-prewrite.yml`, also loaded by `check:security`/`check:rules`) | `paths.include: src/statement-import/**`, excluding `*.test.ts`/`*.test.tsx`. Its fixture pair is nested at `rules/fixtures/kiko-no-date-utc-in-statement-import/src/statement-import/` (kiko-linter's "Semgrep facts" — a flat fixture draws nothing against this narrower `paths.include`). See `kiko-statement-import`'s "Every date-format preset" for the two sanctioned readers. |
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:
