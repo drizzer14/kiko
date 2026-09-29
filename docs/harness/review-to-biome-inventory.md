@@ -298,6 +298,25 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | (kill-guard) SHELL-WRITE deny | Agents wrote `src/` with Bash or `sed` (3+ slips; caught only at Stop by the replay) | PreToolUse Bash hook (`scripts/checks/kill-guard.js`, `WRITE_GUARDED_TREES`); rows in `__tests__/kill-guard-writes.test.ts` | Common forms only; see kiko-linter "SHELL-WRITE deny" and its Known limits. guard-replay stays the backstop. |
 
+### Rule index — rules shipped before the inventory invariant
+
+`__tests__/rule-inventory.test.ts` fails when a Semgrep rule id in `rules/*.yml` has no row whose first cell is that exact id. These rules shipped before that test, so each gets its row here.
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-disabled-tls` | TLS certificate validation disabled (`rejectUnauthorized: false`) | Semgrep (`rules/semgrep-mobile.yml`) | Class A (ERROR). |
+| `kiko-insecure-random-for-secrets` | `Math.random` assigned to a token, secret, key, nonce, or OTP | Semgrep (`rules/semgrep-mobile.yml`) | Class A (ERROR). Use a CSPRNG (`react-native-get-random-values`). |
+| `kiko-secret-in-asyncstorage` | A token, secret, password, or credential written to unencrypted AsyncStorage | Semgrep (`rules/semgrep-mobile.yml`) | Class A (ERROR). Use the iOS Keychain (`react-native-keychain`). |
+| `kiko-secret-in-db-or-log` | A token, secret, password, or credential passed to `console.*` or a database insert | Semgrep (`rules/semgrep-mobile.yml`) | Class A (ERROR). |
+| `kiko-repo-no-class` | A repository written as a class, not a plain function module | Semgrep (`rules/semgrep-mobile.yml`) | Class A (ERROR). `paths.include: ["*.repo.ts"]`. |
+| `kiko-repo-satisfies-not-annotation` | A repository object typed with a `: Repository` annotation, not `satisfies Repository` | Semgrep (`rules/semgrep-mobile.yml`) | Class A (ERROR). `paths.include: ["*.repo.ts"]`. |
+| `kiko-money-column-integer-minor-units` | A money column stored as `real`/`decimal`/`numeric`, not integer minor units | Semgrep (`rules/semgrep-mobile.yml`) | Class A (ERROR). `paths.include: ["schema.ts"]`. |
+| `kiko-component-rest-props-named-props` | A component's rest-props binding named `rest`, not `props` | Semgrep (`rules/semgrep-mobile.yml`) | Class A (ERROR). `paths.include: ["*.component.tsx"]`. |
+| `kiko-first-two-arg-not-curried` | The curried `first(toError)(result)` form, not `first(result, toError)` | Semgrep (`rules/semgrep-mobile.yml`) | Class A (ERROR). |
+| `kiko-no-handrolled-pipe-compose` | A locally defined `pipe`/`compose`, not the `fnts` helpers | Semgrep (`rules/semgrep-mobile.yml`) | Class A (ERROR). |
+| `kiko-webview-injectedjs-dynamic` | WebView `injectedJavaScript` built from a variable, not a constant | Semgrep (`rules/semgrep-mobile.yml`) | Class B (WARNING), override-eligible. |
+| `kiko-worklet-directive-required` | A same-file helper called inside a reanimated worklet callback without its own `'worklet'` directive | Semgrep (`rules/semgrep-prewrite.yml`) | Class A (ERROR). Test files excluded. Its candidate row is in "Candidates — currency-fix round" above. |
+
 ## Go-forward process (to wire into the retrospect/scribe loop)
 
 After each code review, triage every finding:

@@ -1493,7 +1493,9 @@ mechanizable (see harness-workflow's "Classify every finding").
    for the full shape.
 6. **Override form.** See "Override forms and where each is honored".
 7. **Docs.**
-   - A row in `docs/harness/review-to-biome-inventory.md` (always).
+   - A row in `docs/harness/review-to-biome-inventory.md` (always; its
+     first cell is the exact rule id, see "Every mechanized finding gets
+     an inventory row").
    - `docs/harness/documented-exceptions.md` for any new exclude or
      allowlist entry.
    - The CLAUDE.md checks table and `check:all` list only for a new
@@ -1568,7 +1570,9 @@ To change a pinned value, do one of these:
 
 `docs/harness/review-to-biome-inventory.md` tracks every review
 finding that has been (or could be) mechanized into a Biome/Semgrep/
-shell rule. A new rule of any kind gets a row there — including the
+shell rule. A new rule of any kind gets a row there — enforced for
+every Semgrep rule id by `__tests__/rule-inventory.test.ts` (the first
+cell holds the exact rule id) — including the
 basename-pattern `paths.include` scope, so a future rule copying the
 row as a template inherits the correct (non-path-prefixed) form
 instead of a stale mistake. A finding that is deliberately **not**

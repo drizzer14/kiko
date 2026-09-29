@@ -62,6 +62,8 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-raw-error-in-console',
   'kiko-no-clipboard-set-string',
   'kiko-no-per-bucket-date-in-statistics',
+  'kiko-no-bare-lowercase-category-fold',
+  'kiko-no-date-utc-in-statement-import',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -80,6 +82,10 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
     'kiko-no-empty-object-jsx-spread/src/screens/settings/settings-row-example',
   'kiko-no-per-bucket-date-in-statistics':
     'kiko-no-per-bucket-date-in-statistics/src/statistics/bucket-example',
+  'kiko-no-bare-lowercase-category-fold':
+    'kiko-no-bare-lowercase-category-fold/src/statistics/category-fold-example',
+  'kiko-no-date-utc-in-statement-import':
+    'kiko-no-date-utc-in-statement-import/src/statement-import/date-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -92,6 +98,8 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-confirm-sheet-in-form': 'src/screens/forms',
   'kiko-no-empty-object-jsx-spread': 'src/screens/settings',
   'kiko-no-per-bucket-date-in-statistics': 'src/statistics',
+  'kiko-no-bare-lowercase-category-fold': 'src/statistics',
+  'kiko-no-date-utc-in-statement-import': 'src/statement-import',
 };
 
 function fixturePrefix(ruleId: string): string {
