@@ -1647,10 +1647,12 @@ what a change must keep.
   `lastDataAt`; `lastSnoozedAt` frees the regular occurrence at the
   snooze minute. The sync passes `lastSnoozedAt: null` once data
   arrived at or after the snooze.
-- **Scheduler.** `syncReminders(t, now?)`
-  (`src/reminders/scheduler/sync-reminders.ts`) drains the native
-  response queue and stores the engagements FIRST (a tap on the paused
-  notice is not engagement). Then it calls `registerCategories` with
+- **Scheduler.** `src/reminders/scheduler/sync-reminders.ts` has two
+  steps, run in this order by every re-plan. `drainReminderResponses()`
+  is the ONE reader of the native response queue: it drains it, stores
+  the engagements (a tap on the paused notice is not engagement), and
+  returns the responses. `syncReminders(t, now?)` does not touch the
+  queue. It calls `registerCategories` with
   the active language's `reminders.notification.snoozeAction` and
   `hiddenPreviewsPlaceholder` on EVERY sync, before any
   `replaceRequests`. `reminderContent` gives a reminder the
@@ -1672,11 +1674,13 @@ what a change must keep.
   `languageChanged` event, and on `remindersNative.onResponse` (a tap
   that lands after the `active` re-plan drained the queue). It is
   single-flight with at most one queued follow-up via `replanReminders`,
-  and it never rejects (a failed sync or route is logged).
-- **Tap routing.** Every re-plan hands the responses its sync drained to
+  and it never rejects (a failed drain, plan or route is logged). A
+  failed drain plans and routes nothing, since the plan must see the
+  engagements first. A failed plan still routes the drained taps, since
+  the queue no longer holds them.
+- **Tap routing.** Every re-plan hands the responses its drain returned to
   `routeLatestResponse(responses, navigationRef)`
-  (`src/reminders/routing/`), so every trigger routes and nothing else
-  reads the native queue. It routes the latest `open` response (by
+  (`src/reminders/routing/`), so every trigger routes. It routes the latest `open` response (by
   `respondedAt`); a snooze never routes. A reminder that is gone (deleted,
   or deleted with its account) routes nowhere. `routeFor` is pure: an
   import reminder opens `AccountDetail` with `intent: 'importStatement'`;

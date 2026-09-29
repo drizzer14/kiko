@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { i18n } from '@kiko/i18n/init';
 import either, { bifold, isLeft } from 'fnts/either';
-import { remindersNative } from '@kiko/reminders/native';
-import { syncReminders } from '@kiko/reminders/scheduler';
 import { AppState, type AppStateStatus } from 'react-native';
 import { routeLatestResponse } from '@kiko/reminders/routing';
 import { navigationRef } from '@kiko/navigation/navigation-ref';
+import { drainReminderResponses, syncReminders } from '@kiko/reminders/scheduler';
+import { type NotificationResponse, remindersNative } from '@kiko/reminders/native';
 
 // Background too, so smart skip sees the newest data before the app sleeps.
 const REPLAN_STATES: readonly AppStateStatus[] = ['active', 'background'];
@@ -15,17 +15,34 @@ export const warnReplanFailure = (reason: unknown): void => {
   console.warn('[reminders] re-plan failed', reason);
 };
 
-// Never rejects: a native or database failure must not crash the app. The
-// sync is the one reader of the native response queue, so the taps it drained
-// are routed from here, whatever triggered it.
-const replan = async (): Promise<void> => {
-  const result = await either<unknown, void>(async () =>
-    routeLatestResponse(await syncReminders(i18n.t), navigationRef),
-  );
+const warnOnFailure = async (task: () => Promise<void>): Promise<void> => {
+  const result = await either<unknown, void>(async () => task());
 
   if (isLeft(result)) {
     warnReplanFailure(bifold(result));
   }
+};
+
+// Never rejects: a native or database failure must not crash the app. The
+// drain is the one reader of the native response queue, so the taps it took
+// are routed from here, whatever triggered it, and even when the plan fails:
+// the queue no longer holds them. A failed drain plans nothing, because the
+// plan's ignored count must see the taps first.
+const replan = async (): Promise<void> => {
+  const drained = await either<unknown, NotificationResponse[]>(async () =>
+    drainReminderResponses(),
+  );
+
+  if (isLeft(drained)) {
+    warnReplanFailure(bifold(drained));
+
+    return;
+  }
+
+  const responses: NotificationResponse[] = bifold(drained);
+
+  await warnOnFailure(() => syncReminders(i18n.t));
+  await warnOnFailure(() => routeLatestResponse(responses, navigationRef));
 };
 
 // One re-plan at a time. A trigger during a run queues a single follow-up,

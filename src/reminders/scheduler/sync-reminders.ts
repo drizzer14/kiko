@@ -105,20 +105,24 @@ const toNativeRequest = (request: PlannedRequest, t: TFunction): NativeReminderR
 });
 
 /**
- * Replaces the pending notifications with a fresh plan and returns the
- * responses drained from the native queue. With no reminders it runs one
- * `LIMIT 1` read and no plan-input query, since it runs on every app open.
+ * Empties the native response queue, stores its engagements, and returns the
+ * responses. It is the one reader of that queue; run it before
+ * `syncReminders`, whose ignored count reads the engagements.
  */
-export const syncReminders = async (
-  t: TFunction,
-  now: number = Date.now(),
-): Promise<NotificationResponse[]> => {
+export const drainReminderResponses = async (): Promise<NotificationResponse[]> => {
   const responses = await remindersNative.drainResponses();
 
-  // The drain has already emptied the native queue, so the engagements are
-  // stored before any later step can fail.
   await remindersRepo.recordEngagements(responses.filter(isEngagement));
 
+  return responses;
+};
+
+/**
+ * Replaces the pending notifications with a fresh plan. With no reminders it
+ * runs one `LIMIT 1` read and no plan-input query, since it runs on every app
+ * open.
+ */
+export const syncReminders = async (t: TFunction, now: number = Date.now()): Promise<void> => {
   // Registered on every sync, before any request is added, so the "Tomorrow"
   // title and the hidden-preview body follow a language change too.
   remindersNative.registerCategories(
@@ -129,7 +133,7 @@ export const syncReminders = async (
   if ((await remindersRepo.hasAnyQuery()).length === 0) {
     await remindersNative.replaceRequests([], []);
 
-    return responses;
+    return;
   }
 
   const deliverableSince = await syncDeliverableSince(now);
@@ -147,6 +151,4 @@ export const syncReminders = async (
     plan.requests.map((request) => toNativeRequest(request, t)),
     schedulableRows.filter((row) => !hasDataSinceSnooze(row)).map((row) => row.id),
   );
-
-  return responses;
 };

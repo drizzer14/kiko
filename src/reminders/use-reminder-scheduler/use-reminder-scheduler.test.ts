@@ -8,9 +8,11 @@ import { replanReminders, useReminderScheduler } from './use-reminder-scheduler'
 
 const mockSyncReminders = jest.fn();
 const mockRouteLatestResponse = jest.fn();
+const mockDrainReminderResponses = jest.fn();
 
 jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
   syncReminders: (...args: unknown[]) => mockSyncReminders(...args),
+  drainReminderResponses: (...args: unknown[]) => mockDrainReminderResponses(...args),
 }));
 // The routing itself is proven on the real routers in its own suite; here the
 // scheduler's hand-off of each sync's drained responses is under test.
@@ -74,7 +76,8 @@ beforeEach(() => {
   appStateListeners.length = 0;
   pendingRuns.length = 0;
   responseListeners.length = 0;
-  mockSyncReminders.mockReset().mockResolvedValue([]);
+  mockSyncReminders.mockReset().mockResolvedValue(undefined);
+  mockDrainReminderResponses.mockReset().mockResolvedValue([]);
   mockRouteLatestResponse.mockReset().mockResolvedValue(undefined);
   jest.spyOn(remindersNative, 'onResponse').mockImplementation((listener) => {
     responseListeners.push(listener);
@@ -223,8 +226,8 @@ describe('useReminderScheduler', () => {
     expect(mockSyncReminders).toHaveBeenCalledTimes(2);
   });
 
-  it('routes the responses each sync drained, through the app navigator', async () => {
-    mockSyncReminders.mockResolvedValueOnce([]).mockResolvedValueOnce([TAP]);
+  it('routes the responses each re-plan drained, through the app navigator', async () => {
+    mockDrainReminderResponses.mockResolvedValueOnce([]).mockResolvedValueOnce([TAP]);
     await renderHook(() => useReminderScheduler());
 
     await respond();
@@ -236,7 +239,7 @@ describe('useReminderScheduler', () => {
   });
 
   it('routes the responses a re-plan after a reminder write drained', async () => {
-    mockSyncReminders.mockResolvedValue([TAP]);
+    mockDrainReminderResponses.mockResolvedValue([TAP]);
 
     await act(async () => {
       replanReminders();
@@ -260,13 +263,28 @@ describe('useReminderScheduler', () => {
     warn.mockRestore();
   });
 
-  it('routes nothing from a failed sync', async () => {
+  it('still routes the drained responses when the plan then fails, and logs the failure', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockDrainReminderResponses.mockResolvedValue([TAP]);
     mockSyncReminders.mockRejectedValue(new Error('native replaceRequests failed'));
 
     await renderHook(() => useReminderScheduler());
 
+    expect(mockRouteLatestResponse).toHaveBeenCalledWith([TAP], navigationRef);
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    warn.mockRestore();
+  });
+
+  it('plans and routes nothing from a failed drain, and logs the failure', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockDrainReminderResponses.mockRejectedValue(new Error('database is locked'));
+
+    await renderHook(() => useReminderScheduler());
+
+    expect(mockSyncReminders).not.toHaveBeenCalled();
     expect(mockRouteLatestResponse).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
 
     warn.mockRestore();
   });

@@ -22,7 +22,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { remindersRepo } from '@kiko/reminders/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
-import { syncReminders } from './sync-reminders';
+import { drainReminderResponses, syncReminders } from './sync-reminders';
 
 const local = (month: number, day: number, hour = 0, minute = 0): number =>
   new Date(2026, month - 1, day, hour, minute).getTime();
@@ -276,7 +276,7 @@ describe('syncReminders — notification categories', () => {
   });
 });
 
-describe('syncReminders — responses, back-off, and snoozes', () => {
+describe('drainReminderResponses', () => {
   it('records a tap as engagement and returns the drained responses', async () => {
     seedAccount('manual');
     seedReminder({ id: 'reminder-1', accountId: 'manual', kind: 'add_transactions' });
@@ -289,11 +289,22 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
       },
     ];
 
-    await expect(syncReminders(english, NOW)).resolves.toEqual(drainedResponses);
+    await expect(drainReminderResponses()).resolves.toEqual(drainedResponses);
 
     expect(reminderColumn('reminder-1', 'last_engaged_at')).toBe(local(10, 1, 9));
   });
 
+  it('is not part of the plan, which leaves the response queue to it', async () => {
+    seedAccount('manual');
+    seedReminder({ id: 'reminder-1', accountId: 'manual', kind: 'add_transactions' });
+
+    await syncReminders(english, NOW);
+
+    expect(remindersNative.drainResponses).not.toHaveBeenCalled();
+  });
+});
+
+describe('syncReminders — responses, back-off, and snoozes', () => {
   it('keeps a reminder paused when the user taps its paused notice, and returns the tap', async () => {
     seedAccount('manual');
     seedReminder({ id: 'ignored', accountId: 'manual', kind: 'add_transactions' });
@@ -306,7 +317,8 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
       },
     ];
 
-    await expect(syncReminders(english, local(10, 4, 20, 6))).resolves.toEqual(drainedResponses);
+    await expect(drainReminderResponses()).resolves.toEqual(drainedResponses);
+    await syncReminders(english, local(10, 4, 20, 6));
 
     expect(reminderColumn('ignored', 'last_engaged_at')).toBeNull();
     expect(reminderColumn('ignored', 'paused_at')).toBe(local(10, 4, 20));
@@ -342,13 +354,13 @@ describe('syncReminders — responses, back-off, and snoozes', () => {
       },
     ];
 
+    await drainReminderResponses();
     await syncReminders(english, NOW);
 
     expect(reminderColumn('snoozed', 'last_snoozed_at')).toBe(local(10, 1, 8));
     expect(reminderColumn('snoozed', 'last_engaged_at')).toBe(local(10, 1, 8));
     expect(fireStamps('snoozed')).toEqual(['10-1 20:0', '10-3 20:0', '10-4 20:0']);
 
-    drainedResponses = [];
     await syncReminders(english, NOW);
 
     expect(fireStamps('snoozed')).toEqual(['10-1 20:0', '10-3 20:0', '10-4 20:0']);
