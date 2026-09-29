@@ -1,6 +1,5 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
-import { useLayoutEffect } from 'react';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
@@ -8,6 +7,7 @@ import Sortable from 'react-native-sortables';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import { useLayoutEffect, useState } from 'react';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
@@ -124,15 +124,19 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     priceBookLoading,
   );
   const account = accounts.at(0);
+  // At most one offer per visit: once one is decided, clearing the import
+  // param would otherwise fall back to the manual-entry offer at once.
+  const [offerDecided, setOfferDecided] = useState(false);
   // After the page's own reads, so they queue first on op-sqlite's one worker;
   // above the loading gate, so a cached offer is there on the first ready frame.
   const offer = useReminderOffer({
     accountId,
     account,
     settings: settingsRows.at(0),
-    trigger: reminderOffer ?? 'manualActivity',
+    trigger: offerDecided ? undefined : (reminderOffer ?? 'manualActivity'),
   });
   const acceptOffer = (kind: ReminderKind): void => {
+    setOfferDecided(true);
     navigation.navigate('ReminderForm', { accountId, kind });
     navigation.setParams({ reminderOffer: undefined });
   };
@@ -146,6 +150,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       return;
     }
 
+    setOfferDecided(true);
     navigation.setParams({ reminderOffer: undefined });
   };
 

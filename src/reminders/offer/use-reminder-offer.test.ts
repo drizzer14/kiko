@@ -107,7 +107,7 @@ const readManualEntries = (): boolean =>
 
 // The account page's own account and settings reads, which it hands to the
 // offer rather than the offer repeating them.
-const renderOffer = async (accountId: string, trigger: ReminderOfferTrigger) => {
+const renderOffer = async (accountId: string, trigger: ReminderOfferTrigger | undefined) => {
   const kindsSeen: (ReminderKind | undefined)[] = [];
   const view = await renderHook(() => {
     const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts'], true, {
@@ -344,6 +344,16 @@ describe('useReminderOffer — accept and dismiss', () => {
       addEntry(accountId, 'manual', YESTERDAY);
       addEntry(accountId, 'manual', TODAY);
     }
+  });
+
+  it('offers nothing and reads nothing once the page has decided an offer', async () => {
+    const { kindsSeen } = await renderOffer('cash', undefined);
+
+    expect(kindsSeen).toEqual(expect.arrayContaining([undefined]));
+    expect(kindsSeen.every((kind) => kind === undefined)).toBe(true);
+    expect(
+      prepare.mock.calls.filter(([statement]) => /from "(reminders|transactions)"/.test(statement)),
+    ).toEqual([]);
   });
 
   it('decides from the account and settings rows the page read, with no read of its own', async () => {

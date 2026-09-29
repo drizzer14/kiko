@@ -13,12 +13,12 @@ type ReminderOffer = { kind: ReminderKind; dismiss: () => Promise<void> };
 
 // The page's own account and settings rows, `undefined` while its reads load:
 // a second subscription here would queue the same reads again on op-sqlite's
-// one worker.
+// one worker. No trigger once the page has had its one offer for the visit.
 type ReminderOfferInput = {
   accountId: string;
   account: AccountRow | undefined;
   settings: SettingsRow | undefined;
-  trigger: ReminderOfferTrigger;
+  trigger: ReminderOfferTrigger | undefined;
 };
 
 const MANUAL_ACTIVITY_DAYS = 30;
@@ -57,35 +57,30 @@ export const useReminderOffer = ({
   settings,
   trigger,
 }: ReminderOfferInput): ReminderOffer | undefined => {
-  const kind = kindOf(trigger);
+  const kind = foldMap(maybe(trigger), kindOf);
   const [since] = useState(() => manualActivitySince(Date.now()));
   const { data: reminders, isLoading: remindersLoading } = useLiveQuery(
     remindersRepo.listByAccountQuery(accountId),
     ['reminders'],
-    true,
+    kind !== undefined,
     { cached: true },
   );
   const remindersReady = useDataReady(remindersLoading);
-  const dismissed =
-    foldMap(maybe(settings), (settingsRow) =>
-      isReminderOfferDismissed(settingsRow, accountId, kind),
-    ) ?? false;
   const undecided =
+    kind !== undefined &&
     remindersReady &&
     settings !== undefined &&
     account !== undefined &&
     account.archivedAt === null &&
     !reminders.some((reminder) => reminder.kind === kind) &&
-    !dismissed;
+    !isReminderOfferDismissed(settings, accountId, kind);
   const { data: imports, isLoading: importLoading } = useLiveQuery(
     remindersRepo.hasImportQuery(accountId),
     ['transactions', 'holdings'],
     undecided && trigger === 'afterImport',
     { cached: true },
   );
-  const eligible = (
-    foldMap(maybe(account), (found) => eligibleReminderKinds(found, imports.length > 0)) ?? []
-  ).includes(kind);
+  const eligible = undecided && eligibleReminderKinds(account, imports.length > 0).includes(kind);
   const { data: manualEntries, isLoading: manualEntriesLoading } = useLiveQuery(
     remindersRepo.manualEntryDaysQuery(accountId, since),
     ['transactions', 'holdings'],
@@ -96,9 +91,10 @@ export const useReminderOffer = ({
   const triggered = match(trigger)
     .with('afterImport', () => true)
     .with('manualActivity', () => (manualEntries.at(0)?.entries ?? 0) >= MANUAL_ACTIVITY_ENTRIES)
+    .with(undefined, () => false)
     .exhaustive();
 
-  if (!(undecided && triggerReady && eligible && triggered)) {
+  if (!(eligible && triggerReady && triggered)) {
     return undefined;
   }
 

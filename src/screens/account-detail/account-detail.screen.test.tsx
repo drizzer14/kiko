@@ -1244,6 +1244,72 @@ describe('AccountDetailScreen — reminder offer', () => {
     expect(mockDismiss).toHaveBeenCalledTimes(1);
   });
 
+  describe('at most one offer per visit', () => {
+    const offerByTrigger = new Map<string | undefined, { kind: string; dismiss: jest.Mock }>([
+      ['afterImport', { kind: 'statement_import', dismiss: mockDismiss }],
+      ['manualActivity', { kind: 'add_transactions', dismiss: mockDismiss }],
+    ]);
+
+    const renderVisit = async (params: object) => {
+      const view = await renderScreen(asRouteProp('AccountDetail', params));
+      // The router's own param update, which the spy navigation does not make.
+      const setParams = async (next: object): Promise<void> => {
+        await view.rerender(
+          <AccountDetailScreen
+            route={asRouteProp('AccountDetail', next)}
+            navigation={asNavigationProp<AccountDetailProps['navigation']>(view.navigation)}
+          />,
+        );
+      };
+
+      return { ...view, setParams };
+    };
+
+    const lastTrigger = (): unknown => mockUseReminderOffer.mock.lastCall?.[0].trigger;
+
+    beforeEach(() => {
+      mockUseReminderOffer.mockImplementation(({ trigger }: { trigger?: string }) =>
+        offerByTrigger.get(trigger),
+      );
+    });
+
+    it.each(['Set up reminder', 'Not now'])(
+      'shows no manual-entry offer once the import offer is decided with %s',
+      async (label) => {
+        const view = await renderVisit({
+          accountId: 'a',
+          name: 'Cash',
+          reminderOffer: 'afterImport',
+        });
+
+        await fireEvent.press(view.getByText(label));
+        await waitFor(() =>
+          expect(view.navigation.setParams).toHaveBeenCalledWith({ reminderOffer: undefined }),
+        );
+        await view.setParams({ accountId: 'a', name: 'Cash' });
+
+        expect(view.queryByTestId('reminder-offer')).toBeNull();
+        expect(lastTrigger()).toBeUndefined();
+      },
+    );
+
+    it('shows the manual-entry offer no more once a later import offer is decided', async () => {
+      const view = await renderVisit({ accountId: 'a', name: 'Cash' });
+
+      expect(view.getByText('Want a reminder to add transactions to this account?')).toBeTruthy();
+
+      await view.setParams({ accountId: 'a', name: 'Cash', reminderOffer: 'afterImport' });
+      await fireEvent.press(view.getByText('Not now'));
+      await waitFor(() =>
+        expect(view.navigation.setParams).toHaveBeenCalledWith({ reminderOffer: undefined }),
+      );
+      await view.setParams({ accountId: 'a', name: 'Cash' });
+
+      expect(view.queryByTestId('reminder-offer')).toBeNull();
+      expect(lastTrigger()).toBeUndefined();
+    });
+  });
+
   it('a failed Not now shows the save-error alert and keeps the offer', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     mockDismiss.mockRejectedValue(new Error('database is locked'));
