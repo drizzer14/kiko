@@ -195,32 +195,40 @@ describe('ReminderFormScreen — create', () => {
     const screen = await renderCreate();
 
     await fireEvent.press(screen.getByText('Monthly'));
-    await fireEvent.press(screen.getByLabelText('Day of month'));
-    await fireEvent.press(screen.getByTestId('reminder-day-of-month-option-15'));
+    await fireEvent.press(screen.getByTestId('reminder-day-of-month-option-31'));
     await save(screen);
 
     expect(remindersRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        schedule: { frequency: 'monthly', minuteOfDay: 20 * 60, dayOfMonth: 15 },
+        schedule: { frequency: 'monthly', minuteOfDay: 20 * 60, dayOfMonth: 31 },
       }),
     );
   });
 
-  it('shows the last-day hint only for day 29, 30 or 31', async () => {
+  it('marks the saved day in the day grid on edit', async () => {
+    const screen = await renderEdit({ frequency: 'monthly', minuteOfDay: 20 * 60, dayOfMonth: 15 });
+
+    expect(
+      screen.getByTestId('reminder-day-of-month-option-15').props.accessibilityState,
+    ).toMatchObject({ selected: true });
+    expect(
+      screen.getByTestId('reminder-day-of-month-option-1').props.accessibilityState,
+    ).toMatchObject({ selected: false });
+  });
+
+  it.each([29, 30, 31])('shows the last-day hint for day %i, and not for day 28', async (day) => {
     const hint = 'In shorter months, the reminder comes on the last day.';
     const screen = await renderCreate('statement_import');
 
     expect(screen.queryByText(hint)).toBeNull();
 
-    await fireEvent.press(screen.getByLabelText('Day of month'));
+    await fireEvent.press(screen.getByTestId(`reminder-day-of-month-option-${day}`));
+
+    expect(screen.getByText(hint)).toBeTruthy();
+
     await fireEvent.press(screen.getByTestId('reminder-day-of-month-option-28'));
 
     expect(screen.queryByText(hint)).toBeNull();
-
-    await fireEvent.press(screen.getByLabelText('Day of month'));
-    await fireEvent.press(screen.getByTestId('reminder-day-of-month-option-29'));
-
-    expect(screen.getByText(hint)).toBeTruthy();
   });
 
   it('preselects 7 days on a switch to every N days, and saves the interval anchored on today', async () => {

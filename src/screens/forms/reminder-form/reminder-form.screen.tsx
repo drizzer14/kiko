@@ -35,10 +35,10 @@ import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldLabel from '@kiko/design-system/components/field-label';
 import { useNotificationPreAlert } from '@kiko/reminders/permission';
-import SelectField from '@kiko/design-system/components/select-field';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import DayOfMonthGrid from '@kiko/design-system/components/day-of-month-grid';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import NotificationPreAlertSheet from '@kiko/design-system/components/notification-pre-alert-sheet';
@@ -53,10 +53,6 @@ type ReminderFormScreenProps = {
 type ReminderFrequency = ReminderSchedule['frequency'];
 
 const FREQUENCIES: readonly ReminderFrequency[] = ['daily', 'weekly', 'monthly', 'interval'];
-
-const DAYS_OF_MONTH = Array.from({ length: 31 }, (_unused, index) => String(index + 1));
-
-const DAY_OF_MONTH_LABELS = Object.fromEntries(DAYS_OF_MONTH.map((day) => [day, day]));
 
 // The shortest month has 28 days, so a later day falls back to the last one.
 const FIRST_DAY_NOT_IN_EVERY_MONTH = 29;
@@ -217,14 +213,10 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
     ))
     .with('monthly', () => (
       <Box gap={1}>
-        <SelectField
+        <DayOfMonthGrid
           label={t('reminders.form.dayOfMonth')}
-          sheetTitle={t('reminders.form.dayOfMonthSheetTitle')}
-          options={DAYS_OF_MONTH}
-          selected={String(draft.dayOfMonth)}
-          onSelect={(day) => updateDraft({ dayOfMonth: Number(day) })}
-          labels={DAY_OF_MONTH_LABELS}
-          placeholder={t('reminders.form.dayOfMonthPlaceholder')}
+          selected={draft.dayOfMonth}
+          onSelect={(dayOfMonth) => updateDraft({ dayOfMonth })}
           testID="reminder-day-of-month"
         />
 

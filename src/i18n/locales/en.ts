@@ -1122,8 +1122,6 @@ export const en = {
       weekdays: 'Days',
       weekdaysError: 'No days selected.',
       dayOfMonth: 'Day of month',
-      dayOfMonthSheetTitle: 'Day of Month',
-      dayOfMonthPlaceholder: 'Select a day',
       dayOfMonthHint: 'In shorter months, the reminder comes on the last day.',
       intervalDays: 'Repeat every',
       intervalDaysError: 'Enter a number of days from 2 to 365.',

@@ -898,8 +898,6 @@ export const uk: typeof en = {
       weekdays: 'Дні',
       weekdaysError: 'Дні не вибрано.',
       dayOfMonth: 'День місяця',
-      dayOfMonthSheetTitle: 'День місяця',
-      dayOfMonthPlaceholder: 'Оберіть день',
       dayOfMonthHint: 'У коротші місяці нагадування надійде в останній день.',
       intervalDays: 'Повторювати кожні',
       intervalDaysError: 'Введіть кількість днів від 2 до 365.',

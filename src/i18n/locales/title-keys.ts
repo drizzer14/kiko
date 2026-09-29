@@ -94,7 +94,6 @@ export const TITLE_KEYS = new Set([
   'home.filterCategoriesSheetTitle',
   'home.title',
   'reminders.form.createTitle',
-  'reminders.form.dayOfMonthSheetTitle',
   'reminders.form.editTitle',
   'reminders.form.timeSheetTitle',
   'reminders.permission.preAlertTitle',

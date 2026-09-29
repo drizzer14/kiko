@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -32,7 +32,9 @@ control. Apply HIG on every design task, on four axes:
   exception is a row whose neighbours sit too close for `hitSlop` to
   reach 44pt without overlapping the next row's target (the raw-preview
   header rows, `raw-preview.styles.ts`'s `ROW_MIN_HEIGHT`); there a
-  `minHeight` on the row's own layout box is the fallback.
+  `minHeight` on the row's own layout box is the fallback. `DayOfMonthGrid`
+  is the same case in two dimensions: each cell is a real 44pt box
+  around the unchanged 34pt chip look.
 - **SF Symbol sizing** — a symbol reads as a peer of the text beside
   it (see `iconSizes` under "Token categories"); it scales with its
   paired type step.
@@ -1120,6 +1122,27 @@ new component can land between reviews of this skill:
   (`LanguageSwitch`) renders one — the SAME reason `FieldTrigger` lives
   there too; a screen-level consumer imports it from there like any
   other design-system component.
+- **DayOfMonthGrid** (`src/design-system/components/day-of-month-grid/`)
+  — single-select day of month, 1 to 31, as a 7-column calendar-shaped
+  grid (days 29-31 on a short last row), replacing a 31-row select sheet
+  (user request 2026-09-30, "render day of month as a chips grid").
+  Grounded in the iOS Reminders custom repeat "Monthly > Each" day grid
+  and the HIG Pickers page ("A picker works well when displayed in
+  context"; a short list suits a non-picker control). Each chip is
+  ChipRow's approved look (`accent` + `onAccent` selected,
+  `neutralSubtle` + `textPrimary` otherwise, `radii.sm`, 34pt), drawn
+  inside a real 44pt cell with no `hitSlop` (see "Touch targets"); the
+  grid pulls its footprint back with negative margins so its outer
+  chips line up with the caption and the other fields. It is NOT a
+  `ChipRow` variant: ChipRow is a wrap-flow row, never an equal-width
+  column grid. Accessibility: each cell is a `button` with
+  `accessibilityState.selected`, its number as its label, and the group
+  `label` as its hint (the SegmentedControl reasoning: a non-accessible
+  container gives VoiceOver nothing to read); the container carries the
+  `label` too. Props: `label`/`selected`/`onSelect`/`testID` (cells are
+  `${testID}-option-<day>`). The caller renders any hint below it (the
+  reminder form's short-month hint for days 29-31). Consumer: the
+  reminder form's monthly schedule.
 - **SegmentedControl** (`src/design-system/components/segmented-control/`)
   — a JS implementation of Apple's iOS `UISegmentedControl`, per the Human
   Interface Guidelines
@@ -1214,7 +1237,8 @@ new component can land between reviews of this skill:
     Total-cost field).
   - `ChipRow` (leaves the form the same): the reminder form's weekday
     picker (`WeekdayField`, multi-select); the holding form's metal
-    form/unit chips.
+    form/unit chips. The reminder form's day of month uses the same chip
+    look in a calendar grid (`DayOfMonthGrid`), not a select sheet.
   - `SelectField` (long list, regardless of field-change): the
     property-category and loan-kind pickers (6 and 4 options — too
     wide for a `ChipRow`); the bond coupon-frequency picker (shared by
