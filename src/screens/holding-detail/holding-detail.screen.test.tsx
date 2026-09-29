@@ -22,6 +22,7 @@ import {
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
@@ -133,15 +134,6 @@ const startMonthsAgo = (monthsAgo: number): number => {
   const now = new Date();
 
   return Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsAgo, 1);
-};
-
-// Steps local calendar days, never a fixed `days * DAY_MS`: a DST day is 23 or
-// 25 hours, so a fixed offset near midnight lands on the neighbouring day.
-const localDaysFrom = (time: number, days: number): number => {
-  const date = new Date(time);
-  date.setDate(date.getDate() + days);
-
-  return date.getTime();
 };
 
 const annuityLoanMeta: LoanMeta = {
@@ -1866,7 +1858,9 @@ describe('HoldingDetailScreen', () => {
       {
         id: 'x2',
         amountMinorUnits: -3000,
-        time: now - 60 * 1000,
+        // Local midnight stays on today at any hour; a fixed minute back from
+        // `now` falls on yesterday when the suite runs just after midnight.
+        time: startOfLocalDay(now),
         description: 'SecondToday',
         source: 'manual',
       },

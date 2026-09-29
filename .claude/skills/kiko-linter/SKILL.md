@@ -671,6 +671,10 @@ reasoning.
   (`import { readFileSync as read }`), a default or namespace import
   (`fs.readFileSync`), `require('node:fs').readFileSync`, and
   `fs.promises.readFile` via `$FS.readFile(...)`.
+- A metavariable callee `$READ(...)` also matches a member call
+  (`fs.readFileSync(…)`, `fs.promises.readFile(…)`), so a
+  `pattern-not: $READ(...)` needs no `$FS.$READ(...)` twin. The good
+  fixture's `fs.` reads pin this.
 - Semgrep skipped every file when it scanned a DIRECTORY under the
   scratchpad (`paths.scanned` was empty, no error); naming the file
   scanned it. Scan a probe file by its path, and read `paths.scanned`

@@ -30,6 +30,7 @@ import { formatDate, defaultDateRange } from '@kiko/dates';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '@kiko/test-support/mock-text-tone';
+import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 import { resolveBottomClearance } from '@kiko/design-system/components/screen';
@@ -260,15 +261,6 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
   exchangeCounterpartHoldingId: null,
   ...overrides,
 });
-
-// Steps local calendar days, never a fixed `days * DAY_MS`: a DST day is 23 or
-// 25 hours, so a fixed offset near midnight lands on the neighbouring day.
-const localDaysFrom = (time: number, days: number): number => {
-  const date = new Date(time);
-  date.setDate(date.getDate() + days);
-
-  return date.getTime();
-};
 
 // Seed the live data with the standard single Monobank account + UAH holding,
 // letting each test override only the dimension it exercises.

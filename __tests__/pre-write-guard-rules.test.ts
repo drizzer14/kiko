@@ -361,26 +361,42 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     }
   });
 
-  // A co-located test is where a source read lands; app source reads files at
+  const sourceReadProbe = [
+    "import { readFileSync } from 'node:fs';",
+    '',
+    "export const schemaText = (): string => readFileSync(`${__dirname}/schema.ts`, 'utf8');",
+    '',
+  ].join('\n');
+
+  const dayOffsetProbe = [
+    'const DAY_MS = 86_400_000;',
+    '',
+    'export const tomorrow = (): number => Date.now() + DAY_MS;',
+    '',
+  ].join('\n');
+
+  // Both rules guard test code only. A co-located test is where a source read
+  // or a real-clock fixture lands; app source reads files and the real clock at
   // runtime on purpose, and a harness test under __tests__/ reads rules,
-  // scripts and docs, which mutation testing never rewrites.
+  // scripts and docs, which mutation testing never rewrites. A test that keeps
+  // one overridden read is still checked on every other line.
+  const sourceRead = 'kiko-no-source-text-read-in-test';
+  const dayOffset = 'kiko-no-fixed-day-offset-on-real-clock-in-test';
+
   it.each([
-    ['src/probe/source-read-probe.test.ts', 2],
-    ['src/probe/source-read-probe.test.tsx', 2],
-    ['src/db/settings-columns.test.ts', 2],
-    ['src/probe/source-read-probe.ts', 0],
-    ['__tests__/source-read-probe.test.ts', 0],
-  ])('kiko-no-source-text-read-in-test on %s exits %s', (relativeTarget, status) => {
-    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-source-read-'));
+    [sourceRead, 'src/probe/source-read-probe.test.ts', 2, sourceReadProbe],
+    [sourceRead, 'src/probe/source-read-probe.test.tsx', 2, sourceReadProbe],
+    [sourceRead, 'src/db/settings-columns.test.ts', 2, sourceReadProbe],
+    [sourceRead, 'src/probe/source-read-probe.ts', 0, sourceReadProbe],
+    [sourceRead, '__tests__/source-read-probe.test.ts', 0, sourceReadProbe],
+    [dayOffset, 'src/probe/day-offset-probe.test.ts', 2, dayOffsetProbe],
+    [dayOffset, 'src/probe/day-offset-probe.test.tsx', 2, dayOffsetProbe],
+    [dayOffset, 'src/probe/day-offset-probe.ts', 0, dayOffsetProbe],
+  ])('%s on %s exits %s', (ruleId, target, status, content) => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-test-scope-'));
     try {
-      const targetFile = join(project, ...relativeTarget.split('/'));
+      const targetFile = join(project, ...target.split('/'));
       mkdirSync(join(targetFile, '..'), { recursive: true });
-      const content = [
-        "import { readFileSync } from 'node:fs';",
-        '',
-        "export const schemaText = (): string => readFileSync(`${__dirname}/schema.ts`, 'utf8');",
-        '',
-      ].join('\n');
 
       const result = runGuard(payloadFor(targetFile, content), project);
 
@@ -388,38 +404,7 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
 
       if (status === 2) {
         const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
-        expect(reason).toContain('kiko-no-source-text-read-in-test');
-      }
-    } finally {
-      rmSync(project, { recursive: true, force: true });
-    }
-  });
-
-  // App source reads the real clock on purpose and steps days with the date
-  // helpers; the ban is on a test fixture built from the real clock.
-  it.each([
-    ['src/probe/day-offset-probe.test.ts', 2],
-    ['src/probe/day-offset-probe.test.tsx', 2],
-    ['src/probe/day-offset-probe.ts', 0],
-  ])('kiko-no-fixed-day-offset-on-real-clock-in-test on %s exits %s', (relativeTarget, status) => {
-    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-day-offset-'));
-    try {
-      const targetFile = join(project, ...relativeTarget.split('/'));
-      mkdirSync(join(targetFile, '..'), { recursive: true });
-      const content = [
-        'const DAY_MS = 86_400_000;',
-        '',
-        'export const tomorrow = (): number => Date.now() + DAY_MS;',
-        '',
-      ].join('\n');
-
-      const result = runGuard(payloadFor(targetFile, content), project);
-
-      expect(result.status).toBe(status);
-
-      if (status === 2) {
-        const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
-        expect(reason).toContain('kiko-no-fixed-day-offset-on-real-clock-in-test');
+        expect(reason).toContain(ruleId);
       }
     } finally {
       rmSync(project, { recursive: true, force: true });

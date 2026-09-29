@@ -46,6 +46,7 @@ jest.mock('@react-navigation/native', () => ({
 import { i18n } from '@kiko/i18n/init';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import { formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
@@ -227,15 +228,6 @@ const setLiveData = (data: LiveData): void => {
 
 const DAY = 86_400_000;
 const now = Date.now();
-
-// Steps local calendar days, never a fixed `days * DAY`: a DST day is 23 or 25
-// hours, so a fixed offset near midnight lands on the neighbouring day.
-const localDaysFrom = (time: number, days: number): number => {
-  const date = new Date(time);
-  date.setDate(date.getDate() + days);
-
-  return date.getTime();
-};
 
 const CASH: Account = { id: 'a', name: 'Cash', kind: 'cash', color: null };
 const BANK: Account = { id: 'b', name: 'Bank', kind: 'bank', color: null };
