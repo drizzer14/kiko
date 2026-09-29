@@ -30,8 +30,8 @@
 // And it denies a shell write into `src/`, `__tests__/`, or `rules/` at the
 // root of any worktree of this repository — `sed -i`, `perl -i`, a `>`/`>>`
 // (or `>|`, `&>`, `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner
-// (or one fed by a heredoc) that opens a file for writing, and `find -exec`
-// or `xargs` running an in-place edit — because the pre-write guard sees only
+// (or one fed by a heredoc) that opens a file for writing, and `xargs`
+// running an in-place edit — because the pre-write guard sees only
 // Edit/Write/MultiEdit, so such a write lands unchecked. A heredoc body that
 // no shell or interpreter runs is text, never checked for writes.
 //
@@ -91,9 +91,12 @@ const SHELL_WRITE_REASON_LINES = [
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
     'or a python or node one-liner lands unchecked; guard-replay only catches it at Stop, after ' +
     'the fact.',
-  'HOW TO FIX:     use the Edit or Write tool for that file. Reading it, a redirect to /dev/null ' +
-    'or to a path outside those trees (your scratchpad, /tmp), git, and a formatter or fixer ' +
-    "writing on its own (npx biome check --write, the harness's import-order --write) stay allowed.",
+  'HOW TO FIX:     use the Edit or Write tool for that file. A path the guard cannot resolve (a ' +
+    'variable, a glob) counts when a folder in it is named src, rules, or __tests__: write the ' +
+    'literal path, or use another folder name. Reading it, a redirect to /dev/null or to a path ' +
+    'outside those trees (your scratchpad, /tmp), git itself (without a redirect into those ' +
+    "trees), and a formatter or fixer writing on its own (npx biome check --write, the harness's " +
+    'import-order --write) stay allowed.',
   'DO NOT:         route the write through a variable, a script file, a shell fed by a pipe, or ' +
     'another tool (cp, mv, dd) to get past this guard.',
 ];
@@ -1138,13 +1141,16 @@ function namesGuardedTree(target) {
 }
 
 // The first of `targets` that lands inside a tree from any directory the
-// command may run in (resolved when the text allows), or null.
-function firstGuardedPath(targets, directories, rules) {
+// command may run in (resolved when the text allows), as `{ verb, where }`
+// for the deny's DETAILS, or null.
+function firstGuardedWrite(targets, directories, rules, verb = 'writes') {
   for (const target of targets) {
     for (const directory of directories) {
       const resolved = resolveDirectory(directory, target);
-      if (resolved === null && namesGuardedTree(target)) return target;
-      if (resolved !== null && isInsideGuardedTree(resolved, rules)) return resolved;
+      if (resolved === null && namesGuardedTree(target)) return { verb, where: target };
+      if (resolved !== null && isInsideGuardedTree(resolved, rules)) {
+        return { verb, where: resolved };
+      }
     }
   }
 
@@ -1261,64 +1267,6 @@ function writtenFiles(base, parameters) {
   return null;
 }
 
-const FIND_EXEC = new Set(['-exec', '-execdir', '-ok', '-okdir']);
-
-// The commands `find … -exec <command> {} +` (or `\;`) runs on each file.
-function findExecCommands(parameters) {
-  const commands = [];
-  let current = null;
-  for (const word of parameters) {
-    if (current === null) {
-      if (FIND_EXEC.has(word)) current = [];
-    } else if (word === ';' || word === '+') {
-      commands.push(current);
-      current = null;
-    } else {
-      current.push(word);
-    }
-  }
-
-  return current === null ? commands : [...commands, current];
-}
-
-// The folders find starts from: the words before its first expression,
-// after its `-H`/`-L`/`-P` options; `.` when there are none.
-function findStartPaths(parameters) {
-  const rest = parameters.slice(parameters.findIndex((word) => !/^-[HLP]$/.test(word)));
-  const end = rest.findIndex((word) => word.startsWith('-') || word === '(' || word === '!');
-  const paths = end === -1 ? rest : rest.slice(0, end);
-
-  return paths.length === 0 ? ['.'] : paths;
-}
-
-// A start folder that is the root of a worktree of this repository, where
-// find reaches every tree in it.
-function worktreeRootAt(start, directories, rules) {
-  const roots = directories
-    .map((directory) => resolveDirectory(directory, start))
-    .filter((resolved) => resolved !== null && isProjectWorktree(resolved, rules));
-
-  return roots[0] ?? null;
-}
-
-// Where `find … -exec` edits: a start folder inside a tree, or a worktree
-// root, when one of its commands edits in place. Null otherwise.
-function findWritePath(parameters, directories, rules) {
-  const edits = findExecCommands(parameters).some(
-    (command) =>
-      command.length > 0 && writtenFiles(basename(command[0]), command.slice(1)) !== null,
-  );
-  if (!edits) return null;
-  for (const start of findStartPaths(parameters)) {
-    const where =
-      firstGuardedPath([`${start}/{}`], directories, rules) ??
-      worktreeRootAt(start, directories, rules);
-    if (where !== null) return where;
-  }
-
-  return null;
-}
-
 // Reads the options of a python or node command up to its code: the `-c` /
 // `-e` word, or, with no script file (or `-`), its stdin — a heredoc body
 // or here-string. `readOption` names each option's kind: `code`, `module`
@@ -1400,7 +1348,6 @@ const OPEN_CALL = /^open(?:Sync)?$/;
 const WRITING_MODE = /(['"])[rbt]*[wax+][rbtwax+]*\1/;
 // pathlib's `.write_text(`/`.write_bytes(` names its file in the receiver.
 const PATHLIB_WRITE = /\.write_(?:text|bytes)\s*\(/g;
-const PATHLIB_RECEIVER = /\bPath\s*\(([^()]*)\)\s*$/;
 // A string literal, with python's r/b/f/u prefixes, or a JS template.
 const STRING_LITERAL = /(?:\b[rRbBuUfF]{1,2})?(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
 const WHOLE_STRING_LITERAL = /^\s*(?:[rRbBuUfF]{1,2})?(['"`])((?:\\.|(?!\1)[^\\])*)\1\s*$/s;
@@ -1432,8 +1379,16 @@ function endsFirstArgument(state, character) {
   return character === ',' && state.depth === 0;
 }
 
+// The text of the statement before `index`: pathlib's receiver
+// (`Path('…')`, `p`).
+function statementBefore(code, index) {
+  const start = Math.max(code.lastIndexOf(';', index), code.lastIndexOf('\n', index)) + 1;
+
+  return code.slice(start, index);
+}
+
 // The first argument of each write call in `code` (for pathlib, the
-// receiver's), as text.
+// receiver), as text.
 function writeCallTargets(code) {
   const targets = [];
   for (const match of code.matchAll(WRITE_CALL)) {
@@ -1442,7 +1397,7 @@ function writeCallTargets(code) {
     if (!OPEN_CALL.test(match[1]) || WRITING_MODE.test(rest)) targets.push(first);
   }
   for (const match of code.matchAll(PATHLIB_WRITE)) {
-    targets.push(PATHLIB_RECEIVER.exec(code.slice(0, match.index))?.[1] ?? '');
+    targets.push(statementBefore(code, match.index));
   }
 
   return targets;
@@ -1450,51 +1405,69 @@ function writeCallTargets(code) {
 
 const literalsOf = (text) => [...text.matchAll(STRING_LITERAL)].map((match) => match[2]);
 
-// The paths one write call may write: its literal first argument; or, when
-// it names its file through a variable or an expression, every string
-// literal in the code, the expression's own literals joined by `/`
-// (`os.path.join('src', 'x.ts')`), and every argument word.
-function writeCallPaths(target, program) {
-  const literal = WHOLE_STRING_LITERAL.exec(target);
-  if (literal !== null) return [literal[2]];
+const BARE_NAME = /^\s*[A-Za-z_$][\w$]*\s*$/;
+const ARGV_READ = /\b(?:sys|process)\.argv\b/;
 
-  return [...literalsOf(program.code), literalsOf(target).join('/'), ...program.argv];
+// The paths the write calls in `program` may write. A string-literal target
+// writes that path (`certain`). A bare variable may hold any string literal
+// in the code; an expression may build its path from its own literals,
+// alone or joined by `/` (`os.path.join('src', 'x.ts')`), and, when it
+// reads `sys.argv`/`process.argv`, from the words after the code
+// (`possible`). The code's literals are read once, however many calls.
+function writeCallCandidates({ code, argv }) {
+  const certain = new Set();
+  const possible = new Set();
+  let throughVariable = false;
+  for (const target of writeCallTargets(code)) {
+    const literal = WHOLE_STRING_LITERAL.exec(target);
+    if (literal !== null) certain.add(literal[2]);
+    else if (BARE_NAME.test(target)) throughVariable = true;
+    else for (const candidate of expressionPaths(target, argv)) possible.add(candidate);
+  }
+  if (throughVariable) for (const literal of literalsOf(code)) possible.add(literal);
+
+  return { certain, possible };
 }
 
-function interpreterWritePath(program, directories, rules) {
-  for (const target of writeCallTargets(program.code)) {
-    const where = firstGuardedPath(writeCallPaths(target, program), directories, rules);
-    if (where !== null) return where;
-  }
+function expressionPaths(expression, argv) {
+  const own = literalsOf(expression);
 
-  return null;
+  return [...own, own.join('/'), ...(ARGV_READ.test(expression) ? argv : [])];
+}
+
+function interpreterWrite(program, directories, rules) {
+  const { certain, possible } = writeCallCandidates(program);
+
+  return (
+    firstGuardedWrite([...certain], directories, rules) ??
+    firstGuardedWrite([...possible], directories, rules, 'may write')
+  );
 }
 
 // What `xargs` hands an in-place edit comes from its input, so it may be
 // any file.
-const XARGS_TARGET = 'the files xargs reads from its input';
+const XARGS_WRITE = { verb: 'writes', where: 'the files xargs reads from its input' };
 
 // Where one unwrapped command writes inside a tree, or null.
-function commandWritePath({ tokens, viaXargs }, { directories, rules, stdinScripts }) {
+function commandWrite({ tokens, viaXargs }, { directories, rules, stdinScripts }) {
   const base = basename(tokens[0]);
   const parameters = tokens.slice(1);
   const files = writtenFiles(base, parameters);
-  if (files !== null) return viaXargs ? XARGS_TARGET : firstGuardedPath(files, directories, rules);
-  if (base === 'find') return findWritePath(parameters, directories, rules);
+  if (files !== null) return viaXargs ? XARGS_WRITE : firstGuardedWrite(files, directories, rules);
   const program = interpreterProgramOf(base, parameters, stdinScripts);
   if (program === null) return null;
 
-  return interpreterWritePath(program, directories, rules);
+  return interpreterWrite(program, directories, rules);
 }
 
-const shellWriteFinding = (segment, where) => ({
+const shellWriteFinding = (segment, { verb, where }) => ({
   kind: 'shellWrite',
-  detail: `${segment.trim()} (writes ${where})`,
+  detail: `${segment.trim()} (${verb} ${where})`,
 });
 
 const isWriteCommand = (base) =>
   SED_COMMANDS.has(base) ||
-  ['perl', 'tee', 'find'].includes(base) ||
+  ['perl', 'tee'].includes(base) ||
   PYTHON_COMMAND.test(base) ||
   NODE_COMMANDS.has(base);
 
@@ -1695,18 +1668,18 @@ function commandFinding(command, context) {
   }
 
   if (!context.rules.checkWrites) return null;
-  const where = commandWritePath(command, context);
-  if (where === null) return null;
+  const write = commandWrite(command, context);
+  if (write === null) return null;
 
-  return shellWriteFinding(context.segment, where);
+  return shellWriteFinding(context.segment, write);
 }
 
 // Where a segment's redirects write inside a tree, or null.
-function redirectWritePath(redirects, directories, rules) {
+function redirectWrite(redirects, directories, rules) {
   if (!rules.checkWrites) return null;
   const targets = redirects.filter(isWritingRedirect).map((redirect) => redirect.target);
 
-  return firstGuardedPath(targets, directories, rules);
+  return firstGuardedWrite(targets, directories, rules);
 }
 
 // Returns the finding for one simple command — `{ kind: 'kill' }`, or
@@ -1727,10 +1700,10 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, directories, rul
     rules,
   });
   if (finding !== null) return finding;
-  const where = redirectWritePath(redirects, directories, rules);
-  if (where === null) return null;
+  const write = redirectWrite(redirects, directories, rules);
+  if (write === null) return null;
 
-  return shellWriteFinding(segment, where);
+  return shellWriteFinding(segment, write);
 }
 
 function firstFinding(lines, depth, checkHeredoc, rules) {

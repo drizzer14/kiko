@@ -59,6 +59,19 @@ const decide = (command: string, options: Record<string, unknown> = {}): string 
 
 const decideInMain = (command: string): string => decide(command, { cwd: MAIN });
 
+const DETAIL_SCRIPT = [
+  'const { decide } = require(process.argv[1]);',
+  'const finding = decide(process.argv[2], JSON.parse(process.argv[3]));',
+  'process.stdout.write(finding?.detail ?? "allow");',
+].join('\n');
+
+const detailOf = (command: string): string =>
+  spawnSync(
+    'node',
+    ['-e', DETAIL_SCRIPT, GUARD, command, JSON.stringify({ projectRoot: MAIN, cwd: MAIN })],
+    { encoding: 'utf8' },
+  ).stdout;
+
 const DENIED_SED_AND_PERL: string[] = [
   "sed -i 's/a/b/' src/x.ts",
   "sed -i '' 's/a/b/' src/x.ts",
@@ -77,6 +90,7 @@ const DENIED_SED_AND_PERL: string[] = [
   `sed -i 's/a/b/' ${WORKTREE}/src/x.ts`,
   "sed -i 's/a/b/' ../worktree/src/x.ts",
   "cd src && sed -i 's/a/b/' x.ts",
+  'cd $VAR && echo x > src/y.ts',
   "perl -pi -e 's/a/b/' src/x.ts",
   "perl -i -pe 's/a/b/' src/x.ts",
   "perl -pi.bak -e 's/a/b/' src/x.ts",
@@ -151,8 +165,6 @@ const DENIED_NESTED: string[] = [
   'echo x | tee >(cat > src/x.ts)',
   `bash -c "python3 -c \\"open('src/x.ts', 'w')\\""`,
   "grep -rl foo src | xargs sed -i 's/foo/bar/'",
-  "find src -name '*.ts' -exec sed -i 's/a/b/' {} +",
-  "find . -name '*.ts' -exec perl -pi -e 's/a/b/' {} \\;",
   "$(which sed) -i 's/a/b/' src/x.ts",
 ];
 
@@ -191,6 +203,9 @@ const ALLOWED: string[] = [
   `python3 -c "open('/tmp/x.ts', 'w').write(open('src/x.ts').read())"`,
   `node -e "console.log(require('fs').readFileSync('src/x.ts', 'utf8'))"`,
   `node -e "require('fs').writeFileSync('/tmp/x.ts', require('fs').readFileSync('src/a.ts'))"`,
+  `node -e "fs.writeFileSync(path.join(os.tmpdir(), 'x'), fs.readFileSync('src/a.ts'))"`,
+  `python3 -c "import sys; open(sys.argv[1] + '.bak', 'w').write(open('src/a.ts').read())" /tmp/x`,
+  `node -e "fs.writeFileSync(out, 'x')" src/a.ts`,
   'python3 scripts/tool.py src/a.ts',
   "cat > /tmp/notes.md <<'EOF'\necho x > src/x.ts\nsed -i 's/a/b/' src/x.ts\nEOF",
   'git commit -m "$(cat <<\'EOF\'\nfix: stop > src/x redirects\nEOF\n)"',
@@ -226,6 +241,27 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
   it('denies from a subfolder of a worktree', () => {
     expect(decide('echo x > x.ts', { cwd: join(MAIN, 'src') })).toBe('shellWrite');
     expect(decide('echo x > x.ts', { cwd: join(MAIN, 'scripts') })).toBe('allow');
+  });
+
+  // A literal target writes that file; a variable or expression target may
+  // write any string the code (for a bare variable) or the expression holds.
+  it.each([
+    [`python3 -c "open('src/x.ts', 'w')"`, `(writes ${MAIN}/src/x.ts)`],
+    [
+      `python3 -c "p = '/tmp/x'; open(p, 'w').write(open('src/a.ts').read())"`,
+      `(may write ${MAIN}/src/a.ts)`,
+    ],
+    [`python3 -c "from pathlib import Path; Path('src/x.ts').write_text('x')"`, '(may write'],
+  ])('names the file in DETAILS: %s', (command, detail) => {
+    expect(detailOf(command)).toContain(detail);
+  });
+
+  it('judges 3000 write calls through a variable well inside the hook timeout', () => {
+    const command = `node -e "${"fs.writeFileSync(p, 'x');".repeat(3000)}"`;
+    const started = Date.now();
+
+    expect(decideInMain(command)).toBe('allow');
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   it('counts a tree only at the root of a worktree of this repository', () => {

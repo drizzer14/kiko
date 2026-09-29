@@ -194,84 +194,32 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
-  guard-replay at Stop). The guard denies a write into a tree in
-  `WRITE_GUARDED_TREES` (`src/`, `__tests__/`, `rules/`) at the root of a
-  worktree of THIS repository: a folder with a `.git` whose common git
-  directory (`gitCommonDirectory`: the `.git` folder, or a `.git` file's
-  `gitdir` through `commondir`, realpath, case-folded) equals the one of
-  the checkout `kill-guard.js` lives in (`isProjectWorktree`; an
-  unreadable `.git` counts, fail closed). So another repository's `src/`,
-  a `src/` with no `.git` beside it (`node_modules/<pkg>/src/…`,
-  `docs/src/…`), and a file merely NAMED `rules.txt` pass. Paths resolve
-  from the payload `cwd` and every `cd`/`pushd` the MAIN-CHECKOUT deny
-  tracks (same `resolveDirectory`, same `~`/`$HOME` expansion); a
-  segment compares case-folded (APFS). A path the text cannot pin down
-  (a `$VAR`, a glob, a span, a relative path with no known directory)
-  denies when any folder in it is named like a tree (`namesGuardedTree`,
-  fail closed). What writes (read `commandWritePath`, `writtenFiles`,
-  and `isWritingRedirect` in `kill-guard.js` for the closed sets):
-  - a redirect whose operator holds `>` — `>`, `>>`, `1>`, `2>`, `>|`,
-    `&>`, `&>>`, `<>`, zsh's `>!` — except a `>&` duplicating a
-    descriptor (`2>&1`, `>&-`); `tokenize` keeps every redirect's
-    operator and target in `redirects` for this. A redirect on any
-    command counts, git included (`git show HEAD:… > <tree file>`
-    denies);
-  - `sed`/`gsed` with an in-place option (`-i`, `-i.bak`, `-Ei`,
-    `--in-place[=…]`): its operands, minus the script when no
-    `-e`/`-f` supplied it; a bare `-i` takes a next word `''` or `.…` as
-    BSD's backup extension. `perl` with any switch group holding `i`
-    (`-pi`, `-i.bak`, `-0pi`, `-pie`): its operands, minus the program
-    file when no `-e`/`-E` supplied the code. `tee` (`-a` too): every
-    operand;
-  - a `python*` (`python`, `python3`, `python3.12`) `-c` word, or its
-    stdin when it runs no script file (a heredoc body, a here-string,
-    `-`), and a `node`/`nodejs` `-e`/`-p`/`--eval`/`--print` word or
-    stdin: each write call (`open`/`openSync` with a writing mode string
-    — `'w'`, `'a'`, `'x'`, `'r+'` —, `writeFile(Sync)`,
-    `appendFile(Sync)`, `createWriteStream`, pathlib's
-    `Path(…).write_text`/`write_bytes`) whose first argument is a string
-    literal in a tree; when that argument is a variable or an
-    expression, every string literal in the code, the expression's own
-    literals joined by `/` (`os.path.join('src', 'x.ts')`), and every
-    argument after the code count (fail closed). A read
-    (`open(p)`, `readFileSync`) never counts;
-  - `find … -exec`/`-execdir`/`-ok` running an in-place `sed`/`perl` or
-    `tee`, from a start folder inside a tree or at a worktree root
-    (`find .` there reaches every tree); and an in-place `sed`/`perl`
-    or `tee` behind `xargs` for ANY file, since its files come from the
-    input (deny-leaning).
-  It reaches the same nested text the other denies reach (`sh -c`/
-  `bash -c`, `eval`, `$(…)`, `<(…)`/`>(…)`, a shell's heredoc or
-  here-string script, and a `$(which sed)`-style span in command
-  position), EXCEPT a heredoc body no shell or interpreter reads: that
-  is text (a commit message, a notes file), so `findDanger` scans it
-  with `checkWrites: false`. The kill, stash, and main-checkout findings
-  win over a shell write in the same segment. Allowed: reads (`cat`,
-  `grep`, `sed` without `-i`, `perl -ne`, `python3 -c "print(open(…)
-  .read())"`), a redirect to `/dev/null` or a path outside the trees
-  (the scratchpad, `/tmp`), git itself, a script file run by an
-  interpreter (`node scripts/checks/import-order.js --write …`,
-  `python3 some-tool.py`), and a formatter's or fixer's own `--write`
-  (`npx biome check --write`, `npx prettier --write`, the harness's
-  `import-order`/`blank-line-separation` `--write` fix flows): decided
-  allowed because these tools only rewrite formatting to the rules the
-  fast and medium tiers enforce, and guard-replay re-runs the pre-write
-  guard on every file they change at Stop. Deny kind `shellWrite`,
-  standard WHAT/DETAILS/WHY/HOW/DO-NOT block, HOW = use Edit or Write.
-  `decide(command, { projectRoot })` is test-only (a fake repository in
-  a scratch folder); the hook entry passes only `{ cwd }` and ignores it
-  (tested in `__tests__/kill-guard-writes.test.ts`, which holds the
-  deny and allow rows, false-positive traps included). Where it is
-  live: the deny sits in `kill-guard.js`, which `dispatch.sh` runs from
-  the Bash call's own worktree (the payload `cwd`'s root) — so
-  `hooks.json` is unchanged and no plugin reinstall is needed; a
-  worktree whose checkout carries it has it, and a session in the main
-  checkout gets it only after the merge to main. Why not a sibling hook
-  script: it would need a second copy of this tokenizer (quotes,
-  redirects, both shell readings, `-c`/`eval`/heredoc recursion, `cd`
-  tracking) or a shared module plus a new `knip.json` ignore entry, and
-  a new `hooks.json` matcher that goes live only after the merge plus a
-  plugin reinstall and `/reload-plugins`.
+  guard-replay at Stop). Rule: deny a Bash write into `src/`,
+  `__tests__/`, or `rules/` (`WRITE_GUARDED_TREES`) — a writing redirect,
+  an in-place `sed`/`perl`, `tee`, a python/node one-liner write call,
+  or an in-place edit behind `xargs` (any file) — at the top level or in
+  the nested text the other denies reach, except a heredoc body no shell
+  or interpreter reads (text: a commit message, a notes file). Read
+  `commandWrite`, `writtenFiles`, `isWritingRedirect`, and
+  `writeCallCandidates` in `kill-guard.js` for the closed sets; a write
+  call with a literal target "writes" it, one with a variable or
+  expression target "may write" (a bare variable: any literal in the
+  code; an expression: its own literals, plus argv when it reads
+  `sys.argv`/`process.argv`). Worktree test (`isProjectWorktree`): the
+  tree must sit at the root of a folder whose `.git` shares this
+  checkout's common git directory (an unreadable `.git` counts), so
+  another repository's `src/` or a `src/` without `.git` beside it
+  passes. Paths resolve from the payload `cwd` and the tracked
+  `cd`/`pushd`, case-folded; a path the text cannot resolve (a `$VAR`,
+  a glob, a span, a relative path with no known directory) denies when
+  a folder in it is named like a tree. Allowed: reads, a redirect to
+  `/dev/null` or outside the trees, git itself, a script file, and a
+  formatter's or fixer's own `--write` (guard-replay re-checks what it
+  changes at Stop). Rows: `__tests__/kill-guard-writes.test.ts`
+  (`projectRoot` is a test-only `decide` option). Where it is live:
+  `dispatch.sh` runs `kill-guard.js` from the Bash call's own worktree,
+  so `hooks.json` is unchanged and no plugin reinstall is needed; a
+  session in the main checkout gets it only after the merge to main.
 
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
   EXECUTES shell text runs ONLY through the committed runner
@@ -337,28 +285,31 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     (bash's `EOF)` shorthand, trailing spaces).
   - Shell-write deny, NOT denied: a path held in a variable or loop
     variable (`sed -i … "$f"`, `for f in …; do … > "$f"; done`) unless
-    its text names a tree folder; `cd $VAR` then a relative path; `eval`
-    of a built string; base64 or otherwise encoded code; a path built at
-    run time in the interpreter beyond joined literals
-    (`Path('src') / 'x'`, `'src/' + name`); a script file that writes
-    (`python3 tool.py`, `node x.js`, `bash x.sh`); text piped into a
-    shell or interpreter (`cat <<'EOF' | bash`, `echo … | python3`);
-    `xargs -I{} sh -c '… {}'` (the `{}` is not read as the input); other
-    writers and tools — `cp`, `mv`, `dd of=`, `install`, `rsync`, `ln`,
-    `truncate`, `touch`, `patch`, `awk`'s own `print >`, `ruby -i`/`-e`,
-    `ex`/`vim -c`, a `npx`/`uv run` wrapper around python or node, and
-    a python/node write API outside the listed calls (`shutil`, `os.open`,
-    `fs.writeSync` on an fd, `fs.cpSync`); a symlink into a tree; a
-    worktree whose root is below a start folder `find` reaches (`find ..`
-    from a sibling).
+    its text names a tree folder; a `cd` into a tree through a variable
+    then a relative path (`cd $VAR/src && echo x > y.ts`; plain
+    `cd $VAR && echo x > src/…` IS denied); `eval` of a built string;
+    base64 or otherwise encoded code; a path built at run time in the
+    interpreter beyond joined literals (`Path('src') / 'x'`,
+    `'src/' + name`); a script file that writes (`python3 tool.py`,
+    `node x.js`, `bash x.sh`); text piped into a shell or interpreter
+    (`cat <<'EOF' | bash`, `echo … | python3`); `perl -e` code (its
+    `open(… ">" …)` is not checked); any `find … -exec` in-place edit
+    (`find src -exec sed -i … {} +`, `find … -exec sh -c 'sed -i …
+    "$1"' _ {} \;`); `xargs -I{} sh -c '… {}'` (the `{}` is not read as
+    the input); other writers and tools — `cp`, `mv`, `dd of=`,
+    `install`, `rsync`, `ln`, `truncate`, `touch`, `patch`, `awk`'s own
+    `print >`, `ruby -i`/`-e`, `ex`/`vim -c`, a `npx`/`uv run` wrapper
+    around python or node, and a python/node write API outside the
+    listed calls (`shutil`, `os.open`, `fs.writeSync` on an fd,
+    `fs.cpSync`); a symlink into a tree.
   - Shell-write deny, deny-leaning (over-denied): any in-place edit or
     `tee` behind `xargs`, whatever the files; a `$VAR`/glob path that
     names a folder `src`, `__tests__`, or `rules` anywhere
     (`> "$TMPDIR/src/x"`); a relative tree path when the payload has no
-    `cwd`; an interpreter one-liner that writes through a variable
+    `cwd`; an interpreter one-liner that writes through a BARE variable
     while any string literal in it names a tree file (it may only read
-    that file); `sed -i` run GNU-style on macOS (`sed -i 's/a/b/' f`,
-    which BSD sed rejects).
+    that file; DETAILS says "may write"); `sed -i` run GNU-style on
+    macOS (`sed -i 's/a/b/' f`, which BSD sed rejects).
   - bash 3.2 only (zsh fails): a command after a heredoc inside
     `<(`/`$(` whose body holds an unbalanced paren, and
     `echo $( (echo a)#c ); pkill x`, both run and are not denied.

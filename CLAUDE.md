@@ -126,26 +126,12 @@ worktree, verify it, then run
 `git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
 See kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits.
 
-The same hook also denies a shell write into `src/`, `__tests__/`, or
-`rules/` at the root of any worktree of this repository (relative or
-absolute path; after a `cd`; inside a `sh -c`/`bash -c` string, `eval`,
-or a heredoc a shell or interpreter runs): `sed -i` (`-i ''`, `-i.bak`,
-`--in-place`), `perl -i`/`-pi`, a `>`/`>>`/`1>`/`&>`/`>|` redirect,
-`tee`/`tee -a`, a `python -c` or `node -e` one-liner (or one fed by a
-heredoc) that opens a file for writing, and `find -exec`/`xargs` running
-an in-place edit — because the pre-write guard sees only
-Edit/Write/MultiEdit. Use the Edit or Write tool instead. Reads, a
-redirect to `/dev/null` or outside those trees (the scratchpad, `/tmp`),
-git, and a formatter's or fixer's own `--write` (`npx biome check
---write`, `import-order`/`blank-line-separation` `--write`) stay allowed;
-guard-replay re-checks what those tools change at Stop. It carries the
-standard WHAT/DETAILS/WHY/HOW/DO-NOT block. See kiko-linter's
-"SHELL-WRITE deny" for the full rule and limits. It lives in
-`kill-guard.js`, which `dispatch.sh` runs from the Bash call's own
-worktree (the payload `cwd`'s root), so `hooks.json` is unchanged and no
-plugin reinstall is needed: it is live in a worktree whose checkout
-carries it, and for a session in the main checkout only after the merge
-to main.
+The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
+redirect, `tee`, a python/node one-liner) into `src/`, `__tests__/`, or
+`rules/` of any worktree of this repository, because the pre-write guard
+sees only Edit/Write/MultiEdit: use Edit or Write. Reads, git itself, and
+a formatter's own `--write` stay allowed. See kiko-linter's "SHELL-WRITE
+deny" for the full rule, limits, and where it is live.
 
 A second `PreToolUse` matcher (`Edit|Write|MultiEdit`, beside the
 `Bash` matcher above) runs `scripts/checks/pre-write-guard.sh`: it
