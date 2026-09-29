@@ -816,8 +816,10 @@ The sync pipeline is deliberately functional, not OOP — see
    advances. The trade-off: an unrepresentable-currency holding is
    excluded from net worth. Each skip logs via `console.warn` behind a
    justified `biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic)`
-   — Biome's `noConsole` is otherwise `error` project-wide (`biome.json`),
-   so this is the one sanctioned console call in the app.
+   — Biome's `noConsole` is otherwise `error` project-wide (`biome.json`).
+   It is a literal-object `console.warn` (a string tag and an object
+   literal), which `kiko-no-raw-error-in-console` allows; every swallowed
+   failure logs through `logFailure` from `@kiko/diagnostics` instead.
 5. The pipeline is a straight sequence of small transforms, not an
    `fnts` composition: map each fetched item to a row, fold duplicate
    conflict keys, hand the batch to the repository's upsert. The

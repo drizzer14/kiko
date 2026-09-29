@@ -122,9 +122,11 @@ logFailure('[binance sync] transaction history import failed', error);
 
 Mechanized: `kiko-no-raw-error-in-console` (`rules/semgrep-prewrite.yml`,
 ERROR). It flags a `console.*` argument that is not a string, template, or
-object literal. Known limit: an object literal that nests the error
-(`{ error }`) or a template that interpolates it passes the rule; review
-catches those.
+object literal, and a string or template literal joined with `+` anywhere
+inside an argument (`console.warn('[x] failed: ' + error)`, because
+`String(error)` includes the message). Known limit: an object literal that
+nests the error (`{ error }`) or a template that interpolates it passes
+the rule; review catches those.
 
 The pasteboard is a leak path too: a value copied there has no expiry, and
 Universal Clipboard can sync it to the user's other devices. So a secret

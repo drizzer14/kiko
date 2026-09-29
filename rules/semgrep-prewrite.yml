@@ -1215,7 +1215,10 @@ rules:
   # to os_log in Release. A `metavariable-pattern` with `pattern-not: "{...}"`
   # does not drop an object-literal argument, so the argument's own text is
   # filtered instead: a string, template, or object literal passes; anything
-  # else (an identifier, a call, a member) fires. `log-failure.ts` is the
+  # else (an identifier, a call, a member) fires. A literal joined with `+`
+  # starts with a quote but stringifies its right side (`String(error)`
+  # includes the message), so a separate arm fires on it, anywhere inside the
+  # argument. `log-failure.ts` is the
   # sanitizing sink, which passes its `tag` parameter through. Tests are
   # excluded because they log nothing that ships. ERROR from the start: the
   # sweep removed every finding in the same commit.
@@ -1236,11 +1239,13 @@ rules:
         - "*.test.ts"
         - "*.test.tsx"
         - "src/diagnostics/log-failure.ts"
-    patterns:
-      - pattern: console.$M(..., $ARG, ...)
-      - metavariable-regex:
-          metavariable: $ARG
-          regex: ^(?!['"`{])
+    pattern-either:
+      - patterns:
+          - pattern: console.$M(..., $ARG, ...)
+          - metavariable-regex:
+              metavariable: $ARG
+              regex: ^(?!['"`{])
+      - pattern: console.$M(..., <... "..." + $X ...>, ...)
   # kiko-compliance's "5.1.5 / data storage": the copied value is a secret
   # (the export key), and a direct write leaves it on the general pasteboard
   # with no expiry. The receiver is a metavariable so a renamed default import
@@ -1274,7 +1279,12 @@ rules:
   # apart. The outer iteration is a `for`/`while` loop or another array
   # callback, with an expression body or a block body (the deep-expression
   # operator does not reach a block's non-return statements, hence the
-  # separate block arm). Tests are excluded: a parity oracle in a test may
+  # separate block arm). The inner pass must iterate a plain identifier, a
+  # collection that stays the same for every outer item: an inner pass over
+  # the outer item's own member (`holding.rows`) or a chain off a lookup
+  # (`(byId.get(holding.id) ?? [])`) visits each row once, which is linear,
+  # and a `pattern-not` on the collection does not drop the lookup chain.
+  # Tests are excluded: a parity oracle in a test may
   # keep the slow per-bucket shape on purpose, and test code never runs in a
   # Statistics render. ERROR from the start: 0 findings in src.
   - id: kiko-no-per-bucket-date-in-statistics
@@ -1311,6 +1321,9 @@ rules:
       - metavariable-regex:
           metavariable: $M2
           regex: ^(filter|map|flatMap|reduce|reduceRight|forEach|some|every|find|findIndex|findLast|findLastIndex|sort|toSorted)$
+      - metavariable-regex:
+          metavariable: $XS
+          regex: ^[A-Za-z_$][\w$]*$
       - metavariable-pattern:
           metavariable: $DATE
           pattern-either:

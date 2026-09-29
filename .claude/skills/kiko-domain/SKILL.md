@@ -915,15 +915,26 @@ const days = rows.map((row) => startOfLocalDay(row.time));
 buckets.map((bucket) => days.filter((day) => day <= bucket).length);
 ```
 
-The rule catches this NESTED shape only. A one-off per-row pass
+The rule catches this NESTED shape only, and only when the inner pass
+iterates a plain identifier (`rows`): a collection that stays the same for
+every outer item. A one-off per-row pass
 (`rows.map((row) => startOfLocalDay(row.time))`), a per-bucket Date
-(`buckets.map((bucket) => new Date(bucket))`), or a day key hoisted above a
-`.filter` stays silent. That is why it does not repeat the false positive
-of its removed predecessor, `kiko-no-date-math-in-array-callback`, which
-flagged every Date inside an array callback and so could not tell a hot
-per-bucket call site from a one-off pass built once per series call. Not
+(`buckets.map((bucket) => new Date(bucket))`), a day key hoisted above a
+`.filter`, and a linear nested traversal stay silent. A linear traversal
+is an inner pass over the outer item's own member or over a chained
+collection, such as
+`holdings.flatMap((holding) => holding.rows.map((row) => startOfLocalDay(row.time)))`
+or `(byId.get(holding.id) ?? []).filter(…).map(…)`: each row is visited
+once. That is why it does not repeat the false positive of its removed
+predecessor, `kiko-no-date-math-in-array-callback`, which flagged every
+Date inside an array callback and so could not tell a hot per-bucket call
+site from a one-off pass built once per series call (the pre-rewrite
+`reconcile-bond-funding.ts` chain stays silent under this rule). Not
 flagged, review items: a Date built in a helper the inner callback calls,
-a `do ... while` loop, and a nested iteration written as two plain loops.
+a `do ... while` loop, a nested iteration written as two plain loops, and
+an inner pass over a member or chained collection that IS loop-invariant
+(`rows.filter(…).map(…)` or `this.rows.map(…)` inside a per-bucket
+callback).
 
 **Speed guards count real work, never wall-clock time — and never a
 production test hook.** Both `holding-value-at.test.ts`
