@@ -69,12 +69,16 @@ jest.mock('@op-engineering/op-sqlite', () => ({
   }),
 }));
 
-// react-native-calendars' Calendar is a pure-JS component, but it pulls in
-// XDate/recyclerlistview machinery that is noisy under react-test-renderer and
-// gives a test no direct handle on day selection. Mocked to a plain View that
-// preserves `testID`, `markedDates`, `markingType`, and `onDayPress` as props,
-// so the Home date-range sheet mounts and a test can drive a day tap by calling
-// `onDayPress` with a DateData object directly.
+// The app's Calendar (KikoCalendar, behind the Home date-range sheet and every
+// date field) imports the deep `'react-native-calendars/src/calendar'`
+// specifier, which __mocks__/react-native-calendars/src/calendar.tsx serves;
+// this mock never reaches it. This one covers only a test that imports the
+// bare `'react-native-calendars'` root: the kiko-no-root-calendars-value-import
+// rule excludes test files, so such an import stays legal there (see
+// docs/harness/documented-exceptions.md). The root pulls in the whole package
+// (Agenda, lists, XDate/recyclerlistview machinery), noisy under
+// react-test-renderer and with no direct handle on a day tap, so its Calendar
+// is a plain View that keeps every prop for a test to read or call.
 jest.mock('react-native-calendars', () => {
   const { View } = require('react-native');
   return { Calendar: View };

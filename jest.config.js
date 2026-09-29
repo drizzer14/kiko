@@ -37,12 +37,14 @@ module.exports = {
   //
   // react-native-calendars also ships untranspiled ESM ("main": "src/index.ts"
   // in its own package.json, and the .js files under src/ use bare `import`/
-  // `export`). The app never renders it directly — jest/setup.js mocks the
-  // bare `'react-native-calendars'` specifier to a plain View for every other
-  // test — but the day-cell color-precedence regression test
-  // (kiko-calendar.day-cell-color.test.tsx) deep-imports its real, unmocked
-  // Day components (a different module specifier, so unaffected by that
-  // mock) to prove the actual selected/today text-color precedence the
+  // `export`). No test renders the real Calendar: KikoCalendar imports it by
+  // the deep `'react-native-calendars/src/calendar'` specifier, which the
+  // manual mock __mocks__/react-native-calendars/src/calendar.tsx serves as a
+  // plain View (jest/setup.js's root mock covers only a test that imports the
+  // bare `'react-native-calendars'` specifier). But the day-cell
+  // color-precedence regression test (kiko-calendar.day-cell-color.test.tsx)
+  // deep-imports the real, unmocked Day components (specifiers neither mock
+  // intercepts) to prove the actual selected/today text-color precedence the
   // library applies, not just the marks data Kiko hands it.
   //
   // windows-1251 (Phase 3, statement-import's cp1251 decoder) ships ONLY an
