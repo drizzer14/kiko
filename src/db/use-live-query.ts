@@ -181,6 +181,12 @@ export function useLiveQuery<T>(
 
     const myKey = currentKey;
 
+    // A fresh subscription (a re-key while paused, or enabled flipping back
+    // on) always runs its own mount read below — any dirty flag left over
+    // from a torn-down subscription is now stale and must not also trigger
+    // a second, redundant read on the next unpause.
+    dirtyRef.current = false;
+
     // Apply one accepted, still-mounted result to this hook's state.
     const applySettled = (settled: Either<Error, T[]>): void => {
       const previousAppliedKey = appliedKey.current;
@@ -276,6 +282,7 @@ export function useLiveQuery<T>(
 
       return () => {
         alive = false;
+        runQueryRef.current = undefined;
       };
     }
 
@@ -284,6 +291,7 @@ export function useLiveQuery<T>(
     return () => {
       alive = false;
       unsubscribe();
+      runQueryRef.current = undefined;
     };
   }, [sql, paramsKey, fireOn, enabled]);
 

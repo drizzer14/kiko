@@ -446,6 +446,68 @@ describe('useLiveQuery — the paused option', () => {
     await settle(resolvers[1], [{ id: 'b' }]);
     expect(result.current.data).toEqual([{ id: 'b' }]);
   });
+
+  it('runs exactly one read per key (2 total), never a redundant extra one, when params change while paused with a fire already pending', async () => {
+    const first = pendingQuery(['a']);
+    const second = pendingQuery(['b']);
+    const { rerender } = await renderHook(
+      ({ query, paused }: { query: ReturnType<typeof queryDouble>; paused: boolean }) =>
+        useLiveQuery(query, ['accounts'], true, { paused }),
+      { initialProps: { query: first.query, paused: false } },
+    );
+    await settle(first.resolvers[0], [{ id: 'a' }]);
+
+    await act(async () => {
+      await rerender({ query: first.query, paused: true });
+    });
+    await fireReactive();
+    expect(first.resolvers).toHaveLength(1);
+
+    // The params change re-subscribes for a NEW key while still paused: its
+    // own mount read must not leave the OLD key's dirty flag to fire a
+    // second, redundant read once this unpauses.
+    await act(async () => {
+      await rerender({ query: second.query, paused: true });
+    });
+    expect(second.resolvers).toHaveLength(1);
+
+    await act(async () => {
+      await rerender({ query: second.query, paused: false });
+    });
+
+    expect(first.resolvers).toHaveLength(1);
+    expect(second.resolvers).toHaveLength(1);
+  });
+
+  it('runs no read on unpause once disabled while paused with a fire already pending', async () => {
+    const { query, resolvers } = pendingQuery();
+    const { rerender } = await renderHook(
+      ({ paused, enabled }: { paused: boolean; enabled: boolean }) =>
+        useLiveQuery(query, ['accounts'], enabled, { paused }),
+      { initialProps: { paused: false, enabled: true } },
+    );
+    await settle(resolvers[0], [{ id: 'a' }]);
+
+    await act(async () => {
+      await rerender({ paused: true, enabled: true });
+    });
+    await fireReactive();
+    expect(resolvers).toHaveLength(1);
+
+    // Disabled while still paused and dirty: the subscription tears down.
+    await act(async () => {
+      await rerender({ paused: true, enabled: false });
+    });
+
+    // Unpausing a disabled query must never run a read for data it no
+    // longer needs — the torn-down runner must not fire.
+    await act(async () => {
+      await rerender({ paused: false, enabled: false });
+    });
+
+    expect(resolvers).toHaveLength(1);
+    expect(mockUnsubscribe).toHaveBeenCalled();
+  });
 });
 
 // kiko-architecture: no request or query for data the user does not have. A
