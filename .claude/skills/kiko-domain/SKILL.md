@@ -735,12 +735,14 @@ Sunday of October) directly, with no guard of its own.
 Never set `process.env.TZ` inside a test file (`beforeAll`, a
 `withTimeZone` helper, or mid-test). Jest gives each test sandbox its
 own copy of `process.env`, so the assignment never reaches Node's TZ
-setter and `Date` stays on Kyiv. Every existing in-test flip (`grep
--rln "process.env.TZ" src`) has no effect; one that names a
-non-Kyiv zone (for example `format.test.ts`'s America/Los_Angeles,
-`net-worth-series.test.ts`'s Pacific/Kiritimati) does not test the
-zone it names. A test that needs another zone's behavior must inject
-the offset or zone into the code under test explicitly.
+setter and `Date` stays on Kyiv, so a flip that names a non-Kyiv zone
+does not test the zone it names. A test that needs another zone's
+behavior must inject the offset or zone into the code under test
+explicitly (for example `formatDate`'s `{ timeZone: 'UTC' }` on an
+instant whose UTC and Kyiv days differ). Code that takes no zone input
+is tested under Kyiv only; do not add a production parameter just to
+inject one. Semgrep `kiko-no-process-env-time-zone-in-test` (ERROR)
+denies the assignment in every test path.
 
 The pin does not make a test zone-correct. Many holdings, prices,
 rates, and statistics suites build fixtures with `Date.UTC(...)`
@@ -749,6 +751,16 @@ Kyiv is east of UTC, and they fail on a west-of-UTC clock. Build new
 fixtures with the local `Date` constructor (`new Date(y, m - 1, d,
 ...)`), not `Date.UTC`, unless the value is a normalized UTC calendar
 day (see `dayKeyOf`).
+
+Known debt: 15 suites still feed `Date.UTC` midnight fixtures to
+local-day code — holdings (`property-item.descriptor`, `holding-value`,
+`lots`, `ownership`, `ownership-edits`, `existing-holdings-pin`), prices
+(`metal-refresh`, `price-book`), rates (`conversion`, `currency-totals`,
+`net-worth-view`), `holding-card.component`, and statistics
+(`account-contribution`, `net-worth-series`, `type-breakdown`). They
+pass under the Kyiv pin only because UTC midnight is 02:00/03:00 Kyiv on
+the same calendar day; a zone west of UTC would shift each fixture a
+day back.
 
 Never build a test fixture as the real clock plus or minus a fixed day
 span (`Date.now() + DAY_MS`, `now - 2 * DAY` where `now = Date.now()`).

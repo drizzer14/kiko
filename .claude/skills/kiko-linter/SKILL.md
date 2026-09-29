@@ -1492,10 +1492,12 @@ mechanizable (see harness-workflow's "Classify every finding").
      `severity: WARNING`. The pre-write guard denies any NEW finding
      whatever its severity, while `check:security` only surfaces
      WARNING (Class B) without failing. Example:
-     `kiko-no-process-env-time-zone-in-test`. Promote it to ERROR when
-     `check:security` reports 0 findings for that rule id (not when a
-     grep is empty). Record the promotion condition in the rule's
-     comment and in `docs/harness/review-to-biome-inventory.md`.
+     `kiko-no-process-env-time-zone-in-test` landed as WARNING with 26
+     findings and was promoted to ERROR after the sweep. Promote such a
+     rule to ERROR when `check:security` reports 0 findings for that
+     rule id (not when a grep is empty). Record the promotion condition
+     in the rule's comment and in
+     `docs/harness/review-to-biome-inventory.md`.
      `metadata.skill` uses `"<skill> › <heading>"`. A finding without
      `metadata.skill` makes the guard deny "could not check".
    - The guard, `check:security`, and `check:rules` load the whole file.

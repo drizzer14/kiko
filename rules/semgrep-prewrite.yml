@@ -997,18 +997,15 @@ rules:
   # Europe/Kyiv at config load, and Jest gives each test sandbox its own copy
   # of `process.env`, so an assignment in a test file, a `beforeAll`, or a
   # test-support helper never reaches Node's TZ setter: `Date` stays on Kyiv
-  # and a test that names another zone silently does not test it. WARNING,
-  # not ERROR, only while the existing in-test flips are still in the tree
-  # (a later sweep removes them): `check:security` surfaces them without
-  # failing. Promote this rule to ERROR once `check:security` reports no
-  # finding for it. The pre-write guard ignores severity, so a NEW flip is
-  # already denied today. `paths.include` names the test paths because app
+  # and a test that names another zone silently does not test it. ERROR: the
+  # tree has no finding left, so `check:security` fails on any new one.
+  # `paths.include` names the test paths because app
   # code never assigns TZ at all; the `src/test-support/**` entry is
   # path-prefixed, so the fixture pair is NESTED. `jest.config.js` is the one
   # place the pin belongs.
   - id: kiko-no-process-env-time-zone-in-test
     languages: [typescript]
-    severity: WARNING
+    severity: ERROR
     message: >
       Assigning `process.env.TZ` in a test is a silent no-op: Jest gives each
       test sandbox its own copy of `process.env`, so `Date` stays on the

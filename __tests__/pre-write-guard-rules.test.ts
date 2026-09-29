@@ -305,9 +305,8 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     expect(reason).toContain('kiko-no-history-id-comment');
   });
 
-  // kiko-no-process-env-time-zone-in-test is a WARNING, and the guard does
-  // not read severity: a NEW flip is denied in every test path it covers,
-  // while app source (where TZ is not a test sandbox copy) stays out of scope.
+  // A NEW flip is denied in every test path the rule covers, while app source
+  // (where TZ is not a test sandbox copy) stays out of scope.
   it.each([
     ['src/probe/time-zone-probe.test.ts', 2],
     ['src/probe/time-zone-probe.test.tsx', 2],
@@ -333,8 +332,8 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     }
   });
 
-  // The existing in-test flips are removed by a later sweep; until then an
-  // edit to one of those files that adds no new flip must still land.
+  // The guard denies only a NEW finding, so an edit that adds no flip to a
+  // file whose flip predates it must still land.
   it('allows an edit to a test file whose time-zone flip already existed', () => {
     const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-time-zone-baseline-'));
     try {
