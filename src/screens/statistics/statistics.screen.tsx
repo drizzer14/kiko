@@ -188,8 +188,7 @@ const StatisticsScreen: FC = () => {
   // subscription stays and a write elsewhere only marks each query dirty, so
   // hiding this tab causes no read, no state change, and no memo recompute —
   // `enabled: false` would instead unsubscribe and drop every chart to empty
-  // (see kiko-architecture's `useLiveQuery` pattern section for the design
-  // and why the earlier `enabled`/`freezeOnBlur` attempt was reverted).
+  // (see kiko-architecture's `useLiveQuery` pattern section for the design).
   const isFocused = useIsFocused();
   const liveOptions = { cached: true, paused: !isFocused } as const;
 
