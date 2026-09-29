@@ -72,7 +72,7 @@ let entryCount = 0;
 const addEntry = (accountId: string, source: string, createdAt: number): void => {
   entryCount += 1;
   run(
-    'INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id, created_at) VALUES (?, ?, -500, ?, ?, ?, ?)',
+    "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id, category, created_at) VALUES (?, ?, -500, ?, ?, ?, 'food', ?)",
     `entry-${entryCount}`,
     `${accountId}-holding`,
     createdAt,

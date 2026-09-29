@@ -77,7 +77,7 @@ const insertTransaction = (
 ): void => {
   mockDatabase
     .prepare(
-      'INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id, created_at) VALUES (?, ?, -100, ?, ?, ?, ?)',
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id, category, created_at) VALUES (?, ?, -100, ?, ?, ?, 'food', ?)",
     )
     .run(id, holdingId, createdAt, source, id, createdAt);
 };

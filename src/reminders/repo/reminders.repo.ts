@@ -18,6 +18,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  or,
   type SQL,
   sql,
 } from 'drizzle-orm';
@@ -73,6 +74,15 @@ const importsOf = (accountId: string | SQLiteColumn) =>
     .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
     .where(and(eq(holdings.accountId, accountId), eq(transactions.source, 'import')));
 
+// A balance the user sets (an opening balance, a balance edit) is written as
+// a manual row with no category and neither transfer marker. A transaction
+// the user enters always has one of the three: the form asks for a category.
+const enteredByUser = or(
+  isNotNull(transactions.category),
+  isNotNull(transactions.exchangeCounterpartHoldingId),
+  isNotNull(transactions.changeGroupId),
+);
+
 export const remindersRepo = {
   hasAnyQuery: () => database.select({ id: reminders.id }).from(reminders).limit(1),
   listByAccountQuery: (accountId: string) =>
@@ -113,6 +123,7 @@ export const remindersRepo = {
           eq(holdings.accountId, accountId),
           eq(transactions.source, 'manual'),
           gte(transactions.createdAt, since),
+          enteredByUser,
         ),
       ),
   create: (input: NewReminder): Promise<string> =>
