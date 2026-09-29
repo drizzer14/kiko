@@ -1596,6 +1596,91 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
   });
 });
 
+describe('AccountDetailScreen — a tap on an import reminder', () => {
+  const importTapParams = { accountId: 'a', name: 'Monobank', intent: 'importStatement' };
+
+  const renderTap = async (params: object = importTapParams) => {
+    const view = await renderScreen(asRouteProp('AccountDetail', params));
+    // The router's own param update, which the spy navigation does not make.
+    const rerenderWith = async (next: object): Promise<void> => {
+      await view.rerender(
+        <AccountDetailScreen
+          route={asRouteProp('AccountDetail', next)}
+          navigation={asNavigationProp<AccountDetailProps['navigation']>(view.navigation)}
+        />,
+      );
+    };
+
+    return { ...view, rerenderWith };
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockButtonProps.length = 0;
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    mockPick.mockRejectedValue({ code: 'OPERATION_CANCELED' });
+    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+  });
+
+  it('opens the file picker once and clears the intent', async () => {
+    const view = await renderTap();
+
+    await waitFor(() => expect(mockPick).toHaveBeenCalledTimes(1));
+    expect(view.navigation.setParams).toHaveBeenCalledWith({ intent: undefined });
+
+    await view.rerenderWith({ accountId: 'a', name: 'Monobank' });
+    await view.rerenderWith({ accountId: 'a', name: 'Monobank' });
+
+    expect(mockPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands the picked file to the statement import, as the footer button does', async () => {
+    mockPick.mockResolvedValue([
+      { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
+    ]);
+    mockKeepLocalCopy.mockResolvedValue([
+      { status: 'success', localUri: 'file:///cache/statement.csv' },
+    ]);
+    const view = await renderTap();
+
+    await waitFor(() =>
+      expect(view.navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+        filePath: 'file:///cache/statement.csv',
+        accountId: 'a',
+        expectedFormatId: 'monobank-csv',
+      }),
+    );
+  });
+
+  it('waits for the page to load before it opens the picker', async () => {
+    setLiveData({ accounts: [], holdings: [], accountsIsLoading: true });
+    const view = await renderTap();
+
+    expect(mockPick).not.toHaveBeenCalled();
+    expect(view.navigation.setParams).not.toHaveBeenCalled();
+
+    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+    await view.rerenderWith(importTapParams);
+
+    await waitFor(() => expect(mockPick).toHaveBeenCalledTimes(1));
+  });
+
+  it('opens no picker on an account that cannot import, and still clears the intent', async () => {
+    setLiveData({ accounts: [account({ kind: 'cash', bankId: null })], holdings: [] });
+    const view = await renderTap();
+
+    expect(view.navigation.setParams).toHaveBeenCalledWith({ intent: undefined });
+    expect(mockPick).not.toHaveBeenCalled();
+  });
+
+  it('opens no picker on an ordinary visit', async () => {
+    const view = await renderTap({ accountId: 'a', name: 'Monobank' });
+
+    expect(mockPick).not.toHaveBeenCalled();
+    expect(view.navigation.setParams).not.toHaveBeenCalled();
+  });
+});
+
 describe('AccountDetailScreen — localization', () => {
   beforeEach(() => {
     jest.clearAllMocks();

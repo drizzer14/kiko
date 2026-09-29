@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import either from 'fnts/either';
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -7,7 +8,6 @@ import Sortable from 'react-native-sortables';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
-import { useLayoutEffect, useState } from 'react';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
@@ -32,6 +32,7 @@ import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { type AccountRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -74,7 +75,7 @@ const offerMessage = (kind: ReminderKind, t: TFunction): string =>
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
-  const { accountId, name: initialName, reminderOffer } = route.params;
+  const { accountId, name: initialName, reminderOffer, intent } = route.params;
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
@@ -240,7 +241,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // XLSX lands later and must not need this list revisited). A
   // cancelled picker rejects with `OPERATION_CANCELED` — caught and
   // swallowed here, not surfaced as an error.
-  const pickAndOpenStatement = async (): Promise<void> => {
+  const bankId = account?.bankId;
+  const pickAndOpenStatement = useCallback(async (): Promise<void> => {
     let results: Awaited<ReturnType<typeof pick>>;
 
     try {
@@ -279,9 +281,24 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     navigation.navigate('StatementImport', {
       filePath: copied.status === 'success' ? copied.localUri : picked.uri,
       accountId,
-      expectedFormatId: statementFormatIdForBank(account?.bankId),
+      expectedFormatId: statementFormatIdForBank(bankId),
     });
-  };
+  }, [navigation, accountId, bankId]);
+
+  // A tap on an import reminder opens the picker once the page can show the
+  // import; the cleared param keeps a later render from opening it again.
+  useEffect(() => {
+    if (intent !== 'importStatement' || !isReady) {
+      return;
+    }
+
+    navigation.setParams({ intent: undefined });
+
+    if (isBankAccount) {
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures a failed copy, which then leaves the page as it was, the same as after the Import statement button
+      either(pickAndOpenStatement);
+    }
+  }, [intent, isReady, isBankAccount, navigation, pickAndOpenStatement]);
 
   if (!isReady) {
     // The SAME Screen mode/props as the ready branch below (`scroll` +
