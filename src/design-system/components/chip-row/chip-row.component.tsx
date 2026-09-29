@@ -43,9 +43,9 @@ const resolveSelection = <Option extends string | number>(
 // map humanizes id-like values (term_deposit -> Term Deposit) for display while
 // the callback keeps reporting the underlying value; an optional `label`
 // renders a caption above the chips so it reads as a labeled field. This is the
-// ONE chips component in the app — a value selection that leaves the form the
-// same (see the SegmentedControl entry in kiko-design-system for the
-// tabs-vs-chips split).
+// ONE wrap-flow chips component in the app — a value selection that leaves the
+// form the same (see the SegmentedControl entry in kiko-design-system for the
+// tabs-vs-chips split); an equal-column day grid is DayOfMonthGrid instead.
 const ChipRow = <Option extends string | number>(props: ChipRowProps<Option>): ReactElement => {
   const { options, label, labels, labelVariant = 'body' } = props;
   const { theme } = useUnistyles();

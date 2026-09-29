@@ -22,7 +22,7 @@ const DayOfMonthGrid: FC<DayOfMonthGridProps> = ({ label, selected, onSelect, te
     <Box gap={1}>
       <FieldLabel label={label} />
 
-      <Box style={styles.grid} accessibilityLabel={label} testID={testID}>
+      <Box style={styles.grid} testID={testID}>
         {DAYS_OF_MONTH.map((day) => {
           const isSelected = day === selected;
 
@@ -38,7 +38,13 @@ const DayOfMonthGrid: FC<DayOfMonthGridProps> = ({ label, selected, onSelect, te
               testID={deriveFieldTestID(testID, `option-${day}`)}
             >
               <Box style={[styles.chip, isSelected ? styles.chipSelected : styles.chipUnselected]}>
-                <Text variant="body" tone={isSelected ? 'onAccent' : 'textPrimary'}>
+                <Text
+                  variant="body"
+                  tone={isSelected ? 'onAccent' : 'textPrimary'}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
                   {day}
                 </Text>
               </Box>

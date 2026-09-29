@@ -47,7 +47,6 @@ describe('DayOfMonthGrid', () => {
     expect(new Set(chips.map((chip) => chip.props.accessibilityHint))).toEqual(
       new Set(['Day of month']),
     );
-    expect(screen.getByLabelText('Day of month')).toBe(screen.getByTestId('grid'));
   });
 
   it('draws the chip look: accent under onAccent once selected, the faint neutral fill otherwise', async () => {
@@ -66,19 +65,27 @@ describe('DayOfMonthGrid', () => {
     expect(otherChip.props.testID).toBe('text-tone-textPrimary');
   });
 
-  // Seven columns, like a month; each cell is a real 44pt box around a
-  // compact 34pt chip, because grid neighbours leave no room for hitSlop.
-  it('lays the days out seven to a row with a 44pt cell around a 34pt chip', async () => {
+  // Replays Yoga's line-wrap math (32-bit float percentage, strict `>` against
+  // the row) because an exact 100/7 overshoots on common widths and the grid
+  // silently falls to six columns on device, which Jest's layout never shows.
+  it('keeps seven cells on one row at every point width under float rounding', async () => {
     const screen = await renderGrid();
 
-    const cell = StyleSheet.flatten(screen.getByTestId('grid-option-1').props.style);
-    const chip = StyleSheet.flatten(
-      within(screen.getByTestId('grid-option-1')).getByText('1').parent?.props.style,
-    );
+    const cellWidth = StyleSheet.flatten(screen.getByTestId('grid-option-1').props.style).width;
+    const percent = Math.fround(Number.parseFloat(String(cellWidth)));
+    const rowWidths = Array.from({ length: 1201 * 3 }, (_unused, index) => 200 + index / 3);
+    const wrapsBeforeSeventh = (rowWidth: number) => {
+      const row = Math.fround(rowWidth);
+      const cell = Math.fround(Math.fround(percent * row) * Math.fround(0.01));
+      let consumed = Math.fround(0);
 
-    expect(cell.width).toBe(`${100 / 7}%`);
-    expect(cell.minHeight).toBe(44);
-    expect(chip.minHeight).toBe(34);
-    expect(screen.getByTestId('grid-option-1').props.hitSlop).toBeUndefined();
+      return Array.from({ length: 7 }).some(() => {
+        consumed = Math.fround(consumed + cell);
+
+        return consumed > row;
+      });
+    };
+
+    expect(rowWidths.filter(wrapsBeforeSeventh)).toEqual([]);
   });
 });

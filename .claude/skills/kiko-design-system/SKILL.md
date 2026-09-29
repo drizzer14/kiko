@@ -1084,8 +1084,9 @@ new component can land between reviews of this skill:
   selection among many options; `ChipRow` below toggles inline
   among a small fixed set instead.
 - **ChipRow** (`src/design-system/components/chip-row/`) — the ONE
-  shared chips component: a compact wrap-flow row for a short
-  code/label chip, never an equal-width column grid. Read the folder
+  shared wrap-flow chips component: a compact wrap-flow row for a short
+  code/label chip, never an equal-width column grid (that is
+  `DayOfMonthGrid`, below). Read the folder
   directly for the current props; the load-bearing ones beyond
   `options`/`selected`/`onSelect`: `Option` is `string | number` (the
   trend-filter amount pills are `1 | 2 | 3 | 4 | 5`); `selected` accepts
@@ -1138,8 +1139,21 @@ new component can land between reviews of this skill:
   column grid. Accessibility: each cell is a `button` with
   `accessibilityState.selected`, its number as its label, and the group
   `label` as its hint (the SegmentedControl reasoning: a non-accessible
-  container gives VoiceOver nothing to read); the container carries the
-  `label` too. Props: `label`/`selected`/`onSelect`/`testID` (cells are
+  container gives VoiceOver nothing to read, so the grid container
+  carries no `accessibilityLabel`). The day number is `numberOfLines={1}`
+  with `adjustsFontSizeToFit` (`minimumFontScale` 0.7, as
+  `SegmentedControl`), so "31" never splits at accessibility text sizes.
+  **Layout traps:** the cell width is `'14.28%'`, never `100 / 7` —
+  Yoga resolves percentages in 32-bit float and wraps on a strict `>`, so
+  seven exact sevenths overshoot on 390pt/414pt rows and the grid drops
+  to six columns (the component test replays that float math). The
+  10pt chip inset is the cell's vertical padding, not a fixed cell
+  height, so a chip grown by Dynamic Type keeps the inset the grid's
+  negative margin undoes. **Hit-testing:** the grid's negative margins
+  make the outer 44pt cells overflow the parent by 5pt vertically (and
+  `spacing(0.5)` horizontally); taps there still land only because
+  Fabric does not clip overflow by default — never put the grid inside
+  an `overflow: 'hidden'` parent. Props: `label`/`selected`/`onSelect`/`testID` (cells are
   `${testID}-option-<day>`). The caller renders any hint below it (the
   reminder form's short-month hint for days 29-31). Consumer: the
   reminder form's monthly schedule.
