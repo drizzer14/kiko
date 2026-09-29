@@ -167,6 +167,86 @@ export const syncedAtOf = (metadata: unknown): number | null => {
   return isNumber(syncedAt) ? syncedAt : null;
 };
 
+/**
+ * The Binance history-walk watermark: every window ending at or before this
+ * instant is imported (`binance.transactions.ts`). Stored on the Spot
+ * holding's metadata rather than `sync_state.lastSyncAt` — that column
+ * already means the Monobank statement cursor for a Monobank account (see the
+ * `syncState` table comment in `db/schema.ts`), the same reason `SYNCED_AT_FIELD`
+ * above lives on the holding rather than `settings.lastSyncAt`.
+ */
+export const BINANCE_HISTORY_CURSOR_FIELD = 'binanceHistoryCursor';
+
+/**
+ * Metadata keys a sync WALK owns, as opposed to a balance snapshot — today
+ * only the Binance history cursor. `upsertByMetadataKey` (holdings.repo.ts)
+ * carries these over from the stored row on every balance-sync upsert, so a
+ * routine balance sync (which writes a fresh `{ syncedAt, ...}` metadata
+ * object every run) never wipes a walk's own progress marker.
+ */
+const walkOwnedMetadataKeys = [BINANCE_HISTORY_CURSOR_FIELD] as const;
+
+export const binanceHistoryCursorOf = (metadata: unknown): number | null => {
+  if (!isRecord(metadata)) {
+    return null;
+  }
+
+  const cursor = metadata[BINANCE_HISTORY_CURSOR_FIELD];
+
+  return isNumber(cursor) ? cursor : null;
+};
+
+/**
+ * Copies any `walkOwnedMetadataKeys` present on `storedMetadata` onto
+ * `target`, overwriting whatever (or nothing) `target` already has for that
+ * key — the read-side counterpart of a balance sync's blanket metadata
+ * overwrite, so a walk's own progress marker survives it.
+ */
+export const withWalkOwnedMetadataCarried = (
+  target: Record<string, unknown>,
+  storedMetadata: unknown,
+): Record<string, unknown> => {
+  if (!isRecord(storedMetadata)) {
+    return target;
+  }
+
+  return walkOwnedMetadataKeys.reduce(
+    (accumulator, key) =>
+      key in storedMetadata ? { ...accumulator, [key]: storedMetadata[key] } : accumulator,
+    target,
+  );
+};
+
+/**
+ * Resets every `walkOwnedMetadataKeys` entry already on `storedMetadata` to
+ * `floorMs` — the disconnect-side counterpart of `withWalkOwnedMetadataCarried`,
+ * so a disconnected Binance connection's watermark cannot leak into a
+ * DIFFERENTLY-owned reconnect (`disconnectCryptoAccount`,
+ * crypto-sync/disconnect.ts). Setting the floor rather than deleting the key
+ * matters: a deleted key falls back to the legacy `latestTransactionTime`
+ * cursor, which a reconnected DIFFERENT Binance account would inherit as if it
+ * were its own already-imported history. `undefined` when nothing needed
+ * resetting, so a caller can skip a redundant write.
+ */
+export const withWalkOwnedMetadataResetToFloor = (
+  storedMetadata: unknown,
+  floorMs: number,
+): Record<string, unknown> | undefined => {
+  if (!isRecord(storedMetadata) || !walkOwnedMetadataKeys.some((key) => key in storedMetadata)) {
+    return undefined;
+  }
+
+  const reset = { ...storedMetadata };
+
+  for (const key of walkOwnedMetadataKeys) {
+    if (key in storedMetadata) {
+      reset[key] = floorMs;
+    }
+  }
+
+  return reset;
+};
+
 const asContribution = (value: unknown): DepositContribution | null => {
   if (!isRecord(value)) {
     return null;

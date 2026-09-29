@@ -9,6 +9,7 @@ import type { BalanceProvider, ProviderBalance } from '../provider';
 import {
   type BinanceAccount,
   type BinanceBalance,
+  BinanceRateLimitError,
   type BinanceFlexiblePosition,
   type BinanceFundingAsset,
   type BinanceLockedPosition,
@@ -19,6 +20,7 @@ import {
   fetchLockedPosition,
 } from './binance.client';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
+import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
 type WalletFetch<Body> = (
   apiKey: string,
@@ -268,6 +270,16 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
   id: 'binance',
   metadataField: 'binanceAsset',
   fetchBalances: async (deps, target) => {
+    // A 429/418 cooldown is SHARED with the history walk (`binance.cooldown.ts`)
+    // — either path tripping it means the same UID is over its weight budget.
+    // Checked BEFORE even reading credentials, so a cooling-down account makes
+    // ZERO Binance requests; returning no balances (never throwing) keeps the
+    // "balance sync never fails because of the history walk" contract even
+    // when the history walk is the one that set the cooldown.
+    if (isBinanceCoolingDown(target.accountId, deps.now())) {
+      return [];
+    }
+
     const credentials = await deps.readCredentials(target.accountId);
 
     if (credentials === undefined) {
@@ -280,8 +292,27 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     // Spot MUST succeed — its failure fails the whole Binance sync. It is the
     // connection's proof of life and the split's anchor, so it is ALWAYS written
     // (a genuine zero included), and it reuses the legacy key so the pre-split
-    // aggregated holding is updated in place into the Spot holding.
-    const spot = spotSatoshis(await deps.fetchAccount(apiKey, secret, options));
+    // aggregated holding is updated in place into the Spot holding. A 429/418
+    // sets the shared cooldown (so a subsequent history-walk request also backs
+    // off) and surfaces as the LOCALIZED `binanceRequestFailed` message, never
+    // the raw `BinanceRateLimitError` text `useSyncAction` would otherwise show
+    // verbatim.
+    let spotAccount: BinanceAccount;
+
+    try {
+      spotAccount = await deps.fetchAccount(apiKey, secret, options);
+    } catch (error) {
+      if (error instanceof BinanceRateLimitError) {
+        setBinanceCooldownUntil(target.accountId, deps.now() + error.retryAfterMs);
+        throw new Error(
+          i18n.t('accountDetail.binanceRequestFailed', { status: error.status, detail: '' }),
+        );
+      }
+
+      throw error;
+    }
+
+    const spot = spotSatoshis(spotAccount);
     const balances: ProviderBalance[] = [
       {
         balanceMinorUnits: spot,
