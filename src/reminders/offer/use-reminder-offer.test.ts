@@ -32,8 +32,10 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { DatabaseSync } from 'node:sqlite';
-import { clearLiveQueryCache } from '@kiko/db';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
 import { remindersRepo } from '@kiko/reminders/repo';
+import { clearLiveQueryCache, useLiveQuery } from '@kiko/db';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
@@ -103,11 +105,23 @@ const dismissals = (): unknown =>
 const readManualEntries = (): boolean =>
   prepare.mock.calls.some(([statement]) => /count\(distinct/.test(statement));
 
+// The account page's own account and settings reads, which it hands to the
+// offer rather than the offer repeating them.
 const renderOffer = async (accountId: string, trigger: ReminderOfferTrigger) => {
   const kindsSeen: (ReminderKind | undefined)[] = [];
-  const onAccept = jest.fn();
   const view = await renderHook(() => {
-    const offer = useReminderOffer(accountId, trigger, onAccept);
+    const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts'], true, {
+      cached: true,
+    });
+    const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings'], true, {
+      cached: true,
+    });
+    const offer = useReminderOffer({
+      accountId,
+      account: accounts.at(0),
+      settings: settingsRows.at(0),
+      trigger,
+    });
 
     kindsSeen.push(offer?.kind);
 
@@ -127,7 +141,7 @@ const renderOffer = async (accountId: string, trigger: ReminderOfferTrigger) => 
 
   await settle();
 
-  return { ...view, kindsSeen, onAccept, settle };
+  return { ...view, kindsSeen, settle };
 };
 
 beforeEach(() => {
@@ -332,12 +346,14 @@ describe('useReminderOffer — accept and dismiss', () => {
     }
   });
 
-  it('hands the account and kind to the form opener on accept', async () => {
-    const { result, onAccept } = await renderOffer('cash', 'manualActivity');
+  it('decides from the account and settings rows the page read, with no read of its own', async () => {
+    const { result } = await renderOffer('cash', 'manualActivity');
+    const reads = (table: string): number =>
+      prepare.mock.calls.filter(([statement]) => statement.includes(`from "${table}"`)).length;
 
-    result.current?.accept();
-
-    expect(onAccept).toHaveBeenCalledWith({ accountId: 'cash', kind: 'add_transactions' });
+    expect(result.current?.kind).toBe('add_transactions');
+    expect(reads('accounts')).toBe(1);
+    expect(reads('settings')).toBe(1);
   });
 
   it('hides a dismissed offer for good, on that account and kind only', async () => {

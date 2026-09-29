@@ -1147,21 +1147,13 @@ describe('AccountDetailScreen', () => {
 describe('AccountDetailScreen — reminder offer', () => {
   const mockDismiss = jest.fn();
 
-  // The hook's contract: accept hands the account and kind to the screen's
-  // form opener.
   const offerOf = (kind: 'statement_import' | 'add_transactions'): void => {
-    mockUseReminderOffer.mockImplementation(
-      (
-        accountId: string,
-        _trigger: string,
-        openForm: (form: { accountId: string; kind: string }) => void,
-      ) => ({ kind, accept: () => openForm({ accountId, kind }), dismiss: mockDismiss }),
-    );
+    mockUseReminderOffer.mockReturnValue({ kind, dismiss: mockDismiss });
   };
 
   const triggers = (): string[] => [
     ...new Set(
-      mockUseReminderOffer.mock.calls.map(([accountId, trigger]) => `${accountId} ${trigger}`),
+      mockUseReminderOffer.mock.calls.map(([{ accountId, trigger }]) => `${accountId} ${trigger}`),
     ),
   ];
 
@@ -1189,6 +1181,18 @@ describe('AccountDetailScreen — reminder offer', () => {
     await renderScreen();
 
     expect(triggers()).toEqual(['a manualActivity']);
+  });
+
+  it('hands the offer the account and settings rows the page already read', async () => {
+    const cash = account({ kind: 'cash' });
+    const settings = { baseCurrency: 'EUR' };
+    setLiveData({ accounts: [cash], holdings: [], settings: [settings] });
+
+    await renderScreen();
+
+    expect(mockUseReminderOffer).toHaveBeenLastCalledWith(
+      expect.objectContaining({ account: cash, settings }),
+    );
   });
 
   it('shows no offer card while there is no offer', async () => {

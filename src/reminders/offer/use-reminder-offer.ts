@@ -1,18 +1,25 @@
 import { useState } from 'react';
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
-import { accountsRepo } from '@kiko/accounts';
 import { remindersRepo } from '@kiko/reminders/repo';
-import { useDataReady, useLiveQuery } from '@kiko/db';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import { isReminderOfferDismissed, settingsRepo } from '@kiko/settings';
+import { type AccountRow, type SettingsRow, useDataReady, useLiveQuery } from '@kiko/db';
 
 export type ReminderOfferTrigger = 'afterImport' | 'manualActivity';
 
-type ReminderOffer = { kind: ReminderKind; accept: () => void; dismiss: () => Promise<void> };
+type ReminderOffer = { kind: ReminderKind; dismiss: () => Promise<void> };
 
-type ReminderFormOpener = (form: { accountId: string; kind: ReminderKind }) => void;
+// The page's own account and settings rows, `undefined` while its reads load:
+// a second subscription here would queue the same reads again on op-sqlite's
+// one worker.
+type ReminderOfferInput = {
+  accountId: string;
+  account: AccountRow | undefined;
+  settings: SettingsRow | undefined;
+  trigger: ReminderOfferTrigger;
+};
 
 const MANUAL_ACTIVITY_DAYS = 30;
 const MANUAL_ACTIVITY_ENTRIES = 2;
@@ -44,39 +51,28 @@ const kindOf = (trigger: ReminderOfferTrigger): ReminderKind =>
  * so a decided offer costs no transactions read, and a synced account never
  * reads its manual entries.
  */
-export const useReminderOffer = (
-  accountId: string,
-  trigger: ReminderOfferTrigger,
-  openForm: ReminderFormOpener,
-): ReminderOffer | undefined => {
+export const useReminderOffer = ({
+  accountId,
+  account,
+  settings,
+  trigger,
+}: ReminderOfferInput): ReminderOffer | undefined => {
   const kind = kindOf(trigger);
   const [since] = useState(() => manualActivitySince(Date.now()));
-  const { data: accounts, isLoading: accountLoading } = useLiveQuery(
-    accountsRepo.byIdQuery(accountId),
-    ['accounts'],
-    true,
-    { cached: true },
-  );
   const { data: reminders, isLoading: remindersLoading } = useLiveQuery(
     remindersRepo.listByAccountQuery(accountId),
     ['reminders'],
     true,
     { cached: true },
   );
-  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
-    settingsRepo.getQuery(),
-    ['settings'],
-    true,
-    { cached: true },
-  );
-  const accountReady = useDataReady(accountLoading, remindersLoading, settingsLoading);
-  const account = accounts.at(0);
+  const remindersReady = useDataReady(remindersLoading);
   const dismissed =
-    foldMap(maybe(settingsRows.at(0)), (settingsRow) =>
+    foldMap(maybe(settings), (settingsRow) =>
       isReminderOfferDismissed(settingsRow, accountId, kind),
     ) ?? false;
   const undecided =
-    accountReady &&
+    remindersReady &&
+    settings !== undefined &&
     account !== undefined &&
     account.archivedAt === null &&
     !reminders.some((reminder) => reminder.kind === kind) &&
@@ -106,9 +102,5 @@ export const useReminderOffer = (
     return undefined;
   }
 
-  return {
-    kind,
-    accept: () => openForm({ accountId, kind }),
-    dismiss: () => settingsRepo.dismissReminderOffer(accountId, kind),
-  };
+  return { kind, dismiss: () => settingsRepo.dismissReminderOffer(accountId, kind) };
 };

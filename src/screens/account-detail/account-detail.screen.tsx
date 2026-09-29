@@ -123,12 +123,19 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     settingsLoading,
     priceBookLoading,
   );
+  const account = accounts.at(0);
   // After the page's own reads, so they queue first on op-sqlite's one worker;
   // above the loading gate, so a cached offer is there on the first ready frame.
-  const offer = useReminderOffer(accountId, reminderOffer ?? 'manualActivity', (form) => {
-    navigation.navigate('ReminderForm', form);
-    navigation.setParams({ reminderOffer: undefined });
+  const offer = useReminderOffer({
+    accountId,
+    account,
+    settings: settingsRows.at(0),
+    trigger: reminderOffer ?? 'manualActivity',
   });
+  const acceptOffer = (kind: ReminderKind): void => {
+    navigation.navigate('ReminderForm', { accountId, kind });
+    navigation.setParams({ reminderOffer: undefined });
+  };
   // A failed write keeps the offer on screen, so the user can try again.
   const dismissOffer = async (dismiss: () => Promise<void>): Promise<void> => {
     try {
@@ -141,7 +148,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
     navigation.setParams({ reminderOffer: undefined });
   };
-  const account = accounts.at(0);
 
   // The nav title shows the account NAME only — the native large title, the
   // standard iOS pattern (the identity icon now sits beside the Balance amount
@@ -318,7 +324,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             message={offerMessage(offer.kind, t)}
             acceptLabel={t('reminders.offer.setUp')}
             dismissLabel={t('reminders.offer.dismiss')}
-            onAccept={offer.accept}
+            onAccept={() => acceptOffer(offer.kind)}
             onDismiss={() => dismissOffer(offer.dismiss)}
           />
         )}
