@@ -130,8 +130,8 @@ describe('resolveEntityColor', () => {
   // The type default lookup itself (`defaultAccountColor[kind]` /
   // `defaultHoldingColor[type]`) is only a compile-time guarantee — SQLite
   // enforces no CHECK constraint on the `kind`/`type` column, so a row written
-  // under a since-removed enum member (e.g. the dropped `broker` account kind)
-  // resolves its own default to `undefined` at runtime. This is the "unmapped
+  // under a kind or type the app no longer knows resolves its own default to
+  // `undefined` at runtime. This is the "unmapped
   // key" gap; a valid last-resort color must still come out the other end.
   it('falls back to the safe default swatch when both the stored color and the type default are unusable', () => {
     const resolved = resolveEntityColor(null, undefined);

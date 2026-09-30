@@ -45,7 +45,7 @@ type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ac
 // The account kinds this form offers, derived from `accountKindSymbol` — a
 // `Record<AccountKind, string>` typed over the FULL `accounts.kind` schema
 // union (see entity-symbols.ts's own exhaustiveness doc comment) — rather
-// than a hand-copied array, so a later schema widening (debt, broker) is a
+// than a hand-copied array, so a later schema widening is a
 // compile error here until this form (and the symbol/color/subtitle maps it
 // already forces) accounts for the new kind. A crypto account is created
 // like a bank account — no initial holding/currency at creation; holdings are
@@ -56,7 +56,9 @@ type Kind = (typeof kinds)[number];
 
 // A stored `kind` can still hold a value that is no longer part of the CURRENT
 // schema enum — the schema's `enum` is TS-only (no DB CHECK constraint), so a
-// once-valid, since-removed kind (e.g. the retired `broker`) can persist.
+// row under a kind the app no longer knows can persist. A stored `broker` row
+// from before that kind was first dropped (none expected) reads as a broker
+// with no broker picked.
 // Guards the edit-mode hydration below against that case so an unrecognized
 // stored kind never assigns outside `Kind`'s own type (and the symbol/color
 // lookups below never silently miss).
@@ -120,6 +122,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     property: t('forms.account.property'),
     metals: t('forms.account.metals'),
     debt: t('forms.account.debt'),
+    broker: t('forms.account.broker'),
   };
   // The one-line "which kind is this?" hint shown under each row in the
   // AccountKindField sheet (a bare label does not say what belongs there)
@@ -131,6 +134,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     property: t('forms.account.kindSubtitle.property'),
     debt: t('forms.account.kindSubtitle.debt'),
     metals: t('forms.account.kindSubtitle.metals'),
+    broker: t('forms.account.kindSubtitle.broker'),
   };
 
   const [name, setName] = useState('');

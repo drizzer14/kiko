@@ -55,6 +55,10 @@ describe('holdingTypesForAccountKind', () => {
   it('constrains a debt account to loan holdings only', () => {
     expect(holdingTypesForAccountKind.debt).toEqual(['loan']);
   });
+
+  it('allows a broker account bond and cash holdings', () => {
+    expect(holdingTypesForAccountKind.broker).toEqual(['bond', 'cash']);
+  });
 });
 
 describe('sync-only holding types', () => {
@@ -107,6 +111,14 @@ describe('creatableHoldingTypesForAccount', () => {
   it('offers loan as the sole creatable type for a debt account', () => {
     expect(creatableHoldingTypesForAccount('debt', false)).toEqual(['loan']);
     expect(creatableHoldingTypesForAccount('debt', true)).toEqual(['loan']);
+  });
+
+  it('offers bond and cash on a broker account, whatever the broker', () => {
+    expect(creatableHoldingTypesForAccount('broker', false, 'trading212')).toEqual([
+      'bond',
+      'cash',
+    ]);
+    expect(creatableHoldingTypesForAccount('broker', false, null)).toEqual(['bond', 'cash']);
   });
 
   it('drops metal from a bank account with no bankId, an unlisted bankId, or monobank', () => {

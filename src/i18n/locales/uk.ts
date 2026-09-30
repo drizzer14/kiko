@@ -224,6 +224,7 @@ export const uk: typeof en = {
       bankImportOnly: 'Імпорт виписок.',
       bankType: 'Тип банку',
       bankTypeSheetTitle: 'Тип банку',
+      broker: 'Брокер',
       cash: 'Готівка',
       crypto: 'Крипто',
       debt: 'Борг',
@@ -238,6 +239,7 @@ export const uk: typeof en = {
       kindSheetTitle: 'Вид рахунку',
       kindSubtitle: {
         bank: 'Синхронізується або імпортується з виписки банку.',
+        broker: 'Акції, облігації та гроші в брокера.',
         cash: 'Готівка поза банком.',
         crypto: 'Гаманець або обліковий запис біржі.',
         debt: 'Кредит або борг, який ви винні.',

@@ -27,7 +27,8 @@ type AccountKind = AccountRow['kind'];
 // unspecified for it, as with `house.fill` for `property`. `minus.circle.fill`
 // (SF Symbols 1) is the pick for `debt` — same "negative amount owed"
 // semantics as its sole holding type below, mirroring the property/metals
-// kind-and-type icon reuse.
+// kind-and-type icon reuse. `chart.line.uptrend.xyaxis` (SF Symbols 3, iOS 15)
+// is the pick for `broker`, the same glyph the Share prices settings row uses.
 export const accountKindSymbol: Record<AccountKind, string> = {
   bank: 'building.columns.fill',
   cash: 'banknote',
@@ -35,6 +36,7 @@ export const accountKindSymbol: Record<AccountKind, string> = {
   property: 'house.fill',
   metals: 'cube.fill',
   debt: 'minus.circle.fill',
+  broker: 'chart.line.uptrend.xyaxis',
 };
 
 // card -> creditcard, term_deposit -> calendar, bond -> receipt, jar ->

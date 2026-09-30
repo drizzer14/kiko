@@ -250,8 +250,8 @@ describe('AccountFormScreen', () => {
     expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(1);
   });
 
-  it('offers the four account kinds with humanized labels, and lists no other kind', async () => {
-    const { getByTestId, queryByText } = await renderForm();
+  it('offers the account kinds with humanized labels and subtitles, Broker included', async () => {
+    const { getByTestId } = await renderForm();
 
     await fireEvent.press(getByTestId('account-kind-field'));
 
@@ -270,10 +270,15 @@ describe('AccountFormScreen', () => {
     expect(getByTestId('account-kind-field-option-property')).toHaveTextContent('Property', {
       exact: false,
     });
-    expect(queryByText('Broker')).toBeNull();
+    expect(getByTestId('account-kind-field-option-broker')).toHaveTextContent('Broker', {
+      exact: false,
+    });
+    expect(getByTestId('account-kind-field-option-broker-description')).toHaveTextContent(
+      'Shares, bonds, and cash at a broker.',
+    );
   });
 
-  it('renders the account-kind sheet options in the order Bank, Cash, Crypto, Property, Metals, Debt', async () => {
+  it('renders the account-kind sheet options in the order Bank, Cash, Crypto, Property, Metals, Debt, Broker', async () => {
     const { getByTestId, getAllByTestId } = await renderForm();
 
     await fireEvent.press(getByTestId('account-kind-field'));
@@ -286,7 +291,7 @@ describe('AccountFormScreen', () => {
       (node.props.testID as string).replace('account-kind-field-option-', ''),
     );
 
-    expect(order).toEqual(['bank', 'cash', 'crypto', 'property', 'metals', 'debt']);
+    expect(order).toEqual(['bank', 'cash', 'crypto', 'property', 'metals', 'debt', 'broker']);
   });
 
   it('shows a subtitle under every kind option in the sheet', async () => {
@@ -862,9 +867,9 @@ describe('AccountFormScreen edit mode', () => {
   });
 
   it('resolves a since-removed account kind to a real swatch, not blank', async () => {
-    // `broker` was a valid Account.kind once and was dropped; the schema enum
-    // is TS-only with no CHECK constraint, so such a row can still exist.
-    mockAccounts = [{ id: 'acc-1', name: 'X', kind: 'broker', icon: null, color: null }];
+    // The schema enum is TS-only with no CHECK constraint, so a row under a
+    // kind the app no longer knows can still exist.
+    mockAccounts = [{ id: 'acc-1', name: 'X', kind: 'retired_kind', icon: null, color: null }];
     const { getByLabelText } = await renderForm({ accountId: 'acc-1' });
 
     expect(selectedSwatchHex(getByLabelText)).toMatch(HEX);

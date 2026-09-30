@@ -55,9 +55,9 @@ const FALLBACK_ENTITY_COLOR = entityColorsDark.gray;
 //    `defaultHoldingColor` are typed `Record<Kind, string>`, which is only a
 //    COMPILE-time guarantee. SQLite enforces no CHECK constraint on the
 //    `kind`/`type` text column (Drizzle's `{ enum: [...] }` is TypeScript-only
-//    annotation), so a row written under a since-removed enum member — e.g.
-//    the `broker` account kind dropped in 8e2e759 — still resolves its kind
-//    default lookup to `undefined` at runtime, with no compiler in the way.
+//    annotation), so a row written under a kind or type the app no longer
+//    knows still resolves its kind default lookup to `undefined` at runtime,
+//    with no compiler in the way.
 //
 // Either gap, combined with a null/never-set stored color, used to reach
 // `entityIconTileGradient`/`isLightEntityColor` with an unparsable value and

@@ -18,6 +18,7 @@ describe('eligibleReminderKinds', () => {
     ['a property', { kind: 'property', institution: null }, ['add_transactions']],
     ['a metals', { kind: 'metals', institution: null }, ['add_transactions']],
     ['a debt', { kind: 'debt', institution: null }, ['add_transactions']],
+    ['a broker', { kind: 'broker', institution: null }, ['add_transactions']],
   ])('offers the right kinds on %s account', (_label, account, kinds) => {
     expect(eligibleReminderKinds(account)).toEqual(kinds);
   });

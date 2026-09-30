@@ -36,6 +36,7 @@ export const holdingTypesForAccountKind: Record<AccountKind, readonly HoldingTyp
   property: ['property_item'],
   metals: ['metal'],
   debt: ['loan'],
+  broker: ['bond', 'cash'],
 };
 
 // The holding types the Monobank sync pipeline OWNS: it creates a `card` per

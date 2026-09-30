@@ -19,7 +19,9 @@ type AccountKind = AccountRow['kind'];
 // for `metals` — thematically metallic, and color choice was similarly
 // unspecified for it, as with `brown` for `property`. `red` (also previously
 // unused in either map) is the pick for `debt` — the conventional "money
-// owed" hue, matching its sole holding type below.
+// owed" hue, matching its sole holding type below. `teal` (unused in either
+// map) is the pick for `broker`, so it stays apart from every other kind and
+// from its own `bond`/`cash` holdings.
 export const defaultAccountColor: Record<AccountKind, string> = {
   bank: entityColorsDark.white,
   cash: entityColorsDark.khaki,
@@ -27,6 +29,7 @@ export const defaultAccountColor: Record<AccountKind, string> = {
   property: entityColorsDark.brown,
   metals: entityColorsDark.gray,
   debt: entityColorsDark.red,
+  broker: entityColorsDark.teal,
 };
 
 // card -> white, term_deposit -> blue, bond -> green, jar -> violet,

@@ -32,13 +32,14 @@ describe('accountKindSymbol', () => {
     }
   });
 
-  it('assigns bank building.columns.fill, cash banknote, crypto bitcoinsign.circle, property house.fill, metals cube.fill, debt minus.circle.fill', () => {
+  it('assigns bank building.columns.fill, cash banknote, crypto bitcoinsign.circle, property house.fill, metals cube.fill, debt minus.circle.fill, broker chart.line.uptrend.xyaxis', () => {
     expect(accountKindSymbol.bank).toBe('building.columns.fill');
     expect(accountKindSymbol.cash).toBe('banknote');
     expect(accountKindSymbol.crypto).toBe('bitcoinsign.circle');
     expect(accountKindSymbol.property).toBe('house.fill');
     expect(accountKindSymbol.metals).toBe('cube.fill');
     expect(accountKindSymbol.debt).toBe('minus.circle.fill');
+    expect(accountKindSymbol.broker).toBe('chart.line.uptrend.xyaxis');
   });
 });
 

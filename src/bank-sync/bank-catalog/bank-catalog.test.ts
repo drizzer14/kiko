@@ -54,6 +54,7 @@ describe('bankCatalog', () => {
     expect(isBankId('privatbank')).toBe(true);
     expect(isBankId('oschadbank')).toBe(true);
     expect(isBankId('revolut')).toBe(false);
+    expect(isBankId('trading212')).toBe(false);
     expect(isBankId(null)).toBe(false);
     expect(isBankId(undefined)).toBe(false);
   });

@@ -258,6 +258,7 @@ export const en = {
       bankImportOnly: 'Statement import only — no live connection.',
       bankType: 'Bank type',
       bankTypeSheetTitle: 'Bank Type',
+      broker: 'Broker',
       cash: 'Cash',
       crypto: 'Crypto',
       debt: 'Debt',
@@ -278,6 +279,7 @@ export const en = {
       kindSheetTitle: 'Account Kind',
       kindSubtitle: {
         bank: 'Synced or imported from a bank statement.',
+        broker: 'Shares, bonds, and cash at a broker.',
         cash: 'Cash you hold outside a bank.',
         crypto: 'A wallet or exchange account.',
         debt: 'A loan or debt you owe.',

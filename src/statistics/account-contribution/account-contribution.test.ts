@@ -137,9 +137,9 @@ describe('buildAccountContribution', () => {
 
   it('resolves an unmapped kind to a real hex, never undefined', () => {
     const slices = buildAccountContribution({
-      // `broker` was a valid Account.kind once and was dropped; the schema enum
-      // is TS-only with no CHECK constraint, so such a row can still exist.
-      accounts: [account('a', 'X', { kind: 'broker' as AccountRow['kind'], color: null })],
+      // The schema enum is TS-only with no CHECK constraint, so a row under a
+      // kind the app no longer knows can still exist.
+      accounts: [account('a', 'X', { kind: 'retired_kind' as AccountRow['kind'], color: null })],
       holdings: [holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_00 })],
       rateTable: {},
       baseCurrency: 'UAH',

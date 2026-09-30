@@ -6,7 +6,15 @@ import '@kiko/design-system/unistyles';
 import AccountKindField from '.';
 import type { AccountKind } from './account-kind-field.props';
 
-const options: readonly AccountKind[] = ['bank', 'cash', 'crypto', 'property', 'metals', 'debt'];
+const options: readonly AccountKind[] = [
+  'bank',
+  'cash',
+  'crypto',
+  'property',
+  'metals',
+  'debt',
+  'broker',
+];
 
 const labels: Record<AccountKind, string> = {
   bank: 'Bank',
@@ -15,6 +23,7 @@ const labels: Record<AccountKind, string> = {
   property: 'Property',
   metals: 'Precious metals',
   debt: 'Debt',
+  broker: 'Broker',
 };
 
 const subtitles: Record<AccountKind, string> = {
@@ -24,6 +33,7 @@ const subtitles: Record<AccountKind, string> = {
   property: 'Real estate, car, valuables, money you lent',
   metals: 'Gold, silver, platinum, palladium',
   debt: 'A loan or debt you owe.',
+  broker: 'Shares, bonds, and cash at a broker.',
 };
 
 const icons: Record<AccountKind, string> = {
@@ -33,6 +43,7 @@ const icons: Record<AccountKind, string> = {
   property: 'house.fill',
   metals: 'cube.fill',
   debt: 'minus.circle.fill',
+  broker: 'chart.line.uptrend.xyaxis',
 };
 
 const setup = async (overrides: Partial<Parameters<typeof AccountKindField>[0]> = {}) => {

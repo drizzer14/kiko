@@ -36,7 +36,7 @@ describe('accountIdentity', () => {
   });
 
   it('resolves an unmapped kind with no stored color to the gray fallback', () => {
-    const removedKind = 'broker' as AccountKind;
+    const removedKind = 'retired_kind' as AccountKind;
 
     expect(accountIdentity({ kind: removedKind, icon: null, color: null }).color).toBe(
       entityColorsDark.gray,
@@ -44,7 +44,7 @@ describe('accountIdentity', () => {
   });
 
   it('leaves the icon undefined for an unmapped kind with no stored icon', () => {
-    const removedKind = 'broker' as AccountKind;
+    const removedKind = 'retired_kind' as AccountKind;
 
     expect(accountIdentity({ kind: removedKind, icon: null, color: null }).icon).toBeUndefined();
   });

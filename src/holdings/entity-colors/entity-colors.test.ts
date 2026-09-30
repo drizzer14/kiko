@@ -29,8 +29,8 @@ describe('defaultAccountColor', () => {
     }
   });
 
-  it('assigns bank white, cash khaki, crypto yellow, property brown, metals gray, debt red', () => {
-    const { white, khaki, yellow, brown, gray, red } = entityColorsDark;
+  it('assigns bank white, cash khaki, crypto yellow, property brown, metals gray, debt red, broker teal', () => {
+    const { white, khaki, yellow, brown, gray, red, teal } = entityColorsDark;
 
     expect(defaultAccountColor.bank).toBe(white);
     expect(defaultAccountColor.cash).toBe(khaki);
@@ -38,6 +38,7 @@ describe('defaultAccountColor', () => {
     expect(defaultAccountColor.property).toBe(brown);
     expect(defaultAccountColor.metals).toBe(gray);
     expect(defaultAccountColor.debt).toBe(red);
+    expect(defaultAccountColor.broker).toBe(teal);
   });
 });
 

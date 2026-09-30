@@ -16,13 +16,14 @@ export const accounts = sqliteTable('accounts', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   kind: text('kind', {
-    enum: ['bank', 'cash', 'crypto', 'property', 'metals', 'debt'],
+    enum: ['bank', 'cash', 'crypto', 'property', 'metals', 'debt', 'broker'],
   }).notNull(),
   institution: text('institution'),
-  // The bank this account REPRESENTS (`src/bank-sync/bank-catalog/`),
-  // independent of `institution`
+  // The catalog identity this account REPRESENTS, per kind: a `bankCatalog`
+  // id (`src/bank-sync/bank-catalog/`) for a `bank`, a `brokerCatalog` id
+  // (`src/brokers/`) for a `broker`. Independent of `institution`
   // (which marks a LIVE sync connection). Set from the account-form's bank
-  // picker at create time; import-only for 5 of the 6 catalog entries.
+  // or broker picker.
   // Deliberately NEVER read by `isSyncedAccount`/`isSyncedHolding`
   // (`src/holdings/deletable/`) or any registry lookup — those stay keyed
   // on `institution` alone, so tagging an account `bankId: 'privatbank'`
