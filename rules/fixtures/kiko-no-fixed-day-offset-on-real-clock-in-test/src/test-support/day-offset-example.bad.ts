@@ -36,6 +36,9 @@ export const yesterdayBySpelledSpan = (): number => Date.now() - 1000 * 60 * 60 
 // EXPECT-FINDING
 export const tomorrowFromDateObject = (): number => new Date().getTime() + DAY_MS;
 
+// EXPECT-FINDING
+export const yesterdayLessAnHour = (): number => new Date().getTime() - HOUR - DAY_MS;
+
 export const dayNamedSpans = (dayMs: number, msPerDay: number, days: number): number[] => [
   // EXPECT-FINDING
   Date.now() + dayMs,

@@ -1408,17 +1408,14 @@ rules:
           - pattern: new Date().getTime() + $SPAN
           - pattern: new Date().getTime() - $SPAN
           - pattern: $SPAN + new Date().getTime()
-          - patterns:
-              - pattern-either:
-                  - pattern: $LEFT + $SPAN
-                  - pattern: $LEFT - $SPAN
-              - metavariable-pattern:
-                  metavariable: $LEFT
-                  pattern-either:
-                    - pattern: Date.now() + $OFFSET
-                    - pattern: Date.now() - $OFFSET
-                    - pattern: new Date().getTime() + $OFFSET
-                    - pattern: new Date().getTime() - $OFFSET
+          - pattern: Date.now() + $OFFSET + $SPAN
+          - pattern: Date.now() - $OFFSET + $SPAN
+          - pattern: Date.now() + $OFFSET - $SPAN
+          - pattern: Date.now() - $OFFSET - $SPAN
+          - pattern: new Date().getTime() + $OFFSET + $SPAN
+          - pattern: new Date().getTime() - $OFFSET + $SPAN
+          - pattern: new Date().getTime() + $OFFSET - $SPAN
+          - pattern: new Date().getTime() - $OFFSET - $SPAN
           - patterns:
               - pattern-either:
                   - pattern: $NOW + $SPAN

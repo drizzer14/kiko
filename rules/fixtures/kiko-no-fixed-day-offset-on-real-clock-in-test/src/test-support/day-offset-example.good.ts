@@ -26,6 +26,12 @@ export const afterHoliday = (holidayLength: number): number => Date.now() + holi
 
 export const sinceLastMonday = (lastMonday: number): number => Date.now() - lastMonday;
 
+export const overdueDayCount = (openedAt: number, graceDays: number): number => {
+  const overdueDays = Math.floor((Date.now() - openedAt) / DAY_MS) - graceDays;
+
+  return overdueDays;
+};
+
 export const pinnedClockTomorrow = (): number => {
   jest.setSystemTime(PINNED_NOON);
 
