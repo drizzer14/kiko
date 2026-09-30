@@ -6,7 +6,7 @@ import either, { bifoldr } from 'fnts/either';
 import { decimalFromJsonNumber } from '@kiko/currency/decimal';
 
 /** One end-of-day close, in the listing's own currency unit, as an exact decimal string. */
-export type EodClose = { day: number; close: string };
+type EodClose = { day: number; close: string };
 
 export type UserLimits = { dailyLimit: number; requestsToday: number; requestsDay: number };
 
