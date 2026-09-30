@@ -1094,6 +1094,7 @@ export const en = {
       statementImport: 'Reminds you to import a new statement for this account.',
       addTransactions: 'Reminds you to add new transactions to this account.',
     },
+    emptyNoKinds: 'Reminders are available for bank accounts and accounts you track by hand.',
     emptyList: 'No reminders yet',
     emptyHint: 'Set up a reminder from an account’s page.',
     off: 'Off',

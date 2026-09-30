@@ -22,7 +22,9 @@ type PlanInputRow = Awaited<ReturnType<typeof remindersRepo.planInputsQuery>>[nu
 // The same rule as the reminder pages, so a reminder the page lists as not
 // sent is never scheduled. An import reminder with no import yet is sent too.
 const isSchedulable = (row: PlanInputRow): boolean =>
-  row.pausedAt === null && row.archivedAt === null && eligibleReminderKinds(row).includes(row.kind);
+  row.pausedAt === null &&
+  row.archivedAt === null &&
+  eligibleReminderKinds({ kind: row.accountKind, institution: row.institution }).includes(row.kind);
 
 const lastDataAtOf = (row: PlanInputRow): number | null =>
   match(row.kind)

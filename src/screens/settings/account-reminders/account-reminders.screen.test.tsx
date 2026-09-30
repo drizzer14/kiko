@@ -52,10 +52,19 @@ jest.mock('@kiko/reminders/repo/reminders.repo', () => ({
 const authorizationStatus = jest.spyOn(remindersNative, 'authorizationStatus');
 const requestAuthorization = jest.spyOn(remindersNative, 'requestAuthorization');
 
-type Account = { id: string; institution: string | null; archivedAt: number | null };
+type Account = { id: string; kind: string; institution: string | null; archivedAt: number | null };
 
-const MANUAL: Account = { id: 'a-1', institution: null, archivedAt: null };
-const SYNCED: Account = { id: 'a-1', institution: 'monobank', archivedAt: null };
+const MANUAL: Account = { id: 'a-1', kind: 'bank', institution: null, archivedAt: null };
+const SYNCED: Account = { id: 'a-1', kind: 'bank', institution: 'monobank', archivedAt: null };
+const CASH: Account = { id: 'a-1', kind: 'cash', institution: null, archivedAt: null };
+const SYNCED_CRYPTO: Account = {
+  id: 'a-1',
+  kind: 'crypto',
+  institution: 'binance',
+  archivedAt: null,
+};
+const NO_KINDS_CAPTION =
+  'Reminders are available for bank accounts and accounts you track by hand.';
 
 const seed = (data: { account?: Account; reminders?: ReminderRow[]; loading?: boolean }): void => {
   const resultByTable: Record<string, unknown[]> = {
@@ -92,7 +101,7 @@ beforeEach(() => {
 });
 
 describe('AccountRemindersScreen — rows', () => {
-  it('lists both kinds, import first, on a manual account before any import', async () => {
+  it('lists both kinds, import first, on a manual bank account before any import', async () => {
     seed({ account: MANUAL });
 
     const { getAllByText } = await renderScreen();
@@ -102,13 +111,42 @@ describe('AccountRemindersScreen — rows', () => {
     ).toEqual(['Statement import', 'Add transactions']);
   });
 
-  it('offers only statement import on a synced account, before any import', async () => {
+  it('offers only statement import on a synced bank account, before any import', async () => {
     seed({ account: SYNCED });
 
     const { getByText, queryByText } = await renderScreen();
 
     expect(getByText('Statement import')).toBeTruthy();
     expect(queryByText('Add transactions')).toBeNull();
+  });
+
+  it('offers only add transactions on an account that is not a bank', async () => {
+    seed({ account: CASH });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText('Add transactions')).toBeTruthy();
+    expect(queryByText('Statement import')).toBeNull();
+    expect(queryByText(NO_KINDS_CAPTION)).toBeNull();
+  });
+
+  it('explains an empty page on a synced account that is not a bank', async () => {
+    seed({ account: SYNCED_CRYPTO });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText(NO_KINDS_CAPTION)).toBeTruthy();
+    expect(queryByText('Statement import')).toBeNull();
+    expect(queryByText('Add transactions')).toBeNull();
+  });
+
+  it('shows no empty caption while a saved reminder is listed', async () => {
+    seed({ account: SYNCED_CRYPTO, reminders: [savedReminder()] });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText('Add transactions')).toBeTruthy();
+    expect(queryByText(NO_KINDS_CAPTION)).toBeNull();
   });
 
   it('reads no transactions to decide which kinds it offers', async () => {

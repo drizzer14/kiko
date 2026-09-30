@@ -41,8 +41,8 @@ const summaryOf = (reminder: SavedReminder | undefined, t: TFunction): string =>
 };
 
 // Why a saved reminder is not sent right now; every reason that holds shows.
-// Only an add-transactions reminder can be unavailable: every account allows
-// an import reminder.
+// Only an add-transactions reminder can be unavailable: an import reminder is
+// only offered on a bank account, and an account's kind never changes.
 const statusCaptions = (
   reminder: SavedReminder,
   available: boolean,

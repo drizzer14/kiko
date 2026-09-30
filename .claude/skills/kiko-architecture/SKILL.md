@@ -1791,11 +1791,18 @@ what a change must keep.
   `recordEngagements`, `markBackoffPaused`, `clearSnoozes`. Read the
   file for signatures.
 - **Rules.** `src/reminders/rules/` is pure.
-  `eligibleReminderKinds(account)`: an import reminder is allowed on
-  every account, synced ones and ones with no import yet included (user
-  decision 2026-09-30); add-transactions reminders need a non-synced
-  account. The scheduler's `isSchedulable` uses the same function, so a
-  reminder the page shows as unavailable is never scheduled. With no
+  `eligibleReminderKinds(account)` takes the account's `kind` and
+  `institution`: an import reminder is allowed on every BANK account
+  (`kind === 'bank'`), manual and synced (Monobank) ones and ones with
+  no import yet included (user decision 2026-09-30), and on no other
+  kind, since only a bank account has a statement import
+  (`account-detail.screen.tsx` shows Import and handles the
+  `importStatement` intent for `kind === 'bank'` only);
+  add-transactions reminders need a non-synced account of any kind.
+  The scheduler's `isSchedulable` uses the same function (with
+  `planInputsQuery`'s `accountKind` column, since that row's `kind` is
+  the reminder's), so a reminder the page shows as unavailable is never
+  scheduled. With no
   import yet, an import reminder plans as usual with a null day count
   (body `reminders.notification.statementImportBodyNoData`); the first
   import is its first `lastDataAt`. The form draft helpers are exported
@@ -1807,8 +1814,12 @@ what a change must keep.
   what the user typed even out of range. The page
   lists eligible kinds plus any saved kind that is no longer eligible.
   Only an add-transactions reminder can be unavailable (on a synced
-  account); its row shows `reminders.unavailable.addTransactions`. The
-  page always lists at least the import kind, so it has no empty state.
+  account); its row shows `reminders.unavailable.addTransactions`. An
+  import reminder is never unavailable: it is offered only on a bank
+  account, and an account's kind is read-only after creation. A synced
+  account that is not a bank (Binance, a BTC wallet) has no eligible
+  kind; with no saved reminder either, its page shows the caption
+  `reminders.emptyNoKinds` instead of rows.
 - **Summary.** `describeSchedule(schedule, t, firstDay)`
   (`src/reminders/schedule/describe-schedule.ts`) reads the time on the
   24-hour clock. The uk preposition comes from `{{at}}`:

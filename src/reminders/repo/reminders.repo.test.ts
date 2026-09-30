@@ -161,6 +161,7 @@ describe('remindersRepo.planInputsQuery', () => {
         lastEngagedAt: 6,
         lastSnoozedAt: 7,
         archivedAt,
+        accountKind: 'bank',
         institution: 'monobank',
         lastImportAt: null,
         lastManualAt: null,

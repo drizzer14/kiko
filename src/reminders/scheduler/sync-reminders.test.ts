@@ -51,13 +51,13 @@ jest.spyOn(remindersNative, 'authorizationStatus').mockImplementation(async () =
 
 const seedAccount = (
   id: string,
-  columns: { institution?: string; archivedAt?: number; importedAt?: number } = {},
+  columns: { kind?: string; institution?: string; archivedAt?: number; importedAt?: number } = {},
 ): void => {
   mockDatabase
     .prepare(
-      "INSERT INTO accounts (id, name, kind, institution, archived_at) VALUES (?, 'Mono Black', 'bank', ?, ?)",
+      "INSERT INTO accounts (id, name, kind, institution, archived_at) VALUES (?, 'Mono Black', ?, ?, ?)",
     )
-    .run(id, columns.institution ?? null, columns.archivedAt ?? null);
+    .run(id, columns.kind ?? 'bank', columns.institution ?? null, columns.archivedAt ?? null);
   mockDatabase
     .prepare(
       "INSERT INTO holdings (id, account_id, name, type, currency) VALUES (?, ?, 'Card', 'card', 'UAH')",
@@ -202,6 +202,23 @@ describe('syncReminders — which reminders are scheduled', () => {
         ['kiko.reminder.import.202610032000', 'No statements imported yet.'],
         ['kiko.reminder.import.paused', 'Turn them on again in Kiko.'],
       ]);
+    },
+  );
+
+  it.each([
+    ['a cash', 'cash', undefined, ['entry']],
+    ['a property', 'property', undefined, ['entry']],
+    ['a synced crypto', 'crypto', 'binance', []],
+  ])(
+    'never schedules an import reminder on %s account, which has no statement import',
+    async (_label, kind, institution, scheduled) => {
+      seedAccount('account-1', { kind, institution });
+      seedReminder({ id: 'import', accountId: 'account-1', kind: 'statement_import' });
+      seedReminder({ id: 'entry', accountId: 'account-1', kind: 'add_transactions' });
+
+      await syncReminders(english, NOW);
+
+      expect(scheduledIds()).toEqual(scheduled);
     },
   );
 

@@ -215,6 +215,7 @@ export const remindersRepo = {
         lastEngagedAt: reminders.lastEngagedAt,
         lastSnoozedAt: reminders.lastSnoozedAt,
         archivedAt: accounts.archivedAt,
+        accountKind: accounts.kind,
         institution: accounts.institution,
         lastImportAt: lastData.lastImportAt,
         lastManualAt: lastData.lastManualAt,
