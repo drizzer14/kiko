@@ -10,6 +10,9 @@ const dayMs = DAY_MS;
 const msPerDay = DAY_MS;
 const ONE_DAY_MS = DAY_MS;
 const THIRTY_DAYS_MS = 30 * DAY_MS;
+const oneDayMs = DAY_MS;
+const ninetyDaysMs = 90 * DAY_MS;
+const MILLISECONDS_PER_DAY = DAY_MS;
 
 export const defaultRangeFrom = (now: number): Date =>
   // EXPECT-FINDING
@@ -41,3 +44,12 @@ export const oneDayBack = (time: number): number => startOfLocalDay(time - ONE_D
 
 // EXPECT-FINDING
 export const thirtyDaysBack = (time: number): number => startOfLocalDay(time - THIRTY_DAYS_MS);
+
+// EXPECT-FINDING
+export const oneDayForward = (time: number): number => startOfLocalDay(time + oneDayMs);
+
+// EXPECT-FINDING
+export const ninetyDaysBack = (time: number): number => startOfLocalDay(time - ninetyDaysMs);
+
+// EXPECT-FINDING
+export const endOfPreviousDay = (time: number): number => endOfLocalDay(time - MILLISECONDS_PER_DAY);
