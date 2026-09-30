@@ -248,3 +248,51 @@ export const switchCenteredOnLabel = true;
 // EXPECT-FINDING
 // The user asked for the weekday chip size here, so the grid matches it.
 export const gridMatchesWeekdayChip = true;
+
+// EXPECT-FINDING
+// The sort order only changed on this branch.
+export const sortOrderOnBranch = true;
+
+// EXPECT-FINDING
+/* The sort order only changed on this branch. */
+export const sortOrderOnBranchBlock = true;
+
+// EXPECT-FINDING
+// Keeps this task's row order stable.
+export const taskRowOrder = true;
+
+// EXPECT-FINDING
+/* Keeps this task's row order stable. */
+export const taskRowOrderBlock = true;
+
+// EXPECT-FINDING
+// Option A: no per-field outline.
+export const optionOutline = true;
+
+// EXPECT-FINDING
+/* Option A: no per-field outline. */
+export const optionOutlineBlock = true;
+
+// EXPECT-FINDING
+// A narrow parser is enough for this plan.
+export const parserForPlan = true;
+
+// EXPECT-FINDING
+/* A narrow parser is enough for this plan. */
+export const parserForPlanBlock = true;
+
+// EXPECT-FINDING
+// Only this plan's formats are parsed.
+export const planFormats = true;
+
+// EXPECT-FINDING
+/* Only this plan's formats are parsed. */
+export const planFormatsBlock = true;
+
+// EXPECT-FINDING
+// The tile keeps a 12 pt corner (review, 2026-09-14).
+export const tileCorner = true;
+
+// EXPECT-FINDING
+/* The tile keeps a 12 pt corner (review, 2026-09-14). */
+export const tileCornerBlock = true;

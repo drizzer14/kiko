@@ -25,8 +25,8 @@ export type DateFieldProps = {
   // The validation-failure message for this field, or `undefined` when it's
   // currently valid — same contract as TextField's own `error`. Renders via
   // the shared FieldError directly under the field, and tints the label
-  // negative, uniform with every other field type (Option A: no per-field
-  // outline — see text-field.component.tsx's own doc comment). REFLOW, not
+  // negative, uniform with every other field type (the reflow error model: no
+  // per-field outline — see text-field.component.tsx's own doc comment). REFLOW, not
   // reserve: no error node at all while valid.
   error?: string;
   // An optional testID applied to the field's Pressable trigger, so a flow can

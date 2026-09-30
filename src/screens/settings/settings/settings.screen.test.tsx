@@ -100,7 +100,7 @@ describe('SettingsScreen', () => {
     expect(queryByText('Settings')).toBeNull();
   });
 
-  // DEVICE BUG (review, 2026-09-14): CurrencyField's own trigger no longer
+  // DEVICE BUG: CurrencyField's own trigger no longer
   // shows the ISO code at all (see `currency-field.component.tsx`'s
   // `triggerValue`) — it shows the localized NAME only, matching the option
   // rows. This used to match the bare "UAH" substring inside the old

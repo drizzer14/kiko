@@ -93,7 +93,7 @@ describe('useKeyboardDoneAccessory', () => {
     dismissSpy.mockRestore();
   });
 
-  // DEVICE BUG (review, 2026-09-14): Kiko is dark-only, but a TextInput's
+  // DEVICE BUG: Kiko is dark-only, but a TextInput's
   // `keyboardAppearance` was never set anywhere, leaving the system keyboard
   // to whatever the OS default resolved to instead of an explicit match with
   // this accessory's own dark-themed pill. The hook must hand the SAME
@@ -128,7 +128,7 @@ describe('useKeyboardDoneAccessory', () => {
     expect(flat.alignSelf).not.toBe('stretch');
   });
 
-  // Addendum (review, 2026-09-14): the pill's live Liquid Glass background is
+  // Addendum: the pill's live Liquid Glass background is
   // still a `GlassSurface material` overlay (see
   // `keyboard-done-accessory.styles.ts`'s `doneGlass` doc comment and its HIG
   // citation), now sized to the PILL itself rather than a full-width bar, and
@@ -162,7 +162,7 @@ describe('useKeyboardDoneAccessory', () => {
     expect(glassStyle.right).toBe(0);
   });
 
-  // Addendum (review, 2026-09-14): a subtle hairline edge (`bordered`) keeps
+  // Addendum: a subtle hairline edge (`bordered`) keeps
   // the pill legible on any content behind the glass, since the pill's
   // translucent fallback/backdrop carries no opaque or strongly-pinned base
   // of its own.

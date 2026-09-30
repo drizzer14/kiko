@@ -136,3 +136,9 @@ export const hyphenatedIdNearMiss = 'T-shirt, U-turn, UTF-8, UTC-1, GMT-5';
 // asked for one, a file the user requested, and a sheet the user can tap
 // stay silent, as does a sync that runs when the user asks for it.
 export const userRequestNearMiss = true;
+
+// 21. The branch, task, option, plan, and review members need their whole
+// citation shape: an optional row, the Options list, an option A/B toggle,
+// a branch on this path, the plan keeps its slot, and review the rows, then
+// retry all stay silent.
+export const citationShapeNearMiss = true;

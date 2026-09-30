@@ -140,7 +140,7 @@ describe('DateField', () => {
     const { getByText } = await renderDateField({ error: 'Select a date.' });
 
     expect(getByText('Select a date.')).toBeTruthy();
-    // Same Option A contract as TextField: no per-field outline, ever — the
+    // Same reflow error model as TextField: no per-field outline, ever — the
     // field row's own border stays its ordinary neutral token.
     const fieldRow = getByText('Pick a day').parent;
     expect(StyleSheet.flatten(fieldRow?.props.style).borderColor).not.toBe('#FF453A');

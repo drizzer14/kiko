@@ -35,7 +35,7 @@ const captionFor = (entry: (typeof bankCatalog)[number], t: TFunction): string =
   return t('forms.account.bankImportOnly');
 };
 
-// The Option A "which bank is this account" picker: a labeled trigger
+// The "which bank is this account" picker: a labeled trigger
 // (FieldTrigger, the same family CurrencyField
 // and CategoryField use) that opens a BottomSheet listing every
 // `bankCatalog` entry — ALWAYS every entry, never conditionally hidden

@@ -70,7 +70,8 @@ export type HoldingIdentityFieldProps = {
   // valid — same contract as TextField's own `error` (see text-field.props.d.ts).
   // Only takes effect when `captioned` (the form treatment); a bare row never
   // shows a message it can never validate. Renders BELOW the whole icon+name
-  // row (REFLOW, not reserve — Option A) so the icon never shifts relative to
+  // row (REFLOW, not reserve — the reflow error model; see `FieldError`) so
+  // the icon never shifts relative to
   // the name field when the message mounts/unmounts.
   error?: string;
   // Optional testID applied to the outer column. When set, the FieldError

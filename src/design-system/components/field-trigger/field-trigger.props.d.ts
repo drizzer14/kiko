@@ -46,9 +46,9 @@ export type FieldTriggerProps = {
   // The validation-failure message for this field, or `undefined` when it's
   // currently valid — same contract as TextField's/DateField's own `error`.
   // Renders via the shared FieldError directly under the field, and tints
-  // the label negative, uniform with every other field type (Option A: no
-  // per-field outline). REFLOW, not reserve: no error node at all while
-  // valid.
+  // the label negative, uniform with every other field type (the reflow
+  // error model: no per-field outline; see `FieldError`). REFLOW, not
+  // reserve: no error node at all while valid.
   error?: string;
   // An optional testID applied to the Pressable trigger, so a flow can tap the
   // field to open its picker sheet. Omitted leaves the trigger untagged. When

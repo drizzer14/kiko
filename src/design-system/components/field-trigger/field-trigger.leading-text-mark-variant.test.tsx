@@ -25,7 +25,7 @@ jest.mock('@kiko/design-system/components/text', () => {
   return { __esModule: true, default: MockText };
 });
 
-// DEVICE BUG (review, 2026-09-14): the leading text mark (e.g.
+// DEVICE BUG: the leading text mark (e.g.
 // CurrencyField's trigger currency symbol) used to be sized to
 // `theme.iconSizes.body` (an ICON size) via an inline `fontSize` override, so
 // it read visibly larger than the value text beside it — the same device bug

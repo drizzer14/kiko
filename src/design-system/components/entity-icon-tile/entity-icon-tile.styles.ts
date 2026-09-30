@@ -29,8 +29,8 @@ export const styles = StyleSheet.create((theme) => ({
   // rounded corners. `theme.radii.md` is the closest token on the shared
   // radius scale to the iOS continuous-corner "squircle" proportion at this
   // tile size — never an invented radius value. No border: a two-ring
-  // hairline edge treatment was tried here and reverted (review, 2026-09-14
-  // — see `entity-icon-tile.component.tsx`'s own doc comment) after it was
+  // hairline edge treatment was tried here and reverted (see
+  // `entity-icon-tile.component.tsx`'s own doc comment) after it was
   // confirmed not to read as intended on device. Plain squircle, no edge.
   tile: {
     width: iconTileSize(theme, false),

@@ -163,7 +163,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // The same Connect actions the account-detail screen uses. On a create the
   // account row is created FIRST, then the credential is saved and the connect
   // runs against its id — a bad credential leaves a created-but-unconnected
-  // account the user repairs from its detail screen (Option A). Every kind runs
+  // account the user repairs from its detail screen (connect-first: the field's
+  // Connect creates the row before Save). Every kind runs
   // its connect on a field's OWN Connect (connectMonobank for bank;
   // connectWallet / connectBinance for crypto) — there is no implicit connect on
   // Save any more.
@@ -182,7 +183,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // A one-shot create promise: whichever fires first (a field's own Connect or
   // the footer Save) inserts the row exactly once; every later caller reuses the
   // same promise, so a field Connect followed by Save can never produce a
-  // DUPLICATE account (Option A). On a REJECTED create the ref is reset to null
+  // DUPLICATE account (connect-first). On a REJECTED create the ref is reset to null
   // (see below) so a retry re-attempts and Save never silently no-ops.
   const accountCreate = useRef<Promise<string> | null>(null);
   // A render-visible mirror of "the row has been (or is being) inserted", used
@@ -300,7 +301,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const accountEnsured = async (): Promise<boolean> =>
     isRight(await either(async () => ensureAccount()));
 
-  // The bank field creates the row FIRST (Option A), then stores the validated
+  // The bank field creates the row FIRST (connect-first), then stores the validated
   // token to the Keychain keyed by the pre-generated id, then runs the first
   // Monobank sync against it (the write-only-secret order — Global Constraint 2).
   // Any failure BEFORE the sync returns false so the field shows its "could not
@@ -323,7 +324,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     return syncMonobank(pendingAccountId);
   };
 
-  // Both crypto fields create the row FIRST (Option A), then run the shared sync
+  // Both crypto fields create the row FIRST (connect-first), then run the shared sync
   // against it. `CryptoSyncForm`/`BinanceCredentialsField` validate the
   // credential and write the Binance secret to the Keychain themselves, keyed by
   // the pre-generated id, before calling these — the secret never reaches this
@@ -467,7 +468,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // Bank, crypto, property, and metals share one create path now — `kind`
       // here is 'bank', 'crypto', 'property', or 'metals' (cash returned
       // above). A field's own Connect may already have inserted the row via
-      // ensureAccount (Option A); if so, persist any name/color/icon edited
+      // ensureAccount (connect-first); if so, persist any name/color/icon edited
       // AFTER connecting rather than inserting a DUPLICATE account (the field
       // already handled the credential + first sync). Otherwise this Save is
       // the first write, so create the row now — an unconnected bank/crypto
@@ -593,8 +594,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           </>
         )}
 
-        {/* The "which bank does this account represent" identity picker
-            (Option A) — shown in BOTH create and edit mode, so the edit
+        {/* The "which bank does this account represent" identity picker —
+            shown in BOTH create and edit mode, so the edit
             form can view or change `bankId` too. The
             live-sync Connect field stays CREATE-ONLY — editing an already-
             connected account's real connection is BankSyncSection's job on

@@ -57,7 +57,8 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
   return (
     <Box gap={1} testID={testID}>
       {/* The error renders BELOW this whole row (icon + name), never inside
-        the name column beside it — Option A's composite-row rule:
+        the name column beside it — the reflow error model's composite-row
+        rule (see `FieldError`):
         reserving/reflowing height INSIDE the name column would grow that
         column alone, and since
         `container`'s `alignItems: 'flex-end'` bottom-aligns the icon chip
@@ -97,7 +98,8 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
         </Box>
       </Box>
 
-      {/* REFLOW, not reserve (Option A): no error node while valid, so a bare
+      {/* REFLOW, not reserve (the reflow error model; see `FieldError`): no
+        error node while valid, so a bare
         (uncaptioned) row and a valid captioned row both take no extra space.
         Only rendered when captioned — a dense list row never validates. The
         `nameFieldError` offset shifts the message right by the icon chip's

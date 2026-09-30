@@ -52,7 +52,7 @@ export type TextFieldProps = Pick<
   // currently valid. When set, the shared FieldError message renders directly
   // under the input and the field's own label tints negative — REFLOW, not
   // reserve: there is no reserved-height slot, so a valid field takes no
-  // extra space (Option A — no per-field outline, see
+  // extra space (the reflow error model — no per-field outline, see
   // text-field.component.tsx's own doc comment). There is no separate
   // `invalid` boolean: a defined `error` IS the invalid signal.
   error?: string;

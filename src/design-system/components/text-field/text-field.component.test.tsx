@@ -217,7 +217,8 @@ describe('TextField', () => {
   it('renders no error styling or message by default', async () => {
     const { queryByText, getByLabelText } = await renderField({ label: 'Amount', value: '' });
 
-    // Option A: no per-field outline, ever — see text-field.component.tsx.
+    // The reflow error model: no per-field outline, ever — see
+    // text-field.component.tsx.
     const flatStyle = StyleSheet.flatten(getByLabelText('Amount').props.style);
     expect(flatStyle.borderColor).not.toBe('#FF453A');
     expect(queryByText('Enter an amount greater than 0.')).toBeNull();

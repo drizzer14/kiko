@@ -57,7 +57,7 @@ describe('EntityIconTile', () => {
     expect(getByLabelText('Checking icon').props.tintColor).toBe(darkTheme.colors.onAccent);
   });
 
-  // DEVICE BUG (review, 2026-09-13): a fixed white glyph fails WCAG AA on a
+  // DEVICE BUG: a fixed white glyph fails WCAG AA on a
   // light entity swatch (e.g. `white`, `yellow` — see `isLightEntityColor`'s
   // doc comment in `entity-tint.ts`). The glyph must switch to the dark
   // `theme.colors.background` token instead of staying white on a tile this
@@ -86,7 +86,7 @@ describe('EntityIconTile', () => {
     expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.background);
   });
 
-  // Cheap safety (review, 2026-09-13): the accounts grid mounts many tiles at
+  // Cheap safety: the accounts grid mounts many tiles at
   // once with different gradient stops. Each tile must derive its own
   // gradient id via `useId()` rather than sharing one static id, so no two
   // simultaneously-mounted tiles can ever collide.

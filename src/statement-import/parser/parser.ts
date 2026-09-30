@@ -8,9 +8,9 @@ import type { Currency } from '@kiko/currency/currency';
  */
 export type ParsedTransaction = {
   /** A bank-issued unique id, when the export format actually carries one.
-   * NONE of the formats studied for this plan (section C) carry one —
-   * `undefined` here is the NORMAL case, not a placeholder. The mapper (A.3)
-   * synthesizes a deterministic key when this is absent (section D). */
+   * NONE of the bank formats studied carry one —
+   * `undefined` here is the NORMAL case, not a placeholder. The mapper
+   * synthesizes a deterministic key when this is absent. */
   externalId?: string;
   /** THIS ROW's own currency — REQUIRED. A single-currency format (every
    * CSV shipped so far) sets the same file-wide
@@ -119,7 +119,7 @@ export type ParsedStatement = {
  * CSV, and the three FOP/business CSVs (ProCredit, Ukrsibbank, Alfa) —
  * required for each new stub's own `id` field to typecheck against
  * `StatementFormatId`, same reasoning used for `privatbank-xlsx`/
- * `sensebank-csv`. Every other bank studied for this plan lands in its own
+ * `sensebank-csv`. Every other bank format studied lands in its own
  * later phase and is deliberately NOT listed here yet. */
 export const statementFormatIds = [
   'monobank-csv',
@@ -138,7 +138,7 @@ export type StatementFormatId = (typeof statementFormatIds)[number];
 export type ParsedStatementSource = StatementFormatId | 'column-mapping';
 
 /** One resolved spreadsheet cell value — mirrors `read-excel-file`'s own
- * `CellValue | null` shape closely enough for this plan's needs, without this
+ * `CellValue | null` shape closely enough for the parser's needs, without this
  * format-agnostic contract file importing the library itself. */
 export type SpreadsheetCellValue = string | number | boolean | Date | null;
 

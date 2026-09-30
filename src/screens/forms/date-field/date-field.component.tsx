@@ -102,7 +102,8 @@ const DateField: FC<DateFieldProps> = ({
         </Box>
       </Pressable>
 
-      {/* REFLOW, not reserve (Option A): no error node while valid — uniform
+      {/* REFLOW, not reserve (the reflow error model; see `FieldError`): no
+        error node while valid — uniform
         with every other field type, fixing the DATE field's own
         inconsistency (it used to show a message with no outline while
         TextField showed an outline; now neither shows an outline). */}

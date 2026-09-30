@@ -144,8 +144,8 @@ const TextField: FC<TextFieldProps> = ({
           input
         )}
 
-        {/* REFLOW, not reserve (Option A): no error node at all while valid,
-          so every valid field shares the same height; an invalid one grows
+        {/* REFLOW, not reserve (the reflow error model; see `FieldError`): no
+          error node at all while valid, so every valid field shares the same height; an invalid one grows
           to fit this line the instant `error` is set — see FieldError's own
           doc comment. */}
         {hasError && <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />}

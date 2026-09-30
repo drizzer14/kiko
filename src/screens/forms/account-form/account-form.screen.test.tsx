@@ -1163,7 +1163,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('connect then Save updates the same row — never a duplicate account', async () => {
-    // Option A: the field's Connect already inserted the row. A later Save must
+    // Connect-first: the field's Connect already inserted the row. A later Save must
     // UPDATE that same row (persisting any name edit after connecting), never
     // insert a second account.
     mockMonobankSync.mockResolvedValue(true);
@@ -1446,7 +1446,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('does not create a DUPLICATE crypto account when a field Connect is followed by Save', async () => {
-    // Option A: the field's own Connect already inserted the row. A subsequent
+    // Connect-first: the field's own Connect already inserted the row. A subsequent
     // Save must UPDATE that same row (persisting any later name/color/icon edit),
     // never insert a second account.
     const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();

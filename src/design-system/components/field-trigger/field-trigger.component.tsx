@@ -81,8 +81,8 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
         </Box>
       </Pressable>
 
-      {/* REFLOW, not reserve (Option A) — same contract as every other field
-          type: no error node while valid. */}
+      {/* REFLOW, not reserve (the reflow error model; see `FieldError`) — same
+          contract as every other field type: no error node while valid. */}
       {hasError && <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />}
     </Box>
   );

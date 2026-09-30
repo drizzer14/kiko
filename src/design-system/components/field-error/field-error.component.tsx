@@ -15,7 +15,7 @@ import type { FieldErrorProps } from './field-error.props';
 // layout-animation primitive — see sync-progress-bar/card-context-menu) with
 // `entering={FadeIn}` gives that growth a soft fade-in instead of an
 // instant, jarring pop, matching every other reflow in the app; there is no
-// per-field outline any more (Option A dropped it — see
+// per-field outline (the reflow error model drops it — see
 // `text-field.component.tsx`'s own doc comment), so this line — plus an
 // optional negative-tinted `FieldLabel` beside it — IS the invalid signal.
 const FieldError: FC<FieldErrorProps> = ({ message, testID }) => {

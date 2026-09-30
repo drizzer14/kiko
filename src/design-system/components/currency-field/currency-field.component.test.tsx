@@ -273,7 +273,7 @@ describe('CurrencyField', () => {
     expect(utils.getByTestId('currency-option-USD')).toBeTruthy();
   });
 
-  // DEVICE BUG (review, 2026-09-14): the trigger's own displayed value used
+  // DEVICE BUG: the trigger's own displayed value used
   // to read "CODE — Name" (e.g. "USD — US Dollar"), duplicating the ISO code
   // that already sits in the trigger's separate `leadingText` mark. The
   // trigger must mirror the option rows exactly: the localized NAME only.

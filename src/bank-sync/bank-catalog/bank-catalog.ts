@@ -1,7 +1,7 @@
 import type { StatementFormatId } from '@kiko/statement-import/parser';
 
 /**
- * The Option A "which bank is this account" catalog: every bank Kiko can
+ * The "which bank is this account" catalog: every bank Kiko can
  * represent an account under, independent of
  * whether that bank has a LIVE sync connection. Sibling of, and deliberately
  * narrower-scoped than, `BankProviderId` (`../provider`) — that tuple stays
