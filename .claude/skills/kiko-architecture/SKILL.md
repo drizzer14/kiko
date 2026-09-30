@@ -1826,6 +1826,10 @@ what a change must keep.
   `reminders.schedule.atEleven` ('об') for 11:00-11:59 ONLY, and
   `reminders.schedule.at` ('о') for every other hour, 23:xx and 1:xx
   included (a user ruling). en has both keys as 'at'.
+- **Shared system status.** Any cached OS/system status (a permission,
+  a sync status) that several screens show lives in ONE module store
+  (`useSyncExternalStore`; see `src/monobank/sync-status/`,
+  `src/reminders/permission/`), never in per-component `useState`.
 - **Permission.** `useNotificationPermission()`
   (`src/reminders/permission/`) returns `{ status, request }` and never
   rejects. `status` is ONE module-level store read through

@@ -271,8 +271,9 @@ The established patterns grouped under this heading:
   (`ReminderRow`: tap opens the form, the trailing Switch pauses).
   Vertical alignment (2026-09-30, user request): a row's `trailing`
   and chevron sit on the label's FIRST line, except on a pressable row
-  with `children` (a body under the label — today only `ReminderRow`,
-  on both reminders pages), which centers them on the label and body
+  with `children` (a body under the label, for example `ReminderRow`;
+  the rule is the `onPress` + `children` branch in
+  `settings-row.component.tsx`), which centers them on the label and body
   together, as a UIKit cell centers its accessory view; the body then
   wraps beside them instead of running under the switch.
   **Rule:** on iOS an accessible `Pressable` groups its children into
@@ -1147,8 +1148,9 @@ new component can land between reviews of this skill:
   Yoga resolves percentages in 32-bit float and wraps on a strict `>`, so
   seven exact sevenths overshoot on 390pt/414pt rows and the grid drops
   to six columns (the component test replays that float math). The
-  10pt chip inset is the cell's vertical padding, not a fixed cell
-  height, so a chip grown by Dynamic Type keeps the inset the grid's
+  chip inset (`CHIP_INSET` in `day-of-month-grid.styles.ts`, half of the
+  44pt cell minus the 34pt chip; read the value there) is the cell's
+  vertical padding, not a fixed cell height, so a chip grown by Dynamic Type keeps the inset the grid's
   negative margin undoes. **Hit-testing:** the grid's negative margins
   make the outer 44pt cells overflow the parent by 5pt vertically (and
   `spacing(0.5)` horizontally); taps there still land only because
@@ -1426,6 +1428,12 @@ Components are default exports with a `.component.tsx` file suffix
 project-wide rule this follows.
 
 ## JSX layout conventions
+
+**Percentage widths.** Yoga resolves `%` widths in 32-bit float and
+wraps on a strict `>`, so N equal columns of `100 / N`% can drop the
+last column on some row widths. Always use a slightly smaller rounded
+percentage (see `DayOfMonthGrid`'s `'14.28%'`) and pin it with a test
+that replays the float math.
 
 Separate sibling React nodes in JSX with a blank line, the same way
 sibling statements are separated in `kiko-code-style`'s "Blank lines
