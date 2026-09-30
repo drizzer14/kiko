@@ -39,7 +39,7 @@ if [ "$code" -ne 0 ]; then
   # bad fixtures rules/fixtures/**/*.bad.*, ios/) from Biome altogether — a
   # bad fixture is allowed to hold code shapes that would otherwise fail lint
   # or format; a good fixture is processed (format only), so under
-  # rules/fixtures/ this message now means a bad fixture. Biome reports the
+  # rules/fixtures/ this message means a bad fixture. Biome reports the
   # exact same "No files were processed…" message with a non-zero exit for a
   # target that is EXCLUDED and for a target that does not EXIST at all (an
   # internalError/io swallowed above it) — so this must only read as
