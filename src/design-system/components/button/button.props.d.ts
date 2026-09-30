@@ -15,9 +15,8 @@ import type { ReactNode } from 'react';
 // treatment for a lower-emphasis INLINE/standalone secondary action (Connect,
 // Sync now, a per-row Add, the category set-default) that must carry a faint
 // tinted background rather than a solid `secondary` surfaceHigh pill.
-// ghost — no fill at all, label-only: a borderless nav-bar/header action (e.g.
-// the detail screens' icon-only Edit button) that must read as a bare label or
-// glyph, the standard iOS header-button treatment, never a filled pill.
+// ghost — no fill at all, label-only: a borderless inline action that must read
+// as a bare label or glyph, never a filled pill.
 type ButtonVariant =
   | 'primary'
   | 'secondary'

@@ -310,31 +310,37 @@ The established patterns grouped under this heading:
   glass capsule, and the HIG (Toolbars, "Item groupings") warns that
   items grouped in one shared capsule read as one control — two glyphs
   in one capsule look like a single combined action, so the bell keeps
-  `sharesBackground: false` and gets its own capsule. A header with a symbol action beside `EditHeaderButton`
-  uses `unstable_headerRightItems`, listed left to right: the symbol
-  action as a native `type: 'button'` item (`icon: { type: 'sfSymbol' }`,
-  `accessibilityLabel`, `tintColor: theme.colors.textPrimary` to match
-  the ghost Edit glyph, `sharesBackground: false` so it gets its own
-  capsule), then Edit as a `type: 'custom'` item. Do not use a
-  `type: 'spacing'` item to split them: native-stack 7.18.9 sends it
-  with no index, so react-native-screens inserts it at the trailing
-  edge. A native item takes no `testID`; a test reads the item list
-  from `setOptions` and calls its `onPress`. First consumer:
-  `AccountDetail` (bell, then Edit). A header with Edit alone keeps
-  `headerRight` (`HoldingDetail`).
-- **`EditHeaderButton` is icon-only** (2026-09-30, locked). The user:
-  "One last thing before LGTM: remove 'Edit' label from account/holding
-  edit button". It is the shared ghost compact `Button` with the
-  `pencil` SF Symbol (iOS 13+) and no children: no visible text, the
-  `common.edit` key stays its VoiceOver `accessibilityLabel` ("Edit" /
-  "Редагувати"), and the compact size keeps the 44pt target. This
-  overrides the HIG Toolbars default ("Prefer simple, recognizable
-  symbols for items instead of text, except for actions like edit that
-  aren't well-represented by symbols") by the user's explicit choice.
-  It stays a `type: 'custom'` item in its own capsule beside the bell
-  (the capsule separation above still applies: two glyphs in one
-  shared capsule read as one control). A test finds it by
-  `getByLabelText('Edit')` and asserts `queryByText('Edit')` is null.
+  `sharesBackground: false` and gets its own capsule. Every header
+  action is a native `type: 'button'` item in `unstable_headerRightItems`,
+  listed left to right: `icon: { type: 'sfSymbol' }`, `label` and
+  `accessibilityLabel` from the same i18n key, `tintColor:
+  theme.colors.textPrimary`, `sharesBackground: false`. Never a
+  `type: 'custom'` item or `headerRight` with a React view for a header
+  action: UIKit sizes a native item's glyph, capsule, and 44pt target;
+  a React view inside a custom item gets a different glyph size and
+  capsule, so it does not read as the same kind of button as its
+  neighbour. Do not use a `type: 'spacing'` item to split items:
+  native-stack 7.18.9 sends it with no index, so react-native-screens
+  inserts it at the trailing edge. A native item takes no `testID`; a
+  test reads the item list from `setOptions` and calls its `onPress`.
+  Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (Edit).
+- **Edit is an icon-only native bar item** (2026-09-30, locked). The
+  user: "One last thing before LGTM: remove 'Edit' label from
+  account/holding edit button", then, on device: "'Edit' button
+  should've become an icon button with the label removed." Build it
+  with `editBarItem({ label: t('common.edit'), tintColor, onPress })`
+  from `@kiko/design-system/edit-bar-item`: the `pencil` SF Symbol
+  (iOS 13+) as a native `type: 'button'` item, the same kind as the
+  bell. `label` does NOT show as text: native-stack maps it to the
+  `UIBarButtonItem`'s `title`, and UIKit draws only the image when an
+  item has both (the bell carries the "Reminders" label and shows no
+  text on device). The label stays the VoiceOver name ("Edit" /
+  "Редагувати"). This overrides
+  the HIG Toolbars default ("Prefer simple, recognizable symbols for
+  items instead of text, except for actions like edit that aren't
+  well-represented by symbols") by the user's explicit choice. A test
+  asserts the item list has a `pencil` item labelled "Edit" whose
+  `onPress` opens the edit form, and no `type: 'custom'` item.
 - A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
   `WalletAddressField`, `src/design-system/components/`) is a PRIMARY
   action, so it follows the same form validation model as a Save

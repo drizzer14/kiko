@@ -23,6 +23,7 @@ import { sumByCurrency } from '@kiko/rates/currency-totals';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import type { ReminderKind } from '@kiko/reminders/schedule';
+import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
@@ -36,7 +37,6 @@ import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
-import EditHeaderButton from '@kiko/design-system/components/edit-header-button';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
 import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
@@ -168,9 +168,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // slot below) rather than in the nav title.
   const identity = accountIdentity(account);
   // Adjacent bar items share one glass capsule on iOS 26+, which would read the
-  // bell and the Edit pencil as one control with two glyphs. The bell is
-  // therefore a native bar item that does not share its background, so it gets
-  // a capsule of its own; header items run left to right, keeping it left of
+  // bell and the Edit pencil as one control with two glyphs, so neither shares
+  // its background; header items run left to right, keeping the bell left of
   // Edit.
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -185,12 +184,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           sharesBackground: false,
           onPress: () => navigation.navigate('AccountReminders', { accountId, name: accountName }),
         },
-        {
-          type: 'custom',
-          element: (
-            <EditHeaderButton onPress={() => navigation.navigate('AccountForm', { accountId })} />
-          ),
-        },
+        editBarItem({
+          label: t('common.edit'),
+          tintColor: theme.colors.textPrimary,
+          onPress: () => navigation.navigate('AccountForm', { accountId }),
+        }),
       ],
     });
   }, [navigation, accountName, accountId, t, theme.colors.textPrimary]);

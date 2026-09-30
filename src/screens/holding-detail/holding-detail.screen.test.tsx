@@ -517,16 +517,22 @@ describe('HoldingDetailScreen', () => {
 
     await renderScreen();
 
-    // The Edit affordance sits at the header top-right (via setOptions
-    // headerRight). Render it and press it: it opens this holding's edit form,
-    // passing the owning account so the form can constrain the type chips.
+    // Pressing it passes the owning account so the form can constrain the type
+    // chips.
     const call = (navigation.setOptions as jest.Mock).mock.calls.find(
-      ([options]) => options.headerRight,
+      ([options]) => options.unstable_headerRightItems,
     );
     expect(call).toBeDefined();
-    const { getByLabelText, queryByText } = await render(call[0].headerRight());
-    expect(queryByText('Edit')).toBeNull();
-    await fireEvent.press(getByLabelText('Edit'));
+    const items = call[0].unstable_headerRightItems({ canGoBack: true });
+    expect(items.some((item: { type: string }) => item.type === 'custom')).toBe(false);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: 'button',
+      label: 'Edit',
+      accessibilityLabel: 'Edit',
+      icon: { type: 'sfSymbol', name: 'pencil' },
+    });
+    items[0].onPress();
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
       accountId: 'acc-1',
       holdingId: 'h-1',

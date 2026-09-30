@@ -42,6 +42,7 @@ import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { loanLedgerSummary } from '@kiko/holdings/loan-ledger';
 import SymbolIcon from '@kiko/design-system/components/symbol';
+import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -61,7 +62,6 @@ import { transactionRowDescription } from '@kiko/transactions/row-description';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
-import EditHeaderButton from '@kiko/design-system/components/edit-header-button';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
@@ -683,6 +683,7 @@ const resolveLedgerReadyView = (
 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
   const { holdingId, name: initialName } = route.params;
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
   // currency (needed to render each transaction's signed MoneyText) comes
@@ -1014,16 +1015,17 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     navigation.setOptions({
       title: holdingName,
       ...(holdingAccountId !== undefined && {
-        headerRight: () => (
-          <EditHeaderButton
-            onPress={() =>
-              navigation.navigate('HoldingForm', { accountId: holdingAccountId, holdingId })
-            }
-          />
-        ),
+        unstable_headerRightItems: () => [
+          editBarItem({
+            label: t('common.edit'),
+            tintColor: theme.colors.textPrimary,
+            onPress: () =>
+              navigation.navigate('HoldingForm', { accountId: holdingAccountId, holdingId }),
+          }),
+        ],
       }),
     });
-  }, [navigation, holdingName, holdingAccountId, holdingId]);
+  }, [navigation, holdingName, holdingAccountId, holdingId, t, theme.colors.textPrimary]);
 
   const ledgerReadyView = resolveLedgerReadyView(
     isReady,

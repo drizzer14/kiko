@@ -1000,15 +1000,19 @@ describe('AccountDetailScreen', () => {
   it('offers an Edit action in the header that opens the account edit form', async () => {
     setLiveData({ accounts: [account()], holdings: [] });
     const { navigation } = await renderScreen();
-    const edit = headerRightItems(navigation).find(
-      (item: { type: string }) => item.type === 'custom',
-    );
+    const items = headerRightItems(navigation);
+    const edit = items.find((item: { icon?: { name: string } }) => item.icon?.name === 'pencil');
 
-    const { getByLabelText, queryByText } = await render(edit.element);
+    expect(items.some((item: { type: string }) => item.type === 'custom')).toBe(false);
+    expect(edit).toMatchObject({
+      type: 'button',
+      label: 'Edit',
+      accessibilityLabel: 'Edit',
+      icon: { type: 'sfSymbol', name: 'pencil' },
+      sharesBackground: false,
+    });
 
-    expect(queryByText('Edit')).toBeNull();
-
-    await fireEvent.press(getByLabelText('Edit'));
+    edit.onPress();
 
     expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'a' });
   });
@@ -1018,7 +1022,10 @@ describe('AccountDetailScreen', () => {
     const { navigation } = await renderScreen();
     const items = headerRightItems(navigation);
 
-    expect(items.map((item: { type: string }) => item.type)).toEqual(['button', 'custom']);
+    expect(items.map((item: { icon: { name: string } }) => item.icon.name)).toEqual([
+      'bell',
+      'pencil',
+    ]);
     expect(items[0]).toMatchObject({
       icon: { type: 'sfSymbol', name: 'bell' },
       accessibilityLabel: 'Reminders',
