@@ -2,6 +2,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { StyleSheet } from 'react-native';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import EditHeaderButton from './edit-header-button.component';
 
@@ -28,6 +29,16 @@ describe('EditHeaderButton', () => {
     const { getByLabelText } = await render(<EditHeaderButton onPress={jest.fn()} />);
 
     expect(StyleSheet.flatten(getByLabelText('Edit').props.style).minHeight).toBe(44);
+  });
+
+  // An icon-only button has no label to widen it, so its width is only the
+  // padding either side of the glyph and must reach 44pt on its own.
+  it('keeps the 44pt HIG minimum touch width', async () => {
+    const { getByLabelText } = await render(<EditHeaderButton onPress={jest.fn()} />);
+    const { paddingHorizontal } = StyleSheet.flatten(getByLabelText('Edit').props.style);
+
+    expect(typeof paddingHorizontal).toBe('number');
+    expect(Number(paddingHorizontal) * 2 + darkTheme.iconSizes.body).toBeGreaterThanOrEqual(44);
   });
 
   it('fires onPress when the button is tapped', async () => {

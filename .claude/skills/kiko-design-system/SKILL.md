@@ -307,9 +307,10 @@ The established patterns grouped under this heading:
   list a device check.
 - **Header bar items** (2026-09-30, user request: the bell separate
   from Edit). iOS 26+ draws adjacent bar button items in ONE shared
-  glass capsule, and the HIG (Toolbars, "Item groupings") warns that a
-  symbol next to a text-labelled action reads as one combined action —
-  separate them. A header with a symbol action beside `EditHeaderButton`
+  glass capsule, and the HIG (Toolbars, "Item groupings") warns that
+  items grouped in one shared capsule read as one control — two glyphs
+  in one capsule look like a single combined action, so the bell keeps
+  `sharesBackground: false` and gets its own capsule. A header with a symbol action beside `EditHeaderButton`
   uses `unstable_headerRightItems`, listed left to right: the symbol
   action as a native `type: 'button'` item (`icon: { type: 'sfSymbol' }`,
   `accessibilityLabel`, `tintColor: theme.colors.textPrimary` to match
