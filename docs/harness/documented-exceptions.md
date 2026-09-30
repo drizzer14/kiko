@@ -334,7 +334,10 @@ verified usage, not dead weight:
   word in a different file, or a DIFFERENT identifier in the same file —
   still fails; add a new entry here only for another verified
   external-name case, per this file's own standing rule.
-- **`rules/fixtures/**` (Biome `files.includes`, `knip.json` `ignore`,
+- **`rules/fixtures/**` (Biome: `files.includes` drops only the bad
+  fixtures, `!rules/fixtures/**/*.bad.*`, and an `overrides` entry turns
+  the linter and assist off for the whole folder, so a good fixture is
+  format-checked but never linted; `knip.json` `ignore`,
   `.jscpd.json` `ignore`, and
   `--exclude 'fixtures'` in `scripts/checks/security.sh`)**: the
   positive/negative fixture pair that

@@ -32,7 +32,10 @@ export const overdueDayCount = (openedAt: number, graceDays: number): number => 
   return overdueDays;
 };
 
-export const sinceDatePoints = (startOfDay: (time: number) => number, lastDay: number): number[] => {
+export const sinceDatePoints = (
+  startOfDay: (time: number) => number,
+  lastDay: number,
+): number[] => {
   const now = Date.now();
 
   return [

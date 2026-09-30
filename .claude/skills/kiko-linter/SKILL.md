@@ -481,6 +481,12 @@ A Semgrep rule that mechanizes a finding needs a fixture pair, run by
 - The runner asserts every fixture file appears in the scanner's
   `paths.scanned` list — a fixture Semgrep never opened must fail the
   check, not silently prove nothing.
+- Biome format-checks a `.good.` fixture (never lints it; `biome.json`
+  `overrides`) and skips a `.bad.` one. Format a new good fixture with
+  `npx biome format --write <file>`. A `pattern-regex` probe whose layout
+  is the point keeps it with
+  `// biome-ignore format: OVERRIDE(<reason>)` on the line above
+  (example: `rules/fixtures/kiko-no-native-reminders-module-import.good.ts`).
 
 ## `semgrep-prewrite.yml` vs `semgrep-mobile.yml` — where a rule lives
 

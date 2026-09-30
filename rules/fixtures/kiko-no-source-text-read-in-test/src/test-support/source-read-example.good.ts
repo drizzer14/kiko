@@ -15,7 +15,8 @@ export const workbookBytes = (): Buffer =>
 export const migrationSql = (tag: string): string =>
   readFileSync(join(MIGRATIONS_ROOT, `${tag}.sql`), 'utf8');
 
-export const journalText = (): string => readFileSync(join(MIGRATIONS_ROOT, 'meta/_journal.json'), 'utf8');
+export const journalText = (): string =>
+  readFileSync(join(MIGRATIONS_ROOT, 'meta/_journal.json'), 'utf8');
 
 export const memberReadText = (): string => fs.readFileSync(FIXTURE_PATH, 'utf8');
 

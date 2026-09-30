@@ -54,7 +54,9 @@ export const holdingRowLabels = (holdings: Holding[]): string[] =>
   });
 
 export const lookedUpDays = (holdings: Holding[], rowsById: Map<string, Row[]>): number[] =>
-  holdings.flatMap((holding) => (rowsById.get(holding.id) ?? []).map((row) => startOfLocalDay(row.time)));
+  holdings.flatMap((holding) =>
+    (rowsById.get(holding.id) ?? []).map((row) => startOfLocalDay(row.time)),
+  );
 
 export const lookedUpSpendDays = (holdings: Holding[], rowsById: Map<string, Row[]>): number[] =>
   holdings.flatMap((holding) =>
