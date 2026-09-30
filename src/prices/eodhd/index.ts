@@ -1,0 +1,1 @@
+export * from './eodhd.client';
