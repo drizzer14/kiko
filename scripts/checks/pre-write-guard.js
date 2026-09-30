@@ -775,7 +775,7 @@ const NODE_RULES = [
     ruleId: 'kiko-import-order',
     extensions: ['.ts', '.tsx'],
     fix: 'run `node scripts/checks/import-order.js --write <file>`, or reorder the groups by hand: external, then ../**, then ./**, each ascending by ending-line length; merge two imports of one specifier into one by hand, with an inline `type` modifier on each type name',
-    skill: 'kiko-code-style › Import ordering',
+    skill: 'kiko-code-style › Import ordering and `import type`',
     projectCheck: 'check:import-order',
     run: (filePath) =>
       runSpawnedNodeChecker('import-order.js', filePath, parseImportOrderCheckerOutput),
@@ -806,7 +806,7 @@ const NODE_RULES = [
     extensions: ['.ts', '.tsx'],
     fix: 'run `node scripts/checks/blank-line-separation.js --write <file>`, or insert a blank line by hand above the return/if/for/while statement (or JSX sibling), unless it is the first statement of its block or already preceded by a comment',
     skill:
-      'kiko-code-style › Blank lines before statement blocks / Blank line between adjacent JSX sibling nodes',
+      'kiko-code-style › Blank lines before statement blocks — now mechanized / Blank line between adjacent JSX sibling nodes',
     projectCheck: 'check:blank-line-separation',
     run: (filePath) =>
       runSpawnedNodeChecker(

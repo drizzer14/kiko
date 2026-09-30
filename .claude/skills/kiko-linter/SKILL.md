@@ -1565,6 +1565,10 @@ mechanizable (see harness-workflow's "Classify every finding").
      `docs/harness/review-to-biome-inventory.md`.
      `metadata.skill` uses `"<skill> › <heading>"`. A finding without
      `metadata.skill` makes the guard deny "could not check".
+     `__tests__/skill-citations.test.ts` fails a `metadata.skill` or a
+     `NODE_RULES` `skill` that names no real heading. Cite the heading
+     exactly (backticks do not matter); a trailing ` (Qualifier)` and
+     ` / `-joined headings are allowed, a prefix is not.
    - The guard, `check:security`, and `check:rules` load the whole file.
      Nothing else needs wiring.
    - Fixture pair: `rules/fixtures/<rule-id>.bad.<ext>` and
