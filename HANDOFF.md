@@ -2,6 +2,33 @@
 
 
 
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-29 11:05) — READ THIS FIRST
+Previous coordinator: pff-ios-9b (handover on user request after the retrospect). FIRST ACTIONS of the new coordinator:
+1. SendMessage your name to round-a-b7 (Round A, terminal term_f33cae3e-52bb-4734-8bb6-b84558b4c75c) and reminders-8e (Reminders, terminal term_06904bf8-4706-44bf-a28a-3c665bce472b) and the PM pff-ios-89; they report to "pff-ios-9b".
+2. Re-arm ONLY the gauge watcher (user rules: no idle/prompt/long-agent polling): `bash memory/refs/gaugewatch.sh <terminal>` with Bash run_in_background, one per orchestrator terminal; on "HANDOVER" ask that session for its handoff file; brief templates: memory/refs/brief-round-a-2.md, memory/refs/brief-reminders-2.md.
+3. Read the user's morning list: memory/refs/morning-list-2026-09-29.md (overnight defaults, i18n keys, fast-uri CVE decision, device checks, release gates). NOTHING on it is answered yet except where marked.
+
+### State (2026-09-29 11:05)
+| Thing | Value |
+|---|---|
+| main | 7eeaeaf0 (docs + harness rules; plugin 0.2.4 live). next -> main merge WAITS for the user (after CQ1 is on main, only `git -C <main> merge --ff-only <sha>` from a verified worktree) |
+| next | bb715cc9 = CQ1, CQ2, Round A tasks 1-7/13, Reminders tasks 1-6/6 (feature complete), migrations 0043-0045 (next free 0046), main's harness rules. make verify at 66da63ab: jest 461/6885 PASS, check:security failed on 5 Semgrep TIMEOUTS only (load from Stryker) -> RE-RUN `npm run check:all` in the next worktree at low load before calling next green |
+| deep-gate | running Round A tasks 8/13+9/13 mutation at c2dbc416, KIKO_MUTATION_BASE=61644398 (15 files, 2292 mutants; log scratchpad of the old session deep-c2dbc416.log is NOT durable — if lost, re-run). On pass: merge c2dbc416's round-a range into next (conditional merge pattern), make verify, tell Round A |
+| Round A (round-a-b7) | tasks 8/13 + 9/13 done (mutation running); task 10/13 (CS-K, PERF-3) in progress at 5c6834f7; then 11/13 L1 + 12/13 L2 guard rules (+ candidate: tests must not parse mutated src text), 13/13 M TZ tests (+ TZ-flip rule WARNING->ERROR). CS-J deferred until an App Store pass. Before each BATCH READY: merge next into round-a. |
+| Reminders (reminders-8e) | ALL 6 tasks on next. Remaining: prune worktree reminders-t3; user review of 6 overnight defaults + i18n keys; ~30 device checks; release gates (App Review notes, a demo reminder in the demo .kiko, screenshot 04 re-shoot). Then the track closes (TRACK DONE -> close the session, copy .superpowers to memory/refs, prune worktrees) |
+| iPhone | 686d8114 (old). Next device session = combined: CS-E prompts, Reminders, 0043/0044/0045 with a .kiko export FIRST, SYNC-4 / Binance header, PERF-3 |
+| App Store | 1.0.0 build 25 "Waiting for Review" since ~2026-09-22. User rule: the user is the ONLY user until they report a review pass |
+
+### Next steps for the coordinator, in order
+1. Re-run check:all on next at low load; then Round A tasks 8/13+9/13 mutation result -> merge -> make verify.
+2. Morning list with the user (memory/refs/morning-list-2026-09-29.md): overnight defaults, i18n keys, fast-uri 3.1.6 -> 3.1.8 (dev only, lockfile change needs OK), device session scheduling, next -> main.
+3. Round A tasks 10-13/13 as they arrive (one mutation run at a time in deep-gate; Semgrep timeouts under load = rerun, never raise the timeout).
+4. After Round A's drift pass: HARNESS SYNC (step 6 of the 2026-09-27 list below; scope there + the retrospect 2026-09-29 rules: merge pattern, stacked merge points, mutation base after a track merge, tests must not parse mutated src text).
+5. Then the rest of 1.2: P5 broker/shares/EODHD + the deferred list; then ROUND B.
+
+### Rules learned this run (all in memory)
+User questions go through the coordinator (never AskUserQuestion in a peer terminal); numbered task names "task N/M"; report-back rule in every agent + an expected duration per dispatch; the user is the only user until an App Store pass; no waiting-prompt polling (gauge watcher only); merge only in a conditional after a clean merge-tree test; close a session at its handover/TRACK DONE and copy its .superpowers folder before `orca worktree rm`; stacked merge points for gated tracks; mutation base = next's sha after a track merged next; tests must not parse the text of a mutated src file; parser-review stopping rule; peer-relayed answers: read the user's own words in the peer terminal, ask one clarifying question if ambiguous.
+
 ## ⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-27 23:30) — READ THIS FIRST
 Previous coordinator: pff-ios-9b (handover on user request after the retrospect). FIRST ACTION of the new coordinator: SendMessage your
 name to the feat orchestrator shares-assets-research-49 (session 9) and the PM pff-ios-89 (both report to "pff-ios-9b"). Then RE-ARM the
