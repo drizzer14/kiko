@@ -196,7 +196,8 @@ an entry (date + value) the moment the user approves a new visual.
 - **Compact chip: 34pt visible + hitSlop** (2026-09-26). Every
   `ChipRow` chip draws a 34pt `minHeight` pill with `spacing(1)`
   vertical padding at every label step, and reaches the 44pt tap
-  target through `CHIP_HIT_SLOP` (`{ top: 5, bottom: 5 }`), never a
+  target through `CHIP_HIT_SLOP` (`chip-row.component.tsx`, built from `CHIP_TAP_INSET`
+  in `src/design-system/chip-geometry/`), never a
   taller chip.
 - **Sign-colored net-worth stroke** (2026-09-26). The net-worth line's
   stroke is `positive` green at or above the dashed start reference and
@@ -331,11 +332,14 @@ The established patterns grouped under this heading:
   with `editBarItem({ label: t('common.edit'), tintColor, onPress })`
   from `@kiko/design-system/edit-bar-item`: the `pencil` SF Symbol
   (iOS 13+) as a native `type: 'button'` item, the same kind as the
-  bell. `label` does NOT show as text: native-stack maps it to the
-  `UIBarButtonItem`'s `title`, and UIKit draws only the image when an
-  item has both (the bell carries the "Reminders" label and shows no
-  text on device). The label stays the VoiceOver name ("Edit" /
-  "Редагувати"). This overrides
+  bell. `label` does not show as text in the header: native-stack maps it to the
+  `UIBarButtonItem`'s `title`, and UIKit draws only the image in the bar
+  when an item has both (the bell carries the "Reminders" label and shows
+  no text on device). The title still shows as text in the system overflow
+  ("More") menu when the bar is too narrow, and in the Large Content Viewer
+  (a long-press at the largest accessibility text sizes). It is also the
+  VoiceOver name ("Edit" / "Редагувати"). So never drop or empty `label`:
+  a bar item without it is nameless in all three places. This overrides
   the HIG Toolbars default ("Prefer simple, recognizable symbols for
   items instead of text, except for actions like edit that aren't
   well-represented by symbols") by the user's explicit choice. A test
@@ -1182,8 +1186,8 @@ new component can land between reviews of this skill:
   (user request 2026-09-30, "Use the same cell sizes/gaps in 'day of
   the month' as in 'day of the week'."):** the day chips take the weekday row's (`WeekdayField`,
   a `ChipRow`) chip height and horizontal gap from ONE shared source,
-  `src/design-system/chip-geometry/` (`CHIP_MIN_HEIGHT` 34,
-  `CHIP_GAP_STEP` = `spacing(2)` = 8pt, `CHIP_TAP_INSET` 5) — ChipRow
+  `src/design-system/chip-geometry/` (`CHIP_MIN_HEIGHT`, `CHIP_GAP_STEP`,
+  `CHIP_TAP_INSET`; read the values in `chip-geometry.ts`) — ChipRow
   and the grid both import it, never a copy. Each cell pads
   `spacing(1)` a side, so two neighbours sit 8pt apart like the
   weekday chips. The row gap stays 10pt (2 x `CHIP_TAP_INSET`), not
