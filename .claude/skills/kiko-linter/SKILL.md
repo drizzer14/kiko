@@ -312,8 +312,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     `'src/' + name`); a script file that writes (`python3 tool.py`,
     `node x.js`, `bash x.sh`); text piped into a shell or interpreter
     (`cat <<'EOF' | bash`, `echo … | python3`); `perl -e` code (its
-    `open(… ">" …)` is not checked); any `find … -exec` in-place edit
-    (`find src -exec sed -i … {} +`, `find … -exec sh -c 'sed -i …
+    `open(… ">" …)` is not checked); any `find … -exec`/`-execdir`
+    command, an in-place edit or a `cp`/`mv` alike
+    (`find src -exec sed -i … {} +`, `find /tmp -exec cp {} src/ \;`,
+    `find … -exec mv {} rules/ +`, `find … -exec sh -c 'sed -i …
     "$1"' _ {} \;`); `xargs -I{} sh -c '… {}'` (the `{}` is not read as
     the input); a `cp`/`mv` whose destination is a variable (the
     variable-path rule above); other writers and tools — `dd of=`,
