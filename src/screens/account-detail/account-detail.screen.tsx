@@ -167,11 +167,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // the Balance amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon
   // slot below) rather than in the nav title.
   const identity = accountIdentity(account);
-  // Adjacent bar items share one glass capsule on iOS 26+, and the HIG
-  // (Toolbars, "Item groupings") warns that a symbol next to a text-labelled
-  // action reads as one combined action. The bell is therefore a native bar
-  // item that does not share its background, so it gets a capsule of its own;
-  // header items run left to right, keeping it left of Edit.
+  // Adjacent bar items share one glass capsule on iOS 26+, which would read the
+  // bell and the Edit pencil as one control with two glyphs. The bell is
+  // therefore a native bar item that does not share its background, so it gets
+  // a capsule of its own; header items run left to right, keeping it left of
+  // Edit.
   useLayoutEffect(() => {
     navigation.setOptions({
       title: accountName,

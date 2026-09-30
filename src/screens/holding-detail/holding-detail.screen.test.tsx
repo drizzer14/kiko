@@ -524,8 +524,9 @@ describe('HoldingDetailScreen', () => {
       ([options]) => options.headerRight,
     );
     expect(call).toBeDefined();
-    const { getByText } = await render(call[0].headerRight());
-    await fireEvent.press(getByText('Edit'));
+    const { getByLabelText, queryByText } = await render(call[0].headerRight());
+    expect(queryByText('Edit')).toBeNull();
+    await fireEvent.press(getByLabelText('Edit'));
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
       accountId: 'acc-1',
       holdingId: 'h-1',

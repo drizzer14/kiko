@@ -1004,9 +1004,11 @@ describe('AccountDetailScreen', () => {
       (item: { type: string }) => item.type === 'custom',
     );
 
-    const { getByText } = await render(edit.element);
+    const { getByLabelText, queryByText } = await render(edit.element);
 
-    await fireEvent.press(getByText('Edit'));
+    expect(queryByText('Edit')).toBeNull();
+
+    await fireEvent.press(getByLabelText('Edit'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'a' });
   });

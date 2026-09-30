@@ -313,7 +313,7 @@ The established patterns grouped under this heading:
   uses `unstable_headerRightItems`, listed left to right: the symbol
   action as a native `type: 'button'` item (`icon: { type: 'sfSymbol' }`,
   `accessibilityLabel`, `tintColor: theme.colors.textPrimary` to match
-  the ghost Edit label, `sharesBackground: false` so it gets its own
+  the ghost Edit glyph, `sharesBackground: false` so it gets its own
   capsule), then Edit as a `type: 'custom'` item. Do not use a
   `type: 'spacing'` item to split them: native-stack 7.18.9 sends it
   with no index, so react-native-screens inserts it at the trailing
@@ -321,6 +321,19 @@ The established patterns grouped under this heading:
   from `setOptions` and calls its `onPress`. First consumer:
   `AccountDetail` (bell, then Edit). A header with Edit alone keeps
   `headerRight` (`HoldingDetail`).
+- **`EditHeaderButton` is icon-only** (2026-09-30, locked). The user:
+  "One last thing before LGTM: remove 'Edit' label from account/holding
+  edit button". It is the shared ghost compact `Button` with the
+  `pencil` SF Symbol (iOS 13+) and no children: no visible text, the
+  `common.edit` key stays its VoiceOver `accessibilityLabel` ("Edit" /
+  "Редагувати"), and the compact size keeps the 44pt target. This
+  overrides the HIG Toolbars default ("Prefer simple, recognizable
+  symbols for items instead of text, except for actions like edit that
+  aren't well-represented by symbols") by the user's explicit choice.
+  It stays a `type: 'custom'` item in its own capsule beside the bell
+  (the capsule separation above still applies: two glyphs in one
+  shared capsule read as one control). A test finds it by
+  `getByLabelText('Edit')` and asserts `queryByText('Edit')` is null.
 - A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
   `WalletAddressField`, `src/design-system/components/`) is a PRIMARY
   action, so it follows the same form validation model as a Save

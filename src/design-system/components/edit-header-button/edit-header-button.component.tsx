@@ -3,18 +3,15 @@ import { useTranslation } from 'react-i18next';
 
 import Button from '../button';
 
-// The header-right "Edit" affordance shared by the account- and holding-detail
-// screens: the shared borderless (ghost) Button — compact and self-hugging,
-// with a leading pencil glyph — wired via navigation.setOptions (`headerRight`,
-// or a `custom` entry in `unstable_headerRightItems` beside a native bar item)
-// so it sits at the top-right, opposite the back button.
-// Pressing it opens the entity's dedicated edit form. Reuses the shared
-// Button rather than a hand-rolled nav-bar text control so its label and icon
-// tint stay a single source of truth with every other button in the app,
-// instead of a second, drifting definition — but `ghost`, not `secondary`: a
-// header action reads as the standard iOS text-with-icon nav-bar control, not
-// a filled gray pill (that would visually compete with the screen's actual
-// buttons, e.g. "Sync now" / "Add holding").
+// The header-right Edit affordance shared by the account- and holding-detail
+// screens, wired via navigation.setOptions (`headerRight`, or a `custom` entry
+// in `unstable_headerRightItems` beside a native bar item). It reuses the
+// shared Button so its glyph tint stays one source of truth with every other
+// button — `ghost`, because a filled pill would compete with the screen's own
+// actions. It is icon-only because the user asked for no visible "Edit" text
+// beside the native bell symbol; the compact size keeps the 44pt target
+// (44pt min height, 12pt padding either side of the 20pt glyph), and the
+// accessibilityLabel keeps the spoken "Edit" for VoiceOver.
 const EditHeaderButton: FC<{ onPress: () => void }> = ({ onPress }) => {
   const { t } = useTranslation();
 
@@ -27,9 +24,7 @@ const EditHeaderButton: FC<{ onPress: () => void }> = ({ onPress }) => {
       testID="edit-header-button"
       accessibilityLabel={t('common.edit')}
       onPress={onPress}
-    >
-      {t('common.edit')}
-    </Button>
+    />
   );
 };
 
