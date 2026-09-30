@@ -627,6 +627,27 @@ const buildAccounts = (): SeedAccount[] => [
     ],
   },
   {
+    name: 'Брокер',
+    kind: 'broker',
+    color: entityColorsDark.violet,
+    holdings: [
+      {
+        name: 'Долари',
+        type: 'cash',
+        currency: 'USD',
+        color: entityColorsDark.violet,
+        transactions: [
+          {
+            amountMinorUnits: 50_000,
+            time: at(100),
+            category: null,
+            description: 'Поповнення брокерського рахунку',
+          },
+        ],
+      },
+    ],
+  },
+  {
     name: 'Нерухомість',
     kind: 'property',
     color: entityColorsDark.brown,

@@ -27,13 +27,13 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(buildScreenshotDataset('uk').baseCurrency).toBe('UAH');
   });
 
-  it('seeds eight plain manual accounts spread across UAH/USD/EUR/BTC', () => {
+  it('seeds nine plain manual accounts spread across UAH/USD/EUR/BTC', () => {
     const { accounts } = buildScreenshotDataset('uk');
     const currencies = accounts.flatMap((account) =>
       account.holdings.map((holding) => holding.currency),
     );
 
-    expect(accounts).toHaveLength(8);
+    expect(accounts).toHaveLength(9);
     expect(new Set(currencies)).toEqual(new Set(['UAH', 'USD', 'EUR', 'BTC']));
   });
 
