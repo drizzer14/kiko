@@ -1792,8 +1792,7 @@ what a change must keep.
   `DELETE ... RETURNING` the account and kind, then
   `recordReminderOfferDismissal` for the deleted row, so the offer for
   that kind never returns on that account; an unknown id records
-  nothing). The re-plan
-  side is unchanged: `hasAnyQuery`, `planInputsQuery`,
+  nothing). Re-plan side: `hasAnyQuery`, `planInputsQuery`,
   `recordEngagements`, `markBackoffPaused`, `clearSnoozes`. Read the
   file for signatures.
 - **Rules.** `src/reminders/rules/` is pure.
