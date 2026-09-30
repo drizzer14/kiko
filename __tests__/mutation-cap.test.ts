@@ -235,6 +235,34 @@ describe('scripts/checks/mutation.sh file cap', () => {
     expect(existsSync(join(lockDirectory, 'pid'))).toBe(true);
   });
 
+  it.each([[['--lsit']], [['--list', '--lsit']], [['list']]])(
+    'refuses the unknown argument in %j with exit 2 before the lock, the list, or Stryker',
+    (argumentsGiven) => {
+      const { root, script } = buildRepository(sources('changed', 1));
+      const temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-argument-'));
+      const lockDirectory = join(temporaryDirectory, 'kiko-harness', 'mutation.global.lock');
+      mkdirSync(lockDirectory, { recursive: true });
+      // process.pid is this test runner, so the holder reads as alive.
+      writeFileSync(join(lockDirectory, 'pid'), String(process.pid));
+
+      const result = runWithArgumentStub(
+        script,
+        {
+          KIKO_MUTATION_BASE: 'main',
+          TMPDIR: temporaryDirectory,
+          KIKO_MUTATION_BIN: join(root, 'no-such-stryker'),
+        },
+        argumentsGiven,
+      );
+
+      expectRefusal(result, `Unknown argument: ${argumentsGiven.at(-1)}`);
+      expect(result.stderr).toContain('--list');
+      expect(result.stderr).not.toContain('Another mutation run is active');
+      expect(result.stdout).toBe('');
+      expect(existsSync(join(lockDirectory, 'pid'))).toBe(true);
+    },
+  );
+
   it('records the scope with a pass, so a wider scope at the same HEAD still runs Stryker', () => {
     const { root, script } = buildRepository(sources('changed', 2));
     writeFile(root, 'src/last.ts', 'export const last = 1;\n');

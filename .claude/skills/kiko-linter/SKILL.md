@@ -410,7 +410,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `mutable files: N (cap …)` after the same refusals and the same
   `mutable_source_files` filter, then exits (2 above the cap) before
   the dedup skip; it needs no Stryker binary and never takes the global
-  lock. Every refusal runs BEFORE the content-dedup skip, and the dedup
+  lock. Any argument other than `--list` (a typo like `--lsit`) exits 2
+  with the structured block before the Stryker-binary check, the lock,
+  or the list, so it never starts a run. Every refusal runs BEFORE the content-dedup skip, and the dedup
   fingerprint includes the scope (merge-base sha + selected file list),
   so a pass over a narrow change set never skips a wider or refused one
   at the same HEAD. The cap and the refusals are tested hermetically in

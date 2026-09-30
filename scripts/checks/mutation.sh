@@ -16,14 +16,28 @@
 # `--list` prints the files this run would mutate and their count, then exits
 # (2 above the cap) without Stryker, so a change set is sized with the gate's
 # own filter instead of a hand count. It needs no Stryker binary and takes no
-# lock, since it never starts a run.
+# lock, since it never starts a run. Any other argument exits 2.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
 list=0
-[ "${1:-}" = "--list" ] && list=1
+# A mistyped `--list` must not fall through to a full Stryker run, so any
+# other argument is refused before the lock or Stryker.
+for argument in "$@"; do
+  if [ "$argument" != "--list" ]; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "Unknown argument: $argument" \
+      "mutation.sh takes only --list (print the files it would mutate and their count, then exit)." \
+      "An ignored argument would turn a mistyped --list into a real mutation run that takes the machine-wide lock for minutes." \
+      "Run: bash scripts/checks/mutation.sh --list   (or with no argument, to run Stryker)" \
+      "Do not pass other options; set the scope with KIKO_MUTATION_BASE instead."
+    exit 2
+  fi
+  list=1
+done
 # The pinned Stryker binary. KIKO_MUTATION_BIN overrides it ONLY so this
 # wrapper's streaming and exit-code behavior is testable against a fast stub
 # binary (scripts/checks/mutation.test via __tests__/) without a multi-minute
