@@ -1496,3 +1496,29 @@ rules:
           - pattern-inside: "{..., unstable_headerRightItems: (...) => $ITEMS, ...}"
           - pattern-inside: "{..., unstable_headerLeftItems: $ITEMS, ...}"
           - pattern-inside: "{..., unstable_headerLeftItems: (...) => $ITEMS, ...}"
+  # kiko-architecture's "Reminders (local notifications)": the notification
+  # status is one app-wide value that `useNotificationPermission().request`
+  # publishes after the system prompt, and that counts a failed prompt as
+  # denied. A direct `remindersNative.requestAuthorization` skips both, so a
+  # mounted notice keeps the stale answer. `src/reminders/permission/**` is the
+  # one owner; tests and `src/test-support/**` mock or spy on the member.
+  - id: kiko-no-direct-notification-permission-request
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      The notification prompt is called directly on `remindersNative`. Only
+      `useNotificationPermission().request` publishes the answer to the shared
+      status and counts a failed prompt as denied, so a direct call leaves every
+      mounted notice on the stale answer — see kiko-architecture's
+      "Reminders (local notifications)".
+    metadata:
+      fix: "Ask through `useNotificationPermission().request` (`@kiko/reminders/permission`)."
+      skill: "kiko-architecture › Reminders (local notifications)"
+    paths:
+      exclude:
+        - "src/reminders/permission/**"
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "__tests__/**"
+        - "src/test-support/**"
+    pattern: remindersNative.requestAuthorization

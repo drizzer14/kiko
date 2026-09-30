@@ -617,6 +617,20 @@ verified usage, not dead weight:
   The nested fixture pair proves the rule in `check:rules`;
   `__tests__/pre-write-guard-rules.test.ts` proves the scope.
 
+- **`kiko-no-direct-notification-permission-request`
+  (`rules/semgrep-prewrite.yml`) excludes `src/reminders/permission/**`,
+  `*.test.ts`, `*.test.tsx`, `__tests__/**`, and `src/test-support/**`.**
+  `src/reminders/permission/use-notification-permission.ts` is the one owner:
+  its `request` is the call the rule points every other caller at. Tests and
+  test support mock or spy on the member to drive that owner:
+  `src/test-support/permission-notice-cases.ts` reads
+  `jest.mocked(remindersNative.requestAuthorization)`, and
+  `src/reminders/native/reminders-native.test.ts` calls the wrapper itself.
+  Measured on 2026-09-30: the pattern without the excludes draws exactly
+  those 3 hits in `src/` (the owner, the test-support file, and the native
+  test), so the excludes hide no app caller. The flat fixture pair proves the
+  rule in `check:rules`.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`
