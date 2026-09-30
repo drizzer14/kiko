@@ -104,10 +104,9 @@ describe('useKeyboardDoneAccessory', () => {
     expect(getByLabelText('Field').props.keyboardAppearance).toBe('dark');
   });
 
-  // REDESIGN (2026-09-14): the accessory host is now fully TRANSPARENT — no
-  // fill, no border, no corner geometry — it only positions the compact Done
-  // pill below it (see `keyboard-done-accessory.styles.ts`'s
-  // `accessoryContainer`). It carries no `backgroundColor` at all any more.
+  // The accessory host is fully TRANSPARENT (no fill, no border, no corner
+  // geometry): it only positions the compact Done pill (see
+  // `keyboard-done-accessory.styles.ts`'s `accessoryContainer`).
   it('renders the host container fully transparent, with no background/border/corner geometry of its own', async () => {
     const { getByTestId } = await render(<Host />);
 
@@ -118,8 +117,8 @@ describe('useKeyboardDoneAccessory', () => {
     expect(flat.borderBottomRightRadius).toBeUndefined();
   });
 
-  // REDESIGN (2026-09-14): Done is now a COMPACT pill that sizes to fit its
-  // own label — it must never stretch full width the way the old bar did.
+  // Done is a COMPACT pill that sizes to fit its own label; it never
+  // stretches full width.
   it('sizes the Done pill to hug its own label rather than stretching full width', async () => {
     const { getByRole } = await render(<Host />);
 
@@ -128,15 +127,14 @@ describe('useKeyboardDoneAccessory', () => {
     expect(flat.alignSelf).not.toBe('stretch');
   });
 
-  // Addendum: the pill's live Liquid Glass background is
-  // still a `GlassSurface material` overlay (see
-  // `keyboard-done-accessory.styles.ts`'s `doneGlass` doc comment and its HIG
-  // citation), now sized to the PILL itself rather than a full-width bar, and
-  // rounded into a true capsule (`radius="full"`). This still exercises the
-  // non-glass FALLBACK branch (the global mock pins `isLiquidGlassSupported`
-  // to `false`), so `GlassSurface`'s own `-base` sublayer is the flat
-  // translucent `View` the `material` variant falls back to — the
-  // glass-capable branch is covered in the describe block below.
+  // The pill's live Liquid Glass background is a `GlassSurface material`
+  // overlay (see `keyboard-done-accessory.styles.ts`'s `doneGlass` doc comment
+  // and its HIG citation), sized to the pill itself and rounded into a true
+  // capsule (`radius="full"`). This test exercises the non-glass FALLBACK
+  // branch (the global mock pins `isLiquidGlassSupported` to `false`), so
+  // `GlassSurface`'s own `-base` sublayer is the flat translucent `View` the
+  // `material` variant falls back to; the glass-capable branch is covered in
+  // the describe block below.
   it('paints the Done pill background through a GlassSurface material overlay, translucent on the fallback', async () => {
     const { getByTestId, queryByTestId } = await render(<Host />);
 
@@ -153,19 +151,17 @@ describe('useKeyboardDoneAccessory', () => {
     expect(glassBaseStyle.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
     expect(glassBaseStyle.backgroundColor).not.toBe(darkTheme.colors.surfaceHigh);
 
-    // Fills the pill's own bounds exactly — no extension past any edge (the
-    // old bar's bottom-corner extension no longer applies to a floating
-    // pill).
+    // Fills the pill's own bounds exactly: a floating pill has no edge to
+    // extend past.
     expect(glassStyle.top).toBe(0);
     expect(glassStyle.bottom).toBe(0);
     expect(glassStyle.left).toBe(0);
     expect(glassStyle.right).toBe(0);
   });
 
-  // Addendum: a subtle hairline edge (`bordered`) keeps
-  // the pill legible on any content behind the glass, since the pill's
-  // translucent fallback/backdrop carries no opaque or strongly-pinned base
-  // of its own.
+  // A subtle hairline edge (`bordered`) keeps the pill legible on any content
+  // behind the glass, since the pill's translucent fallback/backdrop carries
+  // no opaque or strongly-pinned base of its own.
   it('draws a subtle bordered edge on the glass pill for legibility over any backdrop', async () => {
     const { getByTestId } = await render(<Host />);
 
@@ -174,13 +170,13 @@ describe('useKeyboardDoneAccessory', () => {
     expect(flat.borderColor).toBe(darkTheme.colors.border);
   });
 
-  // The Done label is white (`textPrimary`), not the earlier blue `accent`
-  // link tone — see `keyboard-done-accessory.styles.ts`'s `doneLabel` doc
+  // The Done label is white (`textPrimary`), not the blue `accent` link
+  // tone — see `keyboard-done-accessory.styles.ts`'s `doneLabel` doc
   // comment for why `textPrimary` (not `onAccent`) is the correct DS token
   // for a label on a neutral glass surface with no filled accent background.
   // `textPrimary` resolves to pure white (`#FFFFFF`) on this dark theme (see
   // `theme.test.ts`), which is asserted directly here rather than restated.
-  it('renders the Done label in the white textPrimary tone, not the old accent tone', async () => {
+  it('renders the Done label in the white textPrimary tone, not the accent tone', async () => {
     const { getByTestId } = await render(<Host />);
 
     expect(getByTestId('text-tone-textPrimary')).toHaveTextContent('Done');
