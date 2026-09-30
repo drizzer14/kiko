@@ -12,6 +12,7 @@ import type {
   BondMeta,
   LoanMeta,
   MetalMeta,
+  ShareMeta,
   BondPayment,
   PropertyMeta,
   TermDepositMeta,
@@ -82,7 +83,7 @@ type SeedTransaction = {
   loanHoldingKey?: string;
 };
 
-type SeedHoldingMeta = TermDepositMeta | BondMeta | PropertyMeta | MetalMeta | LoanMeta;
+type SeedHoldingMeta = TermDepositMeta | BondMeta | PropertyMeta | MetalMeta | LoanMeta | ShareMeta;
 
 type SeedHolding = {
   // Lets a transaction link or a price point name this holding before the
@@ -366,6 +367,7 @@ const CAR_LOAN_KEY = 'car-loan';
 const PERSONAL_DEBT_KEY = 'personal-debt';
 const APARTMENT_KEY = 'apartment';
 const CAR_KEY = 'car';
+const SHARE_KEY = 'share';
 
 // A fabricated government bond: 1,000.00 nominal, a 16.2% coupon paid twice a
 // year (81.00 per bond each time). Its ISIN carries a valid check digit, so a
@@ -645,6 +647,20 @@ const buildAccounts = (): SeedAccount[] => [
           },
         ],
       },
+      // A manual share, so the demo needs no EODHD key and makes no network call.
+      {
+        key: SHARE_KEY,
+        name: 'Apple',
+        type: 'share',
+        currency: 'USD',
+        color: entityColorsDark.teal,
+        transactions: [],
+        metadata: {
+          quoteSource: 'manual',
+          isin: 'US0378331005',
+          lots: [{ day: dayKey(2026, 1, 2), quantityDelta: '4', costMinorUnits: 92_000 }],
+        },
+      },
     ],
   },
   {
@@ -740,11 +756,16 @@ const buildAccounts = (): SeedAccount[] => [
   },
 ];
 
-const holdingPoint = (holdingKey: string, day: number, price: string): SeedPricePoint => ({
+const holdingPoint = (
+  holdingKey: string,
+  day: number,
+  price: string,
+  currency: Currency = 'UAH',
+): SeedPricePoint => ({
   instrument: { kind: 'holding', holdingKey },
   day,
   price,
-  currency: 'UAH',
+  currency,
   source: 'manual',
 });
 
@@ -771,6 +792,8 @@ const buildPricePoints = (): SeedPricePoint[] => [
   holdingPoint(CAR_KEY, dayKey(2026, 6, 1), '590000.00'),
   holdingPoint(PERSONAL_DEBT_KEY, dayKey(2026, 4, 1), '20000.00'),
   holdingPoint(PERSONAL_DEBT_KEY, dayKey(2026, 7, 1), '12000.00'),
+  holdingPoint(SHARE_KEY, dayKey(2026, 1, 2), '230', 'USD'),
+  holdingPoint(SHARE_KEY, dayKey(2026, 7, 3), '248.5', 'USD'),
   ...goldQuotes(),
 ];
 

@@ -139,7 +139,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
       ...dataset.bondRegister.flatMap((row) => [row.isin, row.terms.isin]),
     ];
 
-    expect(isins).toHaveLength(3);
+    expect(isins).toHaveLength(4);
 
     for (const isin of isins) {
       expect(validateIsin(isin ?? '')).toEqual({ ok: true, isin });
