@@ -1522,3 +1522,40 @@ rules:
         - "__tests__/**"
         - "src/test-support/**"
     pattern: remindersNative.requestAuthorization
+  # kiko-domain's "Dates": a local day is 23 or 25 hours across DST, so a fixed
+  # day span added BEFORE taking the local day can land one calendar day off
+  # (`startOfLocalDay(now - 30 * DAY_MS)` in the old default range). The
+  # `metavariable-pattern` reaches nested sub-expressions on purpose: any day
+  # span arithmetic inside the argument counts, so `time - 2 * DAY + HOUR`
+  # fires. A span applied after the call returns (`startOfLocalDay(x) - DAY`)
+  # is a different shape and is not in this rule. The `$SPAN` regex opens with
+  # `.*` because `metavariable-regex` is start-anchored and `30 * DAY_MS`
+  # starts with the count.
+  - id: kiko-no-fixed-day-offset-into-local-day
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A fixed day span is added to the time passed to `startOfLocalDay` or
+      `endOfLocalDay`. A local day is 23 or 25 hours across DST, so the sum can
+      land one calendar day off — see kiko-domain's "Dates".
+    metadata:
+      fix: "Step local calendar fields (`new Date(y, m, d - N)`), then take `startOfLocalDay`; never add N * DAY_MS first."
+      skill: "kiko-domain › Dates"
+    paths:
+      exclude:
+        - "scripts/**"
+        - "harness/**"
+    patterns:
+      - pattern-either:
+          - pattern: startOfLocalDay($ARG)
+          - pattern: endOfLocalDay($ARG)
+      - metavariable-pattern:
+          metavariable: $ARG
+          patterns:
+            - pattern-either:
+                - pattern: $A + $SPAN
+                - pattern: $A - $SPAN
+                - pattern: $SPAN + $A
+            - metavariable-regex:
+                metavariable: $SPAN
+                regex: .*(?:\bDAY(?:_MS)?\b|\bMS_PER_DAY\b|86_?400_?000|24\s*\*\s*60\s*\*\s*60)

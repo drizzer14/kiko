@@ -631,6 +631,14 @@ verified usage, not dead weight:
   test), so the excludes hide no app caller. The flat fixture pair proves the
   rule in `check:rules`.
 
+- **`kiko-no-fixed-day-offset-into-local-day` (`rules/semgrep-prewrite.yml`)
+  excludes `scripts/**` and `harness/**`.** Both trees are harness tooling
+  that never computes an app calendar day; `startOfLocalDay`/`endOfLocalDay`
+  are app exports from `@kiko/dates`. Measured on 2026-09-30: neither tree
+  names either function, so the excludes hide nothing today. App source and
+  tests stay in scope. The flat fixture pair proves the rule in
+  `check:rules`.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`
