@@ -15,7 +15,8 @@ if the two ever disagree, the spec wins and this skill needs updating.
 enumerated `{ enum: [...] }` column values below (`kind`, `type`,
 `currency`, `source`) drift — a kind gets added or removed in code
 without this skill being updated in lockstep (this happened: `broker`
-was once a valid `Account.kind` and was later dropped). Do not trust
+was once a valid `Account.kind`, was dropped while this skill still
+listed it, and was later re-added in P5). Do not trust
 an enum list copied into this prose as current. Read
 `src/db/schema.ts` directly for the live `sqliteTable` column
 definitions before relying on a specific member being present or
@@ -39,6 +40,21 @@ absent** — this skill states the shape and non-enum facts only:
   `sellsMetals` catalog flag (see `kiko-pricing`'s "Bank metal
   allow-list" section) — the only holding type creatable under two
   different account kinds by two different rules.
+
+  **A `broker` account is manual holdings only**: no sync, no
+  statement import, no Connect field — the user adds holdings by hand.
+  Its allowed holding types come from `holdingTypesForAccountKind` in
+  `src/holdings/holding-type/holding-type.ts` (read it there; the
+  `share` type is planned for P5 task 5/7). Its broker identity comes
+  from the broker catalog in `src/brokers/broker-catalog.ts`
+  (`BrokerId`), picked in the account form via `BrokerTypeField`
+  (`src/screens/forms/broker-type-field/`).
+
+  **`accounts.bankId` always holds the catalog id for the account's
+  own kind**: a bank-catalog id for a `bank` account, a broker-catalog
+  id for a `broker` account, never one kind's id on the other. Route
+  every write through `catalogIdFor` in
+  `src/screens/forms/account-form/account-form.screen.tsx`.
 
   **`bankId`** is the "which bank does this account represent" field
   set from the account-form's bank picker (`BankTypeField`,
