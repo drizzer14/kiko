@@ -21,7 +21,19 @@ jest.mock('./secrets/read-secrets', () => ({
   readExportSecrets: (accounts: unknown) => mockReadExportSecrets(accounts),
 }));
 
+import { utf8Decode } from './utf8/utf8';
 import { exportData } from './export-data';
+import type { ExportPayload } from './payload';
+import { decryptEnvelope } from './crypto/envelope';
+import { decodeBase64ToBytes } from './base64/base64';
+
+const writtenPayload = (keyBase64: string): ExportPayload => {
+  const [, contents] = mockWriteFile.mock.calls[0] as [string, string];
+
+  return JSON.parse(
+    utf8Decode(decryptEnvelope(JSON.parse(contents), decodeBase64ToBytes(keyBase64))),
+  ) as ExportPayload;
+};
 
 const emptySnapshot = {
   accounts: [{ id: 'a1' }],
@@ -81,6 +93,24 @@ describe('exportData', () => {
     await exportData({ includeSecrets: true });
 
     expect(mockReadExportSecrets).toHaveBeenCalledWith(emptySnapshot.accounts);
+  });
+
+  it('writes the EODHD key into the encrypted file only when the toggle is on', async () => {
+    mockReadExportSecrets.mockResolvedValue({
+      monobankTokens: [],
+      binanceCredentials: [],
+      eodhdKey: 'fake-eodhd-key-0000',
+    });
+
+    const withSecrets = await exportData({ includeSecrets: true });
+
+    expect(writtenPayload(withSecrets.keyBase64).secrets?.eodhdKey).toBe('fake-eodhd-key-0000');
+
+    mockWriteFile.mockClear();
+    const withoutSecrets = await exportData({ includeSecrets: false });
+
+    expect(writtenPayload(withoutSecrets.keyBase64)).not.toHaveProperty('secrets');
+    expect(mockWriteFile.mock.calls[0][1]).not.toContain('fake-eodhd-key-0000');
   });
 
   it('still joins a valid path when TemporaryDirectoryPath has NO trailing slash', async () => {

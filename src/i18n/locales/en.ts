@@ -82,7 +82,7 @@ export const en = {
       exportButton: 'Export data',
       includeSecrets: 'Include saved passwords & keys',
       includeSecretsHint:
-        'Adds your saved Monobank token and Binance API keys to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
+        'Adds your saved Monobank token, Binance API keys, and EODHD key to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
       keyLabel: 'Encryption key',
       keyWarning:
         'Save this key somewhere safe — it will not be shown again, and it is the only way to unlock this file.',

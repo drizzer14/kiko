@@ -1,11 +1,13 @@
 import { saveToken } from '@kiko/monobank/token';
+import { saveEodhdKey } from '@kiko/prices/eodhd-key';
 import { saveCredentials } from '@kiko/crypto-sync/binance';
 
 import type { ExportSecrets } from '../payload';
 
 /**
- * Restores ONLY the Monobank tokens and Binance credentials from an imported
- * archive, each to the SAME account id it was exported under — `import-data.ts`
+ * Restores ONLY the Monobank tokens, the Binance credentials, and the global
+ * EODHD key (absent from an older file) from an imported archive, each
+ * account secret to the SAME account id it was exported under — `import-data.ts`
  * calls `restoreDataSnapshot` (which preserves original ids) BEFORE this, so
  * `serviceFor(accountId)` (`monobank/token.ts` / `binance.credentials.ts`)
  * resolves to exactly the Keychain item the freshly-restored account row
@@ -35,5 +37,9 @@ export const restoreExportSecrets = async (secrets: ExportSecrets | undefined): 
 
   for (const { accountId, apiKey, secret } of secrets.binanceCredentials) {
     await saveCredentials(accountId, { apiKey, secret });
+  }
+
+  if (secrets.eodhdKey !== undefined) {
+    await saveEodhdKey(secrets.eodhdKey);
   }
 };

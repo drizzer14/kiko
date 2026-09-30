@@ -30,7 +30,8 @@ const joinPath = (directory: string, fileName: string): string =>
 /**
  * Builds a fresh AES-256-GCM-encrypted `.kiko` export of every logical table
  * and, when `includeSecrets` is true, the Monobank token / Binance
- * credentials of every connected account (see `readExportSecrets`) — a
+ * credentials of every connected account and the saved EODHD key (see
+ * `readExportSecrets`) — a
  * legacy export file may still carry a `dbKeyHex` field, but the current
  * format never writes one; the database key stays device-local. Writes the
  * encrypted file to `RNFS.TemporaryDirectoryPath` — a one-shot generate-then-share flow, the

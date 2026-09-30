@@ -8,6 +8,11 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (id: string, creds: unknown) => mockSaveCredentials(id, creds),
 }));
 
+const mockSaveEodhdKey = jest.fn();
+jest.mock('@kiko/prices/eodhd-key/eodhd-key', () => ({
+  saveEodhdKey: (key: string) => mockSaveEodhdKey(key),
+}));
+
 // Mocked defensively even though `restore-secrets.ts` must never import this
 // module at all — if a future edit adds a `storeDbKey(...)` call, THIS mock
 // is what makes the "never restores the DB key" test below able to fail.
@@ -49,5 +54,28 @@ describe('restoreExportSecrets', () => {
 
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(mockSaveEodhdKey).not.toHaveBeenCalled();
+  });
+
+  it('restores the EODHD key to the Keychain', async () => {
+    await restoreExportSecrets({
+      monobankTokens: [],
+      binanceCredentials: [],
+      eodhdKey: 'fake-eodhd-key-0000',
+    });
+
+    expect(mockSaveEodhdKey).toHaveBeenCalledWith('fake-eodhd-key-0000');
+  });
+
+  it('restores an export made before the EODHD key existed without writing one', async () => {
+    await expect(
+      restoreExportSecrets({
+        monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
+        binanceCredentials: [],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mockSaveToken).toHaveBeenCalledWith('a1', 'mono-token');
+    expect(mockSaveEodhdKey).not.toHaveBeenCalled();
   });
 });
