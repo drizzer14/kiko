@@ -99,7 +99,19 @@ anything there ships in plaintext) are in
 that section. A secret belongs in the iOS Keychain
 (`react-native-keychain`); see `.claude/skills/kiko-architecture/SKILL.md`
 for the existing Keychain-backed examples (the Monobank token, the
-SQLCipher database key in `src/db/keys/db-key.ts`).
+SQLCipher database key in `src/db/keys/db-key.ts`, the EODHD key in
+`src/prices/eodhd-key/eodhd-key.ts` — read that file for its service name
+and `accessible` policy, `WHEN_UNLOCKED_THIS_DEVICE_ONLY` at the time of
+writing).
+
+A key that travels in a request URL (EODHD's `api_token`) is a disk leak
+path through NSURLCache (`Cache.db` stores the response under its URL).
+Always send the request header `Cache-Control: no-store` on every such
+request — see `NO_STORE` in `src/prices/eodhd/eodhd.client.ts`. Verified on
+macOS CFNetwork: a per-request `cachePolicy` does NOT prevent the store, and
+React Native fetch's `cache: 'no-store'` only appends a `_=` cache-buster
+(a new cached URL per call). Never log the request URL, and give every error
+a fixed message (a rejected fetch can carry the URL).
 
 A log line is a leak path even without a secret in the code: React Native
 forwards every `console` level to os_log in a Release build, and an error

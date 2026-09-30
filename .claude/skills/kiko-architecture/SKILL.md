@@ -1623,11 +1623,16 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   its (currently empty) documented-exclusion array — do not copy the table
   list here.
 - **Every Keychain secret class the export carries is read and restored.**
-  `payload.d.ts`'s `ExportSecrets` covers `monobankTokens` and
-  `binanceCredentials` only — the export never carries the SQLCipher DB key
-  at all. `secrets/read-secrets.ts` reads both from the Keychain (skipping an
-  account with no stored secret) and `secrets/restore-secrets.ts` restores
-  both, each back to its original account id. `restoreExportSecrets` still
+  Read `payload.d.ts`'s `ExportSecrets` for the classes it carries: the
+  per-account `monobankTokens` and `binanceCredentials`, plus the optional
+  global `eodhdKey` (the user's own EODHD key, `src/prices/eodhd-key/`). The
+  export never carries the SQLCipher DB key at all. Secrets are written only
+  with the credentials toggle on. `secrets/read-secrets.ts` reads every class
+  from the Keychain (skipping an account with no stored secret, and leaving
+  `eodhdKey` out when no key is saved) and `secrets/restore-secrets.ts`
+  restores each account secret back to its original account id and the
+  EODHD key only when present — a legacy file without `eodhdKey` restores
+  fine. `restoreExportSecrets` still
   never imports `db/keys/db-key.ts`: an older file that still carries a
   `dbKeyHex` field (from before that field was dropped) is read through
   as an unknown, unrestored property — re-storing a FOREIGN device's

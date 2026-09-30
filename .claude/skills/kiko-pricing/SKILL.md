@@ -727,11 +727,33 @@ NOTHING (never a partial write), matching the "fails closed" convention
 `kiko-pricing`'s "Refresh throttles" section already documents for
 rates.
 
+## EODHD client
+
+`src/prices/eodhd/eodhd.client.ts` is the only EODHD caller; the user's
+own key (BYOK) comes from `src/prices/eodhd-key/` (Keychain). Read the
+client for the exact shapes.
+
+- `fetchEod(symbol, fromDay, toDay, key)` returns end-of-day closes for one
+  `CODE.EXCHANGE` symbol, oldest first; a range with no trading day is `[]`.
+- `fetchUserLimits(key)` returns the daily limit, today's used calls, and
+  EODHD's own day (UTC; the limit resets at midnight GMT). The `/user`
+  call costs 0 calls.
+- Status mapping: 401 bad key (`EodhdAuthError`), 403 not in plan
+  (`EodhdNotInPlanError` — skip that symbol, the key is fine), 402 daily
+  limit (`EodhdQuotaError`), 429 rate limit (`EodhdRateLimitError`), else
+  `EodhdUnavailableError`. EODHD error bodies are plain text even with
+  `fmt=json`: always branch on the status only, never parse the body.
+- Closes are exact decimal strings via `decimalFromJsonNumber`
+  (`@kiko/currency/decimal`), never a float.
+- Units (live-verified; used by P5 task 6/7): a listing's `Currency`
+  gives the close's unit, and a `GBX` close is in pence, not pounds.
+- Cache and logging rules for the key-in-URL: `kiko-compliance` 5.1.5.
+
 ## Later (not built yet — do not invent detail)
 
-An EODHD quotes client for shares, a request-quota guard, and a
+The EODHD price refresh, a request-quota guard, symbol search, and a
 scheduled backfill for non-metal instruments are planned but do not
 exist in code yet. When one of those lands, extend
-this skill's "Currency-rate fallback chain" / "`price_points`"
-sections rather than writing a new one — do not leave the future work
-as a stale placeholder once it ships.
+this skill's "Currency-rate fallback chain" / "`price_points`" /
+"EODHD client" sections rather than writing a new one — do not leave
+the future work as a stale placeholder once it ships.
