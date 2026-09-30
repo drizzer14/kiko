@@ -88,4 +88,20 @@ describe('DayOfMonthGrid', () => {
 
     expect(rowWidths.filter(wrapsBeforeSeventh)).toEqual([]);
   });
+
+  // The cell, not a hitSlop, is the 44pt target: a hitSlop would overlap the
+  // neighbouring day's target in a grid this dense.
+  it('makes each cell at least 44pt tall with no hitSlop', async () => {
+    const screen = await renderGrid();
+
+    const cell = screen.getByTestId('grid-option-1');
+    const chip = within(cell).getByText('1').parent;
+    const cellStyle = StyleSheet.flatten(cell.props.style);
+    const chipStyle = StyleSheet.flatten(chip?.props.style);
+
+    expect(
+      Number(cellStyle.paddingVertical) * 2 + Number(chipStyle.minHeight),
+    ).toBeGreaterThanOrEqual(44);
+    expect(cell.props.hitSlop).toBeUndefined();
+  });
 });

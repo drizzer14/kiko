@@ -3,8 +3,8 @@ import { StyleSheet } from 'react-native-unistyles';
 // Seven columns, a month's shape as in the iOS Reminders "Monthly > Each" grid.
 // Not `100 / 7`: Yoga resolves a percentage in 32-bit float and wraps a line
 // when the running width is strictly greater than the row, so seven exact
-// sevenths overshoot by a float ulp on common widths (390pt, 414pt) and the
-// grid falls to six columns. 14.28% leaves a sub-point slack that no float
+// sevenths overshoot by a float ulp on common row widths (390pt, 414pt) and
+// the grid falls to six columns. 14.28% leaves a sub-point slack that no float
 // rounding closes.
 const CELL_WIDTH = '14.28%';
 
