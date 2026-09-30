@@ -198,7 +198,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `__tests__/`, or `rules/` (`WRITE_GUARDED_TREES`) — a writing redirect,
   an in-place `sed`/`perl`, `tee`, a `cp`/`mv` (also `gcp`/`gmv`) whose
   destination lands in a tree, a python/node one-liner write call,
-  or an in-place edit, `cp`, or `mv` behind `xargs` (any file) — at the top level or in
+  or an in-place edit behind `xargs` (any file), or a `cp`/`mv` behind
+  `xargs` whose destination the input may be — at the top level or in
   the nested text the other denies reach, except a heredoc body no shell
   or interpreter reads (text: a commit message, a notes file). Read
   `commandWrite`, `writtenFiles`, `isWritingRedirect`, and
@@ -211,7 +212,16 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   in `/`; `-T` writes the destination itself; with exactly two operands
   both the destination and `destination/<source name>` count, since the
   text cannot tell a folder (so `cp x.ts src` denies). A moved source is
-  removed, not written, so moving a tree file out to `/tmp/` passes. `git mv` stays
+  removed, not written, so moving a tree file out to `/tmp/` passes.
+  Behind `xargs` (`xargsCopyMoveTargets`), a `cp`/`mv` is judged by its
+  own destination only when the input cannot reach it: a `-t DIR`/
+  `--target-directory` value, or, with a placeholder (`-I`, `-J`, GNU
+  `-i`/`--replace`), a last operand that does not hold the placeholder;
+  so `find src … | xargs cp -t /tmp/snaps` and
+  `ls src/*.ts | xargs -I{} cp {} /tmp/backup/` pass, and
+  `xargs cp -t src/` denies. Otherwise (no placeholder, so the input is
+  appended last, or a destination holding the placeholder) it denies as
+  a write of any file. `git mv` stays
   allowed and is the way to move a file: guard-replay follows it as a
   rename, while a plain `mv` reads as a new file whose every existing
   finding looks new. Worktree test (`isProjectWorktree`): the
@@ -312,8 +322,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     around python or node, and a python/node write API outside the
     listed calls (`shutil`, `os.open`, `fs.writeSync` on an fd,
     `fs.cpSync`); a symlink into a tree.
-  - Shell-write deny, deny-leaning (over-denied): any in-place edit,
-    `tee`, `cp`, or `mv` behind `xargs`, whatever the files; a `$VAR`/glob path that
+  - Shell-write deny, deny-leaning (over-denied): any in-place edit or
+    `tee` behind `xargs`, whatever the files; a `cp`/`mv` behind `xargs`
+    with neither `-t` nor a placeholder (`xargs cp x /tmp/y/`: the input
+    is appended last, so the text cannot pin the destination), or whose
+    destination holds the placeholder; a `$VAR`/glob path that
     names a folder `src`, `__tests__`, or `rules` anywhere
     (`> "$TMPDIR/src/x"`); a relative tree path when the payload has no
     `cwd`; an interpreter one-liner that writes through a BARE variable

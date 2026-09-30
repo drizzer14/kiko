@@ -842,6 +842,27 @@ function unwrapSpecial(base, t) {
   return null;
 }
 
+// The word an `xargs` replaces with its input (`-I {}`, `-I{}`, `-J %`,
+// GNU `-i[R]` and `--replace[=R]`, whose default is `{}`), or undefined when
+// it appends the input after the command's own words.
+function xargsPlaceholder(tokens) {
+  let placeholder;
+  for (let index = 1; index < tokens.length && tokens[index].startsWith('-'); index++) {
+    const word = tokens[index];
+    const replace = /^--replace(?:=(.*))?$/s.exec(word);
+    const letters = /^-([^-].*)$/s.exec(word)?.[1] ?? '';
+    const at = letters.search(/[adEIJLnPRSsi]/);
+    if (replace !== null) placeholder = replace[1] ?? '{}';
+    else if (letters[at] === 'i') placeholder = letters.slice(at + 1) || '{}';
+    else if ('IJ'.includes(letters[at] ?? '-')) {
+      placeholder = letters.slice(at + 1) || tokens[index + 1];
+    }
+    if (takesNextWord(word, OPTION_WRAPPERS.get('xargs'))) index++;
+  }
+
+  return placeholder;
+}
+
 // Strips every lead-in and wrapper command (`sudo -u me`, `env`, `nice -n 10`,
 // `time -p`, `timeout N`, `xargs`, ...) so the checks below see the command
 // actually being run. Returns the remaining tokens and whether an `xargs`
@@ -849,9 +870,11 @@ function unwrapSpecial(base, t) {
 // takes its targets from the piped-in input — from a pattern, by
 // construction — so it is denied unconditionally regardless of any static
 // args that follow it. `environment` holds the `NAME=value` prefixes it
-// stripped (`GIT_DIR=…` changes where git writes).
+// stripped (`GIT_DIR=…` changes where git writes), and `xargsPlaceholder`
+// the last `xargs`'s own replace word (see `xargsPlaceholder`).
 function unwrap(tokens) {
   let viaXargs = false;
+  let placeholder;
   const environment = {};
   let t = tokens;
   while (t.length > 0) {
@@ -868,14 +891,22 @@ function unwrap(tokens) {
       continue;
     }
     if (!OPTION_WRAPPERS.has(base)) {
-      return { tokens: [word, ...t.slice(1)], viaXargs, environment };
+      return {
+        tokens: [word, ...t.slice(1)],
+        viaXargs,
+        xargsPlaceholder: placeholder,
+        environment,
+      };
     }
-    viaXargs = viaXargs || base === 'xargs';
+    if (base === 'xargs') {
+      viaXargs = true;
+      placeholder = xargsPlaceholder(t);
+    }
     t = skipOptions(t, OPTION_WRAPPERS.get(base));
     if (base === 'timeout') t = t.slice(1);
   }
 
-  return { tokens: t, viaXargs, environment };
+  return { tokens: t, viaXargs, xargsPlaceholder: placeholder, environment };
 }
 
 // A `NAME=value` prefix sets NAME for the command it leads into.
@@ -1500,12 +1531,41 @@ function interpreterWrite(program, directories, rules) {
 // any file.
 const XARGS_WRITE = { verb: 'writes', where: 'the files xargs reads from its input' };
 
+// A cp/mv behind `xargs` writes into a folder its own text names only when
+// the input cannot reach the destination: a `-t DIR` without the
+// placeholder, or, with a placeholder, a literal last operand. Null when the
+// input may be the destination (it is appended last without a placeholder).
+function xargsCopyMoveTargets(base, parameters, placeholder) {
+  if (!COPY_MOVE_COMMANDS.has(base)) return null;
+  const holdsInput = (word) => placeholder !== undefined && word.includes(placeholder);
+  const { options } = splitOptions(parameters, readCopyMoveOption);
+  const folder = options.findLast((option) => option.targetDirectory !== undefined);
+  if (folder !== undefined) {
+    return holdsInput(folder.targetDirectory)
+      ? null
+      : intoFolder(folder.targetDirectory, ['xargs-input']);
+  }
+  const destination = parameters.at(-1);
+  if (placeholder === undefined || destination === undefined || holdsInput(destination)) {
+    return null;
+  }
+
+  return copyMoveTargets(parameters);
+}
+
 // Where one unwrapped command writes inside a tree, or null.
-function commandWrite({ tokens, viaXargs }, { directories, rules, stdinScripts }) {
+function commandWrite(
+  { tokens, viaXargs, xargsPlaceholder: placeholder },
+  { directories, rules, stdinScripts },
+) {
   const base = basename(tokens[0]);
   const parameters = tokens.slice(1);
   const files = writtenFiles(base, parameters);
-  if (files !== null) return viaXargs ? XARGS_WRITE : firstGuardedWrite(files, directories, rules);
+  if (files !== null && viaXargs) {
+    const targets = xargsCopyMoveTargets(base, parameters, placeholder);
+    return targets === null ? XARGS_WRITE : firstGuardedWrite(targets, directories, rules);
+  }
+  if (files !== null) return firstGuardedWrite(files, directories, rules);
   const program = interpreterProgramOf(base, parameters, stdinScripts);
   if (program === null) return null;
 
@@ -1681,6 +1741,7 @@ function substitutedCommandFinding(command, context) {
     {
       tokens: after.tokens,
       viaXargs: command.viaXargs || after.viaXargs,
+      xargsPlaceholder: after.viaXargs ? after.xargsPlaceholder : command.xargsPlaceholder,
       environment: { ...command.environment, ...after.environment },
     },
     context,
