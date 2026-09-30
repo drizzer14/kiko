@@ -744,13 +744,15 @@ findings-handling for the exact mechanism, not restated here):
 
 Any new entry in `.jscpd.json`, `biome.json`'s `files.includes`,
 `knip.json`, `.depcheckrc.json`, `.gitleaks.toml`, or a semgrep
-`--exclude` flag needs a matching "Documented exceptions" entry in
-`CLAUDE.md` — see that section for the required shape: name the
+`--exclude` flag needs a matching entry in
+`docs/harness/documented-exceptions.md` — see that file for the required shape: name the
 config, name the exact path/value excluded, and state the concrete,
 verifiable reason (a measured false-positive rate, a tool that cannot
 parse the language, a generated-and-cumulative file format), not a
 vague "not relevant". `rules/fixtures/**` is the running example: it
-is excluded from Biome/Knip/jscpd/the real Semgrep scan, each
+Biome skips its bad fixtures (`rules/fixtures/**/*.bad.*`) and only
+format-checks the good ones, and it is excluded from Knip/jscpd/the real
+Semgrep scan, each
 independently verified as load-bearing by probing with a deliberately
 bad file and confirming the check would otherwise fire on it.
 
@@ -1341,11 +1343,11 @@ for the current set.
   developer code work. Decide how a justified exception passes both the
   guard and the project-wide checker before a new Node rule ships.
 
-## Node checkers (blank-line separation, cross-screen imports, feature imports)
+## Node checkers
 
 Each runs as `node scripts/checks/<name>.js <file>`, as a guard
 `NODE_RULES` row, and project-wide through a `.sh` wrapper in
-`check:all`. Every checker and the shared scanner stay reachable for
+`check:all` (`plural-count.js`: a Jest invariant instead, see its bullet). Every checker and the shared scanner stay reachable for
 knip only through `knip.json`'s `ignore` (read the list there; it
 includes `feature-imports.js` and `specifier-scanner.js`). None has a
 report or JSON mode.

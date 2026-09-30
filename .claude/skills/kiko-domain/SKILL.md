@@ -386,9 +386,8 @@ second kind/type -> glyph map in a screen module.
 An account row's displayed icon + color come from one helper,
 `accountIdentity` (`src/holdings/account-identity/`): the stored icon
 or `accountKindSymbol[kind]`, and the color through
-`resolveEntityColor` with `defaultAccountColor[kind]`. The accounts
-card, the account-detail header, the Reminders list, and the Home and
-Charts account filters all call it; never rebuild the
+`resolveEntityColor` with `defaultAccountColor[kind]`. Every screen
+that shows a stored account row's icon or color calls it; never rebuild the
 `icon ?? accountKindSymbol[kind]` pair in a screen. There are two
 exceptions: the account form edits a draft, not a stored row; and the
 Charts contribution builder

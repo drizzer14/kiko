@@ -242,7 +242,7 @@ an entry (date + value) the moment the user approves a new visual.
   the same icon + color as the account card, through
   `accountIdentity`: an account with no stored icon shows its
   `accountKindSymbol` glyph in its resolved color, never an empty icon
-  slot. The "All" row now always lines up under the glyph column:
+  slot. The "All" row lines up under the glyph column:
   `filter-menu` reserves the icon slot when any option has an icon.
 
 ## UX patterns
@@ -1393,7 +1393,7 @@ identically everywhere that entity appears (its card, its icon tint,
 its chart legend). Read `src/holdings/entity-colors/entity-colors.ts` and
 `src/design-system/entity-tint/entity-tint.ts` directly for the exact functions
 and their current shape; do not copy their signatures into prose here
-where they can drift. As of this writing the pipeline is:
+where they can drift. The pipeline is:
 
 - `defaultAccountColor` / `defaultHoldingColor`
   (`src/holdings/entity-colors/entity-colors.ts`) — the kind/type-keyed default

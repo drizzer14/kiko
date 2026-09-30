@@ -13,7 +13,7 @@ below).
 
 | Command | Tool | Threshold | Tier |
 |---|---|---|---|
-| `npm run check:lint` | Biome | any lint/format violation fails | fast (PostToolUse) |
+| `npm run check:lint` | Biome | any lint/format violation fails (Biome skips only the bad fixtures `rules/fixtures/**/*.bad.*`; a good fixture is format-checked, never linted — see `docs/harness/documented-exceptions.md`) | fast (PostToolUse) |
 | `npm run check:dup` | jscpd | >5% duplicated lines/tokens fails | medium (Stop/SubagentStop) |
 | `npm run check:knip` | Knip | any unused file/export/dependency fails | medium |
 | `npm run check:deps` | depcheck + `npm ci --dry-run` + `deps-ranges.js` (exact-pin allowlist) + `npm ls --all` | any unused/missing dep, or broken lockfile, fails; any non-exact-semver spec in dependencies/devDependencies/optionalDependencies/peerDependencies/overrides fails; any `npm ls --all` ELSPROBLEMS (an unsatisfied resolved-tree requirement) fails; a changed dependency block is surfaced for confirmation | medium |
@@ -23,14 +23,14 @@ below).
 | `npm run check:plist` | plist.sh (`plutil`) | any Info.plist security invariant violation fails | medium |
 | `npm run check:secrets` | gitleaks | any detected secret fails | fast |
 | `npm run check:overrides` | override-guard.sh | any bare `biome-ignore`, `nosemgrep`, or `kiko-override:` comment (no `OVERRIDE(...)`) fails | medium |
-| `npm run check:import-order` | `scripts/checks/import-order.sh` (+ `.js` analyzer) | a leading import block not sorted per kiko-code-style's "Import ordering" (3 blank-line-separated groups, ascending by ending-line length, value-before-type tiebreak, side-effect import as a barrier) fails; two ADJACENT groups of the same kind (no side-effect import as a barrier between them) also fail and must be merged into one; two declarations of ONE module specifier in the header (value+value, type+type, value+type, or a bare side-effect import beside a VALUE import; a namespace import, and a bare side-effect import beside only `import type` declarations, are exempt) also fail — `--write` fixes what it safely can, then re-checks its own output and prints `left for hand fix: <file> <reason>` and exits non-zero for ANY violation it could not fix (a merge blocked by a later group's own prefix or interior comment, a group left untouched because a comment is glued to a non-first import, or a duplicate specifier, which `--write` never merges), for a human to fix by hand. The pre-write guard runs the same analyzer as its `kiko-import-order` Node rule. The per-file fast tier can miss a multi-file/grouping violation that the project-wide `check:import-order` catches, so run the project-wide check before committing | fast (per-file) + project-wide (`check:all`) |
+| `npm run check:import-order` | `scripts/checks/import-order.sh` (+ `.js` analyzer) | a leading import block not sorted per kiko-code-style's "Import ordering" (3 blank-line-separated groups, ascending by ending-line length, value-before-type tiebreak, side-effect import as a barrier) fails; two ADJACENT groups of the same kind (no side-effect import as a barrier between them) also fail and must be merged into one; two declarations of ONE module specifier in the header (value+value, type+type, value+type, or a bare side-effect import beside a VALUE import; a namespace import, and a bare side-effect import beside only `import type` declarations, are exempt) also fail — `--write` fixes what it safely can, then re-checks its own output and prints `left for hand fix: <file> <reason>` and exits non-zero for ANY violation it could not fix (a merge blocked by a later group's own prefix or interior comment, a group left untouched because a comment is glued to a non-first import, or a duplicate specifier, which `--write` never merges), for a human to fix by hand. The pre-write guard runs the same analyzer as its `kiko-import-order` Node rule. The per-file fast tier can miss a multi-file/grouping violation that the project-wide `check:import-order` catches, so run the project-wide check before committing. The per-file mode skips a file under `rules/fixtures/`, which the pre-write guard and the project-wide roots never read either | fast (per-file) + project-wide (`check:all`) |
 | `npm run check:full-word-identifiers` | `scripts/checks/full-word-identifiers.sh` (+ `.js` analyzer) | any denylisted abbreviation (`cond`/`btn`/`idx`/`acc`/`tx`/`err`/`val`/`prev`/`cfg`/`e`/`res`/`msg`/`cb`/`ctx`/`el`/`opts`/`tmp`/`num`/`arr`/`obj`/`str`) as a whole camelCase/PascalCase/snake_case part of an identifier fails, unless the exact `(file path, denylisted word, identifier name)` triple is on the analyzer's own `EXEMPTIONS` allowlist (an exact-name match, not a whole-file exemption — see `docs/harness/documented-exceptions.md`) | fast (per-file) + project-wide (`check:all`) |
 | `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import (`kiko-no-cross-screen-import`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` (+ `feature-imports.js`) | an import that crosses a feature without its barrel (`kiko-feature-imports`, B2) fails; so do the `--tree` layout findings over `src/` (loose file at a container root, unit without `index.ts`, undeclared container, a barrel that re-exports test code or another feature, a feature-level value-import cycle) | project-wide (`check:all`) + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation (`kiko-blank-line-separation`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` (+ `.js` planner/runner) — the unchanged pre-write guard (`pre-write-guard.sh`), run once per `.ts`/`.tsx` file the session changed, with BEFORE = the file at HEAD, or at the parent of the earliest session commit (one that no worktree's passed-replay mark ref `refs/kiko/guard-replay/<worktree id>` reaches and that is newer than the floor ref `refs/kiko/guard-replay-floor` or has a session commit as a parent; through a merge commit, a file the merge kept from one parent takes that parent's baseline, and a file it left different from every parent is checked against both parents' baselines (see `guard-replay.js`'s header)), and AFTER = the working-tree file | any finding the change ADDED fails, naming file, rule, and line (a Bash/python write or its commit bypassed the pre-write guard); a pre-existing finding does not; a replay or guard that could not run fails too (fail closed), and so does the Stop tier's deadline (at most 150 s) | medium (Stop/SubagentStop) + project-wide (`check:all`, no deadline) |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
-| `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails; more than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap | deep only |
+| `npm run check:mutation` | Stryker (Jest runner) | mutation score below 60 (break threshold; ratchet up over time) fails; more than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap; `mutation.sh --list` (`make mutable`) prints the files it would mutate and their count, then exits (2 above the cap) without Stryker, and any other argument exits 2 | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
 
 Composite scripts:
@@ -55,7 +55,11 @@ Composite scripts:
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
   deep`, detached, for each reviewed change set (<= 30 source files)
   before its merge into next. Orchestrators never run it; a BATCH READY
-  names the change-set base sha and the file count. The mutation step tees its output to a stable,
+  names the change-set base sha and the file count, counted
+  with the gate's own filter, never by hand: `KIKO_MUTATION_BASE=<base sha>
+  make mutable` (it runs `mutation.sh --list`) prints the files and
+  `mutable files: N (cap …)`, exits 2 above the cap, and never starts
+  Stryker or takes its lock. The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history — a
   per-mutant rate (seconds/mutant) derived from past runs, times this
   run's actual mutant count, printed live the moment Stryker reports
@@ -127,10 +131,12 @@ worktree, verify it, then run
 See kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits.
 
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
-redirect, `tee`, a python/node one-liner) into `src/`, `__tests__/`, or
-`rules/` of any worktree of this repository, because the pre-write guard
-sees only Edit/Write/MultiEdit: use Edit or Write. Reads, git itself, and
-a formatter's own `--write` stay allowed. See kiko-linter's "SHELL-WRITE
+redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner)
+into `src/`, `__tests__/`, or `rules/` of any worktree of this repository,
+because the pre-write guard sees only Edit/Write/MultiEdit: use Edit or
+Write. Move or rename a file with `git mv` (`git add` a new file first),
+then edit it with Edit/Write. Reads, git itself, and a formatter's own
+`--write` stay allowed. See kiko-linter's "SHELL-WRITE
 deny" for the full rule, limits, and where it is live.
 
 A second `PreToolUse` matcher (`Edit|Write|MultiEdit`, beside the

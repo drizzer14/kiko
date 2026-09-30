@@ -47,8 +47,7 @@ end-of-integration deep gate. Run it on each change set with
 `scripts/checks/mutation.sh` exits 2 before Stryker starts when more
 than 30 files would be mutated (`MUTATION_FILE_CAP`);
 `KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not resolve
-are refused directly (exit 2), and no env var bypasses the cap (on
-next; arrives on main with release 1.1).
+are refused directly (exit 2), and no env var bypasses the cap.
 See the `ops` skill for how to launch and await a run.
 
 Who and when (coordinator ruling, 2026-09-27): the COORDINATOR runs
@@ -228,8 +227,7 @@ and line. Fix it with Edit/Write, so the guard checks the fix. Never
 rewrite the file with Bash again. The `--write` fixers and clean merges
 pass, because only a finding the change added fails. If the replay stops at its Stop-tier deadline,
 run `npm run check:guard-replay` by hand; its pass is recorded. See
-kiko-linter's "Pre-write guard replay on the Stop tier" (the replay and
-that section are on next; arrive on main with release 1.1).
+kiko-linter's "Pre-write guard replay on the Stop tier".
 
 ## Run verbose commands through an Orca terminal
 
