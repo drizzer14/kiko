@@ -1526,9 +1526,8 @@ describe('StatisticsScreen', () => {
   it('still excludes a self-transfer pair whose legs straddle the active range boundary', async () => {
     const MINUTE = 60_000;
     // The screen's own `rangeFrom` is the shared `startOfLocalDay` — TRUE
-    // local midnight of the default range's `from` date, the SAME helper
-    // `defaultDateRange` itself uses to seed `from` (a `Date.UTC` anchor would
-    // silently exclude the first 2-3 local hours of every day in a
+    // local midnight of the default range's `from` date (a `Date.UTC` anchor
+    // would silently exclude the first 2-3 local hours of every day in a
     // positive-UTC-offset locale).
     // Mirror the screen's exact calculation here (idempotent since `dateFrom`
     // is already local midnight) so a UTC-offset host doesn't misplace the
