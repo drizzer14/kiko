@@ -196,8 +196,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   MultiEdit, so a file a Bash command writes lands unchecked until
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
   `__tests__/`, or `rules/` (`WRITE_GUARDED_TREES`) — a writing redirect,
-  an in-place `sed`/`perl`, `tee`, a python/node one-liner write call,
-  or an in-place edit behind `xargs` (any file) — at the top level or in
+  an in-place `sed`/`perl`, `tee`, a `cp`/`mv` (also `gcp`/`gmv`) whose
+  destination lands in a tree, a python/node one-liner write call,
+  or an in-place edit, `cp`, or `mv` behind `xargs` (any file) — at the top level or in
   the nested text the other denies reach, except a heredoc body no shell
   or interpreter reads (text: a commit message, a notes file). Read
   `commandWrite`, `writtenFiles`, `isWritingRedirect`, and
@@ -205,7 +206,15 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   call with a literal target "writes" it, one with a variable or
   expression target "may write" (a bare variable: any literal in the
   code; an expression: its own literals, plus argv when it reads
-  `sys.argv`/`process.argv`). Worktree test (`isProjectWorktree`): the
+  `sys.argv`/`process.argv`). A `cp`/`mv` writes `DIR/<source name>`
+  for `-t DIR`, and for three or more operands or a destination ending
+  in `/`; `-T` writes the destination itself; with exactly two operands
+  both the destination and `destination/<source name>` count, since the
+  text cannot tell a folder (so `cp x.ts src` denies). A moved source is
+  removed, not written, so moving a tree file out to `/tmp/` passes. `git mv` stays
+  allowed and is the way to move a file: guard-replay follows it as a
+  rename, while a plain `mv` reads as a new file whose every existing
+  finding looks new. Worktree test (`isProjectWorktree`): the
   tree must sit at the root of a folder whose `.git` shares this
   checkout's common git directory (an unreadable `.git` counts), so
   another repository's `src/` or a `src/` without `.git` beside it
@@ -296,14 +305,15 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     `open(… ">" …)` is not checked); any `find … -exec` in-place edit
     (`find src -exec sed -i … {} +`, `find … -exec sh -c 'sed -i …
     "$1"' _ {} \;`); `xargs -I{} sh -c '… {}'` (the `{}` is not read as
-    the input); other writers and tools — `cp`, `mv`, `dd of=`,
-    `install`, `rsync`, `ln`, `truncate`, `touch`, `patch`, `awk`'s own
+    the input); a `cp`/`mv` whose destination is a variable (the
+    variable-path rule above); other writers and tools — `dd of=`,
+    `install`, `rsync`, `ditto`, `ln`, `truncate`, `touch`, `patch`, `awk`'s own
     `print >`, `ruby -i`/`-e`, `ex`/`vim -c`, a `npx`/`uv run` wrapper
     around python or node, and a python/node write API outside the
     listed calls (`shutil`, `os.open`, `fs.writeSync` on an fd,
     `fs.cpSync`); a symlink into a tree.
-  - Shell-write deny, deny-leaning (over-denied): any in-place edit or
-    `tee` behind `xargs`, whatever the files; a `$VAR`/glob path that
+  - Shell-write deny, deny-leaning (over-denied): any in-place edit,
+    `tee`, `cp`, or `mv` behind `xargs`, whatever the files; a `$VAR`/glob path that
     names a folder `src`, `__tests__`, or `rules` anywhere
     (`> "$TMPDIR/src/x"`); a relative tree path when the payload has no
     `cwd`; an interpreter one-liner that writes through a BARE variable
@@ -1406,7 +1416,7 @@ kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
 forms into `src/`, `__tests__/`, and `rules/`. It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
-`cp`/`mv`, `find -exec`, a path held in a variable, and a commit of any
+`find -exec`, a path held in a variable, and a commit of any
 of these (see its Known limits). The replay catches those writes after
 they land.
 

@@ -168,6 +168,40 @@ const DENIED_NESTED: string[] = [
   "$(which sed) -i 's/a/b/' src/x.ts",
 ];
 
+// A plain `mv` or `cp` into a tree reads as a new file to guard-replay, so
+// every finding already in the moved text would read as new; `git mv` keeps
+// the rename, so it stays allowed.
+const DENIED_COPY_MOVE: string[] = [
+  'cp /tmp/x.ts src/a/x.ts',
+  'cp x.ts src',
+  'mv a.ts __tests__/',
+  'cp -t rules/fixtures x.good.ts',
+  'cp --target-directory=src x.ts',
+  'cp --target-directory src x.ts',
+  'mv -vt src a.ts',
+  'mv src/a.ts src/b.ts',
+  'cp -r /tmp/dir src/',
+  'cp /tmp/a.ts /tmp/b.ts src/',
+  'mv -T /tmp/a.ts src/a.ts',
+  'cp -S .bak /tmp/x.ts src/x.ts',
+  'gcp /tmp/x.ts src/x.ts',
+  'gmv /tmp/x.ts src/x.ts',
+  `cp /tmp/x.ts ${WORKTREE}/src/`,
+  'cd src && cp /tmp/x.ts .',
+  'ls /tmp/*.ts | xargs cp -t src',
+];
+
+const ALLOWED_COPY_MOVE: string[] = [
+  'cp src/a.ts /tmp/',
+  'mv src/a.ts /tmp/a.ts',
+  'git mv src/a.ts src/b/a.ts',
+  `cp x.ts ${OTHER}/src/`,
+  `cp x.ts ${PLAIN}/src/`,
+  'cp -S src /tmp/x.ts /tmp/y/',
+  'cp src/a.ts',
+  'cp -r src /tmp/backup',
+];
+
 const ALLOWED: string[] = [
   "grep '>' src/x.ts",
   'echo "a > src/b"',
@@ -225,11 +259,12 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
     ...DENIED_TEE,
     ...DENIED_INTERPRETERS,
     ...DENIED_NESTED,
+    ...DENIED_COPY_MOVE,
   ])('denies: %s', (command) => {
     expect(decideInMain(command)).toBe('shellWrite');
   });
 
-  it.each(ALLOWED)('allows: %s', (command) => {
+  it.each([...ALLOWED, ...ALLOWED_COPY_MOVE])('allows: %s', (command) => {
     expect(decideInMain(command)).toBe('allow');
   });
 
@@ -290,6 +325,7 @@ describe('scripts/checks/kill-guard.sh shell-write deny (hook entry)', () => {
     expect(BLOCK_LABELS.filter((label) => !reason.includes(label))).toEqual([]);
     expect(reason).toContain(join(REPOSITORY_ROOT, 'src/App.tsx'));
     expect(reason).toContain('Edit or Write');
+    expect(reason).toContain('to move a file, use `git mv`');
   });
 
   it.each(['echo x > /tmp/out.txt', 'cat src/App.tsx > /dev/null', "sed -n '1p' src/App.tsx"])(

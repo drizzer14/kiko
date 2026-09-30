@@ -89,9 +89,10 @@ const SHELL_WRITE_REASON_LINES = [
     'of this repository.',
   'WHY IT MATTERS: the pre-write guard (scripts/checks/pre-write-guard.sh) sees only the Edit, ' +
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
-    'or a python or node one-liner lands unchecked; guard-replay only catches it at Stop, after ' +
-    'the fact.',
-  'HOW TO FIX:     use the Edit or Write tool for that file. A path the guard cannot resolve (a ' +
+    'cp, mv, or a python or node one-liner lands unchecked; guard-replay only catches it at ' +
+    'Stop, after the fact.',
+  'HOW TO FIX:     use the Edit or Write tool for that file; to move a file, use `git mv`, which ' +
+    'guard-replay follows as a rename. A path the guard cannot resolve (a ' +
     'variable, a glob) counts when a folder in it is named src, rules, or __tests__: write the ' +
     'literal path, or use another folder name. Reading it, a redirect to /dev/null or to a path ' +
     'outside those trees (your scratchpad, /tmp), git itself (without a redirect into those ' +
@@ -1253,9 +1254,60 @@ function inPlaceFiles({ options, operands }, suppliesScript) {
 
 const SED_COMMANDS = new Set(['sed', 'gsed']);
 
-// The files a command writes (`sed -i`, `perl -i`, `tee`), or null when it
-// is none of them or does not edit in place.
+const COPY_MOVE_COMMANDS = new Set(['cp', 'mv', 'gcp', 'gmv']);
+
+function readCopyMoveLongOption(word, next) {
+  const [name, value] = word.split(/=(.*)/s);
+  const takesValue = name === '--target-directory' || name === '--suffix';
+
+  return {
+    targetDirectory: name === '--target-directory' ? (value ?? next) : undefined,
+    noTargetDirectory: name === '--no-target-directory',
+    skip: takesValue && value === undefined ? 1 : 0,
+  };
+}
+
+// One cp/mv option word: the target folder it names (`-t DIR`, `-tDIR`,
+// `--target-directory[=]DIR`), whether it names the destination itself
+// (`-T`, `--no-target-directory`), and whether the next word is its value
+// (`-t`, `-S`, `--suffix`, `--target-directory` with no `=`).
+function readCopyMoveOption(word, next) {
+  if (word.startsWith('--')) return readCopyMoveLongOption(word, next);
+  const letters = word.slice(1);
+  const valueAt = letters.search(/[tS]/);
+  const head = valueAt === -1 ? letters : letters.slice(0, valueAt);
+  const value = valueAt === -1 ? undefined : letters.slice(valueAt + 1) || next;
+
+  return {
+    targetDirectory: letters[valueAt] === 't' ? value : undefined,
+    noTargetDirectory: head.includes('T'),
+    skip: valueAt !== -1 && valueAt === letters.length - 1 ? 1 : 0,
+  };
+}
+
+const intoFolder = (folder, sources) =>
+  sources.map((source) => `${folder.replace(/\/+$/, '')}/${path.basename(source)}`);
+
+// The paths a cp/mv writes; a moved source is removed, not written. With
+// two operands the text cannot tell whether the destination is a folder,
+// so both readings count (fail closed).
+function copyMoveTargets(parameters) {
+  const { options, operands } = splitOptions(parameters, readCopyMoveOption);
+  const targetDirectory = options.findLast((option) => option.targetDirectory !== undefined);
+  if (targetDirectory !== undefined) return intoFolder(targetDirectory.targetDirectory, operands);
+  if (operands.length < 2) return [];
+  const destination = operands.at(-1);
+  const sources = operands.slice(0, -1);
+  if (options.some((option) => option.noTargetDirectory)) return [destination];
+  if (sources.length > 1 || destination.endsWith('/')) return intoFolder(destination, sources);
+
+  return [destination, ...intoFolder(destination, sources)];
+}
+
+// The files a command writes (`sed -i`, `perl -i`, `tee`, `cp`, `mv`), or
+// null when it is none of them or does not edit in place.
 function writtenFiles(base, parameters) {
+  if (COPY_MOVE_COMMANDS.has(base)) return copyMoveTargets(parameters);
   if (SED_COMMANDS.has(base)) {
     return inPlaceFiles(splitOptions(parameters, readSedOption), (option) => option.script);
   }
@@ -1467,6 +1519,7 @@ const shellWriteFinding = (segment, { verb, where }) => ({
 
 const isWriteCommand = (base) =>
   SED_COMMANDS.has(base) ||
+  COPY_MOVE_COMMANDS.has(base) ||
   ['perl', 'tee'].includes(base) ||
   PYTHON_COMMAND.test(base) ||
   NODE_COMMANDS.has(base);

@@ -212,9 +212,10 @@ merge-conflict files".
 ## The Stop tier replays the pre-write guard
 
 The kill-guard denies the common Bash write forms (`sed -i`, `perl -i`,
-a redirect, `tee`, a python/node one-liner) into `src/`, `__tests__/`,
-and `rules/` (see kiko-linter's "SHELL-WRITE deny"). A Bash write it
-does not see (a script file, `cp`/`mv`, `find -exec`, a variable path)
+a redirect, `tee`, `cp`/`mv`, a python/node one-liner) into `src/`,
+`__tests__/`, and `rules/` (see kiko-linter's "SHELL-WRITE deny"); move
+a file with `git mv`. A Bash write it
+does not see (a script file, `find -exec`, a variable path)
 and a commit of it still skip the pre-write guard. On `Stop` and `SubagentStop`, `medium.sh`
 replays the same guard over every `.ts`/`.tsx` file the session changed:
 the working tree, plus every commit no worktree's passed replay reached
