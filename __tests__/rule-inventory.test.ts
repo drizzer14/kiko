@@ -56,16 +56,6 @@ const excludeLists = (yamlText: string): string[][] => {
       return [];
     }
 
-    if (match[2].startsWith('[')) {
-      return [
-        match[2]
-          .replace(/^\[|\]\s*$/g, '')
-          .split(',')
-          .map(unquoted)
-          .filter((item) => item !== ''),
-      ];
-    }
-
     return [blockItems(lines.slice(lineIndex + 1), match[1].length)];
   });
 };
@@ -121,10 +111,13 @@ describe('paths.exclude (kiko-linter › Adding a pre-write guard rule)', () => 
     '    pattern: x',
     '  - id: kiko-y',
     '    paths:',
-    '      exclude: ["__tests__/y.test.tsx", "*.spec.ts", "src/y.spec.js"]',
+    '      exclude:',
+    '        - "__tests__/y.test.tsx"',
+    '        - "*.spec.ts"',
+    '        - "src/y.spec.js"',
   ].join('\n');
 
-  it('reads every block and flow list item under exclude', () => {
+  it('reads every block list item under exclude', () => {
     expect(excludeEntries(yaml)).toEqual([
       'src/x/x.test.ts',
       'e2e/flows/x.yaml',
@@ -135,6 +128,12 @@ describe('paths.exclude (kiko-linter › Adding a pre-write guard rule)', () => 
       '*.spec.ts',
       'src/y.spec.js',
     ]);
+  });
+
+  it('reads a flow list as an empty list, which the rule-file check below fails', () => {
+    expect(
+      excludeLists(['    paths:', '      exclude: ["src/y.test.ts"]', '    pattern: y'].join('\n')),
+    ).toEqual([[]]);
   });
 
   it('flags an exclude that names one test file (POSITIVE), never a glob or a source file', () => {

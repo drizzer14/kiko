@@ -1175,7 +1175,9 @@ rules:
       fix: "Replace Math.min(...xs)/Math.max(...xs) with minOf(xs)/maxOf(xs) from @kiko/numbers (Math.max(k, ...xs) → Math.max(k, maxOf(xs)))."
       skill: "kiko-code-style › No Math.min/Math.max over a spread array"
     paths:
-      exclude: ["*.test.ts", "*.test.tsx"]
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
     pattern-either:
       - pattern: Math.min(..., ...$XS, ...)
       - pattern: Math.max(..., ...$XS, ...)
@@ -1202,7 +1204,9 @@ rules:
       fix: "Use `import Calendar from 'react-native-calendars/src/calendar'`; keep root imports type-only (`import type { DateData } from 'react-native-calendars'`)."
       skill: "kiko-design-system › Calendar import path"
     paths:
-      exclude: ["*.test.ts", "*.test.tsx"]
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
     pattern-either:
       - pattern-regex: (?m)^[ \t]*(?:import|export)\s+(?!type\b)[^;'"]*?\bfrom\s+['"]react-native-calendars['"]
       - pattern-regex: (?m)^[ \t]*import\s+['"]react-native-calendars['"]
@@ -1297,7 +1301,9 @@ rules:
       skill: "kiko-domain › Statistics series performance"
     paths:
       include: ["src/statistics/**"]
-      exclude: ["*.test.ts", "*.test.tsx"]
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
     patterns:
       - pattern-either:
           - patterns:

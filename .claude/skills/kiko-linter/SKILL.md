@@ -1637,6 +1637,9 @@ mechanizable (see harness-workflow's "Classify every finding").
      fails an exclude entry with no glob character that names one test
      file (`.test.ts`, `.test.tsx`, `.spec.*`, or a file under
      `__tests__/` or `e2e/`); a glob such as `"*.test.ts"` stays fine.
+     Write `exclude:` as a block list (one `- "…"` item per line): the
+     test reads only block items, so a flow list (`exclude: [...]`)
+     reads as empty and fails it.
 3. **Node rule.**
    - Write `scripts/checks/<name>.js`: exit 0 clean, exit 1 with
      findings on stdout. Any other exit, a signal, stderr output, or
