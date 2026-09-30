@@ -402,7 +402,9 @@ export const holdingsRepo = {
       }
 
       if (!isCurrencyAllowedForHoldingType(input.type, input.currency)) {
-        throw new Error(`holdingsRepo.create: a cash holding cannot hold ${input.currency}`);
+        throw new Error(
+          `holdingsRepo.create: a ${input.type} holding cannot hold ${input.currency}`,
+        );
       }
 
       const holdingId = id();

@@ -34,11 +34,11 @@ export const defaultAccountColor: Record<AccountKind, string> = {
 
 // card -> white, term_deposit -> blue, bond -> green, jar -> violet,
 // cash -> khaki, crypto_asset -> yellow, property_item -> brown,
-// metal -> gray, loan -> red — each type's own descriptor
+// metal -> gray, loan -> red, share -> teal — each type's own descriptor
 // (`src/holdings/holding-descriptor/`) is the source, read through
 // `recordByType` for the same per-type exhaustiveness guarantee as the
-// account map above. `loan` shares its `debt` kind's color, the same reuse
-// `property_item`/`metal` follow.
+// account map above. `loan` shares its `debt` kind's color and `share` its
+// `broker` kind's, the same reuse `property_item`/`metal` follow.
 export const defaultHoldingColor: Record<HoldingType, string> = recordByType(
   (descriptor) => descriptor.defaultColor,
 );

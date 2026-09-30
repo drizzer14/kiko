@@ -63,6 +63,10 @@ describe('holdingTypeSymbol', () => {
     expect(holdingTypeSymbol.metal).toBe('cube.fill');
     expect(holdingTypeSymbol.loan).toBe('minus.circle.fill');
   });
+
+  it('gives a share the broker kind glyph', () => {
+    expect(holdingTypeSymbol.share).toBe(accountKindSymbol.broker);
+  });
 });
 
 describe('propertyCategorySymbol', () => {

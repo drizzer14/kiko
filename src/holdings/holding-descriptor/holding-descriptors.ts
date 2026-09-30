@@ -2,6 +2,7 @@ import { holdingTypes, type HoldingType } from '../holding-type';
 
 import { loanDescriptor } from './loan';
 import { bondDescriptor } from './bond';
+import { shareDescriptor } from './share';
 import { metalDescriptor } from './metal';
 import { termDepositDescriptor } from './term-deposit';
 import { propertyItemDescriptor } from './property-item';
@@ -23,6 +24,7 @@ export const holdingDescriptors = {
   property_item: propertyItemDescriptor,
   metal: metalDescriptor,
   loan: loanDescriptor,
+  share: shareDescriptor,
 } as const satisfies Record<HoldingType, HoldingDescriptor>;
 
 export const holdingDescriptor = (type: HoldingType): HoldingDescriptor => holdingDescriptors[type];

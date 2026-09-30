@@ -2,6 +2,7 @@ import {
   asBondMeta,
   asLoanMeta,
   asMetalMeta,
+  asShareMeta,
   asPropertyMeta,
   asTermDepositMeta,
   binanceHistoryCursorOf,
@@ -10,6 +11,7 @@ import {
   metalForms,
   metalUnits,
   preciousMetals,
+  shareQuoteSources,
   propertyCategoryOf,
   hasStoredBondPurchasePrice,
   syncedAtOf,
@@ -21,6 +23,7 @@ import {
   type LoanMeta,
   type MetalMeta,
   type PropertyMeta,
+  type ShareMeta,
   type TermDepositMeta,
 } from './holding-metadata';
 
@@ -533,6 +536,79 @@ describe('asMetalMeta', () => {
 
   it('returns null for null', () => {
     expect(asMetalMeta(null)).toBeNull();
+  });
+});
+
+describe('asShareMeta', () => {
+  const lots = [{ day: 1_700_000_000_000, quantityDelta: '3', costMinorUnits: 90_000 }];
+  const eodhd = {
+    quoteSource: 'eodhd' as const,
+    symbol: 'AAPL.US',
+    isin: 'US0378331005',
+    lots,
+  };
+  const manual = { quoteSource: 'manual' as const, lots };
+
+  it('returns the typed object for a valid EODHD share', () => {
+    const result: ShareMeta | null = asShareMeta(eodhd);
+    expect(result).toEqual(eodhd);
+  });
+
+  it('returns the typed object for a manual share with no symbol and no ISIN', () => {
+    expect(asShareMeta(manual)).toEqual(manual);
+  });
+
+  it('keeps a manual share symbol when one is stored', () => {
+    expect(asShareMeta({ ...manual, symbol: 'VOD.LSE' })).toEqual({
+      ...manual,
+      symbol: 'VOD.LSE',
+    });
+  });
+
+  it('accepts every quote source in the closed set', () => {
+    for (const quoteSource of shareQuoteSources) {
+      expect(asShareMeta({ ...eodhd, quoteSource })?.quoteSource).toBe(quoteSource);
+    }
+  });
+
+  it('keeps a provider quote currency', () => {
+    expect(asShareMeta({ ...eodhd, symbol: 'VOD.LSE', quoteCurrency: 'GBX' })?.quoteCurrency).toBe(
+      'GBX',
+    );
+  });
+
+  it('rejects an EODHD share with no symbol or a blank one', () => {
+    const { symbol, ...rest } = eodhd;
+    expect(asShareMeta(rest)).toBeNull();
+    expect(asShareMeta({ ...eodhd, symbol: '  ' })).toBeNull();
+  });
+
+  it('rejects an unknown quote source', () => {
+    expect(asShareMeta({ ...eodhd, quoteSource: 'yahoo' })).toBeNull();
+  });
+
+  it('rejects an ISIN with a wrong check digit or a wrong shape', () => {
+    expect(asShareMeta({ ...eodhd, isin: 'US0378331006' })).toBeNull();
+    expect(asShareMeta({ ...eodhd, isin: 'AAPL' })).toBeNull();
+    expect(asShareMeta({ ...eodhd, isin: 42 })).toBeNull();
+  });
+
+  it('rejects a quote currency that is not a three-letter code', () => {
+    expect(asShareMeta({ ...eodhd, quoteCurrency: 'pence' })).toBeNull();
+    expect(asShareMeta({ ...eodhd, quoteCurrency: 100 })).toBeNull();
+  });
+
+  it('rejects a non-string symbol', () => {
+    expect(asShareMeta({ ...manual, symbol: 7 })).toBeNull();
+  });
+
+  it('rejects an invalid lots array', () => {
+    expect(asShareMeta({ ...eodhd, lots: [{ day: 1, quantityDelta: 'abc' }] })).toBeNull();
+    expect(asShareMeta({ ...eodhd, lots: undefined })).toBeNull();
+  });
+
+  it('returns null for null', () => {
+    expect(asShareMeta(null)).toBeNull();
   });
 });
 

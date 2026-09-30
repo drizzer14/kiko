@@ -1,9 +1,10 @@
 import { needsPriceBook } from './priced-value';
 
 describe('needsPriceBook', () => {
-  it('is true for property_item and metal (both carry a non-null priced spec)', () => {
+  it('is true for property_item, metal, and share (each carries a non-null priced spec)', () => {
     expect(needsPriceBook('property_item')).toBe(true);
     expect(needsPriceBook('metal')).toBe(true);
+    expect(needsPriceBook('share')).toBe(true);
   });
 
   // loan is NOT a priced type (priced: null) but reads its own holding:<id>

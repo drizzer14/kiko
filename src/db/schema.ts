@@ -56,6 +56,7 @@ export const holdings = sqliteTable('holdings', {
       'property_item',
       'metal',
       'loan',
+      'share',
     ],
   }).notNull(),
   currency: text('currency', { enum: currencyOptions }).notNull(),

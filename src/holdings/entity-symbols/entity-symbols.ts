@@ -41,15 +41,16 @@ export const accountKindSymbol: Record<AccountKind, string> = {
 
 // card -> creditcard, term_deposit -> calendar, bond -> receipt, jar ->
 // rectangle.portrait, cash -> banknote, crypto_asset -> bitcoinsign.circle,
-// property_item -> house.fill, metal -> cube.fill, loan -> minus.circle.fill —
+// property_item -> house.fill, metal -> cube.fill, loan -> minus.circle.fill,
+// share -> chart.line.uptrend.xyaxis —
 // each type's own descriptor (`src/holdings/holding-descriptor/`) is the
 // source, read through `recordByType` for the same per-type exhaustiveness
 // guarantee as the account map above. The `jar` and `crypto_asset` HOLDING
 // defaults are pure render-time fallbacks (holdings persist a null icon
 // until the user picks one), so these changes update every un-customized
 // holding with NO data migration — unlike the crypto ACCOUNT default above.
-// `loan` shares its `debt` kind's icon, the same reuse `property_item`/
-// `metal` already follow for their own standalone kinds.
+// `loan` shares its `debt` kind's icon and `share` its `broker` kind's, the
+// same reuse `property_item`/`metal` already follow for their own kinds.
 export const holdingTypeSymbol: Record<HoldingType, string> = recordByType(
   (descriptor) => descriptor.symbol,
 );

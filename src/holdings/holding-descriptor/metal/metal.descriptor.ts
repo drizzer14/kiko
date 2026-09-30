@@ -1,17 +1,18 @@
 import type { TFunction } from 'i18next';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { quantityAt } from '@kiko/holdings/lots';
 import type { Currency } from '@kiko/currency/currency';
 import { metalInstrument } from '@kiko/prices/instrument';
 import { asMetalMeta } from '@kiko/holdings/holding-metadata';
+import { multiplyToMinorUnits } from '@kiko/currency/decimal';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import type { PricedHolding } from '@kiko/holdings/priced-value';
 import { priceAt, type PriceBook } from '@kiko/prices/price-book';
 import type { DerivedEntry } from '@kiko/holdings/derived-entries';
 import type { ValuableHolding } from '@kiko/holdings/holding-value';
-import { compareDecimal, multiplyToMinorUnits } from '@kiko/currency/decimal';
 
-import { makeEntry } from '../entry-parts';
+import { lotEntries } from '../entry-parts';
 import { pricedDescriptor } from '../priced-parts';
 import type { HoldingDescriptor, PricedSpec } from '../holding-descriptor.d';
 
@@ -61,38 +62,10 @@ const metalPricedSpec: PricedSpec = {
   value: metalValue,
 };
 
-// A metal holding's buy/sell history as ledger rows: one per stored lot,
-// oldest first with the rest of the list re-sorted by `derivedEntries`
-// (`src/holdings/derived-entries/`). A buy lot (positive `quantityDelta`)
-// reads as a 'purchase' entry, a sell lot (negative `quantityDelta`) as a
-// 'sale' entry — `compareDecimal` reads the SIGNED decimal string rather
-// than trusting a bare string comparison. Both entries' `amountMinorUnits`
-// is the NEGATION of the lot's own stored `costMinorUnits`: `lots.ts`'s
-// contract stores a buy's `costMinorUnits` positive (money paid) and a
-// sell's negative (cost basis removed), so negating it once here yields the
-// money-out/money-in sign the bond purchase/redemption entries already use,
-// with no separate branch per direction needed.
-const metalEntries = (holding: ValuableHolding, now: number, t: TFunction): DerivedEntry[] => {
-  const meta = asMetalMeta(holding.metadata);
-
-  if (meta === null) {
-    return [];
-  }
-
-  return meta.lots.map((lot, index) => {
-    const isSale = compareDecimal(lot.quantityDelta, '0') < 0;
-
-    return makeEntry(
-      holding.id,
-      isSale ? 'sale' : 'purchase',
-      index,
-      lot.day,
-      -lot.costMinorUnits,
-      isSale ? t('holdingDetail.sale') : t('holdingDetail.purchase'),
-      now,
-    );
-  });
-};
+const metalEntries = (holding: ValuableHolding, now: number, t: TFunction): DerivedEntry[] =>
+  foldMap(maybe(asMetalMeta(holding.metadata)), (meta) =>
+    lotEntries(meta.lots, holding.id, now, t),
+  ) ?? [];
 
 export const metalDescriptor: HoldingDescriptor = pricedDescriptor(metalPricedSpec, {
   symbol: 'cube.fill',

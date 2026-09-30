@@ -357,6 +357,16 @@ describe('holdingsRepo', () => {
     expect(insertTables).toEqual([]);
   });
 
+  it('create rejects a share holding in a crypto currency, naming the share type', async () => {
+    const { databaseTransaction, insertTables } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(
+      holdingsRepo.create({ accountId: 'acc-1', name: 'Apple', type: 'share', currency: 'BTC' }),
+    ).rejects.toThrow(/share holding.*BTC/);
+    expect(insertTables).toEqual([]);
+  });
+
   it('updateName writes the new name for the given holding id', async () => {
     const { captured, databaseTransaction } = captureSetDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;

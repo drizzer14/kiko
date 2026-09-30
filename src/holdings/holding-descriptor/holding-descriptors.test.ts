@@ -33,11 +33,12 @@ describe('time-exempt holding types', () => {
 });
 
 describe('ledgerless holding types', () => {
-  it('marks term_deposit, bond, property_item, metal, and loan as ledgerless', () => {
+  it('marks term_deposit, bond, property_item, metal, share, and loan as ledgerless', () => {
     expect(isLedgerlessHoldingType('term_deposit')).toBe(true);
     expect(isLedgerlessHoldingType('bond')).toBe(true);
     expect(isLedgerlessHoldingType('property_item')).toBe(true);
     expect(isLedgerlessHoldingType('metal')).toBe(true);
+    expect(isLedgerlessHoldingType('share')).toBe(true);
     expect(isLedgerlessHoldingType('loan')).toBe(true);
   });
 
@@ -143,6 +144,17 @@ const flagTable: ReadonlyArray<{
     side: 'asset',
     priced: true,
     fixedCurrency: 'UAH',
+    receivePath: 'excluded',
+    source: false,
+    createSourceOrDestination: false,
+  },
+  {
+    type: 'share',
+    ledgerless: true,
+    timeExempt: false,
+    side: 'asset',
+    priced: true,
+    fixedCurrency: null,
     receivePath: 'excluded',
     source: false,
     createSourceOrDestination: false,
