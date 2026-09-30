@@ -68,6 +68,43 @@ describe('scripts/checks/plural-count.js', () => {
     expect(result.stdout).toBe(`${file}:1: t('forms.units.days') has no count\n`);
   });
 
+  // A quote or backtick that ends a comment is not a string before the regex
+  // on the next line: reading it as one leaves the regex unblanked.
+  it('flags a call after a regex whose comment line ends in a backtick', () => {
+    const file = writeProbe(
+      'src/probe.ts',
+      [
+        'const P = [',
+        '  // a code span like `x`',
+        '  /`/,',
+        '];',
+        "export const s = t('forms.units.days');",
+        '',
+      ].join('\n'),
+    );
+
+    const result = runChecker([file]);
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe(`${file}:5: t('forms.units.days') has no count\n`);
+  });
+
+  it('reads the options object past a regex whose comment line ends in a quote', () => {
+    const file = writeProbe(
+      'src/probe.ts',
+      ["t('forms.units.days', { pattern: [", '  // a quoted "}"', '  /[}]/,', '] })', ''].join(
+        '\n',
+      ),
+    );
+
+    const result = runChecker([file]);
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe(`${file}:1: t('forms.units.days') has no count\n`);
+  });
+
   it.each([
     "t('forms.units.days', { count })",
     "t('forms.units.days', { count: days })",

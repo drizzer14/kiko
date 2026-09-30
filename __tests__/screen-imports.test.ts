@@ -153,4 +153,26 @@ describe('scripts/checks/screen-imports.js output shape', () => {
     expect(result.status).toBe(1);
     expect(result.stdout).toBe(`${file}:1: ../../b/y\n`);
   });
+
+  // A backtick that ends a comment is not a string before the regex on the
+  // next line: reading it as one leaves the regex's own backtick to open a
+  // template that swallows the rest of the file.
+  it('sees a require after a regex whose comment line ends in a backtick', () => {
+    const file = writeFixture(
+      'src/screens/a/forms/x.tsx',
+      [
+        'const P = [',
+        '  // a code span like `x`',
+        '  /`/,',
+        '];',
+        "const m = require('../../b/y');",
+        '',
+      ].join('\n'),
+    );
+
+    const result = spawnSync('node', [ANALYZER, file], { encoding: 'utf8' });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe(`${file}:5: ../../b/y\n`);
+  });
 });

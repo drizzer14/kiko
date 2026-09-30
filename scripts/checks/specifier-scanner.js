@@ -106,37 +106,43 @@ const regexLiteralEnd = (source, at) => {
 
 // A JS string never runs to the end of its line, and never has an identifier
 // right after its closing quote. A quote that would open one is JSX text (an
-// apostrophe in `<Text>'{x}'</Text>`); blanking it as a string hid the code
-// after it.
+// apostrophe in `<Text>'{t('key')}'</Text>`, closed by the quote before
+// `key`); blanking it as a string hid the code after it.
 const isStringLiteral = (source, start, stop) =>
   stop - 1 > start && source[stop - 1] === source[start] && !isIdentifierChar(source[stop]);
 
-// The blanked text keeps no quotes, so a closing quote before `/` (as in
-// `name="x" />`) must be read from the raw source, or the `=` before the
-// string makes the `/` look like a regex start.
-const followsString = (source, at) => {
-  let cursor = at - 1;
-
-  while (cursor >= 0 && /\s/.test(source[cursor])) {
-    cursor -= 1;
+// The blanked text keeps no quotes, so a string right before `/` (as in
+// `name="x" />`) is known only from where the last string span ended, or the
+// `=` before it makes the `/` look like a regex start. The raw source cannot
+// tell it: a comment can end in a quote too. Walks back from the end, not
+// forward from `stringEnd`, so a string far behind costs nothing.
+const followsString = (resultSoFar, stringEnd) => {
+  if (stringEnd === null) {
+    return false;
   }
 
-  return /['"`]/.test(source[cursor] ?? '');
+  let end = resultSoFar.length;
+
+  while (end > stringEnd && /\s/.test(resultSoFar[end - 1])) {
+    end -= 1;
+  }
+
+  return end === stringEnd;
 };
 
-const consumeNoiseSpan = (source, cursor, resultSoFar) => {
+const consumeNoiseSpan = (source, cursor, resultSoFar, stringEnd) => {
   const two = source.slice(cursor, cursor + 2);
 
   if (two === '//') {
     const stop = lineCommentEnd(source, cursor);
 
-    return { text: blankSpan(source, cursor, stop), end: stop };
+    return { kind: 'comment', text: blankSpan(source, cursor, stop), end: stop };
   }
 
   if (two === '/*') {
     const stop = blockCommentEnd(source, cursor);
 
-    return { text: blankSpan(source, cursor, stop), end: stop };
+    return { kind: 'comment', text: blankSpan(source, cursor, stop), end: stop };
   }
 
   const character = source[cursor];
@@ -145,20 +151,24 @@ const consumeNoiseSpan = (source, cursor, resultSoFar) => {
     const stop = stringLiteralEnd(source, cursor, character);
 
     return isStringLiteral(source, cursor, stop)
-      ? { text: blankSpan(source, cursor, stop), end: stop }
+      ? { kind: 'string', text: blankSpan(source, cursor, stop), end: stop }
       : null;
   }
 
   if (character === '`') {
     const template = templateLiteralSpan(source, cursor);
 
-    return { text: template.text, end: template.end };
+    return { kind: 'string', text: template.text, end: template.end };
   }
 
-  if (character === '/' && !followsString(source, cursor) && precedesRegexLiteral(resultSoFar)) {
+  if (
+    character === '/' &&
+    !followsString(resultSoFar, stringEnd) &&
+    precedesRegexLiteral(resultSoFar)
+  ) {
     const stop = regexLiteralEnd(source, cursor);
 
-    return { text: blankSpan(source, cursor, stop), end: stop };
+    return { kind: 'regex', text: blankSpan(source, cursor, stop), end: stop };
   }
 
   return null;
@@ -168,13 +178,15 @@ const substitutionSpan = (source, at) => {
   let result = '';
   let cursor = at;
   let depth = 0;
+  let stringEnd = null;
 
   while (cursor < source.length) {
-    const span = consumeNoiseSpan(source, cursor, result);
+    const span = consumeNoiseSpan(source, cursor, result, stringEnd);
 
     if (span) {
       result += span.text;
       cursor = span.end;
+      stringEnd = span.kind === 'string' ? result.length : stringEnd;
       continue;
     }
 
@@ -230,13 +242,15 @@ const templateLiteralSpan = (source, at) => {
 const blankNoise = (source) => {
   let result = '';
   let cursor = 0;
+  let stringEnd = null;
 
   while (cursor < source.length) {
-    const span = consumeNoiseSpan(source, cursor, result);
+    const span = consumeNoiseSpan(source, cursor, result, stringEnd);
 
     if (span) {
       result += span.text;
       cursor = span.end;
+      stringEnd = span.kind === 'string' ? result.length : stringEnd;
       continue;
     }
 
