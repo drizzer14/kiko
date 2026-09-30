@@ -1530,7 +1530,9 @@ rules:
   # fires. A span applied after the call returns (`startOfLocalDay(x) - DAY`)
   # is a different shape and is not in this rule. The `$SPAN` regex opens with
   # `.*` because `metavariable-regex` is start-anchored and `30 * DAY_MS`
-  # starts with the count.
+  # starts with the count. Its names are whole words (`dayMs`, `ONE_DAY_MS`),
+  # never a bare `day` part as in the real-clock rule: this rule reaches every
+  # sub-expression of the argument, so `dayStart + HOUR` would fire there.
   - id: kiko-no-fixed-day-offset-into-local-day
     languages: [typescript]
     severity: ERROR
@@ -1558,4 +1560,4 @@ rules:
                 - pattern: $SPAN + $A
             - metavariable-regex:
                 metavariable: $SPAN
-                regex: .*(?:\bDAY(?:_MS)?\b|\bMS_PER_DAY\b|86_?400_?000|24\s*\*\s*60\s*\*\s*60)
+                regex: .*(?:\bDAY(?:_MS)?\b|_DAYS?_MS\b|\bMS_PER_DAY\b|\bdayMs\b|\bmsPerDay\b|86_?400_?000|24\s*\*\s*60\s*\*\s*60|60\s*\*\s*60\s*\*\s*24)

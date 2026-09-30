@@ -19,3 +19,6 @@ export const defaultRangeFrom = (now: number): Date => {
 export const anHourAgoLocalDay = (now: number): number => startOfLocalDay(now - HOUR);
 
 export const midnightLessADay = (time: number): number => startOfLocalDay(time) - DAY_MS;
+
+// `dayStart` is a point in time, not a day span.
+export const anHourIntoTheDay = (dayStart: number): number => startOfLocalDay(dayStart + HOUR);

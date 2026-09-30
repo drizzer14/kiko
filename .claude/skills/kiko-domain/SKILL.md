@@ -815,10 +815,14 @@ local midnight 30 calendar days back (`defaultDateRange` in
 `src/dates/default-range.ts`); a time of day kept from the input needs
 `startOfLocalDay(...)` of that stepped date. Semgrep
 `kiko-no-fixed-day-offset-into-local-day` (`rules/semgrep-prewrite.yml`)
-denies it in app and test code alike: a `DAY`, `DAY_MS`, `MS_PER_DAY`,
-`86_400_000`, or `24 * 60 * 60` span added or subtracted anywhere inside
+denies it in app and test code alike: a `DAY`, `DAY_MS`, `…_DAY_MS` or
+`…_DAYS_MS` (`ONE_DAY_MS`, `THIRTY_DAYS_MS`), `MS_PER_DAY`, `dayMs`,
+`msPerDay`, `86_400_000`, `24 * 60 * 60`, or `60 * 60 * 24` span
+(`1000 * 60 * 60 * 24` included) added or subtracted anywhere inside
 the argument (`startOfLocalDay(time - 2 * DAY + HOUR)` fires). A
-sub-day offset (`startOfLocalDay(now - HOUR)`) is not flagged. Known
+sub-day offset (`startOfLocalDay(now - HOUR)`) and a point in time
+named with "day" (`startOfLocalDay(dayStart + HOUR)`) are not flagged:
+the span names are whole words, not a bare "day" part. Known
 limit, not flagged: a span applied after the call returns
 (`startOfLocalDay(time) - DAY`) shifts a local midnight by a fixed
 24 hours, the same DST class, and has its own follow-up.
