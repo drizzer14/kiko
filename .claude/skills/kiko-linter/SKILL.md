@@ -960,6 +960,25 @@ owner" in rezone or reminders prose is syntactically a citation. The
 src tree has 0 such sentences today; if one appears, reword it ("the
 slot the plan chose").
 
+**The user-request members (2026-09-30) need a date or a
+sentence-opening past tense.** "user request" and "user feedback" are
+domain prose too (a request to the server, feedback shown as a toast),
+and "the user asked for" can describe runtime state ("retry only if the
+user asked for one"). So there are two members, each the narrowest
+shape the real hits took:
+`user\s+(?:(?://|\*(?!/))\s*)?(?:request|feedback)\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}`
+("(user request 2026-09-30)") needs an ISO date right after the words,
+and `(?<=//\s|[.;:]\s|\*\s)[Tt]he\s+user\s+asked\s+for` needs "the user
+asked for" to open a comment or a sentence. The optional `//` or `*`
+between the words lets a member span a comment line break ("(user" at a
+line end, "// feedback 2026-09-30)" on the next line); a bare `\s+`
+cannot, because the next line's `//` is not whitespace. A comment or a
+sentence that opens with a runtime "The user asked for a refresh, so …"
+is the same standalone-token class as `D2` above: accepted, not
+narrowed. Write "When the user asks for a refresh, …" instead. Fixture
+pair: the six user-request pins at the end of `.bad.ts` and item 20 in
+`.good.ts`.
+
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 
 The pre-write guard also runs it in-process as the Node rule

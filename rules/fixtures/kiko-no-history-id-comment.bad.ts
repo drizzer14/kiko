@@ -220,3 +220,31 @@ export const endTickReadsPickedDay = true;
 // EXPECT-FINDING
 /* The start tick reads the picked day (NEW-12). */
 export const startTickReadsPickedDay = true;
+
+// EXPECT-FINDING
+// The two rows draw the same chip at the same spacing (user request
+// 2026-09-30).
+export const rowsShareChip = true;
+
+// EXPECT-FINDING
+// A chevron after a switch keeps a small gutter (user
+// feedback 2026-09-30).
+export const chevronKeepsGutter = true;
+
+// EXPECT-FINDING
+/* The heading tile is one step smaller (user request 2026-09-30). */
+export const headingTileSmaller = true;
+
+// EXPECT-FINDING
+/* The title and the body sit one step apart (user
+ * feedback 2026-09-30). */
+export const titleBodyApart = true;
+
+// EXPECT-FINDING
+// The toggle is taller than a body line; the user asked for every switch
+// centered on its label.
+export const switchCenteredOnLabel = true;
+
+// EXPECT-FINDING
+// The user asked for the weekday chip size here, so the grid matches it.
+export const gridMatchesWeekdayChip = true;

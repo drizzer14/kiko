@@ -129,3 +129,10 @@ export const laterPlanMembersNearMiss = true;
 // banner stay silent, as do a lowercase t-1 and a NEW row. `D` takes no
 // hyphen, because day D-1 is the day before the purchase day D.
 export const hyphenatedIdNearMiss = 'T-shirt, U-turn, UTF-8, UTC-1, GMT-5';
+
+// 20. The user-request members need their citation shape, a date right after
+// the words or a past-tense "asked for" opening a sentence: a user request
+// to the server, user feedback shown as a toast, a retry only if the user
+// asked for one, a file the user requested, and a sheet the user can tap
+// stay silent, as does a sync that runs when the user asks for it.
+export const userRequestNearMiss = true;
