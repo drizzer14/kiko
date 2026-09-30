@@ -806,7 +806,7 @@ const NODE_RULES = [
     extensions: ['.ts', '.tsx'],
     fix: 'run `node scripts/checks/blank-line-separation.js --write <file>`, or insert a blank line by hand above the return/if/for/while statement (or JSX sibling), unless it is the first statement of its block or already preceded by a comment',
     skill:
-      'kiko-code-style › Blank lines before statement blocks — now mechanized / Blank line between adjacent JSX sibling nodes',
+      'kiko-code-style › Blank lines before statement blocks / Blank line between adjacent JSX sibling nodes',
     projectCheck: 'check:blank-line-separation',
     run: (filePath) =>
       runSpawnedNodeChecker(

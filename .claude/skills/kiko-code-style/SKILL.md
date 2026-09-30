@@ -31,7 +31,7 @@ From `biome.json`:
 Run `npm run check:lint` to verify (see the project harness in the
 root `CLAUDE.md`). Never hand-tune something Biome already owns.
 
-### Blank lines before statement blocks — now mechanized
+### Blank lines before statement blocks
 
 Biome does **not** enforce this, but the pre-write guard does
 (`kiko-blank-line-separation` in `scripts/checks/pre-write-guard.js`'s
