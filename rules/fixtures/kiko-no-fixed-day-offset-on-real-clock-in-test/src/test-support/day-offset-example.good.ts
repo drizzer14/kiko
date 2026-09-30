@@ -43,6 +43,17 @@ export const sinceDatePoints = (startOfDay: (time: number) => number, lastDay: n
   ];
 };
 
+export const sinceMoreDatePoints = (
+  startOfUtcDay: (time: number) => number,
+  nextDay: number,
+  previousDay: number,
+): number[] => [
+  Date.now() - startOfUtcDay(Date.now()),
+  nextDay - Date.now(),
+  Date.now() - nextDay,
+  Date.now() - previousDay,
+];
+
 export const pinnedClockTomorrow = (): number => {
   jest.setSystemTime(PINNED_NOON);
 

@@ -786,8 +786,10 @@ part (`DAY`, `DAY_MS`, `dayMs`, `msPerDay`, `days`), `86_400_000`,
 `24 * 60 * 60`, or `60 * 60 * 24`. A word that only contains "day"
 (`startOfToday`, `holiday`, `Monday`) is not a day span. A date-valued
 `…Day` name is a point, not a span: `startOfDay(now)`,
-`startOfLocalDay(now)`, `endOfLocalDay(now)`, `lastDay`, and `firstDay`
-(a `startOf`/`endOf`/`Local`/`last`/`first` word right before `Day`), so
+`startOfLocalDay(now)`, `endOfLocalDay(now)`, `startOfUtcDay(now)`,
+`lastDay`, `firstDay`, `nextDay`, and `previousDay` (a
+`startOf`/`endOf`/`Local`/`Utc`/`last`/`first`/`next`/`previous` word
+right before `Day`), so
 `Date.now() - startOfLocalDay(now)` is an elapsed time and is not
 flagged. `graceDays`, `msPerDay`, and `twoDays` are still spans. A day
 COUNT is not a day step either: `Math.floor((Date.now() - openedAt) /

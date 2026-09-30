@@ -1439,7 +1439,7 @@ rules:
                       ...
       - metavariable-regex:
           metavariable: $SPAN
-          regex: ^.*(?:(?<![A-Za-z0-9])[Dd]ays?(?![a-z])|(?<=[a-z0-9])(?<!startOf|endOf|Local|last|first)Days?(?![a-z])|(?<![A-Z])DAYS?(?![A-Z])|86_?400_?000|24\s*\*\s*60\s*\*\s*60|60\s*\*\s*60\s*\*\s*24)
+          regex: ^.*(?:(?<![A-Za-z0-9])[Dd]ays?(?![a-z])|(?<=[a-z0-9])(?<!startOf|endOf|Local|Utc|last|first|next|previous)Days?(?![a-z])|(?<![A-Z])DAYS?(?![A-Z])|86_?400_?000|24\s*\*\s*60\s*\*\s*60|60\s*\*\s*60\s*\*\s*24)
       - pattern-not-inside: |
           jest.setSystemTime(...);
           ...
