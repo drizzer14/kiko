@@ -189,12 +189,13 @@ unknown interruption levels.
 
 Ask: does this diff add a new network host, and if it sends a
 credential header (`X-Token`, `X-MBX-APIKEY`, `Authorization`, an
-api-key-ish header), is that host under `NSPinnedDomains` with at
+api-key-ish header, or the `'api_token'` query parameter), is that host under `NSPinnedDomains` with at
 least two SPKI pins? Mechanized: `npm run check:plist` resolves every
 credential-bearing client's `@env`-configured host and fails if it is
 unpinned, under-pinned, or if `NSAllowsArbitraryLoads` is not `false`
 — read `scripts/checks/plist.sh` for the exact resolution logic rather
-than trusting a restated one here.
+than trusting a restated one here. A Let's Encrypt host pins two roots,
+never the rotating intermediate (see `docs/security/README.md`).
 
 ## 2.5.2 — no remotely-loaded executable code
 
