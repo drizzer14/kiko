@@ -273,7 +273,8 @@ rules:
           - pattern: $GLOBAL.Intl.PluralRules
           - pattern: Intl["PluralRules"]
           - pattern: $GLOBAL["Intl"].PluralRules
-          - pattern: const { PluralRules } = Intl;
+          - pattern: $GLOBAL.Intl["PluralRules"]
+          - pattern: $GLOBAL["Intl"]["PluralRules"]
           - pattern: "{..., PluralRules: $X, ...} = Intl"
           - pattern: "{..., PluralRules, ...} = Intl"
   # ---- Class B: override-eligible finding (severity WARNING) ----

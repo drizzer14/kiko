@@ -24,6 +24,12 @@ export const bracketed = Intl['PluralRules'];
 export const globalBracketed = globalThis['Intl'].PluralRules;
 
 // EXPECT-FINDING
+export const globalMemberBracketed = globalThis.Intl['PluralRules'];
+
+// EXPECT-FINDING
+export const globalBothBracketed = globalThis['Intl']['PluralRules'];
+
+// EXPECT-FINDING
 const { PluralRules: Rules } = Intl;
 
 export const category = rules.select(2);
