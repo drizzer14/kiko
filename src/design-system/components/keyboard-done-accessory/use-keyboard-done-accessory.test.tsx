@@ -93,11 +93,8 @@ describe('useKeyboardDoneAccessory', () => {
     dismissSpy.mockRestore();
   });
 
-  // DEVICE BUG: Kiko is dark-only, but a TextInput's
-  // `keyboardAppearance` was never set anywhere, leaving the system keyboard
-  // to whatever the OS default resolved to instead of an explicit match with
-  // this accessory's own dark-themed pill. The hook must hand the SAME
-  // 'dark' value to the linked input so the two can never drift out of sync.
+  // Kiko is dark-only, so the hook gives the linked input the pill's own
+  // 'dark' keyboardAppearance; the system default would not match it.
   it("gives the linked input the accessory's own dark keyboardAppearance", async () => {
     const { getByLabelText } = await render(<Host />);
 

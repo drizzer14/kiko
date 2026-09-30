@@ -20,11 +20,10 @@
 // flagged: denying it would block code that is right today.
 //
 // A scanner, not a parser, like its siblings: the guard-replay scratch
-// checkout has no node_modules, so an npm dependency (the TypeScript
-// compiler) made every replayed file fail closed there. Structure (braces,
-// commas) is read from a noise-blanked copy, where comments, strings, and
-// regex literals cannot fake a brace; names and keys are read from the raw
-// source at the same offsets.
+// checkout has no node_modules, so an npm dependency would fail closed on
+// every replayed file there. Structure (braces, commas) is read from a
+// noise-blanked copy, where comments, strings, and regex literals cannot fake
+// a brace; names and keys are read from the raw source at the same offsets.
 
 const fs = require('node:fs');
 const path = require('node:path');

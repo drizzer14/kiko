@@ -328,8 +328,8 @@ The established patterns grouped under this heading:
   The pre-write guard enforces both bans: Semgrep
   `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
   other than `undefined` (a `StyleSheet.create` style and a destructuring
-  read of the options are not header values) and a `type: 'custom'` item in either header item list, and
-  `kiko-no-header-spacing-item` denies a `type: 'spacing'` item in either
+  read of the options are not header values) and a `type: 'custom'` item
+  in either header item list, and `kiko-no-header-spacing-item` denies a `type: 'spacing'` item in either
   list (`rules/semgrep-prewrite.yml`).
 - **Edit is an icon-only native bar item** (2026-09-30, locked). The
   user: "One last thing before LGTM: remove 'Edit' label from
