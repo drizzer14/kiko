@@ -55,7 +55,9 @@ Composite scripts:
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
   deep`, detached, for each reviewed change set (<= 30 source files)
   before its merge into next. Orchestrators never run it; a BATCH READY
-  names the change-set base sha and the file count. The mutation step tees its output to a stable,
+  names the change-set base sha and the file count, from
+  `KIKO_MUTATION_BASE=<sha> make mutable` (`mutation.sh --list`: the
+  same filter, no Stryker). The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history — a
   per-mutant rate (seconds/mutant) derived from past runs, times this
   run's actual mutant count, printed live the moment Stryker reports

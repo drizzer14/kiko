@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mkdtempSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 
 import {
   writeFile,
@@ -154,6 +154,85 @@ describe('scripts/checks/mutation.sh file cap', () => {
       runWithArgumentStub(script, { ...sharedState, KIKO_MUTATION_FULL: '1' }),
       'KIKO_MUTATION_FULL=1',
     );
+  });
+
+  it('--list prints the filtered files and the count, exits 0, and never starts Stryker', () => {
+    const { root, script } = buildRepository(sources('changed', 3));
+    writeFile(root, 'src/changed-0.test.ts', 'test("x", () => {});\n');
+    writeFile(root, 'src/feature/index.ts', "export * from './feature';\n");
+    commitAll(root, 'excluded files');
+
+    const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, ['--list']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(
+      'src/changed-0.ts\nsrc/changed-1.ts\nsrc/changed-2.ts\nmutable files: 3 (cap 30)\n',
+    );
+    expect(result.stubArguments).toBeNull();
+  });
+
+  it('--list prints a zero count when no mutable file changed', () => {
+    const { script } = buildRepository({});
+
+    const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, ['--list']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('mutable files: 0 (cap 30)\n');
+  });
+
+  it('--list over the cap prints the list, then the cap block, and exits 2', () => {
+    const { script } = buildRepository(sources('changed', 31));
+
+    const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, ['--list']);
+
+    expectCapFailure(result, 31);
+    expect(result.stdout.split('\n').filter((line) => line.startsWith('src/'))).toHaveLength(31);
+    expect(result.stdout).toContain('mutable files: 31 (cap 30)');
+  });
+
+  it('--list keeps the KIKO_MUTATION_FULL and unresolvable-base refusals', () => {
+    const { script } = buildRepository(sources('changed', 1));
+
+    expectRefusal(
+      runWithArgumentStub(script, { KIKO_MUTATION_FULL: '1' }, ['--list']),
+      'KIKO_MUTATION_FULL=1: a whole-project run is always above the cap',
+    );
+    expectRefusal(
+      runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'no-such-branch' }, ['--list']),
+      'KIKO_MUTATION_BASE=no-such-branch does not resolve to a commit',
+    );
+  });
+
+  it('--list needs no Stryker binary', () => {
+    const { root, script } = buildRepository(sources('changed', 1));
+
+    const result = runWithArgumentStub(
+      script,
+      { KIKO_MUTATION_BASE: 'main', KIKO_MUTATION_BIN: join(root, 'no-such-stryker') },
+      ['--list'],
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('src/changed-0.ts\nmutable files: 1 (cap 30)\n');
+  });
+
+  it('--list runs while a live run holds the global lock, and leaves that lock in place', () => {
+    const { script } = buildRepository(sources('changed', 1));
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-lock-'));
+    const lockDirectory = join(temporaryDirectory, 'kiko-harness', 'mutation.global.lock');
+    mkdirSync(lockDirectory, { recursive: true });
+    // process.pid is this test runner, so the holder reads as alive.
+    writeFileSync(join(lockDirectory, 'pid'), String(process.pid));
+
+    const result = runWithArgumentStub(
+      script,
+      { KIKO_MUTATION_BASE: 'main', TMPDIR: temporaryDirectory },
+      ['--list'],
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('src/changed-0.ts\nmutable files: 1 (cap 30)\n');
+    expect(existsSync(join(lockDirectory, 'pid'))).toBe(true);
   });
 
   it('records the scope with a pass, so a wider scope at the same HEAD still runs Stryker', () => {

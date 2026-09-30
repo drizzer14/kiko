@@ -381,7 +381,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   set's own base commit, never a raised cap. The coordinator runs it per
   reviewed change set (harness-workflow's "Mutation testing: small change
   sets only"). No env var bypasses the
-  cap. Every refusal runs BEFORE the content-dedup skip, and the dedup
+  cap. `mutation.sh --list` (`make mutable`) prints the file list and
+  `mutable files: N (cap …)` after the same refusals and the same
+  `mutable_source_files` filter, then exits (2 above the cap) before
+  the dedup skip; it needs no Stryker binary and never takes the global
+  lock. Every refusal runs BEFORE the content-dedup skip, and the dedup
   fingerprint includes the scope (merge-base sha + selected file list),
   so a pass over a narrow change set never skips a wider or refused one
   at the same HEAD. The cap and the refusals are tested hermetically in

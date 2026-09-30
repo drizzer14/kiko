@@ -7,7 +7,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deploy pods gate jest deep typecheck lint dup knip deps \
+.PHONY: help deploy pods gate jest deep mutable typecheck lint dup knip deps \
         security secrets rules plist overrides start clean-ios verify
 
 help: ## List available targets
@@ -38,6 +38,9 @@ jest: ## Run the full Jest suite
 
 deep: ## Deep gate: mutation testing + osv-scanner, per small change set (set KIKO_MUTATION_BASE; > 30 files fails). It prints a `tail -f` line to watch progress.
 	npm run check:deep
+
+mutable: ## List the mutable files and count for KIKO_MUTATION_BASE (no Stryker)
+	bash scripts/checks/mutation.sh --list
 
 typecheck: ## tsc --noEmit
 	npm run check:typecheck

@@ -59,7 +59,10 @@ message that tells the coordinator a change set is reviewed and ready
 to merge) names the change set's base sha and confirms the file count
 after excludes is within `MUTATION_FILE_CAP` (read it in
 `scripts/checks/mutation.sh`); a larger batch splits into change sets
-with their own bases.
+with their own bases. Count with the gate's own filter, never by hand:
+`KIKO_MUTATION_BASE=<base sha> make mutable` (it runs
+`mutation.sh --list`) prints the files and `mutable files: N (cap …)`,
+exits 2 above the cap, and never starts Stryker or takes its lock.
 
 ## Merging into main
 

@@ -94,6 +94,7 @@ export const buildMutationRepository = (
 
 export type ArgumentStubRun = {
   code: number | null;
+  stdout: string;
   stderr: string;
   // null when Stryker never started.
   stubArguments: string[] | null;
@@ -104,12 +105,13 @@ export type ArgumentStubRun = {
 export const runWithArgumentStub = (
   script: string,
   environment: Record<string, string>,
+  scriptArguments: string[] = [],
 ): ArgumentStubRun => {
   const stubDirectory = mkdtempSync(join(tmpdir(), 'kiko-mutation-stub-'));
   const argumentsFile = join(stubDirectory, 'arguments');
   const stub = writeExecutable(join(stubDirectory, 'stub'), ARGUMENT_STUB);
 
-  const result = spawnSync('bash', [script], {
+  const result = spawnSync('bash', [script, ...scriptArguments], {
     cwd: dirname(dirname(dirname(script))),
     env: wrapperEnvironment({
       KIKO_MUTATION_BIN: stub,
@@ -124,7 +126,7 @@ export const runWithArgumentStub = (
     ? readFileSync(argumentsFile, 'utf8').split('\n').filter(Boolean)
     : null;
 
-  return { code: result.status, stderr: result.stderr, stubArguments };
+  return { code: result.status, stdout: result.stdout, stderr: result.stderr, stubArguments };
 };
 
 export const mutatedFiles = (stubArguments: string[] | null): string[] =>

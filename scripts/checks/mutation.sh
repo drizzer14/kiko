@@ -12,11 +12,18 @@
 # signal an agent waits on (0 = pass, 2 = fail); the log and ETA are for the
 # human. None of the progress/ETA/history code may change the pass/fail result:
 # every new step is guarded and a corrupt history just means "no estimate".
+#
+# `--list` prints the files this run would mutate and their count, then exits
+# (2 above the cap) without Stryker, so a change set is sized with the gate's
+# own filter instead of a hand count. It needs no Stryker binary and takes no
+# lock, since it never starts a run.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
+list=0
+[ "${1:-}" = "--list" ] && list=1
 # The pinned Stryker binary. KIKO_MUTATION_BIN overrides it ONLY so this
 # wrapper's streaming and exit-code behavior is testable against a fast stub
 # binary (scripts/checks/mutation.test via __tests__/) without a multi-minute
@@ -24,7 +31,7 @@ ROOT="$(cd "$DIR/../.." && pwd)"
 # production is unchanged and the pinned-version guarantee still holds.
 BIN="${KIKO_MUTATION_BIN:-$ROOT/node_modules/.bin/stryker}"
 
-if [ ! -x "$BIN" ]; then
+if [ "$list" -eq 0 ] && [ ! -x "$BIN" ]; then
   print_block \
     "Stryker (mutation testing)" \
     "The stryker tool is not installed in node_modules." \
@@ -42,24 +49,26 @@ fi
 # workers, which drove machine load to 152 on one occasion. If a LIVE run
 # already holds the lock, FAIL FAST (exit 2) — do not block or silently queue.
 # A stale lock (holder process gone) is reclaimed automatically.
-lock="$(harness_global_lock_dir)"
-mkdir -p "$(dirname "$lock")" 2>/dev/null || true
-if ! harness_try_lock "$lock" "$ROOT"; then
-  print_block \
-    "Stryker (mutation testing)" \
-    "Another mutation run is active; refusing to start a second Stryker." \
-    "The global single-flight lock at $lock is held by $(harness_lock_holder "$lock")." \
-    "The mutation lock is machine-wide: only ONE Stryker may run at a time across all worktrees. Two concurrent runs each start the full Jest suite and can orphan workers, which overloads the machine." \
-    "Wait for the active mutation run to finish, then re-run: npm run check:mutation" \
-    "Do not start a second mutation run in parallel. Wait for the active one to finish."
-  exit 2
+if [ "$list" -eq 0 ]; then
+  lock="$(harness_global_lock_dir)"
+  mkdir -p "$(dirname "$lock")" 2>/dev/null || true
+  if ! harness_try_lock "$lock" "$ROOT"; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "Another mutation run is active; refusing to start a second Stryker." \
+      "The global single-flight lock at $lock is held by $(harness_lock_holder "$lock")." \
+      "The mutation lock is machine-wide: only ONE Stryker may run at a time across all worktrees. Two concurrent runs each start the full Jest suite and can orphan workers, which overloads the machine." \
+      "Wait for the active mutation run to finish, then re-run: npm run check:mutation" \
+      "Do not start a second mutation run in parallel. Wait for the active one to finish."
+    exit 2
+  fi
+  # Release the global lock on normal exit AND on INT/TERM, so a killed run never
+  # strands the machine-wide lock. harness_unlock (rm -rf) is idempotent, so the
+  # EXIT trap re-firing after an INT/TERM handler is harmless.
+  trap 'harness_unlock "$lock"' EXIT
+  trap 'harness_unlock "$lock"; exit 130' INT
+  trap 'harness_unlock "$lock"; exit 143' TERM
 fi
-# Release the global lock on normal exit AND on INT/TERM, so a killed run never
-# strands the machine-wide lock. harness_unlock (rm -rf) is idempotent, so the
-# EXIT trap re-firing after an INT/TERM handler is harmless.
-trap 'harness_unlock "$lock"' EXIT
-trap 'harness_unlock "$lock"; exit 130' INT
-trap 'harness_unlock "$lock"; exit 143' TERM
 
 # A whole-release mutation run took 10 h 16 min and produced no result, so a run
 # above this many source files never starts. It is a plain assignment on purpose:
@@ -125,6 +134,11 @@ if ! diff_names="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base"
   exit 2
 fi
 changed="$(printf '%s\n' "$diff_names" | mutable_source_files)"
+file_count="$(printf '%s\n' "$changed" | grep -c . || true)"
+if [ "$list" -eq 1 ]; then
+  [ -n "$changed" ] && printf '%s\n' "$changed"
+  printf 'mutable files: %s (cap %s)\n' "$file_count" "$MUTATION_FILE_CAP"
+fi
 if [ -z "$changed" ]; then
   # This branch changed no mutable source file — nothing to mutate, pass.
   exit 0
@@ -132,7 +146,6 @@ fi
 csv="$(printf '%s' "$changed" | tr '\n' ',')"
 mutate_arg="--mutate=${csv%,}"
 
-file_count="$(printf '%s\n' "$changed" | grep -c . || true)"
 if [ "$file_count" -gt "$MUTATION_FILE_CAP" ]; then
   print_block \
     "Stryker (mutation testing)" \
@@ -143,6 +156,7 @@ if [ "$file_count" -gt "$MUTATION_FILE_CAP" ]; then
     "No env override to skip the cap; do not raise the number to pass."
   exit 2
 fi
+[ "$list" -eq 1 ] && exit 0
 
 # Content dedup: skip a mutation run when no mutation-relevant source changed
 # since the last passing run of the SAME scope. This stops a re-run after a
