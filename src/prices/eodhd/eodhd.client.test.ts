@@ -142,10 +142,29 @@ const failures: [string, typeof fetch, new () => Error][] = [
   ],
 ];
 
-describe.each([
-  ['fetchEod', (fetchImpl: typeof fetch) => fetchEod('AAPL.US', fromDay, toDay, KEY, fetchImpl)],
-  ['fetchUserLimits', (fetchImpl: typeof fetch) => fetchUserLimits(KEY, fetchImpl)],
-])('%s failures', (_name, call) => {
+const calls: [string, (fetchImpl: typeof fetch) => Promise<unknown>][] = [
+  ['fetchEod', (fetchImpl) => fetchEod('AAPL.US', fromDay, toDay, KEY, fetchImpl)],
+  ['fetchUserLimits', (fetchImpl) => fetchUserLimits(KEY, fetchImpl)],
+];
+
+describe.each(calls)('%s request', (_name, call) => {
+  it('asks every cache not to store the response of a URL that carries the key', async () => {
+    const sent: { url: string; init?: RequestInit }[] = [];
+    const spyFetch = (async (url: string, init?: RequestInit) => {
+      sent.push({ url, init });
+
+      return { ok: true, status: 200, json: async () => userFixture };
+    }) as unknown as typeof fetch;
+
+    await call(spyFetch).catch(() => undefined);
+
+    expect(sent[0].init?.headers).toEqual({ 'Cache-Control': 'no-store' });
+    expect(new URL(sent[0].url).searchParams.has('_')).toBe(false);
+    expect(sent[0].init).not.toHaveProperty('cache');
+  });
+});
+
+describe.each(calls)('%s failures', (_name, call) => {
   it.each(failures)('maps %s to its own error class', async (_status, fetchImpl, errorClass) => {
     await expect(call(fetchImpl)).rejects.toBeInstanceOf(errorClass);
   });

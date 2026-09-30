@@ -84,6 +84,13 @@ const readBody = guard(
     bifoldr(await either<unknown, unknown>(() => response.json())) ?? unavailable(),
 );
 
+// EODHD answers `no-cache, private`, which still lets NSURLCache write the
+// response to Cache.db under its URL, and the URL carries the key. React
+// Native's `cache: 'no-store'` does not stop that: whatwg-fetch only appends a
+// `_=<time>` cache-buster, a new cached URL per call. The `no-store` request
+// directive asks every cache on the path not to store the response.
+const NO_STORE: RequestInit = { headers: { 'Cache-Control': 'no-store' } };
+
 // A rejected fetch can carry the request URL, and with it the key, in its message.
 const requestJson = async (
   path: string,
@@ -93,7 +100,7 @@ const requestJson = async (
 ): Promise<unknown> => {
   const query = new URLSearchParams([['api_token', key], ['fmt', 'json'], ...params]);
   const sent = await either<unknown, Response>(async () =>
-    fetchImpl(`${EODHD_API_ENDPOINT}${path}?${query.toString()}`),
+    fetchImpl(`${EODHD_API_ENDPOINT}${path}?${query.toString()}`, NO_STORE),
   );
 
   return readBody(bifoldr(sent) ?? unavailable());
