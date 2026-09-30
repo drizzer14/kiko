@@ -610,7 +610,8 @@ new component can land between reviews of this skill:
   from its one source (never a re-typed string; read the symbol names
   in `src/holdings/entity-symbols/entity-symbols.ts`): Add holding /
   account / category / transaction → `genericEntitySymbol.<entity>`;
-  Add lot → `holdingTypeSymbol.metal`; Add contribution →
+  Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
+  never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
   "Update outstanding" add no entity, so they stay text-only. An
   iOS-26 generic glyph has its fallback in `genericEntitySymbolFallback`

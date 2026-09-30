@@ -223,6 +223,18 @@ the closing-balance override, the synced-holding exception, and why no
 migration repairs pre-fix data — read it there rather than trusting a
 restated summary here.
 
+## `share` create-form section
+
+`src/screens/forms/holding-form/share/` (hook `use-share-fields/`,
+`share-section/`, `share-form-block/`) is the `share` create/edit form.
+Its metadata is `ShareMeta`, parsed strictly by `asShareMeta`
+(`src/holdings/holding-metadata/holding-metadata.ts` — read the fields
+and the price-source rule there): a price source (EODHD or manual), an
+optional ISIN, a ticker required for EODHD, and `lots`. Read the hook's
+own `createPayload` for which source writes a `firstPricePoint` (see
+`kiko-pricing`'s "Creating and clearing a priced holding's price
+series"). After create, lots change only through the Lot form.
+
 ## `property_item` / `metal` create-form sections
 
 A `property` account's Type field IS its category picker
@@ -377,10 +389,14 @@ differently for exactly this reason.
 Which holding types record their buy/sell history through the
 dedicated Lot form (`src/screens/forms/lot-form/`, reached from
 holding-detail's `addLot` footer action) rather than a fixed one-time
-lot or a sync is a single-type entry (`metal`'s `footerAction: () =>
-'addLot'` — its price is the shared `metal:<XAU|...>` instrument, so it
-adds lots rather than updating a value) in `holdingDetailSpecs`
-(`holding-detail-spec/`) — only `metal` is eligible today. See
+lot or a sync is decided by each type's own `footerAction(synced,
+holding)` in `holdingDetailSpecs` (`holding-detail-spec/`): a type is
+lot-form eligible when that function can return `'addLot'` or
+`'addLotAndUpdatePrice'` (read the `FooterAction` union there). `metal`
+and `share` are eligible; a manual-price `share` gets
+`'addLotAndUpdatePrice'` (Add lot + Update price, the price going to the
+Price point form on `holding:<id>`), an EODHD `share` only `'addLot'`
+(see `shareFooterAction` there). See
 `kiko-pricing`'s "Recording a lot: LotForm and the sell cost rule"
 section for the form itself.
 
@@ -2334,4 +2350,8 @@ below until it is added there too. Seven steps, in order:
    value, not on `type`, so it never needs a new arm — tsc lists every
    remaining site the new type still needs. The enum/tuple step (1) and the
    account-kind mapping caveat within it are the only steps it cannot
-   catch for you.
+   catch for you. Two more sites tsc does NOT flag: the statistics bar
+   chart's type-label `match` (`src/screens/statistics/bar-chart/bar-chart.component.tsx`)
+   — add its `.with('<type>', ...)` arm; and `fiatOnlyHoldingTypes`
+   (`src/holdings/holding-currency/holding-currency.ts`) — add the type
+   when it must never hold a cryptocurrency.

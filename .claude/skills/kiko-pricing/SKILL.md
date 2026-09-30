@@ -351,8 +351,8 @@ stored correction point dated after the queried instant — read
 
 ## Priced holdings
 
-A **priced holding type** — `property_item` and `metal` are members
-today, more land later — is one whose own descriptor's `priced` spec
+A **priced holding type** — `property_item`, `metal`, and `share` are
+members today — is one whose own descriptor's `priced` spec
 is non-null; read the flag-table test in `holding-descriptors.test.ts`
 rather than trusting a member list restated here. It is valued through
 the `PriceBook`, not through an interest engine or its raw stored
@@ -388,6 +388,14 @@ spec's OWN currency — not necessarily `holding.currency`:
   NOT `holding.currency`; the two can disagree for an invalid/restore-only
   row, and `pricedBreakdown` below is the one place that decides
   whether such a mismatch is safe to surface.
+- `share` multiplies `quantityAt(...)` by the price point for its
+  instrument, chosen by `ShareMeta.quoteSource`: the shared
+  `shareInstrument(symbol)` for EODHD, the holding's OWN
+  `holdingInstrument(holding.id)` for manual (read
+  `src/holdings/holding-descriptor/share/share.descriptor.ts`). Money is
+  in the point's currency. A share with no point yet (an EODHD share
+  before its first refresh) shows its cost basis, with no "No price
+  yet" caption — the `metal` precedent.
 
 Either descriptor's `value` returns `null` when the holding has no
 `lots`/metal metadata or no stored price point yet. A `loan` holding
@@ -500,7 +508,7 @@ optional.
 ## Recording a lot: LotForm and the sell cost rule
 
 `src/screens/forms/lot-form/lot-form.screen.tsx` records one buy/sell
-lot against a lot-form-eligible holding (`metal` only — see
+lot against a lot-form-eligible holding (`metal` and `share` — see
 `holdingDetailSpecs`, `holding-detail-spec/`, and the paragraph
 closing `kiko-domain`'s "Sync-only holding types are not manually
 creatable" section for that single-type entry), reached from
@@ -508,7 +516,7 @@ holding-detail's `addLot` footer action. It writes NO `Transaction`
 row and NO `price_points` row for either
 direction — a buy/sell only appends to `holding.metadata.lots` via
 `holdingsRepo.update`, since the holding is ledgerless and priced off
-the shared `metal:<XAU|...>` instrument, not a per-holding series.
+its price series, which the Lot form never writes.
 
 **Sell cost rule: proportional average cost, not FIFO/LIFO.** On a
 sell, the removed cost basis is `costBasisBeforeMajor * quantitySold /
@@ -527,9 +535,11 @@ backdated Feb −8 is rejected (March would hold −3, and `quantityAt`'s
 clamp would hide it as 0 with a negative cost basis). `heldQuantity` (on
 the day) still sizes the cost-basis share.
 
-A metal holding's lots also surface as ledger-display rows: `metalEntries`
-(`src/holdings/holding-descriptor/metal/metal.descriptor.ts`, wired as
-`metalDescriptor.entries`) turns each lot into a `DerivedEntry`, reusing the
+A lot-priced holding's lots also surface as ledger-display rows: the
+shared `lotEntries` (`src/holdings/holding-descriptor/entry-parts/entry-parts.ts`,
+called by both the `metal` and `share` descriptors' `entries`) turns
+each lot into a `DerivedEntry`. Always reuse it for a new lot-priced
+type; never copy the mapping. It reuses the
 `'purchase'`/`'sale'` `DerivedEntryKind`s previously bond-only (a buy lot →
 `'purchase'`, a sell lot → `'sale'`) — do not assume those kinds mean "bond"
 when reading that file.
@@ -560,7 +570,13 @@ metal's price comes from the shared `metal:<XAU|XAG|XPT|XPD>`
 instrument, priced separately by `refreshMetalPrices` (see "NBU metal
 prices — current and history" below), never a per-holding one.
 `property_item`, by contrast, always writes `firstPricePoint` equal to
-its entered cost. See that hook's own comment on the metal CREATE
+its entered cost. A `share` writes `firstPricePoint` (total cost ÷
+quantity, on `holding:<id>`) only for a manual price source; an EODHD
+share writes none, like `metal` — read `use-share-fields.ts`'s
+`createPayload`. A manual share's later prices go through the Price
+point form (`src/screens/forms/price-point-form/`), which gives a share
+its own title/field/Save/error keys the same way it does a loan (read
+that screen's per-kind key table). See that hook's own comment on the metal CREATE
 payload for the current rationale.
 
 **No "price as of" / "value as of" caption anywhere (user decision).** A priced holding's card and detail screen show only
