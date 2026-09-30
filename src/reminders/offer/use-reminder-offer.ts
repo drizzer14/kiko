@@ -78,13 +78,13 @@ export const useReminderOffer = ({
   const { data: imports, isLoading: importLoading } = useLiveQuery(
     remindersRepo.hasImportQuery(accountId),
     ['transactions', 'holdings'],
-    undecided && trigger === 'afterImport' && eligible,
+    trigger === 'afterImport' && eligible,
     { cached: true },
   );
   const { data: manualEntries, isLoading: manualEntriesLoading } = useLiveQuery(
     remindersRepo.manualEntryDaysQuery(accountId, since),
     ['transactions', 'holdings'],
-    undecided && trigger === 'manualActivity' && eligible,
+    trigger === 'manualActivity' && eligible,
     { cached: true },
   );
   const triggerReady = useDataReady(importLoading, manualEntriesLoading);

@@ -13,8 +13,20 @@ const shippedLocales = [
 
 const counts = [
   ...Array.from({ length: 201 }, (_, index) => index),
-  ...[0.5, 1.5, 2.1, 4.75, 5.25, 11.5, 21.3, 100.01],
-  ...[-1, -2, -5, -11, -21, -1.5],
+  0.5,
+  1.5,
+  2.1,
+  4.75,
+  5.25,
+  11.5,
+  21.3,
+  100.01,
+  -1,
+  -2,
+  -5,
+  -11,
+  -21,
+  -1.5,
 ];
 
 const sorted = (categories: readonly string[]): string[] => [...categories].sort();

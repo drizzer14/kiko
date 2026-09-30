@@ -74,6 +74,7 @@ const CARD: Account = {
   institution: 'monobank',
   archivedAt: null,
 };
+const MANUAL_CARD: Account = { ...CARD, institution: null };
 
 const listed = (overrides: Partial<ReminderRow> = {}, account: Account = CASH): ListedReminder => ({
   reminder: savedReminder(overrides),
@@ -172,8 +173,8 @@ describe('RemindersScreen — list', () => {
 
   it('lists import first within an account', async () => {
     seed([
-      listed({ id: 'r-1', kind: 'add_transactions' }, CASH),
-      listed({ id: 'r-2', kind: 'statement_import' }, CASH),
+      listed({ id: 'r-1', kind: 'add_transactions' }, MANUAL_CARD),
+      listed({ id: 'r-2', kind: 'statement_import' }, MANUAL_CARD),
     ]);
 
     const { getAllByText } = await renderScreen();
@@ -202,12 +203,10 @@ describe('RemindersScreen — list', () => {
   it('never says an import reminder is not sent, on a synced account with no import too', async () => {
     seed([listed({ kind: 'statement_import' }, CARD)]);
 
-    const { getByText, getAllByText } = await renderScreen();
+    const { getByText, queryByText } = await renderScreen();
 
     expect(getByText('Statement import')).toBeTruthy();
-    expect(getAllByText(/./).map((text) => text.props.children)).not.toContainEqual(
-      expect.stringMatching(/^Available/),
-    );
+    expect(queryByText(/^Available/)).toBeNull();
   });
 
   it('says a reminder is not sent while its account is archived', async () => {
