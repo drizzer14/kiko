@@ -87,7 +87,7 @@ const SettingsRow: FC<SettingsRowProps> = ({
     return (
       <Pressable accessibilityRole="button" onPress={onPress} {...props}>
         <Box direction="row" style={styles.centeredEnd}>
-          <Box style={styles.body}>
+          <Box gap={1} style={styles.body}>
             {lead}
 
             {children}

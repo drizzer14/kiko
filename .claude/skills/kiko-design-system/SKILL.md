@@ -282,6 +282,10 @@ The established patterns grouped under this heading:
   and >"):** a chevron after a `trailing` control carries a
   `spacing(1)` left margin (`chevronAfterTrailing`,
   `settings-row.styles.ts`); a chevron after a plain label has none.
+  **Locked (2026-09-30, user request "increase the gap between
+  reminder's title and description"):** on a pressable row with
+  `children` the label and body sit `spacing(1)` apart, the same gap
+  as between `ReminderRow`'s own caption lines.
   **Rule:** on iOS an accessible `Pressable` groups its children into
   ONE VoiceOver element, so a control inside a pressable row cannot be
   reached. A row that passes both `onPress` and an interactive

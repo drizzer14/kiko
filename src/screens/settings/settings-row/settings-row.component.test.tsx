@@ -164,6 +164,9 @@ describe('SettingsRow', () => {
     expect(StyleSheet.flatten(row.props.style).alignItems).toBe('center');
     expect(within(row).getByTestId('row-body')).toBeTruthy();
     expect(
+      StyleSheet.flatten(ancestorWithStyle(getByTestId('row-body'), 'gap').props.style).gap,
+    ).toBe(darkTheme.spacing(1));
+    expect(
       within(row).getByTestId('settings-row-chevron', { includeHiddenElements: true }),
     ).toBeTruthy();
   });

@@ -24,7 +24,9 @@ export const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
   },
   // The label and the body below it, taking the width the switch and chevron
-  // leave so the body wraps beside them.
+  // leave so the body wraps beside them. The component's spacing(1) gap
+  // between them matches the gap between the body's own caption lines
+  // (user request 2026-09-30: the description sat too close to the title).
   body: {
     flex: 1,
   },
