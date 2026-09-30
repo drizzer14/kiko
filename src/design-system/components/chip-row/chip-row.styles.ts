@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native-unistyles';
+import { CHIP_MIN_HEIGHT } from '@kiko/design-system/chip-geometry';
 
 export const styles = StyleSheet.create((theme) => ({
   chipRow: {
@@ -14,7 +15,7 @@ export const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing(2),
-    minHeight: 34,
+    minHeight: CHIP_MIN_HEIGHT,
     paddingVertical: theme.spacing(1),
     paddingHorizontal: theme.spacing(3),
     borderRadius: theme.radii.sm,

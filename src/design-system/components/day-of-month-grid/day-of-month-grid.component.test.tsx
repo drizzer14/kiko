@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
+import ChipRow from '@kiko/design-system/components/chip-row';
 
 import DayOfMonthGrid from '.';
 
@@ -90,18 +91,45 @@ describe('DayOfMonthGrid', () => {
   });
 
   // The cell, not a hitSlop, is the 44pt target: a hitSlop would overlap the
-  // neighbouring day's target in a grid this dense.
-  it('makes each cell at least 44pt tall with no hitSlop', async () => {
+  // neighbouring day's target in a grid this dense. The width is checked on
+  // the narrowest iPhone form row (375pt minus the Screen's side padding),
+  // where the grid's negative margin widens the row by one cell padding a side.
+  it('makes each cell at least 44pt tall and wide with no hitSlop', async () => {
     const screen = await renderGrid();
 
     const cell = screen.getByTestId('grid-option-1');
     const chip = within(cell).getByText('1').parent;
     const cellStyle = StyleSheet.flatten(cell.props.style);
     const chipStyle = StyleSheet.flatten(chip?.props.style);
+    const narrowestFormRow = 375 - darkTheme.spacing(4) * 2;
+    const gridRow = narrowestFormRow + Number(cellStyle.paddingHorizontal) * 2;
+    const cellWidth = (Number.parseFloat(String(cellStyle.width)) / 100) * gridRow;
 
     expect(
       Number(cellStyle.paddingVertical) * 2 + Number(chipStyle.minHeight),
     ).toBeGreaterThanOrEqual(44);
+    expect(cellWidth).toBeGreaterThanOrEqual(44);
     expect(cell.props.hitSlop).toBeUndefined();
+  });
+
+  // The user asked for the weekday row's chip size and gaps here, so the grid
+  // is held to what ChipRow actually renders, not to a copied number.
+  it('draws the weekday chip height and spaces chips across a row by its gap', async () => {
+    const grid = await renderGrid();
+    const weekdays = await render(
+      <ChipRow options={['Mon', 'Tue']} selectedValues={[]} onToggle={jest.fn()} />,
+    );
+
+    const cellStyle = StyleSheet.flatten(grid.getByTestId('grid-option-1').props.style);
+    const dayChip = within(grid.getByTestId('grid-option-1')).getByText('1').parent;
+    const weekdayChip = weekdays.getAllByRole('button')[0];
+    const weekdayRow = weekdayChip.parent;
+
+    expect(StyleSheet.flatten(dayChip?.props.style).minHeight).toBe(
+      StyleSheet.flatten(weekdayChip.props.style).minHeight,
+    );
+    expect(Number(cellStyle.paddingHorizontal) * 2).toBe(
+      StyleSheet.flatten(weekdayRow?.props.style).gap,
+    );
   });
 });

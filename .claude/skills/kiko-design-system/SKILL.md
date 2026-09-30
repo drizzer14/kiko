@@ -1135,7 +1135,24 @@ new component can land between reviews of this skill:
   `neutralSubtle` + `textPrimary` otherwise, `radii.sm`, 34pt), drawn
   inside a real 44pt cell with no `hitSlop` (see "Touch targets"); the
   grid pulls its footprint back with negative margins so its outer
-  chips line up with the caption and the other fields. It is NOT a
+  chips line up with the caption and the other fields. **Locked
+  (user request 2026-09-30, "use the same cell sizes/gaps as day of
+  the week"):** the day chips take the weekday row's (`WeekdayField`,
+  a `ChipRow`) chip height and horizontal gap from ONE shared source,
+  `src/design-system/chip-geometry/` (`CHIP_MIN_HEIGHT` 34,
+  `CHIP_GAP_STEP` = `spacing(2)` = 8pt, `CHIP_TAP_INSET` 5) — ChipRow
+  and the grid both import it, never a copy. Each cell pads
+  `spacing(1)` a side, so two neighbours sit 8pt apart like the
+  weekday chips. The row gap stays 10pt (2 x `CHIP_TAP_INSET`), not
+  ChipRow's 8pt: a 34pt chip on a 42pt pitch cannot carry a 44pt
+  target without overlapping the next row's. Math on a 390pt iPhone:
+  form row 358pt (390 - 2 x `spacing(4)`), grid row 366pt, cell
+  52.26pt, chip 44.26 x 34pt; 7 chips + 6 gaps = 357.8pt <= 358pt. A
+  content-sized ChipRow chip with a two-digit body label is ~43-44pt
+  wide (label ~19-20pt + 2 x `spacing(3)`), so 7 columns hold the
+  weekday chip size. The component test compares the grid against a
+  rendered ChipRow and checks the 44pt cell on the narrowest 375pt
+  iPhone (cell 50.1pt). It is NOT a
   `ChipRow` variant: ChipRow is a wrap-flow row, never an equal-width
   column grid. Accessibility: each cell is a `button` with
   `accessibilityState.selected`, its number as its label, and the group
@@ -1148,12 +1165,12 @@ new component can land between reviews of this skill:
   Yoga resolves percentages in 32-bit float and wraps on a strict `>`, so
   seven exact sevenths overshoot on 390pt/414pt rows and the grid drops
   to six columns (the component test replays that float math). The
-  chip inset (`CHIP_INSET` in `day-of-month-grid.styles.ts`, half of the
+  chip inset (`CHIP_TAP_INSET` in `chip-geometry.ts`, half of the
   44pt cell minus the 34pt chip; read the value there) is the cell's
   vertical padding, not a fixed cell height, so a chip grown by Dynamic Type keeps the inset the grid's
   negative margin undoes. **Hit-testing:** the grid's negative margins
   make the outer 44pt cells overflow the parent by 5pt vertically (and
-  `spacing(0.5)` horizontally); taps there still land only because
+  `spacing(1)` horizontally); taps there still land only because
   Fabric does not clip overflow by default — never put the grid inside
   an `overflow: 'hidden'` parent. Props: `label`/`selected`/`onSelect`/`testID` (cells are
   `${testID}-option-<day>`). The caller renders any hint below it (the

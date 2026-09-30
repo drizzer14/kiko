@@ -1,6 +1,7 @@
 import { Pressable } from 'react-native';
 import type { ReactElement } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
+import { CHIP_GAP_STEP, CHIP_TAP_INSET } from '@kiko/design-system/chip-geometry';
 
 import Box from '../box';
 import Text from '../text';
@@ -11,8 +12,8 @@ import type { ChipRowProps, ChipRowSelection } from './chip-row.props';
 
 // The chip's visible height sits below the 44pt HIG tap-target floor on
 // purpose (the compact chip look). This hitSlop restores the 44pt tap target
-// the same way Button's `small` size does: (44 - 34) / 2 = 5pt per edge.
-const CHIP_HIT_SLOP = { top: 5, bottom: 5 } as const;
+// the same way Button's `small` size does.
+const CHIP_HIT_SLOP = { top: CHIP_TAP_INSET, bottom: CHIP_TAP_INSET } as const;
 
 type ResolvedSelection<Option extends string | number> = {
   isSelected: (option: Option) => boolean;
@@ -55,7 +56,7 @@ const ChipRow = <Option extends string | number>(props: ChipRowProps<Option>): R
     <Box gap={1}>
       {label !== undefined && <FieldLabel label={label} />}
 
-      <Box style={styles.chipRow} gap={2}>
+      <Box style={styles.chipRow} gap={CHIP_GAP_STEP}>
         {options.map((option) => {
           const isSelected = isOptionSelected(option);
 
