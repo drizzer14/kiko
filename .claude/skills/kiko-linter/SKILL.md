@@ -1327,8 +1327,12 @@ a pre-existing finding points at. A Semgrep deny names
   and no `check:*` gate: its project-wide check is the Jest invariant
   `__tests__/plural-count.test.ts`, the same setup as
   `kiko-one-component-per-file`. It reads the plural key set from its own
-  checkout's en.ts with the `typescript` compiler API (0.13 s to load and
-  parse), never from the guard mirror. No `--write`.
+  checkout's en.ts, never from the guard mirror. It is a scanner over
+  `specifier-scanner.js`'s `blankNoise`, not the `typescript` compiler
+  API: the guard-replay scratch checkout has no `node_modules`, so a
+  checker that requires an npm package fails closed on every replayed
+  file. Every checker in `scripts/checks/` stays dependency-free for the
+  same reason. No `--write`.
 
 A Jest invariant, `__tests__/cited-paths.test.ts`, fails when a skill,
 agent or harness doc cites a repo path in an inline code span that does

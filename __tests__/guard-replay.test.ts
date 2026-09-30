@@ -16,6 +16,9 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'nod
 // floor or sit on top of one that is.
 const CHECKS = join(__dirname, '../scripts/checks');
 const PREWRITE_RULES = join(__dirname, '../rules/semgrep-prewrite.yml');
+// plural-count.js reads the plural key set from its own checkout's en.ts and
+// fails closed without it, as every real worktree has one.
+const CATALOGUE = join(__dirname, '../src/i18n/locales/en.ts');
 const REPLAY_ENGINE = join(CHECKS, 'guard-replay.js');
 
 const HOUR_SECONDS = 60 * 60;
@@ -156,6 +159,7 @@ const buildCheckout = (
   git(main, 'config', 'user.name', 'Test');
   cpSync(CHECKS, join(main, 'scripts/checks'), { recursive: true });
   writeFile(main, 'rules/semgrep-prewrite.yml', readFileSync(PREWRITE_RULES, 'utf8'));
+  writeFile(main, 'src/i18n/locales/en.ts', readFileSync(CATALOGUE, 'utf8'));
   writeFile(main, 'src/kept.ts', 'export const kept = 1;\n');
 
   if (stubOtherMediumWrappers) {

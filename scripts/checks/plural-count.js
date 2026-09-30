@@ -18,10 +18,17 @@
 // key is checked. An options argument the checker cannot see into (a
 // variable, a spread, a computed name) may carry `count`, so it is never
 // flagged: denying it would block code that is right today.
+//
+// A scanner, not a parser, like its siblings: the guard-replay scratch
+// checkout has no node_modules, so an npm dependency (the TypeScript
+// compiler) made every replayed file fail closed there. Structure (braces,
+// commas) is read from a noise-blanked copy, where comments, strings, and
+// regex literals cannot fake a brace; names and keys are read from the raw
+// source at the same offsets.
 
 const fs = require('node:fs');
 const path = require('node:path');
-const typescript = require('typescript');
+const { blankNoise } = require('./specifier-scanner');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const CATALOGUE_PATH = path.join(ROOT, 'src', 'i18n', 'locales', 'en.ts');
@@ -32,51 +39,164 @@ const CATALOGUE_FILE = /(?:^|\/)src\/i18n\/locales\/(?:en|uk)\.ts$/;
 
 const PLURAL_ONE_SUFFIX = /^(.+)_one$/;
 
-function parse(filePath, source) {
-  const scriptKind = filePath.endsWith('.tsx')
-    ? typescript.ScriptKind.TSX
-    : typescript.ScriptKind.TS;
+const CATALOGUE_DECLARATION = /\bconst\s+en\s*=\s*\{/;
 
-  return typescript.createSourceFile(
-    filePath,
-    source,
-    typescript.ScriptTarget.Latest,
-    true,
-    scriptKind,
-  );
-}
+// `t(` or `<object>.t(`, optionally called through `?.`. The lookbehind keeps
+// `format(` and `alert(` out; a `.` before `t` is the member form.
+const TRANSLATE_CALL = /(?<![\w$])t\s*(?:\?\.\s*)?\(/g;
 
-// The literal text of a property name, or null for a computed name.
-function propertyNameText(name) {
-  if (
-    typescript.isIdentifier(name) ||
-    typescript.isStringLiteral(name) ||
-    typescript.isNumericLiteral(name)
-  ) {
-    return name.text;
+const IDENTIFIER = /[\w$]+/y;
+
+// An accessor or async method's name follows its modifier word.
+const METHOD_MODIFIERS = new Set(['get', 'set', 'async']);
+
+const OPENERS = new Set(['{', '[', '(']);
+
+const CLOSERS = new Set(['}', ']', ')']);
+
+function skipTrivia(source, at) {
+  let cursor = at;
+
+  while (cursor < source.length) {
+    if (/\s/.test(source[cursor])) {
+      cursor += 1;
+    } else if (source.startsWith('//', cursor)) {
+      const end = source.indexOf('\n', cursor);
+      cursor = end === -1 ? source.length : end;
+    } else if (source.startsWith('/*', cursor)) {
+      const end = source.indexOf('*/', cursor + 2);
+      cursor = end === -1 ? source.length : end + 2;
+    } else {
+      return cursor;
+    }
   }
 
-  return null;
+  return cursor;
+}
+
+// The value of the quoted literal opening at `at`, or null when it is not
+// closed on its own line.
+function readString(source, at) {
+  const quote = source[at];
+  let value = '';
+  let cursor = at + 1;
+
+  while (cursor < source.length && source[cursor] !== quote) {
+    if (source[cursor] === '\n') return null;
+
+    if (source[cursor] === '\\') {
+      cursor += 1;
+    }
+
+    value += source[cursor];
+    cursor += 1;
+  }
+
+  return cursor < source.length ? { value, end: cursor + 1 } : null;
+}
+
+function readIdentifier(source, at) {
+  IDENTIFIER.lastIndex = at;
+  const match = IDENTIFIER.exec(source);
+
+  return match === null ? null : { value: match[0], end: at + match[0].length };
+}
+
+// The property head at `at`: { kind: 'name', name } for an identifier,
+// string, or number name; 'spread' or 'computed' otherwise. `end` is where
+// the head stops.
+function readPropertyHead(source, at) {
+  const start = skipTrivia(source, at);
+
+  if (source.startsWith('...', start)) return { kind: 'spread', end: start + 3 };
+
+  if (source[start] === '[') return { kind: 'computed', end: start };
+
+  if (source[start] === "'" || source[start] === '"') {
+    const literal = readString(source, start);
+
+    return literal === null
+      ? { kind: 'computed', end: start }
+      : { kind: 'name', name: literal.value, end: literal.end };
+  }
+
+  const identifier = readIdentifier(source, start);
+
+  if (identifier === null) return { kind: 'computed', end: start };
+
+  const next = skipTrivia(source, identifier.end);
+
+  if (METHOD_MODIFIERS.has(identifier.value) && /[\w$'"[]/.test(source[next] ?? '')) {
+    return readPropertyHead(source, next);
+  }
+
+  return { kind: 'name', name: identifier.value, end: identifier.end };
+}
+
+// The offset of the `,` or `}` that ends the property whose head stops at
+// `from`. Throws when the object that opened at `open` never closes.
+function propertyEnd(blanked, from, open) {
+  let depth = 0;
+
+  for (let cursor = from; cursor < blanked.length; cursor += 1) {
+    const character = blanked[cursor];
+
+    if (depth === 0 && (character === ',' || character === '}')) return cursor;
+
+    if (OPENERS.has(character)) depth += 1;
+
+    if (CLOSERS.has(character)) depth -= 1;
+  }
+
+  throw new Error(`unclosed object literal at offset ${open}`);
+}
+
+// The object literal whose `{` sits at `open`: its properties, each with the
+// offset its value starts at (null for a shorthand, a spread, or a method),
+// and the offset just past its `}`. Throws on an unclosed object.
+function readObject(source, blanked, open) {
+  const properties = [];
+  let cursor = open + 1;
+
+  for (;;) {
+    const afterTrivia = skipTrivia(source, cursor);
+
+    if (blanked[afterTrivia] === '}') {
+      return { properties, end: afterTrivia + 1 };
+    }
+
+    const head = readPropertyHead(source, afterTrivia);
+    const colon = skipTrivia(source, head.end);
+    const valueStart =
+      head.kind === 'name' && source[colon] === ':' ? skipTrivia(source, colon + 1) : null;
+
+    properties.push({ ...head, valueStart });
+
+    cursor = propertyEnd(blanked, head.end, open);
+
+    if (blanked[cursor] === '}') {
+      return { properties, end: cursor + 1 };
+    }
+
+    cursor += 1;
+  }
 }
 
 function joinKey(prefix, name) {
   return prefix === '' ? name : `${prefix}.${name}`;
 }
 
-function collectPluralKeys(objectLiteral, prefix, keys) {
+function collectPluralKeys(source, blanked, open, prefix, keys) {
+  const { properties } = readObject(source, blanked, open);
   const names = new Set();
 
-  for (const property of objectLiteral.properties) {
-    if (!typescript.isPropertyAssignment(property)) continue;
+  for (const property of properties) {
+    if (property.kind !== 'name') continue;
 
-    const name = propertyNameText(property.name);
+    names.add(property.name);
 
-    if (name === null) continue;
-
-    names.add(name);
-
-    if (typescript.isObjectLiteralExpression(property.initializer)) {
-      collectPluralKeys(property.initializer, joinKey(prefix, name), keys);
+    if (property.valueStart !== null && blanked[property.valueStart] === '{') {
+      collectPluralKeys(source, blanked, property.valueStart, joinKey(prefix, property.name), keys);
     }
   }
 
@@ -90,78 +210,89 @@ function collectPluralKeys(objectLiteral, prefix, keys) {
 }
 
 // Every plural base key in en.ts's `export const en = { ... }`. A catalogue
-// this checker cannot find throws, so a moved or reshaped en.ts fails the
-// check instead of silently disabling it.
+// this checker cannot find or read throws, so a moved or reshaped en.ts fails
+// the check instead of silently disabling it.
 function readPluralKeys(cataloguePath) {
-  const sourceFile = parse(cataloguePath, fs.readFileSync(cataloguePath, 'utf8'));
+  const source = fs.readFileSync(cataloguePath, 'utf8');
+  const blanked = blankNoise(source);
+  const declaration = CATALOGUE_DECLARATION.exec(blanked);
 
-  for (const statement of sourceFile.statements) {
-    if (!typescript.isVariableStatement(statement)) continue;
-
-    for (const declaration of statement.declarationList.declarations) {
-      if (
-        typescript.isIdentifier(declaration.name) &&
-        declaration.name.text === 'en' &&
-        declaration.initializer !== undefined &&
-        typescript.isObjectLiteralExpression(declaration.initializer)
-      ) {
-        const keys = new Set();
-        collectPluralKeys(declaration.initializer, '', keys);
-
-        return keys;
-      }
-    }
+  if (declaration === null) {
+    throw new Error(`no \`const en = { ... }\` object literal in ${cataloguePath}`);
   }
 
-  throw new Error(`no \`const en = { ... }\` object literal in ${cataloguePath}`);
+  const keys = new Set();
+  collectPluralKeys(source, blanked, declaration.index + declaration[0].length - 1, '', keys);
+
+  return keys;
 }
 
-function isTranslateCallee(expression) {
-  if (typescript.isIdentifier(expression)) {
-    return expression.text === 't';
-  }
+// The offset just past the argument that starts at `at` when that argument
+// is exactly the object literal opening there, else null.
+function objectArgumentEnd(source, blanked, at) {
+  const { end } = readObject(source, blanked, at);
+  const next = skipTrivia(source, end);
 
-  return typescript.isPropertyAccessExpression(expression) && expression.name.text === 't';
+  return source[next] === ',' || source[next] === ')' ? end : null;
 }
 
 // False only when the options argument is provably without `count`: absent,
 // or an object literal with no spread, no computed name, and no `count`.
-function mayCarryCount(optionsArgument) {
-  if (optionsArgument === undefined) return false;
+function mayCarryCount(source, blanked, at) {
+  const start = skipTrivia(source, at);
 
-  if (!typescript.isObjectLiteralExpression(optionsArgument)) return true;
+  if (source[start] === ')') return false;
 
-  return optionsArgument.properties.some((property) => {
-    if (typescript.isSpreadAssignment(property)) return true;
+  if (source[start] !== ',') return true;
 
-    const name = propertyNameText(property.name);
+  const optionsStart = skipTrivia(source, start + 1);
 
-    return name === null || name === 'count';
-  });
+  if (source[optionsStart] === ')') return false;
+
+  if (blanked[optionsStart] !== '{' || objectArgumentEnd(source, blanked, optionsStart) === null) {
+    return true;
+  }
+
+  return readObject(source, blanked, optionsStart).properties.some(
+    (property) => property.kind !== 'name' || property.name === 'count',
+  );
+}
+
+function lineNumberAt(source, index) {
+  let line = 1;
+
+  for (let cursor = 0; cursor < index; cursor += 1) {
+    if (source[cursor] === '\n') {
+      line += 1;
+    }
+  }
+
+  return line;
 }
 
 // Every plural-key call without `count` in `source`, in file order.
-function findViolations(filePath, source, pluralKeys) {
-  const sourceFile = parse(filePath, source);
+function findViolations(source, pluralKeys) {
+  const blanked = blankNoise(source);
   const violations = [];
 
-  const visit = (node) => {
+  TRANSLATE_CALL.lastIndex = 0;
+
+  for (let match = TRANSLATE_CALL.exec(blanked); match !== null; ) {
+    const keyStart = skipTrivia(source, match.index + match[0].length);
+    const quote = source[keyStart];
+    const key = quote === "'" || quote === '"' ? readString(source, keyStart) : null;
+
     if (
-      typescript.isCallExpression(node) &&
-      isTranslateCallee(node.expression) &&
-      node.arguments.length > 0 &&
-      typescript.isStringLiteral(node.arguments[0]) &&
-      pluralKeys.has(node.arguments[0].text) &&
-      !mayCarryCount(node.arguments[1])
+      key !== null &&
+      pluralKeys.has(key.value) &&
+      !mayCarryCount(source, blanked, key.end) &&
+      /[,)]/.test(source[skipTrivia(source, key.end)] ?? '')
     ) {
-      const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-      violations.push({ line: line + 1, key: node.arguments[0].text });
+      violations.push({ line: lineNumberAt(source, match.index), key: key.value });
     }
 
-    typescript.forEachChild(node, visit);
-  };
-
-  visit(sourceFile);
+    match = TRANSLATE_CALL.exec(blanked);
+  }
 
   return violations;
 }
@@ -180,7 +311,7 @@ function runCli() {
   for (const file of files) {
     if (CATALOGUE_FILE.test(file.split(path.sep).join('/'))) continue;
 
-    const violations = findViolations(file, fs.readFileSync(file, 'utf8'), pluralKeys);
+    const violations = findViolations(fs.readFileSync(file, 'utf8'), pluralKeys);
 
     for (const violation of violations) {
       anyViolation = true;

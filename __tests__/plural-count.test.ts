@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync, type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 
 // scripts/checks/plural-count.js mechanizes kiko-translator's "A plural key is
 // always called with `count`": i18next picks the _one/_few/_many/_other form
@@ -116,6 +116,36 @@ describe('scripts/checks/plural-count.js', () => {
       expect(result.status).toBe(0);
     },
   );
+
+  // The guard-replay scratch checkout has no node_modules, so a checker that
+  // requires an npm package fails closed on every replayed file there.
+  it('runs from a checkout with no node_modules', () => {
+    const checkout = join(directory, 'checkout');
+    mkdirSync(join(checkout, 'scripts/checks'), { recursive: true });
+    mkdirSync(join(checkout, 'src/i18n/locales'), { recursive: true });
+
+    for (const script of readdirSync(join(ROOT, 'scripts/checks'))) {
+      if (script.endsWith('.js')) {
+        copyFileSync(
+          join(ROOT, 'scripts/checks', script),
+          join(checkout, 'scripts/checks', script),
+        );
+      }
+    }
+
+    copyFileSync(join(ROOT, 'src/i18n/locales/en.ts'), join(checkout, 'src/i18n/locales/en.ts'));
+
+    const file = writeProbe('src/probe.ts', "export const label = t('forms.units.days');\n");
+
+    const result = spawnSync('node', [join(checkout, 'scripts/checks/plural-count.js'), file], {
+      encoding: 'utf8',
+      cwd: directory,
+    });
+
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe(`${file}:1: t('forms.units.days') has no count\n`);
+    expect(result.status).toBe(1);
+  });
 
   it('exits 2 with a usage line when no file is given', () => {
     const result = runChecker([]);
