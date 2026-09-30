@@ -539,6 +539,21 @@ describe('AccountDetailScreen', () => {
     );
   });
 
+  it('shows the stored identity icon when the account has one', async () => {
+    setLiveData({ accounts: [account({ icon: 'creditcard' })], holdings: [] });
+    const { getByLabelText, queryByLabelText } = await renderScreen();
+
+    expect(getByLabelText('Icon creditcard')).toBeTruthy();
+    expect(queryByLabelText('Icon building.columns.fill')).toBeNull();
+  });
+
+  it('shows the kind glyph as the identity icon when the stored icon is null', async () => {
+    setLiveData({ accounts: [account({ icon: null })], holdings: [] });
+    const { getByLabelText } = await renderScreen();
+
+    expect(getByLabelText('Icon building.columns.fill')).toBeTruthy();
+  });
+
   it('excludes closed holdings from the list', async () => {
     setLiveData({
       accounts: [account()],

@@ -159,6 +159,18 @@ describe('RemindersScreen — list', () => {
     ).toBeTruthy();
   });
 
+  it('tints an account with an empty-string stored color in its kind default', async () => {
+    seed([listed({ id: 'r-1', accountId: 'a-1' }, { ...CASH, color: '' })]);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(
+      within(getByTestId('reminders-account-a-1')).getByText(
+        `tile:${accountKindSymbol.cash}:${defaultAccountColor.cash}:compact`,
+      ),
+    ).toBeTruthy();
+  });
+
   it('separates the accounts with a divider, and only between them', async () => {
     seed([
       listed({ id: 'r-1', accountId: 'a-1' }, CASH),

@@ -11,6 +11,7 @@ import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
+import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
@@ -90,6 +91,7 @@ type Account = {
   kind: string;
   institution?: string | null;
   archivedAt?: number | null;
+  icon?: string | null;
   color?: string | null;
 };
 type Holding = {
@@ -476,6 +478,29 @@ describe('AccountsScreen', () => {
     const [top, bottom] = entityIconTileGradient(darkTheme.colors.entityColors.khaki);
     expect(getByTestId('entity-icon-tile-gradient-stop-top').props.stopColor).toBe(top);
     expect(getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(bottom);
+  });
+
+  it("derives the icon tile's gradient from the kind default when the stored color is an empty string", async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash', color: '' }], holdings: [] });
+    const { getByTestId } = await renderAccounts();
+
+    const [top, bottom] = entityIconTileGradient(darkTheme.colors.entityColors.khaki);
+    expect(getByTestId('entity-icon-tile-gradient-stop-top').props.stopColor).toBe(top);
+    expect(getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(bottom);
+  });
+
+  it('shows the stored account icon, and the kind glyph when the stored icon is null', async () => {
+    setLiveData({
+      accounts: [
+        { id: 'a', name: 'Cash', kind: 'cash', icon: null },
+        { id: 'b', name: 'Card', kind: 'bank', icon: 'creditcard' },
+      ],
+      holdings: [],
+    });
+    const { getByLabelText } = await renderAccounts();
+
+    expect(getByLabelText('Cash icon').props.name).toBe(accountKindSymbol.cash);
+    expect(getByLabelText('Card icon').props.name).toBe('creditcard');
   });
 
   it('leaves the account card itself the shared solid surface, not an entity-color wash', async () => {
