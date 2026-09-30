@@ -61,7 +61,10 @@ const SettingsRow: FC<SettingsRowProps> = ({
   );
 
   const header = (
-    <Box direction="row" style={styles.header}>
+    <Box
+      direction="row"
+      style={[styles.header, trailing !== undefined && styles.headerWithTrailing]}
+    >
       {lead}
 
       {end}

@@ -5,10 +5,10 @@ import { StyleSheet } from 'react-native-unistyles';
 export const styles = StyleSheet.create(() => ({
   row: {
     justifyContent: 'space-between',
-    // Top-align the toggle to the label's FIRST line, not the label's full
-    // (possibly multi-line, once wrapped) height — a long label like "Follow
-    // system setting" must wrap without dragging the toggle down with it.
-    alignItems: 'flex-start',
+    // The 31pt toggle is taller than a body line, so top-aligned it hung
+    // below its label on device; the user asked for every switch centered on
+    // its label (2026-09-30, the Face ID row).
+    alignItems: 'center',
   },
   // RN's `flexShrink` defaults to 0 (unlike web flexbox's default of 1), so
   // without this the label never shrinks below its content width — it

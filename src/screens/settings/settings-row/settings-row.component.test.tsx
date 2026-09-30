@@ -194,7 +194,7 @@ describe('SettingsRow', () => {
     expect(StyleSheet.flatten(afterLabel.props.style).marginLeft).toBeUndefined();
   });
 
-  it('keeps the trailing control of a static row on its label’s first line', async () => {
+  it('centers the trailing control of a static row on its label', async () => {
     const { getByTestId } = await render(
       <SettingsRow
         label="Include saved passwords & keys"
@@ -206,7 +206,7 @@ describe('SettingsRow', () => {
 
     const header = ancestorWithStyle(getByTestId('trailing-switch'), 'alignItems');
 
-    expect(StyleSheet.flatten(header.props.style).alignItems).toBe('flex-start');
+    expect(StyleSheet.flatten(header.props.style).alignItems).toBe('center');
   });
 
   // iOS reads an accessible Pressable and its children as ONE VoiceOver

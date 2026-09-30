@@ -15,10 +15,10 @@ type SettingsRowBaseProps = ViewProps & {
 // `onPress` is present only for a navigating row (e.g. the Categories row) —
 // it turns the row into a Pressable and renders the trailing chevron.
 // `trailing` is an inline control on the SAME line as the label, pinned to the
-// row's trailing edge and top-aligned to the label's first line (a toggle
-// reads as one row with its label, not stacked below it the way a
-// picker/segmented control does). A pressable row with `children` centers the
-// control and chevron on the label and body together instead.
+// row's trailing edge and centered on the label (a toggle reads as one row
+// with its label, not stacked below it the way a picker/segmented control
+// does). A pressable row with `children` centers the control and chevron on
+// the label and body together instead.
 type SettingsRowStaticProps = SettingsRowBaseProps & {
   onPress?: undefined;
   trailing?: ReactNode;

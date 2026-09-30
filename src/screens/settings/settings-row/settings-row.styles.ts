@@ -13,6 +13,11 @@ export const styles = StyleSheet.create((theme) => ({
     // first line, so `flex-start` here does not make it ride high.
     alignItems: 'flex-start',
   },
+  // A switch is taller than the label's line and hung below it top-aligned;
+  // the user asked for every switch centered on its label (2026-09-30).
+  headerWithTrailing: {
+    alignItems: 'center',
+  },
   // A tappable row with a body below its label: the switch and chevron center
   // on the label and body together, not on the label's first line.
   centeredEnd: {

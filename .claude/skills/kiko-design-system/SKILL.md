@@ -269,12 +269,14 @@ The established patterns grouped under this heading:
   makes the row a `Pressable` (with a chevron). `trailing` pins an
   inline control to the label's line. The two can be combined
   (`ReminderRow`: tap opens the form, the trailing Switch pauses).
-  Vertical alignment (2026-09-30, user request): a row's `trailing`
-  and chevron sit on the label's FIRST line, except on a pressable row
-  with `children` (a body under the label, for example `ReminderRow`;
-  the rule is the `onPress` + `children` branch in
-  `settings-row.component.tsx`), which centers them on the label and body
-  together, as a UIKit cell centers its accessory view; the body then
+  Vertical alignment (2026-09-30, user requests): a chevron with no
+  `trailing` sits on the label's FIRST line; a `trailing` control (a
+  Switch) is centered on its label ("switches centered to their
+  label" — the header's `headerWithTrailing`, for example the
+  export-data include-secrets row); a pressable row with `children` (a
+  body under the label, for example `ReminderRow`; the rule is the
+  `onPress` + `children` branch in `settings-row.component.tsx`)
+  centers the control and chevron on the label and body together, as a UIKit cell centers its accessory view; the body then
   wraps beside them instead of running under the switch. **Locked
   (2026-09-30, user request "increase horizontal gap between a toggle
   and >"):** a chevron after a `trailing` control carries a
@@ -968,7 +970,9 @@ new component can land between reviews of this skill:
   `accessibilityLabel` because the name beside it already reads it.
 - **Switch** — a toggle that wraps RN's `Switch` with theme track/thumb
   colors. With `label` it renders a labeled row (label left, toggle
-  right). Without `label` it is a bare toggle whose label sits
+  right), the toggle centered on the label (locked 2026-09-30, user
+  request on the Face ID row; also the term-deposit recapitalization
+  toggle). Without `label` it is a bare toggle whose label sits
   elsewhere in the row, and it must then get `accessibilityLabel` so
   VoiceOver names it.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
