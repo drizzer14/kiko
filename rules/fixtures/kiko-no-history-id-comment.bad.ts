@@ -296,3 +296,15 @@ export const tileCorner = true;
 // EXPECT-FINDING
 /* The tile keeps a 12 pt corner (review, 2026-09-14). */
 export const tileCornerBlock = true;
+
+// EXPECT-FINDING
+// A backup from 6c3190ee..28eb0967 can restore an import reminder.
+export const backupRange = true;
+
+// EXPECT-FINDING
+/* A backup from 6c3190ee..28eb0967 can restore an import reminder. */
+export const backupRangeBlock = true;
+
+// EXPECT-FINDING
+// A backup from 6c3190ee...28eb0967c0ffee can restore an import reminder.
+export const backupSymmetricRange = true;

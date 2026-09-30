@@ -43,10 +43,9 @@ const summaryOf = (reminder: SavedReminder | undefined, t: TFunction): string =>
 // Why a saved reminder is not sent right now; every reason that holds shows.
 // Only an add-transactions reminder can be unavailable: this build offers an
 // import reminder only on a bank account, and an account's kind never changes.
-// Known limit: a .kiko backup from a pre-release build of this branch
-// (6c3190ee..28eb0967, never deployed) can restore an import reminder on a
-// non-bank account; it is never scheduled, and its row shows the
-// add-transactions caption. Accepted while the app has a single user, until
+// Known limit: a .kiko backup from a never-deployed pre-release build can
+// restore an import reminder on a non-bank account; it is never scheduled,
+// and its row shows the add-transactions caption. Accepted while the app has a single user, until
 // App Store review.
 const statusCaptions = (
   reminder: SavedReminder,

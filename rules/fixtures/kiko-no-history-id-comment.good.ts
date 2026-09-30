@@ -142,3 +142,8 @@ export const userRequestNearMiss = true;
 // a branch on this path, the plan keeps its slot, and review the rows, then
 // retry all stay silent.
 export const citationShapeNearMiss = true;
+
+// 22. The commit-range member needs two 7-40 character hex ids around the
+// dots: a 0..255 byte, the a..f digits, cafe..beef, and 1234567.89 stay
+// silent.
+export const commitRangeNearMiss = true;

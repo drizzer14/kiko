@@ -988,12 +988,25 @@ on this path", "the plan keeps its slot", and "review the rows, then retry"
 stay silent. `Option\s[A-Z]` is the same standalone-token class as `D2`
 above: a real UI option named by a capital letter ("Option B in the
 picker") is syntactically identical to a design-option citation, and is
-accepted, not narrowed. Name the option by what it does instead. The
+accepted, not narrowed. Name the option by what it does instead.
+`on\sthis\sbranch` is the same class: "on this branch" also names a code
+branch ("`value` is null on this branch" of an `if`), which is accepted,
+not narrowed. Write "in this case" or "here" for a code branch. The
 sweep that landed these members found 39 hits in 26 files; each was
 reworded to keep the WHY, and a design option became the name of its
 model ("the reflow error model", "connect-first"), never a blank.
 Fixture pair: the twelve pins after the user-request pins in `.bad.ts`
 and item 21 in `.good.ts`.
+
+**The commit-range member (2026-09-30).** A git range of two 7-40
+character hex ids, `[0-9a-f]{7,40}\.{2,3}[0-9a-f]{7,40}`, in both arms:
+"a build from 6c3190ee..28eb0967" cites history the same way a branch
+name does. The three-dot form counts too. "a 0..255 byte", "the a..f
+digits", "cafe..beef", and "1234567.89" stay silent. A pure-digit range
+of two 7-digit numbers would also fire; it is the standalone-token
+class, accepted. The sweep found 1 hit, in `reminder-row.component.tsx`,
+reworded. Fixture pair: the three commit-range pins at the end of
+`.bad.ts` and item 22 in `.good.ts`.
 
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 
