@@ -7,6 +7,7 @@ import { DAY_MS, startOfLocalDay } from '@kiko/dates';
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
+const MINUTE = 60_000;
 const now = Date.now();
 
 // EXPECT-FINDING
@@ -38,6 +39,13 @@ export const tomorrowFromDateObject = (): number => new Date().getTime() + DAY_M
 
 // EXPECT-FINDING
 export const yesterdayLessAnHour = (): number => new Date().getTime() - HOUR - DAY_MS;
+
+// EXPECT-FINDING
+export const tomorrowAndAnHourAndAMinute = (): number => Date.now() + HOUR + MINUTE + DAY_MS;
+
+export const yesterdayPlusAnHourAndAMinute = (): number =>
+  // EXPECT-FINDING
+  new Date().getTime() + HOUR + MINUTE - DAY_MS;
 
 export const dayNamedSpans = (
   dayMs: number,

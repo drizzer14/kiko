@@ -778,7 +778,9 @@ can land two local days ahead. Semgrep
 (`rules/semgrep-prewrite.yml`) enforces this in every `*.test.ts(x)` and
 `src/test-support/**`. It reads the clock as `Date.now()`,
 `new Date().getTime()`, or a `const`/`let` bound to `Date.now()`, also
-behind a first offset (`Date.now() + HOUR + DAY_MS`). It reads a span
+behind other offsets (`Date.now() + HOUR + DAY_MS`,
+`Date.now() + HOUR + MINUTE + DAY_MS`; behind one offset only for a
+`const`/`let` clock). It reads a span
 as a day span by its text: "day" as a whole camelCase or snake_case
 part (`DAY`, `DAY_MS`, `dayMs`, `msPerDay`, `days`), `86_400_000`,
 `24 * 60 * 60`, or `60 * 60 * 24`. A word that only contains "day"
@@ -789,9 +791,9 @@ part (`DAY`, `DAY_MS`, `dayMs`, `msPerDay`, `days`), `86_400_000`,
 `Date.now() - startOfLocalDay(now)` is an elapsed time and is not
 flagged. `graceDays`, `msPerDay`, and `twoDays` are still spans. A day
 COUNT is not a day step either: `Math.floor((Date.now() - openedAt) /
-DAY_MS) - graceDays` is not flagged, because the rule matches the
-clock plus one offset plus a span directly, not a clock sum nested
-anywhere inside a larger expression.
+DAY_MS) - graceDays` is not flagged, because the rule matches a sum
+whose left side starts with the clock (`Date.now() + HOUR + MINUTE`),
+not a clock sum nested anywhere inside a larger expression.
 
 Known limits, not flagged:
 

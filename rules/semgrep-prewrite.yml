@@ -1383,6 +1383,10 @@ rules:
   # "day-sized" by its text: "day" as a whole camelCase/snake_case part, so
   # `startOfToday` and `holiday` are not spans; or 86_400_000, 24 * 60 * 60,
   # 60 * 60 * 24.
+  # `$LEFT` is read by its text, so the clock may sit behind any number of
+  # offsets (`Date.now() + HOUR + MINUTE + DAY_MS`) but must START the sum: a
+  # clock nested inside a larger left side is a day COUNT
+  # (`Math.floor((Date.now() - openedAt) / DAY_MS) - graceDays`), not a step.
   # `paths.include` is path-prefixed, so the fixture pair is NESTED.
   - id: kiko-no-fixed-day-offset-on-real-clock-in-test
     languages: [typescript]
@@ -1408,14 +1412,13 @@ rules:
           - pattern: new Date().getTime() + $SPAN
           - pattern: new Date().getTime() - $SPAN
           - pattern: $SPAN + new Date().getTime()
-          - pattern: Date.now() + $OFFSET + $SPAN
-          - pattern: Date.now() - $OFFSET + $SPAN
-          - pattern: Date.now() + $OFFSET - $SPAN
-          - pattern: Date.now() - $OFFSET - $SPAN
-          - pattern: new Date().getTime() + $OFFSET + $SPAN
-          - pattern: new Date().getTime() - $OFFSET + $SPAN
-          - pattern: new Date().getTime() + $OFFSET - $SPAN
-          - pattern: new Date().getTime() - $OFFSET - $SPAN
+          - patterns:
+              - pattern-either:
+                  - pattern: $LEFT + $SPAN
+                  - pattern: $LEFT - $SPAN
+              - metavariable-regex:
+                  metavariable: $LEFT
+                  regex: ^(?:Date\.now\(\)|new Date\(\)\.getTime\(\))\s*[-+]
           - patterns:
               - pattern-either:
                   - pattern: $NOW + $SPAN
