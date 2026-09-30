@@ -13,7 +13,6 @@ export type UserLimits = { dailyLimit: number; requestsToday: number; requestsDa
 // Every error below carries a fixed message: the request URL holds the user's
 // key, and an error message reaches logs and alerts.
 
-/** 401: EODHD did not accept the key. */
 export class EodhdAuthError extends Error {
   constructor() {
     super('EODHD rejected the API key');
@@ -24,7 +23,7 @@ export class EodhdAuthError extends Error {
   }
 }
 
-/** 403: the endpoint or the symbol is outside the key's plan — a per-symbol outcome, not a bad key. */
+/** The symbol or endpoint is outside the key's plan: skip that symbol, the key itself is fine. */
 export class EodhdNotInPlanError extends Error {
   constructor() {
     super('EODHD plan does not cover this request');
@@ -33,7 +32,7 @@ export class EodhdNotInPlanError extends Error {
   }
 }
 
-/** 402: the key's daily call limit is used up until midnight GMT. */
+/** The daily call limit is used up until EODHD's reset at midnight GMT. */
 export class EodhdQuotaError extends Error {
   constructor() {
     super('EODHD daily limit reached');
@@ -42,7 +41,6 @@ export class EodhdQuotaError extends Error {
   }
 }
 
-/** 429: the per-minute limit. */
 export class EodhdRateLimitError extends Error {
   constructor() {
     super('EODHD rate limit reached');
@@ -51,7 +49,6 @@ export class EodhdRateLimitError extends Error {
   }
 }
 
-/** A network failure, a 5xx or other status, or a body that is not the documented JSON. */
 export class EodhdUnavailableError extends Error {
   constructor() {
     super('EODHD is unavailable');
