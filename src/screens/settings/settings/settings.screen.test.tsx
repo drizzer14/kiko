@@ -183,6 +183,7 @@ describe('SettingsScreen', () => {
       'settings-card-data-transfer',
       'settings-card-base-currency',
       'settings-card-categories',
+      'settings-card-share-prices',
     ]);
   });
 
@@ -343,6 +344,16 @@ describe('SettingsScreen', () => {
     await fireEvent.press(await findByTestId('settings-row-export-data'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('ExportData');
+  });
+
+  it('always shows the Share prices row and opens its screen', async () => {
+    const navigation = navigationSpy();
+    const { findByTestId, getByText } = await renderScreen(navigation);
+
+    await fireEvent.press(await findByTestId('settings-row-share-prices'));
+
+    expect(getByText('Share prices')).toBeTruthy();
+    expect(navigation.navigate).toHaveBeenCalledWith('SharePrices');
   });
 
   it('navigates to the ImportData sub-screen when the Import Data row is pressed', async () => {

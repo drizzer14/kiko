@@ -103,6 +103,8 @@ export const TITLE_KEYS = new Set([
   'settings.dataExport.title',
   'settings.dataImport.confirmTitle',
   'settings.dataImport.title',
+  'settings.sharePricesScreen.removeConfirmTitle',
+  'settings.sharePricesScreen.title',
   'settings.system',
   'settings.title',
   'statementImport.chooseHoldingSheetTitle',

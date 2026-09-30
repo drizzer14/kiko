@@ -179,6 +179,7 @@ export type SettingsStackParamList = {
   Categories: undefined;
   ExportData: undefined;
   ImportData: undefined;
+  SharePrices: undefined;
   Reminders: undefined;
   ReminderForm: ReminderFormParams;
 };

@@ -122,6 +122,27 @@ export const en = {
       privacyPolicy: 'Privacy policy',
     },
     language: 'Language',
+    // The Settings row label; `sharePricesScreen.title` is the same screen's
+    // nav title (see `dataExport.rowLabel`).
+    sharePrices: 'Share prices',
+    sharePricesScreen: {
+      dailyLimit: 'Daily limit: {{limit}}',
+      intro:
+        'Kiko gets end-of-day share prices from EODHD with your own API key. You sign up with EODHD and accept its terms. The key stays on this iPhone.',
+      invalidKeyError: 'EODHD did not accept this key.',
+      keyLabel: 'API key',
+      keyPlaceholder: 'Paste your EODHD key',
+      keyRequiredError: 'Enter an API key.',
+      keySaved: 'Key saved',
+      pasteAccessibilityLabel: 'Paste key',
+      removeConfirmBody: 'Shares priced by EODHD keep their last price.',
+      removeConfirmTitle: 'Remove Key?',
+      removeKey: 'Remove key',
+      saveKey: 'Save key',
+      signUpHint: 'Get a free key at {{url}}.',
+      title: 'Share Prices',
+      unavailableError: 'Could not reach EODHD. Try again.',
+    },
     system: 'System',
     title: 'Settings',
   },
