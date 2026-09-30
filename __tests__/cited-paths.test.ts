@@ -1,6 +1,15 @@
+import {
+  rmSync,
+  statSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 
 // A unit move leaves the skills and harness docs citing the old path, and a
 // drift pass had to re-list those by hand three times running. This makes a
@@ -21,9 +30,10 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 // A partial citation drops the root (`design-system/entity-tint/…`,
 // `checks/lint.sh`). It counts only when its first segment is a child folder
 // of a cited root, which keeps branch names (`feat/…`), lint rule names
-// (`lint/…`) and package paths out. It resolves when a tracked file or
-// folder outside `rules/fixtures/` ends with it (an extension may be left
-// off); several matches still resolve, since the text does not say which.
+// (`lint/…`) and package paths out. It resolves when a file or folder on
+// disk that git tracks or would track (see `repositoryFiles`), outside
+// `rules/fixtures/`, ends with it (an extension may be left off); several
+// matches still resolve, since the text does not say which.
 const REPOSITORY_ROOT = join(__dirname, '..');
 
 const CITED_ROOTS = ['src', 'scripts', 'rules', 'docs', '__tests__', 'e2e', 'harness', '.claude'];
@@ -39,15 +49,21 @@ const PARTIAL_EXTENSIONS = ['', '.ts', '.tsx', '.js'];
 
 const PLACEHOLDER_PATTERN = /[*?{}[\]<>$…]|\.\.\./;
 
-const trackedFiles = execFileSync('git', ['ls-files'], {
-  cwd: REPOSITORY_ROOT,
-  encoding: 'utf8',
-})
-  .split('\n')
-  .filter((file) => file !== '');
+// Tracked plus untracked-but-not-ignored files, kept only when on disk, so a
+// partial citation resolves against the same files existsSync gives the
+// rooted check: a new file resolves, a deleted one does not.
+const repositoryFiles = (root: string): string[] =>
+  execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter((file) => file !== '' && existsSync(join(root, file)));
+
+const presentFiles = repositoryFiles(REPOSITORY_ROOT);
 
 const CHILD_FOLDERS_OF_ROOTS = new Set(
-  trackedFiles
+  presentFiles
     .map((file) => file.split('/'))
     .filter((segments) => segments.length > 2 && CITED_ROOTS.includes(segments[0]))
     .map((segments) => segments[1]),
@@ -55,7 +71,7 @@ const CHILD_FOLDERS_OF_ROOTS = new Set(
 
 const RESOLUTION_TARGETS = [
   ...new Set(
-    trackedFiles
+    presentFiles
       .filter((file) => !file.startsWith('rules/fixtures/'))
       .flatMap((file) =>
         file.split('/').map((_, index, segments) => segments.slice(0, index + 1).join('/')),
@@ -274,6 +290,25 @@ describe('citedPaths', () => {
   });
 });
 
+describe('repositoryFiles', () => {
+  it('lists the files on disk that git tracks or would track, as existsSync sees them', () => {
+    const root = mkdtempSync(join(tmpdir(), 'kiko-cited-paths-'));
+    const git = (...parameters: string[]) =>
+      execFileSync('git', parameters, { cwd: root, stdio: 'ignore' });
+    git('init', '-q');
+    writeFileSync(join(root, '.gitignore'), 'ignored.ts\n');
+
+    for (const file of ['tracked.ts', 'deleted.ts', 'untracked.ts', 'ignored.ts']) {
+      writeFileSync(join(root, file), '');
+    }
+
+    git('add', '.gitignore', 'tracked.ts', 'deleted.ts');
+    rmSync(join(root, 'deleted.ts'));
+
+    expect(repositoryFiles(root).sort()).toEqual(['.gitignore', 'tracked.ts', 'untracked.ts']);
+  });
+});
+
 describe('citedPartialPaths', () => {
   it('finds a path whose first segment is a child folder of a cited root (POSITIVE)', () => {
     expect(citedPartialPaths('See `design-system/entity-tint/entity-tint.ts` here.')).toEqual([
@@ -296,7 +331,7 @@ describe('citedPartialPaths', () => {
     expect(partialCitationResolves('design-system/entity-tint/entity-tint')).toBe(true);
   });
 
-  it('reports a partial path no tracked file or folder ends with', () => {
+  it('reports a partial path no listed file or folder ends with', () => {
     expect(partialCitationResolves('design-system/gone/gone.ts')).toBe(false);
   });
 });
@@ -325,7 +360,7 @@ describe('repo paths cited in skills, agents and harness docs', () => {
     ).toEqual([]);
   });
 
-  it('cites only partial paths that a tracked file or folder ends with', () => {
+  it('cites only partial paths that a listed file or folder ends with', () => {
     expect(citingFiles().flatMap(unresolvedPartialCitations)).toEqual([]);
   });
 

@@ -1393,8 +1393,12 @@ backticks, so it is not a citation; no prose wording exempts a
 backticked path. The test's header defines what counts as a citation.
 A partial citation that drops the root (`design-system/entity-tint/`,
 `checks/lint.sh`) counts too when its first segment is a child folder
-of a cited root; it fails only when no tracked file or folder outside
-`rules/fixtures/` ends with it.
+of a cited root; it fails only when no file or folder outside
+`rules/fixtures/` ends with it. The partial check reads the files on
+disk that git tracks or would track
+(`git ls-files --cached --others --exclude-standard`, kept when
+`existsSync`), so, as with the rooted `existsSync` check, a new
+uncommitted file resolves and a deleted one does not.
 
 ## Pre-write guard and merge-conflict files
 
