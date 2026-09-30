@@ -1112,9 +1112,15 @@ waiting for `Stop`. It is ALSO wired project-wide
 (`npm run check:import-order`, part of `check:all`) — `import-order.sh`
 takes an optional file argument: given one (the fast-tier hook), it
 checks only that file; given none, it walks every `.ts`/`.tsx` under
-`src/` (overridable via `IMPORT_ORDER_SRC_ROOT`, used only by the
-test to point at a disposable temp fixture tree instead of the real,
-much larger repo `src/`).
+`src/`, `__tests__/`, `e2e/`, plus `App.tsx` (overridable via
+`IMPORT_ORDER_SRC_ROOT`, used only by the test to point at a
+disposable temp fixture tree instead of the real, much larger repo).
+The per-file mode skips a file under `rules/fixtures/` (absolute under
+its own root, or relative) and exits 0, since the pre-write guard
+(`EXCLUDED_PREFIXES`) and the project-wide roots never read it either:
+a fixture may hold any import order on purpose. `full-word-identifiers.sh`
+keeps checking fixtures per file, because its project-wide roots
+include `rules/fixtures/`.
 
 Tested by spawning the `.sh` end-to-end against fixture files on disk
 (`__tests__/import-order.test.ts`, the `__tests__/kill-guard.test.ts`

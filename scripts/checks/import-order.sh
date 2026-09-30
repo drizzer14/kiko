@@ -19,13 +19,16 @@ fail() {
 }
 
 # Fast-tier, per-file mode (called from fast.sh with one edited file). A
-# non-.ts/.tsx target, or no file at all, is silently out of scope.
+# non-.ts/.tsx target, a file under rules/fixtures/ (whose fixtures hold any
+# import order on purpose; the pre-write guard and the project-wide roots
+# below never read it either), or no file at all, is silently out of scope.
 if [ -n "$TARGET" ]; then
   if [ ! -f "$TARGET" ]; then
     exit 0
   fi
 
   case "$TARGET" in
+    "$ROOT/rules/fixtures/"* | rules/fixtures/*) exit 0 ;;
     *.ts | *.tsx) : ;;
     *) exit 0 ;;
   esac

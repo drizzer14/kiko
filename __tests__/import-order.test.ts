@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { rmSync, mkdirSync, mkdtempSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 
 // scripts/checks/import-order.sh mechanizes kiko-code-style's "Import
 // ordering" rule (hand-enforced, not covered by Biome — see biome.json's
@@ -316,6 +316,57 @@ describe('scripts/checks/import-order.sh', () => {
       );
 
       expect(result.status).toBe(0);
+    });
+  });
+
+  // The pre-write guard and the project-wide roots never read rules/fixtures/,
+  // whose fixtures may hold any import order on purpose.
+  describe('a file under rules/fixtures/', () => {
+    const unsorted =
+      "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';\n" +
+      "import { type FC, useEffect } from 'react';\n" +
+      '\n' +
+      'export const Foo = 1;\n';
+
+    it('exits 0 on a relative rules/fixtures/ path', () => {
+      mkdirSync(join(directory, 'rules/fixtures'), { recursive: true });
+      writeFileSync(join(directory, 'rules/fixtures/bad.ts'), unsorted);
+
+      const result = spawnSync('bash', [SCRIPT, 'rules/fixtures/bad.ts'], {
+        cwd: directory,
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(0);
+    });
+
+    it('exits 0 on an absolute path under its own root, and 2 on the same file elsewhere', () => {
+      mkdirSync(join(directory, 'scripts/checks'), { recursive: true });
+      mkdirSync(join(directory, 'rules/fixtures'), { recursive: true });
+
+      for (const name of ['import-order.sh', 'import-order.js', '_lib.sh']) {
+        copyFileSync(
+          join(__dirname, '../scripts/checks', name),
+          join(directory, 'scripts/checks', name),
+        );
+      }
+
+      writeFileSync(join(directory, 'rules/fixtures/bad.ts'), unsorted);
+      writeFileSync(join(directory, 'bad.ts'), unsorted);
+      const copied = join(directory, 'scripts/checks/import-order.sh');
+      const environment = { ...process.env, TMPDIR: directory };
+
+      const inFixtures = spawnSync('bash', [copied, join(directory, 'rules/fixtures/bad.ts')], {
+        encoding: 'utf8',
+        env: environment,
+      });
+      const outside = spawnSync('bash', [copied, join(directory, 'bad.ts')], {
+        encoding: 'utf8',
+        env: environment,
+      });
+
+      expect(inFixtures.status).toBe(0);
+      expect(outside.status).toBe(2);
     });
   });
 
