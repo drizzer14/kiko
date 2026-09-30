@@ -311,7 +311,7 @@ rules:
           - pattern: $READ(...)
           - metavariable-regex:
               metavariable: $READ
-              regex: ^(readToken|readCredentials|readDbKey)$
+              regex: ^(readToken|readCredentials|readDbKey|readEodhdKey)$
     pattern-sinks:
       - patterns:
           - pattern: $SET($X)
@@ -347,7 +347,7 @@ rules:
       - pattern: $READ(...).then($F)
       - metavariable-regex:
           metavariable: $READ
-          regex: ^(readToken|readCredentials|readDbKey)$
+          regex: ^(readToken|readCredentials|readDbKey|readEodhdKey)$
   # kiko-domain "Money at the boundary" (D7b): a holding's raw
   # `balanceMinorUnits` column is converted to `Money` in exactly one place,
   # `holdingsRepo.balanceOf`. A `.balanceMinorUnits` member read anywhere else

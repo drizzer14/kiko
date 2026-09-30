@@ -7,6 +7,7 @@
 import { useState } from 'react';
 
 import { readToken } from '../../src/monobank/token';
+import { readEodhdKey } from '../../src/prices/eodhd-key';
 
 export const FixtureBadThenForm = () => {
   const [token, setToken] = useState('');
@@ -19,4 +20,17 @@ export const FixtureBadThenForm = () => {
   });
 
   return token;
+};
+
+export const FixtureBadEodhdKeyThenForm = () => {
+  const [key, setKey] = useState('');
+
+  // EXPECT-FINDING
+  readEodhdKey().then((existing) => {
+    if (existing !== undefined) {
+      setKey(existing);
+    }
+  });
+
+  return key;
 };

@@ -14,6 +14,8 @@ import { useState } from 'react';
 
 import { fetchClientInfo } from '../../src/monobank/client';
 import { hasToken, readToken } from '../../src/monobank/token';
+import { fetchUserLimits } from '../../src/prices/eodhd';
+import { hasEodhdKey, readEodhdKey } from '../../src/prices/eodhd-key';
 
 export const FixtureGoodExistenceProbe = () => {
   const [isTokenSaved, setIsTokenSaved] = useState(false);
@@ -42,4 +44,27 @@ export const FixtureGoodTransientUse = () => {
   };
 
   return { isConnected, refresh };
+};
+
+export const FixtureGoodEodhdKeyProbeAndTransientUse = () => {
+  const [isKeySaved, setIsKeySaved] = useState(false);
+
+  hasEodhdKey().then((exists) => {
+    setIsKeySaved(exists);
+  });
+
+  const check = async (): Promise<void> => {
+    const key = await readEodhdKey();
+
+    if (key === undefined) {
+      setIsKeySaved(false);
+
+      return;
+    }
+
+    await fetchUserLimits(key);
+    setIsKeySaved(true);
+  };
+
+  return { isKeySaved, check };
 };
