@@ -67,6 +67,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-source-text-read-in-test',
   'kiko-no-fixed-day-offset-on-real-clock-in-test',
   'kiko-header-item-native-only',
+  'kiko-no-header-spacing-item',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (

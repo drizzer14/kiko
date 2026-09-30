@@ -1475,3 +1475,24 @@ rules:
               - pattern-inside: "{..., unstable_headerRightItems: (...) => $ITEMS, ...}"
               - pattern-inside: "{..., unstable_headerLeftItems: $ITEMS, ...}"
               - pattern-inside: "{..., unstable_headerLeftItems: (...) => $ITEMS, ...}"
+  # kiko-design-system's "UX patterns" (Header bar items): native-stack sends a
+  # `type: 'spacing'` item with no index, so react-native-screens inserts it at
+  # the trailing edge rather than between the items it was meant to split. The
+  # skill states the rule for any split, so both item lists are covered.
+  - id: kiko-no-header-spacing-item
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A `type: 'spacing'` header item. native-stack sends it with no index, so
+      react-native-screens inserts it at the trailing edge, not between the
+      items it was meant to split — see kiko-design-system's "UX patterns".
+    metadata:
+      fix: "Split items with `sharesBackground: false`, never a spacing item."
+      skill: "kiko-design-system › UX patterns"
+    patterns:
+      - pattern: "{..., type: 'spacing', ...}"
+      - pattern-either:
+          - pattern-inside: "{..., unstable_headerRightItems: $ITEMS, ...}"
+          - pattern-inside: "{..., unstable_headerRightItems: (...) => $ITEMS, ...}"
+          - pattern-inside: "{..., unstable_headerLeftItems: $ITEMS, ...}"
+          - pattern-inside: "{..., unstable_headerLeftItems: (...) => $ITEMS, ...}"
