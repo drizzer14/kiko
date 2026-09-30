@@ -28,6 +28,17 @@ export const setNamedHeaderRight = (navigation: OptionsSetter): void => {
   navigation.setOptions({ headerRight: renderEditButton });
 };
 
+export const setShorthandHeaderRight = (navigation: OptionsSetter): void => {
+  const headerRight = renderEditButton;
+  // EXPECT-FINDING
+  navigation.setOptions({ headerRight });
+};
+
+export const clearRightSetLeft = (navigation: OptionsSetter): void => {
+  // EXPECT-FINDING
+  navigation.setOptions({ headerRight: undefined, headerLeft: () => <Text>Back</Text> });
+};
+
 export const HiddenBackStack: FC = () => (
   <Stack.Navigator>
     <Stack.Screen

@@ -1454,6 +1454,10 @@ rules:
   # an unrelated `{ type: 'custom' }` object stays silent. Semgrep binds `$X`
   # in `{..., key: $X, ...}` to no arrow-function value, so each key also has
   # a `(...) => $V` arm, which matches an arrow with either body and a method.
+  # Not a header view: `undefined` (it clears an item set earlier), a style
+  # named for the slot inside `StyleSheet.create`, and a `const`/`let`
+  # destructuring that reads the options back (Semgrep matches an object
+  # pattern as an object literal).
   - id: kiko-header-item-native-only
     languages: [typescript]
     severity: ERROR
@@ -1466,18 +1470,32 @@ rules:
     metadata:
       fix: "Use a native `type: 'button'` item (`sfSymbol` icon, `sharesBackground: false`) in `unstable_headerRightItems`, or `editBarItem(...)`."
       skill: "kiko-design-system › UX patterns"
-    pattern-either:
-      - pattern: "{..., headerRight: $X, ...}"
-      - pattern: "{..., headerRight: (...) => $V, ...}"
-      - pattern: "{..., headerLeft: $X, ...}"
-      - pattern: "{..., headerLeft: (...) => $V, ...}"
-      - patterns:
-          - pattern: "{..., type: 'custom', ...}"
-          - pattern-either:
-              - pattern-inside: "{..., unstable_headerRightItems: $ITEMS, ...}"
-              - pattern-inside: "{..., unstable_headerRightItems: (...) => $ITEMS, ...}"
-              - pattern-inside: "{..., unstable_headerLeftItems: $ITEMS, ...}"
-              - pattern-inside: "{..., unstable_headerLeftItems: (...) => $ITEMS, ...}"
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: "{..., headerRight: $X, ...}"
+              - metavariable-regex:
+                  metavariable: $X
+                  regex: ^(?!undefined$)
+          - pattern: "{..., headerRight: (...) => $V, ...}"
+          - patterns:
+              - pattern: "{..., headerLeft: $X, ...}"
+              - metavariable-regex:
+                  metavariable: $X
+                  regex: ^(?!undefined$)
+          - pattern: "{..., headerLeft: (...) => $V, ...}"
+          - patterns:
+              - pattern: "{..., type: 'custom', ...}"
+              - pattern-either:
+                  - pattern-inside: "{..., unstable_headerRightItems: $ITEMS, ...}"
+                  - pattern-inside: "{..., unstable_headerRightItems: (...) => $ITEMS, ...}"
+                  - pattern-inside: "{..., unstable_headerLeftItems: $ITEMS, ...}"
+                  - pattern-inside: "{..., unstable_headerLeftItems: (...) => $ITEMS, ...}"
+      - pattern-not-inside: StyleSheet.create(...)
+      - pattern-not-inside: "const {..., headerRight: $R, ...} = $E;"
+      - pattern-not-inside: "const {..., headerLeft: $R, ...} = $E;"
+      - pattern-not-inside: "let {..., headerRight: $R, ...} = $E;"
+      - pattern-not-inside: "let {..., headerLeft: $R, ...} = $E;"
   # kiko-design-system's "UX patterns" (Header bar items): native-stack sends a
   # `type: 'spacing'` item with no index, so react-native-screens inserts it at
   # the trailing edge rather than between the items it was meant to split. The

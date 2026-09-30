@@ -1,4 +1,4 @@
-import type { ColorValue } from 'react-native';
+import { type ColorValue, StyleSheet } from 'react-native';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
@@ -33,3 +33,20 @@ export const setNativeHeaderItems = (
 };
 
 export const customRowKind = { type: 'custom', label: 'Custom range' };
+
+// A style named for the header slot is not a header option.
+export const styles = StyleSheet.create({ headerRight: { flexDirection: 'row' } });
+
+// `undefined` clears a header item set earlier; it builds no view.
+export const clearHeaderItems = (navigation: OptionsSetter): void => {
+  navigation.setOptions({ headerRight: undefined, headerLeft: undefined });
+};
+
+// Reading the header options back builds no view.
+export const readHeaderItems = (options: NativeStackNavigationOptions): unknown[] => {
+  const { headerRight } = options;
+  let { headerLeft: left } = options;
+  left ??= headerRight;
+
+  return [headerRight, left];
+};
