@@ -58,9 +58,8 @@ type Kind = (typeof kinds)[number];
 
 // A stored `kind` can still hold a value that is no longer part of the CURRENT
 // schema enum — the schema's `enum` is TS-only (no DB CHECK constraint), so a
-// row under a kind the app no longer knows can persist. A stored `broker` row
-// from before that kind was first dropped (none expected) reads as a broker
-// with no broker picked.
+// row under a kind the app no longer knows can persist. A broker row whose
+// `bankId` is not a catalog broker reads as no broker picked.
 // Guards the edit-mode hydration below against that case so an unrecognized
 // stored kind never assigns outside `Kind`'s own type (and the symbol/color
 // lookups below never silently miss).
