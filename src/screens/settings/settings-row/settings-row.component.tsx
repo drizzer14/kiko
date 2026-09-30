@@ -50,7 +50,7 @@ const SettingsRow: FC<SettingsRowProps> = ({
         // glyph reads as a peer of the title, not larger than it.
         <Box
           testID="settings-row-chevron"
-          style={styles.chevron}
+          style={[styles.chevron, trailing !== undefined && styles.chevronAfterTrailing]}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >

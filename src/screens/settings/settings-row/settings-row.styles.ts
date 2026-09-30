@@ -59,4 +59,10 @@ export const styles = StyleSheet.create((theme) => ({
     height: theme.iconSizes.body,
     justifyContent: 'center',
   },
+  // A chevron right after a switch read as crowding it on device (user
+  // feedback 2026-09-30); a chevron after a label needs no gutter because
+  // the header's space-between already separates them.
+  chevronAfterTrailing: {
+    marginLeft: theme.spacing(1),
+  },
 }));

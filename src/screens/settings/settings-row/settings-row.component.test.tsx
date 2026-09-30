@@ -168,6 +168,32 @@ describe('SettingsRow', () => {
     ).toBeTruthy();
   });
 
+  it('sets the chevron one spacing step clear of a switch, and adds no gutter after a label', async () => {
+    const withSwitch = await render(
+      <SettingsRow
+        label="Add transactions"
+        onPress={jest.fn()}
+        trailing={<RNText>toggle</RNText>}
+        accessibilityActions={[{ name: 'toggle', label: 'Turn off' }]}
+        onAccessibilityAction={jest.fn()}
+      >
+        <RNText>Every day at 20:00</RNText>
+      </SettingsRow>,
+    );
+    const afterSwitch = withSwitch.getByTestId('settings-row-chevron', {
+      includeHiddenElements: true,
+    });
+
+    expect(StyleSheet.flatten(afterSwitch.props.style).marginLeft).toBe(darkTheme.spacing(1));
+
+    const labelOnly = await render(<SettingsRow label="Categories" onPress={jest.fn()} />);
+    const afterLabel = labelOnly.getByTestId('settings-row-chevron', {
+      includeHiddenElements: true,
+    });
+
+    expect(StyleSheet.flatten(afterLabel.props.style).marginLeft).toBeUndefined();
+  });
+
   it('keeps the trailing control of a static row on its label’s first line', async () => {
     const { getByTestId } = await render(
       <SettingsRow

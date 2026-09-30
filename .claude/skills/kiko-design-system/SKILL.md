@@ -275,7 +275,11 @@ The established patterns grouped under this heading:
   the rule is the `onPress` + `children` branch in
   `settings-row.component.tsx`), which centers them on the label and body
   together, as a UIKit cell centers its accessory view; the body then
-  wraps beside them instead of running under the switch.
+  wraps beside them instead of running under the switch. **Locked
+  (2026-09-30, user request "increase horizontal gap between a toggle
+  and >"):** a chevron after a `trailing` control carries a
+  `spacing(1)` left margin (`chevronAfterTrailing`,
+  `settings-row.styles.ts`); a chevron after a plain label has none.
   **Rule:** on iOS an accessible `Pressable` groups its children into
   ONE VoiceOver element, so a control inside a pressable row cannot be
   reached. A row that passes both `onPress` and an interactive
