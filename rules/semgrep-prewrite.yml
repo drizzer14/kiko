@@ -1443,3 +1443,35 @@ rules:
       - pattern-not-inside: |
           jest.useFakeTimers({..., now: $PINNED, ...});
           ...
+  # kiko-design-system's "UX patterns" (Header bar items): UIKit sizes a native
+  # bar item's glyph, glass capsule, and 44pt target; a React view in
+  # `headerRight`/`headerLeft` or a `type: 'custom'` item gets a different glyph
+  # size and capsule, so it does not read as the same kind of button as its
+  # native neighbour. The `custom` arm is scoped to the header item lists, so
+  # an unrelated `{ type: 'custom' }` object stays silent. Semgrep binds `$X`
+  # in `{..., key: $X, ...}` to no arrow-function value, so each key also has
+  # a `(...) => $V` arm, which matches an arrow with either body and a method.
+  - id: kiko-header-item-native-only
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A header action is built as a React view (`headerRight`, `headerLeft`, or
+      a `type: 'custom'` header item). UIKit sizes only a native bar item's
+      glyph, capsule, and 44pt target, so a React view does not read as the
+      same kind of button as its neighbour — see kiko-design-system's
+      "UX patterns".
+    metadata:
+      fix: "Use a native `type: 'button'` item (`sfSymbol` icon, `sharesBackground: false`) in `unstable_headerRightItems`, or `editBarItem(...)`."
+      skill: "kiko-design-system › UX patterns"
+    pattern-either:
+      - pattern: "{..., headerRight: $X, ...}"
+      - pattern: "{..., headerRight: (...) => $V, ...}"
+      - pattern: "{..., headerLeft: $X, ...}"
+      - pattern: "{..., headerLeft: (...) => $V, ...}"
+      - patterns:
+          - pattern: "{..., type: 'custom', ...}"
+          - pattern-either:
+              - pattern-inside: "{..., unstable_headerRightItems: $ITEMS, ...}"
+              - pattern-inside: "{..., unstable_headerRightItems: (...) => $ITEMS, ...}"
+              - pattern-inside: "{..., unstable_headerLeftItems: $ITEMS, ...}"
+              - pattern-inside: "{..., unstable_headerLeftItems: (...) => $ITEMS, ...}"
