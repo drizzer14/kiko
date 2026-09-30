@@ -178,6 +178,11 @@ const mockRunLoanAutoLink = jest.fn().mockResolvedValue(undefined);
 jest.mock('@kiko/loans/use-loan-auto-link', () => ({
   runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
 }));
+// The share form reads only whether an EODHD key is saved; no key by default.
+let mockHasEodhdKey = false;
+jest.mock('@kiko/prices/eodhd-key', () => ({
+  hasEodhdKey: () => Promise.resolve(mockHasEodhdKey),
+}));
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
 // environment (mirrors contribution-form's and account-form's own mock).
@@ -215,6 +220,7 @@ beforeEach(() => {
   mockPricePointsLoading = false;
   mockAllHoldings = [];
   mockAllAccounts = [];
+  mockHasEodhdKey = false;
 });
 
 const renderScreen = () =>
@@ -2525,6 +2531,130 @@ describe('HoldingFormScreen metal', () => {
       }),
       expect.any(Number),
     );
+  });
+});
+
+describe('HoldingFormScreen share', () => {
+  const NO_KEY_HINT =
+    'Add your EODHD key in Settings → "Share prices" to get prices automatically.';
+
+  beforeEach(() => {
+    createMock.mockClear();
+    navigation.goBack.mockClear();
+    mockAccountKind = 'broker';
+    mockAccountInstitution = null;
+    mockAccountBankId = 'trading212';
+  });
+
+  it('offers share first on a broker account and selects it by default', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.getByText('Price source')).toBeTruthy();
+
+    await openHoldingTypeSheet(screen);
+
+    expect(typeOptionIds(screen)).toEqual([
+      'holding-type-field-option-share',
+      'holding-type-field-option-bond',
+      'holding-type-field-option-cash',
+    ]);
+  });
+
+  it('creates a manual share with one lot and a first price of cost per share', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Apple');
+    await fireEvent.press(screen.getByText('Manual'));
+    await fill(screen, 'Quantity', '3');
+    await fill(screen, 'Total cost', '1000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    const today = dayKeyOf(Date.now());
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'share',
+        currency: 'UAH',
+        metadata: {
+          quoteSource: 'manual',
+          lots: [{ day: today, quantityDelta: '3', costMinorUnits: 100_000 }],
+        },
+        firstPricePoint: { day: today, price: '333.33333333' },
+      }),
+    );
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('creates an EODHD share with its ticker and no price point', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Apple');
+    await fill(screen, 'Ticker', 'aapl.us');
+    await fill(screen, 'Quantity', '3');
+    await fill(screen, 'Total cost', '1000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'share',
+        metadata: {
+          quoteSource: 'eodhd',
+          symbol: 'AAPL.US',
+          lots: [{ day: dayKeyOf(Date.now()), quantityDelta: '3', costMinorUnits: 100_000 }],
+        },
+      }),
+    );
+    expect(createMock.mock.calls[0][0]).not.toHaveProperty('firstPricePoint');
+  });
+
+  it('blocks Save on a blank ticker in EODHD mode, with its error', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Apple');
+    await fill(screen, 'Quantity', '3');
+    await fill(screen, 'Total cost', '1000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('Enter a ticker, for example AAPL.US.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks Save on an ISIN with a wrong check digit', async () => {
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Apple');
+    await fireEvent.press(screen.getByText('Manual'));
+    await fill(screen, 'ISIN', 'US0378331006');
+    await fill(screen, 'Quantity', '3');
+    await fill(screen, 'Total cost', '1000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.getByText('ISIN check digit is wrong.')).toBeTruthy();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('shows the EODHD option and a Settings hint with no saved key', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.getByText('EODHD')).toBeTruthy();
+    expect(await screen.findByText(NO_KEY_HINT)).toBeTruthy();
+  });
+
+  it('shows the EODHD option and no hint once a key is saved', async () => {
+    mockHasEodhdKey = true;
+    const screen = await renderScreen();
+
+    await waitFor(() => expect(screen.queryByText(NO_KEY_HINT)).toBeNull());
+    expect(screen.getByText('EODHD')).toBeTruthy();
+  });
+
+  it('offers fiat currencies only for a share', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByTestId('holding-currency-field'));
+    await fireEvent.changeText(screen.getByPlaceholderText('Search by code or name'), 'BTC');
+
+    expect(screen.queryByTestId('currency-option-BTC')).toBeNull();
   });
 });
 

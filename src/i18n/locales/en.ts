@@ -465,6 +465,16 @@ export const en = {
       remove: 'Remove',
       removeContribution: 'Remove contribution {{index}}',
       semiannually: 'Semiannually',
+      share: 'Share',
+      // Shown under the price source in EODHD mode until a key is saved, so
+      // the EODHD option is never a dead control.
+      shareNoKeyHint:
+        'Add your EODHD key in Settings → "Share prices" to get prices automatically.',
+      sharePriceSource: 'Price source',
+      sharePriceSourceEodhd: 'EODHD',
+      shareTicker: 'Ticker',
+      shareTickerError: 'Enter a ticker, for example AAPL.US.',
+      shareTickerPlaceholder: 'AAPL.US',
       switchToManual: 'Switch to manual',
       termMonths: 'Term',
       termMonthsError: 'Enter a whole number of months greater than 0.',

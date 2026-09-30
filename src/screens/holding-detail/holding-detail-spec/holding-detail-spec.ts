@@ -158,6 +158,12 @@ export const holdingDetailSpecs = {
     breakdown: { kind: 'priced' },
     upcomingInstallments: noInstallments,
   },
+  // A share records its buys and sells through the Lot form, like a metal.
+  share: {
+    footerAction: () => 'addLot',
+    breakdown: { kind: 'priced' },
+    upcomingInstallments: noInstallments,
+  },
   // A loan is ledgerless but still takes the SAME `'updateValue'`
   // action as a priced holding — it reuses `PricePointForm` to write a
   // correction onto its own `holding:<id>` manual series

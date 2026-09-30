@@ -46,10 +46,12 @@ import { holdingDescriptor, isLedgerlessHoldingType } from '@kiko/holdings/holdi
 import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
+import ShareFormBlock from './share/share-form-block';
 import MetalTypeField from './metal/metal-type-field';
 import { useLoanFields } from './loan/use-loan-fields';
 import { useBondFields } from './bond/use-bond-fields';
 import { useMetalFields } from './metal/use-metal-fields';
+import { useShareFields } from './share/use-share-fields';
 import BalanceFormBlock from './balance/balance-form-block';
 import PropertyFormBlock from './property/property-form-block';
 import PropertyTypeField from './property/property-type-field';
@@ -184,6 +186,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     property_item: t('forms.holding.propertyItem'),
     metal: t('forms.holding.metal'),
     loan: t('forms.holding.loan'),
+    share: t('forms.holding.share'),
   };
   // A `holdingId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing holding, saving through the update path
@@ -338,6 +341,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const bond = useBondFields({ type, isEdit, currency, setCurrency, name, setName });
   const property = usePropertyFields({ isEdit, currency });
   const metal = useMetalFields({ isEdit });
+  const share = useShareFields({ type, isEdit, currency });
   const loanFields = useLoanFields({ currency });
   // Stays mounted across every type, not only while a balance type is
   // selected, so a value typed before switching away survives the switch.
@@ -370,6 +374,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     bond,
     property_item: property,
     metal,
+    share,
     loan: loanFields,
     card: balance,
     cash: balance,
@@ -420,6 +425,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       bond: bond.seed,
       property_item: property.seed,
       metal: metal.seed,
+      share: share.seed,
       loan: loanFields.seed,
     };
     const seed = Object.hasOwn(seeds, holding.type) ? seeds[holding.type] : balance.seed;
@@ -431,6 +437,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     bond.seed,
     property.seed,
     metal.seed,
+    share.seed,
     loanFields.seed,
     balance.seed,
   ]);
@@ -699,6 +706,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           ))
           .with('metal', () => (
             <MetalFormBlock fields={metal} attemptedSave={attemptedSave} isEdit={isEdit} />
+          ))
+          .with('share', () => (
+            <ShareFormBlock
+              fields={share}
+              attemptedSave={attemptedSave}
+              isEdit={isEdit}
+              currency={currency}
+            />
           ))
           .with('loan', () => (
             <LoanFormBlock

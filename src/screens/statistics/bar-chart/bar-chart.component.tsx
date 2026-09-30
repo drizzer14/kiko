@@ -46,6 +46,7 @@ const holdingTypeLabel = (type: HoldingType, t: TFunction): string =>
     .with('property_item', () => t('forms.holding.propertyItem'))
     .with('metal', () => t('forms.holding.metal'))
     .with('loan', () => t('forms.holding.loan'))
+    .with('share', () => t('forms.holding.share'))
     .exhaustive();
 
 // One bar row: the type name and its converted amount above a bar whose width

@@ -16,6 +16,7 @@ const typeLabels = {
   property_item: 'Property',
   metal: 'Precious metal',
   loan: 'Loan',
+  share: 'Share',
 } satisfies Record<HoldingType, string>;
 
 const setup = async (

@@ -36,6 +36,7 @@ describe('holdingDetailSpecs footerAction', () => {
       { type: 'bond', unsynced: 'none', synced: 'none' },
       { type: 'property_item', unsynced: 'updateValue', synced: 'updateValue' },
       { type: 'metal', unsynced: 'addLot', synced: 'addLot' },
+      { type: 'share', unsynced: 'addLot', synced: 'addLot' },
       { type: 'loan', unsynced: 'updateValue', synced: 'updateValue' },
       { type: 'card', unsynced: 'transaction', synced: 'none' },
       { type: 'cash', unsynced: 'transaction', synced: 'none' },
@@ -201,9 +202,10 @@ describe('holdingDetailSpecs breakdown', () => {
   // property_item and metal show the cost/value/gain breakdown instead of the
   // deposit/bond interest/tax table (they accrue no interest and withhold no
   // tax, so those rows would only ever read a misleading zero).
-  it('shows property_item and metal the priced breakdown', () => {
+  it('shows property_item, metal, and share the priced breakdown', () => {
     expect(holdingDetailSpecs.property_item.breakdown).toEqual({ kind: 'priced' });
     expect(holdingDetailSpecs.metal.breakdown).toEqual({ kind: 'priced' });
+    expect(holdingDetailSpecs.share.breakdown).toEqual({ kind: 'priced' });
   });
 
   it('shows a loan the ledger breakdown', () => {
