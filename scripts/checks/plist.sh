@@ -17,7 +17,8 @@ fi
 
 # --- 1. Every credential-bearing host must be pinned (H3) ---------------------
 # A client that sends a credential header (X-Token, X-MBX-APIKEY, Authorization,
-# or an api-key-ish header) takes its base URL from `@env` — that is the
+# or an api-key-ish header) or a credential query parameter (the quoted
+# 'api_token' literal) takes its base URL from `@env` — that is the
 # project's convention (kiko-code-style, "Externalize hardcoded config"). Resolve
 # each such client's `@env` identifiers to hosts via `.env`, then require every
 # resolved host under NSPinnedDomains. This is what would have caught the
@@ -51,7 +52,7 @@ while IFS= read -r file; do
     # credential header takes its base URL from `@env` by convention, so with no
     # `@env` import at all there is no host to resolve and this check would
     # silently prove nothing about the one file it most needs to.
-    add_problem "credential header but no @env import in ${file#"$ROOT"/} — its endpoint cannot be resolved, so it cannot be verified as pinned; move the base URL into .env and import it from '@env'"
+    add_problem "credential (header or 'api_token' query parameter) but no @env import in ${file#"$ROOT"/} — its endpoint cannot be resolved, so it cannot be verified as pinned; move the base URL into .env and import it from '@env'"
     env_names=""
   fi
   while IFS= read -r name; do
@@ -65,13 +66,13 @@ while IFS= read -r file; do
     case "$value" in http://*|https://*) ;; *) continue ;; esac
     host="$(printf '%s' "$value" | sed -E 's#^[a-z]+://##; s#[/?].*$##')"
     if ! printf '%s\n' "$pinned" | grep -Fxq "$host"; then
-      add_problem "$host (from $name, used by ${file#"$ROOT"/}) sends a credential header but is not under NSPinnedDomains in ios/Kiko/Info.plist"
+      add_problem "$host (from $name, used by ${file#"$ROOT"/}) sends a credential (header or 'api_token' query parameter) but is not under NSPinnedDomains in ios/Kiko/Info.plist"
     fi
   done <<EOF
 $env_names
 EOF
 done <<EOF
-$(grep -rlE "'(X-Token|X-MBX-APIKEY|Authorization)'|'[Aa]pi[-_]?[Kk]ey'" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')
+$(grep -rlE "'(X-Token|X-MBX-APIKEY|Authorization|api_token)'|'[Aa]pi[-_]?[Kk]ey'" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')
 EOF
 
 # Every pinned domain must carry at least two SPKI pins (reinforces Task 7/H3).

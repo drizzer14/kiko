@@ -10,7 +10,8 @@ accepted rather than mitigated.
 
 `ios/Kiko/Info.plist` → `NSAppTransportSecurity` → `NSPinnedDomains` pins every
 host the app sends a credential to, with two CA SPKI-SHA256 pins each under
-`NSPinnedCAIdentities` (primary = root CA, backup = current intermediate).
+`NSPinnedCAIdentities` (primary = root CA, backup = current intermediate; for
+a Let's Encrypt host, both pins are roots — see `eodhd.com` below).
 Pinning is scoped to secret-bearing hosts: a MITM on a public, unauthenticated
 endpoint can misreport a number, but has no credential to steal, and pinning a
 third-party public API the user cannot re-provision trades a real
@@ -20,6 +21,7 @@ availability risk for little.
 |---|---|---|---|---|
 | `api.monobank.ua` | `src/monobank/` (`X-Token` header) | yes — the personal bank token | **yes** | The token grants read access to every account and full statement history. |
 | `api.binance.com` | `src/crypto-sync/binance/binance.client.ts` (`X-MBX-APIKEY` header) | yes — the read-only API key | **yes** | A MITM reads the API key and the full `/api/v3/account` balance response, and can replay the captured signed request inside the 5 s `recvWindow`. The HMAC secret itself never crosses the wire (`binance.hmac.ts` signs locally). |
+| `eodhd.com` | `src/prices/eodhd/` (`api_token` query parameter) | yes — the user's own EODHD API key | **yes** | A MITM reads the key from the request URL and can spend the user's daily call quota or use their paid plan. Pins are two roots, never the intermediate (see "Why `eodhd.com` pins two roots"). |
 | `api.coingecko.com` | `src/rates/` (`coingecko`, `coingecko-history`) | no | no | Public BTC price quote, no auth header. Worst case an active MITM misreports the BTC price. |
 | `blockstream.info` | `src/crypto-sync/btc-wallet/btc-wallet.client.ts` | no | no | Public Esplora explorer, no auth header. Worst case an active MITM forges `chain_stats` and misreports the BTC balance. See the accepted risk on address disclosure below. |
 | `bank.gov.ua` | `src/rates/` (`nbu-history`, `nbu-rates`), `src/prices/nbu-metals`, `src/bonds/nbu-register` | no | no | Public NBU historical AND current fiat rates, no auth header. `nbu-rates` is the unpinned live fallback `rates-refresh.ts` reaches for only when the cert-pinned Monobank fiat fetch fails. `nbu-metals` reads the SAME two endpoints for precious-metal (XAU/XAG/XPT/XPD) prices, refreshed only for currently held metals (`metal-refresh.ts`). `nbu-register` reads a THIRD endpoint on the same host, the public securities register, to refresh the `bond_register` cache at most once per local day (`bond-register.repo.ts`'s `refreshBondRegisterIfStale`). |
@@ -42,24 +44,60 @@ availability risk for little.
 | intermediate | `C=US, O=DigiCert Inc, CN=GeoTrust TLS RSA CA G1` | 2027-11-02 | `SDG5orEv8iX6MNenIAxa8nQFNpROB/6+llsZdXHZNqs=` | yes — backup |
 | root | `C=US, O=DigiCert Inc, CN=DigiCert Global Root G2` | 2038-01-15 | `i7WTqTvh0OioIruIfFR4kMPnBqrS2rdiVPl/s2uC/CY=` | yes — primary |
 
+`eodhd.com` — first pinned; chain captured 2026-09-30 21:20 UTC (OpenSSL
+3.6.3). The server sends the leaf, YR1, and ISRG Root YR cross-signed by
+ISRG Root X1; it does not send ISRG Root X1 itself.
+
+| Role | Subject | Expires | SPKI-SHA256 (base64) | Pinned |
+|---|---|---|---|---|
+| leaf | `CN=eodhd.com` | 2026-11-23 | `B36J+dbVqICSRwTr96PX0cc1YE+artMWNPDlUPR85LQ=` | no (renews) |
+| intermediate | `C=US, O=Let's Encrypt, CN=YR1` | 2028-09-02 | `LoMHBotttiDko50Gi13uXW71eIy7LAttI+rYT8wXF4w=` | no (rotates) |
+| root | `C=US, O=ISRG, CN=Root YR` (sent cross-signed by ISRG Root X1; the cross-sign expires 2032-09-02) | — | `fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=` | yes — primary |
+| root | `C=US, O=Internet Security Research Group, CN=ISRG Root X1` | 2035-06-04 | `C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=` | yes — backup |
+
+Source of each pin: ISRG Root YR's SPKI is taken from the cross-signed
+certificate the server sends (a cross-sign keeps the root's own key, so the
+hash equals the self-signed Root YR's). The macOS system root store has no
+Root YR. ISRG Root X1's SPKI is taken from the macOS system root store
+(`/System/Library/Keychains/SystemRootCertificates.keychain`, SHA-256
+fingerprint
+`96:BC:EC:06:26:49:76:F3:74:60:77:9A:CF:28:C5:A7:CF:E8:A3:C0:AA:E1:1A:8F:FC:EE:05:C0:BD:DF:08:C6`),
+and `openssl verify` confirms that this X1 key signed the cross-signed Root
+YR (its Authority Key Identifier
+`79:B4:59:E6:7B:B6:E5:E4:01:73:80:08:88:C8:1A:58:F6:E9:9B:6E` equals X1's
+Subject Key Identifier).
+
+#### Why `eodhd.com` pins two roots
+
+Let's Encrypt issues from a rotating set of short-lived intermediates (YR1
+today, with siblings that it can switch between at any renewal, without
+notice). A pin on YR1 would break the day the next leaf comes from a sibling
+intermediate. Both pins are therefore roots: ISRG Root YR (primary, the root
+that signs YR1) and ISRG Root X1 (backup, which cross-signs Root YR and
+anchors the chain on a device that does not yet trust Root YR itself). A
+Let's Encrypt intermediate change needs no app update; only a move away from
+ISRG does.
+
 ### What breaks if the pins go stale
 
 Monobank: every Monobank request fails closed with a TLS error
 (`useSync`/`useAutoSync` surface it as a failed sync; no data leaves the
 device). Binance: the crypto sync's Binance provider fails the same way; the
-BTC-wallet provider, CoinGecko price sync, and NBU history keep working. Fail
-closed is the intended mode in both cases.
+BTC-wallet provider, CoinGecko price sync, and NBU history keep working.
+EODHD: every share price request fails the same way and no new share price
+is stored; the key never crosses an untrusted chain. Fail closed is the intended mode in
+every case.
 
 ### Rotation runbook
 
 Owner: the repository owner (single-user app). Cadence: on every release build,
 and immediately if a sync starts failing with a TLS error.
 
-1. Recompute BOTH chains:
+1. Recompute every pinned host's chain:
 
    ```bash
    cd "$(mktemp -d)"
-   for host in api.monobank.ua api.binance.com; do
+   for host in api.monobank.ua api.binance.com eodhd.com; do
      echo "== $host"
      openssl s_client -connect "$host:443" -servername "$host" -showcerts </dev/null 2>/dev/null > chain.pem
      awk 'BEGIN{n=0} /BEGIN CERT/{n++} {print > ("cert" n ".pem")}' chain.pem
@@ -71,19 +109,32 @@ and immediately if a sync starts failing with a TLS error.
    done
    ```
 
+   `eodhd.com` does not send its backup root, ISRG Root X1. Read that pin from
+   the macOS system root store instead:
+
+   ```bash
+   security find-certificate -c "ISRG Root X1" -p /System/Library/Keychains/SystemRootCertificates.keychain \
+     | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
+   ```
+
 2. If a host's root SPKI still equals its primary pin, nothing to do for that
    host (an intermediate change alone is covered by the root pin; refresh the
-   backup pin at the next convenient release).
+   backup pin at the next convenient release). For `eodhd.com` both pins are
+   roots, so an intermediate change (YR1 to a sibling) needs no pin change at
+   all.
 3. If a host moved to a different CA: replace BOTH of that host's pins with the
    new root (primary) and new intermediate (backup), update the table above,
    run `plutil -lint ios/Kiko/Info.plist` and `npm run check:plist`, rebuild,
-   run the positive and negative device checks, ship.
-4. Positive check: on device, Monobank sync succeeds AND a Binance sync
-   succeeds.
+   run the positive and negative device checks, ship. For a host that moved to
+   (or stays on) a CA with rotating intermediates, such as Let's Encrypt, pin
+   two roots instead, as for `eodhd.com`.
+4. Positive check: on device, Monobank sync succeeds, a Binance sync
+   succeeds, AND an EODHD share price refresh succeeds.
 5. Negative check: temporarily corrupt one character in BOTH of a host's pins,
    rebuild, confirm that host's sync fails with a TLS error while the other
-   host's still succeeds, then revert.
-6. Adding a new host that sends a credential header means adding it here AND to
+   hosts' still succeed, then revert.
+6. Adding a new host that sends a credential (a header, or the `api_token`
+   query parameter) means adding it here AND to
    `NSPinnedDomains`. `npm run check:plist` fails the build if you forget.
 
 ## Fixed since the 2026-09-06 audit
