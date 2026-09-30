@@ -1586,7 +1586,10 @@ mechanizable (see harness-workflow's "Classify every finding").
      per-line `// nosemgrep: <id> OVERRIDE(<reason>)`, never a file
      entry in `paths.exclude`. A whole-file exclude hides the rule from
      its own motivating file. `paths.exclude` is for a helper's own sink
-     file or a whole out-of-scope tree.
+     file or a whole out-of-scope tree. `__tests__/rule-inventory.test.ts`
+     fails an exclude entry with no glob character that names one test
+     file (`.test.ts`, `.test.tsx`, `.spec.*`, or a file under
+     `__tests__/` or `e2e/`); a glob such as `"*.test.ts"` stays fine.
 3. **Node rule.**
    - Write `scripts/checks/<name>.js`: exit 0 clean, exit 1 with
      findings on stdout. Any other exit, a signal, stderr output, or
