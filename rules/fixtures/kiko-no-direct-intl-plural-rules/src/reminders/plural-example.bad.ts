@@ -17,5 +17,38 @@ export const hasPluralRules = typeof globalThis.Intl.PluralRules === 'function';
 // EXPECT-FINDING
 const { PluralRules } = Intl;
 
+// EXPECT-FINDING
+export const bracketed = Intl['PluralRules'];
+
+// EXPECT-FINDING
+export const globalBracketed = globalThis['Intl'].PluralRules;
+
+// EXPECT-FINDING
+const { PluralRules: Rules } = Intl;
+
 export const category = rules.select(2);
 export const ordinal = new PluralRules('en', { type: 'ordinal' });
+export const renamed = new Rules('uk');
+
+export const reassignable = () => {
+  // EXPECT-FINDING
+  let { PluralRules } = Intl;
+
+  PluralRules = Intl.NumberFormat as never;
+
+  return PluralRules;
+};
+
+export const firstOfTwo = () => {
+  // EXPECT-FINDING
+  const { PluralRules, NumberFormat } = Intl;
+
+  return [PluralRules, NumberFormat];
+};
+
+export const lastOfTwo = () => {
+  // EXPECT-FINDING
+  const { NumberFormat, PluralRules } = Intl;
+
+  return [NumberFormat, PluralRules];
+};
