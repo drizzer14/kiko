@@ -27,7 +27,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { blankNoise } = require('./specifier-scanner');
+const { blankNoise, lineNumberAt } = require('./specifier-scanner');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const CATALOGUE_PATH = path.join(ROOT, 'src', 'i18n', 'locales', 'en.ts');
@@ -226,17 +226,9 @@ function readPluralKeys(cataloguePath) {
   return keys;
 }
 
-// The offset just past the argument that starts at `at` when that argument
-// is exactly the object literal opening there, else null.
-function objectArgumentEnd(source, blanked, at) {
-  const { end } = readObject(source, blanked, at);
-  const next = skipTrivia(source, end);
-
-  return source[next] === ',' || source[next] === ')' ? end : null;
-}
-
 // False only when the options argument is provably without `count`: absent,
-// or an object literal with no spread, no computed name, and no `count`.
+// or exactly an object literal with no spread, no computed name, and no
+// `count`.
 function mayCarryCount(source, blanked, at) {
   const start = skipTrivia(source, at);
 
@@ -248,25 +240,14 @@ function mayCarryCount(source, blanked, at) {
 
   if (source[optionsStart] === ')') return false;
 
-  if (blanked[optionsStart] !== '{' || objectArgumentEnd(source, blanked, optionsStart) === null) {
-    return true;
-  }
+  if (blanked[optionsStart] !== '{') return true;
 
-  return readObject(source, blanked, optionsStart).properties.some(
-    (property) => property.kind !== 'name' || property.name === 'count',
-  );
-}
+  const { properties, end } = readObject(source, blanked, optionsStart);
+  const next = skipTrivia(source, end);
 
-function lineNumberAt(source, index) {
-  let line = 1;
+  if (source[next] !== ',' && source[next] !== ')') return true;
 
-  for (let cursor = 0; cursor < index; cursor += 1) {
-    if (source[cursor] === '\n') {
-      line += 1;
-    }
-  }
-
-  return line;
+  return properties.some((property) => property.kind !== 'name' || property.name === 'count');
 }
 
 // Every plural-key call without `count` in `source`, in file order.
@@ -281,12 +262,7 @@ function findViolations(source, pluralKeys) {
     const quote = source[keyStart];
     const key = quote === "'" || quote === '"' ? readString(source, keyStart) : null;
 
-    if (
-      key !== null &&
-      pluralKeys.has(key.value) &&
-      !mayCarryCount(source, blanked, key.end) &&
-      /[,)]/.test(source[skipTrivia(source, key.end)] ?? '')
-    ) {
+    if (key !== null && pluralKeys.has(key.value) && !mayCarryCount(source, blanked, key.end)) {
       violations.push({ line: lineNumberAt(source, match.index), key: key.value });
     }
 

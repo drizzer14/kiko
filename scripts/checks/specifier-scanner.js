@@ -329,4 +329,4 @@ function findSpecifiers(source, patterns = DEFAULT_PATTERNS) {
     }));
 }
 
-module.exports = { DEFAULT_PATTERNS, blankNoise, findSpecifiers };
+module.exports = { DEFAULT_PATTERNS, blankNoise, findSpecifiers, lineNumberAt };
