@@ -59,6 +59,8 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
     'AccountKindField.sheetTitle',
   'screens/forms/bank-type-field/bank-type-field.component.tsx#sheetTitle':
     'BankTypeField.sheetTitle',
+  'screens/forms/broker-type-field/broker-type-field.component.tsx#sheetTitle':
+    'BrokerTypeField.sheetTitle',
   'screens/forms/category-field/category-field.component.tsx#sheetTitle':
     'CategoryField.sheetTitle',
   'screens/forms/date-field/date-field.component.tsx#sheetTitle': 'DateField.sheetTitle',

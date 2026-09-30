@@ -43,7 +43,7 @@ const selectedSwatchHex = (
 // the field's own sheet-based interaction.
 const selectKind = async (
   getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
-  kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals',
+  kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals' | 'broker',
 ): Promise<void> => {
   await fireEvent.press(getByTestId('account-kind-field'));
   await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
@@ -365,6 +365,76 @@ describe('AccountFormScreen', () => {
     );
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('creates a broker account with the picked broker as its bankId, and no sync connection', async () => {
+    const { getByLabelText, getByTestId, getByText, navigation, queryByText, queryByTestId } =
+      await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Trading 212');
+    await selectKind(getByTestId, 'broker');
+
+    expect(queryByTestId('account-bank-type-field')).toBeNull();
+    expect(queryByText('Synchronization')).toBeNull();
+
+    await fireEvent.press(getByTestId('account-broker-type-field'));
+    await fireEvent.press(getByTestId('account-broker-type-field-option-trading212'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Trading 212', kind: 'broker', bankId: 'trading212' }),
+    );
+    expect((mockCreate.mock.calls[0][0] as { institution?: unknown }).institution).toBeUndefined();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('creates a broker account with no broker picked as a plain broker account', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My broker');
+    await selectKind(getByTestId, 'broker');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'broker', bankId: null }),
+    );
+  });
+
+  it('never writes a picked broker as the bankId once the kind switches to bank', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Switched');
+    await selectKind(getByTestId, 'broker');
+    await fireEvent.press(getByTestId('account-broker-type-field'));
+    await fireEvent.press(getByTestId('account-broker-type-field-option-ibkr'));
+    await selectKind(getByTestId, 'bank');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'bank', bankId: null }),
+    );
+  });
+
+  it('clears the picked broker when the kind switches away and back', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Round trip');
+    await selectKind(getByTestId, 'broker');
+    await fireEvent.press(getByTestId('account-broker-type-field'));
+    await fireEvent.press(getByTestId('account-broker-type-field-option-ibkr'));
+    await selectKind(getByTestId, 'cash');
+    await selectKind(getByTestId, 'broker');
+
+    expect(getByTestId('account-broker-type-field')).toHaveTextContent('Select a broker', {
+      exact: false,
+    });
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'broker', bankId: null }),
+    );
   });
 
   it('creates one cash account for a double-tapped Save', async () => {
@@ -882,6 +952,54 @@ describe('AccountFormScreen edit mode', () => {
     const { getByTestId } = await renderForm({ accountId: 'acc-1' });
 
     expect(getByTestId('account-bank-type-field')).toHaveTextContent('PrivatBank');
+  });
+
+  it('edit-hydrates a broker account and re-selects its broker in the broker picker', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'T212', kind: 'broker', icon: null, color: null, bankId: 'trading212' },
+    ];
+    const { getByTestId, getByText, queryByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-kind-field')).toHaveTextContent('Broker');
+    expect(getByTestId('account-broker-type-field')).toHaveTextContent('Trading 212', {
+      exact: false,
+    });
+    expect(queryByTestId('account-bank-type-field')).toBeNull();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      'acc-1',
+      expect.objectContaining({ bankId: 'trading212' }),
+    );
+  });
+
+  it('changes the broker of an existing broker account', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'T212', kind: 'broker', icon: null, color: null, bankId: 'trading212' },
+    ];
+    const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(getByTestId('account-broker-type-field'));
+    await fireEvent.press(getByTestId('account-broker-type-field-option-other'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('acc-1', expect.objectContaining({ bankId: 'other' }));
+  });
+
+  it('reads a broker account whose stored bankId is not a catalog broker as no broker picked', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Old', kind: 'broker', icon: null, color: null, bankId: 'monobank' },
+    ];
+    const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-broker-type-field')).toHaveTextContent('Select a broker', {
+      exact: false,
+    });
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('acc-1', expect.objectContaining({ bankId: null }));
   });
 
   // The "Synchronization" heading renders above the bank picker in edit

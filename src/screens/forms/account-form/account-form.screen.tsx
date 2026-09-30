@@ -12,6 +12,7 @@ import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
+import { type BrokerId, isBrokerId } from '@kiko/brokers';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
@@ -23,6 +24,7 @@ import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
 import { type BankId, isBankId } from '@kiko/bank-sync/bank-catalog';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
@@ -64,6 +66,15 @@ type Kind = (typeof kinds)[number];
 // lookups below never silently miss).
 const isSupportedKind = (value: string): value is Kind =>
   (kinds as readonly string[]).includes(value);
+
+// `accounts.bankId` holds the catalog identity of whichever kind has a picker,
+// so each kind writes only its own picker's pick: a broker id never lands on a
+// bank account, and a bank id never on a broker.
+const catalogIdFor = (
+  kind: Kind,
+  bankId: BankId | null,
+  brokerId: BrokerId | null,
+): BankId | BrokerId | null => (kind === 'broker' ? brokerId : bankId);
 
 // The kind a fresh create form starts on. Its default icon (accountKindSymbol)
 // seeds the icon field so the form opens on a sensible glyph rather than the
@@ -156,6 +167,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // null = no bank picked — a valid, plain bank account. Never auto-seeded on a
   // fresh bank create (no auto-jump to Monobank).
   const [bankId, setBankId] = useState<BankId | null>(null);
+  // The broker picked in BrokerTypeField. null = no broker picked, a valid,
+  // plain broker account (its name says which broker it is).
+  const [brokerId, setBrokerId] = useState<BrokerId | null>(null);
+  const catalogId = catalogIdFor(kind, bankId, brokerId);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the kind default —
   // because `color`/`kind` here are seeded straight from a stored row
   // (setColor(editingAccount.color) / setKind(editingAccount.kind) below): a
@@ -266,12 +281,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       await accountsRepo.create({
         id: pendingAccountId,
         name: trimmedName,
-        // The current kind — 'bank', 'crypto', 'property', or 'metals' is
-        // reachable here, since the cash path creates through
-        // createCashAccount and returns before this.
+        // Any kind but cash is reachable here, since the cash path creates
+        // through createCashAccount and returns before this.
         kind,
         color,
-        bankId,
+        bankId: catalogId,
       });
 
       if (icon !== null) {
@@ -383,6 +397,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // stored value from a since-removed catalog entry, mirroring
     // `isSupportedKind` above.
     setBankId(isBankId(editingAccount.bankId) ? editingAccount.bankId : null);
+    setBrokerId(isBrokerId(editingAccount.bankId) ? editingAccount.bankId : null);
   }, [isEdit, editingAccount]);
 
   // The stack sets the static "Add Account" title; in edit mode override it with
@@ -446,7 +461,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // touched here. `bankId` is editable too — this patch never
         // carries `institution`, so a live-connected account's sync stays
         // untouched no matter what bank identity is picked here.
-        await accountsRepo.update(editId, { name: trimmedName, color, bankId });
+        await accountsRepo.update(editId, { name: trimmedName, color, bankId: catalogId });
         await accountsRepo.setIcon(editId, icon);
         navigation.goBack();
 
@@ -469,9 +484,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         return;
       }
 
-      // Bank, crypto, property, and metals share one create path now — `kind`
-      // here is 'bank', 'crypto', 'property', or 'metals' (cash returned
-      // above). A field's own Connect may already have inserted the row via
+      // Every kind but cash (returned above) shares one create path. A field's
+      // own Connect may already have inserted the row via
       // ensureAccount (connect-first); if so, persist any name/color/icon edited
       // AFTER connecting rather than inserting a DUPLICATE account (the field
       // already handled the credential + first sync). Otherwise this Save is
@@ -480,7 +494,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // screen), and a property or metals account has no source to connect at
       // all — it always takes this branch.
       if (accountCreate.current !== null) {
-        await accountsRepo.update(pendingAccountId, { name: trimmedName, color, bankId });
+        await accountsRepo.update(pendingAccountId, {
+          name: trimmedName,
+          color,
+          bankId: catalogId,
+        });
         await accountsRepo.setIcon(pendingAccountId, icon);
       } else {
         await ensureAccount();
@@ -504,6 +522,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     setKind(nextKind);
     setIcon(accountKindSymbol[nextKind]);
     setBankId(null);
+    setBrokerId(null);
   };
 
   return (
@@ -566,6 +585,18 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           disabled={isEdit || accountRowStarted}
           testID="account-kind-field"
         />
+
+        {/* In create AND edit mode, like the bank picker. A broker account is
+            manual only, so no sync section follows it. */}
+        {kind === 'broker' && (
+          <BrokerTypeField
+            label={t('forms.account.brokerType')}
+            sheetTitle={t('forms.account.brokerTypeSheetTitle')}
+            selected={brokerId}
+            onSelect={setBrokerId}
+            testID="account-broker-type-field"
+          />
+        )}
 
         {/* The currency + initial value seed the cash account's initial holding
             at creation only; they have no meaning once the holding exists (its

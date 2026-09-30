@@ -225,6 +225,11 @@ export const uk: typeof en = {
       bankType: 'Тип банку',
       bankTypeSheetTitle: 'Тип банку',
       broker: 'Брокер',
+      brokerDisclaimer:
+        'Кіко — незалежний застосунок. Він не пов’язаний із жодним брокером і не схвалений ним.',
+      brokerType: 'Брокер',
+      brokerTypePlaceholder: 'Оберіть брокера',
+      brokerTypeSheetTitle: 'Брокер',
       cash: 'Готівка',
       crypto: 'Крипто',
       debt: 'Борг',
@@ -249,6 +254,7 @@ export const uk: typeof en = {
       metals: 'Дорогоцінні метали',
       namePlaceholder: 'Монобанк',
       noBank: 'Довільний',
+      otherBroker: 'Інший брокер',
       property: 'Майно',
     },
     contribution: {

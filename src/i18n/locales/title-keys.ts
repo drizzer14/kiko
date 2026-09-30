@@ -48,6 +48,7 @@ export const TITLE_KEYS = new Set([
   'common.deleteNamed',
   'forms.account.addTitle',
   'forms.account.bankTypeSheetTitle',
+  'forms.account.brokerTypeSheetTitle',
   'forms.account.editTitle',
   'forms.account.kindSheetTitle',
   'forms.contribution.addTitle',

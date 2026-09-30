@@ -259,6 +259,11 @@ export const en = {
       bankType: 'Bank type',
       bankTypeSheetTitle: 'Bank Type',
       broker: 'Broker',
+      brokerDisclaimer:
+        'Kiko is an independent app. It is not affiliated with or endorsed by any broker.',
+      brokerType: 'Broker',
+      brokerTypePlaceholder: 'Select a broker',
+      brokerTypeSheetTitle: 'Broker',
       cash: 'Cash',
       crypto: 'Crypto',
       debt: 'Debt',
@@ -289,6 +294,7 @@ export const en = {
       metals: 'Precious metals',
       namePlaceholder: 'Monobank',
       noBank: 'Free',
+      otherBroker: 'Other broker',
       property: 'Property',
     },
     contribution: {

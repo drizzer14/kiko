@@ -654,6 +654,12 @@ describe('AccountDetailScreen', () => {
       hidden: ['Connect Monobank', 'Sync'],
     },
     {
+      description: 'a broker account',
+      account: account({ kind: 'broker', bankId: 'trading212', institution: null }),
+      visible: [],
+      hidden: ['Connect Monobank', 'Sync', 'Add a bank'],
+    },
+    {
       // An import-only bank (bankCatalog's
       // `connectable: false`) must show NO sync/connect affordance at all —
       // not even the disconnected "Add a bank" trigger.
@@ -1626,6 +1632,15 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     const { queryByText } = await renderScreen();
 
     expect(queryByText('Import statement')).toBeNull();
+  });
+
+  it('hides Import statement and the Synchronization section for a broker account', async () => {
+    setLiveData({ accounts: [account({ kind: 'broker', bankId: 'trading212' })], holdings: [] });
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(queryByText('Import statement')).toBeNull();
+    expect(queryByText(i18n.t('accountDetail.synchronization'))).toBeNull();
+    expect(getByText('Add holding')).toBeTruthy();
   });
 
   // `isBankAccount` gates the entry point — EVERY bank account
