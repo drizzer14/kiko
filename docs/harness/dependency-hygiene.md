@@ -118,6 +118,37 @@ covers them, so it is pinned with a top-level override:
 }
 ```
 
+`bash scripts/checks/osv.sh` also flagged `brace-expansion` on two major
+lines (GHSA-qhr7-859c-m2p7, GHSA-q2hr-2g5m-vwhr, GHSA-6j4f-fj2g-mc7p),
+all dev-only: 2.1.4 under `minimatch` 9.0.9 (`@stryker-mutator/core`),
+8.0.7 (`babel-plugin-module-resolver` -> `glob` 9.3.5), and 7.4.9
+(`depcheck`); 1.1.18 under `minimatch` 3.1.5 (`test-exclude` 6.0.0,
+`test-exclude` -> `glob` 7.2.3, `depcheck` -> `multimatch` 5.0.0). Every
+parent range (`^2.0.1`/`^2.0.2`, `^1.1.7`) accepts the fixed 2.1.7 and
+1.1.21. One plain `brace-expansion` key cannot hold both lines, so each
+line is pinned by a version-selector key; the key is a selector, only
+the value is the pin, and the value stays exact:
+
+```json
+"overrides": {
+  "brace-expansion@1": "1.1.21",
+  "brace-expansion@2": "2.1.7"
+}
+```
+
+`bash scripts/checks/osv.sh` also flagged `moment` 2.30.1
+(GHSA-4p3w-j4w9-5jqw), pulled in only by `react-native-calendars`
+1.1314.0. It is pinned to the fixed 2.31.0 with a top-level override.
+`moment` has not been in the app bundle since `cbd18366`: `KikoCalendar`
+imports `react-native-calendars/src/calendar` by its deep path, and that
+static import graph reaches no `moment`, so this pin is defense in depth:
+
+```json
+"overrides": {
+  "moment": "2.31.0"
+}
+```
+
 ## `.env` is public-only
 
 `react-native-dotenv` inlines every `.env` value into the JS bundle at
