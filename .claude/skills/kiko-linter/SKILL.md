@@ -999,14 +999,15 @@ Fixture pair: the twelve pins after the user-request pins in `.bad.ts`
 and item 21 in `.good.ts`.
 
 **The commit-range member (2026-09-30).** A git range of two 7-40
-character hex ids, `[0-9a-f]{7,40}\.{2,3}[0-9a-f]{7,40}`, in both arms:
-"a build from 6c3190ee..28eb0967" cites history the same way a branch
-name does. The three-dot form counts too. "a 0..255 byte", "the a..f
-digits", "cafe..beef", and "1234567.89" stay silent. A pure-digit range
-of two 7-digit numbers would also fire; it is the standalone-token
-class, accepted. The sweep found 1 hit, in `reminder-row.component.tsx`,
+character hex ids, each holding at least one hex letter,
+`(?=[0-9]*[a-f])[0-9a-f]{7,40}\.{2,3}(?=[0-9]*[a-f])[0-9a-f]{7,40}`, in
+both arms: "a build from 6c3190ee..28eb0967" cites history the same way
+a branch name does. The three-dot form counts too. "a 0..255 byte", "the
+a..f digits", "cafe..beef", "1234567.89", and a digit-only span such as
+"1700000000000..1700086400000" (two epoch-millisecond numbers) stay
+silent. The sweep found 1 hit, in `reminder-row.component.tsx`,
 reworded. Fixture pair: the three commit-range pins at the end of
-`.bad.ts` and item 22 in `.good.ts`.
+`.bad.ts`, and item 22 plus the digit-range pin after it in `.good.ts`.
 
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 

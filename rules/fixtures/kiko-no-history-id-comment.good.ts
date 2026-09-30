@@ -147,3 +147,7 @@ export const citationShapeNearMiss = true;
 // dots: a 0..255 byte, the a..f digits, cafe..beef, and 1234567.89 stay
 // silent.
 export const commitRangeNearMiss = true;
+
+// A git id holds a hex letter, so a span of two epoch-millisecond numbers
+// stays silent: the fixture clock spans 1700000000000..1700086400000.
+export const digitRangeNearMiss = true;
