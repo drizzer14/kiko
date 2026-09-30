@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import type { Currency } from '@kiko/currency/currency';
+import type { QuoteQuota } from '@kiko/prices/quote-quota';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
@@ -34,6 +35,20 @@ export const recordReminderOfferDismissal = async (
   await databaseTransaction
     .update(settings)
     .set({ reminderOfferDismissals: { ...existing, [accountId]: [...dismissedKinds, kind] } })
+    .where(eq(settings.id, SETTINGS_ID));
+};
+
+/**
+ * Stores the EODHD call count inside the caller's own `write()`, so the share
+ * price refresh can commit it with the prices those calls fetched.
+ */
+export const writeQuoteQuota = async (
+  databaseTransaction: typeof database,
+  quota: QuoteQuota,
+): Promise<void> => {
+  await databaseTransaction
+    .update(settings)
+    .set({ quoteQuota: quota })
     .where(eq(settings.id, SETTINGS_ID));
 };
 
@@ -124,6 +139,13 @@ export const settingsRepo = {
       .select({ notificationsDeliverableSince: settings.notificationsDeliverableSince })
       .from(settings)
       .where(eq(settings.id, SETTINGS_ID)),
+  quoteQuotaQuery: () =>
+    database
+      .select({ quoteQuota: settings.quoteQuota })
+      .from(settings)
+      .where(eq(settings.id, SETTINGS_ID)),
+  setQuoteQuota: (quota: QuoteQuota) =>
+    write((databaseTransaction) => writeQuoteQuota(databaseTransaction, quota)),
   setNotificationsDeliverableSince: (deliverableSince: number | null) =>
     write((databaseTransaction) =>
       databaseTransaction

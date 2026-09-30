@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { currencyOptions } from '@kiko/currency/currency';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
+import type { QuoteQuota } from '@kiko/prices/quote-quota';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
@@ -408,6 +409,11 @@ export const settings = sqliteTable('settings', {
   // a reminder iOS never showed was not ignored. NULL while they are off, or
   // before the first sync.
   notificationsDeliverableSince: integer('notifications_deliverable_since'),
+  // The EODHD calls the share price refresh spent today (see `QuoteQuota`), so
+  // it never spends past the user's own daily limit. Written BEFORE the calls
+  // go out, so a crash can only over-count. NULL means no call was ever made
+  // (and a restored pre-quota backup): the day starts at zero calls.
+  quoteQuota: text('quote_quota', { mode: 'json' }).$type<QuoteQuota>(),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

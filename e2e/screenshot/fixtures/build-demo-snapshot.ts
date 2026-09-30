@@ -85,6 +85,7 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     importTimesRezoned: true,
     reminderOfferDismissals: null,
     notificationsDeliverableSince: null,
+    quoteQuota: null,
   },
 ];
 

@@ -84,11 +84,15 @@ const openMigratedDatabase = (): DatabaseSync => {
   return database;
 };
 
-// Every journal entry except the reminders one, applied and recorded the way
+// Every journal entry before the reminders one, applied and recorded the way
 // the runner records them: the state of a device on the build before this one.
 const openPreRemindersDatabase = (): DatabaseSync => {
   const database = new DatabaseSync(':memory:');
-  const earlierEntries = readJournal().filter((entry) => entry.tag !== MIGRATION_TAG);
+  const journal = readJournal();
+  const earlierEntries = journal.slice(
+    0,
+    journal.findIndex((entry) => entry.tag === MIGRATION_TAG),
+  );
 
   database.exec('PRAGMA foreign_keys = ON');
   database.exec(
@@ -202,8 +206,11 @@ describe('reminders migration SQL', () => {
 });
 
 describe('reminders migration registration', () => {
-  it('is the last journal entry, so the count-based runner applies it after every earlier one', () => {
-    expect(readJournal().at(-1)?.tag).toBe(MIGRATION_TAG);
+  it('follows the crypto cash migration, so the count-based runner applies it after every earlier one', () => {
+    const journal = readJournal();
+    const position = journal.findIndex((entry) => entry.tag === MIGRATION_TAG);
+
+    expect(journal[position - 1]?.tag).toBe('0044_move_crypto_cash_holdings');
   });
 
   it('resolves its journal index to the bundle key that imports its SQL file', () => {

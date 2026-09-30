@@ -47,6 +47,7 @@ import m0042 from './0042_uah_star_rates.sql';
 import m0043 from './0043_add_import_times_rezoned.sql';
 import m0044 from './0044_move_crypto_cash_holdings.sql';
 import m0045 from './0045_add_reminders.sql';
+import m0046 from './0046_add_quote_quota.sql';
 
 export default {
   journal,
@@ -97,5 +98,6 @@ export default {
     m0043,
     m0044,
     m0045,
+    m0046,
   },
 };

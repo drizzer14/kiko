@@ -215,6 +215,25 @@ describe('settingsRepo', () => {
     });
   });
 
+  it('builds a quote quota query that reads only the quota column of the single row', () => {
+    const { sql, params } = settingsRepo.quoteQuotaQuery().toSQL();
+
+    expect(sql).toContain('"quote_quota"');
+    expect(sql).not.toContain('"base_currency"');
+    expect(params).toEqual([1]);
+  });
+
+  it('setQuoteQuota writes the whole quota to the single settings row', async () => {
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+    const quota = { day: 86_400_000, calls: 3, dailyLimit: 20, symbols: ['AAPL.US'] };
+
+    await settingsRepo.setQuoteQuota(quota);
+
+    expect(captured.set).toEqual({ quoteQuota: quota });
+    expect(captured.whereCalled).toBe(true);
+  });
+
   it('dismissReminderOffer records a kind once, however often it is dismissed', async () => {
     const store: Record<string, unknown>[] = [{ id: 1, reminderOfferDismissals: null }];
     mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
