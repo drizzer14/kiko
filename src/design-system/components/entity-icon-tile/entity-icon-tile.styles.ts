@@ -16,7 +16,12 @@ type AppTheme = UnistylesThemes[keyof UnistylesThemes];
 // so the component's own `Svg` width/height (a runtime prop, not a style —
 // react-native-svg has no percentage-of-parent sizing here) stays in
 // lockstep with this StyleSheet's own tile size.
-export const iconTileSize = (theme: AppTheme): number => theme.spacing(9);
+// The compact tile is one spacing step smaller: beside a heading that sits
+// over cards of its own (the Settings > Reminders account heading), the full
+// tile read too heavy on device (user request 2026-09-30). The glyph keeps
+// its size, so the compact tile lands near the iOS Settings icon proportion.
+export const iconTileSize = (theme: AppTheme, compact: boolean): number =>
+  theme.spacing(compact ? 8 : 9);
 
 export const styles = StyleSheet.create((theme) => ({
   // The tile's own box: fixed square, clipped to the squircle radius so
@@ -28,12 +33,16 @@ export const styles = StyleSheet.create((theme) => ({
   // — see `entity-icon-tile.component.tsx`'s own doc comment) after it was
   // confirmed not to read as intended on device. Plain squircle, no edge.
   tile: {
-    width: iconTileSize(theme),
-    height: iconTileSize(theme),
+    width: iconTileSize(theme, false),
+    height: iconTileSize(theme, false),
     borderRadius: theme.radii.md,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  compactTile: {
+    width: iconTileSize(theme, true),
+    height: iconTileSize(theme, true),
   },
   // The gradient `Svg` sits UNDER the glyph as an absolutely-positioned
   // sibling filling the tile, the same layering shape `GlassSurface`'s own

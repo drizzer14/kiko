@@ -10,4 +10,7 @@ export type EntityIconTileProps = {
   // An explicit glyph size, mirroring SymbolIcon's own optional `size` (see
   // symbol.props.d.ts) — omit to fall back to the `body` icon-size token.
   size?: number;
+  // One spacing step smaller tile (32pt instead of 36pt); the glyph keeps
+  // `size`. Omit for the card tile.
+  compact?: boolean;
 };

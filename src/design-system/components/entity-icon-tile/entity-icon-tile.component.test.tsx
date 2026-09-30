@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -17,6 +18,27 @@ describe('EntityIconTile', () => {
     expect(getByTestId('entity-icon-tile')).toBeTruthy();
     expect(getByTestId('entity-icon-tile-gradient-svg')).toBeTruthy();
     expect(getByLabelText('Checking icon')).toBeTruthy();
+  });
+
+  it('draws a 36pt tile by default and a one-step-smaller 32pt tile when compact', async () => {
+    const regular = await render(<EntityIconTile name="banknote" color="#0A84FF" />);
+    const regularTile = StyleSheet.flatten(regular.getByTestId('entity-icon-tile').props.style);
+
+    expect(regularTile.width).toBe(darkTheme.spacing(9));
+    expect(regular.getByTestId('entity-icon-tile-gradient-svg').props.width).toBe(
+      darkTheme.spacing(9),
+    );
+
+    const compact = await render(<EntityIconTile name="banknote" color="#0A84FF" compact />);
+    const compactTile = StyleSheet.flatten(compact.getByTestId('entity-icon-tile').props.style);
+
+    expect(compactTile).toMatchObject({
+      width: darkTheme.spacing(8),
+      height: darkTheme.spacing(8),
+    });
+    expect(compact.getByTestId('entity-icon-tile-gradient-svg').props.width).toBe(
+      darkTheme.spacing(8),
+    );
   });
 
   it("derives the gradient's two stops from the entity color via entityIconTileGradient", async () => {

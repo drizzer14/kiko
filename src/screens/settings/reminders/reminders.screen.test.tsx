@@ -48,8 +48,8 @@ jest.mock('@kiko/design-system/components/entity-icon-tile', () => {
 
   return {
     __esModule: true,
-    default: ({ name, color }: { name: string; color: string }) => (
-      <RNText>{`tile:${name}:${color}`}</RNText>
+    default: ({ name, color, compact }: { name: string; color: string; compact?: boolean }) => (
+      <RNText>{`tile:${name}:${color}:${compact === true ? 'compact' : 'regular'}`}</RNText>
     ),
   };
 });
@@ -144,17 +144,17 @@ describe('RemindersScreen — list', () => {
     ]);
   });
 
-  it('shows each account’s icon tile beside its name', async () => {
+  it('shows each account’s compact icon tile beside its name', async () => {
     seed(CARD_AND_CASH);
 
     const { getByTestId } = await renderScreen();
 
     expect(
-      within(getByTestId('reminders-account-a-2')).getByText('tile:creditcard:#AF52DE'),
+      within(getByTestId('reminders-account-a-2')).getByText('tile:creditcard:#AF52DE:compact'),
     ).toBeTruthy();
     expect(
       within(getByTestId('reminders-account-a-1')).getByText(
-        `tile:${accountKindSymbol.cash}:${defaultAccountColor.cash}`,
+        `tile:${accountKindSymbol.cash}:${defaultAccountColor.cash}:compact`,
       ),
     ).toBeTruthy();
   });

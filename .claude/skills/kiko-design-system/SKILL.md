@@ -968,6 +968,11 @@ new component can land between reviews of this skill:
   Reminders account heading (2026-09-30, user request), where the
   tile sits left of the `heading` name, both centered, and carries no
   `accessibilityLabel` because the name beside it already reads it.
+  Tile size: 36pt (`spacing(9)`) by default; `compact` draws it one
+  spacing step smaller, 32pt (`spacing(8)`), with the glyph unchanged.
+  **Locked (2026-09-30, user request "slightly decrease reminder's
+  squircle size"):** the Settings > Reminders heading tile is
+  `compact`; the account and holding cards keep 36pt.
 - **Switch** — a toggle that wraps RN's `Switch` with theme track/thumb
   colors. With `label` it renders a labeled row (label left, toggle
   right), the toggle centered on the label (locked 2026-09-30, user

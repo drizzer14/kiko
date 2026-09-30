@@ -44,12 +44,18 @@ import type { EntityIconTileProps } from './entity-icon-tile.props';
 // rather than React's own `:r0:`-shaped id.
 const GRADIENT_ID_PREFIX = 'entity-icon-tile-gradient';
 
-const EntityIconTile: FC<EntityIconTileProps> = ({ name, color, accessibilityLabel, size }) => {
+const EntityIconTile: FC<EntityIconTileProps> = ({
+  name,
+  color,
+  accessibilityLabel,
+  size,
+  compact = false,
+}) => {
   const { theme } = useUnistyles();
   const gradientId = `${GRADIENT_ID_PREFIX}-${useId().replace(/:/g, '')}`;
 
   const [topStop, bottomStop] = entityIconTileGradient(color);
-  const tileSize = iconTileSize(theme);
+  const tileSize = iconTileSize(theme, compact);
   // DEVICE BUG (review, 2026-09-13): a fixed white `onAccent` glyph fails
   // WCAG AA contrast on the palette's lighter swatches (`white`, `yellow`,
   // `khaki`, `mint`, `teal` — see `isLightEntityColor`'s own doc comment in
@@ -63,7 +69,7 @@ const EntityIconTile: FC<EntityIconTileProps> = ({ name, color, accessibilityLab
     : theme.colors.onAccent;
 
   return (
-    <View testID="entity-icon-tile" style={styles.tile}>
+    <View testID="entity-icon-tile" style={[styles.tile, compact && styles.compactTile]}>
       <Svg
         testID="entity-icon-tile-gradient-svg"
         width={tileSize}

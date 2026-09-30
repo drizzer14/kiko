@@ -116,7 +116,7 @@ const RemindersScreen: FC<RemindersScreenProps> = ({ navigation }) => {
 
               <Box testID={`reminders-account-${group.accountId}`} gap={3}>
                 <Box direction="row" gap={3} style={styles.accountHeading}>
-                  <EntityIconTile name={group.icon} color={group.color} />
+                  <EntityIconTile name={group.icon} color={group.color} compact />
 
                   <Box style={styles.accountName}>
                     <Text variant="heading">{group.name}</Text>
