@@ -341,7 +341,7 @@ describe('scripts/checks/kill-guard.sh shell-write deny (hook entry)', () => {
     expect(BLOCK_LABELS.filter((label) => !reason.includes(label))).toEqual([]);
     expect(reason).toContain(join(REPOSITORY_ROOT, 'src/App.tsx'));
     expect(reason).toContain('Edit or Write');
-    expect(reason).toContain('to move a file, use `git mv`');
+    expect(reason).toContain('to move a file, use `git mv` (git add a new file first)');
   });
 
   it.each(['echo x > /tmp/out.txt', 'cat src/App.tsx > /dev/null', "sed -n '1p' src/App.tsx"])(

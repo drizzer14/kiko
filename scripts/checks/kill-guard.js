@@ -91,8 +91,9 @@ const SHELL_WRITE_REASON_LINES = [
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
     'cp, mv, or a python or node one-liner lands unchecked; guard-replay only catches it at ' +
     'Stop, after the fact.',
-  'HOW TO FIX:     use the Edit or Write tool for that file; to move a file, use `git mv`, which ' +
-    'guard-replay follows as a rename. A path the guard cannot resolve (a ' +
+  'HOW TO FIX:     use the Edit or Write tool for that file; to move a file, use `git mv` ' +
+    '(git add a new file first), which guard-replay follows as a rename. A path the guard ' +
+    'cannot resolve (a ' +
     'variable, a glob) counts when a folder in it is named src, rules, or __tests__: write the ' +
     'literal path, or use another folder name. Reading it, a redirect to /dev/null or to a path ' +
     'outside those trees (your scratchpad, /tmp), git itself (without a redirect into those ' +
