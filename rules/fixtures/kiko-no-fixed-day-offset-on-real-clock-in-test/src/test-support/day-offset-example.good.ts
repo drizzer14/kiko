@@ -1,7 +1,7 @@
 // Semgrep fixture (NEGATIVE, NESTED): a real-clock fixture steps local calendar
 // days, a fixed-millisecond offset starts from a pinned instant, and an
 // elapsed-time or sub-day offset is not a day step.
-import { DAY_MS, endOfLocalDay } from '@kiko/dates';
+import { DAY_MS, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 
 const PINNED_NOON = new Date(2026, 2, 29, 12).getTime();
 
@@ -30,6 +30,17 @@ export const overdueDayCount = (openedAt: number, graceDays: number): number => 
   const overdueDays = Math.floor((Date.now() - openedAt) / DAY_MS) - graceDays;
 
   return overdueDays;
+};
+
+export const sinceDatePoints = (startOfDay: (time: number) => number, lastDay: number): number[] => {
+  const now = Date.now();
+
+  return [
+    Date.now() - startOfDay(now),
+    Date.now() - lastDay,
+    now - startOfLocalDay(now),
+    Date.now() - endOfLocalDay(now),
+  ];
 };
 
 export const pinnedClockTomorrow = (): number => {

@@ -39,7 +39,17 @@ export const tomorrowFromDateObject = (): number => new Date().getTime() + DAY_M
 // EXPECT-FINDING
 export const yesterdayLessAnHour = (): number => new Date().getTime() - HOUR - DAY_MS;
 
-export const dayNamedSpans = (dayMs: number, msPerDay: number, days: number): number[] => [
+export const dayNamedSpans = (
+  dayMs: number,
+  msPerDay: number,
+  days: number,
+  graceDays: number,
+  twoDays: number,
+): number[] => [
+  // EXPECT-FINDING
+  Date.now() - graceDays,
+  // EXPECT-FINDING
+  Date.now() + twoDays,
   // EXPECT-FINDING
   Date.now() + dayMs,
   // EXPECT-FINDING
