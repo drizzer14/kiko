@@ -104,6 +104,26 @@ const regexLiteralEnd = (source, at) => {
   return source.length;
 };
 
+// A JS string never runs to the end of its line, and never has an identifier
+// right after its closing quote. A quote that would open one is JSX text (an
+// apostrophe in `<Text>'{x}'</Text>`); blanking it as a string hid the code
+// after it.
+const isStringLiteral = (source, start, stop) =>
+  stop - 1 > start && source[stop - 1] === source[start] && !isIdentifierChar(source[stop]);
+
+// The blanked text keeps no quotes, so a closing quote before `/` (as in
+// `name="x" />`) must be read from the raw source, or the `=` before the
+// string makes the `/` look like a regex start.
+const followsString = (source, at) => {
+  let cursor = at - 1;
+
+  while (cursor >= 0 && /\s/.test(source[cursor])) {
+    cursor -= 1;
+  }
+
+  return /['"`]/.test(source[cursor] ?? '');
+};
+
 const consumeNoiseSpan = (source, cursor, resultSoFar) => {
   const two = source.slice(cursor, cursor + 2);
 
@@ -124,7 +144,9 @@ const consumeNoiseSpan = (source, cursor, resultSoFar) => {
   if ((character === '"' || character === "'") && !isIdentifierChar(source[cursor - 1])) {
     const stop = stringLiteralEnd(source, cursor, character);
 
-    return { text: blankSpan(source, cursor, stop), end: stop };
+    return isStringLiteral(source, cursor, stop)
+      ? { text: blankSpan(source, cursor, stop), end: stop }
+      : null;
   }
 
   if (character === '`') {
@@ -133,7 +155,7 @@ const consumeNoiseSpan = (source, cursor, resultSoFar) => {
     return { text: template.text, end: template.end };
   }
 
-  if (character === '/' && precedesRegexLiteral(resultSoFar)) {
+  if (character === '/' && !followsString(source, cursor) && precedesRegexLiteral(resultSoFar)) {
     const stop = regexLiteralEnd(source, cursor);
 
     return { text: blankSpan(source, cursor, stop), end: stop };

@@ -52,6 +52,22 @@ describe('scripts/checks/plural-count.js', () => {
     expect(result.stdout).toBe(`${file}:1: ${matchedText} has no count\n`);
   });
 
+  // A blanked string before `/>` must not read as a regex start, and a JSX
+  // text apostrophe must not read as a string: either one hides the call.
+  it.each([
+    '<Row icon={<Icon name="x" />} label={t(\'forms.units.days\')} />',
+    "<Text>'{t('forms.units.days')}'</Text>",
+    "t('forms.units.days', { el: <Icon name=\"x\" />, ns: 'x' })",
+  ])('flags %s beside JSX', (call) => {
+    const file = writeProbe('src/probe.tsx', `export const label = ${call};\n`);
+
+    const result = runChecker([file]);
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe(`${file}:1: t('forms.units.days') has no count\n`);
+  });
+
   it.each([
     "t('forms.units.days', { count })",
     "t('forms.units.days', { count: days })",
