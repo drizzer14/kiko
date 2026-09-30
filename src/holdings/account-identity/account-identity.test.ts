@@ -42,4 +42,10 @@ describe('accountIdentity', () => {
       entityColorsDark.gray,
     );
   });
+
+  it('leaves the icon undefined for an unmapped kind with no stored icon', () => {
+    const removedKind = 'broker' as AccountKind;
+
+    expect(accountIdentity({ kind: removedKind, icon: null, color: null }).icon).toBeUndefined();
+  });
 });

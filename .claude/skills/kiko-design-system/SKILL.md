@@ -242,7 +242,8 @@ an entry (date + value) the moment the user approves a new visual.
   the same icon + color as the account card, through
   `accountIdentity`: an account with no stored icon shows its
   `accountKindSymbol` glyph in its resolved color, never an empty icon
-  slot.
+  slot. The "All" row now always lines up under the glyph column:
+  `filter-menu` reserves the icon slot when any option has an icon.
 
 ## UX patterns
 
@@ -1411,7 +1412,10 @@ where they can drift. As of this writing the pipeline is:
   dark palette (`entityColorsDark` in `palette.ts`). For an account
   row, call `accountIdentity` (`src/holdings/account-identity/`), which
   pairs this color with the icon fallback (see `kiko-domain`'s "Entity
-  glyphs").
+  glyphs"). The Charts contribution builder
+  (`src/statistics/account-contribution/account-contribution.ts`) is
+  the exception: its input has no icon, so it calls
+  `resolveEntityColor` directly for the color only.
 - `resolveEntityColor`'s result feeds `EntityIconTile`
   (`src/design-system/components/entity-icon-tile/`), the shared
   squircle icon tile: `entityIconTileGradient` (`entity-tint.ts`)

@@ -389,8 +389,12 @@ or `accountKindSymbol[kind]`, and the color through
 `resolveEntityColor` with `defaultAccountColor[kind]`. The accounts
 card, the account-detail header, the Reminders list, and the Home and
 Charts account filters all call it; never rebuild the
-`icon ?? accountKindSymbol[kind]` pair in a screen. The account form
-is the one exception: it edits a draft, not a stored row.
+`icon ?? accountKindSymbol[kind]` pair in a screen. There are two
+exceptions: the account form edits a draft, not a stored row; and the
+Charts contribution builder
+(`src/statistics/account-contribution/account-contribution.ts`) calls
+`resolveEntityColor` directly for the color only, because its input
+has no icon.
 
 A `property_item`'s default glyph follows its CATEGORY, not its type:
 `propertyCategorySymbol` (same folder) maps each `PropertyCategory` to its
