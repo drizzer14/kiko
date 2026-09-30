@@ -1810,6 +1810,49 @@ describe('runNodeChecks (rule 13: feature-imports)', () => {
   });
 });
 
+// The REAL plural-count.js checker against the mirrored tree — only Semgrep is
+// stubbed clean, the same convention as rules 12 and 13. The checker reads the
+// plural key set from its own checkout's en.ts, not from the mirror, which
+// holds only the edited file.
+describe('runNodeChecks (plural-key-needs-count)', () => {
+  const targetPath = ['src', 'probe', 'label.ts'];
+
+  function runPluralProbe(content: string): SpawnSyncReturns<string> {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+
+    return runGuard(
+      payloadFor('Write', { file_path: join(project, ...targetPath), content }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+  }
+
+  it('denies a plural key called without count (kiko-plural-key-needs-count)', () => {
+    const result = runPluralProbe(
+      "import { t } from 'i18next';\n\nexport const label = t('forms.units.days');\n",
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-plural-key-needs-count');
+    expect(reason).toContain("t('forms.units.days')");
+  });
+
+  it('allows the same plural key called with count', () => {
+    const result = runPluralProbe(
+      "import { t } from 'i18next';\n\nexport const label = t('forms.units.days', { count: 2 });\n",
+    );
+
+    expect(result.stdout).toBe('');
+    expect(result.status).toBe(0);
+  });
+});
+
 // The override protocol: a rule-id-specific comment naming the rule and
 // carrying OVERRIDE(<reason>) — `nosemgrep: <id> OVERRIDE(reason) why` for
 // Semgrep rules, `kiko-override: <id> OVERRIDE(reason) why` for Node-checked

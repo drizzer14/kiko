@@ -15,6 +15,7 @@
     "scripts/checks/blank-line-separation.js",
     "scripts/checks/screen-imports.js",
     "scripts/checks/feature-imports.js",
+    "scripts/checks/plural-count.js",
     "scripts/checks/specifier-scanner.js",
     "scripts/checks/pre-write-guard.js",
     "scripts/checks/guard-replay.js",

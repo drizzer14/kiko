@@ -655,6 +655,23 @@ function parseFeatureImportsCheckerOutput(stdout) {
   return findings;
 }
 
+// plural-count.js's output is one `<path>:<line>: t('<key>') has no count`
+// line per violation — see its own `runCli`. Anchored on the LAST
+// `:<digits>: t('` run like the parsers above. `matchedText` is the call
+// alone, with no line number, so moving an existing call is not a new finding.
+const PLURAL_COUNT_VIOLATION_LINE = /:(\d+): (t\('[^']*'\)) has no count$/;
+
+function parsePluralCountCheckerOutput(stdout) {
+  const findings = [];
+  for (const line of stdout.split('\n')) {
+    const match = PLURAL_COUNT_VIOLATION_LINE.exec(line);
+    if (match) {
+      findings.push({ line: Number(match[1]), matchedText: match[2] });
+    }
+  }
+  return findings;
+}
+
 // Finds the 1-based line of the `export` declaration that introduces
 // `name` — tried, in order, against every shape
 // one-component-per-file.ts's own `classifySlice` recognizes an EXPORTED
@@ -815,6 +832,15 @@ const NODE_RULES = [
     projectCheck: 'check:feature-imports',
     run: (filePath) =>
       runSpawnedNodeChecker('feature-imports.js', filePath, parseFeatureImportsCheckerOutput),
+  },
+  {
+    ruleId: 'kiko-plural-key-needs-count',
+    extensions: ['.ts', '.tsx'],
+    fix: 'pass { count } — i18next picks _one/_few/_many/_other from it',
+    skill: 'kiko-translator › A plural key is always called with `count`',
+    projectCheck: '__tests__/plural-count.test.ts',
+    run: (filePath) =>
+      runSpawnedNodeChecker('plural-count.js', filePath, parsePluralCountCheckerOutput),
   },
 ];
 

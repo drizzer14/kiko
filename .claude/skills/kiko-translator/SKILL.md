@@ -111,6 +111,30 @@ loads a fresh i18n; add a case there for a new plural key or language, and
 never assert device plural behavior with `new Intl.PluralRules(...)` in a
 test (the shipped-locales test uses Node's only as the CLDR oracle).
 
+### A plural key is always called with `count`
+
+i18next picks the `_one` / `_few` / `_many` / `_other` form from the
+`count` option. A plural key called without `count` matches no form and
+renders the bare key path on screen, and `tsc` does not catch it: the
+catalogue type accepts the base key. So every `t('<plural key>', ...)`
+passes `{ count }`, including a test's `i18n.t(...)`.
+
+The pre-write guard's Node rule `kiko-plural-key-needs-count`
+(`scripts/checks/plural-count.js`) denies a new call without it. Its
+project-wide check is the Jest invariant `__tests__/plural-count.test.ts`,
+which runs the checker over every tracked `src/` file. Read the checker's
+header for the exact contract. In short:
+
+- A base key K is plural when its en.ts object holds both `K_one` and
+  `K_other`. Keys are full dotted paths: `statistics.trendFilter.manual`
+  is not plural, `statistics.trendFilter.button.manual` is.
+- The callee is `t` or any `<object>.t` (`i18n.t`, `i18next.t`), with a
+  string-literal key. A template-literal or variable key is not checked.
+- An options argument the checker cannot see into (a variable, a spread,
+  a computed name) may carry `count`, so it is not flagged.
+- The plural key set comes from the checker's own checkout's en.ts, not
+  from the edited file. A new plural key is covered once en.ts holds it.
+
 ## Catalogue typing: `typeof en`, never `as const`
 
 `src/i18n/i18next.d.ts` types `t()`/`useTranslation()` off `typeof en`
