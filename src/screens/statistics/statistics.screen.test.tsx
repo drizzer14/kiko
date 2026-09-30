@@ -52,6 +52,7 @@ import { categoryColor } from '@kiko/statistics/category-breakdown';
 import { formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 
 import StatisticsScreen from './statistics.screen';
@@ -143,6 +144,7 @@ type Account = {
   id: string;
   name: string;
   kind?: 'bank' | 'cash' | 'crypto';
+  icon?: string | null;
   color?: string | null;
   archivedAt?: number | null;
 };
@@ -1324,6 +1326,30 @@ describe('StatisticsScreen', () => {
     expect(queryByTestId('bar-chart-bar-card')).toBeNull();
     expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
     expect(queryByTestId('pie-chart-arc-b')).toBeNull();
+  });
+
+  it('shows each account filter option with its stored icon, or its kind glyph, in its resolved color', async () => {
+    setLiveData({
+      accounts: [
+        { ...CASH, icon: null, color: '' },
+        { ...BANK, icon: 'creditcard', color: darkTheme.colors.entityColors.violet },
+      ],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+      history: HISTORY,
+    });
+    const { getByTestId } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByTestId(ACCOUNT_FILTER));
+    });
+
+    const kindGlyph = optionGlyph(getByTestId(`${ACCOUNT_FILTER}-option-Cash`), 'banknote');
+    const storedGlyph = optionGlyph(getByTestId(`${ACCOUNT_FILTER}-option-Bank`), 'creditcard');
+
+    expect(kindGlyph?.props.tintColor).toBe(darkTheme.colors.entityColors.khaki);
+    expect(storedGlyph?.props.tintColor).toBe(darkTheme.colors.entityColors.violet);
   });
 
   it('renders all four empty charts without crashing when there is no data', async () => {

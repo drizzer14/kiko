@@ -63,10 +63,9 @@ import { needsPriceBook } from '@kiko/holdings/priced-value';
 import { bucketDaysForSpan } from '@kiko/statistics/buckets';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import MoneyText from '@kiko/design-system/components/money-text';
-import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { transactionSpan } from '@kiko/transactions/transaction-span';
 import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
@@ -1096,13 +1095,12 @@ const StatisticsScreen: FC = () => {
     [categorySlices, baseCurrency],
   );
 
-  // One option per visible account, each carrying its seeded icon + resolved
-  // entity color for the menu row; matching still keys on `option.value` (the
+  // One option per visible account, each carrying the account's own identity
+  // icon + color for the menu row; matching still keys on `option.value` (the
   // account name, compared to `account.name` in the `filtered` memo above).
   const accountOptions: FilterOption[] = filtered.visibleAccounts.map((account) => ({
     value: account.name,
-    icon: account.icon ?? undefined,
-    color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
+    ...accountIdentity(account),
   }));
 
   if (!isReady) {

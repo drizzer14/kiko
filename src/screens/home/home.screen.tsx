@@ -24,9 +24,8 @@ import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import MoneyText from '@kiko/design-system/components/money-text';
+import { accountIdentity } from '@kiko/holdings/account-identity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { defaultAccountColor } from '@kiko/holdings/entity-colors';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import { transactionSpan } from '@kiko/transactions/transaction-span';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
@@ -308,7 +307,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // Every active (non-archived) account, so a newly-added account with no
   // transactions yet still appears in the Accounts filter. Sourced from the
   // accounts live query rather than from the transactions, which would omit it.
-  // Each option carries its own seeded icon + resolved entity color for the
+  // Each option carries the account's own identity icon + color for the
   // menu row; transaction matching still keys off `option.value` (the account
   // name, matched against `row.accountName` below). De-duplicated by name,
   // first-seen-wins, preserving the old `Set`-based distinctness.
@@ -319,11 +318,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       if (account.archivedAt != null || byName.has(account.name)) {
         continue;
       }
-      byName.set(account.name, {
-        value: account.name,
-        icon: account.icon ?? undefined,
-        color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
-      });
+      byName.set(account.name, { value: account.name, ...accountIdentity(account) });
     }
 
     return Array.from(byName.values());

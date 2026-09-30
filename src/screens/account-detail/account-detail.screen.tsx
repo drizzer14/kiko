@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
+import { useDataReady, useLiveQuery } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
@@ -25,11 +26,10 @@ import Divider from '@kiko/design-system/components/divider';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
-import { defaultAccountColor } from '@kiko/holdings/entity-colors';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import { accountIdentity } from '@kiko/holdings/account-identity';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
-import { type AccountRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
@@ -41,29 +41,12 @@ import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown
 import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
-import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
 
 import HoldingCard from './holding-card';
 import { styles } from './account-detail.styles';
 import BankSyncSection from './bank-sync-section';
 import CryptoSyncSection from './crypto-sync-section';
-
-// The account's display identity for the view-only header: its stored icon (or
-// the kind default), and its effective color resolved through the SAME
-// `resolveEntityColor` the accounts-list card uses — so the identity color on
-// the card and on this header can never diverge. A bare `color ?? default` here
-// let an empty-string stored color (neither null nor undefined) through, tinting
-// the header with an invalid empty color while the card showed the kind default.
-// Extracted so the fallbacks — and the not-yet-loaded (undefined) case — don't
-// count against the screen component's cognitive-complexity budget.
-const accountIdentity = (
-  account: AccountRow | undefined,
-): { icon: string; color: string } | undefined =>
-  foldMap(maybe(account), (found) => ({
-    icon: found.icon ?? accountKindSymbol[found.kind],
-    color: resolveEntityColor(found.color, defaultAccountColor[found.kind]),
-  }));
 
 const offerMessage = (kind: ReminderKind, t: TFunction): string =>
   match(kind)
@@ -166,7 +149,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // The account's effective icon + color, rendered as the identity glyph beside
   // the Balance amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon
   // slot below) rather than in the nav title.
-  const identity = accountIdentity(account);
+  const identity = foldMap(maybe(account), accountIdentity);
   // Adjacent bar items share one glass capsule on iOS 26+, which would read the
   // bell and the Edit pencil as one control with two glyphs, so neither shares
   // its background; header items run left to right, keeping the bell left of

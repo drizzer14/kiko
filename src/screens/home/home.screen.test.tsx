@@ -160,7 +160,14 @@ jest.mock('./use-refresh-control-signal', () => ({
   },
 }));
 
-type Account = { id: string; name: string; kind: string; archivedAt?: number | null };
+type Account = {
+  id: string;
+  name: string;
+  kind: string;
+  archivedAt?: number | null;
+  icon?: string | null;
+  color?: string | null;
+};
 type Holding = {
   id?: string;
   name?: string;
@@ -656,6 +663,30 @@ describe('HomeScreen', () => {
     expect(getByTestId('account-filter-menu-option-PrivatBank')).toBeTruthy();
     // ...while the archived account is excluded.
     expect(queryByTestId('account-filter-menu-option-Closed')).toBeNull();
+  });
+
+  it('shows each account filter option with its stored icon, or its kind glyph, in its resolved color', async () => {
+    seed({
+      accounts: [
+        { ...MONOBANK, icon: null, color: '' },
+        { ...PRIVATBANK, icon: 'creditcard', color: darkTheme.colors.entityColors.violet },
+      ],
+    });
+    const { getByTestId } = await renderHome();
+
+    await act(async () => {
+      await fireEvent.press(getByTestId('account-filter-menu'));
+    });
+
+    const kindGlyph = getByTestId('account-filter-menu-option-Monobank')
+      .queryAll((node) => node.props.name === 'building.columns.fill')
+      .at(0);
+    const storedGlyph = getByTestId('account-filter-menu-option-PrivatBank')
+      .queryAll((node) => node.props.name === 'creditcard')
+      .at(0);
+
+    expect(kindGlyph?.props.tintColor).toBe(darkTheme.colors.entityColors.white);
+    expect(storedGlyph?.props.tintColor).toBe(darkTheme.colors.entityColors.violet);
   });
 
   it('keeps both categories active and shows transactions from either when two are toggled on', async () => {

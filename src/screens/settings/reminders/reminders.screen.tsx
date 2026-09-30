@@ -9,9 +9,7 @@ import Divider from '@kiko/design-system/components/divider';
 import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import ReminderRow from '@kiko/screens/settings/reminder-row';
 import { usePermissionNotice } from '@kiko/reminders/permission';
-import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
-import { defaultAccountColor } from '@kiko/holdings/entity-colors';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import { accountIdentity } from '@kiko/holdings/account-identity';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import NoticeBanner from '@kiko/design-system/components/notice-banner';
@@ -47,8 +45,7 @@ const groupByAccount = (rows: readonly ListedReminder[]): AccountGroup[] =>
         const group = groups.get(reminder.accountId) ?? {
           accountId: reminder.accountId,
           name: account.name,
-          icon: account.icon ?? accountKindSymbol[account.kind],
-          color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
+          ...accountIdentity(account),
           archived: account.archivedAt !== null,
           eligibleKinds: eligibleReminderKinds(account),
           reminders: [],
