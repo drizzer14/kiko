@@ -13,8 +13,7 @@ export const styles = StyleSheet.create((theme) => ({
     // first line, so `flex-start` here does not make it ride high.
     alignItems: 'flex-start',
   },
-  // A switch is taller than the label's line and hung below it top-aligned;
-  // the user asked for every switch centered on its label (2026-09-30).
+  // A switch is taller than the label's line, so center it on the label.
   headerWithTrailing: {
     alignItems: 'center',
   },
@@ -25,8 +24,7 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // The label and the body below it, taking the width the switch and chevron
   // leave so the body wraps beside them. The component's spacing(1) gap
-  // between them matches the gap between the body's own caption lines
-  // (user request 2026-09-30: the description sat too close to the title).
+  // between them matches the gap between the body's own caption lines.
   body: {
     flex: 1,
   },
@@ -66,9 +64,9 @@ export const styles = StyleSheet.create((theme) => ({
     height: theme.iconSizes.body,
     justifyContent: 'center',
   },
-  // A chevron right after a switch read as crowding it on device (user
-  // feedback 2026-09-30); a chevron after a label needs no gutter because
-  // the header's space-between already separates them.
+  // A chevron right after a switch crowds it without a gutter; a chevron
+  // after a label needs none because the header's space-between already
+  // separates them.
   chevronAfterTrailing: {
     marginLeft: theme.spacing(1),
   },

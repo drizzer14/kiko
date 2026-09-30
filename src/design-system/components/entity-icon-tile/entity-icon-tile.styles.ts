@@ -18,8 +18,8 @@ type AppTheme = UnistylesThemes[keyof UnistylesThemes];
 // lockstep with this StyleSheet's own tile size.
 // The compact tile is one spacing step smaller: beside a heading that sits
 // over cards of its own (the Settings > Reminders account heading), the full
-// tile read too heavy on device (user request 2026-09-30). The glyph keeps
-// its size, so the compact tile lands near the iOS Settings icon proportion.
+// tile reads too heavy. The glyph keeps its size, so the compact tile lands
+// near the iOS Settings icon proportion.
 export const iconTileSize = (theme: AppTheme, compact: boolean): number =>
   theme.spacing(compact ? 8 : 9);
 

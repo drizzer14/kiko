@@ -112,8 +112,8 @@ describe('DayOfMonthGrid', () => {
     expect(cell.props.hitSlop).toBeUndefined();
   });
 
-  // The user asked for the weekday row's chip size and gaps here, so the grid
-  // is held to what ChipRow actually renders, not to a copied number.
+  // The grid must draw the weekday row's chip size and gaps, so it is held to
+  // what ChipRow actually renders, not to a copied number.
   it('draws the weekday chip height and spaces chips across a row by its gap', async () => {
     const grid = await renderGrid();
     const weekdays = await render(

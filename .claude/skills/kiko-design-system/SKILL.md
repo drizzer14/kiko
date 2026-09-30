@@ -271,19 +271,23 @@ The established patterns grouped under this heading:
   (`ReminderRow`: tap opens the form, the trailing Switch pauses).
   Vertical alignment (2026-09-30, user requests): a chevron with no
   `trailing` sits on the label's FIRST line; a `trailing` control (a
-  Switch) is centered on its label ("switches centered to their
-  label" — the header's `headerWithTrailing`, for example the
-  export-data include-secrets row); a pressable row with `children` (a
+  Switch) is centered on its label (the header's `headerWithTrailing`,
+  for example the export-data include-secrets row; user request "Center
+  Face ID setting toggle vertically to its label too.", extended to
+  every Settings switch row app-wide by coordinator ruling 2026-09-30
+  (apply repeated feedback app-wide; the coordinator's brief: "check
+  other Settings switch rows for the same defect and fix every
+  instance")); a pressable row with `children` (a
   body under the label, for example `ReminderRow`; the rule is the
   `onPress` + `children` branch in `settings-row.component.tsx`)
   centers the control and chevron on the label and body together, as a UIKit cell centers its accessory view; the body then
   wraps beside them instead of running under the switch. **Locked
-  (2026-09-30, user request "increase horizontal gap between a toggle
-  and >"):** a chevron after a `trailing` control carries a
+  (2026-09-30, user request "Increase horizontal gap between a toggle
+  and >."):** a chevron after a `trailing` control carries a
   `spacing(1)` left margin (`chevronAfterTrailing`,
   `settings-row.styles.ts`); a chevron after a plain label has none.
-  **Locked (2026-09-30, user request "increase the gap between
-  reminder's title and description"):** on a pressable row with
+  **Locked (2026-09-30, user request "Increase the gap between
+  reminder's title and description."):** on a pressable row with
   `children` the label and body sit `spacing(1)` apart, the same gap
   as between `ReminderRow`'s own caption lines.
   **Rule:** on iOS an accessible `Pressable` groups its children into
@@ -974,14 +978,16 @@ new component can land between reviews of this skill:
   `accessibilityLabel` because the name beside it already reads it.
   Tile size: 36pt (`spacing(9)`) by default; `compact` draws it one
   spacing step smaller, 32pt (`spacing(8)`), with the glyph unchanged.
-  **Locked (2026-09-30, user request "slightly decrease reminder's
-  squircle size"):** the Settings > Reminders heading tile is
+  **Locked (2026-09-30, user request "Slightly decrease reminder's
+  squircle size."):** the Settings > Reminders heading tile is
   `compact`; the account and holding cards keep 36pt.
 - **Switch** — a toggle that wraps RN's `Switch` with theme track/thumb
   colors. With `label` it renders a labeled row (label left, toggle
-  right), the toggle centered on the label (locked 2026-09-30, user
-  request on the Face ID row; also the term-deposit recapitalization
-  toggle). Without `label` it is a bare toggle whose label sits
+  right), the toggle centered on the label. **Locked (2026-09-30, user
+  request on the Face ID row "Center Face ID setting toggle vertically
+  to its label too.")**; the term-deposit Recapitalization toggle and
+  the other Settings switch rows are extended app-wide by coordinator
+  ruling 2026-09-30 (apply repeated feedback app-wide). Without `label` it is a bare toggle whose label sits
   elsewhere in the row, and it must then get `accessibilityLabel` so
   VoiceOver names it.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
@@ -1153,8 +1159,8 @@ new component can land between reviews of this skill:
   inside a real 44pt cell with no `hitSlop` (see "Touch targets"); the
   grid pulls its footprint back with negative margins so its outer
   chips line up with the caption and the other fields. **Locked
-  (user request 2026-09-30, "use the same cell sizes/gaps as day of
-  the week"):** the day chips take the weekday row's (`WeekdayField`,
+  (user request 2026-09-30, "Use the same cell sizes/gaps in 'day of
+  the month' as in 'day of the week'."):** the day chips take the weekday row's (`WeekdayField`,
   a `ChipRow`) chip height and horizontal gap from ONE shared source,
   `src/design-system/chip-geometry/` (`CHIP_MIN_HEIGHT` 34,
   `CHIP_GAP_STEP` = `spacing(2)` = 8pt, `CHIP_TAP_INSET` 5) — ChipRow
