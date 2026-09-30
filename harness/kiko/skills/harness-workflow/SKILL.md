@@ -213,8 +213,10 @@ merge-conflict files".
 
 The kill-guard denies the common Bash write forms (`sed -i`, `perl -i`,
 a redirect, `tee`, `cp`/`mv`, a python/node one-liner) into `src/`,
-`__tests__/`, and `rules/` (see kiko-linter's "SHELL-WRITE deny"); move
-a file with `git mv`. A Bash write it
+`__tests__/`, and `rules/` (see kiko-linter's "SHELL-WRITE deny"). Move
+or rename a file with `git mv` (`git add` a new file first), then edit
+it with Edit/Write; see kiko-code-style's "Folder-per-thing
+co-location". A Bash write it
 does not see (a script file, `find -exec`, a variable path)
 and a commit of it still skip the pre-write guard. On `Stop` and `SubagentStop`, `medium.sh`
 replays the same guard over every `.ts`/`.tsx` file the session changed:
@@ -224,8 +226,7 @@ new worktree hides nothing). A
 violation such a write added fails the turn end with the file, rule,
 and line. Fix it with Edit/Write, so the guard checks the fix. Never
 rewrite the file with Bash again. The `--write` fixers and clean merges
-pass, because only a finding the change added fails. Move a file with
-`git mv`, not a plain `mv`. If the replay stops at its Stop-tier deadline,
+pass, because only a finding the change added fails. If the replay stops at its Stop-tier deadline,
 run `npm run check:guard-replay` by hand; its pass is recorded. See
 kiko-linter's "Pre-write guard replay on the Stop tier" (the replay and
 that section are on next; arrive on main with release 1.1).

@@ -383,6 +383,15 @@ card, the holding-detail header, the holding-form icon-chip fallback,
 the Type select — calls one of these four functions; never add a
 second kind/type -> glyph map in a screen module.
 
+An account row's displayed icon + color come from one helper,
+`accountIdentity` (`src/holdings/account-identity/`): the stored icon
+or `accountKindSymbol[kind]`, and the color through
+`resolveEntityColor` with `defaultAccountColor[kind]`. The accounts
+card, the account-detail header, the Reminders list, and the Home and
+Charts account filters all call it; never rebuild the
+`icon ?? accountKindSymbol[kind]` pair in a screen. The account form
+is the one exception: it edits a draft, not a stored row.
+
 A `property_item`'s default glyph follows its CATEGORY, not its type:
 `propertyCategorySymbol` (same folder) maps each `PropertyCategory` to its
 own SF Symbol, and `defaultHoldingSymbol(holding)` — the category glyph

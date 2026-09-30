@@ -237,6 +237,12 @@ an entry (date + value) the moment the user approves a new visual.
 - **Footer "Add …" buttons lead with their entity's symbol** (2026-09-27,
   D10). Contract: "Footer 'Add …' buttons carry the entity's leading
   symbol" under `Button`.
+- **Account filter rows show the account's kind glyph when it has no
+  icon** (2026-09-30). The Home and Charts account filter menus show
+  the same icon + color as the account card, through
+  `accountIdentity`: an account with no stored icon shows its
+  `accountKindSymbol` glyph in its resolved color, never an empty icon
+  slot.
 
 ## UX patterns
 
@@ -1402,7 +1408,10 @@ where they can drift. As of this writing the pipeline is:
   value and an unmapped kind/type default (e.g. a row written under a
   since-removed enum member), both of which throw downstream instead
   of silently falling back. The gray fallback resolves from the single
-  dark palette (`entityColorsDark` in `palette.ts`).
+  dark palette (`entityColorsDark` in `palette.ts`). For an account
+  row, call `accountIdentity` (`src/holdings/account-identity/`), which
+  pairs this color with the icon fallback (see `kiko-domain`'s "Entity
+  glyphs").
 - `resolveEntityColor`'s result feeds `EntityIconTile`
   (`src/design-system/components/entity-icon-tile/`), the shared
   squircle icon tile: `entityIconTileGradient` (`entity-tint.ts`)

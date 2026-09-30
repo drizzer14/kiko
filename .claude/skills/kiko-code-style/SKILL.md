@@ -991,9 +991,15 @@ of the rule, they simply aren't "a thing" with an owner:
   by any single one, so they don't belong inside any one thing's
   folder.
 
-To move a file into a unit folder, create the new file with Write (so
-the pre-write guard runs), then `git rm` the old one. Never use
-`git mv` plus a Bash edit, and never use sed.
+To move or rename a file (into a unit folder, for example), use
+`git mv`; `git add` a new, untracked file first. Then change it with
+Edit/Write, so the pre-write guard checks the change. `git mv` leaves
+the content unchanged, and guard-replay follows the rename, so the
+file's pre-existing findings keep their baseline. Never use a plain
+`mv`/`cp` (the kill-guard denies it into `src/`, `__tests__/`, and
+`rules/`, and a plain move reads as a new file whose every finding
+looks new), and never edit the moved file with sed or another Bash
+write.
 
 ## Helper placement
 
