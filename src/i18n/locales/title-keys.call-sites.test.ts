@@ -30,6 +30,10 @@ const DYNAMIC_HEADING_KEYS: Record<string, readonly string[]> = {
   ],
   'screens/forms/convert-exchange-fields/convert-exchange-fields.component.tsx#counterpartSheetTitle':
     ['forms.transaction.fromSheetTitle', 'forms.transaction.toSheetTitle'],
+  'screens/forms/price-point-form/price-point-form.screen.tsx#copy.title': [
+    'forms.pricePoint.loanTitle',
+    'forms.pricePoint.shareTitle',
+  ],
   'screens/forms/transaction-form/transaction-form.screen.tsx#props.sheetTitle': [
     'forms.transaction.holdingSheetTitle',
   ],

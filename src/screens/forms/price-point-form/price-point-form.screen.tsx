@@ -1,4 +1,3 @@
-import { useLiveQuery } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
 import {
   useHeaderInset,
@@ -12,6 +11,7 @@ import { dayKeyOf } from '@kiko/prices/price-book';
 import Box from '@kiko/design-system/components/box';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import DateField from '@kiko/screens/forms/date-field';
+import { useLiveQuery, type HoldingRow } from '@kiko/db';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { holdingInstrument } from '@kiko/prices/instrument';
@@ -39,8 +39,46 @@ const startOfToday = (): number => {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 };
 
+type PricePointKind = 'debt' | 'share' | 'value';
+
+// Every string reads for what the holding is, so no wording still says
+// "Value" once the holding loads as a debt or a share. A `null` title keeps
+// the stack's own "Update Value".
+const pricePointCopy = {
+  debt: {
+    title: 'forms.pricePoint.loanTitle',
+    field: 'forms.pricePoint.loanValue',
+    save: 'forms.pricePoint.loanSave',
+    error: 'forms.pricePoint.loanValueError',
+  },
+  share: {
+    title: 'forms.pricePoint.shareTitle',
+    field: 'forms.pricePoint.pricePerShare',
+    save: 'forms.pricePoint.shareSave',
+    error: 'forms.pricePoint.pricePerShareError',
+  },
+  value: {
+    title: null,
+    field: 'forms.pricePoint.value',
+    save: 'forms.pricePoint.save',
+    error: 'forms.pricePoint.valueError',
+  },
+} as const;
+
+const pricePointKindOf = (holding: Pick<HoldingRow, 'type'> | undefined): PricePointKind => {
+  if (holding === undefined) {
+    return 'value';
+  }
+
+  if (holdingDescriptorOrUndefined(holding.type)?.side === 'debt') {
+    return 'debt';
+  }
+
+  return holding.type === 'share' ? 'share' : 'value';
+};
+
 // Records a new `manual` price point for a priced holding (property_item,
-// metal), reached from holding-detail's "Update value"
+// metal, a manual share), reached from holding-detail's "Update value"
 // footer action. Mirrors contribution-form's shape: a grouped-amount TextField
 // plus the shared calendar DateField, writing through the same
 // `pricePointsRepo.upsertMany` the PriceBook itself reads.
@@ -54,12 +92,10 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
   // A debt's (only `loan` today) correction targets its manual OUTSTANDING
-  // series through this SAME form — the title, field label, Save label, and
-  // the 0-vs-greater-than-0 validation (a loan can be repaid to exactly 0)
-  // all switch on this flag, so no wording still says "Value" once the
-  // holding has loaded as a debt.
-  const isDebt =
-    holding !== undefined && holdingDescriptorOrUndefined(holding.type)?.side === 'debt';
+  // series through this SAME form, and it alone may be repaid to exactly 0.
+  const kind = pricePointKindOf(holding);
+  const copy = pricePointCopy[kind];
+  const isDebt = kind === 'debt';
 
   const { t } = useTranslation();
   const [value, setValue] = useState('');
@@ -79,10 +115,10 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   // loan rather than minting a separate action). Mirrors HoldingFormScreen's
   // own edit-mode title override.
   useLayoutEffect(() => {
-    if (isDebt) {
-      navigation.setOptions({ title: t('forms.pricePoint.loanTitle') });
+    if (copy.title !== null) {
+      navigation.setOptions({ title: t(copy.title) });
     }
-  }, [isDebt, navigation, t]);
+  }, [copy.title, navigation, t]);
 
   const save = async (): Promise<void> => {
     if (!holding) {
@@ -137,14 +173,14 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
       }}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
-          {t(isDebt ? 'forms.pricePoint.loanSave' : 'forms.pricePoint.save')}
+          {t(copy.save)}
         </Button>
       }
     >
       <Box gap={4}>
         <View ref={valueFieldRef}>
           <TextField
-            label={t(isDebt ? 'forms.pricePoint.loanValue' : 'forms.pricePoint.value')}
+            label={t(copy.field)}
             value={value}
             onChangeText={(text) => setValue(groupAmount(text))}
             keyboardType="decimal-pad"
@@ -153,7 +189,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
             required
             error={
               attemptedSave && !(isDebt ? parseAmount(value) >= 0 : parseAmount(value) > 0)
-                ? t(isDebt ? 'forms.pricePoint.loanValueError' : 'forms.pricePoint.valueError')
+                ? t(copy.error)
                 : undefined
             }
             inputRef={valueInputRef}

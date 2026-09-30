@@ -24,6 +24,7 @@ jest.mock('@kiko/db/client', () => {
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
+import { renderCondition } from '@kiko/db/render-condition-test-helper';
 import { createHoldingValuer } from '@kiko/statistics/holding-value-at';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { write, accounts, holdings, pricePoints, transactions } from '@kiko/db';
@@ -1116,6 +1117,41 @@ describe('holdings remove', () => {
 
     expect(store.pricePoints).toEqual([]);
   });
+
+  // A manual share owns its `holding:<id>` series; an EODHD share reads the
+  // `share:<symbol>` series every holding of that symbol shares, so removing
+  // one share must never clear it.
+  it.each([{ quoteSource: 'manual' }, { quoteSource: 'eodhd', symbol: 'AAPL.US' }])(
+    'clears only the $quoteSource share own holding:<id> series',
+    async (meta) => {
+      const store: Store = {
+        accounts: [{ id: 'acc-1', institution: null }],
+        holdings: [
+          { id: 'share-1', accountId: 'acc-1', type: 'share', metadata: { ...meta, lots: [] } },
+        ],
+        transactions: [],
+        pricePoints: [],
+      };
+      const base = makeDatabaseTransaction(store);
+      const priceSeriesDeletes: unknown[] = [];
+      mockDatabaseTransaction = {
+        ...base,
+        delete: (table: unknown) => ({
+          where: async (condition: unknown) => {
+            if (table === pricePoints) {
+              priceSeriesDeletes.push(renderCondition(condition).params);
+            }
+
+            await base.delete(table).where();
+          },
+        }),
+      };
+
+      await holdingsRepo.remove('share-1');
+
+      expect(priceSeriesDeletes).toEqual([['holding:share-1']]);
+    },
+  );
 
   it('refuses a synced holding under a connected account and leaves the row', async () => {
     const store: Store = {

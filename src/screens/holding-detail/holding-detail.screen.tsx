@@ -178,7 +178,7 @@ const interestBreakdownRows = (
   ];
 };
 
-// A priced type's (`property_item`, `metal`) breakdown: its cost basis, its
+// A priced type's (`property_item`, `metal`, `share`) breakdown: its cost basis, its
 // current priced value, and the gain between them. No interest/tax rows — a
 // priced type accrues neither, so those would only ever read a misleading
 // zero. Gain carries no explicit tone: MoneyText's own sign-based fallback
@@ -593,18 +593,28 @@ const LinkedPaymentsSection: FC<{
 // while `!isReady` (overriding every case) — a synced holding must never show
 // the "Add transaction" action before its own account row has loaded
 // (kiko-architecture's useLiveQuery consumer rule) — and for every type that
-// takes no footer action of its own (a bond, a synced holding).
+// takes no footer action of its own (a bond, a synced holding). `lotSymbol`
+// is the holding's own type glyph, which leads "Add lot". Two actions follow
+// account detail's footer: the lower-emphasis one as a tonal button above the
+// primary "Add …" action.
 const holdingDetailFooterAction = (
   isReady: boolean,
   footerAction: FooterAction,
   holdingId: string,
   isDebtHolding: boolean,
+  lotSymbol: string | undefined,
   navigation: HoldingDetailScreenProps['navigation'],
   t: TFunction,
 ): ReactNode => {
   if (!isReady) {
     return undefined;
   }
+
+  const addLotButton = (
+    <Button onPress={() => navigation.navigate('LotForm', { holdingId })} icon={lotSymbol}>
+      {t('holdingDetail.addLot')}
+    </Button>
+  );
 
   return match(footerAction)
     .with('contribution', () => (
@@ -628,13 +638,19 @@ const holdingDetailFooterAction = (
         {t(isDebtHolding ? 'holdingDetail.updateOutstanding' : 'holdingDetail.updateValue')}
       </Button>
     ))
-    .with('addLot', () => (
-      <Button
-        onPress={() => navigation.navigate('LotForm', { holdingId })}
-        icon={holdingTypeSymbol.metal}
-      >
-        {t('holdingDetail.addLot')}
-      </Button>
+    .with('addLot', () => addLotButton)
+    .with('addLotAndUpdatePrice', () => (
+      <Box gap={2}>
+        <Button
+          variant="secondaryTonal"
+          fullWidth
+          onPress={() => navigation.navigate('PricePointForm', { holdingId })}
+        >
+          {t('holdingDetail.updatePrice')}
+        </Button>
+
+        {addLotButton}
+      </Box>
     ))
     .with('none', () => undefined)
     .exhaustive();
@@ -865,8 +881,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // holding, or a type this build's registry does not recognize
   // (`HoldingDetailSpec`, `holding-detail-spec/`).
   const footerAction: FooterAction =
-    foldMap(maybe(holding), (found) => spec?.footerAction(isSyncedHolding(found, account))) ??
-    'none';
+    foldMap(maybe(holding), (found) =>
+      spec?.footerAction(isSyncedHolding(found, account), found),
+    ) ?? 'none';
+  const lotSymbol = foldMap(maybe(holding?.type), (type) => holdingTypeSymbol[type]);
   // The footer's own label for `'updateValue'`: a debt-side type (loan) reads
   // "Update outstanding"; every other priced type reads "Update value". Reads
   // the SAME descriptor `side` net-worth math keys off, so this label and the
@@ -1061,6 +1079,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         footerAction,
         holdingId,
         isDebtHolding,
+        lotSymbol,
         navigation,
         t,
       )}

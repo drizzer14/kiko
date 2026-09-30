@@ -235,6 +235,57 @@ describe('LotFormScreen', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
+  describe('a share', () => {
+    const shareHolding = {
+      id: 'h-1',
+      currency: 'USD',
+      metadata: {
+        quoteSource: 'eodhd',
+        symbol: 'AAPL.US',
+        lots: [{ day: dayKeyOf(Date.UTC(2025, 0, 1)), quantityDelta: '3', costMinorUnits: 900_00 }],
+      },
+    };
+
+    it('appends a sell lot, keeping the share metadata, with no unit after the quantity', async () => {
+      seed(shareHolding);
+      const utils = await renderScreen();
+
+      expect(fieldSuffix(utils.getByLabelText('Quantity'))).toBeNull();
+
+      await fireEvent.press(utils.getByText('Sell'));
+      await fireEvent.changeText(utils.getByLabelText('Quantity'), '1');
+      await pickDate(utils, 2025, 6, 1);
+      await fireEvent.press(utils.getByText('Save lot'));
+
+      expect(holdingsRepo.update).toHaveBeenCalledWith('h-1', {
+        metadata: {
+          ...shareHolding.metadata,
+          lots: [
+            ...shareHolding.metadata.lots,
+            {
+              day: dayKeyOf(new Date(2025, 5, 1).getTime()),
+              quantityDelta: '-1',
+              costMinorUnits: -300_00,
+            },
+          ],
+        },
+      });
+    });
+
+    it('rejects selling more shares than are held', async () => {
+      seed(shareHolding);
+      const utils = await renderScreen();
+
+      await fireEvent.press(utils.getByText('Sell'));
+      await fireEvent.changeText(utils.getByLabelText('Quantity'), '3.5');
+      await pickDate(utils, 2025, 6, 1);
+      await fireEvent.press(utils.getByText('Save lot'));
+
+      expect(utils.getByText("You can't sell more than you currently hold.")).toBeTruthy();
+      expect(holdingsRepo.update).not.toHaveBeenCalled();
+    });
+  });
+
   it('defaults the buy lot day to today when no date is picked', async () => {
     const utils = await renderScreen();
 

@@ -519,7 +519,13 @@ export const en = {
       loanTitle: 'Update Outstanding',
       loanValue: 'Outstanding',
       loanValueError: 'Outstanding must be 0 or greater.',
+      // Share-specific title/field/button/error, applied once the holding
+      // loads as a share, so no wording still says "Value".
+      pricePerShare: 'Price per share',
+      pricePerShareError: 'Price must be greater than 0.',
       save: 'Save value',
+      shareSave: 'Save price',
+      shareTitle: 'Update Price',
       title: 'Update Value',
       value: 'Value',
       valueError: 'Value must be greater than 0.',
@@ -788,6 +794,8 @@ export const en = {
     // manual outstanding series via `PricePointForm` (same mechanism as
     // `updateValue` below, for a priced holding).
     updateOutstanding: 'Update outstanding',
+    // A manual share's footer action beside "Add lot"; opens `PricePointForm`.
+    updatePrice: 'Update price',
     updateValue: 'Update value',
     // A priced type's (property, metal) breakdown value row — its current
     // priced value, distinct from `grossValue` (the deposit/bond breakdown's

@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
@@ -5,20 +6,26 @@ import { startOfLocalDay } from '@kiko/dates';
 import type { PriceBook } from '@kiko/prices/price-book';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { bondYieldToMaturity } from '@kiko/bonds/yield-to-maturity';
-import { asBondMeta, asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { loanInstallments, type LoanInstallment } from '@kiko/holdings/loan-schedule';
+import { asBondMeta, asLoanMeta, asShareMeta } from '@kiko/holdings/holding-metadata';
 
 /** Which add action the detail screen's footer offers. */
-export type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'addLot' | 'none';
+export type FooterAction =
+  | 'contribution'
+  | 'transaction'
+  | 'updateValue'
+  | 'addLot'
+  | 'addLotAndUpdatePrice'
+  | 'none';
 
 // The three breakdown shapes the detail screen renders (`holding-detail.screen.tsx`'s
 // own `breakdownRows` dispatches on `kind`). `interest` is the
 // principal-or-cost/gross/interest/tax table a deposit or bond accrues.
 // `priced` is the cost/value/gain table a priced type (`property_item`,
-// `metal`) shows instead — it has no interest or tax to withhold, so those
+// `metal`, `share`) shows instead — it has no interest or tax to withhold, so those
 // rows would only ever read a misleading zero. `loan` is the
 // principal/paid/interest paid/principal repaid/outstanding table read from
 // the loan's linked payments (`loanLedgerSummary`). A bond's expected profit
@@ -39,7 +46,7 @@ export type HoldingBreakdownSpec =
 // rather than naming the type directly.
 type HoldingDetailSpec = {
   /** `synced` = `isSyncedHolding(holding, account)`. */
-  footerAction: (synced: boolean) => FooterAction;
+  footerAction: (synced: boolean, holding: Pick<HoldingRow, 'metadata'>) => FooterAction;
   /** The breakdown table to show, or `null` to hide it. */
   breakdown: HoldingBreakdownSpec | null;
   upcomingInstallments: (
@@ -92,6 +99,14 @@ const loanUpcomingInstallments = (
 
   return loanInstallments(meta).filter((row) => row.dueDate >= todayStart);
 };
+
+// A manual share has no price feed, so its footer also updates its price; an
+// EODHD share (or one whose metadata does not parse) only adds lots.
+const shareFooterAction = (holding: Pick<HoldingRow, 'metadata'>): FooterAction =>
+  match(asShareMeta(holding.metadata)?.quoteSource)
+    .with('manual', (): FooterAction => 'addLotAndUpdatePrice')
+    .with('eodhd', undefined, (): FooterAction => 'addLot')
+    .exhaustive();
 
 // A bond's whole-life expected profit (net coupons + nominal redeemed, less
 // the price paid), each coupon at its own register rate when the cache has
@@ -160,7 +175,7 @@ export const holdingDetailSpecs = {
   },
   // A share records its buys and sells through the Lot form, like a metal.
   share: {
-    footerAction: () => 'addLot',
+    footerAction: (_synced, holding) => shareFooterAction(holding),
     breakdown: { kind: 'priced' },
     upcomingInstallments: noInstallments,
   },

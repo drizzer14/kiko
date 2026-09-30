@@ -125,6 +125,18 @@ const metalHolding = {
   },
 };
 
+const manualShareHolding = {
+  id: 'h-1',
+  name: 'Apple',
+  type: 'share',
+  currency: 'USD',
+  balanceMinorUnits: 0,
+  metadata: {
+    quoteSource: 'manual',
+    lots: [{ day: Date.UTC(2024, 0, 1), quantityDelta: '3', costMinorUnits: 90_000 }],
+  },
+};
+
 // A long-running structured loan, well underway by any real test-run date, so
 // its schedule always has an upcoming installment to show. The start
 // date is derived from `Date.now()`, not a
@@ -1504,6 +1516,68 @@ describe('HoldingDetailScreen', () => {
     await fireEvent.press(getByText('Add lot'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('LotForm', { holdingId: 'h-1' });
+  });
+
+  it('offers a manual share both "Update price" and "Add lot", Add lot leading with the share glyph', async () => {
+    seed(manualShareHolding);
+
+    const { getByTestId, queryByText } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Update price')).toBeTruthy();
+    expect(within(footer).getByText('Add lot')).toBeTruthy();
+    expect(footerGlyphNames(footer)).toEqual(['chart.line.uptrend.xyaxis']);
+    expect(queryByText('Update value')).toBeNull();
+    expect(queryByText('Add transaction')).toBeNull();
+  });
+
+  it('navigates a manual share to PricePointForm on "Update price" and to LotForm on "Add lot"', async () => {
+    seed(manualShareHolding);
+
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Update price'));
+    await fireEvent.press(getByText('Add lot'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('PricePointForm', { holdingId: 'h-1' });
+    expect(navigation.navigate).toHaveBeenCalledWith('LotForm', { holdingId: 'h-1' });
+  });
+
+  it('offers an EODHD share only "Add lot"', async () => {
+    seed({
+      ...manualShareHolding,
+      metadata: { ...manualShareHolding.metadata, quoteSource: 'eodhd', symbol: 'AAPL.US' },
+    });
+
+    const { getByTestId, queryByText } = await renderScreen();
+
+    expect(within(getByTestId('screen-footer')).getByText('Add lot')).toBeTruthy();
+    expect(queryByText('Update price')).toBeNull();
+  });
+
+  it('shows a share its cost, value, and a negative gain when the price fell', async () => {
+    seed(manualShareHolding, [], [], [], [], [{ baseCurrency: 'USD' }], undefined, [
+      {
+        instrument: 'holding:h-1',
+        day: Date.UTC(2024, 0, 1),
+        price: '250',
+        currency: 'USD',
+        source: 'manual',
+      },
+    ]);
+
+    const { getByText, getAllByText } = await renderScreen();
+    const dollar = /\$/;
+
+    expect(amountForLabel(getByText('Cost'), dollar)).toHaveTextContent(
+      formatMoney(Money.of('USD', 90_000)),
+    );
+    expect(amountForLabel(getAllByText('Value')[1], dollar)).toHaveTextContent(
+      formatMoney(Money.of('USD', 75_000)),
+    );
+    expect(amountForLabel(getByText('Gain'), dollar)).toHaveTextContent(
+      formatMoney(Money.of('USD', -15_000)),
+    );
   });
 
   it('offers "Update outstanding" instead of a manual add action for a loan', async () => {

@@ -177,6 +177,34 @@ describe('PricePointFormScreen', () => {
     expect(pricePointsRepo.upsertMany).not.toHaveBeenCalled();
   });
 
+  it('asks a share for its price per share and writes it on its own holding:<id> series', async () => {
+    seed({ id: 'h-1', currency: 'USD', type: 'share' });
+    const utils = await renderScreen();
+
+    await fireEvent.changeText(utils.getByLabelText('Price per share'), '187.25');
+    await fireEvent.press(utils.getByText('Save price'));
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Update Price' });
+    expect(pricePointsRepo.upsertMany).toHaveBeenCalledWith([
+      expect.objectContaining({
+        instrument: 'holding:h-1',
+        price: '187.25',
+        currency: 'USD',
+        source: 'manual',
+      }),
+    ]);
+  });
+
+  it('blocks a share price of 0 with the price error', async () => {
+    seed({ id: 'h-1', currency: 'USD', type: 'share' });
+    const utils = await renderScreen();
+
+    await fireEvent.press(utils.getByText('Save price'));
+
+    expect(utils.getByText('Price must be greater than 0.')).toBeTruthy();
+    expect(pricePointsRepo.upsertMany).not.toHaveBeenCalled();
+  });
+
   // A loan's field label, Save button, and error string all read
   // correctly for a debt too, not just the screen title.
   it('shows the loan-specific field label, button, and error', async () => {
