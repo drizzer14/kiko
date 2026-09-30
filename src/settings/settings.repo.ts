@@ -9,6 +9,34 @@ import { type Repository, type SettingsRow, settings, database, write } from '@k
 /** Settings is a single row, keyed at id = 1. */
 export const SETTINGS_ID = 1;
 
+/**
+ * Records the `kind` reminder offer on this account as dismissed, keeping
+ * every other dismissal, inside the caller's own `write()`. Read-modify-write,
+ * the `saveStatementMapping` shape, since the column holds the whole map as
+ * one JSON blob.
+ */
+export const recordReminderOfferDismissal = async (
+  databaseTransaction: typeof database,
+  accountId: string,
+  kind: ReminderKind,
+): Promise<void> => {
+  const rows = await databaseTransaction
+    .select({ reminderOfferDismissals: settings.reminderOfferDismissals })
+    .from(settings)
+    .where(eq(settings.id, SETTINGS_ID));
+  const existing = rows[0]?.reminderOfferDismissals ?? {};
+  const dismissedKinds = existing[accountId] ?? [];
+
+  if (dismissedKinds.includes(kind)) {
+    return;
+  }
+
+  await databaseTransaction
+    .update(settings)
+    .set({ reminderOfferDismissals: { ...existing, [accountId]: [...dismissedKinds, kind] } })
+    .where(eq(settings.id, SETTINGS_ID));
+};
+
 export const settingsRepo = {
   getQuery: () => database.select().from(settings).where(eq(settings.id, SETTINGS_ID)),
   ensure: () =>
@@ -87,30 +115,10 @@ export const settingsRepo = {
         .set({ statementMappings: { ...existing, [key]: mapping } })
         .where(eq(settings.id, SETTINGS_ID));
     }),
-  /**
-   * Records that the user dismissed the `kind` reminder offer on this
-   * account, keeping every other dismissal. Read-modify-write inside one
-   * `write()`, the `saveStatementMapping` shape, since the column holds the
-   * whole map as one JSON blob.
-   */
   dismissReminderOffer: (accountId: string, kind: ReminderKind) =>
-    write(async (databaseTransaction) => {
-      const rows = await databaseTransaction
-        .select({ reminderOfferDismissals: settings.reminderOfferDismissals })
-        .from(settings)
-        .where(eq(settings.id, SETTINGS_ID));
-      const existing = rows[0]?.reminderOfferDismissals ?? {};
-      const dismissedKinds = existing[accountId] ?? [];
-
-      if (dismissedKinds.includes(kind)) {
-        return;
-      }
-
-      await databaseTransaction
-        .update(settings)
-        .set({ reminderOfferDismissals: { ...existing, [accountId]: [...dismissedKinds, kind] } })
-        .where(eq(settings.id, SETTINGS_ID));
-    }),
+    write((databaseTransaction) =>
+      recordReminderOfferDismissal(databaseTransaction, accountId, kind),
+    ),
   notificationsDeliverableSinceQuery: () =>
     database
       .select({ notificationsDeliverableSince: settings.notificationsDeliverableSince })
@@ -125,7 +133,10 @@ export const settingsRepo = {
     ),
 } satisfies Repository;
 
-/** A dismissed reminder offer never comes back for that account. */
+/**
+ * A reminder offer the user dismissed, or whose reminder the user deleted,
+ * never comes back for that account.
+ */
 export const isReminderOfferDismissed = (
   settingsRow: Pick<SettingsRow, 'reminderOfferDismissals'>,
   accountId: string,

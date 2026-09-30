@@ -23,6 +23,7 @@ import {
 } from 'drizzle-orm';
 import { match } from 'ts-pattern';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { recordReminderOfferDismissal } from '@kiko/settings';
 import type { NotificationResponse } from '@kiko/reminders/native';
 import type { ReminderKind, ReminderSchedule } from '@kiko/reminders/schedule';
 
@@ -196,10 +197,19 @@ export const remindersRepo = {
       databaseTransaction.update(reminders).set({ activeSince: now }),
     );
   },
+  // A delete is the user's answer to the offer for that kind on that account,
+  // so it never comes back there; the bell and Settings still add one.
   remove: async (reminderId: string): Promise<void> => {
-    await write((databaseTransaction) =>
-      databaseTransaction.delete(reminders).where(eq(reminders.id, reminderId)),
-    );
+    await write(async (databaseTransaction) => {
+      const removed = await databaseTransaction
+        .delete(reminders)
+        .where(eq(reminders.id, reminderId))
+        .returning({ accountId: reminders.accountId, kind: reminders.kind });
+
+      for (const { accountId, kind } of removed) {
+        await recordReminderOfferDismissal(databaseTransaction, accountId, kind);
+      }
+    });
   },
   planInputsQuery: () => {
     const lastData = lastDataByAccount();

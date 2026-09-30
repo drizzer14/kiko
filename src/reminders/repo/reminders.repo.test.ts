@@ -669,6 +669,19 @@ describe('remindersRepo writes', () => {
   });
 
   describe('remove', () => {
+    const dismissals = (): unknown =>
+      JSON.parse(
+        (
+          mockDatabase.prepare('SELECT reminder_offer_dismissals FROM settings').get() as {
+            reminder_offer_dismissals: string;
+          }
+        ).reminder_offer_dismissals,
+      );
+
+    beforeEach(() => {
+      mockDatabase.prepare('INSERT INTO settings (id) VALUES (1)').run();
+    });
+
     it('deletes only that reminder, in one write', async () => {
       insertReminder('reminder-1', 'account-1', 'statement_import');
       insertReminder('reminder-2', 'account-1', 'add_transactions');
@@ -678,6 +691,42 @@ describe('remindersRepo writes', () => {
       expect(write).toHaveBeenCalledTimes(1);
       expect(storedReminder('reminder-1')).toBeUndefined();
       expect(reminderCount()).toBe(1);
+    });
+
+    it('dismisses the offer of that kind on that account, keeping every other dismissal', async () => {
+      insertAccount('account-2');
+      insertReminder('reminder-1', 'account-1', 'add_transactions');
+      mockDatabase
+        .prepare('UPDATE settings SET reminder_offer_dismissals = ?')
+        .run(
+          JSON.stringify({ 'account-1': ['statement_import'], 'account-2': ['add_transactions'] }),
+        );
+
+      await remindersRepo.remove('reminder-1');
+
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(dismissals()).toEqual({
+        'account-1': ['statement_import', 'add_transactions'],
+        'account-2': ['add_transactions'],
+      });
+    });
+
+    it('dismisses nothing for a reminder that does not exist', async () => {
+      await remindersRepo.remove('missing');
+
+      expect(mockDatabase.prepare('SELECT reminder_offer_dismissals FROM settings').get()).toEqual({
+        reminder_offer_dismissals: null,
+      });
+    });
+
+    it('keeps one dismissal when a reminder added again is deleted again', async () => {
+      insertReminder('reminder-1', 'account-1', 'add_transactions');
+      await remindersRepo.remove('reminder-1');
+      insertReminder('reminder-1', 'account-1', 'add_transactions');
+
+      await remindersRepo.remove('reminder-1');
+
+      expect(dismissals()).toEqual({ 'account-1': ['add_transactions'] });
     });
   });
 });

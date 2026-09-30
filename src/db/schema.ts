@@ -395,9 +395,9 @@ export const settings = sqliteTable('settings', {
   // entirely absent key (a pre-0043 `.kiko` export) as `false` too — see
   // `restore-snapshot.ts`.
   importTimesRezoned: integer('import_times_rezoned', { mode: 'boolean' }).notNull().default(false),
-  // The reminder offers the user dismissed, as a map from `accounts.id` to the
-  // dismissed kinds, so a dismissed offer never comes back for that account.
-  // NULL means nothing dismissed yet.
+  // The reminder offers the user dismissed, or whose reminder the user
+  // deleted, as a map from `accounts.id` to those kinds, so such an offer
+  // never comes back for that account. NULL means nothing dismissed yet.
   reminderOfferDismissals: text('reminder_offer_dismissals', { mode: 'json' }).$type<
     Record<string, ReminderKind[]>
   >(),

@@ -1768,7 +1768,9 @@ what a change must keep.
   snooze is still pending. Two nullable `settings` columns hold state
   that is not a rule: `reminder_offer_dismissals` (JSON map account id
   -> dismissed kinds; `settingsRepo.dismissReminderOffer` /
-  `isReminderOfferDismissed`) and `notifications_deliverable_since`
+  `isReminderOfferDismissed`; `recordReminderOfferDismissal(databaseTransaction,
+  accountId, kind)` is the same read-modify-write inside a caller's own
+  `write()`) and `notifications_deliverable_since`
   (`settingsRepo.notificationsDeliverableSinceQuery` /
   `setNotificationsDeliverableSince`). Read `schema.ts` for the
   columns; do not copy them here.
@@ -1786,7 +1788,11 @@ what a change must keep.
   `update` (a changed schedule restarts `activeSince` and ends a
   back-off pause, but not a user pause; it keeps a pending snooze,
   because iOS keeps it), `setPaused` (resume restarts `activeSince`; a
-  no-op when already in the target state), and `remove`. The re-plan
+  no-op when already in the target state), and `remove` (one `write()`:
+  `DELETE ... RETURNING` the account and kind, then
+  `recordReminderOfferDismissal` for the deleted row, so the offer for
+  that kind never returns on that account; an unknown id records
+  nothing). The re-plan
   side is unchanged: `hasAnyQuery`, `planInputsQuery`,
   `recordEngagements`, `markBackoffPaused`, `clearSnoozes`. Read the
   file for signatures.
@@ -1893,7 +1899,14 @@ what a change must keep.
   worker. With no `trigger`, it does no reads. The offer shows only
   while the account is not archived, can have that kind
   (`eligibleReminderKinds`), has no reminder of that kind, and was not
-  dismissed there (`isReminderOfferDismissed`). Each trigger read waits
+  dismissed there (`isReminderOfferDismissed`). Deleting a reminder
+  counts as a dismissal: a delete is the user's decision, so the offer
+  for that kind never shows again on that account (the bell and Settings
+  still add one). A paused reminder (user or back-off) keeps its row, so
+  it blocks the offer too. KNOWN LIMITS: a delete made on a build that
+  did not record it left no dismissal, so that offer shows once more
+  until the user taps "Not now"; a `.kiko` restore replaces the
+  dismissals with the backup's. Each trigger read waits
   for that decision. `afterImport` reads `hasImportQuery` and needs a
   row: the import is the trigger (eligibility itself needs no import).
   `manualActivity` reads `manualEntryDaysQuery` only for an eligible

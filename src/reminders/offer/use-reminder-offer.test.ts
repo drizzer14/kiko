@@ -378,3 +378,56 @@ describe('useReminderOffer — accept and dismiss', () => {
     expect(otherKind.result.current?.kind).toBe('statement_import');
   });
 });
+
+describe('useReminderOffer — after a reminder is deleted or paused', () => {
+  beforeEach(() => {
+    addAccount('cash');
+    addAccount('wallet');
+    addEntry('cash', 'import', YESTERDAY);
+
+    for (const accountId of ['cash', 'wallet']) {
+      addEntry(accountId, 'manual', YESTERDAY);
+      addEntry(accountId, 'manual', TODAY);
+    }
+
+    addReminder('cash', 'add_transactions');
+  });
+
+  it('a deleted reminder never brings its offer back', async () => {
+    const { kindsSeen, settle, unmount } = await renderOffer('cash', 'manualActivity');
+
+    await act(async () => {
+      await remindersRepo.remove('cash-add_transactions');
+    });
+    await settle();
+
+    expect(kindsSeen).not.toContain('add_transactions');
+    expect(dismissals()).toEqual({ cash: ['add_transactions'] });
+
+    await unmount();
+
+    const nextVisit = await renderOffer('cash', 'manualActivity');
+    const otherKind = await renderOffer('cash', 'afterImport');
+    const otherAccount = await renderOffer('wallet', 'manualActivity');
+
+    expect(nextVisit.kindsSeen).not.toContain('add_transactions');
+    expect(otherKind.result.current?.kind).toBe('statement_import');
+    expect(otherAccount.result.current?.kind).toBe('add_transactions');
+  });
+
+  it('offers nothing while a reminder the user paused stays', async () => {
+    await remindersRepo.setPaused('cash-add_transactions', true);
+
+    const { kindsSeen } = await renderOffer('cash', 'manualActivity');
+
+    expect(kindsSeen).not.toContain('add_transactions');
+  });
+
+  it('offers nothing while a reminder paused for being ignored stays', async () => {
+    await remindersRepo.markBackoffPaused([{ reminderId: 'cash-add_transactions', pausedAt: NOW }]);
+
+    const { kindsSeen } = await renderOffer('cash', 'manualActivity');
+
+    expect(kindsSeen).not.toContain('add_transactions');
+  });
+});
