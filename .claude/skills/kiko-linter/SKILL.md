@@ -1354,6 +1354,10 @@ not exist. Fix the citation in the text; never allowlist it. A sentence
 that names a path that is gone (a move, a removal) writes it without
 backticks, so it is not a citation; no prose wording exempts a
 backticked path. The test's header defines what counts as a citation.
+A partial citation that drops the root (`design-system/entity-tint/`,
+`checks/lint.sh`) counts too when its first segment is a child folder
+of a cited root; it fails only when no tracked file or folder outside
+`rules/fixtures/` ends with it.
 
 ## Pre-write guard and merge-conflict files
 

@@ -1,4 +1,5 @@
 import { dirname, join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 
 // A unit move leaves the skills and harness docs citing the old path, and a
@@ -16,6 +17,13 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 // so it is skipped. A root nested in a longer path (a sibling project under
 // `~/`, `$PWD/src/...`) is not a repo path either. A doc that names a path
 // that is gone writes it without backticks, so it is not a citation.
+//
+// A partial citation drops the root (`design-system/entity-tint/…`,
+// `checks/lint.sh`). It counts only when its first segment is a child folder
+// of a cited root, which keeps branch names (`feat/…`), lint rule names
+// (`lint/…`) and package paths out. It resolves when a tracked file or
+// folder outside `rules/fixtures/` ends with it (an extension may be left
+// off); several matches still resolve, since the text does not say which.
 const REPOSITORY_ROOT = join(__dirname, '..');
 
 const CITED_ROOTS = ['src', 'scripts', 'rules', 'docs', '__tests__', 'e2e', 'harness', '.claude'];
@@ -25,7 +33,35 @@ const CITATION_PATTERN = new RegExp(
   'g',
 );
 
+const PARTIAL_CITATION_PATTERN = /(?<![\w./~$@-])[\w.-]+\/[^\s`'"(),;:#|]*/g;
+
+const PARTIAL_EXTENSIONS = ['', '.ts', '.tsx', '.js'];
+
 const PLACEHOLDER_PATTERN = /[*?{}[\]<>$…]|\.\.\./;
+
+const trackedFiles = execFileSync('git', ['ls-files'], {
+  cwd: REPOSITORY_ROOT,
+  encoding: 'utf8',
+})
+  .split('\n')
+  .filter((file) => file !== '');
+
+const CHILD_FOLDERS_OF_ROOTS = new Set(
+  trackedFiles
+    .map((file) => file.split('/'))
+    .filter((segments) => segments.length > 2 && CITED_ROOTS.includes(segments[0]))
+    .map((segments) => segments[1]),
+);
+
+const RESOLUTION_TARGETS = [
+  ...new Set(
+    trackedFiles
+      .filter((file) => !file.startsWith('rules/fixtures/'))
+      .flatMap((file) =>
+        file.split('/').map((_, index, segments) => segments.slice(0, index + 1).join('/')),
+      ),
+  ),
+];
 
 const INLINE_CODE_PATTERN = /(?<!`)(`+)(?!`)([\s\S]+?)(?<!`)\1(?!`)/g;
 
@@ -89,26 +125,45 @@ const paragraphsOutsideFences = (markdown: string): Paragraph[] => {
 const lineCountBefore = (text: string, offset: number): number =>
   text.slice(0, offset).split('\n').length - 1;
 
-const citationsInParagraph = (paragraph: Paragraph): Citation[] =>
-  [...paragraph.text.matchAll(INLINE_CODE_PATTERN)].flatMap((span) => {
-    const spanStart = (span.index ?? 0) + span[1].length;
+const citationsInParagraph =
+  (pattern: RegExp) =>
+  (paragraph: Paragraph): Citation[] =>
+    [...paragraph.text.matchAll(INLINE_CODE_PATTERN)].flatMap((span) => {
+      const spanStart = (span.index ?? 0) + span[1].length;
 
-    return [...span[2].matchAll(CITATION_PATTERN)]
-      .map((citation) => {
-        const citationStart = spanStart + (citation.index ?? 0);
-        const citationEnd = (citation.index ?? 0) + citation[0].length;
-        const path = citation[0].replace(/\.+$/, '');
+      return [...span[2].matchAll(pattern)]
+        .map((citation) => {
+          const citationStart = spanStart + (citation.index ?? 0);
+          const citationEnd = (citation.index ?? 0) + citation[0].length;
+          const path = citation[0].replace(/\.+$/, '');
 
-        return {
-          line: paragraph.firstLine + lineCountBefore(paragraph.text, citationStart),
-          path: span[2][citationEnd] === '(' ? dirname(path) : path,
-        };
-      })
-      .filter((citation) => !PLACEHOLDER_PATTERN.test(citation.path));
-  });
+          return {
+            line: paragraph.firstLine + lineCountBefore(paragraph.text, citationStart),
+            path: span[2][citationEnd] === '(' ? dirname(path) : path,
+          };
+        })
+        .filter((citation) => !PLACEHOLDER_PATTERN.test(citation.path));
+    });
 
 const citedPaths = (markdown: string): Citation[] =>
-  paragraphsOutsideFences(markdown).flatMap(citationsInParagraph);
+  paragraphsOutsideFences(markdown).flatMap(citationsInParagraph(CITATION_PATTERN));
+
+const citedPartialPaths = (markdown: string): Citation[] =>
+  paragraphsOutsideFences(markdown)
+    .flatMap(citationsInParagraph(PARTIAL_CITATION_PATTERN))
+    .filter((citation) => {
+      const firstSegment = citation.path.split('/')[0];
+
+      return !CITED_ROOTS.includes(firstSegment) && CHILD_FOLDERS_OF_ROOTS.has(firstSegment);
+    });
+
+const partialCitationResolves = (path: string): boolean => {
+  const suffix = `/${path.replace(/\/+$/, '')}`;
+
+  return RESOLUTION_TARGETS.some((target) =>
+    PARTIAL_EXTENSIONS.some((extension) => target.endsWith(`${suffix}${extension}`)),
+  );
+};
 
 const pathsOf = (citations: Citation[]): string[] => citations.map((citation) => citation.path);
 
@@ -138,6 +193,11 @@ const missingCitations = (file: string): Array<{ file: string; line: number; pat
   citedPaths(readFileSync(join(REPOSITORY_ROOT, file), 'utf8'))
     .filter((citation) => !existsSync(join(REPOSITORY_ROOT, citation.path)))
     .map((citation) => ({ file, line: citation.line, path: citation.path }));
+
+const unresolvedPartialCitations = (file: string): string[] =>
+  citedPartialPaths(readFileSync(join(REPOSITORY_ROOT, file), 'utf8'))
+    .filter((citation) => !partialCitationResolves(citation.path))
+    .map((citation) => `${file}:${citation.line} ${citation.path}`);
 
 const citationKey = (citation: { file: string; path: string }): string =>
   `${citation.file} -> ${citation.path}`;
@@ -214,6 +274,33 @@ describe('citedPaths', () => {
   });
 });
 
+describe('citedPartialPaths', () => {
+  it('finds a path whose first segment is a child folder of a cited root (POSITIVE)', () => {
+    expect(citedPartialPaths('See `design-system/entity-tint/entity-tint.ts` here.')).toEqual([
+      { line: 1, path: 'design-system/entity-tint/entity-tint.ts' },
+    ]);
+  });
+
+  it('skips a branch name, a lint rule name, a package path and a rooted path (NEGATIVE)', () => {
+    expect(
+      citedPartialPaths(
+        '`feat/assets-debts` `lint/suspicious/noConsole` `@kiko/db/client` `src/design-system/x.ts` `../design-system/x.ts`',
+      ),
+    ).toEqual([]);
+  });
+
+  it('resolves a partial path by its tracked suffix, with or without an extension', () => {
+    expect(partialCitationResolves('design-system/entity-tint/entity-tint.ts')).toBe(true);
+    expect(partialCitationResolves('design-system/entity-tint')).toBe(true);
+    expect(partialCitationResolves('design-system/entity-tint/')).toBe(true);
+    expect(partialCitationResolves('design-system/entity-tint/entity-tint')).toBe(true);
+  });
+
+  it('reports a partial path no tracked file or folder ends with', () => {
+    expect(partialCitationResolves('design-system/gone/gone.ts')).toBe(false);
+  });
+});
+
 describe('repo paths cited in skills, agents and harness docs', () => {
   it('scans every citing file', () => {
     expect(citingFiles()).toEqual(
@@ -236,6 +323,10 @@ describe('repo paths cited in skills, agents and harness docs', () => {
         .filter((citation) => !allowed.has(citationKey(citation)))
         .map((citation) => `${citation.file}:${citation.line} ${citation.path}`),
     ).toEqual([]);
+  });
+
+  it('cites only partial paths that a tracked file or folder ends with', () => {
+    expect(citingFiles().flatMap(unresolvedPartialCitations)).toEqual([]);
   });
 
   it('lists no allowlisted citation that has since been fixed', () => {
