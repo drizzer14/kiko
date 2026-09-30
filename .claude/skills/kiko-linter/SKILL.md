@@ -979,6 +979,22 @@ narrowed. Write "When the user asks for a refresh, …" instead. Fixture
 pair: the six user-request pins at the end of `.bad.ts` and item 20 in
 `.good.ts`.
 
+**The branch, task, option, plan, and review-date members (2026-09-30).**
+Six more citation shapes, each in both arms: `on\sthis\sbranch`,
+`this\stask's`, `Option\s[A-Z]`, `for\sthis\splan`, `this\splan's`, and
+`review,\s<ISO date>` ("(review, 2026-09-14)"). Each needs its whole shape:
+"optional", "the Options list", a lowercase "option A/B toggle", "a branch
+on this path", "the plan keeps its slot", and "review the rows, then retry"
+stay silent. `Option\s[A-Z]` is the same standalone-token class as `D2`
+above: a real UI option named by a capital letter ("Option B in the
+picker") is syntactically identical to a design-option citation, and is
+accepted, not narrowed. Name the option by what it does instead. The
+sweep that landed these members found 39 hits in 26 files; each was
+reworded to keep the WHY, and a design option became the name of its
+model ("the reflow error model", "connect-first"), never a blank.
+Fixture pair: the twelve pins after the user-request pins in `.bad.ts`
+and item 21 in `.good.ts`.
+
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 
 The pre-write guard also runs it in-process as the Node rule
@@ -1306,6 +1322,13 @@ a pre-existing finding points at. A Semgrep deny names
   read it there. No `--write`.
 - `specifier-scanner.js` is the shared import-specifier scanner. A new
   checker that reads import specifiers reuses it.
+- `plural-count.js` (`kiko-plural-key-needs-count`) enforces kiko-translator's
+  "A plural key is always called with `count`". It has no `.sh` wrapper
+  and no `check:*` gate: its project-wide check is the Jest invariant
+  `__tests__/plural-count.test.ts`, the same setup as
+  `kiko-one-component-per-file`. It reads the plural key set from its own
+  checkout's en.ts with the `typescript` compiler API (0.13 s to load and
+  parse), never from the guard mirror. No `--write`.
 
 A Jest invariant, `__tests__/cited-paths.test.ts`, fails when a skill,
 agent or harness doc cites a repo path in an inline code span that does

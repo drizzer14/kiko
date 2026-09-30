@@ -325,6 +325,11 @@ The established patterns grouped under this heading:
   inserts it at the trailing edge. A native item takes no `testID`; a
   test reads the item list from `setOptions` and calls its `onPress`.
   Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (Edit).
+  The pre-write guard enforces both bans: Semgrep
+  `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
+  and a `type: 'custom'` item in either header item list, and
+  `kiko-no-header-spacing-item` denies a `type: 'spacing'` item in either
+  list (`rules/semgrep-prewrite.yml`).
 - **Edit is an icon-only native bar item** (2026-09-30, locked). The
   user: "One last thing before LGTM: remove 'Edit' label from
   account/holding edit button", then, on device: "'Edit' button

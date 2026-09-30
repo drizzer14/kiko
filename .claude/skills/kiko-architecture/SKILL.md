@@ -1850,6 +1850,12 @@ what a change must keep.
   instance unmounts the store resets to `undefined`: nothing watched
   iOS Settings meanwhile, so a remount never shows a stale status (this
   also isolates tests, with no test-only reset export).
+  `request()` is the only way to show the system prompt: a direct
+  `remindersNative.requestAuthorization` call publishes no answer to the
+  store and does not count a failed prompt as denied. Semgrep
+  `kiko-no-direct-notification-permission-request`
+  (`rules/semgrep-prewrite.yml`) denies it outside
+  `src/reminders/permission/`, tests, and `src/test-support/`.
   `useNotificationPreAlert(onAnswered?)`
   is the one ask flow: pre-alert sheet, then `request()` after the
   sheet has closed, then `replanReminders()`, then `onAnswered`. iOS is

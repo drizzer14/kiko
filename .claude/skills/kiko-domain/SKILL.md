@@ -782,7 +782,16 @@ behind a first offset (`Date.now() + HOUR + DAY_MS`). It reads a span
 as a day span by its text: "day" as a whole camelCase or snake_case
 part (`DAY`, `DAY_MS`, `dayMs`, `msPerDay`, `days`), `86_400_000`,
 `24 * 60 * 60`, or `60 * 60 * 24`. A word that only contains "day"
-(`startOfToday`, `holiday`, `Monday`) is not a day span.
+(`startOfToday`, `holiday`, `Monday`) is not a day span. A date-valued
+`…Day` name is a point, not a span: `startOfDay(now)`,
+`startOfLocalDay(now)`, `endOfLocalDay(now)`, `lastDay`, and `firstDay`
+(a `startOf`/`endOf`/`Local`/`last`/`first` word right before `Day`), so
+`Date.now() - startOfLocalDay(now)` is an elapsed time and is not
+flagged. `graceDays`, `msPerDay`, and `twoDays` are still spans. A day
+COUNT is not a day step either: `Math.floor((Date.now() - openedAt) /
+DAY_MS) - graceDays` is not flagged, because the rule matches the
+clock plus one offset plus a span directly, not a clock sum nested
+anywhere inside a larger expression.
 
 Known limits, not flagged:
 
@@ -796,6 +805,23 @@ Known limits, not flagged:
 Flagged even though pinned: a pin in a `beforeEach` (the exemption sees
 a pin earlier in the same block only), so bind the pinned instant to a
 constant and offset from that.
+
+The same DST rule holds in app code: never add a fixed day span to the
+time you pass to `startOfLocalDay` or `endOfLocalDay`. The default date
+range once built its start as `startOfLocalDay(now - 30 * DAY_MS)`; 30
+fixed 24-hour steps across a DST change land one local day off. Step
+local calendar fields instead: `new Date(y, m, d - 30)` is already the
+local midnight 30 calendar days back (`defaultDateRange` in
+`src/dates/default-range.ts`); a time of day kept from the input needs
+`startOfLocalDay(...)` of that stepped date. Semgrep
+`kiko-no-fixed-day-offset-into-local-day` (`rules/semgrep-prewrite.yml`)
+denies it in app and test code alike: a `DAY`, `DAY_MS`, `MS_PER_DAY`,
+`86_400_000`, or `24 * 60 * 60` span added or subtracted anywhere inside
+the argument (`startOfLocalDay(time - 2 * DAY + HOUR)` fires). A
+sub-day offset (`startOfLocalDay(now - HOUR)`) is not flagged. Known
+limit, not flagged: a span applied after the call returns
+(`startOfLocalDay(time) - DAY`) shifts a local midnight by a fixed
+24 hours, the same DST class, and has its own follow-up.
 
 ## Net worth
 
