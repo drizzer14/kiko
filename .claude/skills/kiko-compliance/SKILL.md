@@ -189,7 +189,7 @@ unknown interruption levels.
 
 Ask: does this diff add a new network host, and if it sends a
 credential header (`X-Token`, `X-MBX-APIKEY`, `Authorization`, an
-api-key-ish header, or the `'api_token'` query parameter), is that host under `NSPinnedDomains` with at
+api-key-ish header, or the `api_token` query parameter, quoted or not), is that host under `NSPinnedDomains` with at
 least two SPKI pins? Mechanized: `npm run check:plist` resolves every
 credential-bearing client's `@env`-configured host and fails if it is
 unpinned, under-pinned, or if `NSAllowsArbitraryLoads` is not `false`

@@ -78,6 +78,12 @@ anchors the chain on a device that does not yet trust Root YR itself). A
 Let's Encrypt intermediate change needs no app update; only a move away from
 ISRG does.
 
+Both pins assume the RSA hierarchy: they cover the chain YR1 ← Root YR ← X1.
+An ECDSA re-key of `eodhd.com` would chain through a YE* intermediate to
+ISRG Root YE and ISRG Root X2, which neither pin covers. That is a re-pin
+trigger: every EODHD request fails closed until an app update ships the new
+pins.
+
 ### What breaks if the pins go stale
 
 Monobank: every Monobank request fails closed with a TLS error

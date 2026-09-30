@@ -1785,9 +1785,7 @@ a new standalone wrapper — `plist.sh` already owns `plutil -lint` on
 `ios/Kiko/Info.plist` plus the fail-closed proofs for a missing file
 or a broken `plutil`.
 
-A credential marker is a credential header or the quoted literal
-`'api_token'` (a query-parameter credential). Always write `'api_token'`
-as a quoted string literal the Biome formatter keeps quoted (a
-`URLSearchParams` entry or a `const` string), never as an object key the
-formatter may unquote. Read `scripts/checks/plist.sh` for the exact
-marker set.
+A credential marker is a credential header or the bare word `api_token`
+(a query-parameter credential), quoted or not, so an object key the Biome
+formatter unquotes and a template query string (`?api_token=${key}`) both
+match. Read `scripts/checks/plist.sh` for the exact marker set.

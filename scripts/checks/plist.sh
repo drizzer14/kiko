@@ -17,8 +17,9 @@ fi
 
 # --- 1. Every credential-bearing host must be pinned (H3) ---------------------
 # A client that sends a credential header (X-Token, X-MBX-APIKEY, Authorization,
-# or an api-key-ish header) or a credential query parameter (the quoted
-# 'api_token' literal) takes its base URL from `@env` — that is the
+# or an api-key-ish header) or a credential query parameter (the bare word
+# api_token, quoted or not: Biome unquotes an object key, and a template query
+# string never quotes it) takes its base URL from `@env` — that is the
 # project's convention (kiko-code-style, "Externalize hardcoded config"). Resolve
 # each such client's `@env` identifiers to hosts via `.env`, then require every
 # resolved host under NSPinnedDomains. This is what would have caught the
@@ -49,9 +50,10 @@ while IFS= read -r file; do
     fi
   else
     # Fail closed, the same way an unparsable import does: a client that sends a
-    # credential header takes its base URL from `@env` by convention, so with no
-    # `@env` import at all there is no host to resolve and this check would
-    # silently prove nothing about the one file it most needs to.
+    # credential (header or api_token) takes its base URL from `@env` by
+    # convention, so with no `@env` import at all there is no host to resolve
+    # and this check would silently prove nothing about the one file it most
+    # needs to.
     add_problem "credential (header or 'api_token' query parameter) but no @env import in ${file#"$ROOT"/} — its endpoint cannot be resolved, so it cannot be verified as pinned; move the base URL into .env and import it from '@env'"
     env_names=""
   fi
@@ -72,7 +74,7 @@ while IFS= read -r file; do
 $env_names
 EOF
 done <<EOF
-$(grep -rlE "'(X-Token|X-MBX-APIKEY|Authorization|api_token)'|'[Aa]pi[-_]?[Kk]ey'" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')
+$(grep -rlE "'(X-Token|X-MBX-APIKEY|Authorization)'|'[Aa]pi[-_]?[Kk]ey'|(^|[^A-Za-z0-9_])api_token([^A-Za-z0-9_]|$)" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')
 EOF
 
 # Every pinned domain must carry at least two SPKI pins (reinforces Task 7/H3).

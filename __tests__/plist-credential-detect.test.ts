@@ -82,6 +82,22 @@ const QUERY_TOKEN_CLIENT = [
   '',
 ].join('\n');
 
+const UNQUOTED_KEY_TOKEN_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const quoteUrl = (token: string): string =>',
+  '  `${QUOTES_API_ENDPOINT}/eod?${new URLSearchParams({ api_token: token })}`;',
+  '',
+].join('\n');
+
+const TEMPLATE_QUERY_TOKEN_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const quoteUrl = (token: string): string =>',
+  '  `${QUOTES_API_ENDPOINT}/eod?api_token=${token}`;',
+  '',
+].join('\n');
+
 const NO_CREDENTIAL_CLIENT = [
   "import { QUOTES_API_ENDPOINT } from '@env';",
   '',
@@ -95,11 +111,9 @@ const TWO_PINS = [
 ];
 
 afterEach(() => {
-  while (createdPaths.length > 0) {
-    const path = createdPaths.pop();
-
-    if (path) rmSync(path, { recursive: true, force: true });
-  }
+  createdPaths.splice(0).forEach((path) => {
+    rmSync(path, { recursive: true, force: true });
+  });
 });
 
 describe('scripts/checks/plist.sh credential detection', () => {
@@ -118,17 +132,24 @@ describe('scripts/checks/plist.sh credential detection', () => {
     expect(result.stderr).toBe('');
   });
 
+  it('fails (exit 2) when the formatter unquoted the api_token object key', () => {
+    const result = runPlistCheck(buildRoot({}, UNQUOTED_KEY_TOKEN_CLIENT));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(QUOTES_HOST);
+  });
+
+  it('fails (exit 2) when api_token sits in a template query string', () => {
+    const result = runPlistCheck(buildRoot({}, TEMPLATE_QUERY_TOKEN_CLIENT));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(QUOTES_HOST);
+  });
+
   it('ignores a client that carries no credential marker', () => {
     const result = runPlistCheck(buildRoot({}, NO_CREDENTIAL_CLIENT));
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
-  });
-
-  it('passes on the real repository', () => {
-    const result = spawnSync('bash', [SCRIPT], { encoding: 'utf8' });
-
-    expect(result.stderr).toBe('');
-    expect(result.status).toBe(0);
   });
 });
