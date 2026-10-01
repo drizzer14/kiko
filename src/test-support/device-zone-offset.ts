@@ -1,8 +1,10 @@
 const HOUR_MILLISECONDS = 3_600_000;
 
-const MINUTES_PER_HOUR = 60;
-
 type DateArguments = [] | [value: number | string | Date] | number[];
+
+// A `run` that returns a promise would finish after the real `Date` is back,
+// so its awaited half would read the real zone; the type refuses one.
+type Synchronous<Result> = Result extends PromiseLike<unknown> ? never : Result;
 
 const fixedOffsetDateConstructor = (offsetHours: number): DateConstructor => {
   const RealDate = Date;
@@ -29,46 +31,6 @@ const fixedOffsetDateConstructor = (offsetHours: number): DateConstructor => {
     constructor(...dateArguments: DateArguments) {
       super(instantOf(dateArguments));
     }
-
-    private wallClock(): Date {
-      return new RealDate(this.getTime() + offsetMilliseconds);
-    }
-
-    getFullYear(): number {
-      return this.wallClock().getUTCFullYear();
-    }
-
-    getMonth(): number {
-      return this.wallClock().getUTCMonth();
-    }
-
-    getDate(): number {
-      return this.wallClock().getUTCDate();
-    }
-
-    getDay(): number {
-      return this.wallClock().getUTCDay();
-    }
-
-    getHours(): number {
-      return this.wallClock().getUTCHours();
-    }
-
-    getMinutes(): number {
-      return this.wallClock().getUTCMinutes();
-    }
-
-    getSeconds(): number {
-      return this.wallClock().getUTCSeconds();
-    }
-
-    getMilliseconds(): number {
-      return this.wallClock().getUTCMilliseconds();
-    }
-
-    getTimezoneOffset(): number {
-      return -offsetHours * MINUTES_PER_HOUR;
-    }
   }
 
   return FixedOffsetDate as unknown as DateConstructor;
@@ -79,10 +41,22 @@ const fixedOffsetDateConstructor = (offsetHours: number): DateConstructor => {
  * (no DST). `jest.config.js` pins Europe/Kyiv for the whole process, and a
  * `process.env.TZ` assignment inside a test never retargets `Date`, so a test
  * proving a result does not depend on the device zone swaps the global `Date`
- * itself: its local-time constructor and local getters read the fixed offset,
- * while an instant built from milliseconds stays the same instant.
+ * itself. Only the multi-argument local-time constructor
+ * (`new Date(year, month, ...)`) reads the fixed offset; an instant built
+ * from milliseconds stays the same instant.
+ *
+ * Every other device-zone read still sees Kyiv: the local getters and
+ * setters, `getTimezoneOffset`, a string `new Date("...")`, `Date.parse`,
+ * `toLocale*`/`toString`, and `Intl`. Semgrep's
+ * `kiko-no-device-zone-in-statement-import` bans those in statement-import
+ * instead. A `Date` created inside `run` and kept past it stays a
+ * `FixedOffsetDate`, and a real `Date` from outside is not `instanceof` the
+ * swapped global inside `run`.
  */
-export const withDeviceZoneOffset = <Result>(offsetHours: number, run: () => Result): Result => {
+export const withDeviceZoneOffset = <Result>(
+  offsetHours: number,
+  run: () => Synchronous<Result>,
+): Synchronous<Result> => {
   const realDate = globalThis.Date;
 
   globalThis.Date = fixedOffsetDateConstructor(offsetHours);

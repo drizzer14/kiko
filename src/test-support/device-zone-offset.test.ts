@@ -7,26 +7,19 @@ describe('withDeviceZoneOffset', () => {
     expect(milliseconds).toBe(Date.UTC(2026, 6, 15, 19, 30, 0));
   });
 
-  it('reads the local getters at the given fixed offset', () => {
-    const instant = Date.UTC(2026, 0, 31, 23, 30, 0);
-
-    const parts = withDeviceZoneOffset(1, () => {
-      const date = new Date(instant);
-
-      return [date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getDay()];
-    });
-
-    expect(parts).toEqual([2026, 1, 1, 0, 0]);
-  });
-
-  it('reports the offset through getTimezoneOffset, in minutes west of UTC', () => {
-    expect(withDeviceZoneOffset(1, () => new Date().getTimezoneOffset())).toBe(-60);
-  });
-
   it('keeps an instant built from milliseconds unchanged', () => {
     const instant = Date.UTC(2026, 8, 15, 11, 30, 0);
 
     expect(withDeviceZoneOffset(1, () => new Date(instant).getTime())).toBe(instant);
+  });
+
+  it('refuses a callback that returns a promise', () => {
+    const realDate = Date;
+
+    // @ts-expect-error — an async `run` would read its awaited half in the real zone
+    withDeviceZoneOffset(1, async () => new Date(2026, 6, 15).getTime()).catch(() => undefined);
+
+    expect(Date).toBe(realDate);
   });
 
   it('restores the real Date afterward, even when the callback throws', () => {

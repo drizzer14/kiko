@@ -1,5 +1,5 @@
 // Semgrep fixture (POSITIVE): a hand-rolled `Date.UTC(...)` call in
-// statement-import bypasses both zone readings this project settled on.
+// statement-import bypasses the zone rule every wall clock is read through.
 // `kiko-no-date-utc-in-statement-import` MUST report a finding on the pinned
 // line below. Never "fix" this file.
 export const fixtureBadWallClockMilliseconds = (): number =>

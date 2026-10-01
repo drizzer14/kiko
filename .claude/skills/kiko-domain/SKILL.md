@@ -1248,7 +1248,7 @@ an amount, not a scaled decimal-string price/quantity, so no
 parity every other Money amount conversion follows). `pgs_date`
 (`YYYY-MM-DD`) is parsed as a DEVICE-LOCAL midnight instant (`new
 Date(year, month - 1, day)`), NOT through `parseDateTimeSeconds`'s
-"read a wall-clock date as UTC" convention — `BondTerms.maturityDate`
+"read a bank wall clock as Kyiv time" convention — `BondTerms.maturityDate`
 feeds straight into `BondMeta.maturityDate` above, and every consumer
 of that field reads it through local getters, so a UTC parse would
 silently shift the maturity date (and every coupon date derived from

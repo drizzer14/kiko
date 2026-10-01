@@ -525,8 +525,8 @@ describe('applyColumnMapping dedup key across device zones', () => {
       currency: { mode: 'fixed', currency: 'EUR' },
     }).statement.transactions.map((transaction) => computeDedupKey('h1', transaction, 0));
 
-  // The literal keys are the ones a Kyiv device wrote before column mapping
-  // read its cells as Kyiv time, so stored keys need no re-key.
+  // Literal keys pin the Kyiv reading byte for byte, so a key a Kyiv device
+  // already stored keeps matching on a re-import.
   it('keeps the key a Kyiv device already wrote', () => {
     expect(keysFor('DD.MM.YYYY HH:MM')).toEqual([
       'h1 1789471800 -15000 coffee',

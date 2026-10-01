@@ -94,7 +94,7 @@ const REGISTER_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
  * Parses the register's `YYYY-MM-DD` date fields (`pgs_date`) as a
- * DEVICE-LOCAL midnight instant — NOT the `parseDateTimeSeconds`/UTC
+ * DEVICE-LOCAL midnight instant — NOT the `parseDateTimeSeconds`/Kyiv
  * convention a statement-import dedup key uses. `BondTerms.maturityDate`
  * feeds straight into `BondMeta.maturityDate`, and every consumer of that
  * field reads it through local-getter helpers — `startOfLocalDay`

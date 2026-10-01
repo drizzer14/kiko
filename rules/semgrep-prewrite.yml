@@ -1050,10 +1050,11 @@ rules:
       - pattern-regex: |-
           (?m)(?:^[ \t]*(?:import|export)\b[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?confirm-sheet(?:/[^'"]*)?['"]
   # A bank wall-clock read directly through `Date.UTC(...)` or the local-time
-  # `new Date($Y, $M, ...)` constructor bypasses the one zone reading this
-  # project settled on (`kyivWallClockToUtcMilliseconds`, for a named format
-  # and column mapping alike) — neither rejects a rollover, and either one
-  # silently reads the wall clock in the wrong zone. `paths.include` draws nothing against a
+  # `new Date($Y, $M, ...)` constructor bypasses the zone rule every bank wall
+  # clock is read through (`kyivWallClockToUtcMilliseconds` for a named
+  # format, `zoneWallClockToUtcMilliseconds` in the mapping's own zone for
+  # column mapping) — neither rejects a rollover, and either one silently
+  # reads the wall clock in the wrong zone. `paths.include` draws nothing against a
   # flat fixture (kiko-linter's "Semgrep facts"), so this rule's fixture pair
   # is NESTED at rules/fixtures/kiko-no-date-utc-in-statement-import/src/statement-import/.
   - id: kiko-no-date-utc-in-statement-import
@@ -1061,11 +1062,11 @@ rules:
     severity: ERROR
     message: >
       `Date.UTC(...)`/a local-time `new Date(year, month, ...)` constructor
-      call in statement-import bypasses the project's own zone reading. Use
-      `kyivWallClockToUtcMilliseconds` (`@kiko/dates`) for every bank wall
-      clock, named format and column mapping alike.
+      call in statement-import bypasses the project's own zone rule. Read
+      every bank wall clock through `kyivWallClockToUtcMilliseconds` or
+      `zoneWallClockToUtcMilliseconds` (`@kiko/dates`).
     metadata:
-      fix: "Use kyivWallClockToUtcMilliseconds (@kiko/dates) instead of Date.UTC/new Date(year, month, ...)."
+      fix: "Use kyivWallClockToUtcMilliseconds or zoneWallClockToUtcMilliseconds (@kiko/dates) instead of Date.UTC/new Date(year, month, ...)."
       skill: "kiko-statement-import › Column mapping"
     paths:
       include:
@@ -1077,29 +1078,35 @@ rules:
       - pattern-either:
           - pattern: Date.UTC(...)
           - pattern: new Date($Y, $M, ...)
-  # Statement import reads every bank wall clock as Kyiv time, so a row's time
-  # and its dedup key never depend on the phone's zone: a device-zone read let
-  # the same file get a new key after the phone changed zone, and an
-  # overlapping re-import duplicated every row. The local-time constructor is
+  # Statement import reads every bank wall clock in a fixed source zone
+  # (Kyiv, or a column mapping's own zone), so a row's time and its dedup
+  # key never depend on the phone's zone: a device-zone read gives the same
+  # file a new key once the phone changes zone, and an overlapping
+  # re-import duplicates every row. The local-time constructor is
   # `kiko-no-date-utc-in-statement-import`'s; this rule covers the other ways
   # a device-zone read slips back in — a local `Date` getter or setter,
-  # `getTimezoneOffset`, `Date.parse`, a string `new Date("...")`, and the
-  # `@kiko/dates` local-day helpers. The display formatters (`formatDate`,
-  # used by preview-stats) stay allowed: they only render a stored instant,
-  # never produce one. `paths.include` is path-prefixed, so the fixture pair
-  # is NESTED. ERROR from the start: the tree had no finding when the rule
-  # landed.
+  # `getTimezoneOffset`, `Date.parse`, a string, string-variable, or
+  # template-literal `new Date(...)`, a `toLocale*`/`toString`/
+  # `toDateString`/`toTimeString` render, an `Intl.DateTimeFormat` with no
+  # `timeZone`, and the `@kiko/dates` local-day helpers. A
+  # `new Date(text)` whose argument TypeScript cannot type as `string`
+  # (an untyped `TableCell`, say) is not caught. The display formatters
+  # (`formatDate`, used by preview-stats) stay allowed: they only render a
+  # stored instant, never produce one. `paths.include` is path-prefixed, so
+  # the fixture pair is NESTED. ERROR: the tree has no finding.
   - id: kiko-no-device-zone-in-statement-import
     languages: [typescript]
     severity: ERROR
     message: >
-      Statement import reads every bank wall clock as Kyiv time, never the
-      device's own zone, so a row's dedup key stays the same wherever the
-      phone is. A local `Date` getter/setter, `getTimezoneOffset`,
-      `Date.parse`, `new Date("...")`, `parseLocalDate`, or
+      Statement import reads every bank wall clock in a fixed source zone,
+      never the device's own, so a row's dedup key stays the same wherever
+      the phone is. A local `Date` getter/setter, `getTimezoneOffset`,
+      `Date.parse`, a string or template-literal `new Date(...)`, a
+      `toLocale*`/`toString`/`toDateString`/`toTimeString` call, an
+      `Intl.DateTimeFormat` with no `timeZone`, `parseLocalDate`, or
       `startOfLocalDay`/`endOfLocalDay` reads the device zone.
     metadata:
-      fix: "Read wall-clock digits with kyivWallClockToUtcMilliseconds and stored digits with utcDigitsOf (@kiko/dates), never a local Date getter, Date.parse, or a device-local day helper."
+      fix: "Read wall-clock digits with kyivWallClockToUtcMilliseconds/zoneWallClockToUtcMilliseconds, an instant's wall clock with zoneWallClockOf, and stored digits with utcDigitsOf (@kiko/dates), never a local Date getter, Date.parse, a locale render, or a device-local day helper."
       skill: "kiko-statement-import › Column mapping"
     paths:
       include:
@@ -1115,6 +1122,21 @@ rules:
               regex: ^((get|set)(FullYear|Month|Date|Hours|Minutes|Seconds|Milliseconds)|getDay|getTimezoneOffset)$
       - pattern: Date.parse(...)
       - pattern: new Date("...")
+      - pattern: new Date(`...`)
+      - pattern: "new Date(($TEXT: string))"
+      - pattern: $DATE.toLocaleString(...)
+      - pattern: $DATE.toLocaleDateString(...)
+      - pattern: $DATE.toLocaleTimeString(...)
+      - pattern: $DATE.toDateString()
+      - pattern: $DATE.toTimeString()
+      - pattern: new Date(...).toString()
+      - pattern: "($DATE: Date).toString()"
+      - patterns:
+          - pattern-either:
+              - pattern: new Intl.DateTimeFormat(...)
+              - pattern: Intl.DateTimeFormat(...)
+          - pattern-not: "new Intl.DateTimeFormat($LOCALE, {..., timeZone: $ZONE, ...})"
+          - pattern-not: "Intl.DateTimeFormat($LOCALE, {..., timeZone: $ZONE, ...})"
       - pattern: parseLocalDate(...)
       - pattern: startOfLocalDay(...)
       - pattern: endOfLocalDay(...)

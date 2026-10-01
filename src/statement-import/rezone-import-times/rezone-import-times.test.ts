@@ -7,6 +7,7 @@ import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sq
 import { monobankFixtureInput } from '@kiko/statement-import/formats/format-test-fixtures';
 
 import { mapParsedTransaction } from '../mapping';
+import { parseDateWithFormat } from '../column-mapping';
 
 import { rezoneImportTimesIn } from './rezone-import-times';
 import { rezoneImportTime } from './plan-import-time-rezone';
@@ -170,14 +171,14 @@ describe('rezoneImportTimesIn (real SQLite)', () => {
     await seedLegacyData(drizzleDatabase);
     await rezoneImportTimesIn(drizzleDatabase);
 
-    // Column mapping reads the SAME raw digits as Kyiv time too
-    // (`rezoneImportTime` IS that same reading), so a re-import
-    // through column mapping reproduces the identical (time, externalId)
-    // pair for each row and must dedup against what the rezone just wrote.
+    // Column mapping's own reading of the same raw digits must land on the
+    // (time, externalId) pair the rezone just wrote, so the re-import dedups.
+    const columnMappedSeconds = (raw: string): number =>
+      parseDateWithFormat(raw, 'DD.MM.YYYY HH:MM:SS') ?? Number.NaN;
     const reimportedFirst = mapParsedTransaction(
       {
         ...dedicatedMonobank.transactions[0],
-        timeSeconds: rezoneImportTime(LEGACY_FIRST_MILLISECONDS) / 1000,
+        timeSeconds: columnMappedSeconds('01.04.2022 05:27:35'),
       },
       'h-1',
       0,
@@ -185,7 +186,7 @@ describe('rezoneImportTimesIn (real SQLite)', () => {
     const reimportedLast = mapParsedTransaction(
       {
         ...dedicatedMonobank.transactions[3],
-        timeSeconds: rezoneImportTime(LEGACY_LAST_MILLISECONDS) / 1000,
+        timeSeconds: columnMappedSeconds('12.05.2023 17:30:36'),
       },
       'h-1',
       0,

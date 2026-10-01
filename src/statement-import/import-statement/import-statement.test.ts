@@ -466,13 +466,17 @@ describe('importStatement', () => {
       // A virgin holding has no boundary at all, so the mapped closing
       // balance (5,900.00 UAH -> 590_000 minor units, as of the newest row's
       // own time) applies outright, over the plain net-delta fallback.
-      // Column mapping reads this cell as THIS DEVICE's own local time
-      // (never Kyiv's), so the expected instant is built through the SAME
-      // local `Date` constructor, never a hardcoded UTC-derived one — the
-      // test then passes under any process time zone.
+      // A mapping with no time zone reads this cell as Kyiv time.
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 590_000,
-        balanceSetAt: new Date(2025, 6, 2, 10, 0, 0).getTime(),
+        balanceSetAt: kyivWallClockToUtcMilliseconds({
+          year: 2025,
+          month: 7,
+          day: 2,
+          hour: 10,
+          minute: 0,
+          second: 0,
+        }),
       });
     });
   });

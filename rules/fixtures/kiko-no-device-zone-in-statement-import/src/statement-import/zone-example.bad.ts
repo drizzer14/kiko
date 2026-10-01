@@ -23,6 +23,46 @@ export const fixtureBadStringDate = (): Date =>
   // EXPECT-FINDING
   new Date('2026-09-15T14:30:00');
 
+export const fixtureBadTemplateDate = (day: string): Date =>
+  // EXPECT-FINDING
+  new Date(`2026-09-${day}T14:30:00`);
+
+export const fixtureBadStringVariableDate = (text: string): Date =>
+  // EXPECT-FINDING
+  new Date(text);
+
+export const fixtureBadLocaleString = (date: Date): string =>
+  // EXPECT-FINDING
+  date.toLocaleString('uk-UA');
+
+export const fixtureBadLocaleDateString = (date: Date): string =>
+  // EXPECT-FINDING
+  date.toLocaleDateString();
+
+export const fixtureBadLocaleTimeString = (date: Date): string =>
+  // EXPECT-FINDING
+  date.toLocaleTimeString();
+
+export const fixtureBadToString = (date: Date): string =>
+  // EXPECT-FINDING
+  date.toString();
+
+export const fixtureBadNewDateToString = (milliseconds: number): string =>
+  // EXPECT-FINDING
+  new Date(milliseconds).toString();
+
+export const fixtureBadDateString = (date: Date): string =>
+  // EXPECT-FINDING
+  date.toDateString();
+
+export const fixtureBadTimeString = (date: Date): string =>
+  // EXPECT-FINDING
+  date.toTimeString();
+
+export const fixtureBadDateTimeFormat = (): Intl.DateTimeFormat =>
+  // EXPECT-FINDING
+  new Intl.DateTimeFormat('uk-UA', { hour: '2-digit' });
+
 export const fixtureBadLocalDate = (text: string): number =>
   // EXPECT-FINDING
   parseLocalDate(text);
