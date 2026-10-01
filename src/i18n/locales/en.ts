@@ -523,6 +523,8 @@ export const en = {
     lot: {
       addTitle: 'Add Lot',
       buy: 'Buy',
+      coversLaterSaleError: 'A later sale needs this quantity. Change or delete that sale first.',
+      editTitle: 'Edit Lot',
       quantity: 'Quantity',
       quantityError: 'Enter a quantity greater than 0.',
       quantityPlaceholder: '10',
@@ -532,6 +534,7 @@ export const en = {
       totalCost: 'Total cost',
       totalCostError: 'Total cost must be greater than 0.',
       totalCostPlaceholder: '1000.00',
+      totalCostRequiredError: 'Enter a total cost of 0 or more.',
       type: 'Type',
     },
     ownershipChange: {

@@ -76,6 +76,7 @@ export const TITLE_KEYS = new Set([
   'forms.holding.terms',
   'forms.holding.typeSheetTitle',
   'forms.lot.addTitle',
+  'forms.lot.editTitle',
   'forms.ownershipChange.title',
   'forms.pricePoint.loanTitle',
   'forms.pricePoint.shareTitle',

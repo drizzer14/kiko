@@ -63,6 +63,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
+import { asLots, hasNegativeHolding, withLotChange } from '@kiko/holdings/lots';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
@@ -80,6 +81,7 @@ import {
 } from './holding-detail-spec';
 import ShareChanges from './share-changes';
 import UpcomingPayments from './upcoming-payments';
+import LotRowMenu, { type LotActions } from './lot-row-menu';
 import { useBondRegisterTerms } from './use-bond-register-terms';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
@@ -391,6 +393,7 @@ type LedgerRowContext = {
   // manual rows only (a synced row is not duplicable), stateless via the
   // `duplicateOfTransactionId` route param.
   onDuplicateTransaction: (transactionId: string) => void;
+  lotActions: LotActions | undefined;
 };
 
 // A single ledger row, lifted verbatim out of the old eager `.map` so the
@@ -411,45 +414,48 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     holdingNameById,
     onPressTransaction,
     onDuplicateTransaction,
+    lotActions,
   } = context;
 
   return match(row)
     .with({ kind: 'derived' }, (derivedRow) => (
       // A computed lifecycle entry (opening/top-up, interest accrual, the
       // 18%/5% withholding lines, capitalization, or a bond
-      // purchase/coupon/redemption): read-only — no delete gesture, not
-      // tappable — and marked "Computed" so it reads as derived, not a
-      // stored transaction. A projected (future-dated) entry — an
-      // upcoming accrual, coupon, or redemption — is dimmed and marked
+      // purchase/coupon/redemption): not tappable, and marked "Computed" so
+      // it reads as derived, not a stored transaction; only a lot row takes
+      // a long-press menu (`LotRowMenu`). A projected (future-dated) entry —
+      // an upcoming accrual, coupon, or redemption — is dimmed and marked
       // "Projected". The amount reads in its kind-derived tone (tax red,
       // interest/coupon green, principal movements neutral/by-sign).
-      <Card
-        padding={3}
-        testID="ledger-row"
-        style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
-      >
-        <Box gap={1}>
-          <Box direction="row" style={styles.rowMain}>
-            <Box style={styles.rowDescription}>
-              <Text variant="body">{derivedRow.entry.label}</Text>
+      <LotRowMenu entry={derivedRow.entry} actions={lotActions}>
+        <Card
+          padding={3}
+          testID="ledger-row"
+          style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
+        >
+          <Box gap={1}>
+            <Box direction="row" style={styles.rowMain}>
+              <Box style={styles.rowDescription}>
+                <Text variant="body">{derivedRow.entry.label}</Text>
+              </Box>
+              <Box style={styles.rowAmount}>
+                <MoneyText
+                  money={Money.of(currency, derivedRow.entry.amountMinorUnits)}
+                  tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
+                />
+              </Box>
             </Box>
-            <Box style={styles.rowAmount}>
-              <MoneyText
-                money={Money.of(currency, derivedRow.entry.amountMinorUnits)}
-                tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
-              />
+            <Box style={styles.rowFooter}>
+              <Text variant="caption" tone="textSecondary">
+                {derivedRow.entry.isFuture
+                  ? t('holdingDetail.projected')
+                  : t('holdingDetail.computed')}
+                {showTime ? ` · ${formatTime(derivedRow.entry.time, clock)}` : ''}
+              </Text>
             </Box>
           </Box>
-          <Box style={styles.rowFooter}>
-            <Text variant="caption" tone="textSecondary">
-              {derivedRow.entry.isFuture
-                ? t('holdingDetail.projected')
-                : t('holdingDetail.computed')}
-              {showTime ? ` · ${formatTime(derivedRow.entry.time, clock)}` : ''}
-            </Text>
-          </Box>
-        </Box>
-      </Card>
+        </Card>
+      </LotRowMenu>
     ))
     .with({ kind: 'transaction' }, (transactionRow) => {
       // The row's stored category resolves to its icon + title through the
@@ -589,6 +595,26 @@ const LinkedPaymentsSection: FC<{
     </Box>
   );
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+// A lot's Delete is offered only while every day stays held at zero or more
+// without it; the repo refuses the same change again inside its write.
+const buildLotActions = (
+  holding: HoldingRow | undefined,
+  navigation: HoldingDetailScreenProps['navigation'],
+): LotActions | undefined =>
+  foldMap(maybe(holding), ({ id, currency, metadata }): LotActions => {
+    const lots = asLots(isRecord(metadata) ? metadata.lots : undefined) ?? [];
+
+    return {
+      edit: (lotIndex) => navigation.navigate('LotForm', { holdingId: id, lotIndex }),
+      remove: (lotIndex) => holdingsRepo.changeLots(id, { kind: 'remove', index: lotIndex }),
+      isRemovable: (lotIndex) =>
+        !hasNegativeHolding(withLotChange(lots, { kind: 'remove', index: lotIndex }, currency)),
+    };
+  });
 
 // The footer's per-type primary action, extracted to module scope (mirroring
 // `resolveLedgerReadyView` below) so the `match` branching does not count
@@ -956,6 +982,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       navigation.navigate('TransactionForm', { transactionId }),
     onDuplicateTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
+    lotActions: buildLotActions(holding, navigation),
   };
 
   // The header/summary block that scrolls above the ledger: the Value amount +

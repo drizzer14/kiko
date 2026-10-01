@@ -50,13 +50,16 @@ export const lotEntries = (
   lots.map((lot, index) => {
     const isSale = compareDecimal(lot.quantityDelta, '0') < 0;
 
-    return makeEntry(
-      holdingId,
-      isSale ? 'sale' : 'purchase',
-      index,
-      lot.day,
-      -lot.costMinorUnits,
-      isSale ? t('holdingDetail.sale') : t('holdingDetail.purchase'),
-      now,
-    );
+    return {
+      ...makeEntry(
+        holdingId,
+        isSale ? 'sale' : 'purchase',
+        index,
+        lot.day,
+        -lot.costMinorUnits,
+        isSale ? t('holdingDetail.sale') : t('holdingDetail.purchase'),
+        now,
+      ),
+      lotIndex: index,
+    };
   });

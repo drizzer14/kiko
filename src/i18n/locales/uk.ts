@@ -452,6 +452,9 @@ export const uk: typeof en = {
     lot: {
       addTitle: 'Додати лот',
       buy: 'Купівля',
+      coversLaterSaleError:
+        'Цю кількість потребує пізніший продаж. Спершу змініть або видаліть цей продаж.',
+      editTitle: 'Редагувати лот',
       quantity: 'Кількість',
       quantityError: 'Введіть кількість більше 0.',
       quantityPlaceholder: '10',
@@ -461,6 +464,7 @@ export const uk: typeof en = {
       totalCost: 'Загальна вартість',
       totalCostError: 'Загальна вартість має бути більшою за 0.',
       totalCostPlaceholder: '1 000,00',
+      totalCostRequiredError: 'Введіть загальну вартість від 0.',
       type: 'Тип',
     },
     ownershipChange: {

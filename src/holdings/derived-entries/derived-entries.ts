@@ -31,6 +31,10 @@ export type DerivedEntry = {
   // "Projected".
   isFuture: boolean;
   derived: true;
+  // The position in `metadata.lots` of the lot this entry shows, for a
+  // lot-held holding's buy/sell rows only: the one derived row the user
+  // entered, so the one that edits and deletes.
+  lotIndex?: number;
 };
 
 const entriesForType = (

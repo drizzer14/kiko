@@ -82,36 +82,6 @@ export const quantityAt = (lots: readonly Lot[], instant: number): string => {
 };
 
 /**
- * The most a sell dated `instant`'s LOCAL calendar day may take: the LOWEST
- * running quantity from that day onward — held on the day itself, then after
- * each later lot in day order. A backdated sell must leave enough for every
- * sell already recorded after it, or the quantity on that later day would go
- * negative. Clamped to never go below `"0"`, like `quantityAt`.
- */
-export const sellableQuantityAt = (lots: readonly Lot[], instant: number): string => {
-  const day = dayKeyOf(instant);
-  const heldOnDay = lots
-    .filter((lot) => lot.day <= day)
-    .reduce((sum, lot) => addDecimal(sum, lot.quantityDelta), '0');
-  const { lowest } = lots
-    .filter((lot) => lot.day > day)
-    .sort((first, second) => first.day - second.day)
-    .reduce(
-      (state, lot) => {
-        const running = addDecimal(state.running, lot.quantityDelta);
-
-        return {
-          running,
-          lowest: compareDecimal(running, state.lowest) < 0 ? running : state.lowest,
-        };
-      },
-      { running: heldOnDay, lowest: heldOnDay },
-    );
-
-  return compareDecimal(lowest, '0') < 0 ? '0' : lowest;
-};
-
-/**
  * The cost basis, in minor units, as of `instant`'s LOCAL calendar day: every
  * lot dated at or before that day, summed. `costMinorUnits` is an integer
  * minor-units amount (kiko-domain), so plain `Number` addition is exact here

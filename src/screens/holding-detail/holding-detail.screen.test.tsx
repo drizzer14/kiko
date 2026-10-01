@@ -200,6 +200,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     }),
     appendDepositContribution: jest.fn(),
     removeOwnershipChange: jest.fn(),
+    changeLots: jest.fn(),
     updateName: jest.fn(),
     setIcon: jest.fn(),
     setColor: jest.fn(),
@@ -1378,6 +1379,75 @@ describe('HoldingDetailScreen', () => {
     // derived. depositHolding is a term_deposit (day-granular), so the marker
     // carries no trailing time separator.
     expect(getAllByText('Computed').length).toBeGreaterThanOrEqual(3);
+  });
+
+  // A lot is the user's own entry, unlike a computed one, so its row edits and
+  // deletes through the long-press menu.
+  describe('a lot row', () => {
+    const holdRow = async (): Promise<void> => {
+      await act(async () => {
+        fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+          { state: State.BEGAN },
+          { state: State.ACTIVE },
+          { state: State.END },
+        ]);
+      });
+    };
+
+    it('opens the Lot form for the held lot, by holding id and lot index', async () => {
+      seed(manualShareHolding);
+
+      const { getByTestId } = await renderScreen();
+
+      await holdRow();
+      await act(async () => {
+        await fireEvent.press(getByTestId(EDIT_ACTION_TEST_ID));
+      });
+
+      expect(navigation.navigate).toHaveBeenCalledWith('LotForm', {
+        holdingId: 'h-1',
+        lotIndex: 0,
+      });
+    });
+
+    it('deletes the held lot through the named confirm', async () => {
+      seed(metalHolding);
+
+      const { getByTestId, getByText } = await renderScreen();
+
+      await holdRow();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(getByText('Delete "Purchase 01.01.2024"')).toBeTruthy();
+      expect(holdingsRepo.changeLots).not.toHaveBeenCalled();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(holdingsRepo.changeLots).toHaveBeenCalledWith('h-1', { kind: 'remove', index: 0 });
+    });
+
+    // The ledger lists newest first, so the January buy is the last row held.
+    it('offers no Delete for a buy a later sale needs', async () => {
+      seed({
+        ...manualShareHolding,
+        metadata: {
+          ...manualShareHolding.metadata,
+          lots: [
+            ...manualShareHolding.metadata.lots,
+            { day: Date.UTC(2024, 2, 1), quantityDelta: '-3', costMinorUnits: -90_000 },
+          ],
+        },
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await holdRow();
+
+      expect(getByTestId(EDIT_ACTION_TEST_ID)).toBeTruthy();
+      expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+    });
   });
 
   it('renders derived rows read-only: no context menu and not tappable to the form', async () => {

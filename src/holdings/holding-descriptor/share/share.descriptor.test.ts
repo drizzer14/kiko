@@ -99,7 +99,7 @@ describe('shareDescriptor value', () => {
 });
 
 describe('shareDescriptor entries', () => {
-  it('lists a buy lot as a purchase and a sell lot as a sale', () => {
+  it('lists a buy lot as a purchase and a sell lot as a sale, each naming its lot', () => {
     const holding = manualShare({
       lots: [
         { day: buyDay, quantityDelta: '3', costMinorUnits: 90_000 },
@@ -115,12 +115,14 @@ describe('shareDescriptor entries', () => {
         time: buyDay,
         amountMinorUnits: -90_000,
         label: 'Purchase',
+        lotIndex: 0,
       }),
       expect.objectContaining({
         kind: 'sale',
         time: sellDay,
         amountMinorUnits: 30_000,
         label: 'Sale',
+        lotIndex: 1,
       }),
     ]);
   });

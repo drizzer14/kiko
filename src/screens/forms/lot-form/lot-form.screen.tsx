@@ -1,16 +1,10 @@
 import {
   asLots,
-  quantityAt,
-  costBasisMinorAt,
-  sellableQuantityAt,
+  withLotChange,
+  hasNegativeHolding,
   type Lot,
+  type LotChange,
 } from '@kiko/holdings/lots';
-import {
-  compareDecimal,
-  multiplyToMinorUnits,
-  normalizeDecimal,
-  shiftDecimal,
-} from '@kiko/currency/decimal';
 import { useLiveQuery } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
@@ -20,27 +14,29 @@ import {
   type FieldInstance,
 } from '@kiko/design-system/scroll-to-field';
 import { useTranslation } from 'react-i18next';
-import { type FC, useRef, useState } from 'react';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
-import { dayKeyOf } from '@kiko/prices/price-book';
 import Box from '@kiko/design-system/components/box';
 import DateField from '@kiko/screens/forms/date-field';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { asMetalMeta } from '@kiko/holdings/holding-metadata';
-import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldLabel from '@kiko/design-system/components/field-label';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { metalUnitSuffix } from '@kiko/screens/forms/metal-unit-suffix';
+import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { compareDecimal, normalizeDecimal } from '@kiko/currency/decimal';
+import { dayKeyOf, localMidnightOfDayKey } from '@kiko/prices/price-book';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
+import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
+import { refreshAfterHoldingWrite } from '@kiko/sync/refresh-after-holding-write';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
-import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
 
 type LotFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'LotForm'>;
 
@@ -60,19 +56,24 @@ const startOfToday = (): number => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-// The quantity field's active error message, or `undefined` while valid (or
-// before the first failed Save press) — a plain quantity error takes
-// priority over the Review-Focus-8 sell-exceeds error, since a completely
-// invalid quantity is the more fundamental problem. Kept as a module-level
-// helper (rather than a nested ternary inline) per the project's
-// `noNestedTernary` lint rule.
+const isSale = (lot: Lot): boolean => compareDecimal(lot.quantityDelta, '0') < 0;
+
+type QuantityErrorKey =
+  | 'forms.lot.quantityError'
+  | 'forms.lot.sellExceedsError'
+  | 'forms.lot.coversLaterSaleError';
+
+// A plain quantity error takes priority over an overdrawn one, since a
+// completely invalid quantity is the more fundamental problem. A sell that
+// takes too much and a buy a later sale still needs are told apart.
 const quantityErrorFor = (params: {
   attemptedSave: boolean;
   quantityValid: boolean;
-  sellExceeds: boolean;
-  t: (key: 'forms.lot.quantityError' | 'forms.lot.sellExceedsError') => string;
+  overdrawn: boolean;
+  direction: LotDirection;
+  t: (key: QuantityErrorKey) => string;
 }): string | undefined => {
-  const { attemptedSave, quantityValid, sellExceeds, t } = params;
+  const { attemptedSave, quantityValid, overdrawn, direction, t } = params;
 
   if (!attemptedSave) {
     return undefined;
@@ -82,21 +83,49 @@ const quantityErrorFor = (params: {
     return t('forms.lot.quantityError');
   }
 
-  return sellExceeds ? t('forms.lot.sellExceedsError') : undefined;
+  if (!overdrawn) {
+    return undefined;
+  }
+
+  return direction === 'sell'
+    ? t('forms.lot.sellExceedsError')
+    : t('forms.lot.coversLaterSaleError');
 };
 
+type LotFields = {
+  direction: LotDirection;
+  quantity: string;
+  costText: string;
+  currency: Currency;
+  date: number;
+};
+
+// A sell carries no cost of its own: `withLotChange` works it out from the
+// lots before it, at average cost.
+const lotOf = ({ direction, quantity, costText, currency, date }: LotFields): Lot =>
+  direction === 'buy'
+    ? {
+        day: dayKeyOf(date),
+        quantityDelta: quantity,
+        costMinorUnits: Money.fromMajor(currency, parseAmount(costText) || 0).minorUnits,
+      }
+    : { day: dayKeyOf(date), quantityDelta: `-${quantity}`, costMinorUnits: 0 };
+
+const changeOf = (lotIndex: number | undefined, fields: LotFields): LotChange =>
+  foldMap(maybe(lotIndex), (index): LotChange => ({ kind: 'edit', index, lot: lotOf(fields) })) ?? {
+    kind: 'add',
+    lot: lotOf(fields),
+  };
+
 // Records one buy or sell lot against a lot-form-eligible holding (`metal`,
-// `share` — kiko-pricing), reached from holding-detail's "Add lot" footer action.
-// Unlike ContributionForm/PricePointForm it never writes a `price_points`
-// row: a metal's price comes from the SHARED `metal:<XAU|...>` instrument,
-// not a per-holding series —
-// this screen only appends to the holding's own `metadata.lots` array
-// through `holdingsRepo.update`. No `Transaction` row is ever written, for
-// either direction: the holding is ledgerless
-// (`isLedgerlessHoldingType`), so its value derives entirely from its lots,
-// never from a manual ledger.
+// `share` — kiko-pricing), reached from holding-detail's "Add lot" footer
+// action, or edits one stored lot (`lotIndex`), reached from that lot row's
+// long-press menu. It never writes a `price_points` or `Transaction` row:
+// the holding is ledgerless (`isLedgerlessHoldingType`), so its quantity and
+// cost basis derive entirely from its lots, which `holdingsRepo.changeLots`
+// rewrites from the row stored at the time of the write.
 const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
-  const { holdingId } = route.params;
+  const { holdingId, lotIndex } = route.params;
   // `holdingsRepo` exposes no single-row lookup, so the holding's own currency
   // and existing lots come from filtering the full holdings list — the same
   // approach the sibling forms use.
@@ -105,6 +134,7 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
   const currency: Currency = holding?.currency ?? 'UAH';
   const rawMetadata: Record<string, unknown> = isRecord(holding?.metadata) ? holding.metadata : {};
   const existingLots: Lot[] = asLots(rawMetadata.lots) ?? [];
+  const editedLot = foldMap(maybe(lotIndex), (index) => existingLots.at(index));
 
   const { t } = useTranslation();
   // A metal's quantity is in its own stored unit (g or oz); any other holding's
@@ -127,26 +157,55 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
   const headerInset = useHeaderInset();
   const contentHeightRef = useRef(0);
 
+  useLayoutEffect(() => {
+    if (lotIndex !== undefined) {
+      navigation.setOptions({ title: t('forms.lot.editTitle') });
+    }
+  }, [lotIndex, navigation, t]);
+
+  // Seeded once: a later live-query emission must not clobber what the user typed.
+  const hydrated = useRef(false);
+  useEffect(() => {
+    if (hydrated.current || editedLot === undefined) {
+      return;
+    }
+    hydrated.current = true;
+    const sale = isSale(editedLot);
+    setDirection(sale ? 'sell' : 'buy');
+    setQuantityText(groupAmount(editedLot.quantityDelta.replace('-', '')));
+    setCostText(sale ? '' : groupAmount(majorAmountText(currency, editedLot.costMinorUnits)));
+    setDate(localMidnightOfDayKey(editedLot.day));
+  }, [editedLot, currency]);
+
   const quantity = normalizeDecimal(quantityText);
   const quantityValid = quantity !== null && compareDecimal(quantity, '0') > 0;
-  // A sell is checked against the lowest quantity held from the picked day
-  // onward (`sellableQuantityAt`), not just on that day: a backdated sell
-  // must leave enough for every sell recorded after it. The quantity held on
-  // the day itself still sizes the share of cost basis the sell removes.
-  const heldQuantity = quantityAt(existingLots, date);
-  const sellExceeds =
-    direction === 'sell' &&
-    quantityValid &&
-    compareDecimal(quantity, sellableQuantityAt(existingLots, date)) > 0;
-  const quantityErrorMessage = quantityErrorFor({ attemptedSave, quantityValid, sellExceeds, t });
-  const costValid = parseAmount(costText) > 0;
+  // An edit applies only once the lot it names is loaded.
+  const canApply = lotIndex === undefined || editedLot !== undefined;
+  const change =
+    quantityValid && canApply
+      ? changeOf(lotIndex, { direction, quantity, costText, currency, date })
+      : null;
+  // Checked over every lot, not only on the picked day: a backdated sell, or a
+  // buy cut below what a later sale took, must leave every day held at zero
+  // or more.
+  const overdrawn =
+    change !== null && hasNegativeHolding(withLotChange(existingLots, change, currency));
+  const quantityErrorMessage = quantityErrorFor({
+    attemptedSave,
+    quantityValid,
+    overdrawn,
+    direction,
+    t,
+  });
+  // A stock split adds shares at no cost, so 0 is a valid total cost.
+  const costValid = parseAmount(costText) >= 0;
 
   const save = async (): Promise<void> => {
-    if (!holding) {
+    if (!holding || !canApply) {
       return;
     }
 
-    if (!quantityValid || sellExceeds) {
+    if (change === null || overdrawn) {
       setAttemptedSave(true);
       scrollToField(
         scrollableRef,
@@ -158,61 +217,20 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
       return;
     }
 
-    let lot: Lot;
-
-    if (direction === 'buy') {
-      if (!costValid) {
-        setAttemptedSave(true);
-        scrollToField(
-          scrollableRef,
-          costFieldRef,
-          {
-            currentOffset: scrollOffset.value,
-            headerInset,
-            contentHeight: contentHeightRef.current,
-          },
-          () => costInputRef.current?.focus(),
-        );
-
-        return;
-      }
-      lot = {
-        day: dayKeyOf(date),
-        quantityDelta: quantity,
-        costMinorUnits: Money.fromMajor(currency, parseAmount(costText)).minorUnits,
-      };
-    } else {
-      // The cost basis removed by this sale, proportional to the share of the
-      // currently-held quantity being sold — e.g. selling half the held
-      // quantity removes half the stored cost basis. `costBasisMinorAt`
-      // returns an INTEGER minor-units amount, so it is expanded back to a
-      // major decimal string first (`shiftDecimal`) before going through
-      // `multiplyToMinorUnits`'s BigInt-backed multiply/divide (the same
-      // major-decimal-in, minor-units-out contract every other price/quantity
-      // multiplication in the app follows) — feeding it a bare minor-units
-      // integer would double-apply the currency's scale. Stored NEGATIVE,
-      // mirroring `quantityDelta`'s own sign on a sale (lots.ts's documented
-      // contract).
-      const costBasisBeforeMajor = shiftDecimal(
-        String(costBasisMinorAt(existingLots, date)),
-        -currencyScale[currency],
+    if (direction === 'buy' && !costValid) {
+      setAttemptedSave(true);
+      scrollToField(
+        scrollableRef,
+        costFieldRef,
+        { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
+        () => costInputRef.current?.focus(),
       );
-      const costRemovedMinor = multiplyToMinorUnits(
-        [costBasisBeforeMajor, quantity],
-        currency,
-        heldQuantity,
-      );
-      lot = {
-        day: dayKeyOf(date),
-        quantityDelta: `-${quantity}`,
-        costMinorUnits: -costRemovedMinor,
-      };
+
+      return;
     }
 
     try {
-      await holdingsRepo.update(holding.id, {
-        metadata: { ...rawMetadata, lots: [...existingLots, lot] },
-      });
+      await holdingsRepo.changeLots(holding.id, change);
     } catch {
       // The SAME shared save-error Alert every other form's write failure
       // uses (account-form, holding-form, price-point-form, transaction-form)
@@ -221,6 +239,11 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
 
       return;
     }
+
+    // A new or re-dated lot can fall before the stored prices, so its history
+    // is asked for now, not at the next pull or cold launch.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshAfterHoldingWrite catches the limit check's failure and refreshMarketData never rejects
+    refreshAfterHoldingWrite(holding.type === 'share');
     navigation.goBack();
   };
 
@@ -279,7 +302,9 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
               placeholder={t('forms.lot.totalCostPlaceholder')}
               suffix={currencySymbol[currency]}
               required
-              error={attemptedSave && !costValid ? t('forms.lot.totalCostError') : undefined}
+              error={
+                attemptedSave && !costValid ? t('forms.lot.totalCostRequiredError') : undefined
+              }
               inputRef={costInputRef}
             />
           </View>
