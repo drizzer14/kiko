@@ -1079,6 +1079,24 @@ describe('refreshSharePrices', () => {
       expect(calls(world)).toHaveLength(2);
     });
 
+    it('still fetches the history of an older lot for a backed-off symbol', async () => {
+      const world = makeWorld({
+        holdings: [share({ id: 'apple', lotDays: [Date.UTC(2026, 2, 2), JUNE_1] })],
+        points: series('AAPL.US', TUESDAY - DAY_MS),
+        quota: {
+          day: THURSDAY,
+          calls: 0,
+          dailyLimit: 20,
+          symbols: [],
+          backoff: { 'AAPL.US': { strikes: 1, retryDay: THURSDAY + DAY_MS, lastLotDay: JUNE_1 } },
+        },
+      });
+
+      await refreshSharePrices(depsFor(world));
+
+      expect(calls(world)).toEqual(['eod AAPL.US 2026-03-02 2026-05-31']);
+    });
+
     it('forgets the back-off of a symbol EODHD answers again', async () => {
       const world = makeWorld({
         holdings: [vod],

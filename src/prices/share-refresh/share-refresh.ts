@@ -229,9 +229,10 @@ type CallRange = Omit<PlannedCall, 'listing' | 'search'>;
 
 /**
  * The newest closes once per UTC day while the last weekday's close is
- * missing (for a sold-out listing, the last weekday before its last lot), and
- * the history before the first stored close whenever a lot reaches further
- * back than EODHD has answered for: both in one call, which costs the same.
+ * missing (for a sold-out listing, the last weekday before its last lot) and
+ * the symbol is not backed off, and the history before the first stored close
+ * whenever a lot reaches further back than EODHD has answered for: both in one
+ * call, which costs the same.
  */
 const rangeFor = (
   listing: Listing,
@@ -241,7 +242,9 @@ const rangeFor = (
   const throughDay = listing.isHeld ? quota.day : listing.lastLotDay;
   const latestDay = stored?.lastDay ?? NEVER_PRICED;
   const isForward =
-    !quota.symbols.includes(listing.symbol) && latestDay < weekdayBefore(throughDay);
+    !quota.symbols.includes(listing.symbol) &&
+    !isBackedOff(quota, listing.symbol, listing.lastLotDay) &&
+    latestDay < weekdayBefore(throughDay);
   const wantedFrom = Math.max(listing.firstLotDay, quota.day - HISTORY_DAYS * DAY_MS);
 
   if (stored === undefined) {
@@ -272,9 +275,7 @@ const callFor = (
   stored: StoredRange | undefined,
   quota: QuoteQuota,
 ): PlannedCall | undefined => {
-  const range = isBackedOff(quota, listing.symbol, listing.lastLotDay)
-    ? undefined
-    : rangeFor(listing, stored, quota);
+  const range = rangeFor(listing, stored, quota);
 
   if (range === undefined) {
     return undefined;
