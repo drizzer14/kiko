@@ -123,11 +123,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 // A stored share that no longer parses still has its lots, and the edit that
-// repairs it must not write them away.
-const storedLots = (storedMetadata: unknown): Lot[] =>
-  asShareMeta(storedMetadata)?.lots ??
-  asLots(isRecord(storedMetadata) ? storedMetadata.lots : undefined) ??
-  [];
+// repairs it must not write them away. A list with one unreadable entry stops
+// the write, since writing over it would drop every readable lot with it.
+const storedLots = (storedMetadata: unknown): Lot[] => {
+  const lots = asLots((isRecord(storedMetadata) ? storedMetadata.lots : undefined) ?? []);
+
+  if (lots === null) {
+    throw new Error('shareEdit: stored lots are unreadable');
+  }
+
+  return lots;
+};
 
 type QuotedListing = { symbol?: string; quoteCurrency?: string };
 

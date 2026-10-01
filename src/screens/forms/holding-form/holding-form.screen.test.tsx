@@ -2777,6 +2777,37 @@ describe('HoldingFormScreen share', () => {
     );
   });
 
+  it('alerts and stays open when a lot stored by the time of the write is unreadable', async () => {
+    const lot = { day: dayKeyOf(Date.now()), quantityDelta: '3', costMinorUnits: 100_000 };
+    const shareMetadata = { quoteSource: 'eodhd', symbol: 'AAPL.US', lots: [lot] };
+    const updateShareMock = holdingsRepo.updateShareFromStored as jest.Mock;
+    let written: unknown;
+    updateShareMock.mockImplementationOnce(async (_holdingId, _patch, buildMetadata) => {
+      written = buildMetadata({ ...shareMetadata, lots: [lot, { day: 'x' }] });
+    });
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Apple',
+      type: 'share',
+      currency: 'USD',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: shareMetadata,
+    });
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+    expect(written).toBeUndefined();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
   it('offers fiat currencies only for a share', async () => {
     const screen = await renderScreen();
 

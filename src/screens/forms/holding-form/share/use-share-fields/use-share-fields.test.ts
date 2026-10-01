@@ -286,6 +286,42 @@ describe('useShareFields edit', () => {
     });
   });
 
+  // Writing over a list with one unreadable entry would drop every readable
+  // lot with it, so the build throws and the write rolls back.
+  it('refuses to write when one stored lot is unreadable', async () => {
+    const { result } = await renderFields({ isEdit: true });
+
+    await act(async () => {
+      result.current.seed(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE' }));
+    });
+    await result.current.saveEdit(editContext);
+
+    expect(() =>
+      writtenMetadata(
+        storedShare({
+          quoteSource: 'eodhd',
+          symbol: 'VOD.LSE',
+          lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }, { day: 'x' }],
+        }),
+      ),
+    ).toThrow('shareEdit: stored lots are unreadable');
+  });
+
+  it('writes no lots for a stored share with no lots key', async () => {
+    const { result } = await renderFields({ isEdit: true });
+
+    await act(async () => {
+      result.current.seed(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE' }));
+    });
+    await result.current.saveEdit(editContext);
+
+    expect(writtenMetadata(storedShare({ quoteSource: 'yahoo', lots: undefined }))).toEqual({
+      quoteSource: 'eodhd',
+      symbol: 'VOD.LSE',
+      lots: [],
+    });
+  });
+
   it('drops the stored quote currency once the ticker changes', async () => {
     const { result } = await renderFields({ isEdit: true });
 
