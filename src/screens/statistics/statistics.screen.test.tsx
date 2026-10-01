@@ -1377,8 +1377,11 @@ describe('StatisticsScreen', () => {
     const backfillSpan = (): { earliestDay: number; today: number } =>
       mockRunBackfill.mock.calls[0]?.[0] as { earliestDay: number; today: number };
 
-    it('backfills from the earliest lot day', async () => {
+    // A lot's day is a day key (the UTC midnight of its date); the span is
+    // made of instants, so it starts at that date's local midnight.
+    it('backfills from the local midnight of the earliest lot day', async () => {
       const lotDay = toUtcMidnight(now) - 40 * DAY;
+      const lotDate = new Date(lotDay);
       setLiveData({
         accounts: [BANK],
         holdings: [
@@ -1400,7 +1403,9 @@ describe('StatisticsScreen', () => {
 
       await renderScreen();
 
-      expect(backfillSpan().earliestDay).toBe(lotDay);
+      expect(backfillSpan().earliestDay).toBe(
+        new Date(lotDate.getUTCFullYear(), lotDate.getUTCMonth(), lotDate.getUTCDate()).getTime(),
+      );
     });
 
     it('backfills from now when no holding has a lot', async () => {

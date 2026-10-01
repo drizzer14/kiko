@@ -61,6 +61,7 @@ import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import { bucketDaysForSpan } from '@kiko/statistics/buckets';
+import { localMidnightOfDayKey } from '@kiko/prices/price-book';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
@@ -146,12 +147,13 @@ const groupByHolding = (
 
 // A share, metal, or property records its purchases as lots, never as ledger
 // rows, so its earliest lot bounds the span the rate history must cover too.
+// The span is made of instants, so a lot's day key becomes its local midnight.
 const earliestLotDay = (
   holdings: readonly Pick<HoldingRow, 'type' | 'metadata'>[],
 ): number | null => {
   const days = holdings.flatMap((holding) =>
-    (holdingDescriptorOrUndefined(holding.type)?.priced?.lots(holding.metadata) ?? []).map(
-      (lot) => lot.day,
+    (holdingDescriptorOrUndefined(holding.type)?.priced?.lots(holding.metadata) ?? []).map((lot) =>
+      localMidnightOfDayKey(lot.day),
     ),
   );
 
@@ -736,8 +738,9 @@ const StatisticsScreen: FC = () => {
 
   // A linked payment never counts its PRINCIPAL as spending, only its
   // INTEREST (`loanInterestRows` below, which replaces each excluded row
-  // with its own derived entry) — computed over the full, unfiltered ledger
-  // like every other exclusion rule here.
+  // with its own derived entry) — computed over the account-filtered rows,
+  // because a payment and its interest entry belong to the payment's own
+  // holding; only `loanHoldings` above reads every holding.
   const loanPaymentExcludedIds = useMemo(
     () => loanPaymentExcludedTransactionIds(transactionsWithCurrency, loanHoldings),
     [transactionsWithCurrency, loanHoldings],
@@ -768,9 +771,9 @@ const StatisticsScreen: FC = () => {
   // actually feeds the breakdown drawn on screen (both the filter menu's
   // option list and the pie itself — see `allCategorySlices`/`categorySlices`
   // below), so the donut and its center total agree with the range field
-  // rendered above them. The exclusion sets above are computed over the
-  // FULL, unfiltered ledger (see `transactionsWithCurrency`'s comment); only
-  // the rows actually SHOWN are scoped to the range here. `loanInterestRows`
+  // rendered above them. The exclusion sets above are not range-filtered
+  // (see `ledgerWithCurrency`'s comment); only the rows actually SHOWN are
+  // scoped to the range here. `loanInterestRows`
   // is range-filtered the SAME way as the real rows — each derived
   // entry replaces the raw row `loanPaymentExcludedIds` drops above, so it
   // must obey the same window that row would have.

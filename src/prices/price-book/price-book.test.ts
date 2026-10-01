@@ -1,8 +1,16 @@
 import type { PricePointRow } from '@kiko/db';
+import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
 
 import { shareInstrument } from '../instrument';
 
-import { dayKeyOf, priceAt, buildPriceBook, latestPoint, EMPTY_PRICE_BOOK } from './price-book';
+import {
+  dayKeyOf,
+  priceAt,
+  buildPriceBook,
+  latestPoint,
+  EMPTY_PRICE_BOOK,
+  localMidnightOfDayKey,
+} from './price-book';
 
 const DAY = 24 * 60 * 60 * 1000;
 const monday = Date.UTC(2026, 8, 7); // 2026-09-07, a Monday, UTC midnight
@@ -85,6 +93,18 @@ describe('dayKeyOf', () => {
     const kyivLocalMidnight = new Date(2026, 2, 30).getTime();
 
     expect(dayKeyOf(kyivLocalMidnight)).toBe(Date.UTC(2026, 2, 30));
+  });
+});
+
+describe('localMidnightOfDayKey', () => {
+  it('maps a day key to the local midnight of that date', () => {
+    expect(localMidnightOfDayKey(Date.UTC(2026, 2, 30))).toBe(new Date(2026, 2, 30).getTime());
+  });
+
+  it('keeps the date on a device west of UTC', () => {
+    expect(withDeviceZoneOffset(-5, () => localMidnightOfDayKey(Date.UTC(2026, 2, 30)))).toBe(
+      Date.UTC(2026, 2, 30, 5),
+    );
   });
 });
 

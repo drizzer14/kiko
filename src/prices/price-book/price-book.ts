@@ -92,6 +92,14 @@ export const dayKeyOf = (instant: number): number => {
   return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
 };
 
+/** `dayKeyOf`'s inverse: the device-local midnight of a day key's date, for
+ * code that compares the day with real instants. */
+export const localMidnightOfDayKey = (day: number): number => {
+  const date = new Date(day);
+
+  return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()).getTime();
+};
+
 /**
  * Resolves `instrument`'s price for `instant`'s local day: the nearest
  * stored point AT OR BEFORE that day (carry-forward across a gap, mirroring
