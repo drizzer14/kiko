@@ -649,9 +649,14 @@ verified usage, not dead weight:
   the owner that imported `DAY_MS` would prove nothing about it). App source,
   tests, test support, and `e2e/` are all in scope. The one false positive in
   tests is a keyed timestamp of epoch + 1 day in a fixture object
-  (`{ t: 86_400_000 }`, `{ day: 86_400_000 }`); the rule skips a day literal
-  inside an object literal that holds it as a property value, and the
-  negative fixture pins both shapes. Measured on 2026-10-01: without the
+  (`{ t: 86_400_000 }`, `{ day: 86_400_000 }`), the only two keys the tree
+  uses that way. The rule skips a day literal inside an object literal that
+  holds a day literal under the key `t` or `day`, and the negative fixture
+  pins both shapes; any other key (`{ ttlMs: 86_400_000 }`) still fires, a
+  bad-fixture pin. Known limit: the skip is by range over that whole object,
+  so a span beside the keyed literal in the same object
+  (`{ t: 86_400_000, cutoff: now - 86_400_000 }`) does not fire either.
+  Measured on 2026-10-01: without the
   exclude the rule draws 2 hits in `src/dates/` and 0 anywhere else, after a
   sweep of 49 sites in 40 files (39 test files and
   `e2e/screenshot/seed/screenshot-seed.ts`) to `DAY_MS`. The flat fixture

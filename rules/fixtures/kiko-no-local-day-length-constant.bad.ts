@@ -48,4 +48,16 @@ export const nextOwnershipDay = (start: number) => ({
   numerator: 1,
 });
 
+export const cachePolicy = {
+  // EXPECT-FINDING
+  ttlMs: 86_400_000,
+  retries: 2,
+};
+
+// EXPECT-FINDING
+const HALF_DAY_MS = 0.5 * 86_400_000;
+
+// EXPECT-FINDING
+const NOON_OFFSET_MS = 86_400_000 * 0.5;
+
 export const spans = [DAY_MS, DAY, dayMs, ONE_DAY, HOURS_DAY, WEEK_MS, FULL_FETCH_INTERVAL_MS];
