@@ -235,6 +235,13 @@ own `createPayload` for which source writes a `firstPricePoint` (see
 `kiko-pricing`'s "Creating and clearing a priced holding's price
 series"). After create, lots change only through the Lot form.
 
+A NEW share starts Manual when no EODHD key is saved; it starts EODHD
+only when a key is saved and the user has not touched the source
+control. An edit always keeps the stored source (read
+`use-share-fields.ts`). An EODHD ticker must be `CODE.EXCHANGE` — read
+`EODHD_SYMBOL_PATTERN` in `use-share-fields/share-reasons.ts`; a class
+share uses EODHD's dash form (e.g. `BRK-B.US`).
+
 ## `property_item` / `metal` create-form sections
 
 A `property` account's Type field IS its category picker

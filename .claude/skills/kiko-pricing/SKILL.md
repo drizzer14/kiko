@@ -579,6 +579,16 @@ its own title/field/Save/error keys the same way it does a loan (read
 that screen's per-kind key table). See that hook's own comment on the metal CREATE
 payload for the current rationale.
 
+**A share price keeps its own places.** Always store a share price
+through `sharePriceOf` (`src/prices/share-price/`), which keeps up to
+`SHARE_PRICE_SCALE` decimal places (read the value there) — never
+through `Money`, which rounds to the currency's minor unit. The Price
+point form uses `sharePriceOf` for the `share` kind; totals keep the
+minor-unit `Money` path. When an edit switches a share from EODHD to
+Manual, the latest `share:<symbol>` point is carried to `holding:<id>`
+in one transaction by `holdingsRepo.updateWithManualPricePoint`
+(`src/holdings/repo/holdings.repo.ts`), so the holding keeps a price.
+
 **No "price as of" / "value as of" caption anywhere (user decision).** A priced holding's card and detail screen show only
 its computed value, never a caption naming the date of the underlying
 price point — this was removed from the holding card, the holding
