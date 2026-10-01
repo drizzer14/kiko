@@ -9,12 +9,12 @@ jest.mock('@kiko/db/client', () => {
 import { DatabaseSync } from 'node:sqlite';
 import maybe, { foldMap } from 'fnts/maybe';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { asShareMeta } from '@kiko/holdings/holding-metadata';
 import { buildPriceBook, dayKeyOf } from '@kiko/prices/price-book';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { quantityAt, type Lot, type LotChange } from '@kiko/holdings/lots';
-import { holdingInstrument, shareInstrument } from '@kiko/prices/instrument';
+import { asMetalMeta, asShareMeta } from '@kiko/holdings/holding-metadata';
+import { holdingInstrument, metalInstrument, shareInstrument } from '@kiko/prices/instrument';
 import { database, holdings, pricePoints, type HoldingRow, type PricePointRow } from '@kiko/db';
 
 import { readDataSnapshot } from './read-snapshot';
@@ -66,11 +66,17 @@ const SPLIT_AAPL: Price[] = [
   { instant: april10, price: '125' },
 ];
 
+// Bought 10 for 1,000 in January, sold 4 in March, and bought 10 for 3,000 on
+// the day of that sale, recorded after it: the sale is costed after the buy.
+const SAME_DAY_LOTS = [BASE_LOTS[0], sell(march10, '4', -80_000), buy(march10, '10', 300_000)];
+
 type State = {
+  type?: 'share' | 'metal';
   currency?: string;
   meta?: Record<string, unknown>;
   lots?: Lot[];
   share?: Price[];
+  metal?: Price[];
   own?: Price[];
 };
 
@@ -84,10 +90,18 @@ type Cell = {
   rejects?: boolean;
   expected: Reading[];
   ownSeries?: Price[];
+  storedLots?: Lot[];
 };
 
 const eodhd = { quoteSource: 'eodhd', symbol: 'AAPL.US', quoteCurrency: 'USD' };
 const manual = { quoteSource: 'manual' };
+const gold = { metal: 'XAU', form: 'bar', unit: 'oz', purity: '1' };
+
+// UAH per troy ounce.
+const XAU: Price[] = [
+  { instant: january10, price: '100' },
+  { instant: april10, price: '400' },
+];
 
 const openDatabase = (given: State): void => {
   mockDatabase = new DatabaseSync(':memory:');
@@ -99,10 +113,11 @@ const openDatabase = (given: State): void => {
   mockDatabase
     .prepare(
       `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
-       VALUES (?, 'broker-1', 'Apple', 'share', ?, 0, ?)`,
+       VALUES (?, 'broker-1', 'Apple', ?, ?, 0, ?)`,
     )
     .run(
       HOLDING_ID,
+      given.type ?? 'share',
       given.currency ?? 'USD',
       JSON.stringify({ ...(given.meta ?? eodhd), lots: given.lots ?? BASE_LOTS }),
     );
@@ -121,12 +136,17 @@ const openDatabase = (given: State): void => {
     );
   }
 
+  for (const point of given.metal ?? []) {
+    insertPrice.run(metalInstrument('XAU'), dayKeyOf(point.instant), point.price, 'UAH', 'nbu');
+  }
+
+  // A price the user typed is in the holding's own currency.
   for (const point of given.own ?? []) {
     insertPrice.run(
       holdingInstrument(HOLDING_ID),
       dayKeyOf(point.instant),
       point.price,
-      'USD',
+      given.currency ?? 'USD',
       'manual',
     );
   }
@@ -146,13 +166,16 @@ const ownSeries = async (): Promise<Price[]> =>
     .sort((first, second) => first.day - second.day)
     .map((row) => ({ instant: row.day, price: row.price }));
 
+const lotsOf = (holding: HoldingRow): Lot[] =>
+  asShareMeta(holding.metadata)?.lots ?? asMetalMeta(holding.metadata)?.lots ?? [];
+
 const reading = async (at: number): Promise<Reading> => {
   const holding = await storedHolding();
   const breakdown = holdingValueBreakdown(holding, at, buildPriceBook(await storedPrices()));
 
   return {
     at,
-    quantity: quantityAt(asShareMeta(holding.metadata)?.lots ?? [], at),
+    quantity: quantityAt(lotsOf(holding), at),
     value: breakdown.gross.minorUnits,
     cost: breakdown.principalOrCost.minorUnits,
   };
@@ -319,6 +342,71 @@ const cells: Cell[] = [
     expected: BASE_READINGS,
   },
   {
+    operation: 'delete lot',
+    state: 'the January buy, a same-day buy covers the March sell',
+    given: { lots: SAME_DAY_LOTS },
+    act: changeLots({ kind: 'remove', index: 0 }),
+    expected: [
+      { at: february10, quantity: '0', value: 0, cost: 0 },
+      { at: april10, quantity: '6', value: 150_000, cost: 180_000 },
+    ],
+    storedLots: [sell(march10, '4', -120_000), buy(march10, '10', 300_000)],
+  },
+  {
+    operation: 'delete lot',
+    state: 'the only buy, no sell',
+    given: { lots: [BASE_LOTS[0]] },
+    act: changeLots({ kind: 'remove', index: 0 }),
+    expected: [{ at: april10, quantity: '0', value: 0, cost: 0 }],
+    storedLots: [],
+  },
+  {
+    operation: 'edit lot quantity',
+    state: 'the sell recorded before a same-day buy, 4 to 15',
+    given: { lots: SAME_DAY_LOTS },
+    act: changeLots({ kind: 'edit', index: 1, lot: sell(march10, '15') }),
+    expected: [{ at: april10, quantity: '5', value: 125_000, cost: 100_000 }],
+    storedLots: [BASE_LOTS[0], sell(march10, '15', -300_000), buy(march10, '10', 300_000)],
+  },
+  {
+    operation: 'edit lot date',
+    state: 'the buy, January to after the March sell',
+    given: {},
+    act: changeLots({ kind: 'edit', index: 0, lot: buy(april10, '10', 100_000) }),
+    rejects: true,
+    expected: BASE_READINGS,
+  },
+  {
+    operation: 'edit lot date',
+    state: 'the January buy to April, a same-day buy covers the March sell',
+    given: { lots: SAME_DAY_LOTS },
+    act: changeLots({ kind: 'edit', index: 0, lot: buy(april10, '10', 100_000) }),
+    expected: [
+      { at: march10, quantity: '6', value: 120_000, cost: 180_000 },
+      { at: april10, quantity: '16', value: 400_000, cost: 280_000 },
+    ],
+    storedLots: [
+      buy(april10, '10', 100_000),
+      sell(march10, '4', -120_000),
+      buy(march10, '10', 300_000),
+    ],
+  },
+  {
+    operation: 'delete lot',
+    state: 'metal: the January buy, a same-day buy covers the March sell',
+    given: {
+      type: 'metal',
+      currency: 'UAH',
+      meta: gold,
+      lots: SAME_DAY_LOTS,
+      share: [],
+      metal: XAU,
+    },
+    act: changeLots({ kind: 'remove', index: 0 }),
+    expected: [{ at: april10, quantity: '6', value: 240_000, cost: 180_000 }],
+    storedLots: [sell(march10, '4', -120_000), buy(march10, '10', 300_000)],
+  },
+  {
     operation: 'none',
     state: '4:1 split on 1 March with no split lot',
     given: { lots: [BASE_LOTS[0]], share: SPLIT_AAPL },
@@ -467,6 +555,10 @@ describe('share lots and prices, operation x state', () => {
       expect(await ownSeries()).toEqual(
         cell.ownSeries.map((point) => ({ instant: dayKeyOf(point.instant), price: point.price })),
       );
+    }
+
+    if (cell.storedLots !== undefined) {
+      expect(lotsOf(await storedHolding())).toEqual(cell.storedLots);
     }
   });
 });

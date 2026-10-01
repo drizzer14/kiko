@@ -10,6 +10,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { database, holdings } from '@kiko/db';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
+import { SaleExceedsHoldingError } from '../lots';
+
 import { holdingsRepo } from './holdings.repo';
 
 const DAY = Date.UTC(2026, 0, 10);
@@ -63,6 +65,19 @@ describe('holdingsRepo.changeLots', () => {
     await holdingsRepo.changeLots('share-1', { kind: 'add', lot });
 
     expect(await storedMetadata()).toEqual({ quoteSource: 'manual', lots: [lot] });
+  });
+
+  it('refuses a sale larger than is held before it, leaving the lots stored as they were', async () => {
+    const stored = { quoteSource: 'manual', lots: [lot] };
+    openDatabase(stored);
+
+    await expect(
+      holdingsRepo.changeLots('share-1', {
+        kind: 'add',
+        lot: { day: DAY, quantityDelta: '-11', costMinorUnits: 0 },
+      }),
+    ).rejects.toThrow(SaleExceedsHoldingError);
+    expect(await storedMetadata()).toEqual(stored);
   });
 
   it('refuses a holding that is not stored', async () => {

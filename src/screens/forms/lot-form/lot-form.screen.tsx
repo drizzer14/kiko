@@ -1,6 +1,6 @@
 import {
   asLots,
-  withLotChange,
+  changedLots,
   hasNegativeHolding,
   type Lot,
   type LotChange,
@@ -186,10 +186,9 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
       ? changeOf(lotIndex, { direction, quantity, costText, currency, date })
       : null;
   // Checked over every lot, not only on the picked day: a backdated sell, or a
-  // buy cut below what a later sale took, must leave every day held at zero
-  // or more.
-  const overdrawn =
-    change !== null && hasNegativeHolding(withLotChange(existingLots, change, currency));
+  // buy cut below what a later sale took, must leave every sale covered by
+  // what is held before it.
+  const overdrawn = change !== null && hasNegativeHolding(changedLots(existingLots, change));
   const quantityErrorMessage = quantityErrorFor({
     attemptedSave,
     quantityValid,

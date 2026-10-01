@@ -37,8 +37,8 @@ import {
   withWalkOwnedMetadataResetToFloor,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
+import { asLots, withLotChange, type LotChange } from '../lots';
 import { isCurrencyAllowedForHoldingType } from '../holding-currency';
-import { asLots, withLotChange, hasNegativeHolding, type LotChange } from '../lots';
 
 // The next free grid slot for a new holding under one account: one past that
 // account's current highest `sortOrder` (or 0 when it has no holdings yet), so
@@ -661,8 +661,9 @@ export const holdingsRepo = {
     }),
   /**
    * Applies one lot change (`withLotChange`) to the lots stored at the time of
-   * the write, never a screen's copy, and refuses a result where any day holds
-   * less than zero. Every other metadata key is kept as stored.
+   * the write, never a screen's copy, and rejects with
+   * `SaleExceedsHoldingError` when a sale would take more than is held before
+   * it. Every other metadata key is kept as stored.
    */
   changeLots: (holdingId: string, change: LotChange) =>
     write(async (databaseTransaction) => {
@@ -686,10 +687,6 @@ export const holdingsRepo = {
       }
 
       const lots = withLotChange(stored, change, row.currency);
-
-      if (hasNegativeHolding(lots)) {
-        throw new Error('changeLots: a sale would take more than is held');
-      }
 
       await databaseTransaction
         .update(holdings)

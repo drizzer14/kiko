@@ -60,10 +60,10 @@ import SummaryTable from '@kiko/design-system/components/summary-table';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { asLots, changedLots, hasNegativeHolding } from '@kiko/holdings/lots';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
-import { asLots, hasNegativeHolding, withLotChange } from '@kiko/holdings/lots';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
@@ -605,14 +605,14 @@ const buildLotActions = (
   holding: HoldingRow | undefined,
   navigation: HoldingDetailScreenProps['navigation'],
 ): LotActions | undefined =>
-  foldMap(maybe(holding), ({ id, currency, metadata }): LotActions => {
+  foldMap(maybe(holding), ({ id, metadata }): LotActions => {
     const lots = asLots(isRecord(metadata) ? metadata.lots : undefined) ?? [];
 
     return {
       edit: (lotIndex) => navigation.navigate('LotForm', { holdingId: id, lotIndex }),
       remove: (lotIndex) => holdingsRepo.changeLots(id, { kind: 'remove', index: lotIndex }),
       isRemovable: (lotIndex) =>
-        !hasNegativeHolding(withLotChange(lots, { kind: 'remove', index: lotIndex }, currency)),
+        !hasNegativeHolding(changedLots(lots, { kind: 'remove', index: lotIndex })),
     };
   });
 

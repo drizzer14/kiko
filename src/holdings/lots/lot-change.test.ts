@@ -1,12 +1,18 @@
 import { DAY_MS } from '@kiko/dates';
 
+import {
+  changedLots,
+  withLotChange,
+  hasNegativeHolding,
+  SaleExceedsHoldingError,
+} from './lot-change';
 import type { Lot } from './lots';
-import { hasNegativeHolding, withLotChange } from './lot-change';
 
 const january = Date.UTC(2026, 0, 10);
 const february = january + 31 * DAY_MS;
 const march = february + 28 * DAY_MS;
 const april = march + 31 * DAY_MS;
+const may = april + 30 * DAY_MS;
 
 const buy = (day: number, quantity: string, costMinorUnits: number): Lot => ({
   day,
@@ -48,18 +54,51 @@ describe('withLotChange', () => {
       sell(april, '2', -2_834),
     ];
 
-    expect(withLotChange(lots, { kind: 'add', lot: buy(april, '1', 100) }, 'USD')).toEqual([
+    expect(withLotChange(lots, { kind: 'add', lot: buy(may, '1', 100) }, 'USD')).toEqual([
       ...lots,
-      buy(april, '1', 100),
+      buy(may, '1', 100),
     ]);
   });
 
-  it('orders lots of one day by when they were recorded', () => {
+  it('costs a sale after every buy of its own day, whenever that buy was recorded', () => {
     const lots = [buy(january, '10', 100_000), sell(february, '5', -50_000)];
 
     expect(
       withLotChange(lots, { kind: 'add', lot: buy(february, '10', 400_000) }, 'USD').at(1),
-    ).toEqual(sell(february, '5', -50_000));
+    ).toEqual(sell(february, '5', -125_000));
+  });
+
+  it('costs a sale recorded before a buy of the same day from that buy', () => {
+    expect(
+      withLotChange([sell(january, '2', -50)], { kind: 'add', lot: buy(january, '2', 100) }, 'USD'),
+    ).toEqual([sell(january, '2', -100), buy(january, '2', 100)]);
+  });
+
+  it('re-costs a sale from the same-day buy once the earlier buy is removed', () => {
+    const lots = [...base, buy(march, '10', 300_000)];
+
+    expect(withLotChange(lots, { kind: 'remove', index: 0 }, 'USD')).toEqual([
+      sell(march, '4', -120_000),
+      buy(march, '10', 300_000),
+    ]);
+  });
+
+  it('refuses a change that leaves a sale more than is held before it', () => {
+    expect(() => withLotChange(base, { kind: 'add', lot: sell(april, '7') }, 'USD')).toThrow(
+      SaleExceedsHoldingError,
+    );
+    expect(() => withLotChange(base, { kind: 'remove', index: 0 }, 'USD')).toThrow(
+      SaleExceedsHoldingError,
+    );
+    expect(() =>
+      withLotChange(base, { kind: 'edit', index: 0, lot: buy(april, '10', 100_000) }, 'USD'),
+    ).toThrow(SaleExceedsHoldingError);
+  });
+
+  it('sells everything held at the whole cost basis', () => {
+    expect(withLotChange(base, { kind: 'add', lot: sell(april, '6') }, 'USD').at(2)).toEqual(
+      sell(april, '6', -60_000),
+    );
   });
 
   it('re-costs the sells after an edited buy cost', () => {
@@ -130,7 +169,21 @@ describe('hasNegativeHolding', () => {
     expect(hasNegativeHolding([sell(march, '4')])).toBe(true);
   });
 
-  it('nets the lots of one day before checking it', () => {
+  it('counts the buys of one day before its sells', () => {
     expect(hasNegativeHolding([sell(january, '2'), buy(january, '2', 100)])).toBe(false);
+  });
+
+  it('is true when a buy re-dated past the sale it covered leaves that sale short', () => {
+    expect(hasNegativeHolding([buy(april, '10', 100_000), sell(march, '4')])).toBe(true);
+  });
+});
+
+describe('changedLots', () => {
+  it('applies the change without re-costing any sale', () => {
+    expect(changedLots(base, { kind: 'add', lot: buy(february, '10', 300_000) })).toEqual([
+      ...base,
+      buy(february, '10', 300_000),
+    ]);
+    expect(changedLots(base, { kind: 'remove', index: 0 })).toEqual([sell(march, '4', -40_000)]);
   });
 });

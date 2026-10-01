@@ -6,6 +6,7 @@ import '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
+import { SaleExceedsHoldingError } from '@kiko/holdings/lots';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import LotFormScreen from './lot-form.screen';
@@ -298,7 +299,7 @@ describe('LotFormScreen', () => {
 
     it('asks for nothing when the write fails, and keeps the form open', async () => {
       const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-      changeLotsMock.mockRejectedValue(new Error('a sale would take more than is held'));
+      changeLotsMock.mockRejectedValue(new SaleExceedsHoldingError());
 
       await saveBuy();
 
