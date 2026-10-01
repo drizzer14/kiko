@@ -13,6 +13,7 @@ import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -201,6 +202,14 @@ jest.mock('@kiko/prices/share-search', () => ({
 // rejected Save targets, without a real ScrollView/measureLayout in the test
 // environment (mirrors contribution-form's and account-form's own mock).
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 const navigation = navigationSpy();
 const route = asRouteProp<HoldingFormProps['route']>('HoldingForm', { accountId: 'acc-1' });
@@ -634,6 +643,47 @@ describe('HoldingFormScreen term deposit', () => {
         "Fill in this contribution's amount and date, or remove it.",
       ),
     ).toBeTruthy();
+  });
+
+  it('turns only the incomplete contribution row labels red with its error', async () => {
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'term_deposit');
+    await fill(screen, 'Name', 'My deposit');
+    await fill(screen, 'Contribution 1 amount', '1000');
+    await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
+    await fireEvent.press(screen.getByText('Add contribution'));
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(isLabelInvalid(mockFieldLabel, 'Contribution 1 amount')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Contribution 1 date')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Contribution 2 amount')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Contribution 2 date')).toBe(true);
+
+    await fill(screen, 'Contribution 2 amount', '500');
+    await pickDate(screen, 'Contribution 2 date', 2026, 2, 1);
+
+    expect(isLabelInvalid(mockFieldLabel, 'Contribution 2 amount')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Contribution 2 date')).toBe(false);
+  });
+
+  it('turns the contribution labels red with the missing-contribution error', async () => {
+    const screen = await renderScreen();
+
+    await selectHoldingType(screen, 'term_deposit');
+    await fill(screen, 'Name', 'My deposit');
+
+    expect(isLabelInvalid(mockFieldLabel, 'Contribution 1 amount')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Contribution 1 date')).toBe(false);
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(
+      screen.getByText('Add at least one contribution with an amount and a date.'),
+    ).toBeTruthy();
+    expect(isLabelInvalid(mockFieldLabel, 'Contribution 1 amount')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Contribution 1 date')).toBe(true);
   });
 
   it('blocks save on a new contribution row that has only an amount, no date', async () => {
