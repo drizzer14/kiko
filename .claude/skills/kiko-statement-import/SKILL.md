@@ -191,7 +191,13 @@ noon row whose real `00:00:00` is at or before the closing as-of is not
 part of the post-closing net (`aliasedNetBeforeClosing` in
 `transactions.repo.ts`). No migration; every
 other key stays byte-identical. The rule is Kyiv-only on purpose: every
-stored noon key was written in Kyiv time.
+stored noon key was written in Kyiv time. So the alias applies only to a
+statement read in Kyiv time — every named format, and a column mapping
+whose source zone is Kyiv or absent. `applyColumnMapping` writes the
+mapping's zone to `ParsedStatement.sourceTimeZone`, and
+`importParsedStatement` gives no alias when that zone is not Kyiv: a
+UTC-10 row at Kyiv `00:00:00` is a new row, even when a stored row sits
+at that day's Kyiv noon.
 
 Every bank-export date/time parser in
 this project — column mapping's own presets, `parseDateTimeSeconds`,

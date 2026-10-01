@@ -1,5 +1,7 @@
 import type { Currency } from '@kiko/currency/currency';
 
+import type { SourceTimeZoneId } from '../column-mapping';
+
 /**
  * One row of a parsed statement, before domain mapping. Deliberately mirrors
  * `docs/plans/bank-providers.md`'s `ProviderStatementItem` shape (externalId,
@@ -113,6 +115,9 @@ export type ParsedStatement = {
    * same trust every other mapped column already extends.
    */
   closingBalance?: ClosingBalance;
+  /** The zone the rows' wall clocks were read in. Only a column mapping
+   * sets it; every named format reads Kyiv time. */
+  sourceTimeZone?: SourceTimeZoneId;
 };
 
 /** One entry per SHIPPED format: Monobank CSV, PrivatBank XLSX, Sensebank

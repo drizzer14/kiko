@@ -875,6 +875,45 @@ describe('a real 00:00:00 row the ledger already holds at noon', () => {
       holding.balanceMinorUnits - 1_847_500,
     );
   });
+
+  // No older build ever read a UTC-10 file, so a stored row whose time is
+  // Kyiv noon is a real row here, never a noon-keyed copy.
+  it('inserts and counts a new row on a non-Kyiv mapping whose Kyiv time is midnight', async () => {
+    const mapping: ColumnMapping = {
+      headerRowIndex: 0,
+      decimalSeparator: '.',
+      dateColumn: 0,
+      dateFormat: 'DD.MM.YYYY HH:MM:SS',
+      timeZone: 'UTC-10:00',
+      amount: { mode: 'single', column: 2 },
+      descriptionColumn: 1,
+      currency: { mode: 'fixed', currency: 'UAH' },
+    };
+    const header = ['Date', 'Description', 'Amount'];
+    const newer = applyColumnMapping(
+      [header, ['01.02.2026 00:00:00', 'Subscription', '-100.00']],
+      mapping,
+    ).statement;
+    const older = applyColumnMapping(
+      [header, ['31.01.2026 12:00:00', 'Subscription', '-100.00']],
+      mapping,
+    ).statement;
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const holding = defaultHolding();
+    const first = makeImportDatabaseTransaction({ store, holding, account: unsyncedAccount });
+    mockDatabaseTransaction = first.databaseTransaction;
+
+    await importParsedStatement(newer, 'holding-1');
+    holding.balanceMinorUnits = first.captured.holdingSet?.balanceMinorUnits as number;
+    const second = makeImportDatabaseTransaction({ store, holding, account: unsyncedAccount });
+    mockDatabaseTransaction = second.databaseTransaction;
+
+    const result = await importParsedStatement(older, 'holding-1');
+
+    expect(result.imported).toBe(1);
+    expect(store.transactions).toHaveLength(2);
+    expect(second.captured.holdingSet?.balanceMinorUnits).toBe(-20_000);
+  });
 });
 
 // Both `importParsedStatement` callers (the dedicated `importStatement`

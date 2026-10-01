@@ -109,6 +109,9 @@ export const importParsedStatement = async (
   // occurrences of DIFFERENT ones, so both would get occurrenceIndex 0 and
   // collide onto the same synthesized externalId.
   const seenKeys = new Map<string, number>();
+  // An older build read every file as Kyiv time, so a row read in any other
+  // zone cannot match a noon key it wrote.
+  const readInKyivTime = (parsed.sourceTimeZone ?? 'kyiv') === 'kyiv';
   const rows = matchingTransactions.map((transaction) => {
     const raw = transaction.externalId ?? computeDedupKey(holdingId, transaction, 0);
     const occurrenceIndex = seenKeys.get(raw) ?? 0;
@@ -116,7 +119,9 @@ export const importParsedStatement = async (
 
     return {
       ...mapParsedTransaction(transaction, holdingId, occurrenceIndex),
-      aliasExternalId: noonAliasDedupKey(holdingId, transaction, occurrenceIndex),
+      aliasExternalId: readInKyivTime
+        ? noonAliasDedupKey(holdingId, transaction, occurrenceIndex)
+        : undefined,
     };
   });
   const imported = await transactionsRepo.importRows({

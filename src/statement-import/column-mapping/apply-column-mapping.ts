@@ -421,6 +421,7 @@ export const applyColumnMapping = (
       account,
       transactions,
       ...(closingBalance ? { closingBalance } : {}),
+      sourceTimeZone: sourceTimeZoneOrKyiv(mapping.timeZone),
     },
     rowErrors,
   };
