@@ -4,6 +4,7 @@ import type { Currency } from '@kiko/currency/currency';
 import {
   EodhdAuthError,
   EodhdQuotaError,
+  EodhdNetworkError,
   EodhdNotInPlanError,
   EodhdRateLimitError,
   EodhdUnavailableError,
@@ -418,8 +419,51 @@ describe('refreshSharePrices', () => {
       expect(world.saved[0]?.rows).toHaveLength(1);
     });
 
-    it('retries a symbol the network failed on later the same day, counting the call', async () => {
-      const world = makeWorld({ eod: { 'AAPL.US': new EodhdUnavailableError() } });
+    it('skips a symbol EODHD cannot answer, refreshes the rest, and leaves it for tomorrow', async () => {
+      const world = makeWorld({
+        holdings: [
+          share({ id: 'first', symbol: 'AAA.US' }),
+          share({ id: 'second', symbol: 'BBB.US' }),
+          share({ id: 'third', symbol: 'CCC.US' }),
+        ],
+        eod: {
+          'AAA.US': new EodhdUnavailableError(),
+          'BBB.US': [{ day: WEDNESDAY, close: '10' }],
+          'CCC.US': [{ day: WEDNESDAY, close: '20' }],
+        },
+      });
+
+      await expect(refreshSharePrices(depsFor(world))).resolves.toBe('ok');
+      await refreshSharePrices(depsFor(world));
+
+      expect(calls(world)).toEqual([
+        'eod AAA.US 2026-06-01 2026-10-01',
+        'eod BBB.US 2026-06-01 2026-10-01',
+        'eod CCC.US 2026-06-01 2026-10-01',
+      ]);
+      expect(world.saved[0]?.rows.map((row) => row.instrument)).toEqual([
+        'share:BBB.US',
+        'share:CCC.US',
+      ]);
+      expect(world.quota?.symbols).toEqual(['AAA.US', 'BBB.US', 'CCC.US']);
+    });
+
+    it('skips a hand-typed share whose search EODHD cannot answer', async () => {
+      const world = makeWorld({
+        holdings: [
+          share({ id: 'vod', symbol: 'VOD.LSE', currency: 'GBP', handTyped: true }),
+          share({ id: 'apple' }),
+        ],
+        search: { VOD: new EodhdUnavailableError() },
+      });
+
+      await expect(refreshSharePrices(depsFor(world))).resolves.toBe('ok');
+      expect(calls(world)).toEqual(['eod AAPL.US 2026-06-01 2026-10-01', 'search VOD LSE']);
+      expect(world.quota?.symbols).toEqual(['AAPL.US', 'VOD.LSE']);
+    });
+
+    it('stops when EODHD cannot be reached and retries later the same day, counting the call', async () => {
+      const world = makeWorld({ eod: { 'AAPL.US': new EodhdNetworkError() } });
 
       await expect(refreshSharePrices(depsFor(world))).resolves.toBe('failed');
       expect(world.quota).toEqual({ day: THURSDAY, calls: 1, dailyLimit: 20, symbols: [] });

@@ -18,6 +18,7 @@ import {
   type SymbolMatch,
   EodhdNotInPlanError,
   EodhdRateLimitError,
+  EodhdUnavailableError,
 } from '../eodhd';
 import {
   reserve,
@@ -216,11 +217,14 @@ const planCalls = (
 };
 
 // Only the error's name and code are logged: a request URL carries the key.
+// An answer about one symbol (outside the plan, delisted, a bad body) skips
+// it until tomorrow; only a rejected key, a used-up day, or no network stops
+// the run, so one bad symbol never blocks the rest.
 const stopFor = (error: unknown): Stop | undefined => {
   logFailure('[share-refresh] EODHD request failed', error);
 
   return match(error)
-    .with(P.instanceOf(EodhdNotInPlanError), () => undefined)
+    .with(P.instanceOf(EodhdNotInPlanError), P.instanceOf(EodhdUnavailableError), () => undefined)
     .with(P.instanceOf(EodhdQuotaError), P.instanceOf(EodhdRateLimitError), () => 'usedUp' as const)
     .otherwise(() => 'failed' as const);
 };

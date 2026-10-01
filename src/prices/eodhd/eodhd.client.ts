@@ -57,8 +57,21 @@ export class EodhdUnavailableError extends Error {
   }
 }
 
+/** The request never got an answer (no network, a timeout): EODHD itself said nothing. */
+export class EodhdNetworkError extends Error {
+  constructor() {
+    super('EODHD could not be reached');
+    this.name = 'EodhdNetworkError';
+    Object.setPrototypeOf(this, EodhdNetworkError.prototype);
+  }
+}
+
 const unavailable = (): never => {
   throw new EodhdUnavailableError();
+};
+
+const unreachable = (): never => {
+  throw new EodhdNetworkError();
 };
 
 // EODHD error bodies are plain text even with `fmt=json`, so only the status is read.
@@ -100,7 +113,7 @@ const requestJson = async (
     fetchImpl(`${EODHD_API_ENDPOINT}${path}?${query.toString()}`, NO_STORE),
   );
 
-  return readBody(bifoldr(sent) ?? unavailable());
+  return readBody(bifoldr(sent) ?? unreachable());
 };
 
 const DAY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;

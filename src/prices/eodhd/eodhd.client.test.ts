@@ -2,6 +2,7 @@ import { logFailure } from '@kiko/diagnostics';
 
 import {
   EodhdAuthError,
+  EodhdNetworkError,
   EodhdNotInPlanError,
   EodhdQuotaError,
   EodhdRateLimitError,
@@ -180,7 +181,7 @@ const failures: [string, typeof fetch, new () => Error][] = [
     (async (url: string) => {
       throw new TypeError(`Network request failed: ${url}`);
     }) as unknown as typeof fetch,
-    EodhdUnavailableError,
+    EodhdNetworkError,
   ],
   [
     'an invalid JSON body',
