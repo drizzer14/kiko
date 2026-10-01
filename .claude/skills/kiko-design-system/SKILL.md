@@ -1101,12 +1101,20 @@ new component can land between reviews of this skill:
   and `HoldingSelectField`). `invalid` never renders a message and is
   never set beside `error`. In the transaction form: the re-date error
   under the Date and Time row (both labels), and the split-returns error
-  under the return rows (every row's "Return to N" and "Return N"). Save/Import is never disabled for VALIDATION; it validates
-  on press. It disables only while a submit is in flight, or when an
-  edit's saved value depends on data still loading (the holding form's
-  edit waits for the price book, kiko-pricing). Every form composes this instead of hand-rolling its own
-  error caption — see `kiko-code-style`'s "Form validation model" section for when to
-  show it.
+  under the return rows (every row's "Return to N" and "Return N", plus
+  the payment Amount when the returns total it or more; an empty payment
+  is the Amount's own error). In the holding form, a contributions error
+  turns the amount and date labels of every row it refuses red.
+
+  Save/Import is never disabled for VALIDATION; it validates on press.
+  It disables only while a submit is in flight, or when an edit's saved
+  value depends on data still loading: the holding form's edit waits for
+  the price book (kiko-pricing), and the transaction form's edit waits
+  for the re-date boundary, only for a row the re-date rule can block
+  (`isPossibleBalanceSetRow`, `src/transactions/balance-boundary/`).
+  Every form composes this instead of hand-rolling its own error
+  caption — see `kiko-code-style`'s "Form validation model" section for
+  when to show it.
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
   the shared "labeled field that opens a picker sheet" trigger: a
   caption above a bordered row showing the current icon (or leading
