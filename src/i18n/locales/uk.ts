@@ -835,7 +835,6 @@ export const uk: typeof en = {
     dateColumn: 'Дата',
     timeZone: 'Часовий пояс',
     timeZoneSheetTitle: 'Часовий пояс',
-    timeZonePlaceholder: 'Оберіть часовий пояс',
     timeZoneKyiv: 'Київ (UTC+2/+3)',
     timeZoneWesternEurope: 'Західна Європа (UTC+0/+1)',
     timeZoneCentralEurope: 'Центральна Європа (UTC+1/+2)',

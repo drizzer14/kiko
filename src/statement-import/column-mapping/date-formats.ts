@@ -3,13 +3,8 @@
 // dedicated bank formats (Monobank/PrivatBank's `DD.MM.YYYY HH:MM:SS`,
 // Sensebank's 2-digit-year `DD.MM.YY HH:MM`), plus a few common shorter/ISO
 // variants a manually-exported statement might carry instead.
-import {
-  type ZoneRule,
-  KYIV_ZONE_RULE,
-  type WallClockParts,
-  zoneWallClockToUtcMilliseconds,
-} from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
+import { type ZoneRule, type WallClockParts, zoneWallClockToUtcMilliseconds } from '@kiko/dates';
 
 import type { TableCell } from './table-rows';
 
@@ -160,7 +155,7 @@ export const dateFormatExamples: Record<DateFormatId, string> = {
 export const parseDateWithFormat = (
   raw: TableCell,
   id: DateFormatId,
-  zone: ZoneRule = KYIV_ZONE_RULE,
+  zone: ZoneRule,
 ): number | undefined => {
   const preset = presets[id];
   const match = preset.pattern.exec(String(raw).trim());

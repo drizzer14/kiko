@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { DatabaseSync } from 'node:sqlite';
 import { SETTINGS_ID } from '@kiko/settings';
+import { KYIV_ZONE_RULE } from '@kiko/dates';
 import { type database, holdings, settings, transactions } from '@kiko/db';
 import { monobankCsvFormat } from '@kiko/statement-import/formats/monobank-csv';
 import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
@@ -174,7 +175,7 @@ describe('rezoneImportTimesIn (real SQLite)', () => {
     // Column mapping's own reading of the same raw digits must land on the
     // (time, externalId) pair the rezone just wrote, so the re-import dedups.
     const columnMappedSeconds = (raw: string): number =>
-      parseDateWithFormat(raw, 'DD.MM.YYYY HH:MM:SS') ?? Number.NaN;
+      parseDateWithFormat(raw, 'DD.MM.YYYY HH:MM:SS', KYIV_ZONE_RULE) ?? Number.NaN;
     const reimportedFirst = mapParsedTransaction(
       {
         ...dedicatedMonobank.transactions[0],

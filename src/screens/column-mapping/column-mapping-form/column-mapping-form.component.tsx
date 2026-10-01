@@ -1,5 +1,5 @@
-import type { FC } from 'react';
 import { View } from 'react-native';
+import { type FC, useMemo } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import {
@@ -105,6 +105,9 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   fieldRefs,
 }) => {
   const { t } = useTranslation();
+  // One translated label per zone, rebuilt only when the language changes,
+  // not on every edit elsewhere in this large form.
+  const zoneLabels = useMemo(() => timeZoneLabels(t), [t]);
   const delimiterLabels: Partial<Record<TableDelimiter, string>> = {
     ',': ',',
     ';': ';',
@@ -217,8 +220,8 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           options={sourceTimeZoneIds}
           selected={timeZone}
           onSelect={onTimeZoneChange}
-          labels={timeZoneLabels(t)}
-          placeholder={t('columnMapping.timeZonePlaceholder')}
+          labels={zoneLabels}
+          placeholder={t('columnMapping.timeZone')}
           testID="column-mapping-time-zone"
         />
       </Box>

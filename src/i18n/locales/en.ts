@@ -1060,7 +1060,6 @@ export const en = {
     dateColumn: 'Date',
     timeZone: 'Time zone',
     timeZoneSheetTitle: 'Time Zone',
-    timeZonePlaceholder: 'Select a time zone',
     timeZoneKyiv: 'Kyiv (UTC+2/+3)',
     timeZoneWesternEurope: 'Western Europe (UTC+0/+1)',
     timeZoneCentralEurope: 'Central Europe (UTC+1/+2)',
