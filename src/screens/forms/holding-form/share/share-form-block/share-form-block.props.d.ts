@@ -7,4 +7,5 @@ export type ShareFormBlockProps = {
   attemptedSave: boolean;
   isEdit: boolean;
   currency: Currency;
+  onSearchOpenChange: (isOpen: boolean) => void;
 };

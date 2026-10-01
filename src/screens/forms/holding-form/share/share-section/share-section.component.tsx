@@ -1,14 +1,17 @@
-import type { FC } from 'react';
 import { View } from 'react-native';
 import type { TFunction } from 'i18next';
+import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import DateField from '@kiko/screens/forms/date-field';
+import Button from '@kiko/design-system/components/button';
 import TextField from '@kiko/design-system/components/text-field';
 import FieldLabel from '@kiko/design-system/components/field-label';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { shareQuoteSources, type ShareQuoteSource } from '@kiko/holdings/holding-metadata';
+
+import ShareSearchSheet from '../share-search-sheet';
 
 import type { ShareSectionProps } from './share-section.props';
 
@@ -30,6 +33,9 @@ const ShareSection: FC<ShareSectionProps> = ({
   tickerFieldRef,
   tickerInputRef,
   hasEodhdKey,
+  onSearch,
+  onPickListing,
+  onSearchOpenChange,
   isin,
   onChangeIsin,
   isinError,
@@ -51,6 +57,12 @@ const ShareSection: FC<ShareSectionProps> = ({
   costInputRef,
 }) => {
   const { t } = useTranslation();
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  const updateSearchOpen = (isOpen: boolean): void => {
+    setIsSearchOpen(isOpen);
+    onSearchOpenChange?.(isOpen);
+  };
 
   return (
     <Box gap={4}>
@@ -81,6 +93,19 @@ const ShareSection: FC<ShareSectionProps> = ({
             inputRef={tickerInputRef}
           />
         </View>
+      )}
+
+      {quoteSource === 'eodhd' && hasEodhdKey && (
+        <Button
+          variant="secondaryTonal"
+          size="small"
+          fullWidth={false}
+          icon="magnifyingglass"
+          onPress={() => updateSearchOpen(true)}
+          testID="share-find-button"
+        >
+          {t('forms.holding.shareFind')}
+        </Button>
       )}
 
       {quoteSource === 'eodhd' && !hasEodhdKey && (
@@ -141,6 +166,13 @@ const ShareSection: FC<ShareSectionProps> = ({
           />
         </>
       )}
+
+      <ShareSearchSheet
+        visible={isSearchOpen}
+        onDismiss={() => updateSearchOpen(false)}
+        search={onSearch}
+        onPick={onPickListing}
+      />
     </Box>
   );
 };

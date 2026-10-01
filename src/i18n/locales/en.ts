@@ -466,6 +466,14 @@ export const en = {
       removeContribution: 'Remove contribution {{index}}',
       semiannually: 'Semiannually',
       share: 'Share',
+      shareFind: 'Find by ISIN or ticker',
+      shareFindEmpty: 'Nothing found.',
+      shareFindPlaceholder: 'US0378331005',
+      shareFindQuery: 'ISIN or ticker',
+      shareFindQuotaExhausted: 'Today’s EODHD requests are used up. Try again tomorrow.',
+      shareFindSheetTitle: 'Find Share',
+      shareFindSubmit: 'Search',
+      shareFindUnavailable: 'Search is unavailable. Enter the ticker yourself.',
       // Shown under the price source in EODHD mode until a key is saved, so
       // the EODHD option is never a dead control.
       shareNoKeyHint:

@@ -25,7 +25,78 @@ const baseProps = {
   currencySuffix: '$',
   purchaseDate: new Date(2026, 8, 15).getTime(),
   onChangePurchaseDate: jest.fn(),
+  onSearch: jest.fn().mockResolvedValue({ status: 'ok', listings: [] }),
+  onPickListing: jest.fn(),
 };
+
+describe('ShareSection search', () => {
+  const vodafone = {
+    symbol: 'VOD.LSE',
+    name: 'Vodafone Group PLC',
+    currency: 'GBP' as const,
+    quoteCurrency: 'GBX',
+  };
+
+  it('offers a search in EODHD mode once a key is saved', async () => {
+    const { getByText } = await render(<ShareSection {...baseProps} hasEodhdKey />);
+
+    expect(getByText('Find by ISIN or ticker')).toBeTruthy();
+  });
+
+  it('offers no search without a saved key, only the hint', async () => {
+    const { queryByText, getByText } = await render(<ShareSection {...baseProps} />);
+
+    expect(queryByText('Find by ISIN or ticker')).toBeNull();
+    expect(getByText(NO_KEY_HINT)).toBeTruthy();
+  });
+
+  it('offers no search in manual mode', async () => {
+    const { queryByText } = await render(
+      <ShareSection {...baseProps} hasEodhdKey quoteSource="manual" />,
+    );
+
+    expect(queryByText('Find by ISIN or ticker')).toBeNull();
+  });
+
+  it('opens the search sheet and reports that it opened', async () => {
+    const onSearchOpenChange = jest.fn();
+    const { getByText, queryByText } = await render(
+      <ShareSection {...baseProps} hasEodhdKey onSearchOpenChange={onSearchOpenChange} />,
+    );
+
+    expect(queryByText('Find Share')).toBeNull();
+
+    await fireEvent.press(getByText('Find by ISIN or ticker'));
+
+    expect(getByText('Find Share')).toBeTruthy();
+    expect(onSearchOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it('reports the listing picked in the sheet and closes it', async () => {
+    const onPickListing = jest.fn();
+    const onSearchOpenChange = jest.fn();
+    const onSearch = jest.fn().mockResolvedValue({ status: 'ok', listings: [vodafone] });
+    const screen = await render(
+      <ShareSection
+        {...baseProps}
+        hasEodhdKey
+        onSearch={onSearch}
+        onPickListing={onPickListing}
+        onSearchOpenChange={onSearchOpenChange}
+      />,
+    );
+
+    await fireEvent.press(screen.getByText('Find by ISIN or ticker'));
+    await fireEvent.changeText(screen.getByLabelText('ISIN or ticker'), 'VOD');
+    await fireEvent.press(screen.getByText('Search'));
+    await fireEvent.press(screen.getByTestId('share-search-option-VOD.LSE'));
+
+    expect(onSearch).toHaveBeenCalledWith('VOD');
+    expect(onPickListing).toHaveBeenCalledWith(vodafone);
+    expect(onSearchOpenChange).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByText('Find Share')).toBeNull();
+  });
+});
 
 describe('ShareSection price source', () => {
   it.each([true, false])(

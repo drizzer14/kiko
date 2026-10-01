@@ -7,6 +7,8 @@ import {
 import type { HoldingRow } from '@kiko/db';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { shareInstrument } from '@kiko/prices/instrument';
+import { fiatCurrencyOptions } from '@kiko/currency/currency';
+import type { ShareListing } from '@kiko/prices/share-search';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { useShareFields } from './use-share-fields';
@@ -20,6 +22,11 @@ jest.mock('@kiko/prices/eodhd-key', () => ({
   hasEodhdKey: () => mockHasEodhdKey(),
 }));
 
+const mockSearchShares = jest.fn();
+jest.mock('@kiko/prices/share-search', () => ({
+  searchShares: (...args: unknown[]) => mockSearchShares(...args),
+}));
+
 const updateMock = holdingsRepo.updateWithManualPricePoint as jest.Mock;
 
 const purchaseDay = new Date(2026, 8, 15).getTime();
@@ -28,7 +35,17 @@ const lastDay = new Date(2026, 8, 25).getTime();
 type Params = Parameters<typeof useShareFields>[0];
 
 const renderFields = (overrides: Partial<Params> = {}) =>
-  renderHook(() => useShareFields({ type: 'share', isEdit: false, currency: 'USD', ...overrides }));
+  renderHook(() =>
+    useShareFields({
+      type: 'share',
+      isEdit: false,
+      currency: 'USD',
+      name: '',
+      setName: jest.fn(),
+      setCurrency: jest.fn(),
+      ...overrides,
+    }),
+  );
 
 type Rendered = Awaited<ReturnType<typeof renderFields>>;
 
@@ -370,6 +387,155 @@ describe('useShareFields edit', () => {
     });
 
     expect(result.current.isValid).toBe(true);
+  });
+});
+
+describe('useShareFields search', () => {
+  const vodafone: ShareListing = {
+    symbol: 'VOD.LSE',
+    name: 'Vodafone Group PLC',
+    isin: 'GB00BH4HKS39',
+    currency: 'GBP',
+    quoteCurrency: 'GBX',
+  };
+
+  beforeEach(() => {
+    mockSearchShares.mockReset();
+    mockSearchShares.mockResolvedValue({ status: 'ok', listings: [] });
+  });
+
+  it('searches the currencies a new share may take', async () => {
+    const { result } = await renderFields();
+
+    await result.current.search('VOD');
+
+    expect(mockSearchShares).toHaveBeenCalledWith('VOD', fiatCurrencyOptions);
+  });
+
+  it('searches only the currency an edited share already has', async () => {
+    const { result } = await renderFields({ isEdit: true, currency: 'GBP' });
+
+    await result.current.search('VOD');
+
+    expect(mockSearchShares).toHaveBeenCalledWith('VOD', ['GBP']);
+  });
+
+  it('fills the ticker, ISIN, name, and currency from the picked listing', async () => {
+    const setName = jest.fn();
+    const setCurrency = jest.fn();
+    const { result } = await renderFields({ setName, setCurrency });
+
+    await act(async () => {
+      result.current.pickListing(vodafone);
+    });
+
+    expect(result.current.ticker).toBe('VOD.LSE');
+    expect(result.current.isin).toBe('GB00BH4HKS39');
+    expect(setName).toHaveBeenCalledWith('Vodafone Group PLC');
+    expect(setCurrency).toHaveBeenCalledWith('GBP');
+  });
+
+  it('writes the picked listing with its price unit', async () => {
+    mockHasEodhdKey.mockResolvedValue(true);
+    const rendered = await renderFields();
+
+    await waitFor(() => expect(rendered.result.current.quoteSource).toBe('eodhd'));
+    await act(async () => {
+      rendered.result.current.pickListing(vodafone);
+    });
+    await fillFirstLot(rendered, '10', '120');
+
+    expect(rendered.result.current.createPayload().metadata).toEqual({
+      quoteSource: 'eodhd',
+      symbol: 'VOD.LSE',
+      isin: 'GB00BH4HKS39',
+      quoteCurrency: 'GBX',
+      lots: [{ day: dayKeyOf(purchaseDay), quantityDelta: '10', costMinorUnits: 12_000 }],
+    });
+  });
+
+  it('drops the picked price unit once the ticker is typed over', async () => {
+    mockHasEodhdKey.mockResolvedValue(true);
+    const rendered = await renderFields();
+
+    await waitFor(() => expect(rendered.result.current.quoteSource).toBe('eodhd'));
+    await act(async () => {
+      rendered.result.current.pickListing(vodafone);
+    });
+    await act(async () => {
+      rendered.result.current.setTicker('BP.LSE');
+    });
+    await fillFirstLot(rendered, '1', '100');
+
+    expect(rendered.result.current.createPayload().metadata).not.toHaveProperty('quoteCurrency');
+  });
+
+  it('keeps a name the user typed', async () => {
+    const setName = jest.fn();
+    const { result } = await renderFields({ name: 'My phone shares', setName });
+
+    await act(async () => {
+      result.current.pickListing(vodafone);
+    });
+
+    expect(setName).not.toHaveBeenCalled();
+  });
+
+  it('replaces the name its last pick filled', async () => {
+    const setName = jest.fn();
+    const { result, rerender } = await renderHook(
+      ({ name }: { name: string }) =>
+        useShareFields({
+          type: 'share',
+          isEdit: false,
+          currency: 'USD',
+          name,
+          setName,
+          setCurrency: jest.fn(),
+        }),
+      { initialProps: { name: '' } },
+    );
+
+    await act(async () => {
+      result.current.pickListing(vodafone);
+    });
+    await rerender({ name: 'Vodafone Group PLC' });
+    await act(async () => {
+      result.current.pickListing({ ...vodafone, symbol: 'BP.LSE', name: 'BP PLC' });
+    });
+
+    expect(setName.mock.calls).toEqual([['Vodafone Group PLC'], ['BP PLC']]);
+  });
+
+  it('keeps the typed ISIN when the listing has none', async () => {
+    const { result } = await renderFields();
+    const { isin: _isin, ...withoutIsin } = vodafone;
+
+    await act(async () => {
+      result.current.setIsin('GB00BH4HKS39');
+    });
+    await act(async () => {
+      result.current.pickListing(withoutIsin);
+    });
+
+    expect(result.current.isin).toBe('GB00BH4HKS39');
+  });
+
+  it('saves an edited share with the price unit of the listing picked for it', async () => {
+    const { result } = await renderFields({ isEdit: true, currency: 'GBP' });
+
+    await act(async () => {
+      result.current.seed(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.US' }));
+    });
+    await act(async () => {
+      result.current.pickListing(vodafone);
+    });
+    await result.current.saveEdit(editContext);
+
+    expect(updateMock.mock.calls[0][1].metadata).toMatchObject({
+      symbol: 'VOD.LSE',
+      quoteCurrency: 'GBX',
+    });
   });
 });
 

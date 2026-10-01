@@ -2,6 +2,7 @@ import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { ShareQuoteSource } from '@kiko/holdings/holding-metadata';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { ShareListing, ShareSearchResult } from '@kiko/prices/share-search';
 
 export type ShareSectionProps = {
   quoteSource: ShareQuoteSource;
@@ -14,6 +15,12 @@ export type ShareSectionProps = {
   // With no saved key, EODHD mode points to Settings instead of hiding the
   // option, so it is never a dead control.
   hasEodhdKey: boolean;
+  onSearch: (query: string) => Promise<ShareSearchResult>;
+  onPickListing: (listing: ShareListing) => void;
+  // The search sheet's query field can focus while it is open; the hosting
+  // Screen turns its own keyboard inset handling off meanwhile (see
+  // `CurrencyField`'s `onOpenChange`).
+  onSearchOpenChange?: (isOpen: boolean) => void;
   isin: string;
   onChangeIsin: (text: string) => void;
   isinError?: string;

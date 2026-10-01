@@ -183,6 +183,10 @@ let mockHasEodhdKey = false;
 jest.mock('@kiko/prices/eodhd-key', () => ({
   hasEodhdKey: () => Promise.resolve(mockHasEodhdKey),
 }));
+const mockSearchShares = jest.fn();
+jest.mock('@kiko/prices/share-search', () => ({
+  searchShares: (...args: unknown[]) => mockSearchShares(...args),
+}));
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
 // environment (mirrors contribution-form's and account-form's own mock).
@@ -2668,6 +2672,47 @@ describe('HoldingFormScreen share', () => {
 
     await waitFor(() => expect(screen.queryByText(NO_KEY_HINT)).toBeNull());
     expect(screen.getByText('EODHD')).toBeTruthy();
+  });
+
+  it('fills a new share from a picked search result and saves its price unit', async () => {
+    mockHasEodhdKey = true;
+    mockSearchShares.mockResolvedValue({
+      status: 'ok',
+      listings: [
+        {
+          symbol: 'VOD.LSE',
+          name: 'Vodafone Group PLC',
+          isin: 'GB00BH4HKS39',
+          currency: 'GBP',
+          quoteCurrency: 'GBX',
+        },
+      ],
+    });
+    const screen = await renderScreen();
+
+    await fireEvent.press(await screen.findByText('Find by ISIN or ticker'));
+    await fill(screen, 'ISIN or ticker', 'GB00BH4HKS39');
+    await fireEvent.press(screen.getByText('Search'));
+    await fireEvent.press(screen.getByTestId('share-search-option-VOD.LSE'));
+    await fill(screen, 'Quantity', '10');
+    await fill(screen, 'Total cost', '120');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockSearchShares).toHaveBeenCalledWith('GB00BH4HKS39', expect.arrayContaining(['GBP']));
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Vodafone Group PLC',
+        type: 'share',
+        currency: 'GBP',
+        metadata: {
+          quoteSource: 'eodhd',
+          symbol: 'VOD.LSE',
+          isin: 'GB00BH4HKS39',
+          quoteCurrency: 'GBX',
+          lots: [{ day: dayKeyOf(Date.now()), quantityDelta: '10', costMinorUnits: 12_000 }],
+        },
+      }),
+    );
   });
 
   it('offers fiat currencies only for a share', async () => {

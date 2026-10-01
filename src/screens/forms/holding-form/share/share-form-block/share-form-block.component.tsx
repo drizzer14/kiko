@@ -13,7 +13,13 @@ import type { ShareFormBlockProps } from './share-form-block.props';
 
 // The `type === 'share'` details block as its own leaf component, keeping
 // its own cognitive-complexity budget separate from the screen's.
-const ShareFormBlock: FC<ShareFormBlockProps> = ({ fields, attemptedSave, isEdit, currency }) => {
+const ShareFormBlock: FC<ShareFormBlockProps> = ({
+  fields,
+  attemptedSave,
+  isEdit,
+  currency,
+  onSearchOpenChange,
+}) => {
   const { t } = useTranslation();
   const { fieldErrors, refs } = fields;
 
@@ -32,6 +38,9 @@ const ShareFormBlock: FC<ShareFormBlockProps> = ({ fields, attemptedSave, isEdit
         tickerFieldRef={refs.tickerFieldRef}
         tickerInputRef={refs.tickerInputRef}
         hasEodhdKey={fields.hasEodhdKey}
+        onSearch={fields.search}
+        onPickListing={fields.pickListing}
+        onSearchOpenChange={onSearchOpenChange}
         isin={fields.isin}
         onChangeIsin={fields.setIsin}
         isinError={fieldErrorMessage(t, attemptedSave, fieldErrors.isinError)}

@@ -24,9 +24,11 @@ import type { HoldingRow, PricePointRow } from '@kiko/db';
 import { SHARE_PRICE_SCALE } from '@kiko/prices/share-price';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
+import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { dayKeyOf, latestPoint, type PriceBook } from '@kiko/prices/price-book';
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { searchShares, type ShareListing, type ShareSearchResult } from '@kiko/prices/share-search';
 
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 
@@ -91,6 +93,7 @@ type ShareCreateFields = {
   quoteSource: ShareQuoteSource;
   ticker: string;
   isin: string;
+  quoteCurrency: string | undefined;
   quantity: string;
   cost: string;
   purchaseDate: number;
@@ -101,12 +104,13 @@ type ShareCreateFields = {
 // writes its first price, so it never reads as "no price yet"; an EODHD share
 // gets its price from the shared `share:<symbol>` series instead, like a metal.
 const buildShareCreatePayload = (fields: ShareCreateFields): CreatePayload => {
-  const { quoteSource, ticker, isin, quantity, cost, purchaseDate, currency } = fields;
+  const { quoteSource, ticker, isin, quoteCurrency, quantity, cost, purchaseDate, currency } =
+    fields;
   const day = dayKeyOf(purchaseDate);
   const costMinorUnits = Money.fromMajor(currency, parseAmount(cost) || 0).minorUnits;
   const quantityDelta = normalizedQuantityOrThrow(quantity);
   const lots: Lot[] = [{ day, quantityDelta, costMinorUnits }];
-  const metadata = shareMetadata({ quoteSource, ticker, isin, quoteCurrency: undefined, lots });
+  const metadata = shareMetadata({ quoteSource, ticker, isin, quoteCurrency, lots });
 
   return match(quoteSource)
     .with('eodhd', (): CreatePayload => ({ metadata }))
@@ -120,16 +124,23 @@ const buildShareCreatePayload = (fields: ShareCreateFields): CreatePayload => {
     .exhaustive();
 };
 
+type QuotedListing = { symbol?: string; quoteCurrency?: string };
+
 // A provider quote unit belongs to one listing, so it is kept only while the
 // ticker still names that listing.
 const keptQuoteCurrency = (
-  stored: ShareMeta | null,
+  listing: QuotedListing | null,
   quoteSource: ShareQuoteSource,
   ticker: string,
 ): string | undefined =>
-  stored !== null && quoteSource === 'eodhd' && stored.symbol === normalizeSymbol(ticker)
-    ? stored.quoteCurrency
+  listing !== null && quoteSource === 'eodhd' && listing.symbol === normalizeSymbol(ticker)
+    ? listing.quoteCurrency
     : undefined;
+
+// A typed name, or a name kept after a pick filled a different one, belongs
+// to the user; a pick replaces only a blank name or the one it filled last.
+const isOwnName = (name: string, filledName: string | null): boolean =>
+  name.trim() !== '' && name !== filledName;
 
 type CarriedPricePoint = Pick<PricePointRow, 'day' | 'price' | 'currency'>;
 
@@ -157,6 +168,9 @@ type UseShareFieldsParams = {
   type: HoldingType;
   isEdit: boolean;
   currency: Currency;
+  name: string;
+  setName: (value: string) => void;
+  setCurrency: (value: Currency) => void;
 };
 
 export type UseShareFieldsResult = HoldingTypeForm & {
@@ -173,6 +187,8 @@ export type UseShareFieldsResult = HoldingTypeForm & {
   purchaseDate: number;
   setPurchaseDate: (timestamp: number) => void;
   hasEodhdKey: boolean;
+  search: (query: string) => Promise<ShareSearchResult>;
+  pickListing: (listing: ShareListing) => void;
   fieldErrors: ShareFieldErrors;
   reasonKey: ShareReasonKey | null;
   refs: {
@@ -193,7 +209,7 @@ export type UseShareFieldsResult = HoldingTypeForm & {
  * per-field validation, and the create/edit writes.
  */
 export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResult => {
-  const { type, isEdit, currency } = params;
+  const { type, isEdit, currency, name, setName, setCurrency } = params;
 
   // Null until the user picks a source or an edit seeds the stored one.
   const [pickedQuoteSource, setQuoteSource] = useState<ShareQuoteSource | null>(null);
@@ -204,6 +220,10 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
   const [purchaseDate, setPurchaseDate] = useState(() => startOfLocalDay(Date.now()));
   const [stored, setStored] = useState<ShareMeta | null>(null);
   const [isEodhdKeySaved, setIsEodhdKeySaved] = useState(false);
+  const [pickedListing, setPickedListing] = useState<ShareListing | null>(null);
+  // The name the last pick filled in, so the next pick can tell it from one
+  // the user typed.
+  const filledNameRef = useRef<string | null>(null);
 
   const tickerFieldRef = useRef<FieldInstance>(null);
   const isinFieldRef = useRef<FieldInstance>(null);
@@ -245,8 +265,36 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
     setIsin(meta.isin ?? '');
   }, []);
 
+  // An edited share keeps its currency, so only its own listings can be picked.
+  const search = (query: string): Promise<ShareSearchResult> =>
+    searchShares(query, isEdit ? [currency] : holdingCurrencyOptions('share'));
+
+  const pickListing = (listing: ShareListing): void => {
+    setPickedListing(listing);
+    setTicker(listing.symbol);
+    setCurrency(listing.currency);
+
+    if (listing.isin !== undefined) {
+      setIsin(listing.isin);
+    }
+
+    if (!isOwnName(name, filledNameRef.current)) {
+      filledNameRef.current = listing.name;
+      setName(listing.name);
+    }
+  };
+
   const createPayload = (): CreatePayload =>
-    buildShareCreatePayload({ quoteSource, ticker, isin, quantity, cost, purchaseDate, currency });
+    buildShareCreatePayload({
+      quoteSource,
+      ticker,
+      isin,
+      quoteCurrency: keptQuoteCurrency(pickedListing, quoteSource, ticker),
+      quantity,
+      cost,
+      purchaseDate,
+      currency,
+    });
 
   const saveEdit = (context: EditContext): Promise<void> =>
     holdingsRepo.updateWithManualPricePoint(
@@ -258,7 +306,9 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
           quoteSource,
           ticker,
           isin,
-          quoteCurrency: keptQuoteCurrency(stored, quoteSource, ticker),
+          quoteCurrency:
+            keptQuoteCurrency(pickedListing, quoteSource, ticker) ??
+            keptQuoteCurrency(stored, quoteSource, ticker),
           lots: stored?.lots ?? [],
         }),
       },
@@ -279,6 +329,8 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
     purchaseDate,
     setPurchaseDate,
     hasEodhdKey: isEodhdKeySaved,
+    search,
+    pickListing,
     fieldErrors,
     reasonKey,
     isValid: reasonKey === null,

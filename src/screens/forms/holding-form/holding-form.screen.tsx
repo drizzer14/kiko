@@ -258,12 +258,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     needsPriceBook(editingHolding?.type ?? type),
   );
   const [currency, setCurrency] = useState<Currency>('UAH');
-  // DEVICE BUG fix (root cause): while the currency sheet's search field can
-  // be focused, this screen's background ScrollView must NOT react to the
-  // keyboard's frame change — it does not contain that responder, but
-  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless
-  // (see `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
-  const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
+  // DEVICE BUG fix (root cause): while a sheet's search field (the currency
+  // sheet's, the share search's) can be focused, this screen's background
+  // ScrollView must NOT react to the keyboard's frame change — it does not
+  // contain that responder, but `automaticallyAdjustKeyboardInsets` reacts to
+  // any focus regardless (see `screen.component.tsx`, `CurrencyField`'s
+  // `onOpenChange`). Only one sheet is open at a time, so one flag serves both.
+  const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   // The icon is null until the user picks one ("not dirty"): while null, the
   // chip shows the selected type's default glyph (`defaultHoldingSymbol`, a
   // property's own category glyph) and switching type or category re-derives
@@ -341,7 +342,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const bond = useBondFields({ type, isEdit, currency, setCurrency, name, setName });
   const property = usePropertyFields({ isEdit, currency });
   const metal = useMetalFields({ isEdit });
-  const share = useShareFields({ type, isEdit, currency });
+  const share = useShareFields({ type, isEdit, currency, setCurrency, name, setName });
   const loanFields = useLoanFields({ currency });
   // Stays mounted across every type, not only while a balance type is
   // selected, so a value typed before switching away survives the switch.
@@ -601,7 +602,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
+      automaticallyAdjustKeyboardInsets={!isSearchSheetOpen}
       onContentSizeChange={(_width, height) => {
         contentHeightRef.current = height;
       }}
@@ -692,7 +693,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             options={holdingCurrencyOptions(type)}
             cryptoFirst={type === 'crypto_asset'}
             disabled={isEdit}
-            onOpenChange={setIsCurrencySheetOpen}
+            onOpenChange={setIsSearchSheetOpen}
             testID="holding-currency-field"
           />
         )}
@@ -714,6 +715,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               attemptedSave={attemptedSave}
               isEdit={isEdit}
               currency={currency}
+              onSearchOpenChange={setIsSearchSheetOpen}
             />
           ))
           .with('loan', () => (
