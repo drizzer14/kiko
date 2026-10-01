@@ -1447,6 +1447,28 @@ describe('HoldingDetailScreen', () => {
       alertSpy.mockRestore();
     });
 
+    it('reads Split for a share buy at no cost, in the row and its delete confirm', async () => {
+      seed({
+        ...manualShareHolding,
+        metadata: {
+          ...manualShareHolding.metadata,
+          lots: [{ day: Date.UTC(2024, 0, 1), quantityDelta: '9', costMinorUnits: 0 }],
+        },
+      });
+
+      const { getByTestId, getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Split')).toBeTruthy();
+      expect(queryByText('Purchase')).toBeNull();
+
+      await holdRow();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(getByText('Delete "Split 01.01.2024"')).toBeTruthy();
+    });
+
     it('is not captioned Computed, since the user entered it', async () => {
       seed(metalHolding);
 

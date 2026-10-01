@@ -127,6 +127,22 @@ describe('shareDescriptor entries', () => {
     ]);
   });
 
+  it('lists a buy at no cost as a split, and a buy at any cost as a purchase', () => {
+    const holding = manualShare({
+      lots: [
+        { day: dayKeyOf(buyDay), quantityDelta: '3', costMinorUnits: 1 },
+        { day: dayKeyOf(sellDay), quantityDelta: '9', costMinorUnits: 0 },
+      ],
+    });
+
+    const entries = shareDescriptor.entries(holding, NOW, i18n.t, []);
+
+    expect(entries.map(({ kind, label }) => ({ kind, label }))).toEqual([
+      { kind: 'purchase', label: 'Purchase' },
+      { kind: 'purchase', label: 'Split' },
+    ]);
+  });
+
   // A lot's day is a UTC-midnight key of a local date, so the row reads that
   // local date in every zone, west of UTC too.
   it('dates a lot row at the local midnight of its day', () => {

@@ -707,6 +707,7 @@ export const uk: typeof en = {
     sale: 'Продаж',
     shareChanges: 'Зміни частки',
     shareSince: 'з {{date}}',
+    split: 'Дроблення',
     tax: 'Податок',
     taxWithheld: 'Утримано податку',
     topUp: 'Поповнення',

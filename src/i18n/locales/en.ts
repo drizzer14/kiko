@@ -824,6 +824,8 @@ export const en = {
     shareChanges: 'Share Changes',
     // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
     shareSince: 'since {{date}}',
+    // A share's lot row for a buy at no cost: a stock split.
+    split: 'Split',
     tax: 'Tax',
     taxWithheld: 'Tax withheld',
     topUp: 'Top-up',

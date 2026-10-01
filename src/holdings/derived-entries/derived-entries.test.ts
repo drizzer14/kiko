@@ -520,6 +520,24 @@ describe('derivedEntries', () => {
       });
     });
 
+    // Metal never splits: a buy at no cost is still a purchase.
+    it('renders a buy lot at no cost as a Purchase entry', () => {
+      const giftedMetal: Holding = {
+        ...metalHolding,
+        metadata: {
+          metal: 'XAU',
+          form: 'bar',
+          unit: 'g',
+          purity: '0.999',
+          lots: [{ day: Date.UTC(2025, 0, 1), quantityDelta: '10', costMinorUnits: 0 }],
+        },
+      };
+
+      expect(derivedEntries(giftedMetal, local(2025, 8, 1), i18n.t)).toEqual([
+        expect.objectContaining({ kind: 'purchase', label: 'Purchase' }),
+      ]);
+    });
+
     it('returns [] for a metal holding with no valid metal metadata', () => {
       const bareMetal: Holding = {
         id: 'metal-bare',
