@@ -36,6 +36,7 @@ import {
 } from '@kiko/design-system/scroll-to-field';
 import {
   balanceBoundaryOf,
+  isPossibleBalanceSetRow,
   redatesPossibleBalanceSetRowPastBoundary,
 } from '@kiko/transactions/balance-boundary';
 import { accountsRepo } from '@kiko/accounts';
@@ -74,7 +75,6 @@ import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
-import { isBalanceSetShapedRow } from '@kiko/transactions/balance-set-row';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
@@ -388,18 +388,27 @@ const exchangeFieldErrors = (params: SaveDisabledParams, t: TFunction): Transact
   valueIn: isPositiveAmountText(params.valueIn) ? undefined : t('forms.transaction.valueInError'),
 });
 
-// Every field's OWN independent error for the split mode. Split gates on the
-// same invariant `saveSplit` writes: a positive payment and ≥1 distinct
-// non-payer positive return whose sum stays below it, PLUS a category — a
+// Every field's OWN independent error for the split mode. Together they gate on
+// the same invariant `saveSplit` writes (`canSaveSplit`), PLUS a category — a
 // split expense's netted magnitude lands in the spending pie, so it must be
-// categorised like any other create expense.
+// categorised like any other create expense. An empty payment is the Amount's
+// own error; returns that cover the payment stay the returns' error, which
+// also turns the Amount label red (`isSplitAmountInvalid`).
 const splitFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => ({
+  amount: isPositiveAmountText(params.amount) ? undefined : t('forms.transaction.amountError'),
   selectedCategory:
     params.selectedCategory === null ? t('forms.transaction.selectCategoryError') : undefined,
-  splitReturns: canSaveSplit(params.amount, params.changeReturns, params.currency)
-    ? undefined
-    : t('forms.transaction.splitInvalidError'),
+  splitReturns:
+    areWellFormedReturns(params.changeReturns) &&
+    !returnsCoverPayment(params.amount, params.changeReturns, params.currency)
+      ? undefined
+      : t('forms.transaction.splitInvalidError'),
 });
+
+const isSplitAmountInvalid = (params: SaveDisabledParams, attemptedSave: boolean): boolean =>
+  attemptedSave &&
+  params.isSplit &&
+  returnsCoverPayment(params.amount, params.changeReturns, params.currency);
 
 // Every field's OWN independent error for the read-only/editing/fresh-add
 // modes — a fresh add's amount and category are two SEPARATE fields, so
@@ -459,7 +468,11 @@ const EXCHANGE_FIELD_ORDER: readonly SaveDisabledField[] = [
   'valueOut',
   'valueIn',
 ];
-const SPLIT_FIELD_ORDER: readonly SaveDisabledField[] = ['selectedCategory', 'splitReturns'];
+const SPLIT_FIELD_ORDER: readonly SaveDisabledField[] = [
+  'amount',
+  'selectedCategory',
+  'splitReturns',
+];
 const PLAIN_FIELD_ORDER: readonly SaveDisabledField[] = ['amount', 'time', 'selectedCategory'];
 
 // The active mode's own priority order — mirrors `transactionFieldErrors`'s
@@ -487,11 +500,11 @@ const firstInvalidField = (
   errors: TransactionFieldErrors,
 ): SaveDisabledField | null => order.find((key) => errors[key] !== undefined) ?? null;
 
-// Only an unmarked row shaped like a balance-set row can hit the re-date rule
+// Only a possible balance-set row can hit the re-date rule
 // (`redatesPossibleBalanceSetRowPastBoundary`), so only its edit reads the
 // boundary.
 const needsRedateBoundary = (existing: TransactionRow | undefined): boolean =>
-  existing !== undefined && !existing.setsBalance && isBalanceSetShapedRow(existing);
+  existing !== undefined && isPossibleBalanceSetRow(existing);
 
 // The edited row's holding boundary, from the same two sources and the same
 // `balanceBoundaryOf` every balance writer judges a row by; null when the row
@@ -578,6 +591,8 @@ const MODE_ICONS: Record<FormMode, string> = {
   split: 'arrow.trianglehead.branch',
 };
 
+type SplitReturn = { holdingId: string | null; amount: string };
+
 // Whether a split payment + its returns are writable: a positive payment, at
 // least one return, each return a positive amount on a DISTINCT holding, and Σ
 // returns strictly less than |payment| (the net stays an expense). The payer
@@ -591,44 +606,42 @@ const MODE_ICONS: Record<FormMode, string> = {
 // but a future caller or refactor must still be caught here).
 export const canSaveSplit = (
   paymentAmount: string,
-  returns: readonly { holdingId: string | null; amount: string }[],
+  returns: readonly SplitReturn[],
+  currency: Currency,
+): boolean =>
+  isPositiveAmountText(paymentAmount) &&
+  areWellFormedReturns(returns) &&
+  !returnsCoverPayment(paymentAmount, returns, currency);
+
+// The part of the split invariant the returns answer for on their own, apart
+// from the payment, so a split form can judge them while the payment is empty.
+const areWellFormedReturns = (returns: readonly SplitReturn[]): boolean =>
+  returns.length > 0 &&
+  returns.every((change) => change.holdingId !== null && isPositiveAmountText(change.amount)) &&
+  new Set(returns.map((change) => change.holdingId)).size === returns.length;
+
+// Whether a positive payment is matched or exceeded by its returns — the part
+// of the split invariant that judges the payment too. Compared in INTEGER minor
+// units, via the exact conversion the write uses (`Money.fromMajor`), so a
+// boundary case can never disagree with what `saveSplit` records because of
+// float-major math.
+const returnsCoverPayment = (
+  paymentAmount: string,
+  returns: readonly SplitReturn[],
   currency: Currency,
 ): boolean => {
-  const payment = parseAmount(paymentAmount);
-
-  if (Number.isNaN(payment) || payment <= 0 || returns.length === 0) {
+  if (!isPositiveAmountText(paymentAmount)) {
     return false;
   }
 
-  // Compare Σ returns against the payment in INTEGER minor units, via the exact
-  // same conversion the write uses (`Money.fromMajor`), so a boundary case can
-  // never disagree with what `saveSplit` records because of float-major math.
-  const paymentMinor = Money.fromMajor(currency, payment).minorUnits;
-  const ids = new Set<string>();
-  let sumMinor = 0;
+  const returnsMinor = returns
+    .filter((change) => isPositiveAmountText(change.amount))
+    .reduce(
+      (total, change) => total + Money.fromMajor(currency, parseAmount(change.amount)).minorUnits,
+      0,
+    );
 
-  // The payer is no longer rejected here (item 2) — only a null pick and a
-  // duplicate holding are.
-  for (const change of returns) {
-    const value = parseAmount(change.amount);
-
-    if (change.holdingId === null) {
-      return false;
-    }
-
-    if (ids.has(change.holdingId)) {
-      return false;
-    }
-
-    if (Number.isNaN(value) || value <= 0) {
-      return false;
-    }
-
-    ids.add(change.holdingId);
-    sumMinor += Money.fromMajor(currency, value).minorUnits;
-  }
-
-  return sumMinor < paymentMinor;
+  return returnsMinor >= Money.fromMajor(currency, parseAmount(paymentAmount)).minorUnits;
 };
 
 // Every holding whose account is currently sync-connected — its balance is
@@ -1173,6 +1186,9 @@ type FieldGroupProps = {
   // screen component. `undefined` everywhere on a read-only row, where no
   // field ever gates Save.
   amountError?: string;
+  // A split payment judged by the returns error, which renders under the
+  // return rows instead.
+  amountInvalid?: boolean;
   amountFieldRef?: RefObject<FieldInstance | null>;
   // The plain Amount TextField's own inner input, so a blocked Save can
   // focus it imperatively once it has scrolled into view — see `save`'s
@@ -1261,6 +1277,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
           // amount.
           required={!props.isReadOnly}
           error={props.amountError}
+          invalid={props.amountInvalid}
           inputRef={props.amountInputRef}
         />
       </View>
@@ -2726,6 +2743,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             onChangeTime: setTime,
             t,
             amountError: fieldError('amount'),
+            amountInvalid: isSplitAmountInvalid(saveDisabledParams, attemptedSave),
             amountFieldRef,
             amountInputRef,
             timeError: fieldError('time'),

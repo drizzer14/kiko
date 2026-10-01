@@ -30,22 +30,23 @@ export const balanceBoundaryOf = ({
 export const movesBalance = (time: number, boundary: number | null): boolean =>
   boundary === null || time > boundary;
 
-type RedatedRow = Pick<TransactionRow, 'time' | 'setsBalance'> &
+type PossibleBalanceSetRow = Pick<TransactionRow, 'setsBalance'> &
   Parameters<typeof isBalanceSetShapedRow>[0];
 
-/** Whether moving `row` to `time` takes an unmarked balance-set-shaped row from
- * the history side of the boundary to after it. Before migration 0047 a row
- * carried no mark, so an older set's row that a newer set superseded looks
- * exactly like an uncategorised row an older build wrote: moving it past the
- * boundary would add an amount the balance already holds. A marked row is
- * judged by its mark, and a row with a description or a category was never a
- * balance-set row. */
+/** Whether `row` may be a balance-set row the stored mark does not show. Before
+ * migration 0047 a row carried no mark, so an older set's row that a newer set
+ * superseded looks exactly like an uncategorised row an older build wrote. A
+ * marked row is judged by its mark, and a row with a description or a category
+ * was never a balance-set row. */
+export const isPossibleBalanceSetRow = (row: PossibleBalanceSetRow): boolean =>
+  !row.setsBalance && isBalanceSetShapedRow(row);
+
+/** Whether moving `row` to `time` takes a possible balance-set row
+ * (`isPossibleBalanceSetRow`) from the history side of the boundary to after
+ * it, which would add an amount the balance already holds. */
 export const redatesPossibleBalanceSetRowPastBoundary = (
-  row: RedatedRow,
+  row: Pick<TransactionRow, 'time'> & PossibleBalanceSetRow,
   time: number,
   boundary: number | null,
 ): boolean =>
-  !row.setsBalance &&
-  isBalanceSetShapedRow(row) &&
-  !movesBalance(row.time, boundary) &&
-  movesBalance(time, boundary);
+  isPossibleBalanceSetRow(row) && !movesBalance(row.time, boundary) && movesBalance(time, boundary);

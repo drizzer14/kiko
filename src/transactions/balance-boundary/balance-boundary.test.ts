@@ -1,6 +1,7 @@
 import {
-  balanceBoundaryOf,
   movesBalance,
+  balanceBoundaryOf,
+  isPossibleBalanceSetRow,
   redatesPossibleBalanceSetRowPastBoundary,
 } from './balance-boundary';
 
@@ -37,6 +38,20 @@ describe('movesBalance', () => {
     expect(movesBalance(BOUNDARY - 1, BOUNDARY)).toBe(false);
     expect(movesBalance(BOUNDARY, BOUNDARY)).toBe(false);
     expect(movesBalance(BOUNDARY + 1, BOUNDARY)).toBe(true);
+  });
+});
+
+describe('isPossibleBalanceSetRow', () => {
+  it('holds for an unmarked balance-set-shaped row', () => {
+    expect(isPossibleBalanceSetRow(unmarkedShapedRow)).toBe(true);
+  });
+
+  it.each([
+    ['a marked row', { setsBalance: true }],
+    ['a row with a description', { description: 'Coffee' }],
+    ['a row with a category', { category: 'groceries' }],
+  ])('does not hold for %s', (_name, difference) => {
+    expect(isPossibleBalanceSetRow({ ...unmarkedShapedRow, ...difference })).toBe(false);
   });
 });
 

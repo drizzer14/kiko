@@ -3438,6 +3438,50 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
   });
 
+  it('gives an empty payment its own Amount error, leaving valid returns grey', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
+    expect(isLabelInvalid(mockFieldLabel, 'Amount')).toBe(true);
+    expect(utils.queryByText('Enter a payment amount and at least one valid return.')).toBeNull();
+    expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
+  });
+
+  // The returns error then judges the payment too, so the Amount label turns
+  // red with the return rows, under the one returns message.
+  it('turns the Amount and return labels red while the returns total the payment or more', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '1.50');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
+    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+    expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
+    expect(isLabelInvalid(mockFieldLabel, 'Amount')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(true);
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '2.00');
+
+    expect(isLabelInvalid(mockFieldLabel, 'Amount')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
+  });
+
   it('does not write an otherwise-valid split until a category is picked', async () => {
     const utils = await renderAddFromHolding('payer');
 
