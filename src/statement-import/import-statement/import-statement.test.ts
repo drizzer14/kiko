@@ -68,8 +68,12 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import readXlsxFile from 'read-excel-file/node';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import {
+  ukrsibBusinessFixtureInput,
+  procreditBusinessFixtureInput,
+} from '@kiko/statement-import/formats/format-test-fixtures';
+import { kyivWallClockToUtcMilliseconds } from '@kiko/dates';
 import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
-import { ukrsibBusinessFixtureInput } from '@kiko/statement-import/formats/format-test-fixtures';
 
 import { StatementParseError } from '../parser';
 import { applyColumnMapping, type ColumnMapping } from '../column-mapping';
@@ -718,6 +722,149 @@ describe('importStatement', () => {
       expect(store.transactions).toHaveLength(4);
       expect(captured.holdingSet).toBeUndefined();
     });
+  });
+});
+
+// An older build read a real `00:00:00` bank time as a date-only noon, so
+// the ledger can hold that row at Kyiv noon under a noon-time key. This
+// stands in for that ledger by rewriting a fresh import's midnight rows the
+// way the older build would have written them.
+const keyRowsAtNoonLikeAnOlderBuild = (
+  store: { transactions: StoredRow[] },
+  day: { year: number; month: number; day: number },
+): void => {
+  const at = (hour: number): number =>
+    (kyivWallClockToUtcMilliseconds({ ...day, hour, minute: 0, second: 0 }) ?? Number.NaN) / 1000;
+  const midnightSeconds = at(0);
+  const noonSeconds = at(12);
+
+  for (const row of store.transactions) {
+    if (row.time === midnightSeconds * 1000 && row.externalId) {
+      row.time = noonSeconds * 1000;
+      row.externalId = row.externalId.replace(` ${midnightSeconds} `, ` ${noonSeconds} `);
+    }
+  }
+};
+
+describe('a real 00:00:00 row the ledger already holds at noon', () => {
+  it('adds nothing on a ProCredit re-import (no closing balance)', async () => {
+    mockHoldingRows = [{ id: 'holding-1', currency: 'GBP' }];
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const holding = defaultHolding({ currency: 'GBP' });
+    const first = makeImportDatabaseTransaction({ store, holding, account: unsyncedAccount });
+    mockDatabaseTransaction = first.databaseTransaction;
+
+    const firstResult = await importStatement(procreditBusinessFixtureInput, 'holding-1');
+
+    // 3 of the sample's 4 GBP rows are stamped 01.01.2000 00:00:00.
+    expect(firstResult.imported).toBe(4);
+    keyRowsAtNoonLikeAnOlderBuild(store, { year: 2000, month: 1, day: 1 });
+    holding.balanceMinorUnits = first.captured.holdingSet?.balanceMinorUnits as number;
+    const storedBefore = store.transactions.map((row) => ({ ...row }));
+    const second = makeImportDatabaseTransaction({ store, holding, account: unsyncedAccount });
+    mockDatabaseTransaction = second.databaseTransaction;
+
+    const result = await importStatement(procreditBusinessFixtureInput, 'holding-1');
+
+    expect(result.imported).toBe(0);
+    expect(store.transactions).toEqual(storedBefore);
+    expect(second.captured.holdingSet).toBeUndefined();
+  });
+
+  it('adds nothing on a Monobank re-import (closing balance)', async () => {
+    const input = {
+      text: [
+        MONOBANK_HEADER,
+        '02.06.2023 09:15:00,Taxi,4121,-120,-120,UAH,—,—,—,880',
+        '01.06.2023 00:00:00,Monthly fee,4829,-50,-50,UAH,—,—,—,1000',
+      ].join('\n'),
+      fileName: 'midnight-monobank.csv',
+    };
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const holding = defaultHolding();
+    const first = makeImportDatabaseTransaction({ store, holding, account: unsyncedAccount });
+    mockDatabaseTransaction = first.databaseTransaction;
+
+    await importStatement(input, 'holding-1');
+    keyRowsAtNoonLikeAnOlderBuild(store, { year: 2023, month: 6, day: 1 });
+    Object.assign(holding, first.captured.holdingSet);
+    const second = makeImportDatabaseTransaction({ store, holding, account: unsyncedAccount });
+    mockDatabaseTransaction = second.databaseTransaction;
+
+    const result = await importStatement(input, 'holding-1');
+
+    expect(result.imported).toBe(0);
+    expect(store.transactions).toHaveLength(2);
+    expect(second.captured.holdingSet?.balanceMinorUnits).toBe(88_000);
+  });
+
+  it('adds nothing on a column-mapped re-import with a timed preset', async () => {
+    const mapping: ColumnMapping = {
+      headerRowIndex: 0,
+      decimalSeparator: '.',
+      dateColumn: 0,
+      dateFormat: 'DD.MM.YYYY HH:MM:SS',
+      amount: { mode: 'single', column: 2 },
+      descriptionColumn: 1,
+      currency: { mode: 'fixed', currency: 'UAH' },
+    };
+    const rows = [
+      ['Date', 'Description', 'Amount'],
+      ['01.03.2026 00:00:00', 'Rent', '-1000.00'],
+      ['02.03.2026 10:00:00', 'Salary', '5000.00'],
+    ];
+    const { statement } = applyColumnMapping(rows, mapping);
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const holding = defaultHolding();
+    const first = makeImportDatabaseTransaction({ store, holding, account: unsyncedAccount });
+    mockDatabaseTransaction = first.databaseTransaction;
+
+    await importParsedStatement(statement, 'holding-1');
+    keyRowsAtNoonLikeAnOlderBuild(store, { year: 2026, month: 3, day: 1 });
+    holding.balanceMinorUnits = first.captured.holdingSet?.balanceMinorUnits as number;
+    const second = makeImportDatabaseTransaction({ store, holding, account: unsyncedAccount });
+    mockDatabaseTransaction = second.databaseTransaction;
+
+    const result = await importParsedStatement(statement, 'holding-1');
+
+    expect(result.imported).toBe(0);
+    expect(store.transactions).toHaveLength(2);
+    expect(second.captured.holdingSet).toBeUndefined();
+  });
+
+  it('still inserts a midnight row the ledger holds under no key at all', async () => {
+    mockHoldingRows = [{ id: 'holding-1', currency: 'GBP' }];
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const holding = defaultHolding({ currency: 'GBP' });
+    mockDatabaseTransaction = makeImportDatabaseTransaction({
+      store,
+      holding,
+      account: unsyncedAccount,
+    }).databaseTransaction;
+    await importStatement(procreditBusinessFixtureInput, 'holding-1');
+    keyRowsAtNoonLikeAnOlderBuild(store, { year: 2000, month: 1, day: 1 });
+    const debit = store.transactions.find((row) => row.amountMinorUnits === -1_847_500);
+    store.transactions = store.transactions.filter((row) => row !== debit);
+    const second = makeImportDatabaseTransaction({ store, holding, account: unsyncedAccount });
+    mockDatabaseTransaction = second.databaseTransaction;
+
+    const result = await importStatement(procreditBusinessFixtureInput, 'holding-1');
+    const midnight = kyivWallClockToUtcMilliseconds({
+      year: 2000,
+      month: 1,
+      day: 1,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+
+    expect(result.imported).toBe(1);
+    expect(store.transactions.find((row) => row.amountMinorUnits === -1_847_500)?.time).toBe(
+      midnight,
+    );
+    expect(second.captured.holdingSet?.balanceMinorUnits).toBe(
+      holding.balanceMinorUnits - 1_847_500,
+    );
   });
 });
 

@@ -1,8 +1,9 @@
 import { categoryForMcc } from '@kiko/monobank/mcc-category';
 
 import type { ParsedTransaction } from '../parser';
+import { parseDateTimeSeconds } from '../parse-date-time';
 
-import { computeDedupKey, mapParsedTransaction } from './mapping';
+import { computeDedupKey, noonAliasDedupKey, mapParsedTransaction } from './mapping';
 
 const groceryTransaction: ParsedTransaction = {
   currency: 'UAH',
@@ -183,5 +184,26 @@ describe('computeDedupKey', () => {
     }
 
     expect(keys.size).toBe(5 * 20);
+  });
+});
+
+describe('noonAliasDedupKey', () => {
+  const midnight = { ...groceryTransaction, timeSeconds: parseDateTimeSeconds('01.01.2000 00:00:00', 'Test') };
+  const noonSeconds = parseDateTimeSeconds('01.01.2000 12:00:00', 'Test');
+
+  it('keys a real Kyiv 00:00:00 row at Kyiv noon of the same day, keeping its occurrence', () => {
+    expect(noonAliasDedupKey('holding-1', midnight, 1)).toBe(
+      computeDedupKey('holding-1', { ...midnight, timeSeconds: noonSeconds }, 1),
+    );
+  });
+
+  it('has no alias for any other time', () => {
+    const oneSecondLater = { ...midnight, timeSeconds: midnight.timeSeconds + 1 };
+
+    expect(noonAliasDedupKey('holding-1', oneSecondLater, 0)).toBeUndefined();
+  });
+
+  it('has no alias for a row with its own bank-issued id', () => {
+    expect(noonAliasDedupKey('holding-1', { ...midnight, externalId: 'bank-1' }, 0)).toBeUndefined();
   });
 });

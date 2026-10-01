@@ -201,31 +201,24 @@ const dedupByConflictKey = (inputs: NewTransaction[]): NewTransaction[] => {
 // a table's column count, which a plain scalar list has none of.
 const IN_CLAUSE_CHUNK_SIZE = 32_000;
 
-/**
- * The subset of these rows the upsert will INSERT rather than refresh. Read
- * inside the caller's own transaction, so the result can never disagree with
- * the write it describes. `addManyDedup` uses only its `.length`; the
- * statement-import balance write (`importRows` below) additionally needs the
- * actual rows, to sum their `amountMinorUnits` — a refreshed (already
- * imported) row must contribute 0 to that sum, not just be excluded from the
- * count.
- */
-const partitionNewRows = async (
+/** Every `conflictKeyOf` value among `inputs` that a stored row already
+ * holds, read inside the caller's own transaction. */
+const readStoredConflictKeys = async (
   databaseTransaction: typeof database,
-  inputs: NewTransaction[],
-): Promise<NewTransaction[]> => {
+  inputs: Pick<NewTransaction, 'source' | 'externalId'>[],
+): Promise<Set<string>> => {
+  const known = new Set<string>();
   const externalIds = inputs
     .map((input) => input.externalId)
     .filter((externalId): externalId is string => Boolean(externalId));
 
   if (externalIds.length === 0) {
-    return inputs;
+    return known;
   }
 
   const sources = Array.from(
-    new Set(inputs.filter((input) => conflictKeyOf(input) !== null).map((input) => input.source)),
+    new Set(inputs.filter((input) => Boolean(input.externalId)).map((input) => input.source)),
   );
-  const known = new Set<string>();
   // BOTH halves of the unique key are constrained, so SQLite SEARCHes
   // `transactions_source_external` on its leading `source` column; an
   // `external_id`-only predicate cannot use that index and SCANs it instead
@@ -248,11 +241,52 @@ const partitionNewRows = async (
     }
   }
 
+  return known;
+};
+
+/**
+ * The subset of these rows the upsert will INSERT rather than refresh. Read
+ * inside the caller's own transaction, so the result can never disagree with
+ * the write it describes. `addManyDedup` uses only its `.length`; the
+ * statement-import balance write (`importRows` below) additionally needs the
+ * actual rows, to sum their `amountMinorUnits` — a refreshed (already
+ * imported) row must contribute 0 to that sum, not just be excluded from the
+ * count.
+ */
+const partitionNewRows = async (
+  databaseTransaction: typeof database,
+  inputs: NewTransaction[],
+): Promise<NewTransaction[]> => {
+  const known = await readStoredConflictKeys(databaseTransaction, inputs);
+
   return inputs.filter((input) => {
     const key = conflictKeyOf(input);
 
     return key === null || !known.has(key);
   });
+};
+
+/** A statement-import row, plus the older key the ledger may already hold
+ * the same row under (`noonAliasDedupKey` in statement-import's mapping). */
+type ImportRow = NewTransaction & { aliasExternalId?: string };
+
+/**
+ * `rows` without every row the ledger already holds under its
+ * `aliasExternalId`: that stored row IS this row, so it is neither inserted
+ * nor counted toward the balance, and it keeps its own stored time and key.
+ */
+const dropRowsStoredUnderAlias = async (
+  databaseTransaction: typeof database,
+  rows: ImportRow[],
+): Promise<NewTransaction[]> => {
+  const aliases = rows.flatMap(({ source, aliasExternalId }) =>
+    aliasExternalId ? [{ source, externalId: aliasExternalId }] : [],
+  );
+  const known = await readStoredConflictKeys(databaseTransaction, aliases);
+
+  return rows
+    .filter(({ source, aliasExternalId }) => !known.has(`${source}:${aliasExternalId}`))
+    .map(({ aliasExternalId: _storedAlias, ...row }) => row);
 };
 
 // Every bank-owned column `insertDedupRowsDatabaseTransaction`'s upsert
@@ -1245,7 +1279,7 @@ export const transactionsRepo = {
    */
   importRows: (input: {
     holdingId: string;
-    rows: NewTransaction[];
+    rows: ImportRow[];
     closingBalance?: ClosingBalance;
   }): Promise<number> =>
     write(async (databaseTransaction) => {
@@ -1309,7 +1343,8 @@ export const transactionsRepo = {
         existingPostClosingNetMinorUnits = existingPostClosingRows.at(0)?.net ?? 0;
       }
 
-      const newRows = await insertDedupRowsDatabaseTransaction(databaseTransaction, input.rows);
+      const rows = await dropRowsStoredUnderAlias(databaseTransaction, input.rows);
+      const newRows = await insertDedupRowsDatabaseTransaction(databaseTransaction, rows);
 
       if (synced) {
         return newRows.length;

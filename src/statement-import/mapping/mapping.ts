@@ -1,3 +1,10 @@
+import {
+  KYIV_ZONE_RULE,
+  noonIfMidnight,
+  zoneWallClockOf,
+  isMidnightWallClock,
+  kyivWallClockToUtcMilliseconds,
+} from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { TransactionRow } from '@kiko/db';
 import { categoryForMcc } from '@kiko/monobank/mcc-category';
@@ -74,6 +81,28 @@ export const computeDedupKey = (
   );
 
   return occurrenceIndex === 0 ? base : `${base}${DEDUP_OCCURRENCE_SEPARATOR}${occurrenceIndex}`;
+};
+
+/**
+ * The key an older build may already hold this row under when its time is a
+ * real Kyiv `00:00:00`: that build read such a time as a date-only noon and
+ * keyed the row at Kyiv noon. `undefined` for any other time, and for a row
+ * with its own bank-issued id.
+ */
+export const noonAliasDedupKey = (
+  holdingId: string,
+  transaction: ParsedTransaction,
+  occurrenceIndex: number,
+): string | undefined => {
+  const wallClock = zoneWallClockOf(KYIV_ZONE_RULE, transaction.timeSeconds * 1000);
+
+  if (transaction.externalId !== undefined || !isMidnightWallClock(wallClock)) {
+    return undefined;
+  }
+
+  return foldMap(maybe(kyivWallClockToUtcMilliseconds(noonIfMidnight(wallClock))), (noon) =>
+    computeDedupKey(holdingId, { ...transaction, timeSeconds: noon / 1000 }, occurrenceIndex),
+  );
 };
 
 export const mapParsedTransaction = (

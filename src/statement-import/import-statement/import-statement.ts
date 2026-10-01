@@ -12,8 +12,8 @@ import {
 } from '../parser';
 import { detectFormat } from '../registry';
 import { rezoneImportTimes } from '../rezone-import-times';
-import { computeDedupKey, mapParsedTransaction } from '../mapping';
 import { upgradeStoredDedupKeys } from '../upgrade-stored-dedup-keys';
+import { computeDedupKey, noonAliasDedupKey, mapParsedTransaction } from '../mapping';
 
 export type ImportResult = {
   formatId: ParsedStatementSource;
@@ -114,7 +114,10 @@ export const importParsedStatement = async (
     const occurrenceIndex = seenKeys.get(raw) ?? 0;
     seenKeys.set(raw, occurrenceIndex + 1);
 
-    return mapParsedTransaction(transaction, holdingId, occurrenceIndex);
+    return {
+      ...mapParsedTransaction(transaction, holdingId, occurrenceIndex),
+      aliasExternalId: noonAliasDedupKey(holdingId, transaction, occurrenceIndex),
+    };
   });
   const imported = await transactionsRepo.importRows({
     holdingId,
