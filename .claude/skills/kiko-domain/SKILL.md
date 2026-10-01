@@ -971,11 +971,17 @@ the Debts section. Read `kiko-charts` for the pie/line-specific rules.
 
 ### Bond funding recognition (net-worth series only)
 
-`reconcileBondFunding` (`src/statistics/reconcile-bond-funding/`) aligns a
-bond's held-cost recognition, INSIDE `buildNetWorthSeries` only, to the real
-funding money that left another holding — never the real holding's own
-`purchaseDate`/`purchasePriceMinorUnits` (unchanged; coupons, maturity, and
-the redemption ledger still read those). It matches a DEBIT (negative
+`reconcileBondFunding` (`src/statistics/reconcile-bond-funding/`) aligns the
+DAY a bond's held cost starts counting, INSIDE `buildNetWorthSeries` only, to
+the day the real funding money left another holding, and returns that day.
+Only the day is reconciled: the series still values the bond at its typed
+`purchasePriceMinorUnits` (the value its card and Home show, so the line's
+"now" point matches them), and a gap between the debit and the typed price
+(a fee, НКД, a rounded price) stays as a step on that day. The real
+holding's own `purchaseDate`/`purchasePriceMinorUnits` never change
+(coupons, maturity, and the redemption ledger still read those);
+`buildNetWorthSeries` writes the reconciled day onto a throwaway copy's
+`purchaseDate`. It matches a DEBIT (negative
 amount) in the bond's own currency whose amount is within 5% of the typed
 price (`AMOUNT_TOLERANCE_FRACTION`) AND whose local day is within
 `FUNDING_WINDOW_DAYS` (7) of the typed `purchaseDate`'s local day — both
@@ -983,7 +989,7 @@ axes are needed: the transaction store carries no reliable structured bond
 marker, so amount alone would false-match an unrelated same-week debit, and
 day alone would false-match an unrelated same-price one. Among candidates
 within both bands, the nearest DAY wins, tie-broken by the closest amount;
-none match → falls back to the typed day/price (a legacy, FX-funded, or
+none match → falls back to the typed day (a legacy, FX-funded, or
 genuinely manual bond — no regression).
 
 Each candidate carries a key (`holdingId:index`), and `buildNetWorthSeries`
@@ -995,7 +1001,7 @@ nearest-day pick, not a global optimum, WHICH bond claims a shared candidate
 is order-dependent — bonds are reconciled in a FIXED order (typed
 `purchaseDate`, then `id`) so the result is deterministic regardless of the
 holdings array's own (user-controlled sort) order. A bond that loses the
-claim falls back to its own typed day/price, same as a genuinely unmatched
+claim falls back to its own typed day, same as a genuinely unmatched
 bond.
 
 ### Statistics series performance

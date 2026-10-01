@@ -26,7 +26,8 @@ they must never both fire on one hold:
   a hold that moves.
 
 The split: a hold that **stays still** past the long-press's min-duration
-opens the delete menu (`maxDistance` not exceeded); a hold that **moves**
+opens the context menu (the action list, or the delete confirm on a
+delete-only card; `maxDistance` not exceeded); a hold that **moves**
 past `maxDistance` fails the long-press gesture, freeing the finger for the
 enclosing sortables drag-to-reorder; a quick tap satisfies neither gesture
 and falls through to the card's own `onPress` (open detail). See
@@ -90,7 +91,8 @@ shares.
 ## No swipe actions — row edit/delete is the long-press CardContextMenu
 
 Swipe actions were removed on purpose. A row's edit/delete is the
-long-press `CardContextMenu` (Edit/Duplicate/Delete), never a swipe
+long-press `CardContextMenu` (Edit/Duplicate/Close/Delete, in that
+order, each only where the consumer passes it), never a swipe
 gesture. Do not propose or add one: no gesture-handler `Swipeable` /
 `ReanimatedSwipeable`, no swipe-list package (by default, named, or
 namespace import), no fling recognizer

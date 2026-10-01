@@ -387,7 +387,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           {/* A single-column drag-and-drop list of wide holding row cards
               (mirroring the accounts list). A plain tap opens the holding; a
               touch-and-hold-still on a manual card opens the deep-press (haptic)
-              delete menu; a hold-and-move drags to reorder — see `CardContextMenu`
+              Close/Delete action list; a hold-and-move drags to reorder — see `CardContextMenu`
               and `onGridDragEnd`. `overDrag="vertical"` keeps a dragged card on
               its vertical axis (a single column has no horizontal move to make).
               `scrollableRef` + `autoScrollActivationOffset` let a drag near an

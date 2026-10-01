@@ -996,15 +996,19 @@ new component can land between reviews of this skill:
   'Reminders').
 - **CardContextMenu** (`src/design-system/components/card-context-menu/`)
   — wraps a grid/list card in a touch-and-hold delete (and, when an
-  `onDuplicate` and/or `onEdit` handler is passed, an Edit/Duplicate/
-  Delete choice, in that order) menu. `onEdit` is for a row with no tap
-  target of its own: the holding detail's share-change rows (Edit +
-  Delete); a transaction row keeps tap-to-edit and passes only
-  `onDuplicate`. The menu is: a
+  `onEdit`, `onDuplicate`, and/or `onClose` handler is passed, an
+  Edit/Duplicate/Close/Delete choice, in that order) menu. `onEdit` is
+  for a row with no tap target of its own: the holding detail's
+  share-change rows (Edit + Delete); a transaction row keeps
+  tap-to-edit and passes only `onDuplicate`. `onClose` is the account
+  detail's manual holding cards (Close + Delete): a hold there opens
+  the action list, never the delete confirm directly, and the screen
+  owns Close's own confirm (`CloseHoldingSheet`). A synced holding
+  passes no `onClose`. The menu is: a
   `Gesture.LongPress()` that raises the shared `ConfirmSheet` above on a
   still hold, while a hold that MOVES fails the gesture so an enclosing
   `react-native-sortables` drag can still claim it — see `kiko-gestures`
-  for the full arbitration. A non-deletable, non-duplicable entity (a
+  for the full arbitration. A non-deletable entity with no action (a
   synced account/holding) renders with no gesture at all, `<>{children}</>`,
   so a synced card stays reorderable. This replaced the app's earlier
   swipe-to-reveal-delete row (`SwipeableRow`, removed) as the one

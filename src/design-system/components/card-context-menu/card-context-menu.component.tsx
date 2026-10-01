@@ -21,9 +21,9 @@ export const HOLD_GESTURE_TEST_ID = 'card-context-menu-hold';
 export const DELETE_CONFIRM_TEST_ID = 'card-context-menu-delete-confirm';
 
 // The action-list buttons' jest test ids, exported so a consumer's test can
-// drive the CHOICE that a hold opens once `onDuplicate` or `onEdit` is wired.
-// Only present then (a delete-only card never renders the action list — it
-// opens the confirm directly).
+// drive the CHOICE that a hold opens once `onDuplicate`, `onEdit`, or
+// `onClose` is wired. Only present then (a delete-only card never renders the
+// action list — it opens the confirm directly).
 export const DUPLICATE_ACTION_TEST_ID = 'card-context-menu-duplicate';
 export const EDIT_ACTION_TEST_ID = 'card-context-menu-edit';
 export const CLOSE_ACTION_TEST_ID = 'card-context-menu-close';
@@ -127,8 +127,8 @@ const CardContextMenu: FC<{
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [confirmVisible, setConfirmVisible] = useState(false);
-  // The Duplicate/Delete action list's visibility, separate from the delete
-  // confirm's: a hold opens THIS when a duplicate action exists, and choosing
+  // The action list's visibility, separate from the delete confirm's: a hold
+  // opens THIS when a duplicate, edit, or close action exists, and choosing
   // Delete from it hands off to the confirm sheet below.
   const [actionsVisible, setActionsVisible] = useState(false);
   // The `liftOnHold` scale, driven straight from the JS thread (the whole
