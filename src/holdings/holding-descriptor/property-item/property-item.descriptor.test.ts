@@ -1,10 +1,10 @@
+import { DAY_MS } from '@kiko/dates';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { holdingValue } from '@kiko/holdings/holding-value';
 
 import { propertyShareChanges, propertyOwnershipView } from './property-item.descriptor';
 
-const DAY = 86_400_000;
 const firstDay = Date.UTC(2024, 0, 1);
 const changeDay = Date.UTC(2025, 5, 1);
 const NOW = Date.UTC(2026, 0, 1);
@@ -61,7 +61,7 @@ describe('propertyOwnershipView', () => {
       ],
     });
 
-    const view = propertyOwnershipView(holding, changeDay - DAY, book);
+    const view = propertyOwnershipView(holding, changeDay - DAY_MS, book);
 
     expect(view?.share).toEqual({ numerator: 1, denominator: 2 });
     expect(view?.since).toBe(firstDay);
@@ -89,11 +89,11 @@ describe('propertyOwnershipView', () => {
   });
 
   it('is null before a share change with a future effective day', () => {
-    const holding = property({ ownership: [{ day: NOW + DAY, numerator: 1, denominator: 2 }] });
+    const holding = property({ ownership: [{ day: NOW + DAY_MS, numerator: 1, denominator: 2 }] });
 
     expect(propertyOwnershipView(holding, NOW, book)).toBeNull();
     expect(holdingValue(holding, NOW, book).minorUnits).toBe(3_000_001);
-    expect(propertyOwnershipView(holding, NOW + DAY, book)?.since).toBe(NOW + DAY);
+    expect(propertyOwnershipView(holding, NOW + DAY_MS, book)?.since).toBe(NOW + DAY_MS);
   });
 
   it('is null for a holding that is not a property', () => {

@@ -5,6 +5,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
+import { DAY_MS } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
 import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
@@ -112,7 +113,7 @@ describe('HoldingCard', () => {
     it('shows the whole value and no share before a future share change', async () => {
       const { getByText, queryByTestId } = await renderCard({
         holding: property({
-          ownership: [{ day: NOW + 86_400_000, numerator: 1, denominator: 2 }],
+          ownership: [{ day: NOW + DAY_MS, numerator: 1, denominator: 2 }],
           ownershipInput: 'percent',
         }),
       });

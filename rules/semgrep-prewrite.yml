@@ -1640,8 +1640,10 @@ rules:
   # `@kiko/dates` (`src/dates/duration.ts`, its one owner), and a copy drifts.
   # Matched by value, so every spelling of a day is one day. Constant
   # propagation is off, or every use of a local `DAY` would fire as well as its
-  # declaration. Arms and known limits: this rule's row in
-  # docs/harness/review-to-biome-inventory.md; the excludes:
+  # declaration. A day literal held as an object property value is a test
+  # fixture's timestamp of epoch + 1 day, not a span, so arm 1 skips it. Arms
+  # and known limits: this rule's row in
+  # docs/harness/review-to-biome-inventory.md; the `src/dates/**` exclude:
   # docs/harness/documented-exceptions.md.
   - id: kiko-no-local-day-length-constant
     languages: [typescript]
@@ -1656,17 +1658,13 @@ rules:
     paths:
       exclude:
         - "src/dates/**"
-        - "*.test.ts"
-        - "*.test.tsx"
-        - "__tests__/**"
-        - "src/test-support/**"
-        - "e2e/**"
     options:
       constant_propagation: false
     pattern-either:
       - patterns:
           - pattern: "86400000"
           - pattern-not-inside: $A * $B
+          - pattern-not-inside: "{..., $K: 86400000, ...}"
       - patterns:
           - pattern: $FACTOR * $LAST
           - metavariable-regex:

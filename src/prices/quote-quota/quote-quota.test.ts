@@ -1,3 +1,5 @@
+import { DAY_MS } from '@kiko/dates';
+
 import {
   currentQuota,
   markUsedUp,
@@ -10,7 +12,6 @@ import {
   withUnconfirmedLimit,
 } from './quote-quota';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const OCTOBER_1 = Date.UTC(2026, 9, 1);
 const LATE_OCTOBER_1 = OCTOBER_1 + 23 * 60 * 60 * 1000;
 

@@ -21,6 +21,7 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+import { DAY_MS } from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
@@ -556,9 +557,8 @@ describe('appendDepositContribution', () => {
 });
 
 describe('ownership change edits', () => {
-  const DAY = 86_400_000;
   const day1 = Date.UTC(2025, 0, 1);
-  const day10 = day1 + 9 * DAY;
+  const day10 = day1 + 9 * DAY_MS;
   const lots = [{ day: day1, quantityDelta: '1', costMinorUnits: 100_000 }];
   const propertyStore = (metadata: Record<string, unknown>): Store => ({
     accounts: [],
@@ -582,7 +582,7 @@ describe('ownership change edits', () => {
     await holdingsRepo.editOwnershipChange(
       'h1',
       day10,
-      { day: day10 + DAY, numerator: 1, denominator: 4 },
+      { day: day10 + DAY_MS, numerator: 1, denominator: 4 },
       'fraction',
     );
 
@@ -591,7 +591,7 @@ describe('ownership change edits', () => {
       lots,
       ownership: [
         { day: day1, numerator: 1, denominator: 2 },
-        { day: day10 + DAY, numerator: 1, denominator: 4 },
+        { day: day10 + DAY_MS, numerator: 1, denominator: 4 },
       ],
       ownershipInput: 'fraction',
     });
@@ -659,7 +659,7 @@ describe('ownership change edits', () => {
   it('never resurrects a change a stale cached row still shows', async () => {
     // The screen's cached row still lists a change on day 10 that another
     // write already deleted; a delete passes only the day key.
-    const day20 = day1 + 19 * DAY;
+    const day20 = day1 + 19 * DAY_MS;
     const store = propertyStore({
       category: 'real_estate',
       lots,
@@ -1543,10 +1543,9 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
   // the past point it must not shift are dated on DIFFERENT calendar days
   // here — a same-day pair would (by design) land in the same bucket.
   it('leaves the reconstructed history unshifted after a balance edit', async () => {
-    const DAY = 86_400_000;
     const base = Date.UTC(2026, 0, 1);
-    const pastDay = base + DAY; // the earlier point the edit must not shift
-    const editDay = base + 2 * DAY; // the edit lands a later calendar day
+    const pastDay = base + DAY_MS; // the earlier point the edit must not shift
+    const editDay = base + 2 * DAY_MS; // the edit lands a later calendar day
     const holding = {
       id: 'h-1',
       currency: 'UAH',

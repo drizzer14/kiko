@@ -42,4 +42,10 @@ export const daysAhead = (time: number, days: number): number =>
   // EXPECT-FINDING
   time + 86_400_000 * days;
 
+export const nextOwnershipDay = (start: number) => ({
+  // EXPECT-FINDING
+  day: start + 86_400_000,
+  numerator: 1,
+});
+
 export const spans = [DAY_MS, DAY, dayMs, ONE_DAY, HOURS_DAY, WEEK_MS, FULL_FETCH_INTERVAL_MS];

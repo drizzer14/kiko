@@ -1,6 +1,6 @@
-import { toUtcMidnight } from './history-entry';
+import { DAY_MS } from '@kiko/dates';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { toUtcMidnight } from './history-entry';
 
 describe('toUtcMidnight', () => {
   it('leaves an already-midnight instant unchanged', () => {

@@ -6,12 +6,12 @@ jest.mock('@kiko/db/client', () => {
   return executingClient(() => mockDatabase);
 });
 
+import { DAY_MS } from '@kiko/dates';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { pricePointsRepo } from './price-points.repo';
 
-const DAY_MS = 86_400_000;
 const MONDAY = Date.UTC(2026, 8, 28);
 
 const insertPoint = (instrument: string, day: number): void => {

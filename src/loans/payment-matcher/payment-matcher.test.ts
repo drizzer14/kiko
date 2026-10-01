@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
@@ -162,7 +163,7 @@ describe('matchLoanPayments', () => {
     const transaction = baseTransaction({
       holdingId: 'payer-1',
       amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate + 8 * 24 * 60 * 60 * 1000,
+      time: firstInstallment.dueDate + 8 * DAY_MS,
     });
 
     const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
@@ -175,7 +176,7 @@ describe('matchLoanPayments', () => {
     const transaction = baseTransaction({
       holdingId: 'payer-1',
       amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate - 4 * 24 * 60 * 60 * 1000,
+      time: firstInstallment.dueDate - 4 * DAY_MS,
     });
 
     const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
@@ -188,7 +189,7 @@ describe('matchLoanPayments', () => {
     const before = baseTransaction({
       holdingId: 'payer-1',
       amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate - 3 * 24 * 60 * 60 * 1000,
+      time: firstInstallment.dueDate - 3 * DAY_MS,
     });
 
     const matches = matchLoanPayments({ transactions: [before], loans: [loan], now: NOW });
@@ -201,7 +202,7 @@ describe('matchLoanPayments', () => {
     const after = baseTransaction({
       holdingId: 'payer-1',
       amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate + 7 * 24 * 60 * 60 * 1000,
+      time: firstInstallment.dueDate + 7 * DAY_MS,
     });
 
     const matches = matchLoanPayments({ transactions: [after], loans: [loan], now: NOW });

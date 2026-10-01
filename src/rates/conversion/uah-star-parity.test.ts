@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import { Money, toMajor } from '@kiko/currency/money';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { metalInstrument } from '@kiko/prices/instrument';
@@ -258,7 +259,7 @@ const uahBond = {
     bondKind: 'government' as const,
     purchaseDate: NOW, // live today, valued at its own cost: 7000.00 UAH
     purchasePriceMinorUnits: 700_000,
-    maturityDate: NOW + 365 * 24 * 60 * 60 * 1000,
+    maturityDate: NOW + 365 * DAY_MS,
   },
 };
 const usdLoan = {

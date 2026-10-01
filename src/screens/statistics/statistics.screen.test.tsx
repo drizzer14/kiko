@@ -49,7 +49,7 @@ import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
-import { formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
+import { DAY_MS, formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -228,7 +228,6 @@ const setLiveData = (data: LiveData): void => {
   });
 };
 
-const DAY = 86_400_000;
 const now = Date.now();
 
 const CASH: Account = { id: 'a', name: 'Cash', kind: 'cash', color: null };
@@ -278,7 +277,7 @@ const TRANSACTIONS: Transaction[] = [
 // A historical USD->UAH row dated before the transaction span, so `rateTableAt`
 // carries it forward to every bucket and the net-worth line has points to draw.
 const HISTORY: HistoryRow[] = [
-  { base: 'USD', quote: 'UAH', day: toUtcMidnight(now) - 5 * DAY, rate: '40', source: 'nbu' },
+  { base: 'USD', quote: 'UAH', day: toUtcMidnight(now) - 5 * DAY_MS, rate: '40', source: 'nbu' },
 ];
 
 const seedFull = (): void =>
@@ -1148,7 +1147,7 @@ describe('StatisticsScreen', () => {
     const olderTransaction: Transaction = {
       id: 't-older',
       holdingId: 'h1',
-      time: TRANSACTIONS[0].time - 10 * DAY,
+      time: TRANSACTIONS[0].time - 10 * DAY_MS,
       amountMinorUnits: 10_000,
     };
     setLiveData({
@@ -1211,7 +1210,7 @@ describe('StatisticsScreen', () => {
     const olderTransaction: Transaction = {
       id: 't-older',
       holdingId: 'h1',
-      time: TRANSACTIONS[0].time - 10 * DAY,
+      time: TRANSACTIONS[0].time - 10 * DAY_MS,
       amountMinorUnits: 10_000,
     };
     setLiveData({
@@ -1277,7 +1276,7 @@ describe('StatisticsScreen', () => {
     const olderTransaction: Transaction = {
       id: 't-older',
       holdingId: 'h1',
-      time: TRANSACTIONS[0].time - 10 * DAY,
+      time: TRANSACTIONS[0].time - 10 * DAY_MS,
       amountMinorUnits: 10_000,
     };
     setLiveData({
@@ -1988,7 +1987,7 @@ describe('StatisticsScreen', () => {
   it("advances the default range's end to include a transaction from the day after mount, once refocused", async () => {
     mockNow = now;
 
-    // Calendar-day stepping (never `now + DAY`), so the fixture lands on the
+    // Calendar-day stepping (never `now + DAY_MS`), so the fixture lands on the
     // local day after mount even when the suite runs right at a local
     // midnight boundary.
     const dayAfterMount = new Date(now);

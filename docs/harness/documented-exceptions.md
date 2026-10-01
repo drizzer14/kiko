@@ -643,18 +643,21 @@ verified usage, not dead weight:
   `check:rules`.
 
 - **`kiko-no-local-day-length-constant` (`rules/semgrep-prewrite.yml`)
-  excludes `src/dates/**`, `*.test.ts`, `*.test.tsx`, `__tests__/**`,
-  `src/test-support/**`, and `e2e/**`.** `src/dates/duration.ts` is the one
-  owner of `DAY_MS`. The rule matches the day length by VALUE, so in a test
-  it cannot tell a span from a fixture timestamp of epoch + 1 day
-  (`{ t: 86_400_000 }` in `net-worth-line.component.test.tsx`,
-  `day: 86_400_000` in `settings.repo.test.ts`); and a test's own literal day
-  length is an oracle independent of the production constant. `e2e/**` is
-  test tooling (the screenshot seed). Measured on 2026-10-01: without the
-  excludes the rule draws 54 hits in test files (41 files), 1 in
-  `e2e/screenshot/seed/screenshot-seed.ts`, and 2 in `src/dates/`; app source
-  outside `src/dates/` has 0 after the P5 sweep. The flat fixture pair proves
-  the rule in `check:rules`.
+  excludes only `src/dates/**`.** `src/dates/duration.ts` declares `DAY_MS`,
+  the one owner of the day length, and `src/dates/local-day.test.ts` keeps
+  its own literal day as an oracle independent of that constant (a test of
+  the owner that imported `DAY_MS` would prove nothing about it). App source,
+  tests, test support, and `e2e/` are all in scope. The one false positive in
+  tests is a keyed timestamp of epoch + 1 day in a fixture object
+  (`{ t: 86_400_000 }`, `{ day: 86_400_000 }`); the rule skips a day literal
+  inside an object literal that holds it as a property value, and the
+  negative fixture pins both shapes. Measured on 2026-10-01: without the
+  exclude the rule draws 2 hits in `src/dates/` and 0 anywhere else, after a
+  sweep of 49 sites in 40 files (39 test files and
+  `e2e/screenshot/seed/screenshot-seed.ts`) to `DAY_MS`. The flat fixture
+  pair proves the rule in `check:rules`; the scope probes in
+  `__tests__/pre-write-guard-rules.test.ts` prove the test, test-support,
+  `e2e/`, and `src/dates/` paths.
 
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
