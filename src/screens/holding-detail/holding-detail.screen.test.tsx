@@ -525,7 +525,11 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('offers an Edit action in the header that opens the holding edit form', async () => {
-    seed({ ...cardHolding, accountId: 'acc-1' });
+    seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
+      id: 'acc-1',
+      kind: 'bank',
+      institution: null,
+    });
 
     await renderScreen();
 
@@ -569,6 +573,32 @@ describe('HoldingDetailScreen', () => {
       accountId: 'acc-1',
       holdingId: 'h-1',
       debtAccount: true,
+    });
+  });
+
+  it('leaves the loan question to the edit form while the account row still loads', async () => {
+    seed(
+      { ...annuityLoanHolding, accountId: 'acc-1' },
+      [],
+      [],
+      [],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      undefined,
+      [],
+      { accounts: true },
+    );
+
+    await renderScreen();
+
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.unstable_headerRightItems,
+    );
+    call[0].unstable_headerRightItems({ canGoBack: true })[0].onPress();
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      holdingId: 'h-1',
+      debtAccount: undefined,
     });
   });
 

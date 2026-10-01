@@ -936,7 +936,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // the account's kind to constrain the type chips). Always present on a real
   // row (accountId is NOT NULL); the header Edit action is gated on it.
   const holdingAccountId = holding?.accountId;
-  const debtAccount = holdsOnlyDebts(account?.kind);
+  // Unknown while the account row loads, so the form reads its own account
+  // instead of being told the holding is not a loan.
+  const debtAccount = foldMap(maybe(account), ({ kind }) => holdsOnlyDebts(kind));
 
   // The per-row read context, threaded into each ledger row so the row
   // component stays at module scope. `holdingName` is always a string (the
