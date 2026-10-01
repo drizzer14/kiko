@@ -6,6 +6,7 @@ import {
 } from '@kiko/holdings/entity-symbols';
 import type { TFunction } from 'i18next';
 import {
+  holdsOnlyDebts,
   holdingDescriptorOrUndefined,
   isTimeExemptHoldingType,
   propertyOwnershipView,
@@ -935,6 +936,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // the account's kind to constrain the type chips). Always present on a real
   // row (accountId is NOT NULL); the header Edit action is gated on it.
   const holdingAccountId = holding?.accountId;
+  const debtAccount = holdsOnlyDebts(account?.kind);
 
   // The per-row read context, threaded into each ledger row so the row
   // component stays at module scope. `holdingName` is always a string (the
@@ -1039,12 +1041,24 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             label: t('common.edit'),
             tintColor: theme.colors.textPrimary,
             onPress: () =>
-              navigation.navigate('HoldingForm', { accountId: holdingAccountId, holdingId }),
+              navigation.navigate('HoldingForm', {
+                accountId: holdingAccountId,
+                holdingId,
+                debtAccount,
+              }),
           }),
         ],
       }),
     });
-  }, [navigation, holdingName, holdingAccountId, holdingId, t, theme.colors.textPrimary]);
+  }, [
+    navigation,
+    holdingName,
+    holdingAccountId,
+    holdingId,
+    debtAccount,
+    t,
+    theme.colors.textPrimary,
+  ]);
 
   const ledgerReadyView = resolveLedgerReadyView(
     isReady,

@@ -64,6 +64,8 @@ jest.mock('@kiko/holdings/repo', () => ({
 // so the hoisted jest.mock factory may close over it; each test can reassign it
 // before rendering to exercise a different account kind.
 let mockAccountKind = 'bank';
+// On device the account row arrives on a later render than the first one.
+let mockAccountLoaded = true;
 // The account's live sync connection. A holding only counts as synced while its
 // account is still connected: a disconnect KEEPS the holding's sync key (so a
 // reconnect re-adopts the row), so the institution is what decides. Defaults to
@@ -123,6 +125,10 @@ const mockUseLiveQuery = jest.fn(
 
     if (keys[0] === 'price_points') {
       return { data: mockPricePoints, isLoading: mockPricePointsLoading };
+    }
+
+    if (!mockAccountLoaded) {
+      return { data: [] };
     }
 
     return {
@@ -219,6 +225,7 @@ const savedBondMetadata = (storedMetadata: unknown): Record<string, unknown> =>
 
 beforeEach(() => {
   mockAccountKind = 'bank';
+  mockAccountLoaded = true;
   mockAccountInstitution = 'monobank';
   mockAccountBankId = null;
   mockEditHoldings = [];
@@ -2746,6 +2753,71 @@ describe('HoldingFormScreen loan', () => {
     await renderScreen();
 
     expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Add Loan' });
+  });
+
+  it('titles the create header "Add Loan" from its route before the account row loads', async () => {
+    mockAccountLoaded = false;
+    navigation.setOptions.mockClear();
+
+    await render(
+      <HoldingFormScreen
+        navigation={navigationProp(navigation)}
+        route={asRouteProp<HoldingFormProps['route']>('HoldingForm', {
+          accountId: 'acc-1',
+          debtAccount: true,
+        })}
+      />,
+    );
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Add Loan' });
+  });
+
+  const carLoan = {
+    id: 'h1',
+    accountId: 'acc-1',
+    name: 'Car loan',
+    type: 'loan',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    icon: null,
+    color: null,
+    metadata: {
+      kind: 'car_loan',
+      principalMinorUnits: 50_000_000,
+      startDate: localDay(2026, 1, 1),
+      schedule: 'annuity',
+      annualRatePct: 12,
+      termMonths: 24,
+    },
+  };
+
+  it('titles the edit header "Edit Loan", never "Edit Holding"', async () => {
+    navigation.setOptions.mockClear();
+
+    await renderEdit(carLoan);
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Edit Loan' });
+    expect(navigation.setOptions).not.toHaveBeenCalledWith({ title: 'Edit Holding' });
+  });
+
+  it('titles the edit header "Edit Loan" from its route before the account row loads', async () => {
+    mockAccountLoaded = false;
+    mockEditHoldings = [carLoan];
+    navigation.setOptions.mockClear();
+
+    await render(
+      <HoldingFormScreen
+        navigation={navigationProp(navigation)}
+        route={asRouteProp<HoldingFormProps['route']>('HoldingForm', {
+          accountId: 'acc-1',
+          holdingId: 'h1',
+          debtAccount: true,
+        })}
+      />,
+    );
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Edit Loan' });
+    expect(navigation.setOptions).not.toHaveBeenCalledWith({ title: 'Edit Holding' });
   });
 
   const fillLoanFields = async (screen: Screen): Promise<void> => {

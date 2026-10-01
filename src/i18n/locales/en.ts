@@ -361,6 +361,7 @@ export const en = {
       // bonds, it is a storefront for a partner bank/broker, so the bond is
       // added under whichever institution the user actually picked there.
       diiaHint: 'Bought in Diia? Add the bond under the bank or broker you chose there.',
+      editLoanTitle: 'Edit Loan',
       editTitle: 'Edit Holding',
       faceValue: 'Face value',
       faceValueError: 'Enter a face value greater than 0.',

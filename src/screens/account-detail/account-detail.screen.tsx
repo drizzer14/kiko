@@ -29,6 +29,7 @@ import { holdsOnlyDebts } from '@kiko/holdings/holding-descriptor';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
@@ -41,7 +42,6 @@ import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown
 import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
-import { type AccountRow, type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
 
 import HoldingCard from './holding-card';
@@ -56,8 +56,8 @@ const offerMessage = (kind: ReminderKind, t: TFunction): string =>
     .with('add_transactions', () => t('reminders.offer.addTransactionsMessage'))
     .exhaustive();
 
-const addHoldingLabelKey = (kind: AccountRow['kind'] | undefined) =>
-  foldMap(maybe(kind), holdsOnlyDebts) ? 'accountDetail.addLoan' : 'accountDetail.addHolding';
+const addHoldingLabelKey = (debtAccount: boolean) =>
+  debtAccount ? 'accountDetail.addLoan' : 'accountDetail.addHolding';
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
@@ -112,6 +112,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     priceBookLoading,
   );
   const account = accounts.at(0);
+  const debtAccount = holdsOnlyDebts(account?.kind);
   // At most one offer per visit: once one is decided, clearing the import
   // param would otherwise fall back to the manual-entry offer at once.
   const [offerDecided, setOfferDecided] = useState(false);
@@ -345,10 +346,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           <Button
             variant="primary"
             fullWidth
-            onPress={() => navigation.navigate('HoldingForm', { accountId })}
+            onPress={() => navigation.navigate('HoldingForm', { accountId, debtAccount })}
             icon={genericEntitySymbol.holding}
           >
-            {t(addHoldingLabelKey(account?.kind))}
+            {t(addHoldingLabelKey(debtAccount))}
           </Button>
         </Box>
       }

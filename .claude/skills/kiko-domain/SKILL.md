@@ -124,9 +124,16 @@ implemented, and callers must skip it rather than assume every id resolves.
   (`ConfirmSheet destructive`). The add flow of an account whose every
   holding type is a debt (`holdsOnlyDebts(kind)`, the same descriptor
   `side`; today the `debt` kind) says loan too: the account detail
-  footer reads `accountDetail.addLoan` ("Add loan" / "Додати кредит")
-  and the holding form's create title `forms.holding.addLoanTitle`
-  ("Add Loan" / "Додати кредит").
+  footer reads `accountDetail.addLoan` ("Add loan" / "Додати кредит"),
+  the holding form's create title `forms.holding.addLoanTitle`
+  ("Add Loan" / "Додати кредит"), and its edit title
+  `forms.holding.editLoanTitle` ("Edit Loan" / "Редагувати кредит").
+  Account detail and holding detail pass the flag in the HoldingForm
+  route (`debtAccount`), so the title is right on the first frame; the
+  form reads the account row only when the route has no flag (the
+  statement-import and column-mapping entry points).
+  `holdsOnlyDebts(undefined)` is false: an account row still loading
+  names a holding.
 - **Transaction** — a movement against a holding. `id`, `holdingId`
   (FK), `amountMinorUnits` (signed integer), `time` (unix
   milliseconds), `description`, `category` (nullable), `mcc`

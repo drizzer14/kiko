@@ -548,6 +548,27 @@ describe('HoldingDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
       accountId: 'acc-1',
       holdingId: 'h-1',
+      debtAccount: false,
+    });
+  });
+
+  it("tells the edit form that a debt account's holding is a loan", async () => {
+    seed({ ...annuityLoanHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
+      id: 'acc-1',
+      kind: 'debt',
+      institution: null,
+    });
+
+    await renderScreen();
+
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.unstable_headerRightItems,
+    );
+    call[0].unstable_headerRightItems({ canGoBack: true })[0].onPress();
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      holdingId: 'h-1',
+      debtAccount: true,
     });
   });
 

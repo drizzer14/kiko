@@ -33,8 +33,9 @@ export const holdingDescriptor = (type: HoldingType): HoldingDescriptor => holdi
 
 /** Whether every holding an account of this kind can hold is a debt: its add
  * action and form name a loan, not a holding. Keyed off the same descriptor
- * `side` net-worth math reads. */
-export const holdsOnlyDebts = (kind: AccountRow['kind']): boolean =>
+ * `side` net-worth math reads. An account row still loading names a holding. */
+export const holdsOnlyDebts = (kind: AccountRow['kind'] | undefined): boolean =>
+  kind !== undefined &&
   holdingTypesForAccountKind[kind].every((type) => holdingDescriptor(type).side === 'debt');
 
 /**

@@ -29,6 +29,10 @@ describe('holdsOnlyDebts', () => {
       expect(holdsOnlyDebts(kind)).toBe(false);
     },
   );
+
+  it('is false while the account row has not loaded', () => {
+    expect(holdsOnlyDebts(undefined)).toBe(false);
+  });
 });
 
 describe('time-exempt holding types', () => {

@@ -10,7 +10,6 @@ import {
   holdingDescriptor,
   isLedgerlessHoldingType,
 } from '@kiko/holdings/holding-descriptor';
-import maybe, { foldMap } from 'fnts/maybe';
 import {
   useHeaderInset,
   scrollToField,
@@ -467,16 +466,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
   // "Edit Holding" so the header reads correctly for the update flow, and a
-  // debt account's create flow adds a loan, never a "holding".
-  const addsLoan = foldMap(maybe(accountKind), holdsOnlyDebts) === true;
+  // debt account's form names a loan, never a "holding". The route says which
+  // on the first frame; the account row only arrives on a later render.
+  const debtAccount = route.params.debtAccount ?? holdsOnlyDebts(accountKind);
 
   useLayoutEffect(() => {
     if (isEdit) {
-      navigation.setOptions({ title: t('forms.holding.editTitle') });
-    } else if (addsLoan) {
+      navigation.setOptions({
+        title: debtAccount ? t('forms.holding.editLoanTitle') : t('forms.holding.editTitle'),
+      });
+    } else if (debtAccount) {
       navigation.setOptions({ title: t('forms.holding.addLoanTitle') });
     }
-  }, [isEdit, addsLoan, navigation, t]);
+  }, [isEdit, debtAccount, navigation, t]);
 
   const isValid = name.trim().length > 0 && active.isValid;
 

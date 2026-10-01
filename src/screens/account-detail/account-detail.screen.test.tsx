@@ -586,7 +586,10 @@ describe('AccountDetailScreen', () => {
   it('navigates to HoldingForm when Add holding is pressed', async () => {
     const { getByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Add holding'));
-    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'a',
+      debtAccount: false,
+    });
   });
 
   it('pins the Add holding action to the screen footer', async () => {
@@ -983,7 +986,10 @@ describe('AccountDetailScreen', () => {
         await fireEvent.press(getByText('Add loan'));
 
         expect(queryByText('Add holding')).toBeNull();
-        expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
+        expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+          accountId: 'a',
+          debtAccount: true,
+        });
       });
 
       it('closes it under loan wording, never "holding"', async () => {

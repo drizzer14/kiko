@@ -87,6 +87,9 @@ export type AccountsStackParamList = {
   HoldingForm: {
     accountId: string;
     holdingId?: string;
+    // Whether the account holds only debts, so the title reads "Loan" on the
+    // first frame; the form reads the account itself when this is absent.
+    debtAccount?: boolean;
     returnTo?:
       | { screen: 'StatementImport'; params: AccountsStackParamList['StatementImport'] }
       | { screen: 'ColumnMapping'; params: AccountsStackParamList['ColumnMapping'] };
