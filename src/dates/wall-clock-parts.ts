@@ -1,5 +1,5 @@
 /** A calendar date/time, split into its own components, before any zone
- * resolves it (`kyiv-wall-clock.ts`). */
+ * resolves it (`zone-wall-clock.ts`). */
 export type WallClockParts = {
   year: number;
   month: number; // 1-based
@@ -55,15 +55,17 @@ export const utcDigitsOf = (milliseconds: number): WallClockParts => {
   };
 };
 
-/** A wall clock of exactly `00:00:00`, from a source that cannot tell a
- * date-only value from a real midnight — a spreadsheet `Date` cell, or a
- * legacy stored row that predates real instants — is read as date-only. A
- * source that carries a real time (a timed text cell) never comes here. */
+/** Whether a wall clock is exactly `00:00:00`. A source that cannot tell a
+ * date-only value from a real midnight (a spreadsheet `Date` cell,
+ * `table-rows.ts`) reads it as date-only. `mapping.ts`'s `noonAliasDedupKey`
+ * also asks it of a timed row's Kyiv wall clock, to find the real midnight an
+ * older build stored at noon. */
 export const isMidnightWallClock = (parts: WallClockParts): boolean =>
   parts.hour === 0 && parts.minute === 0 && parts.second === 0;
 
-/** `parts` with `hour` bumped to noon when it's date-only (`isMidnightWallClock`
- * above), unchanged otherwise, so the same calendar day shows from UTC-9 to
- * UTC+12 (`table-rows.ts`'s spreadsheet `Date` cell, `rezoneImportTime`). */
+/** `parts` with `hour` bumped to noon when it's midnight (`isMidnightWallClock`
+ * above), unchanged otherwise, so a Kyiv date-only day shows as the same
+ * calendar day from UTC-9 to UTC+13:45. Callers: a legacy stored row's rezone
+ * (`plan-import-time-rezone.ts`), and `mapping.ts`'s `noonAliasDedupKey`. */
 export const noonIfMidnight = (parts: WallClockParts): WallClockParts =>
   isMidnightWallClock(parts) ? { ...parts, hour: 12 } : parts;
