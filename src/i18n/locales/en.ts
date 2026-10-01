@@ -129,7 +129,7 @@ export const en = {
     sharePricesScreen: {
       dailyLimit: 'Daily limit: {{limit}}',
       intro:
-        'Kiko gets end-of-day share prices from EODHD with your own API key. To do this, Kiko sends EODHD your share tickers and your searches, but never how many shares you hold or what they cost. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
+        'Kiko gets end-of-day share prices from EODHD with your own API key. To do this, Kiko sends EODHD your share tickers, the date range of the prices it needs (from your first purchase on), and your searches, but never how many shares you hold or what they cost. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
       invalidKeyError: 'EODHD did not accept this key.',
       keyLabel: 'API key',
       keyPlaceholder: 'Paste your EODHD key',
