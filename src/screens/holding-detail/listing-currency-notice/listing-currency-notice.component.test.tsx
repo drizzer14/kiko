@@ -37,6 +37,16 @@ describe('ListingCurrencyNotice', () => {
     expect(getByText(/EODHD prices this share in GBP/)).toBeTruthy();
   });
 
+  it('offers only Manual for a listing priced in a unit no share currency can hold', async () => {
+    const { getByTestId } = await render(
+      <ListingCurrencyNotice holding={share('ZAR', { ...eodhd, quoteCurrency: 'ZAC' })} />,
+    );
+
+    expect(getByTestId('listing-currency-notice')).toHaveTextContent(
+      'EODHD prices this share in ZAC, which Kiko does not support, so its value does not update. Edit it and set the price source to “Manual” (its cost stays).',
+    );
+  });
+
   it.each([
     ['held in its listing currency', share('USD', { ...eodhd, quoteCurrency: 'USD' })],
     ['a pence listing held in pounds', share('GBP', { ...eodhd, quoteCurrency: 'GBX' })],
@@ -68,6 +78,20 @@ describe('ListingCurrencyNotice', () => {
       );
 
       expect(getByText(/EODHD подає ціну цієї акції в USD/)).toBeTruthy();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('reads the Manual-only notice in Ukrainian', async () => {
+    await i18n.changeLanguage('uk');
+
+    try {
+      const { getByText } = await render(
+        <ListingCurrencyNotice holding={share('ZAR', { ...eodhd, quoteCurrency: 'ZAC' })} />,
+      );
+
+      expect(getByText(/в ZAC, якої Кіко не підтримує/)).toBeTruthy();
     } finally {
       await i18n.changeLanguage('en');
     }

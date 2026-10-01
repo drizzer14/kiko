@@ -483,6 +483,10 @@ export const en = {
       // currency (a pence listing fits pounds): such a share never gets a price.
       shareCurrencyMismatchError:
         'EODHD prices this share in {{currency}}. Choose {{currency}}, or set the price source to “Manual”.',
+      // The same place, when no currency Kiko has fits the listing's unit
+      // (cents, agorot): only a manual price source works.
+      shareCurrencyUnsupportedError:
+        'EODHD prices this share in {{currency}}, which Kiko does not support. Set the price source to “Manual”.',
       shareFind: 'Find by ISIN or ticker',
       shareFindEmpty: 'Nothing found.',
       shareFindKeyRejected:
@@ -813,6 +817,10 @@ export const en = {
     // it is never priced, and its currency cannot change.
     listingCurrencyMismatch:
       'EODHD prices this share in {{currency}}, so its value does not update. Edit it and set the price source to “Manual” (its cost stays), or delete it and add it again in {{currency}}.',
+    // The same notice when no currency Kiko has fits the listing's unit, so a
+    // new share in that currency is no way out.
+    listingCurrencyUnsupported:
+      'EODHD prices this share in {{currency}}, which Kiko does not support, so its value does not update. Edit it and set the price source to “Manual” (its cost stays).',
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',

@@ -419,6 +419,8 @@ export const uk: typeof en = {
       share: 'Акція',
       shareCurrencyMismatchError:
         'EODHD подає ціну цієї акції в {{currency}}. Оберіть {{currency}} або змініть джерело ціни на «Вручну».',
+      shareCurrencyUnsupportedError:
+        'EODHD подає ціну цієї акції в {{currency}}, якої Кіко не підтримує. Змініть джерело ціни на «Вручну».',
       shareFind: 'Знайти за ISIN або тікером',
       shareFindEmpty: 'Нічого не знайдено.',
       shareFindKeyRejected:
@@ -696,6 +698,8 @@ export const uk: typeof en = {
     linkedPayments: 'Пов’язані платежі',
     listingCurrencyMismatch:
       'EODHD подає ціну цієї акції в {{currency}}, тому її вартість не оновлюється. Відредагуйте її та змініть джерело ціни на «Вручну» (вартість купівлі залишиться) або видаліть її й додайте знову в {{currency}}.',
+    listingCurrencyUnsupported:
+      'EODHD подає ціну цієї акції в {{currency}}, якої Кіко не підтримує, тому її вартість не оновлюється. Відредагуйте її та змініть джерело ціни на «Вручну» (вартість купівлі залишиться).',
     militaryLevy: 'Військовий збір {{pct}}%',
     openingDeposit: 'Відкриття депозиту',
     outstanding: 'Залишок боргу',

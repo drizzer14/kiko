@@ -18,6 +18,7 @@ import {
   searchShares,
   lookupShareUnit,
   unitHoldingCurrency,
+  isShareUnitSupported,
   type ShareSearchDeps,
 } from './share-search';
 
@@ -417,6 +418,16 @@ describe('lookupShareUnit', () => {
 
     await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toBeUndefined();
     expect(world.quota).toEqual(quota({ calls: 4, isKeyRejected: true }));
+  });
+});
+
+describe('isShareUnitSupported', () => {
+  it.each(['USD', 'GBX', 'GBP'])('holds a %s listing in a share currency', (unit) => {
+    expect(isShareUnitSupported(unit)).toBe(true);
+  });
+
+  it.each(['ZAC', 'ILA', 'BTC'])('has no share currency for a %s listing', (unit) => {
+    expect(isShareUnitSupported(unit)).toBe(false);
   });
 });
 

@@ -1,9 +1,9 @@
 import { validateIsin } from '@kiko/bonds/isin';
 import { parseAmount } from '@kiko/currency/parse';
 import type { Currency } from '@kiko/currency/currency';
-import { unitHoldingCurrency } from '@kiko/prices/share-search';
 import type { ShareQuoteSource } from '@kiko/holdings/holding-metadata';
 import { compareDecimal, normalizeDecimal } from '@kiko/currency/decimal';
+import { isShareUnitSupported, unitHoldingCurrency } from '@kiko/prices/share-search';
 
 // One type for both functions below, so they can never drift apart on what
 // they read. `quoteUnit` is the unit EODHD prices the ticker's listing in,
@@ -22,7 +22,10 @@ type ShareValidationParams = {
 // The quantity and total-cost keys are the metal form's own, reused rather
 // than minted again for a share.
 export type ShareFieldErrors = {
-  currencyError: 'forms.holding.shareCurrencyMismatchError' | null;
+  currencyError:
+    | 'forms.holding.shareCurrencyMismatchError'
+    | 'forms.holding.shareCurrencyUnsupportedError'
+    | null;
   tickerError: 'forms.holding.shareTickerError' | null;
   isinError: 'forms.holding.isinFormatError' | 'forms.holding.isinCheckDigitError' | null;
   quantityError: 'forms.holding.quantityError' | null;
@@ -36,14 +39,20 @@ export type ShareReasonKey = NonNullable<ShareFieldErrors[keyof ShareFieldErrors
 const EODHD_SYMBOL_PATTERN = /^[^.\s]+\.[^.\s]+$/;
 
 // The price refresh stores a close only in the currency its unit fits, so a
-// share held in any other currency would never be priced.
+// share held in any other currency would never be priced. A unit no share
+// currency fits leaves Manual as the only way out.
 const currencyFieldReasonKey = (
   quoteUnit: string | undefined,
   currency: Currency,
-): ShareFieldErrors['currencyError'] =>
-  quoteUnit !== undefined && unitHoldingCurrency(quoteUnit) !== currency
+): ShareFieldErrors['currencyError'] => {
+  if (quoteUnit === undefined || unitHoldingCurrency(quoteUnit) === currency) {
+    return null;
+  }
+
+  return isShareUnitSupported(quoteUnit)
     ? 'forms.holding.shareCurrencyMismatchError'
-    : null;
+    : 'forms.holding.shareCurrencyUnsupportedError';
+};
 
 // Only EODHD needs a ticker: it is the symbol the price refresh asks for.
 const tickerFieldReasonKey = (

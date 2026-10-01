@@ -36,6 +36,15 @@ describe('shareFieldErrors — currency', () => {
     );
   });
 
+  it.each(['ZAC', 'ILA'])(
+    'rejects a %s listing, which no share currency can hold, with its own reason',
+    (quoteUnit) => {
+      expect(shareFieldErrors({ ...baseParams(), quoteUnit }).currencyError).toBe(
+        'forms.holding.shareCurrencyUnsupportedError',
+      );
+    },
+  );
+
   it('reports the mismatch before every other field', () => {
     expect(shareReasonKey({ ...baseParams(), quoteUnit: 'USD', currency: 'UAH', cost: '' })).toBe(
       'forms.holding.shareCurrencyMismatchError',

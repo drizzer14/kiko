@@ -4,6 +4,7 @@ import { settingsRepo } from '@kiko/settings';
 import { logFailure } from '@kiko/diagnostics';
 import either, { bifold, isLeft } from 'fnts/either';
 import { type Currency, isCurrency } from '@kiko/currency/currency';
+import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 
 import {
   searchSymbols,
@@ -49,6 +50,17 @@ export type ListingSearch = { code: string; exchange: string };
  * currency is not this one is never priced.
  */
 export const unitHoldingCurrency = (unit: string): string => (unit === PENCE ? 'GBP' : unit);
+
+/**
+ * Whether a share can be held in the currency a listing's unit fits. A unit
+ * with no such currency (`ZAC` cents, `ILA` agorot) is never priced, whatever
+ * currency the share is in.
+ */
+export const isShareUnitSupported = (unit: string): boolean => {
+  const currency = unitHoldingCurrency(unit);
+
+  return isCurrency(currency) && holdingCurrencyOptions('share').includes(currency);
+};
 
 const toListing =
   (currencies: readonly Currency[]) =>

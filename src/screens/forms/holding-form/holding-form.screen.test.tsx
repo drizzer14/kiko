@@ -2914,6 +2914,19 @@ describe('HoldingFormScreen share', () => {
       );
     });
 
+    it('offers only Manual when the listing is priced in a unit no share currency can hold', async () => {
+      mockLookupShareUnit.mockResolvedValue('ZAC');
+      const screen = await renderScreen();
+
+      await typeShare(screen);
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(
+        'EODHD prices this share in ZAC, which Kiko does not support. Set the price source to “Manual”.',
+      );
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
     it('scrolls to the Currency field when the lookup blocks Save', async () => {
       mockLookupShareUnit.mockResolvedValue('USD');
       const screen = await renderScreen();
