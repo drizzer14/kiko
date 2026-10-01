@@ -1527,6 +1527,31 @@ describe('HoldingDetailScreen', () => {
     expect(queryByTestId('listing-currency-notice')).toBeNull();
   });
 
+  it('asks to fix a stored sale larger than what was held before it', async () => {
+    seed({
+      ...manualShareHolding,
+      metadata: {
+        ...manualShareHolding.metadata,
+        lots: [
+          ...manualShareHolding.metadata.lots,
+          { day: Date.UTC(2024, 1, 1), quantityDelta: '-5', costMinorUnits: -90_000 },
+        ],
+      },
+    });
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('oversized-sale-notice')).toHaveTextContent(/Edit or delete that sale/);
+  });
+
+  it('shows no oversized-sale notice while every sale is covered', async () => {
+    seed(manualShareHolding);
+
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('oversized-sale-notice')).toBeNull();
+  });
+
   it('renders derived rows read-only: no context menu and not tappable to the form', async () => {
     seed(depositHolding);
 

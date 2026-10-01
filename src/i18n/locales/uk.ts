@@ -703,6 +703,8 @@ export const uk: typeof en = {
     militaryLevy: 'Військовий збір {{pct}}%',
     openingDeposit: 'Відкриття депозиту',
     outstanding: 'Залишок боргу',
+    oversizedSale:
+      'Продаж тут більший, ніж було в наявності до нього. Відредагуйте або видаліть цей продаж.',
     ownedCost: 'Вартість (ваша частка)',
     ownedValue: 'Вартість вашої частки',
     paidSoFar: 'Сплачено',

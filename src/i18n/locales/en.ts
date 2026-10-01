@@ -824,6 +824,9 @@ export const en = {
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',
+    // A notice on a share or metal whose stored lots hold a sale larger than
+    // the quantity before it; only that lot's Edit or Delete fixes its costs.
+    oversizedSale: 'A sale here is larger than what was held before it. Edit or delete that sale.',
     // A property owned in part: its cost basis and value times the share.
     ownedCost: 'Cost (your share)',
     ownedValue: 'Your value',

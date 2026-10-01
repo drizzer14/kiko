@@ -83,6 +83,7 @@ import {
 } from './holding-detail-spec';
 import ShareChanges from './share-changes';
 import UpcomingPayments from './upcoming-payments';
+import OversizedSaleNotice from './oversized-sale-notice';
 import LotRowMenu, { type LotActions } from './lot-row-menu';
 import ListingCurrencyNotice from './listing-currency-notice';
 import { useBondRegisterTerms } from './use-bond-register-terms';
@@ -1075,6 +1076,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       )}
 
       <ListingCurrencyNotice holding={holding} />
+
+      <OversizedSaleNotice holding={holding} />
 
       <LinkedPaymentsSection
         title={t('holdingDetail.linkedPayments')}
