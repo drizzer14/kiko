@@ -374,7 +374,7 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
   ].join('\n');
 
   const dayOffsetProbe = [
-    'const DAY_MS = 86_400_000;',
+    "import { DAY_MS } from '@kiko/dates';",
     '',
     'export const tomorrow = (): number => Date.now() + DAY_MS;',
     '',
