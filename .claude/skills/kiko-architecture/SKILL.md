@@ -234,9 +234,14 @@ project-level pointer to this section.
   `columnsWithout(getTableColumns(holdings), 'balanceSetRowId')`
   (`src/test-support/real-sqlite.ts`). Proven on both paths by
   `drizzle/migrations/0047-add-sets-balance.test.ts` and
-  `restore-sets-balance.two-path.test.ts`. The next free migration index is
-  one past the last `idx` in `drizzle/migrations/meta/_journal.json`; read
-  it there.
+  `restore-sets-balance.two-path.test.ts`.
+- **A flag whose work SQL cannot do follows the flag-plus-launch-step
+  shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
+  (`false`): re-costing a sale needs the BigInt decimal helpers, so the
+  JS pass `recostStoredLots` runs it once at app open (see "A launch step
+  cheap enough to run after the first paint" below). The next free
+  migration index is one past the last `idx` in
+  `drizzle/migrations/meta/_journal.json`; read it there.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -1766,6 +1771,20 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   rewrites an explicit `false` — a restore replaces the whole database,
   so there is no live device left to retry the rewrite on its own next
   launch, and the restored database must be final at once.
+- **A launch step cheap enough to run after the first paint is an
+  `AppRoot` effect, and its restore mirror is the same function called
+  from `importData`.** Migration 0048's flag (`settings.lotsRecosted`,
+  `false` by default) and `recostStoredLots` (`src/holdings/lot-recost/`,
+  kiko-pricing's "Stored lots are costed again once per device"):
+  `useLotRecost` runs it from an `AppRoot` effect in `App.tsx`, which fires
+  after the screens' own effects, so their first reads queue ahead of it on
+  op-sqlite's one worker thread; after the first run an open reads one
+  flag. The lots and the flag commit in ONE `write`, re-reading both inside
+  it, so a crash or a failed write leaves the flag unset and the next open
+  starts over; it never rejects (a failure is logged). A restore carries
+  no planner: a backup without the key restores the flag as `false`, and
+  `importData` awaits `recostStoredLots()` right after the restore, before
+  any screen reads the restored lots.
 - **A migration that reassigns rows between tables gets the SAME
   restore-side mirror, run FIRST.** Migration 0044 moves a 1.0-era `cash`
   holding in a crypto currency onto a `crypto_asset` holding under a

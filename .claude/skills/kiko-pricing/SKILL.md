@@ -557,6 +557,18 @@ inside the write (the lots changed since the render) shows the shared
 save-error alert. `share-money.matrix.test.ts`
 (`src/data-transfer/snapshot/`) holds the operation x state cells.
 
+**Stored lots are costed again once per device.** An older build costed a
+sale in recorded order, so `recostStoredLots` (`src/holdings/lot-recost/`)
+works every share, metal, and property lot list out again with
+`recostLots` (the same order), once (`settings.lotsRecosted`) and again
+after a restore of an older backup; kiko-architecture has the launch-step
+shape. A list with a sale larger than what is held before it stays as
+stored: the recost cannot cost it. The holding detail shows
+`OversizedSaleNotice` (`src/screens/holding-detail/oversized-sale-notice/`,
+share and metal, `hasNegativeHolding` over the stored lots, worked out on
+the fly) asking the user to edit or delete that sale, which re-costs
+every lot through `changeLots`.
+
 A lot-priced holding's lots also surface as ledger-display rows: the
 shared `lotEntries` (`src/holdings/holding-descriptor/entry-parts/entry-parts.ts`,
 called by both the `metal` and `share` descriptors' `entries`) turns

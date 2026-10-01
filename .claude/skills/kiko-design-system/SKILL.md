@@ -972,7 +972,9 @@ new component can land between reviews of this skill:
   NoticeBanner with no action, worked out on the fly from the row, in its
   own folder (`holding-detail/<name>-notice/`, `holding` prop, `null` when
   nothing is wrong): `ListingCurrencyNotice` (an EODHD share held in another
-  currency than its listing, kiko-pricing).
+  currency than its listing, kiko-pricing) and `OversizedSaleNotice` (a
+  share or metal sale larger than what was held before it; kiko-pricing's
+  "Stored lots are costed again once per device").
 - **Search sheet pattern** (example:
   `src/screens/forms/holding-form/share/share-search-sheet/`): always a
   `BottomSheet` with a query field, an explicit Search button, and
@@ -1202,7 +1204,10 @@ new component can land between reviews of this skill:
   flips the two groups (each keeps its own order) — the crypto-holding
   create form sets it. Supports `hideLabel` for a caller that already labels the
   control externally (the Settings base-currency row), `required`, and
-  a `disabled` read-only state. A field opens a picker sheet for one
+  a `disabled` read-only state. `error` follows every field's contract:
+  `FieldTrigger` renders it under the trigger (reflow, not reserve, testID
+  `<testID>-error`) and tints the label (the holding form's share
+  Currency check). A field opens a picker sheet for one
   selection among many options; `ChipRow` below toggles inline
   among a small fixed set instead.
 - **ChipRow** (`src/design-system/components/chip-row/`) — the ONE
