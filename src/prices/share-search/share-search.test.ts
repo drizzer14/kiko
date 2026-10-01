@@ -10,7 +10,8 @@ import {
   EodhdUnavailableError,
   type SymbolMatch,
 } from '../eodhd';
-import type { QuoteQuota } from '../quote-quota';
+import { refreshSharePrices } from '../share-refresh';
+import { settle, type QuoteQuota } from '../quote-quota';
 
 import { searchShares, type ShareSearchDeps } from './share-search';
 
@@ -230,6 +231,39 @@ describe('searchShares', () => {
         status: 'quotaExhausted',
       });
       expect(world.quota).toEqual(quota({ calls: 20 }));
+    });
+
+    it('keeps its call when a share refresh settles after it', async () => {
+      const world = makeWorld({ quota: quota({ calls: 3 }) });
+      const shareHolding = {
+        id: 'apple',
+        currency: 'USD' as const,
+        metadata: {
+          quoteSource: 'eodhd',
+          symbol: 'AAPL.US',
+          quoteCurrency: 'USD',
+          lots: [{ day: TODAY - 30 * DAY_MS, quantityDelta: '1', costMinorUnits: 100 }],
+        },
+      };
+
+      await refreshSharePrices({
+        now: () => NOW,
+        listShares: async () => [shareHolding],
+        readKey: async () => KEY,
+        loadQuota: async () => world.quota,
+        updateQuota: depsFor(world).updateQuota,
+        loadLatestPoints: async () => [],
+        fetchEod: async () => {
+          await searchShares('AAPL', FIAT, depsFor(world));
+
+          return [];
+        },
+        save: async ({ settlement }) => {
+          world.quota = settle(world.quota, settlement);
+        },
+      });
+
+      expect(world.quota).toEqual(quota({ calls: 5, symbols: ['AAPL.US'] }));
     });
 
     it('gives the call back when EODHD never answered', async () => {

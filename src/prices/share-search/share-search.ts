@@ -1,3 +1,4 @@
+import maybe, { foldMap } from 'fnts/maybe';
 import { settingsRepo } from '@kiko/settings';
 import { logFailure } from '@kiko/diagnostics';
 import either, { bifold, isLeft } from 'fnts/either';
@@ -27,7 +28,6 @@ export type ShareSearchResult =
 
 export type ShareSearchDeps = {
   now?: () => number;
-  fetchImpl?: typeof fetch;
   readKey?: () => Promise<string | undefined>;
   updateQuota?: (build: (stored: QuoteQuota | null) => QuoteQuota | null) => Promise<void>;
   searchSymbols?: typeof searchSymbols;
@@ -45,7 +45,13 @@ const toListing =
     }
 
     return [
-      { symbol, name, ...(isin === undefined ? {} : { isin }), currency, quoteCurrency: unit },
+      {
+        symbol,
+        name,
+        ...foldMap(maybe(isin), (found) => ({ isin: found })),
+        currency,
+        quoteCurrency: unit,
+      },
     ];
   };
 
@@ -74,7 +80,6 @@ const reserveCall = async (
 
 const withDefaults = (deps: ShareSearchDeps): Required<ShareSearchDeps> => ({
   now: Date.now,
-  fetchImpl: fetch,
   readKey: readEodhdKey,
   updateQuota: settingsRepo.updateQuoteQuota,
   searchSymbols,
@@ -92,7 +97,7 @@ export const searchShares = async (
   currencies: readonly Currency[],
   deps: ShareSearchDeps = {},
 ): Promise<ShareSearchResult> => {
-  const { now, fetchImpl, readKey, updateQuota, ...network } = withDefaults(deps);
+  const { now, readKey, updateQuota, ...network } = withDefaults(deps);
   const key = await readKey();
 
   if (key === undefined) {
@@ -105,7 +110,7 @@ export const searchShares = async (
     return { status: 'quotaExhausted' };
   }
 
-  const found = await either(async () => network.searchSymbols(query.trim(), key, fetchImpl));
+  const found = await either(async () => network.searchSymbols(query.trim(), key));
 
   if (isLeft(found)) {
     const error: unknown = bifold(found);

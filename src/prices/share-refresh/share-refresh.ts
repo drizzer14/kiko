@@ -217,8 +217,8 @@ const planCalls = (
 // Only the error's name and code are logged: a request URL carries the key.
 // An answer about one symbol (outside the plan, delisted, a bad body) skips
 // it until tomorrow, so one bad symbol never blocks the rest. A rejected key,
-// no network, or the per-minute rate limit stops the run for a later retry;
-// only a 402 means the day's calls are used up.
+// no network, the per-minute rate limit, or an EODHD server error stops the
+// run for a later retry; only a 402 means the day's calls are used up.
 const stopFor = (error: unknown): Stop | undefined => {
   logFailure('[share-refresh] EODHD request failed', error);
 
