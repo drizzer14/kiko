@@ -19,13 +19,18 @@ import maybe, { foldMap } from 'fnts/maybe';
 //   `lastEngagedAt` and `lastDataAt`: a tap, new data, or iOS starting to
 //   show the app's notifications starts the ignored count again.
 // - An occurrence is SKIPPED when `lastDataAt` is on a local calendar day
-//   after the schedule's previous occurrence's day: the user already did what
-//   it asks since then. Data on the previous occurrence's day, such as an
-//   answer to it that evening, never skips it, so a user who answers every
-//   reminder is still reminded every time. An every-N-days schedule's first
-//   occurrence has no previous one, so only data on its own day skips it. A
-//   reminder created or edited after the data skips too, since `activeSince`
-//   plays no part.
+//   after the schedule's previous occurrence's day AND is either on the
+//   occurrence's own local day or at or after the midpoint, in absolute time,
+//   between the previous occurrence and this one: the user already did what
+//   it asks, close enough to this occurrence that it is not an answer to the
+//   previous one. Data on the previous occurrence's day never skips, so a
+//   daily reminder skips only for data on its own day, and a user who answers
+//   every daily reminder, even that evening, is still reminded every time.
+//   Data early in a longer gap does not skip either, so a monthly reminder
+//   answered the next morning still fires next month. An every-N-days
+//   schedule's first occurrence has no previous one, so only data on its own
+//   day skips it. A reminder created or edited after the data skips too,
+//   since `activeSince` plays no part.
 // - The non-skipped occurrences after the anchor take ordinals 1, 2, 3, ….
 //   Those at or before `now` fired and were ignored. Ordinals up to
 //   `IGNORED_LIMIT` are reminders; the next one is the single paused notice,
@@ -126,17 +131,27 @@ const previousOccurrence = (
   fireAt: LocalDateTime,
 ): LocalDateTime | undefined => occurrenceAtOrBefore(schedule, toInstant(fireAt) - MINUTE_MS);
 
+const isAfterGapMidpoint = (
+  lastDataAt: number,
+  previous: LocalDateTime,
+  fireAt: LocalDateTime,
+): boolean => lastDataAt >= (toInstant(previous) + toInstant(fireAt)) / 2;
+
 // Every slot comes after the anchor, which is never before `lastDataAt`, so
 // the data is always from before the slot fires.
 const isSkipped = (input: ReminderPlanInput, fireAt: LocalDateTime): boolean =>
-  foldMap(
-    maybe(input.lastDataAt),
-    (lastDataAt) =>
+  foldMap(maybe(input.lastDataAt), (lastDataAt) => {
+    const isOnFireDay = calendarDaysBetween(lastDataAt, fireAt) === 0;
+
+    return (
       foldMap(
         maybe(previousOccurrence(input.schedule, fireAt)),
-        (previous) => calendarDaysBetween(lastDataAt, previous) < 0,
-      ) ?? calendarDaysBetween(lastDataAt, fireAt) === 0,
-  ) ?? false;
+        (previous) =>
+          calendarDaysBetween(lastDataAt, previous) < 0 &&
+          (isOnFireDay || isAfterGapMidpoint(lastDataAt, previous, fireAt)),
+      ) ?? isOnFireDay
+    );
+  }) ?? false;
 
 // At most one occurrence after the anchor can be skipped (every later one's
 // previous occurrence is on or after the first one's day, so not before the

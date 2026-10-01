@@ -48,13 +48,37 @@ describe('planReminder — smart skip', () => {
     weekdays: [1, 4],
   };
 
-  it('skips Thursday after data on Tuesday, a day after Monday’s fire', () => {
+  const monthlyOnTheFirst: ReminderSchedule = {
+    frequency: 'monthly',
+    minuteOfDay: 19 * 60,
+    dayOfMonth: 1,
+  };
+
+  it('fires Thursday after data on Tuesday morning, before the middle of the gap since Monday', () => {
     const { requests } = planReminder(
       input({
         schedule: mondayAndThursday,
         activeSince: local(2026, 9, 28, 8),
-        lastDataAt: local(2026, 9, 29, 12),
+        lastDataAt: local(2026, 9, 29, 10),
         now: local(2026, 9, 30, 10),
+      }),
+    );
+
+    expect(firesOf(requests)).toEqual([
+      { fireAt: at(2026, 10, 1, 9, 0), variant: 'reminder' },
+      { fireAt: at(2026, 10, 5, 9, 0), variant: 'reminder' },
+      { fireAt: at(2026, 10, 8, 9, 0), variant: 'reminder' },
+      { fireAt: at(2026, 10, 12, 9, 0), variant: 'pausedNotice' },
+    ]);
+  });
+
+  it('skips Thursday after data on Wednesday, in the later half of the gap since Monday', () => {
+    const { requests } = planReminder(
+      input({
+        schedule: mondayAndThursday,
+        activeSince: local(2026, 9, 28, 8),
+        lastDataAt: local(2026, 9, 30, 10),
+        now: local(2026, 9, 30, 11),
       }),
     );
 
@@ -64,6 +88,45 @@ describe('planReminder — smart skip', () => {
       { fireAt: at(2026, 10, 12, 9, 0), variant: 'reminder' },
       { fireAt: at(2026, 10, 15, 9, 0), variant: 'pausedNotice' },
     ]);
+  });
+
+  it('fires next month for a monthly reminder answered the morning after its fire', () => {
+    const { requests } = planReminder(
+      input({
+        schedule: monthlyOnTheFirst,
+        activeSince: local(2026, 9, 20, 10),
+        lastDataAt: local(2026, 10, 2, 10),
+        now: local(2026, 10, 2, 11),
+      }),
+    );
+
+    expect(requests[0]?.fireAt).toEqual(at(2026, 11, 1, 19, 0));
+  });
+
+  it('skips next month for a monthly reminder after data late in the month', () => {
+    const { requests } = planReminder(
+      input({
+        schedule: monthlyOnTheFirst,
+        activeSince: local(2026, 9, 20, 10),
+        lastDataAt: local(2026, 10, 20, 10),
+        now: local(2026, 10, 20, 11),
+      }),
+    );
+
+    expect(requests[0]?.fireAt).toEqual(at(2026, 12, 1, 19, 0));
+  });
+
+  it('fires the next morning for a 09:00 daily reminder answered the evening before', () => {
+    const { requests } = planReminder(
+      input({
+        schedule: { frequency: 'daily', minuteOfDay: 9 * 60 },
+        activeSince: local(2026, 9, 20, 10),
+        lastDataAt: local(2026, 9, 28, 22),
+        now: local(2026, 9, 28, 23),
+      }),
+    );
+
+    expect(requests[0]?.fireAt).toEqual(at(2026, 9, 29, 9, 0));
   });
 
   it('fires Thursday after data on Monday, the day of the previous fire', () => {
@@ -261,7 +324,8 @@ describe('planReminder — request fields', () => {
       }),
     );
 
-    // The data came after Sep 1's fire day, so Oct 1 is skipped.
+    // The data is in the later half of the gap from Sep 1's fire, so Oct 1 is
+    // skipped.
     expect(requests.map(({ daysSinceData }) => daysSinceData)).toEqual([37, 67, 98, 129]);
   });
 
