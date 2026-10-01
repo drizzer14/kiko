@@ -350,15 +350,19 @@ const rewriteOwnership = (holdingId: string, rewrite: OwnershipRewrite) =>
 
 // Builds the metadata from the row stored at the time of the write, so a key
 // another write added while a form was open is never overwritten by the
-// form's seed. Returns the stored metadata the build read.
+// form's seed. Returns the stored row the build read.
 const updateMetadataFromStoredDatabaseTransaction = async (
   databaseTransaction: typeof database,
   holdingId: string,
   patch: Pick<HoldingRow, 'name' | 'color'>,
   buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
-): Promise<{ stored: unknown; metadata: Record<string, unknown> }> => {
+): Promise<{
+  stored: unknown;
+  currency: HoldingRow['currency'] | undefined;
+  metadata: Record<string, unknown>;
+}> => {
   const rows = await databaseTransaction
-    .select({ metadata: holdings.metadata })
+    .select({ currency: holdings.currency, metadata: holdings.metadata })
     .from(holdings)
     .where(eq(holdings.id, holdingId));
   const stored = rows.at(0)?.metadata;
@@ -369,22 +373,27 @@ const updateMetadataFromStoredDatabaseTransaction = async (
     .set({ ...patch, metadata })
     .where(eq(holdings.id, holdingId));
 
-  return { stored, metadata };
+  return { stored, currency: rows.at(0)?.currency, metadata };
 };
 
 // A share switched from EODHD to manual takes the symbol's closes as its own
 // prices, so no past value moves with the switch. A price the user typed for
 // a day inside the closes' span gives way, since that value was not shown
-// while EODHD priced the share; one outside the span stays.
+// while EODHD priced the share; one outside the span stays. A close in
+// another currency than the holding's never priced it (the value fell back
+// to cost), so it is neither carried nor allowed to displace a typed price.
 const carryShareClosesDatabaseTransaction = async (
   databaseTransaction: typeof database,
   holdingId: string,
   symbol: string,
+  currency: HoldingRow['currency'],
 ): Promise<void> => {
   const closes = await databaseTransaction
     .select()
     .from(pricePoints)
-    .where(eq(pricePoints.instrument, shareInstrument(symbol)));
+    .where(
+      and(eq(pricePoints.instrument, shareInstrument(symbol)), eq(pricePoints.currency, currency)),
+    );
 
   if (closes.length === 0) {
     return;
@@ -647,7 +656,7 @@ export const holdingsRepo = {
     buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
   ) =>
     write(async (databaseTransaction) => {
-      const { stored, metadata } = await updateMetadataFromStoredDatabaseTransaction(
+      const { stored, currency, metadata } = await updateMetadataFromStoredDatabaseTransaction(
         databaseTransaction,
         holdingId,
         patch,
@@ -655,8 +664,17 @@ export const holdingsRepo = {
       );
       const before = asShareMeta(stored);
 
-      if (before?.quoteSource === 'eodhd' && asShareMeta(metadata)?.quoteSource === 'manual') {
-        await carryShareClosesDatabaseTransaction(databaseTransaction, holdingId, before.symbol);
+      if (
+        currency !== undefined &&
+        before?.quoteSource === 'eodhd' &&
+        asShareMeta(metadata)?.quoteSource === 'manual'
+      ) {
+        await carryShareClosesDatabaseTransaction(
+          databaseTransaction,
+          holdingId,
+          before.symbol,
+          currency,
+        );
       }
     }),
   /**

@@ -519,6 +519,24 @@ const cells: Cell[] = [
     given: { currency: 'UAH' },
     act: editShare({ quoteSource: 'manual' }),
     expected: [{ at: february10, quantity: '10', value: 100_000, cost: 100_000 }],
+    ownSeries: [],
+  },
+  {
+    operation: 'source switch EODHD to Manual',
+    state: 'currency mismatch: UAH holding, USD closes, UAH prices typed inside their span',
+    given: {
+      currency: 'UAH',
+      own: [
+        { instant: january10, price: '4000' },
+        { instant: february14, price: '4100' },
+      ],
+    },
+    act: editShare({ quoteSource: 'manual' }),
+    expected: [{ at: february14, quantity: '10', value: 4_100_000, cost: 100_000 }],
+    ownSeries: [
+      { instant: january10, price: '4000' },
+      { instant: february14, price: '4100' },
+    ],
   },
   {
     operation: 'restore from .kiko',
