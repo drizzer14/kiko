@@ -55,11 +55,11 @@ rules:
   # branch is a constant unrelated to $X (`label === undefined ? undefined :
   # 'button'`) matches too, even though it is not a map of $X's value at all
   # (both real sites this false-matched are in the negative fixture).
-  # The empty-object form (`...(x === undefined ? {} : { x })`, P5 review)
-  # is its own nested arm: a bare `{}` in a Semgrep pattern matches ANY
-  # object literal, so the sentinel side is captured as $EMPTY and pinned to
-  # the literal text `{}` by `metavariable-regex` (a non-empty fallback
-  # object is in the negative fixture).
+  # The empty-object form (`...(x === undefined ? {} : { x })`) is its own
+  # nested arm: a bare `{}` in a Semgrep pattern matches ANY object literal,
+  # so the sentinel side is captured as $EMPTY and pinned to the literal text
+  # `{}` by `metavariable-regex` (a non-empty fallback object is in the
+  # negative fixture).
   # Deliberately NOT scoped to `paths.exclude` test files — existing
   # test-file instances are in scope too, unlike the Hermes TextDecoder rule
   # (`kiko-no-textdecoder-textencoder`, which stays in
@@ -921,17 +921,10 @@ rules:
                   <Button ... variant=$VARIANT ...>
                     {t('common.cancel')}
                   </Button>
-  # P5 review: the design-system Button defaults `fullWidth` to true
+  # The design-system Button defaults `fullWidth` to true
   # (button.component.tsx), so a bare `fullWidth` or `fullWidth={true}` only
-  # restates the default; seven screens carried it. Only `fullWidth={false}`
-  # (or a computed value) says something. Keyed on the `Button` tag: it is
-  # the one component of that name in src/, and another component's own
-  # `fullWidth` prop (its own default) is in the negative fixture. One
-  # pattern covers both spellings: Semgrep reads a bare JSX attribute as
-  # `={true}` (verified: `fullWidth={true}` alone matched every bare site), and
-  # a self-closing pattern also matches an element with children. Constant
-  # propagation folds a value known to be true (`!isCompact` with a
-  # `const isCompact = false`), so that fires too; a runtime value does not.
+  # restates the default. How the one pattern covers both spellings, and its
+  # limits: this rule's row in docs/harness/review-to-biome-inventory.md.
   - id: kiko-no-redundant-button-full-width
     languages: [typescript]
     severity: ERROR
