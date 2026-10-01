@@ -575,7 +575,8 @@ new component can land between reviews of this skill:
   `isSubmitting` as `loading`, and the surface it sits on stays open
   until the write is done — never a hand-rolled spinner beside a button.
   The holding form's Save shows it only while a share's listing unit is
-  looked up at Save (`isLookingUpUnit`, a network wait of up to 10 s;
+  looked up at Save (`isLookingUpUnit`, a network wait bounded by `SAVE_LOOKUP_TIMEOUT_MS` in
+  `src/prices/share-search/share-search.ts`;
   user decision), not for any other write. It drops `disabled` while the
   spinner shows (`isSaveDisabled`, `holding-form.screen.tsx`), so it is not
   dimmed then; `loading` alone blocks the presses. Any other submit keeps it

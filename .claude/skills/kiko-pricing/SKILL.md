@@ -987,8 +987,11 @@ never priced, so the share form checks it before it writes.
   (`shareFieldErrors`' `currencyError`, `share-reasons.ts`). No call.
 - **Hand-typed EODHD ticker**: Save runs `lookupShareUnit(symbol)`
   (`share-search.ts`): the refresh's own code + exchange search
-  (`listingSearchOf`), under the same quota rules as a search, with a 10 s
-  timeout (private `SAVE_LOOKUP_TIMEOUT_MS`) instead of the client's 30 s. It
+  (`listingSearchOf`), under the same quota rules as a search, with its own
+  shorter timeout (private `SAVE_LOOKUP_TIMEOUT_MS`,
+  `src/prices/share-search/share-search.ts`) instead of the client's
+  (`REQUEST_TIMEOUT_MS`, `src/prices/eodhd/eodhd.client.ts`); read the
+  values there. It
   answers the exact listing's unit, or `undefined` (no key, a rejected key,
   no calls left, no answer, no listing of that symbol, or a failed read),
   which saves as before. A found unit is stored as `quoteCurrency`, so the
@@ -1009,7 +1012,7 @@ never priced, so the share form checks it before it writes.
   and add it again in that currency (`currencyFieldReasonKey` reads
   `isEdit`, `share-reasons.ts`).
 - **Unsupported unit**: a unit whose currency no share can be held in
-  (`isShareUnitSupported` false: `ZAC` cents, `ILA` agorot) gets the
+  (`isShareUnitSupported` false; read the set there, e.g. `ZAC` cents) gets the
   Manual-only text `forms.holding.shareCurrencyUnsupportedError` on create and
   edit alike, instead of either mismatch text.
 - **Stored mismatch**: a share an older build stored in another currency

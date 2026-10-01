@@ -2482,8 +2482,9 @@ below until it is added there too. Seven steps, in order:
    and answer a `CreateCheck`/`EditCheck` — save (the payload, or the write
    to run) or blocked on a `ScrollTarget`, whose field error the screen
    reveals. Every other type falls back to `createPayload()`/`saveEdit`.
-   Only `share` sets them today (kiko-pricing's "Unit lookup at Save and
-   the currency guard").
+   Find the types that set them with
+   `git grep -n 'checkCreate\|checkEdit' src/screens/forms` (the share
+   case: kiko-pricing's "Unit lookup at Save and the currency guard").
 4. Add en/uk label keys (`src/i18n/`) for `holding-form.screen.tsx`'s
    own `typeLabels: Record<HoldingType, string>` — usually a new
    `forms.holding.<type>` key, but `cash` reuses the account kind's own

@@ -680,10 +680,10 @@ gate says there is nothing to do.
 - **The first add triggers the gated refresh**: a user's own holding
   write that can change what is priced runs
   `refreshAfterHoldingWrite(shares)` (`src/sync/refresh-after-holding-write/`)
-  right after the write commits: a manual create
-  (`holding-form.screen.tsx`, `shares` for a new share), a share edit
-  (its source or ticker can change), and a Lot form save (a new or
-  re-dated lot can fall before the stored prices; `shares` for a share).
+  right after the write commits. Rule: every user write that can add,
+  re-date, or re-source a priced holding or lot calls it, passing `shares`
+  when a share is involved. Find the current callers with
+  `git grep -n 'refreshAfterHoldingWrite(' src`.
   It confirms an unconfirmed EODHD daily limit first when `shares` is
   set, then calls `refreshMarketData({ throttled: false, metals: true,
   shares })` (`src/sync/refresh-market-data/`). Restoring a `.kiko`
@@ -1705,7 +1705,7 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   and the restore/import path (`restoreDataSnapshot`) — never only one.
   Follow the `balanceSetAt` / `loan_interest` re-seed precedent above for the
   next such column. `transactions.setsBalance` and
-  `holdings.balanceSetRowId` (migration 0047) are the latest: a file whose
+  `holdings.balanceSetRowId` (migration 0047) follow it: a file whose
   rows carry no `setsBalance` key gets the migration's own marks and
   current-row ids (`withLegacyBalanceSetMarksDerived`); a row or holding
   that carries its key restores it as exported, so a mark on a since
