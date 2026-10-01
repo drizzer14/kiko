@@ -137,10 +137,11 @@ const keptQuoteCurrency = (
     ? listing.quoteCurrency
     : undefined;
 
-// A typed name, or a name kept after a pick filled a different one, belongs
-// to the user; a pick replaces only a blank name or the one it filled last.
-const isOwnName = (name: string, filledName: string | null): boolean =>
-  name.trim() !== '' && name !== filledName;
+// A typed name or ISIN, or one kept after a pick filled a different one,
+// belongs to the user; a pick replaces only a blank one or the one it filled
+// last.
+const isUserTyped = (value: string, filledValue: string | null): boolean =>
+  value.trim() !== '' && value !== filledValue;
 
 type CarriedPricePoint = Pick<PricePointRow, 'day' | 'price' | 'currency'>;
 
@@ -221,9 +222,10 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
   const [stored, setStored] = useState<ShareMeta | null>(null);
   const [isEodhdKeySaved, setIsEodhdKeySaved] = useState(false);
   const [pickedListing, setPickedListing] = useState<ShareListing | null>(null);
-  // The name the last pick filled in, so the next pick can tell it from one
-  // the user typed.
+  // The name and ISIN the last pick filled in, so the next pick can tell them
+  // from ones the user typed.
   const filledNameRef = useRef<string | null>(null);
+  const filledIsinRef = useRef<string | null>(null);
 
   const tickerFieldRef = useRef<FieldInstance>(null);
   const isinFieldRef = useRef<FieldInstance>(null);
@@ -274,11 +276,12 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
     setTicker(listing.symbol);
     setCurrency(listing.currency);
 
-    if (listing.isin !== undefined) {
-      setIsin(listing.isin);
+    if (!isUserTyped(isin, filledIsinRef.current)) {
+      filledIsinRef.current = listing.isin ?? '';
+      setIsin(listing.isin ?? '');
     }
 
-    if (!isOwnName(name, filledNameRef.current)) {
+    if (!isUserTyped(name, filledNameRef.current)) {
       filledNameRef.current = listing.name;
       setName(listing.name);
     }

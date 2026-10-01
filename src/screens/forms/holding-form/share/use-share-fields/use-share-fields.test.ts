@@ -521,6 +521,46 @@ describe('useShareFields search', () => {
     expect(result.current.isin).toBe('GB00BH4HKS39');
   });
 
+  it('keeps a typed ISIN when the listing has another one', async () => {
+    const { result } = await renderFields();
+
+    await act(async () => {
+      result.current.setIsin('US0378331005');
+    });
+    await act(async () => {
+      result.current.pickListing(vodafone);
+    });
+
+    expect(result.current.isin).toBe('US0378331005');
+  });
+
+  it('clears the ISIN its last pick filled when the next listing has none', async () => {
+    const { result } = await renderFields();
+    const { isin: _isin, ...withoutIsin } = vodafone;
+
+    await act(async () => {
+      result.current.pickListing({ ...vodafone, symbol: 'AAPL.US', isin: 'US0378331005' });
+    });
+    await act(async () => {
+      result.current.pickListing({ ...withoutIsin, symbol: '0LQQ.LSE' });
+    });
+
+    expect(result.current.isin).toBe('');
+  });
+
+  it('replaces the ISIN its last pick filled with the next listing’s', async () => {
+    const { result } = await renderFields();
+
+    await act(async () => {
+      result.current.pickListing({ ...vodafone, symbol: 'AAPL.US', isin: 'US0378331005' });
+    });
+    await act(async () => {
+      result.current.pickListing(vodafone);
+    });
+
+    expect(result.current.isin).toBe('GB00BH4HKS39');
+  });
+
   it('saves an edited share with the price unit of the listing picked for it', async () => {
     const { result } = await renderFields({ isEdit: true, currency: 'GBP' });
 
