@@ -135,6 +135,28 @@ const movesBalance = (time: number, boundary: number | null): boolean =>
 const balanceShareOf = (amountMinorUnits: number, time: number, boundary: number | null): number =>
   movesBalance(time, boundary) ? amountMinorUnits : 0;
 
+type DatedAmount = { amountMinorUnits: number; time: number };
+
+/** How far an edit from `existing` to `edited` moves the stored balance. A row
+ * exactly at the boundary is the balance-set row (an opening balance, a hand
+ * edit): its amount is part of the balance set there, so an amount edit that
+ * keeps it at or before the boundary moves the balance by the difference, and
+ * a re-date alone moves nothing. */
+const editBalanceDelta = (
+  existing: DatedAmount,
+  edited: DatedAmount,
+  boundary: number | null,
+): number => {
+  if (existing.time === boundary && edited.time <= existing.time) {
+    return edited.amountMinorUnits - existing.amountMinorUnits;
+  }
+
+  return (
+    balanceShareOf(edited.amountMinorUnits, edited.time, boundary) -
+    balanceShareOf(existing.amountMinorUnits, existing.time, boundary)
+  );
+};
+
 const newestSyncTimeOfHolding = sql<number | null>`(
   SELECT max(${transactions.time}) FROM ${transactions} WHERE ${syncSourceRowsOf(holdings.id)}
 )`;
@@ -1107,7 +1129,9 @@ export const transactionsRepo = {
    * (amount, time) and the new one are each judged against THE BOUNDARY
    * (`importRows`) on their own: only a side dated strictly after it counts,
    * so an edit that moves the row across the boundary adds or takes back its
-   * amount, and an edit wholly at or before it leaves the balance untouched. A synced (monobank) transaction
+   * amount, and an edit wholly at or before it leaves the balance untouched —
+   * except an amount edit on the balance-set row itself, which sits exactly at
+   * the boundary and moves the balance by the difference (`editBalanceDelta`). A synced (monobank) transaction
    * is never mutated by this path — its amount is owned by the bank import — and
    * a missing id is a no-op rather than an error.
    */
@@ -1132,12 +1156,8 @@ export const transactionsRepo = {
         .update(transactions)
         .set({ amountMinorUnits, time, description: description ?? '' })
         .where(eq(transactions.id, transactionId));
-      await moveBalanceDatabaseTransaction(
-        databaseTransaction,
-        existing.holdingId,
-        (boundary) =>
-          balanceShareOf(amountMinorUnits, time, boundary) -
-          balanceShareOf(existing.amountMinorUnits, existing.time, boundary),
+      await moveBalanceDatabaseTransaction(databaseTransaction, existing.holdingId, (boundary) =>
+        editBalanceDelta(existing, { amountMinorUnits, time }, boundary),
       );
     }),
   /**
@@ -1399,7 +1419,8 @@ export const transactionsRepo = {
    * closing as-of included), entering a back-dated one, or re-dating or
    * deleting the balance-set row itself (an opening balance or a hand edit,
    * stamped exactly at its own anchor) never pushes the balance off the
-   * figure the anchor set.
+   * figure the anchor set. Editing that row's amount moves the balance by the
+   * difference (`editBalanceDelta`).
    *
    * `boundary` is `null` when NEITHER (a) nor (b) has ever happened for this
    * holding: every genuinely new row moves the balance regardless of its own

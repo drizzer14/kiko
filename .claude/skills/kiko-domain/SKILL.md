@@ -222,7 +222,11 @@ the boundary is history the anchor already counts. A balance-set row (an
 opening balance, a hand edit, a cash opening, a migration-0036 backfill)
 sits exactly at its own anchor, so re-dating it earlier or deleting it
 leaves the balance unchanged; moving it past the anchor adds it again
-(accepted). A manual row at exactly a closing balance's as-of belongs to
+(accepted). Editing its AMOUNT while it stays at or before the anchor
+moves the balance by the difference (new − old, `editBalanceDelta`): the
+amount is part of the balance set there, so an opening balance edited
+from 50,000 to 60,000 leaves the balance at 60,000. The rule keys on
+`existing.time === boundary`, so it covers every balance-set row kind. A manual row at exactly a closing balance's as-of belongs to
 that closing, the same as `postClosingRowsWhere`'s strict `gt`. A
 closing balance AS OF exactly the boundary still applies (`>=`): it is
 an anchor, not a row.

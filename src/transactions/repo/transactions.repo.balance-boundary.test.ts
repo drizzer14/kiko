@@ -11,6 +11,7 @@ jest.mock('@kiko/db/client', () => {
 
 import { DatabaseSync } from 'node:sqlite';
 import { Money } from '@kiko/currency/money';
+import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
@@ -225,6 +226,50 @@ describe('an opening balance anchor', () => {
 
     expect(balanceOf(holdingId)).toBe(50_000);
   });
+
+  it('moves the balance by the difference when the opening amount is edited', async () => {
+    const holdingId = await openHolding();
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: 60_000,
+      time: SEPTEMBER_30,
+    });
+
+    expect(balanceOf(holdingId)).toBe(60_000);
+  });
+
+  it('moves the balance by the difference when the opening amount is edited and re-dated earlier', async () => {
+    const holdingId = await openHolding();
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: 45_000,
+      time: SEPTEMBER_10,
+    });
+
+    expect(balanceOf(holdingId)).toBe(45_000);
+  });
+
+  it('moves the balance by the difference when a cash opening amount is edited', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(SEPTEMBER_30);
+    await accountsRepo.createCashAccount({
+      name: 'Wallet',
+      currency: 'UAH',
+      initialBalance: Money.of('UAH', 20_000),
+    });
+    const holdingId = (
+      mockDatabase.prepare("SELECT id FROM holdings WHERE type = 'cash'").get() as { id: string }
+    ).id;
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: 25_000,
+      time: SEPTEMBER_30,
+    });
+
+    expect(balanceOf(holdingId)).toBe(25_000);
+  });
 });
 
 describe('a hand-edited balance anchor', () => {
@@ -242,6 +287,22 @@ describe('a hand-edited balance anchor', () => {
     });
 
     expect(balance()).toBe(70_000);
+  });
+
+  it('moves the balance by the difference when the adjustment amount is edited', async () => {
+    await holdingsRepo.updateWithBalanceDelta(
+      'card',
+      { balance: Money.of('UAH', 70_000) },
+      SEPTEMBER_30,
+    );
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: -20_000,
+      time: SEPTEMBER_30,
+    });
+
+    expect(balance()).toBe(80_000);
   });
 
   it('ignores a manual write dated before the edit', async () => {
