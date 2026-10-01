@@ -169,6 +169,18 @@ describe('PricePointFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
+  // SQLite does not check the stored type, so it can name an Object.prototype key.
+  it.each(['unknown_type', 'toString', 'constructor'])(
+    'asks a holding of stored type %p for its value',
+    async (type) => {
+      seed({ id: 'h-1', currency: 'UAH', type });
+      const utils = await renderScreen();
+
+      expect(utils.getByLabelText('Value')).toBeTruthy();
+      expect(utils.getByText('Save value')).toBeTruthy();
+    },
+  );
+
   it('still blocks a non-loan holding at 0, with the generic error', async () => {
     seed({ id: 'h-1', currency: 'UAH', type: 'property_item' });
     const utils = await renderScreen();

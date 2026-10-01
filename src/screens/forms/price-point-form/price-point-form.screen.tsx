@@ -81,9 +81,12 @@ const pricePointKinds: Record<HoldingType, PricePointKind> = {
   share: 'share',
 };
 
-// A stored `type` is not checked by SQLite, so an unknown one reads as a value.
+// A stored `type` is not checked by SQLite, so an unknown one reads as a value;
+// `Object.hasOwn` keeps a type such as `toString` off the prototype chain.
 const pricePointKindOf = (holding: Pick<HoldingRow, 'type'> | undefined): PricePointKind =>
-  foldMap(maybe(holding), ({ type }) => pricePointKinds[type]) ?? 'value';
+  foldMap(maybe(holding), ({ type }) =>
+    Object.hasOwn(pricePointKinds, type) ? pricePointKinds[type] : undefined,
+  ) ?? 'value';
 
 const minorUnitPriceOf = (majorValue: number, currency: Currency): string =>
   shiftDecimal(String(Money.fromMajor(currency, majorValue).minorUnits), -currencyScale[currency]);
