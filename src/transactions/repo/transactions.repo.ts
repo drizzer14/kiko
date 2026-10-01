@@ -395,11 +395,14 @@ const partitionNewRows = async (
   });
 };
 
+/** How coarse a statement row's clock is, when coarser than a second: a clock
+ * that shows minutes only (`HH:MM`), or a date with no time, whose local day
+ * runs from `from` up to `until` (milliseconds) in the file's own zone. */
+type ImportTimeReading = { kind: 'minute' } | { kind: 'day'; from: number; until: number };
+
 /** A statement-import row, plus the older key the ledger may already hold
- * the same row under (`noonAliasDedupKey` in statement-import's mapping),
- * and how much later than `time` its real instant can be: a clock that shows
- * minutes only (`HH:MM`) leaves the seconds unknown. */
-type ImportRow = NewTransaction & { aliasExternalId?: string; timeSpanMilliseconds?: number };
+ * the same row under (`noonAliasDedupKey` in statement-import's mapping). */
+type ImportRow = NewTransaction & { aliasExternalId?: string; timeReading?: ImportTimeReading };
 
 /** A row the ledger already holds under its alias: its real `time`, and the
  * time and amount the ledger stores it with. */
@@ -452,20 +455,45 @@ const dropRowsStoredUnderAlias = async (
  * transaction: the two stamp the same purchase seconds apart. */
 const SYNC_MATCH_WINDOW_MILLISECONDS = 60_000;
 
+const MINUTE_CLOCK_LAST_SECOND_MILLISECONDS = 59_000;
+
 type SyncedRow = { time: number; amountMinorUnits: number };
 
-const latestTimeOf = ({ time, timeSpanMilliseconds = 0 }: ImportRow): number =>
-  time + timeSpanMilliseconds;
+/** The first and last instant a row's clock reading allows, how far from them
+ * a synced row of the same purchase can be, and when the row claims. */
+type ClockRange = { earliest: number; latest: number; window: number; claimOrder: number };
 
-/** How far `syncedTime` lies from the nearest instant `row`'s clock reading
- * allows. */
-const syncDistanceOf = (row: ImportRow, syncedTime: number): number =>
-  Math.max(0, row.time - syncedTime, syncedTime - latestTimeOf(row));
+// A timed reading and the sync stamp one purchase seconds apart. A date-only
+// reading is held by a synced row of its own local day only, and claims after
+// every timed reading, which places the same purchase more precisely.
+const clockRangeOf = ({ time, timeReading }: ImportRow): ClockRange =>
+  match(timeReading)
+    .with(undefined, () => ({
+      earliest: time,
+      latest: time,
+      window: SYNC_MATCH_WINDOW_MILLISECONDS,
+      claimOrder: 0,
+    }))
+    .with({ kind: 'minute' }, () => ({
+      earliest: time,
+      latest: time + MINUTE_CLOCK_LAST_SECOND_MILLISECONDS,
+      window: SYNC_MATCH_WINDOW_MILLISECONDS,
+      claimOrder: 0,
+    }))
+    .with({ kind: 'day' }, ({ from, until }) => ({
+      earliest: from,
+      latest: until - 1,
+      window: 0,
+      claimOrder: 1,
+    }))
+    .exhaustive();
+
+type RangedRow = { row: ImportRow; range: ClockRange };
 
 /** Every statement row and same-amount synced row within the window of each
- * other, nearest first. A tie goes to the earlier row, so the outcome never
- * depends on the file's row order or the database's. */
-const syncPairsNearestFirst = (rows: ImportRow[], synced: SyncedRow[]) => {
+ * other, timed rows first, nearest first. A tie goes to the earlier row, so the
+ * outcome never depends on the file's row order or the database's. */
+const syncPairsNearestFirst = (rangedRows: RangedRow[], synced: SyncedRow[]) => {
   const syncedByAmount = new Map<number, SyncedRow[]>();
 
   for (const syncedRow of synced) {
@@ -475,17 +503,19 @@ const syncPairsNearestFirst = (rows: ImportRow[], synced: SyncedRow[]) => {
     syncedByAmount.set(syncedRow.amountMinorUnits, sameAmount);
   }
 
-  return rows
-    .flatMap((row) =>
+  return rangedRows
+    .flatMap(({ row, range }) =>
       (syncedByAmount.get(row.amountMinorUnits) ?? []).map((syncedRow) => ({
         row,
+        range,
         syncedRow,
-        distance: syncDistanceOf(row, syncedRow.time),
+        distance: Math.max(0, range.earliest - syncedRow.time, syncedRow.time - range.latest),
       })),
     )
-    .filter(({ distance }) => distance <= SYNC_MATCH_WINDOW_MILLISECONDS)
+    .filter(({ range, distance }) => distance <= range.window)
     .sort(
       (left, right) =>
+        left.range.claimOrder - right.range.claimOrder ||
         left.distance - right.distance ||
         left.row.time - right.row.time ||
         left.syncedRow.time - right.syncedRow.time,
@@ -494,7 +524,8 @@ const syncPairsNearestFirst = (rows: ImportRow[], synced: SyncedRow[]) => {
 
 /**
  * `rows` without every row a sync source already holds on this holding: the
- * same amount, dated within `SYNC_MATCH_WINDOW_MILLISECONDS`. A disconnected
+ * same amount, dated within `SYNC_MATCH_WINDOW_MILLISECONDS` of the row's clock
+ * reading, or on the same local day for a date-only row. A disconnected
  * bank keeps its synced rows, and a statement over the same period carries
  * them again under keys no dedup key matches, so that statement row is
  * neither inserted nor counted toward the balance. One synced row stands for
@@ -511,20 +542,21 @@ const dropRowsHeldBySync = async (
     return [];
   }
 
+  const rangedRows = rows.map((row) => ({ row, range: clockRangeOf(row) }));
   const synced = await databaseTransaction
     .select({ time: transactions.time, amountMinorUnits: transactions.amountMinorUnits })
     .from(transactions)
     .where(
       and(
         syncSourceRowsOf(holdingId),
-        gte(transactions.time, minOf(rows.map((row) => row.time)) - SYNC_MATCH_WINDOW_MILLISECONDS),
-        lte(transactions.time, maxOf(rows.map(latestTimeOf)) + SYNC_MATCH_WINDOW_MILLISECONDS),
+        gte(transactions.time, minOf(rangedRows.map(({ range }) => range.earliest - range.window))),
+        lte(transactions.time, maxOf(rangedRows.map(({ range }) => range.latest + range.window))),
       ),
     );
   const heldRows = new Set<ImportRow>();
   const claimedSyncedRows = new Set<SyncedRow>();
 
-  for (const { row, syncedRow } of syncPairsNearestFirst(rows, synced)) {
+  for (const { row, syncedRow } of syncPairsNearestFirst(rangedRows, synced)) {
     if (!heldRows.has(row) && !claimedSyncedRows.has(syncedRow)) {
       heldRows.add(row);
       claimedSyncedRows.add(syncedRow);
@@ -533,7 +565,7 @@ const dropRowsHeldBySync = async (
 
   return rows
     .filter((row) => !heldRows.has(row))
-    .map(({ aliasExternalId: _storedAlias, timeSpanMilliseconds: _timeSpan, ...row }) => row);
+    .map(({ aliasExternalId: _storedAlias, timeReading: _timeReading, ...row }) => row);
 };
 
 /** The net of the `aliased` rows the post-closing read counted by their
@@ -1498,8 +1530,8 @@ export const transactionsRepo = {
    *
    * A SYNC-source row is matched instead (`dropRowsHeldBySync`): a statement
    * row with the holding's synced row's amount, dated within 60 seconds of
-   * it, is that synced row — not inserted, not counted. One synced row stands
-   * for one statement row. Rows a pre-fix build already imported over synced
+   * it (a date-only row: on the same local day), is that synced row — not
+   * inserted, not counted. One synced row stands for one statement row. Rows a pre-fix build already imported over synced
    * ones stay; no migration removes them.
    *
    * An account a bank sync owns (`isSyncedAccount`) refuses the import

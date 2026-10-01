@@ -51,12 +51,27 @@ const statementRow = (externalId: string, amountMinorUnits: number, time: number
   externalId,
 });
 
-const MINUTE_CLOCK_SPAN_MILLISECONDS = 59 * SECOND;
-
 const minuteStatementRow = (externalId: string, amountMinorUnits: number, time: number) => ({
   ...statementRow(externalId, amountMinorUnits, time),
-  timeSpanMilliseconds: MINUTE_CLOCK_SPAN_MILLISECONDS,
+  timeReading: { kind: 'minute' as const },
 });
+
+// Kyiv is UTC+3 in September: its day runs from 21:00 UTC the day before, and
+// a date-only cell is stored at Kyiv noon, 09:00 UTC.
+const KYIV_DAY_START_OFFSET = -3 * 60 * 60 * SECOND;
+
+const dateOnlyStatementRow = (externalId: string, amountMinorUnits: number, date: number) => {
+  const from = Date.UTC(2026, 8, date) + KYIV_DAY_START_OFFSET;
+
+  return {
+    ...statementRow(externalId, amountMinorUnits, Date.UTC(2026, 8, date, 9)),
+    timeReading: { kind: 'day' as const, from, until: from + 24 * 60 * 60 * SECOND },
+  };
+};
+
+// 21:00 Kyiv on 20 September: nine hours from the date-only row's noon, so only
+// a same-day rule can match the two.
+const SYNCED_IN_THE_EVENING = Date.UTC(2026, 8, 20, 18);
 
 beforeEach(() => {
   mockDatabase = new DatabaseSync(':memory:');
@@ -157,6 +172,65 @@ describe('a statement row a synced row already holds', () => {
     });
 
     expect(imported).toBe(0);
+  });
+});
+
+describe('a date-only statement row', () => {
+  beforeEach(() => {
+    run("UPDATE transactions SET time = ? WHERE id = 'synced'", SYNCED_IN_THE_EVENING);
+  });
+
+  it('is held by a synced row of the same amount on its own local day', async () => {
+    const imported = await transactionsRepo.importRows({
+      holdingId: 'card',
+      rows: [dateOnlyStatementRow('same-day', -5_000, 20)],
+    });
+
+    expect(imported).toBe(0);
+    expect(balance()).toBe(100_000);
+  });
+
+  it('is not held by a synced row on another local day', async () => {
+    const imported = await transactionsRepo.importRows({
+      holdingId: 'card',
+      rows: [dateOnlyStatementRow('day-before', -5_000, 19)],
+    });
+
+    expect(imported).toBe(1);
+  });
+
+  it('pairs one to one: of two equal same-day rows, one synced row holds only one', async () => {
+    const imported = await transactionsRepo.importRows({
+      holdingId: 'card',
+      rows: [
+        dateOnlyStatementRow('first-fare', -5_000, 20),
+        dateOnlyStatementRow('second-fare', -5_000, 20),
+      ],
+    });
+
+    expect(imported).toBe(1);
+  });
+
+  it('is inserted and counted when its day is after the synced period', async () => {
+    const imported = await transactionsRepo.importRows({
+      holdingId: 'card',
+      rows: [dateOnlyStatementRow('day-after', -5_000, 21)],
+    });
+
+    expect(imported).toBe(1);
+    expect(balance()).toBe(95_000);
+  });
+
+  it('claims after a timed row, which reads the same purchase more precisely', async () => {
+    await transactionsRepo.importRows({
+      holdingId: 'card',
+      rows: [
+        dateOnlyStatementRow('date-only', -5_000, 20),
+        statementRow('timed', -5_000, SYNCED_IN_THE_EVENING + 5 * SECOND),
+      ],
+    });
+
+    expect(importedTimes()).toEqual([Date.UTC(2026, 8, 20, 9)]);
   });
 });
 

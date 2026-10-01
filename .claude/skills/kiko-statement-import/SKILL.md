@@ -105,13 +105,22 @@ nearest first across the whole statement, never in file order: at the
 edge of the synced period a real unsynced row of the same amount can be
 in reach of the same synced row, and file order (newest-first or
 oldest-first) must not decide which one is dropped. A tie goes to the
-earlier statement row, then the earlier synced row. A file whose clock
-shows minutes only (Sensebank, the `HH:MM` column-mapping presets) sets
-`ParsedTransaction.timeSpanSeconds` to 59, and the distance runs from
-any second of that minute, so a floored `09:00` row is not pushed
-behind a `09:01` row for a synced row at `09:00:40`. Rows an earlier
-build already imported over synced ones stay; no migration removes
-them.
+earlier statement row, then the earlier synced row. A row whose clock is
+coarser than a second carries `ParsedTransaction.timeReading`:
+- `{ kind: 'minute' }` (Sensebank, the `HH:MM` column-mapping presets):
+  the distance runs from any second of that minute, so a floored `09:00`
+  row is not pushed behind a `09:01` row for a synced row at `09:00:40`.
+- `{ kind: 'day', fromSeconds, untilSeconds }` (a date-only
+  column-mapping cell, stored at noon; `readDateWithFormat` in
+  `date-formats.ts` reads the bounds from local midnight to the next one
+  in the mapping's zone, 23 or 25 hours on a summer-time switch day): it
+  is held only by a synced row of the same amount on that same local day,
+  with no ±60 s widening, and it claims after every timed row, which
+  places the same purchase more precisely. Two equal date-only rows on
+  one day against one synced row drop only one. A day after the newest
+  synced row has no synced row of its own, so its rows always go in.
+Rows an earlier build already imported over synced ones stay; no
+migration removes them.
 
 ## Dedup
 

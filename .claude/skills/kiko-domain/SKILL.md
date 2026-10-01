@@ -254,7 +254,8 @@ showed the real imported rows.
 full statement of the exact rule — the boundary, `holdings.balanceSetAt`,
 the closing-balance override, the synced-account refusal (any holding of
 an account `isSyncedAccount` owns, a hand-added one included), the ±60 s
-match against a disconnected bank's synced rows, and why no migration
+(or same-local-day, for a date-only row) match against a disconnected
+bank's synced rows, and why no migration
 repairs pre-fix data — read it there rather than trusting a restated
 summary here.
 

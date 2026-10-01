@@ -27,10 +27,8 @@ export type ParsedTransaction = {
   currency: Currency;
   amountMinorUnits: number;
   timeSeconds: number;
-  /** How many seconds after `timeSeconds` the real instant can lie:
-   * `MINUTE_CLOCK_TIME_SPAN_SECONDS` for a file whose clock shows minutes
-   * only. Omitted for a clock that shows seconds. */
-  timeSpanSeconds?: number;
+  /** Omitted for a clock that shows seconds. */
+  timeReading?: TimeReading;
   description: string;
   mcc?: number;
   counterIban?: string;
@@ -45,7 +43,12 @@ export type ParsedTransaction = {
   maskedCardHint?: string;
 };
 
-export const MINUTE_CLOCK_TIME_SPAN_SECONDS = 59;
+/** How coarse a row's clock is, when coarser than a second: a clock that shows
+ * minutes only (`HH:MM`), or a date with no time, whose local day runs from
+ * `fromSeconds` up to `untilSeconds` in the file's own zone. */
+export type TimeReading =
+  | { kind: 'minute' }
+  | { kind: 'day'; fromSeconds: number; untilSeconds: number };
 
 export type ParsedAccountHint = {
   currency: Currency;

@@ -283,8 +283,8 @@ describe('sensebankCsvFormat.parse', () => {
   it('marks every row as read off a clock that shows minutes only', () => {
     const parsed = sensebankCsvFormat.parse(fixtureInput);
 
-    expect(parsed.transactions.map((transaction) => transaction.timeSpanSeconds)).toEqual(
-      parsed.transactions.map(() => 59),
+    expect(parsed.transactions.map((transaction) => transaction.timeReading)).toEqual(
+      parsed.transactions.map(() => ({ kind: 'minute' })),
     );
   });
 

@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { settingsRepo } from '@kiko/settings';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -6,6 +7,7 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 
 import {
+  type TimeReading,
   StatementParseError,
   type ParsedStatement,
   type ParsedTransaction,
@@ -32,6 +34,17 @@ export type ImportResult = {
    * when `skippedWrongCurrency` is 0. */
   skippedWrongCurrencyCodes: Currency[];
 };
+
+// The ledger dates its rows in milliseconds.
+const importTimeReadingOf = (reading: TimeReading) =>
+  match(reading)
+    .with({ kind: 'minute' }, () => ({ kind: 'minute' as const }))
+    .with({ kind: 'day' }, ({ fromSeconds, untilSeconds }) => ({
+      kind: 'day' as const,
+      from: fromSeconds * 1000,
+      until: untilSeconds * 1000,
+    }))
+    .exhaustive();
 
 /**
  * Exclude any row whose currency doesn't match the TARGET HOLDING's own
@@ -123,10 +136,7 @@ export const importParsedStatement = async (
       aliasExternalId: readInKyivTime
         ? noonAliasDedupKey(holdingId, transaction, occurrenceIndex)
         : undefined,
-      timeSpanMilliseconds: foldMap(
-        maybe(transaction.timeSpanSeconds),
-        (seconds) => seconds * 1000,
-      ),
+      timeReading: foldMap(maybe(transaction.timeReading), importTimeReadingOf),
     };
   });
   const imported = await transactionsRepo.importRows({

@@ -957,8 +957,8 @@ describe('importParsedStatement runs the loan auto-link matcher', () => {
   });
 });
 
-describe('importParsedStatement hands each row its clock span', () => {
-  it('passes a minute clock span in milliseconds and stores no span column', async () => {
+describe('importParsedStatement hands each row its time reading', () => {
+  it('passes a minute reading, a day in milliseconds, and stores no reading column', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
     const { databaseTransaction } = makeImportDatabaseTransaction({
       store,
@@ -975,7 +975,7 @@ describe('importParsedStatement hands each row its clock span', () => {
           currency: 'UAH' as const,
           amountMinorUnits: -1_000,
           timeSeconds: 1_700_000_040,
-          timeSpanSeconds: 59,
+          timeReading: { kind: 'minute' as const },
           description: 'Coffee',
         },
         {
@@ -984,16 +984,28 @@ describe('importParsedStatement hands each row its clock span', () => {
           timeSeconds: 1_700_000_100,
           description: 'Lunch',
         },
+        {
+          currency: 'UAH' as const,
+          amountMinorUnits: -3_000,
+          timeSeconds: 1_700_043_200,
+          timeReading: {
+            kind: 'day' as const,
+            fromSeconds: 1_700_000_000,
+            untilSeconds: 1_700_086_400,
+          },
+          description: 'Market',
+        },
       ],
     };
 
     await importParsedStatement(parsed, 'holding-1');
 
-    expect(importRows.mock.calls[0][0].rows.map((row) => row.timeSpanMilliseconds)).toEqual([
-      59_000,
+    expect(importRows.mock.calls[0][0].rows.map((row) => row.timeReading)).toEqual([
+      { kind: 'minute' },
       undefined,
+      { kind: 'day', from: 1_700_000_000_000, until: 1_700_086_400_000 },
     ]);
-    expect(store.transactions.every((row) => !('timeSpanMilliseconds' in row))).toBe(true);
+    expect(store.transactions.every((row) => !('timeReading' in row))).toBe(true);
 
     importRows.mockRestore();
   });

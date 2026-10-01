@@ -505,8 +505,12 @@ describe('applyColumnMapping over spreadsheet Date cells', () => {
   });
 });
 
-describe('applyColumnMapping clock span', () => {
-  const spansFor = (dateFormat: ColumnMapping['dateFormat'], date: string) =>
+describe('applyColumnMapping time reading', () => {
+  const readingsFor = (
+    dateFormat: ColumnMapping['dateFormat'],
+    date: string,
+    timeZone?: ColumnMapping['timeZone'],
+  ) =>
     applyColumnMapping(
       [
         ['Date', 'Amount', 'Description'],
@@ -520,21 +524,59 @@ describe('applyColumnMapping clock span', () => {
         amount: { mode: 'single', column: 1 },
         descriptionColumn: 2,
         currency: { mode: 'fixed', currency: 'EUR' },
+        timeZone,
       },
-    ).statement.transactions.map((transaction) => transaction.timeSpanSeconds);
+    ).statement.transactions.map((transaction) => transaction.timeReading);
+
+  // Kyiv is UTC+3 on 15 September, so its day starts at 21:00 UTC the day before.
+  const KYIV_SEPTEMBER_15 = {
+    kind: 'day',
+    fromSeconds: Date.UTC(2026, 8, 14, 21) / 1000,
+    untilSeconds: Date.UTC(2026, 8, 15, 21) / 1000,
+  };
 
   it.each([
     ['DD.MM.YYYY HH:MM' as const, '15.09.2026 14:30'],
     ['DD.MM.YY HH:MM' as const, '15.09.26 14:30'],
-  ])('leaves the seconds of a %s row open', (dateFormat, date) => {
-    expect(spansFor(dateFormat, date)).toEqual([59]);
+  ])('reads a %s row off a minute clock', (dateFormat, date) => {
+    expect(readingsFor(dateFormat, date)).toEqual([{ kind: 'minute' }]);
   });
 
   it.each([
     ['DD.MM.YYYY HH:MM:SS' as const, '15.09.2026 14:30:05'],
     ['YYYY-MM-DD HH:MM:SS' as const, '2026-09-15 14:30:05'],
-  ])('gives a %s row no span', (dateFormat, date) => {
-    expect(spansFor(dateFormat, date)).toEqual([undefined]);
+  ])('gives a %s row with seconds no reading', (dateFormat, date) => {
+    expect(readingsFor(dateFormat, date)).toEqual([undefined]);
+  });
+
+  it.each([
+    ['DD.MM.YYYY' as const, '15.09.2026'],
+    ['YYYY-MM-DD' as const, '2026-09-15'],
+    ['MM/DD/YYYY' as const, '09/15/2026'],
+    ['DD/MM/YYYY' as const, '15/09/2026'],
+    ['YYYY-MM-DD HH:MM:SS' as const, '2026-09-15'],
+  ])('reads a date-only %s row as its whole local day', (dateFormat, date) => {
+    expect(readingsFor(dateFormat, date)).toEqual([KYIV_SEPTEMBER_15]);
+  });
+
+  it('reads the local day in the mapping zone', () => {
+    expect(readingsFor('DD.MM.YYYY', '15.09.2026', 'UTC+05:30')).toEqual([
+      {
+        kind: 'day',
+        fromSeconds: Date.UTC(2026, 8, 14, 18, 30) / 1000,
+        untilSeconds: Date.UTC(2026, 8, 15, 18, 30) / 1000,
+      },
+    ]);
+  });
+
+  it('reads a 25-hour day where summer time ends', () => {
+    expect(readingsFor('DD.MM.YYYY', '25.10.2026')).toEqual([
+      {
+        kind: 'day',
+        fromSeconds: Date.UTC(2026, 9, 24, 21) / 1000,
+        untilSeconds: Date.UTC(2026, 9, 25, 22) / 1000,
+      },
+    ]);
   });
 });
 
