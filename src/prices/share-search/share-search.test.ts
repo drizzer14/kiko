@@ -266,7 +266,7 @@ describe('searchShares', () => {
         fetchEod: async () => {
           await searchShares('AAPL', FIAT, depsFor(world));
 
-          return [];
+          return [{ day: TODAY - DAY_MS, close: '254.63' }];
         },
         save: async ({ settlement }) => {
           world.quota = settle(world.quota, settlement);

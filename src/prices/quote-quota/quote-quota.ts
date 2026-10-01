@@ -11,13 +11,28 @@ const SEARCH_RESERVE = 2;
 // 30 days: rarely enough to spare the daily calls, often enough to notice a
 // listing that came back.
 const MAX_BACKOFF_DAYS = 30;
+// A held listing with no close for a week of daily answers is most likely
+// delisted; a holiday or a late close never runs that long.
+const EMPTY_ANSWERS_BEFORE_STRIKE = 7;
 
 /**
  * A symbol held back until `retryDay` (a UTC day), after `strikes` answers in a
- * row it had no use for. `lastLotDay` is the newest lot of its holdings when it
- * was struck: a new lot is the user acting on the share, so it asks again.
+ * row it had no use for. `lastLotDay` and `firstLotDay` are the newest and the
+ * oldest lot of its holdings when it was struck: a newer lot is the user acting
+ * on the share, so its newest closes are asked for again, and an older lot asks
+ * again for the history before it. `firstLotDay` is absent on a back-off stored
+ * before it. `emptyAnswers` counts its answers in a row with no close.
  */
-export type SymbolBackoff = { strikes: number; retryDay: number; lastLotDay: number };
+export type SymbolBackoff = {
+  strikes: number;
+  retryDay: number;
+  lastLotDay: number;
+  firstLotDay?: number;
+  emptyAnswers?: number;
+};
+
+/** A symbol and the oldest and newest lot of its holdings. */
+export type SymbolLots = { symbol: string; firstLotDay: number; lastLotDay: number };
 
 /**
  * The EODHD calls spent on one `day`: a UTC-midnight day, because EODHD resets
@@ -82,19 +97,33 @@ export const markUsedUp = (quota: QuoteQuota): QuoteQuota => ({
   calls: Math.max(quota.calls, quota.dailyLimit),
 });
 
-export const isBackedOff = (quota: QuoteQuota, symbol: string, lastLotDay: number): boolean =>
+const isHeldBack = (
+  quota: QuoteQuota,
+  symbol: string,
+  isSameLot: (backoff: SymbolBackoff) => boolean,
+): boolean =>
   foldMap(
     maybe(quota.backoff?.[symbol]),
-    (backoff) => backoff.lastLotDay === lastLotDay && quota.day < backoff.retryDay,
+    (backoff) => isSameLot(backoff) && quota.day < backoff.retryDay,
   ) ?? false;
+
+export const isBackedOff = (quota: QuoteQuota, symbol: string, lastLotDay: number): boolean =>
+  isHeldBack(quota, symbol, (backoff) => backoff.lastLotDay === lastLotDay);
+
+export const isBackfillBackedOff = (
+  quota: QuoteQuota,
+  symbol: string,
+  firstLotDay: number,
+): boolean => isHeldBack(quota, symbol, (backoff) => backoff.firstLotDay === firstLotDay);
 
 /**
  * What one refresh did with the calls it reserved on `day`: `unanswered` are
  * the reserved symbols it stopped before asking about. `keyGeneration` is the
  * key it asked with: what it learned about the key and its symbols (a
- * rejection, a symbol `struck` or `answered`) applies only while that key is
- * still the saved one. `backfilledFrom` is the earliest day it got an answer
- * from per series, which holds whatever key asked.
+ * rejection, a symbol `struck`, or one whose newest closes were `answered` or
+ * came back `empty`) applies only while that key is still the saved one.
+ * `backfilledFrom` is the earliest day it got an answer from per series, which
+ * holds whatever key asked.
  */
 export type QuotaSettlement = {
   day: number;
@@ -104,8 +133,9 @@ export type QuotaSettlement = {
   usedUp: boolean;
   keyGeneration: number;
   isKeyRejected?: boolean;
-  struck?: { symbol: string; lastLotDay: number }[];
+  struck?: SymbolLots[];
   answered?: string[];
+  empty?: SymbolLots[];
   backfilledFrom?: Record<string, number>;
 };
 
@@ -128,25 +158,47 @@ const withCalls = (
 
 const strike = (
   previous: SymbolBackoff | undefined,
-  lastLotDay: number,
+  { firstLotDay, lastLotDay }: SymbolLots,
   day: number,
 ): SymbolBackoff => {
-  const strikes = previous?.lastLotDay === lastLotDay ? previous.strikes + 1 : 1;
+  const strikes =
+    previous?.lastLotDay === lastLotDay && previous.firstLotDay === firstLotDay
+      ? previous.strikes + 1
+      : 1;
 
   return {
+    ...previous,
     strikes,
     retryDay: day + Math.min(2 ** strikes, MAX_BACKOFF_DAYS) * DAY_MS,
     lastLotDay,
+    firstLotDay,
   };
+};
+
+// Once the count is reached, each further answer with no close strikes again.
+const answeredEmpty = (
+  previous: SymbolBackoff | undefined,
+  lots: SymbolLots,
+  day: number,
+): SymbolBackoff => {
+  const emptyAnswers = (previous?.emptyAnswers ?? 0) + 1;
+
+  if (emptyAnswers >= EMPTY_ANSWERS_BEFORE_STRIKE) {
+    return { ...strike(previous, lots, day), emptyAnswers };
+  }
+
+  const { firstLotDay, lastLotDay } = lots;
+
+  return { strikes: 0, retryDay: day, lastLotDay, firstLotDay, ...previous, emptyAnswers };
 };
 
 const withBackoff = (
   stored: QuoteQuota,
-  { day, struck = [], answered = [] }: QuotaSettlement,
+  { day, struck = [], answered = [], empty = [] }: QuotaSettlement,
 ): QuoteQuota => {
   const cleared = answered.filter((symbol) => stored.backoff?.[symbol] !== undefined);
 
-  if (struck.length === 0 && cleared.length === 0) {
+  if (struck.length === 0 && cleared.length === 0 && empty.length === 0) {
     return stored;
   }
 
@@ -156,8 +208,12 @@ const withBackoff = (
     delete backoff[symbol];
   }
 
-  for (const { symbol, lastLotDay } of struck) {
-    backoff[symbol] = strike(backoff[symbol], lastLotDay, day);
+  for (const lots of struck) {
+    backoff[lots.symbol] = strike(backoff[lots.symbol], lots, day);
+  }
+
+  for (const lots of empty) {
+    backoff[lots.symbol] = answeredEmpty(backoff[lots.symbol], lots, day);
   }
 
   return { ...stored, backoff };
@@ -218,10 +274,15 @@ export const withUserLimits = (
   };
 };
 
+export const withoutRejection = ({
+  isKeyRejected: _wasRejected,
+  ...quota
+}: QuoteQuota): QuoteQuota => quota;
+
 // A new key starts with nothing the previous one learned: not its rejection,
 // and not its back-offs, which a bigger plan may not need.
 const withNewKey = (quota: QuoteQuota): QuoteQuota => {
-  const { isKeyRejected: _wasRejected, backoff: _backoff, ...kept } = quota;
+  const { backoff: _backoff, ...kept } = withoutRejection(quota);
 
   return { ...kept, keyGeneration: keyGenerationOf(quota) + 1 };
 };

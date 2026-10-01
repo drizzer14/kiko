@@ -241,6 +241,7 @@ describe('refreshSharePrices', () => {
             isKeyRejected: false,
             struck: [],
             answered: ['AAPL.US'],
+            empty: [],
             backfilledFrom: { 'AAPL.US': Date.UTC(2026, 5, 15) },
           },
         },
@@ -383,7 +384,7 @@ describe('refreshSharePrices', () => {
         fetchEod: async () => {
           world.quota = { day: THURSDAY, calls: 7, dailyLimit: 100, symbols: ['AAPL.US'] };
 
-          return [];
+          return [{ day: WEDNESDAY, close: '254.63' }];
         },
       });
 
@@ -408,6 +409,7 @@ describe('refreshSharePrices', () => {
     it('starts a quota stored on an earlier UTC day over', async () => {
       const world = makeWorld({
         quota: { day: WEDNESDAY, calls: 20, dailyLimit: 20, symbols: ['AAPL.US'] },
+        eod: { 'AAPL.US': [{ day: WEDNESDAY, close: '254.63' }] },
       });
 
       await expect(refreshSharePrices(depsFor(world))).resolves.toBe('ok');
@@ -791,7 +793,14 @@ describe('refreshSharePrices', () => {
         calls: 1,
         dailyLimit: 20,
         symbols: ['VOD.LSE'],
-        backoff: { 'VOD.LSE': { strikes: 1, retryDay: THURSDAY + 2 * DAY_MS, lastLotDay: JUNE_1 } },
+        backoff: {
+          'VOD.LSE': {
+            strikes: 1,
+            retryDay: THURSDAY + 2 * DAY_MS,
+            lastLotDay: JUNE_1,
+            firstLotDay: JUNE_1,
+          },
+        },
       });
     });
 
@@ -952,6 +961,41 @@ describe('refreshSharePrices', () => {
       ]);
     });
 
+    it('asks again for history EODHD had no use for only once its back-off ends', async () => {
+      const world = makeWorld({
+        holdings: [share({ id: 'apple', lotDays: [MARCH_2] })],
+        points: fromSeptember(),
+        eod: { 'AAPL.US': new EodhdNotInPlanError() },
+      });
+
+      for (const day of [0, 1, 2]) {
+        await refreshSharePrices({ ...depsFor(world), now: () => NOW + day * DAY_MS });
+      }
+
+      expect(calls(world)).toEqual([
+        'eod AAPL.US 2026-03-02 2026-08-31',
+        'eod AAPL.US 2026-03-02 2026-10-03',
+      ]);
+    });
+
+    it('asks for the history of an even older lot while the back-off holds', async () => {
+      const january5 = Date.UTC(2026, 0, 5);
+      const world = makeWorld({
+        holdings: [share({ id: 'apple', lotDays: [MARCH_2] })],
+        points: fromSeptember(),
+        eod: { 'AAPL.US': new EodhdNotInPlanError() },
+      });
+
+      await refreshSharePrices(depsFor(world));
+      world.holdings = [share({ id: 'apple', lotDays: [january5, MARCH_2] })];
+      await refreshSharePrices({ ...depsFor(world), now: () => NOW + DAY_MS });
+
+      expect(calls(world)).toEqual([
+        'eod AAPL.US 2026-03-02 2026-08-31',
+        'eod AAPL.US 2026-01-05 2026-08-31',
+      ]);
+    });
+
     it('calls nothing for a gap of only a weekend', async () => {
       const saturday = Date.UTC(2026, 8, 26);
       const world = makeWorld({
@@ -1095,6 +1139,60 @@ describe('refreshSharePrices', () => {
       await refreshSharePrices(depsFor(world));
 
       expect(calls(world)).toEqual(['eod AAPL.US 2026-03-02 2026-05-31']);
+    });
+
+    it('keeps the back-off of a symbol when only its older history was answered', async () => {
+      const backoff = { strikes: 1, retryDay: THURSDAY + DAY_MS, lastLotDay: JUNE_1 };
+      const world = makeWorld({
+        holdings: [share({ id: 'apple', lotDays: [Date.UTC(2026, 2, 2), JUNE_1] })],
+        points: series('AAPL.US', TUESDAY - DAY_MS),
+        quota: {
+          day: THURSDAY,
+          calls: 0,
+          dailyLimit: 20,
+          symbols: [],
+          backoff: { 'AAPL.US': backoff },
+        },
+        eod: { 'AAPL.US': [{ day: Date.UTC(2026, 2, 2), close: '241.84' }] },
+      });
+
+      await refreshSharePrices(depsFor(world));
+
+      expect(world.quota?.backoff).toEqual({ 'AAPL.US': backoff });
+    });
+
+    it('backs off a held symbol EODHD answered with no close 7 days in a row', async () => {
+      const world = makeWorld({ points: series('AAPL.US', Date.UTC(2026, 8, 1)) });
+
+      for (const day of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+        await refreshSharePrices({ ...depsFor(world), now: () => NOW + day * DAY_MS });
+      }
+
+      expect(calls(world)).toEqual(
+        [0, 1, 2, 3, 4, 5, 6, 8].map(
+          (day) => `eod AAPL.US 2026-09-02 ${text(THURSDAY + day * DAY_MS)}`,
+        ),
+      );
+    });
+
+    it('starts the count of answers with no close over after an answer with one', async () => {
+      const world = makeWorld({ points: series('AAPL.US', Date.UTC(2026, 8, 1)) });
+      const refreshOn = (day: number) =>
+        refreshSharePrices({ ...depsFor(world), now: () => NOW + day * DAY_MS });
+
+      for (const day of [0, 1, 2, 3, 4, 5]) {
+        await refreshOn(day);
+      }
+
+      world.eod = { 'AAPL.US': [{ day: Date.UTC(2026, 8, 2), close: '229.72' }] };
+      await refreshOn(6);
+      world.eod = {};
+
+      for (const day of [7, 8, 9, 10, 11, 12]) {
+        await refreshOn(day);
+      }
+
+      expect(calls(world)).toHaveLength(13);
     });
 
     it('forgets the back-off of a symbol EODHD answers again', async () => {

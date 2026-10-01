@@ -813,41 +813,87 @@ exact constants (default limit, search reserve, history span).
 - **Serialised runs**: `refreshSharePrices` chains each run on the previous
   one's promise, so two overlapping runs never plan from the same quota.
 - **Gate order**: no active EODHD share → return before the Keychain read;
+  a stored `isKeyRejected` → `keyRejected` before the Keychain read (the key
+  state is read before the key, so a key saved in between is a newer key);
   no key → return before any network.
 - **Budget**: a refresh spends at most `refreshAllowance` (daily limit − the
   search reserve, R2); a search may use the rest. When more symbols need a
   call than the allowance covers, the OLDEST latest price goes first (R1).
-- **One call per symbol per UTC day**: a symbol already in
-  `quota.symbols` is never called again that day, even when its answer
-  brought no new close.
-- **Skip fresh symbols**: no call when a symbol's latest stored point is on
-  or after the last weekday.
-- **Backfill range**: from the day after the latest point, or from the
-  holding's earliest lot when there is none, clamped to the history span (1
-  year). A future-dated lot is skipped.
-- **Error handling** (`stopFor`, `costOfFailure`): 401 stops the run; 402
-  stops and marks the day used up; 429 stops only (does not mark the day);
-  403 and `EodhdUnavailableError` skip that symbol for the day; a network
-  error (a timeout included) stops the run and counts 0 calls spent;
+- **One forward call per symbol per UTC day**: a call for a symbol's newest
+  closes (`isForward`) is reserved in `quota.symbols`, and a symbol already
+  there gets no forward call again that day, even when its answer brought no
+  new close. A call for older history only is not reserved there.
+- **Skip fresh symbols**: no forward call while the symbol's latest stored
+  close (`lastDay`) is on or after the last weekday (for a sold-out listing,
+  the last weekday before its `lastLotDay`), or while the symbol is backed
+  off (`isBackedOff`).
+- **Backfill range**: a forward call runs from the day after the latest
+  point. History is asked for when the earliest wanted day (the listing's
+  earliest lot, clamped to the history span of 1 year) is before the earlier
+  of the first stored close and `backfilledFrom[symbol]`, and that gap holds
+  a weekday. It goes in ONE call with the forward one when both are due (the
+  same cost), else alone up to the day before the first stored close. An
+  answered call that reached back stores `backfilledFrom[symbol]`, so a range
+  with no close is never asked for again. History is not asked for while
+  `isBackfillBackedOff` holds (a back-off struck with the same `firstLotDay`,
+  before its `retryDay`); an even older lot asks again. A future-dated lot is
+  skipped.
+- **Error handling** (`stopFor`, `costOfFailure`): 401 stops the run and
+  stores `isKeyRejected`, which stops every later refresh and search until a
+  key is saved or checked again (`recheckRejectedKey`); 402 stops and marks
+  the day used up; 429 stops only (does not mark the day); a network error (a
+  timeout included) stops the run and counts 0 calls spent;
   `EodhdServerError` stops the run as failed, counts 1 call, and leaves the
-  unanswered symbols open for a later run. A 404 or a bad body stays a
-  per-symbol skip.
+  unanswered symbols open for a later run; a midnight UTC passed during the
+  run stops it (`dayChanged`, status `ok`), so the next run plans on the new
+  day. A 403, 404 or bad body (`EodhdNotInPlanError`,
+  `EodhdUnavailableError`), a unit search with no exact listing, and a
+  sold-out listing whose closes stop short of its sale STRIKE the symbol: it
+  is backed off for 2, 4, 8, 16, then every 30 days (`SymbolBackoff` in
+  `quote-quota.ts`, keyed by the `firstLotDay`/`lastLotDay` it was struck
+  with; a newer lot asks the newest closes again, an older lot its history).
+  A held symbol whose forward call EODHD answers with no close 7 times in a
+  row (`emptyAnswers`, counted in the same `SymbolBackoff`) is struck too, and
+  again at each empty answer after; a forward answer with a close deletes the
+  back-off and its count. An answer to a history-only call neither ends a
+  back-off nor counts as empty.
 - **Unit rule**: a listing with no `quoteCurrency` is resolved once by one
   search call (that call costs 1 more) and saved on the holding. A `GBX`
   close on a `GBP` holding is divided by 100; any other unit/currency
   mismatch skips the symbol.
+- **Key saves and restores** (`quote-quota.ts`): `withSavedKey` (a key saved
+  in Share prices) and `withRestoredKey` (a key restored from a backup,
+  `restore-secrets.ts`) both start a new key generation (`keyGeneration`,
+  `withNewKey`): the rejection and the back-offs go; `withSavedKey` also
+  starts today's calls and symbols over unless `/user` reported this key's
+  own count for today. `withRestoredKey` keeps the calls this device spent
+  and marks the limit unconfirmed. `withRestoredPrices` (a restore replaces
+  every price) forgets today's symbols, the back-offs and `backfilledFrom`,
+  keeping the calls and the key state. An answer about a key lands only
+  while its generation is still the stored one (`forKey` in `daily-limit.ts`,
+  `withKeyAnswers` in `settle`).
 - **Unconfirmed daily limit**: `QuoteQuota.isLimitUnconfirmed` (optional;
   read `quote-quota.ts`) is carried by `currentQuota` and cleared by
-  `withUserLimits`. A key saved while `/user` answers 402 stores
-  `markUsedUp(withUnconfirmedLimit(...))`; 429 stores
-  `withUnconfirmedLimit(...)` only (`acceptedKeyQuota` in
-  `src/screens/settings/share-prices/share-prices.screen.tsx`).
-  `confirmDailyLimit` (`src/prices/daily-limit/daily-limit.ts`) runs on each
-  Share prices open and acts only while the limit is unconfirmed: it reads
-  the key, calls `/user` (0 calls), and stores the limit and count, and it
-  overwrites only while the stored limit is still unconfirmed; a failure
-  leaves it unconfirmed. The refresh never reads `/user` (R3). In
-  `withUserLimits`, EODHD's count wins only when EODHD's day is today (UTC).
+  `withUserLimits`. A key saved while `/user` answers with a limit error is
+  still saved: `limitErrorQuota` (`src/prices/daily-limit/daily-limit.ts`)
+  builds `markUsedUp(withUnconfirmedLimit(...))` for a 402 and
+  `withUnconfirmedLimit(...)` for a 429, and `limitErrorKeyQuota` in
+  `src/screens/settings/share-prices/share-prices.screen.tsx` applies it
+  over `withSavedKey`. `confirmDailyLimit` acts only while the limit is
+  unconfirmed: it reads the key, calls `/user` (0 calls), and stores the
+  limit and count, overwriting only while the stored limit is still
+  unconfirmed; a 401 marks the key rejected; any other failure leaves the
+  limit unconfirmed. It runs on each Share prices open, and BEFORE the
+  post-import refresh (`import-data.ts`, fire-and-forget:
+  `confirmDailyLimit().catch(log).then(refresh)`, so the import never waits
+  on the network) and the on-open auto-sync refresh (`use-auto-sync.ts`); a
+  failed check never holds the refresh back. The refresh itself never reads
+  `/user` (R3). In `withUserLimits`, EODHD's count wins only when EODHD's day
+  is today (UTC).
+- **Rejected key**: `recheckRejectedKey` (Share prices' "Check again") asks
+  `/user` again (0 calls); an accepted key, or a limit error, clears
+  `isKeyRejected` (`withoutRejection`) and stores the limit EODHD reports or
+  `limitErrorQuota`'s; any other answer leaves the key rejected.
 - **Accepted limit**: a key saved during a refresh can leave the local count
   too low (`withUserLimits` overwrites the calls, then the refresh's delta
   settle subtracts its reservation); the next 402 corrects it via
@@ -859,12 +905,15 @@ exact constants (default limit, search reserve, history span).
 
 Code: `src/prices/share-search/share-search.ts` (`searchShares`). Rules:
 
-- Read the key first; no key → `noKey`, no network.
+- Read the quota first: a stored `isKeyRejected` → `keyRejected`, no
+  Keychain read, no network. Then read the key; no key → `noKey`, no network.
 - Reserve 1 call atomically on the UTC day before the request. A search may
   use the calls up to `dailyLimit` itself (the refresh's search reserve is
   for it). A full day → `quotaExhausted`, no network.
-- 402 marks the day used up; a request with no answer (`EodhdNetworkError`)
-  gives the call back (spent 0); any other error spends 1.
+- 402 marks the day used up; 401 marks the key rejected (for the key
+  generation it read) and returns `keyRejected`; a request with no answer
+  (`EodhdNetworkError`) gives the call back (spent 0); any other error spends
+  1.
 - A `GBX` listing becomes a `GBP` holding with `quoteCurrency` `GBX`. Drop a
   listing whose currency is outside the form's own options. Primary
   listings first.

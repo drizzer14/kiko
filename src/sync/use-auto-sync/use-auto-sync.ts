@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
+import { logFailure } from '@kiko/diagnostics';
 import { syncStateRepo } from '@kiko/sync-state';
 import either, { bifold, isLeft } from 'fnts/either';
+import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { bankProviderRegistry } from '@kiko/bank-sync/registry';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { bankProviderIdOf, isBankProviderId } from '@kiko/bank-sync/provider';
@@ -148,6 +150,12 @@ export const useAutoSync = (): void => {
         );
       }
 
+      // The share refresh never reads `/user` itself, so a daily limit left
+      // unconfirmed (a restored key, or one saved during a limit error) is
+      // read first, at no call; a failed check must not hold the refresh back.
+      await confirmDailyLimit().catch((error: unknown) =>
+        logFailure('[auto-sync] daily limit check failed', error),
+      );
       await refreshMarketData({ throttled: true, metals: true, shares: true });
       // Same reasoning as `refreshMarketData` just above: an on-open sync can
       // bring in a new loan-payment debit, so the matcher runs alongside it.

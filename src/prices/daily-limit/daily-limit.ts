@@ -17,6 +17,7 @@ import {
   withUserLimits,
   type QuoteQuota,
   keyGenerationOf,
+  withoutRejection,
   withUnconfirmedLimit,
 } from '../quote-quota';
 import { readEodhdKey } from '../eodhd-key';
@@ -65,9 +66,6 @@ const forKey =
     foldMap(maybe(stored), (quota) =>
       keyGenerationOf(quota) === generation ? build(quota) : quota,
     ) ?? null;
-
-const withoutRejection = ({ isKeyRejected: _wasRejected, ...quota }: QuoteQuota): QuoteQuota =>
-  quota;
 
 /**
  * Reads the key's own daily limit from EODHD when the key was saved without

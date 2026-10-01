@@ -958,9 +958,11 @@ new component can land between reviews of this skill:
   `textSecondary` message, and an optional `secondaryTonal` `small`
   action button. The button renders only when BOTH `actionLabel` and
   `onAction` are given. Read `notice-banner.props.d.ts` for the props.
-  First consumer: the per-account reminders page's permission notice;
-  the Share prices screen's quota-day used-up banner
-  (`src/screens/settings/share-prices/`) also uses it.
+  Consumers: the per-account reminders page's permission notice, and two
+  banners on the Share prices screen (`src/screens/settings/share-prices/`):
+  the rejected-key banner (with a "Check again" action that runs
+  `recheckRejectedKey`; a failed check shows in the key card's status line)
+  and the quota-day used-up banner (no action).
 - **Search sheet pattern** (example:
   `src/screens/forms/holding-form/share/share-search-sheet/`): always a
   `BottomSheet` with a query field, an explicit Search button, and
@@ -971,8 +973,10 @@ new component can land between reviews of this skill:
   starts.
 - **Share prices quota line** (`src/screens/settings/share-prices/`):
   "Requests today: x / N" renders only with a saved key and after the quota
-  loaded; the used-up state shows only when the stored day is today. Open
-  USER question (pending): whether to show a "Daily limit: N" caption.
+  loaded; the used-up state shows only when the stored day is today. There
+  is no separate "Daily limit: N" caption (user decision). The used-up
+  banner, and the share search sheet's used-up message, name EODHD's reset
+  (midnight GMT, `quotaResetsAt`) in the device's local time.
 - **ReminderOfferCard** (`src/design-system/components/reminder-offer-card/`)
   — the NoticeBanner family's two-action sibling: an inline, non-modal
   invitation (never a notification, sheet, or alert, and never an

@@ -29,8 +29,10 @@ import {
   isBackedOff,
   currentQuota,
   type QuoteQuota,
+  type SymbolLots,
   keyGenerationOf,
   refreshAllowance,
+  isBackfillBackedOff,
 } from '../quote-quota';
 import { dayKeyOf } from '../price-book';
 import { readEodhdKey } from '../eodhd-key';
@@ -125,7 +127,8 @@ type Progress = {
   units: ShareQuoteCurrencyUpdate[];
   reached: string[];
   answered: string[];
-  struck: { symbol: string; lastLotDay: number }[];
+  empty: SymbolLots[];
+  struck: SymbolLots[];
   backfilledFrom: Record<string, number>;
   stop?: Stop;
 };
@@ -231,8 +234,8 @@ type CallRange = Omit<PlannedCall, 'listing' | 'search'>;
  * The newest closes once per UTC day while the last weekday's close is
  * missing (for a sold-out listing, the last weekday before its last lot) and
  * the symbol is not backed off, and the history before the first stored close
- * whenever a lot reaches further back than EODHD has answered for: both in one
- * call, which costs the same.
+ * whenever a lot reaches further back than EODHD has answered for, unless that
+ * history is backed off: both in one call, which costs the same.
  */
 const rangeFor = (
   listing: Listing,
@@ -258,7 +261,11 @@ const rangeFor = (
     quota.backfilledFrom?.[listing.symbol] ?? stored.firstDay,
   );
 
-  if (wantedFrom < answeredFrom && hasWeekday(wantedFrom, answeredFrom - DAY_MS)) {
+  if (
+    wantedFrom < answeredFrom &&
+    hasWeekday(wantedFrom, answeredFrom - DAY_MS) &&
+    !isBackfillBackedOff(quota, listing.symbol, listing.firstLotDay)
+  ) {
     const toDay = isForward ? throughDay : stored.firstDay - DAY_MS;
 
     return { fromDay: wantedFrom, toDay, latestDay, isForward, extendsBack: true };
@@ -441,8 +448,10 @@ const refreshListing = async (call: PlannedCall, context: CallContext): Promise<
   };
 };
 
+// Only an answer about the newest closes says whether the symbol is still
+// listed: older history alone neither ends a back-off nor counts as empty.
 const record = (progress: Progress, call: PlannedCall, outcome: CallOutcome): void => {
-  const { symbol, lastLotDay } = call.listing;
+  const { symbol, firstLotDay, lastLotDay } = call.listing;
 
   progress.reached.push(symbol);
 
@@ -451,8 +460,10 @@ const record = (progress: Progress, call: PlannedCall, outcome: CallOutcome): vo
   }
 
   if (outcome.isStruck === true) {
-    progress.struck.push({ symbol, lastLotDay });
-  } else if (outcome.isAnswered === true) {
+    progress.struck.push({ symbol, firstLotDay, lastLotDay });
+  } else if (outcome.isAnswered === true && call.isForward && outcome.rows.length === 0) {
+    progress.empty.push({ symbol, firstLotDay, lastLotDay });
+  } else if (outcome.isAnswered === true && call.isForward) {
     progress.answered.push(symbol);
   }
 };
@@ -467,6 +478,7 @@ const runCalls = async (planned: PlannedCall[], context: CallContext): Promise<P
     units: [],
     reached: [],
     answered: [],
+    empty: [],
     struck: [],
     backfilledFrom: {},
   };
@@ -511,7 +523,8 @@ const statusOf = (stop: Stop | undefined, leftOver: boolean): ShareRefreshStatus
     .with('usedUp', () => 'quotaExhausted' as const)
     .with('failed', () => 'failed' as const)
     .with('keyRejected', () => 'keyRejected' as const)
-    .otherwise(() => (leftOver ? 'quotaExhausted' : 'ok'));
+    .with(P.union('dayChanged', undefined), () => (leftOver ? 'quotaExhausted' : 'ok'))
+    .exhaustive();
 
 const refreshOnce = async (deps: ShareRefreshDeps): Promise<ShareRefreshStatus> => {
   const { now, listShares, readKey, loadQuota, updateQuota, loadDayRanges, save, ...network } =
@@ -566,6 +579,7 @@ const refreshOnce = async (deps: ShareRefreshDeps): Promise<ShareRefreshStatus> 
       isKeyRejected: progress.stop === 'keyRejected',
       struck: progress.struck,
       answered: progress.answered,
+      empty: progress.empty,
       backfilledFrom: progress.backfilledFrom,
     },
   });

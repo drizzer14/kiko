@@ -20,6 +20,13 @@ jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
 
+// A restored key's daily limit is unconfirmed: the refresh must plan under the
+// limit EODHD reports, not the one stored before the restore.
+const mockConfirmDailyLimit = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/prices/daily-limit', () => ({
+  confirmDailyLimit: (...args: unknown[]) => mockConfirmDailyLimit(...args),
+}));
+
 // A bulk restore bypasses the sync/import/loan-edit call sites that
 // normally trigger the auto-link matcher — trigger it explicitly here too,
 // the same "first-add refresh" reasoning as `refreshMarketData` above.
@@ -68,6 +75,7 @@ describe('importData', () => {
     mockRestoreExportSecrets.mockReset().mockResolvedValue(undefined);
     mockRefreshMarketData.mockClear();
     mockRefreshMarketData.mockResolvedValue(right(undefined));
+    mockConfirmDailyLimit.mockReset().mockResolvedValue(undefined);
     mockRunLoanAutoLink.mockClear();
     mockRunLoanAutoLink.mockResolvedValue(undefined);
   });
@@ -96,12 +104,49 @@ describe('importData', () => {
     mockReadFile.mockResolvedValue(fileText);
 
     await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+    await new Promise((resolve) => setImmediate(resolve));
 
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: false,
       metals: true,
       shares: true,
     });
+  });
+
+  it("confirms the restored key's daily limit before the refresh, without the import waiting on it", async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    let confirmLimit: () => void = () => {};
+    mockConfirmDailyLimit.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          confirmLimit = resolve;
+        }),
+    );
+
+    const summary = await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(summary.accountsRestored).toBe(1);
+    expect(mockConfirmDailyLimit).toHaveBeenCalledWith();
+    expect(mockRefreshMarketData).not.toHaveBeenCalled();
+
+    confirmLimit();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
+  });
+
+  it('still refreshes when the daily limit check fails', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    mockConfirmDailyLimit.mockRejectedValue(new Error('settings read failed'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 
   // Fire-and-forget, after a successful restore.

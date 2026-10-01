@@ -48,10 +48,8 @@ const failedCheckStatus = (error: unknown, t: TFunction): SyncStatus =>
     ? { kind: 'invalid', message: t('settings.sharePricesScreen.invalidKeyError') }
     : { kind: 'saveError', message: t('settings.sharePricesScreen.unavailableError') };
 
-// A daily or per-minute limit is not a rejection of the key, so the key is
-// stored, with a daily limit EODHD has yet to confirm (the next open of this
-// screen reads it); a daily limit also marks the day used up, which this
-// screen shows.
+// The key is saved even under a limit error (see `limitErrorQuota`), and the
+// used-up day a daily limit marks shows on this screen.
 const limitErrorKeyQuota = (error: unknown): QuotaUpdate | undefined =>
   foldMap(
     maybe(limitErrorQuota(error)),
@@ -89,9 +87,9 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
   );
   // Nothing about today's requests shows before the stored quota has loaded:
   // its default would read as "0 used" for a moment.
-  const storedQuota = isKeySaved && !isQuotaLoading ? (quotaRows.at(0)?.quoteQuota ?? null) : null;
-  const requestsToday =
-    isKeySaved && !isQuotaLoading ? requestsTodayOf(storedQuota, Date.now()) : undefined;
+  const isQuotaShown = isKeySaved && !isQuotaLoading;
+  const storedQuota = isQuotaShown ? (quotaRows.at(0)?.quoteQuota ?? null) : null;
+  const requestsToday = isQuotaShown ? requestsTodayOf(storedQuota, Date.now()) : undefined;
   const isKeyRejected = storedQuota?.isKeyRejected === true;
   const signUpHint = t('settings.sharePricesScreen.signUpHint', { url: EODHD_SIGNUP_URL });
 

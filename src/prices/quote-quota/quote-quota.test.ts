@@ -4,6 +4,8 @@ import {
   markUsedUp,
   isBackedOff,
   currentQuota,
+  withoutRejection,
+  isBackfillBackedOff,
   withSavedKey,
   quotaResetsAt,
   withUserLimits,
@@ -99,6 +101,36 @@ describe('isBackedOff', () => {
 
   it('never holds back a symbol with no back-off', () => {
     expect(isBackedOff(backedOff, 'AAPL.US', 500)).toBe(false);
+  });
+});
+
+describe('isBackfillBackedOff', () => {
+  const backedOff = quota({
+    backoff: {
+      'DEAD.US': { strikes: 2, retryDay: OCTOBER_1 + DAY_MS, lastLotDay: 500, firstLotDay: 100 },
+    },
+  });
+
+  it('holds the older history back before the retry day', () => {
+    expect(isBackfillBackedOff(backedOff, 'DEAD.US', 100)).toBe(true);
+  });
+
+  it('lets the older history go on the retry day', () => {
+    expect(isBackfillBackedOff({ ...backedOff, day: OCTOBER_1 + DAY_MS }, 'DEAD.US', 100)).toBe(
+      false,
+    );
+  });
+
+  it('lets the history of an even older lot go', () => {
+    expect(isBackfillBackedOff(backedOff, 'DEAD.US', 50)).toBe(false);
+  });
+
+  it('lets the history go for a back-off stored without its first lot', () => {
+    const stored = quota({
+      backoff: { 'DEAD.US': { strikes: 2, retryDay: OCTOBER_1 + DAY_MS, lastLotDay: 500 } },
+    });
+
+    expect(isBackfillBackedOff(stored, 'DEAD.US', 100)).toBe(false);
   });
 });
 
@@ -216,6 +248,14 @@ describe('withRestoredPrices', () => {
   });
 });
 
+describe('withoutRejection', () => {
+  it('clears the rejection and keeps everything else', () => {
+    expect(withoutRejection(quota({ isKeyRejected: true, keyGeneration: 2 }))).toEqual(
+      quota({ keyGeneration: 2 }),
+    );
+  });
+});
+
 describe('withUnconfirmedLimit', () => {
   it('marks the daily limit as one EODHD has not confirmed', () => {
     expect(withUnconfirmedLimit(quota())).toEqual(quota({ isLimitUnconfirmed: true }));
@@ -264,6 +304,7 @@ describe('settle', () => {
     keyGeneration: 0,
     ...overrides,
   });
+  const DEAD = { symbol: 'DEAD.US', lastLotDay: 500, firstLotDay: 100 };
 
   it('gives back the reserved calls never spent and the symbols never asked about', () => {
     expect(
@@ -320,7 +361,7 @@ describe('settle', () => {
 
   it('backs a struck symbol off for 2 days, then twice as long each time, up to 30 days', () => {
     const struck = (stored: QuoteQuota): QuoteQuota =>
-      settle(stored, settlement({ struck: [{ symbol: 'DEAD.US', lastLotDay: 500 }] })) ?? stored;
+      settle(stored, settlement({ struck: [DEAD] })) ?? stored;
     const retryDays = [1, 2, 3, 4, 5, 6].reduce<{ stored: QuoteQuota; days: number[] }>(
       ({ stored, days }) => {
         const next = struck(stored);
@@ -336,14 +377,68 @@ describe('settle', () => {
     expect(retryDays).toEqual([2, 4, 8, 16, 30, 30]);
   });
 
-  it('starts the strikes over once the lots changed', () => {
+  it('keeps the first lot a symbol was struck with', () => {
+    expect(settle(quota(), settlement({ struck: [DEAD] }))?.backoff).toEqual({
+      'DEAD.US': {
+        strikes: 1,
+        retryDay: OCTOBER_1 + 2 * DAY_MS,
+        lastLotDay: 500,
+        firstLotDay: 100,
+      },
+    });
+  });
+
+  it.each([
+    ['a newer lot', { lastLotDay: 600 }],
+    ['an older lot', { firstLotDay: 50 }],
+  ])('starts the strikes over after %s', (_lot, lots) => {
     const stored = quota({
-      backoff: { 'DEAD.US': { strikes: 4, retryDay: OCTOBER_1, lastLotDay: 500 } },
+      backoff: {
+        'DEAD.US': { strikes: 4, retryDay: OCTOBER_1, lastLotDay: 500, firstLotDay: 100 },
+      },
     });
 
     expect(
-      settle(stored, settlement({ struck: [{ symbol: 'DEAD.US', lastLotDay: 600 }] }))?.backoff,
-    ).toEqual({ 'DEAD.US': { strikes: 1, retryDay: OCTOBER_1 + 2 * DAY_MS, lastLotDay: 600 } });
+      settle(stored, settlement({ struck: [{ ...DEAD, ...lots }] }))?.backoff?.['DEAD.US'],
+    ).toMatchObject({ strikes: 1, retryDay: OCTOBER_1 + 2 * DAY_MS, ...lots });
+  });
+
+  describe('answers with no close', () => {
+    const answeredEmpty = (stored: QuoteQuota, times: number): QuoteQuota =>
+      Array.from({ length: times }).reduce<QuoteQuota>(
+        (current) => settle(current, settlement({ empty: [DEAD] })) ?? current,
+        stored,
+      );
+
+    it('counts them without holding the symbol back', () => {
+      const stored = answeredEmpty(quota(), 6);
+
+      expect(stored.backoff?.['DEAD.US']).toMatchObject({ emptyAnswers: 6 });
+      expect(isBackedOff(stored, 'DEAD.US', 500)).toBe(false);
+    });
+
+    it('backs the symbol off at the 7th in a row, then again at each one after', () => {
+      const seventh = answeredEmpty(quota(), 7);
+      const eighth = answeredEmpty(seventh, 1);
+
+      expect(seventh.backoff?.['DEAD.US']).toMatchObject({
+        strikes: 1,
+        retryDay: OCTOBER_1 + 2 * DAY_MS,
+      });
+      expect(eighth.backoff?.['DEAD.US']).toMatchObject({
+        strikes: 2,
+        retryDay: OCTOBER_1 + 4 * DAY_MS,
+      });
+    });
+
+    it('starts the count over after an answer with a close', () => {
+      const answered = settle(answeredEmpty(quota(), 6), settlement({ answered: ['DEAD.US'] }));
+
+      expect(answeredEmpty(answered ?? quota(), 6).backoff?.['DEAD.US']).toMatchObject({
+        strikes: 0,
+        emptyAnswers: 6,
+      });
+    });
   });
 
   it('forgets the back-off of a symbol EODHD answered', () => {
@@ -361,10 +456,7 @@ describe('settle', () => {
 
   it('never backs off a symbol for a key saved while the refresh was out', () => {
     expect(
-      settle(
-        quota({ keyGeneration: 1 }),
-        settlement({ keyGeneration: 0, struck: [{ symbol: 'DEAD.US', lastLotDay: 500 }] }),
-      ),
+      settle(quota({ keyGeneration: 1 }), settlement({ keyGeneration: 0, struck: [DEAD] })),
     ).not.toHaveProperty('backoff');
   });
 
