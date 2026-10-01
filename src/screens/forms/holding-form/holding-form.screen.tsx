@@ -17,19 +17,16 @@ import {
 } from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
-import { logFailure } from '@kiko/diagnostics';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import type { Currency } from '@kiko/currency/currency';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
-import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
-import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
@@ -42,6 +39,7 @@ import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { refreshAfterHoldingWrite } from '@kiko/sync/refresh-after-holding-write';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
@@ -69,9 +67,8 @@ import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
 
 // Fire-and-forget, only for a loan: the matcher backfills from the loan's
 // own start date, so a create OR an edit (principal/schedule/
-// paymentHoldingId/lenderName/lenderIban can all change) needs a fresh run —
-// unlike `refreshMarketData`, which never fires on an edit at all
-// (type/currency are read-only there). Never rejects (its own doc comment),
+// paymentHoldingId/lenderName/lenderIban can all change) needs a fresh run.
+// Never rejects (its own doc comment),
 // so `save` never awaits or catches it. Extracted to a module-level function
 // (a plain call, not an inline `if`) so this ONE extra branch stays out of
 // `save`'s own cognitive-complexity budget.
@@ -82,19 +79,13 @@ const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
   }
 };
 
-// The share refresh never reads `/user` itself, so a share create reads a
-// daily limit left unconfirmed first, at no call; a failed check must not hold
-// the refresh back.
-const refreshMarketDataAfterCreate = async (type: HoldingType): Promise<void> => {
-  const shares = type === 'share';
-
-  if (shares) {
-    await confirmDailyLimit().catch((error: unknown) =>
-      logFailure('[holding-form] daily limit check failed', error),
-    );
+// Of every edit, only a share's can change what is priced: its source or
+// ticker. Fire-and-forget like the create's refresh.
+const refreshAfterShareEdit = (type: HoldingType): void => {
+  if (type === 'share') {
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshAfterHoldingWrite catches the limit check's failure and refreshMarketData never rejects
+    refreshAfterHoldingWrite(true);
   }
-
-  await refreshMarketData({ throttled: false, metals: true, shares });
 };
 
 // The loan form's "Paid from" picker options: every OPEN, non-ledgerless
@@ -524,11 +515,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         });
         await holdingsRepo.setIcon(holdingId, icon);
 
-        // Unlike `refreshMarketData` below (type/currency are read-only in
-        // edit mode, so it never fires here), a loan's principal, schedule,
-        // paymentHoldingId, lenderName, and lenderIban all stay editable —
-        // any of them can change what the matcher would now link, so an
-        // EDIT backfills too (see `runLoanAutoLinkIfLoan`'s own doc comment).
+        refreshAfterShareEdit(type);
+        // A loan's principal, schedule, paymentHoldingId, lenderName, and
+        // lenderIban all stay editable — any of them can change what the
+        // matcher would now link, so an EDIT backfills too (see
+        // `runLoanAutoLinkIfLoan`'s own doc comment).
         runLoanAutoLinkIfLoan(type);
 
         navigation.goBack();
@@ -571,7 +562,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // the network before navigating back; only fire the refresh after the
       // write commits.
       // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the limit check's failure is caught and refreshMarketData never rejects; see the comment above
-      refreshMarketDataAfterCreate(type);
+      refreshAfterHoldingWrite(type === 'share');
       // A freshly created loan can already have past ledger history worth
       // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).
       runLoanAutoLinkIfLoan(type);

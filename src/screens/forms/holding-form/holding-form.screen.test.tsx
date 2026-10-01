@@ -51,6 +51,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     update: jest.fn(),
     updateWithBalanceDelta: jest.fn(),
     updateMetadataFromStored: jest.fn(),
+    updateShareFromStored: jest.fn(),
     updateLoan: jest.fn(),
     balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
       currency: row.currency,
@@ -4560,6 +4561,46 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
 
     expect(mockRefreshMarketData).not.toHaveBeenCalled();
     expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
+  });
+
+  // A share edit can change its price source or ticker, so its prices are
+  // asked for at once.
+  it('refreshes share prices after a share edit, after the daily limit check', async () => {
+    const order: string[] = [];
+    mockConfirmDailyLimit.mockImplementation(async () => {
+      order.push('confirm');
+    });
+    mockRefreshMarketData.mockImplementation(async () => {
+      order.push('refresh');
+
+      return right(undefined);
+    });
+    mockAccountKind = 'broker';
+    const screen = await renderEdit({
+      id: 'h1',
+      accountId: 'acc-1',
+      name: 'Apple',
+      type: 'share',
+      currency: 'USD',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+      metadata: {
+        quoteSource: 'eodhd',
+        symbol: 'AAPL.US',
+        lots: [{ day: dayKeyOf(Date.now()), quantityDelta: '3', costMinorUnits: 100_000 }],
+      },
+    });
+
+    await fill(screen, 'Ticker', 'MSFT.US');
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => expect(order).toEqual(['confirm', 'refresh']));
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({
+      throttled: false,
+      metals: true,
+      shares: true,
+    });
   });
 
   // P-NOWORK: a non-loan create/edit never runs the loan auto-link matcher
