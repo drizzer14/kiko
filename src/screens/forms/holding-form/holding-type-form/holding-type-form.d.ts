@@ -28,6 +28,11 @@ export type CreateCheck =
   | { kind: 'save'; payload: CreatePayload }
   | { kind: 'blocked'; target: ScrollTarget };
 
+/** An edit checked against something only the network can tell: run its write, or stay on `target`. */
+export type EditCheck =
+  | { kind: 'save'; write: () => Promise<void> }
+  | { kind: 'blocked'; target: ScrollTarget };
+
 export type EditContext = {
   holdingId: string;
   name: string;
@@ -61,4 +66,10 @@ export type HoldingTypeForm = {
   checkCreate?: () => Promise<CreateCheck>;
   /** The edit write, without the icon (the screen writes the icon). */
   saveEdit: (context: EditContext) => Promise<void>;
+  /**
+   * Replaces `saveEdit` for a type whose edit can need one network answer
+   * first (a share given another listing). It never rejects; a block reveals
+   * its field's error.
+   */
+  checkEdit?: (context: EditContext) => Promise<EditCheck>;
 };

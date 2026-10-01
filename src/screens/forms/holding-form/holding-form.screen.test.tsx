@@ -2991,6 +2991,47 @@ describe('HoldingFormScreen share', () => {
       );
       expect(navigation.goBack).toHaveBeenCalled();
     });
+
+    describe('on an edit', () => {
+      const updateShareMock = holdingsRepo.updateShareFromStored as jest.Mock;
+      const lot = { day: dayKeyOf(Date.now()), quantityDelta: '3', costMinorUnits: 100_000 };
+      const apple = {
+        id: 'h1',
+        accountId: 'acc-1',
+        name: 'Apple',
+        type: 'share',
+        currency: 'USD',
+        balanceMinorUnits: 0,
+        icon: null,
+        color: null,
+        metadata: { quoteSource: 'eodhd', symbol: 'AAPL.US', quoteCurrency: 'USD', lots: [lot] },
+      };
+
+      it('blocks a new ticker priced in another currency on the Currency field', async () => {
+        mockLookupShareUnit.mockResolvedValue('GBX');
+        const screen = await renderEdit(apple);
+
+        await fill(screen, 'Ticker', 'VOD.LSE');
+        await fireEvent.press(screen.getByText('Save'));
+
+        expect(mockLookupShareUnit).toHaveBeenCalledWith('VOD.LSE');
+        expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(
+          'EODHD prices this share in GBP. Choose GBP, or set the price source to “Manual”.',
+        );
+        expect(updateShareMock).not.toHaveBeenCalled();
+        expect(navigation.goBack).not.toHaveBeenCalled();
+      });
+
+      it('saves an unchanged ticker with no lookup', async () => {
+        const screen = await renderEdit(apple);
+
+        await fireEvent.press(screen.getByText('Save'));
+
+        expect(mockLookupShareUnit).not.toHaveBeenCalled();
+        expect(updateShareMock).toHaveBeenCalled();
+        expect(navigation.goBack).toHaveBeenCalled();
+      });
+    });
   });
 });
 

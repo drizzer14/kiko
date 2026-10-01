@@ -48,6 +48,13 @@ import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-s
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import type {
+  EditCheck,
+  CreateCheck,
+  EditContext,
+  ScrollTarget,
+  HoldingTypeForm,
+} from './holding-type-form';
 import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
@@ -65,7 +72,6 @@ import { useBalanceFields } from './balance/use-balance-fields';
 import { usePropertyFields } from './property/use-property-fields';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
-import type { CreateCheck, ScrollTarget, HoldingTypeForm } from './holding-type-form';
 
 // Fire-and-forget, only for a loan: the matcher backfills from the loan's
 // own start date, so a create OR an edit (principal/schedule/
@@ -94,6 +100,11 @@ const refreshAfterShareEdit = (type: HoldingType): void => {
 // unit) checks it; every other type saves its payload as it stands.
 const checkedCreate = (form: HoldingTypeForm): Promise<CreateCheck> =>
   form.checkCreate?.() ?? Promise.resolve({ kind: 'save', payload: form.createPayload() });
+
+// The same for an edit: only a share given another listing checks it.
+const checkedEdit = (form: HoldingTypeForm, context: EditContext): Promise<EditCheck> =>
+  form.checkEdit?.(context) ??
+  Promise.resolve({ kind: 'save', write: () => form.saveEdit(context) });
 
 // A share's Currency field names the currency its EODHD listing is priced in.
 const currencyFieldError = (
@@ -520,6 +531,40 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     }
   };
 
+  // Type/currency are read-only in edit mode. The hook write carries no icon
+  // (each `saveEdit`'s own doc comment), so it is written here separately,
+  // unconditionally, so clearing a custom icon (icon === null) persists the
+  // removal rather than leaving the old glyph.
+  const saveEdit = async (editedHoldingId: string): Promise<void> => {
+    const check = await checkedEdit(active, {
+      holdingId: editedHoldingId,
+      name,
+      color,
+      currency,
+      isSynced: isSyncedEdit,
+      editingHolding,
+      book: priceBook,
+    });
+
+    if (check.kind === 'blocked') {
+      revealInvalid([check.target]);
+
+      return;
+    }
+
+    await check.write();
+    await holdingsRepo.setIcon(editedHoldingId, icon);
+
+    refreshAfterShareEdit(type);
+    // A loan's principal, schedule, paymentHoldingId, lenderName, and
+    // lenderIban all stay editable — any of them can change what the
+    // matcher would now link, so an EDIT backfills too (see
+    // `runLoanAutoLinkIfLoan`'s own doc comment).
+    runLoanAutoLinkIfLoan(type);
+
+    navigation.goBack();
+  };
+
   const save = async (): Promise<void> => {
     if (!isValid) {
       const nameTarget: ScrollTarget = {
@@ -535,30 +580,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
     try {
       if (isEdit && holdingId !== undefined) {
-        // Type/currency are read-only in edit mode. The hook write carries no
-        // icon (each `saveEdit`'s own doc comment), so it is written here
-        // separately, unconditionally, so clearing a custom icon
-        // (icon === null) persists the removal rather than leaving the old
-        // glyph.
-        await active.saveEdit({
-          holdingId,
-          name,
-          color,
-          currency,
-          isSynced: isSyncedEdit,
-          editingHolding,
-          book: priceBook,
-        });
-        await holdingsRepo.setIcon(holdingId, icon);
-
-        refreshAfterShareEdit(type);
-        // A loan's principal, schedule, paymentHoldingId, lenderName, and
-        // lenderIban all stay editable — any of them can change what the
-        // matcher would now link, so an EDIT backfills too (see
-        // `runLoanAutoLinkIfLoan`'s own doc comment).
-        runLoanAutoLinkIfLoan(type);
-
-        navigation.goBack();
+        await saveEdit(holdingId);
 
         return;
       }

@@ -12,6 +12,11 @@ import {
   type ShareSearchResult,
 } from '@kiko/prices/share-search';
 import { match } from 'ts-pattern';
+import {
+  asShareMeta,
+  type ShareMeta,
+  type ShareQuoteSource,
+} from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
@@ -32,11 +37,12 @@ import { currencyScale, type Currency } from '@kiko/currency/currency';
 import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
-import { asShareMeta, type ShareQuoteSource } from '@kiko/holdings/holding-metadata';
 
 import type {
+  EditCheck,
   CreateCheck,
   EditContext,
+  ScrollTarget,
   CreatePayload,
   HoldingTypeForm,
 } from '../../holding-type-form';
@@ -161,6 +167,15 @@ const unitAtSave = async (symbol: string): Promise<string | undefined> =>
     },
     (unit) => unit,
   );
+
+type UnitCheck =
+  | { kind: 'save'; unit: string | undefined }
+  | { kind: 'blocked'; target: ScrollTarget };
+
+// Whether an edited share now names a listing its stored row did not: a
+// switch from Manual to EODHD, or another ticker.
+const namesAnotherListing = (stored: ShareMeta | null, symbol: string): boolean =>
+  stored?.quoteSource !== 'eodhd' || stored.symbol !== symbol;
 
 // A provider quote unit belongs to one listing, so it is kept only while the
 // ticker still names that listing.
@@ -325,14 +340,13 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
 
   const createPayload = (): CreatePayload => createPayloadWith(quoteUnit);
 
+  // Only a hand-typed EODHD ticker has no unit a pick told.
+  const isUnitUnknown = quoteSource === 'eodhd' && quoteUnit === undefined;
+
   // A hand-typed EODHD ticker's unit is looked up once, with the call its
   // first refresh would spend, and stored, so that refresh spends none. A
-  // unit the chosen currency does not fit blocks Save on the Currency field.
-  const checkCreate = async (): Promise<CreateCheck> => {
-    if (quoteSource !== 'eodhd' || quoteUnit !== undefined) {
-      return { kind: 'save', payload: createPayload() };
-    }
-
+  // unit the share's currency does not fit blocks Save on the Currency field.
+  const checkUnit = async (): Promise<UnitCheck> => {
     const symbol = normalizeSymbol(ticker);
 
     setIsLookingUpUnit(true);
@@ -342,7 +356,7 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
     setIsLookingUpUnit(false);
 
     if (unit === undefined) {
-      return { kind: 'save', payload: createPayload() };
+      return { kind: 'save', unit: undefined };
     }
 
     setQuotedListing({ symbol, quoteCurrency: unit });
@@ -351,12 +365,24 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
       return { kind: 'blocked', target: { invalid: true, ref: currencyFieldRef } };
     }
 
-    return { kind: 'save', payload: createPayloadWith(unit) };
+    return { kind: 'save', unit };
+  };
+
+  const checkCreate = async (): Promise<CreateCheck> => {
+    if (!isUnitUnknown) {
+      return { kind: 'save', payload: createPayload() };
+    }
+
+    const check = await checkUnit();
+
+    return check.kind === 'blocked'
+      ? check
+      : { kind: 'save', payload: createPayloadWith(check.unit) };
   };
 
   // The lots and the quote unit come from the row stored at the time of the
   // write: the price refresh can store the unit while the form is open.
-  const saveEdit = (context: EditContext): Promise<void> =>
+  const saveEditWith = (context: EditContext, unit: string | undefined): Promise<void> =>
     holdingsRepo.updateShareFromStored(
       context.holdingId,
       { name: context.name, color: context.color },
@@ -367,11 +393,29 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
           quoteSource,
           ticker,
           isin,
-          quoteCurrency: quoteUnit ?? keptQuoteCurrency(storedAtWrite, quoteSource, ticker),
+          quoteCurrency: unit ?? keptQuoteCurrency(storedAtWrite, quoteSource, ticker),
           lots: storedLots(storedMetadata),
         });
       },
     );
+
+  const saveEdit = (context: EditContext): Promise<void> => saveEditWith(context, quoteUnit);
+
+  // An unchanged source and ticker keep the unit stored for them, so only an
+  // edit that names another listing spends the call.
+  const checkEdit = async (context: EditContext): Promise<EditCheck> => {
+    const stored = asShareMeta(context.editingHolding?.metadata);
+
+    if (!isUnitUnknown || !namesAnotherListing(stored, normalizeSymbol(ticker))) {
+      return { kind: 'save', write: () => saveEdit(context) };
+    }
+
+    const check = await checkUnit();
+
+    return check.kind === 'blocked'
+      ? check
+      : { kind: 'save', write: () => saveEditWith(context, check.unit) };
+  };
 
   return {
     quoteSource,
@@ -420,6 +464,7 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
     createPayload,
     checkCreate,
     saveEdit,
+    checkEdit,
     seed,
     refs: {
       tickerFieldRef,
