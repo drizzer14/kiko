@@ -7,8 +7,8 @@ const DATE_TIME_PATTERN = /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/;
 /**
  * Kyiv-local reading of bank wall-clock digits — every dedicated bank format
  * reads its own raw wall clock as Europe/Kyiv local time, never the running
- * device's own zone (that reading is column mapping's own
- * `deviceWallClockToLocalMilliseconds`, `column-mapping/date-formats.ts`).
+ * device's own zone, so the dedup key a row gets never depends on where the
+ * phone is.
  * `00:00:00` means "date only" (a date-only preset, or an XLSX `Date` cell
  * with no time part) and becomes 12:00 Kyiv, so the same calendar day shows
  * from UTC-9 to UTC+12. No separate rollover check here: `noonIfMidnight`

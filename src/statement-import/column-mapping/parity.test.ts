@@ -168,58 +168,15 @@ const makeFakeDatabaseTransaction = (store: { transactions: StoredRow[] }) => {
   };
 };
 
-/** The 3 fields column mapping and a dedicated format still ALWAYS agree
- * on — `timeSeconds` no longer belongs here: a named format reads its wall
- * clock as Europe/Kyiv, column mapping as this DEVICE's own local time, so
- * the two only agree on the time field when the device happens to be in the
- * Kyiv zone. Each describe block below asserts the time field on its own,
- * per path, instead. */
+/** The fields every dedup key is built from — column mapping reads its wall
+ * clock as Kyiv time, exactly like a named format, so a mapped row and the
+ * dedicated parse of the same file agree on all of them. */
 const pick = (databaseTransaction: ParsedTransaction) => ({
   currency: databaseTransaction.currency,
   amountMinorUnits: databaseTransaction.amountMinorUnits,
+  timeSeconds: databaseTransaction.timeSeconds,
   description: databaseTransaction.description,
 });
-
-const DD_MM_YYYY_HH_MM_SS = /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/;
-const DD_MM_YY_HH_MM = /^(\d{2})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})$/;
-
-/** Builds the expected device-local instant for every row `applyColumnMapping`
- * actually kept as a transaction — an independent oracle, through the local
- * `Date` constructor directly (never `parseDateWithFormat` itself), so this
- * test passes under any process time zone. `rowErrors` (the SAME result
- * `applyColumnMapping` already returned) is what tells this which file rows
- * were dropped — a row can be excluded for a reason that has nothing to do
- * with its date cell (PrivatBank's own unresolved-currency rows, for
- * instance), so re-deriving "kept vs. dropped" from the date pattern alone
- * would disagree with the real output. */
-const deviceSecondsForMappedRows = (
-  rows: { [index: number]: unknown }[],
-  mapping: ColumnMapping,
-  rowErrors: { rowNumber: number }[],
-  pattern: RegExp,
-  toYearMonthDay: (match: RegExpExecArray) => [number, number, number],
-  toHourMinuteSecond: (match: RegExpExecArray) => [number, number, number],
-): number[] => {
-  const droppedFileRowIndices = new Set(rowErrors.map((rowError) => rowError.rowNumber - 1));
-
-  return rows
-    .map((row, fileRowIndex) => ({ row, fileRowIndex }))
-    .filter(
-      ({ fileRowIndex }) =>
-        fileRowIndex > mapping.headerRowIndex && !droppedFileRowIndices.has(fileRowIndex),
-    )
-    .map(({ row }) => pattern.exec(String(row[mapping.dateColumn]).trim()))
-    .filter((match): match is RegExpExecArray => match !== null)
-    .map((match) => {
-      const [year, month, day] = toYearMonthDay(match);
-      const [hour, minute, second] = toHourMinuteSecond(match);
-      const isDateOnly = hour === 0 && minute === 0 && second === 0;
-
-      return isDateOnly
-        ? new Date(year, month - 1, day, 12, 0, 0).getTime() / 1000
-        : new Date(year, month - 1, day, hour, minute, second).getTime() / 1000;
-    });
-};
 
 beforeEach(() => {
   mockHoldingRows = [{ id: 'holding-1', currency: 'UAH' }];
@@ -238,7 +195,7 @@ describe('column-mapping parity (Monobank CSV)', () => {
     currency: { mode: 'fixed', currency: 'UAH' },
   };
 
-  it('maps every row to the same (currency, amountMinorUnits, description) as monobankCsvFormat', () => {
+  it('maps every row to the same (currency, amountMinorUnits, timeSeconds, description) as monobankCsvFormat', () => {
     const { rows } = readTableRows(monobankFixtureInput, ',');
     const { statement, rowErrors } = applyColumnMapping(rows, mapping);
     const dedicated = monobankCsvFormat.parse(monobankFixtureInput);
@@ -247,30 +204,23 @@ describe('column-mapping parity (Monobank CSV)', () => {
     expect(statement.transactions.map(pick)).toEqual(dedicated.transactions.map(pick));
   });
 
-  it('maps every row’s time as THIS DEVICE’s own local reading of the same wall clock', () => {
+  it('imports 0 new rows when a file imported through monobankCsvFormat is re-imported through column mapping', async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    mockDatabaseTransaction = makeFakeDatabaseTransaction(store);
+
     const { rows } = readTableRows(monobankFixtureInput, ',');
-    const { statement, rowErrors } = applyColumnMapping(rows, mapping);
+    const { statement } = applyColumnMapping(rows, mapping);
 
-    const expectedSeconds = deviceSecondsForMappedRows(
-      rows,
-      mapping,
-      rowErrors,
-      DD_MM_YYYY_HH_MM_SS,
-      (match) => [Number(match[3]), Number(match[2]), Number(match[1])],
-      (match) => [Number(match[4]), Number(match[5]), Number(match[6])],
+    const first = await importParsedStatement(
+      monobankCsvFormat.parse(monobankFixtureInput),
+      'holding-1',
     );
+    const second = await importParsedStatement(statement, 'holding-1');
 
-    expect(
-      statement.transactions.map((databaseTransaction) => databaseTransaction.timeSeconds),
-    ).toEqual(expectedSeconds);
+    expect(first.imported).toBeGreaterThan(0);
+    expect(second.imported).toBe(0);
   });
 
-  // `computeDedupKey` folds in `timeSeconds`, so the mapped and dedicated
-  // keys are equal only when the device happens to be in the Kyiv zone —
-  // see `kiko-statement-import`'s own note on this. A re-import through
-  // column mapping of a file ALREADY imported through column mapping stays
-  // a guaranteed, zone-independent dedup, since both runs read the same
-  // wall clock through the same (device) path.
   it('imports 0 new rows when the SAME mapped file is re-imported through column mapping again (real dedup)', async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
     mockDatabaseTransaction = makeFakeDatabaseTransaction(store);
@@ -300,7 +250,7 @@ describe('column-mapping parity (Sensebank CSV)', () => {
     currency: { mode: 'fixed', currency: 'UAH' },
   };
 
-  it('maps every row to the same (currency, amountMinorUnits, description) as sensebankCsvFormat, with exactly 2 date row errors', () => {
+  it('maps every row to the same (currency, amountMinorUnits, timeSeconds, description) as sensebankCsvFormat, with exactly 2 date row errors', () => {
     const { rows } = readTableRows(sensebankFixtureInput, ';');
     const { statement, rowErrors } = applyColumnMapping(rows, mapping);
     const dedicated = sensebankCsvFormat.parse(sensebankFixtureInput);
@@ -313,24 +263,6 @@ describe('column-mapping parity (Sensebank CSV)', () => {
       expect.objectContaining({ reason: 'date' }),
     ]);
     expect(statement.transactions.map(pick)).toEqual(dedicated.transactions.map(pick));
-  });
-
-  it('maps every row’s time as THIS DEVICE’s own local reading of the same wall clock', () => {
-    const { rows } = readTableRows(sensebankFixtureInput, ';');
-    const { statement, rowErrors } = applyColumnMapping(rows, mapping);
-
-    const expectedSeconds = deviceSecondsForMappedRows(
-      rows,
-      mapping,
-      rowErrors,
-      DD_MM_YY_HH_MM,
-      (match) => [2000 + Number(match[3]), Number(match[2]), Number(match[1])],
-      (match) => [Number(match[4]), Number(match[5]), 0],
-    );
-
-    expect(
-      statement.transactions.map((databaseTransaction) => databaseTransaction.timeSeconds),
-    ).toEqual(expectedSeconds);
   });
 
   // Sensebank's own amounts are comma-decimal ("1 250,00"); a user who never
@@ -387,7 +319,7 @@ describe('column-mapping parity (PrivatBank XLSX)', () => {
     currency: { mode: 'column', column: 5 },
   };
 
-  it('maps every row to the same (currency, amountMinorUnits, description) as privatbankXlsxFormat, with the row-error count equal to unresolvedRows.length', async () => {
+  it('maps every row to the same (currency, amountMinorUnits, timeSeconds, description) as privatbankXlsxFormat, with the row-error count equal to unresolvedRows.length', async () => {
     const input = await readFixtureInput();
     const { rows } = readTableRows(input);
     const { statement, rowErrors } = applyColumnMapping(rows, mapping);
@@ -395,25 +327,6 @@ describe('column-mapping parity (PrivatBank XLSX)', () => {
 
     expect(rowErrors).toHaveLength(dedicated.unresolvedRows?.length ?? 0);
     expect(statement.transactions.map(pick)).toEqual(dedicated.transactions.map(pick));
-  });
-
-  it('maps every row’s time as THIS DEVICE’s own local reading of the same wall clock', async () => {
-    const input = await readFixtureInput();
-    const { rows } = readTableRows(input);
-    const { statement, rowErrors } = applyColumnMapping(rows, mapping);
-
-    const expectedSeconds = deviceSecondsForMappedRows(
-      rows,
-      mapping,
-      rowErrors,
-      DD_MM_YYYY_HH_MM_SS,
-      (match) => [Number(match[3]), Number(match[2]), Number(match[1])],
-      (match) => [Number(match[4]), Number(match[5]), Number(match[6])],
-    );
-
-    expect(
-      statement.transactions.map((databaseTransaction) => databaseTransaction.timeSeconds),
-    ).toEqual(expectedSeconds);
   });
 });
 
@@ -430,30 +343,12 @@ describe('column-mapping parity (ProCredit business CSV)', () => {
     currency: { mode: 'column', column: 3 },
   };
 
-  it('maps every row to the same (currency, amountMinorUnits, description) as procreditBusinessCsvFormat', () => {
+  it('maps every row to the same (currency, amountMinorUnits, timeSeconds, description) as procreditBusinessCsvFormat', () => {
     const { rows } = readTableRows(procreditBusinessFixtureInput, ';');
     const { statement, rowErrors } = applyColumnMapping(rows, mapping);
     const dedicated = procreditBusinessCsvFormat.parse(procreditBusinessFixtureInput);
 
     expect(rowErrors).toEqual([]);
     expect(statement.transactions.map(pick)).toEqual(dedicated.transactions.map(pick));
-  });
-
-  it('maps every row’s time as THIS DEVICE’s own local reading of the same wall clock', () => {
-    const { rows } = readTableRows(procreditBusinessFixtureInput, ';');
-    const { statement, rowErrors } = applyColumnMapping(rows, mapping);
-
-    const expectedSeconds = deviceSecondsForMappedRows(
-      rows,
-      mapping,
-      rowErrors,
-      DD_MM_YYYY_HH_MM_SS,
-      (match) => [Number(match[3]), Number(match[2]), Number(match[1])],
-      (match) => [Number(match[4]), Number(match[5]), Number(match[6])],
-    );
-
-    expect(
-      statement.transactions.map((databaseTransaction) => databaseTransaction.timeSeconds),
-    ).toEqual(expectedSeconds);
   });
 });

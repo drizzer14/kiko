@@ -1,9 +1,8 @@
 import { dateFormatExamples, dateFormatIds, parseDateWithFormat } from './date-formats';
 
-// A column-mapping date reads THIS DEVICE's own local time (never Kyiv's —
-// see `date-formats.ts`'s own doc comment), so every expected value here is
-// built through the SAME local `Date` constructor, never a hardcoded UTC
-// instant — the test then passes under any process time zone.
+// A column-mapping date reads as Kyiv time, and `jest.config.js` pins the
+// process to Europe/Kyiv, so the local `Date` constructor here gives exactly
+// that reading.
 const localSeconds = (
   year: number,
   month: number,
@@ -56,7 +55,7 @@ describe('dateFormatExamples', () => {
 });
 
 describe('parseDateWithFormat', () => {
-  it('parses DD.MM.YYYY HH:MM:SS as this device local time', () => {
+  it('parses DD.MM.YYYY HH:MM:SS as Kyiv time', () => {
     expect(parseDateWithFormat('01.07.2025 10:15:00', 'DD.MM.YYYY HH:MM:SS')).toBe(
       localSeconds(2025, 7, 1, 10, 15, 0),
     );
@@ -66,7 +65,7 @@ describe('parseDateWithFormat', () => {
     expect(parseDateWithFormat('01.07.2025', 'DD.MM.YYYY HH:MM:SS')).toBeUndefined();
   });
 
-  it('parses DD.MM.YYYY HH:MM as this device local time', () => {
+  it('parses DD.MM.YYYY HH:MM as Kyiv time', () => {
     expect(parseDateWithFormat('01.07.2025 10:15', 'DD.MM.YYYY HH:MM')).toBe(
       localSeconds(2025, 7, 1, 10, 15, 0),
     );
@@ -76,7 +75,7 @@ describe('parseDateWithFormat', () => {
     expect(parseDateWithFormat('01.07.2025 10:15:00', 'DD.MM.YYYY HH:MM')).toBeUndefined();
   });
 
-  it('parses a date-only DD.MM.YYYY as noon this device local time', () => {
+  it('parses a date-only DD.MM.YYYY as noon Kyiv time', () => {
     expect(parseDateWithFormat('01.07.2025', 'DD.MM.YYYY')).toBe(
       localSeconds(2025, 7, 1, 12, 0, 0),
     );
@@ -96,7 +95,7 @@ describe('parseDateWithFormat', () => {
     expect(parseDateWithFormat('09.01.2000 00:58', 'DD.MM.YY HH:MM')).toBeUndefined();
   });
 
-  it('parses YYYY-MM-DD HH:MM:SS as this device local time', () => {
+  it('parses YYYY-MM-DD HH:MM:SS as Kyiv time', () => {
     expect(parseDateWithFormat('2025-07-01 10:15:00', 'YYYY-MM-DD HH:MM:SS')).toBe(
       localSeconds(2025, 7, 1, 10, 15, 0),
     );
@@ -106,7 +105,7 @@ describe('parseDateWithFormat', () => {
     expect(parseDateWithFormat('01.07.2025 10:15:00', 'YYYY-MM-DD HH:MM:SS')).toBeUndefined();
   });
 
-  it('parses a date-only YYYY-MM-DD as noon this device local time', () => {
+  it('parses a date-only YYYY-MM-DD as noon Kyiv time', () => {
     expect(parseDateWithFormat('2025-07-01', 'YYYY-MM-DD')).toBe(
       localSeconds(2025, 7, 1, 12, 0, 0),
     );
@@ -116,7 +115,7 @@ describe('parseDateWithFormat', () => {
     expect(parseDateWithFormat('01.07.2025', 'YYYY-MM-DD')).toBeUndefined();
   });
 
-  it('parses a date-only MM/DD/YYYY as noon this device local time', () => {
+  it('parses a date-only MM/DD/YYYY as noon Kyiv time', () => {
     expect(parseDateWithFormat('07/01/2025', 'MM/DD/YYYY')).toBe(
       localSeconds(2025, 7, 1, 12, 0, 0),
     );
@@ -126,7 +125,7 @@ describe('parseDateWithFormat', () => {
     expect(parseDateWithFormat('2025-07-01', 'MM/DD/YYYY')).toBeUndefined();
   });
 
-  it('parses a date-only DD/MM/YYYY as noon this device local time', () => {
+  it('parses a date-only DD/MM/YYYY as noon Kyiv time', () => {
     expect(parseDateWithFormat('01/07/2025', 'DD/MM/YYYY')).toBe(
       localSeconds(2025, 7, 1, 12, 0, 0),
     );

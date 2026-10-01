@@ -21,8 +21,7 @@ const pad2 = (value: number): string => String(value).padStart(2, '0');
 // (`'YYYY-MM-DD HH:MM:SS'`), so a mapping that points its date column at a
 // real Excel date cell works exactly like one pointed at a text date column.
 // Those UTC digits ARE the cell's own wall clock — `date-formats.ts`'s
-// `partsToSeconds` is what resolves them downstream, as this DEVICE's own
-// local time (column mapping's own reading, never Kyiv's).
+// `partsToSeconds` is what resolves them downstream, as Kyiv time.
 const formatUtcDateTime = (date: Date): string =>
   `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())} ${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}:${pad2(date.getUTCSeconds())}`;
 

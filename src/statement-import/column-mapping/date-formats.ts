@@ -3,19 +3,11 @@
 // dedicated bank formats (Monobank/PrivatBank's `DD.MM.YYYY HH:MM:SS`,
 // Sensebank's 2-digit-year `DD.MM.YY HH:MM`), plus a few common shorter/ISO
 // variants a manually-exported statement might carry instead.
-import {
-  noonIfMidnight,
-  type WallClockParts,
-  deviceWallClockToLocalMilliseconds,
-} from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
+import { noonIfMidnight, type WallClockParts, kyivWallClockToUtcMilliseconds } from '@kiko/dates';
 
 import type { TableCell } from './table-rows';
 
-// Column mapping has no dedicated `StatementFormat` to trust a fixed shape
-// from, so a mapped file could be from ANY bank, in any zone — unlike the
-// named formats (`parse-date-time.ts`'s `kyivInstantMillisecondsIfRoundTrips`),
-// a mapped date/time cell is read as THIS DEVICE's own local time.
 export const dateFormatIds = [
   'DD.MM.YYYY HH:MM:SS',
   'DD.MM.YYYY HH:MM',
@@ -34,23 +26,24 @@ type DatePreset = {
   toParts: (match: RegExpExecArray) => WallClockParts;
 };
 
-// Builds this DEVICE's own local instant from parsed date/time PARTS — never
-// Kyiv's, since a manually mapped file could be from any bank, in any zone
-// (see the doc comment above `dateFormatIds`). A date-only cell (an exact
-// `00:00:00`) reads as noon, the same rule the Kyiv reading applies, so a
-// mapped date-only column shows the same calendar day everywhere.
-// `deviceWallClockToLocalMilliseconds` rejects a rollover — an out-of-range
-// day ("31.02.2026"), month ("2026-13-45"), hour, or minute silently rolling
-// into a DIFFERENT, wrong calendar instant.
+// Reads the parts as Kyiv time, the same reading every named format uses,
+// never the device's own zone: the instant feeds the dedup key, so reading
+// it in the device zone gave the same file a different key once the phone
+// changed zone, and an overlapping re-import duplicated every row. A
+// date-only cell (an exact `00:00:00`) reads as noon, so a mapped date-only
+// column shows the same calendar day everywhere.
+// `kyivWallClockToUtcMilliseconds` rejects a rollover — an out-of-range day
+// ("31.02.2026"), month ("2026-13-45"), hour, or minute silently rolling into
+// a DIFFERENT, wrong calendar instant.
 const partsToSeconds = (parts: WallClockParts): number | undefined =>
   foldMap(
-    maybe(deviceWallClockToLocalMilliseconds(noonIfMidnight(parts))),
+    maybe(kyivWallClockToUtcMilliseconds(noonIfMidnight(parts))),
     (milliseconds) => milliseconds / 1000,
   );
 
 // Every preset reads its own wall-clock parts — the digits themselves are
-// zone-agnostic; `partsToSeconds` above is what resolves them, as this
-// device's own local time. `DD.MM.YY HH:MM` maps its 2-digit year to `20YY`,
+// zone-agnostic; `partsToSeconds` above is what resolves them, as Kyiv
+// time. `DD.MM.YY HH:MM` maps its 2-digit year to `20YY`,
 // matching Sensebank's own dedicated parse exactly (real years past 2099
 // never appear in a bank export).
 const presets: Record<DateFormatId, DatePreset> = {

@@ -43,7 +43,7 @@ export const kyivOffsetHours = ({
 /**
  * The UTC instant (milliseconds since epoch) for a Europe/Kyiv wall clock, or
  * `undefined` when the digits don't describe a real calendar instant at all
- * (`isRealCalendarInstant`, shared with the device reading below).
+ * (`isRealCalendarInstant`).
  */
 export const kyivWallClockToUtcMilliseconds = (parts: WallClockParts): number | undefined => {
   if (!isRealCalendarInstant(parts)) {

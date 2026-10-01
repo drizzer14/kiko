@@ -1,12 +1,14 @@
+import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
+
+import { computeDedupKey } from '../mapping';
 import { StatementParseError } from '../parser';
 
 import type { TableCell } from './table-rows';
 import { applyColumnMapping, type ColumnMapping } from './apply-column-mapping';
 
-// Column mapping reads a date/time cell as THIS DEVICE's own local time
-// (never Kyiv's), so every expected value below is built through the SAME
-// local `Date` constructor, never a hardcoded UTC-derived instant — the test
-// then passes under any process time zone.
+// Column mapping reads a date/time cell as Kyiv time, and `jest.config.js`
+// pins the process to Europe/Kyiv, so the local `Date` constructor here
+// gives exactly that reading.
 const localSeconds = (
   year: number,
   month: number,
@@ -429,5 +431,45 @@ describe('applyColumnMapping (Balance column tie-break: file order)', () => {
     const { statement } = applyColumnMapping(rows, mappingWithBalance);
 
     expect(statement.closingBalance).toBeUndefined();
+  });
+});
+
+describe('applyColumnMapping dedup key across device zones', () => {
+  const rows: TableCell[][] = [
+    ['Date', 'Amount', 'Description'],
+    ['15.09.2026 14:30', '-150.00', 'Coffee'],
+    ['15.01.2026 09:05', '-20.00', 'Tea'],
+    ['20.09.2026', '-80.00', 'Bus'],
+    ['20.01.2026', '-30.00', 'Metro'],
+  ];
+
+  const keysFor = (dateFormat: ColumnMapping['dateFormat']): string[] =>
+    applyColumnMapping(rows, {
+      headerRowIndex: 0,
+      decimalSeparator: '.',
+      dateColumn: 0,
+      dateFormat,
+      amount: { mode: 'single', column: 1 },
+      descriptionColumn: 2,
+      currency: { mode: 'fixed', currency: 'EUR' },
+    }).statement.transactions.map((transaction) => computeDedupKey('h1', transaction, 0));
+
+  // The literal keys are the ones a Kyiv device wrote before column mapping
+  // read its cells as Kyiv time, so stored keys need no re-key.
+  it('keeps the key a Kyiv device already wrote', () => {
+    expect(keysFor('DD.MM.YYYY HH:MM')).toEqual([
+      'h1 1789471800 -15000 coffee',
+      'h1 1768460700 -2000 tea',
+    ]);
+    expect(keysFor('DD.MM.YYYY')).toEqual(['h1 1789894800 -8000 bus', 'h1 1768903200 -3000 metro']);
+  });
+
+  it.each([1, -5, 3])('gives the same keys on a device at a fixed %d h offset', (offsetHours) => {
+    expect(withDeviceZoneOffset(offsetHours, () => keysFor('DD.MM.YYYY HH:MM'))).toEqual(
+      keysFor('DD.MM.YYYY HH:MM'),
+    );
+    expect(withDeviceZoneOffset(offsetHours, () => keysFor('DD.MM.YYYY'))).toEqual(
+      keysFor('DD.MM.YYYY'),
+    );
   });
 });

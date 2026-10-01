@@ -1,7 +1,5 @@
-/** A calendar date/time, split into its own components — shared by the Kyiv
- * (`kyiv-wall-clock.ts`) and device-local (`device-wall-clock.ts`) readings,
- * since both validate and shape the exact same digits, just resolve them
- * against a different zone. */
+/** A calendar date/time, split into its own components, before any zone
+ * resolves it (`kyiv-wall-clock.ts`). */
 export type WallClockParts = {
   year: number;
   month: number; // 1-based
@@ -17,9 +15,8 @@ export type WallClockParts = {
  * ("31.02"), month, hour, minute, or second into a DIFFERENT, wrong instant
  * instead of rejecting it, so this builds the instant through `Date.UTC` and
  * checks its own UTC getters reproduce the exact input digits before
- * trusting them. Shared by both zone readers so a genuinely impossible date
- * is rejected identically on either path — a DST gap or repeated hour is a
- * separate, zone-specific concern each reading resolves on its own.
+ * trusting them. A DST gap or repeated hour is a separate, zone-specific
+ * concern the zone reader resolves on its own.
  */
 export const isRealCalendarInstant = ({
   year,
