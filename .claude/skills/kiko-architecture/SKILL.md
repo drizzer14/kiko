@@ -234,8 +234,9 @@ project-level pointer to this section.
   `columnsWithout(getTableColumns(holdings), 'balanceSetRowId')`
   (`src/test-support/real-sqlite.ts`). Proven on both paths by
   `drizzle/migrations/0047-add-sets-balance.test.ts` and
-  `restore-sets-balance.two-path.test.ts`. Next free migration index:
-  `0048`.
+  `restore-sets-balance.two-path.test.ts`. The next free migration index is
+  one past the last `idx` in `drizzle/migrations/meta/_journal.json`; read
+  it there.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -1880,11 +1881,9 @@ what a change must keep.
   (`src/reminders/schedule/describe-schedule.ts`) reads the time on the
   device's clock (`clock` from `useTimeClock`; see "Time of day" in
   kiko-translator). The uk preposition comes from `{{at}}` and follows the
-  hour as shown (`hourOnClock`): `reminders.schedule.atEleven` ('об') when
-  it reads 11 (11:xx on the 24-hour clock; 11:xx дп and 11:xx пп on the
-  12-hour one), and `reminders.schedule.at` ('о') for every other hour,
-  23:xx and 1:xx on the 24-hour clock included (a user ruling). en has both
-  keys as 'at'.
+  hour as shown (`hourOnClock`), choosing between `reminders.schedule.at`
+  and `reminders.schedule.atEleven`; the uk "о"/"об" rule itself lives in
+  kiko-translator ("Time of day") — read it there.
 - **Shared system status.** Any cached OS/system status (a permission,
   a sync status) that several screens show lives in ONE module store
   (`useSyncExternalStore`; see `src/monobank/sync-status/`,

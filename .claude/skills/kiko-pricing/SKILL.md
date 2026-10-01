@@ -852,8 +852,9 @@ exact constants (default limit, search reserve, history span).
   is backed off for 2, 4, 8, 16, then every 30 days (`SymbolBackoff` in
   `quote-quota.ts`, keyed by the `firstLotDay`/`lastLotDay` it was struck
   with; a newer lot asks the newest closes again, an older lot its history).
-  A held symbol whose forward call EODHD answers with no close 10 times in a
-  row (`emptyAnswers`, counted in the same `SymbolBackoff`) is struck too, and
+  A held symbol whose forward call EODHD answers with no close
+  `EMPTY_ANSWERS_BEFORE_STRIKE` times in a row (read its value in
+  `src/prices/quote-quota/quote-quota.ts`;`emptyAnswers`, counted in the same `SymbolBackoff`) is struck too, and
   again at each empty answer after; a forward answer with a close newer than
   the stored ones (`row.day > latestDay`) deletes the back-off and its count.
   A forward call that also asked for history and brought only older closes
@@ -887,14 +888,12 @@ exact constants (default limit, search reserve, history span).
   unconfirmed: it reads the key, calls `/user` (0 calls), and stores the
   limit and count, overwriting only while the stored limit is still
   unconfirmed; a 401 marks the key rejected; any other failure leaves the
-  limit unconfirmed. It runs on each Share prices open, and BEFORE the
-  post-import refresh (`import-data.ts`, fire-and-forget:
-  `confirmDailyLimit().catch(log).then(refresh)`, so the import never waits
-  on the network), the on-open auto-sync refresh (`use-auto-sync.ts`), the
-  pull-to-refresh refresh (`use-sync-all.ts`), and the holding form's
-  first-add refresh after a share create (`refreshMarketDataAfterCreate`,
-  `holding-form.screen.tsx`; a create of any other type refreshes no share
-  and skips the check); a failed check never holds the refresh back. The refresh itself never reads
+  limit unconfirmed. Rule: every refresh entry point that may plan
+  under a restored or saved key runs `confirmDailyLimit` first, and it never
+  blocks the refresh (fire-and-forget:
+  `confirmDailyLimit().catch(log).then(refresh)`; a failed check never holds
+  the refresh back). Share prices also runs it on each open. Find the
+  current call sites with `git grep confirmDailyLimit src`. The refresh itself never reads
   `/user` (R3). In `withUserLimits`, EODHD's count wins only when EODHD's day
   is today (UTC).
 - **Rejected key**: `recheckRejectedKey` (Share prices' "Check again") asks

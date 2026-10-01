@@ -964,11 +964,7 @@ new component can land between reviews of this skill:
   `textSecondary` message, and an optional `secondaryTonal` `small`
   action button. The button renders only when BOTH `actionLabel` and
   `onAction` are given. Read `notice-banner.props.d.ts` for the props.
-  Consumers: the per-account reminders page's permission notice, and two
-  banners on the Share prices screen (`src/screens/settings/share-prices/`):
-  the rejected-key banner (with a "Check again" action that runs
-  `recheckRejectedKey`; a failed check shows in the key card's status line)
-  and the quota-day used-up banner (no action).
+  Find its consumers with `git grep NoticeBanner src/screens`.
 - **Search sheet pattern** (example:
   `src/screens/forms/holding-form/share/share-search-sheet/`): always a
   `BottomSheet` with a query field, an explicit Search button, and

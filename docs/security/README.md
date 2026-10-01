@@ -161,14 +161,11 @@ and immediately if a sync starts failing with a TLS error.
   `ios/Kiko/uk.lproj/InfoPlist.strings` set `CFBundleDisplayName` (Kiko /
   Кіко) and sit in the Kiko target's Resources build phase. Asserted by
   `npm run check:plist`.
-- **The disk-space required-reason API is declared.** Two dependencies link a
-  disk-space API, and no pod ships a privacy manifest that covers it:
-  `react-native-fs` reads `NSFileSystemFreeSize`, and
-  `@op-engineering/op-sqlite`'s bundled SQLite (the SQLCipher build included,
-  `cpp/sqlcipher/sqlite3.c`) calls `fstatfs` on Apple platforms. So
+- **The disk-space required-reason API is declared.** Some dependencies link a
+  disk-space API without a pod privacy manifest that covers it (the set is
+  check 5's linked list in `scripts/checks/plist.sh`; read it there). So
   `ios/Kiko/PrivacyInfo.xcprivacy` declares `NSPrivacyAccessedAPICategoryDiskSpace`
-  (`E174.1`) while either one is a dependency (else ITMS-91053); dropping
-  `react-native-fs` does not remove the need. `npm run check:plist` asserts it
+  (`E174.1`) while any dependency on that list ships (else ITMS-91053). `npm run check:plist` asserts it
   and fails closed when it cannot tell.
 - **The Monobank token field no longer prefills the input with the stored
   secret.** `src/screens/account-detail/monobank-token-field/monobank-token-field.component.tsx`
