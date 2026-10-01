@@ -164,7 +164,7 @@ export const importData = async (options: {
   // without sitting on the network; only fire the refresh after the write
   // commits.
   // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects; see the comment above
-  refreshMarketData({ throttled: false, metals: true });
+  refreshMarketData({ throttled: false, metals: true, shares: true });
   // A bulk restore bypasses the sync/import/loan-edit call sites that
   // normally trigger the auto-link matcher — trigger it explicitly
   // here too. `runLoanAutoLink` never rejects and returns early with no

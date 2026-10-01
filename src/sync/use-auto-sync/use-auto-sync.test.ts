@@ -107,7 +107,11 @@ describe('useAutoSync', () => {
     await renderHook(() => useAutoSync());
 
     await waitFor(() =>
-      expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: true }),
+      expect(mockRefreshMarketData).toHaveBeenCalledWith({
+        throttled: true,
+        metals: true,
+        shares: true,
+      }),
     );
 
     expect(mockMonobankRun).not.toHaveBeenCalled();
@@ -144,7 +148,11 @@ describe('useAutoSync', () => {
 
     await waitFor(() => expect(mockMonobankRun).toHaveBeenCalled());
     await waitFor(() =>
-      expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: true }),
+      expect(mockRefreshMarketData).toHaveBeenCalledWith({
+        throttled: true,
+        metals: true,
+        shares: true,
+      }),
     );
   });
 

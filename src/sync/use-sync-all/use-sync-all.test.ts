@@ -83,7 +83,11 @@ describe('useSyncAll', () => {
       targetAccountId: 'bin',
     });
     expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
-    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: true });
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({
+      throttled: true,
+      metals: true,
+      shares: true,
+    });
     expect(result.current.failures).toEqual([]);
   });
 
@@ -237,7 +241,11 @@ describe('useSyncAll', () => {
     // still refresh so a non-UAH manual holding still converts to the base
     // currency — see `useAutoSync`'s identical fix.
     expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
-    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: true });
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({
+      throttled: true,
+      metals: true,
+      shares: true,
+    });
     expect(result.current.failures).toEqual([]);
   });
 });

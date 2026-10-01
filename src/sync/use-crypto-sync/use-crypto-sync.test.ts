@@ -38,7 +38,11 @@ describe('useCryptoSync', () => {
       targetAccountId: 'acc-1',
       address: ADDRESS,
     });
-    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: false });
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({
+      throttled: true,
+      metals: false,
+      shares: false,
+    });
   });
 
   it('resolves true and leaves no error on success', async () => {

@@ -4266,7 +4266,28 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: false, metals: true });
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({
+      throttled: false,
+      metals: true,
+      shares: false,
+    });
+  });
+
+  it('also refreshes share prices after a share create', async () => {
+    mockAccountKind = 'broker';
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Apple');
+    await fill(screen, 'Ticker', 'aapl.us');
+    await fill(screen, 'Quantity', '3');
+    await fill(screen, 'Total cost', '1000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({
+      throttled: false,
+      metals: true,
+      shares: true,
+    });
   });
 
   it('navigates back immediately, without waiting for the refresh to settle', async () => {

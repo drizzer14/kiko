@@ -21,6 +21,19 @@ jest.mock('@kiko/prices/eodhd-key/eodhd-key', () => ({
   readEodhdKey: () => mockReadEodhdKey(),
 }));
 
+const mockUpdateQuoteQuota = jest.fn();
+jest.mock('@kiko/settings', () => {
+  const actual = jest.requireActual('@kiko/settings');
+
+  return {
+    ...actual,
+    settingsRepo: {
+      ...actual.settingsRepo,
+      updateQuoteQuota: (...args: unknown[]) => mockUpdateQuoteQuota(...args),
+    },
+  };
+});
+
 jest.mock('@react-native-clipboard/clipboard', () => ({
   getString: jest.fn().mockResolvedValue(''),
 }));
@@ -39,6 +52,10 @@ const renderScreen = () =>
   );
 
 describe('SharePricesScreen', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(async () => {
     mockFetchUserLimits
       .mockReset()
@@ -47,6 +64,7 @@ describe('SharePricesScreen', () => {
     mockHasEodhdKey.mockReset().mockResolvedValue(false);
     mockClearEodhdKey.mockReset().mockResolvedValue(undefined);
     mockReadEodhdKey.mockReset();
+    mockUpdateQuoteQuota.mockReset().mockResolvedValue(undefined);
     await act(async () => {
       await i18n.changeLanguage('en');
     });
@@ -84,6 +102,36 @@ describe('SharePricesScreen', () => {
     expect(mockFetchUserLimits).toHaveBeenCalledWith(KEY);
     expect(mockSaveEodhdKey).toHaveBeenCalledWith(KEY);
     expect(getByPlaceholderText(PLACEHOLDER).props.value).toBe('');
+  });
+
+  it("stores the key's own daily limit and EODHD's count for its day", async () => {
+    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
+
+    await fireEvent.changeText(getByPlaceholderText(PLACEHOLDER), KEY);
+    await fireEvent.press(getByTestId('settings-button-save-eodhd-key'));
+    await findByText('Key saved');
+
+    const [[build]] = mockUpdateQuoteQuota.mock.calls as [[(stored: null) => unknown]];
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 30, 12));
+
+    expect(build(null)).toEqual({
+      day: Date.UTC(2026, 8, 30),
+      calls: 3,
+      dailyLimit: 20,
+      symbols: [],
+    });
+  });
+
+  it('keeps the key unsaved when the quota cannot be stored', async () => {
+    mockUpdateQuoteQuota.mockRejectedValue(new Error('disk full'));
+    const { getByTestId, getByPlaceholderText, queryByText } = await renderScreen();
+
+    await fireEvent.changeText(getByPlaceholderText(PLACEHOLDER), KEY);
+    await fireEvent.press(getByTestId('settings-button-save-eodhd-key'));
+
+    await waitFor(() => expect(mockUpdateQuoteQuota).toHaveBeenCalled());
+    expect(mockSaveEodhdKey).not.toHaveBeenCalled();
+    expect(queryByText('Key saved')).toBeNull();
   });
 
   it('stores nothing when EODHD rejects the key', async () => {

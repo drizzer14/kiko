@@ -146,6 +146,16 @@ export const settingsRepo = {
       .where(eq(settings.id, SETTINGS_ID)),
   setQuoteQuota: (quota: QuoteQuota) =>
     write((databaseTransaction) => writeQuoteQuota(databaseTransaction, quota)),
+  /** Read-modify-write in one `write()`, so a share refresh never lands in between. */
+  updateQuoteQuota: (build: (stored: QuoteQuota | null) => QuoteQuota) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ quoteQuota: settings.quoteQuota })
+        .from(settings)
+        .where(eq(settings.id, SETTINGS_ID));
+
+      await writeQuoteQuota(databaseTransaction, build(rows[0]?.quoteQuota ?? null));
+    }),
   setNotificationsDeliverableSince: (deliverableSince: number | null) =>
     write((databaseTransaction) =>
       databaseTransaction

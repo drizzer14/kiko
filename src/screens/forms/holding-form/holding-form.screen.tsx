@@ -540,7 +540,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // the network before navigating back; only fire the refresh after the
       // write commits.
       // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects; see the comment above
-      refreshMarketData({ throttled: false, metals: true });
+      refreshMarketData({ throttled: false, metals: true, shares: type === 'share' });
       // A freshly created loan can already have past ledger history worth
       // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).
       runLoanAutoLinkIfLoan(type);

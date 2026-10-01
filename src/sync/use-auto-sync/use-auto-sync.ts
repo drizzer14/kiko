@@ -132,8 +132,10 @@ export const useAutoSync = (): void => {
       // decoupled from it so a manual-only user still gets cross-rates
       // cached. Running it unconditionally is safe: `refreshMarketData` is
       // self-throttled (its own `refreshRates` step) and hits only PUBLIC,
-      // tokenless endpoints. `refreshMarketData` runs rates and metals
-      // CONCURRENTLY under its own `Promise.allSettled` (twin of
+      // tokenless endpoints, except the share step, which spends the user's
+      // own EODHD calls under its own daily quota guard. `refreshMarketData`
+      // runs rates, metals, and shares CONCURRENTLY under its own
+      // `Promise.allSettled` (twin of
       // `useSyncAll`'s fan-out) and never rejects — it logs its own
       // rates/metals failure and returns a Left, which this effect passes to
       // `warnRefreshFailure` below instead of re-deriving it here.
@@ -146,7 +148,7 @@ export const useAutoSync = (): void => {
         );
       }
 
-      await refreshMarketData({ throttled: true, metals: true });
+      await refreshMarketData({ throttled: true, metals: true, shares: true });
       // Same reasoning as `refreshMarketData` just above: an on-open sync can
       // bring in a new loan-payment debit, so the matcher runs alongside it.
       // Never rejects (its own doc comment), so a failed auto-link stays

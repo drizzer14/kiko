@@ -97,7 +97,11 @@ describe('importData', () => {
 
     await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
 
-    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: false, metals: true });
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({
+      throttled: false,
+      metals: true,
+      shares: true,
+    });
   });
 
   // Fire-and-forget, after a successful restore.

@@ -33,7 +33,11 @@ describe('useSync', () => {
     });
 
     expect(mockRunSync).toHaveBeenCalled();
-    expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: true, metals: false });
+    expect(mockRefreshMarketData).toHaveBeenCalledWith({
+      throttled: true,
+      metals: false,
+      shares: false,
+    });
   });
 
   it('runs the loan auto-link matcher once after a successful sync', async () => {

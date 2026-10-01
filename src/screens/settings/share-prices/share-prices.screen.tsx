@@ -1,10 +1,12 @@
 import { EODHD_SIGNUP_URL } from '@env';
 import type { TFunction } from 'i18next';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { type FC, useEffect, useState } from 'react';
 import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
+import { withUserLimits } from '@kiko/prices/quote-quota';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -68,7 +70,10 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
       return;
     }
 
+    // The quota first: a key saved without its own limit would be refreshed
+    // under the free plan's limit.
     try {
+      await settingsRepo.updateQuoteQuota((stored) => withUserLimits(stored, limits, Date.now()));
       await saveEodhdKey(trimmed);
     } catch {
       setStatus({ kind: 'idle' });
