@@ -751,6 +751,35 @@ describe('useShareFields currency against the listing', () => {
     expect(mockLookupShareUnit).toHaveBeenCalledTimes(1);
   });
 
+  it('reports the lookup as running only while it runs', async () => {
+    let answer: (unit: string | undefined) => void = () => undefined;
+    mockLookupShareUnit.mockReturnValue(
+      new Promise<string | undefined>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const rendered = await renderFields({ currency: 'USD' });
+
+    await typeTicker(rendered, 'AAPL.US');
+
+    expect(rendered.result.current.isLookingUpUnit).toBe(false);
+
+    let check: Promise<unknown> | undefined;
+
+    await act(async () => {
+      check = rendered.result.current.checkCreate?.();
+    });
+
+    expect(rendered.result.current.isLookingUpUnit).toBe(true);
+
+    await act(async () => {
+      answer('USD');
+      await check;
+    });
+
+    expect(rendered.result.current.isLookingUpUnit).toBe(false);
+  });
+
   it('saves a hand-typed ticker as before when the lookup finds no unit', async () => {
     mockLookupShareUnit.mockResolvedValue(undefined);
     const rendered = await renderFields({ currency: 'UAH' });

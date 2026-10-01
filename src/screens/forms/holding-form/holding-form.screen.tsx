@@ -671,7 +671,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         contentHeightRef.current = height;
       }}
       footer={
-        <Button onPress={onSave} disabled={isSubmitting || (isEdit && isPriceBookLoading)}>
+        <Button
+          onPress={onSave}
+          disabled={isSubmitting || (isEdit && isPriceBookLoading)}
+          loading={share.isLookingUpUnit}
+        >
           {t('common.save')}
         </Button>
       }

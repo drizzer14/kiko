@@ -195,6 +195,8 @@ export type UseShareFieldsResult = HoldingTypeForm & {
   // The currency the ticker's listing is priced in, once a pick or a lookup
   // at Save told it: what the Currency field's error asks for.
   listingCurrency: string | undefined;
+  // Save shows its spinner only while this one network wait runs.
+  isLookingUpUnit: boolean;
   quoteSource: ShareQuoteSource;
   setQuoteSource: (value: ShareQuoteSource) => void;
   ticker: string;
@@ -242,6 +244,7 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
   const [isEodhdKeySaved, setIsEodhdKeySaved] = useState(false);
   // The listing a pick, or a lookup at Save, last said the ticker names.
   const [quotedListing, setQuotedListing] = useState<QuotedListing | null>(null);
+  const [isLookingUpUnit, setIsLookingUpUnit] = useState(false);
   // The name and ISIN the last pick filled in, so the next pick can tell them
   // from ones the user typed.
   const filledNameRef = useRef<string | null>(null);
@@ -331,7 +334,12 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
     }
 
     const symbol = normalizeSymbol(ticker);
+
+    setIsLookingUpUnit(true);
+
     const unit = await unitAtSave(symbol);
+
+    setIsLookingUpUnit(false);
 
     if (unit === undefined) {
       return { kind: 'save', payload: createPayload() };
@@ -382,6 +390,7 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
     search,
     pickListing,
     listingCurrency: foldMap(maybe(quoteUnit), unitHoldingCurrency),
+    isLookingUpUnit,
     fieldErrors,
     reasonKey,
     isValid: reasonKey === null,

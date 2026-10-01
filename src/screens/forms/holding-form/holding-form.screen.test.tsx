@@ -2924,6 +2924,45 @@ describe('HoldingFormScreen share', () => {
       expect(scrollToField).toHaveBeenCalledTimes(1);
     });
 
+    it('shows the Save spinner while the lookup runs', async () => {
+      let answer: (unit: string | undefined) => void = () => undefined;
+      mockLookupShareUnit.mockReturnValue(
+        new Promise<string | undefined>((resolve) => {
+          answer = resolve;
+        }),
+      );
+      const screen = await renderScreen();
+
+      await typeShare(screen);
+      await pickCurrency(screen, 'USD');
+
+      expect(screen.queryByTestId('button-loading-spinner')).toBeNull();
+
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(screen.getByTestId('button-loading-spinner')).toBeTruthy();
+
+      await act(async () => {
+        answer('USD');
+      });
+
+      expect(createMock).toHaveBeenCalled();
+    });
+
+    it('shows no Save spinner while a manual share is written', async () => {
+      mockHasEodhdKey = false;
+      createMock.mockReturnValueOnce(new Promise(() => undefined));
+      const screen = await renderScreen();
+
+      await fill(screen, 'Name', 'Apple');
+      await fill(screen, 'Quantity', '3');
+      await fill(screen, 'Total cost', '1000');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createMock).toHaveBeenCalled();
+      expect(screen.queryByTestId('button-loading-spinner')).toBeNull();
+    });
+
     it('saves a hand-typed ticker as before when the lookup has no answer', async () => {
       mockLookupShareUnit.mockResolvedValue(undefined);
       const screen = await renderScreen();
