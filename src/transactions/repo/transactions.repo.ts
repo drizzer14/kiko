@@ -374,8 +374,10 @@ const partitionNewRows = async (
 };
 
 /** A statement-import row, plus the older key the ledger may already hold
- * the same row under (`noonAliasDedupKey` in statement-import's mapping). */
-type ImportRow = NewTransaction & { aliasExternalId?: string };
+ * the same row under (`noonAliasDedupKey` in statement-import's mapping),
+ * and how much later than `time` its real instant can be: a clock that shows
+ * minutes only (`HH:MM`) leaves the seconds unknown. */
+type ImportRow = NewTransaction & { aliasExternalId?: string; timeSpanMilliseconds?: number };
 
 /** A row the ledger already holds under its alias: its real `time`, and the
  * time and amount the ledger stores it with. */
@@ -390,7 +392,7 @@ type AliasedRow = { time: number; storedTime: number; amountMinorUnits: number }
 const dropRowsStoredUnderAlias = async (
   databaseTransaction: typeof database,
   rows: ImportRow[],
-): Promise<{ rows: NewTransaction[]; aliased: AliasedRow[] }> => {
+): Promise<{ rows: ImportRow[]; aliased: AliasedRow[] }> => {
   const aliases = rows.flatMap(({ source, aliasExternalId }) =>
     aliasExternalId ? [{ source, externalId: aliasExternalId }] : [],
   );
@@ -410,9 +412,7 @@ const dropRowsStoredUnderAlias = async (
     storedByKey.get(`${source}:${aliasExternalId}`);
 
   return {
-    rows: rows
-      .filter((row) => storedFor(row) === undefined)
-      .map(({ aliasExternalId: _storedAlias, ...row }) => row),
+    rows: rows.filter((row) => storedFor(row) === undefined),
     aliased: rows.flatMap(
       (row) =>
         foldMap(maybe(storedFor(row)), (storedRow) => [
@@ -430,28 +430,44 @@ const dropRowsStoredUnderAlias = async (
  * transaction: the two stamp the same purchase seconds apart. */
 const SYNC_MATCH_WINDOW_MILLISECONDS = 60_000;
 
-/** Takes the synced time nearest `time` within the window out of
- * `syncedTimes`, so one synced row stands for one statement row at most. */
-const claimSyncedTime = (syncedTimes: number[], time: number): boolean => {
-  let nearestIndex = -1;
-  let nearestDistance = SYNC_MATCH_WINDOW_MILLISECONDS;
+type SyncedRow = { time: number; amountMinorUnits: number };
 
-  for (const [index, syncedTime] of syncedTimes.entries()) {
-    const distance = Math.abs(syncedTime - time);
+const latestTimeOf = ({ time, timeSpanMilliseconds = 0 }: ImportRow): number =>
+  time + timeSpanMilliseconds;
 
-    if (distance <= nearestDistance) {
-      nearestIndex = index;
-      nearestDistance = distance;
-    }
+/** How far `syncedTime` lies from the nearest instant `row`'s clock reading
+ * allows. */
+const syncDistanceOf = (row: ImportRow, syncedTime: number): number =>
+  Math.max(0, row.time - syncedTime, syncedTime - latestTimeOf(row));
+
+/** Every statement row and same-amount synced row within the window of each
+ * other, nearest first. A tie goes to the earlier row, so the outcome never
+ * depends on the file's row order or the database's. */
+const syncPairsNearestFirst = (rows: ImportRow[], synced: SyncedRow[]) => {
+  const syncedByAmount = new Map<number, SyncedRow[]>();
+
+  for (const syncedRow of synced) {
+    const sameAmount = syncedByAmount.get(syncedRow.amountMinorUnits) ?? [];
+
+    sameAmount.push(syncedRow);
+    syncedByAmount.set(syncedRow.amountMinorUnits, sameAmount);
   }
 
-  if (nearestIndex === -1) {
-    return false;
-  }
-
-  syncedTimes.splice(nearestIndex, 1);
-
-  return true;
+  return rows
+    .flatMap((row) =>
+      (syncedByAmount.get(row.amountMinorUnits) ?? []).map((syncedRow) => ({
+        row,
+        syncedRow,
+        distance: syncDistanceOf(row, syncedRow.time),
+      })),
+    )
+    .filter(({ distance }) => distance <= SYNC_MATCH_WINDOW_MILLISECONDS)
+    .sort(
+      (left, right) =>
+        left.distance - right.distance ||
+        left.row.time - right.row.time ||
+        left.syncedRow.time - right.syncedRow.time,
+    );
 };
 
 /**
@@ -459,40 +475,43 @@ const claimSyncedTime = (syncedTimes: number[], time: number): boolean => {
  * same amount, dated within `SYNC_MATCH_WINDOW_MILLISECONDS`. A disconnected
  * bank keeps its synced rows, and a statement over the same period carries
  * them again under keys no dedup key matches, so that statement row is
- * neither inserted nor counted toward the balance.
+ * neither inserted nor counted toward the balance. One synced row stands for
+ * one statement row, and the nearest pair across the whole statement claims
+ * first: at the edge of the synced period, a real unsynced row of the same
+ * amount can be in reach of the same synced row.
  */
 const dropRowsHeldBySync = async (
   databaseTransaction: typeof database,
   holdingId: string,
-  rows: NewTransaction[],
+  rows: ImportRow[],
 ): Promise<NewTransaction[]> => {
   if (rows.length === 0) {
-    return rows;
+    return [];
   }
 
-  const times = rows.map((row) => row.time);
   const synced = await databaseTransaction
     .select({ time: transactions.time, amountMinorUnits: transactions.amountMinorUnits })
     .from(transactions)
     .where(
       and(
         syncSourceRowsOf(holdingId),
-        gte(transactions.time, minOf(times) - SYNC_MATCH_WINDOW_MILLISECONDS),
-        lte(transactions.time, maxOf(times) + SYNC_MATCH_WINDOW_MILLISECONDS),
+        gte(transactions.time, minOf(rows.map((row) => row.time)) - SYNC_MATCH_WINDOW_MILLISECONDS),
+        lte(transactions.time, maxOf(rows.map(latestTimeOf)) + SYNC_MATCH_WINDOW_MILLISECONDS),
       ),
     );
-  const syncedTimesByAmount = new Map<number, number[]>();
+  const heldRows = new Set<ImportRow>();
+  const claimedSyncedRows = new Set<SyncedRow>();
 
-  for (const { time, amountMinorUnits } of synced) {
-    syncedTimesByAmount.set(amountMinorUnits, [
-      ...(syncedTimesByAmount.get(amountMinorUnits) ?? []),
-      time,
-    ]);
+  for (const { row, syncedRow } of syncPairsNearestFirst(rows, synced)) {
+    if (!heldRows.has(row) && !claimedSyncedRows.has(syncedRow)) {
+      heldRows.add(row);
+      claimedSyncedRows.add(syncedRow);
+    }
   }
 
-  return rows.filter(
-    (row) => !claimSyncedTime(syncedTimesByAmount.get(row.amountMinorUnits) ?? [], row.time),
-  );
+  return rows
+    .filter((row) => !heldRows.has(row))
+    .map(({ aliasExternalId: _storedAlias, timeSpanMilliseconds: _timeSpan, ...row }) => row);
 };
 
 /** The net of the `aliased` rows the post-closing read counted by their

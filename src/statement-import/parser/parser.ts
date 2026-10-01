@@ -27,6 +27,10 @@ export type ParsedTransaction = {
   currency: Currency;
   amountMinorUnits: number;
   timeSeconds: number;
+  /** How many seconds after `timeSeconds` the real instant can lie:
+   * `MINUTE_CLOCK_TIME_SPAN_SECONDS` for a file whose clock shows minutes
+   * only. Omitted for a clock that shows seconds. */
+  timeSpanSeconds?: number;
   description: string;
   mcc?: number;
   counterIban?: string;
@@ -40,6 +44,8 @@ export type ParsedTransaction = {
    * Optional; every format shipped before PrivatBank XLSX omits it. */
   maskedCardHint?: string;
 };
+
+export const MINUTE_CLOCK_TIME_SPAN_SECONDS = 59;
 
 export type ParsedAccountHint = {
   currency: Currency;

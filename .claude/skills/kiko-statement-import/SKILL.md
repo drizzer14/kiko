@@ -100,9 +100,18 @@ account is manual again and imports, but its holdings keep their synced
 (`monobank`, ...) rows. `importRows` drops every statement row with a
 synced row of the same holding and the same amount dated within ±60 s
 (`dropRowsHeldBySync`): it is not inserted and adds nothing to the
-balance. One synced row stands for one statement row (the nearest). Rows
-an earlier build already imported over synced ones stay; no migration
-removes them.
+balance. One synced row stands for one statement row. Pairs claim
+nearest first across the whole statement, never in file order: at the
+edge of the synced period a real unsynced row of the same amount can be
+in reach of the same synced row, and file order (newest-first or
+oldest-first) must not decide which one is dropped. A tie goes to the
+earlier statement row, then the earlier synced row. A file whose clock
+shows minutes only (Sensebank, the `HH:MM` column-mapping presets) sets
+`ParsedTransaction.timeSpanSeconds` to 59, and the distance runs from
+any second of that minute, so a floored `09:00` row is not pushed
+behind a `09:01` row for a synced row at `09:00:40`. Rows an earlier
+build already imported over synced ones stay; no migration removes
+them.
 
 ## Dedup
 

@@ -957,6 +957,48 @@ describe('importParsedStatement runs the loan auto-link matcher', () => {
   });
 });
 
+describe('importParsedStatement hands each row its clock span', () => {
+  it('passes a minute clock span in milliseconds and stores no span column', async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const { databaseTransaction } = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    const importRows = jest.spyOn(transactionsRepo, 'importRows');
+    const parsed = {
+      formatId: 'sensebank-csv' as const,
+      account: { currency: 'UAH' as const },
+      transactions: [
+        {
+          currency: 'UAH' as const,
+          amountMinorUnits: -1_000,
+          timeSeconds: 1_700_000_040,
+          timeSpanSeconds: 59,
+          description: 'Coffee',
+        },
+        {
+          currency: 'UAH' as const,
+          amountMinorUnits: -2_000,
+          timeSeconds: 1_700_000_100,
+          description: 'Lunch',
+        },
+      ],
+    };
+
+    await importParsedStatement(parsed, 'holding-1');
+
+    expect(importRows.mock.calls[0][0].rows.map((row) => row.timeSpanMilliseconds)).toEqual([
+      59_000,
+      undefined,
+    ]);
+    expect(store.transactions.every((row) => !('timeSpanMilliseconds' in row))).toBe(true);
+
+    importRows.mockRestore();
+  });
+});
+
 describe('importParsedStatement runs the one-shot statement-import rewrites first', () => {
   const parsed = {
     formatId: 'column-mapping' as const,

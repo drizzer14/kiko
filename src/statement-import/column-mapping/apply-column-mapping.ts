@@ -21,8 +21,8 @@ import {
 
 import { parseAmountCell } from './amount';
 import type { TableCell } from './table-rows';
-import { type DateFormatId, parseDateWithFormat } from './date-formats';
 import { zoneRuleFor, type SourceTimeZoneId, sourceTimeZoneOrKyiv } from './source-time-zone';
+import { type DateFormatId, parseDateWithFormat, dateFormatTimeSpanSeconds } from './date-formats';
 
 // Matches the ISO 13616 IBAN shape: 2 uppercase letters (country code), 2
 // check digits, then the BBAN (11-30 alphanumerics) — the same shape a
@@ -206,6 +206,7 @@ const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number)
           currency,
           amountMinorUnits: Money.fromMajor(currency, major).minorUnits,
           timeSeconds: dateSeconds,
+          timeSpanSeconds: dateFormatTimeSpanSeconds(mapping.dateFormat),
           description: cellText(row[mapping.descriptionColumn]),
           ...resolveCounterparty(row, mapping),
         },

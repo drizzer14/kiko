@@ -15,6 +15,7 @@ import {
   type StatementFormat,
   type StatementFormatInput,
   StatementParseError,
+  MINUTE_CLOCK_TIME_SPAN_SECONDS,
 } from '@kiko/statement-import/parser';
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
@@ -169,6 +170,7 @@ const parseDataRow = (row: string[], currency: Currency): ParsedTransaction => (
   currency,
   amountMinorUnits: parseRowAmountMinorUnits(row, currency),
   timeSeconds: parseSensebankDateSeconds(row[COLUMN.date]),
+  timeSpanSeconds: MINUTE_CLOCK_TIME_SPAN_SECONDS,
   description: row[COLUMN.details],
   mcc: parseMcc(row[COLUMN.mcc]),
 });

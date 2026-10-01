@@ -1,3 +1,4 @@
+import maybe, { foldMap } from 'fnts/maybe';
 import { settingsRepo } from '@kiko/settings';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { Currency } from '@kiko/currency/currency';
@@ -122,6 +123,10 @@ export const importParsedStatement = async (
       aliasExternalId: readInKyivTime
         ? noonAliasDedupKey(holdingId, transaction, occurrenceIndex)
         : undefined,
+      timeSpanMilliseconds: foldMap(
+        maybe(transaction.timeSpanSeconds),
+        (seconds) => seconds * 1000,
+      ),
     };
   });
   const imported = await transactionsRepo.importRows({

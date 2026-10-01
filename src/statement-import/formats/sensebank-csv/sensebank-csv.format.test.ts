@@ -280,6 +280,14 @@ describe('sensebankCsvFormat.parse', () => {
     expect(fourth.mcc).toBe(7311);
   });
 
+  it('marks every row as read off a clock that shows minutes only', () => {
+    const parsed = sensebankCsvFormat.parse(fixtureInput);
+
+    expect(parsed.transactions.map((transaction) => transaction.timeSpanSeconds)).toEqual(
+      parsed.transactions.map(() => 59),
+    );
+  });
+
   it('throws a StatementParseError instead of writing a NaN amount when both debit and credit are empty', () => {
     expect(() => sensebankCsvFormat.parse(malformedAmountInput)).toThrow(StatementParseError);
   });

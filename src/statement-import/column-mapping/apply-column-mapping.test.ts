@@ -505,6 +505,39 @@ describe('applyColumnMapping over spreadsheet Date cells', () => {
   });
 });
 
+describe('applyColumnMapping clock span', () => {
+  const spansFor = (dateFormat: ColumnMapping['dateFormat'], date: string) =>
+    applyColumnMapping(
+      [
+        ['Date', 'Amount', 'Description'],
+        [date, '-150.00', 'Coffee'],
+      ],
+      {
+        headerRowIndex: 0,
+        decimalSeparator: '.',
+        dateColumn: 0,
+        dateFormat,
+        amount: { mode: 'single', column: 1 },
+        descriptionColumn: 2,
+        currency: { mode: 'fixed', currency: 'EUR' },
+      },
+    ).statement.transactions.map((transaction) => transaction.timeSpanSeconds);
+
+  it.each([
+    ['DD.MM.YYYY HH:MM' as const, '15.09.2026 14:30'],
+    ['DD.MM.YY HH:MM' as const, '15.09.26 14:30'],
+  ])('leaves the seconds of a %s row open', (dateFormat, date) => {
+    expect(spansFor(dateFormat, date)).toEqual([59]);
+  });
+
+  it.each([
+    ['DD.MM.YYYY HH:MM:SS' as const, '15.09.2026 14:30:05'],
+    ['YYYY-MM-DD HH:MM:SS' as const, '2026-09-15 14:30:05'],
+  ])('gives a %s row no span', (dateFormat, date) => {
+    expect(spansFor(dateFormat, date)).toEqual([undefined]);
+  });
+});
+
 describe('applyColumnMapping dedup key across device zones', () => {
   const rows: TableCell[][] = [
     ['Date', 'Amount', 'Description'],

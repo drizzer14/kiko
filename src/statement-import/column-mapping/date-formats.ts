@@ -6,6 +6,8 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { type ZoneRule, type WallClockParts, zoneWallClockToUtcMilliseconds } from '@kiko/dates';
 
+import { MINUTE_CLOCK_TIME_SPAN_SECONDS } from '../parser';
+
 import type { TableCell } from './table-rows';
 
 export const dateFormatIds = [
@@ -24,6 +26,7 @@ export type DateFormatId = (typeof dateFormatIds)[number];
 type DatePreset = {
   pattern: RegExp;
   toParts: (match: RegExpExecArray) => WallClockParts;
+  timeSpanSeconds?: number;
 };
 
 // Reads the parts in the mapping's own source zone, never the device's: the
@@ -79,6 +82,7 @@ const presets: Record<DateFormatId, DatePreset> = {
       minute: Number(minute),
       second: 0,
     }),
+    timeSpanSeconds: MINUTE_CLOCK_TIME_SPAN_SECONDS,
   },
   'DD.MM.YYYY': {
     pattern: /^(\d{2})\.(\d{2})\.(\d{4})$/,
@@ -94,6 +98,7 @@ const presets: Record<DateFormatId, DatePreset> = {
       minute: Number(minute),
       second: 0,
     }),
+    timeSpanSeconds: MINUTE_CLOCK_TIME_SPAN_SECONDS,
   },
   // The time is optional: a date-only spreadsheet Date cell reaches this
   // preset as plain `YYYY-MM-DD` (`table-rows.ts`).
@@ -162,3 +167,7 @@ export const parseDateWithFormat = (
 
   return match ? partsToSeconds(preset.toParts(match), zone) : undefined;
 };
+
+/** The `ParsedTransaction.timeSpanSeconds` of a row read with this preset. */
+export const dateFormatTimeSpanSeconds = (id: DateFormatId): number | undefined =>
+  presets[id].timeSpanSeconds;
