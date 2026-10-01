@@ -2,13 +2,19 @@
 
 > 🇺🇦 [Українською](./privacy-policy.md) · 🇬🇧 English
 
-**Effective date:** 12 September 2026
+**Effective date:** 2 October 2026
 
 Kiko is a personal finance app developed by Dmytro Vasylkivskyi ("we", "us").
 This policy explains how Kiko handles your information.
 
 **Short version:** Your data stays on your device. Kiko has no server of ours,
 and we never receive, store, or have access to your financial data.
+
+**Kiko is an independent app.** It is not a bank or a financial institution,
+and it is not affiliated with, endorsed by, or partnered with any bank, broker,
+or other service named in the app. Bank and broker names appear only to label
+the accounts and statements you choose to add. Kiko never initiates payments or
+moves money — it only displays data you provide.
 
 ## 1. We operate no server and collect nothing
 
@@ -20,30 +26,52 @@ Everything you do in Kiko happens on your own device.
 
 The information you enter or sync is stored only on your device:
 
-- Your accounts, holdings, transactions, balances, categories, and settings.
-- The API credentials you choose to add (for example a Monobank token or a
-  Binance API key and secret).
+- Your accounts, holdings, transactions, balances, prices, categories, and
+  settings.
+- The API credentials you choose to add (for example a Monobank token, a
+  Binance API key and secret, or an EODHD API key).
+- The reminders you set up. iOS shows them as local notifications on your
+  device; their text never names an account or an amount.
 
 This data is kept in an on-device database encrypted with AES-256 (SQLCipher).
 Your API credentials are stored in the iOS Keychain, the system's secure
 credential store.
 
-## 3. Connections to third-party financial services
+**Exports.** When you export your data, Kiko writes an encrypted file
+(AES-256-GCM) with a key that is shown only to you. The file includes your
+saved tokens and keys only if you turn on "Include saved passwords & keys"
+(off by default) and confirm with Face ID or your device passcode. Kiko never
+uploads an export anywhere; you choose where to save or share it. Keep the file
+and its key safe.
 
-When you choose to connect an account, Kiko communicates directly from your
-device to that service, using the credentials you provided, to fetch your own
-data. Kiko does not route these connections through any server of ours.
+## 3. Connections to third-party services
+
+When you choose to connect an account or to get prices, Kiko communicates
+directly from your device to that service to fetch the data you asked for.
+Kiko does not route these connections through any server of ours. Like any
+internet connection, each service can see your device's IP address.
 
 - **Monobank** (`api.monobank.ua`) — your bank account information and
-  statements, using your personal token.
+  statements, using your personal token; also public currency exchange rates,
+  for which no token or personal data is sent.
 - **Binance** (`api.binance.com`) — your Binance spot balances, using your
   read-only API key.
 - **Blockstream** (`blockstream.info`) — the public on-chain balance of a
   Bitcoin address you add.
-- **CoinGecko** (`api.coingecko.com`) — the public Bitcoin price. No personal
-  data is sent.
+- **CoinGecko** (`api.coingecko.com`) — the current price and the daily price
+  history of each cryptocurrency you hold. Kiko sends only the names of those
+  coins (for example `bitcoin`); no address, amount, or credential is sent.
+- **EODHD** (`eodhd.com`) — end-of-day share prices, only after you save your
+  own EODHD API key in Settings → Share prices. Kiko sends your key, the ticker
+  and exchange of each share priced by EODHD (for example `AAPL.US`), the date
+  range of the prices it needs, and, when you tap Search, the ISIN, ticker, or
+  name you typed. It also asks EODHD how many of your key's daily requests are
+  used. Kiko never sends how many shares you hold or what you paid for them.
+  You sign up with EODHD and accept its terms.
 - **National Bank of Ukraine** (`bank.gov.ua`) — public currency exchange
-  rates. No personal data is sent.
+  rates and their history, precious-metal prices, and the public register of
+  government bonds. Kiko downloads the whole register, so the ISIN you enter is
+  not sent. No personal data is sent.
 
 Each service processes your requests under its own privacy policy. Kiko sends
 only what a service needs to return your data. Connections that carry a
@@ -65,8 +93,12 @@ you. Kiko does not display ads and does not sell or share your data.
 ## 6. Data retention and deletion
 
 Your data lives only on your device. You can delete accounts, holdings, and
-transactions inside the app at any time. Deleting the app removes all of its
-local data and stored credentials from your device.
+transactions inside the app at any time. Deleting the app removes its database
+from your device, but iOS can keep items saved in the Keychain, such as your
+Monobank token, Binance keys, and EODHD key, after the app is deleted. To remove
+them, first disconnect each connected account (open the account and tap
+Disconnect) and remove your EODHD key (Settings → Share prices → Remove key),
+then delete the app.
 
 ## 7. Children
 
