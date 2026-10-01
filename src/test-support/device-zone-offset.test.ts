@@ -13,7 +13,10 @@ describe('withDeviceZoneOffset', () => {
     expect(withDeviceZoneOffset(1, () => new Date(instant).getTime())).toBe(instant);
   });
 
-  it('refuses a callback that returns a promise', () => {
+  // Jest does not typecheck, so only the @ts-expect-error below proves the
+  // refusal: check:typecheck fails once an async callback stops being a type
+  // error. This body proves only that Date is restored.
+  it('refuses a promise callback at type level (proven by check:typecheck), and restores Date', () => {
     const realDate = Date;
 
     // @ts-expect-error — an async `run` would read its awaited half in the real zone
