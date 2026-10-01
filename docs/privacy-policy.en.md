@@ -46,16 +46,22 @@ and its key safe.
 
 ## 3. Connections to third-party services
 
-When you choose to connect an account or to get prices, Kiko communicates
-directly from your device to that service to fetch the data you asked for.
-Kiko does not route these connections through any server of ours. Like any
-internet connection, each service can see your device's IP address.
+Kiko communicates directly from your device with the services below, only as
+far as your accounts and holdings need them. Some connections run only after
+you connect an account, add a Bitcoin address, or save a key (Monobank
+statements, Binance, Blockstream, EODHD). Others run automatically to value
+what you track: currency exchange rates (Monobank and the National Bank of
+Ukraine), cryptocurrency prices (CoinGecko), and precious-metal prices and the
+government bond register (National Bank of Ukraine). Kiko does not route these
+connections through any server of ours. Like any internet connection, each
+service can see your device's IP address.
 
 - **Monobank** (`api.monobank.ua`) — your bank account information and
   statements, using your personal token; also public currency exchange rates,
   for which no token or personal data is sent.
-- **Binance** (`api.binance.com`) — your Binance spot balances, using your
-  read-only API key.
+- **Binance** (`api.binance.com`) — your Binance balances (spot, funding,
+  Simple Earn) and your deposit and withdrawal history, using your read-only
+  API key.
 - **Blockstream** (`blockstream.info`) — the public on-chain balance of a
   Bitcoin address you add.
 - **CoinGecko** (`api.coingecko.com`) — the current price and the daily price
