@@ -866,7 +866,7 @@ describe('useShareFields edit against the listing', () => {
     });
     expect(updateMock).not.toHaveBeenCalled();
     expect(rendered.result.current.fieldErrors.currencyError).toBe(
-      'forms.holding.shareCurrencyMismatchError',
+      'forms.holding.shareCurrencyMismatchEditError',
     );
     expect(rendered.result.current.listingCurrency).toBe('USD');
   });

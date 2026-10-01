@@ -24,6 +24,7 @@ type ShareValidationParams = {
 export type ShareFieldErrors = {
   currencyError:
     | 'forms.holding.shareCurrencyMismatchError'
+    | 'forms.holding.shareCurrencyMismatchEditError'
     | 'forms.holding.shareCurrencyUnsupportedError'
     | null;
   tickerError: 'forms.holding.shareTickerError' | null;
@@ -40,8 +41,10 @@ const EODHD_SYMBOL_PATTERN = /^[^.\s]+\.[^.\s]+$/;
 
 // The price refresh stores a close only in the currency its unit fits, so a
 // share held in any other currency would never be priced. A unit no share
-// currency fits leaves Manual as the only way out.
+// currency fits leaves Manual as the only way out. An edit cannot change the
+// currency, so its text offers a new share in that currency instead.
 const currencyFieldReasonKey = (
+  isEdit: boolean,
   quoteUnit: string | undefined,
   currency: Currency,
 ): ShareFieldErrors['currencyError'] => {
@@ -49,9 +52,13 @@ const currencyFieldReasonKey = (
     return null;
   }
 
-  return isShareUnitSupported(quoteUnit)
-    ? 'forms.holding.shareCurrencyMismatchError'
-    : 'forms.holding.shareCurrencyUnsupportedError';
+  if (!isShareUnitSupported(quoteUnit)) {
+    return 'forms.holding.shareCurrencyUnsupportedError';
+  }
+
+  return isEdit
+    ? 'forms.holding.shareCurrencyMismatchEditError'
+    : 'forms.holding.shareCurrencyMismatchError';
 };
 
 // Only EODHD needs a ticker: it is the symbol the price refresh asks for.
@@ -104,7 +111,7 @@ const costFieldReasonKey = (isEdit: boolean, cost: string): ShareFieldErrors['co
 // Each field's reason reads only its own input, so fixing one field never
 // changes the error another field shows.
 export const shareFieldErrors = (params: ShareValidationParams): ShareFieldErrors => ({
-  currencyError: currencyFieldReasonKey(params.quoteUnit, params.currency),
+  currencyError: currencyFieldReasonKey(params.isEdit, params.quoteUnit, params.currency),
   tickerError: tickerFieldReasonKey(params.quoteSource, params.ticker),
   isinError: isinFieldReasonKey(params.isin),
   quantityError: quantityFieldReasonKey(params.isEdit, params.quantity),

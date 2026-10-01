@@ -417,6 +417,8 @@ export const uk: typeof en = {
       removeContribution: 'Видалити внесок {{index}}',
       semiannually: 'Раз на півроку',
       share: 'Акція',
+      shareCurrencyMismatchEditError:
+        'EODHD подає ціну цієї акції в {{currency}}. Змініть джерело ціни на «Вручну» або видаліть цю акцію й додайте її знову в {{currency}}.',
       shareCurrencyMismatchError:
         'EODHD подає ціну цієї акції в {{currency}}. Оберіть {{currency}} або змініть джерело ціни на «Вручну».',
       shareCurrencyUnsupportedError:

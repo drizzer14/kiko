@@ -3016,10 +3016,23 @@ describe('HoldingFormScreen share', () => {
 
         expect(mockLookupShareUnit).toHaveBeenCalledWith('VOD.LSE');
         expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(
-          'EODHD prices this share in GBP. Choose GBP, or set the price source to “Manual”.',
+          'EODHD prices this share in GBP. Set the price source to “Manual”, or delete this share and add it again in GBP.',
         );
         expect(updateShareMock).not.toHaveBeenCalled();
         expect(navigation.goBack).not.toHaveBeenCalled();
+      });
+
+      it('offers only Manual for a new ticker priced in a unit no share currency can hold', async () => {
+        mockLookupShareUnit.mockResolvedValue('ZAC');
+        const screen = await renderEdit(apple);
+
+        await fill(screen, 'Ticker', 'NPN.JSE');
+        await fireEvent.press(screen.getByText('Save'));
+
+        expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(
+          'EODHD prices this share in ZAC, which Kiko does not support. Set the price source to “Manual”.',
+        );
+        expect(updateShareMock).not.toHaveBeenCalled();
       });
 
       it('saves an unchanged ticker with no lookup', async () => {

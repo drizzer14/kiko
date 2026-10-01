@@ -479,6 +479,10 @@ export const en = {
       removeContribution: 'Remove contribution {{index}}',
       semiannually: 'Semiannually',
       share: 'Share',
+      // The same mismatch on an edit, where the currency is read-only: a new
+      // share in the listing's currency is the other way out.
+      shareCurrencyMismatchEditError:
+        'EODHD prices this share in {{currency}}. Set the price source to “Manual”, or delete this share and add it again in {{currency}}.',
       // Under the Currency field when the EODHD listing is priced in another
       // currency (a pence listing fits pounds): such a share never gets a price.
       shareCurrencyMismatchError:

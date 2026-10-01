@@ -45,6 +45,25 @@ describe('shareFieldErrors — currency', () => {
     },
   );
 
+  it('rejects a mismatch on an edit with the edit reason, since the currency is read-only there', () => {
+    expect(
+      shareFieldErrors({ ...baseParams(), isEdit: true, quoteUnit: 'USD', currency: 'UAH' })
+        .currencyError,
+    ).toBe('forms.holding.shareCurrencyMismatchEditError');
+  });
+
+  it('keeps the unsupported reason on an edit', () => {
+    expect(
+      shareFieldErrors({ ...baseParams(), isEdit: true, quoteUnit: 'ZAC' }).currencyError,
+    ).toBe('forms.holding.shareCurrencyUnsupportedError');
+  });
+
+  it('accepts the currency the listing is priced in on an edit', () => {
+    expect(
+      shareFieldErrors({ ...baseParams(), isEdit: true, quoteUnit: 'USD' }).currencyError,
+    ).toBeNull();
+  });
+
   it('reports the mismatch before every other field', () => {
     expect(shareReasonKey({ ...baseParams(), quoteUnit: 'USD', currency: 'UAH', cost: '' })).toBe(
       'forms.holding.shareCurrencyMismatchError',
