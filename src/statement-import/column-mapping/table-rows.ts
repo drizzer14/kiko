@@ -6,6 +6,7 @@
 // up front and hard-codes it; this module is the one place that reads
 // EITHER, since the user's own file could be either kind.
 import Papa from 'papaparse';
+import { noonIfMidnight, utcDigitsOf } from '@kiko/dates';
 
 import type { SpreadsheetCellValue, StatementFormatInput } from '../parser';
 
@@ -21,9 +22,16 @@ const pad2 = (value: number): string => String(value).padStart(2, '0');
 // (`'YYYY-MM-DD HH:MM:SS'`), so a mapping that points its date column at a
 // real Excel date cell works exactly like one pointed at a text date column.
 // Those UTC digits ARE the cell's own wall clock — `date-formats.ts`'s
-// `partsToSeconds` is what resolves them downstream, as Kyiv time.
-const formatUtcDateTime = (date: Date): string =>
-  `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())} ${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}:${pad2(date.getUTCSeconds())}`;
+// `partsToSeconds` is what resolves them downstream, as Kyiv time. A cell
+// with no time part arrives as exact UTC midnight: it is date-only, and only
+// this step still knows the value came from a spreadsheet date rather than
+// from text with a real `00:00:00`, so it becomes noon here, the same
+// reading a date-only preset gives.
+const formatUtcDateTime = (date: Date): string => {
+  const { year, month, day, hour, minute, second } = noonIfMidnight(utcDigitsOf(date.getTime()));
+
+  return `${year}-${pad2(month)}-${pad2(day)} ${pad2(hour)}:${pad2(minute)}:${pad2(second)}`;
+};
 
 const toTableCell = (value: SpreadsheetCellValue): TableCell => {
   if (typeof value === 'number') {

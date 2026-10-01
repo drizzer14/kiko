@@ -170,4 +170,25 @@ describe('monobankCsvFormat.parse', () => {
       asOfSeconds: 1_683_901_836,
     });
   });
+
+  // A real 00:00:00 row is a timed row, not a date-only one: read as noon it
+  // would outrank a later 09:00 row and close on a stale balance.
+  it('keeps a real 00:00:00 row at midnight, so a later row on the same day is the closing balance', () => {
+    const parsed = monobankCsvFormat.parse({
+      text: [
+        MONOBANK_HEADER,
+        '29.09.2026 18:00:00,Shop,5411,-100.00,-100.00,UAH,—,—,—,1050.00',
+        '30.09.2026 00:00:00,Interest,4829,100.00,100.00,UAH,—,—,—,1150.00',
+        '30.09.2026 09:00:00,Coffee,5814,-50.00,-50.00,UAH,—,—,—,1100.00',
+      ].join('\n'),
+      fileName: 'midnight-row.csv',
+    });
+
+    expect(parsed.transactions[1].timeSeconds).toBe(Date.UTC(2026, 8, 29, 21, 0, 0) / 1000);
+    expect(parsed.closingBalance).toEqual({
+      minorUnits: 110_000,
+      currency: 'UAH',
+      asOfSeconds: Date.UTC(2026, 8, 30, 6, 0, 0) / 1000,
+    });
+  });
 });

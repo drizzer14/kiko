@@ -18,8 +18,8 @@ import {
 } from '@kiko/statement-import/parser';
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
+import { kyivWallClockToUtcMilliseconds } from '@kiko/dates';
 import { type Currency, isCurrency } from '@kiko/currency/currency';
-import { kyivInstantMillisecondsIfRoundTrips } from '@kiko/statement-import/parse-date-time';
 
 // Detect signature: file content starts with the literal preamble line
 // `Виписка за рахунком;;;;;;;`. Verified byte-for-byte
@@ -106,7 +106,7 @@ const resolveAccount = (rows: string[][]): { currency: Currency; iban: string } 
 
 // "DD.MM.YY HH:MM" (2-digit year) — its own parse, deliberately
 // not the shared `parseDateTimeSeconds` helper (see `SENSEBANK_DATE_PATTERN`'s
-// doc comment above), but the same shared `kyivInstantMillisecondsIfRoundTrips`
+// doc comment above), but the same shared `kyivWallClockToUtcMilliseconds`
 // reads the wall clock as Europe/Kyiv local time and rejects a rollover — an
 // out-of-range day ("31.02.26") silently landing on a DIFFERENT, wrong
 // calendar instant — the same way every other bank-export date parser in
@@ -119,7 +119,7 @@ const parseSensebankDateSeconds = (raw: string): number => {
   }
 
   const [, day, month, year, hour, minute] = match;
-  const milliseconds = kyivInstantMillisecondsIfRoundTrips({
+  const milliseconds = kyivWallClockToUtcMilliseconds({
     year: 2000 + Number(year),
     month: Number(month),
     day: Number(day),

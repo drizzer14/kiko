@@ -38,17 +38,15 @@ export const isRealCalendarInstant = ({
   );
 };
 
-/** A wall clock of exactly `00:00:00` means "date only" — a spreadsheet
- * `Date` cell with no time part, a CSV date-only preset, or a legacy stored
- * row that predates real instants — and becomes noon in whichever zone the
- * caller reads it, so the same calendar day shows from UTC-9 to UTC+12. */
+/** A wall clock of exactly `00:00:00`, from a source that cannot tell a
+ * date-only value from a real midnight — a spreadsheet `Date` cell, or a
+ * legacy stored row that predates real instants — is read as date-only. A
+ * source that carries a real time (a timed text cell) never comes here. */
 export const isMidnightWallClock = (parts: WallClockParts): boolean =>
   parts.hour === 0 && parts.minute === 0 && parts.second === 0;
 
 /** `parts` with `hour` bumped to noon when it's date-only (`isMidnightWallClock`
- * above), unchanged otherwise — shared by every zone reader
- * (`kyivInstantMillisecondsIfRoundTrips`, column mapping's `partsToSeconds`,
- * `rezoneImportTime`) so the same date-only convention applies identically
- * regardless of which zone resolves the result. */
+ * above), unchanged otherwise, so the same calendar day shows from UTC-9 to
+ * UTC+12 (`table-rows.ts`'s spreadsheet `Date` cell, `rezoneImportTime`). */
 export const noonIfMidnight = (parts: WallClockParts): WallClockParts =>
   isMidnightWallClock(parts) ? { ...parts, hour: 12 } : parts;

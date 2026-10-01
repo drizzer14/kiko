@@ -1,51 +1,16 @@
 import { StatementParseError } from '../parser';
 
-import { kyivInstantMillisecondsIfRoundTrips, parseDateTimeSeconds } from './parse-date-time';
-
-const parts = (
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute: number,
-  second = 0,
-) => ({ year, month, day, hour, minute, second });
-
-describe('kyivInstantMillisecondsIfRoundTrips', () => {
-  it('reads a summer evening wall clock as Kyiv local time', () => {
-    expect(kyivInstantMillisecondsIfRoundTrips(parts(2026, 9, 15, 22, 30, 0))).toBe(
-      Date.UTC(2026, 8, 15, 19, 30, 0),
-    );
-  });
-
-  it('reads a winter evening wall clock as Kyiv local time', () => {
-    expect(kyivInstantMillisecondsIfRoundTrips(parts(2026, 1, 15, 22, 30, 0))).toBe(
-      Date.UTC(2026, 0, 15, 20, 30, 0),
-    );
-  });
-
-  it('treats an exact 00:00:00 as date-only and reads it as noon Kyiv', () => {
-    expect(kyivInstantMillisecondsIfRoundTrips(parts(2026, 9, 15, 0, 0, 0))).toBe(
-      Date.UTC(2026, 8, 15, 9, 0, 0),
-    );
-  });
-
-  it('rejects a day that rolls over (February has no 31st)', () => {
-    expect(kyivInstantMillisecondsIfRoundTrips(parts(2026, 2, 31, 10, 0))).toBeUndefined();
-  });
-
-  it('rejects an impossible date even at exact midnight — the noon substitution does not rescue it', () => {
-    expect(kyivInstantMillisecondsIfRoundTrips(parts(2026, 2, 31, 0, 0, 0))).toBeUndefined();
-  });
-
-  it('rejects an out-of-range hour/minute that rolls over', () => {
-    expect(kyivInstantMillisecondsIfRoundTrips(parts(2026, 9, 15, 25, 61))).toBeUndefined();
-  });
-});
+import { parseDateTimeSeconds } from './parse-date-time';
 
 describe('parseDateTimeSeconds', () => {
   it('parses a DD.MM.YYYY HH:MM:SS wall clock as Kyiv local time, in UTC seconds since epoch', () => {
     expect(parseDateTimeSeconds('01.07.2025 10:15:00', 'PrivatBank')).toBe(1_751_354_100);
+  });
+
+  it('keeps a real 00:00:00 at midnight Kyiv, never noon', () => {
+    expect(parseDateTimeSeconds('15.09.2026 00:00:00', 'Monobank')).toBe(
+      Date.UTC(2026, 8, 14, 21, 0, 0) / 1000,
+    );
   });
 
   it('trims surrounding whitespace before matching', () => {

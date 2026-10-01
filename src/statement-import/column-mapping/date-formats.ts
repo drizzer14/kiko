@@ -4,7 +4,7 @@
 // Sensebank's 2-digit-year `DD.MM.YY HH:MM`), plus a few common shorter/ISO
 // variants a manually-exported statement might carry instead.
 import maybe, { foldMap } from 'fnts/maybe';
-import { noonIfMidnight, type WallClockParts, kyivWallClockToUtcMilliseconds } from '@kiko/dates';
+import { type WallClockParts, kyivWallClockToUtcMilliseconds } from '@kiko/dates';
 
 import type { TableCell } from './table-rows';
 
@@ -29,17 +29,24 @@ type DatePreset = {
 // Reads the parts as Kyiv time, the same reading every named format uses,
 // never the device's own zone: the instant feeds the dedup key, so reading
 // it in the device zone gave the same file a different key once the phone
-// changed zone, and an overlapping re-import duplicated every row. A
-// date-only cell (an exact `00:00:00`) reads as noon, so a mapped date-only
-// column shows the same calendar day everywhere.
+// changed zone, and an overlapping re-import duplicated every row.
 // `kyivWallClockToUtcMilliseconds` rejects a rollover — an out-of-range day
 // ("31.02.2026"), month ("2026-13-45"), hour, or minute silently rolling into
 // a DIFFERENT, wrong calendar instant.
 const partsToSeconds = (parts: WallClockParts): number | undefined =>
-  foldMap(
-    maybe(kyivWallClockToUtcMilliseconds(noonIfMidnight(parts))),
-    (milliseconds) => milliseconds / 1000,
-  );
+  foldMap(maybe(kyivWallClockToUtcMilliseconds(parts)), (milliseconds) => milliseconds / 1000);
+
+// A date-only cell has no time at all, so it reads as noon and shows the same
+// calendar day from UTC-9 to UTC+12. A timed preset keeps a real `00:00` at
+// midnight: as noon it would sort after a later row on the same day.
+const dateOnlyParts = (year: string, month: string, day: string): WallClockParts => ({
+  year: Number(year),
+  month: Number(month),
+  day: Number(day),
+  hour: 12,
+  minute: 0,
+  second: 0,
+});
 
 // Every preset reads its own wall-clock parts — the digits themselves are
 // zone-agnostic; `partsToSeconds` above is what resolves them, as Kyiv
@@ -71,14 +78,7 @@ const presets: Record<DateFormatId, DatePreset> = {
   },
   'DD.MM.YYYY': {
     pattern: /^(\d{2})\.(\d{2})\.(\d{4})$/,
-    toParts: ([, day, month, year]) => ({
-      year: Number(year),
-      month: Number(month),
-      day: Number(day),
-      hour: 0,
-      minute: 0,
-      second: 0,
-    }),
+    toParts: ([, day, month, year]) => dateOnlyParts(year, month, day),
   },
   'DD.MM.YY HH:MM': {
     pattern: /^(\d{2})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})$/,
@@ -104,36 +104,15 @@ const presets: Record<DateFormatId, DatePreset> = {
   },
   'YYYY-MM-DD': {
     pattern: /^(\d{4})-(\d{2})-(\d{2})$/,
-    toParts: ([, year, month, day]) => ({
-      year: Number(year),
-      month: Number(month),
-      day: Number(day),
-      hour: 0,
-      minute: 0,
-      second: 0,
-    }),
+    toParts: ([, year, month, day]) => dateOnlyParts(year, month, day),
   },
   'MM/DD/YYYY': {
     pattern: /^(\d{2})\/(\d{2})\/(\d{4})$/,
-    toParts: ([, month, day, year]) => ({
-      year: Number(year),
-      month: Number(month),
-      day: Number(day),
-      hour: 0,
-      minute: 0,
-      second: 0,
-    }),
+    toParts: ([, month, day, year]) => dateOnlyParts(year, month, day),
   },
   'DD/MM/YYYY': {
     pattern: /^(\d{2})\/(\d{2})\/(\d{4})$/,
-    toParts: ([, day, month, year]) => ({
-      year: Number(year),
-      month: Number(month),
-      day: Number(day),
-      hour: 0,
-      minute: 0,
-      second: 0,
-    }),
+    toParts: ([, day, month, year]) => dateOnlyParts(year, month, day),
   },
 };
 
