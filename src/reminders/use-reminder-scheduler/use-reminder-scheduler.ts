@@ -12,7 +12,7 @@ import { type NotificationResponse, remindersNative } from '@kiko/reminders/nati
 // Background too, so smart skip sees the newest data before the app sleeps.
 const REPLAN_STATES: readonly AppStateStatus[] = ['active', 'background'];
 
-export const warnReplanFailure = (reason: unknown): void => {
+const warnReplanFailure = (reason: unknown): void => {
   logFailure('[reminders] re-plan failed', reason);
 };
 
