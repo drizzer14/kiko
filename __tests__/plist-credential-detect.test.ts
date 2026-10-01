@@ -77,8 +77,48 @@ const runPlistCheck = (root: string) =>
 const QUERY_TOKEN_CLIENT = [
   "import { QUOTES_API_ENDPOINT } from '@env';",
   '',
-  'export const quoteUrl = (token: string): string =>',
-  "  `${QUOTES_API_ENDPOINT}/eod?${new URLSearchParams({ 'api_token': token })}`;",
+  "const NO_STORE: RequestInit = { headers: { 'Cache-Control': 'no-store' } };",
+  '',
+  'export const fetchQuote = (token: string): Promise<Response> =>',
+  "  fetch(`${QUOTES_API_ENDPOINT}/eod?${new URLSearchParams({ 'api_token': token })}`, NO_STORE);",
+  '',
+].join('\n');
+
+const CACHEABLE_QUERY_TOKEN_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const fetchQuote = (token: string): Promise<Response> =>',
+  "  fetch(QUOTES_API_ENDPOINT + '/eod?' + new URLSearchParams({ api_token: token }));",
+  '',
+].join('\n');
+
+const NO_CACHE_QUERY_TOKEN_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const fetchQuote = (token: string): Promise<Response> =>',
+  "  fetch(QUOTES_API_ENDPOINT + '/eod?api_token=' + token, {",
+  "    headers: { 'Cache-Control': 'no-cache' },",
+  '  });',
+  '',
+].join('\n');
+
+const HEADERS_SET_QUERY_TOKEN_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const fetchQuote = (token: string): Promise<Response> => {',
+  '  const headers = new Headers();',
+  "  headers.set('cache-control', 'no-store');",
+  '',
+  "  return fetch(QUOTES_API_ENDPOINT + '/eod?api_token=' + token, { headers });",
+  '};',
+  '',
+].join('\n');
+
+const HEADER_TOKEN_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const fetchQuote = (token: string): Promise<Response> =>',
+  "  fetch(QUOTES_API_ENDPOINT + '/eod', { headers: { 'X-Token': token } });",
   '',
 ].join('\n');
 
@@ -144,6 +184,41 @@ describe('scripts/checks/plist.sh credential detection', () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain(QUOTES_HOST);
+  });
+
+  it("fails (exit 2) naming the file when a pinned 'api_token' client sends no Cache-Control: no-store", () => {
+    const result = runPlistCheck(
+      buildRoot({ [QUOTES_HOST]: TWO_PINS }, CACHEABLE_QUERY_TOKEN_CLIENT),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('src/quotes.client.ts');
+    expect(result.stderr).toContain('no-store');
+  });
+
+  it("fails (exit 2) when the 'api_token' client sends Cache-Control: no-cache, not no-store", () => {
+    const result = runPlistCheck(
+      buildRoot({ [QUOTES_HOST]: TWO_PINS }, NO_CACHE_QUERY_TOKEN_CLIENT),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('src/quotes.client.ts');
+  });
+
+  it("passes when the 'api_token' client sets a lowercase cache-control: no-store through Headers.set", () => {
+    const result = runPlistCheck(
+      buildRoot({ [QUOTES_HOST]: TWO_PINS }, HEADERS_SET_QUERY_TOKEN_CLIENT),
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+  });
+
+  it('does not require no-store from a client whose credential is a header, not a URL parameter', () => {
+    const result = runPlistCheck(buildRoot({ [QUOTES_HOST]: TWO_PINS }, HEADER_TOKEN_CLIENT));
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
   });
 
   it('ignores a client that carries no credential marker', () => {
