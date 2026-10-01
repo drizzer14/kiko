@@ -49,6 +49,11 @@ export const nicknamePatch = (nickname: string | undefined): { nickname?: string
   ...(nickname === undefined ? {} : { nickname }),
 });
 
+export const reversedNicknamePatch = (nickname: string | undefined): { nickname?: string } => ({
+  // EXPECT-FINDING
+  ...(undefined === nickname ? {} : { nickname }),
+});
+
 export const presentNicknamePatch = (nickname: string | undefined): { nickname?: string } => ({
   // EXPECT-FINDING
   ...(nickname !== undefined ? { nickname } : {}),

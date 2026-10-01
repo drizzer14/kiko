@@ -117,6 +117,7 @@ rules:
           - patterns:
               - pattern-either:
                   - pattern: "$X === undefined ? $EMPTY : $E"
+                  - pattern: "undefined === $X ? $EMPTY : $E"
                   - pattern: "$X === null ? $EMPTY : $E"
                   - pattern: "$X == null ? $EMPTY : $E"
                   - pattern: "$X == undefined ? $EMPTY : $E"
