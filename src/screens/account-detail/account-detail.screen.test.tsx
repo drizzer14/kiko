@@ -1493,7 +1493,9 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
 
     const importButton = mockButtonProps.find((props) => props.children === 'Import statement');
 
-    expect(importButton?.fullWidth).toBe(true);
+    // Button defaults fullWidth to true, so full width means it never opts out.
+    expect(importButton).toBeDefined();
+    expect(importButton?.fullWidth).not.toBe(false);
   });
 
   it('opens the document picker with csv/xlsx/plainText/allFiles accepted types when Import statement is pressed', async () => {

@@ -133,7 +133,6 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
           <Button
             testID="settings-button-export"
             variant="primary"
-            fullWidth
             onPress={handleExport}
             disabled={isSubmitting}
           >

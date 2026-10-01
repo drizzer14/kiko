@@ -70,6 +70,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-header-spacing-item',
   'kiko-no-direct-notification-permission-request',
   'kiko-no-fixed-day-offset-into-local-day',
+  'kiko-no-redundant-button-full-width',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (

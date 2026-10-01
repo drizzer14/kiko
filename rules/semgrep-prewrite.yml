@@ -920,6 +920,30 @@ rules:
                   <Button ... variant=$VARIANT ...>
                     {t('common.cancel')}
                   </Button>
+  # P5 review: the design-system Button defaults `fullWidth` to true
+  # (button.component.tsx), so a bare `fullWidth` or `fullWidth={true}` only
+  # restates the default; seven screens carried it. Only `fullWidth={false}`
+  # (or a computed value) says something. Keyed on the `Button` tag: it is
+  # the one component of that name in src/, and another component's own
+  # `fullWidth` prop (its own default) is in the negative fixture. One
+  # pattern covers both spellings: Semgrep reads a bare JSX attribute as
+  # `={true}` (verified: `fullWidth={true}` alone matched every bare site), and
+  # a self-closing pattern also matches an element with children. Constant
+  # propagation folds a value known to be true (`!isCompact` with a
+  # `const isCompact = false`), so that fires too; a runtime value does not.
+  - id: kiko-no-redundant-button-full-width
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Redundant `fullWidth` on the design-system Button. It defaults to
+      `true`, so a bare `fullWidth` or `fullWidth={true}` restates the
+      default. Drop the prop; pass only `fullWidth={false}` for an
+      intrinsic-width button — see kiko-design-system's "Component set
+      (Button)".
+    metadata:
+      fix: "Remove the bare `fullWidth` / `fullWidth={true}` from the Button; it already defaults to true. Pass only `fullWidth={false}`."
+      skill: "kiko-design-system › Component set (Button)"
+    pattern: <Button ... fullWidth={true} ... />
   # kiko-domain's "Exchange/Convert legs": a blank row's fallback label has ONE
   # owner, `transactionRowDescription`, which tries the exchange-leg label
   # before the holding-name default. A surface calling

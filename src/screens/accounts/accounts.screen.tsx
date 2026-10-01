@@ -297,7 +297,6 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
         <Box testID="add-account-footer" style={styles.addAccountButton}>
           <Button
             variant="primary"
-            fullWidth
             onPress={() => navigation.navigate('AccountForm', {})}
             icon={genericEntitySymbol.account}
           >
