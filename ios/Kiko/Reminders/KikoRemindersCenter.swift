@@ -90,6 +90,12 @@ import UserNotifications
     }
 
     center.removePendingNotificationRequests(withIdentifiers: staleIdentifiers)
+    center.removeDeliveredNotifications(
+      withIdentifiers: Self.orphanedReminderIdentifiers(
+        in: deliveredNotifications().map(\.request),
+        liveReminderIds: Set(requests.map(\.reminderId)).union(keepSnoozeReminderIds)
+      )
+    )
 
     let capacity = max(0, Self.maximumPendingRequests - (pendingIdentifiers.count - staleIdentifiers.count))
     var firstError: Error?
@@ -117,6 +123,41 @@ import UserNotifications
     semaphore.wait()
 
     return identifiers
+  }
+
+  private func deliveredNotifications() -> [UNNotification] {
+    let semaphore = DispatchSemaphore(value: 0)
+    var notifications: [UNNotification] = []
+
+    center.getDeliveredNotifications { delivered in
+      notifications = delivered
+      semaphore.signal()
+    }
+
+    semaphore.wait()
+
+    return notifications
+  }
+
+  // A delivered reminder of a reminder JS no longer schedules (deleted, with
+  // its account or not, paused, or unavailable) still offers "Tomorrow", and
+  // that snooze would fire with the app closed and route nowhere. The paused
+  // notice has no action and stays: it may not have been read yet.
+  static func orphanedReminderIdentifiers(
+    in delivered: [UNNotificationRequest],
+    liveReminderIds: Set<String>
+  ) -> [String] {
+    delivered.compactMap { request in
+      guard
+        request.content.categoryIdentifier == reminderCategoryIdentifier,
+        let reminderId = request.content.userInfo["reminderId"] as? String,
+        !liveReminderIds.contains(reminderId)
+      else {
+        return nil
+      }
+
+      return request.identifier
+    }
   }
 
   private func add(_ request: UNNotificationRequest) -> Error? {
