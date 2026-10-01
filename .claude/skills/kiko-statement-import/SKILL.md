@@ -84,8 +84,9 @@ and `importRows`'s own doc comment, for the exact balance rule —
 `addManyDedup` is a DIFFERENT, still-live upsert-only path the sync
 routes use, not statement import).
 
-**A synced account refuses the import.** `importRows` throws
-`statement-import/synced-account`, before it writes anything, for any
+**A synced account refuses the import.** `importRows`
+(`src/transactions/repo/transactions.repo.ts`) throws an Error with the
+message statement-import/synced-account, before it writes anything, for any
 holding of an account `isSyncedAccount` owns (a hand-added holding there
 included): the sync already writes those rows under its own `source`, so
 an `import` copy would be a second one, and an import row cannot be
@@ -100,13 +101,20 @@ account is manual again and imports, but its holdings keep their synced
 (`monobank`, ...) rows. `importRows` drops every statement row with a
 synced row of the same holding and the same amount dated within ±60 s
 (`dropRowsHeldBySync`): it is not inserted and adds nothing to the
-balance. One synced row stands for one statement row. Pairs claim
-nearest first across the whole statement, never in file order: at the
-edge of the synced period a real unsynced row of the same amount can be
-in reach of the same synced row, and file order (newest-first or
-oldest-first) must not decide which one is dropped. A tie goes to the
-earlier statement row, then the earlier synced row. A row whose clock is
-coarser than a second carries `ParsedTransaction.timeReading`:
+balance. One synced row stands for one statement row. Pairing is a sweep
+per amount, never in file order: the statement rows claim in order of
+where their reach ends (timed rows first), and each takes the EARLIEST
+unclaimed same-amount synced row in its reach. That holds as many
+statement rows as any pairing can. A nearest-first pairing does not: at
+the edge of the synced period it can give a synced row to the nearer of
+two statement rows and strand the other one's only match, so a row the
+bank already synced goes in twice. When only one of two statement rows
+can be held, the earlier one is held. The sweep builds no pair list:
+each amount's synced times stay sorted, and a binary search finds the
+first one in reach. `importParsedStatement` hands
+`ParsedTransaction.timeReading` to `importRows` unchanged; the repository
+converts its seconds itself. A row
+whose clock is coarser than a second carries `ParsedTransaction.timeReading`:
 - `{ kind: 'minute' }` (Sensebank, the `HH:MM` column-mapping presets):
   the distance runs from any second of that minute, so a floored `09:00`
   row is not pushed behind a `09:01` row for a synced row at `09:00:40`.

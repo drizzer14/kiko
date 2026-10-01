@@ -61,11 +61,11 @@ const minuteStatementRow = (externalId: string, amountMinorUnits: number, time: 
 const KYIV_DAY_START_OFFSET = -3 * 60 * 60 * SECOND;
 
 const dateOnlyStatementRow = (externalId: string, amountMinorUnits: number, date: number) => {
-  const from = Date.UTC(2026, 8, date) + KYIV_DAY_START_OFFSET;
+  const fromSeconds = (Date.UTC(2026, 8, date) + KYIV_DAY_START_OFFSET) / SECOND;
 
   return {
     ...statementRow(externalId, amountMinorUnits, Date.UTC(2026, 8, date, 9)),
-    timeReading: { kind: 'day' as const, from, until: from + 24 * 60 * 60 * SECOND },
+    timeReading: { kind: 'day' as const, fromSeconds, untilSeconds: fromSeconds + 24 * 60 * 60 },
   };
 };
 
@@ -121,7 +121,7 @@ describe('a statement row a synced row already holds', () => {
     expect(balance()).toBe(95_000);
   });
 
-  it('goes to the nearest statement row, whatever the file order', async () => {
+  it('goes to the earlier of two statement rows in reach, whatever the file order', async () => {
     const imported = await transactionsRepo.importRows({
       holdingId: 'card',
       rows: [
@@ -135,16 +135,35 @@ describe('a statement row a synced row already holds', () => {
     expect(balance()).toBe(95_000);
   });
 
-  it('goes to the nearest statement row when an earlier unsynced one is in reach too', async () => {
+  it('goes to the earliest statement row in reach, even one dated before the synced row', async () => {
     await transactionsRepo.importRows({
       holdingId: 'card',
       rows: [
-        statementRow('unsynced-earlier', -5_000, SYNCED_AT - 20 * SECOND),
         statementRow('synced-fare', -5_000, SYNCED_AT + 10 * SECOND),
+        statementRow('unsynced-earlier', -5_000, SYNCED_AT - 20 * SECOND),
       ],
     });
 
-    expect(importedTimes()).toEqual([SYNCED_AT - 20 * SECOND]);
+    expect(importedTimes()).toEqual([SYNCED_AT + 10 * SECOND]);
+  });
+
+  it('holds every statement row a pairing can hold, even where the nearest pair would strand one', async () => {
+    run("UPDATE transactions SET time = ? WHERE id = 'synced'", SYNCED_AT + 5 * SECOND);
+    run(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id) VALUES ('synced-earlier', 'card', -5000, ?, 'monobank', 'bank-earlier-id')",
+      SYNCED_AT - 50 * SECOND,
+    );
+
+    const imported = await transactionsRepo.importRows({
+      holdingId: 'card',
+      rows: [
+        statementRow('at-the-edge', -5_000, SYNCED_AT + 60 * SECOND),
+        statementRow('first', -5_000, SYNCED_AT),
+      ],
+    });
+
+    expect(imported).toBe(0);
+    expect(balance()).toBe(100_000);
   });
 
   it('reads a minute clock as any second of that minute', async () => {

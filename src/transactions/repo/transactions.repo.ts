@@ -32,10 +32,10 @@ import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { maxOf, minOf } from '@kiko/numbers';
 import type { Currency } from '@kiko/currency/currency';
-import type { ClosingBalance } from '@kiko/statement-import/parser';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
 import type { DepositContribution } from '@kiko/holdings/holding-metadata';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
+import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
 import { isSyncedAccount, isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 
@@ -407,14 +407,10 @@ const partitionNewRows = async (
   });
 };
 
-/** How coarse a statement row's clock is, when coarser than a second: a clock
- * that shows minutes only (`HH:MM`), or a date with no time, whose local day
- * runs from `from` up to `until` (milliseconds) in the file's own zone. */
-type ImportTimeReading = { kind: 'minute' } | { kind: 'day'; from: number; until: number };
-
 /** A statement-import row, plus the older key the ledger may already hold
- * the same row under (`noonAliasDedupKey` in statement-import's mapping). */
-type ImportRow = NewTransaction & { aliasExternalId?: string; timeReading?: ImportTimeReading };
+ * the same row under (`noonAliasDedupKey` in statement-import's mapping), and
+ * how coarse its clock is. */
+type ImportRow = NewTransaction & { aliasExternalId?: string; timeReading?: TimeReading };
 
 /** A row the ledger already holds under its alias: its real `time`, and the
  * time and amount the ledger stores it with. */
@@ -492,9 +488,9 @@ const clockRangeOf = ({ time, timeReading }: ImportRow): ClockRange =>
       window: SYNC_MATCH_WINDOW_MILLISECONDS,
       claimOrder: 0,
     }))
-    .with({ kind: 'day' }, ({ from, until }) => ({
-      earliest: from,
-      latest: until - 1,
+    .with({ kind: 'day' }, ({ fromSeconds, untilSeconds }) => ({
+      earliest: fromSeconds * 1000,
+      latest: untilSeconds * 1000 - 1,
       window: 0,
       claimOrder: 1,
     }))
@@ -502,36 +498,63 @@ const clockRangeOf = ({ time, timeReading }: ImportRow): ClockRange =>
 
 type RangedRow = { row: ImportRow; range: ClockRange };
 
-/** Every statement row and same-amount synced row within the window of each
- * other, timed rows first, nearest first. A tie goes to the earlier row, so the
- * outcome never depends on the file's row order or the database's. */
-const syncPairsNearestFirst = (rangedRows: RangedRow[], synced: SyncedRow[]) => {
-  const syncedByAmount = new Map<number, SyncedRow[]>();
+const reachStartOf = ({ earliest, window }: ClockRange): number => earliest - window;
 
-  for (const syncedRow of synced) {
-    const sameAmount = syncedByAmount.get(syncedRow.amountMinorUnits) ?? [];
+const reachEndOf = ({ latest, window }: ClockRange): number => latest + window;
 
-    sameAmount.push(syncedRow);
-    syncedByAmount.set(syncedRow.amountMinorUnits, sameAmount);
+const byClaimTurn = (left: RangedRow, right: RangedRow): number =>
+  left.range.claimOrder - right.range.claimOrder ||
+  reachEndOf(left.range) - reachEndOf(right.range) ||
+  reachStartOf(left.range) - reachStartOf(right.range);
+
+/** Each amount's synced times, ascending. */
+const syncedTimesByAmount = (synced: SyncedRow[]): Map<number, number[]> => {
+  const byAmount = new Map<number, number[]>();
+
+  for (const { time, amountMinorUnits } of synced) {
+    const times = byAmount.get(amountMinorUnits) ?? [];
+
+    times.push(time);
+    byAmount.set(amountMinorUnits, times);
   }
 
-  return rangedRows
-    .flatMap(({ row, range }) =>
-      (syncedByAmount.get(row.amountMinorUnits) ?? []).map((syncedRow) => ({
-        row,
-        range,
-        syncedRow,
-        distance: Math.max(0, range.earliest - syncedRow.time, syncedRow.time - range.latest),
-      })),
-    )
-    .filter(({ range, distance }) => distance <= range.window)
-    .sort(
-      (left, right) =>
-        left.range.claimOrder - right.range.claimOrder ||
-        left.distance - right.distance ||
-        left.row.time - right.row.time ||
-        left.syncedRow.time - right.syncedRow.time,
-    );
+  for (const times of byAmount.values()) {
+    times.sort((left, right) => left - right);
+  }
+
+  return byAmount;
+};
+
+const firstIndexAtOrAfter = (ascendingTimes: number[], time: number): number => {
+  let low = 0;
+  let high = ascendingTimes.length;
+
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+
+    if (ascendingTimes[middle] < time) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+
+  return low;
+};
+
+/** Whether `row` takes the earliest unclaimed same-amount synced time in its
+ * reach; a taken time leaves `unclaimed`. */
+const claimsSyncedTime = (unclaimed: Map<number, number[]>, { row, range }: RangedRow): boolean => {
+  const times = unclaimed.get(row.amountMinorUnits) ?? [];
+  const index = firstIndexAtOrAfter(times, reachStartOf(range));
+
+  if (index === times.length || times[index] > reachEndOf(range)) {
+    return false;
+  }
+
+  times.splice(index, 1);
+
+  return true;
 };
 
 /**
@@ -541,9 +564,11 @@ const syncPairsNearestFirst = (rangedRows: RangedRow[], synced: SyncedRow[]) => 
  * bank keeps its synced rows, and a statement over the same period carries
  * them again under keys no dedup key matches, so that statement row is
  * neither inserted nor counted toward the balance. One synced row stands for
- * one statement row, and the nearest pair across the whole statement claims
- * first: at the edge of the synced period, a real unsynced row of the same
- * amount can be in reach of the same synced row.
+ * one statement row. The statement rows claim in order of where their reach
+ * ends, each taking the earliest unclaimed synced row in reach: that holds as
+ * many rows as any pairing can, so a real unsynced row of the same amount at
+ * the edge of the synced period never strands a synced one, and the file's
+ * row order decides nothing.
  */
 const dropRowsHeldBySync = async (
   databaseTransaction: typeof database,
@@ -565,13 +590,12 @@ const dropRowsHeldBySync = async (
         lte(transactions.time, maxOf(rangedRows.map(({ range }) => range.latest + range.window))),
       ),
     );
+  const unclaimed = syncedTimesByAmount(synced);
   const heldRows = new Set<ImportRow>();
-  const claimedSyncedRows = new Set<SyncedRow>();
 
-  for (const { row, syncedRow } of syncPairsNearestFirst(rangedRows, synced)) {
-    if (!heldRows.has(row) && !claimedSyncedRows.has(syncedRow)) {
-      heldRows.add(row);
-      claimedSyncedRows.add(syncedRow);
+  for (const rangedRow of [...rangedRows].sort(byClaimTurn)) {
+    if (claimsSyncedTime(unclaimed, rangedRow)) {
+      heldRows.add(rangedRow.row);
     }
   }
 

@@ -958,7 +958,7 @@ describe('importParsedStatement runs the loan auto-link matcher', () => {
 });
 
 describe('importParsedStatement hands each row its time reading', () => {
-  it('passes a minute reading, a day in milliseconds, and stores no reading column', async () => {
+  it("passes each row's own reading and stores no reading column", async () => {
     const store: { transactions: StoredRow[] } = { transactions: [] };
     const { databaseTransaction } = makeImportDatabaseTransaction({
       store,
@@ -1003,7 +1003,7 @@ describe('importParsedStatement hands each row its time reading', () => {
     expect(importRows.mock.calls[0][0].rows.map((row) => row.timeReading)).toEqual([
       { kind: 'minute' },
       undefined,
-      { kind: 'day', from: 1_700_000_000_000, until: 1_700_086_400_000 },
+      { kind: 'day', fromSeconds: 1_700_000_000, untilSeconds: 1_700_086_400 },
     ]);
     expect(store.transactions.every((row) => !('timeReading' in row))).toBe(true);
 
