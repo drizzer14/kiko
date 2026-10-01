@@ -48,6 +48,7 @@ const makeWorld = (overrides: Partial<World> = {}): World => ({
 const depsFor = (world: World): ShareSearchDeps => ({
   now: () => NOW,
   readKey: async () => world.key,
+  loadQuota: async () => world.quota,
   updateQuota: async (build) => {
     world.quota = build(world.quota);
     world.events.push(`quota ${world.quota?.calls}`);
@@ -185,6 +186,15 @@ describe('searchShares', () => {
       });
       expect(world.events).toEqual([]);
     });
+
+    it('spends nothing while EODHD rejects the saved key', async () => {
+      const world = makeWorld({ quota: quota({ calls: 3, isKeyRejected: true }) });
+
+      await expect(searchShares('AAPL', FIAT, depsFor(world))).resolves.toEqual({
+        status: 'keyRejected',
+      });
+      expect(world.events).toEqual([]);
+    });
   });
 
   describe('quota', () => {
@@ -252,7 +262,7 @@ describe('searchShares', () => {
         readKey: async () => KEY,
         loadQuota: async () => world.quota,
         updateQuota: depsFor(world).updateQuota,
-        loadLatestPoints: async () => [],
+        loadDayRanges: async () => [],
         fetchEod: async () => {
           await searchShares('AAPL', FIAT, depsFor(world));
 
@@ -263,7 +273,13 @@ describe('searchShares', () => {
         },
       });
 
-      expect(world.quota).toEqual(quota({ calls: 5, symbols: ['AAPL.US'] }));
+      expect(world.quota).toEqual(
+        quota({
+          calls: 5,
+          symbols: ['AAPL.US'],
+          backfilledFrom: { 'AAPL.US': TODAY - 30 * DAY_MS },
+        }),
+      );
     });
 
     it('gives the call back when EODHD never answered', async () => {
@@ -277,8 +293,31 @@ describe('searchShares', () => {
   });
 
   describe('failures', () => {
+    it('reports a rejected key, counts the call, and stops every later search', async () => {
+      const world = makeWorld({ quota: quota({ calls: 3 }), answer: new EodhdAuthError() });
+
+      await expect(searchShares('AAPL', FIAT, depsFor(world))).resolves.toEqual({
+        status: 'keyRejected',
+      });
+      expect(world.quota).toEqual(quota({ calls: 4, isKeyRejected: true }));
+    });
+
+    it('never marks a key saved while the search was out as rejected', async () => {
+      const world = makeWorld({ quota: quota({ calls: 3 }) });
+
+      await searchShares('AAPL', FIAT, {
+        ...depsFor(world),
+        searchSymbols: async () => {
+          world.quota = quota({ keyGeneration: 1 });
+
+          throw new EodhdAuthError();
+        },
+      });
+
+      expect(world.quota).not.toHaveProperty('isKeyRejected');
+    });
+
     it.each([
-      ['a rejected key', new EodhdAuthError()],
       ['a search outside the plan', new EodhdNotInPlanError()],
       ['the per-minute limit', new EodhdRateLimitError()],
       ['a server error', new EodhdServerError()],

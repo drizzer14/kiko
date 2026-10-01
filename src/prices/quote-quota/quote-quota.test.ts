@@ -1,13 +1,18 @@
 import {
-  currentQuota,
-  markUsedUp,
-  type QuoteQuota,
-  type QuotaSettlement,
-  refreshAllowance,
-  reserve,
   settle,
+  reserve,
+  markUsedUp,
+  isBackedOff,
+  currentQuota,
+  withSavedKey,
+  quotaResetsAt,
   withUserLimits,
+  type QuoteQuota,
+  withRestoredKey,
+  refreshAllowance,
+  withRestoredPrices,
   withUnconfirmedLimit,
+  type QuotaSettlement,
 } from './quote-quota';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -49,6 +54,165 @@ describe('currentQuota', () => {
     expect(currentQuota(quota({ isLimitUnconfirmed: true }), OCTOBER_1 + DAY_MS)).toMatchObject({
       isLimitUnconfirmed: true,
     });
+  });
+
+  it('keeps the key state and every symbol back-off and backfill on the next day', () => {
+    const keyState: Partial<QuoteQuota> = {
+      isKeyRejected: true,
+      keyGeneration: 3,
+      backoff: { 'DEAD.US': { strikes: 1, retryDay: OCTOBER_1 + 2 * DAY_MS, lastLotDay: 0 } },
+      backfilledFrom: { 'AAPL.US': OCTOBER_1 - 100 * DAY_MS },
+    };
+
+    expect(currentQuota(quota(keyState), OCTOBER_1 + DAY_MS)).toEqual({
+      day: OCTOBER_1 + DAY_MS,
+      calls: 0,
+      dailyLimit: 20,
+      symbols: [],
+      ...keyState,
+    });
+  });
+});
+
+describe('reserve', () => {
+  it('lists a symbol already requested today once', () => {
+    expect(reserve(quota(), 1, ['AAPL.US']).symbols).toEqual(['AAPL.US']);
+  });
+});
+
+describe('isBackedOff', () => {
+  const backedOff = quota({
+    backoff: { 'DEAD.US': { strikes: 2, retryDay: OCTOBER_1 + DAY_MS, lastLotDay: 500 } },
+  });
+
+  it('holds a symbol back before its retry day', () => {
+    expect(isBackedOff(backedOff, 'DEAD.US', 500)).toBe(true);
+  });
+
+  it('lets the symbol go on its retry day', () => {
+    expect(isBackedOff({ ...backedOff, day: OCTOBER_1 + DAY_MS }, 'DEAD.US', 500)).toBe(false);
+  });
+
+  it('lets the symbol go once its lots changed', () => {
+    expect(isBackedOff(backedOff, 'DEAD.US', 600)).toBe(false);
+  });
+
+  it('never holds back a symbol with no back-off', () => {
+    expect(isBackedOff(backedOff, 'AAPL.US', 500)).toBe(false);
+  });
+});
+
+describe('quotaResetsAt', () => {
+  it("is the next midnight UTC, EODHD's reset", () => {
+    expect(quotaResetsAt(LATE_OCTOBER_1)).toBe(OCTOBER_1 + DAY_MS);
+    expect(quotaResetsAt(OCTOBER_1)).toBe(OCTOBER_1 + DAY_MS);
+  });
+});
+
+describe('withSavedKey', () => {
+  const previousKey = quota({
+    calls: 20,
+    symbols: ['AAPL.US'],
+    keyGeneration: 4,
+    isKeyRejected: true,
+    backoff: { 'DEAD.US': { strikes: 1, retryDay: OCTOBER_1 + 2 * DAY_MS, lastLotDay: 0 } },
+    backfilledFrom: { 'AAPL.US': OCTOBER_1 - 100 * DAY_MS },
+  });
+
+  it("starts the day over for a key EODHD reports no request today for, keeping the series' backfill", () => {
+    expect(
+      withSavedKey(
+        previousKey,
+        { dailyLimit: 100, requestsToday: 9, requestsDay: OCTOBER_1 - DAY_MS },
+        LATE_OCTOBER_1,
+      ),
+    ).toEqual({
+      day: OCTOBER_1,
+      calls: 0,
+      dailyLimit: 100,
+      symbols: [],
+      keyGeneration: 5,
+      backfilledFrom: { 'AAPL.US': OCTOBER_1 - 100 * DAY_MS },
+    });
+  });
+
+  it("takes EODHD's count for today and keeps today's symbols", () => {
+    expect(
+      withSavedKey(
+        previousKey,
+        { dailyLimit: 100, requestsToday: 9, requestsDay: OCTOBER_1 },
+        LATE_OCTOBER_1,
+      ),
+    ).toMatchObject({ calls: 9, dailyLimit: 100, symbols: ['AAPL.US'], keyGeneration: 5 });
+  });
+
+  it('starts the day over when EODHD gave no count, keeping the limit it has', () => {
+    expect(withSavedKey(previousKey, undefined, LATE_OCTOBER_1)).toEqual({
+      day: OCTOBER_1,
+      calls: 0,
+      dailyLimit: 20,
+      symbols: [],
+      keyGeneration: 5,
+      backfilledFrom: { 'AAPL.US': OCTOBER_1 - 100 * DAY_MS },
+    });
+  });
+
+  it('starts at the first key with nothing stored', () => {
+    expect(withSavedKey(null, undefined, LATE_OCTOBER_1)).toEqual({
+      day: OCTOBER_1,
+      calls: 0,
+      dailyLimit: 20,
+      symbols: [],
+      keyGeneration: 1,
+    });
+  });
+});
+
+describe('withRestoredKey', () => {
+  it('marks the limit unconfirmed and the key new, keeping the calls this device spent', () => {
+    expect(
+      withRestoredKey(
+        quota({
+          calls: 7,
+          dailyLimit: 100,
+          keyGeneration: 2,
+          isKeyRejected: true,
+          backoff: { 'DEAD.US': { strikes: 1, retryDay: OCTOBER_1 + 2 * DAY_MS, lastLotDay: 0 } },
+        }),
+        LATE_OCTOBER_1,
+      ),
+    ).toEqual(quota({ calls: 7, dailyLimit: 100, keyGeneration: 3, isLimitUnconfirmed: true }));
+  });
+
+  it('starts a quota on a device with none, its limit unconfirmed', () => {
+    expect(withRestoredKey(null, LATE_OCTOBER_1)).toEqual({
+      day: OCTOBER_1,
+      calls: 0,
+      dailyLimit: 20,
+      symbols: [],
+      keyGeneration: 1,
+      isLimitUnconfirmed: true,
+    });
+  });
+});
+
+describe('withRestoredPrices', () => {
+  it("forgets which symbols were requested, backed off, or backfilled, keeping the day's calls and the key state", () => {
+    expect(
+      withRestoredPrices(
+        quota({
+          calls: 7,
+          keyGeneration: 2,
+          isLimitUnconfirmed: true,
+          backoff: { 'DEAD.US': { strikes: 1, retryDay: OCTOBER_1 + 2 * DAY_MS, lastLotDay: 0 } },
+          backfilledFrom: { 'AAPL.US': OCTOBER_1 - 100 * DAY_MS },
+        }),
+      ),
+    ).toEqual(quota({ calls: 7, symbols: [], keyGeneration: 2, isLimitUnconfirmed: true }));
+  });
+
+  it('leaves no quota as none', () => {
+    expect(withRestoredPrices(null)).toBeNull();
   });
 });
 
@@ -97,6 +261,7 @@ describe('settle', () => {
     spent: 2,
     unanswered: ['SAP.XETRA'],
     usedUp: false,
+    keyGeneration: 0,
     ...overrides,
   });
 
@@ -130,6 +295,88 @@ describe('settle', () => {
 
   it('leaves no stored quota as none', () => {
     expect(settle(null, settlement())).toBeNull();
+  });
+
+  it('marks the key rejected for the key the refresh used', () => {
+    expect(
+      settle(quota({ keyGeneration: 2 }), settlement({ keyGeneration: 2, isKeyRejected: true })),
+    ).toMatchObject({ isKeyRejected: true });
+  });
+
+  it('marks the key rejected on a quota stored for another UTC day too', () => {
+    const nextDay = quota({ day: OCTOBER_1 + DAY_MS, calls: 1 });
+
+    expect(settle(nextDay, settlement({ isKeyRejected: true }))).toEqual({
+      ...nextDay,
+      isKeyRejected: true,
+    });
+  });
+
+  it('never marks a key saved while the refresh was out as rejected', () => {
+    expect(
+      settle(quota({ keyGeneration: 3 }), settlement({ keyGeneration: 2, isKeyRejected: true })),
+    ).not.toHaveProperty('isKeyRejected');
+  });
+
+  it('backs a struck symbol off for 2 days, then twice as long each time, up to 30 days', () => {
+    const struck = (stored: QuoteQuota): QuoteQuota =>
+      settle(stored, settlement({ struck: [{ symbol: 'DEAD.US', lastLotDay: 500 }] })) ?? stored;
+    const retryDays = [1, 2, 3, 4, 5, 6].reduce<{ stored: QuoteQuota; days: number[] }>(
+      ({ stored, days }) => {
+        const next = struck(stored);
+
+        return {
+          stored: next,
+          days: [...days, ((next.backoff?.['DEAD.US']?.retryDay ?? 0) - OCTOBER_1) / DAY_MS],
+        };
+      },
+      { stored: quota(), days: [] },
+    ).days;
+
+    expect(retryDays).toEqual([2, 4, 8, 16, 30, 30]);
+  });
+
+  it('starts the strikes over once the lots changed', () => {
+    const stored = quota({
+      backoff: { 'DEAD.US': { strikes: 4, retryDay: OCTOBER_1, lastLotDay: 500 } },
+    });
+
+    expect(
+      settle(stored, settlement({ struck: [{ symbol: 'DEAD.US', lastLotDay: 600 }] }))?.backoff,
+    ).toEqual({ 'DEAD.US': { strikes: 1, retryDay: OCTOBER_1 + 2 * DAY_MS, lastLotDay: 600 } });
+  });
+
+  it('forgets the back-off of a symbol EODHD answered', () => {
+    const stored = quota({
+      backoff: {
+        'DEAD.US': { strikes: 1, retryDay: OCTOBER_1, lastLotDay: 500 },
+        'GONE.US': { strikes: 1, retryDay: OCTOBER_1, lastLotDay: 500 },
+      },
+    });
+
+    expect(settle(stored, settlement({ answered: ['DEAD.US'] }))?.backoff).toEqual({
+      'GONE.US': { strikes: 1, retryDay: OCTOBER_1, lastLotDay: 500 },
+    });
+  });
+
+  it('never backs off a symbol for a key saved while the refresh was out', () => {
+    expect(
+      settle(
+        quota({ keyGeneration: 1 }),
+        settlement({ keyGeneration: 0, struck: [{ symbol: 'DEAD.US', lastLotDay: 500 }] }),
+      ),
+    ).not.toHaveProperty('backoff');
+  });
+
+  it('keeps the earliest day each series was answered from', () => {
+    const stored = quota({ backfilledFrom: { 'AAPL.US': 300, 'SAP.XETRA': 100 } });
+
+    expect(
+      settle(
+        stored,
+        settlement({ keyGeneration: 9, backfilledFrom: { 'AAPL.US': 200, 'SAP.XETRA': 150 } }),
+      )?.backfilledFrom,
+    ).toEqual({ 'AAPL.US': 200, 'SAP.XETRA': 100 });
   });
 });
 

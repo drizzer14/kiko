@@ -26,6 +26,7 @@ const SETTLEMENT = {
   spent: 2,
   unanswered: ['SAP.XETRA'],
   usedUp: false,
+  keyGeneration: 0,
 };
 const LOT = { day: DAY, quantityDelta: '10', costMinorUnits: 1500 };
 const VOD_ROW = {

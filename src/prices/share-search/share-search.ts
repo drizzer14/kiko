@@ -1,12 +1,19 @@
+import { match, P } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { settingsRepo } from '@kiko/settings';
 import { logFailure } from '@kiko/diagnostics';
 import either, { bifold, isLeft } from 'fnts/either';
 import { type Currency, isCurrency } from '@kiko/currency/currency';
 
+import {
+  searchSymbols,
+  EodhdAuthError,
+  EodhdQuotaError,
+  EodhdNetworkError,
+  type SymbolMatch,
+} from '../eodhd';
 import { readEodhdKey } from '../eodhd-key';
-import { reserve, settle, currentQuota, type QuoteQuota } from '../quote-quota';
-import { searchSymbols, EodhdQuotaError, EodhdNetworkError, type SymbolMatch } from '../eodhd';
+import { reserve, settle, currentQuota, type QuoteQuota, keyGenerationOf } from '../quote-quota';
 
 const PENCE = 'GBX';
 
@@ -24,11 +31,12 @@ export type ShareListing = {
 
 export type ShareSearchResult =
   | { status: 'ok'; listings: ShareListing[] }
-  | { status: 'noKey' | 'quotaExhausted' | 'failed' };
+  | { status: 'noKey' | 'keyRejected' | 'quotaExhausted' | 'failed' };
 
 export type ShareSearchDeps = {
   now?: () => number;
   readKey?: () => Promise<string | undefined>;
+  loadQuota?: () => Promise<QuoteQuota | null>;
   updateQuota?: (build: (stored: QuoteQuota | null) => QuoteQuota | null) => Promise<void>;
   searchSymbols?: typeof searchSymbols;
 };
@@ -81,6 +89,7 @@ const reserveCall = async (
 const withDefaults = (deps: ShareSearchDeps): Required<ShareSearchDeps> => ({
   now: Date.now,
   readKey: readEodhdKey,
+  loadQuota: async () => (await settingsRepo.quoteQuotaQuery()).at(0)?.quoteQuota ?? null,
   updateQuota: settingsRepo.updateQuoteQuota,
   searchSymbols,
   ...deps,
@@ -90,14 +99,23 @@ const withDefaults = (deps: ShareSearchDeps): Required<ShareSearchDeps> => ({
  * Finds the listings for a ticker, a name, or an ISIN under the user's own
  * daily EODHD limit: one call per search, reserved before it goes out. Only
  * listings a share holding can take in one of `currencies` come back, the
- * primary listings first.
+ * primary listings first. A key EODHD rejected spends nothing until a key is
+ * saved or checked again.
  */
 export const searchShares = async (
   query: string,
   currencies: readonly Currency[],
   deps: ShareSearchDeps = {},
 ): Promise<ShareSearchResult> => {
-  const { now, readKey, updateQuota, ...network } = withDefaults(deps);
+  const { now, readKey, loadQuota, updateQuota, ...network } = withDefaults(deps);
+  // The key state is read before the key, so a 401 never lands on a key saved
+  // in between.
+  const loaded = await loadQuota();
+
+  if (loaded?.isKeyRejected === true) {
+    return { status: 'keyRejected' };
+  }
+
   const key = await readKey();
 
   if (key === undefined) {
@@ -114,7 +132,10 @@ export const searchShares = async (
 
   if (isLeft(found)) {
     const error: unknown = bifold(found);
-    const usedUp = error instanceof EodhdQuotaError;
+    const status = match(error)
+      .with(P.instanceOf(EodhdQuotaError), () => 'quotaExhausted' as const)
+      .with(P.instanceOf(EodhdAuthError), () => 'keyRejected' as const)
+      .otherwise(() => 'failed' as const);
 
     // Only the error's name: the request URL carries the key, the query is
     // the user's own portfolio.
@@ -125,11 +146,13 @@ export const searchShares = async (
         reserved: 1,
         spent: error instanceof EodhdNetworkError ? 0 : 1,
         unanswered: [],
-        usedUp,
+        usedUp: status === 'quotaExhausted',
+        keyGeneration: keyGenerationOf(loaded),
+        isKeyRejected: status === 'keyRejected',
       }),
     );
 
-    return { status: usedUp ? 'quotaExhausted' : 'failed' };
+    return { status };
   }
 
   const matches: SymbolMatch[] = bifold(found);
