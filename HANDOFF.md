@@ -2,7 +2,36 @@
 
 
 
-## ⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-29 11:05) — READ THIS FIRST
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-02) — READ THIS FIRST
+Previous coordinator: pff-ios-9b (handover on user request after the retrospect). FIRST ACTIONS of the new coordinator:
+1. SendMessage your name to round-b-b6 (Round B orchestrator, terminal term_52a0c6da-cf54-46c0-94b8-02ac5d1fc8d6, worktree ~/orca/workspaces/pff-ios/round-b) and the PM pff-ios-89; they report to "pff-ios-9b".
+2. Re-arm ONLY the gauge watcher: `bash memory/refs/gaugewatch.sh term_52a0c6da-cf54-46c0-94b8-02ac5d1fc8d6` with Bash run_in_background; on "HANDOVER" ask the session for its handoff file. Brief template: memory/refs/brief-round-b.md.
+3. Read memory/refs/morning-list-2026-10-02.md (all questions ANSWERED 2026-10-02 morning; the answers are in the Round B triage below) and memory/refs/followups-after-round-a.md (open follow-ups).
+
+### State (2026-10-02)
+| Thing | Value |
+|---|---|
+| main | c6098ad3 (follow-ups track; plugin 0.2.7 live). main waits for the user's P5 device check before the next ff |
+| next | 253708dc (retrospect drift fix, plugin 0.2.9; goes live after the next main ff + claude plugin update) on top of b9da9588 = Round A, Reminders + round 2, follow-ups, P5 tasks 1/8-8/8 (broker kind, shares, EODHD BYOK, quota guard, migration 0046_add_quote_quota; next free migration 0047) |
+| Round B (round-b-b6) | steps 1-2 DONE (FINDINGS: ~/orca/workspaces/pff-ios/round-b/.superpowers/sdd/round-b/FINDINGS.md; 1 Critical, 2 Critical-conditional, 18 Important, ~70 Minor). Step 3 RUNNING: Round B task 1/9 import times + keys; then 2/9 statistics + Close holding; 3/9 release docs + kit (1.2 reviewer Notes DRAFT for user review, privacy policy, demo .kiko, localized display name Kiko/Кіко, DiskSpace manifest); 4/9 balance anchor + block import on synced accounts; 5/9 share refresh + invalid-key status + quota text (local reset time; uk disclaimer "...і не є його партнером."; drop "Daily limit" caption); 6/9 share form + lot edit/delete + currency guard + split lots; 7/9 reminders (snooze fix, skip rules); 8/9 backup + auth (EXPORT_VERSION 2, keep live lockEnabled); 9/9 perf. Per task: BATCH READY -> coordinator mutation run in deep-gate -> merge into next |
+| deep-gate | ~/orca/workspaces/pff-ios/deep-gate detached b9da9588 (one mutation run at a time; Semgrep timeouts under load = re-run at low load) |
+| iPhone | c6098ad3 build. NEXT device session = P5 + Round B, AFTER Round B tasks 5/9 and 6/9 (user choice); the user takes a .kiko export FIRST (migration 0046) |
+| harness repo | drizzer14/harness 1.2.0 PUBLISHED (main 1b9b164, pushed 2026-10-02, no tag) |
+| App Store | 1.0.0 build 25 "Waiting for Review". There is NO next App Store version yet (user): do not bump versions |
+
+### Round B triage answers (user, 2026-10-02)
+iPhone zone Kyiv on 09-30 and now (INT-B1 does not touch the user's data; code fix only). Closed Monobank cards/jars are outside Kiko's known range (STAT-N1 = code fix, Important). App Review key = a separate FREE EODHD key the user creates (notes explain 20/day). Do NOT ask EODHD for a written OK. Build 25 App Privacy = "Data Not Collected". Home-screen name localized: Kiko (en) / Кіко (uk). Rulings: REM-2 skip tonight if data was added today, an edit keeps the skip; skip rule = skip a fire only if data was added on its own local day before it fires; REM-5 "Set up" counts as the decision; block "Import statement" on Monobank-synced accounts; STAT-N3 bond line ends at the typed price. Scope = Critical + Important + cheap same-file Minors. P5 keys and overnight defaults approved with 2 changes (uk broker disclaimer; reset time in local time).
+
+### Next steps for the coordinator, in order
+1. Round B tasks 1/9-9/9 as BATCH READY arrives (mutation per task, merge, tell round-b-b6). Relay the 1.2 Notes draft (task 3/9) and the new local-time wording (task 5/9) to the user.
+2. After tasks 5/9 + 6/9: the combined device session (export first; then P5 + Round B device checks from each BATCH READY). Then main ff after the user's LGTM, plugin update.
+3. Round B end: drift pass, TRACK DONE, close the session (copy .superpowers to memory/refs, tag, remove the worktree).
+4. Then 1.2 release prep only when the user names a version (gates: reviewer Notes + free key, privacy policy + App Privacy for EODHD, demo .kiko, screenshots).
+
+### Rules learned this run (all in memory)
+CVE patch/minor fixes older than 7 days: no user OK needed. Orchestrators report at EVERY milestone and route user items through the coordinator. Numbered names only ("task N/M", "step N/M", "option N"), never letters or "CS-n". A session outside pff-ios needs `claude --plugin-dir`; harness-repo plugin/** edits need auto mode OFF. `orca worktree rm` deletes the branch (tag first). Brief memory path is ~/.claude/projects/.../memory/MEMORY.md. Verify a device install with devicectl device info apps. Hold a merge whose text promises a later change set's feature. Hermes has no Intl.PluralRules.
+
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-29 11:05) — superseded by 2026-10-02 above
 Previous coordinator: pff-ios-9b (handover on user request after the retrospect). FIRST ACTIONS of the new coordinator:
 1. SendMessage your name to round-a-b7 (Round A, terminal term_f33cae3e-52bb-4734-8bb6-b84558b4c75c) and reminders-8e (Reminders, terminal term_06904bf8-4706-44bf-a28a-3c665bce472b) and the PM pff-ios-89; they report to "pff-ios-9b".
 2. Re-arm ONLY the gauge watcher (user rules: no idle/prompt/long-agent polling): `bash memory/refs/gaugewatch.sh <terminal>` with Bash run_in_background, one per orchestrator terminal; on "HANDOVER" ask that session for its handoff file; brief templates: memory/refs/brief-round-a-2.md, memory/refs/brief-reminders-2.md.
