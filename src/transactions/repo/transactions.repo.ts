@@ -39,6 +39,11 @@ import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser'
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
 import { isSyncedAccount, isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 
+import {
+  balanceBoundaryOf,
+  movesBalance,
+  redatesPossibleBalanceSetRowPastBoundary,
+} from '../balance-boundary';
 import { normalizeTransactionName } from '../normalize-name';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
@@ -98,22 +103,6 @@ type ManualWithReturnsInput = {
   returns: ChangeReturn[];
 };
 
-/** The LATER of two nullable instants, treating `null` as "no boundary from
- * this source" rather than as an actual instant to compare — used to combine
- * the two boundary sources (`holding.balanceSetAt`, the newest sync-source
- * transaction) without a nested ternary. */
-const laterOf = (a: number | null, b: number | null): number | null => {
-  if (a === null) {
-    return b;
-  }
-
-  if (b === null) {
-    return a;
-  }
-
-  return Math.max(a, b);
-};
-
 /** A holding's rows from a SYNC source — boundary source (b) of THE BOUNDARY
  * in `importRows`'s doc comment. `holdingId` is a value, or `holdings.id` for
  * a subquery correlated to the outer holding row. */
@@ -123,14 +112,6 @@ const syncSourceRowsOf = (holdingId: string | typeof holdings.id) =>
     ne(transactions.source, 'manual'),
     ne(transactions.source, 'import'),
   );
-
-/** Whether a row dated `time` moves the stored balance. A row dated at or before
- * the boundary is history: the balance set at the boundary already counts it,
- * the same as `postClosingRowsWhere`'s strict `gt`. A row that set a balance
- * is judged by its stored mark instead (`editBalanceDelta`,
- * `removeBalanceDelta`), wherever its date has moved. */
-const movesBalance = (time: number, boundary: number | null): boolean =>
-  boundary === null || time > boundary;
 
 const balanceShareOf = (amountMinorUnits: number, time: number, boundary: number | null): number =>
   movesBalance(time, boundary) ? amountMinorUnits : 0;
@@ -203,8 +184,24 @@ const readAnchoredHoldingDatabaseTransaction = async (
 
   return foldMap(maybe(rows.at(0)), ({ newestSyncTime, ...holding }) => ({
     holding,
-    boundary: laterOf(holding.balanceSetAt, newestSyncTime),
+    boundary: balanceBoundaryOf({ balanceSetAt: holding.balanceSetAt, newestSyncTime }),
   }));
+};
+
+const writeBalanceDeltaDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  holding: HoldingRow,
+  delta: number,
+): Promise<void> => {
+  if (delta === 0) {
+    return;
+  }
+
+  await databaseTransaction
+    .update(holdings)
+    .set({ balanceMinorUnits: holding.balanceMinorUnits + delta })
+    .where(eq(holdings.id, holdingId));
 };
 
 /** Move a holding's stored balance by `deltaFor(boundary, holding)`, so a
@@ -220,16 +217,12 @@ const moveBalanceDatabaseTransaction = async (
     return;
   }
 
-  const delta = deltaFor(anchored.boundary, anchored.holding);
-
-  if (delta === 0) {
-    return;
-  }
-
-  await databaseTransaction
-    .update(holdings)
-    .set({ balanceMinorUnits: anchored.holding.balanceMinorUnits + delta })
-    .where(eq(holdings.id, holdingId));
+  await writeBalanceDeltaDatabaseTransaction(
+    databaseTransaction,
+    holdingId,
+    anchored.holding,
+    deltaFor(anchored.boundary, anchored.holding),
+  );
 };
 
 // Insert a manual transaction and adjust its holding's balance on an EXISTING
@@ -997,6 +990,15 @@ export const transactionsRepo = {
       .where(eq(transactions.source, 'manual'))
       .orderBy(desc(transactions.time))
       .limit(1),
+  /** One holding's two sources of THE BOUNDARY (`importRows`), at most one
+   * row. A reader combines them with `balanceBoundaryOf`
+   * (`transactions/balance-boundary`), the same as every balance writer. */
+  balanceBoundaryQuery: (holdingId: string) =>
+    database
+      .select({ balanceSetAt: holdings.balanceSetAt, newestSyncTime: newestSyncTimeOfHolding })
+      .from(holdings)
+      .where(eq(holdings.id, holdingId))
+      .limit(1),
   add: (input: NewTransaction) =>
     write((databaseTransaction) =>
       databaseTransaction.insert(transactions).values({ id: id(), ...input }),
@@ -1209,7 +1211,11 @@ export const transactionsRepo = {
    * except a row that set a balance (`transactions.setsBalance`): its edit
    * moves nothing, unless it is the current set's row
    * (`holdings.balanceSetRowId`), whose amount edit moves the balance by the
-   * difference whatever its new date (`editBalanceDelta`). A synced (monobank)
+   * difference whatever its new date (`editBalanceDelta`). An unmarked row
+   * shaped like a balance-set row is refused with a typed error, before
+   * anything is written, when the edit moves it from at or before the boundary
+   * to after it (`redatesPossibleBalanceSetRowPastBoundary`); the transaction
+   * form shows the same rule as a field error. A synced (monobank)
    * transaction is never mutated by this path — its amount is owned by the bank
    * import — and a missing id is a no-op rather than an error.
    */
@@ -1225,16 +1231,36 @@ export const transactionsRepo = {
       if (existing?.source !== 'manual') {
         return;
       }
+
+      const anchored = await readAnchoredHoldingDatabaseTransaction(
+        databaseTransaction,
+        existing.holdingId,
+      );
+
+      if (redatesPossibleBalanceSetRowPastBoundary(existing, time, anchored?.boundary ?? null)) {
+        throw new Error(
+          'transactionsRepo.update: cannot move a possible balance-set row past the balance boundary',
+        );
+      }
+
       await databaseTransaction
         .update(transactions)
         .set({ amountMinorUnits, time, description: description ?? '' })
         .where(eq(transactions.id, transactionId));
-      await moveBalanceDatabaseTransaction(
-        databaseTransaction,
-        existing.holdingId,
-        (boundary, holding) =>
-          editBalanceDelta(existing, { amountMinorUnits, time }, holding, boundary),
-      );
+
+      if (anchored !== undefined) {
+        await writeBalanceDeltaDatabaseTransaction(
+          databaseTransaction,
+          existing.holdingId,
+          anchored.holding,
+          editBalanceDelta(
+            existing,
+            { amountMinorUnits, time },
+            anchored.holding,
+            anchored.boundary,
+          ),
+        );
+      }
     }),
   /**
    * Delete a MANUAL transaction and reverse its effect on the holding's stored

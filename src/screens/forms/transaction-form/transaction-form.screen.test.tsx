@@ -89,6 +89,11 @@ jest.mock('@kiko/transactions/repo', () => ({
       __kind: 'latestManualHolding',
       toSQL: () => ({ sql: '', params: [] }),
     }),
+    // Tagged because it shares the `['holdings']` key with the holdings list.
+    balanceBoundaryQuery: (holdingId: string) => ({
+      __kind: 'balanceBoundary',
+      toSQL: () => ({ sql: '', params: [holdingId] }),
+    }),
   },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
@@ -144,7 +149,10 @@ type Transaction = {
   loanHoldingId?: string | null;
   loanLinkSource?: 'auto' | 'manual' | null;
   exchangeCounterpartHoldingId?: string | null;
+  changeGroupId?: string | null;
+  setsBalance?: boolean;
 };
+type BalanceBoundarySources = { balanceSetAt: number | null; newestSyncTime: number | null };
 
 // The category options the picker renders in every test; a stable set so the
 // "category editing" cases can press a chip by its title.
@@ -165,6 +173,7 @@ const setLiveData = (
   overrideRules: OverrideRule[] = [],
   pastDescriptions: string[] = [],
   latestManualHoldingId: string | null = null,
+  balanceBoundary: BalanceBoundarySources | null = null,
 ): void => {
   const dataByTable: Record<string, unknown[]> = {
     holdings,
@@ -191,6 +200,10 @@ const setLiveData = (
         data: latestManualHoldingId ? [{ holdingId: latestManualHoldingId }] : [],
         isLoading: false,
       };
+    }
+
+    if (kind === 'balanceBoundary') {
+      return { data: balanceBoundary ? [balanceBoundary] : [] };
     }
 
     return { data: dataByTable[tables[0]] ?? [] };
@@ -1325,6 +1338,155 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
 
     expect(queryByText('Delete')).toBeNull();
     expect(mockRemove).not.toHaveBeenCalled();
+  });
+});
+
+// Before migration 0047 a superseded balance-set row carried no mark, so a
+// row saved with no description and no category may be one.
+describe('TransactionFormScreen — re-dating a possible balance-set row', () => {
+  const BALANCE_SET_AT = new Date(2026, 8, 30, 12, 0).getTime();
+  const STORED_TIME = new Date(2026, 8, 10, 9, 15).getTime();
+
+  const possibleBalanceSetRow: Transaction = {
+    id: 'old-row',
+    holdingId: 'h1',
+    amountMinorUnits: 40_000,
+    time: STORED_TIME,
+    description: '',
+    source: 'manual',
+    category: null,
+    exchangeCounterpartHoldingId: null,
+    changeGroupId: null,
+    setsBalance: false,
+  };
+
+  const editRow = (
+    difference: Partial<Transaction> = {},
+    balanceBoundary: BalanceBoundarySources = {
+      balanceSetAt: BALANCE_SET_AT,
+      newestSyncTime: null,
+    },
+  ): ReturnType<typeof render> => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 100_000, type: 'cash' }],
+      { ...possibleBalanceSetRow, ...difference },
+      CATEGORIES,
+      [],
+      [],
+      [],
+      [],
+      null,
+      balanceBoundary,
+    );
+
+    return renderEdit('old-row');
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('blocks a re-date past the balance set and names the latest time it can take', async () => {
+    const utils = await editRow();
+
+    await pickDate(utils, 2026, 10, 5);
+
+    expect(utils.queryByTestId('transaction-time-error')).toBeNull();
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(
+      within(utils.getByTestId('transaction-time-error')).getByText(/^This entry/),
+    ).toBeTruthy();
+    expect(utils.getByText(/no later than 30\.09\.2026 /)).toBeTruthy();
+  });
+
+  it('clears the reason once the time is moved back, and saves', async () => {
+    const utils = await editRow();
+
+    await pickDate(utils, 2026, 10, 5);
+    await fireEvent.press(utils.getByText('Save'));
+    await pickDate(utils, 2026, 9, 20);
+
+    expect(utils.queryByTestId('transaction-time-error')).toBeNull();
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ time: new Date(2026, 8, 20, 9, 15).getTime() }),
+    );
+  });
+
+  it('blocks a re-date past the newest synced row', async () => {
+    const utils = await editRow(
+      {},
+      { balanceSetAt: null, newestSyncTime: new Date(2026, 8, 20, 8, 0).getTime() },
+    );
+
+    await pickDate(utils, 2026, 9, 25);
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(utils.getByText(/no later than 20\.09\.2026 /)).toBeTruthy();
+  });
+
+  it.each([
+    ['earlier', 2026, 9, 1],
+    ['within the history side', 2026, 9, 30],
+  ])('saves a re-date %s', async (_name, year, month, day) => {
+    const utils = await editRow();
+
+    await pickDate(utils, year, month, day);
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ time: new Date(year, month - 1, day, 9, 15).getTime() }),
+    );
+    expect(utils.queryByTestId('transaction-time-error')).toBeNull();
+  });
+
+  it.each([
+    ['a marked row', { setsBalance: true }],
+    ['a row with a description', { description: 'Salary' }],
+    ['a row with a category', { category: 'groceries' }],
+  ])('saves %s re-dated past the balance set', async (_name, difference) => {
+    const utils = await editRow(difference);
+
+    await pickDate(utils, 2026, 10, 5);
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ time: new Date(2026, 9, 5, 9, 15).getTime() }),
+    );
+  });
+
+  it('shows the reason from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const utils = await editRow();
+
+    await fireEvent.press(utils.getByTestId('transaction-date-field'));
+    await fireEvent(utils.getByTestId('Дата calendar'), 'dayPress', {
+      year: 2026,
+      month: 10,
+      day: 5,
+      dateString: '2026-10-05',
+      timestamp: 0,
+    });
+    await fireEvent.press(utils.getByText('Зберегти'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(utils.getByText(/^Цей запис збережено без опису й категорії/)).toBeTruthy();
+    expect(utils.getByText(/не пізніше 30\.09\.2026 /)).toBeTruthy();
   });
 });
 

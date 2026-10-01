@@ -32,6 +32,7 @@ import {
 } from '@kiko/test-support/real-sqlite';
 import { DatabaseSync } from 'node:sqlite';
 import { asc, getTableColumns } from 'drizzle-orm';
+import { transactionsRepo } from '@kiko/transactions/repo';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -227,5 +228,36 @@ describe('restoring a .kiko file that carries the balance-set marker', () => {
 
     expect(markedIds(mockDatabase)).toEqual(['lookalike']);
     expect(currentRowIds(mockDatabase)).toEqual(currentRowIds(exported));
+  });
+
+  it("moves the balance by the difference when the restored current set's row amount is edited", async () => {
+    const exported = freshDatabase();
+
+    run(exported, "INSERT INTO accounts (id, name, kind) VALUES ('account', 'Bank', 'bank')");
+    insertHolding(exported, 'opened', OPENED);
+    insertTransaction(exported, { id: 'opening', holdingId: 'opened', time: EDITED });
+    run(exported, "UPDATE transactions SET sets_balance = 1 WHERE id = 'opening'");
+    run(exported, "UPDATE holdings SET balance_set_row_id = 'opening' WHERE id = 'opened'");
+    const exportedDrizzle = executingDrizzle<typeof database>(exported);
+    const snapshot: DataSnapshot = {
+      ...emptySnapshot,
+      accounts: await exportedDrizzle.select().from(accounts),
+      holdings: await exportedDrizzle.select().from(holdings),
+      transactions: await exportedDrizzle.select().from(transactions),
+    };
+
+    mockDatabase = freshDatabase();
+    await restoreDataSnapshot(snapshot);
+    await transactionsRepo.update({
+      transactionId: 'opening',
+      amountMinorUnits: 150,
+      time: EDITED,
+    });
+
+    expect(
+      mockDatabase
+        .prepare("SELECT balance_minor_units AS value FROM holdings WHERE id = 'opened'")
+        .get(),
+    ).toEqual({ value: 150 });
   });
 });

@@ -607,6 +607,8 @@ export const en = {
       split: 'Split',
       splitInvalidError: 'Enter a payment amount and at least one valid return.',
       syncedNotice: 'This was synced, so only the category and loan link can be changed.',
+      timeAfterBalanceSetError:
+        'This entry was saved without a description or category, so it may be an earlier balance change. Pick a time no later than {{dateTime}}.',
       title: 'Transaction',
       to: 'To',
       toSheetTitle: 'To',

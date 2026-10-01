@@ -26,7 +26,7 @@ const SEPTEMBER_30 = day(9, 30);
 const OCTOBER_2 = day(10, 2);
 const OCTOBER_5 = day(10, 5);
 
-const run = (statement: string, ...parameters: (string | number)[]): void => {
+const run = (statement: string, ...parameters: (string | number | null)[]): void => {
   mockDatabase.prepare(statement).run(...parameters);
 };
 
@@ -116,7 +116,11 @@ describe('a manual write against a closing balance an import set', () => {
     expect(balance()).toBe(90_000);
   });
 
-  it('moves the balance by the new amount when an edit moves the row after it', async () => {
+  it('moves the balance by the new amount when an edit moves a categorised row after it', async () => {
+    await transactionsRepo.setCategory({
+      transactionId: manualIdAt(SEPTEMBER_10),
+      category: 'groceries',
+    });
     await transactionsRepo.update({
       transactionId: manualIdAt(SEPTEMBER_10),
       amountMinorUnits: -10_000,
@@ -626,6 +630,115 @@ describe('the stored balance-set marker', () => {
     await transactionsRepo.remove(openingId);
 
     expect(balanceOf(holdingId)).toBe(openingBalance);
+  });
+});
+
+describe('balanceBoundaryQuery', () => {
+  const sourcesOf = async (holdingId: string) =>
+    (await transactionsRepo.balanceBoundaryQuery(holdingId)).at(0);
+
+  it('reads the balance set and the newest synced row the boundary is taken from', async () => {
+    run("UPDATE holdings SET balance_set_at = ? WHERE id = 'card'", SEPTEMBER_15);
+    run(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id) VALUES ('synced', 'card', -500, ?, 'monobank', 'bank-id')",
+      SEPTEMBER_20,
+    );
+    await recordManual(-1_000, SEPTEMBER_30);
+
+    expect(await sourcesOf('card')).toEqual({
+      balanceSetAt: SEPTEMBER_15,
+      newestSyncTime: SEPTEMBER_20,
+    });
+  });
+
+  it('reads no source for a holding with neither', async () => {
+    expect(await sourcesOf('card')).toEqual({ balanceSetAt: null, newestSyncTime: null });
+  });
+});
+
+// Before migration 0047 a superseded balance-set row carried no mark, so it
+// cannot be told apart from an uncategorised row an older build wrote.
+describe('an unmarked balance-set-shaped row before the boundary', () => {
+  const OLD_ROW = 'old-row';
+
+  const insertOldRow = (columns: { description?: string; category?: string | null }): void =>
+    run(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, description, category) VALUES (?, 'card', 40000, ?, 'manual', ?, ?)",
+      OLD_ROW,
+      SEPTEMBER_10,
+      columns.description ?? '',
+      columns.category ?? null,
+    );
+
+  const timeOfOldRow = (): number =>
+    (
+      mockDatabase.prepare('SELECT time AS value FROM transactions WHERE id = ?').get(OLD_ROW) as {
+        value: number;
+      }
+    ).value;
+
+  const moveOldRow = (time: number): Promise<void> =>
+    transactionsRepo.update({ transactionId: OLD_ROW, amountMinorUnits: 40_000, time });
+
+  beforeEach(() => {
+    run("UPDATE holdings SET balance_set_at = ? WHERE id = 'card'", SEPTEMBER_30);
+  });
+
+  it('refuses to move it past the balance set, and writes nothing', async () => {
+    insertOldRow({});
+
+    await expect(moveOldRow(OCTOBER_5)).rejects.toThrow('transactionsRepo.update');
+
+    expect(timeOfOldRow()).toBe(SEPTEMBER_10);
+    expect(balance()).toBe(100_000);
+  });
+
+  it('refuses to move it past the newest synced row', async () => {
+    run("UPDATE holdings SET balance_set_at = NULL WHERE id = 'card'");
+    run(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id) VALUES ('synced', 'card', -500, ?, 'monobank', 'bank-id')",
+      SEPTEMBER_20,
+    );
+    insertOldRow({});
+
+    await expect(moveOldRow(SEPTEMBER_30)).rejects.toThrow('transactionsRepo.update');
+
+    expect(balance()).toBe(100_000);
+  });
+
+  it.each([
+    ['earlier', SEPTEMBER_10 - 1],
+    ['within the history side', SEPTEMBER_20],
+    ['to exactly the balance set', SEPTEMBER_30],
+  ])('moves it %s, and keeps the balance', async (_name, time) => {
+    insertOldRow({});
+
+    await moveOldRow(time);
+
+    expect(timeOfOldRow()).toBe(time);
+    expect(balance()).toBe(100_000);
+  });
+
+  it.each([
+    ['a description', { description: 'Salary' }],
+    ['a category', { category: 'groceries' }],
+  ])('moves a row with %s past the balance set, and counts it', async (_name, columns) => {
+    insertOldRow(columns);
+
+    await moveOldRow(OCTOBER_5);
+
+    expect(timeOfOldRow()).toBe(OCTOBER_5);
+    expect(balance()).toBe(140_000);
+  });
+
+  it('moves a marked row past the balance set, and keeps the balance', async () => {
+    insertOldRow({});
+    run('UPDATE transactions SET sets_balance = 1 WHERE id = ?', OLD_ROW);
+
+    await moveOldRow(OCTOBER_5);
+
+    expect(timeOfOldRow()).toBe(OCTOBER_5);
+    expect(balance()).toBe(100_000);
   });
 });
 

@@ -227,9 +227,11 @@ holding entirely.
 exchange or change-return leg, `update`, `remove`) moves the stored
 balance only for a row dated STRICTLY AFTER the holding's boundary: the
 later of `holdings.balanceSetAt` and its newest sync-source row
-(`movesBalance`, `time > boundary`). Every balance writer reads that
-boundary through one function, `readAnchoredHoldingDatabaseTransaction`
-(`transactions.repo.ts`), which `importRows` shares. A row AT or before
+(`movesBalance`, `time > boundary`, in `src/transactions/balance-boundary/`).
+Every balance writer reads that boundary through one function,
+`readAnchoredHoldingDatabaseTransaction` (`transactions.repo.ts`), which
+`importRows` shares, and which combines the two sources with
+`balanceBoundaryOf` (`src/transactions/balance-boundary/`). A row AT or before
 the boundary is history the anchor already counts.
 
 **A balance-set row is a STORED mark, not a date.** Every row whose amount
@@ -273,6 +275,27 @@ exactly at `holdings.balanceSetAt` is marked and becomes the holding's
 row that was already re-dated, described, or categorised, and an older
 set's row a newer set or a closing import superseded, gets no mark and
 stays an ordinary row.
+
+**A row that may be an older set's row cannot move past the boundary.** An
+older set's row a newer set superseded before 0047 has the exact shape of a
+blank-description income or expense an older build wrote (before the form
+required a category), so nothing tells the two apart. A user decision closes
+the gap from the one side that moves money: an UNMARKED row shaped like a
+balance-set row (`isBalanceSetShapedRow`) dated at or before the boundary
+cannot be re-dated to after it
+(`redatesPossibleBalanceSetRowPastBoundary`, `src/transactions/balance-boundary/`),
+because counting its amount again would add money the set balance already
+holds. Moving it earlier, or anywhere at or before the boundary, saves as
+before, and so does a marked row or a row with a description or a category
+(the STORED row is judged, so a description typed in the same edit does not
+free it: save the description first). Two places enforce it: the
+transaction form blocks Save with a field error under the Date and Time row
+(`forms.transaction.timeAfterBalanceSetError`, naming the boundary as the
+latest time the row can take), and `transactionsRepo.update` refuses the same
+edit with a typed error before it writes anything, for any other caller. The
+form reads the boundary from `transactionsRepo.balanceBoundaryQuery` and
+combines it with `balanceBoundaryOf`, the one function every balance writer
+uses.
 
 ## Statement import moves the target holding's balance too
 
