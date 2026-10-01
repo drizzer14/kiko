@@ -5,7 +5,7 @@ export type TimeFieldProps = {
   // the sentence-case `label` (kiko-translator: one key per UI role).
   sheetTitle: string;
   // The current transaction time as a unix-millis timestamp; the field displays
-  // its time-of-day (HH:mm). Null when there is nothing to show yet.
+  // its time-of-day on the device's clock. Null when there is nothing to show yet.
   value: number | null;
   // Reports the new timestamp: the picked hours/minutes combined with the DAY
   // (year/month/date) of the current `value`, so a time pick never moves the day.

@@ -852,11 +852,15 @@ exact constants (default limit, search reserve, history span).
   is backed off for 2, 4, 8, 16, then every 30 days (`SymbolBackoff` in
   `quote-quota.ts`, keyed by the `firstLotDay`/`lastLotDay` it was struck
   with; a newer lot asks the newest closes again, an older lot its history).
-  A held symbol whose forward call EODHD answers with no close 7 times in a
+  A held symbol whose forward call EODHD answers with no close 10 times in a
   row (`emptyAnswers`, counted in the same `SymbolBackoff`) is struck too, and
-  again at each empty answer after; a forward answer with a close deletes the
-  back-off and its count. An answer to a history-only call neither ends a
-  back-off nor counts as empty.
+  again at each empty answer after; a forward answer with a close newer than
+  the stored ones (`row.day > latestDay`) deletes the back-off and its count.
+  A forward call that also asked for history and brought only older closes
+  counts as empty. The count outlasts a week-long market holiday
+  (Golden Week, Lunar New Year), so such a pause never strikes a live
+  listing. An answer to a history-only
+  call neither ends a back-off nor counts as empty.
 - **Unit rule**: a listing with no `quoteCurrency` is resolved once by one
   search call (that call costs 1 more) and saved on the holding. A `GBX`
   close on a `GBP` holding is divided by 100; any other unit/currency

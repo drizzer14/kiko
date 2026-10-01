@@ -11,9 +11,10 @@ const SEARCH_RESERVE = 2;
 // 30 days: rarely enough to spare the daily calls, often enough to notice a
 // listing that came back.
 const MAX_BACKOFF_DAYS = 30;
-// A held listing with no close for a week of daily answers is most likely
-// delisted; a holiday or a late close never runs that long.
-const EMPTY_ANSWERS_BEFORE_STRIKE = 7;
+// A held listing with no close for two weeks of daily answers is most likely
+// delisted; a week-long market holiday (Golden Week, Lunar New Year) or a late
+// close stops short of it.
+const EMPTY_ANSWERS_BEFORE_STRIKE = 10;
 
 /**
  * A symbol held back until `retryDay` (a UTC day), after `strikes` answers in a

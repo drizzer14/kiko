@@ -448,10 +448,13 @@ const refreshListing = async (call: PlannedCall, context: CallContext): Promise<
   };
 };
 
-// Only an answer about the newest closes says whether the symbol is still
-// listed: older history alone neither ends a back-off nor counts as empty.
+// Only a close newer than the stored ones says the symbol is still listed: a
+// forward call that brings none counts as empty, even when the history asked
+// for in the same call came back. A history-only call neither ends a back-off
+// nor counts as empty.
 const record = (progress: Progress, call: PlannedCall, outcome: CallOutcome): void => {
   const { symbol, firstLotDay, lastLotDay } = call.listing;
+  const hasNewClose = outcome.rows.some((row) => row.day > call.latestDay);
 
   progress.reached.push(symbol);
 
@@ -461,7 +464,7 @@ const record = (progress: Progress, call: PlannedCall, outcome: CallOutcome): vo
 
   if (outcome.isStruck === true) {
     progress.struck.push({ symbol, firstLotDay, lastLotDay });
-  } else if (outcome.isAnswered === true && call.isForward && outcome.rows.length === 0) {
+  } else if (outcome.isAnswered === true && call.isForward && !hasNewClose) {
     progress.empty.push({ symbol, firstLotDay, lastLotDay });
   } else if (outcome.isAnswered === true && call.isForward) {
     progress.answered.push(symbol);

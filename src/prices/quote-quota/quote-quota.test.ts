@@ -411,32 +411,36 @@ describe('settle', () => {
       );
 
     it('counts them without holding the symbol back', () => {
-      const stored = answeredEmpty(quota(), 6);
+      const stored = answeredEmpty(quota(), 9);
 
-      expect(stored.backoff?.['DEAD.US']).toMatchObject({ emptyAnswers: 6 });
+      expect(stored.backoff?.['DEAD.US']).toMatchObject({ emptyAnswers: 9 });
       expect(isBackedOff(stored, 'DEAD.US', 500)).toBe(false);
     });
 
-    it('backs the symbol off at the 7th in a row, then again at each one after', () => {
-      const seventh = answeredEmpty(quota(), 7);
-      const eighth = answeredEmpty(seventh, 1);
+    it('does not hold the symbol back over a week-long market holiday', () => {
+      expect(isBackedOff(answeredEmpty(quota(), 7), 'DEAD.US', 500)).toBe(false);
+    });
 
-      expect(seventh.backoff?.['DEAD.US']).toMatchObject({
+    it('backs the symbol off at the 10th in a row, then again at each one after', () => {
+      const tenth = answeredEmpty(quota(), 10);
+      const eleventh = answeredEmpty(tenth, 1);
+
+      expect(tenth.backoff?.['DEAD.US']).toMatchObject({
         strikes: 1,
         retryDay: OCTOBER_1 + 2 * DAY_MS,
       });
-      expect(eighth.backoff?.['DEAD.US']).toMatchObject({
+      expect(eleventh.backoff?.['DEAD.US']).toMatchObject({
         strikes: 2,
         retryDay: OCTOBER_1 + 4 * DAY_MS,
       });
     });
 
     it('starts the count over after an answer with a close', () => {
-      const answered = settle(answeredEmpty(quota(), 6), settlement({ answered: ['DEAD.US'] }));
+      const answered = settle(answeredEmpty(quota(), 9), settlement({ answered: ['DEAD.US'] }));
 
-      expect(answeredEmpty(answered ?? quota(), 6).backoff?.['DEAD.US']).toMatchObject({
+      expect(answeredEmpty(answered ?? quota(), 9).backoff?.['DEAD.US']).toMatchObject({
         strikes: 0,
-        emptyAnswers: 6,
+        emptyAnswers: 9,
       });
     });
   });

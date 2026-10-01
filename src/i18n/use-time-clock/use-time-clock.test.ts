@@ -79,6 +79,27 @@ describe('useTimeClock', () => {
     expect(appStateListeners).toHaveLength(1);
   });
 
+  it('reads the device setting once for every mounted reader, and again when the app is active', async () => {
+    await renderHook(() => [useTimeClock(), useTimeClock()]);
+    await renderHook(() => useTimeClock());
+
+    expect(uses24HourClock).toHaveBeenCalledTimes(1);
+
+    await transition('active');
+
+    expect(uses24HourClock).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads the device setting afresh for a reader mounted after every reader left', async () => {
+    const { unmount } = await renderHook(() => useTimeClock());
+
+    await unmount();
+    uses24HourClock.mockReturnValue(false);
+    const { result } = await renderHook(() => useTimeClock());
+
+    expect(result.current.uses24Hour).toBe(false);
+  });
+
   it('stops listening once nothing reads the clock', async () => {
     const { unmount } = await renderHook(() => useTimeClock());
 

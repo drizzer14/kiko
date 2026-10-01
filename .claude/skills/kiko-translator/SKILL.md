@@ -312,9 +312,12 @@ label next to it must agree. The 24-hour clock reads "21:05" (hours
 zero-padded); the 12-hour clock reads "9:05 PM" (en) / "9:05 пп" (uk), the
 hour not padded, the mark after a no-break space. The marks are
 `calendar.dayPeriod.beforeNoon`/`afterNoon` (en "AM"/"PM", uk "дп"/"пп", a
-user decision). The hook re-reads the setting on every render and re-renders
-when the app becomes active again (one shared AppState listener), so a
-switch flipped in iOS Settings shows without a relaunch. Where the setting
+user decision). The native read is synchronous, so the hook does not run it
+on every render: one module-level reading serves every mounted reader (the
+`useSyncExternalStore` snapshot), read on first use, read again when the app
+becomes active (one shared AppState listener) before the readers re-render,
+and dropped when the last reader unmounts. A switch flipped in iOS Settings
+shows without a relaunch. Where the setting
 cannot be read, the language decides: en 12-hour, uk 24-hour. A non-hook
 helper that formats a time (`describeSchedule`, `formatLastSyncAt`) takes the
 `clock` as a parameter from its component.
