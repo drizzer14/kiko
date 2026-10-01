@@ -1001,7 +1001,8 @@ never priced, so the share form checks it before it writes.
   pick make no call. The form contract is kiko-domain's "Adding a holding
   type" step 3.
 - **Save spinner**: Save shows its `loading` spinner only while this lookup
-  runs (`isLookingUpUnit`); it stays disabled as for any submit.
+  runs (`isLookingUpUnit`); it is not dimmed then (kiko-design-system's
+  Button `loading`), and stays disabled for any other submit.
 - **Mismatch text**: a create gets `forms.holding.shareCurrencyMismatchError`
   ("Choose {{currency}}…"). An edit, where the Currency field is read-only,
   gets `shareCurrencyMismatchEditError` instead: Manual, or delete the share

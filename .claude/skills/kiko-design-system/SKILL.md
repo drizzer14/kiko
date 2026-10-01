@@ -576,7 +576,11 @@ new component can land between reviews of this skill:
   until the write is done — never a hand-rolled spinner beside a button.
   The holding form's Save shows it only while a share's listing unit is
   looked up at Save (`isLookingUpUnit`, a network wait of up to 10 s;
-  user decision), not for any other write, and stays `disabled` then too.
+  user decision), not for any other write. It drops `disabled` while the
+  spinner shows (`isSaveDisabled`, `holding-form.screen.tsx`), so it is not
+  dimmed then; `loading` alone blocks the presses. Any other submit keeps it
+  `disabled` (dimmed). Any button that passes both props drops `disabled`
+  while `loading` the same way.
   The shared `DISABLED_OPACITY` token
   (`src/design-system/disabled-opacity/disabled-opacity.ts`) is the ONE dimming a disabled
   pressable applies — `Button` reads it, and any new disabled pressable
