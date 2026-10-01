@@ -5,6 +5,7 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
 } from '@kiko/holdings/holding-type';
+import type { TFunction } from 'i18next';
 import {
   holdsOnlyDebts,
   holdingDescriptor,
@@ -56,14 +57,15 @@ import { useLoanFields } from './loan/use-loan-fields';
 import { useBondFields } from './bond/use-bond-fields';
 import { useMetalFields } from './metal/use-metal-fields';
 import { useShareFields } from './share/use-share-fields';
+import { fieldErrorMessage } from './field-error-message';
 import BalanceFormBlock from './balance/balance-form-block';
 import PropertyFormBlock from './property/property-form-block';
 import PropertyTypeField from './property/property-type-field';
 import { useBalanceFields } from './balance/use-balance-fields';
 import { usePropertyFields } from './property/use-property-fields';
-import type { ScrollTarget, HoldingTypeForm } from './holding-type-form';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
+import type { CreateCheck, ScrollTarget, HoldingTypeForm } from './holding-type-form';
 
 // Fire-and-forget, only for a loan: the matcher backfills from the loan's
 // own start date, so a create OR an edit (principal/schedule/
@@ -87,6 +89,24 @@ const refreshAfterShareEdit = (type: HoldingType): void => {
     refreshAfterHoldingWrite(true);
   }
 };
+
+// Only a type whose create needs a network answer first (a share's listing
+// unit) checks it; every other type saves its payload as it stands.
+const checkedCreate = (form: HoldingTypeForm): Promise<CreateCheck> =>
+  form.checkCreate?.() ?? Promise.resolve({ kind: 'save', payload: form.createPayload() });
+
+// A share's Currency field names the currency its EODHD listing is priced in.
+const currencyFieldError = (
+  type: HoldingType,
+  share: ReturnType<typeof useShareFields>,
+  attemptedSave: boolean,
+  t: TFunction,
+): string | undefined =>
+  type === 'share'
+    ? fieldErrorMessage(t, attemptedSave, share.fieldErrors.currencyError, {
+        currency: share.listingCurrency,
+      })
+    : undefined;
 
 // The loan form's "Paid from" picker options: every OPEN, non-ledgerless
 // holding in the LOAN's own currency — a `paymentHoldingId` link is only
@@ -349,12 +369,21 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // type's own fields carry their input ref alongside their `scrollTargets`
   // entry instead (see each `use<Type>Fields` hook).
   const nameInputRef = useRef<TextInputInstance>(null);
+  const currencyFieldRef = useRef<FieldInstance>(null);
 
   const deposit = useTermDepositFields({ currency, scrollTo });
   const bond = useBondFields({ type, isEdit, currency, setCurrency, name, setName });
   const property = usePropertyFields({ isEdit, currency });
   const metal = useMetalFields({ isEdit });
-  const share = useShareFields({ type, isEdit, currency, setCurrency, name, setName });
+  const share = useShareFields({
+    type,
+    isEdit,
+    currency,
+    setCurrency,
+    name,
+    setName,
+    currencyFieldRef,
+  });
   const loanFields = useLoanFields({ currency });
   // Stays mounted across every type, not only while a balance type is
   // selected, so a value typed before switching away survives the switch.
@@ -479,20 +508,27 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // renders nothing before the first press.
   const showNameReason = attemptedSave && name.trim().length === 0;
 
+  // Every field shows its own error from now on; the first one still invalid
+  // scrolls into view.
+  const revealInvalid = (targets: readonly ScrollTarget[]): void => {
+    setAttemptedSave(true);
+
+    const target = targets.find((candidate) => candidate.invalid);
+
+    if (target) {
+      scrollTo(target.ref, target.focus);
+    }
+  };
+
   const save = async (): Promise<void> => {
     if (!isValid) {
-      setAttemptedSave(true);
-
       const nameTarget: ScrollTarget = {
         invalid: name.trim().length === 0,
         ref: nameFieldRef,
         focus: () => nameInputRef.current?.focus(),
       };
-      const target = [nameTarget, ...active.scrollTargets].find((candidate) => candidate.invalid);
 
-      if (target) {
-        scrollTo(target.ref, target.focus);
-      }
+      revealInvalid([nameTarget, ...active.scrollTargets]);
 
       return;
     }
@@ -527,6 +563,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         return;
       }
 
+      const check = await checkedCreate(active);
+
+      if (check.kind === 'blocked') {
+        revealInvalid([check.target]);
+
+        return;
+      }
+
       // Every ledgerless type (property/metal/loan/deposit/bond)'s
       // `createPayload` writes a zero stored balance — its value derives
       // entirely from its own lots/schedule. Only `useBalanceFields`
@@ -540,7 +584,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         // row follows its type's default at display time — the same fallback the
         // icon uses — so a type-default color is not frozen onto the row.
         color,
-        ...active.createPayload(),
+        ...check.payload,
       });
 
       // Persist the chosen icon on the freshly-created row, using the id the
@@ -705,17 +749,20 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             that fixed value underneath regardless of what this field would
             otherwise show. */}
         {holdingDescriptor(type).fixedCurrency === null && (
-          <CurrencyField
-            label={t('forms.fields.currency')}
-            sheetTitle={t('forms.fields.currencySheetTitle')}
-            selected={currency}
-            onSelect={setCurrency}
-            options={holdingCurrencyOptions(type)}
-            cryptoFirst={type === 'crypto_asset'}
-            disabled={isEdit}
-            onOpenChange={setIsSearchSheetOpen}
-            testID="holding-currency-field"
-          />
+          <View ref={currencyFieldRef}>
+            <CurrencyField
+              label={t('forms.fields.currency')}
+              sheetTitle={t('forms.fields.currencySheetTitle')}
+              selected={currency}
+              onSelect={setCurrency}
+              options={holdingCurrencyOptions(type)}
+              cryptoFirst={type === 'crypto_asset'}
+              disabled={isEdit}
+              error={currencyFieldError(type, share, attemptedSave, t)}
+              onOpenChange={setIsSearchSheetOpen}
+              testID="holding-currency-field"
+            />
+          </View>
         )}
 
         {match(type)

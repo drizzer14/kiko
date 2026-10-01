@@ -84,6 +84,7 @@ import {
 import ShareChanges from './share-changes';
 import UpcomingPayments from './upcoming-payments';
 import LotRowMenu, { type LotActions } from './lot-row-menu';
+import ListingCurrencyNotice from './listing-currency-notice';
 import { useBondRegisterTerms } from './use-bond-register-terms';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
@@ -1072,6 +1073,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           )}
         </Box>
       )}
+
+      <ListingCurrencyNotice holding={holding} />
 
       <LinkedPaymentsSection
         title={t('holdingDetail.linkedPayments')}

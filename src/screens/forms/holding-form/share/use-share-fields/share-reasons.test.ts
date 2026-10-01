@@ -4,9 +4,43 @@ const baseParams = () => ({
   isEdit: false,
   quoteSource: 'eodhd' as const,
   ticker: 'AAPL.US',
+  quoteUnit: undefined as string | undefined,
+  currency: 'USD' as const,
   isin: '',
   quantity: '3',
   cost: '900',
+});
+
+describe('shareFieldErrors — currency', () => {
+  it('accepts a currency while the listing price unit is unknown', () => {
+    expect(shareFieldErrors(baseParams()).currencyError).toBeNull();
+  });
+
+  it('accepts the currency the listing is priced in', () => {
+    expect(shareFieldErrors({ ...baseParams(), quoteUnit: 'USD' }).currencyError).toBeNull();
+  });
+
+  it('accepts pounds for a listing priced in pence', () => {
+    expect(
+      shareFieldErrors({ ...baseParams(), quoteUnit: 'GBX', currency: 'GBP' }).currencyError,
+    ).toBeNull();
+  });
+
+  it.each([
+    ['USD', 'UAH'],
+    ['GBX', 'USD'],
+    ['GBP', 'EUR'],
+  ] as const)('rejects a %s listing held in %s, which is never priced', (quoteUnit, currency) => {
+    expect(shareFieldErrors({ ...baseParams(), quoteUnit, currency }).currencyError).toBe(
+      'forms.holding.shareCurrencyMismatchError',
+    );
+  });
+
+  it('reports the mismatch before every other field', () => {
+    expect(shareReasonKey({ ...baseParams(), quoteUnit: 'USD', currency: 'UAH', cost: '' })).toBe(
+      'forms.holding.shareCurrencyMismatchError',
+    );
+  });
 });
 
 describe('shareFieldErrors — ticker', () => {

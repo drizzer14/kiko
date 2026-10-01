@@ -1500,6 +1500,33 @@ describe('HoldingDetailScreen', () => {
     });
   });
 
+  it('tells how to fix an EODHD share held in another currency than its listing', async () => {
+    seed({
+      ...manualShareHolding,
+      currency: 'UAH',
+      metadata: {
+        ...manualShareHolding.metadata,
+        quoteSource: 'eodhd',
+        symbol: 'AAPL.US',
+        quoteCurrency: 'USD',
+      },
+    });
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('listing-currency-notice')).toHaveTextContent(
+      /EODHD prices this share in USD/,
+    );
+  });
+
+  it('shows no listing notice for a share priced in its own currency', async () => {
+    seed(manualShareHolding);
+
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('listing-currency-notice')).toBeNull();
+  });
+
   it('renders derived rows read-only: no context menu and not tappable to the form', async () => {
     seed(depositHolding);
 

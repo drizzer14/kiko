@@ -23,6 +23,11 @@ export type CreatePayload = {
   firstPricePoint?: { day: number; price: string };
 };
 
+/** A create checked against something only the network can tell: save it, or stay on `target`. */
+export type CreateCheck =
+  | { kind: 'save'; payload: CreatePayload }
+  | { kind: 'blocked'; target: ScrollTarget };
+
 export type EditContext = {
   holdingId: string;
   name: string;
@@ -48,6 +53,12 @@ export type HoldingTypeForm = {
    * (card/cash/crypto_asset/jar) reads its own live opening-balance field.
    */
   createPayload: () => CreatePayload;
+  /**
+   * Replaces `createPayload` for a type whose create needs one network answer
+   * first (a share's listing unit). It never rejects; a block reveals its
+   * field's error.
+   */
+  checkCreate?: () => Promise<CreateCheck>;
   /** The edit write, without the icon (the screen writes the icon). */
   saveEdit: (context: EditContext) => Promise<void>;
 };

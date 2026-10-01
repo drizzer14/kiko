@@ -45,6 +45,18 @@ describe('CurrencyField', () => {
     expect(onSelect).toHaveBeenCalledWith('USD');
   });
 
+  it('renders the field error under the trigger, matching FieldTrigger', async () => {
+    const utils = await renderCurrencyField({ error: 'Choose USD.' });
+
+    expect(utils.getByTestId('currency-field-error')).toHaveTextContent('Choose USD.');
+  });
+
+  it('renders no error node while the field is valid', async () => {
+    const utils = await renderCurrencyField();
+
+    expect(utils.queryByTestId('currency-field-error')).toBeNull();
+  });
+
   it('shows sheetTitle, not label, as the sheet header', async () => {
     const utils = await renderCurrencyField();
 

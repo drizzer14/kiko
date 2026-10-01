@@ -41,12 +41,19 @@ export type ShareSearchDeps = {
   searchSymbols?: typeof searchSymbols;
 };
 
-const holdingCurrencyOf = (unit: string): string => (unit === PENCE ? 'GBP' : unit);
+export type ListingSearch = { code: string; exchange: string };
+
+/**
+ * The holding currency a listing's price unit fits: a pence (`GBX`) close is
+ * a pound holding's, every other unit only its own currency's. A share whose
+ * currency is not this one is never priced.
+ */
+export const unitHoldingCurrency = (unit: string): string => (unit === PENCE ? 'GBP' : unit);
 
 const toListing =
   (currencies: readonly Currency[]) =>
   ({ symbol, name, isin, currency: unit }: SymbolMatch): ShareListing[] => {
-    const currency = holdingCurrencyOf(unit);
+    const currency = unitHoldingCurrency(unit);
 
     if (!isCurrency(currency) || !currencies.includes(currency)) {
       return [];
@@ -95,18 +102,19 @@ const withDefaults = (deps: ShareSearchDeps): Required<ShareSearchDeps> => ({
   ...deps,
 });
 
-/**
- * Finds the listings for a ticker, a name, or an ISIN under the user's own
- * daily EODHD limit: one call per search, reserved before it goes out. Only
- * listings a share holding can take in one of `currencies` come back, the
- * primary listings first. A key EODHD rejected spends nothing until a key is
- * saved or checked again.
- */
-export const searchShares = async (
-  query: string,
-  currencies: readonly Currency[],
-  deps: ShareSearchDeps = {},
-): Promise<ShareSearchResult> => {
+type SearchRequest = { query: string; exchange?: string; timeoutMs?: number };
+
+type QuotaSearch =
+  | { status: 'ok'; matches: SymbolMatch[] }
+  | { status: 'noKey' | 'keyRejected' | 'quotaExhausted' | 'failed' };
+
+// One search call under the user's own daily EODHD limit, reserved before it
+// goes out. A key EODHD rejected spends nothing until a key is saved or
+// checked again.
+const searchUnderQuota = async (
+  request: SearchRequest,
+  deps: ShareSearchDeps,
+): Promise<QuotaSearch> => {
   const { now, readKey, loadQuota, updateQuota, ...network } = withDefaults(deps);
   // The key state is read before the key, so a 401 never lands on a key saved
   // in between.
@@ -128,7 +136,9 @@ export const searchShares = async (
     return { status: 'quotaExhausted' };
   }
 
-  const found = await either(async () => network.searchSymbols(query.trim(), key));
+  const found = await either(async () =>
+    network.searchSymbols(request.query, key, undefined, request.exchange, request.timeoutMs),
+  );
 
   if (isLeft(found)) {
     const error: unknown = bifold(found);
@@ -155,10 +165,80 @@ export const searchShares = async (
     return { status };
   }
 
-  const matches: SymbolMatch[] = bifold(found);
-  const primaryFirst = [...matches].sort(
+  return { status: 'ok', matches: bifold(found) };
+};
+
+/**
+ * Finds the listings for a ticker, a name, or an ISIN under the user's own
+ * daily EODHD limit: one call per search, reserved before it goes out. Only
+ * listings a share holding can take in one of `currencies` come back, the
+ * primary listings first.
+ */
+export const searchShares = async (
+  query: string,
+  currencies: readonly Currency[],
+  deps: ShareSearchDeps = {},
+): Promise<ShareSearchResult> => {
+  const found = await searchUnderQuota({ query: query.trim() }, deps);
+
+  if (found.status !== 'ok') {
+    return found;
+  }
+
+  const primaryFirst = [...found.matches].sort(
     (first, second) => Number(second.isPrimary) - Number(first.isPrimary),
   );
 
   return { status: 'ok', listings: primaryFirst.flatMap(toListing(currencies)) };
+};
+
+// A user waits on a pressed Save for this one, so it gives up sooner than a
+// refresh does; an unanswered request costs no call either way.
+export const SAVE_LOOKUP_TIMEOUT_MS = 10_000;
+
+export type ShareUnitLookup =
+  | { status: 'ok'; unit: string }
+  | { status: 'notFound' | 'noKey' | 'keyRejected' | 'quotaExhausted' | 'failed' };
+
+/** The search a `CODE.EXCHANGE` symbol's unit is looked up with: its code, on its exchange. */
+export const listingSearchOf = (symbol: string): ListingSearch | undefined => {
+  const dot = symbol.lastIndexOf('.');
+
+  if (dot <= 0 || dot === symbol.length - 1) {
+    return undefined;
+  }
+
+  return { code: symbol.slice(0, dot), exchange: symbol.slice(dot + 1) };
+};
+
+/**
+ * The unit EODHD prices one `CODE.EXCHANGE` listing in, with the same one
+ * search call the share refresh would spend on it, under the same limit as a
+ * search. A symbol with no listing of exactly that name is `notFound`.
+ */
+export const lookupShareUnit = async (
+  symbol: string,
+  deps: ShareSearchDeps = {},
+): Promise<ShareUnitLookup> => {
+  const search = listingSearchOf(symbol);
+
+  if (search === undefined) {
+    return { status: 'notFound' };
+  }
+
+  const found = await searchUnderQuota(
+    { query: search.code, exchange: search.exchange, timeoutMs: SAVE_LOOKUP_TIMEOUT_MS },
+    deps,
+  );
+
+  if (found.status !== 'ok') {
+    return found;
+  }
+
+  return (
+    foldMap(
+      maybe(found.matches.find((candidate) => candidate.symbol === symbol)),
+      ({ currency }): ShareUnitLookup => ({ status: 'ok', unit: currency }),
+    ) ?? { status: 'notFound' }
+  );
 };

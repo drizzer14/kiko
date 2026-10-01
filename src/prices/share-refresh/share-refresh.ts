@@ -38,6 +38,7 @@ import { dayKeyOf } from '../price-book';
 import { readEodhdKey } from '../eodhd-key';
 import { shareInstrument } from '../instrument';
 import { pricePointsRepo } from '../price-points-repo';
+import { listingSearchOf, type ListingSearch, unitHoldingCurrency } from '../share-search';
 
 import {
   saveShareRefresh,
@@ -90,8 +91,6 @@ type Listing = {
   lastLotDay: number;
   isHeld: boolean;
 };
-
-type ListingSearch = { code: string; exchange: string };
 
 /**
  * One call for one listing over `[fromDay, toDay]`. `isForward` asks for the
@@ -207,26 +206,11 @@ const hasWeekday = (fromDay: number, toDay: number): boolean =>
 const pointUnit = (
   unit: string,
   currencies: readonly Currency[],
-): { currency: Currency; places: number } | undefined => {
-  if (unit === PENCE && currencies.includes('GBP')) {
-    return { currency: 'GBP', places: -2 };
-  }
-
-  return foldMap(maybe(currencies.find((currency) => currency === unit)), (currency) => ({
-    currency,
-    places: 0,
-  }));
-};
-
-const searchFor = (symbol: string): ListingSearch | undefined => {
-  const dot = symbol.lastIndexOf('.');
-
-  if (dot <= 0 || dot === symbol.length - 1) {
-    return undefined;
-  }
-
-  return { code: symbol.slice(0, dot), exchange: symbol.slice(dot + 1) };
-};
+): { currency: Currency; places: number } | undefined =>
+  foldMap(
+    maybe(currencies.find((currency) => currency === unitHoldingCurrency(unit))),
+    (currency) => ({ currency, places: unit === PENCE ? -2 : 0 }),
+  );
 
 type CallRange = Omit<PlannedCall, 'listing' | 'search'>;
 
@@ -289,7 +273,11 @@ const callFor = (
   }
 
   if (listing.unit === undefined) {
-    return foldMap(maybe(searchFor(listing.symbol)), (search) => ({ listing, ...range, search }));
+    return foldMap(maybe(listingSearchOf(listing.symbol)), (search) => ({
+      listing,
+      ...range,
+      search,
+    }));
   }
 
   if (pointUnit(listing.unit, listing.currencies) === undefined) {

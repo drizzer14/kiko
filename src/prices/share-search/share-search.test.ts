@@ -14,7 +14,13 @@ import {
 import { refreshSharePrices } from '../share-refresh';
 import { settle, type QuoteQuota } from '../quote-quota';
 
-import { searchShares, type ShareSearchDeps } from './share-search';
+import {
+  searchShares,
+  lookupShareUnit,
+  unitHoldingCurrency,
+  type ShareSearchDeps,
+  SAVE_LOOKUP_TIMEOUT_MS,
+} from './share-search';
 
 const KEY = 'fake-eodhd-key-0000';
 const TODAY = Date.UTC(2026, 9, 1);
@@ -343,5 +349,106 @@ describe('searchShares', () => {
       expect(JSON.stringify(warn.mock.calls)).not.toContain(KEY);
       expect(JSON.stringify(warn.mock.calls)).not.toContain('US0378331005');
     });
+  });
+});
+
+describe('lookupShareUnit', () => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  const vodafone = [
+    listing({ symbol: 'VOD.US', currency: 'USD' }),
+    listing({ symbol: 'VOD.LSE', currency: 'GBX' }),
+  ];
+
+  it("asks for the code on its exchange, as the refresh does, and returns that listing's unit", async () => {
+    const world = makeWorld({ answer: vodafone });
+
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toEqual({
+      status: 'ok',
+      unit: 'GBX',
+    });
+    expect(world.events).toEqual(['quota 1', 'search VODLSE']);
+  });
+
+  it('gives up on an unanswered request after 10 seconds, not the 30 a refresh waits', async () => {
+    const timeouts: (number | undefined)[] = [];
+
+    await lookupShareUnit('VOD.LSE', {
+      ...depsFor(makeWorld()),
+      searchSymbols: async (_query, _key, _fetchImpl, _exchange, timeoutMs) => {
+        timeouts.push(timeoutMs);
+
+        return vodafone;
+      },
+    });
+
+    expect(timeouts).toEqual([SAVE_LOOKUP_TIMEOUT_MS]);
+    expect(SAVE_LOOKUP_TIMEOUT_MS).toBe(10_000);
+  });
+
+  it('finds nothing, and counts the call, when EODHD has no listing of that exact symbol', async () => {
+    const world = makeWorld({ quota: quota({ calls: 3 }), answer: vodafone });
+
+    await expect(lookupShareUnit('VOD.XETRA', depsFor(world))).resolves.toEqual({
+      status: 'notFound',
+    });
+    expect(world.quota).toEqual(quota({ calls: 4 }));
+  });
+
+  it('asks nothing for a symbol with no exchange', async () => {
+    const world = makeWorld();
+
+    await expect(lookupShareUnit('VOD', depsFor(world))).resolves.toEqual({
+      status: 'notFound',
+    });
+    expect(world.events).toEqual([]);
+  });
+
+  it.each([
+    ['without a saved key', { key: undefined }, 'noKey'],
+    ['while EODHD rejects the saved key', { quota: quota({ isKeyRejected: true }) }, 'keyRejected'],
+    ['once the day is used up', { quota: quota({ calls: 20 }) }, 'quotaExhausted'],
+  ] as const)('asks nothing %s', async (_state, overrides, status) => {
+    const world = makeWorld(overrides);
+
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toEqual({ status });
+    expect(world.events.filter((event) => event.startsWith('search'))).toEqual([]);
+  });
+
+  it('gives the call back when EODHD never answered', async () => {
+    const world = makeWorld({ quota: quota({ calls: 3 }), answer: new EodhdNetworkError() });
+
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toEqual({
+      status: 'failed',
+    });
+    expect(world.quota).toEqual(quota({ calls: 3 }));
+  });
+
+  it('marks a key EODHD rejects, as a search does', async () => {
+    const world = makeWorld({ quota: quota({ calls: 3 }), answer: new EodhdAuthError() });
+
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toEqual({
+      status: 'keyRejected',
+    });
+    expect(world.quota).toEqual(quota({ calls: 4, isKeyRejected: true }));
+  });
+});
+
+describe('unitHoldingCurrency', () => {
+  it.each([
+    ['USD', 'USD'],
+    ['GBX', 'GBP'],
+    ['GBP', 'GBP'],
+    ['ZAC', 'ZAC'],
+  ])('reads the %s unit as a %s holding', (unit, currency) => {
+    expect(unitHoldingCurrency(unit)).toBe(currency);
   });
 });

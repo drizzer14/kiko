@@ -290,6 +290,35 @@ describe.each(calls)('%s timeout', (_name, call) => {
   });
 });
 
+describe('searchSymbols with its own timeout', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('aborts a request with no answer after the given time as a network error', async () => {
+    jest.useFakeTimers();
+    let isAborted = false;
+    const hungFetch = ((_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          isAborted = true;
+          reject(Object.assign(new Error(`Aborted ${KEY}`), { name: 'AbortError' }));
+        });
+      })) as unknown as typeof fetch;
+
+    const assertion = expect(
+      searchSymbols('AAPL', KEY, hungFetch, 'US', 10_000),
+    ).rejects.toBeInstanceOf(EodhdNetworkError);
+
+    await jest.advanceTimersByTimeAsync(9_999);
+
+    expect(isAborted).toBe(false);
+
+    await jest.advanceTimersByTimeAsync(1);
+    await assertion;
+  });
+});
+
 describe.each(calls)('%s failures', (_name, call) => {
   it.each(failures)('maps %s to its own error class', async (_status, fetchImpl, errorClass) => {
     await expect(call(fetchImpl)).rejects.toBeInstanceOf(errorClass);

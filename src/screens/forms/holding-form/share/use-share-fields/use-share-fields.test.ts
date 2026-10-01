@@ -17,8 +17,11 @@ jest.mock('@kiko/prices/eodhd-key', () => ({
 }));
 
 const mockSearchShares = jest.fn();
+const mockLookupShareUnit = jest.fn();
 jest.mock('@kiko/prices/share-search', () => ({
+  ...jest.requireActual('@kiko/prices/share-search'),
   searchShares: (...args: unknown[]) => mockSearchShares(...args),
+  lookupShareUnit: (...args: unknown[]) => mockLookupShareUnit(...args),
 }));
 
 const updateMock = holdingsRepo.updateShareFromStored as jest.Mock;
@@ -27,6 +30,8 @@ const purchaseDay = new Date(2026, 8, 15).getTime();
 const lastDay = new Date(2026, 8, 25).getTime();
 
 type Params = Parameters<typeof useShareFields>[0];
+
+const currencyFieldRef = { current: null };
 
 const renderFields = (overrides: Partial<Params> = {}) =>
   renderHook(() =>
@@ -37,6 +42,7 @@ const renderFields = (overrides: Partial<Params> = {}) =>
       name: '',
       setName: jest.fn(),
       setCurrency: jest.fn(),
+      currencyFieldRef,
       ...overrides,
     }),
   );
@@ -120,11 +126,12 @@ describe('useShareFields defaults and order', () => {
     expect(result.current.quoteSource).toBe('manual');
   });
 
-  it('orders scrollTargets ticker, ISIN, quantity, cost', async () => {
+  it('orders scrollTargets currency, ticker, ISIN, quantity, cost', async () => {
     const { result } = await renderFields();
     const { refs } = result.current;
 
     expect(result.current.scrollTargets.map((target) => target.ref)).toEqual([
+      currencyFieldRef,
       refs.tickerFieldRef,
       refs.isinFieldRef,
       refs.quantityFieldRef,
@@ -524,6 +531,7 @@ describe('useShareFields search', () => {
           name,
           setName,
           setCurrency: jest.fn(),
+          currencyFieldRef,
         }),
       { initialProps: { name: '' } },
     );
@@ -633,5 +641,207 @@ describe('useShareFields saved EODHD key', () => {
     await renderFields({ type: 'metal' });
 
     expect(mockHasEodhdKey).not.toHaveBeenCalled();
+  });
+});
+
+describe('useShareFields currency against the listing', () => {
+  const vodafone: ShareListing = {
+    symbol: 'VOD.LSE',
+    name: 'Vodafone Group PLC',
+    isin: 'GB00BH4HKS39',
+    currency: 'GBP',
+    quoteCurrency: 'GBX',
+  };
+
+  const typeTicker = async (rendered: Rendered, ticker: string) => {
+    await act(async () => {
+      rendered.result.current.setQuoteSource('eodhd');
+      rendered.result.current.setTicker(ticker);
+    });
+    await fillFirstLot(rendered, '3', '900');
+  };
+
+  const firstLot = { day: dayKeyOf(purchaseDay), quantityDelta: '3', costMinorUnits: 90_000 };
+
+  beforeEach(() => {
+    mockLookupShareUnit.mockReset();
+  });
+
+  it('blocks Save on the Currency field for a picked listing held in another currency', async () => {
+    const rendered = await renderFields({ currency: 'USD' });
+
+    await act(async () => {
+      rendered.result.current.setQuoteSource('eodhd');
+      rendered.result.current.pickListing(vodafone);
+    });
+    await fillFirstLot(rendered, '3', '900');
+
+    expect(rendered.result.current.fieldErrors.currencyError).toBe(
+      'forms.holding.shareCurrencyMismatchError',
+    );
+    expect(rendered.result.current.listingCurrency).toBe('GBP');
+    expect(rendered.result.current.isValid).toBe(false);
+    expect(rendered.result.current.scrollTargets[0]).toMatchObject({
+      invalid: true,
+      ref: currencyFieldRef,
+    });
+  });
+
+  it('accepts a picked pence listing held in pounds', async () => {
+    const rendered = await renderFields({ currency: 'GBP' });
+
+    await act(async () => {
+      rendered.result.current.setQuoteSource('eodhd');
+      rendered.result.current.pickListing(vodafone);
+    });
+
+    expect(rendered.result.current.fieldErrors.currencyError).toBeNull();
+  });
+
+  it('never checks the currency of a manual share', async () => {
+    const rendered = await renderFields({ currency: 'USD' });
+
+    await act(async () => {
+      rendered.result.current.setQuoteSource('eodhd');
+      rendered.result.current.pickListing(vodafone);
+    });
+    await act(async () => {
+      rendered.result.current.setQuoteSource('manual');
+    });
+
+    expect(rendered.result.current.fieldErrors.currencyError).toBeNull();
+  });
+
+  it('saves a manual share with no lookup', async () => {
+    const rendered = await renderFields();
+
+    await act(async () => {
+      rendered.result.current.setQuoteSource('manual');
+    });
+    await fillFirstLot(rendered, '3', '900');
+
+    await expect(rendered.result.current.checkCreate?.()).resolves.toMatchObject({
+      kind: 'save',
+      payload: { metadata: { quoteSource: 'manual' } },
+    });
+    expect(mockLookupShareUnit).not.toHaveBeenCalled();
+  });
+
+  it('saves a picked listing with its own unit and no lookup', async () => {
+    const rendered = await renderFields({ currency: 'GBP' });
+
+    await act(async () => {
+      rendered.result.current.setQuoteSource('eodhd');
+      rendered.result.current.pickListing(vodafone);
+    });
+    await fillFirstLot(rendered, '3', '900');
+
+    await expect(rendered.result.current.checkCreate?.()).resolves.toMatchObject({
+      kind: 'save',
+      payload: { metadata: { symbol: 'VOD.LSE', quoteCurrency: 'GBX' } },
+    });
+    expect(mockLookupShareUnit).not.toHaveBeenCalled();
+  });
+
+  it('looks a hand-typed ticker up once and saves the unit it found', async () => {
+    mockLookupShareUnit.mockResolvedValue({ status: 'ok', unit: 'USD' });
+    const rendered = await renderFields({ currency: 'USD' });
+
+    await typeTicker(rendered, ' aapl.us ');
+
+    await expect(rendered.result.current.checkCreate?.()).resolves.toEqual({
+      kind: 'save',
+      payload: {
+        metadata: {
+          quoteSource: 'eodhd',
+          symbol: 'AAPL.US',
+          quoteCurrency: 'USD',
+          lots: [firstLot],
+        },
+      },
+    });
+    expect(mockLookupShareUnit.mock.calls).toEqual([['AAPL.US']]);
+  });
+
+  it('blocks a hand-typed ticker priced in another currency on the Currency field', async () => {
+    mockLookupShareUnit.mockResolvedValue({ status: 'ok', unit: 'USD' });
+    const rendered = await renderFields({ currency: 'UAH' });
+
+    await typeTicker(rendered, 'AAPL.US');
+
+    const checks: unknown[] = [];
+
+    await act(async () => {
+      checks.push(await rendered.result.current.checkCreate?.());
+    });
+
+    expect(checks).toEqual([
+      expect.objectContaining({
+        kind: 'blocked',
+        target: expect.objectContaining({ ref: currencyFieldRef }),
+      }),
+    ]);
+    expect(rendered.result.current.fieldErrors.currencyError).toBe(
+      'forms.holding.shareCurrencyMismatchError',
+    );
+    expect(rendered.result.current.listingCurrency).toBe('USD');
+  });
+
+  it('never looks the same ticker up twice', async () => {
+    mockLookupShareUnit.mockResolvedValue({ status: 'ok', unit: 'USD' });
+    const rendered = await renderFields({ currency: 'UAH' });
+
+    await typeTicker(rendered, 'AAPL.US');
+    await act(async () => {
+      await rendered.result.current.checkCreate?.();
+    });
+
+    expect(rendered.result.current.isValid).toBe(false);
+
+    await act(async () => {
+      rendered.result.current.setTicker('MSFT.US');
+    });
+
+    expect(rendered.result.current.fieldErrors.currencyError).toBeNull();
+
+    await act(async () => {
+      rendered.result.current.setTicker('AAPL.US');
+    });
+
+    expect(rendered.result.current.fieldErrors.currencyError).toBe(
+      'forms.holding.shareCurrencyMismatchError',
+    );
+    expect(mockLookupShareUnit).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['no key', { status: 'noKey' }],
+    ['a rejected key', { status: 'keyRejected' }],
+    ['no calls left', { status: 'quotaExhausted' }],
+    ['no answer', { status: 'failed' }],
+    ['no listing of that symbol', { status: 'notFound' }],
+  ])('saves a hand-typed ticker as before with %s', async (_reason, lookup) => {
+    mockLookupShareUnit.mockResolvedValue(lookup);
+    const rendered = await renderFields({ currency: 'UAH' });
+
+    await typeTicker(rendered, 'AAPL.US');
+
+    await expect(rendered.result.current.checkCreate?.()).resolves.toEqual({
+      kind: 'save',
+      payload: { metadata: { quoteSource: 'eodhd', symbol: 'AAPL.US', lots: [firstLot] } },
+    });
+  });
+
+  it('saves as before when the lookup itself fails', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockLookupShareUnit.mockRejectedValue(new Error('keychain'));
+    const rendered = await renderFields({ currency: 'UAH' });
+
+    await typeTicker(rendered, 'AAPL.US');
+
+    await expect(rendered.result.current.checkCreate?.()).resolves.toMatchObject({
+      kind: 'save',
+    });
+    warn.mockRestore();
   });
 });

@@ -417,6 +417,8 @@ export const uk: typeof en = {
       removeContribution: 'Видалити внесок {{index}}',
       semiannually: 'Раз на півроку',
       share: 'Акція',
+      shareCurrencyMismatchError:
+        'EODHD подає ціну цієї акції в {{currency}}. Оберіть {{currency}} або змініть джерело ціни на «Вручну».',
       shareFind: 'Знайти за ISIN або тікером',
       shareFindEmpty: 'Нічого не знайдено.',
       shareFindKeyRejected:
@@ -692,6 +694,8 @@ export const uk: typeof en = {
     interestEarned: 'Отримані відсотки',
     interestPaid: 'Сплачено відсотків',
     linkedPayments: 'Пов’язані платежі',
+    listingCurrencyMismatch:
+      'EODHD подає ціну цієї акції в {{currency}}, тому її вартість не оновлюється. Відредагуйте її та змініть джерело ціни на «Вручну» (вартість купівлі залишиться) або видаліть її й додайте знову в {{currency}}.',
     militaryLevy: 'Військовий збір {{pct}}%',
     openingDeposit: 'Відкриття депозиту',
     outstanding: 'Залишок боргу',

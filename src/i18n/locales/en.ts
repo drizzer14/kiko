@@ -479,6 +479,10 @@ export const en = {
       removeContribution: 'Remove contribution {{index}}',
       semiannually: 'Semiannually',
       share: 'Share',
+      // Under the Currency field when the EODHD listing is priced in another
+      // currency (a pence listing fits pounds): such a share never gets a price.
+      shareCurrencyMismatchError:
+        'EODHD prices this share in {{currency}}. Choose {{currency}}, or set the price source to “Manual”.',
       shareFind: 'Find by ISIN or ticker',
       shareFindEmpty: 'Nothing found.',
       shareFindKeyRejected:
@@ -805,6 +809,10 @@ export const en = {
     // transactions the auto-link matcher (or a manual pick) linked to this
     // loan, newest first.
     linkedPayments: 'Linked Payments',
+    // A notice on an EODHD share held in another currency than its listing:
+    // it is never priced, and its currency cannot change.
+    listingCurrencyMismatch:
+      'EODHD prices this share in {{currency}}, so its value does not update. Edit it and set the price source to “Manual” (its cost stays), or delete it and add it again in {{currency}}.',
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',

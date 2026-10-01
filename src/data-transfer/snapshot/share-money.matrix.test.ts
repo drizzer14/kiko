@@ -514,6 +514,18 @@ const cells: Cell[] = [
     expected: [{ at: february10, quantity: '10', value: 100_000, cost: 100_000 }],
   },
   {
+    operation: 'listing notice on the detail (display only)',
+    state: 'currency mismatch: UAH holding, USD unit stored, USD closes',
+    given: { currency: 'UAH' },
+    act: unchanged,
+    expected: [
+      { at: february10, quantity: '10', value: 100_000, cost: 100_000 },
+      { at: april10, quantity: '6', value: 60_000, cost: 60_000 },
+    ],
+    ownSeries: [],
+    storedLots: BASE_LOTS,
+  },
+  {
     operation: 'source switch EODHD to Manual',
     state: 'currency mismatch: UAH holding, USD closes',
     given: { currency: 'UAH' },

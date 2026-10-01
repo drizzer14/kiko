@@ -196,8 +196,12 @@ jest.mock('@kiko/prices/eodhd-key', () => ({
   hasEodhdKey: () => Promise.resolve(mockHasEodhdKey),
 }));
 const mockSearchShares = jest.fn();
+// A hand-typed EODHD ticker's unit is looked up at Save; no key by default.
+const mockLookupShareUnit = jest.fn().mockResolvedValue({ status: 'noKey' });
 jest.mock('@kiko/prices/share-search', () => ({
+  ...jest.requireActual('@kiko/prices/share-search'),
   searchShares: (...args: unknown[]) => mockSearchShares(...args),
+  lookupShareUnit: (...args: unknown[]) => mockLookupShareUnit(...args),
 }));
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
@@ -2815,6 +2819,126 @@ describe('HoldingFormScreen share', () => {
     await fireEvent.changeText(screen.getByPlaceholderText('Search by code or name'), 'BTC');
 
     expect(screen.queryByTestId('currency-option-BTC')).toBeNull();
+  });
+
+  describe('currency against the EODHD listing', () => {
+    const USD_ERROR =
+      'EODHD prices this share in USD. Choose USD, or set the price source to “Manual”.';
+
+    const pickCurrency = async (screen: Screen, code: string) => {
+      await fireEvent.press(screen.getByTestId('holding-currency-field'));
+      await fireEvent.changeText(screen.getByPlaceholderText('Search by code or name'), code);
+      await fireEvent.press(screen.getByTestId(`currency-option-${code}`));
+    };
+
+    const typeShare = async (screen: Screen) => {
+      await fill(screen, 'Name', 'Apple');
+      await screen.findByLabelText('Ticker');
+      await fill(screen, 'Ticker', 'AAPL.US');
+      await fill(screen, 'Quantity', '3');
+      await fill(screen, 'Total cost', '1000');
+    };
+
+    beforeEach(() => {
+      mockHasEodhdKey = true;
+      mockLookupShareUnit.mockReset();
+      (scrollToField as jest.Mock).mockClear();
+    });
+
+    afterEach(() => {
+      mockHasEodhdKey = false;
+      mockLookupShareUnit.mockResolvedValue({ status: 'noKey' });
+    });
+
+    it('blocks Save on the Currency field when a picked listing is held in another currency', async () => {
+      mockSearchShares.mockResolvedValue({
+        status: 'ok',
+        listings: [{ symbol: 'AAPL.US', name: 'Apple Inc', currency: 'USD', quoteCurrency: 'USD' }],
+      });
+      const screen = await renderScreen();
+
+      await fireEvent.press(await screen.findByText('Find by ISIN or ticker'));
+      await fill(screen, 'ISIN or ticker', 'AAPL');
+      await fireEvent.press(screen.getByText('Search'));
+      await fireEvent.press(screen.getByTestId('share-search-option-AAPL.US'));
+      await pickCurrency(screen, 'EUR');
+      await fill(screen, 'Quantity', '3');
+      await fill(screen, 'Total cost', '1000');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(USD_ERROR);
+      expect(createMock).not.toHaveBeenCalled();
+      expect(mockLookupShareUnit).not.toHaveBeenCalled();
+    });
+
+    it('looks a hand-typed ticker up at Save and stores the unit it found', async () => {
+      mockLookupShareUnit.mockResolvedValue({ status: 'ok', unit: 'USD' });
+      const screen = await renderScreen();
+
+      await typeShare(screen);
+      await pickCurrency(screen, 'USD');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(mockLookupShareUnit).toHaveBeenCalledWith('AAPL.US');
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currency: 'USD',
+          metadata: expect.objectContaining({ symbol: 'AAPL.US', quoteCurrency: 'USD' }),
+        }),
+      );
+    });
+
+    it('blocks a hand-typed ticker priced in another currency, then saves once it is chosen', async () => {
+      mockLookupShareUnit.mockResolvedValue({ status: 'ok', unit: 'USD' });
+      const screen = await renderScreen();
+
+      await typeShare(screen);
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(USD_ERROR);
+      expect(createMock).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+
+      await pickCurrency(screen, 'USD');
+
+      expect(screen.queryByTestId('holding-currency-field-error')).toBeNull();
+
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(mockLookupShareUnit).toHaveBeenCalledTimes(1);
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currency: 'USD',
+          metadata: expect.objectContaining({ quoteCurrency: 'USD' }),
+        }),
+      );
+    });
+
+    it('scrolls to the Currency field when the lookup blocks Save', async () => {
+      mockLookupShareUnit.mockResolvedValue({ status: 'ok', unit: 'USD' });
+      const screen = await renderScreen();
+
+      await typeShare(screen);
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(scrollToField).toHaveBeenCalledTimes(1);
+    });
+
+    it('saves a hand-typed ticker as before when the lookup has no answer', async () => {
+      mockLookupShareUnit.mockResolvedValue({ status: 'failed' });
+      const screen = await renderScreen();
+
+      await typeShare(screen);
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currency: 'UAH',
+          metadata: expect.not.objectContaining({ quoteCurrency: expect.anything() }),
+        }),
+      );
+      expect(navigation.goBack).toHaveBeenCalled();
+    });
   });
 });
 
