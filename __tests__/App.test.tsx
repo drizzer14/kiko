@@ -85,6 +85,13 @@ jest.mock('@kiko/reminders/repo/reminders.repo', () => ({
   },
 }));
 
+// useLotRecost (wired into AppRoot) runs the one-time lot recost; spied so a
+// test can tell when the app root starts it.
+const mockRecostStoredLots = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/holdings/lot-recost/lot-recost', () => ({
+  recostStoredLots: () => mockRecostStoredLots(),
+}));
+
 // The Home screen is data-driven (accounts/holdings/rates/settings via
 // useLiveQuery). This boot smoke test only asserts the screen mounts, so stub
 // the hook to return empty data rather than opening a real op-sqlite reactive
@@ -111,6 +118,21 @@ describe('App', () => {
     await render(<App />);
 
     await waitFor(() => expect(replaceRequests).toHaveBeenCalledWith([], []));
+  });
+
+  it('costs the stored lots again once the app root mounts, never while locked', async () => {
+    mockRecostStoredLots.mockClear();
+    mockLock.startsLocked = true;
+
+    await render(<App />);
+
+    expect(mockRecostStoredLots).not.toHaveBeenCalled();
+
+    await act(async () => {
+      mockLock.unlock();
+    });
+
+    await waitFor(() => expect(mockRecostStoredLots).toHaveBeenCalledTimes(1));
   });
 
   it('reads no notification tap and has no navigator to route to until the app is unlocked', async () => {

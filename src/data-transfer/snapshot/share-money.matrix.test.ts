@@ -6,16 +6,24 @@ jest.mock('@kiko/db/client', () => {
   return executingClient(() => mockDatabase);
 });
 
+import {
+  database,
+  holdings,
+  pricePoints,
+  type HoldingRow,
+  type SettingsRow,
+  type PricePointRow,
+} from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
 import maybe, { foldMap } from 'fnts/maybe';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { recostStoredLots } from '@kiko/holdings/lot-recost';
 import { buildPriceBook, dayKeyOf } from '@kiko/prices/price-book';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { quantityAt, type Lot, type LotChange } from '@kiko/holdings/lots';
 import { asMetalMeta, asShareMeta } from '@kiko/holdings/holding-metadata';
 import { holdingInstrument, metalInstrument, shareInstrument } from '@kiko/prices/instrument';
-import { database, holdings, pricePoints, type HoldingRow, type PricePointRow } from '@kiko/db';
 
 import { readDataSnapshot } from './read-snapshot';
 import type { DataSnapshot } from './data-snapshot';
@@ -69,6 +77,19 @@ const SPLIT_AAPL: Price[] = [
 // Bought 10 for 1,000 in January, sold 4 in March, and bought 10 for 3,000 on
 // the day of that sale, recorded after it: the sale is costed after the buy.
 const SAME_DAY_LOTS = [BASE_LOTS[0], sell(march10, '4', -80_000), buy(march10, '10', 300_000)];
+
+// The March sale as an older build stored it once a February buy of 10 for
+// 3,000 was added after it: still costed from the January buy alone.
+const STALE_SALE_LOTS = [BASE_LOTS[0], sell(march10, '4', -40_000), buy(february10, '10', 300_000)];
+const RECOSTED_SALE_LOTS = [
+  BASE_LOTS[0],
+  sell(march10, '4', -80_000),
+  buy(february10, '10', 300_000),
+];
+const RECOSTED_SALE_READINGS: Reading[] = [
+  { at: february10, quantity: '20', value: 300_000, cost: 400_000 },
+  { at: april10, quantity: '16', value: 400_000, cost: 320_000 },
+];
 
 type State = {
   type?: 'share' | 'metal';
@@ -206,6 +227,19 @@ const exportAndRestore = async (): Promise<void> => {
   openDatabase({ lots: [], share: [] });
   mockDatabase.exec('DELETE FROM holdings');
   await restoreDataSnapshot(backup);
+};
+
+// A backup made before the one-time recost has no flag key, so it restores
+// unrecosted onto a device that already ran its own recost.
+const restoreBackupFromBeforeTheRecost = async (): Promise<void> => {
+  const backup = JSON.parse(JSON.stringify(await readDataSnapshot())) as DataSnapshot;
+  const { lotsRecosted: _flag, ...olderSettings } = backup.settings[0];
+
+  openDatabase({ lots: [], share: [] });
+  mockDatabase.exec('DELETE FROM holdings');
+  await recostStoredLots();
+  await restoreDataSnapshot({ ...backup, settings: [olderSettings as SettingsRow] });
+  await recostStoredLots();
 };
 
 const unchanged = async (): Promise<void> => undefined;
@@ -549,6 +583,56 @@ const cells: Cell[] = [
       { instant: january10, price: '4000' },
       { instant: february14, price: '4100' },
     ],
+  },
+  {
+    operation: 'recost at app open',
+    state: 'a sale an older build costed before a later-added backdated buy',
+    given: { lots: STALE_SALE_LOTS },
+    act: recostStoredLots,
+    expected: RECOSTED_SALE_READINGS,
+    storedLots: RECOSTED_SALE_LOTS,
+  },
+  {
+    operation: 'recost at app open',
+    state: 'every sale cost already right',
+    given: {},
+    act: recostStoredLots,
+    expected: BASE_READINGS,
+    storedLots: BASE_LOTS,
+  },
+  {
+    operation: 'recost at app open',
+    state: 'a sale larger than what is held before it, stored by an older build',
+    given: { lots: [buy(january10, '3', 30_000), sell(march10, '5', -30_000)] },
+    act: recostStoredLots,
+    expected: [
+      { at: february10, quantity: '3', value: 45_000, cost: 30_000 },
+      { at: april10, quantity: '0', value: 0, cost: 0 },
+    ],
+    storedLots: [buy(january10, '3', 30_000), sell(march10, '5', -30_000)],
+  },
+  {
+    operation: 'recost at app open',
+    state: 'metal: a sale an older build costed before a later-added backdated buy',
+    given: {
+      type: 'metal',
+      currency: 'UAH',
+      meta: gold,
+      lots: STALE_SALE_LOTS,
+      share: [],
+      metal: XAU,
+    },
+    act: recostStoredLots,
+    expected: [{ at: april10, quantity: '16', value: 640_000, cost: 320_000 }],
+    storedLots: RECOSTED_SALE_LOTS,
+  },
+  {
+    operation: 'restore from .kiko, then recost',
+    state: 'a backup made before the recost, with a stale sale cost',
+    given: { lots: STALE_SALE_LOTS },
+    act: restoreBackupFromBeforeTheRecost,
+    expected: RECOSTED_SALE_READINGS,
+    storedLots: RECOSTED_SALE_LOTS,
   },
   {
     operation: 'restore from .kiko',

@@ -109,4 +109,21 @@ describe('settings schema columns', () => {
     expect(importTimesRezoned?.notnull).toBe(1);
     expect(importTimesRezoned?.dflt_value).toBe('false');
   });
+
+  it('adds lots_recosted via migration 0048, defaulting to false', () => {
+    const database = new DatabaseSync(':memory:');
+
+    applyAllMigrations(database);
+
+    const columnInfo = database.prepare('PRAGMA table_info(settings)').all() as {
+      name: string;
+      notnull: number;
+      dflt_value: string;
+    }[];
+    const lotsRecosted = columnInfo.find((column) => column.name === 'lots_recosted');
+
+    expect(lotsRecosted).toBeDefined();
+    expect(lotsRecosted?.notnull).toBe(1);
+    expect(lotsRecosted?.dflt_value).toBe('false');
+  });
 });

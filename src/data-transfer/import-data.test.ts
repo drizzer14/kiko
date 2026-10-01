@@ -37,6 +37,13 @@ jest.mock('@kiko/loans/use-loan-auto-link', () => ({
   runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
 }));
 
+// A backup made before the one-time lot recost restores with its flag unset,
+// so the recost runs again on the restored lots.
+const mockRecostStoredLots = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/holdings/lot-recost/lot-recost', () => ({
+  recostStoredLots: () => mockRecostStoredLots(),
+}));
+
 import { right } from 'fnts/either';
 import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
@@ -78,6 +85,35 @@ describe('importData', () => {
     mockConfirmDailyLimit.mockReset().mockResolvedValue(undefined);
     mockRunLoanAutoLink.mockClear();
     mockRunLoanAutoLink.mockResolvedValue(undefined);
+    mockRecostStoredLots.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('costs the restored lots again before it resolves', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    const order: string[] = [];
+    mockRestoreDataSnapshot.mockImplementation(async () => {
+      order.push('restore');
+
+      return { accountsRestored: 1 };
+    });
+    mockRecostStoredLots.mockImplementation(async () => {
+      order.push('recost');
+    });
+
+    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(order).toEqual(['restore', 'recost']);
+  });
+
+  it('never recosts when the restore fails', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    mockRestoreDataSnapshot.mockRejectedValue(new Error('restore failed'));
+
+    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow();
+
+    expect(mockRecostStoredLots).not.toHaveBeenCalled();
   });
 
   it('decrypts a valid file, restores the snapshot and secrets, and returns row counts', async () => {

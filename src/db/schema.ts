@@ -427,6 +427,14 @@ export const settings = sqliteTable('settings', {
   // go out, so a crash can only over-count. NULL means no call was ever made
   // (and a restored pre-quota backup): the day starts at zero calls.
   quoteQuota: text('quote_quota', { mode: 'json' }).$type<QuoteQuota>(),
+  // One-shot flag: has this device already worked out every stored lot
+  // list's sale costs again in the one lot order (`recostStoredLots`,
+  // `holdings/lot-recost/`)? An older build costed a sale in the order the
+  // lots were recorded, so a backdated buy left a stale sale cost. Migration
+  // 0048 adds it as `false`; the app-open step sets it once the run commits.
+  // A restored backup without the key keeps the default `false`, so the
+  // restore runs it again.
+  lotsRecosted: integer('lots_recosted', { mode: 'boolean' }).notNull().default(false),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

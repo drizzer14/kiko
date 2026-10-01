@@ -67,11 +67,15 @@ export const changedLots = (lots: readonly Lot[], change: LotChange): Lot[] =>
     })
     .exhaustive();
 
-// A sell removes the average cost of what is held before it, so every sell is
-// worked out again whenever any lot changes: a backdated or edited buy moves
-// the average of every later sell. A sale is refused rather than costed from
-// less than it takes, so no stored cost survives a change unchecked.
-const recostedSales = (lots: readonly Lot[], currency: Currency): Lot[] => {
+/**
+ * The lots with every sell's cost worked out again in the one lot order. A
+ * sell removes the average cost of what is held before it, so every sell is
+ * worked out again whenever any lot changes: a backdated or edited buy moves
+ * the average of every later sell. A sale is refused rather than costed from
+ * less than it takes (`SaleExceedsHoldingError`), so no stored cost survives
+ * a change unchecked.
+ */
+export const recostLots = (lots: readonly Lot[], currency: Currency): Lot[] => {
   const recosted = [...lots];
   let heldQuantity = '0';
   let costBasisMinorUnits = 0;
@@ -104,7 +108,7 @@ const recostedSales = (lots: readonly Lot[], currency: Currency): Lot[] => {
  * `SaleExceedsHoldingError` when a sale would take more than is held before it.
  */
 export const withLotChange = (lots: readonly Lot[], change: LotChange, currency: Currency): Lot[] =>
-  recostedSales(changedLots(lots, change), currency);
+  recostLots(changedLots(lots, change), currency);
 
 /** Whether a sale takes more than is held before it, in `withLotChange`'s own order. */
 export const hasNegativeHolding = (lots: readonly Lot[]): boolean => {
