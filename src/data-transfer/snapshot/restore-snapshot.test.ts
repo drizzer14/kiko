@@ -57,6 +57,12 @@ const tableNameOf = (table: unknown): string => {
   throw new Error('unknown table');
 };
 
+// The restore reads the live settings row's quote quota before it deletes it;
+// these fakes start from no settings row.
+const noLiveSettings = {
+  select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
+};
+
 // Shared by every test below that only cares WHAT got inserted (not
 // deletion order) — a no-op `delete`, and an `insert` that accumulates
 // every table's rows by name so a test can assert on one table's own list.
@@ -66,6 +72,7 @@ const makeRowCapturingDatabaseTransaction = (): {
 } => {
   const insertedRows: Record<string, unknown[]> = {};
   const databaseTransaction = {
+    ...noLiveSettings,
     delete: () => Promise.resolve(),
     insert: (table: unknown) => ({
       values: (rows: unknown[]) => {
@@ -104,6 +111,7 @@ describe('restoreDataSnapshot', () => {
     const insertedRows: Record<string, unknown[]> = {};
 
     mockDatabaseTransaction = {
+      ...noLiveSettings,
       delete: (table: unknown) => {
         deletedTables.push(tableNameOf(table));
 
@@ -348,6 +356,7 @@ describe('restoreDataSnapshot', () => {
     const insertedRows: Record<string, unknown[]> = {};
 
     mockDatabaseTransaction = {
+      ...noLiveSettings,
       delete: () => Promise.resolve(),
       insert: (table: unknown) => ({
         values: (rows: unknown[]) => {
@@ -396,6 +405,7 @@ describe('restoreDataSnapshot', () => {
   it('chunks a large table at a size derived from its OWN column count (SQLite bound-parameter safety)', async () => {
     const insertedChunkSizes: number[] = [];
     mockDatabaseTransaction = {
+      ...noLiveSettings,
       delete: () => Promise.resolve(),
       insert: (table: unknown) => ({
         values: (rows: unknown[]) => {
@@ -448,6 +458,7 @@ describe('restoreDataSnapshot', () => {
     const insertedRows: Record<string, unknown[]> = {};
 
     mockDatabaseTransaction = {
+      ...noLiveSettings,
       delete: (table: unknown) => {
         deletedTables.push(tableNameOf(table));
 
@@ -1064,7 +1075,13 @@ describe('restoreDataSnapshot', () => {
         legacyImportTransaction({ externalId: `${legacyBase}␟1` }),
       ]);
       expect(insertedRows.settings).toEqual([
-        { id: 1, baseCurrency: 'UAH', importTimesRezoned: true, dedupKeysUpgraded: true },
+        {
+          id: 1,
+          baseCurrency: 'UAH',
+          importTimesRezoned: true,
+          dedupKeysUpgraded: true,
+          quoteQuota: null,
+        },
       ]);
     });
 
@@ -1081,7 +1098,13 @@ describe('restoreDataSnapshot', () => {
 
       expect(insertedRows.transactions).toEqual([editedTransaction]);
       expect(insertedRows.settings).toEqual([
-        { id: 1, baseCurrency: 'UAH', importTimesRezoned: true, dedupKeysUpgraded: true },
+        {
+          id: 1,
+          baseCurrency: 'UAH',
+          importTimesRezoned: true,
+          dedupKeysUpgraded: true,
+          quoteQuota: null,
+        },
       ]);
     });
 
@@ -1103,7 +1126,7 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedRows.transactions).toEqual([legacyShapedTransaction]);
-      expect(insertedRows.settings).toEqual([alreadyMigratedSettingsRow]);
+      expect(insertedRows.settings).toEqual([{ ...alreadyMigratedSettingsRow, quoteQuota: null }]);
     });
   });
 
@@ -1150,7 +1173,13 @@ describe('restoreDataSnapshot', () => {
       ]);
       expect(insertedRows.holdings).toEqual([{ id: 'h1', balanceSetAt: rezonedTime }]);
       expect(insertedRows.settings).toEqual([
-        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+        {
+          id: 1,
+          baseCurrency: 'UAH',
+          dedupKeysUpgraded: true,
+          importTimesRezoned: true,
+          quoteQuota: null,
+        },
       ]);
     });
 
@@ -1170,7 +1199,13 @@ describe('restoreDataSnapshot', () => {
       expect(insertedRows.transactions).toEqual([legacyImportRow()]);
       expect(insertedRows.holdings).toEqual([stampedHolding]);
       expect(insertedRows.settings).toEqual([
-        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+        {
+          id: 1,
+          baseCurrency: 'UAH',
+          dedupKeysUpgraded: true,
+          importTimesRezoned: true,
+          quoteQuota: null,
+        },
       ]);
     });
 
@@ -1192,7 +1227,13 @@ describe('restoreDataSnapshot', () => {
       ]);
       expect(insertedRows.holdings).toEqual([{ id: 'h1', balanceSetAt: rezonedTime }]);
       expect(insertedRows.settings).toEqual([
-        { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+        {
+          id: 1,
+          baseCurrency: 'UAH',
+          dedupKeysUpgraded: true,
+          importTimesRezoned: true,
+          quoteQuota: null,
+        },
       ]);
     });
   });

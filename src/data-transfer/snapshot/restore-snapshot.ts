@@ -18,9 +18,12 @@ import {
   type TransactionRow,
   transactions,
   write,
+  type database,
   chunkForTable,
 } from '@kiko/db';
+import { eq } from 'drizzle-orm';
 import { maxOf } from '@kiko/numbers';
+import { SETTINGS_ID } from '@kiko/settings';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { isFiat, type Currency } from '@kiko/currency/currency';
 import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
@@ -314,6 +317,22 @@ const withImportTimesRezoned = (
         : { ...holding, balanceSetAt: rezonedBalanceSetAt };
     }),
   };
+};
+
+/**
+ * The EODHD quote quota counts the calls this device's own key spent today,
+ * not the backed-up device's, so a restore keeps the live row's quota and
+ * never the backup's.
+ */
+const readLiveQuoteQuota = async (
+  databaseTransaction: typeof database,
+): Promise<SettingsRow['quoteQuota']> => {
+  const rows = await databaseTransaction
+    .select({ quoteQuota: settings.quoteQuota })
+    .from(settings)
+    .where(eq(settings.id, SETTINGS_ID));
+
+  return rows.at(0)?.quoteQuota ?? null;
 };
 
 /** The rate-row fields `withRatesNormalizedToUah` reads/rewrites; every other
@@ -686,7 +705,10 @@ export const restoreDataSnapshot = (
         await databaseTransaction.insert(currencyRateHistory).values(part);
       }
 
-      for (const part of chunkForTable(settings, settingsToInsert)) {
+      for (const part of chunkForTable(
+        settings,
+        settingsToInsert.map((row) => ({ ...row, quoteQuota: liveQuoteQuota })),
+      )) {
         await databaseTransaction.insert(settings).values(part);
       }
       // `?? []`: see the doc comment above — an export that predates
@@ -714,6 +736,8 @@ export const restoreDataSnapshot = (
         await databaseTransaction.insert(reminders).values(part);
       }
     };
+
+    const liveQuoteQuota = await readLiveQuoteQuota(databaseTransaction);
 
     await deleteAllTables();
     await insertAccountsHoldingsCategories();

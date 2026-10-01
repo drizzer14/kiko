@@ -223,6 +223,7 @@ describe('a pre-0043 .kiko restore ends byte-equal to the live upgrade of the sa
       settings?: { importTimesRezoned: boolean }[];
     } = {};
     mockDatabaseTransaction = {
+      select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
       delete: () => Promise.resolve(),
       insert: (table: unknown) => ({
         values: (rows: unknown[]) => {
