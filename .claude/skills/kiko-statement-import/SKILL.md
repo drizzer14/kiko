@@ -137,25 +137,35 @@ column mapping is offered only once `detectFormat` fails or the
 account's `bankId` disagrees with the detected format (see
 `statement-import.screen.tsx`).
 
-Every dedicated bank format reads its raw wall clock as Europe/Kyiv
-local time (`parse-date-time.ts`'s `kyivInstantMillisecondsIfRoundTrips`,
-built on `@kiko/dates`'s hand-rolled `kyivWallClockToUtcMilliseconds` —
-no `Intl`, since Hermes' timeZone support is unverified on device and
-Jest runs Node's own ICU). Column mapping reads the SAME shape of
-digits as THIS DEVICE's own local time instead
-(`date-formats.ts`'s `partsToSeconds`, built on `@kiko/dates`'s
-`deviceWallClockToLocalMilliseconds`) — a manually-mapped file has no
-dedicated format to trust a bank identity from, so it could be from any
-bank, in any zone. A real spreadsheet `Date` cell is read off its own
+Every import path — each dedicated bank format (`parse-date-time.ts`'s
+`parseDateTimeSeconds`, Sensebank's own parse) AND column mapping
+(`date-formats.ts`'s `partsToSeconds`) — reads its raw wall clock as
+Europe/Kyiv local time, through `@kiko/dates`'s hand-rolled
+`kyivWallClockToUtcMilliseconds` (no `Intl`, since Hermes' timeZone
+support is unverified on device and Jest runs Node's own ICU). Never the
+device's own zone: the instant feeds the dedup key
+(`computeDedupKeyBase`), so a device-zone reading gave the same file a
+different key once the phone changed zone, and an overlapping re-import
+duplicated every row. One rule covers both the stored `time` and the
+key, since the key's time token IS the stored time (`rezoneDedupKey`
+and `upgradeLegacyDedupKey` both recompute it from the stored row). A
+real spreadsheet `Date` cell is read off its own
 UTC parts into that identical combined `'YYYY-MM-DD HH:MM:SS'` string
 (`table-rows.ts`'s `formatUtcDateTime`) before parsing — those UTC
 digits ARE the cell's own wall clock, so a mapping pointed at an Excel
 date column behaves exactly like one pointed at a text date column. An
 XLSX number cell is used as-is (no reformatting) — only a `Date` cell
-gets this wall-clock conversion. A wall clock of exactly `00:00:00` (a
-date-only preset, or an XLSX `Date` cell with no time part) reads as
-noon instead, in whichever zone that path uses, so the same calendar
-day shows from UTC-9 to UTC+12. Every bank-export date/time parser in
+gets this wall-clock conversion. Only DATE-ONLY input reads as noon,
+so the same calendar day shows from UTC-9 to UTC+12: a date-only preset
+(`date-formats.ts`'s `dateOnlyParts`), and a spreadsheet `Date` cell
+with no time part (exact UTC midnight — `formatUtcDateTime` writes it as
+`12:00:00`, the one step that still knows the value was a date cell, so
+the raw preview shows `12:00:00` for it). Input with a real time —
+every named format, every timed preset — keeps an exact `00:00:00` at
+midnight: as noon it would sort after a later row on the same day and
+pick the wrong row as Monobank's newest (closing-balance) row. A legacy
+stored row keeps the noon reading on rezone (`noonIfMidnight`), since it
+records no format. Every bank-export date/time parser in
 this project — column mapping's own presets, `parseDateTimeSeconds`,
 and each dedicated format with its own date shape (Sensebank's
 `DD.MM.YY HH:MM`) — additionally rejects a rollover: `Date.UTC` (and
@@ -175,8 +185,22 @@ A Semgrep rule (`kiko-no-date-utc-in-statement-import`,
 `rules/semgrep-prewrite.yml`) forbids `Date.UTC(...)` and the
 local-time `new Date($Y, $M, ...)` constructor anywhere in
 `src/statement-import/**` (tests excluded) — every date/time read in
-this feature must go through one of the two `@kiko/dates` zone
-helpers, never a raw constructor call.
+this feature must go through `kyivWallClockToUtcMilliseconds`, never a
+raw constructor call. A second rule
+(`kiko-no-device-zone-in-statement-import`, same file and scope) bans
+every other device-zone read there: a local `Date` getter or setter
+(`getHours`, `setHours`, …), `getTimezoneOffset`, `Date.parse`, a string
+`new Date("...")`, and `@kiko/dates`'s `parseLocalDate`/
+`startOfLocalDay`/`endOfLocalDay`. Read stored digits with
+`utcDigitsOf`. The display formatters (`formatDate`, used by
+`preview-stats.ts`) stay allowed — they render an instant, never
+produce one.
+
+Tests that must prove a result does not depend on the device zone wrap
+the call in `@kiko/test-support/device-zone-offset`'s
+`withDeviceZoneOffset(offsetHours, run)`: it swaps the global `Date` for
+a fixed-offset one, since `jest.config.js` pins Europe/Kyiv for the whole
+process and a `process.env.TZ` assignment inside a test changes nothing.
 
 **Known limits:**
 - The hand-rolled Kyiv DST rule (last Sunday of March/October, 01:00
@@ -185,11 +209,21 @@ helpers, never a raw constructor call.
   this writing; if it ever is, `@kiko/dates`'s `kyiv-wall-clock.ts` is
   the one place to update, with an effective-date guard alongside
   `kyivOffsetHours`.
-- Upgrade reads legacy rows in the device zone; a named-format
-  re-import of an old file outside Kyiv can duplicate.
-- Unverified on device: in a Kyiv-zone autumn repeated hour, a column-mapped
-  03:xx wall clock must resolve to the EARLIER of its two real instants —
-  only proven against Node's own ICU/`Date` so far, never against Hermes'.
+- A key written by a device outside Kyiv's zone rules before every path
+  read Kyiv time — a legacy row the old rezone read in that device's zone,
+  or a column-mapped row imported there — carries device-zone seconds, so
+  one overlapping re-import duplicates those rows once. The only user's
+  device was in Kyiv, so no repair step ships (single-user rule).
+- A row with a real `00:00:00` bank time, imported before a timed input
+  kept midnight, was keyed at noon; one overlapping re-import keys it at
+  midnight and adds it once more.
+- A column-mapped file from a bank in another zone reads its times as Kyiv
+  time, so they show shifted by the zone difference (a date-only row keeps
+  its calendar day).
+- Unverified on device: a column-mapped row in Kyiv's autumn repeated hour
+  (03:00-03:59) that a Kyiv device imported before column mapping read
+  Kyiv time keeps its old key only if Hermes' local `Date` constructor
+  picked the EARLIER instant, as `kyivOffsetHours` does.
 
 The mapped `ParsedStatement` reaches the DB through the SAME
 `importParsedStatement` (`src/statement-import/import-statement/`)

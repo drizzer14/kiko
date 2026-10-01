@@ -174,8 +174,10 @@ project-level pointer to this section.
   step of `importParsedStatement` (refusing the import if the flag is
   still `false` afterward, so a new-convention row never lands next to
   a not-yet-rezoned one): reads every `source = 'import'` row's legacy
-  `time` back as THIS DEVICE's own local zone (`planImportTimeRezone`,
-  pure), then rewrites `time` and the dedup key's time token through a
+  `time` back as Kyiv time, the zone every import path reads a wall
+  clock in, so a rezoned row keeps the key a fresh re-import of the same
+  file computes on any device (`planImportTimeRezone`, pure), then
+  rewrites `time` and the dedup key's time token through a
   two-phase temp-key SQL update (SQLite checks UNIQUE per row even
   inside one UPDATE, so a direct final-key write can transiently
   collide with a row not yet rewritten), and moves a holding's

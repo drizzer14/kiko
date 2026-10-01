@@ -64,6 +64,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-per-bucket-date-in-statistics',
   'kiko-no-bare-lowercase-category-fold',
   'kiko-no-date-utc-in-statement-import',
+  'kiko-no-device-zone-in-statement-import',
   'kiko-no-source-text-read-in-test',
   'kiko-no-fixed-day-offset-on-real-clock-in-test',
   'kiko-header-item-native-only',
@@ -92,6 +93,8 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
     'kiko-no-bare-lowercase-category-fold/src/statistics/category-fold-example',
   'kiko-no-date-utc-in-statement-import':
     'kiko-no-date-utc-in-statement-import/src/statement-import/date-example',
+  'kiko-no-device-zone-in-statement-import':
+    'kiko-no-device-zone-in-statement-import/src/statement-import/zone-example',
   'kiko-no-source-text-read-in-test':
     'kiko-no-source-text-read-in-test/src/test-support/source-read-example',
   'kiko-no-fixed-day-offset-on-real-clock-in-test':
@@ -110,6 +113,7 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-per-bucket-date-in-statistics': 'src/statistics',
   'kiko-no-bare-lowercase-category-fold': 'src/statistics',
   'kiko-no-date-utc-in-statement-import': 'src/statement-import',
+  'kiko-no-device-zone-in-statement-import': 'src/statement-import',
   'kiko-no-source-text-read-in-test': 'src/test-support',
   'kiko-no-fixed-day-offset-on-real-clock-in-test': 'src/test-support',
 };

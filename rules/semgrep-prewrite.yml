@@ -1077,6 +1077,47 @@ rules:
       - pattern-either:
           - pattern: Date.UTC(...)
           - pattern: new Date($Y, $M, ...)
+  # Statement import reads every bank wall clock as Kyiv time, so a row's time
+  # and its dedup key never depend on the phone's zone: a device-zone read let
+  # the same file get a new key after the phone changed zone, and an
+  # overlapping re-import duplicated every row. The local-time constructor is
+  # `kiko-no-date-utc-in-statement-import`'s; this rule covers the other ways
+  # a device-zone read slips back in — a local `Date` getter or setter,
+  # `getTimezoneOffset`, `Date.parse`, a string `new Date("...")`, and the
+  # `@kiko/dates` local-day helpers. The display formatters (`formatDate`,
+  # used by preview-stats) stay allowed: they only render a stored instant,
+  # never produce one. `paths.include` is path-prefixed, so the fixture pair
+  # is NESTED. ERROR from the start: the tree had no finding when the rule
+  # landed.
+  - id: kiko-no-device-zone-in-statement-import
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Statement import reads every bank wall clock as Kyiv time, never the
+      device's own zone, so a row's dedup key stays the same wherever the
+      phone is. A local `Date` getter/setter, `getTimezoneOffset`,
+      `Date.parse`, `new Date("...")`, `parseLocalDate`, or
+      `startOfLocalDay`/`endOfLocalDay` reads the device zone.
+    metadata:
+      fix: "Read wall-clock digits with kyivWallClockToUtcMilliseconds and stored digits with utcDigitsOf (@kiko/dates), never a local Date getter, Date.parse, or a device-local day helper."
+      skill: "kiko-statement-import › Column mapping"
+    paths:
+      include:
+        - "src/statement-import/**"
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+    pattern-either:
+      - patterns:
+          - pattern: $DATE.$METHOD(...)
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^((get|set)(FullYear|Month|Date|Hours|Minutes|Seconds|Milliseconds)|getDay|getTimezoneOffset)$
+      - pattern: Date.parse(...)
+      - pattern: new Date("...")
+      - pattern: parseLocalDate(...)
+      - pattern: startOfLocalDay(...)
+      - pattern: endOfLocalDay(...)
   # kiko-code-style's "JSX spread: no `{}` fallback": TypeScript merges a JSX
   # spread of `X | {}` into one shape with every prop of X optional, so a
   # discriminated union's required-together props (SettingsRowProps: a
