@@ -32,9 +32,9 @@ import type { Currency } from '@kiko/currency/currency';
 import type { ClosingBalance } from '@kiko/statement-import/parser';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
 import type { DepositContribution } from '@kiko/holdings/holding-metadata';
-import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
+import { isSyncedAccount, isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 
 import { normalizeTransactionName } from '../normalize-name';
 
@@ -1367,11 +1367,13 @@ export const transactionsRepo = {
    * closing-balance path is unaffected, since it overwrites rather than
    * adds).
    *
-   * A SYNCED holding (`isSyncedHolding`) is the one exception: its balance is
-   * already owned by the live sync pipeline (`upsertMonobank` et al.), so this
-   * never touches it here, even when the statement carries new rows or a
-   * fresher closing balance — the rows still import as real ledger history,
-   * they just don't move the display balance a second, competing way.
+   * An account a bank sync owns (`isSyncedAccount`) refuses the import
+   * outright, before anything is written, whichever of its holdings is the
+   * target: the sync already writes every row of it under its own `source`,
+   * so the same rows under `import` would be a second copy no dedup key
+   * matches, and an import row cannot be deleted. Account detail offers no
+   * Import statement there; this guards a stale route into the import
+   * screens.
    *
    * NO MIGRATION was written for holdings a pre-fix build already wrote a
    * wrong (0 or under-counted) balance into: `1.0.0` is
@@ -1415,7 +1417,11 @@ export const transactionsRepo = {
         .from(accounts)
         .where(eq(accounts.id, holding.accountId))
         .limit(1);
-      const synced = isSyncedHolding(holding, accountRows.at(0));
+      const account = accountRows.at(0);
+
+      if (account !== undefined && isSyncedAccount(account)) {
+        throw new Error('statement-import/synced-account');
+      }
 
       // Read BEFORE the new rows are upserted below, so this reflects the
       // holding's ledger as it stood going into this import — never a row
@@ -1441,7 +1447,7 @@ export const transactionsRepo = {
       const { rows, aliased } = await dropRowsStoredUnderAlias(databaseTransaction, input.rows);
       let existingPostClosingNetMinorUnits = 0;
 
-      if (!synced && input.closingBalance !== undefined) {
+      if (input.closingBalance !== undefined) {
         const asOfMilliseconds = input.closingBalance.asOfSeconds * 1000;
         const existingPostClosingRows = await databaseTransaction
           .select({ net: sql<number | null>`sum(${transactions.amountMinorUnits})` })
@@ -1454,11 +1460,6 @@ export const transactionsRepo = {
       }
 
       const newRows = await insertDedupRowsDatabaseTransaction(databaseTransaction, rows);
-
-      if (synced) {
-        return newRows.length;
-      }
-
       const { nextBalance, balanceSetAt } = resolveImportBalance(
         holding,
         boundary,

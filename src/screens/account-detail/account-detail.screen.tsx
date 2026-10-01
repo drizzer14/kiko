@@ -16,7 +16,6 @@ import type { Currency } from '@kiko/currency/currency';
 import { useAnimatedRef } from 'react-native-reanimated';
 import { useReminderOffer } from '@kiko/reminders/offer';
 import { usePriceBook } from '@kiko/prices/use-price-book';
-import { isSyncedHolding } from '@kiko/holdings/deletable';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { sumByCurrency } from '@kiko/rates/currency-totals';
@@ -33,6 +32,7 @@ import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
+import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
@@ -213,6 +213,9 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
 
   const isBankAccount = account?.kind === 'bank';
+  // A connected bank sync already writes every row of the account; a statement
+  // of the same rows would land a second time under the import source.
+  const canImportStatement = account?.kind === 'bank' && !isSyncedAccount(account);
   const isCryptoAccount = account?.kind === 'crypto';
 
   // Every bank account shows the connect/sync affordance independently — there
@@ -296,11 +299,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
     navigation.setParams({ intent: undefined });
 
-    if (isBankAccount) {
+    if (canImportStatement) {
       // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures a failed copy, which then leaves the page as it was, the same as after the Import statement button
       either(pickAndOpenStatement);
     }
-  }, [intent, isReady, isBankAccount, navigation, pickAndOpenStatement]);
+  }, [intent, isReady, canImportStatement, navigation, pickAndOpenStatement]);
 
   if (!isReady) {
     // The SAME Screen mode/props as the ready branch below (`scroll` +
@@ -320,7 +323,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       scrollableRef={scrollableRef}
       footer={
         <Box gap={2}>
-          {isBankAccount && (
+          {canImportStatement && (
             <Button
               variant="secondaryTonal"
               fullWidth

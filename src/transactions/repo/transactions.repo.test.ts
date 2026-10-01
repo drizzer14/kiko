@@ -2100,8 +2100,11 @@ const resolveImportRowsSelect = (
 
 const makeImportRowsDatabaseTransaction = (
   options: ImportRowsTransactionOptions,
-): { databaseTransaction: unknown; captured: { holdingSet?: Record<string, unknown> } } => {
-  const captured: { holdingSet?: Record<string, unknown> } = {};
+): {
+  databaseTransaction: unknown;
+  captured: { holdingSet?: Record<string, unknown>; inserted?: unknown[] };
+} => {
+  const captured: { holdingSet?: Record<string, unknown>; inserted?: unknown[] } = {};
   const resolveRows = (rows: unknown[]) =>
     Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
@@ -2112,7 +2115,11 @@ const makeImportRowsDatabaseTransaction = (
       }),
     }),
     insert: () => ({
-      values: () => ({ onConflictDoUpdate: async () => undefined }),
+      values: (values: unknown[]) => {
+        captured.inserted = (captured.inserted ?? []).concat(values);
+
+        return { onConflictDoUpdate: async () => undefined };
+      },
     }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
@@ -2303,23 +2310,25 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({ balanceMinorUnits: -6_000 });
   });
 
-  it('never moves a SYNCED holding’s balance, even with new rows and a fresh closing balance', async () => {
+  it.each([
+    ['a synced holding', { monobankId: 'mono-1' }],
+    ['a hand-added holding', null],
+  ])('refuses %s in an account a bank sync owns, writing nothing', async (_name, metadata) => {
     const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
-      holding: { ...baseHolding, metadata: { monobankId: 'mono-1' } },
+      holding: { ...baseHolding, metadata },
       account: { institution: 'monobank' },
       syncBoundaryTime: 1,
     });
     mockDatabaseTransaction = databaseTransaction;
 
-    const imported = await transactionsRepo.importRows({
-      holdingId: 'hold-1',
-      rows: [{ holdingId: 'hold-1', amountMinorUnits: -1_000, time: 2, source: 'import' }],
-      closingBalance: { minorUnits: -777_777, currency: 'UAH', asOfSeconds: 2 },
-    });
-
-    // The rows still import (they're real ledger history), but the sync
-    // pipeline stays the sole owner of this holding's displayed balance.
-    expect(imported).toBe(1);
+    await expect(
+      transactionsRepo.importRows({
+        holdingId: 'hold-1',
+        rows: [{ holdingId: 'hold-1', amountMinorUnits: -1_000, time: 2, source: 'import' }],
+        closingBalance: { minorUnits: -777_777, currency: 'UAH', asOfSeconds: 2 },
+      }),
+    ).rejects.toThrow('statement-import/synced-account');
+    expect(captured.inserted).toBeUndefined();
     expect(captured.holdingSet).toBeUndefined();
   });
 

@@ -636,7 +636,9 @@ describe('importStatement', () => {
       });
     });
 
-    it('never moves a SYNCED holding’s balance, even though its new rows still import', async () => {
+    // The sync already writes every row under its own source; the same rows
+    // under the import source would be a second, undeletable copy.
+    it('refuses to import into an account a bank sync owns, writing nothing', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
       const holding = defaultHolding({
         balanceMinorUnits: 0,
@@ -649,11 +651,10 @@ describe('importStatement', () => {
       });
       mockDatabaseTransaction = databaseTransaction;
 
-      const result = await importStatement(monobankInput, 'holding-1');
-
-      expect(result.imported).toBe(4);
-      expect(store.transactions).toHaveLength(4);
-      // The sync pipeline stays the sole owner of this holding's balance.
+      await expect(importStatement(monobankInput, 'holding-1')).rejects.toThrow(
+        'statement-import/synced-account',
+      );
+      expect(store.transactions).toHaveLength(0);
       expect(captured.holdingSet).toBeUndefined();
     });
 

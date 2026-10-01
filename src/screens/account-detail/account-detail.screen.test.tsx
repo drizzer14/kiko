@@ -1544,6 +1544,20 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(within(footer).getByText('Add holding')).toBeTruthy();
   });
 
+  // The bank sync already writes every row of the account; a statement of the
+  // same rows would land a second time under the import source.
+  it('offers no Import statement on an account a bank sync owns', async () => {
+    setLiveData({
+      accounts: [account({ bankId: 'monobank', institution: 'monobank' })],
+      holdings: [],
+    });
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).queryByText('Import statement')).toBeNull();
+    expect(within(footer).getByText('Add holding')).toBeTruthy();
+  });
+
   it('renders Import statement with the secondaryTonal variant and its doc icon (Add holding stays primary)', async () => {
     await renderScreen();
 
@@ -1809,6 +1823,17 @@ describe('AccountDetailScreen — a tap on an import reminder', () => {
 
   it('opens no picker on an account that cannot import, and still clears the intent', async () => {
     setLiveData({ accounts: [account({ kind: 'cash', bankId: null })], holdings: [] });
+    const view = await renderTap();
+
+    expect(view.navigation.setParams).toHaveBeenCalledWith({ intent: undefined });
+    expect(mockPick).not.toHaveBeenCalled();
+  });
+
+  it('opens no picker on an account a bank sync owns, and still clears the intent', async () => {
+    setLiveData({
+      accounts: [account({ bankId: 'monobank', institution: 'monobank' })],
+      holdings: [],
+    });
     const view = await renderTap();
 
     expect(view.navigation.setParams).toHaveBeenCalledWith({ intent: undefined });
