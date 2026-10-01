@@ -643,7 +643,6 @@ const holdingDetailFooterAction = (
       <Box gap={2}>
         <Button
           variant="secondaryTonal"
-          fullWidth
           onPress={() => navigation.navigate('PricePointForm', { holdingId })}
         >
           {t('holdingDetail.updatePrice')}

@@ -2536,7 +2536,7 @@ describe('HoldingFormScreen metal', () => {
 
 describe('HoldingFormScreen share', () => {
   const NO_KEY_HINT =
-    'Add your EODHD key in Settings → "Share prices" to get prices automatically.';
+    'Add your EODHD key in Settings → “Share prices” to get prices automatically.';
 
   beforeEach(() => {
     createMock.mockClear();

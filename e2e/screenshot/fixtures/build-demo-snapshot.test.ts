@@ -1,5 +1,6 @@
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
 import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
@@ -83,11 +84,9 @@ describe('buildDemoSnapshot', () => {
         currency: 'UAH' as const,
       })),
     );
-    const ledgerless = snapshot.holdings.filter((holding) =>
-      ['term_deposit', 'bond', 'property_item', 'metal', 'loan'].includes(holding.type),
-    );
+    const ledgerless = snapshot.holdings.filter((holding) => isLedgerlessHoldingType(holding.type));
 
-    expect(ledgerless).toHaveLength(7);
+    expect(ledgerless).toHaveLength(8);
 
     for (const holding of ledgerless) {
       expect(holdingValue(holding, ANCHOR, book).minorUnits).not.toBe(0);

@@ -469,7 +469,7 @@ export const en = {
       // Shown under the price source in EODHD mode until a key is saved, so
       // the EODHD option is never a dead control.
       shareNoKeyHint:
-        'Add your EODHD key in Settings → "Share prices" to get prices automatically.',
+        'Add your EODHD key in Settings → “Share prices” to get prices automatically.',
       sharePriceSource: 'Price source',
       sharePriceSourceEodhd: 'EODHD',
       shareTicker: 'Ticker',

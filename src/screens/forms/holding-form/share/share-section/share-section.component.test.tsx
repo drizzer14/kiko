@@ -7,7 +7,7 @@ import { fieldSuffix } from '@kiko/test-support/field-suffix';
 
 import ShareSection from './share-section.component';
 
-const NO_KEY_HINT = 'Add your EODHD key in Settings → "Share prices" to get prices automatically.';
+const NO_KEY_HINT = 'Add your EODHD key in Settings → “Share prices” to get prices automatically.';
 
 const baseProps = {
   quoteSource: 'eodhd' as const,

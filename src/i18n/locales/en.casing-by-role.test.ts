@@ -128,7 +128,7 @@ const titleCaseViolations = (value: string): string[] => {
 };
 
 // Sentence case: a word may be capitalized only at the very start of the
-// string, at the start of a later sentence (after `. ! ? : — -  "`), when it
+// string, at the start of a later sentence (after `. ! ? : — -  " “`), when it
 // is an acronym (starts with 2+ uppercase letters/digits, e.g. "ISIN's"),
 // or when it is on the proper-noun allow-list above.
 const sentenceCaseViolations = (value: string): string[] => {
@@ -146,7 +146,7 @@ const sentenceCaseViolations = (value: string): string[] => {
     }
 
     const previousChar = cursor >= 0 ? stripped[cursor] : null;
-    const isSentenceStart = previousChar === null || '.!?:—-"'.includes(previousChar);
+    const isSentenceStart = previousChar === null || '.!?:—-"“'.includes(previousChar);
     const isCapitalized = /^[A-Z]/.test(word);
     const isAcronymLike = /^[A-Z0-9]{2,}/.test(word);
 
