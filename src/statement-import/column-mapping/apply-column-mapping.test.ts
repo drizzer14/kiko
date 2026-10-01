@@ -434,6 +434,52 @@ describe('applyColumnMapping (Balance column tie-break: file order)', () => {
   });
 });
 
+describe('applyColumnMapping source time zone', () => {
+  const rows: TableCell[][] = [
+    HEADER_ROW,
+    ['15.01.2026 10:00:00', 'Winter', -1, 'EUR', ''],
+    ['15.07.2026 10:00:00', 'Summer', -1, 'EUR', ''],
+  ];
+
+  const timesFor = (timeZone: ColumnMapping['timeZone']): number[] =>
+    applyColumnMapping(rows, { ...singleAmountMapping, timeZone }).statement.transactions.map(
+      (transaction) => transaction.timeSeconds,
+    );
+
+  it('reads a mapping with no zone, and one set to Kyiv, as Kyiv time', () => {
+    const kyiv = [localSeconds(2026, 1, 15, 10, 0, 0), localSeconds(2026, 7, 15, 10, 0, 0)];
+
+    expect(timesFor(undefined)).toEqual(kyiv);
+    expect(timesFor('kyiv')).toEqual(kyiv);
+  });
+
+  it('reads Central Europe as UTC+1 in winter and UTC+2 in summer', () => {
+    expect(timesFor('central-europe')).toEqual([
+      Date.UTC(2026, 0, 15, 9, 0, 0) / 1000,
+      Date.UTC(2026, 6, 15, 8, 0, 0) / 1000,
+    ]);
+  });
+
+  it('reads a fixed half-hour offset the same all year', () => {
+    expect(timesFor('UTC+05:30')).toEqual([
+      Date.UTC(2026, 0, 15, 4, 30, 0) / 1000,
+      Date.UTC(2026, 6, 15, 4, 30, 0) / 1000,
+    ]);
+  });
+
+  it('keys the rows by the instant read in the chosen zone', () => {
+    const keysFor = (timeZone: ColumnMapping['timeZone']): string[] =>
+      applyColumnMapping(rows, { ...singleAmountMapping, timeZone }).statement.transactions.map(
+        (transaction) => computeDedupKey('h1', transaction, 0),
+      );
+
+    expect(keysFor('central-europe')).toEqual([
+      `h1 ${Date.UTC(2026, 0, 15, 9, 0, 0) / 1000} -100 winter`,
+      `h1 ${Date.UTC(2026, 6, 15, 8, 0, 0) / 1000} -100 summer`,
+    ]);
+  });
+});
+
 describe('applyColumnMapping over spreadsheet Date cells', () => {
   it('reads a date-only Date cell as noon under the timed YYYY-MM-DD HH:MM:SS preset', () => {
     const { rows } = readTableRows({

@@ -26,7 +26,15 @@ const EXEMPT_KEYS = new Set(['settings.footer.copyrightHolder']);
 const isExempt = (key: string): boolean =>
   EXEMPT_KEYS.has(key) || EXEMPT_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
 
-const PROPER_NOUNS = new Set(['Кіко', 'Дія', 'Дії', 'НБУ', 'Налаштуваннях', 'Українська']);
+const PROPER_NOUNS = new Set([
+  'Кіко',
+  'Дія',
+  'Дії',
+  'НБУ',
+  'Налаштуваннях',
+  'Українська',
+  'Європа',
+]);
 
 const CYRILLIC = 'А-ЯЁІЇЄҐа-яёіїєґ';
 const CYRILLIC_WORD = new RegExp(`[${CYRILLIC}']+`, 'g');

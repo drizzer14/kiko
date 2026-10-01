@@ -169,7 +169,7 @@ const monobankHolding: Holding = { id: 'h1', name: 'Black card', accountId: 'a',
 // The saved Monobank mapping fixture the exact-match/prefill tests share
 // — an optional `balanceColumn` lets the Balance-field test add its own
 // extra property without hand-duplicating every other one (jscpd).
-const savedMonobankMapping = (overrides: { balanceColumn?: number } = {}) => ({
+const savedMonobankMapping = (overrides: { balanceColumn?: number; timeZone?: string } = {}) => ({
   headerRowIndex: 0,
   decimalSeparator: '.' as const,
   dateColumn: 0,
@@ -706,6 +706,53 @@ describe('ColumnMappingScreen', () => {
         descriptionColumn: 1,
       }),
     );
+  });
+
+  it('saves Kyiv as the time zone when the user leaves it as is', async () => {
+    await importMappedMonobankStatement();
+
+    await waitFor(() => expect(mockSaveStatementMapping).toHaveBeenCalledTimes(1));
+    expect(mockSaveStatementMapping.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ timeZone: 'kyiv' }),
+    );
+  });
+
+  it('saves a picked time zone with the mapping', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    mockDefaultImportSuccess();
+    const view = await renderMonobankScreen();
+    await mapMonobankColumnsAndSelectHolding(view);
+
+    await fireEvent.press(view.getByTestId('column-mapping-time-zone'));
+    await fireEvent.press(view.getByTestId('column-mapping-time-zone-option-central-europe'));
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() => expect(mockSaveStatementMapping).toHaveBeenCalledTimes(1));
+    expect(mockSaveStatementMapping.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ timeZone: 'central-europe' }),
+    );
+    expect(
+      within(view.getByTestId('column-mapping-time-zone')).getByText(
+        i18n.t('columnMapping.timeZoneCentralEurope'),
+      ),
+    ).toBeTruthy();
+  });
+
+  it.each([
+    [undefined, i18n.t('columnMapping.timeZoneKyiv')],
+    ['UTC+05:30', i18n.t('columnMapping.timeZoneFixedOffset', { offset: '+05:30' })],
+  ])('pre-fills the time zone of a saved mapping stored with %s', async (timeZone, label) => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [monobankHolding],
+      statementMappings: { 'bank:monobank': savedMonobankMapping({ timeZone }) },
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.savedApplied'))).toBeTruthy());
+    expect(within(view.getByTestId('column-mapping-time-zone')).getByText(label)).toBeTruthy();
   });
 
   it('pre-fills an exact saved mapping, shows the caption, and still requires the Import tap', async () => {

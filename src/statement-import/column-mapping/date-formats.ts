@@ -3,8 +3,13 @@
 // dedicated bank formats (Monobank/PrivatBank's `DD.MM.YYYY HH:MM:SS`,
 // Sensebank's 2-digit-year `DD.MM.YY HH:MM`), plus a few common shorter/ISO
 // variants a manually-exported statement might carry instead.
+import {
+  type ZoneRule,
+  KYIV_ZONE_RULE,
+  type WallClockParts,
+  zoneWallClockToUtcMilliseconds,
+} from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
-import { type WallClockParts, kyivWallClockToUtcMilliseconds } from '@kiko/dates';
 
 import type { TableCell } from './table-rows';
 
@@ -26,15 +31,18 @@ type DatePreset = {
   toParts: (match: RegExpExecArray) => WallClockParts;
 };
 
-// Reads the parts as Kyiv time, the same reading every named format uses,
-// never the device's own zone: the instant feeds the dedup key, so reading
-// it in the device zone gave the same file a different key once the phone
-// changed zone, and an overlapping re-import duplicated every row.
-// `kyivWallClockToUtcMilliseconds` rejects a rollover — an out-of-range day
-// ("31.02.2026"), month ("2026-13-45"), hour, or minute silently rolling into
-// a DIFFERENT, wrong calendar instant.
-const partsToSeconds = (parts: WallClockParts): number | undefined =>
-  foldMap(maybe(kyivWallClockToUtcMilliseconds(parts)), (milliseconds) => milliseconds / 1000);
+// Reads the parts in the mapping's own source zone, never the device's: the
+// instant feeds the dedup key, so a device-zone reading would give the same
+// file a different key once the phone changes zone, and an overlapping
+// re-import would duplicate every row. `zoneWallClockToUtcMilliseconds`
+// rejects a rollover — an out-of-range day ("31.02.2026"), month
+// ("2026-13-45"), hour, or minute silently rolling into a DIFFERENT, wrong
+// calendar instant.
+const partsToSeconds = (parts: WallClockParts, zone: ZoneRule): number | undefined =>
+  foldMap(
+    maybe(zoneWallClockToUtcMilliseconds(zone, parts)),
+    (milliseconds) => milliseconds / 1000,
+  );
 
 // A date-only cell has no time at all, so it reads as noon and shows the same
 // calendar day from UTC-9 to UTC+12. A timed preset keeps a real `00:00` at
@@ -49,8 +57,8 @@ const dateOnlyParts = (year: string, month: string, day: string): WallClockParts
 });
 
 // Every preset reads its own wall-clock parts — the digits themselves are
-// zone-agnostic; `partsToSeconds` above is what resolves them, as Kyiv
-// time. `DD.MM.YY HH:MM` maps its 2-digit year to `20YY`,
+// zone-agnostic; `partsToSeconds` above is what resolves them, in the
+// mapping's source zone. `DD.MM.YY HH:MM` maps its 2-digit year to `20YY`,
 // matching Sensebank's own dedicated parse exactly (real years past 2099
 // never appear in a bank export).
 const presets: Record<DateFormatId, DatePreset> = {
@@ -148,9 +156,13 @@ export const dateFormatExamples: Record<DateFormatId, string> = {
  * impossible calendar instant (`partsToSeconds`'s round-trip check) is the
  * same kind of mismatch, not a distinct case.
  */
-export const parseDateWithFormat = (raw: TableCell, id: DateFormatId): number | undefined => {
+export const parseDateWithFormat = (
+  raw: TableCell,
+  id: DateFormatId,
+  zone: ZoneRule = KYIV_ZONE_RULE,
+): number | undefined => {
   const preset = presets[id];
   const match = preset.pattern.exec(String(raw).trim());
 
-  return match ? partsToSeconds(preset.toParts(match)) : undefined;
+  return match ? partsToSeconds(preset.toParts(match), zone) : undefined;
 };

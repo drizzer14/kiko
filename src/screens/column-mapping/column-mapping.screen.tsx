@@ -18,9 +18,11 @@ import {
   type ColumnMapping,
   type DateFormatId,
   type TableDelimiter,
+  type SourceTimeZoneId,
   type SavedColumnMapping,
   type ColumnMappingRowError,
   readTableRows,
+  sourceTimeZoneOrKyiv,
   mappingKeyFor,
   applyColumnMapping,
   findSavedMapping,
@@ -92,6 +94,7 @@ type MappingFormFields = {
   decimalSeparator: ',' | '.';
   dateColumn: number | undefined;
   dateFormat: DateFormatId | undefined;
+  timeZone: SourceTimeZoneId;
   amountMode: AmountMode;
   amountColumn: number | undefined;
   debitColumn: number | undefined;
@@ -167,6 +170,7 @@ const buildColumnMapping = (fields: MappingFormFields): ColumnMapping | undefine
     decimalSeparator: fields.decimalSeparator,
     dateColumn: fields.dateColumn,
     dateFormat: fields.dateFormat,
+    timeZone: fields.timeZone,
     amount,
     descriptionColumn: fields.descriptionColumn,
     currency,
@@ -437,6 +441,7 @@ type SavedFormState = {
   decimalSeparator: ',' | '.';
   dateColumn: number;
   dateFormat: DateFormatId;
+  timeZone: SourceTimeZoneId;
   amountMode: AmountMode;
   amountColumn: number | undefined;
   debitColumn: number | undefined;
@@ -489,6 +494,7 @@ const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState 
     decimalSeparator: mapping.decimalSeparator,
     dateColumn: mapping.dateColumn,
     dateFormat: mapping.dateFormat,
+    timeZone: sourceTimeZoneOrKyiv(mapping.timeZone),
     amountMode: mapping.amount.mode,
     ...amountFields,
     descriptionColumn: mapping.descriptionColumn,
@@ -522,6 +528,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const [decimalSeparator, setDecimalSeparator] = useState<',' | '.'>('.');
   const [dateColumn, setDateColumn] = useState<number | undefined>(undefined);
   const [dateFormat, setDateFormat] = useState<DateFormatId | undefined>(undefined);
+  const [timeZone, setTimeZone] = useState<SourceTimeZoneId>('kyiv');
   const [amountMode, setAmountMode] = useState<AmountMode>('single');
   const [amountColumn, setAmountColumn] = useState<number | undefined>(undefined);
   const [debitColumn, setDebitColumn] = useState<number | undefined>(undefined);
@@ -685,6 +692,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     setDecimalSeparator(state.decimalSeparator);
     setDateColumn(state.dateColumn);
     setDateFormat(state.dateFormat);
+    setTimeZone(state.timeZone);
     setAmountMode(state.amountMode);
     setAmountColumn(state.amountColumn);
     setDebitColumn(state.debitColumn);
@@ -711,6 +719,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     decimalSeparator,
     dateColumn,
     dateFormat,
+    timeZone,
     amountMode,
     amountColumn,
     debitColumn,
@@ -909,6 +918,8 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
             dateFormatOptions={dateFormatOptions}
             dateFormat={dateFormat}
             onDateFormatChange={setDateFormat}
+            timeZone={timeZone}
+            onTimeZoneChange={setTimeZone}
             amountMode={amountMode}
             onAmountModeChange={setAmountMode}
             amountColumn={amountColumn}

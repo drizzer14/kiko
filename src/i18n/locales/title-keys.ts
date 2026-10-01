@@ -45,6 +45,7 @@ export const TITLE_KEYS = new Set([
   'columnMapping.sectionDates',
   'columnMapping.sectionDetails',
   'columnMapping.sectionFileFormat',
+  'columnMapping.timeZoneSheetTitle',
   'columnMapping.title',
   'common.deleteNamed',
   'forms.account.addTitle',

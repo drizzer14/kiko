@@ -3,6 +3,7 @@ import type {
   TableCell,
   DateFormatId,
   TableDelimiter,
+  SourceTimeZoneId,
   ColumnMappingRowError,
 } from '@kiko/statement-import/column-mapping';
 import type { Currency } from '@kiko/currency/currency';
@@ -76,6 +77,8 @@ export type ColumnMappingFormProps = {
   dateFormatOptions: ColumnSelectFieldOption<DateFormatId>[];
   dateFormat: DateFormatId | undefined;
   onDateFormatChange: (value: DateFormatId | undefined) => void;
+  timeZone: SourceTimeZoneId;
+  onTimeZoneChange: (timeZone: SourceTimeZoneId) => void;
   amountMode: AmountMode;
   onAmountModeChange: (mode: AmountMode) => void;
   amountColumn: number | undefined;

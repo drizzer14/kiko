@@ -22,6 +22,7 @@ import {
 import { parseAmountCell } from './amount';
 import type { TableCell } from './table-rows';
 import { type DateFormatId, parseDateWithFormat } from './date-formats';
+import { zoneRuleFor, type SourceTimeZoneId, sourceTimeZoneOrKyiv } from './source-time-zone';
 
 // Matches the ISO 13616 IBAN shape: 2 uppercase letters (country code), 2
 // check digits, then the BBAN (11-30 alphanumerics) — the same shape a
@@ -36,6 +37,9 @@ export type ColumnMapping = {
   decimalSeparator: ',' | '.';
   dateColumn: number;
   dateFormat: DateFormatId;
+  // The zone the date column's wall clocks are read in; a mapping without
+  // one reads Kyiv time.
+  timeZone?: SourceTimeZoneId;
   amount:
     | { mode: 'single'; column: number }
     | { mode: 'debitCredit'; debitColumn: number; creditColumn: number };
@@ -153,7 +157,11 @@ type RowOutcome =
   | { kind: 'error'; error: ColumnMappingRowError };
 
 const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number): RowOutcome => {
-  const dateSeconds = parseDateWithFormat(row[mapping.dateColumn], mapping.dateFormat);
+  const dateSeconds = parseDateWithFormat(
+    row[mapping.dateColumn],
+    mapping.dateFormat,
+    zoneRuleFor(sourceTimeZoneOrKyiv(mapping.timeZone)),
+  );
 
   if (dateSeconds === undefined) {
     return {

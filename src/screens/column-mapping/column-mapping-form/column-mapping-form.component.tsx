@@ -1,11 +1,20 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import {
+  offsetTextOf,
+  sourceTimeZoneIds,
+  fixedOffsetZoneIds,
+  type TableDelimiter,
+  type SourceTimeZoneId,
+  type FixedOffsetZoneId,
+} from '@kiko/statement-import/column-mapping';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import Divider from '@kiko/design-system/components/divider';
 import ChipRow from '@kiko/design-system/components/chip-row';
-import type { TableDelimiter } from '@kiko/statement-import/column-mapping';
+import SelectField from '@kiko/design-system/components/select-field';
 import TargetHoldingField from '@kiko/design-system/components/target-holding-field';
 
 import RawPreview from '../raw-preview';
@@ -24,6 +33,19 @@ const ENCODING_LABELS: Record<Encoding, string> = {
   'utf-8': 'UTF-8',
   'windows-1251': 'Windows-1251',
 };
+
+const timeZoneLabels = (t: TFunction): Record<SourceTimeZoneId, string> => ({
+  kyiv: t('columnMapping.timeZoneKyiv'),
+  'western-europe': t('columnMapping.timeZoneWesternEurope'),
+  'central-europe': t('columnMapping.timeZoneCentralEurope'),
+  'eastern-europe': t('columnMapping.timeZoneEasternEurope'),
+  ...(Object.fromEntries(
+    fixedOffsetZoneIds.map((id) => [
+      id,
+      t('columnMapping.timeZoneFixedOffset', { offset: offsetTextOf(id) }),
+    ]),
+  ) as Record<FixedOffsetZoneId, string>),
+});
 
 // Every prop the `ready`-state form needs — its own component so this large,
 // mostly-static form tree doesn't count against the screen's own
@@ -48,6 +70,8 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   dateFormatOptions,
   dateFormat,
   onDateFormatChange,
+  timeZone,
+  onTimeZoneChange,
   amountMode,
   onAmountModeChange,
   amountColumn,
@@ -186,6 +210,17 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
             testID="column-mapping-date-format"
           />
         </View>
+
+        <SelectField<SourceTimeZoneId>
+          label={t('columnMapping.timeZone')}
+          sheetTitle={t('columnMapping.timeZoneSheetTitle')}
+          options={sourceTimeZoneIds}
+          selected={timeZone}
+          onSelect={onTimeZoneChange}
+          labels={timeZoneLabels(t)}
+          placeholder={t('columnMapping.timeZonePlaceholder')}
+          testID="column-mapping-time-zone"
+        />
       </Box>
 
       <Divider testID="column-mapping-divider-amounts" />
