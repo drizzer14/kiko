@@ -284,8 +284,8 @@ describe('useReminderOffer — manual activity', () => {
 });
 
 describe('useReminderOffer — after an import', () => {
-  it('offers an import reminder on an account with an import, a synced one included', async () => {
-    addAccount('card', 'monobank');
+  it('offers an import reminder on a bank account with an import', async () => {
+    addAccount('card');
     addEntry('card', 'import', TODAY);
 
     const { result } = await renderOffer('card', 'afterImport');
@@ -294,8 +294,17 @@ describe('useReminderOffer — after an import', () => {
     expect(readManualEntries()).toBe(false);
   });
 
-  it('offers nothing on an archived account', async () => {
+  it('offers nothing on a bank account a sync owns', async () => {
     addAccount('card', 'monobank');
+    addEntry('card', 'import', TODAY);
+
+    const { kindsSeen } = await renderOffer('card', 'afterImport');
+
+    expect(kindsSeen).not.toContain('statement_import');
+  });
+
+  it('offers nothing on an archived account', async () => {
+    addAccount('card');
     addEntry('card', 'import', TODAY);
     run('UPDATE accounts SET archived_at = ? WHERE id = ?', YESTERDAY, 'card');
 

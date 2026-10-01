@@ -14,7 +14,6 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
-import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
@@ -2037,16 +2036,15 @@ describe('transactionsRepo.recordManualWithReturns', () => {
 });
 
 // A minimal fake for `importRows`: dispatches every `select` by the table it
-// targets, distinguishing the two no-`.limit()` `transactions` reads (the
-// sync-boundary aggregate vs. the dedup partition probe) by the PROJECTED
-// field set `select(fields)` is called with — `{ time }` for the aggregate,
-// `{ source, externalId }` for the probe — since both share the same table
-// identity and neither chains `.limit()`. `holdings`/`accounts` reads chain
+// targets, distinguishing the no-`.limit()` `transactions` reads (the
+// post-closing `{ net }` sum, the synced-row read, which answers none, and
+// the dedup partition probe) by the PROJECTED field set `select(fields)` is
+// called with, since they share the same table identity and none chains
+// `.limit()`. `holdings`/`accounts` reads chain
 // `.limit(1)`; every read here resolves either way, mirroring
-// `makeExchangeDatabaseTransaction`'s dual-calling-convention trick. `syncBoundaryTime`
-// answers the sync-source aggregate (boundary source (b)) — the hand-set
-// boundary (source (a)) comes straight off `holding.balanceSetAt` instead,
-// no separate query.
+// `makeExchangeDatabaseTransaction`'s dual-calling-convention trick.
+// `syncBoundaryTime` answers the holding read's `newestSyncTime` (boundary
+// source (b)); the hand-set boundary (source (a)) is `holding.balanceSetAt`.
 //
 // Review follow-up: `import-statement.test.ts` has its own, similarly-shaped
 // `makeImportDatabaseTransaction` — deliberately NOT shared with this one. That file's fake
@@ -2078,7 +2076,9 @@ const resolveImportRowsSelect = (
   }
 
   if (table === holdings) {
-    return options.holding ? [options.holding] : [];
+    return options.holding
+      ? [{ ...options.holding, newestSyncTime: options.syncBoundaryTime ?? null }]
+      : [];
   }
 
   if (table === accounts) {
@@ -2089,10 +2089,8 @@ const resolveImportRowsSelect = (
     return [{ net: options.existingPostClosingNetMinorUnits ?? 0 }];
   }
 
-  if (table === transactions && fields && 'time' in fields) {
-    const time = options.syncBoundaryTime;
-
-    return foldMap(maybe(time), (found) => [{ time: found }]) ?? [];
+  if (table === transactions && fields && !('externalId' in fields)) {
+    return [];
   }
 
   return options.existing ?? [];
@@ -2268,7 +2266,7 @@ describe('transactionsRepo.importRows', () => {
     });
   });
 
-  it('ignores an OLDER closing balance and adds the net of new rows instead, when the rows themselves are AT/AFTER the boundary', async () => {
+  it('ignores an OLDER closing balance and adds the net of new rows instead, when the rows themselves are AFTER the boundary', async () => {
     const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
@@ -2279,7 +2277,7 @@ describe('transactionsRepo.importRows', () => {
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [
-        // The row's own time (6_000) is AT/AFTER the boundary (5_000), so it
+        // The row's own time (6_000) is AFTER the boundary (5_000), so it
         // is "current" and its full amount is added — this test isolates "an
         // older closing balance is ignored" from the separate history-row
         // rule (covered by its own tests below).
@@ -2406,7 +2404,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toBeUndefined();
   });
 
-  it('moves the balance by only the rows AT/AFTER the boundary, when a batch mixes history and current rows', async () => {
+  it('moves the balance by only the rows AFTER the boundary, when a batch mixes history and current rows', async () => {
     const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
@@ -2418,14 +2416,14 @@ describe('transactionsRepo.importRows', () => {
       holdingId: 'hold-1',
       rows: [
         { holdingId: 'hold-1', amountMinorUnits: -1_000, time: 1_000, source: 'import' }, // history: +0
-        { holdingId: 'hold-1', amountMinorUnits: -2_000, time: 5_000, source: 'import' }, // AT the boundary: counts
+        { holdingId: 'hold-1', amountMinorUnits: -2_000, time: 5_000, source: 'import' }, // AT the boundary: history
         { holdingId: 'hold-1', amountMinorUnits: -3_000, time: 6_000, source: 'import' }, // after: counts
       ],
     });
 
-    // base -5_000 + (-2_000 + -3_000) = -10_000; the 1_000-dated row's
-    // -1_000 is excluded as history.
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -10_000 });
+    // base -5_000 + -3_000 = -8_000; the rows at and before the boundary
+    // belong to the balance it already set.
+    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -8_000 });
   });
 
   it('adds the net of new rows dated AFTER the closing balance’s own as-of, on top of the closing balance itself', async () => {
@@ -2719,37 +2717,31 @@ type OrderedImportTransactionOptions = {
 };
 
 /** Mirrors `resolveImportRowsSelect`/`resolveImportSelect` in the sibling
- * fakes above and in `import-statement.test.ts`: dispatch by table identity,
- * and — for the two no-`.limit()` `transactions` reads sharing that table —
- * by the PROJECTED field set. Pulled out of the closure below purely to
- * stay under Biome's cognitive-complexity cap. The "time" read mirrors the
- * REAL query's own sync-source filter (`source NOT IN ('manual', 'import')`)
- * — the store's `manual`/`import`-sourced rows must NOT surface here, only a
- * sync row does; the hand-set boundary source comes back separately,
- * straight off `opts.holding.balanceSetAt`. */
+ * fakes above and in `import-statement.test.ts`: dispatch by table identity.
+ * Pulled out of the closure below purely to stay under Biome's
+ * cognitive-complexity cap. The holding read's `newestSyncTime` mirrors the
+ * REAL subquery's own sync-source filter (`source NOT IN ('manual', 'import')`)
+ * — the store's `manual`/`import`-sourced rows must NOT surface there, only a
+ * sync row does. */
 const resolveOrderedSelect = (
   options: OrderedImportTransactionOptions,
   table: unknown,
-  fields: Record<string, unknown> | undefined,
 ): unknown[] => {
   if (table === categoryOverrides) {
     return [];
   }
 
   if (table === holdings) {
-    return [options.holding];
+    const syncTimes = options.store
+      .filter((row) => row.source !== 'manual' && row.source !== 'import')
+      .map((row) => row.time);
+    const newestSyncTime = syncTimes.length > 0 ? Math.max(...syncTimes) : null;
+
+    return [{ ...options.holding, newestSyncTime }];
   }
 
   if (table === accounts) {
     return [options.account];
-  }
-
-  if (table === transactions && fields && 'time' in fields) {
-    const syncTimes = options.store
-      .filter((row) => row.source !== 'manual' && row.source !== 'import')
-      .map((row) => row.time);
-
-    return syncTimes.length > 0 ? [{ time: Math.max(...syncTimes) }] : [{ time: null }];
   }
 
   return options.store.map((row) => ({ source: row.source, externalId: row.externalId }));
@@ -2760,9 +2752,9 @@ const makeOrderedImportDatabaseTransaction = (options: OrderedImportTransactionO
     Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
   return {
-    select: (fields?: Record<string, unknown>) => ({
+    select: () => ({
       from: (table: unknown) => ({
-        where: () => resolveRows(resolveOrderedSelect(options, table, fields)),
+        where: () => resolveRows(resolveOrderedSelect(options, table)),
       }),
     }),
     insert: () => ({

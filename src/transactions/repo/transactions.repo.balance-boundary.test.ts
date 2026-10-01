@@ -157,25 +157,41 @@ describe('a back-dated manual create after an import', () => {
   });
 });
 
-describe('a manual row moves the balance when it is dated at the boundary', () => {
-  it('counts a row at the closing as-of', async () => {
+describe('a manual row dated at the boundary belongs to the anchor', () => {
+  it('leaves the bank closing balance when a row is created at the closing as-of', async () => {
     await importSeptemberStatement();
     await recordManual(-1_000, SEPTEMBER_30);
 
-    expect(balance()).toBe(89_000);
+    expect(balance()).toBe(90_000);
+  });
+
+  it('ends on the bank figure when a row at the closing as-of is deleted', async () => {
+    await recordManual(-1_000, SEPTEMBER_30);
+    await importSeptemberStatement();
+
+    expect(balance()).toBe(90_000);
+
+    await transactionsRepo.remove(manualIdAt(SEPTEMBER_30));
+
+    expect(balance()).toBe(90_000);
   });
 });
 
 describe('an opening balance anchor', () => {
-  it('ignores a manual row dated before the holding was opened, and counts its own row', async () => {
+  const openHolding = (): Promise<string> => {
     jest.spyOn(Date, 'now').mockReturnValue(SEPTEMBER_30);
-    const holdingId = await holdingsRepo.create({
+
+    return holdingsRepo.create({
       accountId: 'account',
       name: 'Opened',
       type: 'card',
       currency: 'UAH',
       openingBalance: Money.of('UAH', 50_000),
     });
+  };
+
+  it('ignores a manual row dated before the holding was opened, and counts a later row', async () => {
+    const holdingId = await openHolding();
 
     await transactionsRepo.recordManual({
       holdingId,
@@ -188,14 +204,46 @@ describe('an opening balance anchor', () => {
     await transactionsRepo.recordManual({ holdingId, amountMinorUnits: -7_000, time: OCTOBER_2 });
 
     expect(balanceOf(holdingId)).toBe(43_000);
+  });
+
+  it('keeps the balance when the opening row is re-dated earlier', async () => {
+    const holdingId = await openHolding();
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: 50_000,
+      time: SEPTEMBER_10,
+    });
+
+    expect(balanceOf(holdingId)).toBe(50_000);
+  });
+
+  it('keeps the balance when the opening row is deleted', async () => {
+    const holdingId = await openHolding();
 
     await transactionsRepo.remove(manualIdAt(SEPTEMBER_30));
 
-    expect(balanceOf(holdingId)).toBe(-7_000);
+    expect(balanceOf(holdingId)).toBe(50_000);
   });
 });
 
 describe('a hand-edited balance anchor', () => {
+  it('keeps the balance when the adjustment row is re-dated earlier', async () => {
+    await holdingsRepo.updateWithBalanceDelta(
+      'card',
+      { balance: Money.of('UAH', 70_000) },
+      SEPTEMBER_30,
+    );
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: -30_000,
+      time: SEPTEMBER_10,
+    });
+
+    expect(balance()).toBe(70_000);
+  });
+
   it('ignores a manual write dated before the edit', async () => {
     await recordManual(-4_000, SEPTEMBER_10);
     await holdingsRepo.updateWithBalanceDelta(

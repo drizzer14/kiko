@@ -204,6 +204,22 @@ provider owns that number (`upsertByMetadataKey` in
 `src/holdings/`), and the form hides the balance field for a synced
 holding entirely.
 
+**The manual boundary rule.** Every manual write (`recordManual`, each
+exchange or change-return leg, `update`, `remove`) moves the stored
+balance only for a row dated STRICTLY AFTER the holding's boundary: the
+later of `holdings.balanceSetAt` and its newest sync-source row
+(`movesBalance`, `time > boundary`). Every balance writer reads that
+boundary through one function, `readAnchoredHoldingDatabaseTransaction`
+(`transactions.repo.ts`), which `importRows` shares. A row AT or before
+the boundary is history the anchor already counts. A balance-set row (an
+opening balance, a hand edit, a cash opening, a migration-0036 backfill)
+sits exactly at its own anchor, so re-dating it earlier or deleting it
+leaves the balance unchanged; moving it past the anchor adds it again
+(accepted). A manual row at exactly a closing balance's as-of belongs to
+that closing, the same as `postClosingRowsWhere`'s strict `gt`. A
+closing balance AS OF exactly the boundary still applies (`>=`): it is
+an anchor, not a row.
+
 ## Statement import moves the target holding's balance too
 
 A file-based statement import (`transactionsRepo.importRows`,
@@ -225,9 +241,11 @@ showed the real imported rows.
 
 `importRows`'s own doc comment (`transactions.repo.ts`) is the ONE
 full statement of the exact rule — the boundary, `holdings.balanceSetAt`,
-the closing-balance override, the synced-holding exception, and why no
-migration repairs pre-fix data — read it there rather than trusting a
-restated summary here.
+the closing-balance override, the synced-account refusal (any holding of
+an account `isSyncedAccount` owns, a hand-added one included), the ±60 s
+match against a disconnected bank's synced rows, and why no migration
+repairs pre-fix data — read it there rather than trusting a restated
+summary here.
 
 ## `share` create-form section
 

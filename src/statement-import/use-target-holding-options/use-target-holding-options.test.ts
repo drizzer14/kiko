@@ -101,15 +101,29 @@ describe('useTargetHoldingOptions', () => {
     expect(options.map(({ id }) => id)).toEqual(['h1', 'jar']);
   });
 
-  it('offers no holding a connected bank sync owns', async () => {
+  it('offers no holding on an account a bank sync owns, a hand-added one included', async () => {
     serveRows(
-      [{ ...blackCard, metadata: { monobankId: 'mono-1' } }],
+      [
+        { ...blackCard, metadata: { monobankId: 'mono-1' } },
+        { ...blackCard, id: 'hand-added' },
+      ],
       [{ id: 'a', name: 'Monobank', institution: 'monobank' }],
     );
 
     const { options } = await optionsFor();
 
     expect(options).toEqual([]);
+  });
+
+  it('offers a holding a disconnected bank sync left behind', async () => {
+    serveRows(
+      [{ ...blackCard, metadata: { monobankId: 'mono-1' } }],
+      [{ id: 'a', name: 'Monobank', institution: null }],
+    );
+
+    const { options } = await optionsFor();
+
+    expect(options.map(({ id }) => id)).toEqual(['h1']);
   });
 
   it('reports isLoading while either its holdings or its accounts query is still on its first load', async () => {

@@ -1,7 +1,7 @@
 import { useLiveQuery } from '@kiko/db';
 import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { isSyncedHolding } from '@kiko/holdings/deletable';
+import { isSyncedAccount } from '@kiko/holdings/deletable';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
@@ -21,10 +21,12 @@ type TargetHoldingOptions = {
  * `column-mapping.screen.tsx` can share it rather than reimplementing the
  * same join.
  *
- * Only an open holding that keeps a ledger and no sync owns is offered: a
- * ledgerless holding (a deposit, a bond, metal, property) takes its value from
- * its own metadata, so imported rows would change nothing it shows, and a
- * closed or synced holding takes no new rows from the user.
+ * Only an open holding that keeps a ledger, on an account no sync owns, is
+ * offered: a ledgerless holding (a deposit, a bond, metal, property) takes its
+ * value from its own metadata, so imported rows would change nothing it shows,
+ * a closed holding takes no new rows from the user, and `importRows` refuses
+ * every holding of a synced account (`isSyncedAccount`), a hand-added one
+ * included.
  *
  * `isLoading` is true while either query is still on its own first load
  * (kiko-architecture's useLiveQuery consumer rule) — a caller must not treat
@@ -41,13 +43,14 @@ export const useTargetHoldingOptions = (accountId: string): TargetHoldingOptions
     'accounts',
   ]);
   const accountById = new Map(accountRows.map((row) => [row.id, row] as const));
+  const syncedAccountIds = new Set(accountRows.filter(isSyncedAccount).map(({ id }) => id));
 
   const options = holdingRows
     .filter(
       (holding) =>
         holding.closedAt == null &&
         !isLedgerlessHoldingType(holding.type) &&
-        !isSyncedHolding(holding, accountById.get(holding.accountId)),
+        !syncedAccountIds.has(holding.accountId),
     )
     .map((holding) => ({
       id: holding.id,

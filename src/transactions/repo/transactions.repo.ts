@@ -18,16 +18,19 @@ import {
   desc,
   eq,
   gt,
+  getTableColumns,
   gte,
   inArray,
   isNotNull,
   isNull,
   lt,
+  lte,
   ne,
   sql,
 } from 'drizzle-orm';
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
+import { maxOf, minOf } from '@kiko/numbers';
 import type { Currency } from '@kiko/currency/currency';
 import type { ClosingBalance } from '@kiko/statement-import/parser';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
@@ -121,10 +124,13 @@ const syncSourceRowsOf = (holdingId: string | typeof holdings.id) =>
     ne(transactions.source, 'import'),
   );
 
-/** Whether a row dated `time` moves the stored balance. A row dated before the
- * boundary is history: the balance set at the boundary already counts it. */
+/** Whether a row dated `time` moves the stored balance. A row dated at or before
+ * the boundary is history: the balance set at the boundary already counts it,
+ * the same as `postClosingRowsWhere`'s strict `gt`. A balance-set row (an
+ * opening balance, a hand edit) sits exactly at its own anchor, so a strict
+ * comparison is what keeps re-dating or deleting it from moving the balance. */
 const movesBalance = (time: number, boundary: number | null): boolean =>
-  boundary === null || time >= boundary;
+  boundary === null || time > boundary;
 
 const balanceShareOf = (amountMinorUnits: number, time: number, boundary: number | null): number =>
   movesBalance(time, boundary) ? amountMinorUnits : 0;
@@ -134,33 +140,41 @@ const newestSyncTimeOfHolding = sql<number | null>`(
 )`;
 
 /**
- * Move a holding's stored balance by `deltaFor(boundary)`, where `boundary` is
- * THE BOUNDARY `importRows` uses. The balance and the boundary are read inside
- * the caller's transaction, never from a render snapshot, so a concurrent
- * write cannot be clobbered by a stale read-modify-write, and a manual write
- * judges its row against the same boundary an import does.
+ * A holding with THE BOUNDARY (`importRows`) — the one read every balance
+ * writer judges its rows against. Read inside the caller's transaction, never
+ * from a render snapshot, so a concurrent write cannot be clobbered by a stale
+ * read-modify-write.
  */
+const readAnchoredHoldingDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+): Promise<{ holding: HoldingRow; boundary: number | null } | undefined> => {
+  const rows = await databaseTransaction
+    .select({ ...getTableColumns(holdings), newestSyncTime: newestSyncTimeOfHolding })
+    .from(holdings)
+    .where(eq(holdings.id, holdingId))
+    .limit(1);
+
+  return foldMap(maybe(rows.at(0)), ({ newestSyncTime, ...holding }) => ({
+    holding,
+    boundary: laterOf(holding.balanceSetAt, newestSyncTime),
+  }));
+};
+
+/** Move a holding's stored balance by `deltaFor(boundary)`, so a manual write
+ * judges its row against the same boundary an import does. */
 const moveBalanceDatabaseTransaction = async (
   databaseTransaction: typeof database,
   holdingId: string,
   deltaFor: (boundary: number | null) => number,
 ): Promise<void> => {
-  const anchorRows = await databaseTransaction
-    .select({
-      balanceMinorUnits: holdings.balanceMinorUnits,
-      balanceSetAt: holdings.balanceSetAt,
-      newestSyncTime: newestSyncTimeOfHolding,
-    })
-    .from(holdings)
-    .where(eq(holdings.id, holdingId))
-    .limit(1);
-  const anchor = anchorRows.at(0);
+  const anchored = await readAnchoredHoldingDatabaseTransaction(databaseTransaction, holdingId);
 
-  if (anchor === undefined) {
+  if (anchored === undefined) {
     return;
   }
 
-  const delta = deltaFor(laterOf(anchor.balanceSetAt, anchor.newestSyncTime));
+  const delta = deltaFor(anchored.boundary);
 
   if (delta === 0) {
     return;
@@ -168,7 +182,7 @@ const moveBalanceDatabaseTransaction = async (
 
   await databaseTransaction
     .update(holdings)
-    .set({ balanceMinorUnits: anchor.balanceMinorUnits + delta })
+    .set({ balanceMinorUnits: anchored.holding.balanceMinorUnits + delta })
     .where(eq(holdings.id, holdingId));
 };
 
@@ -412,6 +426,75 @@ const dropRowsStoredUnderAlias = async (
   };
 };
 
+/** How far apart a bank statement and the bank's own sync can date one
+ * transaction: the two stamp the same purchase seconds apart. */
+const SYNC_MATCH_WINDOW_MILLISECONDS = 60_000;
+
+/** Takes the synced time nearest `time` within the window out of
+ * `syncedTimes`, so one synced row stands for one statement row at most. */
+const claimSyncedTime = (syncedTimes: number[], time: number): boolean => {
+  let nearestIndex = -1;
+  let nearestDistance = SYNC_MATCH_WINDOW_MILLISECONDS;
+
+  for (const [index, syncedTime] of syncedTimes.entries()) {
+    const distance = Math.abs(syncedTime - time);
+
+    if (distance <= nearestDistance) {
+      nearestIndex = index;
+      nearestDistance = distance;
+    }
+  }
+
+  if (nearestIndex === -1) {
+    return false;
+  }
+
+  syncedTimes.splice(nearestIndex, 1);
+
+  return true;
+};
+
+/**
+ * `rows` without every row a sync source already holds on this holding: the
+ * same amount, dated within `SYNC_MATCH_WINDOW_MILLISECONDS`. A disconnected
+ * bank keeps its synced rows, and a statement over the same period carries
+ * them again under keys no dedup key matches, so that statement row is
+ * neither inserted nor counted toward the balance.
+ */
+const dropRowsHeldBySync = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  rows: NewTransaction[],
+): Promise<NewTransaction[]> => {
+  if (rows.length === 0) {
+    return rows;
+  }
+
+  const times = rows.map((row) => row.time);
+  const synced = await databaseTransaction
+    .select({ time: transactions.time, amountMinorUnits: transactions.amountMinorUnits })
+    .from(transactions)
+    .where(
+      and(
+        syncSourceRowsOf(holdingId),
+        gte(transactions.time, minOf(times) - SYNC_MATCH_WINDOW_MILLISECONDS),
+        lte(transactions.time, maxOf(times) + SYNC_MATCH_WINDOW_MILLISECONDS),
+      ),
+    );
+  const syncedTimesByAmount = new Map<number, number[]>();
+
+  for (const { time, amountMinorUnits } of synced) {
+    syncedTimesByAmount.set(amountMinorUnits, [
+      ...(syncedTimesByAmount.get(amountMinorUnits) ?? []),
+      time,
+    ]);
+  }
+
+  return rows.filter(
+    (row) => !claimSyncedTime(syncedTimesByAmount.get(row.amountMinorUnits) ?? [], row.time),
+  );
+};
+
 /** The net of the `aliased` rows the post-closing read counted by their
  * stored time although their real time is at or before the closing as-of. */
 const aliasedNetBeforeClosing = (aliased: AliasedRow[], asOfMilliseconds: number): number =>
@@ -573,10 +656,13 @@ const resolveImportBalance = (
     (sum, row) => sum + balanceShareOf(row.amountMinorUnits, row.time, boundary),
     0,
   );
+  // `>=`, not `movesBalance`'s `>`: a closing balance is itself an anchor, so
+  // one as of exactly the boundary re-asserts the bank's figure rather than
+  // being history the earlier anchor already counted.
   const useClosingBalance =
     closingBalance !== undefined &&
     closingBalance.currency === holding.currency &&
-    movesBalance(closingBalance.asOfSeconds * 1000, boundary);
+    (boundary === null || closingBalance.asOfSeconds * 1000 >= boundary);
 
   if (!useClosingBalance) {
     return { nextBalance: holding.balanceMinorUnits + netDelta };
@@ -1000,9 +1086,9 @@ export const transactionsRepo = {
    * the transaction so the balance delta is computed against the amount and
    * time that are actually persisted, never a stale render snapshot. The old
    * (amount, time) and the new one are each judged against THE BOUNDARY
-   * (`importRows`) on their own: only a side dated at/after it counts, so an
-   * edit that moves the row across the boundary adds or takes back its amount,
-   * and an edit wholly before it leaves the balance untouched. A synced (monobank) transaction
+   * (`importRows`) on their own: only a side dated strictly after it counts,
+   * so an edit that moves the row across the boundary adds or takes back its
+   * amount, and an edit wholly at or before it leaves the balance untouched. A synced (monobank) transaction
    * is never mutated by this path — its amount is owned by the bank import — and
    * a missing id is a no-op rather than an error.
    */
@@ -1040,8 +1126,8 @@ export const transactionsRepo = {
    * balance, all in ONE op-sqlite transaction so the ledger and the balance can
    * never desync on a partial failure. The reversal is the exact inverse of
    * `recordManual`/`update`: `balance -= amountMinorUnits` for a row dated
-   * at/after THE BOUNDARY (`importRows`), nothing for a row before it, whose
-   * amount the balance set at the boundary already includes. A
+   * strictly after THE BOUNDARY (`importRows`), nothing for a row at or before
+   * it, whose amount the balance set at the boundary already includes. A
    * synced (monobank) transaction is owned by the bank import and is refused with
    * a typed error; a missing id is a no-op rather than an error.
    */
@@ -1288,9 +1374,12 @@ export const transactionsRepo = {
    *
    * `recordManual` (and every exchange or change-return leg), `update`, and
    * `remove` read the SAME boundary (`moveBalanceDatabaseTransaction`): a
-   * manual row dated before it is history there too and moves no balance, so
-   * deleting a manual duplicate of an imported row, or entering a back-dated
-   * one, never pushes the balance off the bank's closing figure.
+   * manual row dated at or before it is history there too and moves no
+   * balance, so deleting a manual duplicate of an imported row (one at the
+   * closing as-of included), entering a back-dated one, or re-dating or
+   * deleting the balance-set row itself (an opening balance or a hand edit,
+   * stamped exactly at its own anchor) never pushes the balance off the
+   * figure the anchor set.
    *
    * `boundary` is `null` when NEITHER (a) nor (b) has ever happened for this
    * holding: every genuinely new row moves the balance regardless of its own
@@ -1299,10 +1388,10 @@ export const transactionsRepo = {
    * net/closing balance, not 0).
    *
    * With a boundary, each genuinely new row (from `insertDedupRowsDatabaseTransaction`) is
-   * split by its OWN `time` against it: a row dated BEFORE the boundary is
-   * HISTORY — it still inserts as a real ledger row, but contributes 0 to
-   * `netDelta`. A row dated AT/AFTER the boundary is CURRENT and counts at
-   * its full amount.
+   * split by its OWN `time` against it: a row dated AT or BEFORE the boundary
+   * is HISTORY — it still inserts as a real ledger row, but contributes 0 to
+   * `netDelta`. A row dated STRICTLY AFTER the boundary is CURRENT and counts
+   * at its full amount (`movesBalance`, the same rule a manual write uses).
    *
    * The balance move is `base + netDelta` — the sum of only the CURRENT new
    * rows — so a re-import of an already-imported file (every row refreshed,
@@ -1356,24 +1445,29 @@ export const transactionsRepo = {
    * `rezoneImportTimes` (`statement-import/rezone-import-times/`).
    *
    * `insertDedupRowsDatabaseTransaction`'s `(source, external_id)` dedup key includes
-   * `source` — a row from ANOTHER source (a `manual` entry, a `monobank`
-   * sync row) that happens to represent the same real-world transaction as
-   * an imported row is NOT a dedup hit; it is a genuinely new `import`-
-   * sourced row, and its amount counts fully in `netDelta` PROVIDED it is
-   * also dated at/after the boundary — exactly like any other genuinely new
-   * row. Importing a statement that covers a transaction the user already
-   * entered manually therefore double-counts that amount in the net-delta
-   * path when both land on the current side of the boundary (the
-   * closing-balance path is unaffected, since it overwrites rather than
-   * adds).
+   * `source` — a `manual` entry that happens to represent the same
+   * real-world transaction as an imported row is NOT a dedup hit; it is a
+   * genuinely new `import`-sourced row, and its amount counts fully in
+   * `netDelta` PROVIDED it is also dated after the boundary — exactly like
+   * any other genuinely new row. Importing a statement that covers a
+   * transaction the user already entered manually therefore double-counts
+   * that amount in the net-delta path when both land on the current side of
+   * the boundary (the closing-balance path is unaffected, since it overwrites
+   * rather than adds).
+   *
+   * A SYNC-source row is matched instead (`dropRowsHeldBySync`): a statement
+   * row with the holding's synced row's amount, dated within 60 seconds of
+   * it, is that synced row — not inserted, not counted. One synced row stands
+   * for one statement row. Rows a pre-fix build already imported over synced
+   * ones stay; no migration removes them.
    *
    * An account a bank sync owns (`isSyncedAccount`) refuses the import
    * outright, before anything is written, whichever of its holdings is the
    * target: the sync already writes every row of it under its own `source`,
-   * so the same rows under `import` would be a second copy no dedup key
-   * matches, and an import row cannot be deleted. Account detail offers no
-   * Import statement there; this guards a stale route into the import
-   * screens.
+   * so the same rows under `import` would be a second copy, and an import
+   * row cannot be deleted. Account detail offers no Import statement there;
+   * this guards a stale route into the import screens. A DISCONNECTED bank
+   * imports, and the synced-row match above keeps the overlap single.
    *
    * NO MIGRATION was written for holdings a pre-fix build already wrote a
    * wrong (0 or under-counted) balance into: `1.0.0` is
@@ -1397,14 +1491,15 @@ export const transactionsRepo = {
     closingBalance?: ClosingBalance;
   }): Promise<number> =>
     write(async (databaseTransaction) => {
-      const holdingRows = await databaseTransaction
-        .select()
-        .from(holdings)
-        .where(eq(holdings.id, input.holdingId))
-        .limit(1);
-      const holding = holdingRows.at(0);
+      // Read BEFORE the new rows are upserted below, so the boundary reflects
+      // the holding's ledger as it stood going into this import — never a row
+      // this very import is about to add.
+      const anchored = await readAnchoredHoldingDatabaseTransaction(
+        databaseTransaction,
+        input.holdingId,
+      );
 
-      if (!holding) {
+      if (anchored === undefined) {
         // Review follow-up (ponytail): the real caller (`importStatement`)
         // already validates the holding exists before this ever runs — a
         // missing holding here means a caller bug or a race, not a normal
@@ -1412,6 +1507,7 @@ export const transactionsRepo = {
         throw new Error(`Target holding not found: ${input.holdingId}`);
       }
 
+      const { holding, boundary } = anchored;
       const accountRows = await databaseTransaction
         .select({ institution: accounts.institution })
         .from(accounts)
@@ -1423,17 +1519,6 @@ export const transactionsRepo = {
         throw new Error('statement-import/synced-account');
       }
 
-      // Read BEFORE the new rows are upserted below, so this reflects the
-      // holding's ledger as it stood going into this import — never a row
-      // this very import is about to add. This IS boundary source (b): see
-      // THE BOUNDARY in the doc comment above.
-      const syncRows = await databaseTransaction
-        .select({ time: sql<number | null>`max(${transactions.time})` })
-        .from(transactions)
-        .where(syncSourceRowsOf(input.holdingId));
-      const syncBoundary = syncRows.at(0)?.time ?? null;
-      const boundary = laterOf(holding.balanceSetAt, syncBoundary);
-
       // Also read BEFORE the new rows are upserted — an EXISTING row (any
       // source, already in the ledger before this import ran) dated after a
       // closing balance's own as-of must still count toward it; only the
@@ -1444,7 +1529,11 @@ export const transactionsRepo = {
       // already logged for the same real-world transaction as an
       // after-asOf statement row is counted here too — the same
       // double-count risk the net-delta path already carries.
-      const { rows, aliased } = await dropRowsStoredUnderAlias(databaseTransaction, input.rows);
+      const { rows: unaliasedRows, aliased } = await dropRowsStoredUnderAlias(
+        databaseTransaction,
+        input.rows,
+      );
+      const rows = await dropRowsHeldBySync(databaseTransaction, input.holdingId, unaliasedRows);
       let existingPostClosingNetMinorUnits = 0;
 
       if (input.closingBalance !== undefined) {

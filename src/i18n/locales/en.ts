@@ -1171,7 +1171,7 @@ export const en = {
       statementImport: 'Reminds you to import a new statement for this account.',
       addTransactions: 'Reminds you to add new transactions to this account.',
     },
-    emptyNoKinds: 'Reminders are available for bank accounts and accounts you track by hand.',
+    emptyNoKinds: 'Reminders are available for accounts you track by hand.',
     emptyList: 'No reminders yet',
     emptyHint: 'Set up a reminder from an account’s page.',
     off: 'Off',
@@ -1181,6 +1181,7 @@ export const en = {
     pausedAfterNoResponse: 'Paused after 3 reminders with no response.',
     accountArchived: 'Not sent while the account is archived.',
     unavailable: {
+      statementImport: 'Available only for bank accounts you track by hand.',
       addTransactions: 'Available only for accounts you track by hand.',
     },
     enabledLabel: 'Reminder on',

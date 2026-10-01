@@ -84,6 +84,26 @@ and `importRows`'s own doc comment, for the exact balance rule —
 `addManyDedup` is a DIFFERENT, still-live upsert-only path the sync
 routes use, not statement import).
 
+**A synced account refuses the import.** `importRows` throws
+`statement-import/synced-account`, before it writes anything, for any
+holding of an account `isSyncedAccount` owns (a hand-added holding there
+included): the sync already writes those rows under its own `source`, so
+an `import` copy would be a second one, and an import row cannot be
+deleted. Account detail hides "Import statement" there with no caption;
+the guard covers a stale route. The target-holding picker
+(`useTargetHoldingOptions`) applies the same `isSyncedAccount` test, so it
+never offers a holding the guard refuses; it also drops closed and
+ledgerless holdings.
+
+**A disconnected bank's synced rows count as present.** A disconnected
+account is manual again and imports, but its holdings keep their synced
+(`monobank`, ...) rows. `importRows` drops every statement row with a
+synced row of the same holding and the same amount dated within ±60 s
+(`dropRowsHeldBySync`): it is not inserted and adds nothing to the
+balance. One synced row stands for one statement row (the nearest). Rows
+an earlier build already imported over synced ones stay; no migration
+removes them.
+
 ## Dedup
 
 Every studied format ships with no bank-issued per-row id, so
@@ -355,6 +375,17 @@ comment in `parser.ts`), not a guarded one. `balanceColumn` is part of
 compatible, no migration needed). `timeZone` works the same way (see
 "Source time zone" above): a saved mapping without it reads Kyiv.
 
+### The fixed currency follows the target holding
+
+`importParsedStatement` skips every row whose currency is not the
+target holding's, so in fixed-currency mode the default currency is the
+SELECTED target's own (the account's first holding only before a target
+is picked), and it follows a target change until the user picks a
+currency by hand. A saved mapping does not restore its fixed currency: a
+`bank:<bankId>` mapping is shared by every account of that bank, and the
+currency belonged to the holding it was saved for. A saved currency
+COLUMN is still restored.
+
 ## Saved mappings
 
 A confirmed mapping is saved to `settings.statementMappings`
@@ -380,8 +411,8 @@ early run settles on a guessed header row for good. Its twin,
 ## Entry points
 
 Two entry points reach the column-mapping screen: "Import statement"
-shows on every bank account in account-detail (not gated on a
-recognized `bankId`/format), and "Map columns manually" in
+shows on every bank account no sync owns in account-detail (not gated
+on a recognized `bankId`/format), and "Map columns manually" in
 `statement-import.screen.tsx` offers a manual escape hatch from the
 generic statement-import screen whenever a file was read at all
 (including an unrecognized-format or bank-mismatch preview), routing

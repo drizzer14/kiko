@@ -177,6 +177,17 @@ describe('ReminderRow', () => {
     expect(getByText('Available only for accounts you track by hand.')).toBeTruthy();
   });
 
+  it('says a statement-import reminder the account no longer allows needs a hand-kept bank', async () => {
+    const { getByText, queryByText } = await renderRow({
+      kind: 'statement_import',
+      reminder: savedReminder({ kind: 'statement_import' }),
+      available: false,
+    });
+
+    expect(getByText('Available only for bank accounts you track by hand.')).toBeTruthy();
+    expect(queryByText('Available only for accounts you track by hand.')).toBeNull();
+  });
+
   it('deletes a saved reminder from the touch-and-hold menu, after the confirm', async () => {
     const { getByText, getByTestId, props } = await renderRow();
 

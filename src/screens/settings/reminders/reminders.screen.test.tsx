@@ -212,12 +212,20 @@ describe('RemindersScreen — list', () => {
     expect(getByText('Available only for accounts you track by hand.')).toBeTruthy();
   });
 
-  it('never says an import reminder is not sent, on a synced account with no import too', async () => {
+  it('says why an import reminder on a synced account is not sent', async () => {
     seed([listed({ kind: 'statement_import' }, CARD)]);
 
-    const { getByText, queryByText } = await renderScreen();
+    const { getByText } = await renderScreen();
 
     expect(getByText('Statement import')).toBeTruthy();
+    expect(getByText('Available only for bank accounts you track by hand.')).toBeTruthy();
+  });
+
+  it('never says an import reminder on a manual bank account is not sent', async () => {
+    seed([listed({ kind: 'statement_import' }, MANUAL_CARD)]);
+
+    const { queryByText } = await renderScreen();
+
     expect(queryByText(/^Available/)).toBeNull();
   });
 

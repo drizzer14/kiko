@@ -1822,13 +1822,14 @@ what a change must keep.
   file for signatures.
 - **Rules.** `src/reminders/rules/` is pure.
   `eligibleReminderKinds(account)` takes the account's `kind` and
-  `institution`: an import reminder is allowed on every BANK account
-  (`kind === 'bank'`), manual and synced (Monobank) ones and ones with
-  no import yet included (user decision 2026-09-30), and on no other
-  kind, since only a bank account has a statement import
+  `institution`: an import reminder is allowed on every BANK account no
+  sync owns (`kind === 'bank' && !isSyncedAccount(account)`, user
+  decision 2026-10-01), ones with no import yet included, and on no
+  other account, since only such an account takes a statement import
   (`account-detail.screen.tsx` shows Import and handles the
-  `importStatement` intent for `kind === 'bank'` only);
-  add-transactions reminders need a non-synced account of any kind.
+  `importStatement` intent only there, and `importRows` refuses a
+  synced account); add-transactions reminders need a non-synced account
+  of any kind.
   The scheduler's `isSchedulable` uses the same function (with
   `planInputsQuery`'s `accountKind` column, since that row's `kind` is
   the reminder's), so a reminder the page shows as unavailable is never
@@ -1843,11 +1844,11 @@ what a change must keep.
   typed text), not from the validated interval, so the unit agrees with
   what the user typed even out of range. The page
   lists eligible kinds plus any saved kind that is no longer eligible.
-  Only an add-transactions reminder can be unavailable (on a synced
-  account); its row shows `reminders.unavailable.addTransactions`. An
-  import reminder is never unavailable: it is offered only on a bank
-  account, and an account's kind is read-only after creation. A synced
-  account that is not a bank (Binance, a BTC wallet) has no eligible
+  A saved reminder on a synced account is unavailable, of either kind;
+  `reminder-row.component.tsx`'s `unavailableCaption` shows
+  `reminders.unavailable.statementImport` or
+  `reminders.unavailable.addTransactions` per kind. A synced account of
+  any kind (a Monobank bank, Binance, a BTC wallet) has no eligible
   kind; with no saved reminder either, its page shows the caption
   `reminders.emptyNoKinds` instead of rows.
 - **Summary.** `describeSchedule(schedule, t, firstDay)`

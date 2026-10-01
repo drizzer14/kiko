@@ -11,7 +11,7 @@ describe('eligibleReminderKinds', () => {
       { kind: 'bank', institution: null },
       ['statement_import', 'add_transactions'],
     ],
-    ['a synced bank', { kind: 'bank', institution: 'monobank' }, ['statement_import']],
+    ['a synced bank', { kind: 'bank', institution: 'monobank' }, []],
     ['a cash', { kind: 'cash', institution: null }, ['add_transactions']],
     ['a manual crypto', { kind: 'crypto', institution: null }, ['add_transactions']],
     ['a synced crypto', { kind: 'crypto', institution: 'binance' }, []],

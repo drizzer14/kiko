@@ -220,15 +220,12 @@ type ImportTransactionOptions = {
 };
 
 /** The rows one fake `select(fields).from(table).where(...)` resolves to,
- * dispatched by table identity — and, for the two no-`.limit()` `transactions`
- * reads (the sync-boundary aggregate vs. a conflict-key probe), by the
- * PROJECTED field set (`{ time }` vs one that carries `externalId`, answered
- * with every stored row's own projected columns), since both share the same
- * table identity. The post-closing `{ net }` sum answers empty, so it reads
- * 0. The "time" read mirrors the REAL query's
- * own sync-source filter (`source NOT IN ('manual', 'import')`) — the
- * hand-set boundary source comes back separately, straight off
- * `opts.holding.balanceSetAt`. */
+ * dispatched by table identity — and, for the no-`.limit()` `transactions`
+ * reads, by the PROJECTED field set: a conflict-key probe carries
+ * `externalId` and is answered with every stored row's own projected columns;
+ * the post-closing `{ net }` sum and the synced-row read answer empty. The
+ * holding read's `newestSyncTime` mirrors the REAL subquery's own sync-source
+ * filter (`source NOT IN ('manual', 'import')`). */
 const resolveImportSelect = (
   options: ImportTransactionOptions,
   table: unknown,
@@ -239,7 +236,12 @@ const resolveImportSelect = (
   }
 
   if (table === holdings) {
-    return options.holding ? [options.holding] : [];
+    const syncTimes = options.store.transactions
+      .filter((row) => row.source !== 'manual' && row.source !== 'import')
+      .map((row) => row.time);
+    const newestSyncTime = syncTimes.length > 0 ? Math.max(...syncTimes) : null;
+
+    return options.holding ? [{ ...options.holding, newestSyncTime }] : [];
   }
 
   if (table === accounts) {
@@ -250,14 +252,6 @@ const resolveImportSelect = (
     return options.store.transactions.map((row) =>
       Object.fromEntries(Object.keys(fields).map((field) => [field, row[field]])),
     );
-  }
-
-  if (table === transactions && fields && 'time' in fields) {
-    const syncTimes = options.store.transactions
-      .filter((row) => row.source !== 'manual' && row.source !== 'import')
-      .map((row) => row.time);
-
-    return syncTimes.length > 0 ? [{ time: Math.max(...syncTimes) }] : [{ time: null }];
   }
 
   return [];
@@ -560,7 +554,7 @@ describe('importStatement', () => {
   // `guardedNetWorth` (the Home net-worth path) read
   // `holding.balanceMinorUnits` verbatim (`holding-value.ts` `flat()`), so
   // proving the repo's write here is the same proof for Home.
-  describe('balance write (net of genuinely new rows at/after the boundary, plus the closing-balance override)', () => {
+  describe('balance write (net of genuinely new rows after the boundary, plus the closing-balance override)', () => {
     // Ukrsibbank business CSV carries no closing balance at all (its own
     // format doc comment; see `ParsedStatement.closingBalance`), so this
     // isolates the boundary's plain net-delta arithmetic with no closing-balance
