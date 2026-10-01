@@ -109,12 +109,12 @@ describe('SharePricesScreen', () => {
     });
   });
 
-  it('states that the user brings an own EODHD key and accepts its terms', async () => {
+  it('states that the user brings an own EODHD key, what goes to EODHD, and its terms', async () => {
     const { findByText } = await renderScreen();
 
     expect(
       await findByText(
-        'Kiko gets end-of-day share prices from EODHD with your own API key. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
+        'Kiko gets end-of-day share prices from EODHD with your own API key. To do this, Kiko sends EODHD your share tickers and your searches, but never how many shares you hold or what they cost. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
       ),
     ).toBeTruthy();
   });
