@@ -1371,6 +1371,47 @@ describe('StatisticsScreen', () => {
     expect(mockRunBackfill).not.toHaveBeenCalled();
   });
 
+  // A share or metal records its purchases as lots, not transactions, so a
+  // foreign holding can exist with no ledger row anywhere.
+  describe('with holdings but no transactions', () => {
+    const backfillSpan = (): { earliestDay: number; today: number } =>
+      mockRunBackfill.mock.calls[0]?.[0] as { earliestDay: number; today: number };
+
+    it('backfills from the earliest lot day', async () => {
+      const lotDay = toUtcMidnight(now) - 40 * DAY;
+      setLiveData({
+        accounts: [BANK],
+        holdings: [
+          {
+            id: 'share',
+            accountId: BANK.id,
+            currency: 'USD',
+            type: 'share',
+            balanceMinorUnits: 0,
+            metadata: {
+              quoteSource: 'manual',
+              lots: [{ day: lotDay, quantityDelta: '10', costMinorUnits: 150_000 }],
+            },
+            closedAt: null,
+          },
+        ],
+        rates: [USD_UAH_RATE],
+      });
+
+      await renderScreen();
+
+      expect(backfillSpan().earliestDay).toBe(lotDay);
+    });
+
+    it('backfills from now when no holding has a lot', async () => {
+      setLiveData({ accounts: [BANK], holdings: [USD_HOLDING], rates: [USD_UAH_RATE] });
+
+      await renderScreen();
+
+      expect(backfillSpan().earliestDay).toBe(backfillSpan().today);
+    });
+  });
+
   it('renders a spending pie wedge per expense category, with its legend entry', async () => {
     seedSpending();
 

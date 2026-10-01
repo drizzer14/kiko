@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import { minOf } from '@kiko/numbers';
 import {
   type BackfillStatus,
   deriveLastBackfilledDay,
@@ -47,7 +48,6 @@ import FilterMenu, {
 } from '@kiko/design-system/components/filter-menu';
 import either, { bifold, isLeft } from 'fnts/either';
 import Box from '@kiko/design-system/components/box';
-import { useDataReady, useLiveQuery } from '@kiko/db';
 import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
@@ -68,6 +68,7 @@ import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { transactionSpan } from '@kiko/transactions/transaction-span';
+import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import SummaryTable from '@kiko/design-system/components/summary-table';
@@ -141,6 +142,20 @@ const groupByHolding = (
   }
 
   return byHolding;
+};
+
+// A share, metal, or property records its purchases as lots, never as ledger
+// rows, so its earliest lot bounds the span the rate history must cover too.
+const earliestLotDay = (
+  holdings: readonly Pick<HoldingRow, 'type' | 'metadata'>[],
+): number | null => {
+  const days = holdings.flatMap((holding) =>
+    (holdingDescriptorOrUndefined(holding.type)?.priced?.lots(holding.metadata) ?? []).map(
+      (lot) => lot.day,
+    ),
+  );
+
+  return days.length > 0 ? minOf(days) : null;
 };
 
 // The category-spending donut's ring is thinner than the default (a higher
@@ -335,8 +350,8 @@ const StatisticsScreen: FC = () => {
     return { visibleAccounts, filteredAccounts, visibleHoldings, netWorthHoldings };
   }, [accounts, holdings, selectedAccounts]);
 
-  // The full transaction span drives the date field's default display, the line's
-  // default window, and the backfill's earliest day. With no transactions the
+  // The full transaction and lot span drives the date field's default display,
+  // the line's default window, and the backfill's earliest day. With neither the
   // start falls back to now.
   // Earliest transaction time in ONE O(n) pass (see `transactionSpan`);
   // `Math.min(...times)` spread the whole array and overflowed the stack on a
@@ -352,7 +367,8 @@ const StatisticsScreen: FC = () => {
         : null,
     [transactions],
   );
-  const spanStart = earliestTime ?? now;
+  const lotStart = useMemo(() => earliestLotDay(holdings), [holdings]);
+  const spanStart = Math.min(earliestTime ?? now, lotStart ?? now);
 
   // The line's effective window: the picked range when set, otherwise the full
   // transaction span (earliest transaction to now). A PICKED bound is TRUE
@@ -417,7 +433,7 @@ const StatisticsScreen: FC = () => {
   );
 
   // Drive the incremental, non-blocking backfill and surface its status to the
-  // line. It runs when there is a bounded span (transactions exist) with days
+  // line. It runs when there is a bounded span (transactions or holdings exist) with days
   // still to fill, when an older-dated transaction extends the span EARLIER
   // mid-session, OR when the held currency set changes mid-session (a new
   // holding's currency the last run never covered) — `planBackfillRun` decides
@@ -477,7 +493,11 @@ const StatisticsScreen: FC = () => {
     // marks its span covered for the rest of the mount, so a run planned from
     // a cached, one-read-old resume point would stop the fresh read's own run
     // from ever starting (kiko-architecture).
-    if (transactions.length === 0 || !transactionsFresh || !historyFresh) {
+    if (
+      (transactions.length === 0 && holdings.length === 0) ||
+      !transactionsFresh ||
+      !historyFresh
+    ) {
       return;
     }
 
@@ -560,7 +580,15 @@ const StatisticsScreen: FC = () => {
       }
       setBackfillStatus(settled);
     });
-  }, [transactions.length, transactionsFresh, historyFresh, spanStart, now, historyCurrencyKey]);
+  }, [
+    transactions.length,
+    holdings.length,
+    transactionsFresh,
+    historyFresh,
+    spanStart,
+    now,
+    historyCurrencyKey,
+  ]);
 
   // Bar + pie value "now" on the current rate table; the line values each day on
   // the historical table. All three are memoized on their real inputs so they no
