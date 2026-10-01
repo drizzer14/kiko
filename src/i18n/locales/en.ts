@@ -608,7 +608,7 @@ export const en = {
       selectDestinationError: 'Select a destination account.',
       selectHolding: 'Select holding',
       split: 'Split',
-      splitInvalidError: 'Enter a payment amount and at least one valid return.',
+      splitInvalidError: 'Add at least one valid return, and keep the returns below the payment.',
       syncedNotice: 'This was synced, so only the category and loan link can be changed.',
       timeAfterBalanceSetError:
         'This transaction was saved without a description or category, so it may be an earlier balance change. Pick a date and time no later than {{dateTime}}.',

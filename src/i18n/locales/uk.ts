@@ -530,7 +530,8 @@ export const uk: typeof en = {
       selectDestinationError: 'Оберіть рахунок призначення.',
       selectHolding: 'Оберіть актив',
       split: 'Поділ',
-      splitInvalidError: 'Введіть суму платежу та щонайменше одне коректне повернення.',
+      splitInvalidError:
+        'Додайте принаймні одне коректне повернення, і нехай сума повернень буде меншою за платіж.',
       syncedNotice:
         'Цю транзакцію синхронізовано, тому можна змінити лише категорію та зв’язок із кредитом.',
       timeAfterBalanceSetError:

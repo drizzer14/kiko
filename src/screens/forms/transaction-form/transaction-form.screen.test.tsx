@@ -3384,10 +3384,12 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
     await pickCategory(utils, 'Groceries');
     await fireEvent.press(utils.getByText('Save'));
-    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+    expect(
+      utils.getByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeTruthy();
     expect(
       within(utils.getByTestId('screen-footer')).queryByText(
-        'Enter a payment amount and at least one valid return.',
+        'Add at least one valid return, and keep the returns below the payment.',
       ),
     ).toBeNull();
   });
@@ -3399,19 +3401,25 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await fireEvent.press(utils.getByText('Save'));
 
     expect(utils.getByText('Select a category.')).toBeTruthy();
-    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+    expect(
+      utils.getByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeTruthy();
 
     await pickCategory(utils, 'Groceries');
 
     expect(utils.queryByText('Select a category.')).toBeNull();
-    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+    expect(
+      utils.getByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeTruthy();
 
     await fireEvent.press(utils.getByLabelText('Return to 1'));
     await fireEvent.press(utils.getByText('Alice'));
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
 
-    expect(utils.queryByText('Enter a payment amount and at least one valid return.')).toBeNull();
+    expect(
+      utils.queryByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeNull();
   });
 
   // The split error renders under the return rows and judges every one of
@@ -3451,7 +3459,9 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(isLabelInvalid(mockFieldLabel, 'Amount')).toBe(true);
-    expect(utils.queryByText('Enter a payment amount and at least one valid return.')).toBeNull();
+    expect(
+      utils.queryByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeNull();
     expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(false);
     expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
   });
@@ -3470,7 +3480,9 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await fireEvent.press(utils.getByText('Save'));
 
     expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
-    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+    expect(
+      utils.getByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeTruthy();
     expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
     expect(isLabelInvalid(mockFieldLabel, 'Amount')).toBe(true);
     expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(true);
