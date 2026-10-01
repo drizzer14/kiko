@@ -1833,10 +1833,14 @@ lives on the LINKED bank holding instead (the `loanHoldingId`
 column). `debt` maps to `loan` alone in `holdingTypesForAccountKind`,
 and `loan` is excluded from every Exchange source/destination
 predicate in `exchange-destination.ts` (a loan is never an Exchange
-leg). Entity glyph/color: `minus.circle.fill` / `entityColorsDark.red`,
-shared between the `debt` kind and its sole `loan` type — the same
-kind-and-type icon/color reuse `property`/`property_item` and
-`metals`/`metal` already follow.
+leg). Entity color: `entityColorsDark.red`, shared between the `debt`
+kind and its sole `loan` type. Glyphs differ: the `debt` kind keeps
+`minus.circle.fill` (persisted on existing account rows; changing it
+needs a 0032-style migration), while the `loan` type is
+`arrow.down.backward.circle.fill` (iOS 14), the mirror of a loan given's
+`arrow.up.forward.circle.fill` — a saved loan holding stores a null icon,
+so the new glyph needs no migration. A debt account's footer "Add loan"
+button leads with the loan glyph (kiko-design-system's footer mapping).
 
 `LoanMeta` (`src/holdings/holding-metadata/holding-metadata.ts`):
 `kind` (`'mortgage' | 'car_loan' | 'consumer_loan' | 'personal'` —

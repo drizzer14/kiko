@@ -992,6 +992,16 @@ describe('AccountDetailScreen', () => {
         });
       });
 
+      it('leads Add loan with the loan glyph, not the generic holding one', async () => {
+        seedLoan();
+        mockButtonProps.length = 0;
+        await renderScreen();
+
+        const addLoanButton = mockButtonProps.find((props) => props.children === 'Add loan');
+
+        expect(addLoanButton?.icon).toBe('arrow.down.backward.circle.fill');
+      });
+
       it('closes it under loan wording, never "holding"', async () => {
         seedLoan();
         const { getByTestId, getByText, queryByText } = await renderScreen();

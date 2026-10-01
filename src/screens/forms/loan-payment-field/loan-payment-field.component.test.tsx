@@ -9,7 +9,7 @@ const options: HoldingSelectOption[] = [
   {
     id: 'loan-1',
     name: 'Car loan',
-    icon: 'minus.circle.fill',
+    icon: 'arrow.down.backward.circle.fill',
     color: '#AA3322',
     currency: 'UAH',
     accountName: 'Debts',

@@ -26,7 +26,6 @@ import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { holdsOnlyDebts } from '@kiko/holdings/holding-descriptor';
-import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
@@ -42,6 +41,7 @@ import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown
 import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
+import { genericEntitySymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
 
 import HoldingCard from './holding-card';
@@ -58,6 +58,10 @@ const offerMessage = (kind: ReminderKind, t: TFunction): string =>
 
 const addHoldingLabelKey = (debtAccount: boolean) =>
   debtAccount ? 'accountDetail.addLoan' : 'accountDetail.addHolding';
+
+// A debt account adds only loans, so its button leads with the loan's own glyph.
+const addHoldingSymbol = (debtAccount: boolean): string =>
+  debtAccount ? holdingTypeSymbol.loan : genericEntitySymbol.holding;
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
@@ -347,7 +351,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             variant="primary"
             fullWidth
             onPress={() => navigation.navigate('HoldingForm', { accountId, debtAccount })}
-            icon={genericEntitySymbol.holding}
+            icon={addHoldingSymbol(debtAccount)}
           >
             {t(addHoldingLabelKey(debtAccount))}
           </Button>

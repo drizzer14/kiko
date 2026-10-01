@@ -610,6 +610,9 @@ new component can land between reviews of this skill:
   from its one source (never a re-typed string; read the symbol names
   in `src/holdings/entity-symbols/entity-symbols.ts`): Add holding /
   account / category / transaction → `genericEntitySymbol.<entity>`;
+  Add loan (a debt account's footer, `holdsOnlyDebts(kind)`) →
+  `holdingTypeSymbol.loan`, since a loan is the only thing it can add
+  (account detail's `addHoldingSymbol`);
   Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
