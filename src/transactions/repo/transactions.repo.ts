@@ -567,8 +567,8 @@ const claimsSyncedTime = (unclaimed: Map<number, number[]>, { row, range }: Rang
  * one statement row. The statement rows claim in order of where their reach
  * ends, each taking the earliest unclaimed synced row in reach: that holds as
  * many rows as any pairing can, so a real unsynced row of the same amount at
- * the edge of the synced period never strands a synced one, and the file's
- * row order decides nothing.
+ * the edge of the synced period never strands a synced one. The file's row
+ * order decides only between two rows read at the same instant.
  */
 const dropRowsHeldBySync = async (
   databaseTransaction: typeof database,
@@ -586,8 +586,8 @@ const dropRowsHeldBySync = async (
     .where(
       and(
         syncSourceRowsOf(holdingId),
-        gte(transactions.time, minOf(rangedRows.map(({ range }) => range.earliest - range.window))),
-        lte(transactions.time, maxOf(rangedRows.map(({ range }) => range.latest + range.window))),
+        gte(transactions.time, minOf(rangedRows.map(({ range }) => reachStartOf(range)))),
+        lte(transactions.time, maxOf(rangedRows.map(({ range }) => reachEndOf(range)))),
       ),
     );
   const unclaimed = syncedTimesByAmount(synced);
