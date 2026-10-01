@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { logFailure } from '@kiko/diagnostics';
+import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
@@ -44,6 +46,12 @@ const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
   // One refresh for the whole fan-out (not per account), mirroring the single
   // refresh a lone sync does — `metals` and `shares` since a pull-to-refresh
   // also needs metal and share prices, unlike a single Monobank/crypto sync.
+  // The share refresh never reads `/user` itself, so a daily limit left
+  // unconfirmed is read first, at no call; a failed check must not hold the
+  // refresh back.
+  await confirmDailyLimit().catch((error: unknown) =>
+    logFailure('[sync-all] daily limit check failed', error),
+  );
   await refreshMarketData({ throttled: true, metals: true, shares: true });
   // One matcher run for the whole fan-out too — any account's sync can bring
   // in a new loan-payment debit. Never rejects (its own doc comment), so a

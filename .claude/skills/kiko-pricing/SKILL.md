@@ -886,8 +886,11 @@ exact constants (default limit, search reserve, history span).
   limit unconfirmed. It runs on each Share prices open, and BEFORE the
   post-import refresh (`import-data.ts`, fire-and-forget:
   `confirmDailyLimit().catch(log).then(refresh)`, so the import never waits
-  on the network) and the on-open auto-sync refresh (`use-auto-sync.ts`); a
-  failed check never holds the refresh back. The refresh itself never reads
+  on the network), the on-open auto-sync refresh (`use-auto-sync.ts`), the
+  pull-to-refresh refresh (`use-sync-all.ts`), and the holding form's
+  first-add refresh after a share create (`refreshMarketDataAfterCreate`,
+  `holding-form.screen.tsx`; a create of any other type refreshes no share
+  and skips the check); a failed check never holds the refresh back. The refresh itself never reads
   `/user` (R3). In `withUserLimits`, EODHD's count wins only when EODHD's day
   is today (UTC).
 - **Rejected key**: `recheckRejectedKey` (Share prices' "Check again") asks

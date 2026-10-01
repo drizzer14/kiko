@@ -172,6 +172,10 @@ const mockRefreshMarketData = jest.fn().mockResolvedValue(right(undefined));
 jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
+const mockConfirmDailyLimit = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/prices/daily-limit', () => ({
+  confirmDailyLimit: (...args: unknown[]) => mockConfirmDailyLimit(...args),
+}));
 // The loan auto-link matcher's own follow-up after a loan create/edit —
 // spied the same way, so a test can assert it fires only for `type: 'loan'`.
 const mockRunLoanAutoLink = jest.fn().mockResolvedValue(undefined);
@@ -4302,6 +4306,56 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     mockRefreshMarketData.mockClear();
     mockRefreshMarketData.mockResolvedValue(right(undefined));
     mockRunLoanAutoLink.mockClear();
+    mockConfirmDailyLimit.mockReset();
+    mockConfirmDailyLimit.mockResolvedValue(undefined);
+  });
+
+  const createShare = async (): Promise<void> => {
+    mockAccountKind = 'broker';
+    mockHasEodhdKey = true;
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Apple');
+    await screen.findByLabelText('Ticker');
+    await fill(screen, 'Ticker', 'aapl.us');
+    await fill(screen, 'Quantity', '3');
+    await fill(screen, 'Total cost', '1000');
+    await fireEvent.press(screen.getByText('Save'));
+  };
+
+  it('confirms an unconfirmed EODHD daily limit before a share create refreshes', async () => {
+    const order: string[] = [];
+    mockConfirmDailyLimit.mockImplementation(async () => {
+      order.push('confirm');
+    });
+    mockRefreshMarketData.mockImplementation(async () => {
+      order.push('refresh');
+
+      return right(undefined);
+    });
+
+    await createShare();
+
+    await waitFor(() => expect(order).toEqual(['confirm', 'refresh']));
+  });
+
+  it('still refreshes after a share create when the daily limit check fails', async () => {
+    mockConfirmDailyLimit.mockRejectedValue(new Error('settings read failed'));
+
+    await createShare();
+
+    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not check the daily limit after a create that refreshes no share', async () => {
+    mockAccountKind = 'cash';
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My cash');
+    await fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalledTimes(1));
+    expect(mockConfirmDailyLimit).not.toHaveBeenCalled();
   });
 
   it('triggers the gated rate/metal refresh after a successful create, unthrottled', async () => {

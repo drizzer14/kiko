@@ -12,12 +12,14 @@ import {
 } from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
+import { logFailure } from '@kiko/diagnostics';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import type { Currency } from '@kiko/currency/currency';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
@@ -74,6 +76,21 @@ const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
     // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runLoanAutoLink catches every failure and never rejects
     runLoanAutoLink();
   }
+};
+
+// The share refresh never reads `/user` itself, so a share create reads a
+// daily limit left unconfirmed first, at no call; a failed check must not hold
+// the refresh back.
+const refreshMarketDataAfterCreate = async (type: HoldingType): Promise<void> => {
+  const shares = type === 'share';
+
+  if (shares) {
+    await confirmDailyLimit().catch((error: unknown) =>
+      logFailure('[holding-form] daily limit check failed', error),
+    );
+  }
+
+  await refreshMarketData({ throttled: false, metals: true, shares });
 };
 
 // The loan form's "Paid from" picker options: every OPEN, non-ledgerless
@@ -541,8 +558,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // background nicety, not a save precondition — Save must not sit on
       // the network before navigating back; only fire the refresh after the
       // write commits.
-      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects; see the comment above
-      refreshMarketData({ throttled: false, metals: true, shares: type === 'share' });
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the limit check's failure is caught and refreshMarketData never rejects; see the comment above
+      refreshMarketDataAfterCreate(type);
       // A freshly created loan can already have past ledger history worth
       // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).
       runLoanAutoLinkIfLoan(type);
