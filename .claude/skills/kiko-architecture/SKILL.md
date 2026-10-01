@@ -2019,9 +2019,15 @@ what a change must keep.
   no offer on holding detail (user decision Q9).
 - **Planner.** `planReminder` / `planAllReminders`
   (`src/reminders/planner/`) are pure; the rules are in
-  `plan-reminder.ts`'s header. The ignored count starts at the latest
-  of `activeSince`, `deliverableSince`, `lastEngagedAt` and
-  `lastDataAt`; `lastSnoozedAt` frees the regular occurrence at the
+  `plan-reminder.ts`'s header. Smart skip: an occurrence is skipped
+  when `lastDataAt`'s local day is after the local day of the
+  schedule's previous occurrence (`occurrenceAtOrBefore` one minute
+  before it, skipped or not, from before the reminder existed too;
+  `activeSince` plays no part); with no previous occurrence (an
+  every-N-days schedule's first) only data on its own day skips it. A
+  daily reminder so skips only for same-day data. The ignored count
+  starts at the latest of `activeSince`, `deliverableSince`,
+  `lastEngagedAt` and `lastDataAt`; `lastSnoozedAt` frees the regular occurrence at the
   snooze minute. The sync passes `lastSnoozedAt: null` once data
   arrived at or after the snooze.
 - **Scheduler.** `src/reminders/scheduler/sync-reminders.ts` has two

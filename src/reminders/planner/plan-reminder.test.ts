@@ -48,7 +48,7 @@ describe('planReminder — smart skip', () => {
     weekdays: [1, 4],
   };
 
-  it('fires Thursday after data on Tuesday, since only data on its own day skips it', () => {
+  it('skips Thursday after data on Tuesday, a day after Monday’s fire', () => {
     const { requests } = planReminder(
       input({
         schedule: mondayAndThursday,
@@ -59,11 +59,24 @@ describe('planReminder — smart skip', () => {
     );
 
     expect(firesOf(requests)).toEqual([
-      { fireAt: at(2026, 10, 1, 9, 0), variant: 'reminder' },
       { fireAt: at(2026, 10, 5, 9, 0), variant: 'reminder' },
       { fireAt: at(2026, 10, 8, 9, 0), variant: 'reminder' },
-      { fireAt: at(2026, 10, 12, 9, 0), variant: 'pausedNotice' },
+      { fireAt: at(2026, 10, 12, 9, 0), variant: 'reminder' },
+      { fireAt: at(2026, 10, 15, 9, 0), variant: 'pausedNotice' },
     ]);
+  });
+
+  it('fires Thursday after data on Monday, the day of the previous fire', () => {
+    const { requests } = planReminder(
+      input({
+        schedule: mondayAndThursday,
+        activeSince: local(2026, 9, 28, 8),
+        lastDataAt: local(2026, 9, 28, 10),
+        now: local(2026, 9, 28, 11),
+      }),
+    );
+
+    expect(requests[0]?.fireAt).toEqual(at(2026, 10, 1, 9, 0));
   });
 
   it('skips tonight for data added earlier today, before the reminder existed', () => {
@@ -248,7 +261,8 @@ describe('planReminder — request fields', () => {
       }),
     );
 
-    expect(requests.map(({ daysSinceData }) => daysSinceData)).toEqual([6, 37, 67, 98]);
+    // The data came after Sep 1's fire day, so Oct 1 is skipped.
+    expect(requests.map(({ daysSinceData }) => daysSinceData)).toEqual([37, 67, 98, 129]);
   });
 
   it('gives an import reminder with no data a null day count', () => {

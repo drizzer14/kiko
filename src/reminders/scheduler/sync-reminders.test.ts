@@ -553,9 +553,9 @@ describe('syncReminders — notification permission', () => {
 });
 
 // Fire N is Oct 1 at 20:00 and fire N+1 is Oct 2 at 20:00, unless a row says
-// otherwise. A fire is skipped only for data added on its own local day before
-// it fires, so an entry made in answer to fire N never silences fire N+1: a
-// user who answers every evening is still reminded every evening.
+// otherwise. A fire is skipped only for data added after fire N's local day
+// and before it fires, so an entry made in answer to fire N never silences
+// fire N+1: a user who answers every evening is still reminded every evening.
 describe('syncReminders — the smart-skip scenario matrix', () => {
   type Entry = { at: number; later?: 'deleted' | 'edited' };
 
@@ -581,6 +581,19 @@ describe('syncReminders — the smart-skip scenario matrix', () => {
     frequency: 'weekly',
     minuteOfDay: 9 * 60,
     weekdays: [1, 4],
+  };
+
+  const MONTHLY_ON_THE_FIRST: ReminderSchedule = {
+    frequency: 'monthly',
+    minuteOfDay: 19 * 60,
+    dayOfMonth: 1,
+  };
+
+  const EVERY_THREE_DAYS_FROM_OCTOBER_2: ReminderSchedule = {
+    frequency: 'interval',
+    minuteOfDay: 20 * 60,
+    everyDays: 3,
+    anchorDay: { year: 2026, month: 10, day: 2 },
   };
 
   it.each<Scenario>([
@@ -714,12 +727,50 @@ describe('syncReminders — the smart-skip scenario matrix', () => {
       firstFire: '3-28 3:30',
     },
     {
-      scenario: 'weekly on Monday and Thursday, an entry on Tuesday: Thursday fires',
+      scenario: 'weekly on Monday and Thursday, an entry on Tuesday: Thursday is skipped',
       schedule: MONDAY_AND_THURSDAY,
       createdAt: local(9, 28, 8),
       entries: [{ at: local(9, 29, 12) }],
       now: local(9, 30, 10),
+      firstFire: '10-5 9:0',
+    },
+    {
+      scenario: 'weekly on Monday and Thursday, an entry on Monday after its fire: Thursday fires',
+      schedule: MONDAY_AND_THURSDAY,
+      createdAt: local(9, 28, 8),
+      entries: [{ at: local(9, 28, 10) }],
+      now: local(9, 28, 11),
       firstFire: '10-1 9:0',
+    },
+    {
+      scenario: 'monthly on the 1st, an entry on the 28th: the 1st is skipped',
+      schedule: MONTHLY_ON_THE_FIRST,
+      createdAt: local(9, 20, 10),
+      entries: [{ at: local(9, 28, 12) }],
+      now: local(9, 28, 13),
+      firstFire: '11-1 19:0',
+    },
+    {
+      scenario: 'monthly on the 1st, an entry on the 1st after its fire: next month fires',
+      schedule: MONTHLY_ON_THE_FIRST,
+      createdAt: local(9, 20, 10),
+      entries: [{ at: local(10, 1, 19, 30) }],
+      now: local(10, 1, 21),
+      firstFire: '11-1 19:0',
+    },
+    {
+      scenario: 'every 3 days, an entry on the first fire’s day: the first fire is skipped',
+      schedule: EVERY_THREE_DAYS_FROM_OCTOBER_2,
+      entries: [{ at: local(10, 2, 10) }],
+      now: local(10, 2, 12),
+      firstFire: '10-5 20:0',
+    },
+    {
+      scenario: 'every 3 days, an entry the day before the first fire: it fires',
+      schedule: EVERY_THREE_DAYS_FROM_OCTOBER_2,
+      entries: [{ at: local(10, 1, 18) }],
+      now: local(10, 1, 19),
+      firstFire: '10-2 20:0',
     },
     {
       scenario: 'weekly on Monday and Thursday, an entry on Thursday before 09:00: it is skipped',
