@@ -1,6 +1,7 @@
+import { DAY_MS } from '@kiko/dates';
+
 import type { UserLimits } from '../eodhd';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 // The free EODHD plan, until the key's own limit is read on save.
 const DEFAULT_DAILY_LIMIT = 20;
 // A share search is the user waiting on a sheet; a refresh can wait a day.

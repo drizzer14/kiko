@@ -528,12 +528,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         await holdingsRepo.setIcon(newHoldingId, icon);
       }
 
-      // The FIRST metal, foreign-currency, or crypto holding needs its
+      // The FIRST metal, share, foreign-currency, or crypto holding needs its
       // price/rate visible without an app restart — trigger the SAME gated
       // refresh app-open runs, unthrottled (a manual create is a deliberate
-      // user action, not a background poll). Both steps gate themselves on
+      // user action, not a background poll). Every step gates itself on
       // data presence (kiko-architecture), so this is a no-op for a
-      // type/currency that needs neither. `refreshMarketData` never rejects
+      // type/currency that needs none of them; the share step runs only for
+      // a new share, since it spends the user's own EODHD calls. `refreshMarketData` never rejects
       // and logs its own failure, so it never turns a successful create into
       // a shown error. Fire-and-forget (not awaited): the refresh is a
       // background nicety, not a save precondition — Save must not sit on

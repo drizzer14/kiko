@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
 import { minOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -30,7 +31,6 @@ import {
   type ShareRefreshResult,
 } from './share-refresh-write';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 // The free EODHD plan's history reaches one year back.
 const HISTORY_DAYS = 365;
 // Indexed by UTC weekday, Sunday first: how far back the last weekday's close is.

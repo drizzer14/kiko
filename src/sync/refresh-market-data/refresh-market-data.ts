@@ -96,16 +96,16 @@ const shareFailures = (settled: PromiseSettledResult<ShareRefreshStatus>): Refre
 /**
  * The single entry point every sync surface (`useSync`, `useSyncAll`,
  * `useAutoSync`) and every fire-and-forget "first add" trigger
- * (`holding-form.screen.tsx`, `import-data.ts`) now calls instead of a raw
- * `Promise.allSettled([refreshRates(...), refreshMetalPrices()])`. Never
- * rejects — every step runs under `Promise.allSettled`, so a rejected
- * promise (or `refreshRates`'s own `'failed'`/`'partial'` outcome) is
+ * (`holding-form.screen.tsx`, `import-data.ts`) calls to refresh rates,
+ * metal prices, and share prices. Never rejects — every step runs under
+ * `Promise.allSettled`, so a rejected promise (or `refreshRates`'s own
+ * `'failed'`/`'partial'` outcome, or a `'failed'` share refresh) is
  * collected as a `RefreshFailure`, logged (a rejection through
  * `warnRefreshFailure`, an outcome with its state and failed legs in the
  * tag), and returned as a `Left`; a fully successful run (or a `'skipped'`/`'refreshed'`
- * rates outcome with no metals failure) returns a `Right`.
+ * rates outcome with no metals or shares failure) returns a `Right`.
  *
- * `throttled` reads `ratesRepo.latestFetchedAt()` FIRST, before either step
+ * `throttled` reads `ratesRepo.latestFetchedAt()` FIRST, before any step
  * runs — a failed read is itself collected and logged as a `'rates'`
  * failure, and the refresh then proceeds UNTHROTTLED (`lastRefreshAt: null`)
  * rather than let a broken cursor read silently suppress a refresh the user
