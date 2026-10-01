@@ -8,7 +8,7 @@ import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sq
 import { monobankFixtureInput } from '@kiko/statement-import/formats/format-test-fixtures';
 
 import { mapParsedTransaction } from '../mapping';
-import { parseDateWithFormat } from '../column-mapping';
+import { readDateWithFormat } from '../column-mapping';
 
 import { rezoneImportTimesIn } from './rezone-import-times';
 import { rezoneImportTime } from './plan-import-time-rezone';
@@ -175,7 +175,7 @@ describe('rezoneImportTimesIn (real SQLite)', () => {
     // Column mapping's own reading of the same raw digits must land on the
     // (time, externalId) pair the rezone just wrote, so the re-import dedups.
     const columnMappedSeconds = (raw: string): number =>
-      parseDateWithFormat(raw, 'DD.MM.YYYY HH:MM:SS', KYIV_ZONE_RULE) ?? Number.NaN;
+      readDateWithFormat(raw, 'DD.MM.YYYY HH:MM:SS', KYIV_ZONE_RULE)?.timeSeconds ?? Number.NaN;
     const reimportedFirst = mapParsedTransaction(
       {
         ...dedicatedMonobank.transactions[0],

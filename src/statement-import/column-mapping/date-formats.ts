@@ -215,9 +215,3 @@ export const readDateWithFormat = (
     timeReading: timeReadingOf[preset.clockOf(found)](parts, zone),
   }));
 };
-
-export const parseDateWithFormat = (
-  raw: TableCell,
-  id: DateFormatId,
-  zone: ZoneRule,
-): number | undefined => readDateWithFormat(raw, id, zone)?.timeSeconds;
