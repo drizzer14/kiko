@@ -412,7 +412,8 @@ export const uk: typeof en = {
       shareFindEmpty: 'Нічого не знайдено.',
       shareFindPlaceholder: 'US0378331005',
       shareFindQuery: 'ISIN або тікер',
-      shareFindQuotaExhausted: 'Сьогоднішні запити EODHD вичерпано. Спробуйте завтра.',
+      shareFindQuotaExhausted:
+        'Сьогоднішні запити EODHD вичерпано. Пошук знову запрацює після опівночі за GMT.',
       shareFindSheetTitle: 'Пошук акції',
       shareFindSubmit: 'Шукати',
       shareFindUnavailable: 'Пошук недоступний. Введіть тікер вручну.',

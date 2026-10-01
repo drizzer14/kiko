@@ -473,7 +473,8 @@ export const en = {
       shareFindEmpty: 'Nothing found.',
       shareFindPlaceholder: 'US0378331005',
       shareFindQuery: 'ISIN or ticker',
-      shareFindQuotaExhausted: 'Today’s EODHD requests are used up. Try again tomorrow.',
+      shareFindQuotaExhausted:
+        'Today’s EODHD requests are used up. Search works again after midnight GMT.',
       shareFindSheetTitle: 'Find Share',
       shareFindSubmit: 'Search',
       shareFindUnavailable: 'Search is unavailable. Enter the ticker yourself.',

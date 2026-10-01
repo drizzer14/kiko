@@ -20,7 +20,7 @@ export type ShareSectionProps = {
   // The search sheet's query field can focus while it is open; the hosting
   // Screen turns its own keyboard inset handling off meanwhile (see
   // `CurrencyField`'s `onOpenChange`).
-  onSearchOpenChange?: (isOpen: boolean) => void;
+  onSearchOpenChange: (isOpen: boolean) => void;
   isin: string;
   onChangeIsin: (text: string) => void;
   isinError?: string;

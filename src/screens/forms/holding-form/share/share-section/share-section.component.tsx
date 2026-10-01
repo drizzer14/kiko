@@ -61,7 +61,7 @@ const ShareSection: FC<ShareSectionProps> = ({
 
   const updateSearchOpen = (isOpen: boolean): void => {
     setIsSearchOpen(isOpen);
-    onSearchOpenChange?.(isOpen);
+    onSearchOpenChange(isOpen);
   };
 
   return (

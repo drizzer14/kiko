@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import type { ShareListing, ShareSearchResult } from '@kiko/prices/share-search';
 
 import '@kiko/design-system/unistyles';
@@ -7,8 +7,28 @@ import '@kiko/i18n/init';
 import ShareSearchSheet from './share-search-sheet.component';
 import type { ShareSearchSheetProps } from './share-search-sheet.props';
 
+// The Search button's own onPress, so a test can press it twice inside one
+// act, before any re-render could disable it.
+let mockSearchPress: () => void = () => undefined;
+jest.mock('@kiko/design-system/components/button', () => {
+  const { createElement } = jest.requireActual('react');
+  const { default: Button } = jest.requireActual('@kiko/design-system/components/button');
+
+  return {
+    __esModule: true,
+    default: (props: { testID?: string; onPress: () => void }) => {
+      if (props.testID === 'share-search-submit') {
+        mockSearchPress = props.onPress;
+      }
+
+      return createElement(Button, props);
+    },
+  };
+});
+
 const UNAVAILABLE = 'Search is unavailable. Enter the ticker yourself.';
-const QUOTA_EXHAUSTED = 'Today’s EODHD requests are used up. Try again tomorrow.';
+const QUOTA_EXHAUSTED =
+  'Today’s EODHD requests are used up. Search works again after midnight GMT.';
 
 const vodafone: ShareListing = {
   symbol: 'VOD.LSE',
@@ -68,6 +88,29 @@ describe('ShareSearchSheet', () => {
 
     expect(search).toHaveBeenCalledTimes(1);
     expect(search).toHaveBeenCalledWith('VOD');
+  });
+
+  it('asks once for two presses of Search in one tick', async () => {
+    let resolveSearch: (result: ShareSearchResult) => void = () => undefined;
+    const search = jest.fn(
+      () =>
+        new Promise<ShareSearchResult>((resolve) => {
+          resolveSearch = resolve;
+        }),
+    );
+    const screen = await renderSheet({ search });
+
+    await fireEvent.changeText(screen.getByLabelText('ISIN or ticker'), 'VOD');
+    await act(async () => {
+      mockSearchPress();
+      mockSearchPress();
+    });
+
+    expect(search).toHaveBeenCalledTimes(1);
+
+    resolveSearch({ status: 'ok', listings: [vodafone] });
+
+    expect(await screen.findByText('Vodafone Group PLC')).toBeTruthy();
   });
 
   it('asks nothing for a blank query', async () => {
@@ -166,12 +209,13 @@ describe('ShareSearchSheet', () => {
     const screen = await renderSheet({ search });
 
     await fireEvent.changeText(screen.getByLabelText('ISIN or ticker'), 'VOD');
-    const pressing = fireEvent.press(screen.getByText('Search'));
+    await fireEvent.press(screen.getByText('Search'));
     await screen.rerender(
       <ShareSearchSheet visible={false} onDismiss={jest.fn()} search={search} onPick={jest.fn()} />,
     );
-    resolveSearch({ status: 'ok', listings: [vodafone] });
-    await pressing;
+    await act(async () => {
+      resolveSearch({ status: 'ok', listings: [vodafone] });
+    });
     await screen.rerender(
       <ShareSearchSheet visible onDismiss={jest.fn()} search={search} onPick={jest.fn()} />,
     );

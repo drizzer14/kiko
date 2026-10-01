@@ -27,6 +27,7 @@ const baseProps = {
   onChangePurchaseDate: jest.fn(),
   onSearch: jest.fn().mockResolvedValue({ status: 'ok', listings: [] }),
   onPickListing: jest.fn(),
+  onSearchOpenChange: jest.fn(),
 };
 
 describe('ShareSection search', () => {

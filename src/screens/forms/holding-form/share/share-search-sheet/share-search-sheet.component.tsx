@@ -5,6 +5,7 @@ import Text from '@kiko/design-system/components/text';
 import Button from '@kiko/design-system/components/button';
 import { type FC, useEffect, useRef, useState } from 'react';
 import TextField from '@kiko/design-system/components/text-field';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import SelectableRow from '@kiko/design-system/components/selectable-row';
 import type { ShareListing, ShareSearchResult } from '@kiko/prices/share-search';
@@ -19,7 +20,6 @@ type MessageKey =
 
 type SearchPhase =
   | { kind: 'idle' }
-  | { kind: 'searching' }
   | { kind: 'found'; listings: ShareListing[] }
   | { kind: 'message'; key: MessageKey };
 
@@ -62,7 +62,7 @@ const ShareSearchSheet: FC<ShareSearchSheetProps> = ({ visible, onDismiss, searc
     }
   }, [visible]);
 
-  const handleSearch = async (): Promise<void> => {
+  const runSearch = async (): Promise<void> => {
     const trimmed = query.trim();
 
     if (trimmed === '') {
@@ -73,15 +73,16 @@ const ShareSearchSheet: FC<ShareSearchSheetProps> = ({ visible, onDismiss, searc
     latestRequest.current += 1;
 
     const request = latestRequest.current;
-
-    setPhase({ kind: 'searching' });
-
     const result = await search(trimmed).catch((): ShareSearchResult => ({ status: 'failed' }));
 
     if (request === latestRequest.current) {
       setPhase(phaseOf(result));
     }
   };
+
+  // Every search spends one of the user's daily EODHD calls, so a double tap
+  // must not start a second one.
+  const { onPress: handleSearch, isSubmitting: isSearching } = useSubmitOnce(runSearch);
 
   const handlePick = (listing: ShareListing): void => {
     Keyboard.dismiss();
@@ -114,11 +115,7 @@ const ShareSearchSheet: FC<ShareSearchSheetProps> = ({ visible, onDismiss, searc
         autoCorrect={false}
       />
 
-      <Button
-        onPress={handleSearch}
-        loading={phase.kind === 'searching'}
-        testID="share-search-submit"
-      >
+      <Button onPress={handleSearch} loading={isSearching} testID="share-search-submit">
         {t('forms.holding.shareFindSubmit')}
       </Button>
 
@@ -156,7 +153,8 @@ const ShareSearchSheet: FC<ShareSearchSheetProps> = ({ visible, onDismiss, searc
             testID="share-search-results"
           />
         ))
-        .otherwise(() => null)}
+        .with({ kind: 'idle' }, () => null)
+        .exhaustive()}
     </BottomSheet>
   );
 };
