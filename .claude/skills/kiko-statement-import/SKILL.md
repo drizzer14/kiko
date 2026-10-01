@@ -185,7 +185,11 @@ same occurrence index; `importParsedStatement` passes it to
 `importRows` drops every row whose alias a stored row of the same
 `source` already holds, before the dedup partition and the upsert. That
 stored row IS the row: nothing is inserted, nothing is added to the
-balance, and it keeps its own 12:00 time and key. No migration; every
+balance, and it keeps its own 12:00 time and key. The closing-balance
+path counts that stored row by the incoming row's real time: a stored
+noon row whose real `00:00:00` is at or before the closing as-of is not
+part of the post-closing net (`aliasedNetBeforeClosing` in
+`transactions.repo.ts`). No migration; every
 other key stays byte-identical. The rule is Kyiv-only on purpose: every
 stored noon key was written in Kyiv time.
 
@@ -274,11 +278,6 @@ is back. Read the file's header for the rest of its limits.
 - The noon alias also matches a genuine stored `12:00:00` row with the
   same amount and description on the same Kyiv day: the `00:00:00` row
   is then taken to be that row and skipped.
-- A closing-balance import whose as-of instant falls between a real
-  `00:00:00` row and the Kyiv noon the ledger stores it at (the newest
-  row is that midnight row, or a row before noon on that day) counts the
-  stored noon row as after the closing balance, so the holding's balance
-  is off by that row's amount. The alias skip leaves this unchanged.
 - ProCredit business rows stamped `00:00:00` (a value date) show the
   previous calendar day on a device west of Kyiv.
 - Unverified on device: a column-mapped row in Kyiv's autumn repeated hour

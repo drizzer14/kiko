@@ -221,9 +221,11 @@ type ImportTransactionOptions = {
 
 /** The rows one fake `select(fields).from(table).where(...)` resolves to,
  * dispatched by table identity — and, for the two no-`.limit()` `transactions`
- * reads (the sync-boundary aggregate vs. the dedup partition probe), by the
- * PROJECTED field set (`{ time }` vs `{ source, externalId }`), since both
- * share the same table identity. The "time" read mirrors the REAL query's
+ * reads (the sync-boundary aggregate vs. a conflict-key probe), by the
+ * PROJECTED field set (`{ time }` vs one that carries `externalId`, answered
+ * with every stored row's own projected columns), since both share the same
+ * table identity. The post-closing `{ net }` sum answers empty, so it reads
+ * 0. The "time" read mirrors the REAL query's
  * own sync-source filter (`source NOT IN ('manual', 'import')`) — the
  * hand-set boundary source comes back separately, straight off
  * `opts.holding.balanceSetAt`. */
@@ -244,6 +246,12 @@ const resolveImportSelect = (
     return options.account ? [options.account] : [];
   }
 
+  if (table === transactions && fields && 'externalId' in fields) {
+    return options.store.transactions.map((row) =>
+      Object.fromEntries(Object.keys(fields).map((field) => [field, row[field]])),
+    );
+  }
+
   if (table === transactions && fields && 'time' in fields) {
     const syncTimes = options.store.transactions
       .filter((row) => row.source !== 'manual' && row.source !== 'import')
@@ -252,10 +260,7 @@ const resolveImportSelect = (
     return syncTimes.length > 0 ? [{ time: Math.max(...syncTimes) }] : [{ time: null }];
   }
 
-  return options.store.transactions.map((row) => ({
-    source: row.source,
-    externalId: row.externalId,
-  }));
+  return [];
 };
 
 const makeImportDatabaseTransaction = (

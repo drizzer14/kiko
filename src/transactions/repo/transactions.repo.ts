@@ -12,6 +12,20 @@ import {
   chunkForTable,
   chunkRows,
 } from '@kiko/db';
+import {
+  type SQL,
+  and,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  sql,
+} from 'drizzle-orm';
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
@@ -21,7 +35,6 @@ import type { DepositContribution } from '@kiko/holdings/holding-metadata';
 import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 
 import { normalizeTransactionName } from '../normalize-name';
 
@@ -201,24 +214,25 @@ const dedupByConflictKey = (inputs: NewTransaction[]): NewTransaction[] => {
 // a table's column count, which a plain scalar list has none of.
 const IN_CLAUSE_CHUNK_SIZE = 32_000;
 
-/** Every `conflictKeyOf` value among `inputs` that a stored row already
- * holds, read inside the caller's own transaction. */
-const readStoredConflictKeys = async (
-  databaseTransaction: typeof database,
+/** Every stored row whose `conflictKeyOf` value is among `inputs`, read by
+ * `readChunk` (one call per chunk) inside the caller's own transaction. */
+const readStoredConflictRows = async <Row>(
   inputs: Pick<NewTransaction, 'source' | 'externalId'>[],
-): Promise<Set<string>> => {
-  const known = new Set<string>();
+  readChunk: (where: SQL | undefined) => Promise<Row[]>,
+): Promise<Row[]> => {
   const externalIds = inputs
     .map((input) => input.externalId)
     .filter((externalId): externalId is string => Boolean(externalId));
 
   if (externalIds.length === 0) {
-    return known;
+    return [];
   }
 
   const sources = Array.from(
     new Set(inputs.filter((input) => Boolean(input.externalId)).map((input) => input.source)),
   );
+  const stored: Row[] = [];
+
   // BOTH halves of the unique key are constrained, so SQLite SEARCHes
   // `transactions_source_external` on its leading `source` column; an
   // `external_id`-only predicate cannot use that index and SCANs it instead
@@ -226,22 +240,33 @@ const readStoredConflictKeys = async (
   // sync or statement import can carry tens of thousands) — see
   // `IN_CLAUSE_CHUNK_SIZE` above.
   for (const externalIdChunk of chunkRows(externalIds, IN_CLAUSE_CHUNK_SIZE)) {
-    const existing = await databaseTransaction
-      .select({ source: transactions.source, externalId: transactions.externalId })
-      .from(transactions)
-      .where(
+    stored.push(
+      ...(await readChunk(
         and(
           inArray(transactions.source, sources),
           inArray(transactions.externalId, externalIdChunk),
         ),
-      );
-
-    for (const row of existing) {
-      known.add(`${row.source}:${row.externalId}`);
-    }
+      )),
+    );
   }
 
-  return known;
+  return stored;
+};
+
+/** Every `conflictKeyOf` value among `inputs` that a stored row already
+ * holds, read inside the caller's own transaction. */
+const readStoredConflictKeys = async (
+  databaseTransaction: typeof database,
+  inputs: Pick<NewTransaction, 'source' | 'externalId'>[],
+): Promise<Set<string>> => {
+  const stored = await readStoredConflictRows(inputs, (where) =>
+    databaseTransaction
+      .select({ source: transactions.source, externalId: transactions.externalId })
+      .from(transactions)
+      .where(where),
+  );
+
+  return new Set(stored.map((row) => `${row.source}:${row.externalId}`));
 };
 
 /**
@@ -270,24 +295,61 @@ const partitionNewRows = async (
  * the same row under (`noonAliasDedupKey` in statement-import's mapping). */
 type ImportRow = NewTransaction & { aliasExternalId?: string };
 
+/** A row the ledger already holds under its alias: its real `time`, and the
+ * time and amount the ledger stores it with. */
+type AliasedRow = { time: number; storedTime: number; amountMinorUnits: number };
+
 /**
  * `rows` without every row the ledger already holds under its
  * `aliasExternalId`: that stored row IS this row, so it is neither inserted
  * nor counted toward the balance, and it keeps its own stored time and key.
+ * `aliased` lists those stored rows.
  */
 const dropRowsStoredUnderAlias = async (
   databaseTransaction: typeof database,
   rows: ImportRow[],
-): Promise<NewTransaction[]> => {
+): Promise<{ rows: NewTransaction[]; aliased: AliasedRow[] }> => {
   const aliases = rows.flatMap(({ source, aliasExternalId }) =>
     aliasExternalId ? [{ source, externalId: aliasExternalId }] : [],
   );
-  const known = await readStoredConflictKeys(databaseTransaction, aliases);
+  const stored = await readStoredConflictRows(aliases, (where) =>
+    databaseTransaction
+      .select({
+        source: transactions.source,
+        externalId: transactions.externalId,
+        time: transactions.time,
+        amountMinorUnits: transactions.amountMinorUnits,
+      })
+      .from(transactions)
+      .where(where),
+  );
+  const storedByKey = new Map(stored.map((row) => [`${row.source}:${row.externalId}`, row]));
+  const storedFor = ({ source, aliasExternalId }: ImportRow) =>
+    storedByKey.get(`${source}:${aliasExternalId}`);
 
-  return rows
-    .filter(({ source, aliasExternalId }) => !known.has(`${source}:${aliasExternalId}`))
-    .map(({ aliasExternalId: _storedAlias, ...row }) => row);
+  return {
+    rows: rows
+      .filter((row) => storedFor(row) === undefined)
+      .map(({ aliasExternalId: _storedAlias, ...row }) => row),
+    aliased: rows.flatMap(
+      (row) =>
+        foldMap(maybe(storedFor(row)), (storedRow) => [
+          {
+            time: row.time,
+            storedTime: storedRow.time,
+            amountMinorUnits: storedRow.amountMinorUnits,
+          },
+        ]) ?? [],
+    ),
+  };
 };
+
+/** The net of the `aliased` rows the post-closing read counted by their
+ * stored time although their real time is at or before the closing as-of. */
+const aliasedNetBeforeClosing = (aliased: AliasedRow[], asOfMilliseconds: number): number =>
+  aliased
+    .filter(({ time, storedTime }) => storedTime > asOfMilliseconds && time <= asOfMilliseconds)
+    .reduce((sum, row) => sum + row.amountMinorUnits, 0);
 
 // Every bank-owned column `insertDedupRowsDatabaseTransaction`'s upsert
 // refreshes on conflict — ONE list. `bankOwnedTransactionSet` (which column
@@ -1208,7 +1270,9 @@ export const transactionsRepo = {
    * statement, e.g. importing September's closing balance after an October
    * manual row already exists — without them, September's own closing
    * figure would silently overwrite October's already-recorded row. A
-   * statement OLDER than the boundary falls back to
+   * stored row an incoming row matched by its `aliasExternalId` counts by
+   * the incoming row's real `time`, not by the noon the ledger stores it at.
+   * A statement OLDER than the boundary falls back to
    * the net-delta rule instead (where its own rows are, by construction,
    * all history and add 0 too), so an out-of-order re-import can never
    * regress the balance to a stale closing figure.
@@ -1332,18 +1396,21 @@ export const transactionsRepo = {
       // already logged for the same real-world transaction as an
       // after-asOf statement row is counted here too — the same
       // double-count risk the net-delta path already carries.
+      const { rows, aliased } = await dropRowsStoredUnderAlias(databaseTransaction, input.rows);
       let existingPostClosingNetMinorUnits = 0;
 
       if (!synced && input.closingBalance !== undefined) {
+        const asOfMilliseconds = input.closingBalance.asOfSeconds * 1000;
         const existingPostClosingRows = await databaseTransaction
           .select({ net: sql<number | null>`sum(${transactions.amountMinorUnits})` })
           .from(transactions)
-          .where(postClosingRowsWhere(input.holdingId, input.closingBalance.asOfSeconds * 1000));
+          .where(postClosingRowsWhere(input.holdingId, asOfMilliseconds));
 
-        existingPostClosingNetMinorUnits = existingPostClosingRows.at(0)?.net ?? 0;
+        existingPostClosingNetMinorUnits =
+          (existingPostClosingRows.at(0)?.net ?? 0) -
+          aliasedNetBeforeClosing(aliased, asOfMilliseconds);
       }
 
-      const rows = await dropRowsStoredUnderAlias(databaseTransaction, input.rows);
       const newRows = await insertDedupRowsDatabaseTransaction(databaseTransaction, rows);
 
       if (synced) {
