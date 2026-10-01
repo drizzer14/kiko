@@ -576,7 +576,10 @@ each lot into a `DerivedEntry`. Always reuse it for a new lot-priced
 type; never copy the mapping. It reuses the
 `'purchase'`/`'sale'` `DerivedEntryKind`s previously bond-only (a buy lot →
 `'purchase'`, a sell lot → `'sale'`) — do not assume those kinds mean "bond"
-when reading that file.
+when reading that file. Its label is "Sale" for a sell; with `canSplit`
+(the `share` descriptor passes it, a metal never splits) a buy at exactly 0
+cost reads "Split" (`holdingDetail.split`, a stock split), every other buy
+"Purchase".
 
 ## Creating and clearing a priced holding's price series
 
