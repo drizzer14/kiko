@@ -2,7 +2,7 @@ import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
-import type { TableCell } from '@kiko/statement-import/column-mapping';
+import { readTableRows, type TableCell } from '@kiko/statement-import/column-mapping';
 
 import RawPreview from './raw-preview.component';
 
@@ -23,6 +23,21 @@ describe('RawPreview', () => {
     expect(getByText('Date')).toBeTruthy();
     expect(getByText('Coffee')).toBeTruthy();
     expect(getByText('5000')).toBeTruthy();
+  });
+
+  it('shows a date-only spreadsheet Date cell as its date, with no time', async () => {
+    const { rows: sheetRows } = readTableRows({
+      text: '',
+      fileName: 'sample.xlsx',
+      sheetRows: [['Date'], [new Date(Date.UTC(2025, 6, 2))]],
+    });
+
+    const { getByText, queryByText } = await render(
+      <RawPreview rows={sheetRows} headerRowIndex={0} onSelectHeaderRow={jest.fn()} />,
+    );
+
+    expect(getByText('2025-07-02')).toBeTruthy();
+    expect(queryByText('2025-07-02 12:00:00')).toBeNull();
   });
 
   it('caps the preview at the first 5 rows', async () => {

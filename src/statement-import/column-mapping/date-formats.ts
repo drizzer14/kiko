@@ -91,16 +91,21 @@ const presets: Record<DateFormatId, DatePreset> = {
       second: 0,
     }),
   },
+  // The time is optional: a date-only spreadsheet Date cell reaches this
+  // preset as plain `YYYY-MM-DD` (`table-rows.ts`).
   'YYYY-MM-DD HH:MM:SS': {
-    pattern: /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/,
-    toParts: ([, year, month, day, hour, minute, second]) => ({
-      year: Number(year),
-      month: Number(month),
-      day: Number(day),
-      hour: Number(hour),
-      minute: Number(minute),
-      second: Number(second),
-    }),
+    pattern: /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}):(\d{2}))?$/,
+    toParts: ([, year, month, day, hour, minute, second]) =>
+      hour === undefined
+        ? dateOnlyParts(year, month, day)
+        : {
+            year: Number(year),
+            month: Number(month),
+            day: Number(day),
+            hour: Number(hour),
+            minute: Number(minute),
+            second: Number(second),
+          },
   },
   'YYYY-MM-DD': {
     pattern: /^(\d{4})-(\d{2})-(\d{2})$/,

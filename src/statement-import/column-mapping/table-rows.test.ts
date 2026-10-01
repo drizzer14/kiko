@@ -76,9 +76,8 @@ describe('readTableRows (sheetRows)', () => {
     expect(result.rows).toEqual([['2025-07-02 09:05:03']]);
   });
 
-  // A spreadsheet Date cell with no time part arrives as exact UTC midnight;
-  // it is date-only, so it reads as noon like a date-only preset does.
-  it('reads a Date cell with no time part as noon', () => {
+  // A spreadsheet Date cell with no time part arrives as exact UTC midnight.
+  it('reads a Date cell with no time part as a date-only YYYY-MM-DD', () => {
     const input: StatementFormatInput = {
       text: '',
       fileName: 'sample.xlsx',
@@ -87,7 +86,7 @@ describe('readTableRows (sheetRows)', () => {
 
     const result = readTableRows(input);
 
-    expect(result.rows).toEqual([['2025-07-02 12:00:00']]);
+    expect(result.rows).toEqual([['2025-07-02']]);
   });
 
   it('converts a null cell to an empty string', () => {

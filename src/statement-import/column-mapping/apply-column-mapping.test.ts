@@ -3,7 +3,7 @@ import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
 import { computeDedupKey } from '../mapping';
 import { StatementParseError } from '../parser';
 
-import type { TableCell } from './table-rows';
+import { readTableRows, type TableCell } from './table-rows';
 import { applyColumnMapping, type ColumnMapping } from './apply-column-mapping';
 
 // Column mapping reads a date/time cell as Kyiv time, and `jest.config.js`
@@ -431,6 +431,31 @@ describe('applyColumnMapping (Balance column tie-break: file order)', () => {
     const { statement } = applyColumnMapping(rows, mappingWithBalance);
 
     expect(statement.closingBalance).toBeUndefined();
+  });
+});
+
+describe('applyColumnMapping over spreadsheet Date cells', () => {
+  it('reads a date-only Date cell as noon under the timed YYYY-MM-DD HH:MM:SS preset', () => {
+    const { rows } = readTableRows({
+      text: '',
+      fileName: 'sample.xlsx',
+      sheetRows: [
+        ['Date', 'Description', 'Amount'],
+        [new Date(Date.UTC(2025, 6, 2)), 'Rent', -100],
+        [new Date(Date.UTC(2025, 6, 3, 9, 5, 3)), 'Coffee', -5],
+      ],
+    });
+
+    const { statement, rowErrors } = applyColumnMapping(rows, {
+      ...singleAmountMapping,
+      dateFormat: 'YYYY-MM-DD HH:MM:SS',
+    });
+
+    expect(rowErrors).toEqual([]);
+    expect(statement.transactions.map((transaction) => transaction.timeSeconds)).toEqual([
+      localSeconds(2025, 7, 2, 12, 0, 0),
+      localSeconds(2025, 7, 3, 9, 5, 3),
+    ]);
   });
 });
 

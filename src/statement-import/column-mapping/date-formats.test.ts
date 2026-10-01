@@ -113,6 +113,14 @@ describe('parseDateWithFormat', () => {
     );
   });
 
+  // A date-only spreadsheet Date cell reaches the timed preset as plain
+  // `YYYY-MM-DD` (`table-rows.ts`), so the preset reads it the date-only way.
+  it('parses a date-only YYYY-MM-DD under YYYY-MM-DD HH:MM:SS as noon Kyiv time', () => {
+    expect(parseDateWithFormat('2025-07-01', 'YYYY-MM-DD HH:MM:SS')).toBe(
+      localSeconds(2025, 7, 1, 12, 0, 0),
+    );
+  });
+
   it('rejects a YYYY-MM-DD HH:MM:SS mismatch', () => {
     expect(parseDateWithFormat('01.07.2025 10:15:00', 'YYYY-MM-DD HH:MM:SS')).toBeUndefined();
   });
