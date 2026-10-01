@@ -40,7 +40,7 @@ import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/rep
 import { isSyncedAccount, isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 
 import { normalizeTransactionName } from '../normalize-name';
-import { type BalanceSetShape, isBalanceSetShapedRow } from '../balance-set-row';
+import { unmarkBalanceSetRowsDatabaseTransaction } from '../balance-set-row';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
@@ -127,9 +127,9 @@ const syncSourceRowsOf = (holdingId: string | typeof holdings.id) =>
 
 /** Whether a row dated `time` moves the stored balance. A row dated at or before
  * the boundary is history: the balance set at the boundary already counts it,
- * the same as `postClosingRowsWhere`'s strict `gt`. A balance-set row (an
- * opening balance, a hand edit) sits exactly at its own anchor, so a strict
- * comparison is what keeps deleting it from moving the balance. */
+ * the same as `postClosingRowsWhere`'s strict `gt`. The balance-set row itself
+ * is judged by its stored mark instead (`setsBalanceAtBoundary`), wherever its
+ * date has moved. */
 const movesBalance = (time: number, boundary: number | null): boolean =>
   boundary === null || time > boundary;
 
@@ -138,16 +138,19 @@ const balanceShareOf = (amountMinorUnits: number, time: number, boundary: number
 
 type DatedAmount = { amountMinorUnits: number; time: number };
 
-type StoredManualRow = DatedAmount & BalanceSetShape;
+type StoredManualRow = DatedAmount & Pick<TransactionRow, 'setsBalance'>;
 
-/** Whether `row` is the row that set the holding's balance at the boundary (an
- * opening balance, a cash opening, a hand edit). Another manual row can share
- * that instant, so the time alone does not tell them apart. */
+/** Whether `row` is the row whose amount set the holding's balance at the
+ * boundary (an opening balance, a cash opening, a hand edit) — by its stored
+ * mark, never by its time or shape, which a re-date, a description, or a
+ * category changes. The mark counts only while that balance set IS the
+ * boundary: a newer synced row anchors the holding past it, and the row is
+ * history like any other. */
 const setsBalanceAtBoundary = (
   row: StoredManualRow,
   balanceSetAt: number | null,
   boundary: number | null,
-): boolean => row.time === boundary && row.time === balanceSetAt && isBalanceSetShapedRow(row);
+): boolean => row.setsBalance && balanceSetAt !== null && balanceSetAt === boundary;
 
 /** How far an edit from `existing` to `edited` moves the stored balance. The
  * balance-set row's amount is part of the balance set there, so an edit moves
@@ -167,6 +170,21 @@ const editBalanceDelta = (
     balanceShareOf(edited.amountMinorUnits, edited.time, boundary) -
     balanceShareOf(existing.amountMinorUnits, existing.time, boundary)
   );
+};
+
+/** How far deleting `row` moves the stored balance: the balance-set row's
+ * amount is part of the balance set there, so deleting it, whatever its date,
+ * leaves that balance as it is. */
+const removeBalanceDelta = (
+  row: StoredManualRow,
+  balanceSetAt: number | null,
+  boundary: number | null,
+): number => {
+  if (setsBalanceAtBoundary(row, balanceSetAt, boundary)) {
+    return 0;
+  }
+
+  return -balanceShareOf(row.amountMinorUnits, row.time, boundary);
 };
 
 const newestSyncTimeOfHolding = sql<number | null>`(
@@ -1220,7 +1238,9 @@ export const transactionsRepo = {
    * never desync on a partial failure. The reversal is the exact inverse of
    * `recordManual`/`update`: `balance -= amountMinorUnits` for a row dated
    * strictly after THE BOUNDARY (`importRows`), nothing for a row at or before
-   * it, whose amount the balance set at the boundary already includes. A
+   * it, whose amount the balance set at the boundary already includes, and
+   * nothing for the balance-set row itself, whatever its date
+   * (`removeBalanceDelta`). A
    * synced (monobank) transaction is owned by the bank import and is refused with
    * a typed error; a missing id is a no-op rather than an error.
    */
@@ -1243,7 +1263,7 @@ export const transactionsRepo = {
       await moveBalanceDatabaseTransaction(
         databaseTransaction,
         row.holdingId,
-        (boundary) => -balanceShareOf(row.amountMinorUnits, row.time, boundary),
+        (boundary, balanceSetAt) => removeBalanceDelta(row, balanceSetAt, boundary),
       );
     }),
   /**
@@ -1472,10 +1492,14 @@ export const transactionsRepo = {
    * balance, so deleting a manual duplicate of an imported row (one at the
    * closing as-of included), entering a back-dated one, or re-dating or
    * deleting the balance-set row itself (an opening balance or a hand edit,
-   * stamped exactly at its own anchor) never pushes the balance off the
-   * figure the anchor set. Editing that row's amount moves the balance by the
-   * difference, whatever its new date (`editBalanceDelta`); another manual
-   * row at the same instant is history like any other.
+   * known by its stored `transactions.setsBalance` mark, not by its date)
+   * never pushes the balance off the figure the anchor set. Editing that
+   * row's amount moves the balance by the difference, whatever its new date
+   * (`editBalanceDelta`); another manual row at the same instant is history
+   * like any other. The newest balance set holds the only mark: a hand edit
+   * moves it onto its own row, and this function's closing-balance write
+   * clears it (`unmarkBalanceSetRowsDatabaseTransaction`), since no row is
+   * written at a closing balance's as-of.
    *
    * `boundary` is `null` when NEITHER (a) nor (b) has ever happened for this
    * holding: every genuinely new row moves the balance regardless of its own
@@ -1658,6 +1682,10 @@ export const transactionsRepo = {
           .update(holdings)
           .set({ balanceMinorUnits: nextBalance, balanceSetAt })
           .where(eq(holdings.id, input.holdingId));
+      }
+
+      if (balanceSetAt !== undefined) {
+        await unmarkBalanceSetRowsDatabaseTransaction(databaseTransaction, input.holdingId);
       }
 
       return newRows.length;

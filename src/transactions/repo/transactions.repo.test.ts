@@ -344,7 +344,12 @@ describe('transactionsRepo', () => {
 
   it('updates a manual transaction and moves the balance by the amount delta when it grows', async () => {
     const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
-      existing: { holdingId: 'hold-1', amountMinorUnits: 1000, source: 'manual' },
+      existing: {
+        holdingId: 'hold-1',
+        amountMinorUnits: 1000,
+        source: 'manual',
+        setsBalance: false,
+      },
       holdingBalance: 5000,
     });
     mockDatabaseTransaction = databaseTransaction;
@@ -367,7 +372,12 @@ describe('transactionsRepo', () => {
 
   it('updates a manual transaction and moves the balance by the amount delta when it shrinks', async () => {
     const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
-      existing: { holdingId: 'hold-1', amountMinorUnits: 3000, source: 'manual' },
+      existing: {
+        holdingId: 'hold-1',
+        amountMinorUnits: 3000,
+        source: 'manual',
+        setsBalance: false,
+      },
       holdingBalance: 5000,
     });
     mockDatabaseTransaction = databaseTransaction;
@@ -385,7 +395,12 @@ describe('transactionsRepo', () => {
 
   it('leaves the balance untouched when only the description changes (amount unchanged)', async () => {
     const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
-      existing: { holdingId: 'hold-1', amountMinorUnits: 1000, source: 'manual' },
+      existing: {
+        holdingId: 'hold-1',
+        amountMinorUnits: 1000,
+        source: 'manual',
+        setsBalance: false,
+      },
       holdingBalance: 5000,
     });
     mockDatabaseTransaction = databaseTransaction;
@@ -405,7 +420,12 @@ describe('transactionsRepo', () => {
 
   it('never updates a synced (monobank) transaction and never moves the balance', async () => {
     const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
-      existing: { holdingId: 'hold-1', amountMinorUnits: 1000, source: 'monobank' },
+      existing: {
+        holdingId: 'hold-1',
+        amountMinorUnits: 1000,
+        source: 'monobank',
+        setsBalance: false,
+      },
       holdingBalance: 5000,
     });
     mockDatabaseTransaction = databaseTransaction;
@@ -858,10 +878,11 @@ describe('transactionsRepo.addManyDedup chunking', () => {
 
     const insertStatements = statements.filter((statement) => statement.sql.startsWith('insert'));
     // id + the 11 NewTransaction fields set on every row above, plus
-    // `loanLinkRejected` — a NOT NULL column with a default, so Drizzle binds
-    // its default value as a real param instead of emitting a literal SQL
-    // `null` the way it does for the other omitted (nullable) columns.
-    const paramsPerRow = 13;
+    // `loanLinkRejected` and `setsBalance` — NOT NULL columns with a default,
+    // so Drizzle binds each default value as a real param instead of emitting
+    // a literal SQL `null` the way it does for the other omitted (nullable)
+    // columns.
+    const paramsPerRow = 14;
     expect(insertStatements.length).toBeGreaterThan(1);
     expect(insertStatements.reduce((sum, statement) => sum + statement.params.length, 0)).toBe(
       rowCount * paramsPerRow,
@@ -1417,6 +1438,7 @@ describe('transactionsRepo.remove', () => {
         holdingId: 'hold-1',
         amountMinorUnits: 2500,
         source: 'manual',
+        setsBalance: false,
       },
       holding: unanchoredBalance(102500),
     });
@@ -1435,6 +1457,7 @@ describe('transactionsRepo.remove', () => {
         holdingId: 'hold-1',
         amountMinorUnits: -1000,
         source: 'manual',
+        setsBalance: false,
       },
       holding: unanchoredBalance(4000),
     });
@@ -1453,6 +1476,7 @@ describe('transactionsRepo.remove', () => {
         holdingId: 'hold-1',
         amountMinorUnits: 2500,
         source: 'monobank',
+        setsBalance: false,
       },
       holding: unanchoredBalance(102500),
     });

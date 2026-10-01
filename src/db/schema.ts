@@ -180,6 +180,13 @@ export const transactions = sqliteTable(
     // NOT NULL default 0: every existing row (pre-migration and every
     // ordinary transaction) has never been rejected.
     loanLinkRejected: integer('loan_link_rejected', { mode: 'boolean' }).notNull().default(false),
+    // True on the ONE row whose amount set its holding's balance at
+    // `holdings.balanceSetAt` (an opening balance, a cash opening, a hand
+    // edit), so `transactionsRepo.update`/`remove` still know that row after
+    // a re-date, a description, or a category. Neither its time nor its shape
+    // survives those edits. A newer balance set clears it
+    // (`unmarkBalanceSetRowsDatabaseTransaction`, `transactions/balance-set-row/`).
+    setsBalance: integer('sets_balance', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
     // BALANCE sync writes no transaction rows, but the Binance crypto sync now

@@ -240,6 +240,7 @@ describe('holdingsRepo', () => {
       source: 'manual',
       description: '',
       category: null,
+      setsBalance: true,
     });
     expect(typeof inserts[1].time).toBe('number');
     // A non-zero opening balance also stamps the holding's own
@@ -1360,15 +1361,18 @@ describe('disconnect then reconnect', () => {
 // writes the patch, and inserts a ledger row only for a non-zero balance delta —
 // this captures all three, so a test can prove exactly what each write carried.
 // `stored` is the holding row that read resolves to, or `null` for a missing id.
+// An update of `transactions` (the earlier balance-set row losing its mark) is
+// captured apart from the holding's own `.set(...)`, in issue order.
+type BalanceDeltaCapture = {
+  holdingSet?: Record<string, unknown>;
+  transactionSets: Record<string, unknown>[];
+  inserts: Record<string, unknown>[];
+};
+
 const makeBalanceDeltaDatabaseTransaction = (
   stored: Record<string, unknown> | null,
-): {
-  databaseTransaction: unknown;
-  captured: { holdingSet?: Record<string, unknown>; inserts: Record<string, unknown>[] };
-} => {
-  const captured: { holdingSet?: Record<string, unknown>; inserts: Record<string, unknown>[] } = {
-    inserts: [],
-  };
+): { databaseTransaction: unknown; captured: BalanceDeltaCapture } => {
+  const captured: BalanceDeltaCapture = { transactionSets: [], inserts: [] };
   const databaseTransaction = {
     select: () => ({
       from: () => ({
@@ -1377,9 +1381,13 @@ const makeBalanceDeltaDatabaseTransaction = (
         }),
       }),
     }),
-    update: () => ({
+    update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
-        captured.holdingSet = values;
+        if (table === transactions) {
+          captured.transactionSets.push(values);
+        } else {
+          captured.holdingSet = values;
+        }
 
         return { where: () => Promise.resolve() };
       },
@@ -1455,6 +1463,21 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     });
   });
 
+  // Only the newest balance set is the anchor, so the row an earlier set
+  // wrote loses its mark before the new row takes it.
+  it('moves the balance-set mark from the earlier row onto the new adjustment row', async () => {
+    const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
+      balanceMinorUnits: 100_00,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 500_00) }, 1);
+
+    expect(captured.transactionSets).toEqual([{ setsBalance: false }]);
+    expect(captured.inserts[0]).toMatchObject({ setsBalance: true });
+  });
+
   it('leaves the adjustment row unlabelled and uncategorised', async () => {
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
       currency: 'UAH',
@@ -1506,6 +1529,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 100_00) }, 1);
 
     expect(captured.inserts).toHaveLength(0);
+    expect(captured.transactionSets).toEqual([]);
     expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00 });
   });
 

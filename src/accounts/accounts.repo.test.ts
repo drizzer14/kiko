@@ -400,6 +400,7 @@ describe('accountsRepo', () => {
       // No persisted sentence and no category: the label resolves at render time.
       description: '',
       category: null,
+      setsBalance: true,
     });
     expect(typeof openingRow.time).toBe('number');
     // A typed starting balance IS a hand-set

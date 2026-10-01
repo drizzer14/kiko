@@ -11,6 +11,7 @@
  */
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import maybe, { foldMap } from 'fnts/maybe';
 import type { DatabaseSync } from 'node:sqlite';
 import { drizzle, type SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy';
 
@@ -58,14 +59,34 @@ export const applyAllMigrations = (database: DatabaseSync): void => {
  * `.slice` reads as "stop immediately", not "tag not found").
  */
 export const applyMigrationsThrough = (database: DatabaseSync, lastTag: string): void => {
-  const entries = journalEntries();
-  const lastIndex = entries.findIndex((entry) => entry.tag === lastTag);
+  applyMigrationsBetween(database, undefined, lastTag);
+};
 
-  if (lastIndex === -1) {
-    throw new Error(`real-sqlite: no migration journal entry tagged "${lastTag}"`);
+const journalIndexOf = (entries: MigrationJournalEntry[], tag: string): number => {
+  const index = entries.findIndex((entry) => entry.tag === tag);
+
+  if (index === -1) {
+    throw new Error(`real-sqlite: no migration journal entry tagged "${tag}"`);
   }
 
-  applyEntries(database, entries.slice(0, lastIndex + 1));
+  return index;
+};
+
+/**
+ * Applies every migration AFTER `appliedTag` up to and including `lastTag` —
+ * for a test that seeds data as it stood before an EARLIER migration (whose
+ * backfill it wants to observe), then upgrades that database the way a device
+ * would. `undefined` starts from the first migration.
+ */
+export const applyMigrationsBetween = (
+  database: DatabaseSync,
+  appliedTag: string | undefined,
+  lastTag: string,
+): void => {
+  const entries = journalEntries();
+  const firstIndex = foldMap(maybe(appliedTag), (tag) => journalIndexOf(entries, tag) + 1) ?? 0;
+
+  applyEntries(database, entries.slice(firstIndex, journalIndexOf(entries, lastTag) + 1));
 };
 
 const neverCalled = async (): Promise<{ rows: unknown[] }> => {

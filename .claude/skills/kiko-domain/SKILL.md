@@ -230,36 +230,42 @@ later of `holdings.balanceSetAt` and its newest sync-source row
 (`movesBalance`, `time > boundary`). Every balance writer reads that
 boundary through one function, `readAnchoredHoldingDatabaseTransaction`
 (`transactions.repo.ts`), which `importRows` shares. A row AT or before
-the boundary is history the anchor already counts. A balance-set row (an
-opening balance, a hand edit, a cash opening, a migration-0036 backfill)
-sits exactly at its own anchor, so deleting it leaves the balance
-unchanged. An edit of it moves the balance by the amount difference
-(new − old, `editBalanceDelta`) whatever its new date, so a re-date alone
-never moves the balance: an opening balance edited from 50,000 to 60,000
-leaves the balance at 60,000, re-dated earlier or later in the same edit.
-Nothing stores which row set the balance, so `update` picks it out
-(`setsBalanceAtBoundary`): its time equals the boundary AND
-`holdings.balanceSetAt`, and it has the balance-set row shape
-(`isBalanceSetShapedRow`, `src/transactions/balance-set-row/`, the same
-test migration 0036 backfills from: manual, empty description, null
-category, no exchange or change-return marker). A manual row the
-transaction form writes always carries a category, so a row entered at
-exactly a closing balance's as-of or the newest synced second is not the
-balance-set row: it belongs to that anchor, the same as
-`postClosingRowsWhere`'s strict `gt`, and its edit or deletion moves
-nothing. A
-closing balance AS OF exactly the boundary still applies (`>=`): it is
-an anchor, not a row.
+the boundary is history the anchor already counts.
 
-Known limit, open until a stored "sets the balance" marker lands: the
-identity is the row's TIME, so a re-date loses it. Once the balance-set
-row is saved at another date, a later edit judges it as an ordinary row.
-Two two-step repros, from an opening balance of 50,000 at `T0`: re-date it
-earlier, then edit the amount to 60,000, and the balance stays 50,000
-(both sides sit before the boundary); re-date it later, then back to
-`T0`, and the balance drops to 0 (the later side counted, the `T0` side
-does not). Re-stamping `balanceSetAt` on a re-date is not the fix: it
-would re-judge every row between the old and the new date.
+**The balance-set row is a STORED mark, not a date.** The row whose amount
+set the balance (an opening balance, a cash opening, a hand edit) carries
+`transactions.setsBalance` (migration 0047). An amount edit of it moves
+the balance by the difference (new − old, `editBalanceDelta`), and a
+re-date or a delete never moves it (`removeBalanceDelta`), whatever its
+date, description, or category has become — so from an opening of 50,000:
+re-date it earlier, then edit it to 60,000, and the balance is 60,000;
+re-date it later and back, or later and delete it, and the balance stays
+50,000. The mark counts only while that set IS the boundary
+(`setsBalanceAtBoundary`: `holdings.balanceSetAt` equals the boundary); a
+newer synced row anchors the holding past it, and the row is history like
+any other. Each holding has at most ONE marked row, the newest set's:
+`holdingsRepo.updateWithBalanceDelta` moves the mark onto its own
+adjustment row, and `importRows`'s closing-balance write clears it
+(`unmarkBalanceSetRowsDatabaseTransaction`,
+`src/transactions/balance-set-row/`), since no row is written at a closing
+balance's as-of. The older row is then ordinary history: dated before
+the new anchor, its edit or delete moves nothing. Re-stamping
+`balanceSetAt` on a re-date is not the design: it would re-judge every
+row between the old and the new date.
+
+Every other manual row keeps the generic rule above. A row entered at
+exactly a closing balance's as-of or the newest synced second belongs to
+that anchor, the same as `postClosingRowsWhere`'s strict `gt`, and its
+edit or deletion moves nothing. A closing balance AS OF exactly the
+boundary still applies (`>=`): it is an anchor, not a row.
+
+Data written before the mark gets it from migration 0047 and, for an older
+`.kiko` file, from `restoreDataSnapshot` (the same rule): per holding, the
+row shaped like a balance-set row (`isBalanceSetShapedRow`: manual, empty
+description, null category, no exchange or change-return marker) AND dated
+exactly at `holdings.balanceSetAt`; on a same-millisecond tie, the
+smallest id. A pre-0047 row that was already re-dated, described, or
+categorised gets no mark and stays an ordinary row.
 
 ## Statement import moves the target holding's balance too
 
@@ -2183,7 +2189,8 @@ link".
 
 `restoreDataSnapshot` inserts every `transactions` row verbatim with no
 per-row column handling for these three columns (unlike
-`holdings.balanceSetAt`'s dedicated legacy backfill), so a `.kiko` exported
+`holdings.balanceSetAt`'s and `transactions.setsBalance`'s dedicated
+legacy backfills), so a `.kiko` exported
 before this migration — whose transaction rows carry no
 `loanHoldingId`/`loanLinkSource`/`loanLinkRejected` keys at all — restores
 unchanged and SQLite defaults the missing columns itself (null / null /

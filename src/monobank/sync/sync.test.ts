@@ -310,6 +310,8 @@ const makeInMemoryDeps = (
         loanHoldingId: null,
         loanLinkSource: null,
         loanLinkRejected: false,
+        // Only a manual balance set marks its row.
+        setsBalance: false,
         comment: input.comment ?? null,
         externalId: input.externalId ?? null,
       });

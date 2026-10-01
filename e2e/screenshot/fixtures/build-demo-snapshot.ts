@@ -195,6 +195,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
           loanHoldingId,
           loanLinkSource: loanHoldingId === null ? null : 'manual',
           loanLinkRejected: false,
+          setsBalance: false,
           comment: null,
           source: 'manual',
           externalId: null,

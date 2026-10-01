@@ -157,7 +157,9 @@ describe('restoreDataSnapshot', () => {
     // (see the dedicated tests below) stamps `null` since `t1` (this test's
     // only transaction row) has no matching `holdingId`/shape.
     expect(insertedRows.holdings).toEqual([{ id: 'h1', balanceSetAt: null }]);
-    expect(insertedRows.transactions).toEqual([{ id: 't1' }]);
+    // `{ id: 't1' }` carries no `setsBalance` key either, and is not a
+    // balance-set row, so the migration 0047 mirror leaves it unmarked.
+    expect(insertedRows.transactions).toEqual([{ id: 't1', setsBalance: false }]);
   });
 
   it('skips the insert entirely for every OTHER table with no rows (no empty .values([]) call)', async () => {
@@ -640,7 +642,7 @@ describe('restoreDataSnapshot', () => {
     expect(insertedRows.holdings).toEqual([expect.objectContaining(cryptoHolding)]);
   });
 
-  it('restores a legacy transaction row with no loan-link keys unchanged', async () => {
+  it('restores a legacy transaction row with no loan-link keys, adding none', async () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
     const legacyTransaction = { id: 't1', holdingId: 'h1', source: 'manual' };
@@ -650,7 +652,8 @@ describe('restoreDataSnapshot', () => {
       transactions: [legacyTransaction] as never,
     });
 
-    expect(insertedRows.transactions).toEqual([legacyTransaction]);
+    // Older than the balance-set mark too, which the 0047 mirror derives.
+    expect(insertedRows.transactions).toEqual([{ ...legacyTransaction, setsBalance: false }]);
     expect(insertedRows.transactions?.[0]).not.toHaveProperty('loanHoldingId');
   });
 
@@ -969,7 +972,8 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedRows.holdings).toEqual([cardHolding]);
-      expect(insertedRows.transactions).toEqual([strayTransaction()]);
+      // A card's own opening row: the 0047 mirror marks it as one.
+      expect(insertedRows.transactions).toEqual([{ ...strayTransaction(), setsBalance: true }]);
     });
 
     it('leaves a deposit/bond holding whose opening row was edited (a real, differently-shaped row)', async () => {
@@ -984,7 +988,7 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedRows.holdings).toEqual([strayHolding()]);
-      expect(insertedRows.transactions).toEqual([editedTransaction]);
+      expect(insertedRows.transactions).toEqual([{ ...editedTransaction, setsBalance: false }]);
     });
 
     it('leaves a deposit/bond holding untouched when more than one transaction row exists', async () => {
@@ -999,7 +1003,10 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedRows.holdings).toEqual([strayHolding()]);
-      expect(insertedRows.transactions).toEqual([strayTransaction(), secondTransaction]);
+      expect(insertedRows.transactions).toEqual([
+        { ...strayTransaction(), setsBalance: true },
+        { ...secondTransaction, setsBalance: false },
+      ]);
     });
 
     it('cleans a LEGACY (pre-0036) snapshot too, once the balanceSetAt backfill fills in the boundary the cleanup then matches', async () => {
@@ -1054,6 +1061,8 @@ describe('restoreDataSnapshot', () => {
       description: 'Top up',
       source: 'import',
       externalId: `${legacyBase} 1`,
+      // Carried, so the separate balance-set mark mirror leaves the row alone.
+      setsBalance: false,
       ...overrides,
     });
 
@@ -1146,6 +1155,8 @@ describe('restoreDataSnapshot', () => {
       description: 'coffee',
       source: 'import',
       externalId: `h1 ${legacyTime / 1000} -500 coffee`,
+      // Carried, so the separate balance-set mark mirror leaves the row alone.
+      setsBalance: false,
       ...overrides,
     });
     const stampedHolding = { id: 'h1', balanceSetAt: legacyTime };

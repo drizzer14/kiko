@@ -391,6 +391,186 @@ describe('an opening balance anchor', () => {
   });
 });
 
+describe('the stored balance-set marker', () => {
+  const openingBalance = 50_000;
+
+  const openHolding = (): Promise<string> => {
+    jest.spyOn(Date, 'now').mockReturnValue(SEPTEMBER_30);
+
+    return holdingsRepo.create({
+      accountId: 'account',
+      name: 'Opened',
+      type: 'card',
+      currency: 'UAH',
+      openingBalance: Money.of('UAH', openingBalance),
+    });
+  };
+
+  const markedIdsOf = (holdingId: string): string[] =>
+    (
+      mockDatabase
+        .prepare('SELECT id FROM transactions WHERE holding_id = ? AND sets_balance = 1')
+        .all(holdingId) as { id: string }[]
+    ).map((row) => row.id);
+
+  const editOpening = (
+    openingId: string,
+    edit: { amountMinorUnits?: number; time: number; description?: string },
+  ): Promise<void> =>
+    transactionsRepo.update({
+      transactionId: openingId,
+      amountMinorUnits: edit.amountMinorUnits ?? openingBalance,
+      time: edit.time,
+      description: edit.description,
+    });
+
+  it('marks the opening row, the cash opening row, and the hand-edit adjustment row', async () => {
+    const holdingId = await openHolding();
+
+    expect(markedIdsOf(holdingId)).toEqual([manualIdAt(SEPTEMBER_30)]);
+
+    jest.spyOn(Date, 'now').mockReturnValue(OCTOBER_2);
+    await accountsRepo.createCashAccount({
+      name: 'Wallet',
+      currency: 'UAH',
+      initialBalance: Money.of('UAH', 20_000),
+    });
+    const cashId = (
+      mockDatabase.prepare("SELECT id FROM holdings WHERE type = 'cash'").get() as { id: string }
+    ).id;
+
+    expect(markedIdsOf(cashId)).toEqual([manualIdAt(OCTOBER_2)]);
+
+    await holdingsRepo.updateWithBalanceDelta(
+      'card',
+      { balance: Money.of('UAH', 70_000) },
+      OCTOBER_5,
+    );
+
+    expect(markedIdsOf('card')).toEqual([manualIdAt(OCTOBER_5)]);
+  });
+
+  it('moves the balance by the difference when the opening is re-dated earlier, then its amount edited', async () => {
+    const holdingId = await openHolding();
+    const openingId = manualIdAt(SEPTEMBER_30);
+
+    await editOpening(openingId, { time: SEPTEMBER_10 });
+    await editOpening(openingId, { amountMinorUnits: 60_000, time: SEPTEMBER_10 });
+
+    expect(balanceOf(holdingId)).toBe(60_000);
+  });
+
+  it('keeps the balance when the opening is re-dated later, then back', async () => {
+    const holdingId = await openHolding();
+    const openingId = manualIdAt(SEPTEMBER_30);
+
+    await editOpening(openingId, { time: OCTOBER_2 });
+    await editOpening(openingId, { time: SEPTEMBER_30 });
+
+    expect(balanceOf(holdingId)).toBe(openingBalance);
+  });
+
+  it('keeps the balance when the opening is re-dated later, then deleted', async () => {
+    const holdingId = await openHolding();
+    const openingId = manualIdAt(SEPTEMBER_30);
+
+    await editOpening(openingId, { time: OCTOBER_2 });
+    await transactionsRepo.remove(openingId);
+
+    expect(balanceOf(holdingId)).toBe(openingBalance);
+  });
+
+  it('moves the balance by the difference when the opening gets a description, then its amount edited', async () => {
+    const holdingId = await openHolding();
+    const openingId = manualIdAt(SEPTEMBER_30);
+
+    await editOpening(openingId, { time: SEPTEMBER_30, description: 'Salary savings' });
+    await editOpening(openingId, {
+      amountMinorUnits: 60_000,
+      time: SEPTEMBER_30,
+      description: 'Salary savings',
+    });
+
+    expect(balanceOf(holdingId)).toBe(60_000);
+  });
+
+  it('moves the balance by the difference when the opening gets a category, then its amount edited', async () => {
+    const holdingId = await openHolding();
+    const openingId = manualIdAt(SEPTEMBER_30);
+
+    await transactionsRepo.setCategory({ transactionId: openingId, category: 'groceries' });
+    await editOpening(openingId, { amountMinorUnits: 60_000, time: SEPTEMBER_30 });
+
+    expect(balanceOf(holdingId)).toBe(60_000);
+  });
+
+  it('keeps the balance when a re-dated, described opening is deleted', async () => {
+    const holdingId = await openHolding();
+    const openingId = manualIdAt(SEPTEMBER_30);
+
+    await editOpening(openingId, { time: SEPTEMBER_10, description: 'Salary savings' });
+    await transactionsRepo.remove(openingId);
+
+    expect(balanceOf(holdingId)).toBe(openingBalance);
+  });
+
+  // The newest balance set is the anchor: the row an earlier set wrote is
+  // history the new balance already counts.
+  it('moves the mark to the newest hand-edit row, so the older opening edits as history', async () => {
+    const holdingId = await openHolding();
+    const openingId = manualIdAt(SEPTEMBER_30);
+
+    await holdingsRepo.updateWithBalanceDelta(
+      holdingId,
+      { balance: Money.of('UAH', 70_000) },
+      OCTOBER_2,
+    );
+
+    expect(markedIdsOf(holdingId)).toEqual([manualIdAt(OCTOBER_2)]);
+
+    await editOpening(openingId, { amountMinorUnits: 60_000, time: SEPTEMBER_30 });
+
+    expect(balanceOf(holdingId)).toBe(70_000);
+
+    await editOpening(manualIdAt(OCTOBER_2), { amountMinorUnits: 25_000, time: SEPTEMBER_10 });
+
+    expect(balanceOf(holdingId)).toBe(75_000);
+  });
+
+  it('clears the mark when a closing balance sets the balance, so the opening edits as history', async () => {
+    await holdingsRepo.updateWithBalanceDelta(
+      'card',
+      { balance: Money.of('UAH', 50_000) },
+      SEPTEMBER_15,
+    );
+    const adjustmentId = manualIdAt(SEPTEMBER_15);
+
+    await importSeptemberStatement();
+
+    expect(markedIdsOf('card')).toEqual([]);
+
+    await editOpening(adjustmentId, { amountMinorUnits: -40_000, time: SEPTEMBER_15 });
+    await transactionsRepo.remove(adjustmentId);
+
+    expect(balance()).toBe(90_000);
+  });
+
+  it('judges a marked row as history once a newer synced row anchors the holding', async () => {
+    const holdingId = await openHolding();
+    const openingId = manualIdAt(SEPTEMBER_30);
+
+    run(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id) VALUES ('synced', ?, -500, ?, 'monobank', 'bank-id')",
+      holdingId,
+      OCTOBER_2,
+    );
+
+    await editOpening(openingId, { amountMinorUnits: 60_000, time: SEPTEMBER_30 });
+
+    expect(balanceOf(holdingId)).toBe(openingBalance);
+  });
+});
+
 describe('a hand-edited balance anchor', () => {
   it('keeps the balance when the adjustment row is re-dated earlier', async () => {
     await holdingsRepo.updateWithBalanceDelta(

@@ -48,6 +48,7 @@ import m0043 from './0043_add_import_times_rezoned.sql';
 import m0044 from './0044_move_crypto_cash_holdings.sql';
 import m0045 from './0045_add_reminders.sql';
 import m0046 from './0046_add_quote_quota.sql';
+import m0047 from './0047_add_sets_balance.sql';
 
 export default {
   journal,
@@ -99,5 +100,6 @@ export default {
     m0044,
     m0045,
     m0046,
+    m0047,
   },
 };

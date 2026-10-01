@@ -176,6 +176,50 @@ const withStrayDepositBondBalanceCleaned = (
   };
 };
 
+/**
+ * Migration 0047's backfill (`drizzle/migrations/0047_add_sets_balance.sql`'s
+ * doc comment is the full statement of WHY), mirrored for a `.kiko` file
+ * exported before `transactions.setsBalance` existed, whose rows carry no
+ * such key: per holding, the smallest-id row that is balance-set shaped AND
+ * dated at that holding's `balanceSetAt` gets the mark. Fed the holdings the
+ * stray cleanup produced, the same order a live device runs 0036, 0040, then
+ * 0047 — and before the import-time rezone, which a device runs only at
+ * launch, after every migration. A row that carries the key keeps it as
+ * exported. String comparison on `id` matches SQLite's own BINARY collation
+ * for ASCII ids, as in `cryptoCashReuseTarget`.
+ */
+const withLegacyBalanceSetMarksDerived = (
+  snapshotHoldings: HoldingRow[],
+  snapshotTransactions: TransactionRow[],
+): TransactionRow[] => {
+  if (snapshotTransactions.every((row) => Object.hasOwn(row, 'setsBalance'))) {
+    return snapshotTransactions;
+  }
+
+  const balanceSetAtByHoldingId = new Map(
+    snapshotHoldings.map((holding) => [holding.id, holding.balanceSetAt]),
+  );
+  const markedIdByHoldingId = new Map<string, string>();
+
+  for (const row of snapshotTransactions) {
+    if (!isBalanceSetShapedRow(row) || row.time !== balanceSetAtByHoldingId.get(row.holdingId)) {
+      continue;
+    }
+
+    const marked = markedIdByHoldingId.get(row.holdingId);
+
+    if (marked === undefined || row.id < marked) {
+      markedIdByHoldingId.set(row.holdingId, row.id);
+    }
+  }
+
+  const markedIds = new Set(markedIdByHoldingId.values());
+
+  return snapshotTransactions.map((row) =>
+    Object.hasOwn(row, 'setsBalance') ? row : { ...row, setsBalance: markedIds.has(row.id) },
+  );
+};
+
 // Migration 0039's own seed values (`drizzle/migrations/0039_seed_loan_interest_category.sql`),
 // duplicated here rather than imported: that migration's SQL runs only on a
 // LIVE device upgrade, never against a restored snapshot's own categories.
@@ -624,12 +668,16 @@ export const restoreDataSnapshot = (
     );
     const { holdings: holdingsAfterStrayCleanup, transactions: transactionsAfterStrayCleanup } =
       withStrayDepositBondBalanceCleaned(holdingsAfterLegacyBackfill, snapshot.transactions);
+    const transactionsAfterMarking = withLegacyBalanceSetMarksDerived(
+      holdingsAfterStrayCleanup,
+      transactionsAfterStrayCleanup,
+    );
 
-    // Independent of the two backfills above (a different table, a different
-    // migration) — applied to the FINAL transaction set the stray cleanup
-    // produced, since that's what actually gets inserted.
+    // Independent of the backfills above (a different column, a different
+    // migration) — applied to the FINAL transaction set they produced, since
+    // that's what actually gets inserted.
     const { settings: dedupUpgradedSettings, transactions: dedupUpgradedTransactions } =
-      withLegacyDedupKeysUpgraded(snapshot.settings, transactionsAfterStrayCleanup);
+      withLegacyDedupKeysUpgraded(snapshot.settings, transactionsAfterMarking);
 
     // Applied last, to the FINAL settings/transactions/holdings sets every
     // step above produced — see its own doc comment for why it runs after

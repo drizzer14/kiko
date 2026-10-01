@@ -13,6 +13,7 @@ import { match } from 'ts-pattern';
 import { Money } from '@kiko/currency/money';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { unmarkBalanceSetRowsDatabaseTransaction } from '@kiko/transactions/balance-set-row';
 
 import {
   ownershipMetadata,
@@ -463,7 +464,8 @@ export const holdingsRepo = {
    * `transactionsRepo.importRows`'s own doc comment is the full statement of
    * why. `accountsRepo.createCashAccount` (a cash account's first holding)
    * stamps it too, for the same reason: a typed starting balance IS a
-   * hand-set balance, whichever create path writes it.
+   * hand-set balance, whichever create path writes it. Its row carries
+   * `transactions.setsBalance`.
    */
   create: ({ firstPricePoint, openingBalance, ...input }: NewHolding): Promise<string> =>
     write(async (databaseTransaction) => {
@@ -502,6 +504,7 @@ export const holdingsRepo = {
           description: '',
           category: null,
           source: 'manual',
+          setsBalance: true,
         });
       }
 
@@ -603,7 +606,9 @@ export const holdingsRepo = {
    *
    * A non-zero delta also stamps `holdings.balanceSetAt` at this edit's own
    * `time`, in the SAME `.set(...)` as `patch` — `transactionsRepo.importRows`'s
-   * own doc comment is the full statement of why.
+   * own doc comment is the full statement of why — and moves the
+   * `transactions.setsBalance` mark onto the new row: this edit is now the
+   * holding's only anchor.
    */
   updateWithBalanceDelta: (
     holdingId: string,
@@ -647,6 +652,7 @@ export const holdingsRepo = {
         return;
       }
 
+      await unmarkBalanceSetRowsDatabaseTransaction(databaseTransaction, holdingId);
       await databaseTransaction.insert(transactions).values({
         id: id(),
         holdingId,
@@ -655,6 +661,7 @@ export const holdingsRepo = {
         description: '',
         category: null,
         source: 'manual',
+        setsBalance: true,
       });
     }),
   /**

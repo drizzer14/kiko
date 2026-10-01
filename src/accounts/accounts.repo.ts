@@ -152,7 +152,8 @@ export const accountsRepo = {
    * A non-zero initial balance also stamps the holding's `balanceSetAt` — it
    * IS a hand-set balance, the same as `holdingsRepo.create`'s own typed
    * opening balance (see `transactionsRepo.importRows`'s doc comment for why
-   * this matters) — at the SAME instant as the ledger row's `time`.
+   * this matters) — at the SAME instant as the ledger row's `time`, and the
+   * row carries `transactions.setsBalance`.
    */
   createCashAccount: ({ name, currency, initialBalance, icon, color }: NewCashAccount) =>
     write(async (databaseTransaction) => {
@@ -202,6 +203,7 @@ export const accountsRepo = {
         description: '',
         category: null,
         source: 'manual',
+        setsBalance: true,
       });
     }),
   /**
