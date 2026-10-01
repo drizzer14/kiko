@@ -35,3 +35,37 @@ export const roleFor = (label: string | undefined): string | undefined =>
 
 export const linkSourceFor = (loanHoldingId: string | null): string | null =>
   loanHoldingId === null ? null : 'manual';
+
+export const nicknamePatch = (nickname: string | undefined): { nickname?: string } => ({
+  ...foldMap(maybe(nickname), (value) => ({ nickname: value })),
+});
+
+// A boolean-condition spread is not a nullable map: the condition is not an
+// absence check.
+export const renamePatch = (rename: boolean, name: string): { name?: string } => ({
+  ...(rename ? { name } : {}),
+});
+
+// Presence spread: the present side never references $X, so it is not a map
+// of $X's value.
+export const flagPatch = (error: string | undefined): { hasError?: true } => ({
+  ...(error !== undefined ? { hasError: true } : {}),
+});
+
+// Validator-error polarity: the real value is on the ABSENT side.
+export const requiredPatch = (value: string | null): { required?: true } => ({
+  ...(value === null ? { required: true } : {}),
+});
+
+// A non-empty fallback object is a real default, not the empty sentinel: a
+// bare `{}` in a Semgrep pattern matches ANY object literal, so the rule pins
+// the empty side by its text.
+export const fallbackPatch = (value: string | null): { value?: string; fallback?: true } => ({
+  ...(value === null ? { fallback: true } : { value }),
+});
+
+export const presentFallbackPatch = (
+  value: string | null,
+): { value?: string; fallback?: true } => ({
+  ...(value !== null ? { value } : { fallback: true }),
+});

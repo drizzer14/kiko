@@ -55,6 +55,11 @@ rules:
   # branch is a constant unrelated to $X (`label === undefined ? undefined :
   # 'button'`) matches too, even though it is not a map of $X's value at all
   # (both real sites this false-matched are in the negative fixture).
+  # The empty-object form (`...(x === undefined ? {} : { x })`, P5 review)
+  # is its own nested arm: a bare `{}` in a Semgrep pattern matches ANY
+  # object literal, so the sentinel side is captured as $EMPTY and pinned to
+  # the literal text `{}` by `metavariable-regex` (a non-empty fallback
+  # object is in the negative fixture).
   # Deliberately NOT scoped to `paths.exclude` test files — existing
   # test-file instances are in scope too, unlike the Hermes TextDecoder rule
   # (`kiko-no-textdecoder-textencoder`, which stays in
@@ -64,14 +69,15 @@ rules:
     severity: ERROR
     message: >
       Hand-rolled nullable-map ternary. `x === undefined ? undefined : f(x)`
-      (and the `null`/`== null`/list-or-empty variants) duplicates what
-      `fnts`'s `maybe` + `foldMap` already does, without the type making the
-      "might be absent" case visible at the call site. Use
+      (and the `null`/`== null`/list-or-empty/empty-object variants)
+      duplicates what `fnts`'s `maybe` + `foldMap` already does, without the
+      type making the "might be absent" case visible at the call site. Use
       `foldMap(maybe(x), (value) => f(value))` instead (append `?? []` for the
-      list-or-empty form) — see kiko-code-style's "Banned: the nullable-map
-      ternary".
+      list-or-empty form; spread it directly for the empty-object form, since
+      spreading `undefined` adds nothing) — see kiko-code-style's "Banned:
+      the nullable-map ternary".
     metadata:
-      fix: "Use `foldMap(maybe(x), (value) => f(value))` instead (append `?? []` for the list-or-empty form)."
+      fix: "Use `foldMap(maybe(x), (value) => f(value))` instead (append `?? []` for the list-or-empty form; spread it directly, `...foldMap(...)`, for the empty-object form)."
       skill: "kiko-code-style › Banned: the nullable-map ternary"
     patterns:
       - pattern-either:
@@ -108,6 +114,23 @@ rules:
           - pattern: "$X !== null && $X !== undefined ? $E : null"
           - pattern: "$X !== undefined && $X !== null ? $E : []"
           - pattern: "$X !== null && $X !== undefined ? $E : []"
+          - patterns:
+              - pattern-either:
+                  - pattern: "$X === undefined ? $EMPTY : $E"
+                  - pattern: "$X === null ? $EMPTY : $E"
+                  - pattern: "$X == null ? $EMPTY : $E"
+                  - pattern: "$X == undefined ? $EMPTY : $E"
+                  - pattern: "$X !== undefined ? $E : $EMPTY"
+                  - pattern: "$X !== null ? $E : $EMPTY"
+                  - pattern: "$X != null ? $E : $EMPTY"
+                  - pattern: "$X != undefined ? $E : $EMPTY"
+                  - pattern: "$X === undefined || $X === null ? $EMPTY : $E"
+                  - pattern: "$X === null || $X === undefined ? $EMPTY : $E"
+                  - pattern: "$X !== undefined && $X !== null ? $E : $EMPTY"
+                  - pattern: "$X !== null && $X !== undefined ? $E : $EMPTY"
+              - metavariable-regex:
+                  metavariable: $EMPTY
+                  regex: '^\{\s*\}$'
       - metavariable-pattern:
           metavariable: $E
           patterns:
