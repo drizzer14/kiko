@@ -3,6 +3,7 @@ import { holdingTypes, type HoldingType } from '../holding-type';
 import { holdingValueBreakdown, type ValuableHolding } from '../holding-value';
 
 import {
+  holdsOnlyDebts,
   holdingDescriptor,
   holdingDescriptors,
   holdingDescriptorOrUndefined,
@@ -15,6 +16,19 @@ describe('holdingDescriptors', () => {
     expect(holdingDescriptors[type]).toBeDefined();
     expect(holdingDescriptor(type)).toBe(holdingDescriptors[type]);
   });
+});
+
+describe('holdsOnlyDebts', () => {
+  it('is true for a debt account, whose only holding type is a loan', () => {
+    expect(holdsOnlyDebts('debt')).toBe(true);
+  });
+
+  it.each(['bank', 'cash', 'crypto', 'property', 'metals', 'broker'] as const)(
+    'is false for a %s account',
+    (kind) => {
+      expect(holdsOnlyDebts(kind)).toBe(false);
+    },
+  );
 });
 
 describe('time-exempt holding types', () => {

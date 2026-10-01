@@ -318,6 +318,7 @@ export const en = {
     },
     holding: {
       addContribution: 'Add contribution',
+      addLoanTitle: 'Add Loan',
       addTitle: 'Add Holding',
       annualRateError: 'Enter a rate of 0 or higher.',
       annualRatePct: 'Annual rate',
@@ -671,6 +672,7 @@ export const en = {
     // case): the same string reads correctly in only one of the two roles.
     addBankSheetTitle: 'Add a Bank',
     addHolding: 'Add holding',
+    addLoan: 'Add loan',
     addressLabel: 'Address',
     apiKeyLabel: 'API key',
     apiKeyRequiredError: 'Enter the API key.',

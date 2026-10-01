@@ -976,6 +976,16 @@ describe('AccountDetailScreen', () => {
           ],
         });
 
+      it('offers Add loan, never "holding", in the footer of a debt account', async () => {
+        seedLoan();
+        const { getByText, queryByText, navigation } = await renderScreen();
+
+        await fireEvent.press(getByText('Add loan'));
+
+        expect(queryByText('Add holding')).toBeNull();
+        expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
+      });
+
       it('closes it under loan wording, never "holding"', async () => {
         seedLoan();
         const { getByTestId, getByText, queryByText } = await renderScreen();

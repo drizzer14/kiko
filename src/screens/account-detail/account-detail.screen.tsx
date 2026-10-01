@@ -25,10 +25,10 @@ import type { ReminderKind } from '@kiko/reminders/schedule';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { accountIdentity } from '@kiko/holdings/account-identity';
+import { holdsOnlyDebts } from '@kiko/holdings/holding-descriptor';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
-import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
@@ -41,6 +41,7 @@ import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown
 import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
+import { type AccountRow, type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
 
 import HoldingCard from './holding-card';
@@ -54,6 +55,9 @@ const offerMessage = (kind: ReminderKind, t: TFunction): string =>
     .with('statement_import', () => t('reminders.offer.statementImportMessage'))
     .with('add_transactions', () => t('reminders.offer.addTransactionsMessage'))
     .exhaustive();
+
+const addHoldingLabelKey = (kind: AccountRow['kind'] | undefined) =>
+  foldMap(maybe(kind), holdsOnlyDebts) ? 'accountDetail.addLoan' : 'accountDetail.addHolding';
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
@@ -344,7 +348,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             onPress={() => navigation.navigate('HoldingForm', { accountId })}
             icon={genericEntitySymbol.holding}
           >
-            {t('accountDetail.addHolding')}
+            {t(addHoldingLabelKey(account?.kind))}
           </Button>
         </Box>
       }

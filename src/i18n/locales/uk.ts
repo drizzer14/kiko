@@ -277,6 +277,7 @@ export const uk: typeof en = {
     },
     holding: {
       addContribution: 'Додати внесок',
+      addLoanTitle: 'Додати кредит',
       addTitle: 'Додати актив',
       annualRateError: 'Введіть ставку 0 або вище.',
       annualRatePct: 'Річна ставка',
@@ -573,6 +574,7 @@ export const uk: typeof en = {
     addBankAction: 'Додати банк',
     addBankSheetTitle: 'Додати банк',
     addHolding: 'Додати актив',
+    addLoan: 'Додати кредит',
     addressLabel: 'Адреса',
     apiKeyLabel: 'API ключ',
     apiKeyRequiredError: 'Введіть API ключ.',

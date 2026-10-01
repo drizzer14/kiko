@@ -118,10 +118,15 @@ implemented, and callers must skip it rather than assume every id resolves.
   undefined); every manual holding gets one, and there is no reopen. A
   loan is never called a holding there: `closeHoldingCopy(type)` picks
   the `accountDetail.closeLoan*` keys (menu label, confirm title,
-  message, error title) for `type === 'loan'` and the
-  `accountDetail.closeHolding*` ones otherwise. The menu entry is
+  message, error title) for a type whose descriptor `side` is `'debt'`
+  and the `accountDetail.closeHolding*` ones otherwise. The menu entry is
   neutral (only Delete is red); the confirm button is red
-  (`ConfirmSheet destructive`).
+  (`ConfirmSheet destructive`). The add flow of an account whose every
+  holding type is a debt (`holdsOnlyDebts(kind)`, the same descriptor
+  `side`; today the `debt` kind) says loan too: the account detail
+  footer reads `accountDetail.addLoan` ("Add loan" / "Додати кредит")
+  and the holding form's create title `forms.holding.addLoanTitle`
+  ("Add Loan" / "Додати кредит").
 - **Transaction** — a movement against a holding. `id`, `holdingId`
   (FK), `amountMinorUnits` (signed integer), `time` (unix
   milliseconds), `description`, `category` (nullable), `mcc`

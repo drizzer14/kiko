@@ -2740,6 +2740,14 @@ describe('HoldingFormScreen loan', () => {
     mockAccountInstitution = null;
   });
 
+  it('titles the create header "Add Loan" on a debt account', async () => {
+    navigation.setOptions.mockClear();
+
+    await renderScreen();
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Add Loan' });
+  });
+
   const fillLoanFields = async (screen: Screen): Promise<void> => {
     await fill(screen, 'Name', 'Car loan');
     await fill(screen, 'Principal', '500000');

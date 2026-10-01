@@ -6,6 +6,12 @@ import {
   holdingTypesForAccountKind,
 } from '@kiko/holdings/holding-type';
 import {
+  holdsOnlyDebts,
+  holdingDescriptor,
+  isLedgerlessHoldingType,
+} from '@kiko/holdings/holding-descriptor';
+import maybe, { foldMap } from 'fnts/maybe';
+import {
   useHeaderInset,
   scrollToField,
   type FieldInstance,
@@ -43,7 +49,6 @@ import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-picker-
 import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { holdingDescriptor, isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 
 import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';
@@ -461,12 +466,17 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   ]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
-  // "Edit Holding" so the header reads correctly for the update flow.
+  // "Edit Holding" so the header reads correctly for the update flow, and a
+  // debt account's create flow adds a loan, never a "holding".
+  const addsLoan = foldMap(maybe(accountKind), holdsOnlyDebts) === true;
+
   useLayoutEffect(() => {
     if (isEdit) {
       navigation.setOptions({ title: t('forms.holding.editTitle') });
+    } else if (addsLoan) {
+      navigation.setOptions({ title: t('forms.holding.addLoanTitle') });
     }
-  }, [isEdit, navigation, t]);
+  }, [isEdit, addsLoan, navigation, t]);
 
   const isValid = name.trim().length > 0 && active.isValid;
 
