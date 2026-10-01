@@ -1549,6 +1549,62 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
   });
 
+  // A sync closes a jar or card the bank no longer lists; its past rows are
+  // still real history, so both the transfer matcher and the spending charts
+  // must keep reading them.
+  describe('a closed holding', () => {
+    const seedSpendingWithTransferClosing = (closed: { card?: number; jar?: number }): void =>
+      setLiveData({
+        accounts: [CASH, BANK],
+        holdings: [
+          { ...UAH_HOLDING, closedAt: closed.card ?? null },
+          USD_HOLDING,
+          { ...UAH_HOLDING_2, closedAt: closed.jar ?? null },
+        ],
+        rates: [USD_UAH_RATE],
+        transactions: [...EXPENSES, ...SELF_TRANSFER],
+        history: HISTORY,
+        categories: CATEGORIES,
+      });
+
+    it('keeps a transfer into a closed jar out of spending', async () => {
+      seedSpendingWithTransferClosing({ jar: now });
+
+      const { getByText, queryByTestId } = await renderScreen();
+
+      expect(queryByTestId('category-pie-arc-transfers')).toBeNull();
+      expect(getByText('400.00 ₴')).toBeTruthy();
+    });
+
+    it("keeps a closed card's past spending", async () => {
+      seedSpendingWithTransferClosing({ card: now });
+
+      const { getByTestId, getByText } = await renderScreen();
+
+      expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+      expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+      expect(getByText('400.00 ₴')).toBeTruthy();
+    });
+  });
+
+  it('excludes a self-transfer whose other leg sits under a filtered-out account', async () => {
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING, { ...UAH_HOLDING_2, accountId: BANK.id }],
+      rates: [USD_UAH_RATE],
+      transactions: [...EXPENSES, ...SELF_TRANSFER],
+      history: HISTORY,
+      categories: CATEGORIES,
+    });
+
+    const { getByTestId, getByText, queryByTestId } = await renderScreen();
+
+    await pressFilter(getByTestId, ACCOUNT_FILTER, 'Cash');
+
+    expect(queryByTestId('category-pie-arc-transfers')).toBeNull();
+    expect(getByText('400.00 ₴')).toBeTruthy();
+  });
+
   it('still excludes a self-transfer pair whose legs straddle the active range boundary', async () => {
     const MINUTE = 60_000;
     // The screen's own `rangeFrom` is the shared `startOfLocalDay` — TRUE

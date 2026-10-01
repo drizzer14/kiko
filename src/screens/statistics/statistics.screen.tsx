@@ -648,10 +648,13 @@ const StatisticsScreen: FC = () => {
     [categories, i18n.language],
   );
 
-  // Join each transaction to its (account-scoped, open) holding for the currency
-  // its amount is in — a transaction row has no currency of its own — dropping
-  // any whose holding is filtered out. BOTH signs are kept so the internal-
-  // transfer matcher below can see the credit legs.
+  // Join each transaction to its holding for the currency its amount is in — a
+  // transaction row has no currency of its own. BOTH signs are kept so the
+  // internal-transfer matcher below can see the credit legs.
+  //
+  // Every holding counts here, whatever its account filter or `closedAt`: the
+  // other leg of a transfer can sit under a filtered-out account or in a jar a
+  // sync has since closed, and losing it turns the debit leg into spending.
   //
   // Deliberately NOT range-filtered: every exclusion rule below (the matched-
   // pair internal-transfer matcher especially) must see BOTH legs of a
@@ -661,10 +664,8 @@ const StatisticsScreen: FC = () => {
   // to the rows that actually feed the breakdown (see
   // `rangeFilteredBreakdownTransactions`) — exclusion is by id, so an
   // out-of-range leg excluded here never reaches the breakdown anyway.
-  const transactionsWithCurrency = useMemo(() => {
-    const currencyByHolding = new Map(
-      filtered.visibleHoldings.map((holding) => [holding.id, holding.currency]),
-    );
+  const ledgerWithCurrency = useMemo(() => {
+    const currencyByHolding = new Map(holdings.map((holding) => [holding.id, holding.currency]));
 
     return transactions.flatMap((transaction) => {
       const currency = currencyByHolding.get(transaction.holdingId);
@@ -675,7 +676,15 @@ const StatisticsScreen: FC = () => {
 
       return [{ ...transaction, currency }];
     });
-  }, [transactions, filtered]);
+  }, [transactions, holdings]);
+
+  // The rows the spending charts draw: the account filter applies, but not
+  // `closedAt`, so a closed card keeps its past spending.
+  const transactionsWithCurrency = useMemo(() => {
+    const shownHoldingIds = new Set(filtered.netWorthHoldings.map((holding) => holding.id));
+
+    return ledgerWithCurrency.filter((transaction) => shownHoldingIds.has(transaction.holdingId));
+  }, [ledgerWithCurrency, filtered]);
 
   // INTERNAL TRANSFERS (a matched -X / +X pair across two of the user's own
   // holdings, same currency, near-simultaneous) are not spending. Their debit
@@ -683,8 +692,8 @@ const StatisticsScreen: FC = () => {
   // are already ignored as income. Scoped to THIS chart only — every other view
   // (net worth, by-type, account pie) still sees the full ledger.
   const internalTransferIds = useMemo(
-    () => internalTransferTransactionIds(transactionsWithCurrency),
-    [transactionsWithCurrency],
+    () => internalTransferTransactionIds(ledgerWithCurrency),
+    [ledgerWithCurrency],
   );
 
   // Every DEBT-side holding in the raw, unfiltered ledger (only `loan` today):
