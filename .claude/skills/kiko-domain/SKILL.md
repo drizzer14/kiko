@@ -111,10 +111,17 @@ implemented, and callers must skip it rather than assume every id resolves.
   `balanceMinorUnits` (integer), `metadata` (JSON: masked PAN, IBAN,
   deposit rate, maturity, Monobank account/jar id), `sortOrder`,
   `closedAt` (nullable), `createdAt`. A MANUAL holding the user sold or
-  gave away is Closed, not deleted (the card context menu's `onClose` ->
-  `CloseHoldingSheet` -> `holdingsRepo.closeMany`, under
+  gave away is Closed, not deleted (the card context menu's `closeAction`
+  -> `CloseHoldingSheet` -> `holdingsRepo.closeMany`, under
   `src/screens/account-detail/`); it keeps its lots, prices, and ledger.
-  A synced holding gets no `onClose` (`closeActionFor` returns undefined).
+  A synced holding gets no `closeAction` (`closeActionFor` returns
+  undefined); every manual holding gets one, and there is no reopen. A
+  loan is never called a holding there: `closeHoldingCopy(type)` picks
+  the `accountDetail.closeLoan*` keys (menu label, confirm title,
+  message, error title) for `type === 'loan'` and the
+  `accountDetail.closeHolding*` ones otherwise. The menu entry is
+  neutral (only Delete is red); the confirm button is red
+  (`ConfirmSheet destructive`).
 - **Transaction** — a movement against a holding. `id`, `holdingId`
   (FK), `amountMinorUnits` (signed integer), `time` (unix
   milliseconds), `description`, `category` (nullable), `mcc`

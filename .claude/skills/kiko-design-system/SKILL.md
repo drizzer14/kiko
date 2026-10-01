@@ -997,15 +997,18 @@ new component can land between reviews of this skill:
   'Reminders').
 - **CardContextMenu** (`src/design-system/components/card-context-menu/`)
   — wraps a grid/list card in a touch-and-hold delete (and, when an
-  `onEdit`, `onDuplicate`, and/or `onClose` handler is passed, an
+  `onEdit`, `onDuplicate`, and/or `closeAction` is passed, an
   Edit/Duplicate/Close/Delete choice, in that order) menu. `onEdit` is
   for a row with no tap target of its own: the holding detail's
   share-change rows (Edit + Delete); a transaction row keeps
-  tap-to-edit and passes only `onDuplicate`. `onClose` is the account
-  detail's manual holding cards (Close + Delete): a hold there opens
-  the action list, never the delete confirm directly, and the screen
-  owns Close's own confirm (`CloseHoldingSheet`). A synced holding
-  passes no `onClose`. The menu is: a
+  tap-to-edit and passes only `onDuplicate`. `closeAction`
+  (`{ label, onPress }`, the consumer names the entry) is the account
+  detail's manual holding cards ("Close holding"/"Close loan" + Delete):
+  a hold there opens the action list, never the delete confirm
+  directly, and the screen owns Close's own confirm
+  (`CloseHoldingSheet`, a `destructive` red confirm). Only Delete is red
+  in the menu; Edit, Duplicate, and Close stay neutral. A synced holding
+  passes no `closeAction`. The menu is: a
   `Gesture.LongPress()` that raises the shared `ConfirmSheet` above on a
   still hold, while a hold that MOVES fails the gesture so an enclosing
   `react-native-sortables` drag can still claim it — see `kiko-gestures`

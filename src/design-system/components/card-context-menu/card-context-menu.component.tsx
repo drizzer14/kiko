@@ -22,7 +22,7 @@ export const DELETE_CONFIRM_TEST_ID = 'card-context-menu-delete-confirm';
 
 // The action-list buttons' jest test ids, exported so a consumer's test can
 // drive the CHOICE that a hold opens once `onDuplicate`, `onEdit`, or
-// `onClose` is wired. Only present then (a delete-only card never renders the
+// `closeAction` is wired. Only present then (a delete-only card never renders the
 // action list — it opens the confirm directly).
 export const DUPLICATE_ACTION_TEST_ID = 'card-context-menu-duplicate';
 export const EDIT_ACTION_TEST_ID = 'card-context-menu-edit';
@@ -54,7 +54,7 @@ const HOLD_LIFT_DURATION_MS = 300;
  * Wraps a grid card in a self-contained "deep-press (haptic)" context menu.
  *
  * A card with any action (deletable, or given `onDuplicate`/`onEdit`/
- * `onClose`) gets a `react-native-gesture-handler` `LongPress` composed
+ * `closeAction`) gets a `react-native-gesture-handler` `LongPress` composed
  * alongside — never over — the card:
  *
  * - a quick TAP never activates the long-press (its min duration is not met), so
@@ -104,8 +104,9 @@ const CardContextMenu: FC<{
   onEdit?: () => void;
   // An optional "close this entity, keep its history" action (a manual
   // holding the user sold or gave away). Joins the same action list; the
-  // consumer owns its confirm, since what closing means is the entity's own.
-  onClose?: () => void;
+  // consumer owns its label and its confirm, since what closing means, and
+  // what the entity is called, is the entity's own.
+  closeAction?: { label: string; onPress: () => void };
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -122,7 +123,7 @@ const CardContextMenu: FC<{
   onDelete,
   onDuplicate,
   onEdit,
-  onClose,
+  closeAction,
   liftOnHold = false,
   children,
 }) => {
@@ -143,7 +144,7 @@ const CardContextMenu: FC<{
 
   const canDuplicate = onDuplicate !== undefined;
   const canEdit = onEdit !== undefined;
-  const canClose = onClose !== undefined;
+  const canClose = closeAction !== undefined;
   const hasActionList = canDuplicate || canEdit || canClose;
 
   // A card with NO action renders bare — no gesture, no sheet — leaving the
@@ -209,7 +210,7 @@ const CardContextMenu: FC<{
 
   const runClose = (): void => {
     setActionsVisible(false);
-    onClose?.();
+    closeAction?.onPress();
   };
 
   // Delete from the action list hands off to the SAME named confirm sheet the
@@ -261,7 +262,7 @@ const CardContextMenu: FC<{
 
           {canClose && (
             <Button onPress={runClose} testID={CLOSE_ACTION_TEST_ID}>
-              {t('common.close')}
+              {closeAction?.label}
             </Button>
           )}
 

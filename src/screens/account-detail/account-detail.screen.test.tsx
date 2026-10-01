@@ -952,6 +952,66 @@ describe('AccountDetailScreen', () => {
       expect(alertSpy).toHaveBeenCalledWith('Could not close holding', 'Please try again.');
       alertSpy.mockRestore();
     });
+
+    it('names the menu entry "Close holding" in a neutral button, and confirms in red', async () => {
+      seedShares();
+      mockButtonProps.length = 0;
+      const { getByTestId } = await renderScreen();
+
+      await openCloseConfirm(getByTestId);
+
+      const menuEntry = mockButtonProps.find((entry) => entry.children === 'Close holding');
+      const confirm = mockButtonProps.filter((entry) => entry.children === 'Close').at(-1);
+
+      expect(menuEntry?.variant).toBeUndefined();
+      expect(confirm?.variant).toBe('destructive');
+    });
+
+    describe('a loan', () => {
+      const seedLoan = (): void =>
+        setLiveData({
+          accounts: [account({ kind: 'debt' })],
+          holdings: [
+            { id: 'h1', name: 'Car', type: 'loan', currency: 'UAH', balanceMinorUnits: 0 },
+          ],
+        });
+
+      it('closes it under loan wording, never "holding"', async () => {
+        seedLoan();
+        const { getByTestId, getByText, queryByText } = await renderScreen();
+
+        await holdHoldingCard();
+
+        expect(getByTestId(CLOSE_ACTION_TEST_ID)).toHaveTextContent('Close loan');
+
+        await act(async () => {
+          await fireEvent.press(getByTestId(CLOSE_ACTION_TEST_ID));
+        });
+
+        expect(getByText('Close Loan "Car"')).toBeTruthy();
+        expect(
+          getByText(
+            "It leaves your accounts and stops counting toward your net worth. Its past values stay on the net worth chart. A closed loan can't be reopened.",
+          ),
+        ).toBeTruthy();
+        expect(queryByText(/close holding/i)).toBeNull();
+      });
+
+      it('alerts under loan wording when the close fails', async () => {
+        mockCloseMany.mockRejectedValueOnce(new Error('write failed'));
+        const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+        seedLoan();
+        const { getByTestId } = await renderScreen();
+
+        await openCloseConfirm(getByTestId);
+        await act(async () => {
+          await fireEvent.press(getByTestId('close-holding-confirm'));
+        });
+
+        expect(alertSpy).toHaveBeenCalledWith('Could not close loan', 'Please try again.');
+        alertSpy.mockRestore();
+      });
+    });
   });
 
   it('wires an auto-scroll ref and an edge activation offset to the holdings grid', async () => {

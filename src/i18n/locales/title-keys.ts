@@ -20,6 +20,7 @@ export const TITLE_KEYS = new Set([
   'accountDetail.addBankSheetTitle',
   'accountDetail.balanceLabel',
   'accountDetail.closeHoldingTitle',
+  'accountDetail.closeLoanTitle',
   'accountDetail.disconnectMonobank',
   'accountDetail.disconnectProvider',
   'accountDetail.holdingsHeading',

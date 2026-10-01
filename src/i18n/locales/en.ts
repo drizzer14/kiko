@@ -690,10 +690,16 @@ export const en = {
     btcAddressPlaceholder: 'BTC address',
     changeBankAction: 'Change bank',
     checking: 'Checking…',
+    closeHoldingAction: 'Close holding',
     closeHoldingErrorTitle: 'Could not close holding',
     closeHoldingMessage:
       "It leaves your accounts and stops counting toward your net worth. Its past values stay on the net worth chart. A closed holding can't be reopened.",
     closeHoldingTitle: 'Close "{{name}}"',
+    closeLoanAction: 'Close loan',
+    closeLoanErrorTitle: 'Could not close loan',
+    closeLoanMessage:
+      "It leaves your accounts and stops counting toward your net worth. Its past values stay on the net worth chart. A closed loan can't be reopened.",
+    closeLoanTitle: 'Close Loan "{{name}}"',
     connectBinance: 'Connect Binance',
     connectedAs: 'Connected as {{name}}',
     connectMonobank: 'Connect Monobank',

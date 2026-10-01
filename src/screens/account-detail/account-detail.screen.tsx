@@ -46,8 +46,8 @@ import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/ban
 import HoldingCard from './holding-card';
 import { styles } from './account-detail.styles';
 import BankSyncSection from './bank-sync-section';
-import CloseHoldingSheet from './close-holding-sheet';
 import CryptoSyncSection from './crypto-sync-section';
+import CloseHoldingSheet, { closeHoldingCopy } from './close-holding-sheet';
 
 const offerMessage = (kind: ReminderKind, t: TFunction): string =>
   match(kind)
@@ -183,14 +183,19 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // gone, so only a manual one offers Close.
   const [closeTarget, setCloseTarget] = useState<HoldingRow>();
   const [isCloseConfirmVisible, setCloseConfirmVisible] = useState(false);
-  const closeActionFor = (holding: HoldingRow): (() => void) | undefined => {
+  const closeActionFor = (
+    holding: HoldingRow,
+  ): { label: string; onPress: () => void } | undefined => {
     if (isSyncedHolding(holding, account)) {
       return undefined;
     }
 
-    return () => {
-      setCloseTarget(holding);
-      setCloseConfirmVisible(true);
+    return {
+      label: t(closeHoldingCopy(holding.type).action),
+      onPress: () => {
+        setCloseTarget(holding);
+        setCloseConfirmVisible(true);
+      },
     };
   };
 
@@ -419,7 +424,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                     name={item.name}
                     deletable={!isSyncedHolding(item, account)}
                     onDelete={() => holdingsRepo.remove(item.id)}
-                    onClose={closeActionFor(item)}
+                    closeAction={closeActionFor(item)}
                   >
                     <HoldingCard
                       holding={item}

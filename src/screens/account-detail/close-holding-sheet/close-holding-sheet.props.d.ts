@@ -5,7 +5,7 @@ import type { HoldingRow } from '@kiko/db';
  * the title keeps its name while the sheet animates out.
  */
 export type CloseHoldingSheetProps = {
-  holding: Pick<HoldingRow, 'id' | 'name'>;
+  holding: Pick<HoldingRow, 'id' | 'name' | 'type'>;
   visible: boolean;
   onDismiss: () => void;
 };
