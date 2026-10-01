@@ -677,7 +677,15 @@ export const holdingsRepo = {
       }
 
       const metadata = isRecord(row.metadata) ? row.metadata : {};
-      const lots = withLotChange(asLots(metadata.lots) ?? [], change, row.currency);
+      // A list with one unreadable entry is refused, never replaced: writing
+      // over it would drop every readable lot with it.
+      const stored = asLots(metadata.lots ?? []);
+
+      if (stored === null) {
+        throw new Error('changeLots: stored lots are unreadable');
+      }
+
+      const lots = withLotChange(stored, change, row.currency);
 
       if (hasNegativeHolding(lots)) {
         throw new Error('changeLots: a sale would take more than is held');

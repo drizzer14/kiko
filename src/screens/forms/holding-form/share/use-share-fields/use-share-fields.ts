@@ -9,13 +9,13 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { startOfLocalDay } from '@kiko/dates';
-import type { Lot } from '@kiko/holdings/lots';
 import { normalizeIsin } from '@kiko/bonds/isin';
 import { parseAmount } from '@kiko/currency/parse';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { hasEodhdKey } from '@kiko/prices/eodhd-key';
 import type { TextInputInstance } from 'react-native';
+import { asLots, type Lot } from '@kiko/holdings/lots';
 import { SHARE_PRICE_SCALE } from '@kiko/prices/share-price';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
@@ -118,6 +118,16 @@ const buildShareCreatePayload = (fields: ShareCreateFields): CreatePayload => {
     )
     .exhaustive();
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+// A stored share that no longer parses still has its lots, and the edit that
+// repairs it must not write them away.
+const storedLots = (storedMetadata: unknown): Lot[] =>
+  asShareMeta(storedMetadata)?.lots ??
+  asLots(isRecord(storedMetadata) ? storedMetadata.lots : undefined) ??
+  [];
 
 type QuotedListing = { symbol?: string; quoteCurrency?: string };
 
@@ -286,7 +296,7 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
           quoteCurrency:
             keptQuoteCurrency(pickedListing, quoteSource, ticker) ??
             keptQuoteCurrency(storedAtWrite, quoteSource, ticker),
-          lots: storedAtWrite?.lots ?? [],
+          lots: storedLots(storedMetadata),
         });
       },
     );

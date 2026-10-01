@@ -269,6 +269,23 @@ describe('useShareFields edit', () => {
     ).toEqual({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX', lots: laterLots });
   });
 
+  // A stored share that no longer parses (an unknown source) still has its
+  // lots, and the edit that repairs it must keep them.
+  it('keeps readable stored lots when the rest of the stored share does not parse', async () => {
+    const { result } = await renderFields({ isEdit: true });
+
+    await act(async () => {
+      result.current.seed(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE' }));
+    });
+    await result.current.saveEdit(editContext);
+
+    expect(writtenMetadata(storedShare({ quoteSource: 'yahoo' }))).toEqual({
+      quoteSource: 'eodhd',
+      symbol: 'VOD.LSE',
+      lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
+    });
+  });
+
   it('drops the stored quote currency once the ticker changes', async () => {
     const { result } = await renderFields({ isEdit: true });
 

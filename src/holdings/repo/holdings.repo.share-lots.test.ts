@@ -47,6 +47,24 @@ describe('holdingsRepo.changeLots', () => {
     });
   });
 
+  it('refuses lots it cannot read, leaving them stored as they were', async () => {
+    const unreadable = { quoteSource: 'manual', lots: [lot, { day: 'x' }] };
+    openDatabase(unreadable);
+
+    await expect(
+      holdingsRepo.changeLots('share-1', { kind: 'add', lot: { ...lot, quantityDelta: '1' } }),
+    ).rejects.toThrow('changeLots: stored lots are unreadable');
+    expect(await storedMetadata()).toEqual(unreadable);
+  });
+
+  it('adds the first lot to a holding with no lots key', async () => {
+    openDatabase({ quoteSource: 'manual' });
+
+    await holdingsRepo.changeLots('share-1', { kind: 'add', lot });
+
+    expect(await storedMetadata()).toEqual({ quoteSource: 'manual', lots: [lot] });
+  });
+
   it('refuses a holding that is not stored', async () => {
     openDatabase({ quoteSource: 'manual', lots: [lot] });
 
