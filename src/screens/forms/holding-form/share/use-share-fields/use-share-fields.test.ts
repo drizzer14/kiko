@@ -1,20 +1,14 @@
-import {
-  dayKeyOf,
-  buildPriceBook,
-  type PriceBook,
-  EMPTY_PRICE_BOOK,
-} from '@kiko/prices/price-book';
 import type { HoldingRow } from '@kiko/db';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { shareInstrument } from '@kiko/prices/instrument';
 import { fiatCurrencyOptions } from '@kiko/currency/currency';
 import type { ShareListing } from '@kiko/prices/share-search';
+import { dayKeyOf, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { useShareFields } from './use-share-fields';
 
 jest.mock('@kiko/holdings/repo', () => ({
-  holdingsRepo: { updateWithManualPricePoint: jest.fn().mockResolvedValue(undefined) },
+  holdingsRepo: { updateShareFromStored: jest.fn().mockResolvedValue(undefined) },
 }));
 
 const mockHasEodhdKey = jest.fn();
@@ -27,7 +21,7 @@ jest.mock('@kiko/prices/share-search', () => ({
   searchShares: (...args: unknown[]) => mockSearchShares(...args),
 }));
 
-const updateMock = holdingsRepo.updateWithManualPricePoint as jest.Mock;
+const updateMock = holdingsRepo.updateShareFromStored as jest.Mock;
 
 const purchaseDay = new Date(2026, 8, 15).getTime();
 const lastDay = new Date(2026, 8, 25).getTime();
@@ -77,6 +71,10 @@ const editContext = {
   editingHolding: undefined,
   book: EMPTY_PRICE_BOOK,
 };
+
+// The edit builds its metadata from the row stored at the time of the write.
+const writtenMetadata = (stored: HoldingRow = storedShare({})): unknown =>
+  updateMock.mock.calls[0][2](stored.metadata);
 
 beforeEach(() => {
   mockHasEodhdKey.mockReset();
@@ -230,19 +228,45 @@ describe('useShareFields edit', () => {
 
     expect(updateMock).toHaveBeenCalledWith(
       'share-1',
-      {
-        name: 'Vodafone',
-        color: null,
-        metadata: {
+      { name: 'Vodafone', color: null },
+      expect.any(Function),
+    );
+    expect(
+      writtenMetadata(
+        storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }),
+      ),
+    ).toEqual({
+      quoteSource: 'eodhd',
+      symbol: 'VOD.LSE',
+      isin: 'GB00BH4HKS39',
+      quoteCurrency: 'GBX',
+      lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
+    });
+  });
+
+  it('keeps a quote currency and lots stored after the form opened', async () => {
+    const { result } = await renderFields({ isEdit: true });
+
+    await act(async () => {
+      result.current.seed(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE' }));
+    });
+    await result.current.saveEdit(editContext);
+
+    const laterLots = [
+      { day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 },
+      { day: lastDay, quantityDelta: '5', costMinorUnits: 7_000 },
+    ];
+
+    expect(
+      writtenMetadata(
+        storedShare({
           quoteSource: 'eodhd',
           symbol: 'VOD.LSE',
-          isin: 'GB00BH4HKS39',
           quoteCurrency: 'GBX',
-          lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
-        },
-      },
-      null,
-    );
+          lots: laterLots,
+        }),
+      ),
+    ).toEqual({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX', lots: laterLots });
   });
 
   it('drops the stored quote currency once the ticker changes', async () => {
@@ -258,83 +282,34 @@ describe('useShareFields edit', () => {
     });
     await result.current.saveEdit(editContext);
 
-    expect(updateMock.mock.calls[0][1].metadata).toEqual({
+    expect(
+      writtenMetadata(
+        storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }),
+      ),
+    ).toEqual({
       quoteSource: 'eodhd',
       symbol: 'BP.LSE',
       lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
     });
   });
 
-  describe('switched from EODHD to manual', () => {
-    const switchToManual = async (book: PriceBook) => {
-      const { result } = await renderFields({ isEdit: true });
-
-      await act(async () => {
-        result.current.seed(
-          storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }),
-        );
-      });
-      await act(async () => {
-        result.current.setQuoteSource('manual');
-      });
-      await result.current.saveEdit({ ...editContext, book });
-    };
-
-    const sharePoint = (day: number, price: string) => ({
-      instrument: shareInstrument('VOD.LSE'),
-      day,
-      price,
-      currency: 'GBP' as const,
-      source: 'eodhd' as const,
-    });
-
-    it('carries the latest EODHD price over to its own series, in the same write', async () => {
-      await switchToManual(
-        buildPriceBook([sharePoint(purchaseDay, '1.10'), sharePoint(lastDay, '1.2345')]),
-      );
-
-      expect(updateMock).toHaveBeenCalledTimes(1);
-      expect(updateMock).toHaveBeenCalledWith(
-        'share-1',
-        {
-          name: 'Vodafone',
-          color: null,
-          metadata: {
-            quoteSource: 'manual',
-            lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
-          },
-        },
-        { day: lastDay, price: '1.2345', currency: 'GBP' },
-      );
-    });
-
-    it('writes no price when the symbol has none yet', async () => {
-      await switchToManual(EMPTY_PRICE_BOOK);
-
-      expect(updateMock.mock.calls[0][2]).toBeNull();
-    });
-  });
-
-  it('writes no price when a manual share stays manual', async () => {
+  // The repo carries the symbol's closes over once it sees the switch.
+  it('writes a manual share with no symbol or quote currency', async () => {
     const { result } = await renderFields({ isEdit: true });
+    const stored = storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' });
 
     await act(async () => {
-      result.current.seed(storedShare({ quoteSource: 'manual', symbol: 'VOD.LSE' }));
+      result.current.seed(stored);
     });
-    await result.current.saveEdit({
-      ...editContext,
-      book: buildPriceBook([
-        {
-          instrument: shareInstrument('VOD.LSE'),
-          day: lastDay,
-          price: '1.2345',
-          currency: 'GBP',
-          source: 'eodhd',
-        },
-      ]),
+    await act(async () => {
+      result.current.setQuoteSource('manual');
     });
+    await result.current.saveEdit(editContext);
 
-    expect(updateMock.mock.calls[0][2]).toBeNull();
+    expect(writtenMetadata(stored)).toEqual({
+      quoteSource: 'manual',
+      lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
+    });
   });
 
   it('keeps a stored manual source once a saved key is found', async () => {
@@ -376,7 +351,11 @@ describe('useShareFields edit', () => {
     });
     await result.current.saveEdit(editContext);
 
-    expect(updateMock.mock.calls[0][1].metadata).toHaveProperty('quoteCurrency', 'GBX');
+    expect(
+      writtenMetadata(
+        storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }),
+      ),
+    ).toHaveProperty('quoteCurrency', 'GBX');
   });
 
   it('never blocks an edit on the first-lot fields', async () => {
@@ -572,7 +551,7 @@ describe('useShareFields search', () => {
     });
     await result.current.saveEdit(editContext);
 
-    expect(updateMock.mock.calls[0][1].metadata).toMatchObject({
+    expect(writtenMetadata(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.US' }))).toMatchObject({
       symbol: 'VOD.LSE',
       quoteCurrency: 'GBX',
     });

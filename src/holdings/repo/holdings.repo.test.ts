@@ -1858,38 +1858,3 @@ describe('holdingsRepo.updateLoan', () => {
     expect(captured.transactionsSet).toEqual({ loanHoldingId: null, loanLinkSource: null });
   });
 });
-
-describe('holdingsRepo.updateWithManualPricePoint', () => {
-  it('writes only the patch when there is no point', async () => {
-    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
-    mockDatabaseTransaction = databaseTransaction;
-
-    await holdingsRepo.updateWithManualPricePoint('h-1', { name: 'Renamed' }, null);
-
-    expect(captured.holdingSet).toEqual({ name: 'Renamed' });
-    expect(captured.inserts).toHaveLength(0);
-  });
-
-  it("upserts the point on the holding's own manual series in the same write", async () => {
-    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
-    mockDatabaseTransaction = databaseTransaction;
-
-    await holdingsRepo.updateWithManualPricePoint(
-      'h-1',
-      { metadata: { quoteSource: 'manual' } },
-      { day: 19_000, price: '1.2345', currency: 'GBP' },
-    );
-
-    expect(captured.holdingSet).toEqual({ metadata: { quoteSource: 'manual' } });
-    expect(captured.deleteCalls).toBe(0);
-    expect(captured.inserts).toEqual([
-      {
-        instrument: 'holding:h-1',
-        day: 19_000,
-        price: '1.2345',
-        currency: 'GBP',
-        source: 'manual',
-      },
-    ]);
-  });
-});
