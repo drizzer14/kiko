@@ -1,6 +1,5 @@
 import type { FC } from 'react';
 import type { HoldingRow } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { useTranslation } from 'react-i18next';
 import { asLots, hasNegativeHolding } from '@kiko/holdings/lots';
@@ -15,10 +14,15 @@ const LOT_ROW_TYPES: readonly HoldingRow['type'][] = ['share', 'metal'];
 const hasOversizedSale = ({
   type,
   metadata,
-}: NonNullable<OversizedSaleNoticeProps['holding']>): boolean =>
-  LOT_ROW_TYPES.includes(type) &&
-  (foldMap(maybe(asLots(isRecord(metadata) ? metadata.lots : undefined)), hasNegativeHolding) ??
-    false);
+}: NonNullable<OversizedSaleNoticeProps['holding']>): boolean => {
+  if (!LOT_ROW_TYPES.includes(type)) {
+    return false;
+  }
+
+  const lots = asLots(isRecord(metadata) ? metadata.lots : undefined);
+
+  return lots !== null && hasNegativeHolding(lots);
+};
 
 // An older build let a sale larger than what was held before it through, and
 // the app-open recost leaves such lots as stored, so their costs stay stale
@@ -26,7 +30,7 @@ const hasOversizedSale = ({
 const OversizedSaleNotice: FC<OversizedSaleNoticeProps> = ({ holding }) => {
   const { t } = useTranslation();
 
-  if (!(foldMap(maybe(holding), hasOversizedSale) ?? false)) {
+  if (holding === undefined || !hasOversizedSale(holding)) {
     return null;
   }
 
