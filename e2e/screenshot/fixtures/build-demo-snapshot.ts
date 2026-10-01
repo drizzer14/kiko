@@ -226,9 +226,10 @@ const buildPricePoints = (dataset: ScreenshotDataset): PricePointRow[] => {
 const buildReminders = (dataset: ScreenshotDataset): ReminderRow[] =>
   dataset.accounts
     .flatMap((account, accountIndex) =>
-      (account.reminders ?? []).map((reminder) => ({
-        ...reminder,
+      (account.reminders ?? []).map(({ kind, schedule }) => ({
         accountId: `acc-${accountIndex + 1}`,
+        kind,
+        schedule,
       })),
     )
     .map((reminder, index) => ({

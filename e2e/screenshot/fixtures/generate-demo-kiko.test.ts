@@ -28,6 +28,7 @@ import { join } from 'node:path';
 import maybe, { foldMap } from 'fnts/maybe';
 import { accounts, holdings, reminders } from '@kiko/db';
 import { eligibleReminderKinds } from '@kiko/reminders/rules';
+import { isReminderSchedule } from '@kiko/reminders/schedule';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -102,6 +103,7 @@ describe('the demo dataset covers every account kind, holding type, and reminder
           foldMap(maybe(accountsById.get(reminder.accountId)), eligibleReminderKinds) ?? [];
 
         expect(eligibleKinds).toContain(reminder.kind);
+        expect(isReminderSchedule(reminder.schedule)).toBe(true);
       }
     });
   }
