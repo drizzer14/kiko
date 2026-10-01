@@ -9,6 +9,7 @@ import {
   currentQuota,
   withUserLimits,
   type QuoteQuota,
+  withUnconfirmedLimit,
 } from '@kiko/prices/quote-quota';
 import { match, P } from 'ts-pattern';
 import { EODHD_SIGNUP_URL } from '@env';
@@ -17,6 +18,7 @@ import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import { logFailure } from '@kiko/diagnostics';
 import { Linking, Pressable } from 'react-native';
 import { type FC, useEffect, useState } from 'react';
 import Box from '@kiko/design-system/components/box';
@@ -25,6 +27,7 @@ import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
@@ -47,14 +50,20 @@ const failedCheckStatus = (error: unknown, t: TFunction): SyncStatus =>
     : { kind: 'saveError', message: t('settings.sharePricesScreen.unavailableError') };
 
 // A daily or per-minute limit is not a rejection of the key, so the key is
-// stored; a daily limit also marks the day used up, which this screen shows.
+// stored, with a daily limit EODHD has yet to confirm (the next open of this
+// screen reads it); a daily limit also marks the day used up, which this
+// screen shows.
 const acceptedKeyQuota = (error: unknown): QuotaUpdate | undefined =>
   match(error)
     .with(
       P.instanceOf(EodhdQuotaError),
-      (): QuotaUpdate => (stored) => markUsedUp(currentQuota(stored, Date.now())),
+      (): QuotaUpdate => (stored) =>
+        markUsedUp(withUnconfirmedLimit(currentQuota(stored, Date.now()))),
     )
-    .with(P.instanceOf(EodhdRateLimitError), (): QuotaUpdate => (stored) => stored)
+    .with(
+      P.instanceOf(EodhdRateLimitError),
+      (): QuotaUpdate => (stored) => withUnconfirmedLimit(currentQuota(stored, Date.now())),
+    )
     .otherwise(() => undefined);
 
 type RequestsToday = { used: number; limit: number; isUsedUp: boolean };
@@ -95,6 +104,12 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
 
   useEffect(() => {
     hasEodhdKey().then(setIsKeySaved, () => setIsKeySaved(false));
+  }, []);
+
+  useEffect(() => {
+    confirmDailyLimit().catch((error: unknown) =>
+      logFailure('[share-prices] daily limit check failed', error),
+    );
   }, []);
 
   const handleChangeKey = (value: string): void => {

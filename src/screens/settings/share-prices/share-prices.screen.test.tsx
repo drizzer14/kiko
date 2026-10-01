@@ -41,6 +41,11 @@ jest.mock('@kiko/prices/eodhd-key/eodhd-key', () => ({
 }));
 
 const mockUpdateQuoteQuota = jest.fn();
+const mockConfirmDailyLimit = jest.fn();
+jest.mock('@kiko/prices/daily-limit/daily-limit', () => ({
+  confirmDailyLimit: () => mockConfirmDailyLimit(),
+}));
+
 jest.mock('@kiko/settings', () => {
   const actual = jest.requireActual('@kiko/settings');
 
@@ -94,6 +99,7 @@ describe('SharePricesScreen', () => {
     mockClearEodhdKey.mockReset().mockResolvedValue(undefined);
     mockReadEodhdKey.mockReset();
     mockUpdateQuoteQuota.mockReset().mockResolvedValue(undefined);
+    mockConfirmDailyLimit.mockReset().mockResolvedValue(undefined);
     mockOpenURL.mockReset();
     mockQuotaRows = [];
     mockQuotaLoading = false;
@@ -270,6 +276,12 @@ describe('SharePricesScreen', () => {
     });
   });
 
+  it('checks a daily limit EODHD has not confirmed once, on open', async () => {
+    await renderScreen();
+
+    await waitFor(() => expect(mockConfirmDailyLimit).toHaveBeenCalledTimes(1));
+  });
+
   it('stores a key EODHD answered with its daily limit, and marks the day used up', async () => {
     mockFetchUserLimits.mockRejectedValue(new EodhdQuotaError());
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
@@ -282,10 +294,16 @@ describe('SharePricesScreen', () => {
 
     const [[build]] = mockUpdateQuoteQuota.mock.calls as [[(stored: null) => unknown]];
 
-    expect(build(null)).toEqual({ day: TODAY, calls: 20, dailyLimit: 20, symbols: [] });
+    expect(build(null)).toEqual({
+      day: TODAY,
+      calls: 20,
+      dailyLimit: 20,
+      symbols: [],
+      isLimitUnconfirmed: true,
+    });
   });
 
-  it('stores a key EODHD answered with its per-minute limit, and keeps the stored quota', async () => {
+  it('stores a key EODHD answered with its per-minute limit, its limit left unconfirmed', async () => {
     mockFetchUserLimits.mockRejectedValue(new EodhdRateLimitError());
     const stored: QuoteQuota = { day: TODAY, calls: 4, dailyLimit: 100, symbols: ['AAPL.US'] };
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
@@ -298,7 +316,7 @@ describe('SharePricesScreen', () => {
 
     const [[build]] = mockUpdateQuoteQuota.mock.calls as [[(stored: QuoteQuota) => unknown]];
 
-    expect(build(stored)).toEqual(stored);
+    expect(build(stored)).toEqual({ ...stored, isLimitUnconfirmed: true });
   });
 
   it('keeps the key unsaved when the quota cannot be stored', async () => {

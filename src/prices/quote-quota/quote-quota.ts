@@ -11,9 +11,17 @@ const SEARCH_RESERVE = 2;
  * The EODHD calls spent on one `day`: a UTC-midnight day, because EODHD resets
  * its daily limit at midnight GMT, not on the device's day. `symbols` are the
  * symbols already requested that day, so a symbol costs at most one refresh
- * per day even when its answer brought no new close.
+ * per day even when its answer brought no new close. `isLimitUnconfirmed`
+ * marks a `dailyLimit` EODHD has not told yet (a key saved while `/user`
+ * answered with a limit error); absent on every quota stored before it.
  */
-export type QuoteQuota = { day: number; calls: number; dailyLimit: number; symbols: string[] };
+export type QuoteQuota = {
+  day: number;
+  calls: number;
+  dailyLimit: number;
+  symbols: string[];
+  isLimitUnconfirmed?: boolean;
+};
 
 const utcDayOf = (instant: number): number => Math.floor(instant / DAY_MS) * DAY_MS;
 
@@ -24,8 +32,19 @@ export const currentQuota = (stored: QuoteQuota | null, now: number): QuoteQuota
     return stored;
   }
 
-  return { day, calls: 0, dailyLimit: stored?.dailyLimit ?? DEFAULT_DAILY_LIMIT, symbols: [] };
+  return {
+    day,
+    calls: 0,
+    dailyLimit: stored?.dailyLimit ?? DEFAULT_DAILY_LIMIT,
+    symbols: [],
+    ...(stored?.isLimitUnconfirmed === true ? { isLimitUnconfirmed: true } : {}),
+  };
 };
+
+export const withUnconfirmedLimit = (quota: QuoteQuota): QuoteQuota => ({
+  ...quota,
+  isLimitUnconfirmed: true,
+});
 
 export const refreshAllowance = (quota: QuoteQuota): number =>
   Math.max(0, quota.dailyLimit - SEARCH_RESERVE - quota.calls);
@@ -85,7 +104,7 @@ export const withUserLimits = (
   limits: UserLimits,
   now: number,
 ): QuoteQuota => {
-  const quota = currentQuota(stored, now);
+  const { isLimitUnconfirmed: _wasUnconfirmed, ...quota } = currentQuota(stored, now);
 
   return {
     ...quota,

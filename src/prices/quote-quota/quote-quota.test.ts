@@ -7,6 +7,7 @@ import {
   reserve,
   settle,
   withUserLimits,
+  withUnconfirmedLimit,
 } from './quote-quota';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -42,6 +43,18 @@ describe('currentQuota', () => {
       dailyLimit: 100,
       symbols: [],
     });
+  });
+
+  it('keeps a daily limit EODHD has not confirmed unconfirmed on the next day', () => {
+    expect(currentQuota(quota({ isLimitUnconfirmed: true }), OCTOBER_1 + DAY_MS)).toMatchObject({
+      isLimitUnconfirmed: true,
+    });
+  });
+});
+
+describe('withUnconfirmedLimit', () => {
+  it('marks the daily limit as one EODHD has not confirmed', () => {
+    expect(withUnconfirmedLimit(quota())).toEqual(quota({ isLimitUnconfirmed: true }));
   });
 });
 
@@ -121,6 +134,17 @@ describe('settle', () => {
 });
 
 describe('withUserLimits', () => {
+  it('confirms a daily limit read from EODHD', () => {
+    const confirmed = withUserLimits(
+      quota({ isLimitUnconfirmed: true }),
+      { dailyLimit: 100, requestsToday: 9, requestsDay: OCTOBER_1 },
+      LATE_OCTOBER_1,
+    );
+
+    expect(confirmed).not.toHaveProperty('isLimitUnconfirmed');
+    expect(confirmed).toEqual(quota({ calls: 9, dailyLimit: 100 }));
+  });
+
   it("takes EODHD's own count and limit for the same UTC day", () => {
     expect(
       withUserLimits(
