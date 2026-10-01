@@ -286,7 +286,8 @@ confirm the relevant check ran and stayed green:
 - `kiko-no-hidden-feature-flag-or-demo-import` (Semgrep, `check:security`) —
   the `SHOW_*`/`HIDE_*` flag and `e2e/` import pattern only.
 - `scripts/checks/plist.sh` (`check:plist`) — ATS pinning, arbitrary
-  loads, empty usage-description strings.
+  loads, empty usage-description strings, and (section 1b) an
+  `api_token` client without a `Cache-Control: no-store` request header.
 - `gitleaks` (`check:secrets`) — a committed secret.
 - `kiko-no-raw-error-in-console` (Semgrep, pre-write guard and
   `check:security`) — a non-literal `console.*` argument (see "5.1.5 /
