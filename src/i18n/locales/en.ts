@@ -128,16 +128,19 @@ export const en = {
     sharePricesScreen: {
       dailyLimit: 'Daily limit: {{limit}}',
       intro:
-        'Kiko gets end-of-day share prices from EODHD with your own API key. You sign up with EODHD and accept its terms. The key stays on this iPhone.',
+        'Kiko gets end-of-day share prices from EODHD with your own API key. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
       invalidKeyError: 'EODHD did not accept this key.',
       keyLabel: 'API key',
       keyPlaceholder: 'Paste your EODHD key',
       keyRequiredError: 'Enter an API key.',
       keySaved: 'Key saved',
       pasteAccessibilityLabel: 'Paste key',
+      quotaUsedUpMessage:
+        'Today’s EODHD requests are used up. Prices update again after midnight GMT.',
       removeConfirmBody: 'Shares priced by EODHD keep their last price.',
       removeConfirmTitle: 'Remove Key?',
       removeKey: 'Remove key',
+      requestsToday: 'Requests today: {{used}} / {{limit}}',
       saveKey: 'Save key',
       signUpHint: 'Get a free key at {{url}}.',
       title: 'Share Prices',

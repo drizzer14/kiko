@@ -1,30 +1,75 @@
+import {
+  EodhdAuthError,
+  fetchUserLimits,
+  EodhdQuotaError,
+  EodhdRateLimitError,
+} from '@kiko/prices/eodhd';
+import {
+  markUsedUp,
+  currentQuota,
+  withUserLimits,
+  type QuoteQuota,
+} from '@kiko/prices/quote-quota';
+import { match, P } from 'ts-pattern';
 import { EODHD_SIGNUP_URL } from '@env';
+import { useLiveQuery } from '@kiko/db';
 import type { TFunction } from 'i18next';
+import maybe, { foldMap } from 'fnts/maybe';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import { Linking, Pressable } from 'react-native';
 import { type FC, useEffect, useState } from 'react';
 import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
-import { withUserLimits } from '@kiko/prices/quote-quota';
+import { activeLocale } from '@kiko/i18n/active-locale';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import NoticeBanner from '@kiko/design-system/components/notice-banner';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { clearEodhdKey, hasEodhdKey, saveEodhdKey } from '@kiko/prices/eodhd-key';
 import ClipboardTextField from '@kiko/design-system/components/clipboard-text-field';
-import { EodhdAuthError, fetchUserLimits, type UserLimits } from '@kiko/prices/eodhd';
 import SyncStatusLine, { type SyncStatus } from '@kiko/design-system/components/sync-status-line';
 
+import { styles } from './share-prices.styles';
+
 type SharePricesScreenProps = NativeStackScreenProps<SettingsStackParamList, 'SharePrices'>;
+
+type QuotaUpdate = (stored: QuoteQuota | null) => QuoteQuota | null;
 
 const failedCheckStatus = (error: unknown, t: TFunction): SyncStatus =>
   error instanceof EodhdAuthError
     ? { kind: 'invalid', message: t('settings.sharePricesScreen.invalidKeyError') }
     : { kind: 'saveError', message: t('settings.sharePricesScreen.unavailableError') };
+
+// A daily or per-minute limit is not a rejection of the key, so the key is
+// stored; a daily limit also marks the day used up, which this screen shows.
+const acceptedKeyQuota = (error: unknown): QuotaUpdate | undefined =>
+  match(error)
+    .with(
+      P.instanceOf(EodhdQuotaError),
+      (): QuotaUpdate => (stored) => markUsedUp(currentQuota(stored, Date.now())),
+    )
+    .with(P.instanceOf(EodhdRateLimitError), (): QuotaUpdate => (stored) => stored)
+    .otherwise(() => undefined);
+
+type RequestsToday = { used: number; limit: number; isUsedUp: boolean };
+
+const requestsTodayOf = (stored: QuoteQuota | null, now: number): RequestsToday => {
+  const quota = currentQuota(stored, now);
+
+  return {
+    used: Math.min(quota.calls, quota.dailyLimit),
+    limit: quota.dailyLimit,
+    isUsedUp: stored?.day === quota.day && quota.calls >= quota.dailyLimit,
+  };
+};
+
+const formatCount = (count: number): string => count.toLocaleString(activeLocale());
 
 const SharePricesScreen: FC<SharePricesScreenProps> = () => {
   const { t } = useTranslation();
@@ -36,6 +81,17 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
   const [isKeySaved, setIsKeySaved] = useState(false);
   const [dailyLimit, setDailyLimit] = useState<number | undefined>(undefined);
   const [removePending, setRemovePending] = useState(false);
+  const { data: quotaRows, isLoading: isQuotaLoading } = useLiveQuery(
+    settingsRepo.quoteQuotaQuery(),
+    ['settings'],
+  );
+  // Nothing about today's requests shows before the stored quota has loaded:
+  // its default would read as "0 used" for a moment.
+  const requestsToday =
+    isKeySaved && !isQuotaLoading
+      ? requestsTodayOf(quotaRows.at(0)?.quoteQuota ?? null, Date.now())
+      : undefined;
+  const signUpHint = t('settings.sharePricesScreen.signUpHint', { url: EODHD_SIGNUP_URL });
 
   useEffect(() => {
     hasEodhdKey().then(setIsKeySaved, () => setIsKeySaved(false));
@@ -45,6 +101,10 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
     setKey(value);
     setStatus({ kind: 'idle' });
     setShowKeyRequiredError(false);
+  };
+
+  const handleOpenSignUp = (): void => {
+    Linking.openURL(EODHD_SIGNUP_URL);
   };
 
   // Only a key EODHD accepts is stored, so a typo never becomes a saved key
@@ -60,20 +120,30 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
 
     setStatus({ kind: 'checking' });
 
-    let limits: UserLimits;
+    let updateQuota: QuotaUpdate;
+    let limit: number | undefined;
 
     try {
-      limits = await fetchUserLimits(trimmed);
-    } catch (error) {
-      setStatus(failedCheckStatus(error, t));
+      const limits = await fetchUserLimits(trimmed);
 
-      return;
+      updateQuota = (stored) => withUserLimits(stored, limits, Date.now());
+      limit = limits.dailyLimit;
+    } catch (error) {
+      const accepted = acceptedKeyQuota(error);
+
+      if (accepted === undefined) {
+        setStatus(failedCheckStatus(error, t));
+
+        return;
+      }
+
+      updateQuota = accepted;
     }
 
     // The quota first: a key saved without its own limit would be refreshed
     // under the free plan's limit.
     try {
-      await settingsRepo.updateQuoteQuota((stored) => withUserLimits(stored, limits, Date.now()));
+      await settingsRepo.updateQuoteQuota(updateQuota);
       await saveEodhdKey(trimmed);
     } catch {
       setStatus({ kind: 'idle' });
@@ -85,7 +155,7 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
     setKey('');
     setStatus({ kind: 'idle' });
     setIsKeySaved(true);
-    setDailyLimit(limits.dailyLimit);
+    setDailyLimit(limit);
   };
 
   const { onPress: handleSave, isSubmitting } = useSubmitOnce(runSave);
@@ -125,6 +195,13 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
       }
     >
       <Box gap={4}>
+        {requestsToday?.isUsedUp === true && (
+          <NoticeBanner
+            message={t('settings.sharePricesScreen.quotaUsedUpMessage')}
+            testID="share-prices-quota-banner"
+          />
+        )}
+
         <Text variant="body" tone="textSecondary">
           {t('settings.sharePricesScreen.intro')}
         </Text>
@@ -136,11 +213,20 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
                 status={{ kind: 'success', message: t('settings.sharePricesScreen.keySaved') }}
               />
 
-              {dailyLimit !== undefined && (
+              {foldMap(maybe(dailyLimit), (limit) => (
                 <Text variant="caption" tone="textSecondary">
-                  {t('settings.sharePricesScreen.dailyLimit', { limit: dailyLimit })}
+                  {t('settings.sharePricesScreen.dailyLimit', { limit: formatCount(limit) })}
                 </Text>
-              )}
+              ))}
+
+              {foldMap(maybe(requestsToday), ({ used, limit }) => (
+                <Text variant="caption" tone="textSecondary">
+                  {t('settings.sharePricesScreen.requestsToday', {
+                    used: formatCount(used),
+                    limit: formatCount(limit),
+                  })}
+                </Text>
+              ))}
 
               <Button
                 testID="settings-button-remove-eodhd-key"
@@ -170,11 +256,16 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
               }
             />
 
-            {/* Plain text, not a styled link: a link to the provider could read
-                as a partnership. */}
-            <Text variant="caption" tone="textSecondary">
-              {t('settings.sharePricesScreen.signUpHint', { url: EODHD_SIGNUP_URL })}
-            </Text>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={signUpHint}
+              onPress={handleOpenSignUp}
+              style={styles.signUpLink}
+            >
+              <Text variant="caption" tone="accent">
+                {signUpHint}
+              </Text>
+            </Pressable>
 
             <SyncStatusLine status={status} />
           </Box>
