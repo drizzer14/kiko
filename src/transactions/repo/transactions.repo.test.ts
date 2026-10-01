@@ -2287,6 +2287,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: -50_000,
       balanceSetAt: 2_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2375,6 +2376,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: -5_000,
       balanceSetAt: 1_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2401,6 +2403,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: -50_000,
       balanceSetAt: 2_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2475,6 +2478,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: -5_300,
       balanceSetAt: 1_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2498,6 +2502,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: 970_000,
       balanceSetAt: 2_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2519,6 +2524,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: 970_000,
       balanceSetAt: 2_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2664,6 +2670,7 @@ describe('transactionsRepo.importRows', () => {
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 12_345,
         balanceSetAt: HAND_SET_TIME + 1,
+        balanceSetRowId: null,
       });
     });
 

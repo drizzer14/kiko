@@ -1,5 +1,4 @@
-import { and, eq } from 'drizzle-orm';
-import { type database, type TransactionRow, transactions } from '@kiko/db';
+import type { TransactionRow } from '@kiko/db';
 
 type BalanceSetShape = Pick<
   TransactionRow,
@@ -21,17 +20,3 @@ export const isBalanceSetShapedRow = (row: BalanceSetShape): boolean =>
   row.category === null &&
   row.exchangeCounterpartHoldingId === null &&
   row.changeGroupId === null;
-
-/** Clear the balance-set mark on every row of `holdingId`, on the caller's
- * handle, in the same transaction as the write that sets a NEW balance: the
- * newest balance set is the holding's only anchor, so the row an earlier set
- * wrote is ordinary history from then on. */
-export const unmarkBalanceSetRowsDatabaseTransaction = async (
-  databaseTransaction: typeof database,
-  holdingId: string,
-): Promise<void> => {
-  await databaseTransaction
-    .update(transactions)
-    .set({ setsBalance: false })
-    .where(and(eq(transactions.holdingId, holdingId), eq(transactions.setsBalance, true)));
-};

@@ -408,6 +408,7 @@ describe('accountsRepo', () => {
     // opening ledger row's `time`, or `transactionsRepo.importRows` never
     // sees this holding as ever hand-set.
     expect(holdingInsert.balanceSetAt).toBe(openingRow.time);
+    expect(holdingInsert.balanceSetRowId).toBe(openingRow.id);
   });
 
   it('seeds no transaction for a zero initial balance, and does not stamp balanceSetAt', async () => {

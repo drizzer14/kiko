@@ -40,7 +40,6 @@ import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/rep
 import { isSyncedAccount, isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 
 import { normalizeTransactionName } from '../normalize-name';
-import { unmarkBalanceSetRowsDatabaseTransaction } from '../balance-set-row';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
@@ -127,9 +126,9 @@ const syncSourceRowsOf = (holdingId: string | typeof holdings.id) =>
 
 /** Whether a row dated `time` moves the stored balance. A row dated at or before
  * the boundary is history: the balance set at the boundary already counts it,
- * the same as `postClosingRowsWhere`'s strict `gt`. The balance-set row itself
- * is judged by its stored mark instead (`setsBalanceAtBoundary`), wherever its
- * date has moved. */
+ * the same as `postClosingRowsWhere`'s strict `gt`. A row that set a balance
+ * is judged by its stored mark instead (`editBalanceDelta`,
+ * `removeBalanceDelta`), wherever its date has moved. */
 const movesBalance = (time: number, boundary: number | null): boolean =>
   boundary === null || time > boundary;
 
@@ -138,32 +137,36 @@ const balanceShareOf = (amountMinorUnits: number, time: number, boundary: number
 
 type DatedAmount = { amountMinorUnits: number; time: number };
 
-type StoredManualRow = DatedAmount & Pick<TransactionRow, 'setsBalance'>;
+type StoredManualRow = DatedAmount & Pick<TransactionRow, 'id' | 'setsBalance'>;
 
-/** Whether `row` is the row whose amount set the holding's balance at the
- * boundary (an opening balance, a cash opening, a hand edit) — by its stored
- * mark, never by its time or shape, which a re-date, a description, or a
- * category changes. The mark counts only while that balance set IS the
- * boundary: a newer synced row anchors the holding past it, and the row is
- * history like any other. */
-const setsBalanceAtBoundary = (
+type BalanceSet = Pick<HoldingRow, 'balanceSetAt' | 'balanceSetRowId'>;
+
+/** Whether `row` is the row whose amount the holding's CURRENT balance was set
+ * by — by id, never by its time or shape, which a re-date, a description, or
+ * a category changes. Only while that set IS the boundary: a newer synced row
+ * anchors the holding past it. */
+const isCurrentBalanceSetRow = (
   row: StoredManualRow,
-  balanceSetAt: number | null,
+  balanceSet: BalanceSet,
   boundary: number | null,
-): boolean => row.setsBalance && balanceSetAt !== null && balanceSetAt === boundary;
+): boolean => row.id === balanceSet.balanceSetRowId && balanceSet.balanceSetAt === boundary;
 
-/** How far an edit from `existing` to `edited` moves the stored balance. The
- * balance-set row's amount is part of the balance set there, so an edit moves
- * the balance by the difference whatever the new date, and a re-date alone
- * moves nothing. */
+/** How far an edit from `existing` to `edited` moves the stored balance. A
+ * marked row's amount is part of a balance that was set, so its re-date
+ * moves nothing; only the current set's row moves the balance, by the amount
+ * difference whatever the new date. */
 const editBalanceDelta = (
   existing: StoredManualRow,
   edited: DatedAmount,
-  balanceSetAt: number | null,
+  balanceSet: BalanceSet,
   boundary: number | null,
 ): number => {
-  if (setsBalanceAtBoundary(existing, balanceSetAt, boundary)) {
+  if (isCurrentBalanceSetRow(existing, balanceSet, boundary)) {
     return edited.amountMinorUnits - existing.amountMinorUnits;
+  }
+
+  if (existing.setsBalance) {
+    return 0;
   }
 
   return (
@@ -172,20 +175,11 @@ const editBalanceDelta = (
   );
 };
 
-/** How far deleting `row` moves the stored balance: the balance-set row's
- * amount is part of the balance set there, so deleting it, whatever its date,
- * leaves that balance as it is. */
-const removeBalanceDelta = (
-  row: StoredManualRow,
-  balanceSetAt: number | null,
-  boundary: number | null,
-): number => {
-  if (setsBalanceAtBoundary(row, balanceSetAt, boundary)) {
-    return 0;
-  }
-
-  return -balanceShareOf(row.amountMinorUnits, row.time, boundary);
-};
+/** How far deleting `row` moves the stored balance: a marked row's amount is
+ * part of a balance that was set, so deleting it, whatever its date, leaves
+ * that balance as it is. */
+const removeBalanceDelta = (row: StoredManualRow, boundary: number | null): number =>
+  row.setsBalance ? 0 : -balanceShareOf(row.amountMinorUnits, row.time, boundary);
 
 const newestSyncTimeOfHolding = sql<number | null>`(
   SELECT max(${transactions.time}) FROM ${transactions} WHERE ${syncSourceRowsOf(holdings.id)}
@@ -213,12 +207,12 @@ const readAnchoredHoldingDatabaseTransaction = async (
   }));
 };
 
-/** Move a holding's stored balance by `deltaFor(boundary, balanceSetAt)`, so a
+/** Move a holding's stored balance by `deltaFor(boundary, holding)`, so a
  * manual write judges its row against the same boundary an import does. */
 const moveBalanceDatabaseTransaction = async (
   databaseTransaction: typeof database,
   holdingId: string,
-  deltaFor: (boundary: number | null, balanceSetAt: number | null) => number,
+  deltaFor: (boundary: number | null, holding: HoldingRow) => number,
 ): Promise<void> => {
   const anchored = await readAnchoredHoldingDatabaseTransaction(databaseTransaction, holdingId);
 
@@ -226,7 +220,7 @@ const moveBalanceDatabaseTransaction = async (
     return;
   }
 
-  const delta = deltaFor(anchored.boundary, anchored.holding.balanceSetAt);
+  const delta = deltaFor(anchored.boundary, anchored.holding);
 
   if (delta === 0) {
     return;
@@ -658,9 +652,15 @@ export const bankOwnedTransactionSetWhere = sql.join(
 // so a real-SQLite test can prove the exact predicate — both the `holdingId`
 // scope and the STRICT `gt` boundary (a row exactly AT `asOfMilliseconds`
 // belongs to the closing balance itself, not after it) — rather than a
-// hand-transcribed copy of it.
+// hand-transcribed copy of it. A row that set a balance never counts: its
+// amount is part of a balance that was set, and a re-date past the as-of must
+// not move the balance (`removeBalanceDelta`).
 export const postClosingRowsWhere = (holdingId: string, asOfMilliseconds: number) =>
-  and(eq(transactions.holdingId, holdingId), gt(transactions.time, asOfMilliseconds));
+  and(
+    eq(transactions.holdingId, holdingId),
+    gt(transactions.time, asOfMilliseconds),
+    eq(transactions.setsBalance, false),
+  );
 
 /**
  * Apply name->category override rules and upsert a batch of imported rows on
@@ -748,14 +748,16 @@ const insertDedupRowsDatabaseTransaction = async (
 type ImportBalanceDecision = {
   nextBalance: number;
   balanceSetAt?: number;
+  balanceSetRowId?: null;
 };
 
 /** `importRows`'s pure balance decision, pulled out of the write closure to
  * stay under Biome's cognitive-complexity cap — see that function's own doc
- * comment for the full rule this implements. `balanceSetAt` is present only
- * when a closing balance actually applied this call; the caller writes it to
- * `holdings` alongside `nextBalance`. `existingPostClosingNetMinorUnits` is
- * the net of every row ALREADY in the ledger (any source) dated after the
+ * comment for the full rule this implements. `balanceSetAt` and
+ * `balanceSetRowId` are present only when a closing balance actually applied
+ * this call; the caller writes them to `holdings` alongside `nextBalance`.
+ * `existingPostClosingNetMinorUnits` is the net of every row ALREADY in the
+ * ledger (any source, never a row that set a balance) dated after the
  * closing balance's own as-of, read before this import inserted anything —
  * an already-imported holding's later rows must not be erased by an older
  * statement's own closing figure. */
@@ -790,6 +792,7 @@ const resolveImportBalance = (
   return {
     nextBalance: closingBalance.minorUnits + postClosingNet,
     balanceSetAt: closingBalance.asOfSeconds * 1000,
+    balanceSetRowId: null,
   };
 };
 
@@ -1203,11 +1206,12 @@ export const transactionsRepo = {
    * (`importRows`) on their own: only a side dated strictly after it counts,
    * so an edit that moves the row across the boundary adds or takes back its
    * amount, and an edit wholly at or before it leaves the balance untouched —
-   * except an edit of the balance-set row itself (`setsBalanceAtBoundary`),
-   * which moves the balance by the amount difference whatever its new date
-   * (`editBalanceDelta`). A synced (monobank) transaction
-   * is never mutated by this path — its amount is owned by the bank import — and
-   * a missing id is a no-op rather than an error.
+   * except a row that set a balance (`transactions.setsBalance`): its edit
+   * moves nothing, unless it is the current set's row
+   * (`holdings.balanceSetRowId`), whose amount edit moves the balance by the
+   * difference whatever its new date (`editBalanceDelta`). A synced (monobank)
+   * transaction is never mutated by this path — its amount is owned by the bank
+   * import — and a missing id is a no-op rather than an error.
    */
   update: ({ transactionId, amountMinorUnits, time, description }: TransactionEdit) =>
     write(async (databaseTransaction) => {
@@ -1228,8 +1232,8 @@ export const transactionsRepo = {
       await moveBalanceDatabaseTransaction(
         databaseTransaction,
         existing.holdingId,
-        (boundary, balanceSetAt) =>
-          editBalanceDelta(existing, { amountMinorUnits, time }, balanceSetAt, boundary),
+        (boundary, holding) =>
+          editBalanceDelta(existing, { amountMinorUnits, time }, holding, boundary),
       );
     }),
   /**
@@ -1239,7 +1243,7 @@ export const transactionsRepo = {
    * `recordManual`/`update`: `balance -= amountMinorUnits` for a row dated
    * strictly after THE BOUNDARY (`importRows`), nothing for a row at or before
    * it, whose amount the balance set at the boundary already includes, and
-   * nothing for the balance-set row itself, whatever its date
+   * nothing for a row that set a balance, whatever its date
    * (`removeBalanceDelta`). A
    * synced (monobank) transaction is owned by the bank import and is refused with
    * a typed error; a missing id is a no-op rather than an error.
@@ -1260,10 +1264,8 @@ export const transactionsRepo = {
         throw new Error('transactionsRepo.remove: cannot delete a synced transaction');
       }
       await databaseTransaction.delete(transactions).where(eq(transactions.id, transactionId));
-      await moveBalanceDatabaseTransaction(
-        databaseTransaction,
-        row.holdingId,
-        (boundary, balanceSetAt) => removeBalanceDelta(row, balanceSetAt, boundary),
+      await moveBalanceDatabaseTransaction(databaseTransaction, row.holdingId, (boundary) =>
+        removeBalanceDelta(row, boundary),
       );
     }),
   /**
@@ -1491,15 +1493,16 @@ export const transactionsRepo = {
    * manual row dated at or before it is history there too and moves no
    * balance, so deleting a manual duplicate of an imported row (one at the
    * closing as-of included), entering a back-dated one, or re-dating or
-   * deleting the balance-set row itself (an opening balance or a hand edit,
+   * deleting a row that set a balance (an opening balance or a hand edit,
    * known by its stored `transactions.setsBalance` mark, not by its date)
-   * never pushes the balance off the figure the anchor set. Editing that
-   * row's amount moves the balance by the difference, whatever its new date
-   * (`editBalanceDelta`); another manual row at the same instant is history
-   * like any other. The newest balance set holds the only mark: a hand edit
-   * moves it onto its own row, and this function's closing-balance write
-   * clears it (`unmarkBalanceSetRowsDatabaseTransaction`), since no row is
-   * written at a closing balance's as-of.
+   * never pushes the balance off the figure the anchor set. The mark stays
+   * for good, so such a row never counts in `postClosingNet` either. Only the
+   * current set's row (`holdings.balanceSetRowId`) moves the balance, by the
+   * difference of an amount edit, whatever its new date (`editBalanceDelta`);
+   * another manual row at the same instant is history like any other. A hand
+   * edit points `balanceSetRowId` at its own row, and this function's
+   * closing-balance write clears it, since no row is written at a closing
+   * balance's as-of.
    *
    * `boundary` is `null` when NEITHER (a) nor (b) has ever happened for this
    * holding: every genuinely new row moves the balance regardless of its own
@@ -1644,8 +1647,8 @@ export const transactionsRepo = {
       // closing balance's own as-of must still count toward it; only the
       // rows THIS import adds were counted before, so a re-import (or an
       // out-of-order older statement) could erase a later row the ledger
-      // already knew about. The query below filters by holdingId and time
-      // alone, with no source/dedup check, so a manual entry the user
+      // already knew about. The query below filters by holdingId, time, and
+      // the balance-set mark, with no source/dedup check, so a manual entry the user
       // already logged for the same real-world transaction as an
       // after-asOf statement row is counted here too — the same
       // double-count risk the net-delta path already carries.
@@ -1669,7 +1672,7 @@ export const transactionsRepo = {
       }
 
       const newRows = await insertDedupRowsDatabaseTransaction(databaseTransaction, rows);
-      const { nextBalance, balanceSetAt } = resolveImportBalance(
+      const { nextBalance, balanceSetAt, balanceSetRowId } = resolveImportBalance(
         holding,
         boundary,
         newRows,
@@ -1680,12 +1683,8 @@ export const transactionsRepo = {
       if (nextBalance !== holding.balanceMinorUnits || balanceSetAt !== undefined) {
         await databaseTransaction
           .update(holdings)
-          .set({ balanceMinorUnits: nextBalance, balanceSetAt })
+          .set({ balanceMinorUnits: nextBalance, balanceSetAt, balanceSetRowId })
           .where(eq(holdings.id, input.holdingId));
-      }
-
-      if (balanceSetAt !== undefined) {
-        await unmarkBalanceSetRowsDatabaseTransaction(databaseTransaction, input.holdingId);
       }
 
       return newRows.length;

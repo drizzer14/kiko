@@ -108,6 +108,7 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
         // never carries one (it imports no statements).
         syncedBalanceMinorUnits: null,
         balanceSetAt: null,
+        balanceSetRowId: null,
         ...rest,
         metadata: merged,
       });

@@ -221,14 +221,18 @@ project-level pointer to this section.
 - **A column whose backfill SQL can derive adds it and backfills it in ONE
   migration, mirrored on restore.** `0047_add_sets_balance` adds
   `transactions.sets_balance` (the stored balance-set mark, kiko-domain's
-  "The manual boundary rule") and, in the same transaction, marks per
-  holding the smallest-id row shaped like a balance-set row and dated at
-  `holdings.balance_set_at` (its doc comment is the full statement).
-  Additive only, so a crash rolls back to 0046 and retries whole.
-  `restore-snapshot.ts`'s `withLegacyBalanceSetMarksDerived` applies the
-  identical rule to a `.kiko` file whose rows carry no `setsBalance` key,
-  after the 0040 stray cleanup and before the import-time rezone — the
-  order a live device runs them. Proven on both paths by
+  "The manual boundary rule") and `holdings.balance_set_row_id` (the
+  current set's row) and, in the same transaction, points each holding at
+  its smallest-id row shaped like a balance-set row and dated at
+  `holdings.balance_set_at`, then marks that row (its doc comment is the
+  full statement). Additive only, so a crash rolls back to 0046 and retries
+  whole. `restore-snapshot.ts`'s `withLegacyBalanceSetMarksDerived` applies
+  the identical rule to a `.kiko` file whose rows carry no `setsBalance`
+  key, after the 0040 stray cleanup and before the import-time rezone — the
+  order a live device runs them. A two-path or migration test that reads
+  `holdings` from a database migrated only through an older tag selects
+  `columnsWithout(getTableColumns(holdings), 'balanceSetRowId')`
+  (`src/test-support/real-sqlite.ts`). Proven on both paths by
   `drizzle/migrations/0047-add-sets-balance.test.ts` and
   `restore-sets-balance.two-path.test.ts`. Next free migration index:
   `0048`.
@@ -1691,14 +1695,15 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   BOTH paths that can produce a row missing it — the migration path itself
   and the restore/import path (`restoreDataSnapshot`) — never only one.
   Follow the `balanceSetAt` / `loan_interest` re-seed precedent above for the
-  next such column. `transactions.setsBalance` (migration 0047) is the
-  latest: a file whose rows carry no `setsBalance` key gets the migration's
-  own marks (`withLegacyBalanceSetMarksDerived`); a row that carries the key
-  restores it as exported, so a mark on a since re-dated row survives an
-  export round trip. The field rides inside each `transactions` row, so it
-  needs no `EXPORT_VERSION` change: an older build ignores the key (Drizzle
-  inserts only its own schema's columns), and this build derives it for an
-  older file.
+  next such column. `transactions.setsBalance` and
+  `holdings.balanceSetRowId` (migration 0047) are the latest: a file whose
+  rows carry no `setsBalance` key gets the migration's own marks and
+  current-row ids (`withLegacyBalanceSetMarksDerived`); a row or holding
+  that carries its key restores it as exported, so a mark on a since
+  re-dated row survives an export round trip. Both fields ride inside their
+  `transactions`/`holdings` rows, so they need no `EXPORT_VERSION` change:
+  an older build ignores the keys (Drizzle inserts only its own schema's
+  columns), and this build derives them for an older file.
 - **A data-only cleanup migration follows the SAME two-path rule.**
   Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
   pre-existing stray create-time artifact (a term_deposit/bond holding whose

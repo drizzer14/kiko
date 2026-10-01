@@ -232,26 +232,31 @@ boundary through one function, `readAnchoredHoldingDatabaseTransaction`
 (`transactions.repo.ts`), which `importRows` shares. A row AT or before
 the boundary is history the anchor already counts.
 
-**The balance-set row is a STORED mark, not a date.** The row whose amount
+**A balance-set row is a STORED mark, not a date.** Every row whose amount
 set the balance (an opening balance, a cash opening, a hand edit) carries
-`transactions.setsBalance` (migration 0047). An amount edit of it moves
-the balance by the difference (new − old, `editBalanceDelta`), and a
-re-date or a delete never moves it (`removeBalanceDelta`), whatever its
-date, description, or category has become — so from an opening of 50,000:
-re-date it earlier, then edit it to 60,000, and the balance is 60,000;
-re-date it later and back, or later and delete it, and the balance stays
-50,000. The mark counts only while that set IS the boundary
-(`setsBalanceAtBoundary`: `holdings.balanceSetAt` equals the boundary); a
-newer synced row anchors the holding past it, and the row is history like
-any other. Each holding has at most ONE marked row, the newest set's:
-`holdingsRepo.updateWithBalanceDelta` moves the mark onto its own
-adjustment row, and `importRows`'s closing-balance write clears it
-(`unmarkBalanceSetRowsDatabaseTransaction`,
-`src/transactions/balance-set-row/`), since no row is written at a closing
-balance's as-of. The older row is then ordinary history: dated before
-the new anchor, its edit or delete moves nothing. Re-stamping
-`balanceSetAt` on a re-date is not the design: it would re-judge every
-row between the old and the new date.
+`transactions.setsBalance` (migration 0047) for good: its amount is part
+of a balance that was set, so a re-date or a delete of it never moves the
+balance (`removeBalanceDelta`), whatever its date, description, or
+category has become, and `postClosingRowsWhere` never counts it in a
+closing import's post-closing sum. Only the CURRENT set's row
+(`holdings.balanceSetRowId`, same migration) moves the balance, and only
+by an amount edit: new − old, whatever its date (`editBalanceDelta`). An
+amount edit of any other marked row moves nothing. So from an opening of
+50,000: re-date it earlier, then edit it to 60,000, and the balance is
+60,000; re-date it later and back, or later and delete it, and the
+balance stays 50,000. The current row is known by id, not by
+`time === balanceSetAt`, because a re-date moves its time off the anchor.
+It counts only while its set IS the boundary (`isCurrentBalanceSetRow`:
+`holdings.balanceSetAt` equals the boundary); a newer synced row anchors
+the holding past it. `holdingsRepo.create` and
+`accountsRepo.createCashAccount` point `balanceSetRowId` at the opening
+row, `holdingsRepo.updateWithBalanceDelta` at its own adjustment row, and
+`importRows`'s closing-balance write sets it to NULL, since no row is
+written at a closing balance's as-of. A hand edit on Monday (+2,000),
+re-dated to Wednesday, then a statement closing on Tuesday ends on the
+closing figure; the Wednesday row's later amount edit or delete moves
+nothing. Re-stamping `balanceSetAt` on a re-date is not the design: it
+would re-judge every row between the old and the new date.
 
 Every other manual row keeps the generic rule above. A row entered at
 exactly a closing balance's as-of or the newest synced second belongs to
@@ -263,9 +268,11 @@ Data written before the mark gets it from migration 0047 and, for an older
 `.kiko` file, from `restoreDataSnapshot` (the same rule): per holding, the
 row shaped like a balance-set row (`isBalanceSetShapedRow`: manual, empty
 description, null category, no exchange or change-return marker) AND dated
-exactly at `holdings.balanceSetAt`; on a same-millisecond tie, the
-smallest id. A pre-0047 row that was already re-dated, described, or
-categorised gets no mark and stays an ordinary row.
+exactly at `holdings.balanceSetAt` is marked and becomes the holding's
+`balanceSetRowId`; on a same-millisecond tie, the smallest id. A pre-0047
+row that was already re-dated, described, or categorised, and an older
+set's row a newer set or a closing import superseded, gets no mark and
+stays an ordinary row.
 
 ## Statement import moves the target holding's balance too
 

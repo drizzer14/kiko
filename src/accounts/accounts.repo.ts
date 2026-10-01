@@ -153,7 +153,8 @@ export const accountsRepo = {
    * IS a hand-set balance, the same as `holdingsRepo.create`'s own typed
    * opening balance (see `transactionsRepo.importRows`'s doc comment for why
    * this matters) — at the SAME instant as the ledger row's `time`, and the
-   * row carries `transactions.setsBalance`.
+   * row carries `transactions.setsBalance` and is the holding's
+   * `balanceSetRowId`.
    */
   createCashAccount: ({ name, currency, initialBalance, icon, color }: NewCashAccount) =>
     write(async (databaseTransaction) => {
@@ -169,6 +170,7 @@ export const accountsRepo = {
 
       const accountId = id();
       const holdingId = id();
+      const openingRowId = id();
       const sortOrder = await nextSortOrder(databaseTransaction, 'cash');
       const now = Date.now();
       const initialBalanceMinorUnits = initialBalance.minorUnits;
@@ -189,6 +191,7 @@ export const accountsRepo = {
         currency,
         balanceMinorUnits: initialBalanceMinorUnits,
         balanceSetAt: initialBalanceMinorUnits !== 0 ? now : null,
+        balanceSetRowId: initialBalanceMinorUnits !== 0 ? openingRowId : null,
       });
 
       if (initialBalanceMinorUnits === 0) {
@@ -196,7 +199,7 @@ export const accountsRepo = {
       }
 
       await databaseTransaction.insert(transactions).values({
-        id: id(),
+        id: openingRowId,
         holdingId,
         amountMinorUnits: initialBalanceMinorUnits,
         time: now,

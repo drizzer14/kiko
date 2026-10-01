@@ -169,6 +169,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
         balanceMinorUnits,
         syncedBalanceMinorUnits: null,
         balanceSetAt: null,
+        balanceSetRowId: null,
         metadata: holding.metadata ?? null,
         sortOrder: holdingIndex,
         closedAt: null,

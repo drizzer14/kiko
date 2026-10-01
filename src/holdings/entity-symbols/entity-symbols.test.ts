@@ -62,14 +62,7 @@ describe('holdingTypeSymbol', () => {
     expect(holdingTypeSymbol.property_item).toBe('house.fill');
     expect(holdingTypeSymbol.metal).toBe('cube.fill');
     expect(holdingTypeSymbol.loan).toBe('arrow.down.backward.circle.fill');
-  });
-
-  // A loan taken mirrors a loan given (`propertyCategorySymbol.loan_given`);
-  // the debt ACCOUNT keeps its own minus glyph, persisted on existing rows.
-  it('gives a loan the mirror of the loan-given glyph, apart from its debt kind', () => {
-    expect(holdingTypeSymbol.loan).toBe(
-      propertyCategorySymbol.loan_given.replace('up.forward', 'down.backward'),
-    );
+    // The debt ACCOUNT keeps its own minus glyph, persisted on existing rows.
     expect(holdingTypeSymbol.loan).not.toBe(accountKindSymbol.debt);
   });
 

@@ -13,7 +13,6 @@ import { match } from 'ts-pattern';
 import { Money } from '@kiko/currency/money';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { unmarkBalanceSetRowsDatabaseTransaction } from '@kiko/transactions/balance-set-row';
 
 import {
   ownershipMetadata,
@@ -465,7 +464,7 @@ export const holdingsRepo = {
    * why. `accountsRepo.createCashAccount` (a cash account's first holding)
    * stamps it too, for the same reason: a typed starting balance IS a
    * hand-set balance, whichever create path writes it. Its row carries
-   * `transactions.setsBalance`.
+   * `transactions.setsBalance` and is the holding's `balanceSetRowId`.
    */
   create: ({ firstPricePoint, openingBalance, ...input }: NewHolding): Promise<string> =>
     write(async (databaseTransaction) => {
@@ -482,6 +481,7 @@ export const holdingsRepo = {
       }
 
       const holdingId = id();
+      const openingRowId = id();
       const sortOrder =
         input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.accountId));
       const openingBalanceMinorUnits = openingBalance?.minorUnits ?? 0;
@@ -493,11 +493,12 @@ export const holdingsRepo = {
         balanceMinorUnits: openingBalanceMinorUnits,
         sortOrder,
         balanceSetAt: openingBalanceMinorUnits !== 0 ? now : null,
+        balanceSetRowId: openingBalanceMinorUnits !== 0 ? openingRowId : null,
       });
 
       if (openingBalanceMinorUnits !== 0) {
         await databaseTransaction.insert(transactions).values({
-          id: id(),
+          id: openingRowId,
           holdingId,
           amountMinorUnits: openingBalanceMinorUnits,
           time: now,
@@ -606,9 +607,11 @@ export const holdingsRepo = {
    *
    * A non-zero delta also stamps `holdings.balanceSetAt` at this edit's own
    * `time`, in the SAME `.set(...)` as `patch` — `transactionsRepo.importRows`'s
-   * own doc comment is the full statement of why — and moves the
-   * `transactions.setsBalance` mark onto the new row: this edit is now the
-   * holding's only anchor.
+   * own doc comment is the full statement of why — and points
+   * `holdings.balanceSetRowId` at the new row, which carries
+   * `transactions.setsBalance`: this edit is now the holding's current set.
+   * An older set's row keeps its mark, so its re-date or delete never moves
+   * the balance either.
    */
   updateWithBalanceDelta: (
     holdingId: string,
@@ -636,6 +639,7 @@ export const holdingsRepo = {
         nextBalanceMinorUnits !== undefined && stored !== undefined
           ? nextBalanceMinorUnits - stored
           : 0;
+      const adjustmentRowId = id();
 
       await databaseTransaction
         .update(holdings)
@@ -645,6 +649,7 @@ export const holdingsRepo = {
             ? { balanceMinorUnits: nextBalanceMinorUnits }
             : {}),
           balanceSetAt: delta !== 0 ? time : undefined,
+          balanceSetRowId: delta !== 0 ? adjustmentRowId : undefined,
         })
         .where(eq(holdings.id, holdingId));
 
@@ -652,9 +657,8 @@ export const holdingsRepo = {
         return;
       }
 
-      await unmarkBalanceSetRowsDatabaseTransaction(databaseTransaction, holdingId);
       await databaseTransaction.insert(transactions).values({
-        id: id(),
+        id: adjustmentRowId,
         holdingId,
         amountMinorUnits: delta,
         time,

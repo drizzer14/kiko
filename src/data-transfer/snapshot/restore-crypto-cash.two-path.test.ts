@@ -13,11 +13,15 @@
 // an eligible target competing with Binance/an archived account, a
 // sort_order tie, and an archived SOURCE account.
 import { join } from 'node:path';
-import { asc } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
+import {
+  columnsWithout,
+  applyMigrationsThrough,
+  executingDrizzle,
+} from '@kiko/test-support/real-sqlite';
 import { DatabaseSync } from 'node:sqlite';
-import { type database, accounts, holdings } from '@kiko/db';
-import { applyMigrationsThrough, executingDrizzle } from '@kiko/test-support/real-sqlite';
+import { asc, getTableColumns } from 'drizzle-orm';
+import { type database, accounts, type HoldingRow, holdings } from '@kiko/db';
 
 import { withCryptoCashHoldingsMoved } from './restore-snapshot';
 
@@ -35,6 +39,14 @@ type AccountSeed = {
   archivedAt?: number | null;
   createdAt?: number;
 };
+
+// A full select names `balance_set_row_id`, which arrives only with migration
+// 0047, after this test's 0043 database.
+const holdingRowsOf = async (source: typeof database): Promise<HoldingRow[]> =>
+  (await source
+    .select(columnsWithout(getTableColumns(holdings), 'balanceSetRowId'))
+    .from(holdings)
+    .orderBy(asc(holdings.id))) as HoldingRow[];
 
 const newMigratedDatabase = (): DatabaseSync => {
   const rawDatabase = new DatabaseSync(':memory:');
@@ -180,9 +192,7 @@ describe('a pre-0044 .kiko restore ends byte-equal to the live migration 0044 up
       const liveAccounts = sortedById(
         await liveDrizzle.select().from(accounts).orderBy(asc(accounts.id)),
       );
-      const liveHoldings = sortedById(
-        await liveDrizzle.select().from(holdings).orderBy(asc(holdings.id)),
-      );
+      const liveHoldings = sortedById(await holdingRowsOf(liveDrizzle));
 
       // Path 2: an IDENTICALLY seeded database, restored through the JS
       // mirror instead of the SQL migration.
@@ -190,7 +200,7 @@ describe('a pre-0044 .kiko restore ends byte-equal to the live migration 0044 up
       seed(restoredDatabase);
       const restoredDrizzle = executingDrizzle<typeof database>(restoredDatabase);
       const preUpgradeAccounts = await restoredDrizzle.select().from(accounts);
-      const preUpgradeHoldings = await restoredDrizzle.select().from(holdings);
+      const preUpgradeHoldings = await holdingRowsOf(restoredDrizzle);
 
       const mirrored = withCryptoCashHoldingsMoved(preUpgradeAccounts, preUpgradeHoldings);
 
@@ -210,7 +220,7 @@ describe('a pre-0044 .kiko restore ends byte-equal to the live migration 0044 up
       .run();
     const noOpDrizzle = executingDrizzle<typeof database>(noOpDatabase);
     const fiatOnlyAccounts = await noOpDrizzle.select().from(accounts);
-    const fiatOnlyHoldings = await noOpDrizzle.select().from(holdings);
+    const fiatOnlyHoldings = await holdingRowsOf(noOpDrizzle);
 
     const result = withCryptoCashHoldingsMoved(fiatOnlyAccounts, fiatOnlyHoldings);
 

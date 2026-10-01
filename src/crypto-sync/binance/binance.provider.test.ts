@@ -61,6 +61,7 @@ const binanceHolding = (binanceAsset: string, balanceMinorUnits = 1): HoldingRow
   balanceMinorUnits,
   syncedBalanceMinorUnits: null,
   balanceSetAt: null,
+  balanceSetRowId: null,
   metadata: { binanceAsset, syncedAt: 0 },
   sortOrder: 0,
   closedAt: null,

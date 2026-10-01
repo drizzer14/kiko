@@ -247,6 +247,7 @@ describe('holdingsRepo', () => {
     // `balanceSetAt`, at the SAME instant as the ledger row's `time` —
     // `transactionsRepo.importRows`'s boundary reads it directly.
     expect(inserts[0].balanceSetAt).toBe(inserts[1].time);
+    expect(inserts[0].balanceSetRowId).toBe(inserts[1].id);
   });
 
   it('create seeds no transaction for a zero opening balance', async () => {
@@ -263,6 +264,7 @@ describe('holdingsRepo', () => {
 
     expect(insertTables).toEqual(['holdings']);
     expect(inserts[0].balanceSetAt).toBeNull();
+    expect(inserts[0].balanceSetRowId).toBeNull();
   });
 
   it('create seeds no transaction when no opening balance is given', async () => {
@@ -1361,8 +1363,8 @@ describe('disconnect then reconnect', () => {
 // writes the patch, and inserts a ledger row only for a non-zero balance delta —
 // this captures all three, so a test can prove exactly what each write carried.
 // `stored` is the holding row that read resolves to, or `null` for a missing id.
-// An update of `transactions` (the earlier balance-set row losing its mark) is
-// captured apart from the holding's own `.set(...)`, in issue order.
+// An update of `transactions` is captured apart from the holding's own
+// `.set(...)`, in issue order.
 type BalanceDeltaCapture = {
   holdingSet?: Record<string, unknown>;
   transactionSets: Record<string, unknown>[];
@@ -1451,6 +1453,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: 500_00,
       balanceSetAt: 1_700_000_000_000,
+      balanceSetRowId: captured.inserts[0]?.id,
     });
     expect(captured.inserts).toHaveLength(1);
     expect(captured.inserts[0]).toMatchObject({
@@ -1463,9 +1466,9 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     });
   });
 
-  // Only the newest balance set is the anchor, so the row an earlier set
-  // wrote loses its mark before the new row takes it.
-  it('moves the balance-set mark from the earlier row onto the new adjustment row', async () => {
+  // An earlier set's row keeps its mark: its amount is part of a balance that
+  // was set, so its re-date or delete must never move the balance either.
+  it('marks the new adjustment row as the current set, and leaves earlier marks', async () => {
     const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
       currency: 'UAH',
       balanceMinorUnits: 100_00,
@@ -1474,8 +1477,9 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
 
     await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 500_00) }, 1);
 
-    expect(captured.transactionSets).toEqual([{ setsBalance: false }]);
+    expect(captured.transactionSets).toEqual([]);
     expect(captured.inserts[0]).toMatchObject({ setsBalance: true });
+    expect(captured.holdingSet).toMatchObject({ balanceSetRowId: captured.inserts[0]?.id });
   });
 
   it('leaves the adjustment row unlabelled and uncategorised', async () => {
@@ -1503,7 +1507,11 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 100_00) }, 1);
 
     expect(captured.inserts[0]).toMatchObject({ amountMinorUnits: -400_00 });
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00, balanceSetAt: 1 });
+    expect(captured.holdingSet).toEqual({
+      balanceMinorUnits: 100_00,
+      balanceSetAt: 1,
+      balanceSetRowId: captured.inserts[0]?.id,
+    });
   });
 
   it('writes no transaction for a name-only edit', async () => {

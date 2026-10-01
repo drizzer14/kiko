@@ -409,7 +409,9 @@ describe('the stored balance-set marker', () => {
   const markedIdsOf = (holdingId: string): string[] =>
     (
       mockDatabase
-        .prepare('SELECT id FROM transactions WHERE holding_id = ? AND sets_balance = 1')
+        .prepare(
+          'SELECT id FROM transactions WHERE holding_id = ? AND sets_balance = 1 ORDER BY time',
+        )
         .all(holdingId) as { id: string }[]
     ).map((row) => row.id);
 
@@ -514,9 +516,9 @@ describe('the stored balance-set marker', () => {
     expect(balanceOf(holdingId)).toBe(openingBalance);
   });
 
-  // The newest balance set is the anchor: the row an earlier set wrote is
-  // history the new balance already counts.
-  it('moves the mark to the newest hand-edit row, so the older opening edits as history', async () => {
+  // Only the newest balance set's row is current: an older set's row is part
+  // of the balance the newer set wrote over, so editing it moves nothing.
+  it('keeps the older mark after a hand edit, and only the newest set row moves the balance', async () => {
     const holdingId = await openHolding();
     const openingId = manualIdAt(SEPTEMBER_30);
 
@@ -526,7 +528,7 @@ describe('the stored balance-set marker', () => {
       OCTOBER_2,
     );
 
-    expect(markedIdsOf(holdingId)).toEqual([manualIdAt(OCTOBER_2)]);
+    expect(markedIdsOf(holdingId)).toEqual([openingId, manualIdAt(OCTOBER_2)]);
 
     await editOpening(openingId, { amountMinorUnits: 60_000, time: SEPTEMBER_30 });
 
@@ -537,7 +539,25 @@ describe('the stored balance-set marker', () => {
     expect(balanceOf(holdingId)).toBe(75_000);
   });
 
-  it('clears the mark when a closing balance sets the balance, so the opening edits as history', async () => {
+  it('keeps the balance when the older opening is re-dated past a newer hand edit, then deleted', async () => {
+    const holdingId = await openHolding();
+    const openingId = manualIdAt(SEPTEMBER_30);
+
+    await holdingsRepo.updateWithBalanceDelta(
+      holdingId,
+      { balance: Money.of('UAH', 70_000) },
+      OCTOBER_2,
+    );
+    await editOpening(openingId, { time: OCTOBER_5 });
+
+    expect(balanceOf(holdingId)).toBe(70_000);
+
+    await transactionsRepo.remove(openingId);
+
+    expect(balanceOf(holdingId)).toBe(70_000);
+  });
+
+  it('keeps the mark through a closing balance, so the adjustment moves nothing', async () => {
     await holdingsRepo.updateWithBalanceDelta(
       'card',
       { balance: Money.of('UAH', 50_000) },
@@ -547,7 +567,7 @@ describe('the stored balance-set marker', () => {
 
     await importSeptemberStatement();
 
-    expect(markedIdsOf('card')).toEqual([]);
+    expect(markedIdsOf('card')).toEqual([adjustmentId]);
 
     await editOpening(adjustmentId, { amountMinorUnits: -40_000, time: SEPTEMBER_15 });
     await transactionsRepo.remove(adjustmentId);
@@ -555,7 +575,37 @@ describe('the stored balance-set marker', () => {
     expect(balance()).toBe(90_000);
   });
 
-  it('judges a marked row as history once a newer synced row anchors the holding', async () => {
+  it('ends on the closing figure when a hand-edit row re-dated past a closing as-of is edited, then deleted', async () => {
+    await holdingsRepo.updateWithBalanceDelta(
+      'card',
+      { balance: Money.of('UAH', 102_000) },
+      SEPTEMBER_15,
+    );
+    const adjustmentId = manualIdAt(SEPTEMBER_15);
+
+    await transactionsRepo.update({
+      transactionId: adjustmentId,
+      amountMinorUnits: 2_000,
+      time: OCTOBER_2,
+    });
+    await importSeptemberStatement();
+
+    expect(balance()).toBe(90_000);
+
+    await transactionsRepo.update({
+      transactionId: adjustmentId,
+      amountMinorUnits: 5_000,
+      time: OCTOBER_2,
+    });
+
+    expect(balance()).toBe(90_000);
+
+    await transactionsRepo.remove(adjustmentId);
+
+    expect(balance()).toBe(90_000);
+  });
+
+  it('moves nothing for a marked row once a newer synced row anchors the holding', async () => {
     const holdingId = await openHolding();
     const openingId = manualIdAt(SEPTEMBER_30);
 
@@ -566,6 +616,14 @@ describe('the stored balance-set marker', () => {
     );
 
     await editOpening(openingId, { amountMinorUnits: 60_000, time: SEPTEMBER_30 });
+
+    expect(balanceOf(holdingId)).toBe(openingBalance);
+
+    await editOpening(openingId, { amountMinorUnits: 60_000, time: OCTOBER_5 });
+
+    expect(balanceOf(holdingId)).toBe(openingBalance);
+
+    await transactionsRepo.remove(openingId);
 
     expect(balanceOf(holdingId)).toBe(openingBalance);
   });

@@ -156,9 +156,12 @@ describe('restoreDataSnapshot', () => {
     // `{ id: 'h1' }` carries no `balanceSetAt` key — the legacy-backfill path
     // (see the dedicated tests below) stamps `null` since `t1` (this test's
     // only transaction row) has no matching `holdingId`/shape.
-    expect(insertedRows.holdings).toEqual([{ id: 'h1', balanceSetAt: null }]);
+    expect(insertedRows.holdings).toEqual([
+      { id: 'h1', balanceSetAt: null, balanceSetRowId: null },
+    ]);
     // `{ id: 't1' }` carries no `setsBalance` key either, and is not a
-    // balance-set row, so the migration 0047 mirror leaves it unmarked.
+    // balance-set row, so the migration 0047 mirror leaves it unmarked and
+    // the holding with no current balance-set row.
     expect(insertedRows.transactions).toEqual([{ id: 't1', setsBalance: false }]);
   });
 
@@ -711,7 +714,7 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedHoldings()).toEqual([
-        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 300 },
+        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 300, balanceSetRowId: 't2' },
       ]);
     });
 
@@ -750,7 +753,7 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedHoldings()).toEqual([
-        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null },
+        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null, balanceSetRowId: null },
       ]);
     });
 
@@ -777,7 +780,7 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedHoldings()).toEqual([
-        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 999 },
+        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 999, balanceSetRowId: null },
       ]);
     });
 
@@ -868,7 +871,7 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedHoldings()).toEqual([
-        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null },
+        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null, balanceSetRowId: null },
       ]);
     });
 
@@ -895,7 +898,7 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedHoldings()).toEqual([
-        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null },
+        { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null, balanceSetRowId: null },
       ]);
     });
   });
@@ -971,8 +974,9 @@ describe('restoreDataSnapshot', () => {
         transactions: [strayTransaction()] as never,
       });
 
-      expect(insertedRows.holdings).toEqual([cardHolding]);
-      // A card's own opening row: the 0047 mirror marks it as one.
+      // A card's own opening row: the 0047 mirror marks it as one, and as
+      // the holding's current balance-set row.
+      expect(insertedRows.holdings).toEqual([{ ...cardHolding, balanceSetRowId: 't1' }]);
       expect(insertedRows.transactions).toEqual([{ ...strayTransaction(), setsBalance: true }]);
     });
 
@@ -987,7 +991,7 @@ describe('restoreDataSnapshot', () => {
         transactions: [editedTransaction] as never,
       });
 
-      expect(insertedRows.holdings).toEqual([strayHolding()]);
+      expect(insertedRows.holdings).toEqual([strayHolding({ balanceSetRowId: null })]);
       expect(insertedRows.transactions).toEqual([{ ...editedTransaction, setsBalance: false }]);
     });
 
@@ -1002,7 +1006,7 @@ describe('restoreDataSnapshot', () => {
         transactions: [strayTransaction(), secondTransaction] as never,
       });
 
-      expect(insertedRows.holdings).toEqual([strayHolding()]);
+      expect(insertedRows.holdings).toEqual([strayHolding({ balanceSetRowId: 't1' })]);
       expect(insertedRows.transactions).toEqual([
         { ...strayTransaction(), setsBalance: true },
         { ...secondTransaction, setsBalance: false },

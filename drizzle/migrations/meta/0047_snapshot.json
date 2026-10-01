@@ -386,6 +386,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "balance_set_row_id": {
+          "name": "balance_set_row_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "metadata": {
           "name": "metadata",
           "type": "text",

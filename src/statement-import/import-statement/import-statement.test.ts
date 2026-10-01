@@ -476,6 +476,7 @@ describe('importStatement', () => {
           minute: 0,
           second: 0,
         }),
+        balanceSetRowId: null,
       });
     });
   });
@@ -627,6 +628,7 @@ describe('importStatement', () => {
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 10_000_000,
         balanceSetAt: 1_683_901_836_000,
+        balanceSetRowId: null,
       });
     });
 
@@ -695,6 +697,7 @@ describe('importStatement', () => {
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 10_000_000,
         balanceSetAt: 1_683_901_836_000,
+        balanceSetRowId: null,
       });
     });
 

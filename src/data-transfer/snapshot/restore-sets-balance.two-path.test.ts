@@ -14,16 +14,24 @@ jest.mock('@kiko/db/client', () => {
   return { database: client.database, write: client.write };
 });
 
+import {
+  type database,
+  accounts,
+  type HoldingRow,
+  holdings,
+  type TransactionRow,
+  transactions,
+} from '@kiko/db';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
+  columnsWithout,
   applyAllMigrations,
   applyMigrationsThrough,
   executingDrizzle,
 } from '@kiko/test-support/real-sqlite';
 import { DatabaseSync } from 'node:sqlite';
 import { asc, getTableColumns } from 'drizzle-orm';
-import { type database, accounts, holdings, type TransactionRow, transactions } from '@kiko/db';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -73,22 +81,31 @@ const insertHolding = (target: DatabaseSync, id: string, balanceSetAt: number | 
 
 const insertTransaction = (
   target: DatabaseSync,
-  row: { id: string; holdingId: string; time: number; category?: string },
+  row: {
+    id: string;
+    holdingId: string;
+    time: number;
+    category?: string;
+    exchangeCounterpartHoldingId?: string;
+    changeGroupId?: string;
+  },
 ): void => {
   run(
     target,
-    `INSERT INTO transactions (id, holding_id, amount_minor_units, time, category, source)
-     VALUES (?, ?, 100, ?, ?, 'manual')`,
+    `INSERT INTO transactions (id, holding_id, amount_minor_units, time, category, source, exchange_counterpart_holding_id, change_group_id)
+     VALUES (?, ?, 100, ?, ?, 'manual', ?, ?)`,
     row.id,
     row.holdingId,
     row.time,
     row.category ?? null,
+    row.exchangeCounterpartHoldingId ?? null,
+    row.changeGroupId ?? null,
   );
 };
 
 // Every case the migration test pins: an opening, a hand edit over an older
 // opening, a same-instant tie, a lookalike under a closing-balance anchor,
-// and a categorised row at the anchor.
+// and a categorised row, an exchange leg, and a change return at the anchor.
 const seedPreMarkerLedger = (target: DatabaseSync): void => {
   run(target, "INSERT INTO accounts (id, name, kind) VALUES ('account', 'Bank', 'bank')");
   insertHolding(target, 'opened', OPENED);
@@ -108,6 +125,20 @@ const seedPreMarkerLedger = (target: DatabaseSync): void => {
     time: OPENED,
     category: 'groceries',
   });
+  insertHolding(target, 'exchanged', OPENED);
+  insertTransaction(target, {
+    id: 'exchange-leg',
+    holdingId: 'exchanged',
+    time: OPENED,
+    exchangeCounterpartHoldingId: 'opened',
+  });
+  insertHolding(target, 'changed', OPENED);
+  insertTransaction(target, {
+    id: 'change-return',
+    holdingId: 'changed',
+    time: OPENED,
+    changeGroupId: 'change-group',
+  });
 };
 
 const markedIds = (target: DatabaseSync): string[] =>
@@ -117,21 +148,26 @@ const markedIds = (target: DatabaseSync): string[] =>
     }[]
   ).map((row) => row.id);
 
-const preMarkerTransactionColumns = Object.fromEntries(
-  Object.entries(getTableColumns(transactions)).filter(([name]) => name !== 'setsBalance'),
-);
+const currentRowIds = (target: DatabaseSync): { id: string; balanceSetRowId: string | null }[] =>
+  target
+    .prepare('SELECT id, balance_set_row_id AS balanceSetRowId FROM holdings ORDER BY id')
+    .all() as { id: string; balanceSetRowId: string | null }[];
 
 const readPreMarkerSnapshot = async (source: DatabaseSync): Promise<DataSnapshot> => {
   const sourceDrizzle = executingDrizzle<typeof database>(source);
+  const preMarkerHoldings = await sourceDrizzle
+    .select(columnsWithout(getTableColumns(holdings), 'balanceSetRowId'))
+    .from(holdings)
+    .orderBy(asc(holdings.id));
   const preMarkerTransactions = await sourceDrizzle
-    .select(preMarkerTransactionColumns)
+    .select(columnsWithout(getTableColumns(transactions), 'setsBalance'))
     .from(transactions)
     .orderBy(asc(transactions.id));
 
   return {
     ...emptySnapshot,
     accounts: await sourceDrizzle.select().from(accounts).orderBy(asc(accounts.id)),
-    holdings: await sourceDrizzle.select().from(holdings).orderBy(asc(holdings.id)),
+    holdings: preMarkerHoldings as HoldingRow[],
     transactions: preMarkerTransactions as TransactionRow[],
   };
 };
@@ -163,11 +199,12 @@ describe('restoring a .kiko file exported before the balance-set marker', () => 
 
     expect(markedIds(live)).toEqual(['edited-adjustment', 'opening', 'tie-a']);
     expect(markedIds(mockDatabase)).toEqual(markedIds(live));
+    expect(currentRowIds(mockDatabase)).toEqual(currentRowIds(live));
   });
 });
 
 describe('restoring a .kiko file that carries the balance-set marker', () => {
-  it('keeps every stored marker as exported, even on a re-dated row', async () => {
+  it('keeps every stored marker and current row as exported, even on a re-dated row', async () => {
     const exported = freshDatabase();
 
     seedPreMarkerLedger(exported);
@@ -176,6 +213,7 @@ describe('restoring a .kiko file that carries the balance-set marker', () => {
       "UPDATE transactions SET sets_balance = 1, time = ? WHERE id = 'lookalike'",
       EDITED,
     );
+    run(exported, "UPDATE holdings SET balance_set_row_id = 'lookalike' WHERE id = 'imported'");
     const exportedDrizzle = executingDrizzle<typeof database>(exported);
     const snapshot: DataSnapshot = {
       ...emptySnapshot,
@@ -188,5 +226,6 @@ describe('restoring a .kiko file that carries the balance-set marker', () => {
     await restoreDataSnapshot(snapshot);
 
     expect(markedIds(mockDatabase)).toEqual(['lookalike']);
+    expect(currentRowIds(mockDatabase)).toEqual(currentRowIds(exported));
   });
 });

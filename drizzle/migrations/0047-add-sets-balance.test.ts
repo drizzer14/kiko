@@ -22,6 +22,8 @@ type TransactionSeed = {
   category?: string | null;
   source?: string;
   externalId?: string | null;
+  exchangeCounterpartHoldingId?: string;
+  changeGroupId?: string;
 };
 
 const run = (
@@ -50,8 +52,8 @@ const setBalanceSetAt = (database: DatabaseSync, holdingId: string, time: number
 const insertTransaction = (database: DatabaseSync, row: TransactionSeed): void => {
   run(
     database,
-    `INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, category, source, external_id)
-     VALUES (?, ?, 100, ?, ?, ?, ?, ?)`,
+    `INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, category, source, external_id, exchange_counterpart_holding_id, change_group_id)
+     VALUES (?, ?, 100, ?, ?, ?, ?, ?, ?, ?)`,
     row.id,
     row.holdingId,
     row.time,
@@ -59,6 +61,8 @@ const insertTransaction = (database: DatabaseSync, row: TransactionSeed): void =
     row.category ?? null,
     row.source ?? 'manual',
     row.externalId ?? null,
+    row.exchangeCounterpartHoldingId ?? null,
+    row.changeGroupId ?? null,
   );
 };
 
@@ -72,6 +76,13 @@ const markedIds = (database: DatabaseSync): string[] =>
       id: string;
     }[]
   ).map((row) => row.id);
+
+const currentRowIds = (database: DatabaseSync): { id: string; balanceSetRowId: string }[] =>
+  database
+    .prepare(
+      'SELECT id, balance_set_row_id AS balanceSetRowId FROM holdings WHERE balance_set_row_id IS NOT NULL ORDER BY id',
+    )
+    .all() as { id: string; balanceSetRowId: string }[];
 
 const databaseThrough = (tag: string): DatabaseSync => {
   const database = new DatabaseSync(':memory:');
@@ -104,7 +115,7 @@ describe('migration 0047: the stored balance-set marker', () => {
     expect(markedIds(database)).toEqual(['cash-opening', 'edited-adjustment', 'opening']);
   });
 
-  it('marks no lookalike row: one not at balance_set_at, one with a category, one with a description, one with no anchor', () => {
+  it('marks no lookalike row: one not at balance_set_at, one with a category, one with a description, an exchange leg, a change return, one with no anchor', () => {
     const database = databaseThrough('0046_add_quote_quota');
 
     insertHolding(database, 'imported');
@@ -136,12 +147,53 @@ describe('migration 0047: the stored balance-set marker', () => {
       description: 'Coffee',
     });
 
+    insertHolding(database, 'exchanged');
+    setBalanceSetAt(database, 'exchanged', OPENED);
+    insertTransaction(database, {
+      id: 'exchange-leg',
+      holdingId: 'exchanged',
+      time: OPENED,
+      exchangeCounterpartHoldingId: 'described',
+    });
+
+    insertHolding(database, 'changed');
+    setBalanceSetAt(database, 'changed', OPENED);
+    insertTransaction(database, {
+      id: 'change-return',
+      holdingId: 'changed',
+      time: OPENED,
+      changeGroupId: 'change-group',
+    });
+
     insertHolding(database, 'unanchored');
     insertTransaction(database, { id: 'unanchored-row', holdingId: 'unanchored', time: OPENED });
 
     applyMigration(database);
 
     expect(markedIds(database)).toEqual([]);
+    expect(currentRowIds(database)).toEqual([]);
+  });
+
+  it("points each holding's current balance-set row at its one marked row", () => {
+    const database = databaseThrough('0046_add_quote_quota');
+
+    insertHolding(database, 'opened');
+    setBalanceSetAt(database, 'opened', OPENED);
+    insertTransaction(database, { id: 'opening', holdingId: 'opened', time: OPENED });
+
+    insertHolding(database, 'edited');
+    setBalanceSetAt(database, 'edited', EDITED);
+    insertTransaction(database, { id: 'edited-opening', holdingId: 'edited', time: OPENED });
+    insertTransaction(database, { id: 'edited-adjustment', holdingId: 'edited', time: EDITED });
+
+    insertHolding(database, 'unanchored');
+
+    applyMigration(database);
+
+    expect(currentRowIds(database)).toEqual([
+      { id: 'edited', balanceSetRowId: 'edited-adjustment' },
+      { id: 'opened', balanceSetRowId: 'opening' },
+    ]);
   });
 
   // Two rows of one holding qualify only when they share the same

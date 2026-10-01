@@ -89,6 +89,22 @@ export const applyMigrationsBetween = (
   applyEntries(database, entries.slice(firstIndex, journalIndexOf(entries, lastTag) + 1));
 };
 
+/**
+ * A table's columns (`getTableColumns`) without the ones a later migration
+ * added — for a select from a database migrated only through an earlier tag,
+ * where the full schema names a column that does not exist there yet.
+ */
+export const columnsWithout = <
+  Columns extends Record<string, unknown>,
+  Later extends keyof Columns,
+>(
+  columns: Columns,
+  ...laterColumns: Later[]
+): Omit<Columns, Later> =>
+  Object.fromEntries(
+    Object.entries(columns).filter(([name]) => !laterColumns.some((later) => later === name)),
+  ) as Omit<Columns, Later>;
+
 const neverCalled = async (): Promise<{ rows: unknown[] }> => {
   throw new Error('the sqlite-proxy callback must never run — this instance is toSQL()-only');
 };

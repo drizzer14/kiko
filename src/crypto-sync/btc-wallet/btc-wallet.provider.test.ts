@@ -22,6 +22,7 @@ const holdingWith = (metadata: unknown): HoldingRow => ({
   balanceMinorUnits: 0,
   syncedBalanceMinorUnits: null,
   balanceSetAt: null,
+  balanceSetRowId: null,
   metadata,
   sortOrder: 0,
   closedAt: null,
