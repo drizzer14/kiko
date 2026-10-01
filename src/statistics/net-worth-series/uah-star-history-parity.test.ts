@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import { Money, toMajor } from '@kiko/currency/money';
 import type { CurrencyRateHistoryRow } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
@@ -15,7 +16,6 @@ import { buildNetWorthSeries } from './net-worth-series';
 // a single already-converting bucket's value. Every expected amount is
 // computed HERE, from the fixture's own raw daily UAH-anchored prices, never
 // read back from a history row the production code wrote.
-const DAY_MS = 24 * 60 * 60 * 1000;
 const D0 = Date.UTC(2026, 0, 1);
 const SPAN_DAYS = 10; // day indices 0..9, the span's first day is day zero
 

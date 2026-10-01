@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
-import { formatDateTime } from '@kiko/dates';
+import { DAY_MS, formatDateTime } from '@kiko/dates';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 
 import CryptoSyncSection from './crypto-sync-section.component';
@@ -135,7 +135,6 @@ const setConnected = (connected: { btc_wallet?: AccountRow[]; binance?: AccountR
 };
 
 const CONNECTED_WALLET_SYNCED_AT = 1_700_000_000_000;
-const DAY = 86_400_000;
 
 // Shared by every "already connected to a wallet" test below — each one only
 // differs in what it asserts afterward, never in how the section itself is
@@ -332,7 +331,7 @@ describe('CryptoSyncSection', () => {
         holdings={[
           holding({
             binanceAsset: 'BTC',
-            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY,
+            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS,
             syncedAt: CONNECTED_WALLET_SYNCED_AT,
           }),
         ]}
@@ -376,7 +375,7 @@ describe('CryptoSyncSection', () => {
         holdings={[
           holding({
             binanceAsset: 'BTC',
-            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY,
+            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS,
             syncedAt: CONNECTED_WALLET_SYNCED_AT,
           }),
         ]}

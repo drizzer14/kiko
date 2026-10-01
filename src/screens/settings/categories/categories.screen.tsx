@@ -504,7 +504,6 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
           <Box testID="add-category-footer" style={styles.addCategoryButton}>
             <Button
               variant="primary"
-              fullWidth
               onPress={expandAddCategoryForm}
               icon={genericEntitySymbol.category}
             >

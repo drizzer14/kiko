@@ -139,6 +139,14 @@ simulator also shows as connected. Build with the configuration
 `deploy-device.sh` uses. After install, compare the app data container
 UUID with the prior install before you report success.
 
+After every install, read the install directly instead of trusting
+the deploy script's own report:
+`xcrun devicectl device info apps --device <UDID> --bundle-id
+com.dmytro-vasylkivskyi.kiko`. Report the install URL and the data
+container UUID in the result — the install URL changes on every
+install, so compare it with the prior one to prove a fresh install
+actually landed.
+
 A change under `harness/kiko/` (hooks, scripts it calls) is live only
 after a plugin update — see `harness-workflow`'s "Harness hook changes
 go live only after a plugin update". Verify with a harmless probe

@@ -1,12 +1,13 @@
+import { DAY_MS } from '@kiko/dates';
+
 import { asLots, costBasisMinorAt, quantityAt, sellableQuantityAt } from './lots';
 
 // Matches price-book.test.ts's own convention: a UTC-midnight anchor day, so
 // `dayKeyOf` (which reads local Y/M/D getters) resolves back to the same
 // instant regardless of the test machine's own timezone offset.
-const DAY = 24 * 60 * 60 * 1000;
 const day1 = Date.UTC(2026, 0, 1); // 2026-01-01
-const day15 = day1 + 14 * DAY; // 2026-01-15
-const day20 = day1 + 19 * DAY; // 2026-01-20
+const day15 = day1 + 14 * DAY_MS; // 2026-01-15
+const day20 = day1 + 19 * DAY_MS; // 2026-01-20
 
 describe('quantityAt', () => {
   it('sums quantity deltas up to the local day of the given instant', () => {
@@ -15,7 +16,7 @@ describe('quantityAt', () => {
       { day: day15, quantityDelta: '5', costMinorUnits: 50_000 },
     ];
 
-    expect(quantityAt(lots, day1 + 5 * DAY)).toBe('10');
+    expect(quantityAt(lots, day1 + 5 * DAY_MS)).toBe('10');
     expect(quantityAt(lots, day20)).toBe('15');
   });
 

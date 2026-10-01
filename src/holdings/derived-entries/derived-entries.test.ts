@@ -1,10 +1,10 @@
+import { DAY_MS } from '@kiko/dates';
 import { i18n } from '@kiko/i18n/init';
 
 import type { ValuableHolding } from '../holding-value';
 
 import { type DerivedEntry, derivedEntries } from './derived-entries';
 
-const DAY = 86_400_000;
 const T0 = 1_600_000_000_000;
 
 // Local-midnight instant, matching the local Date arithmetic the coupon-date
@@ -116,7 +116,7 @@ describe('derivedEntries', () => {
         compounding: 'monthly',
       },
     };
-    const now = T0 + 365 * DAY;
+    const now = T0 + 365 * DAY_MS;
 
     const entries = derivedEntries(holding, now, i18n.t);
 
@@ -389,7 +389,7 @@ describe('derivedEntries', () => {
       },
     };
 
-    const entries = derivedEntries(holding, T0 + 365 * DAY, i18n.t);
+    const entries = derivedEntries(holding, T0 + 365 * DAY_MS, i18n.t);
 
     expect(entries.find((entry) => entry.kind === 'interest')?.tone).toBe('positive');
     expect(entries.find((entry) => entry.kind === 'tax')?.tone).toBe('negative');

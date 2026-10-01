@@ -98,6 +98,24 @@ if [ -n "$thin_pins" ]; then
   add_problem "domain(s) with fewer than 2 NSPinnedCAIdentities entries in ios/Kiko/Info.plist: $thin_pins — a single pin cannot be rotated without an outage; add a backup pin"
 fi
 
+# --- 1b. A credential in the URL must not be cacheable -----------------------
+# An api_token query parameter is part of the request URL, and NSURLCache keys
+# its Cache.db entries by URL, so a response the server lets a cache keep
+# (EODHD answers `no-cache, private`) writes the key to disk. Pinning does not
+# help there. Such a client must send the `Cache-Control: no-store` request
+# header, as an object key (`'Cache-Control': 'no-store'`) or a Headers call
+# (`headers.set('cache-control', 'no-store')`); header names and directives are
+# case-insensitive. File-level, like the marker pass above: a second request in
+# the same file without the header is not caught.
+while IFS= read -r file; do
+  [ -n "$file" ] || continue
+  if ! grep -qiE "['\"]Cache-Control['\"][[:space:]]*[:,][[:space:]]*['\"][^'\"]*no-store" "$file"; then
+    add_problem "${file#"$ROOT"/} sends a credential as the 'api_token' query parameter but no 'Cache-Control: no-store' request header — the key is part of the URL, so a cached response writes it to Cache.db; send headers: { 'Cache-Control': 'no-store' } with the request"
+  fi
+done <<EOF
+$(grep -rlE "(^|[^A-Za-z0-9_])api_token([^A-Za-z0-9_]|$)" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')
+EOF
+
 # --- 2. Release ATS hardening (H6) -------------------------------------------
 arbitrary="$(plutil -extract NSAppTransportSecurity.NSAllowsArbitraryLoads raw -o - "$PLIST" 2>/dev/null)"
 if [ "$arbitrary" != "false" ]; then
@@ -135,9 +153,9 @@ if [ -n "$problems" ]; then
     "iOS Info.plist assertions" \
     "The shipped Info.plist does not satisfy the project's security invariants." \
     "$problems" \
-    "The plist is the app's ATS, pinning, and privacy-declaration policy. An unpinned credential-bearing host can be MITM'd by any device-trusted CA (an MDM or coerced configuration profile), which reads the credential and the response; a single-pin domain cannot survive a certificate rotation without an outage; NSAllowsLocalNetworking in a Release build exempts .local/loopback from ATS in the shipped binary; an empty NS*UsageDescription is an App Store review rejection trigger. See docs/security/README.md." \
-    "Fix ios/Kiko/Info.plist (and docs/security/README.md's host table). Re-run: npm run check:plist" \
-    "Do not delete the assertion or add the host to an ignore list. Pin the host, or stop sending it a credential."
+    "The plist is the app's ATS, pinning, and privacy-declaration policy. An unpinned credential-bearing host can be MITM'd by any device-trusted CA (an MDM or coerced configuration profile), which reads the credential and the response; an api_token URL without a Cache-Control: no-store request header lets NSURLCache write the key to Cache.db; a single-pin domain cannot survive a certificate rotation without an outage; NSAllowsLocalNetworking in a Release build exempts .local/loopback from ATS in the shipped binary; an empty NS*UsageDescription is an App Store review rejection trigger. See docs/security/README.md." \
+    "Fix ios/Kiko/Info.plist (and docs/security/README.md's host table), or add the Cache-Control: no-store header to the named api_token client. Re-run: npm run check:plist" \
+    "Do not delete the assertion or add the host to an ignore list. Pin the host, or stop sending it a credential. Do not satisfy 1b with a comment, an unused constant, or no-cache."
   exit 2
 fi
 

@@ -6,11 +6,11 @@
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
 import { Money, toMajor } from '@kiko/currency/money';
 import { mapStatementItem } from '@kiko/monobank/sync';
-import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { guardedNetWorth } from '@kiko/rates/net-worth-view';
 import { FIAT_UAH_PRICE_SEED } from '@kiko/rates/fiat-rate-seed';
 import { buildPriceBook, dayKeyOf } from '@kiko/prices/price-book';
 import type { CurrencyRateHistoryRow, HoldingRow } from '@kiko/db';
+import { DAY_MS, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import type { MonobankStatementItem } from '@kiko/monobank/monobank-types';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
 
@@ -18,11 +18,10 @@ import type { SeriesHolding } from '../holding-value-at';
 
 import { buildNetWorthSeries, type NetWorthSeries } from './net-worth-series';
 
-const DAY = 86_400_000;
 const HOUR = 3_600_000;
 const D0 = Date.UTC(2026, 0, 1);
-const D1 = D0 + DAY;
-const D2 = D0 + 2 * DAY;
+const D1 = D0 + DAY_MS;
+const D2 = D0 + 2 * DAY_MS;
 
 // Local midnight of the calendar day `n` days after `t`. Built from local Y/M/D
 // fields (never a fixed ms offset) so the cross-day fixtures below map onto the
@@ -248,7 +247,7 @@ describe('buildNetWorthSeries', () => {
       transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
+      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY_MS + 12 * HOUR },
     });
 
     // Day D (bond bought, card debited) must equal day D-1 (card still full): $100.
@@ -281,7 +280,7 @@ describe('buildNetWorthSeries', () => {
       transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
+      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY_MS + 12 * HOUR },
     });
 
     // Day D (bond bought at cost, card debited the same price) must equal day D-1
@@ -317,7 +316,7 @@ describe('buildNetWorthSeries', () => {
       transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -110_000 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
+      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY_MS + 12 * HOUR },
     });
 
     expect(amountAt(series, D0 + 12 * HOUR)).toBe(1100);
@@ -415,7 +414,7 @@ describe('buildNetWorthSeries', () => {
       transactionsByHolding: new Map([['card', [debitTransaction]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
+      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY_MS + 12 * HOUR },
     });
 
     // Day D-1: the card still holds Q. Day D: the card is debited the real synced
@@ -489,7 +488,7 @@ describe('buildNetWorthSeries', () => {
       transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0, to: D0 + 2 * DAY }, // buckets at day 0, day 1 (=dayD), day 2 — all midnight
+      range: { from: D0, to: D0 + 2 * DAY_MS }, // buckets at day 0, day 1 (=dayD), day 2 — all midnight
     });
 
     // Day-D midnight bucket (bond bought at cost, card debited the same price) must
@@ -1239,7 +1238,7 @@ describe('buildNetWorthSeries', () => {
       transactionsByHolding: new Map(),
       historyRows: [],
       baseCurrency: 'UAH',
-      range: { from, to: from + 259 * 7 * DAY },
+      range: { from, to: from + 259 * 7 * DAY_MS },
       bucketDays: 7,
       book: buildPriceBook([], payments),
     });
@@ -1257,7 +1256,7 @@ describe('buildNetWorthSeries', () => {
     // MID-DAY, the same way `holdings.repo.ts`'s `closeMany` stamps it
     // (`unixepoch() * 1000`).
     const closedAt = closeDay + 12 * HOUR;
-    const afterCloseDay = D2 + DAY;
+    const afterCloseDay = D2 + DAY_MS;
     const range = { from: openDay, to: afterCloseDay };
 
     it('keeps its real reconstructed value through its own close day, then zeros afterward', () => {

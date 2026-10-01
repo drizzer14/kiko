@@ -2,14 +2,13 @@
 // path applies, so `refreshMetalPrices`'s backfill branch calls
 // `fetchNbuMetalHistory` (one range call per metal), and its already-priced
 // branch calls `fetchNbuMetalsCurrent` (the shared current-exchange payload).
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow, PricePointRow } from '@kiko/db';
 import type { Metal } from '@kiko/holdings/holding-metadata';
 
 import type { NbuMetalHistoryPoint, NbuMetalRate } from '../nbu-metals';
 
 import { type MetalRefreshDeps, refreshMetalPrices } from './metal-refresh';
-
-const DAY = 24 * 60 * 60 * 1000;
 
 type Row = Pick<PricePointRow, 'instrument' | 'day' | 'price' | 'currency' | 'source'>;
 type Holding = Pick<HoldingRow, 'type' | 'metadata'>;
@@ -88,7 +87,7 @@ describe('refreshMetalPrices', () => {
     // isolates this scenario to the ordinary one-day-forward-gap path.
     const existingPoints: PointRow[] = [
       { instrument: 'metal:XAU', day: earliestLotDay },
-      { instrument: 'metal:XAU', day: today - DAY },
+      { instrument: 'metal:XAU', day: today - DAY_MS },
     ];
     const { deps, upserted } = makeDeps({
       listHoldings: async () => [metalHolding('XAU', [earliestLotDay])],
@@ -242,7 +241,7 @@ describe('refreshMetalPrices', () => {
 
     await refreshMetalPrices(deps);
 
-    expect(historyArgs).toEqual(['XAU', earlierLotDay, firstStoredDay - DAY]);
+    expect(historyArgs).toEqual(['XAU', earlierLotDay, firstStoredDay - DAY_MS]);
     expect(upserted).toEqual([
       {
         instrument: 'metal:XAU',
@@ -278,14 +277,14 @@ describe('refreshMetalPrices', () => {
 
     await refreshMetalPrices(deps);
 
-    expect(historyArgs).toEqual(['XAU', day1 + DAY, day11]);
+    expect(historyArgs).toEqual(['XAU', day1 + DAY_MS, day11]);
     expect(upserted).toEqual([
       { instrument: 'metal:XAU', day: day11, price: '105000', currency: 'UAH', source: 'nbu' },
     ]);
   });
 
   // A lot dated before NBU's own metal data starts: the backward range
-  // [earlierLotDay, firstStoredDay - DAY] will NEVER have any rows. Today is
+  // [earlierLotDay, firstStoredDay - DAY_MS] will NEVER have any rows. Today is
   // already stored, so only that backward range is ever requested.
   const backwardGapDeps = (
     fetchHistory: MetalRefreshDeps['fetchHistory'],

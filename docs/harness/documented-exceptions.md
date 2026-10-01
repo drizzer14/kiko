@@ -642,6 +642,28 @@ verified usage, not dead weight:
   tests stay in scope. The flat fixture pair proves the rule in
   `check:rules`.
 
+- **`kiko-no-local-day-length-constant` (`rules/semgrep-prewrite.yml`)
+  excludes only `src/dates/**`.** `src/dates/duration.ts` declares `DAY_MS`,
+  the one owner of the day length, and `src/dates/local-day.test.ts` keeps
+  its own literal day as an oracle independent of that constant (a test of
+  the owner that imported `DAY_MS` would prove nothing about it). App source,
+  tests, test support, and `e2e/` are all in scope. The one false positive in
+  tests is a keyed timestamp of epoch + 1 day in a fixture object
+  (`{ t: 86_400_000 }`, `{ day: 86_400_000 }`), the only two keys the tree
+  uses that way. The rule skips a day literal inside an object literal that
+  holds a day literal under the key `t` or `day`, and the negative fixture
+  pins both shapes; any other key (`{ ttlMs: 86_400_000 }`) still fires, a
+  bad-fixture pin. Known limit: the skip is by range over that whole object,
+  so a span beside the keyed literal in the same object
+  (`{ t: 86_400_000, cutoff: now - 86_400_000 }`) does not fire either.
+  Measured on 2026-10-01: without the
+  exclude the rule draws 2 hits in `src/dates/` and 0 anywhere else, after a
+  sweep of 49 sites in 40 files (39 test files and
+  `e2e/screenshot/seed/screenshot-seed.ts`) to `DAY_MS`. The flat fixture
+  pair proves the rule in `check:rules`; the scope probes in
+  `__tests__/pre-write-guard-rules.test.ts` prove the test, test-support,
+  `e2e/`, and `src/dates/` paths.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`

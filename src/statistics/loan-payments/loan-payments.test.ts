@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 
 import {
@@ -182,7 +183,7 @@ describe('loanInterestEntries', () => {
     const earlier: LoanPaymentTransaction = {
       ...linkedPayment,
       id: 'tx-earlier',
-      time: PAYMENT_TIME - 86_400_000,
+      time: PAYMENT_TIME - DAY_MS,
       amountMinorUnits: -6_000,
     };
     const later: LoanPaymentTransaction = {

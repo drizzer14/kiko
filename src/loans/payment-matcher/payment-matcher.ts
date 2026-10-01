@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
@@ -8,9 +9,8 @@ import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
 
 // Exported so `use-loan-auto-link.ts` can derive its own SQL-level lower
 // bound ("earliest loan start minus the window's own before-margin") from
-// the SAME constants this module's own date-window check uses, rather than
+// the SAME constant this module's own date-window check uses, rather than
 // a second, driftable literal.
-export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // Spec 5.4 rule 2: "3 days before to 7 days after the due date".
 export const WINDOW_BEFORE_DAYS = 3;
 const WINDOW_AFTER_DAYS = 7;
@@ -121,7 +121,7 @@ const withinAmountTolerance = (
 // due date's local day — both bounds inclusive, the same "both bounds
 // inclusive" idiom `loanInterestPerPaymentMinor` already establishes.
 const withinDateWindow = (transactionTime: number, dueDate: number): boolean => {
-  const dayDiff = (dayKeyOf(transactionTime) - dayKeyOf(dueDate)) / MS_PER_DAY;
+  const dayDiff = (dayKeyOf(transactionTime) - dayKeyOf(dueDate)) / DAY_MS;
 
   return dayDiff >= -WINDOW_BEFORE_DAYS && dayDiff <= WINDOW_AFTER_DAYS;
 };
@@ -212,7 +212,7 @@ const candidateInstallmentsFor = (
   meta: LoanMeta,
   now: number,
 ): CandidateInstallment[] => {
-  const cutoffDayKey = dayKeyOf(now) + WINDOW_BEFORE_DAYS * MS_PER_DAY;
+  const cutoffDayKey = dayKeyOf(now) + WINDOW_BEFORE_DAYS * DAY_MS;
 
   return loanInstallments(meta)
     .filter((installment) => dayKeyOf(installment.dueDate) <= cutoffDayKey)

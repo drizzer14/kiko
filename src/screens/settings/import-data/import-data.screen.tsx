@@ -184,7 +184,6 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
           <Button
             testID="settings-button-import"
             variant="primary"
-            fullWidth
             onPress={handleImportPress}
             disabled={isSubmitting}
           >

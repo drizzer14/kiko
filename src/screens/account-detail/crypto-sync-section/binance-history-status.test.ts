@@ -1,8 +1,8 @@
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 
 import { historyCursorOf, isBinanceHistoryBehind } from './binance-history-status';
 
-const DAY = 86_400_000;
 const NOW = 1_704_326_400_000;
 
 describe('isBinanceHistoryBehind', () => {
@@ -15,12 +15,12 @@ describe('isBinanceHistoryBehind', () => {
   });
 
   it('is behind when the history lags the balance sync by more than a day', () => {
-    expect(isBinanceHistoryBehind(NOW - 2 * DAY, NOW)).toBe(true);
+    expect(isBinanceHistoryBehind(NOW - 2 * DAY_MS, NOW)).toBe(true);
   });
 
   it('is not behind (nothing to compare against) when the account has never synced at all', () => {
     expect(isBinanceHistoryBehind(null, null)).toBe(false);
-    expect(isBinanceHistoryBehind(NOW - 2 * DAY, null)).toBe(false);
+    expect(isBinanceHistoryBehind(NOW - 2 * DAY_MS, null)).toBe(false);
   });
 });
 

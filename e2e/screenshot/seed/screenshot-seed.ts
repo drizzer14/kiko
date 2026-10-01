@@ -5,8 +5,9 @@
 // dataset builder — no DB, no repos, no `@env` — whose only consumer is the
 // demo-`.kiko` generator under `e2e/screenshot/fixtures/`, reached through
 // Jest and never through the app. It still imports `../../../src/*` type
-// helpers (schema row types, `Currency`, `AppLanguage`, the palette) because
-// the shape it builds mirrors the real app's own types.
+// helpers (schema row types, `Currency`, `AppLanguage`, the palette, `DAY_MS`)
+// because the shape it builds mirrors the real app's own types.
+import { DAY_MS } from '@kiko/dates';
 import type {
   Metal,
   BondMeta,
@@ -29,8 +30,6 @@ import type { AccountRow, BondRegisterRow, HoldingRow } from '@kiko/db';
 // anchored to; set the capture device's clock at or just after this day so the
 // default 30-day chart window is populated (ops/qa).
 // ---------------------------------------------------------------------------
-
-const DAY_MS = 86_400_000;
 
 /**
  * The fixed "now" the whole dataset is anchored to: 2026-09-10 09:00 UTC.

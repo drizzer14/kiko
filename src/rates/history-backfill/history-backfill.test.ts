@@ -1,3 +1,5 @@
+import { DAY_MS } from '@kiko/dates';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Money, toMajor } from '@kiko/currency/money';
 import type { SeriesHolding } from '@kiko/statistics/holding-value-at';
 import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
@@ -20,7 +22,6 @@ import {
   runBackfill,
 } from './history-backfill';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const day = (index: number) => Date.UTC(2026, 8, 1) + index * DAY_MS; // 2026-09-01 + n
 
 type StoredRow = { base: string; quote: string; day: number; rate: string; source: string };
@@ -261,9 +262,11 @@ describe('runBackfill', () => {
     // currency" describe block sets `lastBackfilledDayByCurrency` directly to
     // exercise the per-currency gap this default would otherwise mask.
     const lastBackfilledDayByCurrency: Partial<Record<Currency, number>> =
-      lastBackfilledDay === null
-        ? {}
-        : { USD: lastBackfilledDay, EUR: lastBackfilledDay, BTC: lastBackfilledDay };
+      foldMap(maybe(lastBackfilledDay), (backfilledDay) => ({
+        USD: backfilledDay,
+        EUR: backfilledDay,
+        BTC: backfilledDay,
+      })) ?? {};
     const deps: BackfillDeps = {
       earliestDay: day(0),
       lastBackfilledDay,

@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 
 import {
@@ -20,7 +21,6 @@ import {
 } from './binance.transactions';
 
 const NOW = 1_704_326_400_000; // 2024-01-04T00:00:00Z
-const DAY = 86_400_000;
 const ACCOUNT_ID = 'acc-1';
 
 // The code reads only `id` and `metadata.binanceAsset` off a holding, so a
@@ -36,7 +36,7 @@ const deposit = (over: Partial<BinanceDeposit> = {}): BinanceDeposit => ({
   amount: '0.5',
   coin: 'BTC',
   txId: 'dep-tx',
-  insertTime: NOW - DAY,
+  insertTime: NOW - DAY_MS,
   status: 1,
   ...over,
 });
@@ -119,7 +119,7 @@ describe('syncBinanceTransactions', () => {
   it('maps a settled deposit and withdrawal onto the Spot holding, signed, and imports them', async () => {
     // A recent cursor keeps the walk to a single 89-day window.
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY,
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => [deposit()]),
       fetchWithdrawHistory: jest.fn(async () => withdrawPage([withdrawal()])),
     });
@@ -132,7 +132,7 @@ describe('syncBinanceTransactions', () => {
       {
         holdingId: 'h-spot',
         amountMinorUnits: 50_000_000, // +0.5 BTC in satoshis
-        time: NOW - DAY,
+        time: NOW - DAY_MS,
         source: 'binance',
         // The synced external id is namespaced by the target account id
         // (`${accountId}:deposit:<id>`), so two Binance connections cannot collide
@@ -168,7 +168,7 @@ describe('syncBinanceTransactions', () => {
     const sleep = jest.fn(async (_ms: number) => undefined);
     // A recent cursor keeps the walk to ONE 89-day window: a deposit request then
     // a withdraw request, two requests total.
-    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY, sleep });
+    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY_MS, sleep });
 
     await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
 
@@ -199,7 +199,7 @@ describe('syncBinanceTransactions', () => {
 
   it('excludes a non-settled deposit (status !== 1) and withdrawal (status !== 6)', async () => {
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY,
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => [
         deposit({ id: '2', status: 0 }),
         deposit({ id: '3' }),
@@ -224,7 +224,7 @@ describe('syncBinanceTransactions', () => {
         window.offset === 0 ? fullPage : [deposit({ id: 'last' })],
     );
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY,
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory,
     });
 
@@ -239,7 +239,7 @@ describe('syncBinanceTransactions', () => {
   it('re-sync from a recent cursor scans exactly the last 89-day window', async () => {
     const fetchDepositHistory = emptyDepositFetch();
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY,
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory,
     });
 
@@ -247,7 +247,7 @@ describe('syncBinanceTransactions', () => {
 
     expect(fetchDepositHistory).toHaveBeenCalledTimes(1);
     const window = fetchDepositHistory.mock.calls[0][2];
-    expect(window.startTime).toBe(NOW - 89 * DAY);
+    expect(window.startTime).toBe(NOW - 89 * DAY_MS);
     expect(window.endTime).toBe(NOW);
   });
 
@@ -256,7 +256,7 @@ describe('syncBinanceTransactions', () => {
     // A cursor 200 days back: overlap widens the start to 201 days, spanning
     // three 89-day windows (89 + 89 + 23).
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 200 * DAY,
+      latestTransactionTime: async () => NOW - 200 * DAY_MS,
       fetchDepositHistory,
     });
 
@@ -264,7 +264,7 @@ describe('syncBinanceTransactions', () => {
 
     const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
     expect(windows).toHaveLength(3);
-    expect(windows[0].startTime).toBe(NOW - 201 * DAY);
+    expect(windows[0].startTime).toBe(NOW - 201 * DAY_MS);
     expect(windows[2].endTime).toBe(NOW);
   });
 
@@ -305,7 +305,7 @@ describe('syncBinanceTransactions', () => {
 
     const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
     expect(windows).toHaveLength(1);
-    expect(windows[0].startTime).toBe(NOW - 89 * DAY);
+    expect(windows[0].startTime).toBe(NOW - 89 * DAY_MS);
     expect(windows[0].endTime).toBe(NOW);
   });
 
@@ -322,7 +322,7 @@ describe('syncBinanceTransactions', () => {
             metadata: { binanceAsset: 'BTC', binanceHistoryCursor: HISTORY_FLOOR_MS },
           },
         ] as unknown as HoldingRow[],
-      latestTransactionTime: async () => NOW - 10 * DAY,
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory,
     });
 
@@ -333,7 +333,7 @@ describe('syncBinanceTransactions', () => {
   });
 
   it('imports nothing but still advances the watermark when the window holds no settled records', async () => {
-    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY });
+    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY_MS });
 
     const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
 
@@ -369,7 +369,7 @@ describe('syncBinanceTransactions', () => {
 
   it('rejects when a history request fails so the caller can surface it', async () => {
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY,
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => {
         throw new Error('Too much request weight used');
       }),
@@ -382,7 +382,7 @@ describe('syncBinanceTransactions', () => {
 
   it('keys the same record identically across runs so a re-sync dedupes', async () => {
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY,
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => [deposit({ id: '42' })]),
     });
 
@@ -404,11 +404,11 @@ describe('syncBinanceTransactions', () => {
   // connection's row.
   it('namespaces the external id per account so two connections cannot collide on one raw id', async () => {
     const depsA = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY,
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => [deposit({ id: '7' })]),
     });
     const depsB = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY,
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => [deposit({ id: '7' })]),
     });
 
@@ -682,7 +682,7 @@ describe('resumable, budgeted walk', () => {
       listHoldings: account.listHoldings,
       writeHistoryCursor,
       addTransactions,
-      latestTransactionTime: async () => NOW - 10 * DAY,
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => [deposit()]),
       fetchWithdrawHistory: jest.fn(async () => withdrawPage([])),
     });

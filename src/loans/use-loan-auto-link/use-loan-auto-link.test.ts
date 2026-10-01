@@ -1,6 +1,7 @@
+import { DAY_MS } from '@kiko/dates';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
-import { MS_PER_DAY, WINDOW_BEFORE_DAYS } from '@kiko/loans/payment-matcher';
+import { WINDOW_BEFORE_DAYS } from '@kiko/loans/payment-matcher';
 
 const mockLoanHoldingsQuery = jest.fn();
 const mockLoanMatchCandidatesQuery = jest.fn();
@@ -127,7 +128,7 @@ describe('runLoanAutoLink', () => {
     await runLoanAutoLink(NOW);
 
     expect(mockLoanMatchCandidatesQuery).toHaveBeenCalledWith({
-      minTime: loanMeta.startDate - WINDOW_BEFORE_DAYS * MS_PER_DAY,
+      minTime: loanMeta.startDate - WINDOW_BEFORE_DAYS * DAY_MS,
       currencies: ['UAH'],
     });
   });

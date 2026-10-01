@@ -7,6 +7,7 @@ import {
   EodhdRateLimitError,
   EodhdUnavailableError,
 } from '@kiko/prices/eodhd';
+import { DAY_MS } from '@kiko/dates';
 import { i18n } from '@kiko/i18n/init';
 import type { QuoteQuota } from '@kiko/prices/quote-quota';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -66,7 +67,6 @@ import SharePricesScreen from './share-prices.screen';
 
 const KEY = 'fake-eodhd-key-0000';
 const PLACEHOLDER = 'Paste your EODHD key';
-const DAY_MS = 24 * 60 * 60 * 1000;
 const TODAY = Date.UTC(2026, 9, 1);
 const NOW = TODAY + 9 * 60 * 60 * 1000;
 const USED_UP = 'Today’s EODHD requests are used up. Prices update again after midnight GMT.';

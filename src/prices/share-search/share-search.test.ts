@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 
 import {
@@ -15,7 +16,6 @@ import { settle, type QuoteQuota } from '../quote-quota';
 
 import { searchShares, type ShareSearchDeps } from './share-search';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const KEY = 'fake-eodhd-key-0000';
 const TODAY = Date.UTC(2026, 9, 1);
 const NOW = TODAY + 9 * 60 * 60 * 1000;

@@ -7,6 +7,12 @@ The coordinator delegates all work to the harness agents. The coordinator never 
 
 Rules:
 - Split complex or parallel work into separate Orca worktrees (orca-cli).
+- An orchestrator working in another repo (one with no kiko role agents, for
+  example `drizzer14/harness`) starts with
+  `claude --model opus --plugin-dir <that repo's plugin dir>` — never a
+  built-in `general-purpose` agent. See
+  [[no-general-purpose-use-harness-agents]] ("Sessions outside pff-ios",
+  global memory dir).
 - If no agent fits a task, report the gap. Do not do the task inline.
 - Route web research and live API checks to `kiko:researcher` (read-only,
   cites a source URL + check date per claim); it writes no files, so the
@@ -61,7 +67,10 @@ after excludes is within `MUTATION_FILE_CAP` (read it in
 with their own bases. Count with the gate's own filter, never by hand:
 `KIKO_MUTATION_BASE=<base sha> make mutable` (it runs
 `mutation.sh --list`) prints the files and `mutable files: N (cap …)`,
-exits 2 above the cap, and never starts Stryker or takes its lock.
+exits 2 above the cap, and never starts Stryker or takes its lock. A
+change set with 0 mutable files (or only comment changes) gets no
+mutation run: `mutation.sh` exits 0 on 0 files without starting
+Stryker.
 
 ## Merging into main
 
@@ -179,6 +188,13 @@ points in a scratch worktree (`git worktree add`, detached):
    `check:deep`/mutation on it per the small-change-set rule above.
 5. Fast-forward the track branch to the last point with
    `git merge --ff-only`.
+
+A change set whose user-visible text (copy, subtitle, label) names a
+feature that only a LATER change set actually implements is held after
+its own mutation pass and merged into `next` together with that later
+change set — never merged alone first, even once it is reviewed and
+gated on its own (ruling 2026-10-01: a broker subtitle promised shares
+support before the task that added it).
 
 Example (2026-09-29, Reminders track): T3 `7d3cb4c1`, T4 `6d39f3d3`, T5
 `3b267bf5` — three stacked merge points built and gated this way before

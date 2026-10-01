@@ -1,6 +1,7 @@
+import { DAY_MS } from '@kiko/dates';
+
 import { fetchCryptoHistory } from './coingecko-history';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const d1 = Date.UTC(2026, 8, 1);
 const d2 = Date.UTC(2026, 8, 2);
 

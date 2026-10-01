@@ -1,4 +1,4 @@
-import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
+import { DAY_MS, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 
 import {
@@ -21,15 +21,14 @@ const DISPLAY = buildCategoryDisplayMap([
 // March, fall-back 26 October) — every range this file builds looks back at
 // most 14 days from NOW, and buckets now step by real CALENDAR days, so a
 // fixture straddling a transition would make its own hand-computed expected
-// bucket positions (`NOW - n * dayMs`) drift from the real (correct)
+// bucket positions (`NOW - n * DAY_MS`) drift from the real (correct)
 // calendar-stepped ones by the transition's hour.
 const NOW = Date.UTC(2025, 6, 31, 12, 0, 0); // 2025-07-31, midday UTC
-const dayMs = 86_400_000;
 
 // The default test range: 3 days back from NOW to NOW, daily buckets — 4
 // bucket instants (NOW-3d, NOW-2d, NOW-1d, NOW), all evenly spaced since the
 // span is an exact multiple of a day.
-const DEFAULT_RANGE = { from: NOW - 3 * dayMs, to: NOW };
+const DEFAULT_RANGE = { from: NOW - 3 * DAY_MS, to: NOW };
 const DEFAULT_BUCKET_DAYS = 1;
 
 const transaction = (over: Partial<TrendTransaction>): TrendTransaction => ({
@@ -71,7 +70,7 @@ describe('buildCategoryTrend', () => {
     expect(points[3].t).toBe(DEFAULT_RANGE.to);
 
     for (let i = 1; i < points.length; i += 1) {
-      expect(points[i].t - points[i - 1].t).toBe(dayMs);
+      expect(points[i].t - points[i - 1].t).toBe(DAY_MS);
     }
   });
 
@@ -80,8 +79,8 @@ describe('buildCategoryTrend', () => {
   // series must still carry a second point spanning the day, matching how a
   // single-day range always rendered before the phantom-bucket fix.
   it('renders a visible mark for a single-day range (at least two points)', () => {
-    const dayStart = NOW - 3 * dayMs;
-    const dayEnd = dayStart + dayMs - 1;
+    const dayStart = NOW - 3 * DAY_MS;
+    const dayEnd = dayStart + DAY_MS - 1;
     const series = buildTrend(
       [transaction({ time: dayStart + 60 * 60 * 1000, amountMinorUnits: -20_00 })],
       { range: { from: dayStart, to: dayEnd } },
@@ -108,11 +107,11 @@ describe('buildCategoryTrend', () => {
   it('buckets a mid-day (non-boundary) expense into the bucket period that CONTAINS it, not the next one', () => {
     // Halfway through the period [NOW-2d, NOW-1d) — must land in the NOW-2d
     // bucket, not be pushed forward into NOW-1d.
-    const midDay = NOW - 2 * dayMs + 12 * 60 * 60 * 1000;
+    const midDay = NOW - 2 * DAY_MS + 12 * 60 * 60 * 1000;
     const series = buildTrend([transaction({ id: 'a', time: midDay, amountMinorUnits: -15_00 })]);
     const nonZero = series[0].points.filter((point) => point.amount !== 0);
 
-    expect(nonZero).toEqual([{ t: NOW - 2 * dayMs, amount: 15 }]);
+    expect(nonZero).toEqual([{ t: NOW - 2 * DAY_MS, amount: 15 }]);
   });
 
   it("nets a split payment's linked change-returns into its trend line (not overstated by the change)", () => {
@@ -233,9 +232,9 @@ describe('buildCategoryTrend', () => {
         id: 'b',
         category: 'groceries',
         amountMinorUnits: -10_00,
-        time: NOW - 2 * dayMs,
+        time: NOW - 2 * DAY_MS,
       }),
-      transaction({ id: 'c', category: 'transport', amountMinorUnits: -20_00, time: NOW - dayMs }),
+      transaction({ id: 'c', category: 'transport', amountMinorUnits: -20_00, time: NOW - DAY_MS }),
     ]);
 
     const groceries = series.find((entry) => entry.key === 'groceries');
@@ -253,13 +252,13 @@ describe('buildCategoryTrend', () => {
   it('drops expenses whose time falls outside [range.from, range.to]', () => {
     const old = transaction({
       id: 'old',
-      time: DEFAULT_RANGE.from - 40 * dayMs,
+      time: DEFAULT_RANGE.from - 40 * DAY_MS,
       amountMinorUnits: -99_00,
       category: 'transport',
     });
     const recent = transaction({
       id: 'recent',
-      time: NOW - 2 * dayMs,
+      time: NOW - 2 * DAY_MS,
       amountMinorUnits: -10_00,
       category: 'groceries',
     });
@@ -273,7 +272,7 @@ describe('buildCategoryTrend', () => {
     const series = buildTrend([
       transaction({
         id: 'future',
-        time: DEFAULT_RANGE.to + dayMs,
+        time: DEFAULT_RANGE.to + DAY_MS,
         amountMinorUnits: -50_00,
         category: 'transport',
       }),
@@ -285,7 +284,7 @@ describe('buildCategoryTrend', () => {
 
   it('keeps the range fixed even when the only expense is before `range.from`', () => {
     const series = buildTrend([
-      transaction({ time: DEFAULT_RANGE.from - 100 * dayMs, amountMinorUnits: -5_00 }),
+      transaction({ time: DEFAULT_RANGE.from - 100 * DAY_MS, amountMinorUnits: -5_00 }),
     ]);
 
     // The only expense is outside the range, so no series survives.
@@ -306,7 +305,7 @@ describe('buildCategoryTrend', () => {
   });
 
   it('buckets weekly once the range crosses the coarsening threshold, sharing 7-day-spaced X positions', () => {
-    const range = { from: NOW - 14 * dayMs, to: NOW };
+    const range = { from: NOW - 14 * DAY_MS, to: NOW };
     const series = buildTrend(
       [
         transaction({ id: 'a', category: 'groceries', amountMinorUnits: -30_00, time: NOW }),
@@ -314,7 +313,7 @@ describe('buildCategoryTrend', () => {
           id: 'b',
           category: 'groceries',
           amountMinorUnits: -10_00,
-          time: NOW - 10 * dayMs,
+          time: NOW - 10 * DAY_MS,
         }),
       ],
       { range, bucketDays: 7 },
@@ -322,7 +321,7 @@ describe('buildCategoryTrend', () => {
     const points = series[0].points;
 
     expect(points).toHaveLength(3);
-    expect(points.map((point) => point.t)).toEqual([range.from, range.from + 7 * dayMs, range.to]);
+    expect(points.map((point) => point.t)).toEqual([range.from, range.from + 7 * DAY_MS, range.to]);
     // NOW - 10d (range.from + 4d) is a MID-PERIOD instant inside the first
     // weekly period [range.from, range.from + 7d) — it stays in the range.from
     // bucket rather than being shifted into the next one; the same-day expense
@@ -360,7 +359,7 @@ describe('buildCategoryMeasures', () => {
   it('counts the kept transactions per category', () => {
     const measures = buildMeasures([
       transaction({ id: 'a', category: 'groceries', amountMinorUnits: -10_00, time: NOW }),
-      transaction({ id: 'b', category: 'groceries', amountMinorUnits: -10_00, time: NOW - dayMs }),
+      transaction({ id: 'b', category: 'groceries', amountMinorUnits: -10_00, time: NOW - DAY_MS }),
       transaction({ id: 'c', category: 'transport', amountMinorUnits: -10_00, time: NOW }),
     ]);
     const groceries = measures.find((measure) => measure.key === 'groceries');
@@ -379,7 +378,7 @@ describe('buildCategoryMeasures', () => {
           id: 'old',
           category: 'groceries',
           amountMinorUnits: -10_00,
-          time: DEFAULT_RANGE.from - 40 * dayMs,
+          time: DEFAULT_RANGE.from - 40 * DAY_MS,
         }),
         transaction({ id: 'drop', category: 'groceries', amountMinorUnits: -10_00, time: NOW }),
       ],
@@ -396,9 +395,9 @@ describe('buildCategoryMeasures', () => {
         id: 'a',
         category: 'groceries',
         amountMinorUnits: -10_00,
-        time: NOW - 2 * dayMs,
+        time: NOW - 2 * DAY_MS,
       }),
-      transaction({ id: 'b', category: 'groceries', amountMinorUnits: -20_00, time: NOW - dayMs }),
+      transaction({ id: 'b', category: 'groceries', amountMinorUnits: -20_00, time: NOW - DAY_MS }),
       transaction({ id: 'c', category: 'groceries', amountMinorUnits: -30_00, time: NOW }),
     ]);
 
@@ -419,9 +418,9 @@ describe('buildCategoryMeasures', () => {
         id: 'b',
         category: 'groceries',
         amountMinorUnits: -20_00,
-        time: NOW - 2 * dayMs,
+        time: NOW - 2 * DAY_MS,
       }),
-      transaction({ id: 'c', category: 'groceries', amountMinorUnits: -10_00, time: NOW - dayMs }),
+      transaction({ id: 'c', category: 'groceries', amountMinorUnits: -10_00, time: NOW - DAY_MS }),
     ]);
 
     expect(measures[0].risingSlope).toBeLessThan(0);
@@ -439,7 +438,7 @@ describe('buildCategoryMeasures', () => {
 // production shape instead.
 describe('buildCategoryTrend / buildCategoryMeasures — no phantom trailing bucket', () => {
   const today = startOfLocalDay(NOW);
-  const PRODUCTION_RANGE = { from: today - 2 * dayMs, to: endOfLocalDay(NOW) };
+  const PRODUCTION_RANGE = { from: today - 2 * DAY_MS, to: endOfLocalDay(NOW) };
 
   it('emits exactly one point per real period, with no phantom point past the last one', () => {
     const series = buildTrend([transaction({ time: NOW, amountMinorUnits: -50_00 })], {
@@ -462,8 +461,8 @@ describe('buildCategoryTrend / buildCategoryMeasures — no phantom trailing buc
   it('keeps the sum of every series point equal to the category total', () => {
     const series = buildTrend(
       [
-        transaction({ id: 'a', time: today - 2 * dayMs, amountMinorUnits: -10_00 }),
-        transaction({ id: 'b', time: today - dayMs, amountMinorUnits: -20_00 }),
+        transaction({ id: 'a', time: today - 2 * DAY_MS, amountMinorUnits: -10_00 }),
+        transaction({ id: 'b', time: today - DAY_MS, amountMinorUnits: -20_00 }),
         transaction({ id: 'c', time: NOW, amountMinorUnits: -30_00 }),
       ],
       { range: PRODUCTION_RANGE },
@@ -480,13 +479,13 @@ describe('buildCategoryTrend / buildCategoryMeasures — no phantom trailing buc
           id: 'a',
           category: 'groceries',
           amountMinorUnits: -10_00,
-          time: today - 2 * dayMs,
+          time: today - 2 * DAY_MS,
         }),
         transaction({
           id: 'b',
           category: 'groceries',
           amountMinorUnits: -20_00,
-          time: today - dayMs,
+          time: today - DAY_MS,
         }),
         transaction({ id: 'c', category: 'groceries', amountMinorUnits: -30_00, time: today }),
       ],
@@ -508,7 +507,7 @@ describe('buildCategoryTrend / buildCategoryMeasures — no phantom trailing buc
 });
 
 // Europe/Kyiv springs forward on 2025-03-30 (a 23-hour local day). `from` is
-// built from local Y/M/D fields, not `today - n * dayMs` (which would land
+// built from local Y/M/D fields, not `today - n * DAY_MS` (which would land
 // off real local midnight across the transition), matching how production
 // derives it.
 describe('buildCategoryTrend — spring-forward DST (Europe/Kyiv, 2025-03-30)', () => {

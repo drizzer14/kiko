@@ -1,3 +1,5 @@
+import { DAY_MS } from '@kiko/dates';
+
 import {
   accruedMajor,
   addMonths,
@@ -13,9 +15,8 @@ import {
   periodsPerYear,
 } from './interest';
 
-const DAY = 86_400_000;
 const START = Date.UTC(2024, 0, 1);
-const AFTER_1Y = START + 365 * DAY;
+const AFTER_1Y = START + 365 * DAY_MS;
 
 // Local-midnight instant, matching the local Date arithmetic the bi-weekly and
 // bond-coupon helpers use (addMonths / new Date(y, m, d)).
@@ -41,12 +42,11 @@ describe('monthsPerCouponPeriod', () => {
 });
 
 describe('daysBetween', () => {
-  const day = 86_400_000;
   it('floors to whole days', () => {
-    expect(daysBetween(0, 10 * day + 500)).toBe(10);
+    expect(daysBetween(0, 10 * DAY_MS + 500)).toBe(10);
   });
   it('never returns a negative count', () => {
-    expect(daysBetween(10 * day, 0)).toBe(0);
+    expect(daysBetween(10 * DAY_MS, 0)).toBe(0);
   });
 
   describe('DST-safe whole-day counting (Kyiv spring-forward)', () => {
@@ -321,9 +321,9 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
   });
 
   it('sums cumulative accrual across contributions, each from the day after its own date', () => {
-    const now = START + 200 * DAY;
-    const c1 = { amountMajor: 10000, date: now - 180 * DAY };
-    const c2 = { amountMajor: 5000, date: now - 60 * DAY };
+    const now = START + 200 * DAY_MS;
+    const c1 = { amountMajor: 10000, date: now - 180 * DAY_MS };
+    const c2 = { amountMajor: 5000, date: now - 60 * DAY_MS };
     const accrued = depositAccruedMajor([c1, c2], 10, 120, now);
     // BUG2 day-after convention: each contribution earns from the day AFTER it
     // lands, so a 180-day-old tranche accrues 179 days and a 60-day-old one 59.
@@ -332,9 +332,9 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
   });
 
   it('excludes a future-dated contribution', () => {
-    const now = START + 200 * DAY;
+    const now = START + 200 * DAY_MS;
     const past = { amountMajor: 10000, date: START };
-    const future = { amountMajor: 5000, date: now + 10 * DAY };
+    const future = { amountMajor: 5000, date: now + 10 * DAY_MS };
     const withFuture = depositAccruedMajor([past, future], 10, 120, now);
     const withoutFuture = depositAccruedMajor([past], 10, 120, now);
     expect(withFuture).toBeCloseTo(withoutFuture, 6);
@@ -342,8 +342,8 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
 
   it('stays non-zero for a matured multi-contribution deposit (capped at maturity)', () => {
     const c1 = { amountMajor: 10000, date: START };
-    const c2 = { amountMajor: 5000, date: START + 30 * DAY };
-    const accrued = depositAccruedMajor([c1, c2], 10, 12, AFTER_1Y + 500 * DAY);
+    const c2 = { amountMajor: 5000, date: START + 30 * DAY_MS };
+    const accrued = depositAccruedMajor([c1, c2], 10, 12, AFTER_1Y + 500 * DAY_MS);
     expect(accrued).toBeGreaterThan(0);
   });
 });
