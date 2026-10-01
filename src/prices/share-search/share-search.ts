@@ -194,11 +194,7 @@ export const searchShares = async (
 
 // A user waits on a pressed Save for this one, so it gives up sooner than a
 // refresh does; an unanswered request costs no call either way.
-export const SAVE_LOOKUP_TIMEOUT_MS = 10_000;
-
-export type ShareUnitLookup =
-  | { status: 'ok'; unit: string }
-  | { status: 'notFound' | 'noKey' | 'keyRejected' | 'quotaExhausted' | 'failed' };
+const SAVE_LOOKUP_TIMEOUT_MS = 10_000;
 
 /** The search a `CODE.EXCHANGE` symbol's unit is looked up with: its code, on its exchange. */
 export const listingSearchOf = (symbol: string): ListingSearch | undefined => {
@@ -214,16 +210,17 @@ export const listingSearchOf = (symbol: string): ListingSearch | undefined => {
 /**
  * The unit EODHD prices one `CODE.EXCHANGE` listing in, with the same one
  * search call the share refresh would spend on it, under the same limit as a
- * search. A symbol with no listing of exactly that name is `notFound`.
+ * search. Undefined when the search could not run or found no listing of
+ * exactly that name.
  */
 export const lookupShareUnit = async (
   symbol: string,
   deps: ShareSearchDeps = {},
-): Promise<ShareUnitLookup> => {
+): Promise<string | undefined> => {
   const search = listingSearchOf(symbol);
 
   if (search === undefined) {
-    return { status: 'notFound' };
+    return undefined;
   }
 
   const found = await searchUnderQuota(
@@ -232,13 +229,8 @@ export const lookupShareUnit = async (
   );
 
   if (found.status !== 'ok') {
-    return found;
+    return undefined;
   }
 
-  return (
-    foldMap(
-      maybe(found.matches.find((candidate) => candidate.symbol === symbol)),
-      ({ currency }): ShareUnitLookup => ({ status: 'ok', unit: currency }),
-    ) ?? { status: 'notFound' }
-  );
+  return found.matches.find((candidate) => candidate.symbol === symbol)?.currency;
 };

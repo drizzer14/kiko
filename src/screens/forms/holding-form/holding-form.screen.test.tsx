@@ -197,7 +197,7 @@ jest.mock('@kiko/prices/eodhd-key', () => ({
 }));
 const mockSearchShares = jest.fn();
 // A hand-typed EODHD ticker's unit is looked up at Save; no key by default.
-const mockLookupShareUnit = jest.fn().mockResolvedValue({ status: 'noKey' });
+const mockLookupShareUnit = jest.fn().mockResolvedValue(undefined);
 jest.mock('@kiko/prices/share-search', () => ({
   ...jest.requireActual('@kiko/prices/share-search'),
   searchShares: (...args: unknown[]) => mockSearchShares(...args),
@@ -2847,7 +2847,7 @@ describe('HoldingFormScreen share', () => {
 
     afterEach(() => {
       mockHasEodhdKey = false;
-      mockLookupShareUnit.mockResolvedValue({ status: 'noKey' });
+      mockLookupShareUnit.mockResolvedValue(undefined);
     });
 
     it('blocks Save on the Currency field when a picked listing is held in another currency', async () => {
@@ -2872,7 +2872,7 @@ describe('HoldingFormScreen share', () => {
     });
 
     it('looks a hand-typed ticker up at Save and stores the unit it found', async () => {
-      mockLookupShareUnit.mockResolvedValue({ status: 'ok', unit: 'USD' });
+      mockLookupShareUnit.mockResolvedValue('USD');
       const screen = await renderScreen();
 
       await typeShare(screen);
@@ -2889,7 +2889,7 @@ describe('HoldingFormScreen share', () => {
     });
 
     it('blocks a hand-typed ticker priced in another currency, then saves once it is chosen', async () => {
-      mockLookupShareUnit.mockResolvedValue({ status: 'ok', unit: 'USD' });
+      mockLookupShareUnit.mockResolvedValue('USD');
       const screen = await renderScreen();
 
       await typeShare(screen);
@@ -2915,7 +2915,7 @@ describe('HoldingFormScreen share', () => {
     });
 
     it('scrolls to the Currency field when the lookup blocks Save', async () => {
-      mockLookupShareUnit.mockResolvedValue({ status: 'ok', unit: 'USD' });
+      mockLookupShareUnit.mockResolvedValue('USD');
       const screen = await renderScreen();
 
       await typeShare(screen);
@@ -2925,7 +2925,7 @@ describe('HoldingFormScreen share', () => {
     });
 
     it('saves a hand-typed ticker as before when the lookup has no answer', async () => {
-      mockLookupShareUnit.mockResolvedValue({ status: 'failed' });
+      mockLookupShareUnit.mockResolvedValue(undefined);
       const screen = await renderScreen();
 
       await typeShare(screen);

@@ -19,7 +19,6 @@ import {
   lookupShareUnit,
   unitHoldingCurrency,
   type ShareSearchDeps,
-  SAVE_LOOKUP_TIMEOUT_MS,
 } from './share-search';
 
 const KEY = 'fake-eodhd-key-0000';
@@ -78,17 +77,18 @@ const quota = (overrides: Partial<QuoteQuota> = {}): QuoteQuota => ({
   ...overrides,
 });
 
+// Every EODHD failure is logged; a test reads the log only where it asserts on it.
+let warn: jest.SpyInstance;
+
+beforeEach(() => {
+  warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
+
+afterEach(() => {
+  warn.mockRestore();
+});
+
 describe('searchShares', () => {
-  let warn: jest.SpyInstance;
-
-  beforeEach(() => {
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    warn.mockRestore();
-  });
-
   it('asks EODHD with the saved key and returns each listing in its holding currency', async () => {
     const world = makeWorld();
 
@@ -353,16 +353,6 @@ describe('searchShares', () => {
 });
 
 describe('lookupShareUnit', () => {
-  let warn: jest.SpyInstance;
-
-  beforeEach(() => {
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    warn.mockRestore();
-  });
-
   const vodafone = [
     listing({ symbol: 'VOD.US', currency: 'USD' }),
     listing({ symbol: 'VOD.LSE', currency: 'GBX' }),
@@ -371,10 +361,7 @@ describe('lookupShareUnit', () => {
   it("asks for the code on its exchange, as the refresh does, and returns that listing's unit", async () => {
     const world = makeWorld({ answer: vodafone });
 
-    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toEqual({
-      status: 'ok',
-      unit: 'GBX',
-    });
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toBe('GBX');
     expect(world.events).toEqual(['quota 1', 'search VODLSE']);
   });
 
@@ -390,54 +377,45 @@ describe('lookupShareUnit', () => {
       },
     });
 
-    expect(timeouts).toEqual([SAVE_LOOKUP_TIMEOUT_MS]);
-    expect(SAVE_LOOKUP_TIMEOUT_MS).toBe(10_000);
+    expect(timeouts).toEqual([10_000]);
   });
 
   it('finds nothing, and counts the call, when EODHD has no listing of that exact symbol', async () => {
     const world = makeWorld({ quota: quota({ calls: 3 }), answer: vodafone });
 
-    await expect(lookupShareUnit('VOD.XETRA', depsFor(world))).resolves.toEqual({
-      status: 'notFound',
-    });
+    await expect(lookupShareUnit('VOD.XETRA', depsFor(world))).resolves.toBeUndefined();
     expect(world.quota).toEqual(quota({ calls: 4 }));
   });
 
   it('asks nothing for a symbol with no exchange', async () => {
     const world = makeWorld();
 
-    await expect(lookupShareUnit('VOD', depsFor(world))).resolves.toEqual({
-      status: 'notFound',
-    });
+    await expect(lookupShareUnit('VOD', depsFor(world))).resolves.toBeUndefined();
     expect(world.events).toEqual([]);
   });
 
   it.each([
-    ['without a saved key', { key: undefined }, 'noKey'],
-    ['while EODHD rejects the saved key', { quota: quota({ isKeyRejected: true }) }, 'keyRejected'],
-    ['once the day is used up', { quota: quota({ calls: 20 }) }, 'quotaExhausted'],
-  ] as const)('asks nothing %s', async (_state, overrides, status) => {
+    ['without a saved key', { key: undefined }],
+    ['while EODHD rejects the saved key', { quota: quota({ isKeyRejected: true }) }],
+    ['once the day is used up', { quota: quota({ calls: 20 }) }],
+  ] as const)('asks nothing %s', async (_state, overrides) => {
     const world = makeWorld(overrides);
 
-    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toEqual({ status });
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toBeUndefined();
     expect(world.events.filter((event) => event.startsWith('search'))).toEqual([]);
   });
 
   it('gives the call back when EODHD never answered', async () => {
     const world = makeWorld({ quota: quota({ calls: 3 }), answer: new EodhdNetworkError() });
 
-    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toEqual({
-      status: 'failed',
-    });
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toBeUndefined();
     expect(world.quota).toEqual(quota({ calls: 3 }));
   });
 
   it('marks a key EODHD rejects, as a search does', async () => {
     const world = makeWorld({ quota: quota({ calls: 3 }), answer: new EodhdAuthError() });
 
-    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toEqual({
-      status: 'keyRejected',
-    });
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toBeUndefined();
     expect(world.quota).toEqual(quota({ calls: 4, isKeyRejected: true }));
   });
 });

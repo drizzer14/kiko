@@ -9,7 +9,6 @@ import {
   lookupShareUnit,
   type ShareListing,
   unitHoldingCurrency,
-  type ShareUnitLookup,
   type ShareSearchResult,
 } from '@kiko/prices/share-search';
 import { match } from 'ts-pattern';
@@ -152,19 +151,16 @@ type QuotedListing = { symbol?: string; quoteCurrency?: string };
 // Save waits on this one bounded call only. A lookup that could not run at
 // all (a Keychain or database read failed) saves the share as before, the
 // same as no key.
-const unitAtSave = async (symbol: string): Promise<string | undefined> => {
-  const lookup = bifoldMap(
-    await either<unknown, ShareUnitLookup>(() => lookupShareUnit(symbol)),
-    (error): ShareUnitLookup => {
+const unitAtSave = async (symbol: string): Promise<string | undefined> =>
+  bifoldMap(
+    await either<unknown, string | undefined>(() => lookupShareUnit(symbol)),
+    (error) => {
       logFailure('[share-form] listing unit lookup failed', error);
 
-      return { status: 'failed' };
+      return undefined;
     },
-    (found) => found,
+    (unit) => unit,
   );
-
-  return lookup.status === 'ok' ? lookup.unit : undefined;
-};
 
 // A provider quote unit belongs to one listing, so it is kept only while the
 // ticker still names that listing.
