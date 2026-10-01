@@ -254,7 +254,9 @@ with `utcDigitsOf`, and an instant's wall clock in a zone with
 `zoneWallClockOf`. The display formatters (`formatDate`, used by
 `preview-stats.ts`) stay allowed — they render an instant, never
 produce one. A `new Date(text)` whose argument TypeScript cannot type as
-`string` (an untyped `TableCell`) is not caught.
+`string` (an untyped `TableCell`) is not caught. The rules match on
+types: a `toLocaleString` on a `number` stays allowed, and a `Date` typed
+`any` is not caught.
 
 Tests that must prove a result does not depend on the device zone wrap
 the call in `@kiko/test-support/device-zone-offset`'s
@@ -272,8 +274,12 @@ is back. Read the file's header for the rest of its limits.
 - The EU summer-time rule (last Sunday of March/October, 01:00 UTC) is
   valid from 1996 onward and has no expiry date coded in. A 2024 Rada
   bill to abolish Ukraine's DST has not been signed as of this writing;
-  if it ever is, `@kiko/dates`'s `kyiv-wall-clock.ts` (`KYIV_ZONE_RULE`)
-  is the one place to update, with an effective-date guard.
+  if it ever is, update `@kiko/dates`'s `kyiv-wall-clock.ts`
+  (`KYIV_ZONE_RULE`) AND `zone-wall-clock.ts`: `ZoneRule` has no date
+  field, so the effective-date guard needs a new field there. The
+  column-mapping `eastern-europe` zone
+  (`src/statement-import/column-mapping/source-time-zone.ts`) must keep
+  the EU rule — it covers more than Ukraine.
 - A key written by a device outside Kyiv's zone rules before every path
   read a fixed zone — a legacy row the old rezone read in that device's
   zone, or a column-mapped row imported there — carries device-zone

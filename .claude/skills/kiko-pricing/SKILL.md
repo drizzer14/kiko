@@ -151,7 +151,10 @@ backs its value at a flat rate instead of ever dropping the holding.
 The Statistics screen drives an incremental, non-blocking backfill of
 `currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`):
 `planBackfillRun` decides whether a mount/focus needs a run for the
-current transaction span, `missingDays` lists the still-uncovered UTC
+current span — from the earliest transaction OR the earliest priced-lot day
+(`earliestLotDay` in `src/screens/statistics/statistics.screen.tsx`,
+converted with `localMidnightOfDayKey`), whichever is older, to now; it
+runs when transactions OR holdings exist — `missingDays` lists the still-uncovered UTC
 days, and `runBackfill` fetches, composes and upserts them, returning
 a `BackfillStatus`. A failed run must NEVER be reported as `'complete'`,
 in either of the two ways it can fail: `runBackfill` settles NBU and
@@ -203,7 +206,7 @@ composed nothing for a NEVER-backfilled currency is).
 The caller's own `lastBackfilledDay` OVERRIDES that per-currency
 minimum with an explicit `null` — `resolveBackfillWindow` checks it
 first. `planBackfillRun` passes exactly that null whenever an older
-transaction extends `spanStart` EARLIER than any prior run covered (see
+transaction or lot extends `spanStart` EARLIER than any prior run covered (see
 below): the forward, per-currency minimum cannot see a gap that opens
 BELOW the newest day every held currency already reached, so without
 this override it would report nothing missing and silently skip the
@@ -233,7 +236,7 @@ drives the retry above) fires the identical cleanup lifecycle event and
 must not drop a still-pending run's eventual settle, or the line gets
 stuck on "loading" with no retry at all. A settle needs a SECOND,
 independent guard against a run SUPERSEDED by a later one, not merely
-against an unmount: an older transaction extending `spanStart` earlier
+against an unmount: an older transaction or lot extending `spanStart` earlier
 can start a new run before an already-in-flight run's own settle
 arrives, and that stale settle must not overwrite the newer run's
 state or reset its span ref out from under it. A run-token ref, bumped
@@ -277,7 +280,10 @@ in `src/prices/instrument/`) per `(instrument, day)` row:
   calendar date — same convention as `currencyRateHistory.day`. Read
   via `dayKeyOf` (`src/prices/price-book/`), which reads the
   DEVICE-LOCAL `Date` getters (not the UTC ones) so a Kyiv-local day
-  keys correctly across a DST transition.
+  keys correctly across a DST transition. A day key is a UTC-midnight
+  ENCODING of a local date, NOT an instant: never compare it with a real
+  instant directly — convert it first with `localMidnightOfDayKey`
+  (same module).
 - `price` is a decimal STRING (never a float), `currency` is the
   price's own currency, `source` is `manual | nbu | eodhd` — read
   `src/db/schema.ts` directly for the enum rather than trusting this

@@ -510,7 +510,8 @@ A Semgrep rule that mechanizes a finding needs a fixture pair, run by
   check, not silently prove nothing.
 - Biome format-checks a `.good.` fixture (never lints it; `biome.json`
   `overrides`) and skips a `.bad.` one. Format a new good fixture with
-  `npx biome format --write <file>`. A `pattern-regex` probe whose layout
+  `./node_modules/.bin/biome format --write <file>` (never `npx biome`:
+  RTK rewrites it in agent Bash and it fails). A `pattern-regex` probe whose layout
   is the point keeps it with
   `// biome-ignore format: OVERRIDE(<reason>)` on the line above
   (example: `rules/fixtures/kiko-no-native-reminders-module-import.good.ts`).
@@ -1784,6 +1785,14 @@ invariant there as another named assertion in that same script, not as
 a new standalone wrapper — `plist.sh` already owns `plutil -lint` on
 `ios/Kiko/Info.plist` plus the fail-closed proofs for a missing file
 or a broken `plutil`.
+
+A plist/project-file assertion that greps `project.pbxproj` must read the
+section that proves the claim (for a bundled resource, the
+`PBXResourcesBuildPhase` section), never the whole file: the
+`PBXBuildFile` line carries the same "in Resources" text, so a whole-file
+grep passes vacuously. An answer computed by `node` must fail closed on
+anything but its expected values — an empty answer from a crashed `node`
+is not "no".
 
 A credential marker is a credential header or the bare word `api_token`
 (a query-parameter credential), quoted or not, so an object key the Biome

@@ -86,7 +86,8 @@ project-level pointer to this section.
   REWRITES `drizzle/migrations/migrations.js` wholesale, in its own
   formatting (verified: it clobbered the repo's import/export layout
   and dropped a comma-per-line style). Re-check that file after every
-  generate, and run `npx biome check --write` over the generated
+  generate, and run `./node_modules/.bin/biome check --write` (never `npx biome`: RTK
+  rewrites it in agent Bash and it fails) over the generated
   artifacts: the snapshot and journal JSON are lint-checked like any
   other file.
 - Bundle migrations into the app and apply them on launch through

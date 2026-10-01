@@ -110,7 +110,11 @@ implemented, and callers must skip it rather than assume every id resolves.
   (see `schema.ts`'s `holdings.currency` enum), `icon`, `color`,
   `balanceMinorUnits` (integer), `metadata` (JSON: masked PAN, IBAN,
   deposit rate, maturity, Monobank account/jar id), `sortOrder`,
-  `closedAt` (nullable), `createdAt`.
+  `closedAt` (nullable), `createdAt`. A MANUAL holding the user sold or
+  gave away is Closed, not deleted (the card context menu's `onClose` ->
+  `CloseHoldingSheet` -> `holdingsRepo.closeMany`, under
+  `src/screens/account-detail/`); it keeps its lots, prices, and ledger.
+  A synced holding gets no `onClose` (`closeActionFor` returns undefined).
 - **Transaction** — a movement against a holding. `id`, `holdingId`
   (FK), `amountMinorUnits` (signed integer), `time` (unix
   milliseconds), `description`, `category` (nullable), `mcc`
@@ -622,6 +626,14 @@ the exchange-exclusion module (`src/statistics/`, the exchange-marker rule)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
+Which rows each step reads (`src/screens/statistics/statistics.screen.tsx`):
+the spending charts always draw every row of the holdings under the KEPT
+accounts, open or closed (`transactionsWithCurrency`, filtered from
+`filtered.netWorthHoldings`), so a closed card keeps its past spending.
+The internal-transfer matcher runs over `ledgerWithCurrency` (every
+holding, whatever the account filter or `closedAt`). The loan-payment
+exclusion runs over the account-filtered rows.
+
 A linked loan payment ("interest-only
 spending") is excluded the same way, but REPLACED rather than simply
 dropped: the loan-payments module (`src/statistics/loan-payments/`)
@@ -801,7 +813,10 @@ behavior must inject the offset or zone into the code under test
 explicitly (for example `formatDate`'s `{ timeZone: 'UTC' }` on an
 instant whose UTC and Kyiv days differ). Code that takes no zone input
 is tested under Kyiv only; do not add a production parameter just to
-inject one. Semgrep `kiko-no-process-env-time-zone-in-test` (ERROR)
+inject one. Exception: to PROVE a result is zone-independent, wrap the run
+in `withDeviceZoneOffset` (`src/test-support/device-zone-offset.ts`; read
+its header for exactly what it retargets — only the multi-argument local
+`Date` constructor). Semgrep `kiko-no-process-env-time-zone-in-test` (ERROR)
 denies the assignment in every test path.
 
 The pin does not make a test zone-correct. Many holdings, prices,
@@ -1031,6 +1046,10 @@ builder's own doc comment for why a same-day compare broke the rightmost
 the account pie, the Debts total) reads `filtered.visibleHoldings` instead
 — open holdings only, under a non-archived account — so a closed holding
 contributes to the LINE's past but never to a current snapshot.
+Invariant: the LAST net-worth bucket always equals
+`guardedNetWorth(open holdings, now)` — the number Home shows. Pinned by
+`net-worth-series.test.ts` ("ends on the net worth Home shows for a bond,
+a share, and a closed holding").
 
 `reconcile-bond-funding.ts`'s candidate-building pass was rewritten from a
 `.flatMap`/`.map`/`.filter` chain to a plain nested loop for the same
