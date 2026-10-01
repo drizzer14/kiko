@@ -159,6 +159,10 @@ export const uk: typeof en = {
       fri: 'Пт',
       sat: 'Сб',
     },
+    dayPeriod: {
+      beforeNoon: 'дп',
+      afterNoon: 'пп',
+    },
     previousYear: 'Попередній рік',
     previousMonth: 'Попередній місяць',
     nextMonth: 'Наступний місяць',

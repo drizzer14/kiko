@@ -976,7 +976,8 @@ new component can land between reviews of this skill:
   loaded; the used-up state shows only when the stored day is today. There
   is no separate "Daily limit: N" caption (user decision). The used-up
   banner, and the share search sheet's used-up message, name EODHD's reset
-  (midnight GMT, `quotaResetsAt`) in the device's local time.
+  (midnight GMT, `quotaResetsAt`) in the device's local time, on the device's
+  12- or 24-hour clock (`formatTime` with `useTimeClock`; see kiko-translator).
 - **ReminderOfferCard** (`src/design-system/components/reminder-offer-card/`)
   — the NoticeBanner family's two-action sibling: an inline, non-modal
   invitation (never a notification, sheet, or alert, and never an

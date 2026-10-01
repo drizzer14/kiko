@@ -24,6 +24,7 @@ import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -74,6 +75,7 @@ const formatCount = (count: number): string => count.toLocaleString(activeLocale
 
 const SharePricesScreen: FC<SharePricesScreenProps> = () => {
   const { t } = useTranslation();
+  const clock = useTimeClock();
   const [key, setKey] = useState('');
   const [showKeyRequiredError, setShowKeyRequiredError] = useState(false);
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
@@ -226,7 +228,7 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
         {requestsToday?.isUsedUp === true && (
           <NoticeBanner
             message={t('settings.sharePricesScreen.quotaUsedUpMessage', {
-              time: formatTime(quotaResetsAt(Date.now())),
+              time: formatTime(quotaResetsAt(Date.now()), clock),
             })}
             testID="share-prices-quota-banner"
           />

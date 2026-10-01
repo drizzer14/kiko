@@ -222,5 +222,6 @@ jest.mock('@kiko/reminders/native/NativeKikoReminders', () => ({
     registerCategories: jest.fn(() => undefined),
     drainResponses: jest.fn(async () => '[]'),
     onResponse: jest.fn(() => ({ remove: jest.fn() })),
+    uses24HourClock: jest.fn(() => true),
   },
 }));

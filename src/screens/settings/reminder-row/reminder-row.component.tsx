@@ -2,12 +2,14 @@ import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { TimeClock } from '@kiko/dates';
 import type { ViewProps } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import { deviceRegion } from '@kiko/i18n/device-region';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { weekStartFor } from '@kiko/calendar/week-start';
 import Switch from '@kiko/design-system/components/switch';
 import type { ReminderRow as SavedReminder } from '@kiko/db';
@@ -32,11 +34,11 @@ const kindLabel = (kind: ReminderKind, t: TFunction): string =>
 
 // A restored row may carry another build's schedule shape; it reads as Off
 // rather than breaking the page.
-const summaryOf = (reminder: SavedReminder | undefined, t: TFunction): string => {
+const summaryOf = (reminder: SavedReminder | undefined, t: TFunction, clock: TimeClock): string => {
   const schedule: unknown = reminder?.schedule;
 
   return isReminderSchedule(schedule)
-    ? describeSchedule(schedule, t, weekStartFor(deviceRegion()))
+    ? describeSchedule(schedule, t, weekStartFor(deviceRegion()), clock)
     : t('reminders.off');
 };
 
@@ -100,6 +102,7 @@ const ReminderRow: FC<ReminderRowProps> = ({
   onDelete,
 }) => {
   const { t } = useTranslation();
+  const clock = useTimeClock();
   const label = kindLabel(kind, t);
   const saved = maybe(reminder);
   const captions =
@@ -125,7 +128,7 @@ const ReminderRow: FC<ReminderRowProps> = ({
         >
           <Box gap={1}>
             <Text variant="caption" tone="textSecondary">
-              {summaryOf(reminder, t)}
+              {summaryOf(reminder, t, clock)}
             </Text>
 
             {captions.map((caption) => (

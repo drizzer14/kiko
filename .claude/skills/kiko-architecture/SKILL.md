@@ -1851,12 +1851,15 @@ what a change must keep.
   any kind (a Monobank bank, Binance, a BTC wallet) has no eligible
   kind; with no saved reminder either, its page shows the caption
   `reminders.emptyNoKinds` instead of rows.
-- **Summary.** `describeSchedule(schedule, t, firstDay)`
+- **Summary.** `describeSchedule(schedule, t, firstDay, clock)`
   (`src/reminders/schedule/describe-schedule.ts`) reads the time on the
-  24-hour clock. The uk preposition comes from `{{at}}`:
-  `reminders.schedule.atEleven` ('об') for 11:00-11:59 ONLY, and
-  `reminders.schedule.at` ('о') for every other hour, 23:xx and 1:xx
-  included (a user ruling). en has both keys as 'at'.
+  device's clock (`clock` from `useTimeClock`; see "Time of day" in
+  kiko-translator). The uk preposition comes from `{{at}}` and follows the
+  hour as shown (`hourOnClock`): `reminders.schedule.atEleven` ('об') when
+  it reads 11 (11:xx on the 24-hour clock; 11:xx дп and 11:xx пп on the
+  12-hour one), and `reminders.schedule.at` ('о') for every other hour,
+  23:xx and 1:xx on the 24-hour clock included (a user ruling). en has both
+  keys as 'at'.
 - **Shared system status.** Any cached OS/system status (a permission,
   a sync status) that several screens show lives in ONE module store
   (`useSyncExternalStore`; see `src/monobank/sync-status/`,
@@ -2096,6 +2099,17 @@ in memory for the crash history this fixed.
   `reminders-native.lazy-load.test.ts` proves the lazy load, and the Semgrep
   rule `kiko-no-native-reminders-module-import` (`rules/semgrep-prewrite.yml`)
   denies any other value import, re-export, `require`, or dynamic `import()`.
+- **`KikoReminders` is the app's one TurboModule, so it also carries the one
+  non-reminder read: `uses24HourClock()`.** A SYNCHRONOUS method (spec
+  `NativeKikoReminders.ts`, `- (NSNumber *)uses24HourClock` in
+  `RCTKikoReminders.mm`): the iOS 24-Hour Time setting, read as "the `j`
+  hour skeleton of `[NSLocale autoupdatingCurrentLocale]` has no `a`".
+  Only `useTimeClock` (`src/i18n/use-time-clock/`) calls it, through
+  `remindersNative.uses24HourClock`, which throws where the module is
+  missing; the hook falls back then (en 12-hour, uk 24-hour). A new method
+  on the spec changes codegen: run `make pods` and commit
+  `ios/Podfile.lock` with the spec when it changes. The global jest mock
+  (`jest/setup.js`) returns `true`.
 - **An ObjC++ (`.mm`) file that imports `Kiko-Swift.h` must first import
   every framework the app target's `@objc` Swift classes use.** Xcode's
   generated `Kiko-Swift.h` declares EVERY `@objc` class in the app target,

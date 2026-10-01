@@ -232,7 +232,7 @@ describe('CryptoSyncSection', () => {
 
     expect(getByText('Sync')).toBeTruthy();
     expect(getByText('Disconnect')).toBeTruthy();
-    const stamp = formatDateTime(CONNECTED_WALLET_SYNCED_AT);
+    const stamp = formatDateTime(CONNECTED_WALLET_SYNCED_AT, { uses24Hour: true });
     expect(getByText(new RegExp(stamp.replace(/[.]/g, '\\.')))).toBeTruthy();
     expect(queryByText('Binance')).toBeNull();
     expect(queryByLabelText('wallet-field')).toBeNull();

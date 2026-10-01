@@ -180,6 +180,11 @@ export const en = {
       fri: 'Fri',
       sat: 'Sat',
     },
+    // The marks after a time on the 12-hour clock ("9:05 PM").
+    dayPeriod: {
+      beforeNoon: 'AM',
+      afterNoon: 'PM',
+    },
     previousYear: 'Previous year',
     previousMonth: 'Previous month',
     nextMonth: 'Next month',

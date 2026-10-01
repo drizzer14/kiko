@@ -3,6 +3,7 @@ import { Pressable } from 'react-native';
 import { formatTime } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { isSyncedTransaction } from '@kiko/holdings/deletable';
 import { resolveCategoryDisplay } from '@kiko/categories/category-display';
@@ -25,6 +26,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
   onDuplicate,
 }) => {
   const { t } = useTranslation();
+  const clock = useTimeClock();
   const isSynced = isSyncedTransaction(item);
 
   const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);
@@ -84,7 +86,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
           money={Money.of(item.currency, item.amountMinorUnits)}
           footerMeta={`${item.accountName} · ${category.title}`}
           footerTrailing={
-            isTimeExemptHoldingType(item.holdingType) ? undefined : formatTime(item.time)
+            isTimeExemptHoldingType(item.holdingType) ? undefined : formatTime(item.time, clock)
           }
           loanLinked={item.loanHoldingId !== null}
           style={styles.rowCard}

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, Keyboard } from 'react-native';
 import Text from '@kiko/design-system/components/text';
 import { quotaResetsAt } from '@kiko/prices/quote-quota';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import Button from '@kiko/design-system/components/button';
 import { type FC, useEffect, useRef, useState } from 'react';
 import TextField from '@kiko/design-system/components/text-field';
@@ -55,6 +56,7 @@ const phaseOf = (result: ShareSearchResult): SearchPhase =>
 // typing the ticker, which the form's own field always allows.
 const ShareSearchSheet: FC<ShareSearchSheetProps> = ({ visible, onDismiss, search, onPick }) => {
   const { t } = useTranslation();
+  const clock = useTimeClock();
   const [query, setQuery] = useState('');
   const [phase, setPhase] = useState<SearchPhase>(IDLE);
   // Each search and each close takes a new number, so an answer that arrives
@@ -131,7 +133,7 @@ const ShareSearchSheet: FC<ShareSearchSheetProps> = ({ visible, onDismiss, searc
       {match(phase)
         .with({ kind: 'message' }, ({ key }) => (
           <Text variant="caption" tone="textSecondary">
-            {t(key, { time: formatTime(quotaResetsAt(Date.now())) })}
+            {t(key, { time: formatTime(quotaResetsAt(Date.now()), clock) })}
           </Text>
         ))
         .with({ kind: 'found' }, ({ listings }) => (

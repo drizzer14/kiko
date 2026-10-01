@@ -1,7 +1,7 @@
 import { maxOf } from '@kiko/numbers';
 import type { TFunction } from 'i18next';
 import type { HoldingRow } from '@kiko/db';
-import { formatDateTime } from '@kiko/dates';
+import { formatDateTime, type TimeClock } from '@kiko/dates';
 import { syncedAtOf } from '@kiko/holdings/holding-metadata';
 
 /**
@@ -13,8 +13,11 @@ import { syncedAtOf } from '@kiko/holdings/holding-metadata';
  * TRANSLATED `accountDetail.lastSync` key, so a Ukrainian user read
  * "Остання синхронізація: Never".
  */
-export const formatLastSyncAt = (lastSyncAt: number | null, t: TFunction): string =>
-  lastSyncAt === null ? t('accountDetail.never') : formatDateTime(lastSyncAt);
+export const formatLastSyncAt = (
+  lastSyncAt: number | null,
+  t: TFunction,
+  clock: TimeClock,
+): string => (lastSyncAt === null ? t('accountDetail.never') : formatDateTime(lastSyncAt, clock));
 
 /**
  * The newest balance-sync stamp across an account's holdings. A balance sync

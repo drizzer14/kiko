@@ -811,7 +811,7 @@ describe('AccountDetailScreen', () => {
     const { getByText } = await renderScreen();
     // The shared formatDateTime helper (European DD.MM.YYYY, 24h) replaces the
     // old locale-dependent toLocaleString rendering.
-    const stamp = formatDateTime(1_700_000_000_000);
+    const stamp = formatDateTime(1_700_000_000_000, { uses24Hour: true });
     expect(getByText(new RegExp(stamp.replace(/[.]/g, '\\.')))).toBeTruthy();
   });
 

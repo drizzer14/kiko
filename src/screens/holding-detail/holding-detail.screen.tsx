@@ -32,6 +32,7 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
@@ -399,6 +400,7 @@ type LedgerRowContext = {
 const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row, context }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const clock = useTimeClock();
   const {
     currency,
     showTime,
@@ -442,7 +444,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
               {derivedRow.entry.isFuture
                 ? t('holdingDetail.projected')
                 : t('holdingDetail.computed')}
-              {showTime ? ` · ${formatTime(derivedRow.entry.time)}` : ''}
+              {showTime ? ` · ${formatTime(derivedRow.entry.time, clock)}` : ''}
             </Text>
           </Box>
         </Box>
@@ -539,7 +541,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                 {showTime && (
                   <Box style={styles.rowFooter}>
                     <Text variant="caption" tone="textSecondary">
-                      {formatTime(transactionRow.transaction.time)}
+                      {formatTime(transactionRow.transaction.time, clock)}
                     </Text>
                   </Box>
                 )}
