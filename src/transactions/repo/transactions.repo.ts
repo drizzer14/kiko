@@ -1300,7 +1300,8 @@ export const transactionsRepo = {
    * reconstructs for this holding by the same untracked amount.
    *
    * Imported times are real instants (a named format's own Kyiv reading,
-   * `parse-date-time.ts`; column mapping's own device reading), so the
+   * `parse-date-time.ts`; column mapping's reading in its mapping's source
+   * zone), so the
    * eligibility comparison (`asOfSeconds * 1000 >= boundary`) against a
    * genuinely-UTC boundary (a manual entry or edit timestamped with the real
    * `Date.now()`) is exact. A legacy stored row, and an import-set

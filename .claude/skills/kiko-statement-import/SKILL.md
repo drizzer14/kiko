@@ -162,8 +162,9 @@ before parsing — those UTC digits ARE the cell's own wall clock, so a
 mapping pointed at an Excel date column behaves exactly like one pointed
 at a text date column. An XLSX number cell is used as-is (no
 reformatting) — only a `Date` cell gets this wall-clock conversion. Only
-DATE-ONLY input reads as noon, so the same calendar day shows from UTC-9
-to UTC+12: a date-only preset (`date-formats.ts`'s `dateOnlyParts`), and
+DATE-ONLY input reads as noon in the source zone, so the same calendar
+day shows on a device at most 12 hours behind, and less than 12 hours
+ahead of, that zone (for Kyiv, UTC-9 to UTC+13:45 all year): a date-only preset (`date-formats.ts`'s `dateOnlyParts`), and
 a spreadsheet `Date` cell with no time part (exact UTC midnight —
 `formatUtcDateTime` writes it as plain `'YYYY-MM-DD'`, the one step that
 still knows the value was a date cell, so the raw preview shows the date

@@ -44,9 +44,10 @@ const partsToSeconds = (parts: WallClockParts, zone: ZoneRule): number | undefin
     (milliseconds) => milliseconds / 1000,
   );
 
-// A date-only cell has no time at all, so it reads as noon and shows the same
-// calendar day from UTC-9 to UTC+12. A timed preset keeps a real `00:00` at
-// midnight: as noon it would sort after a later row on the same day.
+// A date-only cell has no time at all, so it reads as noon in the source zone
+// and shows the same calendar day on a device at most 12 hours behind, and
+// less than 12 hours ahead of, that zone. A timed preset keeps a real `00:00`
+// at midnight: as noon it would sort after a later row on the same day.
 const dateOnlyParts = (year: string, month: string, day: string): WallClockParts => ({
   year: Number(year),
   month: Number(month),
