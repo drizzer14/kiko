@@ -1,5 +1,6 @@
 import type { ParseKeys } from 'i18next';
 import type { HoldingRow } from '@kiko/db';
+import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 
 type CloseHoldingCopy = Record<'action' | 'title' | 'message' | 'errorTitle', ParseKeys>;
 
@@ -17,7 +18,7 @@ const LOAN_COPY: CloseHoldingCopy = {
   errorTitle: 'accountDetail.closeLoanErrorTitle',
 };
 
-// A loan is a debt the user owes, not something they hold, so its Close
-// never calls it a holding.
+// A debt-side type (a loan) is owed, not held, so its Close never calls it a
+// holding. Keyed off the same descriptor `side` net-worth math reads.
 export const closeHoldingCopy = (type: HoldingRow['type']): CloseHoldingCopy =>
-  type === 'loan' ? LOAN_COPY : HOLDING_COPY;
+  holdingDescriptorOrUndefined(type)?.side === 'debt' ? LOAN_COPY : HOLDING_COPY;

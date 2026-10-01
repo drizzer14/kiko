@@ -703,7 +703,7 @@ export const en = {
     closeLoanAction: 'Close loan',
     closeLoanErrorTitle: 'Could not close loan',
     closeLoanMessage:
-      "It leaves your accounts and stops counting toward your net worth. Its past values stay on the net worth chart. A closed loan can't be reopened.",
+      "It leaves your accounts and stops counting against your net worth. Its past values stay on the net worth chart. A closed loan can't be reopened.",
     closeLoanTitle: 'Close Loan "{{name}}"',
     connectBinance: 'Connect Binance',
     connectedAs: 'Connected as {{name}}',

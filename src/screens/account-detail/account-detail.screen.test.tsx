@@ -991,7 +991,7 @@ describe('AccountDetailScreen', () => {
         expect(getByText('Close Loan "Car"')).toBeTruthy();
         expect(
           getByText(
-            "It leaves your accounts and stops counting toward your net worth. Its past values stay on the net worth chart. A closed loan can't be reopened.",
+            "It leaves your accounts and stops counting against your net worth. Its past values stay on the net worth chart. A closed loan can't be reopened.",
           ),
         ).toBeTruthy();
         expect(queryByText(/close holding/i)).toBeNull();
