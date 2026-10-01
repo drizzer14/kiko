@@ -3,6 +3,7 @@ jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: { updateLoan: (...args: unknown[]) => mockUpdateLoan(...args) },
 }));
 
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import type { LoanPricePointOp } from '@kiko/holdings/repo';
@@ -608,7 +609,7 @@ describe('useLoanFields — saveEdit into a "none" schedule', () => {
       [
         {
           loanHoldingId: 'h-1',
-          time: baseMeta().startDate + 10 * 86_400_000,
+          time: baseMeta().startDate + 10 * DAY_MS,
           amountMinorUnits: -500_000,
           currency: 'UAH',
         },

@@ -1,9 +1,9 @@
+import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
 
 import { splitInterestTaxMinor } from '../tax';
 import type { BondPayment, BondCouponFrequency, CompoundingFrequency } from '../holding-metadata';
 
-const DAY_MS = 86_400_000;
 const DAYS_PER_YEAR = 365;
 
 // Calendar-anniversary compounding frequencies. `bi-weekly` is excluded: it is

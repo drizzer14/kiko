@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
@@ -50,7 +51,7 @@ const DEFAULT_LOOKBACK_SECONDS = MAX_WINDOW_SECONDS;
  * bounds that worst-case miss window: at least once a day every card is fetched
  * regardless of balance, so such a pair is recovered within a day.
  */
-const FULL_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const FULL_FETCH_INTERVAL_MS = DAY_MS;
 
 /**
  * The `accountsRepo` methods the sync calls directly. The whole repo module is

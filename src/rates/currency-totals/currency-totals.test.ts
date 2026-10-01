@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingInstrument } from '@kiko/prices/instrument';
@@ -17,7 +18,6 @@ const card = (
 });
 
 const START = Date.UTC(2026, 0, 1);
-const day = 86_400_000;
 
 describe('sumByCurrency', () => {
   it('sums balances per currency, ordered by descending absolute value', () => {
@@ -37,7 +37,7 @@ describe('sumByCurrency', () => {
   });
 
   it('values a term deposit at its net-of-tax computed value, not its raw balance', () => {
-    const now = START + 365 * day;
+    const now = START + 365 * DAY_MS;
     const deposit: ValuableHolding = {
       id: 'deposit-1',
       type: 'term_deposit',

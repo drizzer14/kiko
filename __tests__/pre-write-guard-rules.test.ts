@@ -71,6 +71,8 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-header-spacing-item',
   'kiko-no-direct-notification-permission-request',
   'kiko-no-fixed-day-offset-into-local-day',
+  'kiko-no-redundant-button-full-width',
+  'kiko-no-local-day-length-constant',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -376,7 +378,7 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
   ].join('\n');
 
   const dayOffsetProbe = [
-    'const DAY_MS = 86_400_000;',
+    "import { DAY_MS } from '@kiko/dates';",
     '',
     'export const tomorrow = (): number => Date.now() + DAY_MS;',
     '',
@@ -412,6 +414,42 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       if (status === 2) {
         const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
         expect(reason).toContain(ruleId);
+      }
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  // A test's own day length drifts from DAY_MS just like app code's, so only
+  // src/dates/, the owner of DAY_MS, is out of scope.
+  const dayLengthProbe = [
+    'const DAY = 86_400_000;',
+    '',
+    'export const tomorrow = (time: number): number => time + DAY;',
+    '',
+  ].join('\n');
+  const dayLength = 'kiko-no-local-day-length-constant';
+
+  it.each([
+    ['src/probe/day-length-probe.test.ts', 2],
+    ['src/probe/day-length-probe.test.tsx', 2],
+    ['__tests__/day-length-probe.test.ts', 2],
+    ['src/test-support/day-length-probe.ts', 2],
+    ['e2e/probe/day-length-probe.ts', 2],
+    ['src/dates/day-length-probe.ts', 0],
+  ])(`${dayLength} on %s exits %s`, (target, status) => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-day-length-scope-'));
+    try {
+      const targetFile = join(project, ...target.split('/'));
+      mkdirSync(join(targetFile, '..'), { recursive: true });
+
+      const result = runGuard(payloadFor(targetFile, dayLengthProbe), project);
+
+      expect(result.status).toBe(status);
+
+      if (status === 2) {
+        const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+        expect(reason).toContain(`rule ${dayLength} at `);
       }
     } finally {
       rmSync(project, { recursive: true, force: true });

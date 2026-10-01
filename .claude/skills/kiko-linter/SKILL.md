@@ -718,6 +718,26 @@ reasoning.
   scanned it. Scan a probe file by its path, and read `paths.scanned`
   before trusting a zero.
 
+## Semgrep facts verified on 2026-10-01 (the P5 guard rules)
+
+- A bare `{}` in a pattern matches ANY object literal. Pin an empty
+  side with `metavariable-regex` on `^\{\s*\}$`.
+- A bare JSX attribute (`<Button fullWidth />`) reads as `={true}`.
+- `metavariable-comparison` folds constant arithmetic
+  (`24 * 60 * 60 * 1000`).
+- Constant propagation makes `pattern: $X` plus a comparison match an
+  identifier use too, so write each operand as literal text.
+- A QUOTED number-literal pattern (`"86400000"`) matches every spelling
+  of that value. Quote it in YAML: unquoted `864e5` is a float.
+- `options: { constant_propagation: false }` stops a literal pattern
+  from matching a propagated identifier. Fixtures cannot pin this
+  option: the verifier checks only positive lines, so a stray
+  identifier match in a good fixture is the only signal.
+- `pattern-not-inside` with an object pattern skips by range: the whole
+  object literal's span.
+- Semgrep reports a parenthesized JSX expression at the `(` line; pin
+  `EXPECT-FINDING` there.
+
 ## Class A vs Class B
 
 `rules/semgrep-mobile.yml` groups rules into two severities, both
@@ -1798,3 +1818,9 @@ A credential marker is a credential header or the bare word `api_token`
 (a query-parameter credential), quoted or not, so an object key the Biome
 formatter unquotes and a template query string (`?api_token=${key}`) both
 match. Read `scripts/checks/plist.sh` for the exact marker set.
+
+Section 1b: a client that sends an `api_token` must also send a
+`Cache-Control: no-store` request header (NSURLCache keys its disk
+cache by URL). A comment, an unused constant, or `no-cache` never
+satisfies it. Read section 1b of `scripts/checks/plist.sh` for the
+accepted header forms.

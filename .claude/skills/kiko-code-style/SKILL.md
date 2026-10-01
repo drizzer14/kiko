@@ -318,6 +318,18 @@ import maybe, { foldMap } from 'fnts/maybe';
 const tags = foldMap(maybe(holding.category), (category) => [toTag(category)]) ?? [];
 ```
 
+The empty-object spread form — `...(x === undefined ? {} : { key: x })`,
+either branch order — is a nullable map too. Spread a `foldMap`
+instead (spreading `undefined` adds nothing):
+
+```ts
+// wrong
+const input = { ...(note === undefined ? {} : { note }) };
+
+// correct
+const input = { ...foldMap(maybe(note), (value) => ({ note: value })) };
+```
+
 ## `fnts` FIRST
 
 `fnts` (github.com/drizzer14/fnts, the user's own library) is the

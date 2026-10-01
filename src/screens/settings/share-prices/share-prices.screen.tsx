@@ -206,7 +206,6 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
           <Button
             testID="settings-button-save-eodhd-key"
             variant="primary"
-            fullWidth
             onPress={handleSave}
             disabled={isSubmitting}
           >

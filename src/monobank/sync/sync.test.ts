@@ -2,6 +2,7 @@
 // sync.ts imports the repos which open the connection at load. A minimal
 // stub lets the module graph load; runSync's data access is fully injected
 // through SyncDeps, so the real repos are never exercised here.
+import { DAY_MS } from '@kiko/dates';
 import { i18n } from '@kiko/i18n/init';
 import statement from '@kiko/monobank/__fixtures__/statement.json';
 import clientInfo from '@kiko/monobank/__fixtures__/client-info.json';
@@ -1661,7 +1662,7 @@ describe('runSync', () => {
       // fetch is >24h old, so the safety net forces an all-cards fetch and
       // re-stamps the marker.
       syncStateRow.lastSyncAt = 1_700_000_000_000 - 1000;
-      syncStateRow.lastFullSyncAt = 1_700_000_000_000 - (24 * 60 * 60 * 1000 + 1);
+      syncStateRow.lastFullSyncAt = 1_700_000_000_000 - (DAY_MS + 1);
       const setLastFullSyncAt = jest.fn(
         async (_accountId: string, _timestamp: number): Promise<void> => undefined,
       );
@@ -1854,7 +1855,7 @@ describe('runSync', () => {
       cardAShouldFail = false;
       // Retry 3 days later — the user reopens the app after a while, not
       // immediately.
-      clockNow = startedAt + 3 * 24 * 60 * 60 * 1000;
+      clockNow = startedAt + 3 * DAY_MS;
       await runSync(deps);
       const fromSecondsRun2 = (fetchStatement as jest.Mock).mock.calls
         .filter(([, accountId]) => decodeURIComponent(accountId as string) === idA)
@@ -2121,7 +2122,7 @@ describe('runSync', () => {
 
     // Force a wide FULL fetch: a full-fetch cursor 90 days back makes each card
     // page 3 windows. The jar balance is unchanged, so it adds no work.
-    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+    const ninetyDaysMs = 90 * DAY_MS;
     syncStateRow.lastSyncAt = 1704326400000 - 1000;
     syncStateRow.lastFullSyncAt = 1704326400000 - ninetyDaysMs;
 
@@ -2249,7 +2250,7 @@ describe('runSync', () => {
       // moved since the last sync. Client-info order is [A, B]; changed-first
       // ordering must fetch B before A.
       syncStateRow.lastSyncAt = 1704326400000 - 1000;
-      syncStateRow.lastFullSyncAt = 1704326400000 - (24 * 60 * 60 * 1000 + 1);
+      syncStateRow.lastFullSyncAt = 1704326400000 - (DAY_MS + 1);
       deps.fetchClientInfo = async () => ({
         accounts: (clientInfo.accounts as MonobankAccount[]).map((account) =>
           account.id === idB ? { ...account, balance: account.balance + 5000 } : { ...account },
@@ -2329,7 +2330,7 @@ describe('runSync', () => {
       // first; the later card A then fails, modelling a run cut short after the
       // first (changed) card.
       syncStateRow.lastSyncAt = 1704326400000 - 1000;
-      syncStateRow.lastFullSyncAt = 1704326400000 - (24 * 60 * 60 * 1000 + 1);
+      syncStateRow.lastFullSyncAt = 1704326400000 - (DAY_MS + 1);
       deps.fetchClientInfo = async () => ({
         accounts: (clientInfo.accounts as MonobankAccount[]).map((account) =>
           account.id === idB ? { ...account, balance: account.balance + 5000 } : { ...account },

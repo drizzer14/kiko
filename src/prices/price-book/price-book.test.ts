@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { PricePointRow } from '@kiko/db';
 import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
 
@@ -12,10 +13,9 @@ import {
   localMidnightOfDayKey,
 } from './price-book';
 
-const DAY = 24 * 60 * 60 * 1000;
 const monday = Date.UTC(2026, 8, 7); // 2026-09-07, a Monday, UTC midnight
-const tuesday = monday + DAY;
-const friday = monday + 4 * DAY;
+const tuesday = monday + DAY_MS;
+const friday = monday + 4 * DAY_MS;
 
 const AAPL = shareInstrument('AAPL');
 const MSFT = shareInstrument('MSFT');
@@ -120,7 +120,7 @@ describe('priceAt', () => {
   });
 
   it('falls back to the earliest point for an instant before the first row', () => {
-    const before = monday - DAY;
+    const before = monday - DAY_MS;
 
     expect(priceAt(book, AAPL, before)?.price).toBe('190.00');
   });

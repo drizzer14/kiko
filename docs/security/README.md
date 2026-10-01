@@ -142,6 +142,10 @@ and immediately if a sync starts failing with a TLS error.
 6. Adding a new host that sends a credential (a header, or the `api_token`
    query parameter) means adding it here AND to
    `NSPinnedDomains`. `npm run check:plist` fails the build if you forget.
+   A client that sends the key as the `api_token` query parameter must also
+   send the `Cache-Control: no-store` request header, so NSURLCache never
+   writes the key-bearing URL to `Cache.db`; `npm run check:plist` fails
+   without it.
 
 ## Fixed since the 2026-09-06 audit
 

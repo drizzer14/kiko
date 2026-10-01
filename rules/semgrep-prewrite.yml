@@ -55,6 +55,11 @@ rules:
   # branch is a constant unrelated to $X (`label === undefined ? undefined :
   # 'button'`) matches too, even though it is not a map of $X's value at all
   # (both real sites this false-matched are in the negative fixture).
+  # The empty-object form (`...(x === undefined ? {} : { x })`) is its own
+  # nested arm: a bare `{}` in a Semgrep pattern matches ANY object literal,
+  # so the sentinel side is captured as $EMPTY and pinned to the literal text
+  # `{}` by `metavariable-regex` (a non-empty fallback object is in the
+  # negative fixture).
   # Deliberately NOT scoped to `paths.exclude` test files — existing
   # test-file instances are in scope too, unlike the Hermes TextDecoder rule
   # (`kiko-no-textdecoder-textencoder`, which stays in
@@ -64,14 +69,15 @@ rules:
     severity: ERROR
     message: >
       Hand-rolled nullable-map ternary. `x === undefined ? undefined : f(x)`
-      (and the `null`/`== null`/list-or-empty variants) duplicates what
-      `fnts`'s `maybe` + `foldMap` already does, without the type making the
-      "might be absent" case visible at the call site. Use
+      (and the `null`/`== null`/list-or-empty/empty-object variants)
+      duplicates what `fnts`'s `maybe` + `foldMap` already does, without the
+      type making the "might be absent" case visible at the call site. Use
       `foldMap(maybe(x), (value) => f(value))` instead (append `?? []` for the
-      list-or-empty form) — see kiko-code-style's "Banned: the nullable-map
-      ternary".
+      list-or-empty form; spread it directly for the empty-object form, since
+      spreading `undefined` adds nothing) — see kiko-code-style's "Banned:
+      the nullable-map ternary".
     metadata:
-      fix: "Use `foldMap(maybe(x), (value) => f(value))` instead (append `?? []` for the list-or-empty form)."
+      fix: "Use `foldMap(maybe(x), (value) => f(value))` instead (append `?? []` for the list-or-empty form; spread it directly, `...foldMap(...)`, for the empty-object form)."
       skill: "kiko-code-style › Banned: the nullable-map ternary"
     patterns:
       - pattern-either:
@@ -108,6 +114,24 @@ rules:
           - pattern: "$X !== null && $X !== undefined ? $E : null"
           - pattern: "$X !== undefined && $X !== null ? $E : []"
           - pattern: "$X !== null && $X !== undefined ? $E : []"
+          - patterns:
+              - pattern-either:
+                  - pattern: "$X === undefined ? $EMPTY : $E"
+                  - pattern: "undefined === $X ? $EMPTY : $E"
+                  - pattern: "$X === null ? $EMPTY : $E"
+                  - pattern: "$X == null ? $EMPTY : $E"
+                  - pattern: "$X == undefined ? $EMPTY : $E"
+                  - pattern: "$X !== undefined ? $E : $EMPTY"
+                  - pattern: "$X !== null ? $E : $EMPTY"
+                  - pattern: "$X != null ? $E : $EMPTY"
+                  - pattern: "$X != undefined ? $E : $EMPTY"
+                  - pattern: "$X === undefined || $X === null ? $EMPTY : $E"
+                  - pattern: "$X === null || $X === undefined ? $EMPTY : $E"
+                  - pattern: "$X !== undefined && $X !== null ? $E : $EMPTY"
+                  - pattern: "$X !== null && $X !== undefined ? $E : $EMPTY"
+              - metavariable-regex:
+                  metavariable: $EMPTY
+                  regex: '^\{\s*\}$'
       - metavariable-pattern:
           metavariable: $E
           patterns:
@@ -897,6 +921,23 @@ rules:
                   <Button ... variant=$VARIANT ...>
                     {t('common.cancel')}
                   </Button>
+  # The design-system Button defaults `fullWidth` to true
+  # (button.component.tsx), so a bare `fullWidth` or `fullWidth={true}` only
+  # restates the default. How the one pattern covers both spellings, and its
+  # limits: this rule's row in docs/harness/review-to-biome-inventory.md.
+  - id: kiko-no-redundant-button-full-width
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Redundant `fullWidth` on the design-system Button. It defaults to
+      `true`, so a bare `fullWidth` or `fullWidth={true}` restates the
+      default. Drop the prop; pass only `fullWidth={false}` for an
+      intrinsic-width button — see kiko-design-system's "Component set
+      (Button)".
+    metadata:
+      fix: "Remove the bare `fullWidth` / `fullWidth={true}` from the Button; it already defaults to true. Pass only `fullWidth={false}`."
+      skill: "kiko-design-system › Component set (Button)"
+    pattern: <Button ... fullWidth={true} ... />
   # kiko-domain's "Exchange/Convert legs": a blank row's fallback label has ONE
   # owner, `transactionRowDescription`, which tries the exchange-leg label
   # before the holding-name default. A surface calling
@@ -1666,3 +1707,55 @@ rules:
             - metavariable-regex:
                 metavariable: $SPAN
                 regex: .*(?:\bDAY(?:_MS)?\b|_DAYS?_MS\b|_PER_DAY\b|\bdayMs\b|(?<=[a-z0-9])Days?Ms\b|\bmsPerDay\b|86_?400_?000|24\s*\*\s*60\s*\*\s*60|60\s*\*\s*60\s*\*\s*24)
+  # A local day length beside `DAY_MS` (`src/dates/duration.ts`, its one
+  # owner) drifts. Matched by value, so every spelling of a day is one day.
+  # Constant propagation is off, or every use of a local `DAY` would fire as
+  # well as its declaration. A day literal held as the `t` or `day` value of an
+  # object literal is a test fixture's timestamp of epoch + 1 day, not a span,
+  # so arm 1 skips it. Arms and known limits: this rule's row in
+  # docs/harness/review-to-biome-inventory.md; the `src/dates/**` exclude:
+  # docs/harness/documented-exceptions.md.
+  - id: kiko-no-local-day-length-constant
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A local day-length constant. The day in milliseconds has one source,
+      `DAY_MS` in `@kiko/dates`; a near-duplicate copy drifts. Import `DAY_MS`
+      and write N days as `N * DAY_MS` — see kiko-domain's "Dates".
+    metadata:
+      fix: "Import `DAY_MS` from `@kiko/dates` and use it (N days: `N * DAY_MS`) instead of a local `24 * 60 * 60 * 1000` / `86_400_000`."
+      skill: "kiko-domain › Dates"
+    paths:
+      exclude:
+        - "src/dates/**"
+    options:
+      constant_propagation: false
+    pattern-either:
+      - patterns:
+          - pattern: "86400000"
+          - pattern-not-inside: $A * $B
+          - pattern-not-inside: "{..., t: 86400000, ...}"
+          - pattern-not-inside: "{..., day: 86400000, ...}"
+      - patterns:
+          - pattern: $FACTOR * $LAST
+          - metavariable-regex:
+              metavariable: $FACTOR
+              regex: ^[0-9][0-9_.eE\s*()]*$
+          - metavariable-regex:
+              metavariable: $LAST
+              regex: ^[0-9][0-9_.eE]*$
+          - metavariable-comparison:
+              comparison: (($FACTOR * $LAST) % 86400000 == 0 and $FACTOR * $LAST > 0) or $FACTOR == 86400000 or $LAST == 86400000
+      - patterns:
+          - pattern-either:
+              - pattern: $OTHER * $LITERAL
+              - pattern: $LITERAL * $OTHER
+          - metavariable-regex:
+              metavariable: $LITERAL
+              regex: ^[0-9][0-9_.eE]*$
+          - metavariable-comparison:
+              metavariable: $LITERAL
+              comparison: $LITERAL == 86400000
+          - metavariable-regex:
+              metavariable: $OTHER
+              regex: ^(?![0-9][0-9_.eE\s*()]*$)

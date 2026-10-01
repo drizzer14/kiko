@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
@@ -14,9 +15,8 @@ import {
 
 const base = { id: 'h1', currency: 'UAH' as const, balanceMinorUnits: 0, metadata: null };
 const START = Date.UTC(2026, 0, 1);
-const day = 86_400_000;
 const HOUR = 3_600_000;
-const AFTER_1Y = START + 365 * day;
+const AFTER_1Y = START + 365 * DAY_MS;
 
 // Local-midnight instant, matching the local Date arithmetic the coupon-date
 // helpers use.
@@ -78,7 +78,7 @@ describe('holdingValue', () => {
     // running CUMULATIVE basis the bank uses. Cumulative withholding telescopes to
     // round(12481*18%)=2247 + round(12481*5%)=624 = 2869... 2871 total, netting
     // 1096.10 (a per-period sum-of-rounds would land 2 kopecks lower).
-    const b = holdingValueBreakdown(holding, START + 365 * day);
+    const b = holdingValueBreakdown(holding, START + 365 * DAY_MS);
     expect(b.principalOrCost.minorUnits).toBe(100_000);
     expect(b.gross.minorUnits).toBe(112_481);
     expect(b.interest.minorUnits).toBe(12_481);
@@ -143,7 +143,7 @@ describe('holdingValue', () => {
       },
     };
     // Daily compounding accrues even over a short span, never collapsing to 0.
-    const value = holdingValue(holding, START + 200 * day);
+    const value = holdingValue(holding, START + 200 * DAY_MS);
     expect(value.minorUnits).toBeGreaterThan(1_000_000);
   });
 
@@ -152,8 +152,8 @@ describe('holdingValue', () => {
     // coupon out on its discrete date rather than accruing a dirty price. Its
     // value is identical 9 days and 100 days into the holding period (both still
     // live, spanning the 15 Oct 2025 coupon date).
-    const at9 = holdingValue(screenshotBond(), local(2025, 8, 18) + 9 * day);
-    const at100 = holdingValue(screenshotBond(), local(2025, 8, 18) + 100 * day);
+    const at9 = holdingValue(screenshotBond(), local(2025, 8, 18) + 9 * DAY_MS);
+    const at100 = holdingValue(screenshotBond(), local(2025, 8, 18) + 100 * DAY_MS);
     expect(at100.equals(at9)).toBe(true);
   });
 
@@ -162,7 +162,7 @@ describe('holdingValue', () => {
     // nominal. A live (held, pre-maturity) bond is valued at COST so a same-day
     // card(-price)->bond(+price) move is net-worth-neutral; the premium is
     // realized only at maturity, through the redemption ledger entry.
-    const b = holdingValueBreakdown(screenshotBond(), local(2025, 8, 18) + 9 * day);
+    const b = holdingValueBreakdown(screenshotBond(), local(2025, 8, 18) + 9 * DAY_MS);
     expect(b.gross.minorUnits).toBe(10_786_800);
     expect(b.principalOrCost.minorUnits).toBe(10_786_800);
     expect(b.net.minorUnits).toBe(10_786_800);
@@ -178,7 +178,7 @@ describe('holdingValue', () => {
   });
 
   it('reports zero once the bond has matured (nominal redeemed as a transaction)', () => {
-    const value = holdingValue(screenshotBond(), local(2026, 9, 14) + day);
+    const value = holdingValue(screenshotBond(), local(2026, 9, 14) + DAY_MS);
     expect(value.minorUnits).toBe(0);
   });
 
@@ -191,7 +191,7 @@ describe('holdingValue', () => {
         // 10,000.00 opened at START, a 5,000.00 top-up scheduled 30 days out.
         contributions: [
           { amountMinorUnits: 1_000_000, date: START },
-          { amountMinorUnits: 500_000, date: START + 30 * day },
+          { amountMinorUnits: 500_000, date: START + 30 * DAY_MS },
         ],
         annualRatePct: 12,
         termMonths: 24,
@@ -201,7 +201,7 @@ describe('holdingValue', () => {
     };
     // Valued the day after START, before the top-up: principal is only the
     // first contribution, not 15,000.
-    const b = holdingValueBreakdown(holding, START + day);
+    const b = holdingValueBreakdown(holding, START + DAY_MS);
     expect(b.principalOrCost.minorUnits).toBe(1_000_000);
     expect(b.gross.minorUnits).toBeLessThan(1_010_000);
     expect(b.gross.minorUnits).toBeGreaterThanOrEqual(1_000_000);
@@ -372,7 +372,7 @@ describe('holdingValueBreakdown', () => {
   // A live bond is valued at its nominal (100,000 minor here), flat, regardless
   // of coupon accrual — the coupons are separate ledger entries. Cost is the
   // price paid (par = 100,000 minor here).
-  const BOND_AT = local(2026, 0, 1) + 7 * day;
+  const BOND_AT = local(2026, 0, 1) + 7 * DAY_MS;
 
   it('values a government bond at nominal with no held-value tax', () => {
     const b = holdingValueBreakdown(bond('government'), BOND_AT);
@@ -437,7 +437,7 @@ describe('holdingValueBreakdown — property_item (priced)', () => {
     ]);
     const holding = property();
 
-    const between = holdingValueBreakdown(holding, point2024 + 200 * day, book);
+    const between = holdingValueBreakdown(holding, point2024 + 200 * DAY_MS, book);
     expect(between.gross.minorUnits).toBe(2_000_000);
     expect(between.net.minorUnits).toBe(2_000_000);
 
@@ -570,7 +570,7 @@ describe('holdingValueBreakdown — property_item ownership share', () => {
       ],
     });
 
-    expect(holdingValueBreakdown(holding, propertyDay2026 - day, wholeBook).net.minorUnits).toBe(
+    expect(holdingValueBreakdown(holding, propertyDay2026 - DAY_MS, wholeBook).net.minorUnits).toBe(
       3_000_001,
     );
     expect(holdingValueBreakdown(holding, propertyDay2026, wholeBook).net.minorUnits).toBe(

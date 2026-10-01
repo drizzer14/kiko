@@ -338,18 +338,12 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       footer={
         <Box gap={2}>
           {canImportStatement && (
-            <Button
-              variant="secondaryTonal"
-              fullWidth
-              onPress={pickAndOpenStatement}
-              icon="doc.badge.plus"
-            >
+            <Button variant="secondaryTonal" onPress={pickAndOpenStatement} icon="doc.badge.plus">
               {t('accountDetail.importStatement')}
             </Button>
           )}
           <Button
             variant="primary"
-            fullWidth
             onPress={() => navigation.navigate('HoldingForm', { accountId, debtAccount })}
             icon={addHoldingSymbol(debtAccount)}
           >

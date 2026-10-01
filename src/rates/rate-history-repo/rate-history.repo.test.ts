@@ -13,6 +13,7 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+import { DAY_MS } from '@kiko/dates';
 import type { CurrencyRateHistoryRow } from '@kiko/db';
 
 import { earliestRateTable, rateHistoryRepo, rateTableAt } from './rate-history.repo';
@@ -48,11 +49,10 @@ const makeUpsertDatabaseTransaction = (store: HistoryRow[]): unknown => ({
   }),
 });
 
-const DAY = 24 * 60 * 60 * 1000;
 const friday = Date.UTC(2026, 8, 4); // 2026-09-04, a Friday, UTC midnight
-const saturday = friday + DAY;
-const sunday = friday + 2 * DAY;
-const monday = friday + 3 * DAY;
+const saturday = friday + DAY_MS;
+const sunday = friday + 2 * DAY_MS;
+const monday = friday + 3 * DAY_MS;
 
 describe('rateHistoryRepo', () => {
   it('builds a whole-history query against the currency_rate_history table', () => {
@@ -98,7 +98,7 @@ describe('rateHistoryRepo', () => {
     const rows: HistoryRow[] = Array.from({ length: 5000 }, (_, index) => ({
       base: 'USD',
       quote: 'UAH',
-      day: friday + index * DAY,
+      day: friday + index * DAY_MS,
       rate: String(40 + index),
       source: 'nbu',
     }));

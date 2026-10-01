@@ -289,14 +289,15 @@ confirm the relevant check ran and stayed green:
 - `kiko-no-hidden-feature-flag-or-demo-import` (Semgrep, `check:security`) —
   the `SHOW_*`/`HIDE_*` flag and `e2e/` import pattern only.
 - `scripts/checks/plist.sh` (`check:plist`) — ATS pinning, arbitrary
-  loads, empty usage-description strings, the localized app-name tables
-  (`ios/Kiko/<language>.lproj/InfoPlist.strings`) wired into the Kiko
-  target's Resources build phase, and the DiskSpace required-reason API
-  declared in `ios/Kiko/PrivacyInfo.xcprivacy` while any dependency that
-  links a disk-space API ships — `react-native-fs` (`NSFileSystemFreeSize`)
-  or `@op-engineering/op-sqlite` (its SQLite/SQLCipher calls `fstatfs` on
-  Apple platforms), so the entry stays without `react-native-fs`
-  (fail-closed). Read `plist.sh` for the exact set.
+  loads, empty usage-description strings, (section 1b) an `api_token`
+  client without a `Cache-Control: no-store` request header, the localized
+  app-name tables (`ios/Kiko/<language>.lproj/InfoPlist.strings`) wired
+  into the Kiko target's Resources build phase, and the DiskSpace
+  required-reason API declared in `ios/Kiko/PrivacyInfo.xcprivacy` while
+  any dependency that links a disk-space API ships — `react-native-fs`
+  (`NSFileSystemFreeSize`) or `@op-engineering/op-sqlite` (its
+  SQLite/SQLCipher calls `fstatfs` on Apple platforms), so the entry stays
+  without `react-native-fs` (fail-closed). Read `plist.sh` for the exact set.
 - `gitleaks` (`check:secrets`) — a committed secret.
 - `kiko-no-raw-error-in-console` (Semgrep, pre-write guard and
   `check:security`) — a non-literal `console.*` argument (see "5.1.5 /

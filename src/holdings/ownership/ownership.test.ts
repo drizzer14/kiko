@@ -1,3 +1,5 @@
+import { DAY_MS } from '@kiko/dates';
+
 import {
   reduceShare,
   ownershipAt,
@@ -17,10 +19,9 @@ import {
 
 // UTC-midnight day keys, the `dayKeyOf` convention `lots.test.ts` uses, so a
 // read resolves to the same day on any machine timezone.
-const DAY = 86_400_000;
 const day1 = Date.UTC(2026, 0, 1);
-const day10 = day1 + 9 * DAY;
-const day20 = day1 + 19 * DAY;
+const day10 = day1 + 9 * DAY_MS;
+const day20 = day1 + 19 * DAY_MS;
 
 describe('reduceShare', () => {
   it('reduces by the greatest common divisor', () => {
@@ -117,9 +118,9 @@ describe('ownershipAt', () => {
   });
 
   it('reads the latest change on or before the instant', () => {
-    expect(ownershipAt(changes, day10 + 3 * DAY)).toEqual({ numerator: 1, denominator: 1 });
+    expect(ownershipAt(changes, day10 + 3 * DAY_MS)).toEqual({ numerator: 1, denominator: 1 });
     expect(ownershipAt(changes, day20)).toEqual({ numerator: 1, denominator: 2 });
-    expect(ownershipAt(changes, day20 + 40 * DAY)).toEqual({ numerator: 1, denominator: 2 });
+    expect(ownershipAt(changes, day20 + 40 * DAY_MS)).toEqual({ numerator: 1, denominator: 2 });
   });
 
   it('reads the whole asset before the first change', () => {
@@ -200,7 +201,7 @@ describe('withEditedOwnershipChange', () => {
   });
 
   it('moves a change to another day', () => {
-    const later = day10 + DAY;
+    const later = day10 + DAY_MS;
 
     expect(
       withEditedOwnershipChange(existing, day10, { day: later, numerator: 1, denominator: 3 }),

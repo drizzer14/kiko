@@ -14,6 +14,7 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+import { DAY_MS } from '@kiko/dates';
 import type { PricePointRow } from '@kiko/db';
 
 import { pricePointsRepo } from './price-points.repo';
@@ -42,9 +43,8 @@ const makeUpsertDatabaseTransaction = (store: Row[]): unknown => ({
   }),
 });
 
-const DAY = 24 * 60 * 60 * 1000;
 const day1 = Date.UTC(2026, 8, 4);
-const day2 = day1 + DAY;
+const day2 = day1 + DAY_MS;
 
 describe('pricePointsRepo', () => {
   it('builds a whole-table query against the price_points table', () => {
@@ -97,7 +97,7 @@ describe('pricePointsRepo', () => {
 
     const rows: Row[] = Array.from({ length: 5000 }, (_, index) => ({
       instrument: 'share:AAPL',
-      day: day1 + index * DAY,
+      day: day1 + index * DAY_MS,
       price: String(190 + index),
       currency: 'USD',
       source: 'eodhd',

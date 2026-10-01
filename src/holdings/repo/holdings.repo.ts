@@ -10,6 +10,7 @@ import {
   transactions,
 } from '@kiko/db';
 import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
@@ -645,9 +646,9 @@ export const holdingsRepo = {
         .update(holdings)
         .set({
           ...rest,
-          ...(nextBalanceMinorUnits !== undefined
-            ? { balanceMinorUnits: nextBalanceMinorUnits }
-            : {}),
+          ...foldMap(maybe(nextBalanceMinorUnits), (balanceMinorUnits) => ({
+            balanceMinorUnits,
+          })),
           balanceSetAt: delta !== 0 ? time : undefined,
           balanceSetRowId: delta !== 0 ? adjustmentRowId : undefined,
         })

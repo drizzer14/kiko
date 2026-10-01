@@ -541,7 +541,10 @@ new component can land between reviews of this skill:
   `button.props.d.ts`'s `ButtonVariant` for the exact current set
   rather than trusting a copy of it here — it grows), an optional
   leading/trailing SF Symbol icon tinted to a single fixed color
-  regardless of variant. `destructiveTonal` is the iOS "tinted
+  regardless of variant. `fullWidth` defaults to `true`: pass it only
+  as `fullWidth={false}`, never `fullWidth` or `fullWidth={true}`
+  (Semgrep `kiko-no-redundant-button-full-width`,
+  `rules/semgrep-prewrite.yml`). `destructiveTonal` is the iOS "tinted
   destructive" pattern — a translucent `negativeSubtle` fill under a
   red `negative` label (a lower-emphasis dangerous action, e.g. the
   deposit form's per-row Remove and the categories screen's per-card

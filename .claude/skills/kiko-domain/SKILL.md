@@ -828,6 +828,12 @@ rather than assuming only these two.
 
 ## Dates
 
+`DAY_MS` from `@kiko/dates` is the one day-length source, in app code
+AND tests. Never declare a local day-length constant; only `src/dates/`
+may. Semgrep `kiko-no-local-day-length-constant`
+(`rules/semgrep-prewrite.yml`) denies it — read the rule for the
+spellings it catches.
+
 Interest and schedule math (`src/holdings/` — deposit
 maturity, period boundaries, coupon dates, accrual day counts) is
 built entirely with **local-midnight instants**, not UTC. Read the

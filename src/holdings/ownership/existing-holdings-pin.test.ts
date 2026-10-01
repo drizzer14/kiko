@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import { netWorth } from '@kiko/rates/conversion';
 import { buildPriceBook } from '@kiko/prices/price-book';
@@ -12,9 +13,8 @@ import { holdingValue } from '../holding-value';
 // `ownership` key. These literals were read off the build before the share
 // landed; a holding without the key must keep them on the card, the Home
 // totals, the statistics bar, and the net-worth history.
-const DAY = 86_400_000;
 const D0 = Date.UTC(2026, 0, 1);
-const D2 = D0 + 2 * DAY;
+const D2 = D0 + 2 * DAY_MS;
 
 const existingProperty: Pick<
   HoldingRow,
@@ -34,7 +34,7 @@ const existingProperty: Pick<
 const book = buildPriceBook([
   {
     instrument: holdingInstrument('prop'),
-    day: D0 + DAY,
+    day: D0 + DAY_MS,
     price: '3000000.01',
     currency: 'UAH',
     source: 'manual',

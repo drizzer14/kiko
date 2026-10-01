@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingInstrument } from '@kiko/prices/instrument';
@@ -12,10 +13,9 @@ import {
   type OwnershipChange,
 } from './ownership';
 
-const DAY = 86_400_000;
 const D0 = Date.UTC(2026, 0, 1);
-const D1 = D0 + DAY;
-const D2 = D0 + 2 * DAY;
+const D1 = D0 + DAY_MS;
+const D2 = D0 + 2 * DAY_MS;
 
 type PricedRow = Pick<
   HoldingRow,

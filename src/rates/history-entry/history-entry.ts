@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 
 /**
@@ -12,8 +13,6 @@ export type HistoryRateEntry = {
   rate: number;
   source: 'nbu' | 'coingecko';
 };
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Floor an epoch-ms instant to the UTC midnight of its calendar day. Epoch 0 is

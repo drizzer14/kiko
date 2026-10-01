@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 
@@ -16,7 +17,6 @@ import { settle, type QuoteQuota } from '../quote-quota';
 import type { ShareRefreshResult } from './share-refresh-write';
 import { refreshSharePrices, type ShareRefreshDeps } from './share-refresh';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const KEY = 'fake-eodhd-key-0000';
 // A Thursday: the last weekday before it is Wednesday, September 30.
 const THURSDAY = Date.UTC(2026, 9, 1);

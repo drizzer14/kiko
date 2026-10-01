@@ -1,5 +1,5 @@
-import { startOfLocalDay } from '@kiko/dates';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { DAY_MS, startOfLocalDay } from '@kiko/dates';
 import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
@@ -10,7 +10,6 @@ import {
   type SeriesTransaction,
 } from './holding-value-at';
 
-const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 0, 1);
 
 // The original, un-optimized single-call implementation `createHoldingValuer`
@@ -49,7 +48,7 @@ const cashHolding = (balanceMinorUnits: number): SeriesHolding => ({
 });
 
 const transaction = (dayOffset: number, amountMinorUnits: number): SeriesTransaction => ({
-  time: T0 + dayOffset * DAY + 12 * 60 * 60 * 1000,
+  time: T0 + dayOffset * DAY_MS + 12 * 60 * 60 * 1000,
   amountMinorUnits,
 });
 
@@ -95,7 +94,7 @@ describe('createHoldingValuer', () => {
     const valueAt = createHoldingValuer(holding, transactions);
 
     for (let day = -2; day <= 12; day += 1) {
-      const t = T0 + day * DAY;
+      const t = T0 + day * DAY_MS;
 
       expect(valueAt(t)).toBe(referenceHoldingValueAt(holding, transactions, t));
     }
@@ -106,7 +105,7 @@ describe('createHoldingValuer', () => {
     const valueAt = createHoldingValuer(holding, []);
 
     expect(valueAt(T0)).toBe(referenceHoldingValueAt(holding, [], T0));
-    expect(valueAt(T0 + 30 * DAY)).toBe(referenceHoldingValueAt(holding, [], T0 + 30 * DAY));
+    expect(valueAt(T0 + 30 * DAY_MS)).toBe(referenceHoldingValueAt(holding, [], T0 + 30 * DAY_MS));
   });
 
   it('collapses several same-day transactions into one prefix-sum step, matching the reference implementation', () => {
@@ -114,14 +113,14 @@ describe('createHoldingValuer', () => {
     const transactions = [transaction(3, 100_00), transaction(3, -50_00), transaction(3, 25_00)];
     const valueAt = createHoldingValuer(holding, transactions);
 
-    expect(valueAt(T0 + 2 * DAY)).toBe(
-      referenceHoldingValueAt(holding, transactions, T0 + 2 * DAY),
+    expect(valueAt(T0 + 2 * DAY_MS)).toBe(
+      referenceHoldingValueAt(holding, transactions, T0 + 2 * DAY_MS),
     );
-    expect(valueAt(T0 + 3 * DAY)).toBe(
-      referenceHoldingValueAt(holding, transactions, T0 + 3 * DAY),
+    expect(valueAt(T0 + 3 * DAY_MS)).toBe(
+      referenceHoldingValueAt(holding, transactions, T0 + 3 * DAY_MS),
     );
-    expect(valueAt(T0 + 4 * DAY)).toBe(
-      referenceHoldingValueAt(holding, transactions, T0 + 4 * DAY),
+    expect(valueAt(T0 + 4 * DAY_MS)).toBe(
+      referenceHoldingValueAt(holding, transactions, T0 + 4 * DAY_MS),
     );
   });
 
@@ -139,7 +138,7 @@ describe('createHoldingValuer', () => {
     };
     const valueAt = createHoldingValuer(holding, []);
 
-    expect(valueAt(T0 + 10 * DAY)).toBe(referenceHoldingValueAt(holding, [], T0 + 10 * DAY));
+    expect(valueAt(T0 + 10 * DAY_MS)).toBe(referenceHoldingValueAt(holding, [], T0 + 10 * DAY_MS));
   });
 
   // A DETERMINISTIC work-count guard, not a wall-clock timing — coverage
@@ -154,7 +153,7 @@ describe('createHoldingValuer', () => {
   // while a re-scan would touch every row again on every bucket.
   it('reads a near-linear number of row fields as the transaction count grows, for a fixed bucket count', () => {
     const holding = cashHolding(0);
-    const buckets = Array.from({ length: 100 }, (_, day) => T0 + day * DAY);
+    const buckets = Array.from({ length: 100 }, (_, day) => T0 + day * DAY_MS);
 
     const rowReadsFor = (transactionCount: number): number => {
       const readCounter = { reads: 0 };
@@ -180,7 +179,7 @@ describe('createHoldingValuer', () => {
 
   it('reads far fewer row fields than the reference implementation, which re-scans every transaction per bucket', () => {
     const holding = cashHolding(0);
-    const buckets = Array.from({ length: 100 }, (_, day) => T0 + day * DAY);
+    const buckets = Array.from({ length: 100 }, (_, day) => T0 + day * DAY_MS);
     const optimizedReadCounter = { reads: 0 };
     const optimizedTransactions = Array.from({ length: 10_000 }, (_, index) =>
       countedTransaction(index % 400, index % 2 === 0 ? 1_000 : -700, optimizedReadCounter),
