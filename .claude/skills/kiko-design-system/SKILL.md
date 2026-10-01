@@ -915,7 +915,7 @@ new component can land between reviews of this skill:
   coupon-frequency picker (shared by both `BondIsinSection`'s ISIN-mode
   unmapped-frequency picker and `ManualBondFields`'s own frequency
   field), the holding-type picker, the column-mapping form's time-zone
-  field (43 zones), `AccountKindField`, and `ModeSelectField` all reach
+  field (44 zones), `AccountKindField`, and `ModeSelectField` all reach
   for it directly. `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`

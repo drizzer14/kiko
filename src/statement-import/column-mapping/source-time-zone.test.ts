@@ -18,12 +18,49 @@ describe('sourceTimeZoneIds', () => {
     expect(sourceTimeZoneIds.slice(4)).toEqual(fixedOffsetZoneIds);
   });
 
-  it('runs the fixed offsets from UTC-12:00 to UTC+14:00, with the real half-hour and 45-minute ones', () => {
-    expect(fixedOffsetZoneIds.at(0)).toBe('UTC-12:00');
-    expect(fixedOffsetZoneIds.at(-1)).toBe('UTC+14:00');
-    expect(fixedOffsetZoneIds).toEqual(
-      expect.arrayContaining(['UTC-09:30', 'UTC-03:30', 'UTC+05:30', 'UTC+05:45', 'UTC+12:45']),
-    );
+  it('lists every real UTC offset, standard or summer, from UTC-12:00 to UTC+14:00', () => {
+    expect(fixedOffsetZoneIds).toEqual([
+      'UTC-12:00',
+      'UTC-11:00',
+      'UTC-10:00',
+      'UTC-09:30',
+      'UTC-09:00',
+      'UTC-08:00',
+      'UTC-07:00',
+      'UTC-06:00',
+      'UTC-05:00',
+      'UTC-04:00',
+      'UTC-03:30',
+      'UTC-03:00',
+      'UTC-02:30',
+      'UTC-02:00',
+      'UTC-01:00',
+      'UTC+00:00',
+      'UTC+01:00',
+      'UTC+02:00',
+      'UTC+03:00',
+      'UTC+03:30',
+      'UTC+04:00',
+      'UTC+04:30',
+      'UTC+05:00',
+      'UTC+05:30',
+      'UTC+05:45',
+      'UTC+06:00',
+      'UTC+06:30',
+      'UTC+07:00',
+      'UTC+08:00',
+      'UTC+08:45',
+      'UTC+09:00',
+      'UTC+09:30',
+      'UTC+10:00',
+      'UTC+10:30',
+      'UTC+11:00',
+      'UTC+12:00',
+      'UTC+12:45',
+      'UTC+13:00',
+      'UTC+13:45',
+      'UTC+14:00',
+    ]);
   });
 });
 
@@ -50,6 +87,7 @@ describe('zoneRuleFor', () => {
   it.each([
     ['UTC-12:00', -720],
     ['UTC-03:30', -210],
+    ['UTC-02:30', -150],
     ['UTC+00:00', 0],
     ['UTC+05:45', 345],
     ['UTC+14:00', 840],

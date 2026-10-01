@@ -19,6 +19,7 @@ export const fixedOffsetZoneIds = [
   'UTC-04:00',
   'UTC-03:30',
   'UTC-03:00',
+  'UTC-02:30',
   'UTC-02:00',
   'UTC-01:00',
   'UTC+00:00',
@@ -69,8 +70,6 @@ export const sourceTimeZoneIds = [
 
 export type SourceTimeZoneId = (typeof sourceTimeZoneIds)[number];
 
-const isEuropeanZoneId = (id: SourceTimeZoneId): id is EuropeanZoneId => id in europeanZoneRules;
-
 /** The `+05:45` / `-03:30` part of a fixed-offset id. */
 export const offsetTextOf = (id: FixedOffsetZoneId): string => id.slice(3);
 
@@ -80,10 +79,19 @@ const fixedOffsetMinutes = (id: FixedOffsetZoneId): number => {
   return sign * (Number(id.slice(4, 6)) * 60 + Number(id.slice(7, 9)));
 };
 
-export const zoneRuleFor = (id: SourceTimeZoneId): ZoneRule =>
-  isEuropeanZoneId(id)
-    ? europeanZoneRules[id]
-    : { standardOffsetMinutes: fixedOffsetMinutes(id), europeanSummerTime: false };
+// `Object.fromEntries` widens its result to `Record<string, ZoneRule>`; the
+// object IS keyed by every fixed-offset id, since it maps that whole tuple.
+const zoneRules: Record<SourceTimeZoneId, ZoneRule> = {
+  ...europeanZoneRules,
+  ...(Object.fromEntries(
+    fixedOffsetZoneIds.map((id) => [
+      id,
+      { standardOffsetMinutes: fixedOffsetMinutes(id), europeanSummerTime: false },
+    ]),
+  ) as Record<FixedOffsetZoneId, ZoneRule>),
+};
+
+export const zoneRuleFor = (id: SourceTimeZoneId): ZoneRule => zoneRules[id];
 
 /** A saved mapping's stored zone; Kyiv when the field is missing or names a
  * zone this build does not know. */

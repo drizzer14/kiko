@@ -220,10 +220,12 @@ rather than trusting a count restated here.
 `source-time-zone.ts` lists the zones a mapping can pick
 (`sourceTimeZoneIds`): Kyiv (the default), the EU summer-time zones
 (Western Europe UTC+0/+1, Central Europe UTC+1/+2, Eastern Europe
-UTC+2/+3 — the same switch instants as Kyiv), then every real fixed UTC
-offset from `UTC-12:00` to `UTC+14:00`, half-hour and 45-minute ones
-included (`fixedOffsetZoneIds`), with no summer time. `zoneRuleFor` maps
-an id to its `ZoneRule`; `sourceTimeZoneOrKyiv` reads a stored value,
+UTC+2/+3 — the same switch instants as Kyiv), then every real UTC
+offset in use, standard or summer (Newfoundland's summer `UTC-02:30`
+too), from `UTC-12:00` to `UTC+14:00`, half-hour and 45-minute ones
+included (`fixedOffsetZoneIds`), each read as a fixed offset with no
+summer time. `zoneRuleFor` looks an id up in one
+`Record<SourceTimeZoneId, ZoneRule>`; `sourceTimeZoneOrKyiv` reads a stored value,
 falling back to Kyiv when the field is missing or unknown. The
 column-mapping form shows it as a "Time zone" `SelectField` in the Dates
 group (no required marker — it always has a value), and the zone is
