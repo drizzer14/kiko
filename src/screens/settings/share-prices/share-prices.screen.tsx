@@ -1,19 +1,18 @@
 import {
-  EodhdAuthError,
-  fetchUserLimits,
-  EodhdQuotaError,
-  EodhdRateLimitError,
-} from '@kiko/prices/eodhd';
+  type KeyCheck,
+  limitErrorQuota,
+  confirmDailyLimit,
+  recheckRejectedKey,
+} from '@kiko/prices/daily-limit';
 import {
-  markUsedUp,
   currentQuota,
-  withUserLimits,
+  withSavedKey,
+  quotaResetsAt,
   type QuoteQuota,
-  withUnconfirmedLimit,
 } from '@kiko/prices/quote-quota';
-import { match, P } from 'ts-pattern';
-import { EODHD_SIGNUP_URL } from '@env';
 import { useLiveQuery } from '@kiko/db';
+import { EODHD_SIGNUP_URL } from '@env';
+import { formatTime } from '@kiko/dates';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { settingsRepo } from '@kiko/settings';
@@ -27,9 +26,9 @@ import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
-import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import { EodhdAuthError, fetchUserLimits } from '@kiko/prices/eodhd';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import NoticeBanner from '@kiko/design-system/components/notice-banner';
@@ -53,18 +52,13 @@ const failedCheckStatus = (error: unknown, t: TFunction): SyncStatus =>
 // stored, with a daily limit EODHD has yet to confirm (the next open of this
 // screen reads it); a daily limit also marks the day used up, which this
 // screen shows.
-const acceptedKeyQuota = (error: unknown): QuotaUpdate | undefined =>
-  match(error)
-    .with(
-      P.instanceOf(EodhdQuotaError),
-      (): QuotaUpdate => (stored) =>
-        markUsedUp(withUnconfirmedLimit(currentQuota(stored, Date.now()))),
-    )
-    .with(
-      P.instanceOf(EodhdRateLimitError),
-      (): QuotaUpdate => (stored) => withUnconfirmedLimit(currentQuota(stored, Date.now())),
-    )
-    .otherwise(() => undefined);
+const limitErrorKeyQuota = (error: unknown): QuotaUpdate | undefined =>
+  foldMap(
+    maybe(limitErrorQuota(error)),
+    (accepted): QuotaUpdate =>
+      (stored) =>
+        accepted(withSavedKey(stored, undefined, Date.now())),
+  );
 
 type RequestsToday = { used: number; limit: number; isUsedUp: boolean };
 
@@ -88,7 +82,6 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
   // A saved key is shown only as this flag: the key itself is never read back
   // into the React tree, where a debugger can read the JS heap.
   const [isKeySaved, setIsKeySaved] = useState(false);
-  const [dailyLimit, setDailyLimit] = useState<number | undefined>(undefined);
   const [removePending, setRemovePending] = useState(false);
   const { data: quotaRows, isLoading: isQuotaLoading } = useLiveQuery(
     settingsRepo.quoteQuotaQuery(),
@@ -96,10 +89,10 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
   );
   // Nothing about today's requests shows before the stored quota has loaded:
   // its default would read as "0 used" for a moment.
+  const storedQuota = isKeySaved && !isQuotaLoading ? (quotaRows.at(0)?.quoteQuota ?? null) : null;
   const requestsToday =
-    isKeySaved && !isQuotaLoading
-      ? requestsTodayOf(quotaRows.at(0)?.quoteQuota ?? null, Date.now())
-      : undefined;
+    isKeySaved && !isQuotaLoading ? requestsTodayOf(storedQuota, Date.now()) : undefined;
+  const isKeyRejected = storedQuota?.isKeyRejected === true;
   const signUpHint = t('settings.sharePricesScreen.signUpHint', { url: EODHD_SIGNUP_URL });
 
   useEffect(() => {
@@ -136,15 +129,13 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
     setStatus({ kind: 'checking' });
 
     let updateQuota: QuotaUpdate;
-    let limit: number | undefined;
 
     try {
       const limits = await fetchUserLimits(trimmed);
 
-      updateQuota = (stored) => withUserLimits(stored, limits, Date.now());
-      limit = limits.dailyLimit;
+      updateQuota = (stored) => withSavedKey(stored, limits, Date.now());
     } catch (error) {
-      const accepted = acceptedKeyQuota(error);
+      const accepted = limitErrorKeyQuota(error);
 
       if (accepted === undefined) {
         setStatus(failedCheckStatus(error, t));
@@ -155,11 +146,18 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
       updateQuota = accepted;
     }
 
-    // The quota first: a key saved without its own limit would be refreshed
-    // under the free plan's limit.
+    // The key first, then its quota: a refresh that read the previous key
+    // read the previous key's state too, so nothing it learns about that key
+    // lands on this one.
     try {
-      await settingsRepo.updateQuoteQuota(updateQuota);
       await saveEodhdKey(trimmed);
+      await settingsRepo.updateQuoteQuota(updateQuota).catch(async (error: unknown) => {
+        // A key kept without its own quota would be refreshed under the
+        // previous key's limit and count.
+        await clearEodhdKey();
+        setIsKeySaved(false);
+        throw error;
+      });
     } catch {
       setStatus({ kind: 'idle' });
       alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
@@ -170,10 +168,19 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
     setKey('');
     setStatus({ kind: 'idle' });
     setIsKeySaved(true);
-    setDailyLimit(limit);
   };
 
   const { onPress: handleSave, isSubmitting } = useSubmitOnce(runSave);
+
+  const runRecheck = async (): Promise<void> => {
+    const check = await recheckRejectedKey().catch(
+      (error: unknown): KeyCheck => ({ isAccepted: false, error }),
+    );
+
+    setStatus(check.isAccepted ? { kind: 'idle' } : failedCheckStatus(check.error, t));
+  };
+
+  const { onPress: handleRecheck } = useSubmitOnce(runRecheck);
 
   const runRemove = async (): Promise<void> => {
     setRemovePending(false);
@@ -187,7 +194,6 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
     }
 
     setIsKeySaved(false);
-    setDailyLimit(undefined);
   };
 
   const { onPress: handleConfirmRemove } = useSubmitOnce(runRemove);
@@ -210,9 +216,20 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
       }
     >
       <Box gap={4}>
+        {isKeyRejected && (
+          <NoticeBanner
+            message={t('settings.sharePricesScreen.keyRejectedMessage')}
+            actionLabel={t('settings.sharePricesScreen.checkKeyAgain')}
+            onAction={handleRecheck}
+            testID="share-prices-key-rejected-banner"
+          />
+        )}
+
         {requestsToday?.isUsedUp === true && (
           <NoticeBanner
-            message={t('settings.sharePricesScreen.quotaUsedUpMessage')}
+            message={t('settings.sharePricesScreen.quotaUsedUpMessage', {
+              time: formatTime(quotaResetsAt(Date.now())),
+            })}
             testID="share-prices-quota-banner"
           />
         )}
@@ -227,12 +244,6 @@ const SharePricesScreen: FC<SharePricesScreenProps> = () => {
               <SyncStatusLine
                 status={{ kind: 'success', message: t('settings.sharePricesScreen.keySaved') }}
               />
-
-              {foldMap(maybe(dailyLimit), (limit) => (
-                <Text variant="caption" tone="textSecondary">
-                  {t('settings.sharePricesScreen.dailyLimit', { limit: formatCount(limit) })}
-                </Text>
-              ))}
 
               {foldMap(maybe(requestsToday), ({ used, limit }) => (
                 <Text variant="caption" tone="textSecondary">

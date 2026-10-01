@@ -1,7 +1,9 @@
 import { match, P } from 'ts-pattern';
+import { formatTime } from '@kiko/dates';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Keyboard } from 'react-native';
 import Text from '@kiko/design-system/components/text';
+import { quotaResetsAt } from '@kiko/prices/quote-quota';
 import Button from '@kiko/design-system/components/button';
 import { type FC, useEffect, useRef, useState } from 'react';
 import TextField from '@kiko/design-system/components/text-field';
@@ -16,6 +18,7 @@ import type { ShareSearchSheetProps } from './share-search-sheet.props';
 type MessageKey =
   | 'forms.holding.shareFindEmpty'
   | 'forms.holding.shareFindUnavailable'
+  | 'forms.holding.shareFindKeyRejected'
   | 'forms.holding.shareFindQuotaExhausted';
 
 type SearchPhase =
@@ -36,6 +39,10 @@ const phaseOf = (result: ShareSearchResult): SearchPhase =>
     .with({ status: 'quotaExhausted' }, () => ({
       kind: 'message',
       key: 'forms.holding.shareFindQuotaExhausted',
+    }))
+    .with({ status: 'keyRejected' }, () => ({
+      kind: 'message',
+      key: 'forms.holding.shareFindKeyRejected',
     }))
     .with({ status: P.union('noKey', 'failed') }, () => ({
       kind: 'message',
@@ -124,7 +131,7 @@ const ShareSearchSheet: FC<ShareSearchSheetProps> = ({ visible, onDismiss, searc
       {match(phase)
         .with({ kind: 'message' }, ({ key }) => (
           <Text variant="caption" tone="textSecondary">
-            {t(key)}
+            {t(key, { time: formatTime(quotaResetsAt(Date.now())) })}
           </Text>
         ))
         .with({ kind: 'found' }, ({ listings }) => (

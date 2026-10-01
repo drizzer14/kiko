@@ -27,8 +27,7 @@ jest.mock('@kiko/design-system/components/button', () => {
 });
 
 const UNAVAILABLE = 'Search is unavailable. Enter the ticker yourself.';
-const QUOTA_EXHAUSTED =
-  'Today’s EODHD requests are used up. Search works again after midnight GMT.';
+const KEY_REJECTED = 'EODHD does not accept the saved key. Check it in Settings → “Share prices”.';
 
 const vodafone: ShareListing = {
   symbol: 'VOD.LSE',
@@ -67,6 +66,10 @@ const searchFor = async (screen: Rendered, query: string): Promise<void> => {
 };
 
 describe('ShareSearchSheet', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('shows its title and an ISIN or ticker field', async () => {
     const screen = await renderSheet();
 
@@ -170,12 +173,30 @@ describe('ShareSearchSheet', () => {
     expect(screen.getByText(UNAVAILABLE)).toBeTruthy();
   });
 
-  it('says when the day’s EODHD requests are used up', async () => {
-    const screen = await renderSheet({ search: answering({ status: 'quotaExhausted' }) });
+  // Midnight GMT in Kyiv, the zone Jest runs in: 03:00 in summer time, 02:00 in winter.
+  it.each([
+    ['summer', Date.UTC(2026, 9, 1, 9), '03:00'],
+    ['winter', Date.UTC(2026, 11, 1, 9), '02:00'],
+  ])(
+    'says when the day’s EODHD requests are used up, with the reset in the device’s time (%s)',
+    async (_season, now, time) => {
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      const screen = await renderSheet({ search: answering({ status: 'quotaExhausted' }) });
+
+      await searchFor(screen, 'VOD');
+
+      expect(
+        screen.getByText(`Today’s EODHD requests are used up. Search works again after ${time}.`),
+      ).toBeTruthy();
+    },
+  );
+
+  it('points to Share prices when EODHD rejects the saved key', async () => {
+    const screen = await renderSheet({ search: answering({ status: 'keyRejected' }) });
 
     await searchFor(screen, 'VOD');
 
-    expect(screen.getByText(QUOTA_EXHAUSTED)).toBeTruthy();
+    expect(screen.getByText(KEY_REJECTED)).toBeTruthy();
   });
 
   it('starts empty each time it opens', async () => {

@@ -106,17 +106,19 @@ export const uk: typeof en = {
     language: 'Мова',
     sharePrices: 'Ціни акцій',
     sharePricesScreen: {
-      dailyLimit: 'Денний ліміт: {{limit}}',
+      checkKeyAgain: 'Перевірити ще раз',
       intro:
         'Кіко отримує ціни акцій на кінець дня з EODHD за вашим власним API-ключем. Для цього Кіко надсилає в EODHD тікери ваших акцій, діапазон дат потрібних цін (від вашої першої купівлі) і ваші пошукові запити, але ніколи не надсилає кількість акцій чи суму, яку ви за них заплатили. Ви реєструєтеся в EODHD і приймаєте його умови. Ключ зберігається лише на цьому iPhone і в експортах із ключами.',
       invalidKeyError: 'EODHD не прийняв цей ключ.',
       keyLabel: 'API-ключ',
       keyPlaceholder: 'Вставте ключ EODHD',
+      keyRejectedMessage:
+        'EODHD більше не приймає збережений ключ, тому ціни акцій не оновлюються. Збережіть новий ключ або перевірте цей ще раз.',
       keyRequiredError: 'Введіть API-ключ.',
       keySaved: 'Ключ збережено',
       pasteAccessibilityLabel: 'Вставити ключ',
       quotaUsedUpMessage:
-        'Сьогоднішні запити EODHD вичерпано. Ціни знову оновляться після опівночі за GMT.',
+        'Сьогоднішні запити EODHD вичерпано. Ціни знову оновляться після {{time}}.',
       removeConfirmBody: 'Акції з цінами EODHD збережуть останню ціну.',
       removeConfirmTitle: 'Видалити ключ?',
       removeKey: 'Видалити ключ',
@@ -230,7 +232,7 @@ export const uk: typeof en = {
       bankTypeSheetTitle: 'Тип банку',
       broker: 'Брокер',
       brokerDisclaimer:
-        'Кіко — незалежний застосунок. Він не пов’язаний із жодним брокером і не схвалений ним.',
+        'Кіко — незалежний застосунок. Він не пов’язаний із жодним брокером і не є його партнером.',
       brokerType: 'Брокер',
       brokerTypePlaceholder: 'Оберіть брокера',
       brokerTypeSheetTitle: 'Брокер',
@@ -411,10 +413,12 @@ export const uk: typeof en = {
       share: 'Акція',
       shareFind: 'Знайти за ISIN або тікером',
       shareFindEmpty: 'Нічого не знайдено.',
+      shareFindKeyRejected:
+        'EODHD не приймає збережений ключ. Перевірте його в Налаштуваннях → «Ціни акцій».',
       shareFindPlaceholder: 'US0378331005',
       shareFindQuery: 'ISIN або тікер',
       shareFindQuotaExhausted:
-        'Сьогоднішні запити EODHD вичерпано. Пошук знову запрацює після опівночі за GMT.',
+        'Сьогоднішні запити EODHD вичерпано. Пошук знову запрацює після {{time}}.',
       shareFindSheetTitle: 'Пошук акції',
       shareFindSubmit: 'Шукати',
       shareFindUnavailable: 'Пошук недоступний. Введіть тікер вручну.',

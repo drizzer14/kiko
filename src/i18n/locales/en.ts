@@ -127,17 +127,19 @@ export const en = {
     // nav title (see `dataExport.rowLabel`).
     sharePrices: 'Share prices',
     sharePricesScreen: {
-      dailyLimit: 'Daily limit: {{limit}}',
+      checkKeyAgain: 'Check again',
       intro:
         'Kiko gets end-of-day share prices from EODHD with your own API key. To do this, Kiko sends EODHD your share tickers, the date range of the prices it needs (from your first purchase on), and your searches, but never how many shares you hold or what they cost. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
       invalidKeyError: 'EODHD did not accept this key.',
       keyLabel: 'API key',
       keyPlaceholder: 'Paste your EODHD key',
+      keyRejectedMessage:
+        'EODHD no longer accepts the saved key, so share prices are not updating. Save a new key, or check this one again.',
       keyRequiredError: 'Enter an API key.',
       keySaved: 'Key saved',
       pasteAccessibilityLabel: 'Paste key',
-      quotaUsedUpMessage:
-        'Today’s EODHD requests are used up. Prices update again after midnight GMT.',
+      // `time` is midnight GMT, when EODHD's day starts over, in the device's time.
+      quotaUsedUpMessage: 'Today’s EODHD requests are used up. Prices update again after {{time}}.',
       removeConfirmBody: 'Shares priced by EODHD keep their last price.',
       removeConfirmTitle: 'Remove Key?',
       removeKey: 'Remove key',
@@ -472,10 +474,13 @@ export const en = {
       share: 'Share',
       shareFind: 'Find by ISIN or ticker',
       shareFindEmpty: 'Nothing found.',
+      shareFindKeyRejected:
+        'EODHD does not accept the saved key. Check it in Settings → “Share prices”.',
       shareFindPlaceholder: 'US0378331005',
       shareFindQuery: 'ISIN or ticker',
+      // `time` is midnight GMT, when EODHD's day starts over, in the device's time.
       shareFindQuotaExhausted:
-        'Today’s EODHD requests are used up. Search works again after midnight GMT.',
+        'Today’s EODHD requests are used up. Search works again after {{time}}.',
       shareFindSheetTitle: 'Find Share',
       shareFindSubmit: 'Search',
       shareFindUnavailable: 'Search is unavailable. Enter the ticker yourself.',
