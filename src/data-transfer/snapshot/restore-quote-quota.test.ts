@@ -6,6 +6,7 @@ jest.mock('@kiko/db/client', () => {
   return executingClient(() => mockDatabase);
 });
 
+import { DAY_MS } from '@kiko/dates';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
@@ -74,7 +75,7 @@ describe('restoring the EODHD quote quota', () => {
     mockDatabase = openDatabase({
       ...QUOTA,
       backoff: { 'DEAD.US': { strikes: 1, retryDay: QUOTA.day, lastLotDay: 0 } },
-      backfilledFrom: { 'VOD.LSE': QUOTA.day - 100 * 86_400_000 },
+      backfilledFrom: { 'VOD.LSE': QUOTA.day - 100 * DAY_MS },
     });
     await restoreDataSnapshot(backup);
 
