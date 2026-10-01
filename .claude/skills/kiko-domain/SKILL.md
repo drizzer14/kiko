@@ -355,6 +355,9 @@ or still holds what the previous pick filled (`filledIsinRef`,
 kept, and a stale ISIN from an earlier pick is never kept. The picked
 `quoteCurrency` is kept only while the source is EODHD and the ticker
 equals the picked symbol (`keptQuoteCurrency`); a ticker edit drops it.
+The share's currency must fit its EODHD listing's unit, checked at Save on
+create and on an edit that names another listing (kiko-pricing's "Unit
+lookup at Save and the currency guard").
 
 ## `property_item` / `metal` create-form sections
 
@@ -2472,7 +2475,15 @@ below until it is added there too. Seven steps, in order:
    `balanceMinorUnits: 0` unconditionally — its value derives entirely
    from its own lots/schedule, never a typed opening balance. Only
    `useBalanceFields.createPayload` reads its own live opening-balance
-   field; the screen calls `active.createPayload()` with no argument.
+   field. The screen writes through `checkedCreate(active)` and
+   `checkedEdit(active, context)` (`holding-form.screen.tsx`): a type whose
+   write can need one network answer first sets the optional
+   `checkCreate`/`checkEdit` (`holding-type-form.d.ts`), which never reject
+   and answer a `CreateCheck`/`EditCheck` — save (the payload, or the write
+   to run) or blocked on a `ScrollTarget`, whose field error the screen
+   reveals. Every other type falls back to `createPayload()`/`saveEdit`.
+   Only `share` sets them today (kiko-pricing's "Unit lookup at Save and
+   the currency guard").
 4. Add en/uk label keys (`src/i18n/`) for `holding-form.screen.tsx`'s
    own `typeLabels: Record<HoldingType, string>` — usually a new
    `forms.holding.<type>` key, but `cash` reuses the account kind's own

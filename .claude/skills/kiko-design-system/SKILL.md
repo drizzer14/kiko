@@ -574,6 +574,9 @@ new component can land between reviews of this skill:
   sheet: Apply and "Just for this one") passes its `useSubmitOnce`
   `isSubmitting` as `loading`, and the surface it sits on stays open
   until the write is done — never a hand-rolled spinner beside a button.
+  The holding form's Save shows it only while a share's listing unit is
+  looked up at Save (`isLookingUpUnit`, a network wait of up to 10 s;
+  user decision), not for any other write, and stays `disabled` then too.
   The shared `DISABLED_OPACITY` token
   (`src/design-system/disabled-opacity/disabled-opacity.ts`) is the ONE dimming a disabled
   pressable applies — `Button` reads it, and any new disabled pressable
@@ -964,7 +967,12 @@ new component can land between reviews of this skill:
   `textSecondary` message, and an optional `secondaryTonal` `small`
   action button. The button renders only when BOTH `actionLabel` and
   `onAction` are given. Read `notice-banner.props.d.ts` for the props.
-  Find its consumers with `git grep NoticeBanner src/screens`.
+  Find its consumers with `git grep NoticeBanner src/screens`. On the
+  holding detail, a stored state the user must fix elsewhere is a
+  NoticeBanner with no action, worked out on the fly from the row, in its
+  own folder (`holding-detail/<name>-notice/`, `holding` prop, `null` when
+  nothing is wrong): `ListingCurrencyNotice` (an EODHD share held in another
+  currency than its listing, kiko-pricing).
 - **Search sheet pattern** (example:
   `src/screens/forms/holding-form/share/share-search-sheet/`): always a
   `BottomSheet` with a query field, an explicit Search button, and

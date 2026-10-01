@@ -809,10 +809,11 @@ client for the exact shapes.
   and a `GBX` close is in pence, not pounds. Refresh and search always read
   the unit from each listing's `Currency`, never from the exchange (an LSE
   row can be USD).
-- `searchSymbols(query, key, fetchImpl, exchange?)` is the third entry
-  point (share search and the refresh's unit lookup). A request past
-  `REQUEST_TIMEOUT_MS` (read it in the client) aborts as
-  `EodhdNetworkError`, 0 calls spent.
+- `searchSymbols(query, key, fetchImpl, exchange?, timeoutMs?)` is the third
+  entry point (share search, the refresh's unit lookup, and the share form's
+  Save lookup). A request past `REQUEST_TIMEOUT_MS` (read it in the client),
+  or past the caller's own shorter `timeoutMs`, aborts as `EodhdNetworkError`,
+  0 calls spent.
 - EODHD facts (live-verified): the demo token gets 403 on search and on
   non-US EOD; a search result's ISIN can be null; results include
   non-primary listings; `extraLimit` is never added to the daily limit;
@@ -887,9 +888,13 @@ exact constants (default limit, search reserve, history span).
   listing. An answer to a history-only
   call neither ends a back-off nor counts as empty.
 - **Unit rule**: a listing with no `quoteCurrency` is resolved once by one
-  search call (that call costs 1 more) and saved on the holding. A `GBX`
-  close on a `GBP` holding is divided by 100; any other unit/currency
-  mismatch skips the symbol.
+  search call (that call costs 1 more) and saved on the holding. The holding
+  currency a unit fits is `unitHoldingCurrency` (`share-search.ts`): `GBX`
+  fits `GBP`, every other unit only its own currency. The refresh's
+  `pointUnit`, the share form's Currency check, and the detail notice all
+  read this one rule. A `GBX` close on a `GBP` holding is divided by 100; any
+  other unit/currency mismatch skips the symbol. A unit the share form
+  stored at Save (see "Share search") spends no refresh lookup.
 - **Key saves and restores** (`quote-quota.ts`): `withSavedKey` (a key saved
   in Share prices) and `withRestoredKey` (a key restored from a backup,
   `restore-secrets.ts`) both start a new key generation (`keyGeneration`,
@@ -954,8 +959,44 @@ Code: `src/prices/share-search/share-search.ts` (`searchShares`). Rules:
   `share-search.test.ts`).
 - A picked listing's `quoteCurrency` is kept only while the source is EODHD
   and the ticker equals the picked symbol (`keptQuoteCurrency`,
-  `use-share-fields.ts`); a ticker edit drops it, and the refresh resolves
-  it again with one search call.
+  `use-share-fields.ts`); a ticker edit drops it, and Save looks it up again
+  (below), or else the refresh resolves it with one search call.
+
+### Unit lookup at Save and the currency guard
+
+A share held in another currency than the one its listing's unit fits is
+never priced, so the share form checks it before it writes.
+
+- **Picked listing**: its unit is known, so a currency it does not fit
+  blocks Save at once with an error on the Currency field
+  (`shareFieldErrors`' `currencyError`, `share-reasons.ts`). No call.
+- **Hand-typed EODHD ticker**: Save runs `lookupShareUnit(symbol)`
+  (`share-search.ts`): the refresh's own code + exchange search
+  (`listingSearchOf`), under the same quota rules as a search, with a 10 s
+  timeout (private `SAVE_LOOKUP_TIMEOUT_MS`) instead of the client's 30 s. It
+  answers the exact listing's unit, or `undefined` (no key, a rejected key,
+  no calls left, no answer, no listing of that symbol, or a failed read),
+  which saves as before. A found unit is stored as `quoteCurrency`, so the
+  first refresh spends no lookup; a unit the currency does not fit blocks
+  Save on the Currency field. The same ticker is never looked up twice.
+- **Create and edit**: create runs it through `checkCreate`. An edit runs it
+  through `checkEdit` only when the share now names a listing its stored row
+  did not (a switch from Manual to EODHD, or another ticker) and no pick
+  told the unit; an unchanged source and ticker, a switch to Manual, or a
+  pick make no call. The form contract is kiko-domain's "Adding a holding
+  type" step 3.
+- **Save spinner**: Save shows its `loading` spinner only while this lookup
+  runs (`isLookingUpUnit`); it stays disabled as for any submit.
+- **Unsupported unit**: a unit whose currency no share can be held in
+  (`isShareUnitSupported` false: `ZAC` cents, `ILA` agorot) gets the
+  Manual-only text `forms.holding.shareCurrencyUnsupportedError` instead of
+  `shareCurrencyMismatchError` ("Choose {{currency}}…").
+- **Stored mismatch**: a share an older build stored in another currency
+  than its unit fits shows `ListingCurrencyNotice` on its detail
+  (`src/screens/holding-detail/listing-currency-notice/`, a NoticeBanner):
+  `holdingDetail.listingCurrencyMismatch` names both ways out (Manual, or a
+  new share in that currency), `holdingDetail.listingCurrencyUnsupported`
+  only Manual.
 
 ## Later (not built yet — do not invent detail)
 
