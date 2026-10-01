@@ -208,8 +208,9 @@ project-level pointer to this section.
   restore, sharing the SAME deterministic `crypto-from-` id so the two
   paths always agree on the same account for the same source.
   `0045_add_reminders` (additive: the `reminders` table and two
-  `settings` columns) follows `0044` on `next`. Next free migration
-  index: `0046`.
+  `settings` columns) follows `0044` on `next`; `0046_add_quote_quota`
+  (the `settings.quote_quota` column) follows it. Next free migration
+  index: `0047`.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -649,7 +650,7 @@ gate says there is nothing to do.
   metal/foreign-currency/crypto holding (`holding-form.screen.tsx`'s
   manual create) or restoring a `.kiko` export (`importData`,
   `src/data-transfer/import-data.ts`) triggers
-  `refreshMarketData({ throttled: false, metals: true })`
+  `refreshMarketData({ throttled: false, metals: true, ... })`
   (`src/sync/refresh-market-data/`) explicitly right after its own
   write commits, since neither path runs through the sync fan-out that
   otherwise triggers this — so the price/rate appears without an app
@@ -661,6 +662,15 @@ gate says there is nothing to do.
   background poll, so it never reads the throttle cursor. An EDIT never
   needs this trigger — a holding's type and currency are immutable once
   created.
+- **Share price refresh**: `refreshSharePrices`
+  (`src/prices/share-refresh/`) reads the active EODHD shares first; none →
+  return with no Keychain read and no network. No saved key → return
+  before any network. Quota rules: kiko-pricing "EODHD quota guard and
+  share refresh".
+- **`refreshMarketData` steps**: rates, metals, and `shares`; the
+  `metals`/`shares` options gate the last two. Read each call site
+  (`grep -rn "refreshMarketData(" src`) for its own flags: a create
+  passes `shares` only for a share holding.
 - **Reminders re-plan**: `syncReminders` reads
   `remindersRepo.hasAnyQuery()` (`LIMIT 1`) before any plan-input query
   — see "Reminders (local notifications)". `drainReminderResponses` runs
@@ -1632,7 +1642,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `eodhdKey` out when no key is saved) and `secrets/restore-secrets.ts`
   restores each account secret back to its original account id and the
   EODHD key only when present — a legacy file without `eodhdKey` restores
-  fine. `restoreExportSecrets` still
+  fine. A restore keeps this device's live `settings.quoteQuota` (EODHD
+  calls already spent on this key today — device/key state, like the key
+  itself), never the file's (`restore-snapshot.ts`). `restoreExportSecrets` still
   never imports `db/keys/db-key.ts`: an older file that still carries a
   `dbKeyHex` field (from before that field was dropped) is read through
   as an unknown, unrestored property — re-storing a FOREIGN device's

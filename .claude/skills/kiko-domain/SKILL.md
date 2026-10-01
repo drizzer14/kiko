@@ -149,7 +149,10 @@ implemented, and callers must skip it rather than assume every id resolves.
   `src/statistics/`). It SUPERSEDES the retained-dead
   `trendCategoryKeys` column (migration 0025 copies any saved keys across
   as a manual filter; the old column is pinned reader-less in
-  `src/db/settings-columns.test.ts`). The Monobank token is never stored
+  `src/db/settings-columns.test.ts`). `quoteQuota` is a nullable JSON
+  `QuoteQuota` (the EODHD calls spent on the current UTC day — see
+  `src/db/schema.ts` and kiko-pricing "EODHD quota guard and share
+  refresh"). The Monobank token is never stored
   here — see `kiko-architecture` for the Keychain rule (its Monobank sync
   section also carries the credit-limit known limit).
 

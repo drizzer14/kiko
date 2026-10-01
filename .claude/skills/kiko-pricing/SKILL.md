@@ -647,9 +647,9 @@ kiko-domain's "`property_item` / `metal` create-form sections").
 
 Rate and price refresh runs on sync, throttled to respect each
 provider's own cache window (see "Currency-rate fallback chain"
-above) — do not poll faster than the upstream cache refreshes. No
-dedicated quota-guard or once-per-day scheduler exists yet;
-do not assume one when reading a refresh call site.
+above) — do not poll faster than the upstream cache refreshes.
+EODHD share prices have their own quota guard — see "EODHD quota guard
+and share refresh" below.
 
 `shouldThrottle` (`rates-refresh.ts`) treats `UAH` as always present
 in its "does every held currency already have a rate" check: a star
@@ -765,21 +765,61 @@ client for the exact shapes.
   EODHD's own day (UTC; the limit resets at midnight GMT). The `/user`
   call costs 0 calls.
 - Status mapping: 401 bad key (`EodhdAuthError`), 403 not in plan
-  (`EodhdNotInPlanError` — skip that symbol, the key is fine), 402 daily
-  limit (`EodhdQuotaError`), 429 rate limit (`EodhdRateLimitError`), else
-  `EodhdUnavailableError`. EODHD error bodies are plain text even with
-  `fmt=json`: always branch on the status only, never parse the body.
+  (`EodhdNotInPlanError`), 402 daily limit (`EodhdQuotaError`), 429 rate
+  limit (`EodhdRateLimitError`), no response (`EodhdNetworkError`), else
+  `EodhdUnavailableError`. What a refresh does with each error is in
+  "EODHD quota guard and share refresh" below. EODHD error bodies are plain
+  text even with `fmt=json`: always branch on the status only, never parse
+  the body.
 - Closes are exact decimal strings via `decimalFromJsonNumber`
   (`@kiko/currency/decimal`), never a float.
 - Units (live-verified; used by P5 task 6/7): a listing's `Currency`
   gives the close's unit, and a `GBX` close is in pence, not pounds.
 - Cache and logging rules for the key-in-URL: `kiko-compliance` 5.1.5.
 
+## EODHD quota guard and share refresh
+
+Code: `src/prices/quote-quota/quote-quota.ts` (pure quota maths),
+`src/prices/share-refresh/share-refresh.ts` (`refreshSharePrices`),
+`share-refresh-write.ts` (the one final write). Read those files for the
+exact constants (default limit, search reserve, history span).
+
+- **Quota state**: `QuoteQuota` in `settings.quoteQuota` (migration
+  `0046_add_quote_quota`). The day is a UTC day, because EODHD resets at
+  midnight GMT; `currentQuota` starts a fresh day when the stored one is
+  older. The calls a run plans are RESERVED (saved) before any fetch, so a
+  crash over-counts and never exceeds the limit. The final write settles
+  the reservation by the delta (reserved vs spent) and keeps the stored
+  `dailyLimit`; it commits in the same transaction as the prices
+  (`updateQuoteQuotaDatabaseTransaction`, `src/settings/settings.repo.ts`).
+- **Serialised runs**: `refreshSharePrices` chains each run on the previous
+  one's promise, so two overlapping runs never plan from the same quota.
+- **Gate order**: no active EODHD share → return before the Keychain read;
+  no key → return before any network.
+- **Budget**: a refresh spends at most `refreshAllowance` (daily limit − the
+  search reserve, R2); a search may use the rest. When more symbols need a
+  call than the allowance covers, the OLDEST latest price goes first (R1).
+- **One call per symbol per UTC day**: a symbol already in
+  `quota.symbols` is never called again that day, even when its answer
+  brought no new close.
+- **Skip fresh symbols**: no call when a symbol's latest stored point is on
+  or after the last weekday.
+- **Backfill range**: from the day after the latest point, or from the
+  holding's earliest lot when there is none, clamped to the history span (1
+  year). A future-dated lot is skipped.
+- **Error handling** (`stopFor`, `costOfFailure`): 401 stops the run; 402
+  stops and marks the day used up; 429 stops only (does not mark the day);
+  403 and `EodhdUnavailableError` skip that symbol for the day; a network
+  error stops the run and counts 0 calls spent.
+- **Unit rule**: a listing with no `quoteCurrency` is resolved once by one
+  search call (that call costs 1 more) and saved on the holding. A `GBX`
+  close on a `GBP` holding is divided by 100; any other unit/currency
+  mismatch skips the symbol.
+- **Logs carry no symbol**: a symbol is personal portfolio data; log only
+  the error name/code and a fixed reason.
+
 ## Later (not built yet — do not invent detail)
 
-The EODHD price refresh, a request-quota guard, symbol search, and a
-scheduled backfill for non-metal instruments are planned but do not
-exist in code yet. When one of those lands, extend
-this skill's "Currency-rate fallback chain" / "`price_points`" /
-"EODHD client" sections rather than writing a new one — do not leave
-the future work as a stale placeholder once it ships.
+Symbol search UI and a scheduled backfill for non-metal instruments are
+planned but do not exist in code yet. When one lands, extend the matching
+section above rather than writing a new one.
