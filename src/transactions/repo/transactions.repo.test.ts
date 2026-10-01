@@ -24,6 +24,15 @@ import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
 
 import { transactionsRepo } from './transactions.repo';
 
+// The holding row a balance move reads, with no boundary set: every manual
+// write moves the balance (transactions.repo.balance-boundary.test.ts covers a
+// set boundary on a real engine).
+const unanchoredBalance = (balanceMinorUnits: number) => ({
+  balanceMinorUnits,
+  balanceSetAt: null,
+  newestSyncTime: null,
+});
+
 // Build a fake transaction handle for `update`. `select(...).from(...).where
 // (...).limit(...)` resolves the queued rows in call order (first the existing
 // transaction row, then the holding balance); each `update(table).set(values)`
@@ -41,7 +50,7 @@ const makeUpdateDatabaseTransaction = (options: {
 } => {
   const selectQueue: unknown[][] = [
     options.existing ? [options.existing] : [],
-    [{ balanceMinorUnits: options.holdingBalance }],
+    [unanchoredBalance(options.holdingBalance)],
   ];
   const captured: {
     transactionSet?: Record<string, unknown>;
@@ -248,7 +257,7 @@ describe('transactionsRepo', () => {
       }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 5000 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(5000)]) }),
         }),
       }),
       update: () => ({
@@ -290,7 +299,7 @@ describe('transactionsRepo', () => {
       }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 5000 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(5000)]) }),
         }),
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
@@ -319,7 +328,7 @@ describe('transactionsRepo', () => {
       }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 5000 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(5000)]) }),
         }),
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
@@ -453,7 +462,13 @@ const makeRemoveDatabaseTransaction = (options: {
   };
   const databaseTransaction = {
     select: () => ({
-      from: () => ({ where: () => Promise.resolve(selectQueue.shift() ?? []) }),
+      from: () => ({
+        where: () => {
+          const rows = selectQueue.shift() ?? [];
+
+          return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
+        },
+      }),
     }),
     delete: (table: unknown) => {
       captured.deletedFrom.push(table);
@@ -1404,7 +1419,7 @@ describe('transactionsRepo.remove', () => {
         amountMinorUnits: 2500,
         source: 'manual',
       },
-      holding: { id: 'hold-1', balanceMinorUnits: 102500 },
+      holding: unanchoredBalance(102500),
     });
     mockDatabaseTransaction = databaseTransaction;
 
@@ -1422,7 +1437,7 @@ describe('transactionsRepo.remove', () => {
         amountMinorUnits: -1000,
         source: 'manual',
       },
-      holding: { id: 'hold-1', balanceMinorUnits: 4000 },
+      holding: unanchoredBalance(4000),
     });
     mockDatabaseTransaction = databaseTransaction;
 
@@ -1440,7 +1455,7 @@ describe('transactionsRepo.remove', () => {
         amountMinorUnits: 2500,
         source: 'monobank',
       },
-      holding: { id: 'hold-1', balanceMinorUnits: 102500 },
+      holding: unanchoredBalance(102500),
     });
     mockDatabaseTransaction = databaseTransaction;
 
@@ -1527,8 +1542,8 @@ const makeExchangeDatabaseTransaction = (
 describe('transactionsRepo.recordExchange', () => {
   it('writes both legs as independent ledger rows and updates both balances for a plain destination', async () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
-      [{ balanceMinorUnits: 10_000 }],
-      [{ balanceMinorUnits: 2_000 }],
+      [unanchoredBalance(10_000)],
+      [unanchoredBalance(2_000)],
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -1571,7 +1586,7 @@ describe('transactionsRepo.recordExchange', () => {
 
   it('routes a term_deposit destination through a contribution metadata rewrite, not a second ledger row', async () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
-      [{ balanceMinorUnits: 10_000 }],
+      [unanchoredBalance(10_000)],
       [{ type: 'term_deposit', metadata: depositMeta }],
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1636,9 +1651,7 @@ describe('transactionsRepo.recordExchange', () => {
   });
 
   it('rejects an excluded destination type (bond/jar)', async () => {
-    const { databaseTransaction } = makeExchangeDatabaseTransaction([
-      [{ balanceMinorUnits: 10_000 }],
-    ]);
+    const { databaseTransaction } = makeExchangeDatabaseTransaction([[unanchoredBalance(10_000)]]);
     mockDatabaseTransaction = databaseTransaction;
 
     await expect(
@@ -1672,7 +1685,7 @@ describe('transactionsRepo.recordExchange', () => {
               throw new Error('forced destination failure');
             }
 
-            return { limit: () => Promise.resolve([{ balanceMinorUnits: 10_000 }]) };
+            return { limit: () => Promise.resolve([unanchoredBalance(10_000)]) };
           },
         }),
       }),
@@ -1714,7 +1727,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 2_000 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(2_000)]) }),
         }),
       }),
       update: (table: unknown) => ({
@@ -1764,7 +1777,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 5_000 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(5_000)]) }),
         }),
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
@@ -1802,7 +1815,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
       [{ accountId: 'acc-dst', metadata: null }], // the counterpart's own holding, read by the synced guard
       [{ institution: null }], // the counterpart's own account, read by the synced guard
-      [{ balanceMinorUnits: 2_000 }], // the new leg's balance read
+      [unanchoredBalance(2_000)], // the new leg's balance read
       [{ source: 'manual' }], // the existing row, read INSIDE the transaction
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1827,7 +1840,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
       [{ accountId: 'acc-dst', metadata: null }], // the counterpart's own holding, read by the synced guard
       [{ institution: null }], // the counterpart's own account, read by the synced guard
-      [{ balanceMinorUnits: 2_000 }],
+      [unanchoredBalance(2_000)],
       [{ source: 'monobank' }],
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1877,7 +1890,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       insert: () => ({ values: () => Promise.resolve() }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 0 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(0)]) }),
         }),
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
@@ -1901,7 +1914,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       insert: () => ({ values: () => Promise.resolve() }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 0 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(0)]) }),
         }),
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
@@ -1950,9 +1963,9 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 describe('transactionsRepo.recordManualWithReturns', () => {
   it('writes the payment + N return rows sharing ONE changeGroupId in one transaction', async () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
-      [{ balanceMinorUnits: 50_000 }], // payer balance read
-      [{ balanceMinorUnits: 1_000 }], // return holding B balance read
-      [{ balanceMinorUnits: 2_000 }], // return holding C balance read
+      [unanchoredBalance(50_000)], // payer balance read
+      [unanchoredBalance(1_000)], // return holding B balance read
+      [unanchoredBalance(2_000)], // return holding C balance read
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -2006,7 +2019,7 @@ describe('transactionsRepo.recordManualWithReturns', () => {
 
   it('writes only the payment row when there are no returns', async () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
-      [{ balanceMinorUnits: 50_000 }],
+      [unanchoredBalance(50_000)],
     ]);
     mockDatabaseTransaction = databaseTransaction;
 

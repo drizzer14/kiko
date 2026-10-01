@@ -23,6 +23,14 @@ import { buildCategoryBreakdown } from '@kiko/statistics/category-breakdown';
 
 import { transactionsRepo } from './transactions.repo';
 
+// The holding row a balance move reads, with no boundary set, so every
+// manual write moves the balance.
+const unanchoredBalance = (balanceMinorUnits: number) => ({
+  balanceMinorUnits,
+  balanceSetAt: null,
+  newestSyncTime: null,
+});
+
 // A fake database-transaction handle capturing inserts + balance updates in call order, answering
 // both the chained `.where(...).limit(1)` and the bare `await where(...)`
 // conventions — same shape as transactions.repo.test.ts's makeExchangeDatabaseTransaction.
@@ -70,9 +78,9 @@ describe('Money-path guard: split-change + convert prefill', () => {
     // Opening balances: payer 500_00, holding B 10_00, holding C 20_00 UAH.
     const opening = { 'payer-1': 500_00, 'hold-b': 10_00, 'hold-c': 20_00 };
     const { databaseTransaction, updates } = makeDatabaseTransaction([
-      [{ balanceMinorUnits: opening['payer-1'] }],
-      [{ balanceMinorUnits: opening['hold-b'] }],
-      [{ balanceMinorUnits: opening['hold-c'] }],
+      [unanchoredBalance(opening['payer-1'])],
+      [unanchoredBalance(opening['hold-b'])],
+      [unanchoredBalance(opening['hold-c'])],
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -144,7 +152,9 @@ describe('Money-path guard: split-change + convert prefill', () => {
     // Convert of a SYNCED (bank-owned) withdrawal: only the new cash leg is
     // written; the existing monobank row is never updated.
     const { databaseTransaction, inserts, updates } = makeDatabaseTransaction([
-      [{ balanceMinorUnits: 0 }], // the new cash leg's balance read
+      [{ accountId: 'cash-account', metadata: null }], // the counterpart holding
+      [{ institution: null }], // its account
+      [unanchoredBalance(0)], // the new cash leg's balance read
       [{ source: 'monobank' }], // the existing bank row, read inside the tx
     ]);
     mockDatabaseTransaction = databaseTransaction;

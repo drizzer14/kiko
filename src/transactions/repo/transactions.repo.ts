@@ -95,12 +95,88 @@ type ManualWithReturnsInput = {
   returns: ChangeReturn[];
 };
 
+/** The LATER of two nullable instants, treating `null` as "no boundary from
+ * this source" rather than as an actual instant to compare — used to combine
+ * the two boundary sources (`holding.balanceSetAt`, the newest sync-source
+ * transaction) without a nested ternary. */
+const laterOf = (a: number | null, b: number | null): number | null => {
+  if (a === null) {
+    return b;
+  }
+
+  if (b === null) {
+    return a;
+  }
+
+  return Math.max(a, b);
+};
+
+/** A holding's rows from a SYNC source — boundary source (b) of THE BOUNDARY
+ * in `importRows`'s doc comment. `holdingId` is a value, or `holdings.id` for
+ * a subquery correlated to the outer holding row. */
+const syncSourceRowsOf = (holdingId: string | typeof holdings.id) =>
+  and(
+    eq(transactions.holdingId, holdingId),
+    ne(transactions.source, 'manual'),
+    ne(transactions.source, 'import'),
+  );
+
+/** Whether a row dated `time` moves the stored balance. A row dated before the
+ * boundary is history: the balance set at the boundary already counts it. */
+const movesBalance = (time: number, boundary: number | null): boolean =>
+  boundary === null || time >= boundary;
+
+const balanceShareOf = (amountMinorUnits: number, time: number, boundary: number | null): number =>
+  movesBalance(time, boundary) ? amountMinorUnits : 0;
+
+const newestSyncTimeOfHolding = sql<number | null>`(
+  SELECT max(${transactions.time}) FROM ${transactions} WHERE ${syncSourceRowsOf(holdings.id)}
+)`;
+
+/**
+ * Move a holding's stored balance by `deltaFor(boundary)`, where `boundary` is
+ * THE BOUNDARY `importRows` uses. The balance and the boundary are read inside
+ * the caller's transaction, never from a render snapshot, so a concurrent
+ * write cannot be clobbered by a stale read-modify-write, and a manual write
+ * judges its row against the same boundary an import does.
+ */
+const moveBalanceDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  deltaFor: (boundary: number | null) => number,
+): Promise<void> => {
+  const anchorRows = await databaseTransaction
+    .select({
+      balanceMinorUnits: holdings.balanceMinorUnits,
+      balanceSetAt: holdings.balanceSetAt,
+      newestSyncTime: newestSyncTimeOfHolding,
+    })
+    .from(holdings)
+    .where(eq(holdings.id, holdingId))
+    .limit(1);
+  const anchor = anchorRows.at(0);
+
+  if (anchor === undefined) {
+    return;
+  }
+
+  const delta = deltaFor(laterOf(anchor.balanceSetAt, anchor.newestSyncTime));
+
+  if (delta === 0) {
+    return;
+  }
+
+  await databaseTransaction
+    .update(holdings)
+    .set({ balanceMinorUnits: anchor.balanceMinorUnits + delta })
+    .where(eq(holdings.id, holdingId));
+};
+
 // Insert a manual transaction and adjust its holding's balance on an EXISTING
-// transaction handle. The balance base is read from the DB *inside* the same
-// transaction, never from a render snapshot, so concurrent writes cannot clobber
-// each other with a stale read-modify-write. `recordManual` wraps this in its
-// own `write(...)`; `recordExchange` calls it directly for the source leg and
-// for a plain destination leg, keeping both legs in one transaction.
+// transaction handle (see `moveBalanceDatabaseTransaction` for which rows move
+// it). `recordManual` wraps this in its own `write(...)`; `recordExchange`
+// calls it directly for the source leg and for a plain destination leg,
+// keeping both legs in one transaction.
 //
 // The row carries its OWN category here — a picked category is never lost to
 // a blank description or a cancelled override sheet. `upsertCategoryOverride`
@@ -131,17 +207,9 @@ const recordManualTransaction = async (
     source: 'manual',
   });
 
-  const current = await databaseTransaction
-    .select({ balanceMinorUnits: holdings.balanceMinorUnits })
-    .from(holdings)
-    .where(eq(holdings.id, holdingId))
-    .limit(1);
-  const base = current.at(0)?.balanceMinorUnits ?? 0;
-
-  await databaseTransaction
-    .update(holdings)
-    .set({ balanceMinorUnits: base + amountMinorUnits })
-    .where(eq(holdings.id, holdingId));
+  await moveBalanceDatabaseTransaction(databaseTransaction, holdingId, (boundary) =>
+    balanceShareOf(amountMinorUnits, time, boundary),
+  );
 };
 
 // Mark the EXISTING row of a Convert as the other leg of the same movement, on
@@ -480,22 +548,6 @@ const insertDedupRowsDatabaseTransaction = async (
   return newRows;
 };
 
-/** The LATER of two nullable instants, treating `null` as "no boundary from
- * this source" rather than as an actual instant to compare — used by
- * `importRows` to combine its two boundary sources (`holding.balanceSetAt`,
- * the newest sync-source transaction) without a nested ternary. */
-const laterOf = (a: number | null, b: number | null): number | null => {
-  if (a === null) {
-    return b;
-  }
-
-  if (b === null) {
-    return a;
-  }
-
-  return Math.max(a, b);
-};
-
 type ImportBalanceDecision = {
   nextBalance: number;
   balanceSetAt?: number;
@@ -517,13 +569,14 @@ const resolveImportBalance = (
   closingBalance: ClosingBalance | undefined,
   existingPostClosingNetMinorUnits: number,
 ): ImportBalanceDecision => {
-  const netDelta = newRows
-    .filter((row) => boundary === null || row.time >= boundary)
-    .reduce((sum, row) => sum + row.amountMinorUnits, 0);
+  const netDelta = newRows.reduce(
+    (sum, row) => sum + balanceShareOf(row.amountMinorUnits, row.time, boundary),
+    0,
+  );
   const useClosingBalance =
     closingBalance !== undefined &&
     closingBalance.currency === holding.currency &&
-    (boundary === null || closingBalance.asOfSeconds * 1000 >= boundary);
+    movesBalance(closingBalance.asOfSeconds * 1000, boundary);
 
   if (!useClosingBalance) {
     return { nextBalance: holding.balanceMinorUnits + netDelta };
@@ -748,9 +801,8 @@ export const transactionsRepo = {
   /**
    * Record a manual transaction and adjust its holding's balance in ONE
    * op-sqlite transaction, so the ledger and the balance can never desync
-   * on a partial failure. The balance base is read from the DB *inside*
-   * the same transaction — not from a render snapshot — so concurrent
-   * writes cannot clobber each other with a stale read-modify-write.
+   * on a partial failure. A row dated before THE BOUNDARY (`importRows`)
+   * is history and leaves the balance as it is (`moveBalanceDatabaseTransaction`).
    */
   recordManual: (input: ManualTransaction) =>
     write((databaseTransaction) => recordManualTransaction(databaseTransaction, input)),
@@ -945,10 +997,12 @@ export const transactionsRepo = {
   /**
    * Edit an existing MANUAL transaction and keep its holding's stored balance
    * consistent, all in ONE op-sqlite transaction. The row is re-read *inside*
-   * the transaction so the balance delta is computed against the amount that is
-   * actually persisted, never a stale render snapshot. Only the difference
-   * (newAmount - oldAmount) moves the balance, so a description/time-only edit
-   * (zero delta) leaves the balance untouched. A synced (monobank) transaction
+   * the transaction so the balance delta is computed against the amount and
+   * time that are actually persisted, never a stale render snapshot. The old
+   * (amount, time) and the new one are each judged against THE BOUNDARY
+   * (`importRows`) on their own: only a side dated at/after it counts, so an
+   * edit that moves the row across the boundary adds or takes back its amount,
+   * and an edit wholly before it leaves the balance untouched. A synced (monobank) transaction
    * is never mutated by this path — its amount is owned by the bank import — and
    * a missing id is a no-op rather than an error.
    */
@@ -958,6 +1012,7 @@ export const transactionsRepo = {
         .select({
           holdingId: transactions.holdingId,
           amountMinorUnits: transactions.amountMinorUnits,
+          time: transactions.time,
           source: transactions.source,
         })
         .from(transactions)
@@ -972,28 +1027,21 @@ export const transactionsRepo = {
         .update(transactions)
         .set({ amountMinorUnits, time, description: description ?? '' })
         .where(eq(transactions.id, transactionId));
-      const delta = amountMinorUnits - existing.amountMinorUnits;
-
-      if (delta === 0) {
-        return;
-      }
-      const current = await databaseTransaction
-        .select({ balanceMinorUnits: holdings.balanceMinorUnits })
-        .from(holdings)
-        .where(eq(holdings.id, existing.holdingId))
-        .limit(1);
-      const base = current.at(0)?.balanceMinorUnits ?? 0;
-      await databaseTransaction
-        .update(holdings)
-        .set({ balanceMinorUnits: base + delta })
-        .where(eq(holdings.id, existing.holdingId));
+      await moveBalanceDatabaseTransaction(
+        databaseTransaction,
+        existing.holdingId,
+        (boundary) =>
+          balanceShareOf(amountMinorUnits, time, boundary) -
+          balanceShareOf(existing.amountMinorUnits, existing.time, boundary),
+      );
     }),
   /**
    * Delete a MANUAL transaction and reverse its effect on the holding's stored
    * balance, all in ONE op-sqlite transaction so the ledger and the balance can
    * never desync on a partial failure. The reversal is the exact inverse of
-   * `recordManual`/`update`: `balance -= amountMinorUnits`, read *inside* the
-   * transaction so it never clobbers a concurrent write with a stale snapshot. A
+   * `recordManual`/`update`: `balance -= amountMinorUnits` for a row dated
+   * at/after THE BOUNDARY (`importRows`), nothing for a row before it, whose
+   * amount the balance set at the boundary already includes. A
    * synced (monobank) transaction is owned by the bank import and is refused with
    * a typed error; a missing id is a no-op rather than an error.
    */
@@ -1013,18 +1061,11 @@ export const transactionsRepo = {
         throw new Error('transactionsRepo.remove: cannot delete a synced transaction');
       }
       await databaseTransaction.delete(transactions).where(eq(transactions.id, transactionId));
-      const holdingRows = await databaseTransaction
-        .select()
-        .from(holdings)
-        .where(eq(holdings.id, row.holdingId));
-      const holding = holdingRows.at(0);
-
-      if (holding) {
-        await databaseTransaction
-          .update(holdings)
-          .set({ balanceMinorUnits: holding.balanceMinorUnits - row.amountMinorUnits })
-          .where(eq(holdings.id, row.holdingId));
-      }
+      await moveBalanceDatabaseTransaction(
+        databaseTransaction,
+        row.holdingId,
+        (boundary) => -balanceShareOf(row.amountMinorUnits, row.time, boundary),
+      );
     }),
   /**
    * Override the category of ONE transaction, by id, inside a single op-sqlite
@@ -1245,6 +1286,12 @@ export const transactionsRepo = {
    * clears `accounts.institution` only, so the holding keeps its
    * `monobank`/`btc_wallet`/`binance` rows and this still finds them.
    *
+   * `recordManual` (and every exchange or change-return leg), `update`, and
+   * `remove` read the SAME boundary (`moveBalanceDatabaseTransaction`): a
+   * manual row dated before it is history there too and moves no balance, so
+   * deleting a manual duplicate of an imported row, or entering a back-dated
+   * one, never pushes the balance off the bank's closing figure.
+   *
    * `boundary` is `null` when NEITHER (a) nor (b) has ever happened for this
    * holding: every genuinely new row moves the balance regardless of its own
    * date, and a `closingBalance` is always eligible — this is the original
@@ -1377,13 +1424,7 @@ export const transactionsRepo = {
       const syncRows = await databaseTransaction
         .select({ time: sql<number | null>`max(${transactions.time})` })
         .from(transactions)
-        .where(
-          and(
-            eq(transactions.holdingId, input.holdingId),
-            ne(transactions.source, 'manual'),
-            ne(transactions.source, 'import'),
-          ),
-        );
+        .where(syncSourceRowsOf(input.holdingId));
       const syncBoundary = syncRows.at(0)?.time ?? null;
       const boundary = laterOf(holding.balanceSetAt, syncBoundary);
 
