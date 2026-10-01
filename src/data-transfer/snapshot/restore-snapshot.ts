@@ -24,6 +24,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { maxOf } from '@kiko/numbers';
 import { SETTINGS_ID } from '@kiko/settings';
+import { withRestoredPrices } from '@kiko/prices/quote-quota';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { isFiat, type Currency } from '@kiko/currency/currency';
 import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
@@ -322,7 +323,8 @@ const withImportTimesRezoned = (
 /**
  * The EODHD quote quota counts the calls this device's own key spent today,
  * not the backed-up device's, so a restore keeps the live row's quota and
- * never the backup's.
+ * never the backup's (minus what it knew of the replaced prices: see
+ * `withRestoredPrices`).
  */
 const readLiveQuoteQuota = async (
   databaseTransaction: typeof database,
@@ -707,7 +709,7 @@ export const restoreDataSnapshot = (
 
       for (const part of chunkForTable(
         settings,
-        settingsToInsert.map((row) => ({ ...row, quoteQuota: liveQuoteQuota })),
+        settingsToInsert.map((row) => ({ ...row, quoteQuota: withRestoredPrices(liveQuoteQuota) })),
       )) {
         await databaseTransaction.insert(settings).values(part);
       }

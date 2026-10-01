@@ -1,5 +1,7 @@
+import { settingsRepo } from '@kiko/settings';
 import { saveToken } from '@kiko/monobank/token';
 import { saveEodhdKey } from '@kiko/prices/eodhd-key';
+import { withRestoredKey } from '@kiko/prices/quote-quota';
 import { saveCredentials } from '@kiko/crypto-sync/binance';
 
 import type { ExportSecrets } from '../payload';
@@ -41,5 +43,8 @@ export const restoreExportSecrets = async (secrets: ExportSecrets | undefined): 
 
   if (secrets.eodhdKey !== undefined) {
     await saveEodhdKey(secrets.eodhdKey);
+    // After the key, like a key save in Share prices: a refresh that read the
+    // previous key never pairs it with the restored key's state.
+    await settingsRepo.updateQuoteQuota((stored) => withRestoredKey(stored, Date.now()));
   }
 };
