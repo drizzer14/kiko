@@ -53,9 +53,13 @@ export type TextFieldProps = Pick<
   // under the input and the field's own label tints negative — REFLOW, not
   // reserve: there is no reserved-height slot, so a valid field takes no
   // extra space (the reflow error model — no per-field outline, see
-  // text-field.component.tsx's own doc comment). There is no separate
-  // `invalid` boolean: a defined `error` IS the invalid signal.
+  // text-field.component.tsx's own doc comment). A defined `error` IS the
+  // invalid signal for a field that owns its error.
   error?: string;
+  // Tints the label negative with no error line of its own, for a field whose
+  // one error renders under its whole group (a split payment's return rows).
+  // Never set beside `error`. Defaults to false.
+  invalid?: boolean;
   // A ref to the inner TextInput, forwarded to its `ref`. A validated form
   // field passes this (alongside its own measurement-only wrapper ref used
   // by `scrollToField`) so a blocked Save press can call `.focus()`

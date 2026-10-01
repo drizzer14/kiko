@@ -295,7 +295,9 @@ latest time the row can take), and `transactionsRepo.update` refuses the same
 edit with a typed error before it writes anything, for any other caller. The
 form reads the boundary from `transactionsRepo.balanceBoundaryQuery` and
 combines it with `balanceBoundaryOf`, the one function every balance writer
-uses.
+uses. It reads it only when the edited row can hit the rule (unmarked and
+balance-set-shaped), and disables Save while it loads, so a fast Save never
+reaches the repo's refusal instead of the field error.
 
 ## Statement import moves the target holding's balance too
 

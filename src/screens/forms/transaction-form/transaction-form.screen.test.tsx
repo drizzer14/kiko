@@ -5,6 +5,7 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
@@ -120,6 +121,14 @@ jest.mock('@kiko/categories/category-overrides-repo', () => ({
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 type Holding = {
   id: string;
@@ -569,6 +578,20 @@ describe('TransactionFormScreen — add mode', () => {
     await pickCategory(utils, 'Groceries');
 
     expect(utils.queryByText('Select a category.')).toBeNull();
+  });
+
+  it('turns the Category label red with its error, and back once a category is picked', async () => {
+    const utils = await renderAdd();
+
+    expect(isLabelInvalid(mockFieldLabel, 'Category')).toBe(false);
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(isLabelInvalid(mockFieldLabel, 'Category')).toBe(true);
+
+    await pickCategory(utils, 'Groceries');
+
+    expect(isLabelInvalid(mockFieldLabel, 'Category')).toBe(false);
   });
 
   it('adds the same vertical gap above the category error that a text field has above its own', async () => {
@@ -1403,9 +1426,25 @@ describe('TransactionFormScreen — re-dating a possible balance-set row', () =>
 
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(
-      within(utils.getByTestId('transaction-time-error')).getByText(/^This entry/),
+      within(utils.getByTestId('transaction-time-error')).getByText(
+        /^This transaction was saved without a description or category, so it may be an earlier balance change\. Pick a date and time no later than /,
+      ),
     ).toBeTruthy();
     expect(utils.getByText(/no later than 30\.09\.2026 /)).toBeTruthy();
+  });
+
+  it('turns the Date and Time labels red with the reason', async () => {
+    const utils = await editRow();
+
+    await pickDate(utils, 2026, 10, 5);
+
+    expect(isLabelInvalid(mockFieldLabel, 'Date')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Time')).toBe(false);
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(isLabelInvalid(mockFieldLabel, 'Date')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Time')).toBe(true);
   });
 
   it('clears the reason once the time is moved back, and saves', async () => {
@@ -1416,6 +1455,8 @@ describe('TransactionFormScreen — re-dating a possible balance-set row', () =>
     await pickDate(utils, 2026, 9, 20);
 
     expect(utils.queryByTestId('transaction-time-error')).toBeNull();
+    expect(isLabelInvalid(mockFieldLabel, 'Date')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Time')).toBe(false);
 
     await fireEvent.press(utils.getByText('Save'));
 
@@ -1485,8 +1526,66 @@ describe('TransactionFormScreen — re-dating a possible balance-set row', () =>
     await fireEvent.press(utils.getByText('Зберегти'));
 
     expect(mockUpdate).not.toHaveBeenCalled();
-    expect(utils.getByText(/^Цей запис збережено без опису й категорії/)).toBeTruthy();
+    expect(
+      utils.getByText(
+        /^Цю транзакцію збережено без опису й категорії, тож вона може бути давнішою зміною балансу\. Оберіть дату й час не пізніше /,
+      ),
+    ).toBeTruthy();
     expect(utils.getByText(/не пізніше 30\.09\.2026 /)).toBeTruthy();
+  });
+
+  // The boundary matters only for a row the rule can block.
+  const boundaryQueryEnabled = (): unknown =>
+    mockUseLiveQuery.mock.calls
+      .filter(([query]) => (query as { __kind?: string }).__kind === 'balanceBoundary')
+      .at(-1)?.[2];
+
+  it('reads the boundary for a row saved with no description or category', async () => {
+    await editRow();
+
+    expect(boundaryQueryEnabled()).toBe(true);
+  });
+
+  it.each([
+    ['a marked row', { setsBalance: true }],
+    ['a row with a description', { description: 'Salary' }],
+    ['a row with a category', { category: 'groceries' }],
+  ])('does not read the boundary for %s', async (_name, difference) => {
+    await editRow(difference);
+
+    expect(boundaryQueryEnabled()).toBe(false);
+  });
+
+  // A fast Save before the boundary arrives would reach the repo's refusal
+  // instead of the field error.
+  it('disables Save while the boundary loads', async () => {
+    const utils = await editRow();
+    const loaded = mockUseLiveQuery.getMockImplementation();
+
+    mockUseLiveQuery.mockImplementation((query: unknown, ...rest: unknown[]) =>
+      (query as { __kind?: string }).__kind === 'balanceBoundary'
+        ? { data: [], isLoading: true }
+        : loaded?.(query, ...rest),
+    );
+    await utils.rerender(
+      <TransactionFormScreen
+        route={transactionFormRoute({ transactionId: 'old-row' })}
+        navigation={navigationProp}
+      />,
+    );
+
+    expect(utils.getByText('Save').parent?.props.accessibilityState.disabled).toBe(true);
+
+    await pickDate(utils, 2026, 10, 5);
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('enables Save once the boundary has loaded', async () => {
+    const utils = await editRow();
+
+    expect(utils.getByText('Save').parent?.props.accessibilityState.disabled).toBe(false);
   });
 });
 
@@ -3313,6 +3412,30 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
 
     expect(utils.queryByText('Enter a payment amount and at least one valid return.')).toBeNull();
+  });
+
+  // The split error renders under the return rows and judges every one of
+  // them, so every return row's labels turn red with it.
+  it('turns every return row label red with the split-returns error, and back once valid', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await pickCategory(utils, 'Groceries');
+
+    expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(true);
+
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
+
+    expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
   });
 
   it('does not write an otherwise-valid split until a category is picked', async () => {

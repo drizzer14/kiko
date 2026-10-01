@@ -74,6 +74,7 @@ import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { isBalanceSetShapedRow } from '@kiko/transactions/balance-set-row';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
@@ -486,16 +487,25 @@ const firstInvalidField = (
   errors: TransactionFieldErrors,
 ): SaveDisabledField | null => order.find((key) => errors[key] !== undefined) ?? null;
 
+// Only an unmarked row shaped like a balance-set row can hit the re-date rule
+// (`redatesPossibleBalanceSetRowPastBoundary`), so only its edit reads the
+// boundary.
+const needsRedateBoundary = (existing: TransactionRow | undefined): boolean =>
+  existing !== undefined && !existing.setsBalance && isBalanceSetShapedRow(existing);
+
 // The edited row's holding boundary, from the same two sources and the same
-// `balanceBoundaryOf` every balance writer judges a row by; null on a create.
-const useEditedRowBoundary = (existing: TransactionRow | undefined): number | null => {
-  const { data } = useLiveQuery(
+// `balanceBoundaryOf` every balance writer judges a row by; null when the row
+// cannot hit the re-date rule.
+const useEditedRowBoundary = (
+  existing: TransactionRow | undefined,
+): { boundary: number | null; isLoading: boolean } => {
+  const { data, isLoading } = useLiveQuery(
     transactionsRepo.balanceBoundaryQuery(existing?.holdingId ?? ''),
     ['holdings', 'transactions'],
-    existing !== undefined,
+    needsRedateBoundary(existing),
   );
 
-  return foldMap(maybe(data.at(0)), balanceBoundaryOf) ?? null;
+  return { boundary: foldMap(maybe(data.at(0)), balanceBoundaryOf) ?? null, isLoading };
 };
 
 // The boundary, when moving the edited row to `time` is the re-date
@@ -1270,13 +1280,14 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
       {props.descriptionSuggestions}
 
       {/* One error for the Date + Time pair, which together set the one
-        instant it judges — directly under the row, like the category's. */}
+        instant it judges — directly under the row, with both labels red. */}
       <View ref={props.timeFieldRef}>
         <Box gap={1}>
           <DateTimeRow
             time={props.time}
             onChangeTime={props.onChangeTime}
             disabled={props.isReadOnly}
+            invalid={props.timeError !== undefined}
             dateTestID="transaction-date-field"
             timeTestID="transaction-time-field"
           />
@@ -1316,7 +1327,8 @@ type SplitReturnsProps = {
   // The combined payment+returns validation-failure message, or `undefined`
   // when valid — rendered right after the mapped return rows, before the "Add
   // return" action, mirroring `TextField`'s own `error` contract even though
-  // this reason covers the whole return list rather than one field.
+  // this reason covers the whole return list rather than one field. Every
+  // return row's labels turn red with it, since it judges every row.
   error?: string;
   // The LAST return row's own wrapper ref — a SEPARATE ref from
   // `splitReturnsFieldRef` (the CALL SITE's own wrapper, anchoring the whole
@@ -1332,6 +1344,8 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
   if (!props.visible) {
     return null;
   }
+
+  const invalid = props.error !== undefined;
 
   return (
     <>
@@ -1360,6 +1374,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
               selectedId={row.holdingId}
               onSelect={(holdingId) => props.onSelectHolding(index, holdingId)}
               required
+              invalid={invalid}
             />
 
             <TextField
@@ -1370,6 +1385,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
               placeholder={props.t('forms.transaction.amountPlaceholder')}
               suffix={props.suffix}
               required
+              invalid={invalid}
             />
 
             {/* The delete-return control reuses the SAME shared Button the deposit
@@ -1419,6 +1435,13 @@ const showsSaveButton = (
   categoryChanged: boolean,
   converting: boolean,
 ): boolean => !isReadOnly || categoryChanged || converting;
+
+// Save disables while a submit is in flight, and while the edited row's
+// boundary loads: the re-date rule needs it, and a Save before it arrives would
+// reach the repo's refusal instead of the field error. Module-level for the
+// same cognitive-complexity-budget reason as `showsSaveButton` above.
+const isSaveDisabled = (isSubmitting: boolean, isBoundaryLoading: boolean): boolean =>
+  isSubmitting || isBoundaryLoading;
 
 // Whether the loan-payment field renders: an EXISTING debit row only (manual
 // or synced alike — `setLoanPayment`/`undoAutoLoanLink` carry no source
@@ -1483,8 +1506,8 @@ type ModeAndActionsProps = {
   isEditing: boolean;
   t: TFunction;
   // The category picker's own validation-failure message, or `undefined` when
-  // valid — rendered directly after the `CategoryField`, which is also
-  // wrapped in `categoryFieldRef` for scroll-to-invalid.
+  // valid — the `CategoryField` renders it under itself and turns its label
+  // red; the field is wrapped in `categoryFieldRef` for scroll-to-invalid.
   categoryError?: string;
   categoryFieldRef?: RefObject<FieldInstance | null>;
   loanFieldVisible: boolean;
@@ -1515,21 +1538,18 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         fixed, auto-generated copy. */}
       {!props.isExchange && (
         <View ref={props.categoryFieldRef}>
-          <Box gap={1}>
-            <CategoryField
-              label={props.t('forms.transaction.category')}
-              sheetTitle={props.t('forms.transaction.categorySheetTitle')}
-              testID="transaction-category-field"
-              options={props.categoryOptions}
-              selectedKey={props.selectedCategory}
-              onSelect={props.onSelectCategory}
-              // A category is required only on a fresh add (`plainFieldErrors`
-              // gates a create on it); an edit leaves the category optional.
-              required={!props.isEditing}
-            />
-
-            {props.categoryError !== undefined && <FieldError message={props.categoryError} />}
-          </Box>
+          <CategoryField
+            label={props.t('forms.transaction.category')}
+            sheetTitle={props.t('forms.transaction.categorySheetTitle')}
+            testID="transaction-category-field"
+            options={props.categoryOptions}
+            selectedKey={props.selectedCategory}
+            onSelect={props.onSelectCategory}
+            // A category is required only on a fresh add (`plainFieldErrors`
+            // gates a create on it); an edit leaves the category optional.
+            required={!props.isEditing}
+            error={props.categoryError}
+          />
         </View>
       )}
 
@@ -1670,7 +1690,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the form as editing the source row.
   const existing = editingId ? matchedTransactions.at(0) : undefined;
   const duplicateSource = duplicateOfId ? matchedTransactions.at(0) : undefined;
-  const editedRowBoundary = useEditedRowBoundary(existing);
+  const { boundary: editedRowBoundary, isLoading: isBoundaryLoading } =
+    useEditedRowBoundary(existing);
   const clock = useTimeClock();
 
   // The category picker's options come from the categories live query (a rename
@@ -2626,7 +2647,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         }}
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
-            <Button onPress={onSave} disabled={isSubmitting}>
+            <Button onPress={onSave} disabled={isSaveDisabled(isSubmitting, isBoundaryLoading)}>
               {t('common.save')}
             </Button>
           ) : undefined

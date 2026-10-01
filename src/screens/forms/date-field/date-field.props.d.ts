@@ -29,6 +29,9 @@ export type DateFieldProps = {
   // per-field outline — see text-field.component.tsx's own doc comment). REFLOW, not
   // reserve: no error node at all while valid.
   error?: string;
+  // Tints the label negative with no error line of its own, for a field whose
+  // one error renders under its whole group (DateTimeRow). Defaults to false.
+  invalid?: boolean;
   // An optional testID applied to the field's Pressable trigger, so a flow can
   // open the picker sheet deterministically. When set, the FieldError message
   // (when shown) additionally takes `${testID}-error`, matching TextField's

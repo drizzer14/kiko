@@ -1095,7 +1095,17 @@ new component can land between reviews of this skill:
   from that field's own `error` prop) at the same press, not just one
   — the first-invalid field in the form's top-to-bottom order is used
   ONLY to pick the scroll target, a SEPARATE concern from which fields
-  turn red. Save/Import is never disabled for VALIDATION; it validates
+  turn red. A picker field takes the message through its own `error`
+  prop (`CategoryField`, `HoldingSelectField`, forwarded to
+  `FieldTrigger`), never a caller-rendered `FieldError` beside it,
+  which leaves its label grey. One error that judges a GROUP of fields
+  renders once under the group, and every field in the group turns its
+  label red through the label-only `invalid` prop (`DateTimeRow`, which
+  passes it to `DateField` and `TimeField`; `TextField`; `FieldTrigger`
+  and `HoldingSelectField`). `invalid` never renders a message and is
+  never set beside `error`. In the transaction form: the re-date error
+  under the Date and Time row (both labels), and the split-returns error
+  under the return rows (every row's "Return to N" and "Return N"). Save/Import is never disabled for VALIDATION; it validates
   on press. It disables only while a submit is in flight, or when an
   edit's saved value depends on data still loading (the holding form's
   edit waits for the price book, kiko-pricing). Every form composes this instead of hand-rolling its own

@@ -3,8 +3,17 @@ import { act, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 
 import ExchangeFields from './exchange-fields.component';
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 const noop = (): void => {};
 
@@ -72,6 +81,7 @@ describe('ExchangeFields', () => {
     const { getByText } = await setup({ destinationError: 'Select a destination account.' });
 
     expect(getByText('Select a destination account.')).toBeTruthy();
+    expect(isLabelInvalid(mockFieldLabel, 'To')).toBe(true);
   });
 
   it('adds the same vertical gap above the destination error that a text field has above its own', async () => {

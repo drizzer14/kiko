@@ -3,8 +3,17 @@ import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 
 import DateTimeRow from './date-time-row.component';
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 const noop = (): void => {};
 
@@ -60,5 +69,19 @@ describe('DateTimeRow', () => {
 
     expect(getByTestId('row-date-field')).toBeTruthy();
     expect(getByTestId('row-time-field')).toBeTruthy();
+  });
+
+  it('keeps both labels plain by default', async () => {
+    await render(<DateTimeRow time={0} onChangeTime={noop} />);
+
+    expect(isLabelInvalid(mockFieldLabel, 'Date')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Time')).toBe(false);
+  });
+
+  it('turns both labels red when invalid', async () => {
+    await render(<DateTimeRow time={0} onChangeTime={noop} invalid />);
+
+    expect(isLabelInvalid(mockFieldLabel, 'Date')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Time')).toBe(true);
   });
 });

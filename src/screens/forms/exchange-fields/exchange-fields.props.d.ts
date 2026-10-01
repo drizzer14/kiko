@@ -23,10 +23,9 @@ export type ExchangeFieldsProps = {
   time: number;
   onChangeTime: (timestamp: number) => void;
   // Per-field validation-failure messages, or `undefined` when valid — mirrors
-  // TextField's own `error` contract (text-field.props.d.ts). `destinationError`
-  // has no matching border (HoldingSelectField is a picker trigger, not a
-  // TextField) but still renders directly under its own field, never in the
-  // screen's footer.
+  // TextField's own `error` contract (text-field.props.d.ts): each renders
+  // directly under its own field and turns that field's label red, never in
+  // the screen's footer.
   valueOutError?: string;
   destinationError?: string;
   valueInError?: string;

@@ -190,7 +190,6 @@ const readAnchoredHoldingDatabaseTransaction = async (
 
 const writeBalanceDeltaDatabaseTransaction = async (
   databaseTransaction: typeof database,
-  holdingId: string,
   holding: HoldingRow,
   delta: number,
 ): Promise<void> => {
@@ -201,7 +200,7 @@ const writeBalanceDeltaDatabaseTransaction = async (
   await databaseTransaction
     .update(holdings)
     .set({ balanceMinorUnits: holding.balanceMinorUnits + delta })
-    .where(eq(holdings.id, holdingId));
+    .where(eq(holdings.id, holding.id));
 };
 
 /** Move a holding's stored balance by `deltaFor(boundary, holding)`, so a
@@ -219,7 +218,6 @@ const moveBalanceDatabaseTransaction = async (
 
   await writeBalanceDeltaDatabaseTransaction(
     databaseTransaction,
-    holdingId,
     anchored.holding,
     deltaFor(anchored.boundary, anchored.holding),
   );
@@ -1251,7 +1249,6 @@ export const transactionsRepo = {
       if (anchored !== undefined) {
         await writeBalanceDeltaDatabaseTransaction(
           databaseTransaction,
-          existing.holdingId,
           anchored.holding,
           editBalanceDelta(
             existing,

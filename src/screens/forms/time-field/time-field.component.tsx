@@ -6,6 +6,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import SymbolIcon from '@kiko/design-system/components/symbol';
+import FieldLabel from '@kiko/design-system/components/field-label';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
@@ -41,6 +42,7 @@ const TimeField: FC<TimeFieldProps> = ({
   onChange,
   placeholder,
   disabled = false,
+  invalid = false,
   testID,
 }) => {
   const { theme } = useUnistyles();
@@ -57,9 +59,7 @@ const TimeField: FC<TimeFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <Text variant="caption" tone="textSecondary">
-        {label}
-      </Text>
+      <FieldLabel label={label} invalid={invalid} />
 
       <Pressable
         accessibilityRole="button"

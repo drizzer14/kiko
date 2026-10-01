@@ -19,6 +19,9 @@ export type TimeFieldProps = {
   // TextField treatment. A synced (Monobank) transaction's time uses this so its
   // bank-owned time cannot be changed.
   disabled?: boolean;
+  // Tints the label negative, for a field whose one error renders under its
+  // whole group (DateTimeRow). Defaults to false.
+  invalid?: boolean;
   // An optional testID applied to the field's Pressable trigger, so a flow can
   // open the picker sheet deterministically.
   testID?: string;

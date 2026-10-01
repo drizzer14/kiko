@@ -33,6 +33,7 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   disabled = false,
   hideLabel = false,
   error,
+  invalid = false,
   testID,
 }) => {
   const { theme } = useUnistyles();
@@ -42,7 +43,7 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
 
   return (
     <Box gap={1}>
-      {!hideLabel && <FieldLabel label={label} required={required} invalid={hasError} />}
+      {!hideLabel && <FieldLabel label={label} required={required} invalid={hasError || invalid} />}
 
       <Pressable
         accessibilityRole="button"

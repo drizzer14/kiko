@@ -1,10 +1,19 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import '@kiko/design-system/unistyles';
 import HoldingSelectField from '.';
 import type { HoldingSelectOption, HoldingSelectFieldProps } from './holding-select-field.props';
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 const options: HoldingSelectOption[] = [
   {
@@ -89,6 +98,20 @@ describe('HoldingSelectField', () => {
     const { getByText } = await renderHoldingSelectField({ required: true });
 
     expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('shows its error under the field and turns the label red', async () => {
+    const { getByText } = await renderHoldingSelectField({ error: 'Select a destination.' });
+
+    expect(getByText('Select a destination.')).toBeTruthy();
+    expect(isLabelInvalid(mockFieldLabel, 'To')).toBe(true);
+  });
+
+  it('turns the label red with no error line of its own when invalid', async () => {
+    const { queryByText } = await renderHoldingSelectField({ invalid: true });
+
+    expect(isLabelInvalid(mockFieldLabel, 'To')).toBe(true);
+    expect(queryByText(/\.$/)).toBeNull();
   });
 
   it("shows each option's parent account name in the sheet", async () => {
