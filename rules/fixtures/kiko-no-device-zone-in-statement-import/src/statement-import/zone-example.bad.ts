@@ -35,6 +35,22 @@ export const fixtureBadLocaleString = (date: Date): string =>
   // EXPECT-FINDING
   date.toLocaleString('uk-UA');
 
+export const fixtureBadNewDateLocaleString = (milliseconds: number): string =>
+  // EXPECT-FINDING
+  new Date(milliseconds).toLocaleString('uk-UA');
+
+export const fixtureBadStringCall = (date: Date): string =>
+  // EXPECT-FINDING
+  String(date);
+
+export const fixtureBadTemplateText = (date: Date): string =>
+  // EXPECT-FINDING
+  `at ${date}`;
+
+export const fixtureBadConcatenation = (date: Date): string =>
+  // EXPECT-FINDING
+  '' + date;
+
 export const fixtureBadLocaleDateString = (date: Date): string =>
   // EXPECT-FINDING
   date.toLocaleDateString();

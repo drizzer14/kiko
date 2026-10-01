@@ -242,7 +242,9 @@ rule (`kiko-no-device-zone-in-statement-import`, same file and scope)
 bans every other device-zone read there: a local `Date` getter or setter
 (`getHours`, `setHours`, …), `getTimezoneOffset`, `Date.parse`, a
 string, string-variable, or template-literal `new Date(...)`, a
-`toLocale*`/`toString`/`toDateString`/`toTimeString` render, an
+`toLocale*` render with no `timeZone` option, a
+`toString`/`toDateString`/`toTimeString` render, a `Date` turned into
+text by `String(...)`, a template literal, or `+`, an
 `Intl.DateTimeFormat` with no `timeZone`, and `@kiko/dates`'s
 `parseLocalDate`/`startOfLocalDay`/`endOfLocalDay`. Read stored digits
 with `utcDigitsOf`, and an instant's wall clock in a zone with

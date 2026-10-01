@@ -14,6 +14,18 @@ export const fixtureGoodLabel = (milliseconds: number): string => formatDate(mil
 
 export const fixtureGoodNumberText = (amount: number): string => amount.toString();
 
+export const fixtureGoodAmountLocaleString = (amount: number): string =>
+  amount.toLocaleString('uk-UA');
+
+export const fixtureGoodZonedLocaleString = (date: Date): string =>
+  date.toLocaleString('uk-UA', { timeZone: 'UTC' });
+
+export const fixtureGoodAmountStringCall = (amount: number): string => String(amount);
+
+export const fixtureGoodAmountTemplate = (amount: number): string => `${amount} UAH`;
+
+export const fixtureGoodAmountConcatenation = (amount: number): string => '' + amount;
+
 export const fixtureGoodInstantCopy = (milliseconds: number): Date => new Date(milliseconds);
 
 export const fixtureGoodZonedFormat = (): Intl.DateTimeFormat =>

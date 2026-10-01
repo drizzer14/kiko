@@ -1086,14 +1086,19 @@ rules:
   # `kiko-no-date-utc-in-statement-import`'s; this rule covers the other ways
   # a device-zone read slips back in — a local `Date` getter or setter,
   # `getTimezoneOffset`, `Date.parse`, a string, string-variable, or
-  # template-literal `new Date(...)`, a `toLocale*`/`toString`/
-  # `toDateString`/`toTimeString` render, an `Intl.DateTimeFormat` with no
-  # `timeZone`, and the `@kiko/dates` local-day helpers. A
-  # `new Date(text)` whose argument TypeScript cannot type as `string`
-  # (an untyped `TableCell`, say) is not caught. The display formatters
-  # (`formatDate`, used by preview-stats) stay allowed: they only render a
-  # stored instant, never produce one. `paths.include` is path-prefixed, so
-  # the fixture pair is NESTED. ERROR: the tree has no finding.
+  # template-literal `new Date(...)`, a `toLocale*` render with no
+  # `timeZone` option, a `toString`/`toDateString`/`toTimeString` render, a
+  # `Date` turned into text by `String(...)`, a template literal, or `+`, an
+  # `Intl.DateTimeFormat` with no `timeZone`, and the `@kiko/dates`
+  # local-day helpers. The `toLocale*`, `String`, template, and `+` patterns
+  # are typed, so a number's `toLocaleString` stays allowed; the cost is
+  # that a `Date` whose type Semgrep cannot see (an `any`, say) is not
+  # caught there. A `new Date(text)` whose argument TypeScript cannot type
+  # as `string` (an untyped `TableCell`, say) is not caught either. The
+  # display formatters (`formatDate`, used by preview-stats) stay allowed:
+  # they only render a stored instant, never produce one. `paths.include` is
+  # path-prefixed, so the fixture pair is NESTED. ERROR: the tree has no
+  # finding.
   - id: kiko-no-device-zone-in-statement-import
     languages: [typescript]
     severity: ERROR
@@ -1102,7 +1107,9 @@ rules:
       never the device's own, so a row's dedup key stays the same wherever
       the phone is. A local `Date` getter/setter, `getTimezoneOffset`,
       `Date.parse`, a string or template-literal `new Date(...)`, a
-      `toLocale*`/`toString`/`toDateString`/`toTimeString` call, an
+      `toLocale*` call with no `timeZone`, a
+      `toString`/`toDateString`/`toTimeString` call, a `Date` turned into
+      text by `String(...)`, a template literal, or `+`, an
       `Intl.DateTimeFormat` with no `timeZone`, `parseLocalDate`, or
       `startOfLocalDay`/`endOfLocalDay` reads the device zone.
     metadata:
@@ -1124,9 +1131,18 @@ rules:
       - pattern: new Date("...")
       - pattern: new Date(`...`)
       - pattern: "new Date(($TEXT: string))"
-      - pattern: $DATE.toLocaleString(...)
-      - pattern: $DATE.toLocaleDateString(...)
-      - pattern: $DATE.toLocaleTimeString(...)
+      - patterns:
+          - pattern-either:
+              - pattern: "($DATE: Date).$RENDER(...)"
+              - pattern: new Date(...).$RENDER(...)
+          - metavariable-regex:
+              metavariable: $RENDER
+              regex: ^toLocale(Date|Time)?String$
+          - pattern-not: "$RECEIVER.$RENDER($LOCALE, {..., timeZone: $ZONE, ...})"
+      - pattern: "String(($DATE: Date))"
+      - pattern: "`...${($DATE: Date)}...`"
+      - pattern: "$TEXT + ($DATE: Date)"
+      - pattern: "($DATE: Date) + $TEXT"
       - pattern: $DATE.toDateString()
       - pattern: $DATE.toTimeString()
       - pattern: new Date(...).toString()
