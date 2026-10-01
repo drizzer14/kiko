@@ -67,9 +67,40 @@ final class KikoNotificationDelegate: NSObject, UNUserNotificationCenterDelegate
       trigger: UNCalendarNotificationTrigger(dateMatching: fireAt, repeats: false)
     )
 
+    // iOS can run this action with no JS at all (the app killed, or the
+    // device locked), and JS may not re-plan before the next fire. The snooze
+    // stands in for the regular request at its minute, so that one would fire
+    // twice; and a snooze restarts the ignored count, so the paused notice JS
+    // planned would come a fire early. JS plans both again on its next re-plan.
+    center.removePendingNotificationRequests(
+      withIdentifiers: Self.requestsReplacedBySnooze(of: reminderId, at: fireAt)
+    )
+
     center.add(request) { _ in
       completion()
     }
+  }
+
+  // The identifiers JS gives the regular request at a minute and the paused
+  // notice (`plan-reminder.ts`): the reminder id, then the local fire minute as
+  // yyyyMMddHHmm, or "paused".
+  static func requestsReplacedBySnooze(of reminderId: String, at fireAt: DateComponents) -> [String] {
+    let prefix = KikoRemindersCenter.reminderIdentifierPrefix + reminderId + "."
+    let pausedNotice = prefix + "paused"
+
+    guard
+      let year = fireAt.year,
+      let month = fireAt.month,
+      let day = fireAt.day,
+      let hour = fireAt.hour,
+      let minute = fireAt.minute
+    else {
+      return [pausedNotice]
+    }
+
+    let fireStamp = String(format: "%ld%02ld%02ld%02ld%02ld", year, month, day, hour, minute)
+
+    return [prefix + fireStamp, pausedNotice]
   }
 
   // The scheduled trigger's own hour and minute are preferred over the
