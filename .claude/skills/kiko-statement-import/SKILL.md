@@ -103,15 +103,25 @@ synced row of the same holding and the same amount dated within ±60 s
 (`dropRowsHeldBySync`): it is not inserted and adds nothing to the
 balance. One synced row stands for one statement row. Pairing is a sweep
 per amount, never in file order: the statement rows claim in order of
-where their reach ends (timed rows first), and each takes the EARLIEST
-unclaimed same-amount synced row in its reach. That holds as many
-statement rows as any pairing can. A nearest-first pairing does not: at
-the edge of the synced period it can give a synced row to the nearer of
-two statement rows and strand the other one's only match, so a row the
-bank already synced goes in twice. When only one of two statement rows
-can be held, the earlier one is held. The sweep builds no pair list:
-each amount's synced times stay sorted, and a binary search finds the
-first one in reach. `importParsedStatement` hands
+where their reach ends, and each takes the EARLIEST unclaimed same-amount
+synced row in its reach. The reach end is the only primary key; a
+date-only row claims after a timed row only where both reaches end at the
+same instant. That holds as many statement rows as any pairing can. A
+nearest-first pairing does not: at the edge of the synced period it can
+give a synced row to the nearer of two statement rows and strand the
+other one's only match, so a row the bank already synced goes in twice.
+Neither does putting every timed row first: a timed row at 23:59:30 can
+take the synced 23:59:00 row that a date-only row of that day needed,
+although a synced 00:00:20 row the next day was in the timed row's reach
+too. When only one of two statement rows can be held, the earliest row in
+reach claims, and the later one goes in and counts toward the balance.
+That is correct, not a tie-break: the sync is complete up to its newest
+synced row, so a statement row before it with no synced twin cannot be a
+real extra; the earlier row is the synced row's twin, and the later one
+is a real purchase after the disconnect. The sweep builds no pair list:
+each amount's synced times stay sorted, and a linear scan finds the first
+one in reach (taking it out of the list is linear anyway).
+`importParsedStatement` hands
 `ParsedTransaction.timeReading` to `importRows` unchanged; the repository
 converts its seconds itself. A row
 whose clock is coarser than a second carries `ParsedTransaction.timeReading`:
@@ -123,8 +133,10 @@ whose clock is coarser than a second carries `ParsedTransaction.timeReading`:
   `date-formats.ts` reads the bounds from local midnight to the next one
   in the mapping's zone, 23 or 25 hours on a summer-time switch day): it
   is held only by a synced row of the same amount on that same local day,
-  with no ±60 s widening, and it claims after every timed row, which
-  places the same purchase more precisely. Two equal date-only rows on
+  with no ±60 s widening. Its reach ends at local midnight, so it claims
+  before a timed row whose reach runs past it, and after one whose reach
+  ends sooner; only on an exact tie does the timed row, which places the
+  same purchase more precisely, claim first. Two equal date-only rows on
   one day against one synced row drop only one. A day after the newest
   synced row has no synced row of its own, so its rows always go in.
 Rows an earlier build already imported over synced ones stay; no

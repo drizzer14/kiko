@@ -136,15 +136,18 @@ describe('a statement row a synced row already holds', () => {
   });
 
   it('goes to the earliest statement row in reach, even one dated before the synced row', async () => {
+    // The sync is complete up to its newest row, so a statement row before it
+    // with no synced twin cannot exist: the earlier row is the synced fare.
     await transactionsRepo.importRows({
       holdingId: 'card',
       rows: [
-        statementRow('synced-fare', -5_000, SYNCED_AT + 10 * SECOND),
-        statementRow('unsynced-earlier', -5_000, SYNCED_AT - 20 * SECOND),
+        statementRow('real-next-fare', -5_000, SYNCED_AT + 10 * SECOND),
+        statementRow('synced-fare', -5_000, SYNCED_AT - 20 * SECOND),
       ],
     });
 
     expect(importedTimes()).toEqual([SYNCED_AT + 10 * SECOND]);
+    expect(balance()).toBe(95_000);
   });
 
   it('holds every statement row a pairing can hold, even where the nearest pair would strand one', async () => {
@@ -250,6 +253,26 @@ describe('a date-only statement row', () => {
     });
 
     expect(importedTimes()).toEqual([Date.UTC(2026, 8, 20, 9)]);
+  });
+
+  it('claims before a timed row whose reach ends later, so both are held', async () => {
+    // 23:59:00 Kyiv on 20 September, and 00:00:20 Kyiv on the 21st.
+    run("UPDATE transactions SET time = ? WHERE id = 'synced'", Date.UTC(2026, 8, 20, 20, 59));
+    run(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id) VALUES ('synced-after-midnight', 'card', -5000, ?, 'monobank', 'bank-after-midnight-id')",
+      Date.UTC(2026, 8, 20, 21, 0, 20),
+    );
+
+    const imported = await transactionsRepo.importRows({
+      holdingId: 'card',
+      rows: [
+        statementRow('timed', -5_000, Date.UTC(2026, 8, 20, 20, 59, 30)),
+        dateOnlyStatementRow('date-only', -5_000, 20),
+      ],
+    });
+
+    expect(imported).toBe(0);
+    expect(balance()).toBe(100_000);
   });
 });
 

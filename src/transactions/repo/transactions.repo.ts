@@ -156,7 +156,7 @@ const setsBalanceAtBoundary = (
 const editBalanceDelta = (
   existing: StoredManualRow,
   edited: DatedAmount,
-  { balanceSetAt }: HoldingRow,
+  balanceSetAt: number | null,
   boundary: number | null,
 ): number => {
   if (setsBalanceAtBoundary(existing, balanceSetAt, boundary)) {
@@ -195,12 +195,12 @@ const readAnchoredHoldingDatabaseTransaction = async (
   }));
 };
 
-/** Move a holding's stored balance by `deltaFor(boundary, holding)`, so a
+/** Move a holding's stored balance by `deltaFor(boundary, balanceSetAt)`, so a
  * manual write judges its row against the same boundary an import does. */
 const moveBalanceDatabaseTransaction = async (
   databaseTransaction: typeof database,
   holdingId: string,
-  deltaFor: (boundary: number | null, holding: HoldingRow) => number,
+  deltaFor: (boundary: number | null, balanceSetAt: number | null) => number,
 ): Promise<void> => {
   const anchored = await readAnchoredHoldingDatabaseTransaction(databaseTransaction, holdingId);
 
@@ -208,7 +208,7 @@ const moveBalanceDatabaseTransaction = async (
     return;
   }
 
-  const delta = deltaFor(anchored.boundary, anchored.holding);
+  const delta = deltaFor(anchored.boundary, anchored.holding.balanceSetAt);
 
   if (delta === 0) {
     return;
@@ -468,12 +468,15 @@ const MINUTE_CLOCK_LAST_SECOND_MILLISECONDS = 59_000;
 type SyncedRow = { time: number; amountMinorUnits: number };
 
 /** The first and last instant a row's clock reading allows, how far from them
- * a synced row of the same purchase can be, and when the row claims. */
+ * a synced row of the same purchase can be, and which of two rows whose reach
+ * ends at the same instant claims first. */
 type ClockRange = { earliest: number; latest: number; window: number; claimOrder: number };
 
 // A timed reading and the sync stamp one purchase seconds apart. A date-only
-// reading is held by a synced row of its own local day only, and claims after
-// every timed reading, which places the same purchase more precisely.
+// reading is held by a synced row of its own local day only. Where its reach
+// ends together with a timed reading's, it claims after it, which places the
+// same purchase more precisely; it never claims ahead of a row whose reach ends
+// sooner, since that can strand the only synced row the earlier one reaches.
 const clockRangeOf = ({ time, timeReading }: ImportRow): ClockRange =>
   match(timeReading)
     .with(undefined, () => ({
@@ -503,8 +506,8 @@ const reachStartOf = ({ earliest, window }: ClockRange): number => earliest - wi
 const reachEndOf = ({ latest, window }: ClockRange): number => latest + window;
 
 const byClaimTurn = (left: RangedRow, right: RangedRow): number =>
-  left.range.claimOrder - right.range.claimOrder ||
   reachEndOf(left.range) - reachEndOf(right.range) ||
+  left.range.claimOrder - right.range.claimOrder ||
   reachStartOf(left.range) - reachStartOf(right.range);
 
 /** Each amount's synced times, ascending. */
@@ -525,30 +528,14 @@ const syncedTimesByAmount = (synced: SyncedRow[]): Map<number, number[]> => {
   return byAmount;
 };
 
-const firstIndexAtOrAfter = (ascendingTimes: number[], time: number): number => {
-  let low = 0;
-  let high = ascendingTimes.length;
-
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-
-    if (ascendingTimes[middle] < time) {
-      low = middle + 1;
-    } else {
-      high = middle;
-    }
-  }
-
-  return low;
-};
-
 /** Whether `row` takes the earliest unclaimed same-amount synced time in its
  * reach; a taken time leaves `unclaimed`. */
 const claimsSyncedTime = (unclaimed: Map<number, number[]>, { row, range }: RangedRow): boolean => {
   const times = unclaimed.get(row.amountMinorUnits) ?? [];
-  const index = firstIndexAtOrAfter(times, reachStartOf(range));
+  const reachStart = reachStartOf(range);
+  const index = times.findIndex((time) => time >= reachStart);
 
-  if (index === times.length || times[index] > reachEndOf(range)) {
+  if (index === -1 || times[index] > reachEndOf(range)) {
     return false;
   }
 
@@ -1223,8 +1210,8 @@ export const transactionsRepo = {
       await moveBalanceDatabaseTransaction(
         databaseTransaction,
         existing.holdingId,
-        (boundary, holding) =>
-          editBalanceDelta(existing, { amountMinorUnits, time }, holding, boundary),
+        (boundary, balanceSetAt) =>
+          editBalanceDelta(existing, { amountMinorUnits, time }, balanceSetAt, boundary),
       );
     }),
   /**

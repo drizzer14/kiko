@@ -236,8 +236,8 @@ sits exactly at its own anchor, so deleting it leaves the balance
 unchanged. An edit of it moves the balance by the amount difference
 (new − old, `editBalanceDelta`) whatever its new date, so a re-date alone
 never moves the balance: an opening balance edited from 50,000 to 60,000
-leaves the balance at 60,000, re-dated earlier or later. Nothing stores
-which row set the balance, so `update` picks it out
+leaves the balance at 60,000, re-dated earlier or later in the same edit.
+Nothing stores which row set the balance, so `update` picks it out
 (`setsBalanceAtBoundary`): its time equals the boundary AND
 `holdings.balanceSetAt`, and it has the balance-set row shape
 (`isBalanceSetShapedRow`, `src/transactions/balance-set-row/`, the same
@@ -250,6 +250,16 @@ balance-set row: it belongs to that anchor, the same as
 nothing. A
 closing balance AS OF exactly the boundary still applies (`>=`): it is
 an anchor, not a row.
+
+Known limit, open until a stored "sets the balance" marker lands: the
+identity is the row's TIME, so a re-date loses it. Once the balance-set
+row is saved at another date, a later edit judges it as an ordinary row.
+Two two-step repros, from an opening balance of 50,000 at `T0`: re-date it
+earlier, then edit the amount to 60,000, and the balance stays 50,000
+(both sides sit before the boundary); re-date it later, then back to
+`T0`, and the balance drops to 0 (the later side counted, the `T0` side
+does not). Re-stamping `balanceSetAt` on a re-date is not the fix: it
+would re-judge every row between the old and the new date.
 
 ## Statement import moves the target holding's balance too
 
