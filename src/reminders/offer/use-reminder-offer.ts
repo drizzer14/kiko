@@ -47,8 +47,9 @@ const kindOf = (trigger: ReminderOfferTrigger): ReminderKind =>
  * The in-app offer to set up a reminder, after an import or on the second
  * manual entry in 30 days. It shows only while the account is not archived
  * (its reminder would never be sent), can have that kind, has none yet, and
- * the user has neither dismissed it there nor deleted a reminder of that kind
- * there (a paused reminder still counts as one). The trigger's own read waits
+ * the user has neither answered it there ("Set up" and "Not now" both record
+ * the answer through `dismiss`) nor deleted a reminder of that kind there (a
+ * paused reminder still counts as one). The trigger's own read waits
  * for that, so a decided offer costs no transactions read, and a synced
  * account never reads its manual entries.
  */
