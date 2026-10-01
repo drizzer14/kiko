@@ -2,8 +2,10 @@ import {
   currentQuota,
   markUsedUp,
   type QuoteQuota,
+  type QuotaSettlement,
   refreshAllowance,
   reserve,
+  settle,
   withUserLimits,
 } from './quote-quota';
 
@@ -72,6 +74,49 @@ describe('markUsedUp', () => {
 
   it('keeps a count already past the limit', () => {
     expect(markUsedUp(quota({ calls: 22 }))).toEqual(quota({ calls: 22 }));
+  });
+});
+
+describe('settle', () => {
+  const settlement = (overrides: Partial<QuotaSettlement> = {}): QuotaSettlement => ({
+    day: OCTOBER_1,
+    reserved: 3,
+    spent: 2,
+    unanswered: ['SAP.XETRA'],
+    usedUp: false,
+    ...overrides,
+  });
+
+  it('gives back the reserved calls never spent and the symbols never asked about', () => {
+    expect(
+      settle(quota({ calls: 8, symbols: ['AAPL.US', 'VOD.LSE', 'SAP.XETRA'] }), settlement()),
+    ).toEqual(quota({ calls: 7, symbols: ['AAPL.US', 'VOD.LSE'] }));
+  });
+
+  it('keeps the daily limit and count stored since the refresh began', () => {
+    expect(settle(quota({ calls: 9, dailyLimit: 100 }), settlement({ unanswered: [] }))).toEqual(
+      quota({ calls: 8, dailyLimit: 100 }),
+    );
+  });
+
+  it('never counts below zero', () => {
+    expect(settle(quota({ calls: 1 }), settlement({ spent: 0, unanswered: [] }))).toEqual(
+      quota({ calls: 0 }),
+    );
+  });
+
+  it('marks the day used up when EODHD reported the daily limit', () => {
+    expect(settle(quota({ calls: 8 }), settlement({ usedUp: true }))).toEqual(quota({ calls: 20 }));
+  });
+
+  it('leaves a quota stored for another UTC day alone', () => {
+    const nextDay = quota({ day: OCTOBER_1 + DAY_MS, calls: 1 });
+
+    expect(settle(nextDay, settlement({ usedUp: true }))).toEqual(nextDay);
+  });
+
+  it('leaves no stored quota as none', () => {
+    expect(settle(null, settlement())).toBeNull();
   });
 });
 

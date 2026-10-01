@@ -12,7 +12,21 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { saveShareRefresh } from './share-refresh-write';
 
 const DAY = Date.UTC(2026, 8, 30);
-const QUOTA = { day: Date.UTC(2026, 9, 1), calls: 2, dailyLimit: 20, symbols: ['VOD.LSE'] };
+const TODAY = Date.UTC(2026, 9, 1);
+// A key saved during the refresh stored its own limit and EODHD's count.
+const STORED_QUOTA = {
+  day: TODAY,
+  calls: 9,
+  dailyLimit: 100,
+  symbols: ['VOD.LSE', 'SAP.XETRA'],
+};
+const SETTLEMENT = {
+  day: TODAY,
+  reserved: 3,
+  spent: 2,
+  unanswered: ['SAP.XETRA'],
+  usedUp: false,
+};
 const LOT = { day: DAY, quantityDelta: '10', costMinorUnits: 1500 };
 const VOD_ROW = {
   instrument: 'share:VOD.LSE',
@@ -26,7 +40,9 @@ const openDatabase = (metadata: Record<string, unknown>): DatabaseSync => {
   const database = new DatabaseSync(':memory:');
 
   applyAllMigrations(database);
-  database.exec('INSERT INTO settings (id) VALUES (1)');
+  database
+    .prepare('INSERT INTO settings (id, quote_quota) VALUES (1, ?)')
+    .run(JSON.stringify(STORED_QUOTA));
   database.exec("INSERT INTO accounts (id, name, kind) VALUES ('broker-1', 'Broker', 'broker')");
   database
     .prepare(
@@ -57,22 +73,22 @@ const handTyped = { quoteSource: 'eodhd', symbol: 'VOD.LSE', lots: [LOT] };
 const unit = { holdingId: 'share-1', symbol: 'VOD.LSE', quoteCurrency: 'GBX' };
 
 describe('saveShareRefresh', () => {
-  it('stores the closes, the resolved unit, and the quota', async () => {
+  it('stores the closes and the resolved unit, and settles the calls on the stored quota', async () => {
     mockDatabase = openDatabase(handTyped);
 
-    await saveShareRefresh({ rows: [VOD_ROW], units: [unit], quota: QUOTA });
+    await saveShareRefresh({ rows: [VOD_ROW], units: [unit], settlement: SETTLEMENT });
 
     expect(mockDatabase.prepare('SELECT instrument, day, price FROM price_points').all()).toEqual([
       { instrument: 'share:VOD.LSE', day: DAY, price: '1.227' },
     ]);
     expect(storedMetadata()).toEqual({ ...handTyped, quoteCurrency: 'GBX' });
-    expect(storedQuota()).toEqual(QUOTA);
+    expect(storedQuota()).toEqual({ ...STORED_QUOTA, calls: 8, symbols: ['VOD.LSE'] });
   });
 
   it('keeps a unit the share already has', async () => {
     mockDatabase = openDatabase({ ...handTyped, quoteCurrency: 'GBP' });
 
-    await saveShareRefresh({ rows: [], units: [unit], quota: QUOTA });
+    await saveShareRefresh({ rows: [], units: [unit], settlement: SETTLEMENT });
 
     expect(storedMetadata()).toEqual({ ...handTyped, quoteCurrency: 'GBP' });
   });
@@ -80,7 +96,7 @@ describe('saveShareRefresh', () => {
   it('leaves a share whose symbol was edited since the refresh read it', async () => {
     mockDatabase = openDatabase({ ...handTyped, symbol: 'VOD.US' });
 
-    await saveShareRefresh({ rows: [], units: [unit], quota: QUOTA });
+    await saveShareRefresh({ rows: [], units: [unit], settlement: SETTLEMENT });
 
     expect(storedMetadata()).toEqual({ ...handTyped, symbol: 'VOD.US' });
   });
@@ -91,7 +107,7 @@ describe('saveShareRefresh', () => {
     await saveShareRefresh({
       rows: [],
       units: [{ ...unit, quoteCurrency: 'GBp' }],
-      quota: QUOTA,
+      settlement: SETTLEMENT,
     });
 
     expect(storedMetadata()).toEqual(handTyped);
@@ -102,15 +118,13 @@ describe('saveShareRefresh', () => {
     const invalidRow = { ...VOD_ROW, day: DAY + 1, price: null as unknown as string };
 
     await expect(
-      saveShareRefresh({ rows: [VOD_ROW, invalidRow], units: [unit], quota: QUOTA }),
+      saveShareRefresh({ rows: [VOD_ROW, invalidRow], units: [unit], settlement: SETTLEMENT }),
     ).rejects.toThrow();
 
     expect(mockDatabase.prepare('SELECT COUNT(*) AS count FROM price_points').get()).toEqual({
       count: 0,
     });
     expect(storedMetadata()).toEqual(handTyped);
-    expect(mockDatabase.prepare('SELECT quote_quota FROM settings').get()).toEqual({
-      quote_quota: null,
-    });
+    expect(storedQuota()).toEqual(STORED_QUOTA);
   });
 });

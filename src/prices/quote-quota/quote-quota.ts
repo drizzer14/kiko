@@ -41,6 +41,41 @@ export const markUsedUp = (quota: QuoteQuota): QuoteQuota => ({
 });
 
 /**
+ * What one refresh did with the calls it reserved on `day`: `unanswered` are
+ * the reserved symbols it stopped before asking about.
+ */
+export type QuotaSettlement = {
+  day: number;
+  reserved: number;
+  spent: number;
+  unanswered: string[];
+  usedUp: boolean;
+};
+
+/**
+ * Applies a refresh's own calls to the quota stored now, not to the one it
+ * read before its calls went out, so a key saved meanwhile keeps its limit
+ * and EODHD's count. A quota stored for another UTC day no longer holds the
+ * reservation, so it stays as it is.
+ */
+export const settle = (
+  stored: QuoteQuota | null,
+  { day, reserved, spent, unanswered, usedUp }: QuotaSettlement,
+): QuoteQuota | null => {
+  if (stored?.day !== day) {
+    return stored;
+  }
+
+  const settled = {
+    ...stored,
+    calls: Math.max(0, stored.calls + spent - reserved),
+    symbols: stored.symbols.filter((symbol) => !unanswered.includes(symbol)),
+  };
+
+  return usedUp ? markUsedUp(settled) : settled;
+};
+
+/**
  * EODHD's own count wins over the local one: the same key can spend calls in
  * another app. Its count applies only when EODHD's day is today's UTC day.
  */

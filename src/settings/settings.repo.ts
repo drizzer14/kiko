@@ -39,16 +39,21 @@ export const recordReminderOfferDismissal = async (
 };
 
 /**
- * Stores the EODHD call count inside the caller's own `write()`, so the share
- * price refresh can commit it with the prices those calls fetched.
+ * `settingsRepo.updateQuoteQuota` inside the caller's own `write()`, so the
+ * share price refresh commits its calls with the prices they fetched.
  */
-export const writeQuoteQuota = async (
+export const updateQuoteQuotaDatabaseTransaction = async (
   databaseTransaction: typeof database,
-  quota: QuoteQuota,
+  build: (stored: QuoteQuota | null) => QuoteQuota | null,
 ): Promise<void> => {
+  const rows = await databaseTransaction
+    .select({ quoteQuota: settings.quoteQuota })
+    .from(settings)
+    .where(eq(settings.id, SETTINGS_ID));
+
   await databaseTransaction
     .update(settings)
-    .set({ quoteQuota: quota })
+    .set({ quoteQuota: build(rows[0]?.quoteQuota ?? null) })
     .where(eq(settings.id, SETTINGS_ID));
 };
 
@@ -144,18 +149,15 @@ export const settingsRepo = {
       .select({ quoteQuota: settings.quoteQuota })
       .from(settings)
       .where(eq(settings.id, SETTINGS_ID)),
-  setQuoteQuota: (quota: QuoteQuota) =>
-    write((databaseTransaction) => writeQuoteQuota(databaseTransaction, quota)),
-  /** Read-modify-write in one `write()`, so a share refresh never lands in between. */
-  updateQuoteQuota: (build: (stored: QuoteQuota | null) => QuoteQuota) =>
-    write(async (databaseTransaction) => {
-      const rows = await databaseTransaction
-        .select({ quoteQuota: settings.quoteQuota })
-        .from(settings)
-        .where(eq(settings.id, SETTINGS_ID));
-
-      await writeQuoteQuota(databaseTransaction, build(rows[0]?.quoteQuota ?? null));
-    }),
+  /**
+   * Read-modify-write in one `write()`: no other write lands between the read
+   * and the update. Every EODHD quota writer (a key save, a share refresh's
+   * reservation and its final settlement) rebuilds from the stored row this
+   * way, so none undoes another's change; a `build` that returns its own
+   * stale copy still would.
+   */
+  updateQuoteQuota: (build: (stored: QuoteQuota | null) => QuoteQuota | null) =>
+    write((databaseTransaction) => updateQuoteQuotaDatabaseTransaction(databaseTransaction, build)),
   setNotificationsDeliverableSince: (deliverableSince: number | null) =>
     write((databaseTransaction) =>
       databaseTransaction

@@ -223,17 +223,6 @@ describe('settingsRepo', () => {
     expect(params).toEqual([1]);
   });
 
-  it('setQuoteQuota writes the whole quota to the single settings row', async () => {
-    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
-    mockDatabaseTransaction = databaseTransaction;
-    const quota = { day: 86_400_000, calls: 3, dailyLimit: 20, symbols: ['AAPL.US'] };
-
-    await settingsRepo.setQuoteQuota(quota);
-
-    expect(captured.set).toEqual({ quoteQuota: quota });
-    expect(captured.whereCalled).toBe(true);
-  });
-
   it('updateQuoteQuota builds the new quota from the stored one, in one write', async () => {
     const stored = { day: 86_400_000, calls: 3, dailyLimit: 20, symbols: ['AAPL.US'] };
     const store: Record<string, unknown>[] = [{ id: 1, quoteQuota: stored }];

@@ -20,16 +20,10 @@ import {
   EodhdRateLimitError,
   EodhdUnavailableError,
 } from '../eodhd';
-import {
-  reserve,
-  markUsedUp,
-  currentQuota,
-  refreshAllowance,
-  type QuoteQuota,
-} from '../quote-quota';
 import { readEodhdKey } from '../eodhd-key';
 import { shareInstrument } from '../instrument';
 import { pricePointsRepo } from '../price-points-repo';
+import { reserve, currentQuota, refreshAllowance, type QuoteQuota } from '../quote-quota';
 
 import {
   saveShareRefresh,
@@ -56,7 +50,7 @@ export type ShareRefreshDeps = {
   listShares?: () => Promise<ShareHolding[]>;
   readKey?: () => Promise<string | undefined>;
   loadQuota?: () => Promise<QuoteQuota | null>;
-  saveQuota?: (quota: QuoteQuota) => Promise<void>;
+  updateQuota?: (build: (stored: QuoteQuota | null) => QuoteQuota | null) => Promise<void>;
   loadPoints?: () => Promise<StoredPoint[]>;
   fetchEod?: typeof fetchEod;
   searchSymbols?: typeof searchSymbols;
@@ -340,7 +334,7 @@ const withDefaults = (deps: ShareRefreshDeps): Required<ShareRefreshDeps> => ({
   listShares: () => holdingsRepo.activeSharesQuery(),
   readKey: readEodhdKey,
   loadQuota: async () => (await settingsRepo.quoteQuotaQuery()).at(0)?.quoteQuota ?? null,
-  saveQuota: settingsRepo.setQuoteQuota,
+  updateQuota: settingsRepo.updateQuoteQuota,
   loadPoints: () => pricePointsRepo.allQuery(),
   fetchEod,
   searchSymbols,
@@ -348,19 +342,8 @@ const withDefaults = (deps: ShareRefreshDeps): Required<ShareRefreshDeps> => ({
   ...deps,
 });
 
-/**
- * Refreshes end-of-day closes for every active EODHD share under the user's
- * own daily EODHD limit. Gated on data presence: no EODHD share means no
- * Keychain read and no call. Each symbol costs at most one call per UTC day,
- * none while its latest close is from the last weekday, the oldest price goes
- * first, and the last 2 calls of the day stay free for a search. The calls
- * are stored before they go out, so a crash over-counts and never exceeds the
- * limit; everything else lands in one final write.
- */
-export const refreshSharePrices = async (
-  deps: ShareRefreshDeps = {},
-): Promise<ShareRefreshStatus> => {
-  const { now, listShares, readKey, loadQuota, saveQuota, loadPoints, save, ...network } =
+const refreshOnce = async (deps: ShareRefreshDeps): Promise<ShareRefreshStatus> => {
+  const { now, listShares, readKey, loadQuota, updateQuota, loadPoints, save, ...network } =
     withDefaults(deps);
   const listings = listingsOf(await listShares());
 
@@ -385,25 +368,49 @@ export const refreshSharePrices = async (
     return leftOver ? 'quotaExhausted' : 'ok';
   }
 
-  await saveQuota(
-    reserve(
-      quota,
-      planned.reduce((total, call) => total + costOf(call), 0),
-      planned.map((call) => call.listing.symbol),
-    ),
-  );
+  const reserved = planned.reduce((total, call) => total + costOf(call), 0);
+  const symbols = planned.map((call) => call.listing.symbol);
+
+  await updateQuota((stored) => reserve(currentQuota(stored, quota.day), reserved, symbols));
 
   const progress = await runCalls(planned, { ...network, key, today: quota.day });
-  const spent = reserve(quota, progress.spent, progress.answered);
 
   await save({
     rows: progress.rows,
     units: progress.units,
-    quota: progress.stop === 'usedUp' ? markUsedUp(spent) : spent,
+    settlement: {
+      day: quota.day,
+      reserved,
+      spent: progress.spent,
+      unanswered: symbols.filter((symbol) => !progress.answered.includes(symbol)),
+      usedUp: progress.stop === 'usedUp',
+    },
   });
 
   return match(progress.stop)
     .with('usedUp', () => 'quotaExhausted' as const)
     .with('failed', () => 'failed' as const)
     .otherwise(() => (leftOver ? 'quotaExhausted' : 'ok'));
+};
+
+// Two overlapping refreshes would plan from the same stored quota and ask
+// EODHD for the same symbols twice.
+let previousRun: Promise<unknown> = Promise.resolve();
+
+/**
+ * Refreshes end-of-day closes for every active EODHD share under the user's
+ * own daily EODHD limit. Gated on data presence: no EODHD share means no
+ * Keychain read and no call. Each symbol costs at most one call per UTC day,
+ * none while its latest close is from the last weekday, the oldest price goes
+ * first, and the last 2 calls of the day stay free for a search. The calls
+ * are stored before they go out, so a crash over-counts and never exceeds the
+ * limit; everything else lands in one final write. A call made while another
+ * runs waits for it, then plans from the quota that one stored.
+ */
+export const refreshSharePrices = (deps: ShareRefreshDeps = {}): Promise<ShareRefreshStatus> => {
+  const run = previousRun.then(() => refreshOnce(deps));
+
+  previousRun = run.catch(() => undefined);
+
+  return run;
 };

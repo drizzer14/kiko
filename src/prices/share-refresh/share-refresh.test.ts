@@ -10,7 +10,7 @@ import {
   EodhdUnavailableError,
   type SymbolMatch,
 } from '../eodhd';
-import type { QuoteQuota } from '../quote-quota';
+import { settle, type QuoteQuota } from '../quote-quota';
 
 import type { ShareRefreshResult } from './share-refresh-write';
 import { refreshSharePrices, type ShareRefreshDeps } from './share-refresh';
@@ -115,9 +115,9 @@ const depsFor = (world: World): ShareRefreshDeps => ({
     return world.key;
   },
   loadQuota: async () => world.quota,
-  saveQuota: async (quota) => {
-    world.events.push(`reserve ${quota.calls}`);
-    world.quota = quota;
+  updateQuota: async (build) => {
+    world.quota = build(world.quota);
+    world.events.push(`reserve ${world.quota?.calls}`);
   },
   loadPoints: async () => world.points,
   fetchEod: async (symbol, fromDay, toDay, key) => {
@@ -137,7 +137,7 @@ const depsFor = (world: World): ShareRefreshDeps => ({
     world.saved.push(result);
     world.points.push(...result.rows);
     world.holdings = world.holdings.map((holding) => withSavedUnit(holding, result));
-    world.quota = result.quota;
+    world.quota = settle(world.quota, result.settlement);
   },
 });
 
@@ -200,9 +200,15 @@ describe('refreshSharePrices', () => {
             },
           ],
           units: [],
-          quota: { day: THURSDAY, calls: 1, dailyLimit: 20, symbols: ['AAPL.US'] },
+          settlement: { day: THURSDAY, reserved: 1, spent: 1, unanswered: [], usedUp: false },
         },
       ]);
+      expect(world.quota).toEqual({
+        day: THURSDAY,
+        calls: 1,
+        dailyLimit: 20,
+        symbols: ['AAPL.US'],
+      });
     });
 
     it('asks for at most one year of history, all the free plan has', async () => {
@@ -293,6 +299,48 @@ describe('refreshSharePrices', () => {
         'eod AAPL.US 2026-06-01 2026-10-01',
         'save',
       ]);
+    });
+
+    it('runs one refresh at a time, so two overlapping refreshes ask for a symbol once', async () => {
+      const world = makeWorld();
+
+      await Promise.all([refreshSharePrices(depsFor(world)), refreshSharePrices(depsFor(world))]);
+
+      expect(calls(world)).toEqual(['eod AAPL.US 2026-06-01 2026-10-01']);
+      expect(world.quota?.calls).toBe(1);
+    });
+
+    it('starts the next refresh after one that failed', async () => {
+      const world = makeWorld();
+      const broken = refreshSharePrices({
+        ...depsFor(world),
+        listShares: async () => {
+          throw new Error('database closed');
+        },
+      });
+
+      await expect(broken).rejects.toThrow('database closed');
+      await expect(refreshSharePrices(depsFor(world))).resolves.toBe('ok');
+    });
+
+    it('keeps the daily limit and count a key save stored while the calls were out', async () => {
+      const world = makeWorld();
+
+      await refreshSharePrices({
+        ...depsFor(world),
+        fetchEod: async () => {
+          world.quota = { day: THURSDAY, calls: 7, dailyLimit: 100, symbols: ['AAPL.US'] };
+
+          return [];
+        },
+      });
+
+      expect(world.quota).toEqual({
+        day: THURSDAY,
+        calls: 7,
+        dailyLimit: 100,
+        symbols: ['AAPL.US'],
+      });
     });
 
     it('calls nothing and writes nothing once only the 2 search calls are left', async () => {
@@ -542,18 +590,23 @@ describe('refreshSharePrices', () => {
       await expect(refreshSharePrices(depsFor(world))).resolves.toBe('ok');
 
       expect(calls(world)).toEqual(['search VOD LSE', 'eod VOD.LSE 2026-06-01 2026-10-01']);
-      expect(world.saved[0]).toEqual({
-        rows: [
-          {
-            instrument: 'share:VOD.LSE',
-            day: WEDNESDAY,
-            price: '1.227',
-            currency: 'GBP',
-            source: 'eodhd',
-          },
-        ],
-        units: [{ holdingId: 'vod', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }],
-        quota: { day: THURSDAY, calls: 2, dailyLimit: 20, symbols: ['VOD.LSE'] },
+      expect(world.saved[0]?.rows).toEqual([
+        {
+          instrument: 'share:VOD.LSE',
+          day: WEDNESDAY,
+          price: '1.227',
+          currency: 'GBP',
+          source: 'eodhd',
+        },
+      ]);
+      expect(world.saved[0]?.units).toEqual([
+        { holdingId: 'vod', symbol: 'VOD.LSE', quoteCurrency: 'GBX' },
+      ]);
+      expect(world.quota).toEqual({
+        day: THURSDAY,
+        calls: 2,
+        dailyLimit: 20,
+        symbols: ['VOD.LSE'],
       });
     });
 
@@ -581,10 +634,13 @@ describe('refreshSharePrices', () => {
 
       await expect(refreshSharePrices(depsFor(world))).resolves.toBe('ok');
       expect(calls(world)).toEqual(['search VOD LSE']);
-      expect(world.saved[0]).toEqual({
-        rows: [],
-        units: [],
-        quota: { day: THURSDAY, calls: 1, dailyLimit: 20, symbols: ['VOD.LSE'] },
+      expect(world.saved[0]?.rows).toEqual([]);
+      expect(world.saved[0]?.units).toEqual([]);
+      expect(world.quota).toEqual({
+        day: THURSDAY,
+        calls: 1,
+        dailyLimit: 20,
+        symbols: ['VOD.LSE'],
       });
     });
 

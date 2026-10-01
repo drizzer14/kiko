@@ -2,10 +2,10 @@ import {
   type ShareQuoteCurrencyUpdate,
   setShareQuoteCurrencyDatabaseTransaction,
 } from '@kiko/holdings/repo';
-import { writeQuoteQuota } from '@kiko/settings';
 import { type PricePointRow, write } from '@kiko/db';
+import { updateQuoteQuotaDatabaseTransaction } from '@kiko/settings';
 
-import type { QuoteQuota } from '../quote-quota';
+import { settle, type QuotaSettlement } from '../quote-quota';
 import { upsertPricePointsDatabaseTransaction } from '../price-points-repo';
 
 export type SharePriceRow = Pick<
@@ -16,14 +16,14 @@ export type SharePriceRow = Pick<
 export type ShareRefreshResult = {
   rows: SharePriceRow[];
   units: ShareQuoteCurrencyUpdate[];
-  quota: QuoteQuota;
+  settlement: QuotaSettlement;
 };
 
 /**
  * One transaction for everything a refresh learned: the closes, the units it
  * resolved, and the calls it spent, so none of them lands without the others.
  */
-export const saveShareRefresh = ({ rows, units, quota }: ShareRefreshResult): Promise<void> =>
+export const saveShareRefresh = ({ rows, units, settlement }: ShareRefreshResult): Promise<void> =>
   write(async (databaseTransaction) => {
     await upsertPricePointsDatabaseTransaction(databaseTransaction, rows);
 
@@ -31,5 +31,7 @@ export const saveShareRefresh = ({ rows, units, quota }: ShareRefreshResult): Pr
       await setShareQuoteCurrencyDatabaseTransaction(databaseTransaction, unit);
     }
 
-    await writeQuoteQuota(databaseTransaction, quota);
+    await updateQuoteQuotaDatabaseTransaction(databaseTransaction, (stored) =>
+      settle(stored, settlement),
+    );
   });
