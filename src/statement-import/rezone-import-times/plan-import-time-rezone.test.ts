@@ -1,3 +1,8 @@
+import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
+
+import { computeDedupKey } from '../mapping';
+import { parseDateTimeSeconds } from '../parse-date-time';
+
 import {
   planImportTimeRezone,
   rezoneDedupKey,
@@ -16,52 +21,81 @@ const importRow = (
 });
 
 describe('rezoneImportTime', () => {
-  it('reads a legacy (wall-clock-as-UTC) instant as this device local time', () => {
+  it('reads a legacy (wall-clock-as-UTC) summer instant as Kyiv local time', () => {
     const legacy = Date.UTC(2026, 8, 15, 22, 30, 0);
 
-    expect(rezoneImportTime(legacy)).toBe(new Date(2026, 8, 15, 22, 30, 0).getTime());
+    expect(rezoneImportTime(legacy)).toBe(Date.UTC(2026, 8, 15, 19, 30, 0));
   });
 
-  it('treats a legacy exact 00:00:00 as date-only, reading it as noon local time', () => {
+  it('reads a legacy winter instant as Kyiv local time', () => {
+    const legacy = Date.UTC(2026, 0, 15, 22, 30, 0);
+
+    expect(rezoneImportTime(legacy)).toBe(Date.UTC(2026, 0, 15, 20, 30, 0));
+  });
+
+  it('treats a legacy exact 00:00:00 as date-only, reading it as noon Kyiv', () => {
     const legacy = Date.UTC(2026, 8, 15, 0, 0, 0);
 
-    expect(rezoneImportTime(legacy)).toBe(new Date(2026, 8, 15, 12, 0, 0).getTime());
+    expect(rezoneImportTime(legacy)).toBe(Date.UTC(2026, 8, 15, 9, 0, 0));
   });
 
-  // Every real bank-format fixture's own row: `legacyParse` (test-local
-  // `Date.UTC` of the SAME raw digits) fed through `rezoneImportTime` must
-  // equal THIS DEVICE's own reading of those same digits (the local `Date`
-  // constructor) — a stored row records no format, let alone bank, so the
-  // guarantee a re-import dedups is against the device's own zone, never
-  // against whatever zone the dedicated (Kyiv) parser would have used.
-  it('reproduces the device-local reading of the Monobank fixture rows’ raw digits', () => {
-    // Row 1: "01.04.2022 05:27:35"; Row 4 (last): "12.05.2023 17:30:36" — the
-    // same raw digits every dedicated format test pins.
-    const legacyFirst = Date.UTC(2022, 3, 1, 5, 27, 35);
-    const legacyLast = Date.UTC(2023, 4, 12, 17, 30, 36);
-
-    expect(rezoneImportTime(legacyFirst)).toBe(new Date(2022, 3, 1, 5, 27, 35).getTime());
-    expect(rezoneImportTime(legacyLast)).toBe(new Date(2023, 4, 12, 17, 30, 36).getTime());
+  // A stored row records no format, so the legacy digits must land on the
+  // instant a fresh named-format parse of the same text gives — otherwise an
+  // overlapping re-import of the same file misses every legacy key.
+  it.each([
+    ['Monobank', '01.04.2022 05:27:35', Date.UTC(2022, 3, 1, 5, 27, 35)],
+    ['Monobank', '12.05.2023 17:30:36', Date.UTC(2023, 4, 12, 17, 30, 36)],
+    ['PrivatBank', '01.07.2025 10:15:00', Date.UTC(2025, 6, 1, 10, 15, 0)],
+  ])('matches a fresh %s parse of %s', (formatLabel, text, legacy) => {
+    expect(rezoneImportTime(legacy)).toBe(parseDateTimeSeconds(text, formatLabel) * 1000);
   });
+});
 
-  it('reproduces the device-local reading of the Sensebank fixture rows’ raw digits', () => {
-    // Row 1: "09.01.00 00:58"; Row 2: "25.01.00 12:12" — the same raw digits
-    // `sensebank-csv.format.test.ts` pins; the fixture's 2-digit year maps
-    // to 20YY, same as the dedicated format's own parse.
-    const legacyFirst = Date.UTC(2000, 0, 9, 0, 58, 0);
-    const legacySecond = Date.UTC(2000, 0, 25, 12, 12, 0);
+describe('planImportTimeRezone on a device outside Kyiv', () => {
+  const freshKey = (text: string): string =>
+    computeDedupKey(
+      'holding-1',
+      {
+        currency: 'UAH',
+        amountMinorUnits: -15000,
+        timeSeconds: parseDateTimeSeconds(text, 'Monobank'),
+        description: 'Coffee',
+      },
+      0,
+    );
 
-    expect(rezoneImportTime(legacyFirst)).toBe(new Date(2000, 0, 9, 0, 58, 0).getTime());
-    expect(rezoneImportTime(legacySecond)).toBe(new Date(2000, 0, 25, 12, 12, 0).getTime());
-  });
+  it.each([
+    ['UTC+1', 1, '15.06.2026 14:30:00', Date.UTC(2026, 5, 15, 14, 30, 0)],
+    ['UTC+1', 1, '15.01.2026 14:30:00', Date.UTC(2026, 0, 15, 14, 30, 0)],
+    ['UTC-5', -5, '15.06.2026 14:30:00', Date.UTC(2026, 5, 15, 14, 30, 0)],
+    ['UTC+3', 3, '15.01.2026 14:30:00', Date.UTC(2026, 0, 15, 14, 30, 0)],
+  ])(
+    'rezones a legacy row under %s (%d h) onto the fresh time and key of %s',
+    (_zone, offsetHours, text, legacy) => {
+      const legacyKey = computeDedupKey(
+        'holding-1',
+        {
+          currency: 'UAH',
+          amountMinorUnits: -15000,
+          timeSeconds: legacy / 1000,
+          description: 'Coffee',
+        },
+        0,
+      );
 
-  it('reproduces the device-local reading of the PrivatBank XLSX fixture row’s raw digits', () => {
-    // The fixture's own first resolvable row's real cell text,
-    // "01.07.2025 10:15:00" — pinned in `privatbank-xlsx.format.test.ts`.
-    const legacy = Date.UTC(2025, 6, 1, 10, 15, 0);
+      const plan = withDeviceZoneOffset(offsetHours, () =>
+        planImportTimeRezone([importRow({ id: 'tx-1', time: legacy, externalId: legacyKey })], []),
+      );
 
-    expect(rezoneImportTime(legacy)).toBe(new Date(2025, 6, 1, 10, 15, 0).getTime());
-  });
+      expect(plan.transactions).toEqual([
+        {
+          id: 'tx-1',
+          time: parseDateTimeSeconds(text, 'Monobank') * 1000,
+          externalId: freshKey(text),
+        },
+      ]);
+    },
+  );
 });
 
 describe('rezoneDedupKey', () => {

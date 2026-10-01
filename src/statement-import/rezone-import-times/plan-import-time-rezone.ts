@@ -1,6 +1,6 @@
 import maybe, { bind, foldMap } from 'fnts/maybe';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
-import { deviceWallClockToLocalMilliseconds, noonIfMidnight, utcDigitsOf } from '@kiko/dates';
+import { noonIfMidnight, utcDigitsOf, kyivWallClockToUtcMilliseconds } from '@kiko/dates';
 
 export type RezoneTransactionInput = Pick<
   TransactionRow,
@@ -15,17 +15,18 @@ type ImportTimeRezonePlan = {
 
 /**
  * A legacy stored import row's `time` was written as if its bank wall clock
- * were UTC (`Date.UTC` of the raw digits). Reading those SAME digits back
- * through the device's own local zone (never Kyiv's — a stored row records
- * no format, so there is no way to tell which bank, let alone which zone, it
- * came from) reproduces exactly what a fresh re-import through column
- * mapping would write today. `utcDigitsOf` always round-trips here (it
- * reads back the exact digits `Date.UTC` was built from), so
- * `deviceWallClockToLocalMilliseconds` is never expected to reject them —
- * the `?? legacyTimeMilliseconds` fallback is a safety net, not a real path.
+ * were UTC (`Date.UTC` of the raw digits). Reading those SAME digits back as
+ * Kyiv time — the zone every import path reads a wall clock in, named format
+ * and column mapping alike — lands the row on the instant and key a fresh
+ * re-import of the same file writes on any device. A stored row records no
+ * format, so a legacy `00:00:00` can't be told apart from a date-only cell
+ * and keeps the date-only noon reading. `utcDigitsOf` always round-trips
+ * here (it reads back the exact digits `Date.UTC` was built from), so
+ * `kyivWallClockToUtcMilliseconds` is never expected to reject them — the
+ * `?? legacyTimeMilliseconds` fallback is a safety net, not a real path.
  */
 export const rezoneImportTime = (legacyTimeMilliseconds: number): number =>
-  deviceWallClockToLocalMilliseconds(noonIfMidnight(utcDigitsOf(legacyTimeMilliseconds))) ??
+  kyivWallClockToUtcMilliseconds(noonIfMidnight(utcDigitsOf(legacyTimeMilliseconds))) ??
   legacyTimeMilliseconds;
 
 /**

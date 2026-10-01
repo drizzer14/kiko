@@ -113,7 +113,7 @@ const dumpAll = async (
 });
 
 describe('rezoneImportTimesIn (real SQLite)', () => {
-  it('moves every import row to the device-local reading, leaves manual/sync rows and every balance untouched', async () => {
+  it('moves every import row to the Kyiv reading, leaves manual/sync rows and every balance untouched', async () => {
     const rawDatabase = openTestDatabase();
     const drizzleDatabase = executingDrizzle<typeof database>(rawDatabase);
 
@@ -170,8 +170,8 @@ describe('rezoneImportTimesIn (real SQLite)', () => {
     await seedLegacyData(drizzleDatabase);
     await rezoneImportTimesIn(drizzleDatabase);
 
-    // Column mapping reads the SAME raw digits as this device's own local
-    // time too (`rezoneImportTime` IS that same reading), so a re-import
+    // Column mapping reads the SAME raw digits as Kyiv time too
+    // (`rezoneImportTime` IS that same reading), so a re-import
     // through column mapping reproduces the identical (time, externalId)
     // pair for each row and must dedup against what the rezone just wrote.
     const reimportedFirst = mapParsedTransaction(
@@ -231,8 +231,8 @@ describe('rezoneImportTimesIn (real SQLite)', () => {
 
     await drizzleDatabase.insert(settings).values({ id: SETTINGS_ID });
 
-    // A midnight (date-only) legacy row always noon-shifts by a real 12
-    // hours on rezone, in every device zone this app runs in — so rowA's
+    // A midnight (date-only) legacy row always moves on to noon Kyiv, nine
+    // or ten hours later, on rezone — so rowA's
     // pre-rezone digits below can never equal its own rezoned instant, which
     // is what lets rowB's (distinct) pre-rezone time be set to exactly that
     // rezoned instant without the seed insert itself colliding.
