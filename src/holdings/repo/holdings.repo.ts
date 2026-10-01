@@ -125,6 +125,33 @@ export type LoanPricePointOp =
       currency: HoldingRow['currency'];
     };
 
+type ManualPricePoint = { day: number; price: string; currency: HoldingRow['currency'] };
+
+// Runs on the caller's own write so the point commits with the holding patch
+// it belongs to, never apart from it.
+const upsertManualPricePoint = (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  point: ManualPricePoint,
+) =>
+  databaseTransaction
+    .insert(pricePoints)
+    .values({
+      instrument: holdingInstrument(holdingId),
+      day: point.day,
+      price: point.price,
+      currency: point.currency,
+      source: 'manual',
+    })
+    .onConflictDoUpdate({
+      target: [pricePoints.instrument, pricePoints.day],
+      set: {
+        price: sql`excluded.price`,
+        currency: sql`excluded.currency`,
+        source: sql`excluded.source`,
+      },
+    });
+
 // Match on `json_extract(metadata, '$.<field>') = key`, scoped to the account;
 // update balance + metadata in place on a hit, insert with a fresh sortOrder on
 // a miss. The JSON path is bound as a parameter (json_extract takes any text
@@ -657,23 +684,25 @@ export const holdingsRepo = {
         return;
       }
 
-      await databaseTransaction
-        .insert(pricePoints)
-        .values({
-          instrument: holdingInstrument(holdingId),
-          day: point.day,
-          price: point.price,
-          currency: point.currency,
-          source: 'manual',
-        })
-        .onConflictDoUpdate({
-          target: [pricePoints.instrument, pricePoints.day],
-          set: {
-            price: sql`excluded.price`,
-            currency: sql`excluded.currency`,
-            source: sql`excluded.source`,
-          },
-        });
+      await upsertManualPricePoint(databaseTransaction, holdingId, point);
+    }),
+  /**
+   * A holding EDIT's patch plus, when `point` is set, one point on the
+   * holding's own `holding:<id>` manual series, in ONE transaction. A share
+   * switched from EODHD to manual carries its last EODHD price over this
+   * way, so its value never drops to cost basis between the two series.
+   */
+  updateWithManualPricePoint: (
+    holdingId: string,
+    patch: Partial<HoldingRow>,
+    point: ManualPricePoint | null,
+  ) =>
+    write(async (databaseTransaction) => {
+      await databaseTransaction.update(holdings).set(patch).where(eq(holdings.id, holdingId));
+
+      if (point !== null) {
+        await upsertManualPricePoint(databaseTransaction, holdingId, point);
+      }
     }),
   /**
    * Sets the holding's icon (an SF Symbol name) or, with `null`, clears it back

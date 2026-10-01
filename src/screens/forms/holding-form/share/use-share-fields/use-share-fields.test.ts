@@ -1,12 +1,18 @@
+import {
+  dayKeyOf,
+  buildPriceBook,
+  type PriceBook,
+  EMPTY_PRICE_BOOK,
+} from '@kiko/prices/price-book';
 import type { HoldingRow } from '@kiko/db';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { dayKeyOf, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
+import { shareInstrument } from '@kiko/prices/instrument';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { useShareFields } from './use-share-fields';
 
 jest.mock('@kiko/holdings/repo', () => ({
-  holdingsRepo: { updateWithBalanceDelta: jest.fn().mockResolvedValue(undefined) },
+  holdingsRepo: { updateWithManualPricePoint: jest.fn().mockResolvedValue(undefined) },
 }));
 
 const mockHasEodhdKey = jest.fn();
@@ -14,9 +20,10 @@ jest.mock('@kiko/prices/eodhd-key', () => ({
   hasEodhdKey: () => mockHasEodhdKey(),
 }));
 
-const updateMock = holdingsRepo.updateWithBalanceDelta as jest.Mock;
+const updateMock = holdingsRepo.updateWithManualPricePoint as jest.Mock;
 
 const purchaseDay = new Date(2026, 8, 15).getTime();
+const lastDay = new Date(2026, 8, 25).getTime();
 
 type Params = Parameters<typeof useShareFields>[0];
 
@@ -217,7 +224,7 @@ describe('useShareFields edit', () => {
           lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
         },
       },
-      expect.any(Number),
+      null,
     );
   });
 
@@ -239,6 +246,78 @@ describe('useShareFields edit', () => {
       symbol: 'BP.LSE',
       lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
     });
+  });
+
+  describe('switched from EODHD to manual', () => {
+    const switchToManual = async (book: PriceBook) => {
+      const { result } = await renderFields({ isEdit: true });
+
+      await act(async () => {
+        result.current.seed(
+          storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }),
+        );
+      });
+      await act(async () => {
+        result.current.setQuoteSource('manual');
+      });
+      await result.current.saveEdit({ ...editContext, book });
+    };
+
+    const sharePoint = (day: number, price: string) => ({
+      instrument: shareInstrument('VOD.LSE'),
+      day,
+      price,
+      currency: 'GBP' as const,
+      source: 'eodhd' as const,
+    });
+
+    it('carries the latest EODHD price over to its own series, in the same write', async () => {
+      await switchToManual(
+        buildPriceBook([sharePoint(purchaseDay, '1.10'), sharePoint(lastDay, '1.2345')]),
+      );
+
+      expect(updateMock).toHaveBeenCalledTimes(1);
+      expect(updateMock).toHaveBeenCalledWith(
+        'share-1',
+        {
+          name: 'Vodafone',
+          color: null,
+          metadata: {
+            quoteSource: 'manual',
+            lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
+          },
+        },
+        { day: lastDay, price: '1.2345', currency: 'GBP' },
+      );
+    });
+
+    it('writes no price when the symbol has none yet', async () => {
+      await switchToManual(EMPTY_PRICE_BOOK);
+
+      expect(updateMock.mock.calls[0][2]).toBeNull();
+    });
+  });
+
+  it('writes no price when a manual share stays manual', async () => {
+    const { result } = await renderFields({ isEdit: true });
+
+    await act(async () => {
+      result.current.seed(storedShare({ quoteSource: 'manual', symbol: 'VOD.LSE' }));
+    });
+    await result.current.saveEdit({
+      ...editContext,
+      book: buildPriceBook([
+        {
+          instrument: shareInstrument('VOD.LSE'),
+          day: lastDay,
+          price: '1.2345',
+          currency: 'GBP',
+          source: 'eodhd',
+        },
+      ]),
+    });
+
+    expect(updateMock.mock.calls[0][2]).toBeNull();
   });
 
   it('keeps a stored manual source once a saved key is found', async () => {

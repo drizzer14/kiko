@@ -10,23 +10,24 @@ import {
   type ShareMeta,
   type ShareQuoteSource,
 } from '@kiko/holdings/holding-metadata';
-import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { startOfLocalDay } from '@kiko/dates';
 import type { Lot } from '@kiko/holdings/lots';
 import { normalizeIsin } from '@kiko/bonds/isin';
 import { parseAmount } from '@kiko/currency/parse';
-import { dayKeyOf } from '@kiko/prices/price-book';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { hasEodhdKey } from '@kiko/prices/eodhd-key';
 import type { TextInputInstance } from 'react-native';
+import { shareInstrument } from '@kiko/prices/instrument';
+import type { HoldingRow, PricePointRow } from '@kiko/db';
 import { SHARE_PRICE_SCALE } from '@kiko/prices/share-price';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { dayKeyOf, latestPoint, type PriceBook } from '@kiko/prices/price-book';
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 
-import { saveMetadataEdit } from '../../save-metadata-edit';
 import type { CreatePayload, EditContext, HoldingTypeForm } from '../../holding-type-form';
 
 import {
@@ -130,6 +131,28 @@ const keptQuoteCurrency = (
     ? stored.quoteCurrency
     : undefined;
 
+type CarriedPricePoint = Pick<PricePointRow, 'day' | 'price' | 'currency'>;
+
+// A share switched from EODHD to manual starts its own series at the last
+// EODHD price, so its value does not fall back to cost basis until the user
+// enters a price of their own.
+const carriedPricePoint = (
+  stored: ShareMeta | null,
+  quoteSource: ShareQuoteSource,
+  book: PriceBook,
+): CarriedPricePoint | null => {
+  if (stored?.quoteSource !== 'eodhd' || quoteSource !== 'manual') {
+    return null;
+  }
+
+  return (
+    foldMap(
+      maybe(latestPoint(book, shareInstrument(stored.symbol))),
+      ({ day, price, currency }) => ({ day, price, currency }),
+    ) ?? null
+  );
+};
+
 type UseShareFieldsParams = {
   type: HoldingType;
   isEdit: boolean;
@@ -226,15 +249,20 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
     buildShareCreatePayload({ quoteSource, ticker, isin, quantity, cost, purchaseDate, currency });
 
   const saveEdit = (context: EditContext): Promise<void> =>
-    saveMetadataEdit(
-      context,
-      shareMetadata({
-        quoteSource,
-        ticker,
-        isin,
-        quoteCurrency: keptQuoteCurrency(stored, quoteSource, ticker),
-        lots: stored?.lots ?? [],
-      }),
+    holdingsRepo.updateWithManualPricePoint(
+      context.holdingId,
+      {
+        name: context.name,
+        color: context.color,
+        metadata: shareMetadata({
+          quoteSource,
+          ticker,
+          isin,
+          quoteCurrency: keptQuoteCurrency(stored, quoteSource, ticker),
+          lots: stored?.lots ?? [],
+        }),
+      },
+      carriedPricePoint(stored, quoteSource, context.book),
     );
 
   return {
