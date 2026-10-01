@@ -289,14 +289,12 @@ describe('buildNetWorthSeries', () => {
     expect(amountAt(series, bucketDayD)).toBe(107.87);
   });
 
-  it('stays flat across a same-day card->bond move when the synced debit ≠ the typed price', () => {
-    // The real synced case. The card is debited the ACTUAL amount that left (Q =
-    // $1100.00 — a fee / accrued-coupon (НКД) / rounded "roughly the price"),
-    // while the user typed a slightly different price (P = $1078.68). Recognizing
-    // the bond at the TYPED price leaves a permanent (Q − P) = $21.32 dip from the
-    // purchase day on, because the two legs are drawn from unrelated paths and
-    // never cancel. Reconciling the bond's held cost to the matched debit's amount
-    // (Q) makes the move net-worth-neutral: the card's −Q and the bond's +Q cancel.
+  it('ends the line at the typed price when the synced debit ≠ the typed price', () => {
+    // The card is debited the ACTUAL amount that left (Q = $1100.00 — a fee /
+    // accrued-coupon (НКД) / rounded "roughly the price"), while the user typed a
+    // slightly different price (P = $1078.68). The bond is worth P, the value its
+    // holding card and Home show, so the line steps down by (Q − P) = $21.32 on
+    // the purchase day and its "now" point matches Home.
     const dayD = D1;
     const debitTime = dayD + 6 * HOUR; // 06:00 on day D
     const purchaseDate = dayD + 18 * HOUR; // 18:00 on day D (a mid-day timestamp)
@@ -321,13 +319,12 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
     });
 
-    // Day D (bond bought, card debited Q) must equal day D-1 (card still full): the
-    // bond is recognized at the matched debit's amount Q = $1100.00, so no dip.
-    expect(amountAt(series, bucketDayD)).toBe(amountAt(series, D0 + 12 * HOUR));
-    expect(amountAt(series, bucketDayD)).toBe(1100);
+    expect(amountAt(series, D0 + 12 * HOUR)).toBe(1100);
+    expect(amountAt(series, bucketDayD)).toBe(1078.68);
+    expect(series.points.at(-1)?.amount).toBe(1078.68);
   });
 
-  it('stays flat through the REAL monobank statement->transaction mapping when the synced debit ≠ the typed price', () => {
+  it('recognizes the bond on the debit day through the REAL monobank statement->transaction mapping when the synced debit ≠ the typed price', () => {
     // REGRESSION for the reported bug, driven through the actual sync data path
     // instead of a hand-built fixture.
     //
@@ -420,11 +417,10 @@ describe('buildNetWorthSeries', () => {
       range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
     });
 
-    // Net worth must be FLAT across the purchase day: day D-1 (card still full,
-    // bond not yet recognized) must equal day D (bond bought, card debited by
-    // the real synced Q) — no permanent (Q - P) = $21.32 dip.
-    expect(amountAt(series, bucketDayD)).toBe(amountAt(series, D0 + 12 * HOUR));
-    expect(amountAt(series, bucketDayD)).toBe(1100);
+    // Day D-1: the card still holds Q. Day D: the card is debited the real synced
+    // Q and the bond is worth its typed price P, the value Home shows.
+    expect(amountAt(series, D0 + 12 * HOUR)).toBe(1100);
+    expect(amountAt(series, bucketDayD)).toBe(1078.68);
   });
 
   it('does not treat an unrelated same-currency debit far from the price as the funding outflow', () => {

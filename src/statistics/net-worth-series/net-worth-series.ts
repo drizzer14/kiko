@@ -28,16 +28,13 @@ export type NetWorthPoint = { t: number; amount: number };
  */
 export type NetWorthSeries = { points: NetWorthPoint[]; startReference: number };
 
-/** A bond's recognized cost, shaped to spread straight onto its `BondMeta` copy. */
-type BondRecognition = Pick<BondMeta, 'purchaseDate' | 'purchasePriceMinorUnits'>;
+/** A bond's recognized start day, shaped to spread straight onto its `BondMeta` copy. */
+type BondRecognition = Pick<BondMeta, 'purchaseDate'>;
 
 /**
- * Reconciles every bond's held-cost recognition against the funding money that
- * actually left — on BOTH axes: the DAY the debit landed and the AMOUNT it
- * debited (Q) — NOT the typed `purchaseDate`/price (P), so a card->bond move
- * nets to zero instead of dipping (or bumping). A cross-day gap dips on the
- * DAY axis; a synced debit that differs from the typed price (a fee, НКД, a
- * rounded "roughly the price") dips permanently on the AMOUNT axis by (Q − P).
+ * Reconciles every bond's held-cost start against the DAY the funding money
+ * actually left, NOT the typed `purchaseDate`, so a cross-day card->bond move
+ * does not dip (or bump). The bond keeps its typed price, the value Home shows.
  * See `reconcileBondFunding` for the currency + debit + near-price match.
  *
  * Every bond shares ONE `claimed` set across the whole run (see
@@ -66,7 +63,7 @@ const bondRecognitionsFor = (
 
   return new Map(
     bonds.map(({ holding, meta }) => {
-      const { recognitionDay, recognitionCostMinorUnits } = reconcileBondFunding(
+      const { recognitionDay } = reconcileBondFunding(
         meta,
         holding.currency,
         holdings,
@@ -74,10 +71,7 @@ const bondRecognitionsFor = (
         claimed,
       );
 
-      return [
-        holding.id,
-        { purchaseDate: recognitionDay, purchasePriceMinorUnits: recognitionCostMinorUnits },
-      ];
+      return [holding.id, { purchaseDate: recognitionDay }];
     }),
   );
 };
@@ -152,17 +146,13 @@ export const buildNetWorthSeries = (input: {
     return { points: [], startReference: 0 };
   }
 
-  // This is a pure valuation shift on a THROWAWAY copy: it rewrites `purchaseDate`
-  // (the cost-on threshold `bondBreakdown` reads) AND `purchasePriceMinorUnits`
-  // (the flat cost `bondBreakdown` values the live bond at — verified: between the
-  // purchase and maturity guards `bondBreakdown` returns `costMoney` built from
-  // that field, and it computes NO coupon/accrual, so overwriting it here shifts
-  // only the SERIES held value). Coupons, maturity, and the redemption ledger read
-  // the REAL holding's untouched `purchasePriceMinorUnits`/`purchaseDate`
-  // elsewhere — the series never derives them from this copy. The pairing needs
-  // cross-holding transactions, which only this builder holds, so it happens once
-  // here before the bucket loop rather than inside `bondBreakdown`. See
-  // `bondRecognitionsFor` above for the claim/order rules.
+  // This is a pure valuation shift on a THROWAWAY copy: it rewrites only
+  // `purchaseDate` (the cost-on threshold `bondBreakdown` reads). Coupons,
+  // maturity, and the redemption ledger read the REAL holding's untouched
+  // `purchaseDate` elsewhere — the series never derives them from this copy. The
+  // pairing needs cross-holding transactions, which only this builder holds, so it
+  // happens once here before the bucket loop rather than inside `bondBreakdown`.
+  // See `bondRecognitionsFor` above for the claim/order rules.
   const bondRecognitions = bondRecognitionsFor(holdings, transactionsByHolding);
 
   const valuationHoldings: SeriesHolding[] = holdings.map((holding) => {
