@@ -1,3 +1,5 @@
+import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import {
   useHeaderInset,
@@ -11,10 +13,12 @@ import { dayKeyOf } from '@kiko/prices/price-book';
 import Box from '@kiko/design-system/components/box';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import DateField from '@kiko/screens/forms/date-field';
+import { sharePriceOf } from '@kiko/prices/share-price';
 import { useLiveQuery, type HoldingRow } from '@kiko/db';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { holdingInstrument } from '@kiko/prices/instrument';
+import type { HoldingType } from '@kiko/holdings/holding-type';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { pricePointsRepo } from '@kiko/prices/price-points-repo';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -24,7 +28,6 @@ import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
 
@@ -65,16 +68,41 @@ const pricePointCopy = {
   },
 } as const;
 
-const pricePointKindOf = (holding: Pick<HoldingRow, 'type'> | undefined): PricePointKind => {
-  if (holding === undefined) {
-    return 'value';
-  }
+const pricePointKinds: Record<HoldingType, PricePointKind> = {
+  card: 'value',
+  term_deposit: 'value',
+  bond: 'value',
+  cash: 'value',
+  crypto_asset: 'value',
+  jar: 'value',
+  property_item: 'value',
+  metal: 'value',
+  loan: 'debt',
+  share: 'share',
+};
 
-  if (holdingDescriptorOrUndefined(holding.type)?.side === 'debt') {
-    return 'debt';
-  }
+// A stored `type` is not checked by SQLite, so an unknown one reads as a value.
+const pricePointKindOf = (holding: Pick<HoldingRow, 'type'> | undefined): PricePointKind =>
+  foldMap(maybe(holding), ({ type }) => pricePointKinds[type]) ?? 'value';
 
-  return holding.type === 'share' ? 'share' : 'value';
+const minorUnitPriceOf = (majorValue: number, currency: Currency): string =>
+  shiftDecimal(String(Money.fromMajor(currency, majorValue).minorUnits), -currencyScale[currency]);
+
+// A value or an outstanding is a money total, kept at the currency's minor
+// unit; a price per share keeps the places it is quoted in. Only a debt may
+// reach exactly 0 (repaid). Undefined when the typed value cannot be saved.
+const pricePointPriceOf = (
+  kind: PricePointKind,
+  value: string,
+  currency: Currency,
+): string | undefined => {
+  const majorValue = parseAmount(value);
+
+  return match(kind)
+    .with('share', () => sharePriceOf(value))
+    .with('debt', () => (majorValue >= 0 ? minorUnitPriceOf(majorValue, currency) : undefined))
+    .with('value', () => (majorValue > 0 ? minorUnitPriceOf(majorValue, currency) : undefined))
+    .exhaustive();
 };
 
 // Records a new `manual` price point for a priced holding (property_item,
@@ -92,15 +120,15 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
   // A debt's (only `loan` today) correction targets its manual OUTSTANDING
-  // series through this SAME form, and it alone may be repaid to exactly 0.
+  // series through this SAME form.
   const kind = pricePointKindOf(holding);
   const copy = pricePointCopy[kind];
-  const isDebt = kind === 'debt';
 
   const { t } = useTranslation();
   const [value, setValue] = useState('');
   const [date, setDate] = useState<number>(startOfToday);
   const [attemptedSave, setAttemptedSave] = useState(false);
+  const price = pricePointPriceOf(kind, value, currency);
 
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
   const scrollOffset = useScrollOffset(scrollableRef);
@@ -124,12 +152,8 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
     if (!holding) {
       return;
     }
-    const majorValue = parseAmount(value);
-    // A loan's outstanding can reach exactly 0 (repaid) — every other
-    // priced holding's value must stay strictly positive.
-    const isValidValue = isDebt ? majorValue >= 0 : majorValue > 0;
 
-    if (!isValidValue) {
+    if (price === undefined) {
       setAttemptedSave(true);
       scrollToField(
         scrollableRef,
@@ -140,8 +164,6 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
 
       return;
     }
-    const minorUnits = Money.fromMajor(currency, majorValue).minorUnits;
-    const price = shiftDecimal(String(minorUnits), -currencyScale[currency]);
     try {
       await pricePointsRepo.upsertMany([
         {
@@ -187,11 +209,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
             placeholder={t('forms.pricePoint.valuePlaceholder')}
             suffix={currencySymbol[currency]}
             required
-            error={
-              attemptedSave && !(isDebt ? parseAmount(value) >= 0 : parseAmount(value) > 0)
-                ? t(copy.error)
-                : undefined
-            }
+            error={attemptedSave && price === undefined ? t(copy.error) : undefined}
             inputRef={valueInputRef}
           />
         </View>

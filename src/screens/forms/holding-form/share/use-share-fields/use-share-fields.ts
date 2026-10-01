@@ -20,6 +20,7 @@ import { parseAmount } from '@kiko/currency/parse';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { hasEodhdKey } from '@kiko/prices/eodhd-key';
 import type { TextInputInstance } from 'react-native';
+import { SHARE_PRICE_SCALE } from '@kiko/prices/share-price';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { currencyScale, type Currency } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
@@ -34,10 +35,6 @@ import {
   type ShareFieldErrors,
   type ShareReasonKey,
 } from './share-reasons';
-
-// Enough places that quantity × price rounds back to the typed total cost for
-// any realistic quantity, so a new manual share shows no gain on day one.
-const FIRST_PRICE_SCALE = 8;
 
 const normalizeSymbol = (ticker: string): string => ticker.trim().toUpperCase();
 
@@ -84,7 +81,7 @@ const firstPrice = (costMinorUnits: number, currency: Currency, quantity: string
   trimDecimal(
     multiplyToDecimal(
       [shiftDecimal(String(costMinorUnits), -currencyScale[currency])],
-      FIRST_PRICE_SCALE,
+      SHARE_PRICE_SCALE,
       quantity,
     ),
   );
