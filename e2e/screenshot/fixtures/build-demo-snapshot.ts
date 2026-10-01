@@ -8,6 +8,7 @@ import type {
   AccountRow,
   HoldingRow,
   CategoryRow,
+  ReminderRow,
   SettingsRow,
   PricePointRow,
   TransactionRow,
@@ -221,6 +222,29 @@ const buildPricePoints = (dataset: ScreenshotDataset): PricePointRow[] => {
   }));
 };
 
+// `rem-1..n`, numbered across every account, each on its own account's `acc-n`.
+const buildReminders = (dataset: ScreenshotDataset): ReminderRow[] =>
+  dataset.accounts
+    .flatMap((account, accountIndex) =>
+      (account.reminders ?? []).map((reminder) => ({
+        ...reminder,
+        accountId: `acc-${accountIndex + 1}`,
+      })),
+    )
+    .map((reminder, index) => ({
+      id: `rem-${index + 1}`,
+      accountId: reminder.accountId,
+      kind: reminder.kind,
+      schedule: reminder.schedule,
+      pausedAt: null,
+      pauseReason: null,
+      activeSince: ANCHOR,
+      lastEngagedAt: null,
+      lastSnoozedAt: null,
+      createdAt: ANCHOR,
+      updatedAt: ANCHOR,
+    }));
+
 export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
   const ledger = buildLedger(dataset);
 
@@ -236,6 +260,6 @@ export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
     categoryOverrides: [],
     pricePoints: buildPricePoints(dataset),
     bondRegister: dataset.bondRegister,
-    reminders: [],
+    reminders: buildReminders(dataset),
   };
 };

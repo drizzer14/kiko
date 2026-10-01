@@ -21,6 +21,7 @@ import type { Currency } from '@kiko/currency/currency';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import type { AccountRow, BondRegisterRow, HoldingRow } from '@kiko/db';
+import type { ReminderKind, ReminderSchedule } from '@kiko/reminders/schedule';
 
 // ---------------------------------------------------------------------------
 // Fixed constants. Every timestamp derives from ANCHOR (a literal Date.UTC, NOT
@@ -107,11 +108,17 @@ type SeedPricePoint = {
   source: 'manual' | 'nbu';
 };
 
+type SeedReminder = {
+  kind: ReminderKind;
+  schedule: ReminderSchedule;
+};
+
 type SeedAccount = {
   name: string;
   kind: AccountRow['kind'];
   color: string;
   holdings: SeedHolding[];
+  reminders?: SeedReminder[];
 };
 
 type SeedRate = {
@@ -521,6 +528,12 @@ const buildAccounts = (): SeedAccount[] => [
     name: 'Готівка',
     kind: 'cash',
     color: entityColorsDark.green,
+    reminders: [
+      {
+        kind: 'add_transactions',
+        schedule: { frequency: 'weekly', minuteOfDay: 20 * 60, weekdays: [0] },
+      },
+    ],
     holdings: [
       {
         name: 'Готівка',
@@ -550,6 +563,12 @@ const buildAccounts = (): SeedAccount[] => [
     name: 'ПриватБанк',
     kind: 'bank',
     color: entityColorsDark.teal,
+    reminders: [
+      {
+        kind: 'statement_import',
+        schedule: { frequency: 'monthly', minuteOfDay: 10 * 60, dayOfMonth: 1 },
+      },
+    ],
     holdings: [
       {
         name: 'ПриватБанк',

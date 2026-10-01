@@ -25,7 +25,9 @@ import {
   encodeBytesToBase64,
 } from '@kiko/data-transfer';
 import { join } from 'node:path';
-import { accounts, holdings } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
+import { accounts, holdings, reminders } from '@kiko/db';
+import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -70,9 +72,9 @@ describe('buildDemoEnvelopeJson (always runs — proves the encoder itself, not 
 });
 
 // The App Store reviewer reaches every feature through this dataset
-// (Guideline 5.6), so an account kind or holding type missing from it is a
-// feature the reviewer cannot see.
-describe('the demo dataset covers every account kind and holding type', () => {
+// (Guideline 5.6), so an account kind, holding type, or reminder kind missing
+// from it is a feature the reviewer cannot see.
+describe('the demo dataset covers every account kind, holding type, and reminder kind', () => {
   for (const { language } of LANGUAGES) {
     it(`${language}: holds at least one account of every kind and one holding of every type`, () => {
       const snapshot = buildDemoSnapshot(buildScreenshotDataset(language));
@@ -83,6 +85,24 @@ describe('the demo dataset covers every account kind and holding type', () => {
       expect(new Set(snapshot.holdings.map((holding) => holding.type))).toEqual(
         new Set(holdings.type.enumValues),
       );
+    });
+
+    // A reminder on an ineligible account is never scheduled and its page
+    // shows it as not sent, so the reviewer would not see it work.
+    it(`${language}: holds one reminder of every kind, each on an account eligible for it`, () => {
+      const snapshot = buildDemoSnapshot(buildScreenshotDataset(language));
+      const accountsById = new Map(snapshot.accounts.map((account) => [account.id, account]));
+
+      expect(new Set(snapshot.reminders.map((reminder) => reminder.kind))).toEqual(
+        new Set(reminders.kind.enumValues),
+      );
+
+      for (const reminder of snapshot.reminders) {
+        const eligibleKinds =
+          foldMap(maybe(accountsById.get(reminder.accountId)), eligibleReminderKinds) ?? [];
+
+        expect(eligibleKinds).toContain(reminder.kind);
+      }
     });
   }
 });
