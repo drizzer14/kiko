@@ -210,6 +210,18 @@ const typeSlotFor = (
   return { kind: 'generic' };
 };
 
+// A loading Button already ignores presses, and it must not dim the way a
+// disabled one does, so a submit that shows the spinner leaves Save enabled.
+const isSaveDisabled = ({
+  isSubmitting,
+  isLoading,
+  isWaitingForPrices,
+}: {
+  isSubmitting: boolean;
+  isLoading: boolean;
+  isWaitingForPrices: boolean;
+}): boolean => (isSubmitting && !isLoading) || isWaitingForPrices;
+
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
@@ -695,7 +707,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       footer={
         <Button
           onPress={onSave}
-          disabled={isSubmitting || (isEdit && isPriceBookLoading)}
+          disabled={isSaveDisabled({
+            isSubmitting,
+            isLoading: share.isLookingUpUnit,
+            isWaitingForPrices: isEdit && isPriceBookLoading,
+          })}
           loading={share.isLookingUpUnit}
         >
           {t('common.save')}

@@ -2954,6 +2954,13 @@ describe('HoldingFormScreen share', () => {
       await fireEvent.press(screen.getByText('Save'));
 
       expect(screen.getByTestId('button-loading-spinner')).toBeTruthy();
+      expect(
+        StyleSheet.flatten(screen.getByRole('button', { name: 'Save' }).props.style).opacity,
+      ).toBeUndefined();
+
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(mockLookupShareUnit).toHaveBeenCalledTimes(1);
 
       await act(async () => {
         answer('USD');
@@ -2974,6 +2981,9 @@ describe('HoldingFormScreen share', () => {
 
       expect(createMock).toHaveBeenCalled();
       expect(screen.queryByTestId('button-loading-spinner')).toBeNull();
+      expect(
+        StyleSheet.flatten(screen.getByRole('button', { name: 'Save' }).props.style).opacity,
+      ).toBe(0.4);
     });
 
     it('saves a hand-typed ticker as before when the lookup has no answer', async () => {
