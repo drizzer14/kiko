@@ -8,6 +8,8 @@ import { i18n } from '@kiko/i18n/init';
 import { formatDateTime } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
 import {
+  CLOSE_ACTION_TEST_ID,
+  DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
@@ -91,6 +93,7 @@ const mockPick = jest.fn();
 const mockKeepLocalCopy = jest.fn();
 const mockReadFile = jest.fn();
 const mockRemove = jest.fn();
+const mockCloseMany = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
 const mockReorder = jest.fn();
 const mockAccountSetIcon = jest.fn();
 const mockAccountUpdate = jest.fn();
@@ -162,6 +165,7 @@ jest.mock('@kiko/holdings/repo', () => ({
       toSQL: () => ({ sql: '', params: [accountId] }),
     }),
     remove: (...args: unknown[]) => mockRemove(...args),
+    closeMany: (...args: unknown[]) => mockCloseMany(...args),
     reorder: (...args: unknown[]) => mockReorder(...args),
     balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
       currency: row.currency,
@@ -858,15 +862,8 @@ describe('AccountDetailScreen', () => {
     expect(getByText('Syncing…')).toBeTruthy();
   });
 
-  it('deletes a manual holding via the themed deep-press delete confirm', async () => {
-    setLiveData({
-      accounts: [account()],
-      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
-    });
-    const { getByTestId, getByText } = await renderScreen();
-    // The manual holding card is wrapped in the deep-press long-press. A hold
-    // that stays still opens the themed ConfirmSheet (not a native
-    // ActionSheetIOS); pressing its destructive confirm removes the holding.
+  // A still hold on a manual holding card opens the shared action list.
+  const holdHoldingCard = async (): Promise<void> => {
     await act(async () => {
       fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
         { state: State.BEGAN },
@@ -874,9 +871,87 @@ describe('AccountDetailScreen', () => {
         { state: State.END },
       ]);
     });
+  };
+
+  it('deletes a manual holding via the action list and the themed delete confirm', async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+    const { getByTestId, getByText } = await renderScreen();
+
+    await holdHoldingCard();
+    await act(async () => {
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+    });
+
     expect(getByText('Delete "Black card"')).toBeTruthy();
+
     await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
     expect(mockRemove).toHaveBeenCalledWith('h1');
+  });
+
+  describe('closing a manual holding', () => {
+    const seedShares = (): void =>
+      setLiveData({
+        accounts: [account()],
+        holdings: [{ id: 'h1', name: 'Shares', currency: 'UAH', balanceMinorUnits: 0 }],
+      });
+
+    const openCloseConfirm = async (
+      getByTestId: Awaited<ReturnType<typeof renderScreen>>['getByTestId'],
+    ): Promise<void> => {
+      await holdHoldingCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(CLOSE_ACTION_TEST_ID));
+      });
+    };
+
+    it('closes it through its own confirm, keeping it from being deleted', async () => {
+      seedShares();
+      const { getByTestId, getByText } = await renderScreen();
+
+      await openCloseConfirm(getByTestId);
+
+      expect(getByText('Close "Shares"')).toBeTruthy();
+      expect(mockCloseMany).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId('close-holding-confirm'));
+      });
+
+      expect(mockCloseMany).toHaveBeenCalledWith(['h1']);
+      expect(mockRemove).not.toHaveBeenCalled();
+    });
+
+    it('closes nothing on Cancel', async () => {
+      seedShares();
+      const { getByTestId, getByText, queryByText } = await renderScreen();
+
+      await openCloseConfirm(getByTestId);
+      await act(async () => {
+        await fireEvent.press(getByText('Cancel'));
+      });
+
+      expect(queryByText('Close "Shares"')).toBeNull();
+      expect(mockCloseMany).not.toHaveBeenCalled();
+    });
+
+    it('alerts when the close fails', async () => {
+      mockCloseMany.mockRejectedValueOnce(new Error('write failed'));
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+      seedShares();
+      const { getByTestId } = await renderScreen();
+
+      await openCloseConfirm(getByTestId);
+      await act(async () => {
+        await fireEvent.press(getByTestId('close-holding-confirm'));
+      });
+
+      expect(alertSpy).toHaveBeenCalledWith('Could not close holding', 'Please try again.');
+      alertSpy.mockRestore();
+    });
   });
 
   it('wires an auto-scroll ref and an edge activation offset to the holdings grid', async () => {

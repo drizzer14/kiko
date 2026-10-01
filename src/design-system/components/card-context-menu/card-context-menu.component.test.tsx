@@ -18,6 +18,7 @@ import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 
 import CardContextMenu, {
   EDIT_ACTION_TEST_ID,
+  CLOSE_ACTION_TEST_ID,
   DELETE_ACTION_TEST_ID,
   HOLD_GESTURE_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
@@ -172,6 +173,37 @@ describe('CardContextMenu', () => {
     expect(onEdit).toHaveBeenCalledTimes(1);
     expect(onDelete).not.toHaveBeenCalled();
     expect(queryByTestId(EDIT_ACTION_TEST_ID)).toBeNull();
+  });
+
+  it('offers a Close/Delete action list on hold when onClose is provided, routing Close to onClose without deleting', async () => {
+    const onClose = jest.fn();
+    const onDelete = jest.fn();
+    const { getByTestId, queryByTestId, queryByText } = await render(
+      <CardContextMenu name="Shares" deletable onDelete={onDelete} onClose={onClose}>
+        <Text>card</Text>
+      </CardContextMenu>,
+      { wrapper: GestureRootWrapper },
+    );
+
+    await act(async () => {
+      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+        { state: State.BEGAN },
+        { state: State.ACTIVE },
+        { state: State.END },
+      ]);
+    });
+
+    expect(getByTestId(CLOSE_ACTION_TEST_ID)).toHaveTextContent('Close');
+    expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+    expect(queryByText('Delete "Shares"')).toBeNull();
+
+    await act(async () => {
+      await fireEvent.press(getByTestId(CLOSE_ACTION_TEST_ID));
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(queryByTestId(CLOSE_ACTION_TEST_ID)).toBeNull();
   });
 
   it('renders a synced (non-deletable) card bare, with no gesture and no confirm sheet', async () => {

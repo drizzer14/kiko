@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
-import { useDataReady, useLiveQuery } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
@@ -30,6 +29,7 @@ import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
@@ -46,6 +46,7 @@ import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/ban
 import HoldingCard from './holding-card';
 import { styles } from './account-detail.styles';
 import BankSyncSection from './bank-sync-section';
+import CloseHoldingSheet from './close-holding-sheet';
 import CryptoSyncSection from './crypto-sync-section';
 
 const offerMessage = (kind: ReminderKind, t: TFunction): string =>
@@ -177,6 +178,21 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   }, [navigation, accountName, accountId, t, theme.colors.textPrimary]);
 
   const activeHoldings = holdings.filter((holding) => holding.closedAt == null);
+
+  // A synced holding keeps its sync-driven close: the bank decides when it is
+  // gone, so only a manual one offers Close.
+  const [closeTarget, setCloseTarget] = useState<HoldingRow>();
+  const [isCloseConfirmVisible, setCloseConfirmVisible] = useState(false);
+  const closeActionFor = (holding: HoldingRow): (() => void) | undefined => {
+    if (isSyncedHolding(holding, account)) {
+      return undefined;
+    }
+
+    return () => {
+      setCloseTarget(holding);
+      setCloseConfirmVisible(true);
+    };
+  };
 
   // Reuse the accounts-list conversion path: sum this account's open holdings
   // into the base currency, then list each currency's own total beneath.
@@ -400,6 +416,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                     name={item.name}
                     deletable={!isSyncedHolding(item, account)}
                     onDelete={() => holdingsRepo.remove(item.id)}
+                    onClose={closeActionFor(item)}
                   >
                     <HoldingCard
                       holding={item}
@@ -422,6 +439,14 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               }
             />
           </Box>
+
+          {closeTarget !== undefined && (
+            <CloseHoldingSheet
+              holding={closeTarget}
+              visible={isCloseConfirmVisible}
+              onDismiss={() => setCloseConfirmVisible(false)}
+            />
+          )}
         </Box>
       </Box>
     </Screen>

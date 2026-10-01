@@ -42,6 +42,7 @@ export const en = {
     save: 'Save',
     clear: 'Clear',
     cancel: 'Cancel',
+    close: 'Close',
     delete: 'Delete',
     duplicate: 'Duplicate',
     deleteNamed: 'Delete "{{name}}"',
@@ -684,6 +685,10 @@ export const en = {
     btcAddressPlaceholder: 'BTC address',
     changeBankAction: 'Change bank',
     checking: 'Checking…',
+    closeHoldingErrorTitle: 'Could not close holding',
+    closeHoldingMessage:
+      "It leaves your accounts and stops counting toward your net worth. Its past values stay on the net worth chart. A closed holding can't be reopened.",
+    closeHoldingTitle: 'Close "{{name}}"',
     connectBinance: 'Connect Binance',
     connectedAs: 'Connected as {{name}}',
     connectMonobank: 'Connect Monobank',

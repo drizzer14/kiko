@@ -26,6 +26,7 @@ export const DELETE_CONFIRM_TEST_ID = 'card-context-menu-delete-confirm';
 // opens the confirm directly).
 export const DUPLICATE_ACTION_TEST_ID = 'card-context-menu-duplicate';
 export const EDIT_ACTION_TEST_ID = 'card-context-menu-edit';
+export const CLOSE_ACTION_TEST_ID = 'card-context-menu-close';
 export const DELETE_ACTION_TEST_ID = 'card-context-menu-delete-action';
 
 // A touch-and-hold must stay still for this long to open the delete confirm —
@@ -99,6 +100,10 @@ const CardContextMenu: FC<{
   // its own to open an editor (the holding detail's share changes). Joins
   // the same action list as Duplicate.
   onEdit?: () => void;
+  // An optional "close this entity, keep its history" action (a manual
+  // holding the user sold or gave away). Joins the same action list; the
+  // consumer owns its confirm, since what closing means is the entity's own.
+  onClose?: () => void;
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -109,7 +114,16 @@ const CardContextMenu: FC<{
   // would double-animate it. Only the Home transaction row passes it today.
   liftOnHold?: boolean;
   children: ReactNode;
-}> = ({ name, deletable, onDelete, onDuplicate, onEdit, liftOnHold = false, children }) => {
+}> = ({
+  name,
+  deletable,
+  onDelete,
+  onDuplicate,
+  onEdit,
+  onClose,
+  liftOnHold = false,
+  children,
+}) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -127,7 +141,8 @@ const CardContextMenu: FC<{
 
   const canDuplicate = onDuplicate !== undefined;
   const canEdit = onEdit !== undefined;
-  const hasActionList = canDuplicate || canEdit;
+  const canClose = onClose !== undefined;
+  const hasActionList = canDuplicate || canEdit || canClose;
 
   // A card with NO action renders bare — no gesture, no sheet — leaving the
   // touch-and-hold free for an enclosing sortables drag to claim (a synced
@@ -136,7 +151,7 @@ const CardContextMenu: FC<{
     return <>{children}</>;
   }
 
-  // A hold offers the action-list CHOICE only when a duplicate or edit action exists;
+  // A hold offers the action-list CHOICE only when a duplicate, edit, or close action exists;
   // otherwise it keeps the original behavior and opens the delete confirm
   // straight away, so every delete-only consumer is unchanged. `liftOnHold`
   // additionally scales the card up on `onStart` and eases it back to 1 on
@@ -190,6 +205,11 @@ const CardContextMenu: FC<{
     onEdit?.();
   };
 
+  const runClose = (): void => {
+    setActionsVisible(false);
+    onClose?.();
+  };
+
   // Delete from the action list hands off to the SAME named confirm sheet the
   // delete-only path uses: close the list, open the confirm.
   const chooseDelete = (): void => {
@@ -234,6 +254,12 @@ const CardContextMenu: FC<{
           {canDuplicate && (
             <Button onPress={runDuplicate} testID={DUPLICATE_ACTION_TEST_ID}>
               {t('common.duplicate')}
+            </Button>
+          )}
+
+          {canClose && (
+            <Button onPress={runClose} testID={CLOSE_ACTION_TEST_ID}>
+              {t('common.close')}
             </Button>
           )}
 

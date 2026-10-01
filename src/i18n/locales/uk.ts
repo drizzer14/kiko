@@ -31,6 +31,7 @@ export const uk: typeof en = {
     save: 'Зберегти',
     clear: 'Очистити',
     cancel: 'Скасувати',
+    close: 'Закрити',
     delete: 'Видалити',
     duplicate: 'Дублювати',
     deleteNamed: 'Видалити «{{name}}»',
@@ -588,6 +589,10 @@ export const uk: typeof en = {
     btcAddressPlaceholder: 'BTC-адреса',
     changeBankAction: 'Змінити банк',
     checking: 'Перевірка…',
+    closeHoldingErrorTitle: 'Не вдалося закрити актив',
+    closeHoldingMessage:
+      'Актив зникне з рахунків і більше не входитиме в капітал. Його минулі значення залишаться на графіку капіталу. Закритий актив не можна відкрити знову.',
+    closeHoldingTitle: 'Закрити «{{name}}»',
     connectBinance: 'Підключити Binance',
     connectedAs: 'Підключено як {{name}}',
     connectMonobank: 'Підключити Monobank',
