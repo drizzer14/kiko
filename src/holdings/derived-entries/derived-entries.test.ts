@@ -490,8 +490,8 @@ describe('derivedEntries', () => {
         unit: 'g',
         purity: '0.999',
         lots: [
-          { day: local(2025, 0, 1), quantityDelta: '10', costMinorUnits: 500_000 },
-          { day: local(2025, 5, 1), quantityDelta: '-4', costMinorUnits: -200_000 },
+          { day: Date.UTC(2025, 0, 1), quantityDelta: '10', costMinorUnits: 500_000 },
+          { day: Date.UTC(2025, 5, 1), quantityDelta: '-4', costMinorUnits: -200_000 },
         ],
       },
     };

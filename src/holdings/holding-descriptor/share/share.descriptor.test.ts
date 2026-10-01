@@ -1,6 +1,6 @@
 import { i18n } from '@kiko/i18n/init';
-import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { holdingInstrument, shareInstrument } from '@kiko/prices/instrument';
+import { buildPriceBook, dayKeyOf, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { holdingValueBreakdown, type ValuableHolding } from '@kiko/holdings/holding-value';
 
 import { shareDescriptor } from './share.descriptor';
@@ -102,8 +102,8 @@ describe('shareDescriptor entries', () => {
   it('lists a buy lot as a purchase and a sell lot as a sale, each naming its lot', () => {
     const holding = manualShare({
       lots: [
-        { day: buyDay, quantityDelta: '3', costMinorUnits: 90_000 },
-        { day: sellDay, quantityDelta: '-1', costMinorUnits: -30_000 },
+        { day: dayKeyOf(buyDay), quantityDelta: '3', costMinorUnits: 90_000 },
+        { day: dayKeyOf(sellDay), quantityDelta: '-1', costMinorUnits: -30_000 },
       ],
     });
 
@@ -125,6 +125,19 @@ describe('shareDescriptor entries', () => {
         lotIndex: 1,
       }),
     ]);
+  });
+
+  // A lot's day is a UTC-midnight key of a local date, so the row reads that
+  // local date in every zone, west of UTC too.
+  it('dates a lot row at the local midnight of its day', () => {
+    const day = dayKeyOf(new Date(2026, 8, 1).getTime());
+    const holding = manualShare({
+      lots: [{ day, quantityDelta: '3', costMinorUnits: 90_000 }],
+    });
+
+    expect(shareDescriptor.entries(holding, NOW, i18n.t, [])[0].time).toBe(
+      new Date(2026, 8, 1).getTime(),
+    );
   });
 
   it('lists nothing for unparsable metadata', () => {

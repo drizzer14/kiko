@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import type { Lot } from '@kiko/holdings/lots';
 import { compareDecimal } from '@kiko/currency/decimal';
+import { localMidnightOfDayKey } from '@kiko/prices/price-book';
 import type { DerivedEntry, DerivedEntryKind, EntryTone } from '@kiko/holdings/derived-entries';
 
 // The ledger tone a derived entry reads in: withholding lines are `negative`
@@ -55,7 +56,7 @@ export const lotEntries = (
         holdingId,
         isSale ? 'sale' : 'purchase',
         index,
-        lot.day,
+        localMidnightOfDayKey(lot.day),
         -lot.costMinorUnits,
         isSale ? t('holdingDetail.sale') : t('holdingDetail.purchase'),
         now,

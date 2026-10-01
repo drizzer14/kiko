@@ -17,7 +17,7 @@ const LotRowMenu: FC<LotRowMenuProps> = ({ entry, actions, children }) => {
 
   return (
     <CardContextMenu
-      name={`${entry.label} ${formatDate(entry.time, { timeZone: 'UTC' })}`}
+      name={`${entry.label} ${formatDate(entry.time)}`}
       deletable={actions.isRemovable(lotIndex)}
       onDelete={() => actions.remove(lotIndex)}
       onEdit={() => actions.edit(lotIndex)}
