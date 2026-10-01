@@ -4275,9 +4275,11 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
 
   it('also refreshes share prices after a share create', async () => {
     mockAccountKind = 'broker';
+    mockHasEodhdKey = true;
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'Apple');
+    await screen.findByLabelText('Ticker');
     await fill(screen, 'Ticker', 'aapl.us');
     await fill(screen, 'Quantity', '3');
     await fill(screen, 'Total cost', '1000');
