@@ -6,6 +6,7 @@ import {
   EodhdNotInPlanError,
   EodhdQuotaError,
   EodhdRateLimitError,
+  EodhdServerError,
   EodhdUnavailableError,
   fetchEod,
   fetchUserLimits,
@@ -85,6 +86,18 @@ describe('fetchEod', () => {
     expect(points).toEqual([{ day: Date.UTC(2026, 8, 2), close: '324.96' }]);
   });
 
+  it('drops a row whose date is not a real calendar day', async () => {
+    const rows = [
+      { date: '2026-02-30', close: 300 },
+      { date: '2026-13-01', close: 301 },
+      { date: '2026-09-02', close: 324.96 },
+    ];
+
+    const points = await fetchEod('AAPL.US', fromDay, toDay, KEY, respondWith(rows));
+
+    expect(points).toEqual([{ day: Date.UTC(2026, 8, 2), close: '324.96' }]);
+  });
+
   it('treats a body that is not a list as the provider being unavailable', async () => {
     await expect(
       fetchEod('AAPL.US', fromDay, toDay, KEY, respondWith({ error: 'x' })),
@@ -140,11 +153,31 @@ describe('searchSymbols', () => {
     expect(new URL(sent[0]).searchParams.has('exchange')).toBe(false);
   });
 
-  it('maps each listing to its CODE.EXCHANGE symbol, name, ISIN, and currency unit', async () => {
+  it('maps each listing to its CODE.EXCHANGE symbol, name, ISIN, currency unit, and primary flag', async () => {
     await expect(searchSymbols('VOD', KEY, respondWith(searchVODFixture), 'LSE')).resolves.toEqual([
-      { symbol: 'VOD.LSE', name: 'Vodafone Group PLC', isin: 'GB00BH4HKS39', currency: 'GBX' },
-      { symbol: '0LQQ.LSE', name: 'Example Corp', currency: 'USD' },
-      { symbol: '3SVO.LSE', name: 'Example ETP', isin: 'XS2710197935', currency: 'GBX' },
+      {
+        symbol: 'VOD.LSE',
+        name: 'Vodafone Group PLC',
+        isin: 'GB00BH4HKS39',
+        currency: 'GBX',
+        isPrimary: true,
+      },
+      { symbol: '0LQQ.LSE', name: 'Example Corp', currency: 'USD', isPrimary: false },
+      {
+        symbol: '3SVO.LSE',
+        name: 'Example ETP',
+        isin: 'XS2710197935',
+        currency: 'GBX',
+        isPrimary: false,
+      },
+    ]);
+  });
+
+  it('reads a listing with no primary flag as not primary', async () => {
+    const { isPrimary: _isPrimary, ...listing } = searchVODFixture[0];
+
+    await expect(searchSymbols('VOD', KEY, respondWith([listing]))).resolves.toEqual([
+      expect.objectContaining({ symbol: 'VOD.LSE', isPrimary: false }),
     ]);
   });
 
@@ -159,7 +192,13 @@ describe('searchSymbols', () => {
     ];
 
     await expect(searchSymbols('VOD', KEY, respondWith(rows))).resolves.toEqual([
-      { symbol: 'VOD2.LSE', name: 'Vodafone Group PLC', isin: 'GB00BH4HKS39', currency: 'GBX' },
+      {
+        symbol: 'VOD2.LSE',
+        name: 'Vodafone Group PLC',
+        isin: 'GB00BH4HKS39',
+        currency: 'GBX',
+        isPrimary: true,
+      },
     ]);
   });
 
@@ -174,8 +213,10 @@ const failures: [string, typeof fetch, new () => Error][] = [
   ['401', respondWith('Unauthenticated', 401), EodhdAuthError],
   ['402', respondWith('Payment required', 402), EodhdQuotaError],
   ['403', respondWith('Forbidden', 403), EodhdNotInPlanError],
+  ['404', respondWith('Not found', 404), EodhdUnavailableError],
   ['429', respondWith('Too many requests', 429), EodhdRateLimitError],
-  ['500', respondWith('Server error', 500), EodhdUnavailableError],
+  ['500', respondWith('Server error', 500), EodhdServerError],
+  ['503', respondWith('Service unavailable', 503), EodhdServerError],
   [
     'a network failure',
     (async (url: string) => {
@@ -216,6 +257,36 @@ describe.each(calls)('%s request', (_name, call) => {
     expect(sent[0].init?.headers).toEqual({ 'Cache-Control': 'no-store' });
     expect(new URL(sent[0].url).searchParams.has('_')).toBe(false);
     expect(sent[0].init).not.toHaveProperty('cache');
+  });
+});
+
+describe.each(calls)('%s timeout', (_name, call) => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('aborts a request with no answer after 30 seconds as a network error', async () => {
+    jest.useFakeTimers();
+    const hungFetch = ((_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(Object.assign(new Error(`Aborted ${KEY}`), { name: 'AbortError' }));
+        });
+      })) as unknown as typeof fetch;
+
+    const assertion = expect(call(hungFetch)).rejects.toBeInstanceOf(EodhdNetworkError);
+
+    await jest.advanceTimersByTimeAsync(29_999);
+    await jest.advanceTimersByTimeAsync(1);
+    await assertion;
+  });
+
+  it('leaves no timer behind once the answer arrives', async () => {
+    jest.useFakeTimers();
+
+    await call(respondWith(userFixture)).catch(() => undefined);
+
+    expect(jest.getTimerCount()).toBe(0);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   EodhdQuotaError,
   EodhdNetworkError,
   EodhdNotInPlanError,
+  EodhdServerError,
   EodhdRateLimitError,
   EodhdUnavailableError,
   type SymbolMatch,
@@ -574,6 +575,38 @@ describe('refreshSharePrices', () => {
       ]);
     });
 
+    it('stops on an EODHD server error, counts the call, and leaves every symbol open for a later run', async () => {
+      const world = makeWorld({
+        holdings: [
+          share({ id: 'first', symbol: 'AAA.US' }),
+          share({ id: 'second', symbol: 'BBB.US' }),
+        ],
+        quota: { day: THURSDAY, calls: 4, dailyLimit: 20, symbols: [] },
+        eod: { 'AAA.US': new EodhdServerError() },
+      });
+
+      await expect(refreshSharePrices(depsFor(world))).resolves.toBe('failed');
+      expect(calls(world)).toEqual(['eod AAA.US 2026-06-01 2026-10-01']);
+      expect(world.quota).toEqual({ day: THURSDAY, calls: 5, dailyLimit: 20, symbols: [] });
+
+      world.eod = {
+        'AAA.US': [{ day: WEDNESDAY, close: '10' }],
+        'BBB.US': [{ day: WEDNESDAY, close: '20' }],
+      };
+      await expect(refreshSharePrices(depsFor(world))).resolves.toBe('ok');
+
+      expect(calls(world).slice(1)).toEqual([
+        'eod AAA.US 2026-06-01 2026-10-01',
+        'eod BBB.US 2026-06-01 2026-10-01',
+      ]);
+      expect(world.quota).toEqual({
+        day: THURSDAY,
+        calls: 7,
+        dailyLimit: 20,
+        symbols: ['AAA.US', 'BBB.US'],
+      });
+    });
+
     it('counts no call for a search EODHD never answered', async () => {
       const world = makeWorld({
         holdings: [share({ id: 'vod', symbol: 'VOD.LSE', currency: 'GBP', handTyped: true })],
@@ -642,8 +675,8 @@ describe('refreshSharePrices', () => {
         holdings: [share({ id: 'vod', symbol: 'VOD.LSE', currency: 'GBP', handTyped: true })],
         search: {
           VOD: [
-            { symbol: 'VOD.US', name: 'Vodafone ADR', currency: 'USD' },
-            { symbol: 'VOD.LSE', name: 'Vodafone Group PLC', currency: 'GBX' },
+            { symbol: 'VOD.US', name: 'Vodafone ADR', currency: 'USD', isPrimary: false },
+            { symbol: 'VOD.LSE', name: 'Vodafone Group PLC', currency: 'GBX', isPrimary: true },
           ],
         },
         eod: { 'VOD.LSE': [{ day: WEDNESDAY, close: '122.7' }] },
@@ -675,7 +708,11 @@ describe('refreshSharePrices', () => {
     it('never searches again once the unit is stored', async () => {
       const world = makeWorld({
         holdings: [share({ id: 'vod', symbol: 'VOD.LSE', currency: 'GBP', handTyped: true })],
-        search: { VOD: [{ symbol: 'VOD.LSE', name: 'Vodafone Group PLC', currency: 'GBX' }] },
+        search: {
+          VOD: [
+            { symbol: 'VOD.LSE', name: 'Vodafone Group PLC', currency: 'GBX', isPrimary: true },
+          ],
+        },
       });
 
       await refreshSharePrices(depsFor(world));
@@ -691,7 +728,9 @@ describe('refreshSharePrices', () => {
     it('skips a hand-typed share whose listing the search cannot find exactly', async () => {
       const world = makeWorld({
         holdings: [share({ id: 'vod', symbol: 'VOD.LSE', currency: 'GBP', handTyped: true })],
-        search: { VOD: [{ symbol: 'VOD.US', name: 'Vodafone ADR', currency: 'USD' }] },
+        search: {
+          VOD: [{ symbol: 'VOD.US', name: 'Vodafone ADR', currency: 'USD', isPrimary: false }],
+        },
       });
 
       await expect(refreshSharePrices(depsFor(world))).resolves.toBe('ok');
@@ -709,7 +748,11 @@ describe('refreshSharePrices', () => {
     it('stores a resolved unit it cannot use, so it never searches for it again', async () => {
       const world = makeWorld({
         holdings: [share({ id: 'vod', symbol: 'VOD.LSE', currency: 'GBP', handTyped: true })],
-        search: { VOD: [{ symbol: 'VOD.LSE', name: 'Vodafone Group PLC', currency: 'USD' }] },
+        search: {
+          VOD: [
+            { symbol: 'VOD.LSE', name: 'Vodafone Group PLC', currency: 'USD', isPrimary: true },
+          ],
+        },
       });
 
       await refreshSharePrices(depsFor(world));

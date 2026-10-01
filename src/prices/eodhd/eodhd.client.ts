@@ -66,6 +66,15 @@ export class EodhdNetworkError extends Error {
   }
 }
 
+/** A 5xx: EODHD itself is failing, whatever was asked, so a later try may work. */
+export class EodhdServerError extends Error {
+  constructor() {
+    super('EODHD failed to answer');
+    this.name = 'EodhdServerError';
+    Object.setPrototypeOf(this, EodhdServerError.prototype);
+  }
+}
+
 const unavailable = (): never => {
   throw new EodhdUnavailableError();
 };
@@ -81,6 +90,10 @@ const errorForStatus = (status: number): Error =>
     .with(402, () => new EodhdQuotaError())
     .with(403, () => new EodhdNotInPlanError())
     .with(429, () => new EodhdRateLimitError())
+    .when(
+      (code) => code >= 500,
+      () => new EodhdServerError(),
+    )
     .otherwise(() => new EodhdUnavailableError());
 
 const readBody = guard(
@@ -101,6 +114,10 @@ const readBody = guard(
 // directive asks every cache on the path not to store the response.
 const NO_STORE: RequestInit = { headers: { 'Cache-Control': 'no-store' } };
 
+// A hung socket would keep a refresh, or the user on the search sheet,
+// waiting forever. An aborted request got no answer, so it costs no call.
+const REQUEST_TIMEOUT_MS = 30_000;
+
 // A rejected fetch can carry the request URL, and with it the key, in its message.
 const requestJson = async (
   path: string,
@@ -109,21 +126,33 @@ const requestJson = async (
   fetchImpl: typeof fetch,
 ): Promise<unknown> => {
   const query = new URLSearchParams([['api_token', key], ['fmt', 'json'], ...params]);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const sent = await either<unknown, Response>(async () =>
-    fetchImpl(`${EODHD_API_ENDPOINT}${path}?${query.toString()}`, NO_STORE),
+    fetchImpl(`${EODHD_API_ENDPOINT}${path}?${query.toString()}`, {
+      ...NO_STORE,
+      signal: controller.signal,
+    }),
   );
+
+  clearTimeout(timer);
 
   return readBody(bifoldr(sent) ?? unreachable());
 };
 
 const DAY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-const dayFromText = (text: string): number | undefined =>
-  foldMap(maybe(DAY_PATTERN.exec(text)), ([, year, month, day]) =>
-    Date.UTC(Number(year), Number(month) - 1, Number(day)),
+const textFromDay = (day: number): string => new Date(day).toISOString().slice(0, 10);
+
+// `Date.UTC` rolls an impossible date over (2026-02-30 becomes 2026-03-02), so
+// only a day that formats back to the same text is a real one.
+const dayFromText = (text: string): number | undefined => {
+  const day = foldMap(maybe(DAY_PATTERN.exec(text)), ([, year, month, date]) =>
+    Date.UTC(Number(year), Number(month) - 1, Number(date)),
   );
 
-const textFromDay = (day: number): string => new Date(day).toISOString().slice(0, 10);
+  return day !== undefined && textFromDay(day) === text ? day : undefined;
+};
 
 type EodRow = { date: string; close: number };
 
@@ -172,10 +201,26 @@ export const fetchEod = async (
   return Array.isArray(body) ? body.flatMap(toClose) : unavailable();
 };
 
-/** One listing: `currency` is its price unit, which can be a minor unit (`GBX` pence). */
-export type SymbolMatch = { symbol: string; name: string; isin?: string; currency: string };
+/**
+ * One listing: `currency` is its price unit, which can be a minor unit (`GBX`
+ * pence). A share trades on several exchanges; `isPrimary` marks its home one.
+ */
+export type SymbolMatch = {
+  symbol: string;
+  name: string;
+  isin?: string;
+  currency: string;
+  isPrimary: boolean;
+};
 
-type SearchRow = { Code: string; Exchange: string; Name: string; Currency: string; ISIN?: unknown };
+type SearchRow = {
+  Code: string;
+  Exchange: string;
+  Name: string;
+  Currency: string;
+  ISIN?: unknown;
+  isPrimary?: unknown;
+};
 
 const isSearchRow = (value: unknown): value is SearchRow =>
   typeof value === 'object' &&
@@ -196,6 +241,7 @@ const toSymbolMatch = (row: unknown): SymbolMatch[] => {
       name: row.Name,
       ...(typeof row.ISIN === 'string' ? { isin: row.ISIN } : {}),
       currency: row.Currency,
+      isPrimary: row.isPrimary === true,
     },
   ];
 };
