@@ -234,6 +234,15 @@ describe('refreshSharePrices', () => {
       expect(calls(world)).toEqual(['eod AAPL.US 2026-07-01 2026-10-01']);
     });
 
+    it('calls nothing for a share whose first lot is still to come', async () => {
+      const world = makeWorld({
+        holdings: [share({ id: 'apple', lotDays: [THURSDAY + 3 * DAY_MS] })],
+      });
+
+      await expect(refreshSharePrices(depsFor(world))).resolves.toBe('ok');
+      expect(world.events).toEqual(['read key']);
+    });
+
     it('passes the saved key to every call', async () => {
       const world = makeWorld();
 
@@ -404,11 +413,18 @@ describe('refreshSharePrices', () => {
       expect(world.quota).toEqual({ day: THURSDAY, calls: 20, dailyLimit: 20, symbols: [] });
     });
 
-    it('marks the day used up and stops on the rate limit too', async () => {
-      const world = makeWorld({ eod: { 'AAPL.US': new EodhdRateLimitError() } });
+    it('stops on the per-minute rate limit and leaves the rest of the day', async () => {
+      const world = makeWorld({
+        holdings: [
+          share({ id: 'apple' }),
+          share({ id: 'sap', symbol: 'SAP.XETRA', currency: 'EUR' }),
+        ],
+        eod: { 'AAPL.US': new EodhdRateLimitError() },
+      });
 
-      await expect(refreshSharePrices(depsFor(world))).resolves.toBe('quotaExhausted');
-      expect(world.quota?.calls).toBe(20);
+      await expect(refreshSharePrices(depsFor(world))).resolves.toBe('failed');
+      expect(calls(world)).toEqual(['eod AAPL.US 2026-06-01 2026-10-01']);
+      expect(world.quota).toEqual({ day: THURSDAY, calls: 1, dailyLimit: 20, symbols: [] });
     });
   });
 

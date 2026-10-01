@@ -17,7 +17,6 @@ import {
   EodhdQuotaError,
   type SymbolMatch,
   EodhdNotInPlanError,
-  EodhdRateLimitError,
   EodhdUnavailableError,
 } from '../eodhd';
 import { readEodhdKey } from '../eodhd-key';
@@ -168,6 +167,10 @@ const callFor = (
     foldMap(maybe(latestDay), (day) => day + DAY_MS) ??
     Math.max(listing.firstLotDay, today - HISTORY_DAYS * DAY_MS);
 
+  if (fromDay > today) {
+    return undefined;
+  }
+
   if (listing.unit === undefined) {
     return foldMap(maybe(searchFor(listing.symbol)), (search) => ({ listing, fromDay, search }));
   }
@@ -212,14 +215,15 @@ const planCalls = (
 
 // Only the error's name and code are logged: a request URL carries the key.
 // An answer about one symbol (outside the plan, delisted, a bad body) skips
-// it until tomorrow; only a rejected key, a used-up day, or no network stops
-// the run, so one bad symbol never blocks the rest.
+// it until tomorrow, so one bad symbol never blocks the rest. A rejected key,
+// no network, or the per-minute rate limit stops the run for a later retry;
+// only a 402 means the day's calls are used up.
 const stopFor = (error: unknown): Stop | undefined => {
   logFailure('[share-refresh] EODHD request failed', error);
 
   return match(error)
     .with(P.instanceOf(EodhdNotInPlanError), P.instanceOf(EodhdUnavailableError), () => undefined)
-    .with(P.instanceOf(EodhdQuotaError), P.instanceOf(EodhdRateLimitError), () => 'usedUp' as const)
+    .with(P.instanceOf(EodhdQuotaError), () => 'usedUp' as const)
     .otherwise(() => 'failed' as const);
 };
 
@@ -307,7 +311,7 @@ const refreshListing = async (call: PlannedCall, context: CallContext): Promise<
   return { ...resolved, spent, rows };
 };
 
-// One call at a time: a rejected key or a used-up day stops every later call.
+// One call at a time: a stop (see `stopFor`) ends every later call.
 const runCalls = async (planned: PlannedCall[], context: CallContext): Promise<Progress> => {
   const progress: Progress = { spent: 0, rows: [], units: [], answered: [] };
 
