@@ -1636,3 +1636,57 @@ rules:
             - metavariable-regex:
                 metavariable: $SPAN
                 regex: .*(?:\bDAY(?:_MS)?\b|_DAYS?_MS\b|_PER_DAY\b|\bdayMs\b|(?<=[a-z0-9])Days?Ms\b|\bmsPerDay\b|86_?400_?000|24\s*\*\s*60\s*\*\s*60|60\s*\*\s*60\s*\*\s*24)
+  # P5 review: eight app modules each declared their own day length
+  # (`24 * 60 * 60 * 1000`, `86_400_000`) beside `DAY_MS` in `@kiko/dates`
+  # (`src/dates/duration.ts`, its one owner). Matched by VALUE, not text:
+  # `metavariable-comparison` folds constant arithmetic, so every spelling
+  # (`86400000`, `864e5`, `1000 * 60 * 60 * 24`, `86_400 * 1000`,
+  # `24 * 3_600_000`) is one day. Arm 1 is a lone literal; arm 2 is a product
+  # of literals worth a whole number of days (`7 * 24 * 60 * 60 * 1000`),
+  # `> 0` so `0 * 1000` does not fire. Each operand must be literal text
+  # (`metavariable-regex`): constant propagation otherwise flags every USE of a
+  # local `DAY` too, and a timestamp literal is never a product. Arm 1 skips a
+  # literal inside a product so `2 * 86_400_000` reports once; a day product
+  # nested in a larger one (`24 * 60 * 60 * 1000 * 3`) still reports twice.
+  # Test files are out of scope: a test keeps a literal day length as an
+  # oracle independent of the production constant, and uses `86_400_000` as a
+  # fixture timestamp (epoch + 1 day, `net-worth-line.component.test.tsx`),
+  # which a value match cannot tell from a span. `e2e/**` is test tooling.
+  - id: kiko-no-local-day-length-constant
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A local day-length constant. The day in milliseconds has one source,
+      `DAY_MS` in `@kiko/dates`; a near-duplicate copy drifts. Import `DAY_MS`
+      and write N days as `N * DAY_MS` — see kiko-domain's "Dates".
+    metadata:
+      fix: "Import `DAY_MS` from `@kiko/dates` and use it (N days: `N * DAY_MS`) instead of a local `24 * 60 * 60 * 1000` / `86_400_000`."
+      skill: "kiko-domain › Dates"
+    paths:
+      exclude:
+        - "src/dates/**"
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "__tests__/**"
+        - "src/test-support/**"
+        - "e2e/**"
+    pattern-either:
+      - patterns:
+          - pattern: $LITERAL
+          - pattern-not-inside: $A * $B
+          - metavariable-regex:
+              metavariable: $LITERAL
+              regex: ^[0-9][0-9_.eE]*$
+          - metavariable-comparison:
+              metavariable: $LITERAL
+              comparison: $LITERAL == 86400000
+      - patterns:
+          - pattern: $FACTOR * $LAST
+          - metavariable-regex:
+              metavariable: $FACTOR
+              regex: ^[0-9][0-9_.eE\s*()]*$
+          - metavariable-regex:
+              metavariable: $LAST
+              regex: ^[0-9][0-9_.eE]*$
+          - metavariable-comparison:
+              comparison: ($FACTOR * $LAST) % 86400000 == 0 and $FACTOR * $LAST > 0

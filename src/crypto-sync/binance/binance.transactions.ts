@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -32,8 +33,6 @@ const SPOT_KEY = BINANCE_ASSET;
 /** Binance's own settled states: a credited deposit, a completed withdrawal. */
 const DEPOSIT_STATUS_SUCCESS = 1;
 const WITHDRAW_STATUS_COMPLETED = 6;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * One history window's span. Binance rejects a `startTime`/`endTime` gap of 90

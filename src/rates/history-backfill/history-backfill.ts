@@ -4,6 +4,7 @@ import {
   type Currency,
   type CryptoCurrency,
 } from '@kiko/currency/currency';
+import { DAY_MS } from '@kiko/dates';
 import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 
@@ -14,8 +15,6 @@ import {
 import { type NbuHistory, fetchNbuHistory } from '../nbu-history';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
 import { type CryptoHistory, fetchCryptoHistory } from '../coingecko-history';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** A row ready for `rateHistoryRepo.upsertMany` (rate stored as text). */
 type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;

@@ -642,6 +642,20 @@ verified usage, not dead weight:
   tests stay in scope. The flat fixture pair proves the rule in
   `check:rules`.
 
+- **`kiko-no-local-day-length-constant` (`rules/semgrep-prewrite.yml`)
+  excludes `src/dates/**`, `*.test.ts`, `*.test.tsx`, `__tests__/**`,
+  `src/test-support/**`, and `e2e/**`.** `src/dates/duration.ts` is the one
+  owner of `DAY_MS`. The rule matches the day length by VALUE, so in a test
+  it cannot tell a span from a fixture timestamp of epoch + 1 day
+  (`{ t: 86_400_000 }` in `net-worth-line.component.test.tsx`,
+  `day: 86_400_000` in `settings.repo.test.ts`); and a test's own literal day
+  length is an oracle independent of the production constant. `e2e/**` is
+  test tooling (the screenshot seed). Measured on 2026-10-01: without the
+  excludes the rule draws 54 hits in test files (41 files), 1 in
+  `e2e/screenshot/seed/screenshot-seed.ts`, and 2 in `src/dates/`; app source
+  outside `src/dates/` has 0 after the P5 sweep. The flat fixture pair proves
+  the rule in `check:rules`.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`

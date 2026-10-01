@@ -1,5 +1,5 @@
-import { startOfLocalDay } from '@kiko/dates';
 import { dayKeyOf } from '@kiko/prices/price-book';
+import { DAY_MS, startOfLocalDay } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 import type { BondMeta } from '@kiko/holdings/holding-metadata';
 
@@ -22,8 +22,6 @@ import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
  * size rather than being tuned to one datum.
  */
 const AMOUNT_TOLERANCE_FRACTION = 0.05;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * How far (in CALENDAR days, either direction) a candidate funding debit may

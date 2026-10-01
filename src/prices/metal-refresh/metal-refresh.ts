@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -8,8 +9,6 @@ import { dayKeyOf } from '../price-book';
 import { metalInstrument } from '../instrument';
 import { pricePointsRepo } from '../price-points-repo';
 import { fetchNbuMetalHistory, fetchNbuMetalsCurrent, type NbuMetalRate } from '../nbu-metals';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 type HeldHolding = Pick<HoldingRow, 'type' | 'metadata'>;
 type StoredPoint = Pick<PricePointRow, 'instrument' | 'day'>;

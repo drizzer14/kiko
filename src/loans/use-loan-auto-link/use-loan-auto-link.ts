@@ -1,10 +1,11 @@
+import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
 import { logFailure } from '@kiko/diagnostics';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
 
-import { MS_PER_DAY, matchLoanPayments, WINDOW_BEFORE_DAYS } from '../payment-matcher';
+import { matchLoanPayments, WINDOW_BEFORE_DAYS } from '../payment-matcher';
 
 /**
  * Runs the loan-payment auto-link matcher (`src/loans/payment-matcher/`)
@@ -58,7 +59,7 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
 
     const [candidateRows, linkedPaymentRows] = await Promise.all([
       transactionsRepo.loanMatchCandidatesQuery({
-        minTime: earliestStartDate - WINDOW_BEFORE_DAYS * MS_PER_DAY,
+        minTime: earliestStartDate - WINDOW_BEFORE_DAYS * DAY_MS,
         currencies,
       }),
       // An already-linked row is excluded from `candidateRows` above, so the
