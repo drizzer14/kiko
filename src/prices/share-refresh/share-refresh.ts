@@ -50,7 +50,7 @@ export type ShareRefreshDeps = {
   readKey?: () => Promise<string | undefined>;
   loadQuota?: () => Promise<QuoteQuota | null>;
   updateQuota?: (build: (stored: QuoteQuota | null) => QuoteQuota | null) => Promise<void>;
-  loadPoints?: () => Promise<StoredPoint[]>;
+  loadLatestPoints?: () => Promise<StoredPoint[]>;
   fetchEod?: typeof fetchEod;
   searchSymbols?: typeof searchSymbols;
   save?: (result: ShareRefreshResult) => Promise<void>;
@@ -339,7 +339,7 @@ const withDefaults = (deps: ShareRefreshDeps): Required<ShareRefreshDeps> => ({
   readKey: readEodhdKey,
   loadQuota: async () => (await settingsRepo.quoteQuotaQuery()).at(0)?.quoteQuota ?? null,
   updateQuota: settingsRepo.updateQuoteQuota,
-  loadPoints: () => pricePointsRepo.allQuery(),
+  loadLatestPoints: () => pricePointsRepo.latestShareDaysQuery(),
   fetchEod,
   searchSymbols,
   save: saveShareRefresh,
@@ -347,7 +347,7 @@ const withDefaults = (deps: ShareRefreshDeps): Required<ShareRefreshDeps> => ({
 });
 
 const refreshOnce = async (deps: ShareRefreshDeps): Promise<ShareRefreshStatus> => {
-  const { now, listShares, readKey, loadQuota, updateQuota, loadPoints, save, ...network } =
+  const { now, listShares, readKey, loadQuota, updateQuota, loadLatestPoints, save, ...network } =
     withDefaults(deps);
   const listings = listingsOf(await listShares());
 
@@ -364,7 +364,7 @@ const refreshOnce = async (deps: ShareRefreshDeps): Promise<ShareRefreshStatus> 
   const quota = currentQuota(await loadQuota(), now());
   const { planned, leftOver } = planCalls(
     listings,
-    latestDayBySymbol(listings, await loadPoints()),
+    latestDayBySymbol(listings, await loadLatestPoints()),
     quota,
   );
 

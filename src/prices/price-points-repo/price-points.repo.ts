@@ -1,5 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, like, sql } from 'drizzle-orm';
 import { type Repository, database, write, type PricePointRow, pricePoints } from '@kiko/db';
+
+import { shareInstrument } from '../instrument';
 
 type NewPricePointRow = Pick<PricePointRow, 'instrument' | 'day' | 'price' | 'currency' | 'source'>;
 
@@ -37,6 +39,13 @@ export const upsertPricePointsDatabaseTransaction = async (
 export const pricePointsRepo = {
   /** Reactive select of the whole price-points table — hand straight to `useLiveQuery`. */
   allQuery: () => database.select().from(pricePoints),
+  /** The latest stored day of each share series: one row per share, not its whole history. */
+  latestShareDaysQuery: () =>
+    database
+      .select({ instrument: pricePoints.instrument, day: sql<number>`max(${pricePoints.day})` })
+      .from(pricePoints)
+      .where(like(pricePoints.instrument, shareInstrument('%')))
+      .groupBy(pricePoints.instrument),
   upsertMany: (rows: NewPricePointRow[]) =>
     write((databaseTransaction) => upsertPricePointsDatabaseTransaction(databaseTransaction, rows)),
   /** Deletes every stored price point for one instrument, in one transaction. */

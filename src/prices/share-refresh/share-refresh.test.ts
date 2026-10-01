@@ -119,7 +119,7 @@ const depsFor = (world: World): ShareRefreshDeps => ({
     world.quota = build(world.quota);
     world.events.push(`reserve ${world.quota?.calls}`);
   },
-  loadPoints: async () => world.points,
+  loadLatestPoints: async () => world.points,
   fetchEod: async (symbol, fromDay, toDay, key) => {
     world.events.push(
       `eod ${symbol} ${text(fromDay)} ${text(toDay)}`.concat(key === KEY ? '' : '!'),
