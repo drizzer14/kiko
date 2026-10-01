@@ -106,9 +106,13 @@ final class KikoNotificationDelegate: NSObject, UNUserNotificationCenterDelegate
   // The scheduled trigger's own hour and minute are preferred over the
   // delivery time, which can drift from the chosen time (a DST gap, a delayed
   // delivery). Built from local calendar days, with no time zone, the same
-  // floating form as every reminder.
+  // floating form as every reminder. Gregorian whatever calendar the user
+  // picked (Buddhist, Japanese): JS plans every request on Gregorian dates, so
+  // only a Gregorian day gives the identifier of the regular request this
+  // snooze replaces.
   static func tomorrow(atTimeOf notification: UNNotification, now: Date = Date()) -> DateComponents? {
-    let calendar = Calendar.current
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone.current
     let scheduledTime = (notification.request.trigger as? UNCalendarNotificationTrigger)?.dateComponents
     let deliveredTime = calendar.dateComponents([.hour, .minute], from: notification.date)
 
