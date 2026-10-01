@@ -2,6 +2,7 @@ import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 const mockPick = jest.fn();
@@ -25,6 +26,14 @@ jest.mock('@kiko/reminders/use-reminder-scheduler', () => ({
 jest.mock('@react-native-clipboard/clipboard', () => ({
   getString: jest.fn().mockResolvedValue(''),
 }));
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 import ImportDataScreen from './import-data.screen';
 
@@ -150,11 +159,15 @@ describe('ImportDataScreen', () => {
     await waitFor(() => expect(mockPick).toHaveBeenCalled());
 
     await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), 'short');
+
+    expect(isLabelInvalid(mockFieldLabel, 'Encryption key')).toBe(false);
+
     await fireEvent.press(getByTestId('settings-button-import'));
 
     expect(
       await findByText('The key looks too short — paste the full key from your export.'),
     ).toBeTruthy();
+    expect(isLabelInvalid(mockFieldLabel, 'Encryption key')).toBe(true);
     expect(queryByText('Replace data')).toBeNull();
     expect(mockImportData).not.toHaveBeenCalled();
   });
