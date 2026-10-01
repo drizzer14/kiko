@@ -40,6 +40,7 @@ import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/rep
 import { isSyncedAccount, isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 
 import { normalizeTransactionName } from '../normalize-name';
+import { type BalanceSetShape, isBalanceSetShapedRow } from '../balance-set-row';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
@@ -128,7 +129,7 @@ const syncSourceRowsOf = (holdingId: string | typeof holdings.id) =>
  * the boundary is history: the balance set at the boundary already counts it,
  * the same as `postClosingRowsWhere`'s strict `gt`. A balance-set row (an
  * opening balance, a hand edit) sits exactly at its own anchor, so a strict
- * comparison is what keeps re-dating or deleting it from moving the balance. */
+ * comparison is what keeps deleting it from moving the balance. */
 const movesBalance = (time: number, boundary: number | null): boolean =>
   boundary === null || time > boundary;
 
@@ -137,17 +138,28 @@ const balanceShareOf = (amountMinorUnits: number, time: number, boundary: number
 
 type DatedAmount = { amountMinorUnits: number; time: number };
 
-/** How far an edit from `existing` to `edited` moves the stored balance. A row
- * exactly at the boundary is the balance-set row (an opening balance, a hand
- * edit): its amount is part of the balance set there, so an amount edit that
- * keeps it at or before the boundary moves the balance by the difference, and
- * a re-date alone moves nothing. */
+type StoredManualRow = DatedAmount & BalanceSetShape;
+
+/** Whether `row` is the row that set the holding's balance at the boundary (an
+ * opening balance, a cash opening, a hand edit). Another manual row can share
+ * that instant, so the time alone does not tell them apart. */
+const setsBalanceAtBoundary = (
+  row: StoredManualRow,
+  balanceSetAt: number | null,
+  boundary: number | null,
+): boolean => row.time === boundary && row.time === balanceSetAt && isBalanceSetShapedRow(row);
+
+/** How far an edit from `existing` to `edited` moves the stored balance. The
+ * balance-set row's amount is part of the balance set there, so an edit moves
+ * the balance by the difference whatever the new date, and a re-date alone
+ * moves nothing. */
 const editBalanceDelta = (
-  existing: DatedAmount,
+  existing: StoredManualRow,
   edited: DatedAmount,
+  { balanceSetAt }: HoldingRow,
   boundary: number | null,
 ): number => {
-  if (existing.time === boundary && edited.time <= existing.time) {
+  if (setsBalanceAtBoundary(existing, balanceSetAt, boundary)) {
     return edited.amountMinorUnits - existing.amountMinorUnits;
   }
 
@@ -183,12 +195,12 @@ const readAnchoredHoldingDatabaseTransaction = async (
   }));
 };
 
-/** Move a holding's stored balance by `deltaFor(boundary)`, so a manual write
- * judges its row against the same boundary an import does. */
+/** Move a holding's stored balance by `deltaFor(boundary, holding)`, so a
+ * manual write judges its row against the same boundary an import does. */
 const moveBalanceDatabaseTransaction = async (
   databaseTransaction: typeof database,
   holdingId: string,
-  deltaFor: (boundary: number | null) => number,
+  deltaFor: (boundary: number | null, holding: HoldingRow) => number,
 ): Promise<void> => {
   const anchored = await readAnchoredHoldingDatabaseTransaction(databaseTransaction, holdingId);
 
@@ -196,7 +208,7 @@ const moveBalanceDatabaseTransaction = async (
     return;
   }
 
-  const delta = deltaFor(anchored.boundary);
+  const delta = deltaFor(anchored.boundary, anchored.holding);
 
   if (delta === 0) {
     return;
@@ -1162,20 +1174,16 @@ export const transactionsRepo = {
    * (`importRows`) on their own: only a side dated strictly after it counts,
    * so an edit that moves the row across the boundary adds or takes back its
    * amount, and an edit wholly at or before it leaves the balance untouched —
-   * except an amount edit on the balance-set row itself, which sits exactly at
-   * the boundary and moves the balance by the difference (`editBalanceDelta`). A synced (monobank) transaction
+   * except an edit of the balance-set row itself (`setsBalanceAtBoundary`),
+   * which moves the balance by the amount difference whatever its new date
+   * (`editBalanceDelta`). A synced (monobank) transaction
    * is never mutated by this path — its amount is owned by the bank import — and
    * a missing id is a no-op rather than an error.
    */
   update: ({ transactionId, amountMinorUnits, time, description }: TransactionEdit) =>
     write(async (databaseTransaction) => {
       const existingRows = await databaseTransaction
-        .select({
-          holdingId: transactions.holdingId,
-          amountMinorUnits: transactions.amountMinorUnits,
-          time: transactions.time,
-          source: transactions.source,
-        })
+        .select()
         .from(transactions)
         .where(eq(transactions.id, transactionId))
         .limit(1);
@@ -1188,8 +1196,11 @@ export const transactionsRepo = {
         .update(transactions)
         .set({ amountMinorUnits, time, description: description ?? '' })
         .where(eq(transactions.id, transactionId));
-      await moveBalanceDatabaseTransaction(databaseTransaction, existing.holdingId, (boundary) =>
-        editBalanceDelta(existing, { amountMinorUnits, time }, boundary),
+      await moveBalanceDatabaseTransaction(
+        databaseTransaction,
+        existing.holdingId,
+        (boundary, holding) =>
+          editBalanceDelta(existing, { amountMinorUnits, time }, holding, boundary),
       );
     }),
   /**
@@ -1452,7 +1463,8 @@ export const transactionsRepo = {
    * deleting the balance-set row itself (an opening balance or a hand edit,
    * stamped exactly at its own anchor) never pushes the balance off the
    * figure the anchor set. Editing that row's amount moves the balance by the
-   * difference (`editBalanceDelta`).
+   * difference, whatever its new date (`editBalanceDelta`); another manual
+   * row at the same instant is history like any other.
    *
    * `boundary` is `null` when NEITHER (a) nor (b) has ever happened for this
    * holding: every genuinely new row moves the balance regardless of its own

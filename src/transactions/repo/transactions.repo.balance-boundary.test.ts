@@ -49,6 +49,16 @@ const manualIdAt = (time: number): string =>
 const recordManual = (amountMinorUnits: number, time: number): Promise<void> =>
   transactionsRepo.recordManual({ holdingId: 'card', amountMinorUnits, time });
 
+// The transaction form always writes a category on create, so an entered row
+// never takes the shape of a balance-set row.
+const recordCategorised = (time: number): Promise<void> =>
+  transactionsRepo.recordManual({
+    holdingId: 'card',
+    amountMinorUnits: -1_000,
+    time,
+    category: 'groceries',
+  });
+
 // The bank statement: one purchase on September 20 and the bank's own closing
 // balance of 900.00 at the end of September.
 const importSeptemberStatement = (): Promise<number> =>
@@ -176,6 +186,43 @@ describe('a manual row dated at the boundary belongs to the anchor', () => {
 
     expect(balance()).toBe(90_000);
   });
+
+  it('keeps the bank closing balance when a row at the closing as-of is edited, then deleted', async () => {
+    await importSeptemberStatement();
+    await recordCategorised(SEPTEMBER_30);
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: -3_000,
+      time: SEPTEMBER_30,
+    });
+
+    expect(balance()).toBe(90_000);
+
+    await transactionsRepo.remove(manualIdAt(SEPTEMBER_30));
+
+    expect(balance()).toBe(90_000);
+  });
+
+  it('keeps the synced balance when a row at the newest synced second is edited, then deleted', async () => {
+    run(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id) VALUES ('synced', 'card', -500, ?, 'monobank', 'bank-id')",
+      SEPTEMBER_30,
+    );
+    await recordManual(-1_000, SEPTEMBER_30);
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: -3_000,
+      time: SEPTEMBER_30,
+    });
+
+    expect(balance()).toBe(100_000);
+
+    await transactionsRepo.remove(manualIdAt(SEPTEMBER_30));
+
+    expect(balance()).toBe(100_000);
+  });
 });
 
 describe('an opening balance anchor', () => {
@@ -251,21 +298,93 @@ describe('an opening balance anchor', () => {
     expect(balanceOf(holdingId)).toBe(45_000);
   });
 
-  it('moves the balance by the difference when a cash opening amount is edited', async () => {
+  it('keeps the balance when the opening row is re-dated later', async () => {
+    const holdingId = await openHolding();
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: 50_000,
+      time: OCTOBER_2,
+    });
+
+    expect(balanceOf(holdingId)).toBe(50_000);
+  });
+
+  it('moves the balance by the difference when the opening amount is edited and re-dated later', async () => {
+    const holdingId = await openHolding();
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: 60_000,
+      time: OCTOBER_2,
+    });
+
+    expect(balanceOf(holdingId)).toBe(60_000);
+  });
+
+  it('keeps the balance when an opening row stamped mid-second is re-dated to a later minute', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(SEPTEMBER_30 + 123);
+    const holdingId = await holdingsRepo.create({
+      accountId: 'account',
+      name: 'Opened',
+      type: 'card',
+      currency: 'UAH',
+      openingBalance: Money.of('UAH', 50_000),
+    });
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30 + 123),
+      amountMinorUnits: 50_000,
+      time: SEPTEMBER_30 + 30 * 60_000,
+    });
+
+    expect(balanceOf(holdingId)).toBe(50_000);
+  });
+
+  const openCash = async (): Promise<string> => {
     jest.spyOn(Date, 'now').mockReturnValue(SEPTEMBER_30);
     await accountsRepo.createCashAccount({
       name: 'Wallet',
       currency: 'UAH',
       initialBalance: Money.of('UAH', 20_000),
     });
-    const holdingId = (
+
+    return (
       mockDatabase.prepare("SELECT id FROM holdings WHERE type = 'cash'").get() as { id: string }
     ).id;
+  };
+
+  it('moves the balance by the difference when a cash opening amount is edited', async () => {
+    const holdingId = await openCash();
 
     await transactionsRepo.update({
       transactionId: manualIdAt(SEPTEMBER_30),
       amountMinorUnits: 25_000,
       time: SEPTEMBER_30,
+    });
+
+    expect(balanceOf(holdingId)).toBe(25_000);
+  });
+
+  it('keeps the balance when a cash opening row is re-dated later', async () => {
+    const holdingId = await openCash();
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: 20_000,
+      time: OCTOBER_2,
+    });
+
+    expect(balanceOf(holdingId)).toBe(20_000);
+  });
+
+  it('moves the balance by the difference when a cash opening is edited and re-dated later', async () => {
+    const holdingId = await openCash();
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: 25_000,
+      time: OCTOBER_2,
     });
 
     expect(balanceOf(holdingId)).toBe(25_000);
@@ -300,6 +419,38 @@ describe('a hand-edited balance anchor', () => {
       transactionId: manualIdAt(SEPTEMBER_30),
       amountMinorUnits: -20_000,
       time: SEPTEMBER_30,
+    });
+
+    expect(balance()).toBe(80_000);
+  });
+
+  it('keeps the balance when the adjustment row is re-dated later', async () => {
+    await holdingsRepo.updateWithBalanceDelta(
+      'card',
+      { balance: Money.of('UAH', 70_000) },
+      SEPTEMBER_30,
+    );
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: -30_000,
+      time: OCTOBER_2,
+    });
+
+    expect(balance()).toBe(70_000);
+  });
+
+  it('moves the balance by the difference when the adjustment is edited and re-dated later', async () => {
+    await holdingsRepo.updateWithBalanceDelta(
+      'card',
+      { balance: Money.of('UAH', 70_000) },
+      SEPTEMBER_30,
+    );
+
+    await transactionsRepo.update({
+      transactionId: manualIdAt(SEPTEMBER_30),
+      amountMinorUnits: -20_000,
+      time: OCTOBER_2,
     });
 
     expect(balance()).toBe(80_000);

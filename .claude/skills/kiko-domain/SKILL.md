@@ -225,14 +225,22 @@ boundary through one function, `readAnchoredHoldingDatabaseTransaction`
 (`transactions.repo.ts`), which `importRows` shares. A row AT or before
 the boundary is history the anchor already counts. A balance-set row (an
 opening balance, a hand edit, a cash opening, a migration-0036 backfill)
-sits exactly at its own anchor, so re-dating it earlier or deleting it
-leaves the balance unchanged; moving it past the anchor adds it again
-(accepted). Editing its AMOUNT while it stays at or before the anchor
-moves the balance by the difference (new − old, `editBalanceDelta`): the
-amount is part of the balance set there, so an opening balance edited
-from 50,000 to 60,000 leaves the balance at 60,000. The rule keys on
-`existing.time === boundary`, so it covers every balance-set row kind. A manual row at exactly a closing balance's as-of belongs to
-that closing, the same as `postClosingRowsWhere`'s strict `gt`. A
+sits exactly at its own anchor, so deleting it leaves the balance
+unchanged. An edit of it moves the balance by the amount difference
+(new − old, `editBalanceDelta`) whatever its new date, so a re-date alone
+never moves the balance: an opening balance edited from 50,000 to 60,000
+leaves the balance at 60,000, re-dated earlier or later. Nothing stores
+which row set the balance, so `update` picks it out
+(`setsBalanceAtBoundary`): its time equals the boundary AND
+`holdings.balanceSetAt`, and it has the balance-set row shape
+(`isBalanceSetShapedRow`, `src/transactions/balance-set-row/`, the same
+test migration 0036 backfills from: manual, empty description, null
+category, no exchange or change-return marker). A manual row the
+transaction form writes always carries a category, so a row entered at
+exactly a closing balance's as-of or the newest synced second is not the
+balance-set row: it belongs to that anchor, the same as
+`postClosingRowsWhere`'s strict `gt`, and its edit or deletion moves
+nothing. A
 closing balance AS OF exactly the boundary still applies (`>=`): it is
 an anchor, not a row.
 

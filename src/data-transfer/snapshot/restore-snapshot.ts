@@ -28,22 +28,10 @@ import { withRestoredPrices } from '@kiko/prices/quote-quota';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { isFiat, type Currency } from '@kiko/currency/currency';
 import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
+import { isBalanceSetShapedRow } from '@kiko/transactions/balance-set-row';
 import { planImportTimeRezone } from '@kiko/statement-import/rezone-import-times';
 
 import type { DataSnapshot } from './data-snapshot';
-
-/** True for a manual transaction row shaped like a hand-set balance under
- * migration 0036's heuristic (`drizzle/migrations/0036_add_balance_set_at.sql`):
- * no description, no category, and neither the exchange-leg nor the
- * change-return structural marker. See `transactionsRepo.importRows`'s doc
- * comment (`transactions/repo/transactions.repo.ts`) for the single-source
- * rule this backfills toward. */
-const isBalanceSetShapedRow = (row: TransactionRow): boolean =>
-  row.source === 'manual' &&
-  row.description === '' &&
-  row.category === null &&
-  row.exchangeCounterpartHoldingId === null &&
-  row.changeGroupId === null;
 
 /** Migration 0036's `MAX(time)` per holding, computed in one pass over
  * `allTransactions` rather than re-filtering the whole array per holding. */
