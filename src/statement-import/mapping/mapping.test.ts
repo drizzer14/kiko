@@ -188,7 +188,10 @@ describe('computeDedupKey', () => {
 });
 
 describe('noonAliasDedupKey', () => {
-  const midnight = { ...groceryTransaction, timeSeconds: parseDateTimeSeconds('01.01.2000 00:00:00', 'Test') };
+  const midnight = {
+    ...groceryTransaction,
+    timeSeconds: parseDateTimeSeconds('01.01.2000 00:00:00', 'Test'),
+  };
   const noonSeconds = parseDateTimeSeconds('01.01.2000 12:00:00', 'Test');
 
   it('keys a real Kyiv 00:00:00 row at Kyiv noon of the same day, keeping its occurrence', () => {
@@ -204,6 +207,8 @@ describe('noonAliasDedupKey', () => {
   });
 
   it('has no alias for a row with its own bank-issued id', () => {
-    expect(noonAliasDedupKey('holding-1', { ...midnight, externalId: 'bank-1' }, 0)).toBeUndefined();
+    expect(
+      noonAliasDedupKey('holding-1', { ...midnight, externalId: 'bank-1' }, 0),
+    ).toBeUndefined();
   });
 });

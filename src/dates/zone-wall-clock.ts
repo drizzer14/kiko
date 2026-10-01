@@ -43,7 +43,8 @@ export const zoneOffsetMinutes = (rule: ZoneRule, parts: WallClockParts): number
   const wall = Date.UTC(year, month - 1, day, hour, minute, second);
   const summerOffsetMilliseconds = (rule.standardOffsetMinutes + 60) * MINUTE_MILLISECONDS;
   const { from, until } = summerTimeBoundsUtc(year);
-  const isSummer = wall >= from + summerOffsetMilliseconds && wall < until + summerOffsetMilliseconds;
+  const isSummer =
+    wall >= from + summerOffsetMilliseconds && wall < until + summerOffsetMilliseconds;
 
   return rule.standardOffsetMinutes + (isSummer ? 60 : 0);
 };
