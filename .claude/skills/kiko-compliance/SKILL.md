@@ -113,6 +113,13 @@ React Native fetch's `cache: 'no-store'` only appends a `_=` cache-buster
 (a new cached URL per call). Never log the request URL, and give every error
 a fixed message (a rejected fetch can carry the URL).
 
+A user-typed share search query goes to EODHD only on an explicit Search
+press with a saved key (`src/prices/share-search/share-search.ts`), never
+per keystroke. The EODHD sign-up link opens the free registration page in
+Safari (`EODHD_SIGNUP_URL` from `@env`, opened in
+`src/screens/settings/share-prices/share-prices.screen.tsx`); never
+add paid-plan wording to it.
+
 A log line is a leak path even without a secret in the code: React Native
 forwards every `console` level to os_log in a Release build, and an error
 object's message can carry user data (a DrizzleQueryError's message holds

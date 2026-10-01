@@ -956,7 +956,14 @@ new component can land between reviews of this skill:
   `textSecondary` message, and an optional `secondaryTonal` `small`
   action button. The button renders only when BOTH `actionLabel` and
   `onAction` are given. Read `notice-banner.props.d.ts` for the props.
-  First consumer: the per-account reminders page's permission notice.
+  First consumer: the per-account reminders page's permission notice;
+  the Share prices screen's quota-day used-up banner
+  (`src/screens/settings/share-prices/`) also uses it.
+- **Search sheet pattern** (example:
+  `src/screens/forms/holding-form/share/share-search-sheet/`): always a
+  `BottomSheet` with a query field, an explicit Search button, and
+  `SelectableRow` results, following `CurrencyField`'s sheet. A search that
+  costs a network call runs only on the button press, never per keystroke.
 - **ReminderOfferCard** (`src/design-system/components/reminder-offer-card/`)
   — the NoticeBanner family's two-action sibling: an inline, non-modal
   invitation (never a notification, sheet, or alert, and never an

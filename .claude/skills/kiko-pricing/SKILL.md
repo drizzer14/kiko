@@ -766,8 +766,10 @@ client for the exact shapes.
   call costs 0 calls.
 - Status mapping: 401 bad key (`EodhdAuthError`), 403 not in plan
   (`EodhdNotInPlanError`), 402 daily limit (`EodhdQuotaError`), 429 rate
-  limit (`EodhdRateLimitError`), no response (`EodhdNetworkError`), else
-  `EodhdUnavailableError`. What a refresh does with each error is in
+  limit (`EodhdRateLimitError`), status >= 500 (`EodhdServerError`), no
+  response or a request past the client's timeout (an `AbortController`
+  abort; `EodhdNetworkError`), else `EodhdUnavailableError`. Read the
+  timeout value in the client. What a refresh does with each error is in
   "EODHD quota guard and share refresh" below. EODHD error bodies are plain
   text even with `fmt=json`: always branch on the status only, never parse
   the body.
@@ -810,7 +812,10 @@ exact constants (default limit, search reserve, history span).
 - **Error handling** (`stopFor`, `costOfFailure`): 401 stops the run; 402
   stops and marks the day used up; 429 stops only (does not mark the day);
   403 and `EodhdUnavailableError` skip that symbol for the day; a network
-  error stops the run and counts 0 calls spent.
+  error (a timeout included) stops the run and counts 0 calls spent;
+  `EodhdServerError` stops the run as failed, counts 1 call, and leaves the
+  unanswered symbols open for a later run. A 404 or a bad body stays a
+  per-symbol skip.
 - **Unit rule**: a listing with no `quoteCurrency` is resolved once by one
   search call (that call costs 1 more) and saved on the holding. A `GBX`
   close on a `GBP` holding is divided by 100; any other unit/currency
@@ -818,8 +823,25 @@ exact constants (default limit, search reserve, history span).
 - **Logs carry no symbol**: a symbol is personal portfolio data; log only
   the error name/code and a fixed reason.
 
+## Share search
+
+Code: `src/prices/share-search/share-search.ts` (`searchShares`). Rules:
+
+- Read the key first; no key → `noKey`, no network.
+- Reserve 1 call atomically on the UTC day before the request. A search may
+  use the calls up to `dailyLimit` itself (the refresh's search reserve is
+  for it). A full day → `quotaExhausted`, no network.
+- 402 marks the day used up; a request with no answer (`EodhdNetworkError`)
+  gives the call back (spent 0); any other error spends 1.
+- A `GBX` listing becomes a `GBP` holding with `quoteCurrency` `GBX`. Drop a
+  listing whose currency is outside the form's own options. Primary
+  listings first.
+- One call per explicit Search press, never per keystroke.
+- A picked listing stores its `quoteCurrency` on the holding, so the
+  refresh needs no unit search for it.
+
 ## Later (not built yet — do not invent detail)
 
-Symbol search UI and a scheduled backfill for non-metal instruments are
-planned but do not exist in code yet. When one lands, extend the matching
-section above rather than writing a new one.
+A scheduled backfill for non-metal instruments is planned but does not
+exist in code yet. When it lands, extend the matching section above rather
+than writing a new one.
