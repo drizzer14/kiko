@@ -1007,7 +1007,11 @@ new component can land between reviews of this skill:
   `onEdit`, `onDuplicate`, and/or `closeAction` is passed, an
   Edit/Duplicate/Close/Delete choice, in that order) menu. `onEdit` is
   for a row with no tap target of its own: the holding detail's
-  share-change rows (Edit + Delete); a transaction row keeps
+  share-change rows and lot rows (`LotRowMenu`, Edit + Delete; Delete
+  is offered only while every later sale stays covered without the lot,
+  and a refusal inside the write shows the shared save-error alert). A
+  lot row is the user's own entry, so unlike every other derived ledger
+  row it is not captioned "Computed". A transaction row keeps
   tap-to-edit and passes only `onDuplicate`. `closeAction`
   (`{ label, onPress }`, the consumer names the entry) is the account
   detail's manual holding cards ("Close holding"/"Close loan" + Delete):

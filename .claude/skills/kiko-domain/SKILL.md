@@ -337,7 +337,10 @@ and the price-source rule there): a price source (EODHD or manual), an
 optional ISIN, a ticker required for EODHD, and `lots`. Read the hook's
 own `createPayload` for which source writes a `firstPricePoint` (see
 `kiko-pricing`'s "Creating and clearing a priced holding's price
-series"). After create, lots change only through the Lot form.
+series"). After create, lots change only through `holdingsRepo.changeLots`
+(the Lot form's add/edit and the lot row's Delete); the share edit
+carries the stored lots unchanged. See `kiko-pricing`'s "Recording a lot:
+LotForm and the sell cost rule" for the order and the re-cost.
 
 A NEW share starts Manual when no EODHD key is saved; it starts EODHD
 only when a key is saved and the user has not touched the source
@@ -506,7 +509,8 @@ differently for exactly this reason.
 
 Which holding types record their buy/sell history through the
 dedicated Lot form (`src/screens/forms/lot-form/`, reached from
-holding-detail's `addLot` footer action) rather than a fixed one-time
+holding-detail's `addLot` footer action, and from a lot row's
+long-press Edit) rather than a fixed one-time
 lot or a sync is decided by each type's own `footerAction(synced,
 holding)` in `holdingDetailSpecs` (`holding-detail-spec/`): a type is
 lot-form eligible when that function can return `'addLot'` or

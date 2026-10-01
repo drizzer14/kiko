@@ -518,7 +518,7 @@ for its own read as above.
 
 **Never opt in a query that seeds a form or drives a write.** A write
 made while no subscriber of a key is mounted (the lot form's
-`holdingsRepo.update` while the holding form is closed) leaves that
+`holdingsRepo.changeLots` while the holding form is closed) leaves that
 key's entry one read old. A one-shot form seed (`hydrated` latch)
 reading it would latch the stale row, and Save would write it back over
 the newer one — this shipped as a data-loss bug (edit metal, cancel,
@@ -672,22 +672,25 @@ gate says there is nothing to do.
   `holdingsLoading || holdings.some((holding) => holding.type === 'loan')`
   (or the one displayed holding), so a metal- or property-only user never
   runs it. It never runs while `enabled` is `false`.
-- **The first add triggers the gated refresh**: creating the FIRST
-  metal/foreign-currency/crypto holding (`holding-form.screen.tsx`'s
-  manual create) or restoring a `.kiko` export (`importData`,
-  `src/data-transfer/import-data.ts`) triggers
-  `refreshMarketData({ throttled: false, metals: true, ... })`
-  (`src/sync/refresh-market-data/`) explicitly right after its own
-  write commits, since neither path runs through the sync fan-out that
-  otherwise triggers this — so the price/rate appears without an app
-  restart. Both underlying steps gate themselves, so this is a no-op
-  when neither is needed; `refreshMarketData` never rejects, and a
-  failure is only logged (`warnRefreshFailure`), never shown, so it
-  never turns a successful create/import into a shown error. `throttled:
-  false`: a manual create/import is a deliberate user action, not a
-  background poll, so it never reads the throttle cursor. An EDIT never
-  needs this trigger — a holding's type and currency are immutable once
-  created.
+- **The first add triggers the gated refresh**: a user's own holding
+  write that can change what is priced runs
+  `refreshAfterHoldingWrite(shares)` (`src/sync/refresh-after-holding-write/`)
+  right after the write commits: a manual create
+  (`holding-form.screen.tsx`, `shares` for a new share), a share edit
+  (its source or ticker can change), and a Lot form save (a new or
+  re-dated lot can fall before the stored prices; `shares` for a share).
+  It confirms an unconfirmed EODHD daily limit first when `shares` is
+  set, then calls `refreshMarketData({ throttled: false, metals: true,
+  shares })` (`src/sync/refresh-market-data/`). Restoring a `.kiko`
+  export (`importData`, `src/data-transfer/import-data.ts`) calls
+  `refreshMarketData` itself. None of these runs through the sync
+  fan-out that otherwise triggers this, so the price/rate appears without
+  an app restart. Every step gates itself, so this is a no-op when
+  nothing is needed; neither function rejects, and a failure is only
+  logged, never shown, so it never turns a successful save into a shown
+  error. `throttled: false`: the write is a deliberate user action, not
+  a background poll. Any other edit needs no trigger: a holding's type
+  and currency are immutable once created.
 - **Share price refresh**: `refreshSharePrices`
   (`src/prices/share-refresh/`) reads the active EODHD shares first; none →
   return with no Keychain read and no network. No saved key → return

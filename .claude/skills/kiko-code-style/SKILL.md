@@ -1029,6 +1029,11 @@ a component instead, in its own file — see "One component per file"
 above. A helper that genuinely closes over a local value (a `theme`
 binding, say) may stay in the body.
 
+A stored JSON value read as named fields goes through the one shared
+`isRecord` (`@kiko/type-guards`), never a local copy. It rejects an
+array as well as `null` and primitives, because a field read off an
+array finds nothing instead of failing the parse.
+
 ## Repository type-safety: `satisfies`, not an annotation
 
 Constrain a repository object with `satisfies Repository`, where

@@ -518,28 +518,44 @@ lot against a lot-form-eligible holding (`metal` and `share` — see
 `holdingDetailSpecs`, `holding-detail-spec/`, and the paragraph
 closing `kiko-domain`'s "Sync-only holding types are not manually
 creatable" section for that single-type entry), reached from
-holding-detail's `addLot` footer action. It writes NO `Transaction`
-row and NO `price_points` row for either
-direction — a buy/sell only appends to `holding.metadata.lots` via
-`holdingsRepo.update`, since the holding is ledgerless and priced off
-its price series, which the Lot form never writes.
+holding-detail's `addLot` footer action (a new lot), or from a lot
+row's long-press menu (`LotRowMenu`, `src/screens/holding-detail/lot-row-menu/`:
+Edit opens the form with `lotIndex`, Delete removes the lot). It writes
+NO `Transaction` row and NO `price_points` row for either direction:
+every add, edit, and delete goes through `holdingsRepo.changeLots(holdingId,
+change)` (a `LotChange`: `add`, `edit` at an index, or `remove` at an
+index), which re-reads the stored lots inside its own write, never a
+screen's copy, and keeps every other metadata key as stored. A stored
+list with one unreadable entry is refused, never written over. After the
+write, the form calls `refreshAfterHoldingWrite` (see kiko-architecture's
+"The first add triggers the gated refresh"), since a new or re-dated lot
+can fall before the stored prices.
 
-**Sell cost rule: proportional average cost, not FIFO/LIFO.** On a
-sell, the removed cost basis is `costBasisBeforeMajor * quantitySold /
-heldQuantity` — `costBasisMinorAt(existingLots, date)` shifted from
-minor to major (`shiftDecimal`), then run through
-`multiplyToMinorUnits([costBasisBeforeMajor, quantity], currency,
-heldQuantity)` (the BigInt-backed decimal helper, `src/currency/decimal/`).
-Stored as a NEGATIVE `costMinorUnits` on the new lot entry, mirroring
-`quantityDelta`'s own negative-on-sale sign (`lots.ts`'s documented
-contract). A sell whose quantity exceeds `sellableQuantityAt(lots, date)`
-— the LOWEST running quantity from the sell day onward, not just
-`quantityAt` on that day — is rejected client-side before save (the
-`sellExceeds` check) and never written. A backdated sell must leave enough
-for every sell already recorded after it: Jan +10, Mar −5, then a
-backdated Feb −8 is rejected (March would hold −3, and `quantityAt`'s
-clamp would hide it as 0 with a negative cost basis). `heldQuantity` (on
-the day) still sizes the cost-basis share.
+**Sell cost rule: proportional average cost, not FIFO/LIFO.** A sale
+removes `costBasisBefore * quantitySold / heldQuantity` (BigInt-backed
+`multiplyToMinorUnits`, `src/currency/decimal/`), stored as a NEGATIVE
+`costMinorUnits`, mirroring `quantityDelta`'s own negative-on-sale sign.
+A sale's cost is never typed: `withLotChange`
+(`src/holdings/lots/lot-change.ts`) applies the change and then works
+out EVERY sale's cost again, because a backdated, edited, or removed buy
+moves the average of every later sale.
+
+**One lot order for the cost and the overdraw check.** Every walk over
+the lots (`inLotOrder` there) takes the same order: by day, a day's buys
+before its sells, then the recorded order. So a buy recorded after a
+same-day sale still covers it. A change that leaves any sale larger than
+the quantity held before it in that order throws
+`SaleExceedsHoldingError`; no sale is ever costed from less than it
+takes, so no stale stored cost survives. Example: buy Jan 10 10 for
+1,000, sell Mar 10 4, buy Mar 10 10 for 3,000; delete the January buy →
+allowed (the March buy covers the sale), the sale re-costs to 1,200.00,
+and April holds 6 at a basis of 1,800.00. `hasNegativeHolding` walks the
+same order; the Lot form (`sellExceedsError`/`coversLaterSaleError`) and
+the lot row's Delete offer run it on `changedLots` (the change with no
+re-cost), and the repo refuses through `withLotChange` itself. A refusal
+inside the write (the lots changed since the render) shows the shared
+save-error alert. `share-money.matrix.test.ts`
+(`src/data-transfer/snapshot/`) holds the operation x state cells.
 
 A lot-priced holding's lots also surface as ledger-display rows: the
 shared `lotEntries` (`src/holdings/holding-descriptor/entry-parts/entry-parts.ts`,
@@ -590,10 +606,18 @@ through `sharePriceOf` (`src/prices/share-price/`), which keeps up to
 `SHARE_PRICE_SCALE` decimal places (read the value there) — never
 through `Money`, which rounds to the currency's minor unit. The Price
 point form uses `sharePriceOf` for the `share` kind; totals keep the
-minor-unit `Money` path. When an edit switches a share from EODHD to
-Manual, the latest `share:<symbol>` point is carried to `holding:<id>`
-in one transaction by `holdingsRepo.updateWithManualPricePoint`
-(`src/holdings/repo/holdings.repo.ts`), so the holding keeps a price.
+minor-unit `Money` path. A share edit saves through
+`holdingsRepo.updateShareFromStored`, which builds the metadata from the
+row stored at the time of the write (the lots come from there; a stored
+list with one unreadable entry makes the build throw, so the write rolls
+back and the form shows the save-error alert). When that edit switches
+the share from EODHD to Manual, the same write carries EVERY
+`share:<symbol>` close to `holding:<id>` as `manual` points
+(`carryShareClosesDatabaseTransaction`), so no past value moves with
+the switch; a typed price inside the closes' day span gives way, one
+outside it stays. Only closes in the holding's own currency are carried
+or allowed to displace a typed price: a close in another currency never
+priced the holding (its value fell back to cost).
 
 **No "price as of" / "value as of" caption anywhere (user decision).** A priced holding's card and detail screen show only
 its computed value, never a caption naming the date of the underlying
