@@ -6,7 +6,7 @@ import either, { bifoldr } from 'fnts/either';
 import { decimalFromJsonNumber } from '@kiko/currency/decimal';
 
 /** One end-of-day close, in the listing's own currency unit, as an exact decimal string. */
-type EodClose = { day: number; close: string };
+export type EodClose = { day: number; close: string };
 
 export type UserLimits = { dailyLimit: number; requestsToday: number; requestsDay: number };
 
@@ -157,6 +157,51 @@ export const fetchEod = async (
   );
 
   return Array.isArray(body) ? body.flatMap(toClose) : unavailable();
+};
+
+/** One listing: `currency` is its price unit, which can be a minor unit (`GBX` pence). */
+export type SymbolMatch = { symbol: string; name: string; isin?: string; currency: string };
+
+type SearchRow = { Code: string; Exchange: string; Name: string; Currency: string; ISIN?: unknown };
+
+const isSearchRow = (value: unknown): value is SearchRow =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { Code?: unknown }).Code === 'string' &&
+  typeof (value as { Exchange?: unknown }).Exchange === 'string' &&
+  typeof (value as { Name?: unknown }).Name === 'string' &&
+  typeof (value as { Currency?: unknown }).Currency === 'string';
+
+const toSymbolMatch = (row: unknown): SymbolMatch[] => {
+  if (!isSearchRow(row)) {
+    return [];
+  }
+
+  return [
+    {
+      symbol: `${row.Code}.${row.Exchange}`,
+      name: row.Name,
+      ...(typeof row.ISIN === 'string' ? { isin: row.ISIN } : {}),
+      currency: row.Currency,
+    },
+  ];
+};
+
+/** Listings for a ticker, a name, or an ISIN; `exchange` narrows them to one exchange. */
+export const searchSymbols = async (
+  query: string,
+  key: string,
+  fetchImpl: typeof fetch = fetch,
+  exchange?: string,
+): Promise<SymbolMatch[]> => {
+  const body = await requestJson(
+    `/search/${encodeURIComponent(query)}`,
+    foldMap(maybe(exchange), (code): [string, string][] => [['exchange', code]]) ?? [],
+    key,
+    fetchImpl,
+  );
+
+  return Array.isArray(body) ? body.flatMap(toSymbolMatch) : unavailable();
 };
 
 type UserRow = { dailyRateLimit: number; apiRequests: number; apiRequestsDate: string };

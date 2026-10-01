@@ -8,9 +8,11 @@ import {
   EodhdUnavailableError,
   fetchEod,
   fetchUserLimits,
+  searchSymbols,
 } from './eodhd.client';
 import userFixture from './__fixtures__/user.json';
 import eodAAPLFixture from './__fixtures__/eod-aapl.json';
+import searchVODFixture from './__fixtures__/search-vod.json';
 
 const KEY = 'fake-eodhd-key-0000';
 
@@ -116,6 +118,57 @@ describe('fetchUserLimits', () => {
   });
 });
 
+describe('searchSymbols', () => {
+  it('requests the search endpoint for the query with the key, JSON format, and the exchange', async () => {
+    const sent: string[] = [];
+
+    await searchSymbols('VOD', KEY, recordUrl(sent, searchVODFixture), 'LSE');
+
+    const url = new URL(sent[0]);
+    expect(`${url.origin}${url.pathname}`).toBe('https://eodhd.com/api/search/VOD');
+    expect(url.searchParams.get('api_token')).toBe(KEY);
+    expect(url.searchParams.get('fmt')).toBe('json');
+    expect(url.searchParams.get('exchange')).toBe('LSE');
+  });
+
+  it('sends no exchange filter when none is given', async () => {
+    const sent: string[] = [];
+
+    await searchSymbols('GB00BH4HKS39', KEY, recordUrl(sent, searchVODFixture));
+
+    expect(new URL(sent[0]).searchParams.has('exchange')).toBe(false);
+  });
+
+  it('maps each listing to its CODE.EXCHANGE symbol, name, ISIN, and currency unit', async () => {
+    await expect(searchSymbols('VOD', KEY, respondWith(searchVODFixture), 'LSE')).resolves.toEqual([
+      { symbol: 'VOD.LSE', name: 'Vodafone Group PLC', isin: 'GB00BH4HKS39', currency: 'GBX' },
+      { symbol: '0LQQ.LSE', name: 'Example Corp', currency: 'USD' },
+      { symbol: '3SVO.LSE', name: 'Example ETP', isin: 'XS2710197935', currency: 'GBX' },
+    ]);
+  });
+
+  it('drops a listing without a code, an exchange, a name, or a currency', async () => {
+    const [listing] = searchVODFixture;
+    const rows = [
+      { ...listing, Code: 1 },
+      { ...listing, Exchange: null },
+      { ...listing, Name: undefined },
+      { ...listing, Currency: 7 },
+      { ...listing, Code: 'VOD2' },
+    ];
+
+    await expect(searchSymbols('VOD', KEY, respondWith(rows))).resolves.toEqual([
+      { symbol: 'VOD2.LSE', name: 'Vodafone Group PLC', isin: 'GB00BH4HKS39', currency: 'GBX' },
+    ]);
+  });
+
+  it('treats a body that is not a list as the provider being unavailable', async () => {
+    await expect(searchSymbols('VOD', KEY, respondWith({ error: 'x' }))).rejects.toBeInstanceOf(
+      EodhdUnavailableError,
+    );
+  });
+});
+
 const failures: [string, typeof fetch, new () => Error][] = [
   ['401', respondWith('Unauthenticated', 401), EodhdAuthError],
   ['402', respondWith('Payment required', 402), EodhdQuotaError],
@@ -145,6 +198,7 @@ const failures: [string, typeof fetch, new () => Error][] = [
 const calls: [string, (fetchImpl: typeof fetch) => Promise<unknown>][] = [
   ['fetchEod', (fetchImpl) => fetchEod('AAPL.US', fromDay, toDay, KEY, fetchImpl)],
   ['fetchUserLimits', (fetchImpl) => fetchUserLimits(KEY, fetchImpl)],
+  ['searchSymbols', (fetchImpl) => searchSymbols('VOD', KEY, fetchImpl, 'LSE')],
 ];
 
 describe.each(calls)('%s request', (_name, call) => {

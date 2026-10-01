@@ -187,6 +187,19 @@ describe('holdingsRepo', () => {
     expect(params).toContain('loan');
   });
 
+  it('builds an active-shares query: type "share", open, under an unarchived account, three columns', () => {
+    const { sql, params } = holdingsRepo.activeSharesQuery().toSQL();
+    const selected = sql.slice(0, sql.toLowerCase().indexOf(' from '));
+
+    expect(selected).toContain('"id"');
+    expect(selected).toContain('"currency"');
+    expect(selected).toContain('"metadata"');
+    expect(selected).not.toContain('"name"');
+    expect(sql.toLowerCase()).toContain('closed_at');
+    expect(sql.toLowerCase()).toContain('archived_at');
+    expect(params).toEqual(['share']);
+  });
+
   it('create inserts the holding and resolves to the generated id', async () => {
     const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;

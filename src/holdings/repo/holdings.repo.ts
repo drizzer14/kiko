@@ -21,6 +21,7 @@ import {
   type OwnershipChange,
 } from '../ownership';
 import {
+  asShareMeta,
   asPropertyMeta,
   asTermDepositMeta,
   type PropertyMeta,
@@ -250,6 +251,37 @@ export const appendDepositContributionDatabaseTransaction = async (
     .where(eq(holdings.id, holdingId));
 };
 
+export type ShareQuoteCurrencyUpdate = { holdingId: string; symbol: string; quoteCurrency: string };
+
+/**
+ * Records the price unit the share price refresh resolved for an EODHD share
+ * that had none, inside that refresh's own `write()`. The metadata is re-read
+ * there: a lot added while the refresh was on the network is kept, and a share
+ * whose symbol was edited meanwhile never takes the old symbol's unit.
+ */
+export const setShareQuoteCurrencyDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  { holdingId, symbol, quoteCurrency }: ShareQuoteCurrencyUpdate,
+): Promise<void> => {
+  const rows = await databaseTransaction
+    .select({ metadata: holdings.metadata })
+    .from(holdings)
+    .where(eq(holdings.id, holdingId));
+  const meta = asShareMeta(rows.at(0)?.metadata);
+
+  if (meta?.quoteSource !== 'eodhd' || meta.symbol !== symbol || meta.quoteCurrency !== undefined) {
+    return;
+  }
+
+  const metadata = { ...meta, quoteCurrency };
+
+  if (asShareMeta(metadata) === null) {
+    return;
+  }
+
+  await databaseTransaction.update(holdings).set({ metadata }).where(eq(holdings.id, holdingId));
+};
+
 // Clears `loanHoldingId`/`loanLinkSource` on every transaction row that
 // still points at one of `holdingIds`. A shared Tx helper (not private to
 // `holdingsRepo.remove`) so `accountsRepo.remove` runs the SAME cascade for
@@ -369,6 +401,19 @@ export const holdingsRepo = {
    */
   historyCurrenciesQuery: () =>
     database.selectDistinct({ currency: holdings.currency }).from(holdings),
+  /**
+   * The share price refresh's gate: every share that counts toward net worth
+   * (open, under an unarchived account). A closed share keeps the prices it
+   * already has, since every refresh spends the user's scarce EODHD calls.
+   */
+  activeSharesQuery: () =>
+    database
+      .select({ id: holdings.id, currency: holdings.currency, metadata: holdings.metadata })
+      .from(holdings)
+      .innerJoin(accounts, eq(holdings.accountId, accounts.id))
+      .where(
+        and(eq(holdings.type, 'share'), isNull(holdings.closedAt), isNull(accounts.archivedAt)),
+      ),
   /**
    * Every OPEN loan holding — the loan-payment matcher's own gate query
    * (`src/loans/payment-matcher/`, `src/loans/use-loan-auto-link/`): it reads
