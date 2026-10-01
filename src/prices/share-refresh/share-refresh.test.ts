@@ -526,16 +526,62 @@ describe('refreshSharePrices', () => {
       expect(world.quota?.symbols).toEqual(['AAPL.US', 'VOD.LSE']);
     });
 
-    it('stops when EODHD cannot be reached and retries later the same day, counting the call', async () => {
-      const world = makeWorld({ eod: { 'AAPL.US': new EodhdNetworkError() } });
+    it('stops when EODHD cannot be reached and counts no call for it', async () => {
+      const world = makeWorld({
+        holdings: [
+          share({ id: 'apple' }),
+          share({ id: 'sap', symbol: 'SAP.XETRA', currency: 'EUR' }),
+        ],
+        quota: { day: THURSDAY, calls: 4, dailyLimit: 20, symbols: [] },
+        eod: { 'AAPL.US': new EodhdNetworkError() },
+      });
 
       await expect(refreshSharePrices(depsFor(world))).resolves.toBe('failed');
-      expect(world.quota).toEqual({ day: THURSDAY, calls: 1, dailyLimit: 20, symbols: [] });
+      expect(calls(world)).toEqual(['eod AAPL.US 2026-06-01 2026-10-01']);
+      expect(world.quota).toEqual({ day: THURSDAY, calls: 4, dailyLimit: 20, symbols: [] });
+    });
 
-      world.eod = {};
-      await refreshSharePrices(depsFor(world));
+    it('spends nothing on offline runs and fetches the symbol on the next online run', async () => {
+      const world = makeWorld({
+        quota: { day: THURSDAY, calls: 4, dailyLimit: 20, symbols: [] },
+        eod: { 'AAPL.US': new EodhdNetworkError() },
+      });
 
-      expect(calls(world)).toHaveLength(2);
+      for (const _offlineRun of [1, 2, 3]) {
+        await expect(refreshSharePrices(depsFor(world))).resolves.toBe('failed');
+      }
+
+      expect(world.quota).toEqual({ day: THURSDAY, calls: 4, dailyLimit: 20, symbols: [] });
+
+      world.eod = { 'AAPL.US': [{ day: WEDNESDAY, close: '325.13' }] };
+      await expect(refreshSharePrices(depsFor(world))).resolves.toBe('ok');
+
+      expect(calls(world)).toHaveLength(4);
+      expect(world.quota).toEqual({
+        day: THURSDAY,
+        calls: 5,
+        dailyLimit: 20,
+        symbols: ['AAPL.US'],
+      });
+      expect(world.points).toEqual([
+        {
+          instrument: 'share:AAPL.US',
+          day: WEDNESDAY,
+          price: '325.13',
+          currency: 'USD',
+          source: 'eodhd',
+        },
+      ]);
+    });
+
+    it('counts no call for a search EODHD never answered', async () => {
+      const world = makeWorld({
+        holdings: [share({ id: 'vod', symbol: 'VOD.LSE', currency: 'GBP', handTyped: true })],
+        search: { VOD: new EodhdNetworkError() },
+      });
+
+      await expect(refreshSharePrices(depsFor(world))).resolves.toBe('failed');
+      expect(world.quota).toEqual({ day: THURSDAY, calls: 0, dailyLimit: 20, symbols: [] });
     });
 
     it('logs a failed call by its error name, never the key', async () => {

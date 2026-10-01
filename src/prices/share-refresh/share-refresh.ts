@@ -16,6 +16,7 @@ import {
   type EodClose,
   searchSymbols,
   EodhdQuotaError,
+  EodhdNetworkError,
   type SymbolMatch,
   EodhdNotInPlanError,
   EodhdUnavailableError,
@@ -227,6 +228,10 @@ const stopFor = (error: unknown): Stop | undefined => {
     .otherwise(() => 'failed' as const);
 };
 
+// A request EODHD never answered costs no call, so offline runs never use up
+// the day's allowance; a lost answer EODHD did count ends in its own 402.
+const costOfFailure = (error: unknown): number => (error instanceof EodhdNetworkError ? 0 : 1);
+
 // The symbol is personal portfolio data and every console level reaches the
 // Release os_log, so a skip logs only its kind.
 const skipped = (reason: string, outcome: CallOutcome): CallOutcome => {
@@ -250,7 +255,9 @@ const resolveUnit = async (
   );
 
   if (isLeft(found)) {
-    return { spent: 1, rows: [], units: [], stop: stopFor(bifold(found)) };
+    const error: unknown = bifold(found);
+
+    return { spent: costOfFailure(error), rows: [], units: [], stop: stopFor(error) };
   }
 
   const matches: SymbolMatch[] = bifold(found);
@@ -291,11 +298,14 @@ const refreshListing = async (call: PlannedCall, context: CallContext): Promise<
       context.fetchImpl,
     ),
   );
-  const spent = resolved.spent + 1;
 
   if (isLeft(closes)) {
-    return { ...resolved, spent, stop: stopFor(bifold(closes)) };
+    const error: unknown = bifold(closes);
+
+    return { ...resolved, spent: resolved.spent + costOfFailure(error), stop: stopFor(error) };
   }
+
+  const spent = resolved.spent + 1;
 
   const fetched: EodClose[] = bifold(closes);
   const rows = fetched.map(
