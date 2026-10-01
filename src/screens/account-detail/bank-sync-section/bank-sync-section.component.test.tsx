@@ -11,7 +11,7 @@ const mockMonobankSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockSaveToken = jest.fn();
 const mockDisconnectMonobank = jest.fn();
-const mockSyncReminders = jest.fn(async () => undefined);
+const mockSyncReminders = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),

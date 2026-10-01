@@ -58,7 +58,7 @@ jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
 const mockUseLiveQuery = jest.fn();
 const mockAccountRemove = jest.fn();
 const mockAccountReorder = jest.fn();
-const mockSyncReminders = jest.fn(async () => undefined);
+const mockSyncReminders = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
