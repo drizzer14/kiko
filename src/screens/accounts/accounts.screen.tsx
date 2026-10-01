@@ -24,6 +24,7 @@ import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { writeThenReplan } from '@kiko/reminders/use-reminder-scheduler';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
@@ -208,7 +209,9 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       <CardContextMenu
         name={item.name}
         deletable={!isSyncedAccount(item)}
-        onDelete={() => accountsRepo.remove(item.id)}
+        // The delete takes the account's reminders with it; only a re-plan
+        // takes their notifications off iOS.
+        onDelete={() => writeThenReplan(() => accountsRepo.remove(item.id), t)}
       >
         <Card
           testID="account-card"

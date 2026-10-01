@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
@@ -10,9 +11,14 @@ const mockMonobankSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockSaveToken = jest.fn();
 const mockDisconnectMonobank = jest.fn();
+const mockSyncReminders = jest.fn(async () => undefined);
 
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
+}));
+jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
+  syncReminders: (...args: unknown[]) => mockSyncReminders(...args),
+  drainReminderResponses: async () => [],
 }));
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({
   syncStateRepo: {
@@ -94,6 +100,35 @@ describe('BankSyncSection — disconnected', () => {
 
     expect(mockSaveToken).toHaveBeenCalledWith('a', 'mono-token');
     await waitFor(() => expect(mockMonobankSync).toHaveBeenCalledWith('a'));
+  });
+
+  it.each([true, false])(
+    'connecting re-plans the reminders after the sync (sync succeeded: %s), since a synced bank sends none',
+    async (synced) => {
+      mockMonobankSync.mockResolvedValue(synced);
+      const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+
+      await act(async () => {
+        await fireEvent.press(view.getByLabelText('monobank-field'));
+      });
+
+      await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+      expect(mockMonobankSync.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
+      );
+    },
+  );
+
+  it('re-plans nothing when the token cannot be stored, since nothing changed', async () => {
+    mockSaveToken.mockRejectedValue(new Error('keychain locked'));
+    const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText('monobank-field'));
+    });
+
+    expect(mockMonobankSync).not.toHaveBeenCalled();
+    expect(mockSyncReminders).not.toHaveBeenCalled();
   });
 
   it('offers a Change action once a provider is picked, which re-shows the "Add a bank" trigger', async () => {
@@ -237,6 +272,36 @@ describe('BankSyncSection — connected', () => {
     await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
 
     await waitFor(() => expect(mockDisconnectMonobank).toHaveBeenCalledWith('a'));
+  });
+
+  it('re-plans the reminders after a Disconnect, since the manual account takes them again', async () => {
+    const view = await render(
+      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
+    );
+
+    await fireEvent.press(view.getByText('Disconnect'));
+    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+    expect(mockDisconnectMonobank.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it('re-plans nothing after a failed Disconnect', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockDisconnectMonobank.mockRejectedValue(new Error('keychain locked'));
+    const view = await render(
+      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
+    );
+
+    await fireEvent.press(view.getByText('Disconnect'));
+    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
+    expect(mockSyncReminders).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
   });
 
   it('shows a syncing label while the active provider is syncing', async () => {

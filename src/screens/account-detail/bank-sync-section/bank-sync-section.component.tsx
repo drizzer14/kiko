@@ -13,6 +13,7 @@ import SymbolIcon from '@kiko/design-system/components/symbol';
 import { bankProviderRegistry } from '@kiko/bank-sync/registry';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
 import { bankProviderIdOf, isBankProviderId, type BankProviderId } from '@kiko/bank-sync/provider';
 
@@ -143,6 +144,9 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // (keyed by THIS account's id), then run the first sync. `MonobankConnectField`
   // validates the token with `fetchClientInfo` BEFORE calling this, so an
   // invalid token never reaches `saveToken` — no orphaned Keychain item.
+  // A synced bank sends no reminder, and a disconnected one sends them again,
+  // so both re-plan; the sync can make the account synced even when it fails
+  // later on.
   const connectMonobank = async (token: string): Promise<boolean> => {
     try {
       await saveToken(account.id, token);
@@ -150,7 +154,11 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
       return false;
     }
 
-    return sync(account.id);
+    const synced = await sync(account.id);
+
+    replanReminders();
+
+    return synced;
   };
 
   // Disconnect is the required first step before a connected bank account
@@ -167,7 +175,11 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
       await connectedEntry.disconnect(account.id);
     } catch {
       alertOnCatch(t, 'accountDetail.disconnectErrorTitle', 'accountDetail.tryAgainMessage');
+
+      return;
     }
+
+    replanReminders();
   };
 
   const confirmDisconnect = (): void => {
