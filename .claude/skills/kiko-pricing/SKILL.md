@@ -1002,10 +1002,15 @@ never priced, so the share form checks it before it writes.
   type" step 3.
 - **Save spinner**: Save shows its `loading` spinner only while this lookup
   runs (`isLookingUpUnit`); it stays disabled as for any submit.
+- **Mismatch text**: a create gets `forms.holding.shareCurrencyMismatchError`
+  ("Choose {{currency}}…"). An edit, where the Currency field is read-only,
+  gets `shareCurrencyMismatchEditError` instead: Manual, or delete the share
+  and add it again in that currency (`currencyFieldReasonKey` reads
+  `isEdit`, `share-reasons.ts`).
 - **Unsupported unit**: a unit whose currency no share can be held in
   (`isShareUnitSupported` false: `ZAC` cents, `ILA` agorot) gets the
-  Manual-only text `forms.holding.shareCurrencyUnsupportedError` instead of
-  `shareCurrencyMismatchError` ("Choose {{currency}}…").
+  Manual-only text `forms.holding.shareCurrencyUnsupportedError` on create and
+  edit alike, instead of either mismatch text.
 - **Stored mismatch**: a share an older build stored in another currency
   than its unit fits shows `ListingCurrencyNotice` on its detail
   (`src/screens/holding-detail/listing-currency-notice/`, a NoticeBanner):
