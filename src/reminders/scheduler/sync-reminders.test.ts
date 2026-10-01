@@ -20,6 +20,7 @@ import { write } from '@kiko/db';
 import { i18n } from '@kiko/i18n/init';
 import { DatabaseSync } from 'node:sqlite';
 import { remindersRepo } from '@kiko/reminders/repo';
+import type { ReminderSchedule } from '@kiko/reminders/schedule';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { drainReminderResponses, syncReminders } from './sync-reminders';
@@ -35,6 +36,7 @@ type ReminderSeed = {
   id: string;
   accountId: string;
   kind: 'statement_import' | 'add_transactions';
+  schedule?: ReminderSchedule;
   activeSince?: number;
   pausedAt?: number | null;
   lastSnoozedAt?: number | null;
@@ -91,7 +93,7 @@ const seedReminder = (seed: ReminderSeed): void => {
       seed.id,
       seed.accountId,
       seed.kind,
-      JSON.stringify(DAILY_AT_EIGHT_PM),
+      JSON.stringify(seed.schedule ?? DAILY_AT_EIGHT_PM),
       seed.activeSince ?? local(10, 1, 10),
       seed.pausedAt ?? null,
       seed.pausedAt === undefined || seed.pausedAt === null ? null : 'user',
@@ -547,5 +549,222 @@ describe('syncReminders — notification permission', () => {
     jest.mocked(write).mockClear();
     await syncReminders(english, NOW);
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+// Fire N is Oct 1 at 20:00 and fire N+1 is Oct 2 at 20:00, unless a row says
+// otherwise. A fire is skipped only for data added on its own local day before
+// it fires, so an entry made in answer to fire N never silences fire N+1: a
+// user who answers every evening is still reminded every evening.
+describe('syncReminders — the smart-skip scenario matrix', () => {
+  type Entry = { at: number; later?: 'deleted' | 'edited' };
+
+  type Scenario = {
+    scenario: string;
+    schedule?: ReminderSchedule;
+    createdAt?: number;
+    entries?: Entry[];
+    editedTo?: { at: number; schedule: ReminderSchedule };
+    now: number;
+    firstFire: string;
+  };
+
+  const localOn = (year: number, month: number, day: number, hour = 0, minute = 0): number =>
+    new Date(year, month - 1, day, hour, minute).getTime();
+
+  const daily = (hour: number, minute = 0): ReminderSchedule => ({
+    frequency: 'daily',
+    minuteOfDay: hour * 60 + minute,
+  });
+
+  const MONDAY_AND_THURSDAY: ReminderSchedule = {
+    frequency: 'weekly',
+    minuteOfDay: 9 * 60,
+    weekdays: [1, 4],
+  };
+
+  it.each<Scenario>([
+    { scenario: 'no data: fire N+1 fires', now: local(10, 1, 21), firstFire: '10-2 20:0' },
+    {
+      scenario: 'an entry before fire N on its day: fire N+1 still fires',
+      entries: [{ at: local(10, 1, 19) }],
+      now: local(10, 1, 21),
+      firstFire: '10-2 20:0',
+    },
+    {
+      scenario: 'an entry the evening of fire N, after it fired: fire N+1 still fires',
+      entries: [{ at: local(10, 1, 20, 10) }],
+      now: local(10, 1, 21),
+      firstFire: '10-2 20:0',
+    },
+    {
+      scenario: 'an entry at 23:59 on fire N’s day: fire N+1 still fires',
+      entries: [{ at: local(10, 1, 23, 59) }],
+      now: local(10, 2, 0, 30),
+      firstFire: '10-2 20:0',
+    },
+    {
+      scenario: 'an entry at the midnight that starts fire N+1’s day: it is skipped',
+      entries: [{ at: local(10, 2) }],
+      now: local(10, 2, 0, 30),
+      firstFire: '10-3 20:0',
+    },
+    {
+      scenario: 'an entry a minute before fire N+1: it is skipped',
+      entries: [{ at: local(10, 2, 19, 59) }],
+      now: local(10, 2, 19, 59) + 30_000,
+      firstFire: '10-3 20:0',
+    },
+    {
+      scenario: 'an entry after fire N+1 fired: the next day still fires',
+      entries: [{ at: local(10, 2, 20, 30) }],
+      now: local(10, 2, 21),
+      firstFire: '10-3 20:0',
+    },
+    {
+      scenario: 'the only entry of fire N+1’s day deleted: it fires again',
+      entries: [{ at: local(10, 1, 19) }, { at: local(10, 2, 10), later: 'deleted' }],
+      now: local(10, 2, 12),
+      firstFire: '10-2 20:0',
+    },
+    {
+      scenario: 'one of two entries of fire N+1’s day deleted: it stays skipped',
+      entries: [{ at: local(10, 2, 10) }, { at: local(10, 2, 11), later: 'deleted' }],
+      now: local(10, 2, 12),
+      firstFire: '10-3 20:0',
+    },
+    {
+      scenario: 'an entry from fire N’s day edited on fire N+1’s day: an edit is not new data',
+      entries: [{ at: local(10, 1, 19), later: 'edited' }],
+      now: local(10, 2, 12),
+      firstFire: '10-2 20:0',
+    },
+    {
+      scenario: 'a reminder created after an entry the same day: tonight is skipped',
+      createdAt: local(10, 2, 12),
+      entries: [{ at: local(10, 2, 11, 55) }],
+      now: local(10, 2, 12),
+      firstFire: '10-3 20:0',
+    },
+    {
+      scenario: 'a reminder created the day after an entry: tonight fires',
+      createdAt: local(10, 2, 12),
+      entries: [{ at: local(10, 1, 18) }],
+      now: local(10, 2, 12),
+      firstFire: '10-2 20:0',
+    },
+    {
+      scenario: 'a reminder edited to 21:00 after an entry that day: tonight stays skipped',
+      entries: [{ at: local(10, 2, 18) }],
+      editedTo: { at: local(10, 2, 19), schedule: daily(21) },
+      now: local(10, 2, 19),
+      firstFire: '10-3 21:0',
+    },
+    {
+      scenario: 'a reminder edited to 21:00 the day after an entry: tonight fires',
+      entries: [{ at: local(10, 1, 18) }],
+      editedTo: { at: local(10, 2, 19), schedule: daily(21) },
+      now: local(10, 2, 19),
+      firstFire: '10-2 21:0',
+    },
+    {
+      scenario: 'a 00:15 reminder, an entry late the evening before: it fires',
+      schedule: daily(0, 15),
+      entries: [{ at: local(10, 1, 23, 50) }],
+      now: local(10, 1, 23, 55),
+      firstFire: '10-2 0:15',
+    },
+    {
+      scenario: 'a 00:15 reminder, an entry after midnight before it fires: it is skipped',
+      schedule: daily(0, 15),
+      entries: [{ at: local(10, 2, 0, 5) }],
+      now: local(10, 2, 0, 10),
+      firstFire: '10-3 0:15',
+    },
+    {
+      scenario: 'the fall-back day, an entry after midnight: its 03:30 fire is skipped',
+      schedule: daily(3, 30),
+      createdAt: local(10, 24, 10),
+      entries: [{ at: local(10, 25, 2) }],
+      now: local(10, 25, 2, 10),
+      firstFire: '10-26 3:30',
+    },
+    {
+      scenario: 'the fall-back day, an entry the evening before: its 03:30 fire fires',
+      schedule: daily(3, 30),
+      createdAt: local(10, 24, 10),
+      entries: [{ at: local(10, 24, 23, 30) }],
+      now: local(10, 25, 0, 30),
+      firstFire: '10-25 3:30',
+    },
+    {
+      scenario: 'the spring-forward day, an entry before the gap: its 03:30 fire is skipped',
+      schedule: daily(3, 30),
+      createdAt: localOn(2027, 3, 27, 10),
+      entries: [{ at: localOn(2027, 3, 28, 2, 30) }],
+      now: localOn(2027, 3, 28, 2, 40),
+      firstFire: '3-29 3:30',
+    },
+    {
+      scenario: 'the spring-forward day, an entry the evening before: its 03:30 fire fires',
+      schedule: daily(3, 30),
+      createdAt: localOn(2027, 3, 27, 10),
+      entries: [{ at: localOn(2027, 3, 27, 23) }],
+      now: localOn(2027, 3, 28, 1),
+      firstFire: '3-28 3:30',
+    },
+    {
+      scenario: 'weekly on Monday and Thursday, an entry on Tuesday: Thursday fires',
+      schedule: MONDAY_AND_THURSDAY,
+      createdAt: local(9, 28, 8),
+      entries: [{ at: local(9, 29, 12) }],
+      now: local(9, 30, 10),
+      firstFire: '10-1 9:0',
+    },
+    {
+      scenario: 'weekly on Monday and Thursday, an entry on Thursday before 09:00: it is skipped',
+      schedule: MONDAY_AND_THURSDAY,
+      createdAt: local(9, 28, 8),
+      entries: [{ at: local(10, 1, 8) }],
+      now: local(10, 1, 8, 30),
+      firstFire: '10-5 9:0',
+    },
+  ])('$scenario', async ({ schedule, createdAt, entries = [], editedTo, now, firstFire }) => {
+    seedAccount('manual');
+    seedReminder({
+      id: 'reminder-1',
+      accountId: 'manual',
+      kind: 'add_transactions',
+      schedule,
+      activeSince: createdAt,
+    });
+
+    for (const { at, later } of entries) {
+      seedManualTransaction('manual', at);
+
+      const entryId = `manual-manual-${at}`;
+
+      if (later === 'deleted') {
+        mockDatabase.prepare('DELETE FROM transactions WHERE id = ?').run(entryId);
+      }
+
+      if (later === 'edited') {
+        mockDatabase
+          .prepare('UPDATE transactions SET amount_minor_units = -250, time = ? WHERE id = ?')
+          .run(now, entryId);
+      }
+    }
+
+    if (editedTo !== undefined) {
+      const dateNow = jest.spyOn(Date, 'now').mockReturnValue(editedTo.at);
+
+      await remindersRepo.update('reminder-1', editedTo.schedule);
+      dateNow.mockRestore();
+    }
+
+    await syncReminders(english, now);
+
+    expect(fireStamps('reminder-1')[0]).toBe(firstFire);
+    expect(lastReplace().requests.filter(({ body }) => body.startsWith('0 '))).toEqual([]);
   });
 });

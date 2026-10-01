@@ -48,7 +48,7 @@ describe('planReminder — smart skip', () => {
     weekdays: [1, 4],
   };
 
-  it('skips Thursday after data on Tuesday and keeps the next Monday', () => {
+  it('fires Thursday after data on Tuesday, since only data on its own day skips it', () => {
     const { requests } = planReminder(
       input({
         schedule: mondayAndThursday,
@@ -59,14 +59,14 @@ describe('planReminder — smart skip', () => {
     );
 
     expect(firesOf(requests)).toEqual([
+      { fireAt: at(2026, 10, 1, 9, 0), variant: 'reminder' },
       { fireAt: at(2026, 10, 5, 9, 0), variant: 'reminder' },
       { fireAt: at(2026, 10, 8, 9, 0), variant: 'reminder' },
-      { fireAt: at(2026, 10, 12, 9, 0), variant: 'reminder' },
-      { fireAt: at(2026, 10, 15, 9, 0), variant: 'pausedNotice' },
+      { fireAt: at(2026, 10, 12, 9, 0), variant: 'pausedNotice' },
     ]);
   });
 
-  it('never skips for data from before the reminder existed', () => {
+  it('skips tonight for data added earlier today, before the reminder existed', () => {
     const { requests } = planReminder(
       input({
         activeSince: local(2026, 9, 28, 10),
@@ -75,20 +75,21 @@ describe('planReminder — smart skip', () => {
       }),
     );
 
-    expect(requests[0]?.fireAt).toEqual(at(2026, 9, 28, 20, 0));
+    expect(requests[0]?.fireAt).toEqual(at(2026, 9, 29, 20, 0));
+    expect(requests.map(({ daysSinceData }) => daysSinceData)).toEqual([1, 2, 3, 4]);
   });
 
-  it('new data resets the ignored count and skips the next occurrence', () => {
+  it('new data resets the ignored count, and data after a fire keeps the next day’s fire', () => {
     const { requests, backoffPausedAt } = planReminder(
       input({ now: local(2026, 9, 25, 21), lastDataAt: local(2026, 9, 25, 20, 55) }),
     );
 
     expect(backoffPausedAt).toBeNull();
     expect(firesOf(requests)).toEqual([
+      { fireAt: at(2026, 9, 26, 20, 0), variant: 'reminder' },
       { fireAt: at(2026, 9, 27, 20, 0), variant: 'reminder' },
       { fireAt: at(2026, 9, 28, 20, 0), variant: 'reminder' },
-      { fireAt: at(2026, 9, 29, 20, 0), variant: 'reminder' },
-      { fireAt: at(2026, 9, 30, 20, 0), variant: 'pausedNotice' },
+      { fireAt: at(2026, 9, 29, 20, 0), variant: 'pausedNotice' },
     ]);
   });
 });

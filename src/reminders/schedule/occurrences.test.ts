@@ -1,12 +1,7 @@
 import type { LocalDateTime } from '@kiko/reminders/native';
 
-import {
-  calendarDaysBetween,
-  occurrenceAfter,
-  occurrenceAtOrBefore,
-  toInstant,
-} from './occurrences';
 import type { ReminderSchedule } from './reminder-schedule';
+import { calendarDaysBetween, occurrenceAfter, toInstant } from './occurrences';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -183,60 +178,6 @@ describe('occurrenceAfter — every N days', () => {
       at(2026, 11, 3, 8, 0),
       at(2026, 11, 12, 8, 0),
     ]);
-  });
-});
-
-describe('occurrenceAtOrBefore', () => {
-  it('daily: includes an occurrence exactly at the instant', () => {
-    expect(occurrenceAtOrBefore(daily(20 * 60), local(2026, 9, 28, 20))).toEqual(
-      at(2026, 9, 28, 20, 0),
-    );
-  });
-
-  it('daily: before today’s time, returns yesterday’s', () => {
-    expect(occurrenceAtOrBefore(daily(20 * 60), local(2026, 9, 28, 19, 59))).toEqual(
-      at(2026, 9, 27, 20, 0),
-    );
-  });
-
-  it('weekly: on a Wednesday, returns that week’s Monday', () => {
-    const mondayAndThursday: ReminderSchedule = {
-      frequency: 'weekly',
-      minuteOfDay: 9 * 60,
-      weekdays: [1, 4],
-    };
-
-    expect(occurrenceAtOrBefore(mondayAndThursday, local(2026, 9, 30, 12))).toEqual(
-      at(2026, 9, 28, 9, 0),
-    );
-  });
-
-  it('monthly: day 31 looks back to the previous month’s last day', () => {
-    const onThe31st: ReminderSchedule = {
-      frequency: 'monthly',
-      minuteOfDay: 19 * 60,
-      dayOfMonth: 31,
-    };
-
-    expect(occurrenceAtOrBefore(onThe31st, local(2026, 12, 15))).toEqual(at(2026, 11, 30, 19, 0));
-    expect(occurrenceAtOrBefore(onThe31st, local(2027, 3, 10))).toEqual(at(2027, 2, 28, 19, 0));
-  });
-
-  it('every N days: returns the latest step at or before the instant', () => {
-    expect(occurrenceAtOrBefore(EVERY_NINE_DAYS, local(2026, 9, 18))).toEqual(
-      at(2026, 9, 10, 8, 0),
-    );
-  });
-
-  it('every N days: returns the anchor occurrence at its own instant', () => {
-    expect(occurrenceAtOrBefore(EVERY_NINE_DAYS, local(2026, 9, 1, 8))).toEqual(
-      at(2026, 9, 1, 8, 0),
-    );
-  });
-
-  it('every N days: returns undefined before the first occurrence', () => {
-    expect(occurrenceAtOrBefore(EVERY_NINE_DAYS, local(2026, 8, 20))).toBeUndefined();
-    expect(occurrenceAtOrBefore(EVERY_NINE_DAYS, local(2026, 9, 1, 7, 59))).toBeUndefined();
   });
 });
 

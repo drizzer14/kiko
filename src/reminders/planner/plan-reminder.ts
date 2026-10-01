@@ -7,7 +7,6 @@ import {
   calendarDaysBetween,
   isReminderSchedule,
   occurrenceAfter,
-  occurrenceAtOrBefore,
   type ReminderKind,
   type ReminderSchedule,
   toInstant,
@@ -18,9 +17,12 @@ import maybe, { foldMap } from 'fnts/maybe';
 // - The anchor is the latest of `activeSince`, `deliverableSince`,
 //   `lastEngagedAt` and `lastDataAt`: a tap, new data, or iOS starting to
 //   show the app's notifications starts the ignored count again.
-// - An occurrence is SKIPPED when `lastDataAt` is at or after both the
-//   previous occurrence and `activeSince`: new data arrived since the last
-//   fire. Data from before the reminder existed never skips.
+// - An occurrence is SKIPPED when `lastDataAt` is on its own local calendar
+//   day: the user already did that day what it asks. Data from an earlier day,
+//   such as the evening of the previous fire, never skips it, so a user who
+//   answers every reminder is still reminded every time. A reminder created or
+//   edited after that day's data skips it too, since `activeSince` plays no
+//   part.
 // - The non-skipped occurrences after the anchor take ordinals 1, 2, 3, ….
 //   Those at or before `now` fired and were ignored. Ordinals up to
 //   `IGNORED_LIMIT` are reminders; the next one is the single paused notice,
@@ -34,7 +36,6 @@ import maybe, { foldMap } from 'fnts/maybe';
 
 export const IGNORED_LIMIT = 3;
 
-const MINUTE_MS = 60_000;
 const MINUTES_PER_HOUR = 60;
 
 export type ReminderPlanInput = {
@@ -114,19 +115,14 @@ export const isSnoozePending = ({
   );
 };
 
-const previousOccurrenceInstant = (schedule: ReminderSchedule, instant: number): number =>
-  foldMap(maybe(occurrenceAtOrBefore(schedule, instant - MINUTE_MS)), toInstant) ??
-  Number.NEGATIVE_INFINITY;
+// Every slot comes after the anchor, which is never before `lastDataAt`, so
+// the data on a slot's day is always from before it fires.
+const isSkipped = (input: ReminderPlanInput, fireAt: LocalDateTime): boolean =>
+  foldMap(maybe(input.lastDataAt), (lastDataAt) => calendarDaysBetween(lastDataAt, fireAt) === 0) ??
+  false;
 
-const isSkipped = (input: ReminderPlanInput, instant: number): boolean =>
-  foldMap(
-    maybe(input.lastDataAt),
-    (lastDataAt) =>
-      lastDataAt >= Math.max(previousOccurrenceInstant(input.schedule, instant), input.activeSince),
-  ) ?? false;
-
-// At most one occurrence after the anchor can be skipped (the next one's
-// previous occurrence is already after the data), so this loop is short.
+// At most one occurrence after the anchor can be skipped (a schedule fires at
+// most once a day), so this loop is short.
 const ordinalSlots = (input: ReminderPlanInput): Slot[] => {
   const slots: Slot[] = [];
   let cursor = Math.max(
@@ -141,7 +137,7 @@ const ordinalSlots = (input: ReminderPlanInput): Slot[] => {
 
     cursor = toInstant(fireAt);
 
-    if (!isSkipped(input, cursor)) {
+    if (!isSkipped(input, fireAt)) {
       slots.push({ fireAt, instant: cursor });
     }
   }

@@ -32,9 +32,10 @@ const lastDataAtOf = (row: PlanInputRow): number | null =>
     .with('add_transactions', () => row.lastManualAt)
     .exhaustive();
 
-// Smart skip for a snooze: data added after "Tomorrow" leaves its text stale
-// and the reminder no longer due, so iOS drops it (it is not in the kept list)
-// and the plan stops keeping its slot free.
+// Data added after "Tomorrow" leaves the snooze's copied text stale, so iOS
+// drops it (it is not in the kept list) and the plan stops keeping its slot
+// free: the regular occurrence there, with fresh text, follows the smart skip
+// like any other.
 const hasDataSinceSnooze = (row: PlanInputRow): boolean => {
   const lastDataAt = lastDataAtOf(row);
 

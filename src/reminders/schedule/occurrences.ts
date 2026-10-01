@@ -1,6 +1,5 @@
 import { match } from 'ts-pattern';
 import { minOf } from '@kiko/numbers';
-import maybe, { foldMap } from 'fnts/maybe';
 import type { LocalDateTime } from '@kiko/reminders/native';
 
 import {
@@ -70,33 +69,6 @@ const firstDayOnOrAfter = (schedule: ReminderSchedule, from: LocalDay): LocalDay
     })
     .exhaustive();
 
-// `undefined` only for an interval whose anchor day is still ahead.
-const lastDayOnOrBefore = (schedule: ReminderSchedule, to: LocalDay): LocalDay | undefined =>
-  match(schedule)
-    .returnType<LocalDay | undefined>()
-    .with({ frequency: 'daily' }, () => to)
-    .with({ frequency: 'weekly' }, ({ weekdays }) => {
-      const daysBack = weekdays.map((weekday) => (weekdayOf(to) - weekday + WEEK_DAYS) % WEEK_DAYS);
-
-      return addDays(to, -minOf(daysBack));
-    })
-    .with({ frequency: 'monthly' }, ({ dayOfMonth }) => {
-      const thisMonth = monthlyDay(to, dayOfMonth);
-
-      return thisMonth.day <= to.day ? thisMonth : monthlyDay(shiftMonth(to, -1), dayOfMonth);
-    })
-    .with({ frequency: 'interval' }, ({ everyDays, anchorDay }) => {
-      const anchor = dayNumberOf(anchorDay);
-      const target = dayNumberOf(to);
-
-      if (target < anchor) {
-        return undefined;
-      }
-
-      return localDayFromNumber(anchor + Math.floor((target - anchor) / everyDays) * everyDays);
-    })
-    .exhaustive();
-
 // A later calendar day is always a later instant, so one step past a candidate
 // that is not after `instant` is enough. On a fall-back day the repeated hour
 // resolves to its first pass, so that day's occurrence fires once.
@@ -111,23 +83,6 @@ export const occurrenceAfter = (schedule: ReminderSchedule, instant: number): Lo
   }
 
   return atMinuteOfDay(firstDayOnOrAfter(schedule, addDays(candidate, 1)), schedule.minuteOfDay);
-};
-
-export const occurrenceAtOrBefore = (
-  schedule: ReminderSchedule,
-  instant: number,
-): LocalDateTime | undefined => {
-  const onOrBefore = (day: LocalDay): LocalDateTime | undefined =>
-    foldMap(maybe(lastDayOnOrBefore(schedule, day)), (occurrenceDay) =>
-      atMinuteOfDay(occurrenceDay, schedule.minuteOfDay),
-    );
-  const candidate = onOrBefore(localDayOf(instant));
-
-  if (candidate === undefined || toInstant(candidate) <= instant) {
-    return candidate;
-  }
-
-  return onOrBefore(addDays(candidate, -1));
 };
 
 // Whole local calendar days from the instant's date to `to`'s date, whatever
