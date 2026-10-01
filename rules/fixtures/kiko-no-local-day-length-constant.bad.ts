@@ -34,4 +34,12 @@ export const twoDaysBack = (time: number): number =>
   // EXPECT-FINDING
   time - 2 * 86_400_000;
 
+export const daysBack = (time: number, days: number): number =>
+  // EXPECT-FINDING
+  time - days * 86_400_000;
+
+export const daysAhead = (time: number, days: number): number =>
+  // EXPECT-FINDING
+  time + 86_400_000 * days;
+
 export const spans = [DAY_MS, DAY, dayMs, ONE_DAY, HOURS_DAY, WEEK_MS, FULL_FETCH_INTERVAL_MS];
