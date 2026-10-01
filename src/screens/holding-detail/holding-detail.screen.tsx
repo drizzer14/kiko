@@ -48,6 +48,7 @@ import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
@@ -396,6 +397,23 @@ type LedgerRowContext = {
   lotActions: LotActions | undefined;
 };
 
+// A lot row is the user's own entry, so it is never marked "Computed"; a
+// future-dated one still reads "Projected".
+const derivedMarker = (entry: DerivedEntry, t: TFunction): string | undefined => {
+  if (entry.isFuture) {
+    return t('holdingDetail.projected');
+  }
+
+  if (entry.lotIndex !== undefined) {
+    return undefined;
+  }
+
+  return t('holdingDetail.computed');
+};
+
+const derivedFooterText = (entry: DerivedEntry, t: TFunction, timeText?: string): string =>
+  [derivedMarker(entry, t), timeText].filter((part) => part !== undefined).join(' · ');
+
 // A single ledger row, lifted verbatim out of the old eager `.map` so the
 // FlatList mounts only the visible rows — a synced card can carry thousands.
 // The row UI, props, spacing, and testIDs are unchanged. A derived (computed)
@@ -418,7 +436,13 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
   } = context;
 
   return match(row)
-    .with({ kind: 'derived' }, (derivedRow) => (
+    .with({ kind: 'derived' }, (derivedRow) => {
+      const footerText = derivedFooterText(
+        derivedRow.entry,
+        t,
+        showTime ? formatTime(derivedRow.entry.time, clock) : undefined,
+      );
+
       // A computed lifecycle entry (opening/top-up, interest accrual, the
       // 18%/5% withholding lines, capitalization, or a bond
       // purchase/coupon/redemption): not tappable, and marked "Computed" so
@@ -427,36 +451,37 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       // an upcoming accrual, coupon, or redemption — is dimmed and marked
       // "Projected". The amount reads in its kind-derived tone (tax red,
       // interest/coupon green, principal movements neutral/by-sign).
-      <LotRowMenu entry={derivedRow.entry} actions={lotActions}>
-        <Card
-          padding={3}
-          testID="ledger-row"
-          style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
-        >
-          <Box gap={1}>
-            <Box direction="row" style={styles.rowMain}>
-              <Box style={styles.rowDescription}>
-                <Text variant="body">{derivedRow.entry.label}</Text>
+      return (
+        <LotRowMenu entry={derivedRow.entry} actions={lotActions}>
+          <Card
+            padding={3}
+            testID="ledger-row"
+            style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
+          >
+            <Box gap={1}>
+              <Box direction="row" style={styles.rowMain}>
+                <Box style={styles.rowDescription}>
+                  <Text variant="body">{derivedRow.entry.label}</Text>
+                </Box>
+                <Box style={styles.rowAmount}>
+                  <MoneyText
+                    money={Money.of(currency, derivedRow.entry.amountMinorUnits)}
+                    tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
+                  />
+                </Box>
               </Box>
-              <Box style={styles.rowAmount}>
-                <MoneyText
-                  money={Money.of(currency, derivedRow.entry.amountMinorUnits)}
-                  tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
-                />
-              </Box>
+              {footerText !== '' && (
+                <Box style={styles.rowFooter}>
+                  <Text variant="caption" tone="textSecondary">
+                    {footerText}
+                  </Text>
+                </Box>
+              )}
             </Box>
-            <Box style={styles.rowFooter}>
-              <Text variant="caption" tone="textSecondary">
-                {derivedRow.entry.isFuture
-                  ? t('holdingDetail.projected')
-                  : t('holdingDetail.computed')}
-                {showTime ? ` · ${formatTime(derivedRow.entry.time, clock)}` : ''}
-              </Text>
-            </Box>
-          </Box>
-        </Card>
-      </LotRowMenu>
-    ))
+          </Card>
+        </LotRowMenu>
+      );
+    })
     .with({ kind: 'transaction' }, (transactionRow) => {
       // The row's stored category resolves to its icon + title through the
       // same shared mapping Home uses; a null/unknown category falls back
@@ -599,18 +624,26 @@ const LinkedPaymentsSection: FC<{
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-// A lot's Delete is offered only while every day stays held at zero or more
-// without it; the repo refuses the same change again inside its write.
+// A lot's Delete is offered only while every sale stays covered without it;
+// the repo checks the same change again inside its write, and a refusal there
+// (the lots changed since this render) shows the shared save-error alert.
 const buildLotActions = (
   holding: HoldingRow | undefined,
   navigation: HoldingDetailScreenProps['navigation'],
+  t: TFunction,
 ): LotActions | undefined =>
   foldMap(maybe(holding), ({ id, metadata }): LotActions => {
     const lots = asLots(isRecord(metadata) ? metadata.lots : undefined) ?? [];
 
     return {
       edit: (lotIndex) => navigation.navigate('LotForm', { holdingId: id, lotIndex }),
-      remove: (lotIndex) => holdingsRepo.changeLots(id, { kind: 'remove', index: lotIndex }),
+      remove: async (lotIndex) => {
+        try {
+          await holdingsRepo.changeLots(id, { kind: 'remove', index: lotIndex });
+        } catch {
+          alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+        }
+      },
       isRemovable: (lotIndex) =>
         !hasNegativeHolding(changedLots(lots, { kind: 'remove', index: lotIndex })),
     };
@@ -982,7 +1015,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       navigation.navigate('TransactionForm', { transactionId }),
     onDuplicateTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
-    lotActions: buildLotActions(holding, navigation),
+    lotActions: buildLotActions(holding, navigation, t),
   };
 
   // The header/summary block that scrolls above the ledger: the Value amount +

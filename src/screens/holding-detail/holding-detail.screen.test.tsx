@@ -1,6 +1,6 @@
-import { StyleSheet } from 'react-native';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { ComponentProps } from 'react';
+import { Alert, StyleSheet } from 'react-native';
 import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
@@ -1426,6 +1426,34 @@ describe('HoldingDetailScreen', () => {
       await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
       expect(holdingsRepo.changeLots).toHaveBeenCalledWith('h-1', { kind: 'remove', index: 0 });
+    });
+
+    it('alerts when the delete is refused', async () => {
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      (holdingsRepo.changeLots as jest.Mock).mockRejectedValueOnce(new Error('refused'));
+      seed(metalHolding);
+
+      const { getByTestId } = await renderScreen();
+
+      await holdRow();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+      });
+
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.');
+      alertSpy.mockRestore();
+    });
+
+    it('is not captioned Computed, since the user entered it', async () => {
+      seed(metalHolding);
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Purchase')).toBeTruthy();
+      expect(queryByText(/Computed/)).toBeNull();
     });
 
     // The ledger lists newest first, so the January buy is the last row held.
