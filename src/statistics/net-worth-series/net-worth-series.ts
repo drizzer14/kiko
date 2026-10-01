@@ -28,9 +28,6 @@ export type NetWorthPoint = { t: number; amount: number };
  */
 export type NetWorthSeries = { points: NetWorthPoint[]; startReference: number };
 
-/** A bond's recognized start day, shaped to spread straight onto its `BondMeta` copy. */
-type BondRecognition = Pick<BondMeta, 'purchaseDate'>;
-
 /**
  * Reconciles every bond's held-cost start against the DAY the funding money
  * actually left, NOT the typed `purchaseDate`, so a cross-day card->bond move
@@ -48,7 +45,7 @@ type BondRecognition = Pick<BondMeta, 'purchaseDate'>;
 const bondRecognitionsFor = (
   holdings: SeriesHolding[],
   transactionsByHolding: Map<string, SeriesTransaction[]>,
-): Map<string, BondRecognition> => {
+): Map<string, number> => {
   const bonds = holdings
     .map((holding) => ({
       holding,
@@ -62,17 +59,10 @@ const bondRecognitionsFor = (
   const claimed = new Set<string>();
 
   return new Map(
-    bonds.map(({ holding, meta }) => {
-      const { recognitionDay } = reconcileBondFunding(
-        meta,
-        holding.currency,
-        holdings,
-        transactionsByHolding,
-        claimed,
-      );
-
-      return [holding.id, { purchaseDate: recognitionDay }];
-    }),
+    bonds.map(({ holding, meta }) => [
+      holding.id,
+      reconcileBondFunding(meta, holding.currency, holdings, transactionsByHolding, claimed),
+    ]),
   );
 };
 
@@ -160,15 +150,15 @@ export const buildNetWorthSeries = (input: {
       return holding;
     }
     const meta = asBondMeta(holding.metadata);
-    const recognition = bondRecognitions.get(holding.id);
+    const recognitionDay = bondRecognitions.get(holding.id);
 
-    if (meta === null || recognition === undefined) {
+    if (meta === null || recognitionDay === undefined) {
       return holding;
     }
 
     return {
       ...holding,
-      metadata: { ...meta, ...recognition },
+      metadata: { ...meta, purchaseDate: recognitionDay },
     };
   });
 

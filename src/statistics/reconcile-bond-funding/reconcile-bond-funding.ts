@@ -44,15 +44,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 const FUNDING_WINDOW_DAYS = 7;
 
-/** When a bond's held cost should be recognized in the net-worth series. */
-type BondRecognition = {
-  /** The local day the bond's held cost should START counting. */
-  recognitionDay: number;
-};
-
 /**
  * Reconcile a bond's held-cost recognition DAY against the day the funding
- * money actually left a card/cash holding.
+ * money actually left a card/cash holding, and return the local day the
+ * bond's held cost should START counting in the net-worth series.
  *
  * A card->bond purchase is modeled as TWO independently-dated facts: a real
  * funding DEBIT on the card (a Monobank "Купівля облігацій" row, at its own
@@ -103,7 +98,7 @@ export const reconcileBondFunding = (
   holdings: SeriesHolding[],
   transactionsByHolding: Map<string, SeriesTransaction[]>,
   claimed: Set<string> = new Set(),
-): BondRecognition => {
+): number => {
   const typedDay = startOfLocalDay(meta.purchaseDate);
   const typedDayKey = dayKeyOf(meta.purchaseDate);
   const typedPrice = meta.purchasePriceMinorUnits;
@@ -148,7 +143,7 @@ export const reconcileBondFunding = (
   // No matching outflow: recognize from the typed day (a legacy, FX-funded, or
   // genuinely manual bond).
   if (candidates.length === 0) {
-    return { recognitionDay: typedDay };
+    return typedDay;
   }
 
   // Prefer the candidate whose day is NEAREST the typed purchase day, tie-broken
@@ -171,5 +166,5 @@ export const reconcileBondFunding = (
 
   claimed.add(best.key);
 
-  return { recognitionDay: best.day };
+  return best.day;
 };
