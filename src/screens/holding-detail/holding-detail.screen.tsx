@@ -21,6 +21,7 @@ import {
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
+import { isRecord } from '@kiko/type-guards';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
@@ -620,9 +621,6 @@ const LinkedPaymentsSection: FC<{
     </Box>
   );
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
 
 // A lot's Delete is offered only while every sale stays covered without it;
 // the repo checks the same change again inside its write, and a refusal there

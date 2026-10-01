@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import { isRecord } from '@kiko/type-guards';
 
 import { daysInMonth } from './calendar-day';
 
@@ -29,9 +30,6 @@ const isIntegerBetween = (value: unknown, minimum: number, maximum: number): val
   Number.isInteger(value) && (value as number) >= minimum && (value as number) <= maximum;
 
 const isWeekday = (value: unknown): value is Weekday => isIntegerBetween(value, 0, 6);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
 
 // A four-digit year, because `Date.UTC` reads a year below 100 as 19xx; and a
 // day within its own month, because `Date.UTC` rolls 2026-09-31 into October.

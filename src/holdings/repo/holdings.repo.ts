@@ -13,6 +13,7 @@ import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { maxOf, minOf } from '@kiko/numbers';
+import { isRecord } from '@kiko/type-guards';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { holdingInstrument, shareInstrument } from '@kiko/prices/instrument';
 import { upsertPricePointsDatabaseTransaction } from '@kiko/prices/price-points-repo';
@@ -422,9 +423,6 @@ const carryShareClosesDatabaseTransaction = async (
     })),
   );
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 // Skip the write entirely when the synced balance already matches —
 // `selectCardsToFetch` already skips a card whose bank-reported balance is

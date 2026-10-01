@@ -8,6 +8,7 @@ import { match } from 'ts-pattern';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
+import { isRecord } from '@kiko/type-guards';
 import { startOfLocalDay } from '@kiko/dates';
 import { normalizeIsin } from '@kiko/bonds/isin';
 import { parseAmount } from '@kiko/currency/parse';
@@ -118,9 +119,6 @@ const buildShareCreatePayload = (fields: ShareCreateFields): CreatePayload => {
     )
     .exhaustive();
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
 
 // A stored share that no longer parses still has its lots, and the edit that
 // repairs it must not write them away. A list with one unreadable entry stops

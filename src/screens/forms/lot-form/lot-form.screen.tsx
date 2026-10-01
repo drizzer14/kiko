@@ -8,6 +8,7 @@ import {
 import { useLiveQuery } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
+import { isRecord } from '@kiko/type-guards';
 import {
   useHeaderInset,
   scrollToField,
@@ -52,9 +53,6 @@ const startOfToday = (): number => {
 
   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
 
 const isSale = (lot: Lot): boolean => compareDecimal(lot.quantityDelta, '0') < 0;
 

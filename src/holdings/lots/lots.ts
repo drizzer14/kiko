@@ -1,3 +1,4 @@
+import { isRecord } from '@kiko/type-guards';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { addDecimal, compareDecimal } from '@kiko/currency/decimal';
 
@@ -26,9 +27,6 @@ export type Lot = {
 // normalization, unsigned only), a stored `quantityDelta` is a SIGNED
 // decimal — a sale's delta is negative — so this validator accepts a sign.
 const SIGNED_DECIMAL_PATTERN = /^-?\d+(\.\d+)?$/;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
 
 const asLot = (value: unknown): Lot | null => {
   if (!isRecord(value)) {
