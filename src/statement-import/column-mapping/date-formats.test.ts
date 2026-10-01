@@ -66,9 +66,12 @@ describe('parseDateWithFormat', () => {
     ['01.07.2025 00:00', 'DD.MM.YYYY HH:MM'],
     ['01.07.25 00:00', 'DD.MM.YY HH:MM'],
     ['2025-07-01 00:00:00', 'YYYY-MM-DD HH:MM:SS'],
-  ] as const)('keeps a real midnight %s under the timed preset %s at midnight, never noon', (cell, id) => {
-    expect(parseDateWithFormat(cell, id)).toBe(localSeconds(2025, 7, 1, 0, 0, 0));
-  });
+  ] as const)(
+    'keeps a real midnight %s under the timed preset %s at midnight, never noon',
+    (cell, id) => {
+      expect(parseDateWithFormat(cell, id)).toBe(localSeconds(2025, 7, 1, 0, 0, 0));
+    },
+  );
 
   it('rejects a DD.MM.YYYY HH:MM:SS mismatch', () => {
     expect(parseDateWithFormat('01.07.2025', 'DD.MM.YYYY HH:MM:SS')).toBeUndefined();
