@@ -4,11 +4,12 @@
 // `sync.ts` itself imports the repos, which open the op-sqlite connection at
 // load — `jest/setup.js` mocks `@op-engineering/op-sqlite` globally, so this
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
-import { startOfLocalDay } from '@kiko/dates';
 import { Money, toMajor } from '@kiko/currency/money';
 import { mapStatementItem } from '@kiko/monobank/sync';
-import { buildPriceBook } from '@kiko/prices/price-book';
+import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
+import { guardedNetWorth } from '@kiko/rates/net-worth-view';
 import { FIAT_UAH_PRICE_SEED } from '@kiko/rates/fiat-rate-seed';
+import { buildPriceBook, dayKeyOf } from '@kiko/prices/price-book';
 import type { CurrencyRateHistoryRow, HoldingRow } from '@kiko/db';
 import type { MonobankStatementItem } from '@kiko/monobank/monobank-types';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
@@ -1387,5 +1388,147 @@ describe('buildNetWorthSeries', () => {
       expect(amountAt(series, now)).toBe(amountAt(headlineOnlySeries, now));
       expect(amountAt(series, now)).toBe(200);
     });
+
+    // Deleting a sold-out share erased its lots while the broker cash kept the
+    // buy debit, so every bucket between buy and sale dropped by the share's
+    // value; closing it keeps them.
+    it('keeps every past bucket of a sold-out manual share closed after its sale', () => {
+      const month = (index: number, day: number): number => Date.UTC(2026, index, day);
+      const buy = month(1, 1);
+      const sale = month(5, 1);
+      const share = holding({
+        id: 'share',
+        type: 'share',
+        currency: 'UAH',
+        metadata: {
+          quoteSource: 'manual',
+          lots: [
+            { day: buy, quantityDelta: '10', costMinorUnits: 10_000_00 },
+            { day: sale, quantityDelta: '-10', costMinorUnits: -10_000_00 },
+          ],
+        },
+      });
+      const brokerCash = holding({ id: 'cash', currency: 'UAH', balanceMinorUnits: 22_000_00 });
+      const ledger = new Map([
+        [
+          'cash',
+          [
+            { time: month(0, 10), amountMinorUnits: 20_000_00 },
+            { time: buy + HOUR, amountMinorUnits: -10_000_00 },
+            { time: sale + HOUR, amountMinorUnits: 12_000_00 },
+          ],
+        ],
+      ]);
+      const book = buildPriceBook([
+        {
+          instrument: holdingInstrument('share'),
+          day: buy,
+          price: '1000',
+          currency: 'UAH',
+          source: 'manual',
+        },
+        {
+          instrument: holdingInstrument('share'),
+          day: month(3, 1),
+          price: '1200',
+          currency: 'UAH',
+          source: 'manual',
+        },
+      ]);
+      const seriesWith = (shareClosedAt: number | null): number[] =>
+        buildNetWorthSeries({
+          holdings: [brokerCash, { ...share, closedAt: shareClosedAt }],
+          transactionsByHolding: ledger,
+          historyRows: [],
+          baseCurrency: 'UAH',
+          range: { from: month(0, 15), to: month(6, 15) },
+          bucketDays: 30,
+          today: month(6, 15),
+          book,
+        }).points.map((point) => point.amount);
+
+      expect(seriesWith(month(5, 20))).toEqual(seriesWith(null));
+      expect(seriesWith(month(5, 20))).toEqual([
+        20_000, 20_000, 20_000, 22_000, 22_000, 22_000, 22_000, 22_000,
+      ]);
+    });
+  });
+
+  it('ends on the net worth Home shows for a bond, a share, and a closed holding', () => {
+    const start = new Date(2026, 8, 1).getTime();
+    const day = (offset: number, hour = 0): number => addLocalDays(start, offset) + hour * HOUR;
+    const now = day(29, 12);
+    // Funded by a 1100.00 debit, typed at 1078.68.
+    const card = holding({ id: 'card' });
+    const bond = bondFor({
+      id: 'bond',
+      currency: 'USD',
+      faceValueMinorUnits: 1_000_00,
+      purchaseDate: day(9, 18),
+      purchasePriceMinorUnits: 1_078_68,
+    });
+    const share = holding({
+      id: 'share',
+      type: 'share',
+      metadata: {
+        quoteSource: 'manual',
+        lots: [{ day: dayKeyOf(day(11)), quantityDelta: '10', costMinorUnits: 1_500_00 }],
+      },
+    });
+    const brokerCash = holding({ id: 'broker', balanceMinorUnits: 500_00 });
+    const closedJar = holding({ id: 'jar', balanceMinorUnits: 300_00, closedAt: day(19, 12) });
+    const holdings = [card, bond, share, brokerCash, closedJar];
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('share'),
+        day: dayKeyOf(day(11)),
+        price: '150',
+        currency: 'USD',
+        source: 'manual',
+      },
+      {
+        instrument: holdingInstrument('share'),
+        day: dayKeyOf(day(19)),
+        price: '200',
+        currency: 'USD',
+        source: 'manual',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings,
+      transactionsByHolding: new Map([
+        [
+          'card',
+          [
+            { time: day(0, 12), amountMinorUnits: 1_100_00 },
+            { time: day(9, 15), amountMinorUnits: -1_100_00 },
+          ],
+        ],
+        [
+          'broker',
+          [
+            { time: day(0, 12), amountMinorUnits: 2_000_00 },
+            { time: day(11, 15), amountMinorUnits: -1_500_00 },
+          ],
+        ],
+        ['jar', [{ time: day(0, 12), amountMinorUnits: 300_00 }]],
+      ]),
+      historyRows: [],
+      baseCurrency: 'USD',
+      range: { from: day(0), to: endOfLocalDay(now) },
+      today: now,
+      book,
+    });
+    const home = guardedNetWorth(
+      holdings.filter((candidate) => candidate.closedAt === null),
+      'USD',
+      {},
+      now,
+      book,
+    );
+
+    expect(series.points.at(-1)?.amount).toBe(toMajor(home.minorUnits, 'USD'));
+    expect(series.points.at(-1)?.amount).toBe(3_578.68);
   });
 });
