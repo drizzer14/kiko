@@ -198,6 +198,22 @@ describe('ShareSearchSheet', () => {
     expect(screen.queryByText('Vodafone Group PLC')).toBeNull();
   });
 
+  it('hides the previous results while a new search runs', async () => {
+    const search = jest
+      .fn<Promise<ShareSearchResult>, [string]>()
+      .mockResolvedValueOnce({ status: 'ok', listings: [vodafone] })
+      .mockReturnValueOnce(new Promise<ShareSearchResult>(() => undefined));
+    const screen = await renderSheet({ search });
+
+    await searchFor(screen, 'VOD');
+    expect(await screen.findByText('Vodafone Group PLC')).toBeTruthy();
+
+    await searchFor(screen, 'AAPL');
+
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Vodafone Group PLC')).toBeNull();
+  });
+
   it('drops an answer that arrives after the sheet closed', async () => {
     let resolveSearch: (result: ShareSearchResult) => void = () => undefined;
     const search = jest.fn(

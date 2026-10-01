@@ -64,6 +64,25 @@ describe('confirmDailyLimit', () => {
     expect(world.quota).toEqual({ day: TODAY, calls: 7, dailyLimit: 100, symbols: [] });
   });
 
+  it('keeps a limit a key save confirmed while the check was out', async () => {
+    const world = makeWorld();
+    const saved: QuoteQuota = { day: TODAY, calls: 2, dailyLimit: 50, symbols: [] };
+    const deps = depsFor(world);
+
+    await confirmDailyLimit({
+      ...deps,
+      fetchUserLimits: async (key) => {
+        const limits = await deps.fetchUserLimits?.(key);
+
+        world.quota = saved;
+
+        return limits as UserLimits;
+      },
+    });
+
+    expect(world.quota).toEqual(saved);
+  });
+
   it.each([
     ['no stored quota', null],
     ['a confirmed limit', { day: TODAY, calls: 3, dailyLimit: 20, symbols: [] }],

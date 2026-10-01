@@ -52,5 +52,9 @@ export const confirmDailyLimit = async (deps: DailyLimitDeps = {}): Promise<void
 
   const limits: UserLimits = bifold(answer);
 
-  await updateQuota((stored) => withUserLimits(stored, limits, now()));
+  // A key saved while this check was out stored its own confirmed limit,
+  // which this older answer must not overwrite.
+  await updateQuota((stored) =>
+    stored?.isLimitUnconfirmed === true ? withUserLimits(stored, limits, now()) : stored,
+  );
 };

@@ -71,6 +71,8 @@ const ShareSearchSheet: FC<ShareSearchSheetProps> = ({ visible, onDismiss, searc
 
     Keyboard.dismiss();
     latestRequest.current += 1;
+    // The previous results must not stay tappable under a new query.
+    setPhase(IDLE);
 
     const request = latestRequest.current;
     const result = await search(trimmed).catch((): ShareSearchResult => ({ status: 'failed' }));
