@@ -1,4 +1,4 @@
-import { isMidnightWallClock, isRealCalendarInstant } from './wall-clock-parts';
+import { utcDigitsOf, isMidnightWallClock, isRealCalendarInstant } from './wall-clock-parts';
 
 const parts = (
   year: number,
@@ -39,5 +39,13 @@ describe('isMidnightWallClock', () => {
   it('is false for any non-zero time-of-day', () => {
     expect(isMidnightWallClock(parts(2026, 9, 15, 0, 0, 1))).toBe(false);
     expect(isMidnightWallClock(parts(2026, 9, 15, 12, 0, 0))).toBe(false);
+  });
+});
+
+describe('utcDigitsOf', () => {
+  it('round-trips a UTC instant back to its own calendar parts', () => {
+    const milliseconds = Date.UTC(2026, 8, 15, 22, 30, 0);
+
+    expect(utcDigitsOf(milliseconds)).toEqual(parts(2026, 9, 15, 22, 30, 0));
   });
 });

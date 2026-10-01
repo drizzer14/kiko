@@ -1,4 +1,4 @@
-import { kyivOffsetHours, kyivWallClockToUtcMilliseconds, utcDigitsOf } from './kyiv-wall-clock';
+import { kyivWallClockToUtcMilliseconds } from './kyiv-wall-clock';
 
 const parts = (
   year: number,
@@ -14,16 +14,6 @@ const parts = (
   hour,
   minute,
   second,
-});
-
-describe('kyivOffsetHours', () => {
-  it('is +3 in summer', () => {
-    expect(kyivOffsetHours(parts(2026, 9, 15, 22, 30))).toBe(3);
-  });
-
-  it('is +2 in winter', () => {
-    expect(kyivOffsetHours(parts(2026, 1, 15, 22, 30))).toBe(2);
-  });
 });
 
 describe('kyivWallClockToUtcMilliseconds', () => {
@@ -87,13 +77,5 @@ describe('kyivWallClockToUtcMilliseconds', () => {
 
   it('rejects an out-of-range hour/minute that rolls over', () => {
     expect(kyivWallClockToUtcMilliseconds(parts(2026, 9, 15, 25, 61))).toBeUndefined();
-  });
-});
-
-describe('utcDigitsOf', () => {
-  it('round-trips a UTC instant back to its own calendar parts', () => {
-    const milliseconds = Date.UTC(2026, 8, 15, 22, 30, 0);
-
-    expect(utcDigitsOf(milliseconds)).toEqual(parts(2026, 9, 15, 22, 30, 0));
   });
 });

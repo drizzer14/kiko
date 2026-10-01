@@ -4,3 +4,4 @@ export * from './local-day';
 export * from './default-range';
 export * from './wall-clock-parts';
 export * from './kyiv-wall-clock';
+export * from './zone-wall-clock';

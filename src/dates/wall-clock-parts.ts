@@ -38,6 +38,23 @@ export const isRealCalendarInstant = ({
   );
 };
 
+/** A stored instant's own UTC calendar/time digits, as parts — the legacy
+ * "wall clock written as if it were UTC" convention a rezone step reads a
+ * legacy row through (`rezoneImportTime`), and the shift-then-read step of
+ * `zoneWallClockOf`. */
+export const utcDigitsOf = (milliseconds: number): WallClockParts => {
+  const date = new Date(milliseconds);
+
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+    hour: date.getUTCHours(),
+    minute: date.getUTCMinutes(),
+    second: date.getUTCSeconds(),
+  };
+};
+
 /** A wall clock of exactly `00:00:00`, from a source that cannot tell a
  * date-only value from a real midnight — a spreadsheet `Date` cell, or a
  * legacy stored row that predates real instants — is read as date-only. A
