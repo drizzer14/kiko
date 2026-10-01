@@ -25,12 +25,18 @@ export type ShareFieldErrors = {
 
 export type ShareReasonKey = NonNullable<ShareFieldErrors[keyof ShareFieldErrors]>;
 
+// EODHD prices a symbol only with its exchange suffix (AAPL.US), so a ticker
+// without one could never get a price.
+const EODHD_SYMBOL_PATTERN = /^[^.\s]+\.[^.\s]+$/;
+
 // Only EODHD needs a ticker: it is the symbol the price refresh asks for.
 const tickerFieldReasonKey = (
   quoteSource: ShareQuoteSource,
   ticker: string,
 ): ShareFieldErrors['tickerError'] =>
-  quoteSource === 'eodhd' && ticker.trim() === '' ? 'forms.holding.shareTickerError' : null;
+  quoteSource === 'eodhd' && !EODHD_SYMBOL_PATTERN.test(ticker.trim())
+    ? 'forms.holding.shareTickerError'
+    : null;
 
 // The ISIN is optional, but a typed one must be valid, so a stored ISIN
 // always parses back.

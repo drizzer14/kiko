@@ -61,11 +61,41 @@ beforeEach(() => {
 });
 
 describe('useShareFields defaults and order', () => {
-  it('starts in EODHD mode with the purchase date set to today', async () => {
+  it('starts in manual mode with no saved key, with the purchase date set to today', async () => {
     const { result } = await renderFields();
 
-    expect(result.current.quoteSource).toBe('eodhd');
+    await waitFor(() => expect(mockHasEodhdKey).toHaveBeenCalled());
+    expect(result.current.quoteSource).toBe('manual');
     expect(dayKeyOf(result.current.purchaseDate)).toBe(dayKeyOf(Date.now()));
+  });
+
+  it('starts in EODHD mode once a saved key is found', async () => {
+    mockHasEodhdKey.mockResolvedValue(true);
+
+    const { result } = await renderFields();
+
+    await waitFor(() => expect(result.current.quoteSource).toBe('eodhd'));
+  });
+
+  it('keeps the price source the user picked before the saved key is found', async () => {
+    let resolveKey: (isSaved: boolean) => void = () => undefined;
+    mockHasEodhdKey.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        resolveKey = resolve;
+      }),
+    );
+
+    const { result } = await renderFields();
+
+    await act(async () => {
+      result.current.setQuoteSource('manual');
+    });
+    await act(async () => {
+      resolveKey(true);
+    });
+
+    expect(result.current.hasEodhdKey).toBe(true);
+    expect(result.current.quoteSource).toBe('manual');
   });
 
   it('orders scrollTargets ticker, ISIN, quantity, cost', async () => {
@@ -114,6 +144,7 @@ describe('useShareFields createPayload', () => {
     const rendered = await renderFields();
 
     await act(async () => {
+      rendered.result.current.setQuoteSource('eodhd');
       rendered.result.current.setTicker(' aapl.us ');
       rendered.result.current.setIsin('us0378331005');
     });
@@ -133,7 +164,10 @@ describe('useShareFields createPayload', () => {
     const rendered = await renderFields();
 
     await act(async () => {
+      rendered.result.current.setQuoteSource('eodhd');
       rendered.result.current.setTicker('AAPL.US');
+    });
+    await act(async () => {
       rendered.result.current.setQuoteSource('manual');
     });
     await fillFirstLot(rendered, '1', '100');
@@ -205,6 +239,48 @@ describe('useShareFields edit', () => {
       symbol: 'BP.LSE',
       lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
     });
+  });
+
+  it('keeps a stored manual source once a saved key is found', async () => {
+    mockHasEodhdKey.mockResolvedValue(true);
+
+    const { result } = await renderFields({ isEdit: true });
+
+    await act(async () => {
+      result.current.seed(storedShare({ quoteSource: 'manual' }));
+    });
+
+    await waitFor(() => expect(result.current.hasEodhdKey).toBe(true));
+    expect(result.current.quoteSource).toBe('manual');
+  });
+
+  it('keeps a stored EODHD source with no saved key', async () => {
+    const { result } = await renderFields({ isEdit: true });
+
+    await act(async () => {
+      result.current.seed(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE' }));
+    });
+
+    await waitFor(() => expect(mockHasEodhdKey).toHaveBeenCalled());
+    expect(result.current.quoteSource).toBe('eodhd');
+  });
+
+  // The price refresh resolves a missing unit again, so the form never has
+  // to guess the new listing's unit.
+  it('keeps the stored quote currency for the same ticker typed in another case', async () => {
+    const { result } = await renderFields({ isEdit: true });
+
+    await act(async () => {
+      result.current.seed(
+        storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }),
+      );
+    });
+    await act(async () => {
+      result.current.setTicker(' vod.lse ');
+    });
+    await result.current.saveEdit(editContext);
+
+    expect(updateMock.mock.calls[0][1].metadata).toHaveProperty('quoteCurrency', 'GBX');
   });
 
   it('never blocks an edit on the first-lot fields', async () => {

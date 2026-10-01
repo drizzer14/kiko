@@ -172,7 +172,8 @@ export type UseShareFieldsResult = HoldingTypeForm & {
 export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResult => {
   const { type, isEdit, currency } = params;
 
-  const [quoteSource, setQuoteSource] = useState<ShareQuoteSource>('eodhd');
+  // Null until the user picks a source or an edit seeds the stored one.
+  const [pickedQuoteSource, setQuoteSource] = useState<ShareQuoteSource | null>(null);
   const [ticker, setTicker] = useState('');
   const [isin, setIsin] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -199,6 +200,10 @@ export const useShareFields = (params: UseShareFieldsParams): UseShareFieldsResu
       hasEodhdKey().then(setIsEodhdKeySaved, () => setIsEodhdKeySaved(false));
     }
   }, [isShare]);
+
+  // An EODHD share with no saved key never gets a price, so a new share
+  // starts manual until a key is found.
+  const quoteSource = pickedQuoteSource ?? (isEodhdKeySaved ? 'eodhd' : 'manual');
 
   const validation = { isEdit, quoteSource, ticker, isin, quantity, cost };
   const fieldErrors = shareFieldErrors(validation);

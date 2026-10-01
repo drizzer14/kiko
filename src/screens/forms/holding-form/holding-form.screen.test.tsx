@@ -2585,10 +2585,26 @@ describe('HoldingFormScreen share', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  it('creates an EODHD share with its ticker and no price point', async () => {
+  it('starts a new share in manual mode with no saved key', async () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'Apple');
+    await fill(screen, 'Quantity', '3');
+    await fill(screen, 'Total cost', '1000');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(screen.queryByLabelText('Ticker')).toBeNull();
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ quoteSource: 'manual' }) }),
+    );
+  });
+
+  it('creates an EODHD share with its ticker and no price point, once a key is saved', async () => {
+    mockHasEodhdKey = true;
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'Apple');
+    await screen.findByLabelText('Ticker');
     await fill(screen, 'Ticker', 'aapl.us');
     await fill(screen, 'Quantity', '3');
     await fill(screen, 'Total cost', '1000');
@@ -2607,17 +2623,22 @@ describe('HoldingFormScreen share', () => {
     expect(createMock.mock.calls[0][0]).not.toHaveProperty('firstPricePoint');
   });
 
-  it('blocks Save on a blank ticker in EODHD mode, with its error', async () => {
-    const screen = await renderScreen();
+  it.each(['', 'AAPL'])(
+    'blocks Save on the ticker %p in EODHD mode, with its error',
+    async (ticker) => {
+      const screen = await renderScreen();
 
-    await fill(screen, 'Name', 'Apple');
-    await fill(screen, 'Quantity', '3');
-    await fill(screen, 'Total cost', '1000');
-    await fireEvent.press(screen.getByText('Save'));
+      await fill(screen, 'Name', 'Apple');
+      await fireEvent.press(screen.getByText('EODHD'));
+      await fill(screen, 'Ticker', ticker);
+      await fill(screen, 'Quantity', '3');
+      await fill(screen, 'Total cost', '1000');
+      await fireEvent.press(screen.getByText('Save'));
 
-    expect(screen.getByText('Enter a ticker, for example AAPL.US.')).toBeTruthy();
-    expect(createMock).not.toHaveBeenCalled();
-  });
+      expect(screen.getByText('Enter a ticker, for example AAPL.US.')).toBeTruthy();
+      expect(createMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('blocks Save on an ISIN with a wrong check digit', async () => {
     const screen = await renderScreen();
@@ -2633,10 +2654,11 @@ describe('HoldingFormScreen share', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
-  it('shows the EODHD option and a Settings hint with no saved key', async () => {
+  it('shows a Settings hint once EODHD is picked with no saved key', async () => {
     const screen = await renderScreen();
 
-    expect(screen.getByText('EODHD')).toBeTruthy();
+    await fireEvent.press(screen.getByText('EODHD'));
+
     expect(await screen.findByText(NO_KEY_HINT)).toBeTruthy();
   });
 

@@ -16,6 +16,19 @@ describe('shareFieldErrors — ticker', () => {
     );
   });
 
+  it.each(['AAPL', 'AAPL.', '.US', 'BRK.B.US', 'AA PL.US'])(
+    'rejects %p, which names no single exchange, in EODHD mode',
+    (ticker) => {
+      expect(shareFieldErrors({ ...baseParams(), ticker }).tickerError).toBe(
+        'forms.holding.shareTickerError',
+      );
+    },
+  );
+
+  it('accepts a CODE.EXCHANGE ticker, trimmed, in any case', () => {
+    expect(shareFieldErrors({ ...baseParams(), ticker: ' vod.lse ' }).tickerError).toBeNull();
+  });
+
   it('never asks for a ticker in manual mode', () => {
     expect(
       shareFieldErrors({ ...baseParams(), quoteSource: 'manual', ticker: '' }).tickerError,
