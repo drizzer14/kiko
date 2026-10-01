@@ -1,4 +1,5 @@
 import { useLiveQuery } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { isSyncedAccount } from '@kiko/holdings/deletable';
@@ -43,15 +44,10 @@ export const useTargetHoldingOptions = (accountId: string): TargetHoldingOptions
     'accounts',
   ]);
   const accountById = new Map(accountRows.map((row) => [row.id, row] as const));
-  const syncedAccountIds = new Set(accountRows.filter(isSyncedAccount).map(({ id }) => id));
+  const accountIsSynced = foldMap(maybe(accountById.get(accountId)), isSyncedAccount) ?? false;
 
-  const options = holdingRows
-    .filter(
-      (holding) =>
-        holding.closedAt == null &&
-        !isLedgerlessHoldingType(holding.type) &&
-        !syncedAccountIds.has(holding.accountId),
-    )
+  const options = (accountIsSynced ? [] : holdingRows)
+    .filter((holding) => holding.closedAt == null && !isLedgerlessHoldingType(holding.type))
     .map((holding) => ({
       id: holding.id,
       name: holding.name,

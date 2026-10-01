@@ -1379,12 +1379,13 @@ export const transactionsRepo = {
    *
    * THE BOUNDARY: every decision below is relative to one "as-of" instant —
    * the LATER of (a) `holding.balanceSetAt` — set by `holdingsRepo.create`
-   * (a non-zero typed opening balance), `holdingsRepo.updateWithBalanceDelta`
-   * (a balance edit whose delta is non-zero, stamped at the edit's own
-   * `time`), and this function's own closing-balance write below (see "The
-   * closing-balance write" further down); NOT by `recordManual`, either leg
-   * of an exchange, a change-return row, or `accountsRepo.createCashAccount`
-   * — those write ordinary ledger entries, not a balance being SET — and (b)
+   * and `accountsRepo.createCashAccount` (a non-zero typed opening balance),
+   * `holdingsRepo.updateWithBalanceDelta` (a balance edit whose delta is
+   * non-zero, stamped at the edit's own `time`), and this function's own
+   * closing-balance write below (see "The closing-balance write" further
+   * down); NOT by `recordManual`, either leg of an exchange, or a
+   * change-return row — those write ordinary ledger entries, not a balance
+   * being SET — and (b)
    * the newest transaction from a SYNC source (`source` not in `('manual',
    * 'import')`). A sync-set balance is authoritative the same way an applied
    * closing balance is, and it survives a disconnect: `accountsRepo.disconnect`
