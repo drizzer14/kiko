@@ -184,6 +184,11 @@ Example (2026-09-29, Reminders track): T3 `7d3cb4c1`, T4 `6d39f3d3`, T5
 `3b267bf5` — three stacked merge points built and gated this way before
 the track branch fast-forwarded.
 
+A fix round for an earlier change set never sits on top of a later one:
+fix it in its own worktree off that set's tip, then have ops run
+`git rebase --onto <fix tip> <old base> <branch>` for the later set, then
+run the full `make verify`.
+
 ## Mutation base after a track merged next
 
 Once a track has merged into `next`, set `KIKO_MUTATION_BASE` to
@@ -308,8 +313,8 @@ that reads the handoff file.
 
 - One `kiko:reviewer` pass per phase or task group, plus one
   whole-branch pass before merge. Never a review after every step.
-- Run a fix round only for Critical/Important findings. Batch minors
-  into the next phase.
+- Cheap same-file Minors may ride a Critical/Important fix round; never
+  open a fix round for Minors alone.
 
 ## Orchestrator defaults never widen or contradict
 

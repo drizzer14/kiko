@@ -964,6 +964,13 @@ new component can land between reviews of this skill:
   `BottomSheet` with a query field, an explicit Search button, and
   `SelectableRow` results, following `CurrencyField`'s sheet. A search that
   costs a network call runs only on the button press, never per keystroke.
+  Always wrap Search in `useSubmitOnce` with its `isSubmitting` as the
+  button's loading state, and clear the previous results when a new search
+  starts.
+- **Share prices quota line** (`src/screens/settings/share-prices/`):
+  "Requests today: x / N" renders only with a saved key and after the quota
+  loaded; the used-up state shows only when the stored day is today. Open
+  USER question (pending): whether to show a "Daily limit: N" caption.
 - **ReminderOfferCard** (`src/design-system/components/reminder-offer-card/`)
   — the NoticeBanner family's two-action sibling: an inline, non-modal
   invitation (never a notification, sheet, or alert, and never an

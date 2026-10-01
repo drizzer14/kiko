@@ -775,8 +775,18 @@ client for the exact shapes.
   the body.
 - Closes are exact decimal strings via `decimalFromJsonNumber`
   (`@kiko/currency/decimal`), never a float.
-- Units (live-verified; used by P5 task 6/7): a listing's `Currency`
-  gives the close's unit, and a `GBX` close is in pence, not pounds.
+- Units (live-verified): a listing's `Currency` gives the close's unit,
+  and a `GBX` close is in pence, not pounds. Refresh and search always read
+  the unit from each listing's `Currency`, never from the exchange (an LSE
+  row can be USD).
+- `searchSymbols(query, key, fetchImpl, exchange?)` is the third entry
+  point (share search and the refresh's unit lookup). A request past
+  `REQUEST_TIMEOUT_MS` (read it in the client) aborts as
+  `EodhdNetworkError`, 0 calls spent.
+- EODHD facts (live-verified): the demo token gets 403 on search and on
+  non-US EOD; a search result's ISIN can be null; results include
+  non-primary listings; `extraLimit` is never added to the daily limit;
+  `apiRequestsDate` is EODHD's own day.
 - Cache and logging rules for the key-in-URL: `kiko-compliance` 5.1.5.
 
 ## EODHD quota guard and share refresh
@@ -820,6 +830,22 @@ exact constants (default limit, search reserve, history span).
   search call (that call costs 1 more) and saved on the holding. A `GBX`
   close on a `GBP` holding is divided by 100; any other unit/currency
   mismatch skips the symbol.
+- **Unconfirmed daily limit**: `QuoteQuota.isLimitUnconfirmed` (optional;
+  read `quote-quota.ts`) is carried by `currentQuota` and cleared by
+  `withUserLimits`. A key saved while `/user` answers 402 stores
+  `markUsedUp(withUnconfirmedLimit(...))`; 429 stores
+  `withUnconfirmedLimit(...)` only (`acceptedKeyQuota` in
+  `src/screens/settings/share-prices/share-prices.screen.tsx`).
+  `confirmDailyLimit` (`src/prices/daily-limit/daily-limit.ts`) runs on each
+  Share prices open and acts only while the limit is unconfirmed: it reads
+  the key, calls `/user` (0 calls), and stores the limit and count, and it
+  overwrites only while the stored limit is still unconfirmed; a failure
+  leaves it unconfirmed. The refresh never reads `/user` (R3). In
+  `withUserLimits`, EODHD's count wins only when EODHD's day is today (UTC).
+- **Accepted limit**: a key saved during a refresh can leave the local count
+  too low (`withUserLimits` overwrites the calls, then the refresh's delta
+  settle subtracts its reservation); the next 402 corrects it via
+  `markUsedUp`.
 - **Logs carry no symbol**: a symbol is personal portfolio data; log only
   the error name/code and a fixed reason.
 
@@ -836,9 +862,15 @@ Code: `src/prices/share-search/share-search.ts` (`searchShares`). Rules:
 - A `GBX` listing becomes a `GBP` holding with `quoteCurrency` `GBX`. Drop a
   listing whose currency is outside the form's own options. Primary
   listings first.
-- One call per explicit Search press, never per keystroke.
-- A picked listing stores its `quoteCurrency` on the holding, so the
-  refresh needs no unit search for it.
+- One call per explicit Search press, never per keystroke: the sheet's
+  Search button runs through `useSubmitOnce`
+  (`share-search-sheet.component.tsx`). A search between a refresh's
+  reservation and its settle keeps its call (the delta settle; see
+  `share-search.test.ts`).
+- A picked listing's `quoteCurrency` is kept only while the source is EODHD
+  and the ticker equals the picked symbol (`keptQuoteCurrency`,
+  `use-share-fields.ts`); a ticker edit drops it, and the refresh resolves
+  it again with one search call.
 
 ## Later (not built yet — do not invent detail)
 

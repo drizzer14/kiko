@@ -44,8 +44,7 @@ absent** — this skill states the shape and non-enum facts only:
   **A `broker` account is manual holdings only**: no sync, no
   statement import, no Connect field — the user adds holdings by hand.
   Its allowed holding types come from `holdingTypesForAccountKind` in
-  `src/holdings/holding-type/holding-type.ts` (read it there; the
-  `share` type is planned for P5 task 5/7). Its broker identity comes
+  `src/holdings/holding-type/holding-type.ts` (read it there). Its broker identity comes
   from the broker catalog in `src/brokers/broker-catalog.ts`
   (`BrokerId`), picked in the account form via `BrokerTypeField`
   (`src/screens/forms/broker-type-field/`).
@@ -244,6 +243,13 @@ control. An edit always keeps the stored source (read
 `use-share-fields.ts`). An EODHD ticker must be `CODE.EXCHANGE` — read
 `EODHD_SYMBOL_PATTERN` in `use-share-fields/share-reasons.ts`; a class
 share uses EODHD's dash form (e.g. `BRK-B.US`).
+
+A search pick replaces the ISIN and the name only when the field is blank
+or still holds what the previous pick filled (`filledIsinRef`,
+`filledNameRef`, `isUserTyped` in `use-share-fields.ts`): a typed value is
+kept, and a stale ISIN from an earlier pick is never kept. The picked
+`quoteCurrency` is kept only while the source is EODHD and the ticker
+equals the picked symbol (`keptQuoteCurrency`); a ticker edit drops it.
 
 ## `property_item` / `metal` create-form sections
 
