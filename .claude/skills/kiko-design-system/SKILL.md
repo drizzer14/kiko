@@ -914,8 +914,9 @@ new component can land between reviews of this skill:
   4 long option names, too wide for a `ChipRow`), the Bond form's
   coupon-frequency picker (shared by both `BondIsinSection`'s ISIN-mode
   unmapped-frequency picker and `ManualBondFields`'s own frequency
-  field), the holding-type picker, `AccountKindField`, and
-  `ModeSelectField` all reach for it directly. `AccountKindField` and
+  field), the holding-type picker, the column-mapping form's time-zone
+  field (43 zones), `AccountKindField`, and `ModeSelectField` all reach
+  for it directly. `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`

@@ -174,9 +174,14 @@ project-level pointer to this section.
   step of `importParsedStatement` (refusing the import if the flag is
   still `false` afterward, so a new-convention row never lands next to
   a not-yet-rezoned one): reads every `source = 'import'` row's legacy
-  `time` back as Kyiv time, the zone every import path reads a wall
-  clock in, so a rezoned row keeps the key a fresh re-import of the same
-  file computes on any device (`planImportTimeRezone`, pure), then
+  `time` back as Kyiv time, the zone every named format (and a column
+  mapping with no zone of its own) reads a wall clock in, so a rezoned
+  row keeps the key a fresh re-import of the same file computes on any
+  device (`planImportTimeRezone`, pure) — except a real `00:00:00` row,
+  which a legacy row cannot tell from a date-only one, so it rezones to
+  Kyiv noon; a re-import finds it there through its noon alias
+  (`kiko-statement-import`'s "A real `00:00:00` row never duplicates"),
+  then
   rewrites `time` and the dedup key's time token through a
   two-phase temp-key SQL update (SQLite checks UNIQUE per row even
   inside one UPDATE, so a direct final-key write can transiently
