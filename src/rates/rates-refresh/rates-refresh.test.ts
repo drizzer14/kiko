@@ -698,15 +698,65 @@ describe('refreshRates — one fiat answer per sync run', () => {
     await refreshRates({ ...second.deps, fiatOfRun });
 
     expect(fetchFiatRates).not.toHaveBeenCalled();
-    expect(second.captured[0]).toEqual(first.captured[0]);
+    expect(second.captured[0]).toEqual([
+      {
+        base: 'BTC',
+        quote: 'UAH',
+        rate: String(65_000 * 40),
+        source: 'coingecko',
+        fetchedAt: 1000,
+      },
+    ]);
   });
 
-  // A top-up that stamped the reused fiat rows with its own time would label an
-  // older answer newer than a rate another refresh stored in between, and move
-  // the throttle cursor (the newest `fetchedAt`) for rates it never fetched.
-  it('stamps the fiat rows it reuses with the time of the answer, and only its own crypto rows with its own time', async () => {
+  // A top-up that rewrote the fiat rows the first pass stored would overwrite a
+  // newer rate another (unthrottled) refresh stored in between with the older
+  // one — `upsertMany` keeps no `fetchedAt` guard, so the top-up must not write them.
+  it('leaves the fiat rows the first pass stored alone, and writes only the rows it did not', async () => {
+    const stored = new Map<string, { rate: string; fetchedAt: number }>();
+    const upsertMany: RefreshDeps['upsertMany'] = async (rates) => {
+      for (const rate of rates) {
+        stored.set(rate.base, { rate: rate.rate, fetchedAt: rate.fetchedAt });
+      }
+    };
+    const fiatOnly: RefreshDeps['openCurrencies'] = async () => ({
+      needsFiat: true,
+      cryptoCurrencies: [],
+      nonBaseCurrencies: ['USD'],
+    });
     const fiatOfRun: FiatRatesOfRun = {};
-    await refreshRates({ ...makeDeps({ now: () => 1000 }).deps, fiatOfRun });
+
+    await refreshRates({
+      ...makeDeps({ now: () => 1000, openCurrencies: fiatOnly, upsertMany }).deps,
+      fiatOfRun,
+    });
+    await refreshRates({
+      ...makeDeps({
+        now: () => 3000,
+        openCurrencies: fiatOnly,
+        upsertMany,
+        fetchFiatRates: async () => [{ base: 'USD', quote: 'UAH', rate: 41, source: 'monobank' }],
+      }).deps,
+    });
+    await refreshRates({ ...makeDeps({ now: () => 5000, upsertMany }).deps, fiatOfRun });
+
+    expect(stored.get('USD')).toEqual({ rate: '41', fetchedAt: 3000 });
+    expect(stored.get('BTC')).toEqual({ rate: String(65_000 * 40), fetchedAt: 5000 });
+  });
+
+  // A fiat row the first pass did not store (its write failed) is the top-up's
+  // to write; stamped with the time of the answer, never the top-up's own, so it
+  // cannot outrank a rate another refresh stored in between nor move the
+  // throttle cursor (the newest `fetchedAt`) for a rate the top-up never fetched.
+  it('writes a fiat row the first pass did not store, stamped with the time of the answer, and its own crypto rows with its own time', async () => {
+    const fiatOfRun: FiatRatesOfRun = {};
+    await refreshRates({
+      ...makeDeps({
+        now: () => 1000,
+        upsertMany: () => Promise.reject(new Error('disk full')),
+      }).deps,
+      fiatOfRun,
+    }).catch(() => undefined);
 
     const second = makeDeps({ now: () => 5000 });
     await refreshRates({ ...second.deps, fiatOfRun });
@@ -725,9 +775,13 @@ describe('refreshRates — one fiat answer per sync run', () => {
     const fetchNbuRates = jest.fn(async () => nbuFiat);
     const unreachable = (): Promise<RateEntry[]> => Promise.reject(new Error('offline'));
     await refreshRates({
-      ...makeDeps({ fetchFiatRates: unreachable, fetchNbuRates }).deps,
+      ...makeDeps({
+        fetchFiatRates: unreachable,
+        fetchNbuRates,
+        upsertMany: () => Promise.reject(new Error('disk full')),
+      }).deps,
       fiatOfRun,
-    });
+    }).catch(() => undefined);
 
     const second = makeDeps({ fetchFiatRates: unreachable, fetchNbuRates });
     await refreshRates({ ...second.deps, fiatOfRun });

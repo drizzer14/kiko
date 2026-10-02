@@ -49,6 +49,12 @@ type FiatAnswer = { rates: RateEntry[]; source: 'monobank' | 'nbu'; fetchedAt: n
  */
 export type FiatRatesOfRun = {
   answer?: Promise<FiatAnswer>;
+  /**
+   * The fiat currencies a pass of this run already wrote. A later pass writes
+   * none of them again: `upsertMany` keeps no `fetchedAt` guard, so rewriting
+   * them would overwrite a newer rate another refresh stored in between.
+   */
+  storedFiat?: Set<Currency>;
 };
 
 export type RefreshDeps = {
@@ -191,6 +197,35 @@ const buildUahRows = (
   }
 
   return rows;
+};
+
+/**
+ * Writes the rows this pass composed, except the fiat rows an earlier pass of
+ * the run already wrote (`FiatRatesOfRun.storedFiat`). A fiat currency counts
+ * as written only once its write succeeded, so a pass whose write failed
+ * leaves it for the next one. Crypto rows are always this pass's own.
+ */
+const upsertUnstoredRows = async (
+  rows: StoredRate[],
+  fiatOfRun: FiatRatesOfRun | undefined,
+  upsertMany: (rates: StoredRate[]) => Promise<void>,
+): Promise<void> => {
+  if (fiatOfRun !== undefined) {
+    fiatOfRun.storedFiat ??= new Set();
+  }
+  const storedFiat = fiatOfRun?.storedFiat;
+  const unstored = rows.filter((row) => isCrypto(row.base) || !storedFiat?.has(row.base));
+
+  if (unstored.length === 0) {
+    return;
+  }
+  await upsertMany(unstored);
+
+  for (const row of unstored) {
+    if (!isCrypto(row.base)) {
+      storedFiat?.add(row.base);
+    }
+  }
 };
 
 /** The fiat leg, gated on `needsFiat` — `[]` without ever calling `loadFiatWithFallback`. */
@@ -399,11 +434,12 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   ]);
   const fiat = fiatResult.status === 'fulfilled' ? fiatResult.value : [];
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
-  const rows = buildUahRows(buildUahPrice(fiat, crypto), at, fiatSource, fiatFetchedAt);
 
-  if (rows.length > 0) {
-    await upsertMany(rows);
-  }
+  await upsertUnstoredRows(
+    buildUahRows(buildUahPrice(fiat, crypto), at, fiatSource, fiatFetchedAt),
+    deps.fiatOfRun,
+    upsertMany,
+  );
 
   return resolveOutcome(needsFiat, cryptoCurrencies.length > 0, fiatResult, cryptoResult);
 };
