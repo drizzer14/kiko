@@ -141,7 +141,7 @@ describe('pricePointsRepo', () => {
       }),
     };
 
-    await pricePointsRepo.removeInstrument('share:AAPL');
+    await pricePointsRepo.removeInstrument('holding:h1');
 
     expect(deleted).toHaveLength(1);
   });

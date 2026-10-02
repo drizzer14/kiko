@@ -25,7 +25,7 @@ describe('readDataSnapshot', () => {
       [{ accountId: 'a1' }], // syncState
       [{ key: 'food' }], // categories
       [{ normalizedName: 'x' }], // categoryOverrides
-      [{ instrument: 'share:AAPL', day: 1 }], // pricePoints
+      [{ instrument: 'metal:XAU', day: 1 }], // pricePoints
       [{ isin: 'UA4000234215' }], // bondRegister
       [{ id: 'reminder-1' }], // reminders
     ];
@@ -41,7 +41,7 @@ describe('readDataSnapshot', () => {
     expect(snapshot.syncState).toEqual([{ accountId: 'a1' }]);
     expect(snapshot.categories).toEqual([{ key: 'food' }]);
     expect(snapshot.categoryOverrides).toEqual([{ normalizedName: 'x' }]);
-    expect(snapshot.pricePoints).toEqual([{ instrument: 'share:AAPL', day: 1 }]);
+    expect(snapshot.pricePoints).toEqual([{ instrument: 'metal:XAU', day: 1 }]);
     expect(snapshot.bondRegister).toEqual([{ isin: 'UA4000234215' }]);
     expect(snapshot.reminders).toEqual([{ id: 'reminder-1' }]);
   });

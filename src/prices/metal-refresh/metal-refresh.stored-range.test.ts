@@ -96,11 +96,10 @@ const SCENARIOS: [string, () => void, Holding[]][] = [
     [metalHolding('XAU', TODAY - 90 * DAY_MS)],
   ],
   [
-    'two metals with different ranges, beside share and manual series',
+    'two metals with different ranges, beside a manual series',
     () => {
       insertDays('metal:XAU', TODAY - 200 * DAY_MS, TODAY - DAY_MS);
       insertDays('metal:XAG', TODAY - 50 * DAY_MS, TODAY - 9 * DAY_MS);
-      insertDays('share:AAPL.US', TODAY - 400 * DAY_MS, TODAY);
       insertDays('holding:house', TODAY - 3 * DAY_MS, TODAY);
     },
     [metalHolding('XAU', TODAY - 100 * DAY_MS), metalHolding('XAG', TODAY - 80 * DAY_MS)],
@@ -138,7 +137,7 @@ describe('refreshMetalPrices reading only each metal’s stored day range', () =
   it('reads one row per stored metal series, never the daily closes', async () => {
     insertDays('metal:XAU', TODAY - 200 * DAY_MS, TODAY - DAY_MS);
     insertDays('metal:XAG', TODAY - 50 * DAY_MS, TODAY - 9 * DAY_MS);
-    insertDays('share:AAPL.US', TODAY - 400 * DAY_MS, TODAY);
+    insertDays('holding:house', TODAY - 400 * DAY_MS, TODAY);
 
     await expect(pricePointsRepo.metalDayRangesQuery()).resolves.toHaveLength(2);
   });
