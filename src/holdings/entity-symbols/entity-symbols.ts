@@ -29,7 +29,7 @@ type AccountKind = AccountRow['kind'];
 // type, `loan`, has its own glyph below; the account default is persisted at
 // create time, so changing this one would need a 0032-style migration.
 // `chart.line.uptrend.xyaxis` (SF Symbols 3, iOS 15)
-// is the pick for `broker`, the same glyph the Share prices settings row uses.
+// is the pick for `broker`.
 export const accountKindSymbol: Record<AccountKind, string> = {
   bank: 'building.columns.fill',
   cash: 'banknote',
@@ -43,16 +43,13 @@ export const accountKindSymbol: Record<AccountKind, string> = {
 // card -> creditcard, term_deposit -> calendar, bond -> receipt, jar ->
 // rectangle.portrait, cash -> banknote, crypto_asset -> bitcoinsign.circle,
 // property_item -> house.fill, metal -> cube.fill, loan ->
-// arrow.down.backward.circle.fill, share -> chart.line.uptrend.xyaxis —
-// each type's own descriptor (`src/holdings/holding-descriptor/`) is the
+// arrow.down.backward.circle.fill — each type's own descriptor (`src/holdings/holding-descriptor/`) is the
 // source, read through `recordByType` for the same per-type exhaustiveness
 // guarantee as the account map above. The `jar` and `crypto_asset` HOLDING
 // defaults are pure render-time fallbacks (holdings persist a null icon
 // until the user picks one), so these changes update every un-customized
 // holding with NO data migration — unlike the crypto ACCOUNT default above.
-// `share` shares its `broker` kind's icon, the same reuse
-// `property_item`/`metal` already follow for their own kinds. `loan` does
-// not: a minus reads as "subtract", so a loan taken mirrors a loan given
+// `loan` does not reuse its kind's icon: a minus reads as "subtract", so a loan taken mirrors a loan given
 // (`propertyCategorySymbol.loan_given`), money coming in that is owed back.
 // SF Symbols 2 (iOS 14), safe on the deployment floor, and a holding's null
 // icon means the change needs no migration.

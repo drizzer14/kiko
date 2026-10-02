@@ -7,7 +7,6 @@ import CategoriesScreen from '@kiko/screens/settings/categories';
 import ExportDataScreen from '@kiko/screens/settings/export-data';
 import ImportDataScreen from '@kiko/screens/settings/import-data';
 import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
-import SharePricesScreen from '@kiko/screens/settings/share-prices';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import type { SettingsStackParamList } from '../types';
@@ -52,12 +51,6 @@ const SettingsStack: FC = () => {
         name="ImportData"
         component={ImportDataScreen}
         options={{ title: t('settings.dataImport.title') }}
-      />
-
-      <Stack.Screen
-        name="SharePrices"
-        component={SharePricesScreen}
-        options={{ title: t('settings.sharePricesScreen.title') }}
       />
 
       <Stack.Screen

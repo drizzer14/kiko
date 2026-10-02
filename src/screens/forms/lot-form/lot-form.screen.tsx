@@ -115,8 +115,8 @@ const changeOf = (lotIndex: number | undefined, fields: LotFields): LotChange =>
     lot: lotOf(fields),
   };
 
-// Records one buy or sell lot against a lot-form-eligible holding (`metal`,
-// `share` — kiko-pricing), reached from holding-detail's "Add lot" footer
+// Records one buy or sell lot against a lot-form-eligible holding (`metal` —
+// kiko-pricing), reached from holding-detail's "Add lot" footer
 // action, or edits one stored lot (`lotIndex`), reached from that lot row's
 // long-press menu. It never writes a `price_points` or `Transaction` row:
 // the holding is ledgerless (`isLedgerlessHoldingType`), so its quantity and
@@ -194,7 +194,7 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
     direction,
     t,
   });
-  // A stock split adds shares at no cost, so 0 is a valid total cost.
+  // A lot received at no cost reads 0, so 0 is a valid total cost.
   const costValid = parseAmount(costText) >= 0;
 
   const save = async (): Promise<void> => {
@@ -239,8 +239,8 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
 
     // A new or re-dated lot can fall before the stored prices, so its history
     // is asked for now, not at the next pull or cold launch.
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshAfterHoldingWrite catches the limit check's failure and refreshMarketData never rejects
-    refreshAfterHoldingWrite(holding.type === 'share');
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects
+    refreshAfterHoldingWrite();
     navigation.goBack();
   };
 

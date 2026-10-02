@@ -5,7 +5,6 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
 } from '@kiko/holdings/holding-type';
-import type { TFunction } from 'i18next';
 import {
   holdsOnlyDebts,
   holdingDescriptor,
@@ -48,28 +47,19 @@ import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-s
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import type {
-  EditCheck,
-  CreateCheck,
-  EditContext,
-  ScrollTarget,
-  HoldingTypeForm,
-} from './holding-type-form';
 import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
-import ShareFormBlock from './share/share-form-block';
 import MetalTypeField from './metal/metal-type-field';
 import { useLoanFields } from './loan/use-loan-fields';
 import { useBondFields } from './bond/use-bond-fields';
 import { useMetalFields } from './metal/use-metal-fields';
-import { useShareFields } from './share/use-share-fields';
-import { fieldErrorMessage } from './field-error-message';
 import BalanceFormBlock from './balance/balance-form-block';
 import PropertyFormBlock from './property/property-form-block';
 import PropertyTypeField from './property/property-type-field';
 import { useBalanceFields } from './balance/use-balance-fields';
 import { usePropertyFields } from './property/use-property-fields';
+import type { ScrollTarget, HoldingTypeForm } from './holding-type-form';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
 
@@ -86,38 +76,6 @@ const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
     runLoanAutoLink();
   }
 };
-
-// Of every edit, only a share's can change what is priced: its source or
-// ticker. Fire-and-forget like the create's refresh.
-const refreshAfterShareEdit = (type: HoldingType): void => {
-  if (type === 'share') {
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshAfterHoldingWrite catches the limit check's failure and refreshMarketData never rejects
-    refreshAfterHoldingWrite(true);
-  }
-};
-
-// Only a type whose create needs a network answer first (a share's listing
-// unit) checks it; every other type saves its payload as it stands.
-const checkedCreate = (form: HoldingTypeForm): Promise<CreateCheck> =>
-  form.checkCreate?.() ?? Promise.resolve({ kind: 'save', payload: form.createPayload() });
-
-// The same for an edit: only a share given another listing checks it.
-const checkedEdit = (form: HoldingTypeForm, context: EditContext): Promise<EditCheck> =>
-  form.checkEdit?.(context) ??
-  Promise.resolve({ kind: 'save', write: () => form.saveEdit(context) });
-
-// A share's Currency field names the currency its EODHD listing is priced in.
-const currencyFieldError = (
-  type: HoldingType,
-  share: ReturnType<typeof useShareFields>,
-  attemptedSave: boolean,
-  t: TFunction,
-): string | undefined =>
-  type === 'share'
-    ? fieldErrorMessage(t, attemptedSave, share.fieldErrors.currencyError, {
-        currency: share.listingCurrency,
-      })
-    : undefined;
 
 // The loan form's "Paid from" picker options: every OPEN, non-ledgerless
 // holding in the LOAN's own currency — a `paymentHoldingId` link is only
@@ -210,18 +168,6 @@ const typeSlotFor = (
   return { kind: 'generic' };
 };
 
-// A loading Button already ignores presses, and it must not dim the way a
-// disabled one does, so a submit that shows the spinner leaves Save enabled.
-const isSaveDisabled = ({
-  isSubmitting,
-  isLoading,
-  isWaitingForPrices,
-}: {
-  isSubmitting: boolean;
-  isLoading: boolean;
-  isWaitingForPrices: boolean;
-}): boolean => (isSubmitting && !isLoading) || isWaitingForPrices;
-
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
@@ -241,7 +187,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     property_item: t('forms.holding.propertyItem'),
     metal: t('forms.holding.metal'),
     loan: t('forms.holding.loan'),
-    share: t('forms.holding.share'),
   };
   // A `holdingId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing holding, saving through the update path
@@ -313,12 +258,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     needsPriceBook(editingHolding?.type ?? type),
   );
   const [currency, setCurrency] = useState<Currency>('UAH');
-  // DEVICE BUG fix (root cause): while a sheet's search field (the currency
-  // sheet's, the share search's) can be focused, this screen's background
-  // ScrollView must NOT react to the keyboard's frame change — it does not
-  // contain that responder, but `automaticallyAdjustKeyboardInsets` reacts to
-  // any focus regardless (see `screen.component.tsx`, `CurrencyField`'s
-  // `onOpenChange`). Only one sheet is open at a time, so one flag serves both.
+  // DEVICE BUG fix (root cause): while the currency sheet's search field can be
+  // focused, this screen's background ScrollView must NOT react to the
+  // keyboard's frame change — it does not contain that responder, but
+  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless (see
+  // `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   // The icon is null until the user picks one ("not dirty"): while null, the
   // chip shows the selected type's default glyph (`defaultHoldingSymbol`, a
@@ -392,21 +336,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // type's own fields carry their input ref alongside their `scrollTargets`
   // entry instead (see each `use<Type>Fields` hook).
   const nameInputRef = useRef<TextInputInstance>(null);
-  const currencyFieldRef = useRef<FieldInstance>(null);
 
   const deposit = useTermDepositFields({ currency, scrollTo });
   const bond = useBondFields({ type, isEdit, currency, setCurrency, name, setName });
   const property = usePropertyFields({ isEdit, currency });
   const metal = useMetalFields({ isEdit });
-  const share = useShareFields({
-    type,
-    isEdit,
-    currency,
-    setCurrency,
-    name,
-    setName,
-    currencyFieldRef,
-  });
   const loanFields = useLoanFields({ currency });
   // Stays mounted across every type, not only while a balance type is
   // selected, so a value typed before switching away survives the switch.
@@ -439,7 +373,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     bond,
     property_item: property,
     metal,
-    share,
     loan: loanFields,
     card: balance,
     cash: balance,
@@ -490,7 +423,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       bond: bond.seed,
       property_item: property.seed,
       metal: metal.seed,
-      share: share.seed,
       loan: loanFields.seed,
     };
     const seed = Object.hasOwn(seeds, holding.type) ? seeds[holding.type] : balance.seed;
@@ -502,7 +434,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     bond.seed,
     property.seed,
     metal.seed,
-    share.seed,
     loanFields.seed,
     balance.seed,
   ]);
@@ -548,7 +479,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // unconditionally, so clearing a custom icon (icon === null) persists the
   // removal rather than leaving the old glyph.
   const saveEdit = async (editedHoldingId: string): Promise<void> => {
-    const check = await checkedEdit(active, {
+    await active.saveEdit({
       holdingId: editedHoldingId,
       name,
       color,
@@ -557,17 +488,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       editingHolding,
       book: priceBook,
     });
-
-    if (check.kind === 'blocked') {
-      revealInvalid([check.target]);
-
-      return;
-    }
-
-    await check.write();
     await holdingsRepo.setIcon(editedHoldingId, icon);
 
-    refreshAfterShareEdit(type);
     // A loan's principal, schedule, paymentHoldingId, lenderName, and
     // lenderIban all stay editable — any of them can change what the
     // matcher would now link, so an EDIT backfills too (see
@@ -597,14 +519,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         return;
       }
 
-      const check = await checkedCreate(active);
-
-      if (check.kind === 'blocked') {
-        revealInvalid([check.target]);
-
-        return;
-      }
-
       // Every ledgerless type (property/metal/loan/deposit/bond)'s
       // `createPayload` writes a zero stored balance — its value derives
       // entirely from its own lots/schedule. Only `useBalanceFields`
@@ -618,7 +532,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         // row follows its type's default at display time — the same fallback the
         // icon uses — so a type-default color is not frozen onto the row.
         color,
-        ...check.payload,
+        ...active.createPayload(),
       });
 
       // Persist the chosen icon on the freshly-created row, using the id the
@@ -627,20 +541,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         await holdingsRepo.setIcon(newHoldingId, icon);
       }
 
-      // The FIRST metal, share, foreign-currency, or crypto holding needs its
+      // The FIRST metal, foreign-currency, or crypto holding needs its
       // price/rate visible without an app restart — trigger the SAME gated
       // refresh app-open runs, unthrottled (a manual create is a deliberate
       // user action, not a background poll). Every step gates itself on
       // data presence (kiko-architecture), so this is a no-op for a
-      // type/currency that needs none of them; the share step runs only for
-      // a new share, since it spends the user's own EODHD calls. `refreshMarketData` never rejects
+      // type/currency that needs none of them. `refreshMarketData` never rejects
       // and logs its own failure, so it never turns a successful create into
       // a shown error. Fire-and-forget (not awaited): the refresh is a
       // background nicety, not a save precondition — Save must not sit on
       // the network before navigating back; only fire the refresh after the
       // write commits.
-      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the limit check's failure is caught and refreshMarketData never rejects; see the comment above
-      refreshAfterHoldingWrite(type === 'share');
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects; see the comment above
+      refreshAfterHoldingWrite();
       // A freshly created loan can already have past ledger history worth
       // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).
       runLoanAutoLinkIfLoan(type);
@@ -705,15 +618,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         contentHeightRef.current = height;
       }}
       footer={
-        <Button
-          onPress={onSave}
-          disabled={isSaveDisabled({
-            isSubmitting,
-            isLoading: share.isLookingUpUnit,
-            isWaitingForPrices: isEdit && isPriceBookLoading,
-          })}
-          loading={share.isLookingUpUnit}
-        >
+        <Button onPress={onSave} disabled={isSubmitting || (isEdit && isPriceBookLoading)}>
           {t('common.save')}
         </Button>
       }
@@ -791,20 +696,17 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             that fixed value underneath regardless of what this field would
             otherwise show. */}
         {holdingDescriptor(type).fixedCurrency === null && (
-          <View ref={currencyFieldRef}>
-            <CurrencyField
-              label={t('forms.fields.currency')}
-              sheetTitle={t('forms.fields.currencySheetTitle')}
-              selected={currency}
-              onSelect={setCurrency}
-              options={holdingCurrencyOptions(type)}
-              cryptoFirst={type === 'crypto_asset'}
-              disabled={isEdit}
-              error={currencyFieldError(type, share, attemptedSave, t)}
-              onOpenChange={setIsSearchSheetOpen}
-              testID="holding-currency-field"
-            />
-          </View>
+          <CurrencyField
+            label={t('forms.fields.currency')}
+            sheetTitle={t('forms.fields.currencySheetTitle')}
+            selected={currency}
+            onSelect={setCurrency}
+            options={holdingCurrencyOptions(type)}
+            cryptoFirst={type === 'crypto_asset'}
+            disabled={isEdit}
+            onOpenChange={setIsSearchSheetOpen}
+            testID="holding-currency-field"
+          />
         )}
 
         {match(type)
@@ -817,15 +719,6 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           ))
           .with('metal', () => (
             <MetalFormBlock fields={metal} attemptedSave={attemptedSave} isEdit={isEdit} />
-          ))
-          .with('share', () => (
-            <ShareFormBlock
-              fields={share}
-              attemptedSave={attemptedSave}
-              isEdit={isEdit}
-              currency={currency}
-              onSearchOpenChange={setIsSearchSheetOpen}
-            />
           ))
           .with('loan', () => (
             <LoanFormBlock

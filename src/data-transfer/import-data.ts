@@ -198,7 +198,7 @@ export const importData = async (options: {
   // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the catch handles a failed limit check and refreshMarketData never rejects
   confirmDailyLimit()
     .catch((error: unknown) => logFailure('[import-data] daily limit check failed', error))
-    .then(() => refreshMarketData({ throttled: false, metals: true, shares: true }));
+    .then(() => refreshMarketData({ throttled: false, metals: true }));
   // A bulk restore bypasses the sync/import/loan-edit call sites that
   // normally trigger the auto-link matcher — trigger it explicitly
   // here too. `runLoanAutoLink` never rejects and returns early with no

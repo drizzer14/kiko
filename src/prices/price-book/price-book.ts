@@ -121,8 +121,8 @@ export const priceAt = (
 
   const day = dayKeyOf(instant);
   // The series is sorted by day, so the last point at or before the day is
-  // found by bisection; a shares series grows by a point per trading day and
-  // a net-worth chart asks once per bucket per share.
+  // found by bisection; a metal series grows by a point per day and a
+  // net-worth chart asks once per bucket per metal.
   let low = 0;
   let high = points.length - 1;
   let found = -1;

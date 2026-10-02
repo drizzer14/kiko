@@ -33,12 +33,12 @@ const refreshAfterLimitCheck = async (
   await confirmDailyLimit().catch((error: unknown) =>
     logFailure(`${logTag} daily limit check failed`, error),
   );
-  await refreshMarketData({ throttled: true, metals: true, shares: true, fiatOfRun });
+  await refreshMarketData({ throttled: true, metals: true, fiatOfRun });
 };
 
 /**
  * One sync fan-out (`useAutoSync` on open, `useSyncAll` on a pull) with the
- * market data refresh (rates, metals, shares) running BESIDE it. The refresh
+ * market data refresh (rates, metals) running BESIDE it. The refresh
  * needs none of the fan-out's output, and the provider requests are gated at
  * one per minute per token, so starting it after the fan-out would leave rates
  * and prices stale for as many minutes as there are cards. Both never reject,
@@ -79,7 +79,7 @@ export const settleJobsBesideMarketRefresh = async (
   ]);
 
   if (gainedCurrency(await before, await heldCurrencies())) {
-    await refreshMarketData({ throttled: true, metals: false, shares: false, fiatOfRun });
+    await refreshMarketData({ throttled: true, metals: false, fiatOfRun });
   }
 
   return results;

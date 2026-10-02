@@ -317,7 +317,6 @@ describe('importData', () => {
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: false,
       metals: true,
-      shares: true,
     });
   });
 

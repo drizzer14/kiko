@@ -13,27 +13,24 @@ const oversizedSale = { ...sale, quantityDelta: '-5' };
 
 const holdingOf = (type: Holding['type'], lots: unknown): Holding => ({
   type,
-  metadata: { quoteSource: 'manual', metal: 'XAU', lots },
+  metadata: { metal: 'XAU', lots },
 });
 
 const NOTICE = 'A sale here is larger than what was held before it. Edit or delete that sale.';
 
 describe('OversizedSaleNotice', () => {
-  it.each(['share', 'metal'] as const)(
-    'asks to fix a %s sale larger than what was held before it',
-    async (type) => {
-      const { getByTestId } = await render(
-        <OversizedSaleNotice holding={holdingOf(type, [buy, oversizedSale])} />,
-      );
+  it('asks to fix a metal sale larger than what was held before it', async () => {
+    const { getByTestId } = await render(
+      <OversizedSaleNotice holding={holdingOf('metal', [buy, oversizedSale])} />,
+    );
 
-      expect(getByTestId('oversized-sale-notice')).toHaveTextContent(NOTICE);
-    },
-  );
+    expect(getByTestId('oversized-sale-notice')).toHaveTextContent(NOTICE);
+  });
 
   it('reads a buy recorded later with an earlier day as held before the sale', async () => {
     const { queryByTestId } = await render(
       <OversizedSaleNotice
-        holding={holdingOf('share', [oversizedSale, { ...buy, quantityDelta: '5' }])}
+        holding={holdingOf('metal', [oversizedSale, { ...buy, quantityDelta: '5' }])}
       />,
     );
 
@@ -41,8 +38,8 @@ describe('OversizedSaleNotice', () => {
   });
 
   it.each([
-    ['every sale covered', holdingOf('share', [buy, sale])],
-    ['unreadable lots', holdingOf('share', [buy, { day: 'x' }])],
+    ['every sale covered', holdingOf('metal', [buy, sale])],
+    ['unreadable lots', holdingOf('metal', [buy, { day: 'x' }])],
     ['no lots', holdingOf('metal', undefined)],
     ['a type whose lots have no rows to fix', holdingOf('property_item', [buy, oversizedSale])],
   ])('shows nothing for %s', async (_state, holding) => {
@@ -62,7 +59,7 @@ describe('OversizedSaleNotice', () => {
 
     try {
       const { getByTestId } = await render(
-        <OversizedSaleNotice holding={holdingOf('share', [buy, oversizedSale])} />,
+        <OversizedSaleNotice holding={holdingOf('metal', [buy, oversizedSale])} />,
       );
 
       expect(getByTestId('oversized-sale-notice')).toHaveTextContent(

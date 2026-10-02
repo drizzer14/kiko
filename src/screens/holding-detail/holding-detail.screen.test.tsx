@@ -125,14 +125,14 @@ const metalHolding = {
   },
 };
 
-const manualShareHolding = {
+const pricedLotHolding = {
   id: 'h-1',
-  name: 'Apple',
-  type: 'share',
+  name: 'Villa',
+  type: 'property_item',
   currency: 'USD',
   balanceMinorUnits: 0,
   metadata: {
-    quoteSource: 'manual',
+    category: 'real_estate',
     lots: [{ day: Date.UTC(2024, 0, 1), quantityDelta: '3', costMinorUnits: 90_000 }],
   },
 };
@@ -1395,7 +1395,7 @@ describe('HoldingDetailScreen', () => {
     };
 
     it('opens the Lot form for the held lot, by holding id and lot index', async () => {
-      seed(manualShareHolding);
+      seed(metalHolding);
 
       const { getByTestId } = await renderScreen();
 
@@ -1447,28 +1447,6 @@ describe('HoldingDetailScreen', () => {
       alertSpy.mockRestore();
     });
 
-    it('reads Split for a share buy at no cost, in the row and its delete confirm', async () => {
-      seed({
-        ...manualShareHolding,
-        metadata: {
-          ...manualShareHolding.metadata,
-          lots: [{ day: Date.UTC(2024, 0, 1), quantityDelta: '9', costMinorUnits: 0 }],
-        },
-      });
-
-      const { getByTestId, getByText, queryByText } = await renderScreen();
-
-      expect(getByText('Split')).toBeTruthy();
-      expect(queryByText('Purchase')).toBeNull();
-
-      await holdRow();
-      await act(async () => {
-        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
-      });
-
-      expect(getByText('Delete "Split 01.01.2024"')).toBeTruthy();
-    });
-
     it('is not captioned Computed, since the user entered it', async () => {
       seed(metalHolding);
 
@@ -1481,12 +1459,12 @@ describe('HoldingDetailScreen', () => {
     // The ledger lists newest first, so the January buy is the last row held.
     it('offers no Delete for a buy a later sale needs', async () => {
       seed({
-        ...manualShareHolding,
+        ...metalHolding,
         metadata: {
-          ...manualShareHolding.metadata,
+          ...metalHolding.metadata,
           lots: [
-            ...manualShareHolding.metadata.lots,
-            { day: Date.UTC(2024, 2, 1), quantityDelta: '-3', costMinorUnits: -90_000 },
+            ...metalHolding.metadata.lots,
+            { day: Date.UTC(2024, 2, 1), quantityDelta: '-3', costMinorUnits: -1_500_000 },
           ],
         },
       });
@@ -1500,41 +1478,14 @@ describe('HoldingDetailScreen', () => {
     });
   });
 
-  it('tells how to fix an EODHD share held in another currency than its listing', async () => {
-    seed({
-      ...manualShareHolding,
-      currency: 'UAH',
-      metadata: {
-        ...manualShareHolding.metadata,
-        quoteSource: 'eodhd',
-        symbol: 'AAPL.US',
-        quoteCurrency: 'USD',
-      },
-    });
-
-    const { getByTestId } = await renderScreen();
-
-    expect(getByTestId('listing-currency-notice')).toHaveTextContent(
-      /EODHD prices this share in USD/,
-    );
-  });
-
-  it('shows no listing notice for a share priced in its own currency', async () => {
-    seed(manualShareHolding);
-
-    const { queryByTestId } = await renderScreen();
-
-    expect(queryByTestId('listing-currency-notice')).toBeNull();
-  });
-
   it('asks to fix a stored sale larger than what was held before it', async () => {
     seed({
-      ...manualShareHolding,
+      ...metalHolding,
       metadata: {
-        ...manualShareHolding.metadata,
+        ...metalHolding.metadata,
         lots: [
-          ...manualShareHolding.metadata.lots,
-          { day: Date.UTC(2024, 1, 1), quantityDelta: '-5', costMinorUnits: -90_000 },
+          ...metalHolding.metadata.lots,
+          { day: Date.UTC(2024, 1, 1), quantityDelta: '-15', costMinorUnits: -5_000_000 },
         ],
       },
     });
@@ -1545,7 +1496,7 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('shows no oversized-sale notice while every sale is covered', async () => {
-    seed(manualShareHolding);
+    seed(metalHolding);
 
     const { queryByTestId } = await renderScreen();
 
@@ -1741,45 +1692,8 @@ describe('HoldingDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('LotForm', { holdingId: 'h-1' });
   });
 
-  it('offers a manual share both "Update price" and "Add lot", Add lot leading with the share glyph', async () => {
-    seed(manualShareHolding);
-
-    const { getByTestId, queryByText } = await renderScreen();
-
-    const footer = getByTestId('screen-footer');
-    expect(within(footer).getByText('Update price')).toBeTruthy();
-    expect(within(footer).getByText('Add lot')).toBeTruthy();
-    expect(footerGlyphNames(footer)).toEqual(['chart.line.uptrend.xyaxis']);
-    expect(queryByText('Update value')).toBeNull();
-    expect(queryByText('Add transaction')).toBeNull();
-  });
-
-  it('navigates a manual share to PricePointForm on "Update price" and to LotForm on "Add lot"', async () => {
-    seed(manualShareHolding);
-
-    const { getByText } = await renderScreen();
-
-    await fireEvent.press(getByText('Update price'));
-    await fireEvent.press(getByText('Add lot'));
-
-    expect(navigation.navigate).toHaveBeenCalledWith('PricePointForm', { holdingId: 'h-1' });
-    expect(navigation.navigate).toHaveBeenCalledWith('LotForm', { holdingId: 'h-1' });
-  });
-
-  it('offers an EODHD share only "Add lot"', async () => {
-    seed({
-      ...manualShareHolding,
-      metadata: { ...manualShareHolding.metadata, quoteSource: 'eodhd', symbol: 'AAPL.US' },
-    });
-
-    const { getByTestId, queryByText } = await renderScreen();
-
-    expect(within(getByTestId('screen-footer')).getByText('Add lot')).toBeTruthy();
-    expect(queryByText('Update price')).toBeNull();
-  });
-
-  it('shows a share its cost, value, and a negative gain when the price fell', async () => {
-    seed(manualShareHolding, [], [], [], [], [{ baseCurrency: 'USD' }], undefined, [
+  it('shows a lot holding its cost, value, and a negative gain when the price fell', async () => {
+    seed(pricedLotHolding, [], [], [], [], [{ baseCurrency: 'USD' }], undefined, [
       {
         instrument: 'holding:h-1',
         day: Date.UTC(2024, 0, 1),

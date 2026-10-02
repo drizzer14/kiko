@@ -18,7 +18,6 @@ const labels: Record<HoldingType, string> = {
   property_item: 'Property',
   metal: 'Precious metal',
   loan: 'Loan',
-  share: 'Share',
 };
 
 const icons: Record<HoldingType, string> = {
@@ -31,7 +30,6 @@ const icons: Record<HoldingType, string> = {
   property_item: 'house',
   metal: 'cube',
   loan: 'minus.circle',
-  share: 'chart.line.uptrend.xyaxis',
 };
 
 const setup = async (overrides: Partial<Parameters<typeof HoldingTypeField>[0]> = {}) => {

@@ -49,13 +49,12 @@ const metalHolding = {
   },
 };
 
-const shareHolding = {
+const propertyHolding = {
   id: 'h-1',
-  type: 'share',
-  currency: 'USD',
+  type: 'property_item',
+  currency: 'UAH',
   metadata: {
-    quoteSource: 'eodhd',
-    symbol: 'AAPL.US',
+    category: 'real_estate',
     lots: [{ day: dayKeyOf(Date.UTC(2025, 0, 1)), quantityDelta: '3', costMinorUnits: 900_00 }],
   },
 };
@@ -120,7 +119,7 @@ describe('LotFormScreen', () => {
   });
 
   it('shows no unit after the quantity for a holding that is not a metal', async () => {
-    seed(shareHolding);
+    seed(propertyHolding);
 
     const { getByLabelText } = await renderScreen();
 
@@ -154,8 +153,6 @@ describe('LotFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  // A stock split adds shares at no cost; the raw EODHD close drops on the
-  // same day.
   it('adds a buy lot with a total cost of 0', async () => {
     const utils = await renderScreen();
 
@@ -247,8 +244,8 @@ describe('LotFormScreen', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
-  it('rejects selling more shares than are held', async () => {
-    seed(shareHolding);
+  it('rejects selling more than is held, on a holding other than a metal', async () => {
+    seed(propertyHolding);
     const utils = await renderScreen();
 
     await fireEvent.press(utils.getByText('Sell'));
@@ -283,18 +280,10 @@ describe('LotFormScreen', () => {
     };
 
     // A lot dated before the stored prices needs their history.
-    it("asks for a share's prices", async () => {
-      seed(shareHolding);
-
+    it("asks for a metal's prices", async () => {
       await saveBuy();
 
-      await waitFor(() => expect(mockRefreshAfterHoldingWrite).toHaveBeenCalledWith(true));
-    });
-
-    it("asks for a metal's prices and no share prices", async () => {
-      await saveBuy();
-
-      await waitFor(() => expect(mockRefreshAfterHoldingWrite).toHaveBeenCalledWith(false));
+      await waitFor(() => expect(mockRefreshAfterHoldingWrite).toHaveBeenCalledTimes(1));
     });
 
     it('asks for nothing when the write fails, and keeps the form open', async () => {

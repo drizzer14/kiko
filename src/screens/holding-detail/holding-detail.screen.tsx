@@ -85,7 +85,6 @@ import ShareChanges from './share-changes';
 import UpcomingPayments from './upcoming-payments';
 import OversizedSaleNotice from './oversized-sale-notice';
 import LotRowMenu, { type LotActions } from './lot-row-menu';
-import ListingCurrencyNotice from './listing-currency-notice';
 import { useBondRegisterTerms } from './use-bond-register-terms';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
@@ -186,7 +185,7 @@ const interestBreakdownRows = (
   ];
 };
 
-// A priced type's (`property_item`, `metal`, `share`) breakdown: its cost basis, its
+// A priced type's (`property_item`, `metal`) breakdown: its cost basis, its
 // current priced value, and the gain between them. No interest/tax rows — a
 // priced type accrues neither, so those would only ever read a misleading
 // zero. Gain carries no explicit tone: MoneyText's own sign-based fallback
@@ -672,12 +671,6 @@ const holdingDetailFooterAction = (
     return undefined;
   }
 
-  const addLotButton = (
-    <Button onPress={() => navigation.navigate('LotForm', { holdingId })} icon={lotSymbol}>
-      {t('holdingDetail.addLot')}
-    </Button>
-  );
-
   return match(footerAction)
     .with('contribution', () => (
       <Button
@@ -700,18 +693,10 @@ const holdingDetailFooterAction = (
         {t(isDebtHolding ? 'holdingDetail.updateOutstanding' : 'holdingDetail.updateValue')}
       </Button>
     ))
-    .with('addLot', () => addLotButton)
-    .with('addLotAndUpdatePrice', () => (
-      <Box gap={2}>
-        <Button
-          variant="secondaryTonal"
-          onPress={() => navigation.navigate('PricePointForm', { holdingId })}
-        >
-          {t('holdingDetail.updatePrice')}
-        </Button>
-
-        {addLotButton}
-      </Box>
+    .with('addLot', () => (
+      <Button onPress={() => navigation.navigate('LotForm', { holdingId })} icon={lotSymbol}>
+        {t('holdingDetail.addLot')}
+      </Button>
     ))
     .with('none', () => undefined)
     .exhaustive();
@@ -942,9 +927,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // holding, or a type this build's registry does not recognize
   // (`HoldingDetailSpec`, `holding-detail-spec/`).
   const footerAction: FooterAction =
-    foldMap(maybe(holding), (found) =>
-      spec?.footerAction(isSyncedHolding(found, account), found),
-    ) ?? 'none';
+    foldMap(maybe(holding), (found) => spec?.footerAction(isSyncedHolding(found, account))) ??
+    'none';
   const lotSymbol = foldMap(maybe(holding?.type), (type) => holdingTypeSymbol[type]);
   // The footer's own label for `'updateValue'`: a debt-side type (loan) reads
   // "Update outstanding"; every other priced type reads "Update value". Reads
@@ -1074,8 +1058,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           )}
         </Box>
       )}
-
-      <ListingCurrencyNotice holding={holding} />
 
       <OversizedSaleNotice holding={holding} />
 

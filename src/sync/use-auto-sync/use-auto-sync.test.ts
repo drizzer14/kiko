@@ -179,7 +179,6 @@ describe('useAutoSync', () => {
       expect(mockRefreshMarketData).toHaveBeenCalledWith({
         throttled: true,
         metals: true,
-        shares: true,
       }),
     );
 
@@ -221,7 +220,6 @@ describe('useAutoSync', () => {
       expect(mockRefreshMarketData).toHaveBeenCalledWith({
         throttled: true,
         metals: true,
-        shares: true,
         fiatOfRun: { storedFiat: new Set() },
       }),
     );

@@ -65,10 +65,6 @@ describe('holdingTypeSymbol', () => {
     // The debt ACCOUNT keeps its own minus glyph, persisted on existing rows.
     expect(holdingTypeSymbol.loan).not.toBe(accountKindSymbol.debt);
   });
-
-  it('gives a share the broker kind glyph', () => {
-    expect(holdingTypeSymbol.share).toBe(accountKindSymbol.broker);
-  });
 });
 
 describe('propertyCategorySymbol', () => {

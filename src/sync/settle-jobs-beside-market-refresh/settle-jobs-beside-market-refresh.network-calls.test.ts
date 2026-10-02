@@ -1,5 +1,5 @@
 // The REAL refresh runs here (`refreshMarketData` into `refreshRates`); only the
-// provider clients, the database and the share/metal steps are doubles, so what
+// provider clients, the database and the metal step are doubles, so what
 // is counted is the requests one `settleJobsBesideMarketRefresh` run makes.
 const mockFetchFiat = jest.fn();
 const mockFetchNbu = jest.fn();
@@ -49,7 +49,6 @@ jest.mock('@kiko/holdings/repo', () => ({
 }));
 jest.mock('@kiko/prices/daily-limit', () => ({ confirmDailyLimit: async () => {} }));
 jest.mock('@kiko/prices/metal-refresh', () => ({ refreshMetalPrices: async () => {} }));
-jest.mock('@kiko/prices/share-refresh', () => ({ refreshSharePrices: async () => 'ok' }));
 
 import { settleJobsBesideMarketRefresh } from './settle-jobs-beside-market-refresh';
 

@@ -25,7 +25,6 @@ import { DAY_MS } from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
-import { renderCondition } from '@kiko/db/render-condition-test-helper';
 import { createHoldingValuer } from '@kiko/statistics/holding-value-at';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { write, accounts, holdings, pricePoints, transactions } from '@kiko/db';
@@ -186,19 +185,6 @@ describe('holdingsRepo', () => {
     expect(sql).toContain('holdings');
     expect(sql.toLowerCase()).toContain('closed_at');
     expect(params).toContain('loan');
-  });
-
-  it('builds an active-shares query: type "share", open, under an unarchived account, three columns', () => {
-    const { sql, params } = holdingsRepo.activeSharesQuery().toSQL();
-    const selected = sql.slice(0, sql.toLowerCase().indexOf(' from '));
-
-    expect(selected).toContain('"id"');
-    expect(selected).toContain('"currency"');
-    expect(selected).toContain('"metadata"');
-    expect(selected).not.toContain('"name"');
-    expect(sql.toLowerCase()).toContain('closed_at');
-    expect(sql.toLowerCase()).toContain('archived_at');
-    expect(params).toEqual(['share']);
   });
 
   it('create inserts the holding and resolves to the generated id', async () => {
@@ -372,16 +358,6 @@ describe('holdingsRepo', () => {
     await expect(
       holdingsRepo.create({ accountId: 'acc-1', name: 'Wallet', type: 'cash', currency: 'BTC' }),
     ).rejects.toThrow(/cash holding.*BTC/);
-    expect(insertTables).toEqual([]);
-  });
-
-  it('create rejects a share holding in a crypto currency, naming the share type', async () => {
-    const { databaseTransaction, insertTables } = makeCreateDatabaseTransaction();
-    mockDatabaseTransaction = databaseTransaction;
-
-    await expect(
-      holdingsRepo.create({ accountId: 'acc-1', name: 'Apple', type: 'share', currency: 'BTC' }),
-    ).rejects.toThrow(/share holding.*BTC/);
     expect(insertTables).toEqual([]);
   });
 
@@ -1133,41 +1109,6 @@ describe('holdings remove', () => {
 
     expect(store.pricePoints).toEqual([]);
   });
-
-  // A manual share owns its `holding:<id>` series; an EODHD share reads the
-  // `share:<symbol>` series every holding of that symbol shares, so removing
-  // one share must never clear it.
-  it.each([{ quoteSource: 'manual' }, { quoteSource: 'eodhd', symbol: 'AAPL.US' }])(
-    'clears only the $quoteSource share own holding:<id> series',
-    async (meta) => {
-      const store: Store = {
-        accounts: [{ id: 'acc-1', institution: null }],
-        holdings: [
-          { id: 'share-1', accountId: 'acc-1', type: 'share', metadata: { ...meta, lots: [] } },
-        ],
-        transactions: [],
-        pricePoints: [],
-      };
-      const base = makeDatabaseTransaction(store);
-      const priceSeriesDeletes: unknown[] = [];
-      mockDatabaseTransaction = {
-        ...base,
-        delete: (table: unknown) => ({
-          where: async (condition: unknown) => {
-            if (table === pricePoints) {
-              priceSeriesDeletes.push(renderCondition(condition).params);
-            }
-
-            await base.delete(table).where();
-          },
-        }),
-      };
-
-      await holdingsRepo.remove('share-1');
-
-      expect(priceSeriesDeletes).toEqual([['holding:share-1']]);
-    },
-  );
 
   it('refuses a synced holding under a connected account and leaves the row', async () => {
     const store: Store = {

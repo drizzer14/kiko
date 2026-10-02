@@ -48,7 +48,6 @@ describe('settleJobsBesideMarketRefresh', () => {
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: true,
       metals: true,
-      shares: true,
       fiatOfRun: expect.any(Object),
     });
 
@@ -168,7 +167,6 @@ describe('settleJobsBesideMarketRefresh', () => {
     expect(mockRefreshMarketData).toHaveBeenLastCalledWith({
       throttled: true,
       metals: false,
-      shares: false,
       fiatOfRun: expect.any(Object),
     });
   });

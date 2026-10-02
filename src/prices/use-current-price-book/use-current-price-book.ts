@@ -10,7 +10,7 @@ type UseCurrentPriceBookResult = ReturnType<typeof usePriceBookOfPoints>;
  * The `PriceBook` for a screen that values only `now` or later (Home,
  * Accounts, the account and holding details, the holding form): the same
  * contract as `usePriceBook`, but it reads `pricePointsRepo.currentQuery`, so
- * the book holds a share or metal's latest price rather than every daily
+ * the book holds a metal's latest price rather than every daily
  * close it ever stored. Every number such a screen shows is the same one the
  * whole-table book gives; a screen that values a past day (statistics) reads
  * `usePriceBook`.

@@ -158,7 +158,6 @@ describe('useSyncAll', () => {
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: true,
       metals: true,
-      shares: true,
       fiatOfRun: { storedFiat: new Set() },
     });
     expect(result.current.failures).toEqual([]);
@@ -317,7 +316,6 @@ describe('useSyncAll', () => {
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: true,
       metals: true,
-      shares: true,
     });
     expect(result.current.failures).toEqual([]);
   });

@@ -13,7 +13,6 @@ import { dayKeyOf } from '@kiko/prices/price-book';
 import Box from '@kiko/design-system/components/box';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import DateField from '@kiko/screens/forms/date-field';
-import { sharePriceOf } from '@kiko/prices/share-price';
 import { useLiveQuery, type HoldingRow } from '@kiko/db';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
@@ -42,23 +41,17 @@ const startOfToday = (): number => {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 };
 
-type PricePointKind = 'debt' | 'share' | 'value';
+type PricePointKind = 'debt' | 'value';
 
 // Every string reads for what the holding is, so no wording still says
-// "Value" once the holding loads as a debt or a share. A `null` title keeps
-// the stack's own "Update Value".
+// "Value" once the holding loads as a debt. A `null` title keeps the stack's
+// own "Update Value".
 const pricePointCopy = {
   debt: {
     title: 'forms.pricePoint.loanTitle',
     field: 'forms.pricePoint.loanValue',
     save: 'forms.pricePoint.loanSave',
     error: 'forms.pricePoint.loanValueError',
-  },
-  share: {
-    title: 'forms.pricePoint.shareTitle',
-    field: 'forms.pricePoint.pricePerShare',
-    save: 'forms.pricePoint.shareSave',
-    error: 'forms.pricePoint.pricePerShareError',
   },
   value: {
     title: null,
@@ -78,7 +71,6 @@ const pricePointKinds: Record<HoldingType, PricePointKind> = {
   property_item: 'value',
   metal: 'value',
   loan: 'debt',
-  share: 'share',
 };
 
 // A stored `type` is not checked by SQLite, so an unknown one reads as a value;
@@ -92,8 +84,8 @@ const minorUnitPriceOf = (majorValue: number, currency: Currency): string =>
   shiftDecimal(String(Money.fromMajor(currency, majorValue).minorUnits), -currencyScale[currency]);
 
 // A value or an outstanding is a money total, kept at the currency's minor
-// unit; a price per share keeps the places it is quoted in. Only a debt may
-// reach exactly 0 (repaid). Undefined when the typed value cannot be saved.
+// unit. Only a debt may reach exactly 0 (repaid). Undefined when the typed
+// value cannot be saved.
 const pricePointPriceOf = (
   kind: PricePointKind,
   value: string,
@@ -102,14 +94,13 @@ const pricePointPriceOf = (
   const majorValue = parseAmount(value);
 
   return match(kind)
-    .with('share', () => sharePriceOf(value))
     .with('debt', () => (majorValue >= 0 ? minorUnitPriceOf(majorValue, currency) : undefined))
     .with('value', () => (majorValue > 0 ? minorUnitPriceOf(majorValue, currency) : undefined))
     .exhaustive();
 };
 
 // Records a new `manual` price point for a priced holding (property_item,
-// metal, a manual share), reached from holding-detail's "Update value"
+// a loan), reached from holding-detail's "Update value"
 // footer action. Mirrors contribution-form's shape: a grouped-amount TextField
 // plus the shared calendar DateField, writing through the same
 // `pricePointsRepo.upsertMany` the PriceBook itself reads.
