@@ -11,10 +11,10 @@ import { darkTheme } from '@kiko/design-system/theme';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
-import type { HoldingType } from '@kiko/holdings/holding-type';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
+import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -4323,5 +4323,55 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
+  });
+});
+
+describe('HoldingFormScreen name placeholder', () => {
+  // One example name per holding type, so the empty Name field never suggests
+  // a bond for a deposit, a loan, or a metal.
+  const createCases: [HoldingType, string, string | null, string][] = [
+    ['card', 'bank', null, 'Salary card'],
+    ['term_deposit', 'bank', 'monobank', '6-month deposit'],
+    ['bond', 'bank', 'monobank', 'Government bonds'],
+    ['cash', 'cash', 'monobank', 'Cash at home'],
+    ['crypto_asset', 'crypto', 'monobank', 'Bitcoin'],
+    ['property_item', 'property', 'monobank', 'Apartment or car'],
+    ['metal', 'metals', 'monobank', 'Gold bar'],
+    ['loan', 'debt', 'monobank', 'Car loan'],
+  ];
+
+  it.each(createCases)(
+    'shows the %s example on a create under a %s account',
+    async (type, accountKind, institution, placeholder) => {
+      mockAccountKind = accountKind;
+      mockAccountInstitution = institution;
+      const screen = await renderScreen();
+
+      if (accountKind === 'bank') {
+        await selectHoldingType(screen, type);
+      }
+
+      expect(screen.getByPlaceholderText(placeholder)).toBeTruthy();
+    },
+  );
+
+  it('shows the jar example on an existing jar, which is never manually created', async () => {
+    const screen = await renderEdit({
+      id: 'h-9',
+      name: '',
+      type: 'jar',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+    });
+
+    expect(screen.getByPlaceholderText('Vacation jar')).toBeTruthy();
+  });
+
+  it('gives every holding type its own example', () => {
+    const examples = [...createCases.map(([, , , placeholder]) => placeholder), 'Vacation jar'];
+
+    expect(new Set(examples).size).toBe(holdingTypes.length);
   });
 });

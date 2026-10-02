@@ -188,6 +188,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     metal: t('forms.holding.metal'),
     loan: t('forms.holding.loan'),
   };
+  // The example name in the empty Name field, one per type, so the hint never
+  // names a different kind of holding than the selected one.
+  const namePlaceholders: Record<HoldingType, string> = {
+    card: t('forms.holding.namePlaceholders.card'),
+    term_deposit: t('forms.holding.namePlaceholders.deposit'),
+    bond: t('forms.holding.namePlaceholders.bond'),
+    cash: t('forms.holding.namePlaceholders.cash'),
+    crypto_asset: t('forms.holding.namePlaceholders.cryptoAsset'),
+    jar: t('forms.holding.namePlaceholders.jar'),
+    property_item: t('forms.holding.namePlaceholders.propertyItem'),
+    metal: t('forms.holding.namePlaceholders.metal'),
+    loan: t('forms.holding.namePlaceholders.loan'),
+  };
   // A `holdingId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing holding, saving through the update path
   // rather than create.
@@ -634,7 +647,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             onChangeName={setName}
             onSelectIcon={setIcon}
             onRemoveIcon={() => setIcon(null)}
-            namePlaceholder={t('forms.holding.namePlaceholder')}
+            namePlaceholder={namePlaceholders[type]}
             required
             error={showNameReason ? t('forms.fields.nameRequiredError') : undefined}
             nameInputRef={nameInputRef}
