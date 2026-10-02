@@ -305,7 +305,7 @@ describe('ImportDataScreen', () => {
       expect(await findByText('Import complete — 2 accounts restored.')).toBeTruthy();
       expect(
         await findByText(
-          'Your data was restored, but the saved key or token for Monobank, Binance, EODHD could not be stored on this iPhone. Add it again to reconnect.',
+          'Your data was restored, but the saved keys for Monobank, Binance, EODHD could not be stored on this iPhone. Add them again to reconnect.',
         ),
       ).toBeTruthy();
       expect(alertSpy).not.toHaveBeenCalled();
@@ -322,7 +322,7 @@ describe('ImportDataScreen', () => {
 
       expect(
         await findByText(
-          'Дані відновлено, але збережений ключ або токен для EODHD не вдалося записати на цей iPhone. Додайте його ще раз, щоб підключитися знову.',
+          'Дані відновлено, але збережені ключі для EODHD не вдалося зберегти на цьому iPhone. Додайте їх ще раз, щоб підключитися знову.',
         ),
       ).toBeTruthy();
     });

@@ -102,7 +102,7 @@ export const en = {
         'Importing replaces every account, holding, transaction, and category currently in Kiko with the contents of this file. This cannot be undone.',
       confirmTitle: 'Replace All Data?',
       credentialsNotRestoredMessage:
-        'Your data was restored, but the saved key or token for {{connections}} could not be stored on this iPhone. Add it again to reconnect.',
+        'Your data was restored, but the saved keys for {{connections}} could not be stored on this iPhone. Add them again to reconnect.',
       description: 'Choose a Kiko export file and enter its encryption key to restore your data.',
       errorTitle: 'Import failed',
       importButton: 'Import data',
