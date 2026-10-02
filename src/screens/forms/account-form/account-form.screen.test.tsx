@@ -302,7 +302,7 @@ describe('AccountFormScreen', () => {
       exact: false,
     });
     expect(getByTestId('account-kind-field-option-broker-description')).toHaveTextContent(
-      'Shares, bonds, and cash at a broker.',
+      'Bonds and cash at a broker.',
     );
   });
 

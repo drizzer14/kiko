@@ -66,7 +66,7 @@ describe('ExportDataScreen', () => {
     expect(await findByText('Include saved passwords & keys')).toBeTruthy();
     expect(
       await findByText(
-        'Adds your saved Monobank token, Binance API keys, and EODHD key to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
+        'Adds your saved Monobank token and Binance API keys to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
       ),
     ).toBeTruthy();
   });
