@@ -171,7 +171,8 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
  *
  * `fiatFetchedAt` stamps the fiat rows (default `fetchedAt`): a pass that
  * reuses an earlier pass's fiat answer must not label it newer than it is, or
- * it would outrank a rate another refresh stored in between. A crypto row is always stamped `fetchedAt`, its own fetch.
+ * it would outrank a rate another refresh stored in between. A crypto row is
+ * always stamped `fetchedAt`, its own fetch.
  */
 const buildUahRows = (
   price: UahPrice,
