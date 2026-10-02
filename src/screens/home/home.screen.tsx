@@ -184,6 +184,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
     liveOptions,
     holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
+    now,
   );
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
     settingsRepo.getQuery(),

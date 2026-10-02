@@ -94,6 +94,22 @@ jest.mock('@react-navigation/native', () => ({
 
 const mockUseLiveQuery = jest.fn();
 
+// The REAL hook behind a spy, to read which instant the screen keys its price
+// book on.
+const mockUseCurrentPriceBook = jest.fn();
+jest.mock('@kiko/prices/use-current-price-book', () => {
+  const actual = jest.requireActual('@kiko/prices/use-current-price-book');
+
+  return {
+    ...actual,
+    useCurrentPriceBook: (...args: unknown[]) => {
+      mockUseCurrentPriceBook(...args);
+
+      return actual.useCurrentPriceBook(...args);
+    },
+  };
+});
+
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
@@ -1320,6 +1336,25 @@ describe('HomeScreen', () => {
     await renderHome();
     const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
     expect(priceCall?.[2]).toBe(true);
+  });
+
+  // The net worth values at the screen's own `now`; a book keyed off a second
+  // clock read could name another day than the one the screen values at when
+  // local midnight falls between the two reads.
+  it('keys the current price book on the same instant the screen values at', async () => {
+    const base = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(base);
+
+    await renderHome();
+
+    nowSpy.mockRestore();
+
+    expect(mockUseCurrentPriceBook).toHaveBeenLastCalledWith(
+      expect.any(Boolean),
+      expect.anything(),
+      expect.any(Boolean),
+      base,
+    );
   });
 
   it('reads price_points in parallel while holdings are still on their first load', async () => {
