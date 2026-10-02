@@ -292,6 +292,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
       return Promise.reject(new Error('name-required'));
     }
+    // The icon goes in the same insert: a second write could fail after the row
+    // exists, and a Binance connect reads any failure here as "no row" and
+    // clears the key pair of an account that is there.
     accountCreate.current ??= (async () => {
       await accountsRepo.create({
         id: pendingAccountId,
@@ -300,12 +303,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // through createCashAccount and returns before this.
         kind,
         color,
+        icon,
         bankId: catalogId,
       });
-
-      if (icon !== null) {
-        await accountsRepo.setIcon(pendingAccountId, icon);
-      }
 
       return pendingAccountId;
     })().catch((error: unknown) => {
@@ -558,10 +558,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     >
       <Box gap={4} testID="account-form">
         {/* One shared icon+name block for every kind, cash included: the icon
-            picker stays visible whatever the kind is. The cash create path
-            (createCashAccount) now persists the picked icon in its own atomic
-            insert, and the bank/crypto path sets it via setIcon on the returned
-            id below. */}
+            picker stays visible whatever the kind is. Both create paths
+            (createCashAccount and the shared create) persist the picked icon in
+            their own atomic insert. */}
         <View ref={nameFieldRef}>
           <HoldingIdentityField
             icons={KIKO_ENTITIES_ICONS}

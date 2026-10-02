@@ -200,6 +200,7 @@ describe('AccountFormScreen', () => {
     mockAccounts = [];
     // create resolves to the new row's id so the form can set its icon on it.
     mockCreate.mockResolvedValue('new-account-id');
+    mockSetIcon.mockResolvedValue(undefined);
     // The credential writes resolve so the save flow can await them, and the
     // sync hooks resolve a boolean like the real fire-and-forget connect.
     mockSaveToken.mockResolvedValue(undefined);
@@ -522,7 +523,7 @@ describe('AccountFormScreen', () => {
     );
   });
 
-  it('sets the picked icon on the new account using the returned id', async () => {
+  it('creates the new account with the picked icon in the one insert', async () => {
     const { getByLabelText, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
@@ -531,11 +532,9 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
+      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null, icon: 'banknote' }),
     );
-    // The icon is set on the same pre-generated id the row was created with.
-    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
-    expect(mockSetIcon).toHaveBeenCalledWith(createdId, 'banknote');
+    expect(mockSetIcon).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
@@ -584,10 +583,14 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
+      expect.objectContaining({
+        name: 'My Bank',
+        kind: 'bank',
+        color: null,
+        icon: accountKindSymbol.bank,
+      }),
     );
-    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
-    expect(mockSetIcon).toHaveBeenCalledWith(createdId, accountKindSymbol.bank);
+    expect(mockSetIcon).not.toHaveBeenCalled();
   });
 
   it('falls the account icon field back to the generic tray glyph once the icon is removed', async () => {
@@ -603,18 +606,18 @@ describe('AccountFormScreen', () => {
     expect(getByLabelText(`Icon ${genericEntitySymbol.account}`)).toBeTruthy();
   });
 
-  it('does not set an icon when the user removes the default before saving', async () => {
+  it('creates the account with a null icon when the user removes the default before saving', async () => {
     const { getByLabelText, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
-    // Removing clears the seeded default back to null, so the create path skips
-    // setIcon and the row follows its kind default at display time.
+    // Removing clears the seeded default back to null, so the row follows its
+    // kind default at display time.
     await fireEvent.press(getByLabelText('Change Icon'));
     await fireEvent.press(getByText('Remove'));
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
+      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null, icon: null }),
     );
     expect(mockSetIcon).not.toHaveBeenCalled();
   });
@@ -1164,6 +1167,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     jest.clearAllMocks();
     mockAccounts = [];
     mockCreate.mockResolvedValue('new-account-id');
+    mockSetIcon.mockResolvedValue(undefined);
     mockSaveToken.mockResolvedValue(undefined);
     mockSaveCredentials.mockResolvedValue(undefined);
     mockMonobankSync.mockResolvedValue(true);
@@ -1524,6 +1528,24 @@ describe('AccountFormScreen — sync credentials on create', () => {
       await fireEvent.press(getByLabelText('binance-field'));
 
       await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
+      expect(mockClearCredentials).not.toHaveBeenCalled();
+    });
+
+    it('stays when an icon write fails after the row exists, since the icon goes in the create', async () => {
+      mockSetIcon.mockRejectedValue(new Error('icon write failed'));
+      mockCryptoSync.mockResolvedValue(true);
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ icon: accountKindSymbol.crypto }),
+      );
+      expect(mockSetIcon).not.toHaveBeenCalled();
       expect(mockClearCredentials).not.toHaveBeenCalled();
     });
 

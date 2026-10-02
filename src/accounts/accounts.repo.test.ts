@@ -140,6 +140,15 @@ describe('accountsRepo', () => {
     expect(inserts[0]).toMatchObject({ color: '#FFFFFF' });
   });
 
+  it('create persists the chosen icon on the inserted account row', async () => {
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await accountsRepo.create({ name: 'Savings', kind: 'bank', icon: 'banknote' });
+
+    expect(inserts[0]).toMatchObject({ icon: 'banknote' });
+  });
+
   it('create appends the new account at sortOrder = max + 1', async () => {
     const { databaseTransaction, inserts } = makeCreateDatabaseTransaction(4);
     mockDatabaseTransaction = databaseTransaction;
