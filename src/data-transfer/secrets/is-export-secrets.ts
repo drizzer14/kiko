@@ -1,19 +1,28 @@
 import type { ExportSecrets } from '../payload';
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
+type Entry = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is Entry => typeof value === 'object' && value !== null;
+
+const isText = (value: unknown): boolean => typeof value === 'string';
+
+const isMonobankToken = (entry: Entry): boolean => isText(entry.token);
+
+const isBinanceCredentials = (entry: Entry): boolean =>
+  isText(entry.apiKey) && isText(entry.secret);
 
 const isEveryEntry = (
   value: unknown,
-  fieldNames: readonly string[],
+  isEntry: (entry: Entry) => boolean,
   accountIds: ReadonlySet<string>,
 ): boolean =>
   Array.isArray(value) &&
   value.every(
     (entry) =>
       isRecord(entry) &&
-      fieldNames.every((fieldName) => typeof entry[fieldName] === 'string') &&
-      accountIds.has(entry.accountId as string),
+      isText(entry.accountId) &&
+      accountIds.has(entry.accountId as string) &&
+      isEntry(entry),
   );
 
 /**
@@ -29,6 +38,6 @@ export const isExportSecrets = (
   accountIds: ReadonlySet<string>,
 ): value is ExportSecrets =>
   isRecord(value) &&
-  isEveryEntry(value.monobankTokens, ['accountId', 'token'], accountIds) &&
-  isEveryEntry(value.binanceCredentials, ['accountId', 'apiKey', 'secret'], accountIds) &&
-  (value.eodhdKey === undefined || typeof value.eodhdKey === 'string');
+  isEveryEntry(value.monobankTokens, isMonobankToken, accountIds) &&
+  isEveryEntry(value.binanceCredentials, isBinanceCredentials, accountIds) &&
+  (value.eodhdKey === undefined || isText(value.eodhdKey));
