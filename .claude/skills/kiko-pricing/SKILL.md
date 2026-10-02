@@ -325,12 +325,11 @@ stored point is later than the requested day (mirrors
 **`useCurrentPriceBook(...)` and `usePriceBook(...)` contract: `{ book,
 isLoading }`, not a bare `PriceBook`** (see "Current price book and
 whole-table price book" below for which one a screen reads).
-`usePriceBook` (`src/prices/use-price-book/`) wraps `allQuery` in
-`useLiveQuery(..., ['price_points'])`, and
-`transactionsRepo.loanLedgerPaymentsQuery()` (one read across every loan,
-joined to the payer holding for its currency) in
-`useLiveQuery(..., ['transactions', 'holdings'])`, gated by its third
-argument `loanPaymentsEnabled` (kiko-architecture). Its `isLoading` is
+`usePriceBook` wraps `allQuery`, `useCurrentPriceBook` wraps `currentQuery`;
+both pass their rows to `usePriceBookOfPoints` (`src/prices/use-price-book/`),
+which adds the `loanLedgerPaymentsQuery()` read in
+`useLiveQuery(..., ['transactions', 'holdings'])`, gated by
+`loanPaymentsEnabled` (kiko-architecture). Its `isLoading` is
 true while either read is on its first load or after it is turned back
 on — every consumer destructures `const { book: priceBook } =
 useCurrentPriceBook(...)` (or `usePriceBook(...)`), and a screen that gates its own
@@ -342,12 +341,8 @@ from the book (`holding-form`'s edit `saveEdit`: a loan changed into
 `isLoading: isPriceBookLoading` and keeps Save disabled on an edit until
 it is false — saved against a still-empty book, that point would be the
 schedule-only value, forever. This is the
-reactive entry point every value reader (`holdingValueBreakdown`,
-`createHoldingValuer`, `buildNetWorthSeries`, `netWorth`, `guardedNetWorth`/
-`guardedBreakdown`, `sumByCurrency`, `buildTypeBreakdown`,
-`buildAccountContribution`) and every screen that renders a value
-(`home`, `accounts`, `account-detail` + its `HoldingCard`,
-`holding-detail`, `statistics`, `holding-form`) threads through, same
+reactive entry point every value reader and every screen that renders a
+value threads through (find them with `grep -rn 'usePriceBook\|useCurrentPriceBook' src`), same
 pattern as the existing rate-table threading; `EMPTY_PRICE_BOOK` is
 the default for a caller with none available (e.g. a test fixture), so
 the default resolves to "no price, no loan payment," never a crash. A

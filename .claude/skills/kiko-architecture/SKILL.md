@@ -2124,7 +2124,7 @@ what a change must keep.
   `plan-reminder.ts`'s header. The smart-skip rule changed more than once, so it lives only in
   `plan-reminder.ts`'s header and the spec's "Smart skip" (worked cases):
   read them, do not restate it here. `activeSince` plays no part in the
-  skip; the overnight default of 2026-10-02 is pending the user. The ignored count
+  skip. The ignored count
   starts at the latest of `activeSince`, `deliverableSince`,
   `lastEngagedAt` and `lastDataAt`; `lastSnoozedAt` frees the regular occurrence at the
   snooze minute. The sync passes `lastSnoozedAt: null` once data
