@@ -814,7 +814,7 @@ the marker on its single debit leg). Three consequences hold together:
 
 ## App lock / security settings
 
-`settings.lockEnabled` is LIVE — wired through `src/auth/use-app-lock.ts`
+`settings.lockEnabled` is LIVE (a `.kiko` restore never changes it) — wired through `src/auth/use-app-lock.ts`
 and the `AppLockSetting` component
 (`src/screens/settings/system/app-lock-setting/`). `settings.lockGraceSeconds`
 is LEGACY/DEAD: it defaults to 30 and has no reader anywhere in `src/`

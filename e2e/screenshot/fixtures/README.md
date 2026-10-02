@@ -10,8 +10,9 @@ argument (Guideline 5.6):
   with the UI in Ukrainian.
 - **`kiko-demo-en.kiko`** — handed to the **App Store reviewer**. Imports
   with the UI in English, so an English-reading reviewer is not dropped into
-  a Ukrainian app (`restoreDataSnapshot` replaces the whole `settings` row,
-  including `language`).
+  a Ukrainian app (`restoreDataSnapshot` takes the `settings` row from the file except the
+  columns in `KEPT_FROM_LIVE_ON_RESTORE`, see
+  `src/db/kept-from-live-on-restore.ts`; `language` comes from the file).
 
 ## Files
 

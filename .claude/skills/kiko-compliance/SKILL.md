@@ -43,7 +43,11 @@ catch a differently-named visibility flag (e.g. `ENABLE_*`) or a demo
 import reached through a path alias that omits `e2e/` — that gap is
 why this is still a reviewer question, not only a CI gate.
 
-**Reviewability — the demo dataset must reach every feature.** The App
+**Reviewability — the demo dataset must reach every feature.** The
+reviewer's `.kiko` must be readable by the submitted build
+(`READABLE_EXPORT_VERSIONS` in `src/data-transfer/crypto/envelope.ts`): a
+build older than an export-version bump attaches the frozen older copy
+(`e2e/screenshot/fixtures/kiko-demo-en-1.1.kiko`). The App
 Store reviewer imports `e2e/screenshot/fixtures/kiko-demo-en.kiko`
 (built from `e2e/screenshot/seed/screenshot-seed.ts`, see that folder's
 README) through the real Import UI; a feature the dataset never shows is

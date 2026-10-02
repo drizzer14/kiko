@@ -1818,6 +1818,10 @@ A credential marker is a credential header or the bare word `api_token`
 (a query-parameter credential), quoted or not, so an object key the Biome
 formatter unquotes and a template query string (`?api_token=${key}`) both
 match. Read `scripts/checks/plist.sh` for the exact marker set.
+The marker pass is file-level and quote-based: a quoted credential name
+in ANY non-test `src/` file counts that file as a credential client, even
+a validator or mapper that only reads such a field by property. Run
+`npm run check:plist` after touching such a file.
 
 Section 1b: a client that sends an `api_token` must also send a
 `Cache-Control: no-store` request header (NSURLCache keys its disk
