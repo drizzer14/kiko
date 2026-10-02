@@ -14,3 +14,8 @@ export const metalBounds = () => pricePointsRepo.metalDayRangesQuery();
 export const everyHolding = () => database.select().from(holdings);
 
 export const firstPoint = () => database.select().from(pricePoints).limit(1);
+
+export const everyHoldingRelational = () => database.query.holdings.findMany();
+
+export const pointsOfDay = (day: number) =>
+  database.query.pricePoints.findMany({ where: (point, { eq }) => eq(point.day, day) });

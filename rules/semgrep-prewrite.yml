@@ -1762,9 +1762,10 @@ rules:
   # `price_points` gains a row per share and metal per day and never shrinks,
   # so a read of the whole table costs more every month. Only a screen that
   # values the PAST needs every close (Statistics, through `usePriceBook`);
-  # every other valuation reads `useCurrentPriceBook`. The three arms are the
-  # ways to reach the whole table: the repo's `allQuery`, the hook that wraps
-  # it, and a bare unfiltered select. The hook's own folder and the repo are
+  # every other valuation reads `useCurrentPriceBook`. The four arms are the
+  # ways to reach the whole table: the repo's `allQuery` (called or kept as a
+  # reference), the hook that wraps it, a bare unfiltered select, and an
+  # unfiltered relational read. The hook's own folder and the repo are
   # the owners and are excluded; the one legitimate consumer carries a
   # per-line `nosemgrep` override. Scope and known limits: this rule's row in
   # docs/harness/review-to-biome-inventory.md; the excludes:
@@ -1788,9 +1789,13 @@ rules:
         - "*.test.ts"
         - "*.test.tsx"
     pattern-either:
-      - pattern: pricePointsRepo.allQuery(...)
+      - pattern: pricePointsRepo.allQuery
       - pattern: usePriceBook(...)
       - patterns:
           - pattern: $DATABASE.select(...).from(pricePoints)
           - pattern-not-inside: $QUERY.where(...)
           - pattern-not-inside: $QUERY.limit(...)
+      - patterns:
+          - pattern: $DATABASE.query.pricePoints.$METHOD(...)
+          - pattern-not: "$DATABASE.query.pricePoints.$METHOD({where: ..., ...})"
+          - pattern-not: "$DATABASE.query.pricePoints.$METHOD({limit: ..., ...})"

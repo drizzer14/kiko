@@ -17,3 +17,11 @@ export const useWholeTable = () =>
 export const readEveryPoint = () =>
   // EXPECT-FINDING
   database.select().from(pricePoints);
+
+// The uncalled reference is the same whole-table read, called later.
+// EXPECT-FINDING
+export const wholeTableQuery = pricePointsRepo.allQuery;
+
+export const relationalEveryPoint = () =>
+  // EXPECT-FINDING
+  database.query.pricePoints.findMany();
