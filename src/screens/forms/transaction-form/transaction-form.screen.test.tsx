@@ -3313,9 +3313,9 @@ const SPLIT_SYNCED_HOLDING: Holding = {
 
 const SPLIT_SYNCED_ACCOUNT: Account = { id: 'sync-acc', name: 'Binance', institution: 'binance' };
 
-// A row of the removed `share` type can only arrive through an old development
-// export; the form must still render with it listed, and never offer it as an
-// Exchange leg.
+// A row of the removed `share` type can still arrive through an old development
+// export or sit on a device that ran a development build; the form must still
+// render with it listed, and never offer it as an Exchange leg.
 const REMOVED_TYPE_HOLDING: Holding = {
   id: 'share-1',
   currency: 'USD',
@@ -3408,8 +3408,9 @@ describe('TransactionFormScreen — a stored holding of a removed type', () => {
       CATEGORIES,
       CONVERT_ACCOUNTS,
     );
-    const { queryByText } = await renderEdit('share-txn');
+    const { getByLabelText, queryByText } = await renderEdit('share-txn');
 
+    expect(getByLabelText('Type')).toBeTruthy();
     expect(queryByText('Exchange')).toBeNull();
   });
 });

@@ -4337,7 +4337,7 @@ describe('HoldingFormScreen name placeholder', () => {
     ['crypto_asset', 'crypto', 'monobank', 'Bitcoin'],
     ['property_item', 'property', 'monobank', 'Apartment or car'],
     ['metal', 'metals', 'monobank', 'Gold bar'],
-    ['loan', 'debt', 'monobank', 'Car loan'],
+    ['loan', 'debt', 'monobank', 'Mortgage'],
   ];
 
   it.each(createCases)(

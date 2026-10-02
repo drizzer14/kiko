@@ -422,7 +422,7 @@ export const en = {
         cryptoAsset: 'Bitcoin',
         deposit: '6-month deposit',
         jar: 'Vacation jar',
-        loan: 'Car loan',
+        loan: 'Mortgage',
         metal: 'Gold bar',
         propertyItem: 'Apartment or car',
       },

@@ -364,7 +364,7 @@ export const uk: typeof en = {
         cryptoAsset: 'Біткоїн',
         deposit: 'Депозит на 6 місяців',
         jar: 'Банка на відпустку',
-        loan: 'Кредит на авто',
+        loan: 'Іпотека',
         metal: 'Золотий злиток',
         propertyItem: 'Квартира або авто',
       },
