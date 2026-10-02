@@ -82,10 +82,33 @@ const EARLIER_BUILD_SETTINGS_COLUMNS = [
   'lockEnabled',
   'quoteQuota',
   'lotsRecosted',
+  'importTimesRezoned',
 ];
 
-const earlierBuildPayload = async (secrets?: unknown): Promise<unknown> => {
+// A statement-import row an earlier build stored with the bank's wall clock
+// read as UTC; the restore reads those digits as Kyiv time.
+const LEGACY_IMPORT_TIME = Date.UTC(2026, 2, 3, 9, 45, 0);
+const REZONED_IMPORT_TIME = Date.UTC(2026, 2, 3, 7, 45, 0);
+
+const insertLegacyImportRow = (database: DatabaseSync): void => {
+  database
+    .prepare(
+      "INSERT INTO holdings (id, account_id, name, type, currency) VALUES ('h1', 'mono1', 'Card', 'cash', 'UAH')",
+    )
+    .run();
+  database
+    .prepare(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source) VALUES ('t1', 'h1', -100, ?, 'import')",
+    )
+    .run(LEGACY_IMPORT_TIME);
+};
+
+const earlierBuildPayload = async (
+  secrets?: unknown,
+  seed?: (database: DatabaseSync) => void,
+): Promise<unknown> => {
   mockDatabase = openDatabase(['mono1', 'bin1']);
+  seed?.(mockDatabase);
 
   const tables = JSON.parse(JSON.stringify(await readDataSnapshot())) as Record<string, unknown>;
 
@@ -118,6 +141,19 @@ const storedAccountIds = (): string[] =>
   (mockDatabase.prepare('SELECT id FROM accounts ORDER BY id').all() as { id: string }[]).map(
     ({ id }) => id,
   );
+
+const storedImportTime = (): number =>
+  (mockDatabase.prepare("SELECT time FROM transactions WHERE id = 't1'").get() as { time: number })
+    .time;
+
+const importTimesRezoned = (): number =>
+  (
+    mockDatabase
+      .prepare('SELECT import_times_rezoned AS flag FROM settings WHERE id = 1')
+      .get() as {
+      flag: number;
+    }
+  ).flag;
 
 describe('importing a version 1 file an earlier build wrote', () => {
   beforeEach(() => {
@@ -188,14 +224,26 @@ describe('importing a version 1 file an earlier build wrote', () => {
     });
   });
 
-  describe('the demo file an earlier build wrote', () => {
-    // The committed demo file carries the same payload as the one a build
-    // before export version 2 wrote; only its envelope's version differs.
-    it('restores', async () => {
-      const envelope = JSON.parse(
-        readFileSync(join(DEMO_FIXTURES, 'kiko-demo-en.kiko'), 'utf8'),
-      ) as Record<string, unknown>;
-      mockReadFile.mockResolvedValue(JSON.stringify({ ...envelope, version: 1 }));
+  describe('a file written before the import times were rezoned', () => {
+    it('shifts a statement-import row from its wall clock read as UTC to the Kyiv instant', async () => {
+      const payload = await earlierBuildPayload(undefined, insertLegacyImportRow);
+      mockDatabase = openDatabase();
+
+      await importVersionOne(payload);
+
+      expect(storedImportTime()).toBe(REZONED_IMPORT_TIME);
+      expect(storedImportTime()).not.toBe(LEGACY_IMPORT_TIME);
+      expect(importTimesRezoned()).toBe(1);
+    });
+  });
+
+  describe('the demo file release 1.1 wrote', () => {
+    // A frozen copy of the English demo file as 1.1 wrote it: export version 1,
+    // none of the settings columns of 1.2. It shares the demo key.
+    it('restores, and its settings row is marked rezoned', async () => {
+      mockReadFile.mockResolvedValue(
+        readFileSync(join(DEMO_FIXTURES, 'kiko-demo-en-1.1.kiko'), 'utf8'),
+      );
       mockDatabase = openDatabase();
 
       const summary = await importData({
@@ -203,9 +251,12 @@ describe('importing a version 1 file an earlier build wrote', () => {
         keyBase64: readFileSync(join(DEMO_FIXTURES, 'kiko-demo.key'), 'utf8').trim(),
       });
 
-      expect(summary.accountsRestored).toBeGreaterThan(0);
-      expect(storedAccountIds()).toHaveLength(summary.accountsRestored);
+      expect(summary.accountsRestored).toBe(8);
+      expect(summary.holdingsRestored).toBe(13);
+      expect(summary.transactionsRestored).toBe(71);
+      expect(storedAccountIds()).toHaveLength(8);
       expect(summary.unrestoredCredentials).toEqual([]);
+      expect(importTimesRezoned()).toBe(1);
     });
   });
 
