@@ -156,6 +156,11 @@ import { logFailure } from '@kiko/diagnostics';
 logFailure('[binance sync] transaction history import failed', error);
 ```
 
+A step whose failure is only logged and swallowed goes through
+`logOnFailure(tag, task)` (same package) instead of a hand-rolled
+`either` + `logFailure`: it never rejects, and it resolves `false` when
+the task failed, so a caller that must report the failure can.
+
 Mechanized: `kiko-no-raw-error-in-console` (`rules/semgrep-prewrite.yml`,
 ERROR). It flags a `console.*` argument that is not a string, template, or
 object literal, and a string or template literal joined with `+` anywhere

@@ -2163,9 +2163,11 @@ what a change must keep.
   clear never rejects (a failed one is logged): the delete has committed,
   and a rejection would show the save error and skip the re-plan. On the
   create form, a Binance connect that cannot create the account row
-  clears the key pair the field stored first (`clearUnownedCredentials`
-  in `account-form.screen.tsx`), so no pair stays under an id with no
-  account.
+  clears the key pair the field stored first (`connectBinance` in
+  `account-form.screen.tsx`, through `logOnFailure`), so no pair stays
+  under an id with no account. The create inserts the picked icon in the
+  same write (a second write that failed after the row existed would
+  read as no row and clear the pair of an account that is there).
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by
   `id`. `restoreDataSnapshot` deletes `reminders` before
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders

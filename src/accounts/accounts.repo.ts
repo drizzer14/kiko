@@ -11,8 +11,7 @@ import {
   transactions,
 } from '@kiko/db';
 import { asc, eq, sql } from 'drizzle-orm';
-import { logFailure } from '@kiko/diagnostics';
-import either, { bifoldMap } from 'fnts/either';
+import { logOnFailure } from '@kiko/diagnostics';
 import { clearToken } from '@kiko/monobank/token';
 import type { Money } from '@kiko/currency/money';
 import type { Currency } from '@kiko/currency/currency';
@@ -31,13 +30,7 @@ import { isSyncedAccount, type SyncedInstitution } from '@kiko/holdings/deletabl
 // shown as a failed delete that would skip the reminders re-plan.
 const clearKeychainItems = async (accountId: string): Promise<void> => {
   for (const clear of [clearToken, clearCredentials]) {
-    const attempt = await either<unknown, unknown>(async () => clear(accountId));
-
-    bifoldMap(
-      attempt,
-      (error) => logFailure('[accounts] a Keychain item could not be cleared', error),
-      () => undefined,
-    );
+    await logOnFailure('[accounts] a Keychain item could not be cleared', () => clear(accountId));
   }
 };
 

@@ -1,6 +1,5 @@
 import { settingsRepo } from '@kiko/settings';
-import { logFailure } from '@kiko/diagnostics';
-import either, { bifoldMap } from 'fnts/either';
+import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
 import { saveEodhdKey } from '@kiko/prices/eodhd-key';
 import { withRestoredKey } from '@kiko/prices/quote-quota';
@@ -15,27 +14,6 @@ const onlyRestoredAccounts = <Entry extends { accountId: string }>(
   entries: readonly Entry[] | undefined,
   accountIds: ReadonlySet<string>,
 ): readonly Entry[] => (entries ?? []).filter(({ accountId }) => accountIds.has(accountId));
-
-// A failed write is reported, not thrown: the data is already restored, so one
-// secret that cannot be written must not hide that, nor stop the others. The
-// thunk is `async` so a write that throws before it returns a promise is
-// caught too.
-const failedKinds = async (
-  kind: ExportSecretKind,
-  write: () => Promise<unknown>,
-): Promise<readonly ExportSecretKind[]> => {
-  const attempt = await either<unknown, unknown>(async () => write());
-
-  return bifoldMap(
-    attempt,
-    (error): readonly ExportSecretKind[] => {
-      logFailure(`[restore-secrets] ${kind} secret could not be written`, error);
-
-      return [kind];
-    },
-    (): readonly ExportSecretKind[] => [],
-  );
-};
 
 /**
  * Restores ONLY the Monobank tokens, the Binance credentials, and the global
@@ -74,33 +52,37 @@ export const restoreExportSecrets = async (
     return [];
   }
 
-  const failed: ExportSecretKind[] = [];
+  const failed = new Set<ExportSecretKind>();
+
+  // A failed write is reported, not thrown: the data is already restored, so
+  // one secret that cannot be written must not hide that, nor stop the others.
+  const write = async (kind: ExportSecretKind, save: () => Promise<unknown>): Promise<void> => {
+    if (!(await logOnFailure(`[restore-secrets] ${kind} secret could not be written`, save))) {
+      failed.add(kind);
+    }
+  };
 
   for (const { accountId, token } of onlyRestoredAccounts(secrets.monobankTokens, accountIds)) {
-    failed.push(...(await failedKinds('monobank', () => saveToken(accountId, token))));
+    await write('monobank', () => saveToken(accountId, token));
   }
 
   for (const { accountId, apiKey, secret } of onlyRestoredAccounts(
     secrets.binanceCredentials,
     accountIds,
   )) {
-    failed.push(
-      ...(await failedKinds('binance', () => saveCredentials(accountId, { apiKey, secret }))),
-    );
+    await write('binance', () => saveCredentials(accountId, { apiKey, secret }));
   }
 
   const { eodhdKey } = secrets;
 
   if (eodhdKey !== undefined) {
-    failed.push(
-      ...(await failedKinds('eodhd', async () => {
-        await saveEodhdKey(eodhdKey);
-        // After the key, like a key save in Share prices: a refresh that read
-        // the previous key never pairs it with the restored key's state.
-        await settingsRepo.updateQuoteQuota((stored) => withRestoredKey(stored, Date.now()));
-      })),
-    );
+    await write('eodhd', async () => {
+      await saveEodhdKey(eodhdKey);
+      // After the key, like a key save in Share prices: a refresh that read
+      // the previous key never pairs it with the restored key's state.
+      await settingsRepo.updateQuoteQuota((stored) => withRestoredKey(stored, Date.now()));
+    });
   }
 
-  return [...new Set(failed)];
+  return [...failed];
 };
