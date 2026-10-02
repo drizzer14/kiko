@@ -425,12 +425,17 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   gate is not-ready for that render with no latch. The gate also goes
   not-ready again after it was ready whenever a query re-keys on
   something the user picks or on the clock. A screen that would rather
-  keep its content mounted then latches its own first ready and shows a
-  list-local `LoadingState` for the re-keyed read alone: Home does,
-  because a date-range pick, a Clear and the local midnight re-key its
-  windowed ledger read, and swapping the whole screen for the spinner
-  would drop its net-worth card, its filter bar and the open range
-  sheet for a read that only affects the list. `data` still holds the
+  keep its content mounted then latches its own first ready and gates
+  EACH re-keyable value locally, never by the latch: Home does, because a
+  date-range pick, a Clear and the local midnight re-key its windowed
+  ledger read, and the first priced holding (metal, share, property,
+  loan), a restore and the local midnight turn on or re-key its price
+  book. Swapping the whole screen for the spinner would drop its filter
+  bar and the open range sheet, so the list shows a `LoadingState` for
+  its window read and the net-worth card shows one for the price book:
+  the headline and the breakdown never render while that read loads,
+  because an empty book values a metal at its cost and a loan without
+  its payments, which is a wrong balance. `data` still holds the
   previous key's rows while the new key loads, so the screen must
   never show them (or the EMPTY state) under the new key: Home keeps its
   list mounted (it carries pull-to-refresh and the large-title scroll

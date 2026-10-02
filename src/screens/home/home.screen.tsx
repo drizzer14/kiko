@@ -238,10 +238,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     categoriesLoading,
   );
   // `useDataReady` is true only until a query re-keys: the window read does on
-  // every date-range pick and clear and when the local day rolls over, and each
-  // re-key reads loading again. Swapping the whole screen for the spinner then
-  // would drop the net-worth card, the filter bar and its open sheet for a read
-  // that only affects the list, so only the FIRST ready gates the whole screen.
+  // every date-range pick and clear and when the local day rolls over, and the
+  // price book does when a holding turns it on and on a day roll; each re-key
+  // reads loading again. Swapping the whole screen for the spinner then would
+  // drop the filter bar and its open sheet for a read that only affects one
+  // part, so only the FIRST ready gates the whole screen. Each re-keyable read
+  // is gated where it is shown: the list on `transactionsLoading`, the net-worth
+  // card on `priceBookLoading`.
   const hasBeenReady = useRef(false);
   hasBeenReady.current ||= isReady;
 
@@ -571,17 +574,26 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     <Screen bleedBottom>
       <Box gap={4} testID="home-content" style={styles.content}>
         <Card padding={4} radius="lg">
-          <Box gap={1} style={styles.header}>
-            <Text variant="caption" tone="textSecondary">
-              {t('home.netWorth')}
-            </Text>
+          {/* The price book re-keys after the first ready: the first metal,
+              share, property or loan holding turns its read on, and a day roll
+              re-keys it. Until it lands the book is empty, so a metal would
+              drop to its cost and a loan would be valued without its payments:
+              the headline and the breakdown wait for it, nothing else does. */}
+          {priceBookLoading ? (
+            <LoadingState testID="home-net-worth-loading" />
+          ) : (
+            <Box gap={1} style={styles.header}>
+              <Text variant="caption" tone="textSecondary">
+                {t('home.netWorth')}
+              </Text>
 
-            <MoneyText money={total} context="balance" style={styles.balance} />
+              <MoneyText money={total} context="balance" style={styles.balance} />
 
-            <Box style={styles.breakdown}>
-              <CurrencyBreakdown items={breakdown} />
+              <Box style={styles.breakdown}>
+                <CurrencyBreakdown items={breakdown} />
+              </Box>
             </Box>
-          </Box>
+          )}
         </Card>
 
         {failures.length > 0 && (

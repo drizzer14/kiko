@@ -14,10 +14,14 @@
  *
  * So this gate goes not-ready again whenever any of its queries re-keys, even
  * after it was ready: a query keyed on something the user picks (Home's date
- * range) or on the clock (the local day) does exactly that. A screen that
+ * range), on the clock (the local day) or on another query's data (the price
+ * book turned on by the first priced holding) does exactly that. A screen that
  * would rather keep its content mounted over such a re-key latches its first
- * ready itself and shows a local loading state for the re-keyed read alone
- * (`home.screen.tsx`).
+ * ready itself and gates each re-keyable value where it is shown, with a local
+ * loading state for that read alone (`home.screen.tsx`: the list on its window
+ * read, the net-worth card on the price book). The latch must never hide a
+ * value whose read is loading again: a value shown from an unfinished read is
+ * a wrong number.
  */
 export const useDataReady = (...loadingFlags: boolean[]): boolean =>
   !loadingFlags.some((isLoading) => isLoading);

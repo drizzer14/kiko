@@ -26,6 +26,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { metalInstrument } from '@kiko/prices/instrument';
 import { formatDate, defaultDateRange } from '@kiko/dates';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
@@ -1620,16 +1621,90 @@ describe('HomeScreen — loading gate', () => {
       expect(getByTestId('home-transactions-loading')).toBeTruthy();
     });
 
-    it('keeps Home mounted when another of its queries is loading again', async () => {
-      seed({ transactions: [transaction()] });
+    // The first metal holding turns the price-book read on after Home was
+    // ready: until that read lands the book is empty, so the metal would drop
+    // to its cost and the headline would be a wrong balance.
+    describe('when the price book read starts loading', () => {
+      const yesterday = localDaysFrom(Date.now(), -1);
+      const GOLD: Holding = {
+        id: 'gold',
+        name: 'Gold bar',
+        accountId: 'a',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        type: 'metal',
+        metadata: {
+          metal: 'XAU',
+          form: 'bar',
+          unit: 'oz',
+          purity: '1',
+          lots: [{ day: yesterday, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      };
+      const GOLD_PRICE: PricePoint = {
+        instrument: metalInstrument('XAU'),
+        day: yesterday,
+        price: '9000',
+        currency: 'UAH',
+        source: 'nbu',
+      };
 
-      const { getByTestId, queryByTestId, rerender } = await renderHome();
+      it('shows a loading state in the net-worth card, never the headline, while the book loads, and the full-book value once it lands', async () => {
+        seed({ transactions: [transaction()] });
 
-      seed({ transactions: [transaction()], isLoading: { currency_rates: true } });
-      await rerenderHome(rerender);
+        const { getByTestId, queryByTestId, queryByText, getAllByText, rerender } =
+          await renderHome();
 
-      expect(queryByTestId('home-loading')).toBeNull();
-      expect(getByTestId('home-content')).toBeTruthy();
+        // Without the book the gold would read at its cost (6,000.00 in total).
+        seed({
+          transactions: [transaction()],
+          holdings: [UAH_HOLDING, GOLD],
+          isLoading: { price_points: true },
+        });
+        await rerenderHome(rerender);
+
+        expect(getByTestId('home-net-worth-loading')).toBeTruthy();
+        expect(queryByText('Net worth')).toBeNull();
+        expect(queryByText(/6,000\.00 ₴/)).toBeNull();
+        expect(queryByText(/10,000\.00 ₴/)).toBeNull();
+        // The rest of Home stays: no whole-screen spinner, the filter bar and
+        // the list keep their place.
+        expect(queryByTestId('home-loading')).toBeNull();
+        expect(getByTestId('category-filter-menu')).toBeTruthy();
+        expect(getByTestId('home-transactions')).toBeTruthy();
+        expect(queryByText('Coffee')).toBeTruthy();
+
+        seed({
+          transactions: [transaction()],
+          holdings: [UAH_HOLDING, GOLD],
+          pricePoints: [GOLD_PRICE],
+        });
+        await rerenderHome(rerender);
+
+        expect(queryByTestId('home-net-worth-loading')).toBeNull();
+        expect(queryByText('Net worth')).toBeTruthy();
+        expect(getAllByText(/10,000\.00 ₴/).length).toBeGreaterThan(0);
+        expect(queryByText(/6,000\.00 ₴/)).toBeNull();
+      });
+
+      it('shows the loading state in the card while a re-keyed book loads even when no holding changed', async () => {
+        seed({ transactions: [transaction()], holdings: [UAH_HOLDING, GOLD] });
+
+        const { getByTestId, queryByTestId, rerender } = await renderHome();
+
+        expect(queryByTestId('home-net-worth-loading')).toBeNull();
+
+        seed({
+          transactions: [transaction()],
+          holdings: [UAH_HOLDING, GOLD],
+          isLoading: { price_points: true },
+        });
+        await rerenderHome(rerender);
+
+        expect(getByTestId('home-net-worth-loading')).toBeTruthy();
+        expect(queryByTestId('home-loading')).toBeNull();
+        expect(getByTestId('home-content')).toBeTruthy();
+      });
     });
   });
 });
