@@ -220,6 +220,9 @@ type LiveData = {
   // The rows the windowed read returns; the whole ledger unless a test says
   // the database narrowed it to the picked range.
   windowRows?: Transaction[];
+  // What the distinct-categories read answers; derived from the whole ledger
+  // unless a test settles it separately from the rows.
+  categoryRows?: { category: string | null }[];
   categories?: Category[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
   // key defaults to `false` (an already-resolved query), so every existing
@@ -262,7 +265,7 @@ const liveAnswersFor = (
   const ledgerAnswers: Record<string, unknown[]> = {
     rows: data.windowRows ?? ledger,
     span: [spanRow],
-    categories: categoryRows,
+    categories: data.categoryRows ?? categoryRows,
   };
 
   return (query, tables) => ({
@@ -1003,6 +1006,43 @@ describe('HomeScreen', () => {
 
     expect(getByTestId('category-filter-menu-option-transport')).toBeTruthy();
     expect(getByTestId('category-filter-menu-option-groceries')).toBeTruthy();
+  });
+
+  it('lists a new category once the categories read settles after the window rows did', async () => {
+    const food = transaction({ id: 't1', category: 'food' });
+    const groceries = transaction({ id: 't2', category: 'groceries', description: 'Milk' });
+    const windowRows = [food, groceries];
+    seed({ transactions: [food], categoryRows: [{ category: 'food' }] });
+
+    const { getByTestId, queryByTestId, rerender } = await renderHome();
+
+    const rerenderHome = async (): Promise<void> => {
+      await act(async () => {
+        await rerender(
+          <HomeScreen
+            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+            route={asRouteProp<HomeProps['route']>('Home')}
+          />,
+        );
+      });
+    };
+
+    // The window rows settle first; the categories read still holds the old set.
+    seed({ transactions: [food], windowRows, categoryRows: [{ category: 'food' }] });
+    await rerenderHome();
+    // Then the categories read settles with the new category.
+    seed({
+      transactions: [food],
+      windowRows,
+      categoryRows: [{ category: 'food' }, { category: 'groceries' }],
+    });
+    await rerenderHome();
+
+    await act(async () => {
+      await fireEvent.press(getByTestId('category-filter-menu'));
+    });
+
+    expect(queryByTestId('category-filter-menu-option-groceries')).toBeTruthy();
   });
 
   it('resets the date range to the 30-day default (not all-time) when Clear is pressed', async () => {

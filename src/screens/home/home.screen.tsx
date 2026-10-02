@@ -411,7 +411,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       return orderA - orderB;
     });
   }, [
-    transactions,
+    categoryRows,
     categories,
     categoryByKey,
     defaultCategoryKey,
