@@ -187,18 +187,6 @@ export const remindersRepo = {
         .where(and(eq(reminders.id, reminderId), isNotNull(reminders.pausedAt)));
     });
   },
-  // After a backup restore: the restored start is from another time or
-  // device, so every reminder sent since then would count as ignored. A
-  // restored snooze may have no request on this device, so its slot would
-  // fire nothing; the restore drops every pending snooze anyway. A pause
-  // stays, as the backup had it.
-  restartAfterRestore: async (): Promise<void> => {
-    const now = Date.now();
-
-    await write((databaseTransaction) =>
-      databaseTransaction.update(reminders).set({ activeSince: now, lastSnoozedAt: null }),
-    );
-  },
   // A delete is the user's answer to the offer for that kind on that account,
   // so it never comes back there; the bell and Settings still add one.
   remove: async (reminderId: string): Promise<void> => {

@@ -356,7 +356,8 @@ describe('restoreDataSnapshot', () => {
     expect(Object.keys(insertedRows)).not.toContain('bondRegister');
   });
 
-  it('inserts a snapshot reminders row after its account', async () => {
+  it('inserts a snapshot reminders row after its account, restarted from now with its snooze forgotten', async () => {
+    const dateNow = jest.spyOn(Date, 'now').mockReturnValue(777);
     const insertedTables: string[] = [];
     const insertedRows: Record<string, unknown[]> = {};
 
@@ -380,9 +381,11 @@ describe('restoreDataSnapshot', () => {
     });
 
     expect(insertedRows.reminders).toEqual([
-      { id: 'reminder-1', accountId: 'a1', lastSnoozedAt: 5 },
+      { id: 'reminder-1', accountId: 'a1', activeSince: 777, lastSnoozedAt: null },
     ]);
     expect(insertedTables.indexOf('reminders')).toBeGreaterThan(insertedTables.indexOf('accounts'));
+
+    dateNow.mockRestore();
   });
 
   // Known limit: an export made before reminders existed restores with no

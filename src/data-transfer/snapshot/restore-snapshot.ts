@@ -789,9 +789,21 @@ export const restoreDataSnapshot = (
 
     // `?? []`: an export from before reminders existed carries no
     // `reminders` key, and restores with no reminders. Runs after the
-    // accounts insert, which a reminder's `accountId` references.
+    // accounts insert, which a reminder's `accountId` references. Each one
+    // restarts from now: counted from the backup, every reminder sent since
+    // would read as ignored and back-off pause on the first re-plan, and a
+    // restored snooze may have no request on this device. A pause stays, as the
+    // backup had it. Done here, not in a write after the commit, so a kill
+    // between the two cannot leave the backup's start behind.
     const insertReminders = async (): Promise<void> => {
-      for (const part of chunkForTable(reminders, snapshot.reminders ?? [])) {
+      const restoredAt = Date.now();
+      const restartedReminders = (snapshot.reminders ?? []).map((reminder) => ({
+        ...reminder,
+        activeSince: restoredAt,
+        lastSnoozedAt: null,
+      }));
+
+      for (const part of chunkForTable(reminders, restartedReminders)) {
         await databaseTransaction.insert(reminders).values(part);
       }
     };
