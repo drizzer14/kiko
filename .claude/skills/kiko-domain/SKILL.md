@@ -492,8 +492,7 @@ holding-detail's `addLot` footer action, and from a lot row's
 long-press Edit) rather than a fixed one-time
 lot or a sync is decided by each type's own `footerAction(synced,
 holding)` in `holdingDetailSpecs` (`holding-detail-spec/`): a type is
-lot-form eligible when that function can return `'addLot'` or
-`'addLotAndUpdatePrice'` (read the `FooterAction` union there). `metal`
+lot-form eligible when that function can return `'addLot'` (read the `FooterAction` union there). `metal`
 is eligible. See
 `kiko-pricing`'s "Recording a lot: LotForm and the sell cost rule"
 section for the form itself.
@@ -1129,7 +1128,7 @@ contributes to the LINE's past but never to a current snapshot.
 Invariant: the LAST net-worth bucket always equals
 `guardedNetWorth(open holdings, now)` — the number Home shows. Pinned by
 `net-worth-series.test.ts` ("ends on the net worth Home shows for a bond,
-a share, and a closed holding").
+a lot holding, and a closed holding").
 
 `reconcile-bond-funding.ts`'s candidate-building pass was rewritten from a
 `.flatMap`/`.map`/`.filter` chain to a plain nested loop for the same
@@ -2395,7 +2394,13 @@ once there are none — no placeholder heading over an empty list.
 Every per-type decision lives in one descriptor per layer, each keyed by
 `HoldingType` through an exhaustive `Record`/`satisfies` or a
 `match(...).exhaustive()` — a new type is a compile error at every site
-below until it is added there too. Seven steps, in order:
+below until it is added there too. A stored row of a REMOVED holding
+type is tolerated, not a crash: read sites use
+`holdingDescriptorOrUndefined`/`isHoldingType` (generic icon, no Edit,
+never an exchange source or destination — see
+`src/holdings/exchange-destination/exchange-destination.ts`); strict
+`holdingDescriptor(` stays only where the type comes from the
+`holdingTypes` tuple or the form's own selection. Seven steps, in order:
 
 1. Add the type to the `holdings.type` enum in `src/db/schema.ts` and to
    the `holdingTypes` tuple (`src/holdings/holding-type/holding-type.ts`)
@@ -2444,22 +2449,18 @@ below until it is added there too. Seven steps, in order:
    `balanceMinorUnits: 0` unconditionally — its value derives entirely
    from its own lots/schedule, never a typed opening balance. Only
    `useBalanceFields.createPayload` reads its own live opening-balance
-   field. The screen writes through `checkedCreate(active)` and
-   `checkedEdit(active, context)` (`holding-form.screen.tsx`): a type whose
-   write can need one network answer first sets the optional
-   `checkCreate`/`checkEdit` (`holding-type-form.d.ts`), which never reject
-   and answer a `CreateCheck`/`EditCheck` — save (the payload, or the write
-   to run) or blocked on a `ScrollTarget`, whose field error the screen
-   reveals. Every other type falls back to `createPayload()`/`saveEdit`.
-   Find the types that set them with
-   `git grep -n 'checkCreate\|checkEdit' src/screens/forms` (the share
-   case: kiko-pricing's "Unit lookup at Save and the currency guard").
+   field. The screen writes through each type's
+   `createPayload()`/`saveEdit`; there is no async pre-save check seam.
 4. Add en/uk label keys (`src/i18n/`) for `holding-form.screen.tsx`'s
    own `typeLabels: Record<HoldingType, string>` — usually a new
    `forms.holding.<type>` key, but `cash` reuses the account kind's own
    `forms.account.cash` key instead (a `forms.holding.*` /
    `forms.account.*` label key, not the enum value itself — see
    `typeLabels`'s own literal object for the current per-type mapping).
+   A new type also needs a `forms.holding.namePlaceholders.<key>` en/uk key
+   and an entry in `holding-form.screen.tsx`'s
+   `namePlaceholders: Record<HoldingType, string>` (a missing entry is a
+   compile error).
    The user reviews new/changed translation keys before any deploy that
    ships them (see `kiko-translator`).
 5. Add an entry to `holdingDetailSpecs`

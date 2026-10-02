@@ -441,7 +441,7 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   keep its content mounted then latches its own first ready and gates
   EACH re-keyable value locally, never by the latch: Home does, because a
   date-range pick, a Clear and the local midnight re-key its windowed
-  ledger read, and the first priced holding (metal, share, property,
+  ledger read, and the first priced holding (metal, property,
   loan), a restore and the local midnight turn on or re-key its price
   book. Swapping the whole screen for the spinner would drop its filter
   bar and the open range sheet, so the list shows a `LoadingState` for
@@ -734,7 +734,7 @@ gate says there is nothing to do.
   `refreshMarketData` itself. None of these runs through the sync
   fan-out that otherwise triggers this, so the price/rate appears without
   an app restart. Every step gates itself, so this is a no-op when
-  nothing is needed; neither function rejects, and a failure is only
+  nothing is needed; it never rejects, and a failure is only
   logged, never shown, so it never turns a successful save into a shown
   error. `throttled: false`: the write is a deliberate user action, not
   a background poll. Any other edit needs no trigger: a holding's type
@@ -1172,7 +1172,7 @@ determinate progress bar.
 
 ### The market refresh beside the sync fan-out
 
-Both also run `refreshMarketData` (rates, metals, shares) BESIDE the
+Both also run `refreshMarketData` (rates, metals) BESIDE the
 fan-out under a `Promise.all` of two never-rejecting promises, not after
 it: the provider requests are gated at one per minute per token, so a
 refresh queued behind K cards started K minutes late on the first open of

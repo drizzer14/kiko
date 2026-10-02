@@ -547,7 +547,7 @@ optional.
 ## Recording a lot: LotForm and the sell cost rule
 
 `src/screens/forms/lot-form/lot-form.screen.tsx` records one buy/sell
-lot against a lot-form-eligible holding (`metal` and `share` — see
+lot against a lot-form-eligible holding (`metal` only — see
 `holdingDetailSpecs`, `holding-detail-spec/`, and the paragraph
 closing `kiko-domain`'s "Sync-only holding types are not manually
 creatable" section for that single-type entry), reached from
@@ -587,32 +587,29 @@ same order; the Lot form (`sellExceedsError`/`coversLaterSaleError`) and
 the lot row's Delete offer run it on `changedLots` (the change with no
 re-cost), and the repo refuses through `withLotChange` itself. A refusal
 inside the write (the lots changed since the render) shows the shared
-save-error alert. `share-money.matrix.test.ts`
+save-error alert. `lot-money.matrix.test.ts`
 (`src/data-transfer/snapshot/`) holds the operation x state cells.
 
 **Stored lots are costed again once per device.** An older build costed a
 sale in recorded order, so `recostStoredLots` (`src/holdings/lot-recost/`)
-works every share, metal, and property lot list out again with
+works every metal and property lot list out again with
 `recostLots` (the same order), once (`settings.lotsRecosted`) and again
 after a restore of an older backup; kiko-architecture has the launch-step
 shape. A list with a sale larger than what is held before it stays as
 stored: the recost cannot cost it. The holding detail shows
 `OversizedSaleNotice` (`src/screens/holding-detail/oversized-sale-notice/`,
-share and metal, `hasNegativeHolding` over the stored lots, worked out on
+metal, `hasNegativeHolding` over the stored lots, worked out on
 the fly) asking the user to edit or delete that sale, which re-costs
 every lot through `changeLots`.
 
 A lot-priced holding's lots also surface as ledger-display rows: the
 shared `lotEntries` (`src/holdings/holding-descriptor/entry-parts/entry-parts.ts`,
-called by both the `metal` and `share` descriptors' `entries`) turns
+called by the `metal` descriptor's `entries`) turns
 each lot into a `DerivedEntry`. Always reuse it for a new lot-priced
 type; never copy the mapping. It reuses the
 `'purchase'`/`'sale'` `DerivedEntryKind`s previously bond-only (a buy lot →
 `'purchase'`, a sell lot → `'sale'`) — do not assume those kinds mean "bond"
-when reading that file. Its label is "Sale" for a sell; with `canSplit`
-(the `share` descriptor passes it, a metal never splits) a buy at exactly 0
-cost reads "Split" (`holdingDetail.split`, a stock split), every other buy
-"Purchase".
+when reading that file. A buy reads "Purchase", a sell "Sale".
 
 ## Creating and clearing a priced holding's price series
 

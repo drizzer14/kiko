@@ -101,10 +101,10 @@ answers: what's declared, what's not, and why) and to
 may need to declare a required-reason API for.
 
 A new third-party data recipient also needs the privacy policy updated
-(`docs/privacy-policy*.md` §3), not only the App Privacy answers. The
-EODHD entry (share tickers, the exchange, the earliest lot date, search
-queries) is in the repo's policy markdown; publishing it to gh-pages is
-still pending — check the live policy before an upload.
+(`docs/privacy-policy*.md` §3), not only the App Privacy answers. There
+is no EODHD entry (removed with the shares cut, Guideline 5.6). The live
+gh-pages policy may still name EODHD until the edited policy is
+published: check the live policy before an upload.
 
 ## 5.1.5 / data storage — secrets never in `.env`, logs, or the DB
 
