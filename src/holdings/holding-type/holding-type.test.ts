@@ -133,8 +133,9 @@ describe('creatableHoldingTypesForAccount', () => {
     ]);
   });
 
-  it('drops metal from a bank account with no bankId, an unlisted bankId, or monobank', () => {
+  it('drops metal from a bank account with no bankId, other, an unlisted bankId, or monobank', () => {
     expect(creatableHoldingTypesForAccount('bank', false)).not.toContain('metal');
+    expect(creatableHoldingTypesForAccount('bank', false, 'other')).not.toContain('metal');
     expect(creatableHoldingTypesForAccount('bank', false, null)).not.toContain('metal');
     expect(creatableHoldingTypesForAccount('bank', false, 'monobank')).not.toContain('metal');
     expect(creatableHoldingTypesForAccount('bank', false, 'not-a-bank')).not.toContain('metal');

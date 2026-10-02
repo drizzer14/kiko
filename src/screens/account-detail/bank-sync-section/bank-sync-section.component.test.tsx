@@ -176,6 +176,13 @@ describe('BankSyncSection — disconnected', () => {
     expect(view.getByText('monobank field')).toBeTruthy();
   });
 
+  it('still asks through the "Add a bank" trigger when bankId is other (it names no connectable bank, as before with no bankId)', async () => {
+    const view = await render(<BankSyncSection account={bankAccount({ bankId: 'other' })} />);
+
+    expect(view.getByText('Add a bank')).toBeTruthy();
+    expect(view.queryByText('monobank field')).toBeNull();
+  });
+
   // When `bankId` already identifies Monobank, `selectedProviderId`
   // is always undefined and `shownProviderId` falls straight back to
   // `bankIdProviderId` — pressing "Change bank" would visibly change nothing.

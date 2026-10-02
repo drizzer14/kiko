@@ -655,6 +655,14 @@ describe('AccountDetailScreen', () => {
       hidden: ['Connect Monobank'],
     },
     {
+      // "Other bank" is the stored id a bank account with no listed bank
+      // carries (migration 0049), and it gates exactly as no bank at all.
+      description: 'a bank account stored as Other bank, not yet connected to Monobank',
+      account: account({ kind: 'bank', bankId: 'other', institution: null }),
+      visible: ['Add a bank'],
+      hidden: ['Connect Monobank', 'Sync'],
+    },
+    {
       description: 'a cash account',
       account: account({ kind: 'cash', institution: null }),
       visible: [],
@@ -1816,6 +1824,24 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
   // id for a bank the catalog has none for.
   it('passes no expectedFormatId for Oschadbank (no dedicated format, falls through to column mapping)', async () => {
     setLiveData({ accounts: [account({ bankId: 'oschadbank' })], holdings: [] });
+    mockPick.mockResolvedValue([
+      { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
+    ]);
+    const { getByText, navigation } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByText('Import statement'));
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('StatementImport', {
+      filePath: 'file:///cache/statement.csv',
+      accountId: 'a',
+      expectedFormatId: undefined,
+    });
+  });
+
+  it('passes no expectedFormatId for a bank account stored as Other bank (multi-format auto-detect, as with no bank)', async () => {
+    setLiveData({ accounts: [account({ bankId: 'other' })], holdings: [] });
     mockPick.mockResolvedValue([
       { uri: 'file:///mock/statement.csv', name: 'statement.csv', type: 'text/csv' },
     ]);

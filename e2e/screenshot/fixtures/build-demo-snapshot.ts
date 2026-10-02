@@ -17,6 +17,7 @@ import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { SETTINGS_ID } from '@kiko/settings';
 import type { DataSnapshot } from '@kiko/data-transfer';
+import { OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
@@ -145,7 +146,9 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
       name: account.name,
       kind: account.kind,
       institution: null,
-      bankId: null,
+      // A bank account always names a bank on a device that ran migration
+      // 0049, and the demo names none of the real ones.
+      bankId: account.kind === 'bank' ? OTHER_BANK_ID : null,
       icon: null,
       color: account.color,
       sortOrder: accountIndex,
