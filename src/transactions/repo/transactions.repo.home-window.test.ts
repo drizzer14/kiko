@@ -183,7 +183,7 @@ describe('the ledger span and categories Home reads', () => {
     applyAllMigrations(mockDatabase);
   });
 
-  it('counts, and finds the earliest and latest time of, the same rows the full list holds', async () => {
+  it('finds the earliest and latest time of the same rows the full list holds', async () => {
     seedLedger();
 
     const all = await fullLedger();
@@ -193,13 +193,13 @@ describe('the ledger span and categories Home reads', () => {
       0,
     );
 
-    expect(summary).toEqual({ count: all.length, earliest: span.start, latest: span.end });
+    expect(summary).toEqual({ earliest: span.start, latest: span.end });
   });
 
   it('reports an empty ledger as no rows', async () => {
     const [summary] = await transactionsRepo.contextSpanQuery();
 
-    expect(summary.count).toBe(0);
+    expect(summary).toEqual({ earliest: null, latest: null });
     await expect(transactionsRepo.contextCategoriesQuery()).resolves.toEqual([]);
   });
 

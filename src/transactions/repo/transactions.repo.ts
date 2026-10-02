@@ -973,15 +973,14 @@ export const transactionsRepo = {
       )
       .orderBy(desc(transactions.time)),
   /**
-   * How many rows the whole ledger holds (`listWithContextBetweenQuery` with
-   * no bounds) and the earliest and latest time among them (one row;
-   * `earliest`/`latest` are null for an empty ledger) — Home's date-range
-   * field shows the span of the whole ledger while it reads only a window of it.
+   * The earliest and latest time of the whole ledger (`listWithContextBetweenQuery`
+   * with no bounds), in one row; both are null for an empty ledger — Home's
+   * date-range field shows the span of the whole ledger while it reads only a
+   * window of it.
    */
   contextSpanQuery: () =>
     database
       .select({
-        count: sql<number>`count(*)`,
         earliest: sql<number | null>`min(${transactions.time})`,
         latest: sql<number | null>`max(${transactions.time})`,
       })

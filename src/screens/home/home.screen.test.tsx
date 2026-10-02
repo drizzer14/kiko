@@ -277,7 +277,6 @@ const liveAnswersFor = (
   const newestFirst = [...ledger].sort((first, second) => second.time - first.time);
   // What the database answers for the ledger's span and distinct categories.
   const spanRow = {
-    count: ledger.length,
     earliest: ledger.length > 0 ? Math.min(...ledger.map((row) => row.time)) : null,
     latest: ledger.length > 0 ? Math.max(...ledger.map((row) => row.time)) : null,
   };
