@@ -55,6 +55,18 @@ describe('restoring the EODHD quote quota', () => {
     expect(storedQuotaObject()).toEqual({ ...QUOTA, symbols: [] });
   });
 
+  // With no settings row to carry it, the quota would otherwise go with the rows
+  // the restore replaces, and the day's calls would be spent again.
+  it('keeps the live quota when the backup has no settings row', async () => {
+    mockDatabase = openDatabase();
+    const backup = { ...(await exportedSnapshot()), settings: [] };
+
+    mockDatabase = openDatabase(QUOTA);
+    await restoreDataSnapshot(backup);
+
+    expect(storedQuotaObject()).toEqual({ ...QUOTA, symbols: [] });
+  });
+
   it("keeps the live quota's calls and key state, never the backup's", async () => {
     mockDatabase = openDatabase(BACKED_UP_QUOTA);
     const backup = await exportedSnapshot();

@@ -1,8 +1,8 @@
 import { eq, inArray } from 'drizzle-orm';
 import { SETTINGS_ID } from '@kiko/settings';
 import { isRecord } from '@kiko/type-guards';
-import { logFailure } from '@kiko/diagnostics';
-import either, { bifold, eitherSync, isLeft } from 'fnts/either';
+import { bifold, eitherSync, isLeft } from 'fnts/either';
+import { logFailure, logOnFailure } from '@kiko/diagnostics';
 import { write, database, holdings, settings, type HoldingRow } from '@kiko/db';
 
 import type { HoldingType } from '../holding-type';
@@ -89,13 +89,9 @@ const recostIn = async (databaseTransaction: typeof database): Promise<void> => 
  * rejects: a failure is logged and the next open tries again.
  */
 export const recostStoredLots = async (): Promise<void> => {
-  const result = await either<unknown, void>(async () => {
+  await logOnFailure('[lot-recost] recost failed', async () => {
     if (!(await isRecostDone(database))) {
       await write(recostIn);
     }
   });
-
-  if (isLeft(result)) {
-    logFailure('[lot-recost] recost failed', bifold(result));
-  }
 };

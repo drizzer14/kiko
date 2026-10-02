@@ -320,9 +320,23 @@ Open items, deferred (see `FINDINGS.md`):
 
 - **SEC-5** — the export key is copied to the general system pasteboard, with
   no expiry and no local-only restriction.
-- **SEC-3** — on import, secrets are validated only after the database has
-  already been replaced.
-- **SEC-4** — import/restore can leave orphaned Keychain items behind.
+- **SEC-4** — a restore can leave orphaned Keychain items behind (the
+  accounts it replaces keep theirs). Deleting one account clears its own
+  items (`accountsRepo.remove`, after the commit).
+
+On import, the credentials block is validated before the database is replaced
+(`secrets/is-export-secrets.ts`): a field present with the wrong shape refuses
+the file, while a missing or empty array means no secrets, and a secret for an
+account the file does not carry is dropped. A restore keeps this device's app
+lock setting (`settings.lockEnabled`), its EODHD call count, and its
+notifications start, whatever the file carries
+(`KEPT_FROM_LIVE_ON_RESTORE`, `src/db/kept-from-live-on-restore.ts`), also
+when the file has no settings row. A Keychain write that fails after the data
+committed does not fail the import: the screen shows the success and names the
+connections (Monobank, Binance, EODHD) to set up again. Failing to clear an
+account's Keychain items after its delete is logged and never fails the
+delete; a Binance connect on a new account that cannot create the row clears
+the key pair it stored first.
 
 ## Next steps
 

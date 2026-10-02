@@ -18,11 +18,6 @@ jest.mock('@kiko/data-transfer/import-data', () => ({
   importData: (...args: unknown[]) => mockImportData(...args),
 }));
 
-const mockReplanRestoredReminders = jest.fn();
-jest.mock('@kiko/reminders/use-reminder-scheduler', () => ({
-  replanRestoredReminders: (...args: unknown[]) => mockReplanRestoredReminders(...args),
-}));
-
 jest.mock('@react-native-clipboard/clipboard', () => ({
   getString: jest.fn().mockResolvedValue(''),
 }));
@@ -62,7 +57,6 @@ describe('ImportDataScreen', () => {
     mockPick.mockReset();
     mockImportData.mockReset();
     mockKeepLocalCopy.mockReset();
-    mockReplanRestoredReminders.mockReset().mockResolvedValue(undefined);
     // The "restored language" test below drives a REAL i18n.changeLanguage
     // call (only importData is mocked); reset it before every test so a
     // language switch never leaks into a later test's assertions — same
@@ -178,6 +172,7 @@ describe('ImportDataScreen', () => {
       accountsRestored: 2,
       holdingsRestored: 3,
       transactionsRestored: 10,
+      unrestoredCredentials: [],
     });
 
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
@@ -213,6 +208,7 @@ describe('ImportDataScreen', () => {
       accountsRestored: 1,
       holdingsRestored: 1,
       transactionsRestored: 1,
+      unrestoredCredentials: [],
     });
 
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
@@ -263,6 +259,7 @@ describe('ImportDataScreen', () => {
       holdingsRestored: 3,
       transactionsRestored: 10,
       languageRestored: 'uk',
+      unrestoredCredentials: [],
     });
 
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
@@ -277,37 +274,71 @@ describe('ImportDataScreen', () => {
     expect(await findByText('Імпорт завершено — відновлено рахунків: 2.')).toBeTruthy();
   });
 
-  // The restored language change re-plans too, so the restored reminders
-  // must have restarted their ignored counts before it.
-  it('re-plans the restored reminders once, before the restored language applies', async () => {
-    const changeLanguage = jest.spyOn(i18n, 'changeLanguage');
-    mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
-    mockImportData.mockResolvedValue({
-      accountsRestored: 1,
-      holdingsRestored: 1,
-      transactionsRestored: 1,
-      languageRestored: 'uk',
+  describe('when a saved key could not be written after the data was restored', () => {
+    const pickAndConfirmImport = async () => {
+      mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
+
+      const screen = await renderScreen();
+
+      await fireEvent.press(screen.getByTestId('settings-button-pick-file'));
+      await waitFor(() => expect(mockPick).toHaveBeenCalled());
+      await fireEvent.changeText(
+        screen.getByPlaceholderText('Paste the key from your export'),
+        VALID_KEY,
+      );
+      await fireEvent.press(screen.getByTestId('settings-button-import'));
+      await fireEvent.press(await screen.findByText('Replace data'));
+
+      return screen;
+    };
+
+    it('shows the success and names the connections to set up again, with no failure alert', async () => {
+      mockImportData.mockResolvedValue({
+        accountsRestored: 2,
+        languageRestored: null,
+        unrestoredCredentials: ['monobank', 'binance', 'eodhd'],
+      });
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+      const { findByText } = await pickAndConfirmImport();
+
+      expect(await findByText('Import complete — 2 accounts restored.')).toBeTruthy();
+      expect(
+        await findByText(
+          'Your data was restored, but the saved keys for Monobank, Binance, EODHD could not be stored on this iPhone. Add them again to reconnect.',
+        ),
+      ).toBeTruthy();
+      expect(alertSpy).not.toHaveBeenCalled();
     });
 
-    const view = await renderScreen();
+    it('writes the message in the restored language', async () => {
+      mockImportData.mockResolvedValue({
+        accountsRestored: 1,
+        languageRestored: 'uk',
+        unrestoredCredentials: ['eodhd'],
+      });
 
-    await fireEvent.press(view.getByTestId('settings-button-pick-file'));
-    await waitFor(() => expect(mockPick).toHaveBeenCalled());
-    await fireEvent.changeText(
-      view.getByPlaceholderText('Paste the key from your export'),
-      VALID_KEY,
-    );
-    await fireEvent.press(view.getByTestId('settings-button-import'));
-    await fireEvent.press(await view.findByText('Replace data'));
-    await view.findByText('Імпорт завершено — відновлено рахунків: 1.');
+      const { findByText } = await pickAndConfirmImport();
 
-    expect(mockReplanRestoredReminders).toHaveBeenCalledTimes(1);
-    expect(mockReplanRestoredReminders.mock.invocationCallOrder[0]).toBeGreaterThan(
-      mockImportData.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
-    );
-    expect(mockReplanRestoredReminders.mock.invocationCallOrder[0]).toBeLessThan(
-      changeLanguage.mock.invocationCallOrder[0] ?? 0,
-    );
+      expect(
+        await findByText(
+          'Дані відновлено, але збережені ключі для EODHD не вдалося зберегти на цьому iPhone. Додайте їх ще раз, щоб підключитися знову.',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('shows no such message when every saved key was written', async () => {
+      mockImportData.mockResolvedValue({
+        accountsRestored: 1,
+        languageRestored: null,
+        unrestoredCredentials: [],
+      });
+
+      const { findByText, queryByText } = await pickAndConfirmImport();
+
+      expect(await findByText('Import complete — 1 accounts restored.')).toBeTruthy();
+      expect(queryByText(/could not be stored on this iPhone/)).toBeNull();
+    });
   });
 
   it('shows a wrong-key-specific error when importData throws a decrypt-prefixed error', async () => {
@@ -352,6 +383,5 @@ describe('ImportDataScreen', () => {
         'This does not look like a valid Kiko export file.',
       ),
     );
-    expect(mockReplanRestoredReminders).not.toHaveBeenCalled();
   });
 });

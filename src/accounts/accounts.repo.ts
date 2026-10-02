@@ -11,12 +11,28 @@ import {
   transactions,
 } from '@kiko/db';
 import { asc, eq, sql } from 'drizzle-orm';
+import { logOnFailure } from '@kiko/diagnostics';
+import { clearToken } from '@kiko/monobank/token';
 import type { Money } from '@kiko/currency/money';
 import type { Currency } from '@kiko/currency/currency';
+import { clearCredentials } from '@kiko/crypto-sync/binance';
 import { SYNCED_AT_FIELD } from '@kiko/holdings/holding-metadata';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 import { clearLoanLinksForHoldingsDatabaseTransaction } from '@kiko/holdings/repo';
 import { isSyncedAccount, type SyncedInstitution } from '@kiko/holdings/deletable';
+
+// A failed first Connect stores its Monobank token or Binance key pair under
+// the account's id before any sync makes the account synced, so a deletable
+// account can still own one. Cleared after the delete commits, like a
+// disconnect does: the account is gone by then, so nothing else could ever
+// clear them, and a clear that fails first would leave a live account behind.
+// Never rejects: the delete has committed, so a failed clear is logged, not
+// shown as a failed delete that would skip the reminders re-plan.
+const clearKeychainItems = async (accountId: string): Promise<void> => {
+  for (const clear of [clearToken, clearCredentials]) {
+    await logOnFailure('[accounts] a Keychain item could not be cleared', () => clear(accountId));
+  }
+};
 
 // The next free grid slot for a new account, read inside the same write
 // transaction as the insert so a concurrent create cannot observe a stale
@@ -59,7 +75,7 @@ const nextSortOrder = async (
 };
 
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
-  Partial<Pick<AccountRow, 'id' | 'institution' | 'bankId' | 'sortOrder' | 'color'>>;
+  Partial<Pick<AccountRow, 'id' | 'institution' | 'bankId' | 'sortOrder' | 'color' | 'icon'>>;
 
 type NewCashAccount = {
   name: string;
@@ -318,7 +334,7 @@ export const accountsRepo = {
       const row = rows.at(0);
 
       if (!row) {
-        return;
+        return false;
       }
 
       if (isSyncedAccount(row)) {
@@ -351,5 +367,7 @@ export const accountsRepo = {
       );
       await databaseTransaction.delete(holdings).where(eq(holdings.accountId, accountId));
       await databaseTransaction.delete(accounts).where(eq(accounts.id, accountId));
-    }),
+
+      return true;
+    }).then((isRemoved) => (isRemoved ? clearKeychainItems(accountId) : undefined)),
 } satisfies Repository;

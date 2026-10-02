@@ -1,9 +1,14 @@
 // src/data-transfer/payload.d.ts
 import type { DataSnapshot } from './snapshot/data-snapshot';
 
+/**
+ * Every field is optional because a restore reads what a file holds: a build
+ * writes both arrays on every export, but a file from an earlier build, or one
+ * made with no saved key, may lack any of them.
+ */
 export type ExportSecrets = {
-  monobankTokens: { accountId: string; token: string }[];
-  binanceCredentials: { accountId: string; apiKey: string; secret: string }[];
+  monobankTokens?: { accountId: string; token: string }[];
+  binanceCredentials?: { accountId: string; apiKey: string; secret: string }[];
   /** Absent in a file exported with no saved key, or before the key existed. */
   eodhdKey?: string;
 };

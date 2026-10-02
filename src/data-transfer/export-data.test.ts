@@ -75,7 +75,7 @@ describe('exportData', () => {
       ciphertext: string;
     };
     expect(envelope.format).toBe('kiko-export');
-    expect(envelope.version).toBe(1);
+    expect(envelope.version).toBe(2);
     expect(typeof envelope.nonce).toBe('string');
     expect(typeof envelope.ciphertext).toBe('string');
 

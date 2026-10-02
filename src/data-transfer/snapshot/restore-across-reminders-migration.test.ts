@@ -18,6 +18,16 @@ import { readDataSnapshot } from './read-snapshot';
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
 
+const RESTORED_AT = new Date(2026, 9, 1, 12, 0).getTime();
+
+beforeEach(() => {
+  jest.spyOn(Date, 'now').mockReturnValue(RESTORED_AT);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
 const openDatabase = (): DatabaseSync => {
   const database = new DatabaseSync(':memory:');
 
@@ -81,8 +91,32 @@ describe('restoring across the reminders migration', () => {
       mockDatabase
         .prepare('SELECT reminder_offer_dismissals, notifications_deliverable_since FROM settings')
         .all(),
-    ).toEqual([{ reminder_offer_dismissals: null, notifications_deliverable_since: null }]);
+    ).toEqual([{ reminder_offer_dismissals: null, notifications_deliverable_since: 5 }]);
   });
+
+  // When iOS first allowed notifications is a fact about this device, so a file
+  // never changes it: the reminders' ignored count starts from it.
+  it.each([
+    ['this device has it', 5],
+    ['this device has none', null],
+  ])(
+    'keeps this device’s notifications start when %s, whatever the file carries',
+    async (_name, liveSince) => {
+      mockDatabase = openDatabase();
+      mockDatabase.exec('UPDATE settings SET notifications_deliverable_since = 9');
+      const exported = JSON.parse(JSON.stringify(await readDataSnapshot())) as DataSnapshot;
+
+      mockDatabase = openDatabase();
+      mockDatabase
+        .prepare('UPDATE settings SET notifications_deliverable_since = ?')
+        .run(liveSince);
+      await restoreDataSnapshot(exported);
+
+      expect(
+        mockDatabase.prepare('SELECT notifications_deliverable_since FROM settings').all(),
+      ).toEqual([{ notifications_deliverable_since: liveSince }]);
+    },
+  );
 
   it('round-trips every reminder column and the offer dismissals through an export and an import', async () => {
     mockDatabase = openDatabase();
@@ -98,6 +132,14 @@ describe('restoring across the reminders migration', () => {
 
     const restored = await readDataSnapshot();
 
+    // The start and the snooze belong to the device and time the backup was
+    // made on: see the restart test below.
+    const restartedReminders = exported.reminders.map((reminder) => ({
+      ...reminder,
+      activeSince: RESTORED_AT,
+      lastSnoozedAt: null,
+    }));
+
     expect(restored.reminders).toEqual([
       {
         id: 'reminder-1',
@@ -106,9 +148,9 @@ describe('restoring across the reminders migration', () => {
         schedule: { frequency: 'weekly', minuteOfDay: 1200, weekdays: [1] },
         pausedAt: 40,
         pauseReason: 'user',
-        activeSince: 10,
+        activeSince: RESTORED_AT,
         lastEngagedAt: 20,
-        lastSnoozedAt: 30,
+        lastSnoozedAt: null,
         createdAt: 1,
         updatedAt: 2,
       },
@@ -118,7 +160,49 @@ describe('restoring across the reminders migration', () => {
     // (`withImportTimesRezoned`), as no live device is left to retry it.
     expect(restored).toEqual({
       ...exported,
+      reminders: restartedReminders,
       settings: exported.settings.map((row) => ({ ...row, importTimesRezoned: true })),
     });
+  });
+
+  // Counted from the backup, every reminder sent since then would read as
+  // ignored and back-off pause on the first re-plan, and a restored snooze may
+  // have no request on this device. The restart is part of the restore's own
+  // transaction, so a kill right after the commit cannot leave the old start.
+  it('restarts every restored reminder from now and forgets its snooze, keeping its pause and engagement', async () => {
+    mockDatabase = openDatabase();
+    insertAccount(mockDatabase, 'account-1');
+    insertAccount(mockDatabase, 'account-2');
+    insertReminder(mockDatabase, 'reminder-1', 'account-1');
+    insertReminder(mockDatabase, 'reminder-2', 'account-2');
+    const exported = JSON.parse(JSON.stringify(await readDataSnapshot())) as DataSnapshot;
+
+    mockDatabase = openDatabase();
+    await restoreDataSnapshot(exported);
+
+    expect(
+      mockDatabase
+        .prepare(
+          'SELECT id, active_since, last_snoozed_at, paused_at, pause_reason, last_engaged_at FROM reminders ORDER BY id',
+        )
+        .all(),
+    ).toEqual([
+      {
+        id: 'reminder-1',
+        active_since: RESTORED_AT,
+        last_snoozed_at: null,
+        paused_at: 40,
+        pause_reason: 'user',
+        last_engaged_at: 20,
+      },
+      {
+        id: 'reminder-2',
+        active_since: RESTORED_AT,
+        last_snoozed_at: null,
+        paused_at: 40,
+        pause_reason: 'user',
+        last_engaged_at: 20,
+      },
+    ]);
   });
 });

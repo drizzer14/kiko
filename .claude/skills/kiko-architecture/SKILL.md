@@ -1678,7 +1678,15 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   EODHD key only when present — a legacy file without `eodhdKey` restores
   fine. A restore keeps this device's live `settings.quoteQuota` (EODHD
   calls already spent on this key today — device/key state, like the key
-  itself), never the file's (`restore-snapshot.ts`). `restoreExportSecrets` still
+  itself), `settings.lockEnabled` (the app lock is turned off only after
+  `confirmOwner` in Settings, so a file never decides it), and
+  `settings.notificationsDeliverableSince` (when iOS first allowed
+  notifications on this device), never the file's. They are the one list
+  `KEPT_FROM_LIVE_ON_RESTORE` (`src/db/kept-from-live-on-restore.ts`), read
+  by `restore-snapshot.ts` and by `settings-columns.test.ts`, which
+  classifies every settings column as kept-live or from-file. A file with
+  no key for one of them, or no settings row at all, still keeps the live
+  value: the restore always inserts the live settings row. `restoreExportSecrets` still
   never imports `db/keys/db-key.ts`: an older file that still carries a
   `dbKeyHex` field (from before that field was dropped) is read through
   as an unknown, unrestored property — re-storing a FOREIGN device's
@@ -1686,10 +1694,29 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   brick the importing device's own encrypted database on its very next
   launch (wrong key at `resolveDbKey()`), which is why the field was
   dropped rather than kept display-only.
+- **The `secrets` block is validated BEFORE the restore, not during it, and
+  reads tolerantly.** `importData` writes the Keychain items after
+  `restoreDataSnapshot` commits, so a malformed block (`isExportSecrets`,
+  `secrets/is-export-secrets.ts`: a field that is present with the wrong
+  shape, checked through a `Record<keyof ExportSecrets, …>` so a new field
+  needs its own check) is refused as "not a valid Kiko export file" while the
+  live database is still untouched. A field a file lacks is not a fault:
+  a missing or empty `monobankTokens`/`binanceCredentials` means no
+  secrets and the restore goes on, and a secret whose account the file does
+  not carry (an account deleted before the export) is dropped by
+  `restoreExportSecrets(secrets, accountIds)` with no error. A new secret
+  class in `ExportSecrets` extends that guard in the same change. A Keychain
+  write that fails after the commit is not an import failure:
+  `restoreExportSecrets` never rejects, tries every secret on its own, and
+  resolves with the connections it could not write (`'monobank'`,
+  `'binance'`, `'eodhd'`); `importData` returns them as
+  `unrestoredCredentials`, still runs the market refresh and the loan
+  auto-link, and the screen shows the success plus a line naming the
+  connections to set up again.
 - **A legacy export missing a newer field must still restore.**
   `restoreExportSecrets` treats an entirely absent `secrets` object (an export
-  written before the credentials toggle, or with it off) as a no-op, not an
-  error — `import-data.ts` still restores `payload.tables` regardless. Follow
+  written before the credentials toggle, or with it off), and a missing or
+  empty array in it, as a no-op, not an error — `import-data.ts` still restores `payload.tables` regardless. Follow
   the same pattern for any future field added to `ExportPayload`: make its
   absence in an older file a no-op, never a hard failure.
 - **A legacy snapshot's missing `balanceSetAt` is BACKFILLED, not left
@@ -1824,6 +1851,15 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   decrypt, and relies on `@noble/ciphers`' GCM tag verification to fail closed
   on a wrong key or tampered ciphertext — see the file for the exact error
   strings. State nothing about the envelope beyond what `envelope.ts` shows.
+- **A migration forces an `EXPORT_VERSION` decision.** A build refuses a file
+  whose `version` it does not read, which keeps an older build from restoring
+  a newer file and then running a launch-time upgrade (the import-time
+  rezone) a second time on data that already had it. A new reader keeps
+  reading the older versions (`READABLE_EXPORT_VERSIONS`). `envelope.test.ts`
+  pins the version to the migration count at the last decision, so a new
+  migration fails it until the version is bumped or the count is recorded
+  with the reason no bump is needed (a column riding inside an existing row
+  and derived on restore needs none).
 
 ## Reminders (local notifications)
 
@@ -1855,9 +1891,10 @@ what a change must keep.
   accounts-list order: `sort_order`, `created_at`, `id`; it reads no
   transactions, so the list subscribes to `reminders` and `accounts`
   only), and `manualEntryDaysQuery(accountId,
-  since)` (see "Offer"). Restore: `restartAfterRestore` (one `UPDATE
-  reminders SET active_since = now, last_snoozed_at = NULL`; the pause
-  and engagement columns are kept). User writes: `create`,
+  since)` (see "Offer"). Restore: no repository method:
+  `restoreDataSnapshot` inserts each restored reminder with `activeSince`
+  set to the restore time and `lastSnoozedAt` null, the pause and
+  engagement columns kept, inside its own transaction. User writes: `create`,
   `update` (a changed schedule restarts `activeSince` and ends a
   back-off pause, but not a user pause; it keeps a pending snooze,
   because iOS keeps it), `setPaused` (resume restarts `activeSince`; a
@@ -1952,8 +1989,8 @@ what a change must keep.
   `syncReminders` directly, so an older re-plan can never overwrite a
   newer one. A page write goes through `writeThenReplan(write, t)`
   (same unit): a failed write shows the save-error alert and does not
-  re-plan. After a backup restore, call `replanRestoredReminders()`
-  instead (see "Backup/restore").
+  re-plan. After a backup restore, `importData` calls
+  `replanRestoredReminders()` instead (see "Backup/restore").
 - **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
   params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
   (`src/screens/settings/account-reminders/`, params `{ accountId,
@@ -2119,27 +2156,44 @@ what a change must keep.
   `reminders` rows in the same transaction, before the account row (NO
   ACTION FK), next to the `sync_state` delete. The Accounts screen runs
   it through `writeThenReplan`, so the deleted reminders' pending
-  requests go at once.
+  requests go at once. After the commit it also clears the account's own
+  Keychain items (`clearToken`, `clearCredentials`): a failed first
+  Connect stores a token or key pair under the account's id while the
+  account still reads as manual, so a deletable account can own one. The
+  clear never rejects (a failed one is logged): the delete has committed,
+  and a rejection would show the save error and skip the re-plan. On the
+  create form, a Binance connect that cannot create the account row
+  clears the key pair the field stored first (`connectBinance` in
+  `account-form.screen.tsx`, through `logOnFailure`), so no pair stays
+  under an id with no account. The create inserts the picked icon in the
+  same write (a second write that failed after the row existed would
+  read as no row and clear the pair of an account that is there).
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by
   `id`. `restoreDataSnapshot` deletes `reminders` before
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders
   ?? []`, so a pre-reminders `.kiko` restores with no reminders. The
-  settings row is restored whole, so both reminder settings columns
-  come from the backup (`restore-across-reminders-migration.test.ts`
-  pins the old-backup case). After a successful `importData`,
-  `ImportData` awaits `replanRestoredReminders()`
-  (`src/reminders/use-reminder-scheduler/`) BEFORE it applies the
-  restored language: the language change re-plans too, and that
-  re-plan must see the restarted counts. The helper runs
-  `restartAfterRestore()` first (counted from the backup, every
-  reminder would read as ignored and back-off pause at once; a restored
-  snooze has no request on this device), then
+  settings row comes from the backup except the columns this device
+  keeps (`KEPT_FROM_LIVE_ON_RESTORE`), so of the two reminder settings
+  columns only `reminderOfferDismissals` comes from the backup:
+  `notificationsDeliverableSince` stays this device's, because a file
+  from another device cannot know when iOS first allowed notifications
+  here (`restore-across-reminders-migration.test.ts` pins the old-backup
+  case). `importData` awaits
+  `replanRestoredReminders()` (`src/reminders/use-reminder-scheduler/`)
+  right after the snapshot commits, ahead of every later step: the
+  re-plan drops the replaced data's pending requests and snoozes, and a
+  later step that threw would leave them on the device to fire beside
+  the restored reminders; the screen applies the restored language only
+  after `importData` resolves, and that language change re-plans too, so
+  it sees the restarted counts. The restart itself (counted from the
+  backup, every reminder would read as ignored and back-off pause at once;
+  a restored snooze has no request on this device) happens inside the
+  restore's transaction, so a kill or a re-plan right after the commit
+  cannot see the backup's start. The helper runs
   `remindersNative.replaceRequests([], [])` (every pending request goes,
   snoozes included: a snooze pending here belongs to the replaced data
   and would fire beside the regular reminder), then `replanReminders()`.
-  A failed step is logged and still re-plans; it never rejects. Do not move the restart into
-  `restoreDataSnapshot`'s transaction: that breaks the exact round-trip
-  pinned by the test above.
+  A failed drop is logged and still re-plans; it never rejects.
 - SQLite's multi-argument `max(a, b)` returns NULL as soon as one
   argument is NULL; for "latest of a column and a value" use
   `coalesce(max(col, v), col, v)` (see `latest()` in

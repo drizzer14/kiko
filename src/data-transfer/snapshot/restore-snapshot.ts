@@ -20,9 +20,11 @@ import {
   write,
   type database,
   chunkForTable,
+  KEPT_FROM_LIVE_ON_RESTORE,
 } from '@kiko/db';
 import { eq } from 'drizzle-orm';
 import { maxOf } from '@kiko/numbers';
+import maybe, { foldMap } from 'fnts/maybe';
 import { SETTINGS_ID } from '@kiko/settings';
 import { withRestoredPrices } from '@kiko/prices/quote-quota';
 import { entityColorsDark } from '@kiko/design-system/palette';
@@ -360,21 +362,37 @@ const withImportTimesRezoned = (
   };
 };
 
+type LiveDeviceSettings = Pick<SettingsRow, (typeof KEPT_FROM_LIVE_ON_RESTORE)[number]>;
+
+const NO_LIVE_DEVICE_SETTINGS = {
+  quoteQuota: null,
+  lockEnabled: false,
+  notificationsDeliverableSince: null,
+} satisfies LiveDeviceSettings;
+
+const keptFromLive = (row: SettingsRow): LiveDeviceSettings =>
+  Object.fromEntries(
+    KEPT_FROM_LIVE_ON_RESTORE.map((column) => [column, row[column]]),
+  ) as LiveDeviceSettings;
+
 /**
- * The EODHD quote quota counts the calls this device's own key spent today,
- * not the backed-up device's, so a restore keeps the live row's quota and
- * never the backup's (minus what it knew of the replaced prices: see
- * `withRestoredPrices`).
+ * The settings this device owns (`KEPT_FROM_LIVE_ON_RESTORE`), which a restore
+ * keeps from the live row and never takes from the backup. The EODHD quote
+ * quota counts the calls this device's own key spent today, not the
+ * backed-up device's (minus what it knew of the replaced prices: see
+ * `withRestoredPrices`). The app lock is turned off only after the owner
+ * confirms in Settings, so a file, which can carry any value or none, never
+ * decides it.
  */
-const readLiveQuoteQuota = async (
+const readLiveDeviceSettings = async (
   databaseTransaction: typeof database,
-): Promise<SettingsRow['quoteQuota']> => {
+): Promise<LiveDeviceSettings> => {
   const rows = await databaseTransaction
-    .select({ quoteQuota: settings.quoteQuota })
+    .select()
     .from(settings)
     .where(eq(settings.id, SETTINGS_ID));
 
-  return rows.at(0)?.quoteQuota ?? null;
+  return foldMap(maybe(rows.at(0)), keptFromLive) ?? NO_LIVE_DEVICE_SETTINGS;
 };
 
 /** The rate-row fields `withRatesNormalizedToUah` reads/rewrites; every other
@@ -729,6 +747,20 @@ export const restoreDataSnapshot = (
       }
     };
 
+    // A file with no settings row would otherwise leave the row to the next
+    // launch's `ensure()`, which creates it with the defaults: the live lock
+    // and quota are carried by a row of their own.
+    const settingsRowsToInsert = () => {
+      const liveSettings = {
+        ...liveDeviceSettings,
+        quoteQuota: withRestoredPrices(liveDeviceSettings.quoteQuota),
+      };
+
+      return settingsToInsert.length === 0
+        ? [{ id: SETTINGS_ID, ...liveSettings }]
+        : settingsToInsert.map((row) => ({ ...row, ...liveSettings }));
+    };
+
     const insertRatesAndSettings = async (): Promise<void> => {
       // Migration 0042's own restore mirror: a pre-star `.kiko` export can
       // carry a legacy cross/inverse row `rateTableFromRows`/`rateTableAt`
@@ -749,10 +781,7 @@ export const restoreDataSnapshot = (
         await databaseTransaction.insert(currencyRateHistory).values(part);
       }
 
-      for (const part of chunkForTable(
-        settings,
-        settingsToInsert.map((row) => ({ ...row, quoteQuota: withRestoredPrices(liveQuoteQuota) })),
-      )) {
+      for (const part of chunkForTable(settings, settingsRowsToInsert())) {
         await databaseTransaction.insert(settings).values(part);
       }
       // `?? []`: see the doc comment above — an export that predates
@@ -774,14 +803,26 @@ export const restoreDataSnapshot = (
 
     // `?? []`: an export from before reminders existed carries no
     // `reminders` key, and restores with no reminders. Runs after the
-    // accounts insert, which a reminder's `accountId` references.
+    // accounts insert, which a reminder's `accountId` references. Each one
+    // restarts from now: counted from the backup, every reminder sent since
+    // would read as ignored and back-off pause on the first re-plan, and a
+    // restored snooze may have no request on this device. A pause stays, as the
+    // backup had it. Done here, not in a write after the commit, so a kill
+    // between the two cannot leave the backup's start behind.
     const insertReminders = async (): Promise<void> => {
-      for (const part of chunkForTable(reminders, snapshot.reminders ?? [])) {
+      const restoredAt = Date.now();
+      const restartedReminders = (snapshot.reminders ?? []).map((reminder) => ({
+        ...reminder,
+        activeSince: restoredAt,
+        lastSnoozedAt: null,
+      }));
+
+      for (const part of chunkForTable(reminders, restartedReminders)) {
         await databaseTransaction.insert(reminders).values(part);
       }
     };
 
-    const liveQuoteQuota = await readLiveQuoteQuota(databaseTransaction);
+    const liveDeviceSettings = await readLiveDeviceSettings(databaseTransaction);
 
     await deleteAllTables();
     await insertAccountsHoldingsCategories();

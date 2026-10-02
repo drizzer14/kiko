@@ -57,7 +57,7 @@ const tableNameOf = (table: unknown): string => {
   throw new Error('unknown table');
 };
 
-// The restore reads the live settings row's quote quota before it deletes it;
+// The restore reads the live settings row's quote quota and lock before it deletes it;
 // these fakes start from no settings row.
 const noLiveSettings = {
   select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
@@ -151,7 +151,18 @@ describe('restoreDataSnapshot', () => {
     ]);
     // `categories` appears here even though this snapshot carries none: the
     // `loan_interest` reseed (below) always runs, even into an empty table.
-    expect(insertedTables).toEqual(['accounts', 'holdings', 'categories', 'transactions']);
+    // And `settings`, because the live lock and quota ride on a row of their own
+    // when the snapshot carries no settings row.
+    expect(insertedTables).toEqual([
+      'accounts',
+      'holdings',
+      'categories',
+      'transactions',
+      'settings',
+    ]);
+    expect(insertedRows.settings).toEqual([
+      { id: 1, lockEnabled: false, quoteQuota: null, notificationsDeliverableSince: null },
+    ]);
     expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
     // `{ id: 'h1' }` carries no `balanceSetAt` key — the legacy-backfill path
     // (see the dedicated tests below) stamps `null` since `t1` (this test's
@@ -171,9 +182,10 @@ describe('restoreDataSnapshot', () => {
 
     await restoreDataSnapshot(emptySnapshot);
 
-    // `categories` is the one exception: the `loan_interest` reseed always
-    // inserts, even from an otherwise-empty snapshot.
-    expect(Object.keys(insertedRows)).toEqual(['categories']);
+    // `categories` is the exception: the `loan_interest` reseed always
+    // inserts, even from an otherwise-empty snapshot. So is `settings`: the
+    // live lock and quota ride on a row of their own.
+    expect(Object.keys(insertedRows)).toEqual(['categories', 'settings']);
   });
 
   // A pre-0039 `.kiko` file was exported before `loan_interest` existed, and
@@ -356,7 +368,8 @@ describe('restoreDataSnapshot', () => {
     expect(Object.keys(insertedRows)).not.toContain('bondRegister');
   });
 
-  it('inserts a snapshot reminders row after its account', async () => {
+  it('inserts a snapshot reminders row after its account, restarted from now with its snooze forgotten', async () => {
+    const dateNow = jest.spyOn(Date, 'now').mockReturnValue(777);
     const insertedTables: string[] = [];
     const insertedRows: Record<string, unknown[]> = {};
 
@@ -380,9 +393,11 @@ describe('restoreDataSnapshot', () => {
     });
 
     expect(insertedRows.reminders).toEqual([
-      { id: 'reminder-1', accountId: 'a1', lastSnoozedAt: 5 },
+      { id: 'reminder-1', accountId: 'a1', activeSince: 777, lastSnoozedAt: null },
     ]);
     expect(insertedTables.indexOf('reminders')).toBeGreaterThan(insertedTables.indexOf('accounts'));
+
+    dateNow.mockRestore();
   });
 
   // Known limit: an export made before reminders existed restores with no
@@ -536,7 +551,7 @@ describe('restoreDataSnapshot', () => {
       'pricePoints',
       'bondRegister',
     ]);
-    expect(insertedTables).toEqual(['accounts', 'holdings', 'categories']);
+    expect(insertedTables).toEqual(['accounts', 'holdings', 'categories', 'settings']);
     expect(insertedRows.accounts).toEqual([
       sourceAccount,
       {
@@ -1093,7 +1108,9 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           importTimesRezoned: true,
           dedupKeysUpgraded: true,
+          lockEnabled: false,
           quoteQuota: null,
+          notificationsDeliverableSince: null,
         },
       ]);
     });
@@ -1116,7 +1133,9 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           importTimesRezoned: true,
           dedupKeysUpgraded: true,
+          lockEnabled: false,
           quoteQuota: null,
+          notificationsDeliverableSince: null,
         },
       ]);
     });
@@ -1139,7 +1158,14 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedRows.transactions).toEqual([legacyShapedTransaction]);
-      expect(insertedRows.settings).toEqual([{ ...alreadyMigratedSettingsRow, quoteQuota: null }]);
+      expect(insertedRows.settings).toEqual([
+        {
+          ...alreadyMigratedSettingsRow,
+          lockEnabled: false,
+          quoteQuota: null,
+          notificationsDeliverableSince: null,
+        },
+      ]);
     });
   });
 
@@ -1193,7 +1219,9 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
+          lockEnabled: false,
           quoteQuota: null,
+          notificationsDeliverableSince: null,
         },
       ]);
     });
@@ -1219,7 +1247,9 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
+          lockEnabled: false,
           quoteQuota: null,
+          notificationsDeliverableSince: null,
         },
       ]);
     });
@@ -1247,7 +1277,9 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
+          lockEnabled: false,
           quoteQuota: null,
+          notificationsDeliverableSince: null,
         },
       ]);
     });

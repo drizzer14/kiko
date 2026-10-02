@@ -5,18 +5,20 @@ import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { recostStoredLots } from '@kiko/holdings/lot-recost';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
+import { replanRestoredReminders } from '@kiko/reminders/use-reminder-scheduler';
 
 import {
   decryptEnvelope,
   EXPORT_FORMAT,
-  EXPORT_VERSION,
+  isReadableExportVersion,
   type ExportEnvelope,
 } from './crypto/envelope';
 import { utf8Decode } from './utf8/utf8';
 import type { ExportPayload } from './payload';
 import { decodeBase64ToBytes } from './base64/base64';
-import { restoreExportSecrets } from './secrets/restore-secrets';
+import { isExportSecrets } from './secrets/is-export-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
+import { type ExportSecretKind, restoreExportSecrets } from './secrets/restore-secrets';
 
 type ImportSummary = {
   accountsRestored: number;
@@ -25,19 +27,26 @@ type ImportSummary = {
   /**
    * The imported settings row's `language`, or `null` when the row carries
    * none (or there is no settings row at all). A plain string code, not the
-   * app's `AppLanguage` type — this layer must not import i18n. The caller
+   * app's `AppLanguage` type, so this summary does not depend on the i18n
+   * catalogue's types. The caller
    * (`import-data.screen.tsx`) applies it via `i18n.changeLanguage` BEFORE
    * resolving the success alert's `t()` copy, so that alert renders in the
    * language the import just restored, not the pre-import one.
    */
   languageRestored: string | null;
+  /**
+   * The connections whose saved key or token the file carried but the Keychain
+   * would not take. The data is restored either way, so this is not a failure:
+   * the caller tells the user which connections to set up again.
+   */
+  unrestoredCredentials: readonly ExportSecretKind[];
 };
 
 const isExportEnvelope = (value: unknown): value is ExportEnvelope =>
   typeof value === 'object' &&
   value !== null &&
   (value as ExportEnvelope).format === EXPORT_FORMAT &&
-  (value as ExportEnvelope).version === EXPORT_VERSION &&
+  isReadableExportVersion((value as ExportEnvelope).version) &&
   typeof (value as ExportEnvelope).nonce === 'string' &&
   typeof (value as ExportEnvelope).ciphertext === 'string';
 
@@ -53,6 +62,9 @@ const REQUIRED_TABLE_KEYS = [
   'categoryOverrides',
 ] as const;
 
+const restoredAccountIds = (accountRows: readonly { id?: unknown }[]): ReadonlySet<string> =>
+  new Set(accountRows.flatMap(({ id }) => (typeof id === 'string' ? [id] : [])));
+
 const isExportPayload = (value: unknown): value is ExportPayload => {
   if (
     typeof value !== 'object' ||
@@ -62,14 +74,15 @@ const isExportPayload = (value: unknown): value is ExportPayload => {
     return false;
   }
 
-  const tables = (value as ExportPayload).tables;
+  const { tables, secrets } = value as ExportPayload;
 
   if (typeof tables !== 'object' || tables === null) {
     return false;
   }
 
-  return REQUIRED_TABLE_KEYS.every((key) =>
-    Array.isArray((tables as Record<string, unknown>)[key]),
+  return (
+    REQUIRED_TABLE_KEYS.every((key) => Array.isArray((tables as Record<string, unknown>)[key])) &&
+    (secrets === undefined || isExportSecrets(secrets))
   );
 };
 
@@ -152,11 +165,21 @@ export const importData = async (options: {
   }
 
   const { accountsRestored } = await restoreDataSnapshot(payload.tables);
-  await restoreExportSecrets(payload.secrets);
+  // Right after the commit, ahead of every later step: the re-plan drops the
+  // replaced data's pending requests and snoozes, and a later step that threw
+  // would leave them on the device to fire beside the restored reminders.
+  // Never rejects.
+  await replanRestoredReminders();
   // A backup made before the one-time lot recost restores with its flag
   // unset, so its stale sale costs are fixed before any screen reads them.
   // Local and quick, and it never rejects.
   await recostStoredLots();
+  // Never rejects: a secret the Keychain refuses comes back as a connection to
+  // set up again, so the steps below still run for data that is restored.
+  const unrestoredCredentials = await restoreExportSecrets(
+    payload.secrets,
+    restoredAccountIds(payload.tables.accounts),
+  );
 
   // A restored foreign-currency/metal/crypto holding needs its price/rate
   // visible without an app restart — a bulk restore bypasses the sync
@@ -190,5 +213,6 @@ export const importData = async (options: {
     holdingsRestored: payload.tables.holdings.length,
     transactionsRestored: payload.tables.transactions.length,
     languageRestored: payload.tables.settings.at(0)?.language ?? null,
+    unrestoredCredentials,
   };
 };

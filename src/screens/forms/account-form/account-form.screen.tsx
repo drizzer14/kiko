@@ -5,9 +5,10 @@ import {
   type FieldInstance,
 } from '@kiko/design-system/scroll-to-field';
 import { useSync } from '@kiko/sync/use-sync';
-import either, { isRight } from 'fnts/either';
 import { accountsRepo } from '@kiko/accounts';
+import either, { isRight } from 'fnts/either';
 import { useTranslation } from 'react-i18next';
+import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
@@ -18,6 +19,7 @@ import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
 import Divider from '@kiko/design-system/components/divider';
+import { clearCredentials } from '@kiko/crypto-sync/binance';
 import BankTypeField from '@kiko/screens/forms/bank-type-field';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -276,6 +278,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
       return Promise.reject(new Error('name-required'));
     }
+    // The icon goes in the same insert: a second write could fail after the row
+    // exists, and a Binance connect reads any failure here as "no row" and
+    // clears the key pair of an account that is there.
     accountCreate.current ??= (async () => {
       await accountsRepo.create({
         id: pendingAccountId,
@@ -284,12 +289,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // through createCashAccount and returns before this.
         kind,
         color,
+        icon,
         bankId: catalogId,
       });
-
-      if (icon !== null) {
-        await accountsRepo.setIcon(pendingAccountId, icon);
-      }
 
       return pendingAccountId;
     })().catch((error: unknown) => {
@@ -364,6 +366,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   const connectBinance = async (): Promise<boolean> => {
     if (!(await accountEnsured())) {
+      // The field stored its key pair under the pre-generated account id before
+      // this connect, and no row owns it now, so nothing else would ever clear
+      // it. A failed clear is logged: the connect still reports its own failure.
+      await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
+        clearCredentials(pendingAccountId),
+      );
+
       return false;
     }
 
@@ -540,10 +549,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     >
       <Box gap={4} testID="account-form">
         {/* One shared icon+name block for every kind, cash included: the icon
-            picker stays visible whatever the kind is. The cash create path
-            (createCashAccount) now persists the picked icon in its own atomic
-            insert, and the bank/crypto path sets it via setIcon on the returned
-            id below. */}
+            picker stays visible whatever the kind is. Both create paths
+            (createCashAccount and the shared create) persist the picked icon in
+            their own atomic insert. */}
         <View ref={nameFieldRef}>
           <HoldingIdentityField
             icons={KIKO_ENTITIES_ICONS}

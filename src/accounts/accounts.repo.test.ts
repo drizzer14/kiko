@@ -12,6 +12,17 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+// A deleted account's own Keychain items go with it, after the commit.
+const mockClearToken = jest.fn();
+jest.mock('@kiko/monobank/token', () => ({
+  clearToken: (accountId: string) => mockClearToken(accountId),
+}));
+
+const mockClearCredentials = jest.fn();
+jest.mock('@kiko/crypto-sync/binance', () => ({
+  clearCredentials: (accountId: string) => mockClearCredentials(accountId),
+}));
+
 import { Money } from '@kiko/currency/money';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
@@ -127,6 +138,15 @@ describe('accountsRepo', () => {
     await accountsRepo.create({ name: 'Savings', kind: 'bank', color: '#FFFFFF' });
 
     expect(inserts[0]).toMatchObject({ color: '#FFFFFF' });
+  });
+
+  it('create persists the chosen icon on the inserted account row', async () => {
+    const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await accountsRepo.create({ name: 'Savings', kind: 'bank', icon: 'banknote' });
+
+    expect(inserts[0]).toMatchObject({ icon: 'banknote' });
   });
 
   it('create appends the new account at sortOrder = max + 1', async () => {
@@ -846,5 +866,81 @@ describe('accountsRepo.remove', () => {
     await accountsRepo.remove('missing');
 
     expect(captured.deletedFrom).toEqual([]);
+    expect(mockClearToken).not.toHaveBeenCalled();
+    expect(mockClearCredentials).not.toHaveBeenCalled();
+  });
+
+  // A failed first Connect leaves a manual-looking account whose Keychain item
+  // (Monobank token or Binance key pair, keyed by the account id) the delete
+  // would otherwise orphan for good.
+  it('clears the account’s own Keychain items after the delete commits', async () => {
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
+      account: { id: 'acc-1', institution: null },
+      holdings: [{ id: 'hold-1' }],
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    const order: string[] = [];
+    mockClearToken.mockImplementation(async () => {
+      order.push(`token after ${captured.deletedFrom.length} deletes`);
+    });
+    mockClearCredentials.mockImplementation(async () => {
+      order.push(`credentials after ${captured.deletedFrom.length} deletes`);
+    });
+
+    await accountsRepo.remove('acc-1');
+
+    expect(mockClearToken).toHaveBeenCalledWith('acc-1');
+    expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
+    expect(order).toEqual(['token after 5 deletes', 'credentials after 5 deletes']);
+  });
+
+  // The account is already gone when the clear runs, so a failed clear is not a
+  // failed delete: a rejection would show the save error and skip the
+  // reminders re-plan the delete needs.
+  it('still resolves, and tries the other item, when a Keychain clear fails after the commit', async () => {
+    const { databaseTransaction } = makeRemoveDatabaseTransaction({
+      account: { id: 'acc-1', institution: null },
+      holdings: [],
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    mockClearToken.mockRejectedValueOnce(new Error('keychain delete failed SECRET'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(accountsRepo.remove('acc-1')).resolves.toBeUndefined();
+
+    expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+
+    warn.mockRestore();
+  });
+
+  it('also resolves when the key pair clear is the one that fails', async () => {
+    const { databaseTransaction } = makeRemoveDatabaseTransaction({
+      account: { id: 'acc-1', institution: null },
+      holdings: [],
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    mockClearCredentials.mockRejectedValueOnce(new Error('keychain delete failed'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(accountsRepo.remove('acc-1')).resolves.toBeUndefined();
+
+    expect(mockClearToken).toHaveBeenCalledWith('acc-1');
+
+    warn.mockRestore();
+  });
+
+  it('keeps the Keychain items of an account whose delete fails', async () => {
+    const { databaseTransaction } = makeRemoveDatabaseTransaction({
+      account: { id: 'acc-1', institution: 'monobank' },
+      holdings: [],
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(accountsRepo.remove('acc-1')).rejects.toThrow(/synced/);
+
+    expect(mockClearToken).not.toHaveBeenCalled();
+    expect(mockClearCredentials).not.toHaveBeenCalled();
   });
 });

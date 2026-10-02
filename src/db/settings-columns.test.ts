@@ -5,6 +5,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { settings } from './schema';
+import { KEPT_FROM_LIVE_ON_RESTORE } from './kept-from-live-on-restore';
 
 /**
  * A removed feature can leave a live-but-unread schema column behind
@@ -39,6 +40,31 @@ const DOCUMENTED_READERLESS_COLUMNS = [
   // deliberately not dropped (same additive-only class) — see the comment on
   // the column in schema.ts.
   'trendCategoryKeys',
+];
+
+// What a `.kiko` restore does with each column (`restoreDataSnapshot`): the
+// ones in `KEPT_FROM_LIVE_ON_RESTORE`, which the restore reads, belong to THIS
+// device and stay; every other column comes from the file. Like the readerless
+// list, the two lists are exact: a new column fails here until someone decides
+// which it is.
+const TAKEN_FROM_FILE_ON_RESTORE = [
+  'id',
+  'baseCurrency',
+  'lastSyncAt',
+  'defaultCategoryKey',
+  'lockGraceSeconds',
+  'language',
+  'appearance',
+  'lastSyncDisplayAt',
+  'lastFullSyncAt',
+  'trendCategoryKeys',
+  'trendFilter',
+  'failedSyncMonobankIds',
+  'statementMappings',
+  'dedupKeysUpgraded',
+  'importTimesRezoned',
+  'reminderOfferDismissals',
+  'lotsRecosted',
 ];
 
 const SCHEMA_PATH = join(__dirname, 'schema.ts');
@@ -91,6 +117,12 @@ describe('settings schema columns', () => {
     );
 
     expect(readerless.sort()).toEqual([...DOCUMENTED_READERLESS_COLUMNS].sort());
+  });
+
+  it('has every column classified as kept from the live row or taken from the file on a restore', () => {
+    expect(settingsColumns().sort()).toEqual(
+      [...KEPT_FROM_LIVE_ON_RESTORE, ...TAKEN_FROM_FILE_ON_RESTORE].sort(),
+    );
   });
 
   it('adds import_times_rezoned via migration 0043, defaulting to false', () => {

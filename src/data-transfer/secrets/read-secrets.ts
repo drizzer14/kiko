@@ -13,7 +13,7 @@ import type { ExportSecrets } from '../payload';
  * producing an `undefined` entry; no saved EODHD key leaves `eodhdKey` out.
  */
 export const readExportSecrets = async (accounts: AccountRow[]): Promise<ExportSecrets> => {
-  const monobankTokens: ExportSecrets['monobankTokens'] = [];
+  const monobankTokens: NonNullable<ExportSecrets['monobankTokens']> = [];
 
   for (const account of accounts.filter((row) => row.institution === 'monobank')) {
     const token = await readToken(account.id);
@@ -23,7 +23,7 @@ export const readExportSecrets = async (accounts: AccountRow[]): Promise<ExportS
     }
   }
 
-  const binanceCredentials: ExportSecrets['binanceCredentials'] = [];
+  const binanceCredentials: NonNullable<ExportSecrets['binanceCredentials']> = [];
 
   for (const account of accounts.filter((row) => row.institution === 'binance')) {
     const credentials = await readCredentials(account.id);
