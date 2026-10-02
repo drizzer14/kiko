@@ -71,7 +71,8 @@ const ColumnSelectField = <T extends string | number>({
         ))}
 
         {/* Trailing, not leading: "Not used" is an opt-OUT of an optional
-            column nobody starts on, unlike the bank picker's "Free" default. */}
+            column nobody starts on, unlike the bank picker's "Other bank"
+            fallback, which is a catalog row listed last. */}
         {allowNotUsed && (
           <SelectableRow
             selected={selected === undefined}

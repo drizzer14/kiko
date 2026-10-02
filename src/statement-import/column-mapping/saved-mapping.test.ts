@@ -46,6 +46,10 @@ describe('mappingKeyFor', () => {
     expect(mappingKeyFor(null, 'abc123')).toBe('header:abc123');
     expect(mappingKeyFor('not-a-real-bank', 'abc123')).toBe('header:abc123');
   });
+
+  it('keys the stored "other" bank by header, exactly like an account with no bank', () => {
+    expect(mappingKeyFor('other', 'abc123')).toBe('header:abc123');
+  });
 });
 
 describe('findSavedMapping', () => {
@@ -82,6 +86,16 @@ describe('findSavedMapping', () => {
     const result = findSavedMapping(saved, undefined, [OTHER_HEADER_ROW]);
 
     expect(result).toEqual({ mapping, exact: true });
+  });
+
+  it('finds the "other" bank file by its header: entry, never by a shared bank:other entry', () => {
+    const mapping = savedFor(OTHER_HEADER_ROW);
+    const saved = {
+      'bank:other': savedFor(HEADER_ROW),
+      'header:this-one': mapping,
+    };
+
+    expect(findSavedMapping(saved, 'other', [OTHER_HEADER_ROW])).toEqual({ mapping, exact: true });
   });
 
   it('does not fall back to a header: entry for a known bank with no saved bank mapping', () => {

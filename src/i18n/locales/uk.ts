@@ -234,11 +234,14 @@ export const uk: typeof en = {
       bankDisclaimer:
         'Кіко — незалежний застосунок. Це не банк, не є партнером та не пов’язаний з жодним банком.',
       bankImportOnly: 'Імпорт виписок.',
+      bankRequiredError: 'Оберіть банк.',
       bankType: 'Тип банку',
+      bankTypePlaceholder: 'Оберіть банк',
       bankTypeSheetTitle: 'Тип банку',
       broker: 'Брокер',
       brokerDisclaimer:
         'Кіко — незалежний застосунок. Він не пов’язаний із жодним брокером і не є його партнером.',
+      brokerRequiredError: 'Оберіть брокера.',
       brokerType: 'Брокер',
       brokerTypePlaceholder: 'Оберіть брокера',
       brokerTypeSheetTitle: 'Брокер',
@@ -265,7 +268,7 @@ export const uk: typeof en = {
       },
       metals: 'Дорогоцінні метали',
       namePlaceholder: 'Монобанк',
-      noBank: 'Довільний',
+      otherBank: 'Інший банк',
       otherBroker: 'Інший брокер',
       property: 'Майно',
     },

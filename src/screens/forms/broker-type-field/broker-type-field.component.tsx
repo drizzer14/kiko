@@ -15,6 +15,8 @@ const BrokerTypeField: FC<BrokerTypeFieldProps> = ({
   sheetTitle,
   selected,
   onSelect,
+  required,
+  error,
   testID,
 }) => {
   const { t } = useTranslation();
@@ -33,6 +35,8 @@ const BrokerTypeField: FC<BrokerTypeFieldProps> = ({
         onSelect={onSelect}
         labels={labels}
         placeholder={t('forms.account.brokerTypePlaceholder')}
+        required={required}
+        error={error}
         testID={testID}
       />
 

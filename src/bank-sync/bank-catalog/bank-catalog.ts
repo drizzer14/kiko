@@ -28,16 +28,25 @@ export const bankIds = [
   'oschadbank',
   'raiffeisen',
   'ukrgasbank',
+  'other',
 ] as const;
 
 export type BankId = (typeof bankIds)[number];
+
+/** `other` covers any bank not listed, the same as the broker catalog's own
+ * `other`, and is the LAST entry. It is a STORED id (migration 0049 gave
+ * every bank account that had none this one), so every reader treats it
+ * exactly as the NULL it replaced: no bank format, no live connection, no
+ * metals, and no saved column mapping keyed on it. */
+export const OTHER_BANK_ID = 'other' satisfies BankId;
 
 type BankCatalogEntry = {
   id: BankId;
   /** The plain bank name shown in the account-form picker — distinct from
    * the matching `StatementFormat.displayName` (`../../statement-import/parser`),
-   * which additionally names the file format (e.g. "PrivatBank (XLSX)"). */
-  displayName: string;
+   * which additionally names the file format (e.g. "PrivatBank (XLSX)").
+   * Absent for `other`, which renders its translated label instead. */
+  displayName?: string;
   /** Whether this bank offers a LIVE API Connect (Monobank only, per the
    * `bankProviderIds` registry). An import-only bank (`false`) must never
    * render a Connect field — only its statement-import affordance. */
@@ -127,40 +136,48 @@ export const bankCatalog: readonly BankCatalogEntry[] = [
     connectable: false,
     sellsMetals: true,
   },
+  {
+    id: OTHER_BANK_ID,
+    connectable: false,
+    sellsMetals: false,
+  },
 ];
 
 export const isBankId = (value: string | null | undefined): value is BankId =>
   value !== null && value !== undefined && (bankIds as readonly string[]).includes(value);
 
+/** A catalog id that names ONE real bank — `isBankId` without `other`. */
+export const isSpecificBankId = (
+  value: string | null | undefined,
+): value is Exclude<BankId, typeof OTHER_BANK_ID> => isBankId(value) && value !== OTHER_BANK_ID;
+
+const specificBankEntry = (bankId: string | null | undefined) =>
+  isSpecificBankId(bankId) ? bankCatalog.find((entry) => entry.id === bankId) : undefined;
+
 /** Resolves a stored `accounts.bankId` (or any other free-text candidate) to
  * the `StatementFormatId` its statement import should scope to — `undefined`
- * for an unset or unrecognized value (an older account created before this
- * feature, or a value from a since-removed bank), so the caller falls back
- * to the existing multi-format auto-detect rather than throwing. */
+ * for an unset, `other`, or unrecognized value (an older account created
+ * before this feature, or a value from a since-removed bank), so the caller
+ * falls back to the existing multi-format auto-detect rather than throwing. */
 export const statementFormatIdForBank = (
   bankId: string | null | undefined,
-): StatementFormatId | undefined =>
-  isBankId(bankId)
-    ? bankCatalog.find((entry) => entry.id === bankId)?.statementFormatId
-    : undefined;
+): StatementFormatId | undefined => specificBankEntry(bankId)?.statementFormatId;
 
 /** Resolves a stored `accounts.bankId` to whether it is CONNECTABLE: `true`
- * for an unset/unrecognized value (the account has not declared a bank
- * yet, or predates this feature — the
+ * for an unset, `other`, or unrecognized value (the account has not declared a
+ * bank, or predates this feature — the
  * connect affordance stays available rather than guessing it is import-only)
  * and for Monobank; `false` for a known import-only bank (PrivatBank etc.),
  * which must show NO sync/connect affordance — only its statement import. */
 export const isConnectableBank = (bankId: string | null | undefined): boolean =>
-  isBankId(bankId) ? (bankCatalog.find((entry) => entry.id === bankId)?.connectable ?? true) : true;
+  specificBankEntry(bankId)?.connectable ?? true;
 
 /** Resolves a stored `accounts.bankId` to whether that bank sells precious
- * metals (the `metal` holding allow-list): `false` for an unset/
+ * metals (the `metal` holding allow-list): `false` for an unset, `other`, or
  * unrecognized value — UNLIKE `isConnectableBank`'s permissive default, an
  * unknown bank must not silently unlock the `metal` holding type — and
  * otherwise the catalog entry's own `sellsMetals` field (see that field's
  * comment above, `BankCatalogEntry.sellsMetals`, for the current set —
  * not restated here, it drifts). */
 export const bankSellsMetals = (bankId: string | null | undefined): boolean =>
-  isBankId(bankId)
-    ? (bankCatalog.find((entry) => entry.id === bankId)?.sellsMetals ?? false)
-    : false;
+  specificBankEntry(bankId)?.sellsMetals ?? false;

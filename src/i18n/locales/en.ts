@@ -269,11 +269,14 @@ export const en = {
       bankDisclaimer:
         'Kiko is an independent app. It is not a bank and is not affiliated with or endorsed by any bank.',
       bankImportOnly: 'Statement import only — no live connection.',
+      bankRequiredError: 'Select a bank.',
       bankType: 'Bank type',
+      bankTypePlaceholder: 'Select a bank',
       bankTypeSheetTitle: 'Bank Type',
       broker: 'Broker',
       brokerDisclaimer:
         'Kiko is an independent app. It is not affiliated with or endorsed by any broker.',
+      brokerRequiredError: 'Select a broker.',
       brokerType: 'Broker',
       brokerTypePlaceholder: 'Select a broker',
       brokerTypeSheetTitle: 'Broker',
@@ -306,7 +309,7 @@ export const en = {
       },
       metals: 'Precious metals',
       namePlaceholder: 'Monobank',
-      noBank: 'Free',
+      otherBank: 'Other bank',
       otherBroker: 'Other broker',
       property: 'Property',
     },
@@ -606,8 +609,8 @@ export const en = {
       loanLinkUndo: 'Undo',
       loanPayment: 'Loan payment',
       // The loan-payment picker's own "clear the link" row/value — distinct
-      // wording from `noBank`'s "Free" (a different field's own "no pick"
-      // copy), since this field's "no loan" state is itself a MEANINGFUL,
+      // wording from `otherBank`'s "Other bank" (a different field's own
+      // fallback pick), since this field's "no loan" state is itself a MEANINGFUL,
       // stored choice (`loanLinkRejected`), not just an empty default.
       loanPaymentNone: 'None',
       loanPaymentSheetTitle: 'Loan Payment',

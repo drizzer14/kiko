@@ -2,7 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
-import { bankIds } from '@kiko/bank-sync/bank-catalog';
+import { bankIds, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 
 import BankTypeField from '.';
 
@@ -26,9 +26,9 @@ const renderOpenSheet = async () => {
 };
 
 describe('BankTypeField', () => {
-  // "Free" is the DEFAULT option, shown as a real value the
-  // instant nothing else is picked — never a placeholder.
-  it('shows "Free" as the default value before anything else is picked, and opens the sheet on press', async () => {
+  // Nothing picked reads as the placeholder (like the broker field), not as a
+  // selected value: a new account must make a choice.
+  it('shows the "Select a bank" placeholder before anything is picked, and opens the sheet on press', async () => {
     const onSelect = jest.fn();
     const { getByLabelText, getByTestId } = await render(
       <BankTypeField
@@ -41,7 +41,7 @@ describe('BankTypeField', () => {
     );
 
     expect(getByLabelText('Bank type')).toBeTruthy();
-    expect(getByTestId('bank-type-field')).toHaveTextContent('Free');
+    expect(getByTestId('bank-type-field')).toHaveTextContent('Select a bank');
 
     await fireEvent.press(getByTestId('bank-type-field'));
 
@@ -54,7 +54,7 @@ describe('BankTypeField', () => {
     expect(getByText('Select a Bank')).toBeTruthy();
   });
 
-  it('lists all ten banks, Monobank connectable and the rest import-only', async () => {
+  it('lists all ten banks and Other bank, Monobank connectable and the rest import-only', async () => {
     const onSelect = jest.fn();
     const { getByTestId, getAllByText } = await render(
       <BankTypeField
@@ -91,7 +91,53 @@ describe('BankTypeField', () => {
     expect(getAllByText('Import with column mapping')).toHaveLength(4);
   });
 
-  it('offers a "Free" option that is selected by default and reports null when pressed', async () => {
+  it('offers no separate "none" row: the one fallback is the "Other bank" catalog row', async () => {
+    const { getByTestId, queryByTestId } = await renderOpenSheet();
+
+    expect(queryByTestId('bank-type-option-none')).toBeNull();
+    expect(getByTestId('bank-type-option-other')).toBeTruthy();
+  });
+
+  it('lists "Other bank" last, after every named bank, exactly like the broker list', async () => {
+    const { getByTestId } = await renderOpenSheet();
+    const optionIds = [
+      ...JSON.stringify(getByTestId('bank-type-sheet').toJSON()).matchAll(
+        /"testID":"bank-type-option-([a-z]+)"/g,
+      ),
+    ].map((match) => match[1]);
+
+    expect(optionIds).toEqual([...bankIds]);
+  });
+
+  it('renders "Other bank" as a plain row with no capability caption or icon', async () => {
+    const { getByTestId } = await renderOpenSheet();
+
+    const optionTree = JSON.stringify(getByTestId('bank-type-option-other').toJSON());
+    expect(optionTree).toContain('Other bank');
+    expect(optionTree).not.toContain('receipt');
+    expect(optionTree).not.toContain('increase.indent');
+    expect(optionTree).not.toContain('arrow.trianglehead.2.clockwise.rotate.90');
+  });
+
+  it('shows "Other bank" as the trigger value, and its row selected, when picked', async () => {
+    const { getByTestId } = await render(
+      <BankTypeField
+        label="Bank type"
+        sheetTitle="Select a Bank"
+        selected="other"
+        onSelect={jest.fn()}
+        testID="bank-type-field"
+      />,
+    );
+
+    expect(getByTestId('bank-type-field')).toHaveTextContent('Other bank');
+
+    await fireEvent.press(getByTestId('bank-type-field'));
+
+    expect(getByTestId('bank-type-option-other').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('reports "other" when the Other bank row is pressed', async () => {
     const onSelect = jest.fn();
     const { getByTestId } = await render(
       <BankTypeField
@@ -104,15 +150,12 @@ describe('BankTypeField', () => {
     );
 
     await fireEvent.press(getByTestId('bank-type-field'));
+    await fireEvent.press(getByTestId('bank-type-option-other'));
 
-    expect(getByTestId('bank-type-option-none').props.accessibilityState.selected).toBe(true);
-
-    await fireEvent.press(getByTestId('bank-type-option-none'));
-
-    expect(onSelect).toHaveBeenCalledWith(null);
+    expect(onSelect).toHaveBeenCalledWith('other');
   });
 
-  it('marks "Free" unselected once a real bank is picked', async () => {
+  it('marks "Other bank" unselected once a real bank is picked', async () => {
     const onSelect = jest.fn();
     const { getByTestId } = await render(
       <BankTypeField
@@ -126,8 +169,41 @@ describe('BankTypeField', () => {
 
     await fireEvent.press(getByTestId('bank-type-field'));
 
-    expect(getByTestId('bank-type-option-none').props.accessibilityState.selected).toBe(false);
+    expect(getByTestId('bank-type-option-other').props.accessibilityState.selected).toBe(false);
     expect(getByTestId('bank-type-option-monobank').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('marks the field required and shows its error under it', async () => {
+    const { getByTestId, getByText } = await render(
+      <BankTypeField
+        label="Bank type"
+        sheetTitle="Select a Bank"
+        selected={null}
+        onSelect={jest.fn()}
+        required
+        error="Select a bank."
+        testID="bank-type-field"
+      />,
+    );
+
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+    expect(getByText('Select a bank.')).toBeTruthy();
+    expect(getByTestId('bank-type-field-error')).toBeTruthy();
+  });
+
+  it('shows no asterisk and no error by default', async () => {
+    const { queryByText, queryByTestId } = await render(
+      <BankTypeField
+        label="Bank type"
+        sheetTitle="Select a Bank"
+        selected={null}
+        onSelect={jest.fn()}
+        testID="bank-type-field"
+      />,
+    );
+
+    expect(queryByText('*')).toBeNull();
+    expect(queryByTestId('bank-type-field-error')).toBeNull();
   });
 
   it('reports the picked bank id when a row is pressed', async () => {
@@ -219,13 +295,16 @@ describe('BankTypeField', () => {
   // Column-mapping import is a capability shown on EVERY catalog bank — a
   // sync-connectable bank, one with a
   // dedicated statement format, and a column-mapping-only bank all get it.
-  it.each(bankIds)('shows the column-mapping capability icon on %s', async (bankId) => {
-    const { getByTestId } = await renderOpenSheet();
+  it.each(bankIds.filter((bankId) => bankId !== OTHER_BANK_ID))(
+    'shows the column-mapping capability icon on %s',
+    async (bankId) => {
+      const { getByTestId } = await renderOpenSheet();
 
-    expect(getByTestId(`bank-type-option-${bankId}-column-mapping-icon`).props.name).toBe(
-      'increase.indent',
-    );
-  });
+      expect(getByTestId(`bank-type-option-${bankId}-column-mapping-icon`).props.name).toBe(
+        'increase.indent',
+      );
+    },
+  );
 
   it('shows the not-a-bank disclaimer as a caption on the bank-selection sheet', async () => {
     const { getByText } = await renderOpenSheet();

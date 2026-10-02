@@ -49,6 +49,15 @@ const selectKind = async (
   await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
 };
 
+// A new bank account cannot Save until a bank is picked; tests about anything
+// else on the bank form pick the catalog's fallback, "Other bank".
+const pickOtherBank = async (
+  getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
+): Promise<void> => {
+  await fireEvent.press(getByTestId('account-bank-type-field'));
+  await fireEvent.press(getByTestId('bank-type-option-other'));
+};
+
 // The AccountKindField trigger's own `disabled` accessibility state — the
 // read-only-kind assertions used to read the ChipRow chip's parent
 // `accessibilityState.disabled`; the field now carries it directly on its
@@ -244,13 +253,29 @@ describe('AccountFormScreen', () => {
     expect(getAllByTestId('form-divider')).toHaveLength(2);
   });
 
-  it('marks only the required Name field with an asterisk', async () => {
-    const { getByText, getAllByText } = await renderForm();
+  it('marks only the required Name field with an asterisk on a kind that picks no bank or broker', async () => {
+    const { getByText, getAllByText, getByTestId } = await renderForm();
+
+    await selectKind(getByTestId, 'property');
 
     // Name gates save (canSave = trimmed name), so it shows the marker; Kind and
     // Color are optional (they carry defaults), so no other asterisk renders.
     expect(getByText('Name')).toBeTruthy();
     expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(1);
+  });
+
+  it('marks the Bank type field required on a new bank account, beside Name', async () => {
+    const { getAllByText } = await renderForm();
+
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(2);
+  });
+
+  it('marks the Broker field required on a new broker account, beside Name', async () => {
+    const { getAllByText, getByTestId } = await renderForm();
+
+    await selectKind(getByTestId, 'broker');
+
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(2);
   });
 
   it('offers the account kinds with humanized labels and subtitles, Broker included', async () => {
@@ -392,16 +417,100 @@ describe('AccountFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  it('creates a broker account with no broker picked as a plain broker account', async () => {
-    const { getByLabelText, getByTestId, getByText } = await renderForm();
+  it('does not create a broker account with no broker picked, and says why on the field', async () => {
+    const { getByLabelText, getByTestId, getByText, navigation, queryByTestId } =
+      await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My broker');
     await selectKind(getByTestId, 'broker');
+
+    expect(queryByTestId('account-broker-type-field-error')).toBeNull();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(getByText('Select a broker.')).toBeTruthy();
+    expect(getByTestId('account-broker-type-field-error')).toBeTruthy();
+  });
+
+  it('does not create a bank account with no bank picked, and says why on the field', async () => {
+    const { getByLabelText, getByTestId, getByText, navigation, queryByTestId } =
+      await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My bank');
+
+    expect(queryByTestId('account-bank-type-field-error')).toBeNull();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(getByText('Select a bank.')).toBeTruthy();
+    expect(getByTestId('account-bank-type-field-error')).toBeTruthy();
+  });
+
+  it('scrolls to the unpicked bank field, a different target than the name, once the name is filled', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByLabelText, getByText } = await renderForm();
+
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, nameFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My bank');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, bankFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    expect(bankFieldRef).not.toBe(nameFieldRef);
+  });
+
+  it('scrolls to the unpicked broker field once the name is filled', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await selectKind(getByTestId, 'broker');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, nameFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My broker');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, brokerFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    expect(brokerFieldRef).not.toBe(nameFieldRef);
+  });
+
+  it('shows the name error and the bank error together on one blocked Save, scrolling once', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByText } = await renderForm();
+
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+
+    expect(getByText('Enter a name.')).toBeTruthy();
+    expect(getByText('Select a bank.')).toBeTruthy();
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the bank error once a bank is picked, and then creates the account with it', async () => {
+    const { getByLabelText, getByTestId, getByText, queryByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My bank');
+    await fireEvent.press(getByText('Save'));
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+    await fireEvent.press(getByTestId('bank-type-option-other'));
+
+    expect(queryByText('Select a bank.')).toBeNull();
+
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'broker', bankId: null }),
+      expect.objectContaining({ name: 'My bank', kind: 'bank', bankId: 'other' }),
     );
+    expect(navigation.goBack).toHaveBeenCalled();
   });
 
   it('never writes a picked broker as the bankId once the kind switches to bank', async () => {
@@ -414,9 +523,10 @@ describe('AccountFormScreen', () => {
     await selectKind(getByTestId, 'bank');
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'bank', bankId: null }),
-    );
+    // The broker pick is gone, so the bank pick is still missing: nothing is
+    // created under the broker's id.
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(getByText('Select a bank.')).toBeTruthy();
   });
 
   it('clears the picked broker when the kind switches away and back', async () => {
@@ -435,9 +545,8 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'broker', bankId: null }),
-    );
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(getByText('Select a broker.')).toBeTruthy();
   });
 
   it('creates one cash account for a double-tapped Save', async () => {
@@ -486,6 +595,8 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
     await selectKind(getByTestId, 'bank');
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+    await fireEvent.press(getByTestId('bank-type-option-other'));
     await fireEvent.press(getByText('Save'));
 
     // The bank row now shares the crypto create path: it is inserted with the
@@ -524,9 +635,10 @@ describe('AccountFormScreen', () => {
   });
 
   it('creates the new account with the picked icon in the one insert', async () => {
-    const { getByLabelText, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await pickOtherBank(getByTestId);
     await fireEvent.press(getByLabelText('Change Icon'));
     await fireEvent.press(getByLabelText('Choose icon banknote'));
     await fireEvent.press(getByText('Save'));
@@ -577,9 +689,10 @@ describe('AccountFormScreen', () => {
   });
 
   it('persists the initial kind default icon when the user does not change it', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await pickOtherBank(getByTestId);
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).toHaveBeenCalledWith(
@@ -607,9 +720,10 @@ describe('AccountFormScreen', () => {
   });
 
   it('creates the account with a null icon when the user removes the default before saving', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await pickOtherBank(getByTestId);
     // Removing clears the seeded default back to null, so the row follows its
     // kind default at display time.
     await fireEvent.press(getByLabelText('Change Icon'));
@@ -822,9 +936,10 @@ describe('AccountFormScreen color follows kind until dirty', () => {
   });
 
   it('persists the manually picked color on a bank account', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await pickOtherBank(getByTestId);
     await fireEvent.press(getByLabelText('Color violet'));
     await fireEvent.press(getByText('Save'));
 
@@ -1019,7 +1134,7 @@ describe('AccountFormScreen edit mode', () => {
     expect(getByText('Synchronization')).toBeTruthy();
   });
 
-  it('edit form’s bank picker lists the same six banks the create form does, plus "Free"', async () => {
+  it('edit form’s bank picker lists the same six banks the create form does, plus "Other bank"', async () => {
     mockAccounts = [
       { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
     ];
@@ -1027,7 +1142,7 @@ describe('AccountFormScreen edit mode', () => {
 
     await fireEvent.press(getByTestId('account-bank-type-field'));
 
-    expect(getByTestId('bank-type-option-none')).toBeTruthy();
+    expect(getByTestId('bank-type-option-other')).toBeTruthy();
     expect(getByTestId('bank-type-option-monobank')).toBeTruthy();
     expect(getByTestId('bank-type-option-privatbank')).toBeTruthy();
     expect(getByTestId('bank-type-option-sensebank')).toBeTruthy();
@@ -1036,15 +1151,47 @@ describe('AccountFormScreen edit mode', () => {
     expect(getByTestId('bank-type-option-alfa')).toBeTruthy();
   });
 
-  it('opens with "Free" selected for an account with no bankId', async () => {
+  it('opens with the placeholder and no row selected for an account saved with no bankId', async () => {
     mockAccounts = [
       { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
     ];
     const { getByTestId } = await renderForm({ accountId: 'acc-1' });
 
+    expect(getByTestId('account-bank-type-field')).toHaveTextContent('Select a bank');
+
     await fireEvent.press(getByTestId('account-bank-type-field'));
 
-    expect(getByTestId('bank-type-option-none').props.accessibilityState.selected).toBe(true);
+    expect(getByTestId('bank-type-option-other').props.accessibilityState.selected).toBe(false);
+  });
+
+  it('opens with "Other bank" selected for an account stored as other', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'other' },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-bank-type-field')).toHaveTextContent('Other bank');
+
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+
+    expect(getByTestId('bank-type-option-other').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('shows no required marker and no error on the bank picker in edit mode, even after a Save', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
+    ];
+    const { getByText, queryByText, queryByTestId, getAllByText } = await renderForm({
+      accountId: 'acc-1',
+    });
+
+    // Only the Name's own asterisk.
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(1);
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(queryByText('Select a bank.')).toBeNull();
+    expect(queryByTestId('account-bank-type-field-error')).toBeNull();
   });
 
   it('persists a newly-picked bankId on Save (null -> privatbank)', async () => {
@@ -1063,16 +1210,33 @@ describe('AccountFormScreen edit mode', () => {
     );
   });
 
-  it('persists clearing a picked bankId back to null on Save (privatbank -> "Free")', async () => {
+  it('persists switching a picked bank to Other bank on Save (privatbank -> other)', async () => {
     mockAccounts = [
       { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'privatbank' },
     ];
     const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
 
     await fireEvent.press(getByTestId('account-bank-type-field'));
-    await fireEvent.press(getByTestId('bank-type-option-none'));
+    await fireEvent.press(getByTestId('bank-type-option-other'));
     await fireEvent.press(getByText('Save'));
 
+    expect(mockUpdate).toHaveBeenCalledWith('acc-1', expect.objectContaining({ bankId: 'other' }));
+  });
+
+  it('saves an existing broker account with no broker picked, without forcing a pick', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Old', kind: 'broker', icon: null, color: null, bankId: null },
+    ];
+    const { getByText, queryByText, queryByTestId, getAllByText } = await renderForm({
+      accountId: 'acc-1',
+    });
+
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(1);
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(queryByText('Select a broker.')).toBeNull();
+    expect(queryByTestId('account-broker-type-field-error')).toBeNull();
     expect(mockUpdate).toHaveBeenCalledWith('acc-1', expect.objectContaining({ bankId: null }));
   });
 
@@ -1318,28 +1482,30 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const view = await renderForm();
 
     await fireEvent.changeText(view.getByLabelText('Name'), 'Plain Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-other'));
     await fireEvent.press(view.getByText('Save'));
 
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'bank', name: 'Plain Bank' }),
+      expect.objectContaining({ kind: 'bank', name: 'Plain Bank', bankId: 'other' }),
     );
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockMonobankSync).not.toHaveBeenCalled();
   });
 
-  // "Free" (not a placeholder) is the default bank shown.
+  // The placeholder, not a pre-selected value: a new bank account must pick.
   it('does not auto-select any bank on a fresh bank create (no auto-jump to Monobank)', async () => {
     const view = await renderForm();
 
     await selectKind(view.getByTestId, 'bank');
 
-    expect(view.getByText('Free')).toBeTruthy();
+    expect(view.getByText('Select a bank')).toBeTruthy();
     expect(view.queryByLabelText('monobank-field')).toBeNull();
   });
 
-  it('lists all six banks in the picker sheet', async () => {
+  it('lists all six banks and Other bank in the picker sheet', async () => {
     const view = await renderForm();
 
     await fireEvent.press(view.getByLabelText('Bank type'));
@@ -1350,6 +1516,21 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(view.getByTestId('bank-type-option-procredit')).toBeTruthy();
     expect(view.getByTestId('bank-type-option-ukrsib')).toBeTruthy();
     expect(view.getByTestId('bank-type-option-alfa')).toBeTruthy();
+    expect(view.getByTestId('bank-type-option-other')).toBeTruthy();
+  });
+
+  it('shows the import-only hint for a named import-only bank, but not for Other bank (the old "no bank" state)', async () => {
+    const view = await renderForm();
+
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-privatbank'));
+
+    expect(view.getByText('You can import a statement for this bank after saving.')).toBeTruthy();
+
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-other'));
+
+    expect(view.queryByText('You can import a statement for this bank after saving.')).toBeNull();
   });
 
   it('creates the bank row tagged with the selected bank id when connecting Monobank', async () => {

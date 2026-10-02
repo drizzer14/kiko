@@ -5,9 +5,13 @@ export type BrokerTypeFieldProps = {
   // A separate key from the sentence-case `label` (kiko-translator: one key
   // per UI role), even where the two read the same.
   sheetTitle: string;
-  // null = nothing picked yet. Optional: the account name already says which
-  // broker it is, so the caller never passes `required`.
+  // null = nothing picked yet.
   selected: BrokerId | null;
   onSelect: (brokerId: BrokerId) => void;
+  // The create form passes `required` and, after a blocked Save, `error`; the
+  // edit form passes neither, since an account saved without a broker is never
+  // forced to pick one on edit.
+  required?: boolean;
+  error?: string;
   testID?: string;
 };
