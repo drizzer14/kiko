@@ -1,11 +1,8 @@
 import { useState } from 'react';
-import { logFailure } from '@kiko/diagnostics';
-import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
-import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
-import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
 import { type SyncableAccount, type SyncJob, syncJobsFor } from '../sync-jobs';
+import { settleJobsBesideMarketRefresh } from '../settle-jobs-beside-market-refresh';
 
 type UseSyncAll = {
   /** Names of the accounts whose sync failed on the last run — empty on full success. */
@@ -29,36 +26,19 @@ type UseSyncAll = {
  * `Promise.allSettled` rather than sequentially) now live there, not here.
  */
 const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
-  let failed: string[] = [];
-
-  if (jobs.length > 0) {
-    // Cap CONCURRENT syncs so a many-connection pull never fires N provider
-    // requests at once (device load / provider rate limits). Results come back in
-    // job order, so `results[index]` still aligns to `jobs[index]` for naming the
-    // failed accounts — see `settleAllLimited`.
-    const results = await settleAllLimited(
-      jobs.map((job) => job.run),
-      SYNC_CONCURRENCY_LIMIT,
-    );
-    failed = jobs.filter((_, index) => results[index].status === 'rejected').map((job) => job.name);
-  }
-
   // One refresh for the whole fan-out (not per account), mirroring the single
   // refresh a lone sync does — `metals` and `shares` since a pull-to-refresh
   // also needs metal and share prices, unlike a single Monobank/crypto sync.
-  // The share refresh never reads `/user` itself, so a daily limit left
-  // unconfirmed is read first, at no call; a failed check must not hold the
-  // refresh back.
-  await confirmDailyLimit().catch((error: unknown) =>
-    logFailure('[sync-all] daily limit check failed', error),
-  );
-  await refreshMarketData({ throttled: true, metals: true, shares: true });
+  // Results come back in job order, so `results[index]` still aligns to
+  // `jobs[index]` for naming the failed accounts.
+  const results = await settleJobsBesideMarketRefresh(jobs, '[sync-all]');
+
   // One matcher run for the whole fan-out too — any account's sync can bring
   // in a new loan-payment debit. Never rejects (its own doc comment), so a
   // failed auto-link never turns a successful fan-out into a reported one.
   await runLoanAutoLink();
 
-  return failed;
+  return jobs.filter((_, index) => results[index].status === 'rejected').map((job) => job.name);
 };
 
 /**

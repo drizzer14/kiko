@@ -1133,6 +1133,16 @@ now happens on app open, not only on pull. `useAutoSync` is throttled by
 signal (it reads no `fastPhaseDone`), so an app-open sync drives only the
 determinate progress bar.
 
+Both also run `refreshMarketData` (rates, metals, shares) BESIDE the
+fan-out under a `Promise.all` of two never-rejecting promises, not after
+it: the provider requests are gated at one per minute per token, so a
+refresh queued behind K cards started K minutes late on the first open of
+the day. `runLoanAutoLink` stays after both, because the matcher needs the
+imported debits and the refreshed rates. One accepted consequence: a
+holding in a currency the fan-out creates for the first time is priced by
+the NEXT refresh (the refresh's open-currencies gate reads the holdings
+before the fan-out has written it).
+
 so two of them firing at once produced two concurrent runs, two
 independent gates, and colliding 429s (the reported "inconsistent"
 sync). `runSync` therefore holds a **module-level single-flight lock**

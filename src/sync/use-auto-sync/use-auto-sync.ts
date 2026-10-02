@@ -1,17 +1,15 @@
 import { useEffect, useRef } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
-import { logFailure } from '@kiko/diagnostics';
 import { syncStateRepo } from '@kiko/sync-state';
 import either, { bifold, isLeft } from 'fnts/either';
-import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { bankProviderRegistry } from '@kiko/bank-sync/registry';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { warnRefreshFailure } from '@kiko/sync/refresh-market-data';
 import { bankProviderIdOf, isBankProviderId } from '@kiko/bank-sync/provider';
-import { refreshMarketData, warnRefreshFailure } from '@kiko/sync/refresh-market-data';
 
 import { type SyncableAccount, syncJobsFor } from '../sync-jobs';
-import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
+import { settleJobsBesideMarketRefresh } from '../settle-jobs-beside-market-refresh';
 
 /**
  * Throttle window for the automatic on-open sync. Matches the rates cache
@@ -141,24 +139,14 @@ export const useAutoSync = (): void => {
       // `useSyncAll`'s fan-out) and never rejects — it logs its own
       // rates/metals failure and returns a Left, which this effect passes to
       // `warnRefreshFailure` below instead of re-deriving it here.
-      if (jobs.length > 0) {
-        // Cap CONCURRENT syncs so a many-connection fan-out never fires N provider
-        // requests at once (device load / provider rate limits) — see `settleAllLimited`.
-        await settleAllLimited(
-          jobs.map((job) => job.run),
-          SYNC_CONCURRENCY_LIMIT,
-        );
-      }
-
-      // The share refresh never reads `/user` itself, so a daily limit left
-      // unconfirmed (a restored key, or one saved during a limit error) is
-      // read first, at no call; a failed check must not hold the refresh back.
-      await confirmDailyLimit().catch((error: unknown) =>
-        logFailure('[auto-sync] daily limit check failed', error),
-      );
-      await refreshMarketData({ throttled: true, metals: true, shares: true });
-      // Same reasoning as `refreshMarketData` just above: an on-open sync can
-      // bring in a new loan-payment debit, so the matcher runs alongside it.
+      //
+      // Cap CONCURRENT syncs so a many-connection fan-out never fires N provider
+      // requests at once (device load / provider rate limits) — see
+      // `settleAllLimited`, which the helper below drives.
+      await settleJobsBesideMarketRefresh(jobs, '[auto-sync]');
+      // Same reasoning as `refreshMarketData`: an on-open sync can bring in a
+      // new loan-payment debit, and the matcher needs both the imports and
+      // the refreshed rates, so it runs after both settle.
       // Never rejects (its own doc comment), so a failed auto-link stays
       // inside this SAME swallowed-and-logged `either`, never a crash.
       await runLoanAutoLink();
