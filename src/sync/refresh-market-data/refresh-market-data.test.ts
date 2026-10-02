@@ -1,5 +1,5 @@
 import { bifold, isLeft, isRight } from 'fnts/either';
-import type { RatesRefreshOutcome } from '@kiko/rates/rates-refresh';
+import type { FiatRatesOfRun, RatesRefreshOutcome } from '@kiko/rates/rates-refresh';
 
 import { type RefreshMarketDataDeps, refreshMarketData } from './refresh-market-data';
 
@@ -221,6 +221,23 @@ describe('refreshMarketData', () => {
     );
 
     expect(receivedLastRefreshAt).toBe(42);
+  });
+
+  it('hands the run its fiat answer record through to refreshRates', async () => {
+    const fiatOfRun: FiatRatesOfRun = {};
+    let receivedFiatOfRun: FiatRatesOfRun | undefined;
+    await refreshMarketData(
+      { throttled: false, metals: false, shares: false, fiatOfRun },
+      makeDeps({
+        refreshRates: async (deps) => {
+          receivedFiatOfRun = deps.fiatOfRun;
+
+          return REFRESHED;
+        },
+      }),
+    );
+
+    expect(receivedFiatOfRun).toBe(fiatOfRun);
   });
 
   it('logs and runs unthrottled when reading latestFetchedAt itself rejects', async () => {

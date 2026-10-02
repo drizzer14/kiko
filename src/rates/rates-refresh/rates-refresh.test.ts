@@ -3,7 +3,7 @@ import { currencyOptions, isCrypto, isCurrency } from '@kiko/currency/currency';
 import type { RateEntry } from '../conversion';
 import { buildRateTable, canConvert } from '../net-worth-view';
 
-import { type RefreshDeps, refreshRates } from './rates-refresh';
+import { type FiatRatesOfRun, type RefreshDeps, refreshRates } from './rates-refresh';
 
 type StoredRate = { base: string; quote: string; rate: string; source: string; fetchedAt: number };
 
@@ -673,5 +673,90 @@ describe('refreshRates — the resolved RatesRefreshOutcome', () => {
     const { deps } = makeDeps();
 
     await expect(refreshRates(deps)).resolves.toEqual({ state: 'refreshed', failedLegs: [] });
+  });
+});
+
+// A second pass of one sync run (the top-up for a currency a job brought in)
+// shares `fiatOfRun` with the first, so no fiat source is asked twice in a run:
+// Monobank allows about one `/bank/currency` call per client per five minutes.
+describe('refreshRates — one fiat answer per sync run', () => {
+  it('asks no fiat source again once the run already got an answer, and composes from it', async () => {
+    const fiatOfRun: FiatRatesOfRun = {};
+    const first = makeDeps();
+    await refreshRates({ ...first.deps, fiatOfRun });
+
+    const fetchFiatRates = jest.fn(async () => []);
+    const second = makeDeps({
+      fetchFiatRates,
+      openCurrencies: async () => ({
+        needsFiat: true,
+        cryptoCurrencies: ['BTC'],
+        nonBaseCurrencies: ['USD', 'EUR', 'BTC'],
+      }),
+    });
+
+    await refreshRates({ ...second.deps, fiatOfRun });
+
+    expect(fetchFiatRates).not.toHaveBeenCalled();
+    expect(second.captured[0]).toEqual(first.captured[0]);
+  });
+
+  it('keeps the source of the remembered answer on the rows it composes again', async () => {
+    const fiatOfRun: FiatRatesOfRun = {};
+    const nbuFiat: RateEntry[] = [{ base: 'USD', quote: 'UAH', rate: 41, source: 'nbu' }];
+    const fetchNbuRates = jest.fn(async () => nbuFiat);
+    const unreachable = (): Promise<RateEntry[]> => Promise.reject(new Error('offline'));
+    await refreshRates({
+      ...makeDeps({ fetchFiatRates: unreachable, fetchNbuRates }).deps,
+      fiatOfRun,
+    });
+
+    const second = makeDeps({ fetchFiatRates: unreachable, fetchNbuRates });
+    await refreshRates({ ...second.deps, fiatOfRun });
+
+    expect(fetchNbuRates).toHaveBeenCalledTimes(1);
+    expect(second.captured[0]).toContainEqual({
+      base: 'USD',
+      quote: 'UAH',
+      rate: '41',
+      source: 'nbu',
+      fetchedAt: 1000,
+    });
+    expect(second.captured[0].some((pair) => pair.source === 'monobank')).toBe(false);
+  });
+
+  it('asks no source again after the run already failed every one, and reports the fiat leg failed', async () => {
+    const fiatOfRun: FiatRatesOfRun = {};
+    const failing = (): Promise<RateEntry[]> => Promise.reject(new Error('offline'));
+    await refreshRates({
+      ...makeDeps({ fetchFiatRates: failing, fetchNbuRates: failing }).deps,
+      fiatOfRun,
+    });
+
+    const fetchFiatRates = jest.fn(failing);
+    const fetchNbuRates = jest.fn(failing);
+    const second = makeDeps({ fetchFiatRates, fetchNbuRates });
+
+    await expect(refreshRates({ ...second.deps, fiatOfRun })).resolves.toEqual({
+      state: 'partial',
+      failedLegs: ['fiat'],
+    });
+    expect(fetchFiatRates).not.toHaveBeenCalled();
+    expect(fetchNbuRates).not.toHaveBeenCalled();
+    expect(second.captured).toHaveLength(0);
+  });
+
+  it('asks Monobank for the first time when the run so far asked no fiat source', async () => {
+    const fiatOfRun: FiatRatesOfRun = {};
+    await refreshRates({
+      ...makeDeps({ openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: [] }) })
+        .deps,
+      fiatOfRun,
+    });
+
+    const fetchFiatRates = jest.fn(async () => fiat);
+    await refreshRates({ ...makeDeps({ fetchFiatRates }).deps, fiatOfRun });
+
+    expect(fetchFiatRates).toHaveBeenCalledTimes(1);
   });
 });

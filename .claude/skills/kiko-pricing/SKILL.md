@@ -20,7 +20,9 @@ non-currency `price_points` store.
   `bank.gov.ua`, deliberately UNPINNED, fewer currencies than
   Monobank). It's a sequential fallback, not a second concurrent
   source — only one provider's rows are composed and written per
-  refresh; both failing writes nothing.
+  refresh; both failing writes nothing. Within one sync run the fiat
+  answer (or failure) is kept in `FiatRatesOfRun` (`rates-refresh.ts`), so
+  a second `refreshRates` pass of that run never asks Monobank or NBU again.
 - Fiat cross rates, offline floor: a bundled STATIC seed,
   `src/rates/fiat-rate-seed/fiat-rate-seed.ts`, covers all 107 fiat
   currencies vs UAH from a Monobank snapshot (see the file for the

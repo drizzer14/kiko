@@ -37,7 +37,21 @@ type StoredRate = {
   fetchedAt: number;
 };
 
+type FiatAnswer = { rates: RateEntry[]; source: 'monobank' | 'nbu' };
+
+/**
+ * What one sync run's fiat sources already answered, shared by every
+ * `refreshRates` pass of that run. Monobank's `/bank/currency` allows about
+ * one call per client per five minutes and its one response carries every
+ * fiat currency, so a later pass reads this instead of asking again.
+ */
+export type FiatRatesOfRun = {
+  answer?: PromiseSettledResult<FiatAnswer>;
+};
+
 export type RefreshDeps = {
+  /** Set by a caller that runs `refreshRates` more than once in one sync run. */
+  fiatOfRun?: FiatRatesOfRun;
   fetchFiatRates?: () => Promise<RateEntry[]>;
   /**
    * NBU's unpinned current-rate fallback (`nbu-rates.ts`), tried only once
@@ -319,11 +333,10 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   // answered so the composed rows are labeled with accurate provenance
   // (`buildUahRows` above).
   let fiatSource: 'monobank' | 'nbu' = 'monobank';
-  const loadFiatWithFallback = async (): Promise<RateEntry[]> => {
+  const askFiatSources = async (): Promise<FiatAnswer> => {
     const attempt = await either<unknown, RateEntry[]>(() => withRetry(loadFiat, sleep));
 
     if (isLeft(attempt)) {
-      fiatSource = 'nbu';
       const nbuRates = await loadNbuFiat();
 
       // NBU's feed carries fewer currencies than Monobank's (kiko-pricing);
@@ -335,10 +348,38 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
         throw new Error('rates-refresh: NBU fallback returned no supported currency');
       }
 
-      return nbuRates;
+      return { rates: nbuRates, source: 'nbu' };
     }
 
-    return bifold(attempt);
+    return { rates: bifold(attempt), source: 'monobank' };
+  };
+
+  // A failed answer is remembered too: a later pass of the same run must not
+  // retry the sources that just failed, it reports the same failed leg.
+  const fiatAnswerOfRun = async (): Promise<PromiseSettledResult<FiatAnswer>> => {
+    const remembered = deps.fiatOfRun?.answer;
+
+    if (remembered !== undefined) {
+      return remembered;
+    }
+    const [settled] = await Promise.allSettled([askFiatSources()]);
+
+    if (deps.fiatOfRun !== undefined) {
+      deps.fiatOfRun.answer = settled;
+    }
+
+    return settled;
+  };
+
+  const loadFiatWithFallback = async (): Promise<RateEntry[]> => {
+    const settled = await fiatAnswerOfRun();
+
+    if (settled.status === 'rejected') {
+      throw settled.reason;
+    }
+    fiatSource = settled.value.source;
+
+    return settled.value.rates;
   };
 
   // Settle the fiat (with its NBU fallback) and crypto pipelines

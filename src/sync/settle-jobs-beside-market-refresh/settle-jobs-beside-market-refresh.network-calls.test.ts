@@ -20,6 +20,7 @@ jest.mock('@kiko/rates/open-currencies-gate', () => ({
 }));
 
 const mockStoredRates = new Map<string, number>();
+const mockUpserted: { base: string; rate: string; source: string; fetchedAt: number }[][] = [];
 
 jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: {
@@ -27,7 +28,11 @@ jest.mock('@kiko/rates/repo', () => ({
       mockStoredRates.size === 0 ? null : Math.max(...mockStoredRates.values()),
     presentCurrenciesQuery: async () =>
       [...mockStoredRates.keys()].map((currency) => ({ currency })),
-    upsertMany: async (rates: { base: string; fetchedAt: number }[]) => {
+    upsertMany: async (
+      rates: { base: string; rate: string; source: string; fetchedAt: number }[],
+    ) => {
+      mockUpserted.push(rates);
+
       for (const rate of rates) {
         mockStoredRates.set(rate.base, rate.fetchedAt);
       }
@@ -51,6 +56,7 @@ import { settleJobsBesideMarketRefresh } from './settle-jobs-beside-market-refre
 const MINUTE_MS = 60 * 1000;
 
 const usdRate = { base: 'USD', quote: 'UAH', rate: 41, source: 'monobank' };
+const poundRate = { base: 'GBP', quote: 'UAH', rate: 52, source: 'monobank' };
 const bitcoinPrice = { base: 'BTC', quote: 'USD', rate: 60000, source: 'coingecko' };
 
 const requests = (): { monobank: number; nbu: number; coingecko: number } => ({
@@ -100,6 +106,7 @@ const quietJob = { name: 'Mono', run: async () => {} };
 describe('settleJobsBesideMarketRefresh — requests per run', () => {
   beforeEach(() => {
     mockStoredRates.clear();
+    mockUpserted.length = 0;
     mockHeldCurrencies.clear();
     mockHeldCurrencies.add('UAH');
     mockHeldCurrencies.add('USD');
@@ -146,7 +153,38 @@ describe('settleJobsBesideMarketRefresh — requests per run', () => {
     await settleJobsBesideMarketRefresh([jobBringingIn('BTC')], '[test]');
 
     expect(mockStoredRates.has('BTC')).toBe(true);
-    expect(requests()).toEqual({ monobank: 2, nbu: 0, coingecko: 1 });
+    expect(requests()).toEqual({ monobank: 1, nbu: 0, coingecko: 1 });
+  });
+
+  it('prices a new crypto from the fiat answer the run already has, with no second Monobank request', async () => {
+    storeRates(10);
+
+    await settleJobsBesideMarketRefresh([jobBringingIn('BTC')], '[test]');
+
+    expect(mockUpserted.at(-1)).toContainEqual(
+      expect.objectContaining({ base: 'BTC', rate: String(60000 * 41), source: 'coingecko' }),
+    );
+    expect(requests().monobank).toBe(1);
+  });
+
+  it('prices a new fiat currency only Monobank lists from the response the refresh beside the jobs already fetched', async () => {
+    storeRates(10);
+    mockFetchFiat.mockResolvedValue([usdRate, poundRate]);
+
+    await settleJobsBesideMarketRefresh([jobBringingIn('GBP')], '[test]');
+
+    expect(mockStoredRates.has('GBP')).toBe(true);
+    expect(requests()).toEqual({ monobank: 1, nbu: 0, coingecko: 0 });
+  });
+
+  it('leaves a new fiat currency only Monobank lists unpriced, and asks no source again, when Monobank failed in the first refresh and NBU lacks it', async () => {
+    storeRates(10);
+    mockFetchFiat.mockRejectedValue(new Error('Monobank currency request failed: 503'));
+
+    await settleJobsBesideMarketRefresh([jobBringingIn('GBP')], '[test]');
+
+    expect(mockStoredRates.has('GBP')).toBe(false);
+    expect(requests()).toEqual({ monobank: 3, nbu: 1, coingecko: 0 });
   });
 
   it('retries a failed fiat leg and tries the fallback once, and does not repeat them for the same run', async () => {
@@ -169,15 +207,25 @@ describe('settleJobsBesideMarketRefresh — requests per run', () => {
     expect(mockStoredRates.get('USD')).toBeGreaterThan(Date.now() - MINUTE_MS);
   });
 
-  it('never rejects when a 429 hits the request made for a currency a job brought in', async () => {
+  it('never rejects, and asks no fiat source again, when a 429 hit the fiat leg of the first refresh and a job brought in a crypto', async () => {
     storeRates(10);
-    mockFetchFiat
-      .mockResolvedValueOnce([usdRate])
-      .mockRejectedValue(new Error('Monobank currency request failed: 429'));
+    mockFetchFiat.mockRejectedValue(new Error('Monobank currency request failed: 429'));
+    mockFetchNbu.mockRejectedValue(new Error('NBU request failed: 503'));
 
     const results = await settleJobsBesideMarketRefresh([jobBringingIn('BTC')], '[test]');
 
     expect(results).toEqual([{ status: 'fulfilled', value: undefined }]);
-    expect(requests()).toEqual({ monobank: 4, nbu: 1, coingecko: 1 });
+    expect(mockStoredRates.has('BTC')).toBe(false);
+    expect(requests()).toEqual({ monobank: 3, nbu: 1, coingecko: 1 });
+  });
+
+  it('prices a new crypto from the NBU answer of the first refresh when Monobank answered 429 there', async () => {
+    storeRates(10);
+    mockFetchFiat.mockRejectedValue(new Error('Monobank currency request failed: 429'));
+
+    await settleJobsBesideMarketRefresh([jobBringingIn('BTC')], '[test]');
+
+    expect(mockStoredRates.has('BTC')).toBe(true);
+    expect(requests()).toEqual({ monobank: 3, nbu: 1, coingecko: 1 });
   });
 });

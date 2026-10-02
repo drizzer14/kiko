@@ -1,6 +1,7 @@
 import { logFailure } from '@kiko/diagnostics';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { confirmDailyLimit } from '@kiko/prices/daily-limit';
+import type { FiatRatesOfRun } from '@kiko/rates/rates-refresh';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
 import type { SyncJob } from '../sync-jobs';
@@ -25,11 +26,14 @@ const gainedCurrency = (before: Set<string> | null, after: Set<string> | null): 
 // The share refresh never reads `/user` itself, so a daily limit left
 // unconfirmed (a restored key, or one saved during a limit error) is read
 // first, at no call; a failed check must not hold the refresh back.
-const refreshAfterLimitCheck = async (logTag: string): Promise<void> => {
+const refreshAfterLimitCheck = async (
+  logTag: string,
+  fiatOfRun?: FiatRatesOfRun,
+): Promise<void> => {
   await confirmDailyLimit().catch((error: unknown) =>
     logFailure(`${logTag} daily limit check failed`, error),
   );
-  await refreshMarketData({ throttled: true, metals: true, shares: true });
+  await refreshMarketData({ throttled: true, metals: true, shares: true, fiatOfRun });
 };
 
 /**
@@ -46,8 +50,10 @@ const refreshAfterLimitCheck = async (logTag: string): Promise<void> => {
  * new bank jar) has no rate in that refresh. When the held set gained one, a
  * rates-only refresh runs after the jobs: the rates throttle skips it unless
  * that currency really has no rate yet. It is conditional because running it
- * every time would ask the same sources again whenever the first refresh's
- * rates leg failed, doubling that run's requests.
+ * every time would be a second pass over the rates for nothing. Both passes
+ * share one `fiatOfRun`, so the top-up reads the fiat answer (or failure) the
+ * first pass got rather than asking Monobank again, which allows about one
+ * call per client per five minutes and would answer 429 within a run.
  */
 export const settleJobsBesideMarketRefresh = async (
   jobs: SyncJob[],
@@ -63,16 +69,17 @@ export const settleJobsBesideMarketRefresh = async (
   // queued, so queueing it before the jobs start puts it ahead of their
   // writes without delaying their start.
   const before = heldCurrencies();
+  const fiatOfRun: FiatRatesOfRun = {};
   const [results] = await Promise.all([
     settleAllLimited(
       jobs.map((job) => job.run),
       SYNC_CONCURRENCY_LIMIT,
     ),
-    refreshAfterLimitCheck(logTag),
+    refreshAfterLimitCheck(logTag, fiatOfRun),
   ]);
 
   if (gainedCurrency(await before, await heldCurrencies())) {
-    await refreshMarketData({ throttled: true, metals: false, shares: false });
+    await refreshMarketData({ throttled: true, metals: false, shares: false, fiatOfRun });
   }
 
   return results;

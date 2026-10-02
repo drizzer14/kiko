@@ -49,6 +49,7 @@ describe('settleJobsBesideMarketRefresh', () => {
       throttled: true,
       metals: true,
       shares: true,
+      fiatOfRun: expect.any(Object),
     });
 
     releaseJob();
@@ -168,7 +169,29 @@ describe('settleJobsBesideMarketRefresh', () => {
       throttled: true,
       metals: false,
       shares: false,
+      fiatOfRun: expect.any(Object),
     });
+  });
+
+  it('hands the top-up the same fiat answer record as the refresh beside the jobs, so it asks no fiat source again', async () => {
+    mockOpenCurrenciesQuery
+      .mockResolvedValueOnce(rowsOf('UAH'))
+      .mockResolvedValueOnce(rowsOf('UAH', 'BTC'));
+
+    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }], '[test]');
+
+    const [[firstOptions], [topUpOptions]] = mockRefreshMarketData.mock.calls;
+
+    expect(topUpOptions.fiatOfRun).toBe(firstOptions.fiatOfRun);
+  });
+
+  it('starts a new fiat answer record for every run', async () => {
+    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }], '[test]');
+    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }], '[test]');
+
+    const [[firstRun], [secondRun]] = mockRefreshMarketData.mock.calls;
+
+    expect(secondRun.fiatOfRun).not.toBe(firstRun.fiatOfRun);
   });
 
   it('never rejects and tops up nothing when the holdings cannot be read', async () => {

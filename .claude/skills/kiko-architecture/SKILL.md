@@ -1162,9 +1162,15 @@ gate reads the holdings when it starts, before the fan-out has written a
 currency it brings in for the first time, so when the held set gained one
 a rates-only refresh runs after the jobs (the rates throttle skips it
 unless that currency has no rate yet), and the new holding is priced in
-the same run. It is conditional on purpose: an unconditional second rates
-refresh asks the same sources again when the first one's rates leg failed
-(3 Monobank + 1 NBU requests become 6 + 2).
+the same run. A run never asks a rate source twice: both passes share one
+`FiatRatesOfRun` (`refreshRates`), so the top-up reads the fiat answer, or
+the failure, of the first pass instead of calling Monobank (one
+`/bank/currency` call per client per five minutes, and its one response
+carries every fiat currency) or NBU again. A pass that already got an answer
+composes its rows from it, source label included; a pass after a failed
+answer reports the same failed fiat leg with no request. CoinGecko is the
+one exception: it is asked per held coin, so a coin a job adds to an
+already-priced crypto set is asked in a second, small request.
 `settle-jobs-beside-market-refresh.network-calls.test.ts` pins the
 request count per scenario.
 
