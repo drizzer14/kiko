@@ -269,8 +269,7 @@ const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRo
 
 /**
  * Migration 0049's rule, applied to a `.kiko` restore: a `bank` account that
- * names no bank takes the bank id `other`, the way "Free" became "Other bank".
- * `??` rather than a `=== null` test, because an export from before
+ * names no bank takes the bank id `other`. `??` rather than a `=== null` test, because an export from before
  * `accounts.bank_id` existed (migration 0033) carries no `bankId` key at all,
  * and the migration gives that column's NULL the same value. Only a `bank`
  * account is touched — a broker with no pick, and every other kind, keep their

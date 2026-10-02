@@ -134,6 +134,32 @@ describe('restoring a .kiko file exported before Other bank was a stored bank id
   });
 });
 
+describe('restoring a .kiko file exported before accounts.bank_id existed (migration 0033)', () => {
+  it('gives a bank account that carries no bankId key at all the other bank id, and leaves other kinds unset', async () => {
+    const exported = freshDatabase();
+
+    insertAccount(exported, 'free-bank', 'bank', null);
+    insertAccount(exported, 'cash', 'cash', null);
+    const withBankId = await snapshotOf(exported);
+    const snapshot: DataSnapshot = {
+      ...withBankId,
+      accounts: withBankId.accounts.map(
+        (account) =>
+          Object.fromEntries(
+            Object.entries(account).filter(([key]) => key !== 'bankId'),
+          ) as DataSnapshot['accounts'][number],
+      ),
+    };
+
+    expect(snapshot.accounts.every((account) => !('bankId' in account))).toBe(true);
+
+    mockDatabase = freshDatabase();
+    await restoreDataSnapshot(snapshot);
+
+    expect(bankIds(mockDatabase)).toEqual({ cash: null, 'free-bank': 'other' });
+  });
+});
+
 describe('restoring a .kiko file exported after Other bank was a stored bank id', () => {
   it('keeps every bank id as exported', async () => {
     const exported = freshDatabase();

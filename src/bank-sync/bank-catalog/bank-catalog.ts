@@ -40,23 +40,28 @@ export type BankId = (typeof bankIds)[number];
  * metals, and no saved column mapping keyed on it. */
 export const OTHER_BANK_ID = 'other' satisfies BankId;
 
-type BankCatalogEntry = {
-  id: BankId;
+type BankCatalogEntryBase = {
   /** The plain bank name shown in the account-form picker — distinct from
    * the matching `StatementFormat.displayName` (`../../statement-import/parser`),
    * which additionally names the file format (e.g. "PrivatBank (XLSX)").
    * Absent for `other`, which renders its translated label instead. */
   displayName?: string;
-  /** Whether this bank offers a LIVE API Connect (Monobank only, per the
-   * `bankProviderIds` registry). An import-only bank (`false`) must never
-   * render a Connect field — only its statement-import affordance. */
-  connectable: boolean;
   /** The `statement-import` format this bank's account scopes import
    * recognition to (see `statementFormatIdForBank` below) — `undefined` for
    * a bank with no dedicated parser (P3's PUMB/Oschadbank/Raiffeisen/
    * Ukrgasbank), which falls through to the generic column-mapping import
    * (`BankTypeField`'s `bankColumnMappingOnly` caption names this honestly). */
   statementFormatId?: StatementFormatId;
+};
+
+/** A bank that must state both capabilities; `other` states neither, because
+ * `isConnectableBank` and `bankSellsMetals` decide it (see `OTHER_BANK_ID`). */
+type SpecificBankCatalogEntry = BankCatalogEntryBase & {
+  id: Exclude<BankId, typeof OTHER_BANK_ID>;
+  /** Whether this bank offers a LIVE API Connect (Monobank only, per the
+   * `bankProviderIds` registry). An import-only bank (`false`) must never
+   * render a Connect field — only its statement-import affordance. */
+  connectable: boolean;
   /** Whether a `bank`-kind account at this bank may hold a `metal` holding
    * (a bank-held precious-metal account, distinct from the standalone
    * `metals` account kind, which never gates on this field). Always-rendered
@@ -68,6 +73,14 @@ type BankCatalogEntry = {
    * Raiffeisen stay `false` (no such product). */
   sellsMetals: boolean;
 };
+
+type OtherBankCatalogEntry = BankCatalogEntryBase & {
+  id: typeof OTHER_BANK_ID;
+  connectable?: undefined;
+  sellsMetals?: undefined;
+};
+
+type BankCatalogEntry = SpecificBankCatalogEntry | OtherBankCatalogEntry;
 
 export const bankCatalog: readonly BankCatalogEntry[] = [
   {
@@ -138,8 +151,6 @@ export const bankCatalog: readonly BankCatalogEntry[] = [
   },
   {
     id: OTHER_BANK_ID,
-    connectable: false,
-    sellsMetals: false,
   },
 ];
 

@@ -34,6 +34,17 @@ describe('bankCatalog', () => {
     expect(unnamed).toEqual(['other']);
   });
 
+  it('states no capability for "other" (isConnectableBank and bankSellsMetals decide it), and both for every real bank', () => {
+    const other = bankCatalog.find((entry) => entry.id === 'other');
+    const unstated = bankCatalog
+      .filter((entry) => entry.connectable === undefined || entry.sellsMetals === undefined)
+      .map((entry) => entry.id);
+
+    expect(other).not.toHaveProperty('connectable');
+    expect(other).not.toHaveProperty('sellsMetals');
+    expect(unstated).toEqual(['other']);
+  });
+
   it('marks only Monobank connectable; every other entry is import-only', () => {
     const connectable = bankCatalog.filter((entry) => entry.connectable).map((entry) => entry.id);
 

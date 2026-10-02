@@ -146,8 +146,9 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
       name: account.name,
       kind: account.kind,
       institution: null,
-      // A bank account always names a bank on a device that ran migration
-      // 0049, and the demo names none of the real ones.
+      // Migration 0049, the create form's required pick, the edit form's
+      // keep-as-stored, and restore leave no bank account without a bank id;
+      // the demo names none of the real ones.
       bankId: account.kind === 'bank' ? OTHER_BANK_ID : null,
       icon: null,
       color: account.color,

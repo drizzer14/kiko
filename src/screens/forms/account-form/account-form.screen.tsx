@@ -1,4 +1,4 @@
-import maybe, { foldMap } from 'fnts/maybe';
+import type { TFunction } from 'i18next';
 import { Money } from '@kiko/currency/money';
 import {
   useHeaderInset,
@@ -77,6 +77,14 @@ const catalogIdFor = (
   brokerId: BrokerId | null,
 ): BankId | BrokerId | null => (kind === 'broker' ? brokerId : bankId);
 
+// What an edit writes as `bankId`: a pick the user made wins, and a picker left
+// untouched writes back the stored value as it is. A stored id neither picker
+// lists (a bank since removed from the catalog, or a bank id on a broker row)
+// seeds the picker as no pick, so without this it would be saved as NULL and
+// the account would lose it though the user never touched that field.
+const savedCatalogId = (picked: string | null, stored: string | null): string | null =>
+  picked ?? stored;
+
 // A NEW bank or broker account must say which one it is; the picker's kind
 // names the issue so its error key follows. Edit never requires it, so an
 // account saved before the pick was required is not forced to pick on its next
@@ -100,11 +108,14 @@ const CATALOG_PICK_ERROR_KEY = {
 } as const;
 
 // The shared attempted-submit gate: no error before the first blocked press.
-const catalogPickErrorKey = (
+// Module scope, with `t` passed in, because AccountFormScreen's cognitive
+// complexity score already sits at Biome's cap of 15 and this gate would add 2.
+const catalogPickErrorText = (
+  t: TFunction,
   attemptedSave: boolean,
-  issue: 'bank' | 'broker' | null,
-): (typeof CATALOG_PICK_ERROR_KEY)[keyof typeof CATALOG_PICK_ERROR_KEY] | undefined =>
-  attemptedSave && issue !== null ? CATALOG_PICK_ERROR_KEY[issue] : undefined;
+  issue: keyof typeof CATALOG_PICK_ERROR_KEY | null,
+): string | undefined =>
+  attemptedSave && issue !== null ? t(CATALOG_PICK_ERROR_KEY[issue]) : undefined;
 
 // The kind a fresh create form starts on. Its default icon (accountKindSymbol)
 // seeds the icon field so the form opens on a sensible glyph rather than the
@@ -195,13 +206,16 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // The bank the user picked in the sync section's BankTypeField, tagging the
   // created row for later provider-specific handling (import, connect status).
   // null = nothing picked yet: a new bank account cannot Save until it is set
-  // (`catalogPickMissing`), `other` being the pick for any bank not listed. Never
+  // (`missingCatalogPick`), `other` being the pick for any bank not listed. Never
   // auto-seeded on a fresh bank create (no auto-jump to Monobank). An existing
   // account saved before the pick was required can still hold null here, and
   // keeps it on edit.
   const [bankId, setBankId] = useState<BankId | null>(null);
   // The broker picked in BrokerTypeField, the same shape as `bankId`.
   const [brokerId, setBrokerId] = useState<BrokerId | null>(null);
+  // The stored `bankId` as the edit form loaded it, which the two pickers above
+  // cannot always show (see `savedCatalogId`).
+  const [storedCatalogId, setStoredCatalogId] = useState<string | null>(null);
   const catalogId = catalogIdFor(kind, bankId, brokerId);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the kind default —
   // because `color`/`kind` here are seeded straight from a stored row
@@ -436,9 +450,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     setColor(editingAccount.color);
     // The edit form seeds `bankId` too, so the picker below renders and the
     // user can view or change an account's bank identity after create.
-    // `isBankId` guards against a
-    // stored value from a since-removed catalog entry, mirroring
-    // `isSupportedKind` above.
+    setStoredCatalogId(editingAccount.bankId);
+    // `isBankId` guards against a stored value from a since-removed catalog
+    // entry, mirroring `isSupportedKind` above.
     setBankId(isBankId(editingAccount.bankId) ? editingAccount.bankId : null);
     setBrokerId(isBrokerId(editingAccount.bankId) ? editingAccount.bankId : null);
   }, [isEdit, editingAccount]);
@@ -457,11 +471,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // Not part of `canSave`: that gates the name error and `ensureAccount`,
   // which a field's own Connect shares, and neither is about this pick.
   const catalogPickIssue = missingCatalogPick(isEdit, kind, catalogId);
-  const catalogPickMissing = catalogPickIssue !== null;
-  const catalogPickError = foldMap(
-    maybe(catalogPickErrorKey(attemptedSave, catalogPickIssue)),
-    (key) => t(key),
-  );
+  const catalogPickError = catalogPickErrorText(t, attemptedSave, catalogPickIssue);
 
   const initialValueProblem = initialValueIssue(initialValue);
   const initialValueError =
@@ -484,7 +494,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // broker pick, then initial value).
     const scrollTargets = [
       { invalid: !canSave, ref: nameFieldRef, focus: () => nameInputRef.current?.focus() },
-      { invalid: catalogPickMissing, ref: catalogFieldRef, focus: undefined },
+      { invalid: catalogPickIssue !== null, ref: catalogFieldRef, focus: undefined },
       {
         invalid: initialValueInvalid,
         ref: initialValueFieldRef,
@@ -514,7 +524,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // touched here. `bankId` is editable too — this patch never
         // carries `institution`, so a live-connected account's sync stays
         // untouched no matter what bank identity is picked here.
-        await accountsRepo.update(editId, { name: trimmedName, color, bankId: catalogId });
+        await accountsRepo.update(editId, {
+          name: trimmedName,
+          color,
+          bankId: savedCatalogId(catalogId, storedCatalogId),
+        });
         await accountsRepo.setIcon(editId, icon);
         navigation.goBack();
 

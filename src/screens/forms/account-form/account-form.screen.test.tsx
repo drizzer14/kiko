@@ -464,6 +464,7 @@ describe('AccountFormScreen', () => {
     const [, bankFieldRef] = scrollToFieldMock.mock.calls[0];
 
     expect(bankFieldRef).not.toBe(nameFieldRef);
+    expect(bankFieldRef.current.props.children.props.testID).toBe('account-bank-type-field');
   });
 
   it('scrolls to the unpicked broker field once the name is filled', async () => {
@@ -481,6 +482,7 @@ describe('AccountFormScreen', () => {
     const [, brokerFieldRef] = scrollToFieldMock.mock.calls[0];
 
     expect(brokerFieldRef).not.toBe(nameFieldRef);
+    expect(brokerFieldRef.current.props.children.props.testID).toBe('account-broker-type-field');
   });
 
   it('shows the name error and the bank error together on one blocked Save, scrolling once', async () => {
@@ -977,6 +979,7 @@ describe('AccountFormScreen edit mode', () => {
         kind: 'bank',
         icon: 'banknote',
         color: entityColors.violet,
+        bankId: null,
       },
     ];
   });
@@ -1107,7 +1110,7 @@ describe('AccountFormScreen edit mode', () => {
     expect(mockUpdate).toHaveBeenCalledWith('acc-1', expect.objectContaining({ bankId: 'other' }));
   });
 
-  it('reads a broker account whose stored bankId is not a catalog broker as no broker picked', async () => {
+  it('shows no broker picked for a broker account whose stored bankId is not a catalog broker, and keeps that stored value on an untouched Save', async () => {
     mockAccounts = [
       { id: 'acc-1', name: 'Old', kind: 'broker', icon: null, color: null, bankId: 'monobank' },
     ];
@@ -1119,7 +1122,58 @@ describe('AccountFormScreen edit mode', () => {
 
     await fireEvent.press(getByText('Save'));
 
-    expect(mockUpdate).toHaveBeenCalledWith('acc-1', expect.objectContaining({ bankId: null }));
+    expect(mockUpdate).toHaveBeenCalledWith(
+      'acc-1',
+      expect.objectContaining({ bankId: 'monobank' }),
+    );
+  });
+
+  it('writes the picked broker over a stored bankId that is not a catalog broker', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Old', kind: 'broker', icon: null, color: null, bankId: 'monobank' },
+    ];
+    const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(getByTestId('account-broker-type-field'));
+    await fireEvent.press(getByTestId('account-broker-type-field-option-trading212'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      'acc-1',
+      expect.objectContaining({ bankId: 'trading212' }),
+    );
+  });
+
+  it('shows no bank picked for a bank account whose stored bankId is a since-removed catalog id, and keeps that stored value on an untouched Save', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'removedbank' },
+    ];
+    const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-bank-type-field')).toHaveTextContent('Select a bank');
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      'acc-1',
+      expect.objectContaining({ bankId: 'removedbank' }),
+    );
+  });
+
+  it('writes the picked bank over a stored since-removed catalog id', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'removedbank' },
+    ];
+    const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+    await fireEvent.press(getByTestId('bank-type-option-privatbank'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      'acc-1',
+      expect.objectContaining({ bankId: 'privatbank' }),
+    );
   });
 
   // The "Synchronization" heading renders above the bank picker in edit
