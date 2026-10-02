@@ -33,15 +33,19 @@ rules:
     languages: [typescript, javascript]
     severity: ERROR
     message: >
-      A token/secret/credential must never be written to the database or a log.
-      The Monobank token lives only in the iOS Keychain (react-native-keychain).
+      A token/secret/credential/API key must never be written to the database
+      or a log. The Monobank token and the EODHD key live only in the iOS
+      Keychain (react-native-keychain).
     patterns:
       - pattern-either:
           - pattern: console.$M($TOKEN)
           - pattern: $DB.insert($TBL).values($TOKEN)
+      # `key$` is the bare name `key` (the metavariable regex is start-anchored,
+      # so it never matches `monkey` or `keyboardHeight`): the EODHD key is held
+      # in a variable of exactly that name.
       - metavariable-regex:
           metavariable: $TOKEN
-          regex: (?i).*(token|secret|password|credential).*
+          regex: (?i).*(token|secret|password|credential|api_?key|eodhd).*|key$
   # Guideline 5.6 (App Store rejection of build 7: "features intentionally
   # hidden during review"). Three shapes, one rule: importing a
   # SHOW_*/HIDE_*/SCREENSHOT_* visibility-control @env flag (any flag named
