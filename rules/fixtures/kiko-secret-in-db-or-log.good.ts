@@ -8,6 +8,7 @@ declare const table: unknown;
 declare const keys: string[];
 declare const monkey: string;
 declare const keyboardHeight: number;
+declare const eodhdPrices: unknown;
 declare const row: unknown;
 
 export const fixtureGoodLog = (): void => {
@@ -19,4 +20,5 @@ export const fixtureGoodInsert = (): void => {
   database.insert(table).values(keys);
   database.insert(table).values(monkey);
   database.insert(table).values(keyboardHeight);
+  database.insert(table).values(eodhdPrices);
 };
