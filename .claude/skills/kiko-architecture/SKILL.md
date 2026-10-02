@@ -1176,8 +1176,8 @@ the failure, of the first pass instead of calling Monobank (one
 carries every fiat currency) or NBU again. A pass that already got an answer
 composes its rows from it, source label included; a pass after a failed
 answer reports the same failed fiat leg with no request. CoinGecko is the
-one exception: it is asked per held coin, so a coin a job adds to an
-already-priced crypto set is asked in a second, small request.
+one exception: the top-up asks CoinGecko once more, for every held coin, since
+the first answer cannot include a coin the jobs added.
 `settle-jobs-beside-market-refresh.network-calls.test.ts` pins the
 request count per scenario.
 
