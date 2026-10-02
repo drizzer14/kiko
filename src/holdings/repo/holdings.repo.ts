@@ -315,27 +315,6 @@ const rewriteOwnership = (holdingId: string, rewrite: OwnershipRewrite) =>
       .where(eq(holdings.id, holdingId));
   });
 
-// Builds the metadata from the row stored at the time of the write, so a key
-// another write added while a form was open is never overwritten by the
-// form's seed.
-const updateMetadataFromStoredDatabaseTransaction = async (
-  databaseTransaction: typeof database,
-  holdingId: string,
-  patch: Pick<HoldingRow, 'name' | 'color'>,
-  buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
-): Promise<void> => {
-  const rows = await databaseTransaction
-    .select({ metadata: holdings.metadata })
-    .from(holdings)
-    .where(eq(holdings.id, holdingId));
-  const metadata = buildMetadata(rows.at(0)?.metadata);
-
-  await databaseTransaction
-    .update(holdings)
-    .set({ ...patch, metadata })
-    .where(eq(holdings.id, holdingId));
-};
-
 // Skip the write entirely when the synced balance already matches —
 // `selectCardsToFetch` already skips a card whose bank-reported balance is
 // unchanged, but the daily full fetch still calls `setSyncedBalance` for
@@ -534,12 +513,16 @@ export const holdingsRepo = {
     buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
   ) =>
     write(async (databaseTransaction) => {
-      await updateMetadataFromStoredDatabaseTransaction(
-        databaseTransaction,
-        holdingId,
-        patch,
-        buildMetadata,
-      );
+      const rows = await databaseTransaction
+        .select({ metadata: holdings.metadata })
+        .from(holdings)
+        .where(eq(holdings.id, holdingId));
+      const metadata = buildMetadata(rows.at(0)?.metadata);
+
+      await databaseTransaction
+        .update(holdings)
+        .set({ ...patch, metadata })
+        .where(eq(holdings.id, holdingId));
     }),
   /**
    * Applies one lot change (`withLotChange`) to the lots stored at the time of

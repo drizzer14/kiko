@@ -1,6 +1,7 @@
 import {
   creatableHoldingTypesForAccount,
   holdingTypes,
+  isHoldingType,
   holdingTypesForAccountKind,
   isSyncOnlyHoldingType,
   syncOnlyHoldingTypes,
@@ -62,6 +63,20 @@ describe('holdingTypesForAccountKind', () => {
 
   it('has no share holding type, so an old share row reads as an unknown type', () => {
     expect(holdingTypes as readonly string[]).not.toContain('share');
+  });
+});
+
+describe('isHoldingType', () => {
+  it('accepts every listed holding type', () => {
+    for (const type of holdingTypes) {
+      expect(isHoldingType(type)).toBe(true);
+    }
+  });
+
+  it('rejects a removed type, an empty string, and an inherited object key', () => {
+    expect(isHoldingType('share')).toBe(false);
+    expect(isHoldingType('')).toBe(false);
+    expect(isHoldingType('constructor')).toBe(false);
   });
 });
 

@@ -38,6 +38,7 @@ import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import Button from '@kiko/design-system/components/button';
+import { isHoldingType } from '@kiko/holdings/holding-type';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { groupByDay } from '@kiko/transactions/group-by-day';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
@@ -743,6 +744,11 @@ const resolveLedgerReadyView = (
   };
 };
 
+// A row of a type this build no longer has (an imported dev-build holding)
+// offers no Edit: the form dispatches on a descriptor that type does not have.
+const editableAccountId = (holding: HoldingRow | undefined): string | undefined =>
+  foldMap(maybe(holding), (found) => (isHoldingType(found.type) ? found.accountId : undefined));
+
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
@@ -978,7 +984,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // The holding's owning account, needed to open its edit form (the form reads
   // the account's kind to constrain the type chips). Always present on a real
   // row (accountId is NOT NULL); the header Edit action is gated on it.
-  const holdingAccountId = holding?.accountId;
+  const holdingAccountId = editableAccountId(holding);
   // Unknown while the account row loads, so the form reads its own account
   // instead of being told the holding is not a loan.
   const debtAccount = foldMap(maybe(account), ({ kind }) => holdsOnlyDebts(kind));

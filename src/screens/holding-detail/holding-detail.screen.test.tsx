@@ -557,6 +557,24 @@ describe('HoldingDetailScreen', () => {
     });
   });
 
+  it('renders a stored holding of a removed type with a generic glyph and no Edit action', async () => {
+    seed({ ...cardHolding, type: 'share', accountId: 'acc-1' }, [], [], [], [], [], {
+      id: 'acc-1',
+      kind: 'bank',
+      institution: null,
+    });
+
+    const { getByLabelText } = await renderScreen();
+
+    // The edit form has no descriptor for the type and would crash on it.
+    expect(getByLabelText('Icon text.pad.header')).toBeTruthy();
+    expect(
+      (navigation.setOptions as jest.Mock).mock.calls.some(
+        ([options]) => options.unstable_headerRightItems,
+      ),
+    ).toBe(false);
+  });
+
   it("tells the edit form that a debt account's holding is a loan", async () => {
     seed({ ...annuityLoanHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
       id: 'acc-1',

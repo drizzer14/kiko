@@ -10,7 +10,7 @@ const combinedSql = (): string =>
     .join('\n');
 
 // `price_points`: one row per (instrument, day) — the priced value for
-// a share/metal/holding on a given UTC-midnight day, keyed the same way
+// a metal/holding on a given UTC-midnight day, keyed the same way
 // `currency_rate_history` keys a rate. Migration 0035 creates the table.
 describe('price_points table migration', () => {
   it('creates the price_points table with the priced-day columns', () => {

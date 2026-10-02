@@ -25,9 +25,9 @@ jest.mock('@kiko/holdings/repo', () => ({
   },
 }));
 
-const mockRefreshAfterHoldingWrite = jest.fn();
-jest.mock('@kiko/sync/refresh-after-holding-write', () => ({
-  refreshAfterHoldingWrite: (...args: unknown[]) => mockRefreshAfterHoldingWrite(...args),
+const mockRefreshMarketData = jest.fn();
+jest.mock('@kiko/sync/refresh-market-data', () => ({
+  refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
 
 const changeLotsMock = holdingsRepo.changeLots as jest.Mock;
@@ -99,7 +99,7 @@ describe('LotFormScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     changeLotsMock.mockResolvedValue(undefined);
-    mockRefreshAfterHoldingWrite.mockResolvedValue(undefined);
+    mockRefreshMarketData.mockResolvedValue(undefined);
     seed();
   });
 
@@ -280,10 +280,11 @@ describe('LotFormScreen', () => {
     };
 
     // A lot dated before the stored prices needs their history.
-    it("asks for a metal's prices", async () => {
+    it("asks for a metal's prices, unthrottled", async () => {
       await saveBuy();
 
-      await waitFor(() => expect(mockRefreshAfterHoldingWrite).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalledTimes(1));
+      expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: false, metals: true });
     });
 
     it('asks for nothing when the write fails, and keeps the form open', async () => {
@@ -293,7 +294,7 @@ describe('LotFormScreen', () => {
       await saveBuy();
 
       await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-      expect(mockRefreshAfterHoldingWrite).not.toHaveBeenCalled();
+      expect(mockRefreshMarketData).not.toHaveBeenCalled();
       expect(navigation.goBack).not.toHaveBeenCalled();
       alertSpy.mockRestore();
     });

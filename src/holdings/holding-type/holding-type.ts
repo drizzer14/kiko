@@ -20,6 +20,11 @@ export const holdingTypes = [
 
 export type HoldingType = (typeof holdingTypes)[number];
 
+// A stored `type` is typed as this enum, but SQLite enforces no such constraint
+// and a dev-build row of a since-removed type can still be on a device.
+export const isHoldingType = (type: string): type is HoldingType =>
+  (holdingTypes as readonly string[]).includes(type);
+
 type AccountKind = AccountRow['kind'];
 
 // The holding types a given account kind may contain. A holding lives under an

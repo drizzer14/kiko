@@ -520,7 +520,7 @@ describe('derivedEntries', () => {
       });
     });
 
-    // Metal never splits: a buy at no cost is still a purchase.
+    // A buy at no cost is still a purchase.
     it('renders a buy lot at no cost as a Purchase entry', () => {
       const giftedMetal: Holding = {
         ...metalHolding,

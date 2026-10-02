@@ -53,6 +53,15 @@ describe('HoldingCard', () => {
     expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
   });
 
+  it('renders a row of a removed type with the generic holding glyph', async () => {
+    const { getByText, getByLabelText } = await renderCard({
+      holding: holding({ type: 'share' as unknown as HoldingRow['type'] }),
+    });
+
+    expect(getByText('Black card')).toBeTruthy();
+    expect(getByLabelText('Black card icon').props.name).toBe('text.pad.header');
+  });
+
   // A long name must wrap, not run past the card edge and push the value out of
   // view. Jest cannot lay out pixels, so this pins the style contract the
   // transaction card wraps with.

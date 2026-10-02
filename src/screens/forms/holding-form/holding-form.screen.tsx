@@ -27,6 +27,7 @@ import Divider from '@kiko/design-system/components/divider';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
@@ -39,7 +40,6 @@ import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { refreshAfterHoldingWrite } from '@kiko/sync/refresh-after-holding-write';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
@@ -553,7 +553,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // the network before navigating back; only fire the refresh after the
       // write commits.
       // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects; see the comment above
-      refreshAfterHoldingWrite();
+      refreshMarketData({ throttled: false, metals: true });
       // A freshly created loan can already have past ledger history worth
       // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).
       runLoanAutoLinkIfLoan(type);

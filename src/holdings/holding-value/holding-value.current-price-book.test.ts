@@ -21,8 +21,10 @@ import { holdingValueBreakdown, type ValuableHolding } from './holding-value';
 
 // Every screen that reads `useCurrentPriceBook` shows a number computed from
 // the book `currentQuery` builds. This proves each such number equals the one
-// the whole-table book gives, on a realistic ledger of daily metal closes, a stale series, a series that has not started, and manual series,
-// on the days a local-day key is easiest to get wrong.
+// the whole-table book gives, on a realistic ledger of daily metal closes, a
+// stale series, a series that has not started, a priced holding with no series
+// at all, and manual series, on the days a local-day key is easiest to get
+// wrong.
 const SCENARIOS: [string, number][] = [
   ['an ordinary afternoon', new Date(2026, 8, 20, 15, 0).getTime()],
   ['Kyiv local midnight on the day DST starts', new Date(2026, 2, 29, 0, 0).getTime()],
@@ -119,6 +121,16 @@ const holdingsAt = (today: number): ValuableHolding[] => {
       metadata: {
         category: 'real_estate',
         lots: [{ day: today - 400 * DAY_MS, quantityDelta: '1', costMinorUnits: 2_000_000 }],
+      },
+    },
+    {
+      id: 'prop-unpriced',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: today - 400 * DAY_MS, quantityDelta: '1', costMinorUnits: 1_500_000 }],
       },
     },
     {

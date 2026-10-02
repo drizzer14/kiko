@@ -1,7 +1,7 @@
 import type { AccountRow } from '@kiko/db';
 
 import { propertyCategories } from '../holding-metadata';
-import { holdingTypes, holdingTypesForAccountKind } from '../holding-type';
+import { type HoldingType, holdingTypes, holdingTypesForAccountKind } from '../holding-type';
 
 import {
   accountKindSymbol,
@@ -102,6 +102,17 @@ describe('defaultHoldingSymbol', () => {
   it("gives every other holding type its type's glyph", () => {
     expect(defaultHoldingSymbol({ type: 'metal', metadata: null })).toBe('cube.fill');
     expect(defaultHoldingSymbol({ type: 'card', metadata: null })).toBe('creditcard');
+  });
+
+  it('gives a stored type this build no longer knows the generic holding glyph', () => {
+    const removedType = 'share' as unknown as HoldingType;
+
+    expect(defaultHoldingSymbol({ type: removedType, metadata: null })).toBe(
+      genericEntitySymbol.holding,
+    );
+    expect(
+      defaultHoldingSymbol({ type: 'constructor' as unknown as HoldingType, metadata: null }),
+    ).toBe(genericEntitySymbol.holding);
   });
 });
 
