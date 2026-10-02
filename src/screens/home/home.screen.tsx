@@ -234,6 +234,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     categoryRowsLoading,
     categoriesLoading,
   );
+  // `useDataReady` is true only until a query re-keys: the window read does on
+  // every date-range pick and clear and when the local day rolls over, and each
+  // re-key reads loading again. Swapping the whole screen for the spinner then
+  // would drop the net-worth card, the filter bar and its open sheet for a read
+  // that only affects the list, so only the FIRST ready gates the whole screen.
+  const hasBeenReady = useRef(false);
+  hasBeenReady.current ||= isReady;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `buildCategoryDisplayMap` resolves each default category's title through i18n (`resolveDefaultCategoryTitle`) INTERNALLY, so `i18n.language` is a real dependency Biome cannot see — without it a live language switch leaves the resolved titles in the previous language.
   const categoryByKey = useMemo(
@@ -520,7 +527,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [sections],
   );
 
-  if (!isReady) {
+  if (!hasBeenReady.current) {
     return (
       // The SAME Screen mode as the ready branch below (`bleedBottom`), the
       // determinate sync progress bar (it shows the sync this screen's own
@@ -614,23 +621,30 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             column's `gap(4)` sits between it and the list. */}
         <SyncProgressBar />
 
-        <SectionList
-          ref={listRef}
-          testID="home-transactions"
-          sections={sections}
-          keyExtractor={(item) => item.id}
-          renderItem={renderTransaction}
-          renderSectionHeader={renderDayHeader}
-          stickySectionHeadersEnabled={false}
-          style={styles.list}
-          contentContainerStyle={styles.listContent(listBottomClearance)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          ListEmptyComponent={
-            <Box style={styles.empty}>
-              <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>
-            </Box>
-          }
-        />
+        {/* While a new range's window read loads, `transactions` still holds the
+            previous range's rows and the empty text would be a lie, so the list
+            area alone shows the loading state. */}
+        {transactionsLoading ? (
+          <LoadingState testID="home-transactions-loading" />
+        ) : (
+          <SectionList
+            ref={listRef}
+            testID="home-transactions"
+            sections={sections}
+            keyExtractor={(item) => item.id}
+            renderItem={renderTransaction}
+            renderSectionHeader={renderDayHeader}
+            stickySectionHeadersEnabled={false}
+            style={styles.list}
+            contentContainerStyle={styles.listContent(listBottomClearance)}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            ListEmptyComponent={
+              <Box style={styles.empty}>
+                <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>
+              </Box>
+            }
+          />
+        )}
 
         {/* The global-add FAB is an ADDITIVE sibling of the SectionList, OUTSIDE
             its scroll content, pinned bottom-right and lifted clear of the

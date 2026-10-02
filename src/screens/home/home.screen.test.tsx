@@ -123,7 +123,7 @@ jest.mock('@kiko/transactions/repo', () => ({
     listWithContextBetweenQuery: (...args: unknown[]) => {
       mockListBetween(...args);
 
-      return { kind: 'rows', toSQL: () => ({ sql: '', params: [] }) };
+      return { kind: 'rows', bounds: args, toSQL: () => ({ sql: '', params: [] }) };
     },
     contextSpanQuery: () => ({ kind: 'span', toSQL: () => ({ sql: '', params: [] }) }),
     contextCategoriesQuery: () => ({ kind: 'categories', toSQL: () => ({ sql: '', params: [] }) }),
@@ -223,6 +223,9 @@ type LiveData = {
   // What the distinct-categories read answers; derived from the whole ledger
   // unless a test settles it separately from the rows.
   categoryRows?: { category: string | null }[];
+  // Whether the windowed read of the given bounds is still on its first load,
+  // like the real hook, which is loading again on every new key.
+  windowLoading?: (bounds: unknown[]) => boolean;
   categories?: Category[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
   // key defaults to `false` (an already-resolved query), so every existing
@@ -238,7 +241,10 @@ type LiveData = {
  */
 const liveAnswersFor = (
   data: LiveData,
-): ((query: { kind?: string }, tables: string[]) => { data: unknown[]; isLoading: boolean }) => {
+): ((
+  query: { kind?: string; bounds?: unknown[] },
+  tables: string[],
+) => { data: unknown[]; isLoading: boolean }) => {
   const byTable: Record<string, unknown[]> = {
     accounts: data.accounts ?? [],
     holdings: data.holdings ?? [],
@@ -273,7 +279,10 @@ const liveAnswersFor = (
       tables[0] === 'transactions' && tables.length === 3 && query.kind !== undefined
         ? ledgerAnswers[query.kind]
         : (byTable[tables[0]] ?? []),
-    isLoading: isLoadingByTable[tables[0]] ?? false,
+    isLoading:
+      query.kind === 'rows' && data.windowLoading !== undefined
+        ? data.windowLoading(query.bounds ?? [])
+        : (isLoadingByTable[tables[0]] ?? false),
   });
 };
 
@@ -1466,6 +1475,109 @@ describe('HomeScreen — loading gate', () => {
     const { getByTestId } = await renderHome();
 
     expect(getByTestId('home-loading-scroll').props.refreshControl).toBeFalsy();
+  });
+
+  describe('once Home has been ready', () => {
+    // The windowed read is loading again on every key the real hook has not
+    // read yet; `settledKey` is the one key it has read so far.
+    let settledKey: string | undefined;
+    const windowLoading = (bounds: unknown[]): boolean =>
+      settledKey !== undefined && JSON.stringify(bounds) !== settledKey;
+    const lastWindowKey = (): string => JSON.stringify(mockListBetween.mock.lastCall);
+
+    const rerenderHome = async (
+      rerender: Awaited<ReturnType<typeof render>>['rerender'],
+    ): Promise<void> => {
+      await act(async () => {
+        await rerender(
+          <HomeScreen
+            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+            route={asRouteProp<HomeProps['route']>('Home')}
+          />,
+        );
+      });
+    };
+
+    beforeEach(() => {
+      settledKey = undefined;
+    });
+
+    it('keeps the net-worth card and the filter bar mounted while a picked range loads, and shows a loading state in the list only', async () => {
+      const recent = transaction({ description: 'Recent' });
+      // An older transaction sets the range's selectable floor below the pick.
+      const older = transaction({ id: 't2', time: localDaysFrom(Date.now(), -40) });
+      seed({ transactions: [recent, older], windowRows: [recent], windowLoading });
+
+      const { getByLabelText, getByTestId, getByText, queryByTestId, queryByText, rerender } =
+        await renderHome();
+
+      settledKey = lastWindowKey();
+
+      await act(async () => {
+        await fireEvent.press(getByLabelText('Date range'));
+      });
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      const calendar = getByTestId('date-range-calendar').props as {
+        onDayPress: (day: unknown) => void;
+      };
+      await act(async () => {
+        calendar.onDayPress({
+          year: threeDaysAgo.getFullYear(),
+          month: threeDaysAgo.getMonth() + 1,
+          day: threeDaysAgo.getDate(),
+        });
+      });
+      await act(async () => {
+        await fireEvent.press(getByText('Apply'));
+      });
+
+      expect(queryByTestId('home-loading')).toBeNull();
+      expect(getByTestId('home-content')).toBeTruthy();
+      expect(getByText('Net worth')).toBeTruthy();
+      expect(getByTestId('category-filter-menu')).toBeTruthy();
+      expect(getByTestId('home-transactions-loading')).toBeTruthy();
+      expect(queryByTestId('home-transactions')).toBeNull();
+      // The previous range's rows are never shown under the new range.
+      expect(queryByText('Recent')).toBeNull();
+      expect(queryByText(i18n.t('home.emptyTransactions'))).toBeNull();
+
+      settledKey = lastWindowKey();
+      await rerenderHome(rerender);
+
+      expect(queryByTestId('home-transactions-loading')).toBeNull();
+      expect(getByTestId('home-transactions')).toBeTruthy();
+    });
+
+    it('keeps Home mounted when the local day rolls over and the default range re-keys the window read', async () => {
+      const base = Date.now();
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(base);
+      seed({ transactions: [transaction()], windowLoading });
+
+      const { getByTestId, queryByTestId, rerender } = await renderHome();
+
+      settledKey = lastWindowKey();
+      nowSpy.mockReturnValue(localDaysFrom(base, 1));
+      await rerenderHome(rerender);
+
+      nowSpy.mockRestore();
+
+      expect(queryByTestId('home-loading')).toBeNull();
+      expect(getByTestId('home-content')).toBeTruthy();
+      expect(getByTestId('home-transactions-loading')).toBeTruthy();
+    });
+
+    it('keeps Home mounted when another of its queries is loading again', async () => {
+      seed({ transactions: [transaction()] });
+
+      const { getByTestId, queryByTestId, rerender } = await renderHome();
+
+      seed({ transactions: [transaction()], isLoading: { currency_rates: true } });
+      await rerenderHome(rerender);
+
+      expect(queryByTestId('home-loading')).toBeNull();
+      expect(getByTestId('home-content')).toBeTruthy();
+    });
   });
 });
 
