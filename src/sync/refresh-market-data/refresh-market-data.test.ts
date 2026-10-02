@@ -224,7 +224,7 @@ describe('refreshMarketData', () => {
   });
 
   it('hands the run its fiat answer record through to refreshRates', async () => {
-    const fiatOfRun: FiatRatesOfRun = {};
+    const fiatOfRun: FiatRatesOfRun = { storedFiat: new Set() };
     let receivedFiatOfRun: FiatRatesOfRun | undefined;
     await refreshMarketData(
       { throttled: false, metals: false, shares: false, fiatOfRun },

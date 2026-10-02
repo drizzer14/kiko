@@ -681,7 +681,7 @@ describe('refreshRates — the resolved RatesRefreshOutcome', () => {
 // Monobank allows about one `/bank/currency` call per client per five minutes.
 describe('refreshRates — one fiat answer per sync run', () => {
   it('asks no fiat source again once the run already got an answer, and composes from it', async () => {
-    const fiatOfRun: FiatRatesOfRun = {};
+    const fiatOfRun: FiatRatesOfRun = { storedFiat: new Set() };
     const first = makeDeps();
     await refreshRates({ ...first.deps, fiatOfRun });
 
@@ -724,7 +724,7 @@ describe('refreshRates — one fiat answer per sync run', () => {
       cryptoCurrencies: [],
       nonBaseCurrencies: ['USD'],
     });
-    const fiatOfRun: FiatRatesOfRun = {};
+    const fiatOfRun: FiatRatesOfRun = { storedFiat: new Set() };
 
     await refreshRates({
       ...makeDeps({ now: () => 1000, openCurrencies: fiatOnly, upsertMany }).deps,
@@ -749,7 +749,7 @@ describe('refreshRates — one fiat answer per sync run', () => {
   // cannot outrank a rate another refresh stored in between nor move the
   // throttle cursor (the newest `fetchedAt`) for a rate the top-up never fetched.
   it('writes a fiat row the first pass did not store, stamped with the time of the answer, and its own crypto rows with its own time', async () => {
-    const fiatOfRun: FiatRatesOfRun = {};
+    const fiatOfRun: FiatRatesOfRun = { storedFiat: new Set() };
     await refreshRates({
       ...makeDeps({
         now: () => 1000,
@@ -770,7 +770,7 @@ describe('refreshRates — one fiat answer per sync run', () => {
   });
 
   it('keeps the source of the remembered answer on the rows it composes again', async () => {
-    const fiatOfRun: FiatRatesOfRun = {};
+    const fiatOfRun: FiatRatesOfRun = { storedFiat: new Set() };
     const nbuFiat: RateEntry[] = [{ base: 'USD', quote: 'UAH', rate: 41, source: 'nbu' }];
     const fetchNbuRates = jest.fn(async () => nbuFiat);
     const unreachable = (): Promise<RateEntry[]> => Promise.reject(new Error('offline'));
@@ -798,7 +798,7 @@ describe('refreshRates — one fiat answer per sync run', () => {
   });
 
   it('asks no source again after the run already failed every one, and reports the fiat leg failed', async () => {
-    const fiatOfRun: FiatRatesOfRun = {};
+    const fiatOfRun: FiatRatesOfRun = { storedFiat: new Set() };
     const failing = (): Promise<RateEntry[]> => Promise.reject(new Error('offline'));
     await refreshRates({
       ...makeDeps({ fetchFiatRates: failing, fetchNbuRates: failing }).deps,
@@ -819,7 +819,7 @@ describe('refreshRates — one fiat answer per sync run', () => {
   });
 
   it('asks the fiat sources once when two passes of one run start together', async () => {
-    const fiatOfRun: FiatRatesOfRun = {};
+    const fiatOfRun: FiatRatesOfRun = { storedFiat: new Set() };
     const fetchFiatRates = jest.fn(async () => fiat);
 
     await Promise.all([
@@ -831,7 +831,7 @@ describe('refreshRates — one fiat answer per sync run', () => {
   });
 
   it('asks Monobank for the first time when the run so far asked no fiat source', async () => {
-    const fiatOfRun: FiatRatesOfRun = {};
+    const fiatOfRun: FiatRatesOfRun = { storedFiat: new Set() };
     await refreshRates({
       ...makeDeps({ openCurrencies: async () => ({ needsFiat: false, cryptoCurrencies: [] }) })
         .deps,

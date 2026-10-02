@@ -159,7 +159,7 @@ describe('useSyncAll', () => {
       throttled: true,
       metals: true,
       shares: true,
-      fiatOfRun: {},
+      fiatOfRun: { storedFiat: new Set() },
     });
     expect(result.current.failures).toEqual([]);
   });

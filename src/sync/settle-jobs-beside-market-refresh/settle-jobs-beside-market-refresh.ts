@@ -69,7 +69,7 @@ export const settleJobsBesideMarketRefresh = async (
   // queued, so queueing it before the jobs start puts it ahead of their
   // writes without delaying their start.
   const before = heldCurrencies();
-  const fiatOfRun: FiatRatesOfRun = {};
+  const fiatOfRun: FiatRatesOfRun = { storedFiat: new Set() };
   const [results] = await Promise.all([
     settleAllLimited(
       jobs.map((job) => job.run),

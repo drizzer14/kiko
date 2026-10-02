@@ -222,7 +222,7 @@ describe('useAutoSync', () => {
         throttled: true,
         metals: true,
         shares: true,
-        fiatOfRun: {},
+        fiatOfRun: { storedFiat: new Set() },
       }),
     );
   });

@@ -54,7 +54,7 @@ export type FiatRatesOfRun = {
    * none of them again: `upsertMany` keeps no `fetchedAt` guard, so rewriting
    * them would overwrite a newer rate another refresh stored in between.
    */
-  storedFiat?: Set<Currency>;
+  storedFiat: Set<Currency>;
 };
 
 export type RefreshDeps = {
@@ -164,21 +164,20 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
  * `fiatSource` labels every composed fiat row with whichever provider's
  * UAH-anchored prices actually fed `price` — `refreshRates` below passes
  * `'nbu'` when the Monobank fetch failed and NBU's fallback rows supplied the
- * pivot instead, so a stored row's provenance stays accurate. Defaults to
- * `'monobank'` for every other caller (a live Monobank-sourced run). Every
- * crypto row is tagged `'coingecko'` regardless of `fiatSource`, since its
- * rate is CoinGecko's own USD price times the same-run fiat anchor.
+ * pivot instead, so a stored row's provenance stays accurate. Every crypto row
+ * is tagged `'coingecko'` regardless of `fiatSource`, since its rate is
+ * CoinGecko's own USD price times the same-run fiat anchor.
  *
- * `fiatFetchedAt` stamps the fiat rows (default `fetchedAt`): a pass that
- * reuses an earlier pass's fiat answer must not label it newer than it is, or
- * it would outrank a rate another refresh stored in between. A crypto row is
- * always stamped `fetchedAt`, its own fetch.
+ * `fiatFetchedAt` stamps the fiat rows: a pass that reuses an earlier pass's
+ * fiat answer must not label it newer than it is, or it would outrank a rate
+ * another refresh stored in between. A crypto row is always stamped
+ * `fetchedAt`, its own fetch.
  */
 const buildUahRows = (
   price: UahPrice,
   fetchedAt: number,
-  fiatSource: 'monobank' | 'nbu' = 'monobank',
-  fiatFetchedAt: number = fetchedAt,
+  fiatSource: 'monobank' | 'nbu',
+  fiatFetchedAt: number,
 ): StoredRate[] => {
   const rows: StoredRate[] = [];
 
@@ -211,9 +210,6 @@ const upsertUnstoredRows = async (
   fiatOfRun: FiatRatesOfRun | undefined,
   upsertMany: (rates: StoredRate[]) => Promise<void>,
 ): Promise<void> => {
-  if (fiatOfRun !== undefined) {
-    fiatOfRun.storedFiat ??= new Set();
-  }
   const storedFiat = fiatOfRun?.storedFiat;
   const unstored = rows.filter((row) => isCrypto(row.base) || !storedFiat?.has(row.base));
 
@@ -375,8 +371,7 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   // rows are ever composed and stored per run. `fiatSource` tracks which one
   // answered so the composed rows are labeled with accurate provenance
   // (`buildUahRows` above).
-  let fiatSource: 'monobank' | 'nbu' = 'monobank';
-  let fiatFetchedAt = at;
+  let fiatAnswer: FiatAnswer | undefined;
   const askFiatSources = async (): Promise<FiatAnswer> => {
     const attempt = await either<unknown, RateEntry[]>(() => withRetry(loadFiat, sleep));
 
@@ -414,8 +409,7 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   const loadFiatWithFallback = async (): Promise<RateEntry[]> => {
     const answer = await fiatAnswerOfRun();
 
-    fiatSource = answer.source;
-    fiatFetchedAt = answer.fetchedAt;
+    fiatAnswer = answer;
 
     return answer.rates;
   };
@@ -437,7 +431,12 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
 
   await upsertUnstoredRows(
-    buildUahRows(buildUahPrice(fiat, crypto), at, fiatSource, fiatFetchedAt),
+    buildUahRows(
+      buildUahPrice(fiat, crypto),
+      at,
+      fiatAnswer?.source ?? 'monobank',
+      fiatAnswer?.fetchedAt ?? at,
+    ),
     deps.fiatOfRun,
     upsertMany,
   );
