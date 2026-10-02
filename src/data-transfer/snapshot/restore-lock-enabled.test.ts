@@ -31,6 +31,10 @@ const exportedSnapshot = async (): Promise<DataSnapshot> =>
 // with no `lockEnabled` key at all, or one with no settings row.
 const FILES: Record<string, (snapshot: DataSnapshot) => DataSnapshot> = {
   'a file saved with the lock off': (snapshot) => snapshot,
+  'a file saved with the lock on': (snapshot) => ({
+    ...snapshot,
+    settings: snapshot.settings.map((row) => ({ ...row, lockEnabled: true })),
+  }),
   'a file with no lockEnabled key': (snapshot) => {
     for (const row of snapshot.settings as Record<string, unknown>[]) {
       delete row.lockEnabled;
@@ -55,16 +59,6 @@ describe('restoring the app lock setting', () => {
     it.each(Object.keys(FILES))('keeps the live lock when restoring %s', async (name) => {
       mockDatabase = openDatabase(false);
       const backup = FILES[name](await exportedSnapshot());
-
-      mockDatabase = openDatabase(liveLockEnabled);
-      await restoreDataSnapshot(backup);
-
-      expect(storedLockEnabled()).toBe(liveLockEnabled);
-    });
-
-    it(`keeps the live lock when restoring a file saved with the lock on`, async () => {
-      mockDatabase = openDatabase(true);
-      const backup = await exportedSnapshot();
 
       mockDatabase = openDatabase(liveLockEnabled);
       await restoreDataSnapshot(backup);
