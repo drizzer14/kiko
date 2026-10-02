@@ -426,7 +426,7 @@ A confirmed mapping is saved to `settings.statementMappings`
 remap every column. It's keyed by `mappingKeyFor`: a known catalog
 bank uses `bank:<bankId>` (one shared mapping per bank, checked for an
 EXACT fingerprint match against the file's actual header row before
-being trusted as exact); any other account ("Other") is keyed by
+being trusted as exact); any other account (bank id `other`, or no recognized bank id; `isSpecificBankId` decides) is keyed by
 `header:<fingerprint>` instead and matched by scanning every `header:`
 entry for a fingerprint hit. Either way, `findSavedMapping` only
 PRE-FILLS the mapping form — a saved mapping never imports a file

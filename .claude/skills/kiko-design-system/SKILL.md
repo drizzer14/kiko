@@ -937,7 +937,7 @@ new component can land between reviews of this skill:
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
   is the one remaining hand-rolled implementation, kept apart because it
   carries extra behavior `SelectField` doesn't generalize (an
-  always-first "no bank" row, a Guideline-5.6 disclaimer, and dual
+  always-last "Other bank" row (`OTHER_BANK_ID`) that states no capability, a Guideline-5.6 disclaimer, and dual
   capability icons) — retrofitting it onto `SelectField` is a separate,
   larger task. `sheetTitle` is REQUIRED and distinct from `label` — a
   field label (sentence case) and a sheet title (Title Case) are two
@@ -1111,8 +1111,10 @@ new component can land between reviews of this skill:
   — the first-invalid field in the form's top-to-bottom order is used
   ONLY to pick the scroll target, a SEPARATE concern from which fields
   turn red. A picker field takes the message through its own `error`
-  prop (`CategoryField`, `HoldingSelectField`, forwarded to
-  `FieldTrigger`), never a caller-rendered `FieldError` beside it,
+  prop (`CategoryField`, `HoldingSelectField`, `BankTypeField`,
+  `BrokerTypeField`: each takes `error` and `required` and forwards to
+  `FieldTrigger`; the account form wraps the one that renders in one
+  `View` ref so a blocked Save scrolls to it), never a caller-rendered `FieldError` beside it,
   which leaves its label grey. One error that judges a GROUP of fields
   renders once under the group, and every field in the group turns its
   label red through the label-only `invalid` prop (`DateTimeRow`, which
@@ -1439,8 +1441,8 @@ catalog's own `statementFormatId` field, so a column-mapping-only bank
 (no dedicated parser) does not show it, even though it still offers
 import (through the generic column-mapping screen, which
 `increase.indent` names); `increase.indent` means "column-mapping import
-is available" — shown unconditionally, since every catalog bank offers
-it, a dedicated parser or not; `arrow.trianglehead.2.clockwise.rotate.90`
+is available" — shown on every SPECIFIC bank row (a dedicated parser or not); the
+`other` row renders no capability icons or captions; `arrow.trianglehead.2.clockwise.rotate.90`
 means "this bank supports a live sync connection" — gated on the
 catalog's own `connectable` field. Derive a capability icon's gate from
 catalog DATA (a field on the entry), never a hard-coded id list — a

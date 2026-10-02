@@ -235,6 +235,14 @@ project-level pointer to this section.
   (`src/test-support/real-sqlite.ts`). Proven on both paths by
   `drizzle/migrations/0047-add-sets-balance.test.ts` and
   `restore-sets-balance.two-path.test.ts`.
+- **A NULL meaning replaced by a stored sentinel id is a kind-scoped
+  data-only migration, mirrored on restore.** `0049` is hand-authored SQL
+  with no snapshot: it sets `bank_id = 'other'` on `kind = 'bank'` rows
+  with NULL and never touches a bank account naming a bank (a removed one
+  too). The mirror is `withBankAccountsOtherBank` in
+  `src/data-transfer/snapshot/restore-snapshot.ts`; tests
+  `drizzle/migrations/0049-bank-accounts-other-bank.test.ts` and
+  `src/data-transfer/snapshot/restore-bank-other.two-path.test.ts`.
 - **A flag whose work SQL cannot do follows the flag-plus-launch-step
   shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
   (`false`): re-costing a sale needs the BigInt decimal helpers, so the

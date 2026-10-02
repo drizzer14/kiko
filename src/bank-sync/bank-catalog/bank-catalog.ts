@@ -188,7 +188,7 @@ export const isConnectableBank = (bankId: string | null | undefined): boolean =>
  * unrecognized value — UNLIKE `isConnectableBank`'s permissive default, an
  * unknown bank must not silently unlock the `metal` holding type — and
  * otherwise the catalog entry's own `sellsMetals` field (see that field's
- * comment above, `BankCatalogEntry.sellsMetals`, for the current set —
+ * comment above, `SpecificBankCatalogEntry.sellsMetals`, for the current set —
  * not restated here, it drifts). */
 export const bankSellsMetals = (bankId: string | null | undefined): boolean =>
   specificBankEntry(bankId)?.sellsMetals ?? false;
