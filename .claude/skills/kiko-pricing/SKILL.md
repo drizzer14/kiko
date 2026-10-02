@@ -23,6 +23,9 @@ non-currency `price_points` store.
   refresh; both failing writes nothing. Within one sync run the fiat
   answer (or failure) is kept in `FiatRatesOfRun` (`rates-refresh.ts`), so
   a second `refreshRates` pass of that run never asks Monobank or NBU again.
+  The answer carries the time it was asked for, and a pass that reuses it
+  stamps its fiat rows with that time (its own crypto rows with its own),
+  so a reused rate is never labelled newer than the answer it came from.
 - Fiat cross rates, offline floor: a bundled STATIC seed,
   `src/rates/fiat-rate-seed/fiat-rate-seed.ts`, covers all 107 fiat
   currencies vs UAH from a Monobank snapshot (see the file for the

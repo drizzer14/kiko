@@ -37,7 +37,9 @@ type StoredRate = {
   fetchedAt: number;
 };
 
-type FiatAnswer = { rates: RateEntry[]; source: 'monobank' | 'nbu' };
+// `fetchedAt` is when the answer was asked for: a pass that reuses it stamps the
+// fiat rows it composes with this time, never with its own.
+type FiatAnswer = { rates: RateEntry[]; source: 'monobank' | 'nbu'; fetchedAt: number };
 
 /**
  * What one sync run's fiat sources already answered, shared by every
@@ -160,11 +162,16 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
  * `'monobank'` for every other caller (a live Monobank-sourced run). Every
  * crypto row is tagged `'coingecko'` regardless of `fiatSource`, since its
  * rate is CoinGecko's own USD price times the same-run fiat anchor.
+ *
+ * `fiatFetchedAt` stamps the fiat rows (default `fetchedAt`): a pass that
+ * reuses an earlier pass's fiat answer must not label it newer than it is, or
+ * it would outrank a rate another refresh stored in between. A crypto row is always stamped `fetchedAt`, its own fetch.
  */
 const buildUahRows = (
   price: UahPrice,
   fetchedAt: number,
   fiatSource: 'monobank' | 'nbu' = 'monobank',
+  fiatFetchedAt: number = fetchedAt,
 ): StoredRate[] => {
   const rows: StoredRate[] = [];
 
@@ -179,7 +186,7 @@ const buildUahRows = (
       quote: 'UAH',
       rate: String(rate),
       source: isCrypto(base) ? 'coingecko' : fiatSource,
-      fetchedAt,
+      fetchedAt: isCrypto(base) ? fetchedAt : fiatFetchedAt,
     });
   }
 
@@ -333,6 +340,7 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   // answered so the composed rows are labeled with accurate provenance
   // (`buildUahRows` above).
   let fiatSource: 'monobank' | 'nbu' = 'monobank';
+  let fiatFetchedAt = at;
   const askFiatSources = async (): Promise<FiatAnswer> => {
     const attempt = await either<unknown, RateEntry[]>(() => withRetry(loadFiat, sleep));
 
@@ -348,10 +356,10 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
         throw new Error('rates-refresh: NBU fallback returned no supported currency');
       }
 
-      return { rates: nbuRates, source: 'nbu' };
+      return { rates: nbuRates, source: 'nbu', fetchedAt: at };
     }
 
-    return { rates: bifold(attempt), source: 'monobank' };
+    return { rates: bifold(attempt), source: 'monobank', fetchedAt: at };
   };
 
   // A failed answer is remembered too: a later pass of the same run must not
@@ -378,6 +386,7 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
       throw settled.reason;
     }
     fiatSource = settled.value.source;
+    fiatFetchedAt = settled.value.fetchedAt;
 
     return settled.value.rates;
   };
@@ -397,7 +406,7 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   ]);
   const fiat = fiatResult.status === 'fulfilled' ? fiatResult.value : [];
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
-  const rows = buildUahRows(buildUahPrice(fiat, crypto), at, fiatSource);
+  const rows = buildUahRows(buildUahPrice(fiat, crypto), at, fiatSource, fiatFetchedAt);
 
   if (rows.length > 0) {
     await upsertMany(rows);

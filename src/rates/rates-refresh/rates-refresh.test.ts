@@ -701,6 +701,24 @@ describe('refreshRates — one fiat answer per sync run', () => {
     expect(second.captured[0]).toEqual(first.captured[0]);
   });
 
+  // A top-up that stamped the reused fiat rows with its own time would label an
+  // older answer newer than a rate another refresh stored in between, and move
+  // the throttle cursor (the newest `fetchedAt`) for rates it never fetched.
+  it('stamps the fiat rows it reuses with the time of the answer, and only its own crypto rows with its own time', async () => {
+    const fiatOfRun: FiatRatesOfRun = {};
+    await refreshRates({ ...makeDeps({ now: () => 1000 }).deps, fiatOfRun });
+
+    const second = makeDeps({ now: () => 5000 });
+    await refreshRates({ ...second.deps, fiatOfRun });
+
+    const stampOf = (base: string): number | undefined =>
+      second.captured[0].find((pair) => pair.base === base)?.fetchedAt;
+
+    expect(stampOf('USD')).toBe(1000);
+    expect(stampOf('EUR')).toBe(1000);
+    expect(stampOf('BTC')).toBe(5000);
+  });
+
   it('keeps the source of the remembered answer on the rows it composes again', async () => {
     const fiatOfRun: FiatRatesOfRun = {};
     const nbuFiat: RateEntry[] = [{ base: 'USD', quote: 'UAH', rate: 41, source: 'nbu' }];
