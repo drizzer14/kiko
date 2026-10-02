@@ -1678,11 +1678,15 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   EODHD key only when present — a legacy file without `eodhdKey` restores
   fine. A restore keeps this device's live `settings.quoteQuota` (EODHD
   calls already spent on this key today — device/key state, like the key
-  itself) and `settings.lockEnabled` (the app lock is turned off only after
-  `confirmOwner` in Settings, so a file never decides it, including a file
-  with no lock key or no settings row), never the file's
-  (`restore-snapshot.ts`; `settings-columns.test.ts` classifies every
-  settings column as kept-live or from-file). `restoreExportSecrets` still
+  itself), `settings.lockEnabled` (the app lock is turned off only after
+  `confirmOwner` in Settings, so a file never decides it), and
+  `settings.notificationsDeliverableSince` (when iOS first allowed
+  notifications on this device), never the file's. They are the one list
+  `KEPT_FROM_LIVE_ON_RESTORE` (`src/db/kept-from-live-on-restore.ts`), read
+  by `restore-snapshot.ts` and by `settings-columns.test.ts`, which
+  classifies every settings column as kept-live or from-file. A file with
+  no key for one of them, or no settings row at all, still keeps the live
+  value: the restore always inserts the live settings row. `restoreExportSecrets` still
   never imports `db/keys/db-key.ts`: an older file that still carries a
   `dbKeyHex` field (from before that field was dropped) is read through
   as an unknown, unrestored property — re-storing a FOREIGN device's
@@ -1690,20 +1694,29 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   brick the importing device's own encrypted database on its very next
   launch (wrong key at `resolveDbKey()`), which is why the field was
   dropped rather than kept display-only.
-- **The `secrets` block is validated BEFORE the restore, not during it.**
-  `importData` writes the Keychain items after `restoreDataSnapshot`
-  commits, so a malformed block (`isExportSecrets`,
-  `secrets/is-export-secrets.ts`: arrays of the right entry shape, a string
-  `eodhdKey` or none, account ids the file itself restores) is refused as
-  "not a valid Kiko export file" while the live database is still
-  untouched. A new secret class in `ExportSecrets` extends that guard in
-  the same change. What can still fail after the commit is a Keychain write
-  itself; every local post-commit step (the reminder re-plan, the lot recost)
-  runs BEFORE the credentials step for that reason.
+- **The `secrets` block is validated BEFORE the restore, not during it, and
+  reads tolerantly.** `importData` writes the Keychain items after
+  `restoreDataSnapshot` commits, so a malformed block (`isExportSecrets`,
+  `secrets/is-export-secrets.ts`: a field that is present with the wrong
+  shape, checked through a `Record<keyof ExportSecrets, …>` so a new field
+  needs its own check) is refused as "not a valid Kiko export file" while the
+  live database is still untouched. A field a file lacks is not a fault:
+  a missing or empty `monobankTokens`/`binanceCredentials` means no
+  secrets and the restore goes on, and a secret whose account the file does
+  not carry (an account deleted before the export) is dropped by
+  `restoreExportSecrets(secrets, accountIds)` with no error. A new secret
+  class in `ExportSecrets` extends that guard in the same change. A Keychain
+  write that fails after the commit is not an import failure:
+  `restoreExportSecrets` never rejects, tries every secret on its own, and
+  resolves with the connections it could not write (`'monobank'`,
+  `'binance'`, `'eodhd'`); `importData` returns them as
+  `unrestoredCredentials`, still runs the market refresh and the loan
+  auto-link, and the screen shows the success plus a line naming the
+  connections to set up again.
 - **A legacy export missing a newer field must still restore.**
   `restoreExportSecrets` treats an entirely absent `secrets` object (an export
-  written before the credentials toggle, or with it off) as a no-op, not an
-  error — `import-data.ts` still restores `payload.tables` regardless. Follow
+  written before the credentials toggle, or with it off), and a missing or
+  empty array in it, as a no-op, not an error — `import-data.ts` still restores `payload.tables` regardless. Follow
   the same pattern for any future field added to `ExportPayload`: make its
   absence in an older file a no-op, never a hard failure.
 - **A legacy snapshot's missing `balanceSetAt` is BACKFILLED, not left
@@ -1878,9 +1891,10 @@ what a change must keep.
   accounts-list order: `sort_order`, `created_at`, `id`; it reads no
   transactions, so the list subscribes to `reminders` and `accounts`
   only), and `manualEntryDaysQuery(accountId,
-  since)` (see "Offer"). Restore: `restartAfterRestore` (one `UPDATE
-  reminders SET active_since = now, last_snoozed_at = NULL`; the pause
-  and engagement columns are kept). User writes: `create`,
+  since)` (see "Offer"). Restore: no repository method:
+  `restoreDataSnapshot` inserts each restored reminder with `activeSince`
+  set to the restore time and `lastSnoozedAt` null, the pause and
+  engagement columns kept, inside its own transaction. User writes: `create`,
   `update` (a changed schedule restarts `activeSince` and ends a
   back-off pause, but not a user pause; it keeps a pending snooze,
   because iOS keeps it), `setPaused` (resume restarts `activeSince`; a
@@ -2145,7 +2159,13 @@ what a change must keep.
   requests go at once. After the commit it also clears the account's own
   Keychain items (`clearToken`, `clearCredentials`): a failed first
   Connect stores a token or key pair under the account's id while the
-  account still reads as manual, so a deletable account can own one.
+  account still reads as manual, so a deletable account can own one. The
+  clear never rejects (a failed one is logged): the delete has committed,
+  and a rejection would show the save error and skip the re-plan. On the
+  create form, a Binance connect that cannot create the account row
+  clears the key pair the field stored first (`clearUnownedCredentials`
+  in `account-form.screen.tsx`), so no pair stays under an id with no
+  account.
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by
   `id`. `restoreDataSnapshot` deletes `reminders` before
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders
@@ -2158,16 +2178,15 @@ what a change must keep.
   can still fail on a Keychain write, and a re-plan left to the screen
   would be skipped then); the screen applies the restored language only
   after `importData` resolves, and that language change re-plans too, so
-  it sees the restarted counts. The helper runs
-  `restartAfterRestore()` first (counted from the backup, every
-  reminder would read as ignored and back-off pause at once; a restored
-  snooze has no request on this device), then
+  it sees the restarted counts. The restart itself (counted from the
+  backup, every reminder would read as ignored and back-off pause at once;
+  a restored snooze has no request on this device) happens inside the
+  restore's transaction, so a kill or a re-plan right after the commit
+  cannot see the backup's start. The helper runs
   `remindersNative.replaceRequests([], [])` (every pending request goes,
   snoozes included: a snooze pending here belongs to the replaced data
   and would fire beside the regular reminder), then `replanReminders()`.
-  A failed step is logged and still re-plans; it never rejects. Do not move the restart into
-  `restoreDataSnapshot`'s transaction: that breaks the exact round-trip
-  pinned by the test above.
+  A failed drop is logged and still re-plans; it never rejects.
 - SQLite's multi-argument `max(a, b)` returns NULL as soon as one
   argument is NULL; for "latest of a column and a value" use
   `coalesce(max(col, v), col, v)` (see `latest()` in
