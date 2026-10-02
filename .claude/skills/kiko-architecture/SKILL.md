@@ -2170,13 +2170,18 @@ what a change must keep.
   `id`. `restoreDataSnapshot` deletes `reminders` before
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders
   ?? []`, so a pre-reminders `.kiko` restores with no reminders. The
-  settings row is restored whole, so both reminder settings columns
-  come from the backup (`restore-across-reminders-migration.test.ts`
-  pins the old-backup case). `importData` awaits
+  settings row comes from the backup except the columns this device
+  keeps (`KEPT_FROM_LIVE_ON_RESTORE`), so of the two reminder settings
+  columns only `reminderOfferDismissals` comes from the backup:
+  `notificationsDeliverableSince` stays this device's, because a file
+  from another device cannot know when iOS first allowed notifications
+  here (`restore-across-reminders-migration.test.ts` pins the old-backup
+  case). `importData` awaits
   `replanRestoredReminders()` (`src/reminders/use-reminder-scheduler/`)
-  right after the snapshot commits, ahead of the credentials step (which
-  can still fail on a Keychain write, and a re-plan left to the screen
-  would be skipped then); the screen applies the restored language only
+  right after the snapshot commits, ahead of every later step: the
+  re-plan drops the replaced data's pending requests and snoozes, and a
+  later step that threw would leave them on the device to fire beside
+  the restored reminders; the screen applies the restored language only
   after `importData` resolves, and that language change re-plans too, so
   it sees the restarted counts. The restart itself (counted from the
   backup, every reminder would read as ignored and back-off pause at once;

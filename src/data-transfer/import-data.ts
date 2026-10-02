@@ -165,10 +165,10 @@ export const importData = async (options: {
   }
 
   const { accountsRestored } = await restoreDataSnapshot(payload.tables);
-  // Right after the commit, ahead of the credentials step that can still fail
-  // on a Keychain write: left to the screen, a failed step would skip the
-  // re-plan, and the next one would read every reminder as ignored since the
-  // backup and back-off pause them. Never rejects.
+  // Right after the commit, ahead of every later step: the re-plan drops the
+  // replaced data's pending requests and snoozes, and a later step that threw
+  // would leave them on the device to fire beside the restored reminders.
+  // Never rejects.
   await replanRestoredReminders();
   // A backup made before the one-time lot recost restores with its flag
   // unset, so its stale sale costs are fixed before any screen reads them.
