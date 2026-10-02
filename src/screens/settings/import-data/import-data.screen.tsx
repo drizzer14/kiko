@@ -2,7 +2,6 @@ import { Alert } from 'react-native';
 import { i18n } from '@kiko/i18n/init';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { importData } from '@kiko/data-transfer';
 import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
@@ -12,6 +11,7 @@ import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldError from '@kiko/design-system/components/field-error';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import { type ExportSecretKind, importData } from '@kiko/data-transfer';
 import { keepLocalCopy, pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ClipboardTextField from '@kiko/design-system/components/clipboard-text-field';
@@ -47,6 +47,13 @@ const fileNameFrom = (value: string): string => {
   }
 };
 
+// Brand names, written the same in every language.
+const CONNECTION_NAMES: Record<ExportSecretKind, string> = {
+  monobank: 'Monobank',
+  binance: 'Binance',
+  eodhd: 'EODHD',
+};
+
 // The error copy for a failed import, picked by the prefix `importData`'s own
 // decrypt step puts on the message; anything else reads as an invalid file.
 const IMPORT_ERROR_KEYS = [['data-transfer/decrypt', 'settings.dataImport.wrongKeyError']] as const;
@@ -67,6 +74,7 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   const [keyBase64, setKeyBase64] = useState('');
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | undefined>(undefined);
+  const [credentialsMessage, setCredentialsMessage] = useState<string | undefined>(undefined);
   const [wrongFileTypeError, setWrongFileTypeError] = useState(false);
   const [keyTooShortError, setKeyTooShortError] = useState(false);
   const [noFileError, setNoFileError] = useState(false);
@@ -139,6 +147,15 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
 
       setResultMessage(
         i18n.t('settings.dataImport.successMessage', { count: summary.accountsRestored }),
+      );
+      setCredentialsMessage(
+        summary.unrestoredCredentials.length === 0
+          ? undefined
+          : i18n.t('settings.dataImport.credentialsNotRestoredMessage', {
+              connections: summary.unrestoredCredentials
+                .map((kind) => CONNECTION_NAMES[kind])
+                .join(', '),
+            }),
       );
     } catch (error) {
       Alert.alert(t('settings.dataImport.errorTitle'), t(importErrorKey(error)));
@@ -234,6 +251,12 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
           // no test queries this row, so the prop is simply dropped rather
           // than adding testID support to the shared component.
           <Text variant="body">{resultMessage}</Text>
+        )}
+
+        {credentialsMessage !== undefined && (
+          <Text variant="body" tone="textSecondary">
+            {credentialsMessage}
+          </Text>
         )}
       </Box>
 

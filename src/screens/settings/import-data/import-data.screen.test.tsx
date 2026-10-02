@@ -172,6 +172,7 @@ describe('ImportDataScreen', () => {
       accountsRestored: 2,
       holdingsRestored: 3,
       transactionsRestored: 10,
+      unrestoredCredentials: [],
     });
 
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
@@ -207,6 +208,7 @@ describe('ImportDataScreen', () => {
       accountsRestored: 1,
       holdingsRestored: 1,
       transactionsRestored: 1,
+      unrestoredCredentials: [],
     });
 
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
@@ -257,6 +259,7 @@ describe('ImportDataScreen', () => {
       holdingsRestored: 3,
       transactionsRestored: 10,
       languageRestored: 'uk',
+      unrestoredCredentials: [],
     });
 
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
@@ -269,6 +272,73 @@ describe('ImportDataScreen', () => {
     await fireEvent.press(await findByText('Replace data'));
 
     expect(await findByText('Імпорт завершено — відновлено рахунків: 2.')).toBeTruthy();
+  });
+
+  describe('when a saved key could not be written after the data was restored', () => {
+    const pickAndConfirmImport = async () => {
+      mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
+
+      const screen = await renderScreen();
+
+      await fireEvent.press(screen.getByTestId('settings-button-pick-file'));
+      await waitFor(() => expect(mockPick).toHaveBeenCalled());
+      await fireEvent.changeText(
+        screen.getByPlaceholderText('Paste the key from your export'),
+        VALID_KEY,
+      );
+      await fireEvent.press(screen.getByTestId('settings-button-import'));
+      await fireEvent.press(await screen.findByText('Replace data'));
+
+      return screen;
+    };
+
+    it('shows the success and names the connections to set up again, with no failure alert', async () => {
+      mockImportData.mockResolvedValue({
+        accountsRestored: 2,
+        languageRestored: null,
+        unrestoredCredentials: ['monobank', 'binance', 'eodhd'],
+      });
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+      const { findByText } = await pickAndConfirmImport();
+
+      expect(await findByText('Import complete — 2 accounts restored.')).toBeTruthy();
+      expect(
+        await findByText(
+          'Your data was restored, but the saved key or token for Monobank, Binance, EODHD could not be stored on this iPhone. Add it again to reconnect.',
+        ),
+      ).toBeTruthy();
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
+
+    it('writes the message in the restored language', async () => {
+      mockImportData.mockResolvedValue({
+        accountsRestored: 1,
+        languageRestored: 'uk',
+        unrestoredCredentials: ['eodhd'],
+      });
+
+      const { findByText } = await pickAndConfirmImport();
+
+      expect(
+        await findByText(
+          'Дані відновлено, але збережений ключ або токен для EODHD не вдалося записати на цей iPhone. Додайте його ще раз, щоб підключитися знову.',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('shows no such message when every saved key was written', async () => {
+      mockImportData.mockResolvedValue({
+        accountsRestored: 1,
+        languageRestored: null,
+        unrestoredCredentials: [],
+      });
+
+      const { findByText, queryByText } = await pickAndConfirmImport();
+
+      expect(await findByText('Import complete — 1 accounts restored.')).toBeTruthy();
+      expect(queryByText(/could not be stored on this iPhone/)).toBeNull();
+    });
   });
 
   it('shows a wrong-key-specific error when importData throws a decrypt-prefixed error', async () => {

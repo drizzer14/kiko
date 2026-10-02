@@ -17,8 +17,8 @@ import { utf8Decode } from './utf8/utf8';
 import type { ExportPayload } from './payload';
 import { decodeBase64ToBytes } from './base64/base64';
 import { isExportSecrets } from './secrets/is-export-secrets';
-import { restoreExportSecrets } from './secrets/restore-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
+import { type ExportSecretKind, restoreExportSecrets } from './secrets/restore-secrets';
 
 type ImportSummary = {
   accountsRestored: number;
@@ -27,12 +27,19 @@ type ImportSummary = {
   /**
    * The imported settings row's `language`, or `null` when the row carries
    * none (or there is no settings row at all). A plain string code, not the
-   * app's `AppLanguage` type — this layer must not import i18n. The caller
+   * app's `AppLanguage` type, so this summary does not depend on the i18n
+   * catalogue's types. The caller
    * (`import-data.screen.tsx`) applies it via `i18n.changeLanguage` BEFORE
    * resolving the success alert's `t()` copy, so that alert renders in the
    * language the import just restored, not the pre-import one.
    */
   languageRestored: string | null;
+  /**
+   * The connections whose saved key or token the file carried but the Keychain
+   * would not take. The data is restored either way, so this is not a failure:
+   * the caller tells the user which connections to set up again.
+   */
+  unrestoredCredentials: readonly ExportSecretKind[];
 };
 
 const isExportEnvelope = (value: unknown): value is ExportEnvelope =>
@@ -75,7 +82,7 @@ const isExportPayload = (value: unknown): value is ExportPayload => {
 
   return (
     REQUIRED_TABLE_KEYS.every((key) => Array.isArray((tables as Record<string, unknown>)[key])) &&
-    (secrets === undefined || isExportSecrets(secrets, restoredAccountIds(tables.accounts)))
+    (secrets === undefined || isExportSecrets(secrets))
   );
 };
 
@@ -167,7 +174,12 @@ export const importData = async (options: {
   // unset, so its stale sale costs are fixed before any screen reads them.
   // Local and quick, and it never rejects.
   await recostStoredLots();
-  await restoreExportSecrets(payload.secrets);
+  // Never rejects: a secret the Keychain refuses comes back as a connection to
+  // set up again, so the steps below still run for data that is restored.
+  const unrestoredCredentials = await restoreExportSecrets(
+    payload.secrets,
+    restoredAccountIds(payload.tables.accounts),
+  );
 
   // A restored foreign-currency/metal/crypto holding needs its price/rate
   // visible without an app restart — a bulk restore bypasses the sync
@@ -201,5 +213,6 @@ export const importData = async (options: {
     holdingsRestored: payload.tables.holdings.length,
     transactionsRestored: payload.tables.transactions.length,
     languageRestored: payload.tables.settings.at(0)?.language ?? null,
+    unrestoredCredentials,
   };
 };

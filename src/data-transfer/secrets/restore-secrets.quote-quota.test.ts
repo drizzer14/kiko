@@ -20,6 +20,7 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { restoreExportSecrets } from './restore-secrets';
 
+const NO_ACCOUNTS: ReadonlySet<string> = new Set();
 const TODAY = Date.UTC(2026, 9, 1);
 const NOW = TODAY + 9 * 60 * 60 * 1000;
 const LIVE_QUOTA = {
@@ -67,11 +68,14 @@ describe('restoring the EODHD key', () => {
   it("marks the limit unconfirmed and the key new, keeping this device's calls today", async () => {
     mockDatabase = openDatabase(LIVE_QUOTA);
 
-    await restoreExportSecrets({
-      monobankTokens: [],
-      binanceCredentials: [],
-      eodhdKey: 'fake-eodhd-key-0000',
-    });
+    await restoreExportSecrets(
+      {
+        monobankTokens: [],
+        binanceCredentials: [],
+        eodhdKey: 'fake-eodhd-key-0000',
+      },
+      NO_ACCOUNTS,
+    );
 
     expect(mockSaveEodhdKey).toHaveBeenCalledWith('fake-eodhd-key-0000');
     expect(storedQuota()).toEqual({
@@ -87,11 +91,14 @@ describe('restoring the EODHD key', () => {
   it('starts an unconfirmed quota on a device that never had one', async () => {
     mockDatabase = openDatabase();
 
-    await restoreExportSecrets({
-      monobankTokens: [],
-      binanceCredentials: [],
-      eodhdKey: 'fake-eodhd-key-0000',
-    });
+    await restoreExportSecrets(
+      {
+        monobankTokens: [],
+        binanceCredentials: [],
+        eodhdKey: 'fake-eodhd-key-0000',
+      },
+      NO_ACCOUNTS,
+    );
 
     expect(storedQuota()).toEqual({
       day: TODAY,
@@ -106,23 +113,28 @@ describe('restoring the EODHD key', () => {
   it('leaves the quota alone for a backup with no key', async () => {
     mockDatabase = openDatabase(LIVE_QUOTA);
 
-    await restoreExportSecrets({ monobankTokens: [], binanceCredentials: [] });
+    await restoreExportSecrets({ monobankTokens: [], binanceCredentials: [] }, NO_ACCOUNTS);
 
     expect(storedQuota()).toEqual(LIVE_QUOTA);
   });
 
   it('stores the key before the quota marks it new', async () => {
     mockDatabase = openDatabase(LIVE_QUOTA);
+    let quotaWhenKeySaved: unknown;
     mockSaveEodhdKey.mockImplementation(async () => {
-      expect(storedQuota()).toEqual(LIVE_QUOTA);
+      quotaWhenKeySaved = storedQuota();
     });
 
-    await restoreExportSecrets({
-      monobankTokens: [],
-      binanceCredentials: [],
-      eodhdKey: 'fake-eodhd-key-0000',
-    });
+    await restoreExportSecrets(
+      {
+        monobankTokens: [],
+        binanceCredentials: [],
+        eodhdKey: 'fake-eodhd-key-0000',
+      },
+      NO_ACCOUNTS,
+    );
 
     expect(mockSaveEodhdKey).toHaveBeenCalledTimes(1);
+    expect(quotaWhenKeySaved).toEqual(LIVE_QUOTA);
   });
 });
