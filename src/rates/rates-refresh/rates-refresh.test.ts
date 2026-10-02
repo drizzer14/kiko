@@ -764,6 +764,18 @@ describe('refreshRates — one fiat answer per sync run', () => {
     expect(second.captured).toHaveLength(0);
   });
 
+  it('asks the fiat sources once when two passes of one run start together', async () => {
+    const fiatOfRun: FiatRatesOfRun = {};
+    const fetchFiatRates = jest.fn(async () => fiat);
+
+    await Promise.all([
+      refreshRates({ ...makeDeps({ fetchFiatRates }).deps, fiatOfRun }),
+      refreshRates({ ...makeDeps({ fetchFiatRates }).deps, fiatOfRun }),
+    ]);
+
+    expect(fetchFiatRates).toHaveBeenCalledTimes(1);
+  });
+
   it('asks Monobank for the first time when the run so far asked no fiat source', async () => {
     const fiatOfRun: FiatRatesOfRun = {};
     await refreshRates({

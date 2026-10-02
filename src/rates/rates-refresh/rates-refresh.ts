@@ -48,7 +48,7 @@ type FiatAnswer = { rates: RateEntry[]; source: 'monobank' | 'nbu'; fetchedAt: n
  * fiat currency, so a later pass reads this instead of asking again.
  */
 export type FiatRatesOfRun = {
-  answer?: PromiseSettledResult<FiatAnswer>;
+  answer?: Promise<FiatAnswer>;
 };
 
 export type RefreshDeps = {
@@ -362,33 +362,26 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
     return { rates: bifold(attempt), source: 'monobank', fetchedAt: at };
   };
 
-  // A failed answer is remembered too: a later pass of the same run must not
-  // retry the sources that just failed, it reports the same failed leg.
-  const fiatAnswerOfRun = async (): Promise<PromiseSettledResult<FiatAnswer>> => {
-    const remembered = deps.fiatOfRun?.answer;
-
-    if (remembered !== undefined) {
-      return remembered;
+  // The run keeps the answer's promise, set before anything awaits it: a pass
+  // that starts while the first is still asking joins it instead of asking
+  // again, and a failed answer is remembered too, so a later pass reports the
+  // same failed leg instead of retrying the sources that just failed.
+  const fiatAnswerOfRun = (): Promise<FiatAnswer> => {
+    if (deps.fiatOfRun === undefined) {
+      return askFiatSources();
     }
-    const [settled] = await Promise.allSettled([askFiatSources()]);
+    deps.fiatOfRun.answer ??= askFiatSources();
 
-    if (deps.fiatOfRun !== undefined) {
-      deps.fiatOfRun.answer = settled;
-    }
-
-    return settled;
+    return deps.fiatOfRun.answer;
   };
 
   const loadFiatWithFallback = async (): Promise<RateEntry[]> => {
-    const settled = await fiatAnswerOfRun();
+    const answer = await fiatAnswerOfRun();
 
-    if (settled.status === 'rejected') {
-      throw settled.reason;
-    }
-    fiatSource = settled.value.source;
-    fiatFetchedAt = settled.value.fetchedAt;
+    fiatSource = answer.source;
+    fiatFetchedAt = answer.fetchedAt;
 
-    return settled.value.rates;
+    return answer.rates;
   };
 
   // Settle the fiat (with its NBU fallback) and crypto pipelines

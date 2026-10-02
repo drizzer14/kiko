@@ -147,16 +147,7 @@ describe('settleJobsBesideMarketRefresh — requests per run', () => {
     expect(requests()).toEqual({ monobank: 1, nbu: 0, coingecko: 0 });
   });
 
-  it('prices a currency a job brought in during this run', async () => {
-    storeRates(10);
-
-    await settleJobsBesideMarketRefresh([jobBringingIn('BTC')], '[test]');
-
-    expect(mockStoredRates.has('BTC')).toBe(true);
-    expect(requests()).toEqual({ monobank: 1, nbu: 0, coingecko: 1 });
-  });
-
-  it('prices a new crypto from the fiat answer the run already has, with no second Monobank request', async () => {
+  it('prices a currency a job brought in during this run from the fiat answer the run already has, with no second Monobank request', async () => {
     storeRates(10);
 
     await settleJobsBesideMarketRefresh([jobBringingIn('BTC')], '[test]');
@@ -164,7 +155,7 @@ describe('settleJobsBesideMarketRefresh — requests per run', () => {
     expect(mockUpserted.at(-1)).toContainEqual(
       expect.objectContaining({ base: 'BTC', rate: String(60000 * 41), source: 'coingecko' }),
     );
-    expect(requests().monobank).toBe(1);
+    expect(requests()).toEqual({ monobank: 1, nbu: 0, coingecko: 1 });
   });
 
   it('prices a new fiat currency only Monobank lists from the response the refresh beside the jobs already fetched', async () => {
