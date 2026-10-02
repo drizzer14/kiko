@@ -20,9 +20,11 @@ import {
   write,
   type database,
   chunkForTable,
+  KEPT_FROM_LIVE_ON_RESTORE,
 } from '@kiko/db';
 import { eq } from 'drizzle-orm';
 import { maxOf } from '@kiko/numbers';
+import maybe, { foldMap } from 'fnts/maybe';
 import { SETTINGS_ID } from '@kiko/settings';
 import { withRestoredPrices } from '@kiko/prices/quote-quota';
 import { entityColorsDark } from '@kiko/design-system/palette';
@@ -360,25 +362,36 @@ const withImportTimesRezoned = (
   };
 };
 
-type LiveDeviceSettings = Pick<SettingsRow, 'lockEnabled' | 'quoteQuota'>;
+type LiveDeviceSettings = Pick<SettingsRow, (typeof KEPT_FROM_LIVE_ON_RESTORE)[number]>;
+
+const NO_LIVE_DEVICE_SETTINGS = {
+  quoteQuota: null,
+  lockEnabled: false,
+} satisfies LiveDeviceSettings;
+
+const keptFromLive = (row: SettingsRow): LiveDeviceSettings =>
+  Object.fromEntries(
+    KEPT_FROM_LIVE_ON_RESTORE.map((column) => [column, row[column]]),
+  ) as LiveDeviceSettings;
 
 /**
- * The settings this device owns, which a restore keeps from the live row and
- * never takes from the backup. The EODHD quote quota counts the calls this
- * device's own key spent today, not the backed-up device's (minus what it
- * knew of the replaced prices: see `withRestoredPrices`). The app lock is
- * turned off only after the owner confirms in Settings, so a file, which
- * can carry any value or none, never decides it.
+ * The settings this device owns (`KEPT_FROM_LIVE_ON_RESTORE`), which a restore
+ * keeps from the live row and never takes from the backup. The EODHD quote
+ * quota counts the calls this device's own key spent today, not the
+ * backed-up device's (minus what it knew of the replaced prices: see
+ * `withRestoredPrices`). The app lock is turned off only after the owner
+ * confirms in Settings, so a file, which can carry any value or none, never
+ * decides it.
  */
 const readLiveDeviceSettings = async (
   databaseTransaction: typeof database,
 ): Promise<LiveDeviceSettings> => {
   const rows = await databaseTransaction
-    .select({ quoteQuota: settings.quoteQuota, lockEnabled: settings.lockEnabled })
+    .select()
     .from(settings)
     .where(eq(settings.id, SETTINGS_ID));
 
-  return rows.at(0) ?? { quoteQuota: null, lockEnabled: false };
+  return foldMap(maybe(rows.at(0)), keptFromLive) ?? NO_LIVE_DEVICE_SETTINGS;
 };
 
 /** The rate-row fields `withRatesNormalizedToUah` reads/rewrites; every other
@@ -738,7 +751,7 @@ export const restoreDataSnapshot = (
     // and quota are carried by a row of their own.
     const settingsRowsToInsert = () => {
       const liveSettings = {
-        lockEnabled: liveDeviceSettings.lockEnabled,
+        ...liveDeviceSettings,
         quoteQuota: withRestoredPrices(liveDeviceSettings.quoteQuota),
       };
 
