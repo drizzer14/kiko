@@ -61,6 +61,8 @@ type HomeScreenProps = CompositeScreenProps<
 
 type DateRangeBounds = { from: number | undefined; to: number | undefined };
 
+const NO_SECTIONS: DaySection<HomeTransactionRow>[] = [];
+
 /**
  * The (inclusive) date-range bounds as raw instants, resolved ONCE per range
  * rather than once per transaction: `startOfLocalDay`/`endOfLocalDay` are
@@ -624,28 +626,30 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
         {/* While a new range's window read loads, `transactions` still holds the
             previous range's rows and the empty text would be a lie, so the list
-            area alone shows the loading state. */}
-        {transactionsLoading ? (
-          <LoadingState testID="home-transactions-loading" />
-        ) : (
-          <SectionList
-            ref={listRef}
-            testID="home-transactions"
-            sections={sections}
-            keyExtractor={(item) => item.id}
-            renderItem={renderTransaction}
-            renderSectionHeader={renderDayHeader}
-            stickySectionHeadersEnabled={false}
-            style={styles.list}
-            contentContainerStyle={styles.listContent(listBottomClearance)}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            ListEmptyComponent={
+            shows no section and the loading state in the empty slot. The list
+            stays mounted: it is the scroll view that carries pull-to-refresh and
+            the large-title collapse. */}
+        <SectionList
+          ref={listRef}
+          testID="home-transactions"
+          sections={transactionsLoading ? NO_SECTIONS : sections}
+          keyExtractor={(item) => item.id}
+          renderItem={renderTransaction}
+          renderSectionHeader={renderDayHeader}
+          stickySectionHeadersEnabled={false}
+          style={styles.list}
+          contentContainerStyle={styles.listContent(listBottomClearance)}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          ListEmptyComponent={
+            transactionsLoading ? (
+              <LoadingState testID="home-transactions-loading" />
+            ) : (
               <Box style={styles.empty}>
                 <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>
               </Box>
-            }
-          />
-        )}
+            )
+          }
+        />
 
         {/* The global-add FAB is an ADDITIVE sibling of the SectionList, OUTSIDE
             its scroll content, pinned bottom-right and lifted clear of the

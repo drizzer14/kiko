@@ -225,6 +225,13 @@ type Transaction = {
   exchangeCounterpartHoldingId: string | null;
 };
 type Category = { key: string; title: string; icon: string };
+type PricePoint = {
+  instrument: string;
+  day: number;
+  price: string;
+  currency: string;
+  source: string;
+};
 
 type LiveData = {
   accounts?: Account[];
@@ -243,6 +250,8 @@ type LiveData = {
   // like the real hook, which is loading again on every new key.
   windowLoading?: (bounds: unknown[]) => boolean;
   categories?: Category[];
+  // What the price book's `price_points` read answers.
+  pricePoints?: PricePoint[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
   // key defaults to `false` (an already-resolved query), so every existing
   // call site above keeps behaving exactly as before.
@@ -270,7 +279,7 @@ const liveAnswersFor = (
     // Default to the production-seeded rows so category resolution behaves as
     // it would on device unless a test overrides it (e.g. a rename).
     categories: data.categories ?? SEEDED_CATEGORIES,
-    price_points: [],
+    price_points: data.pricePoints ?? [],
   };
   const isLoadingByTable = data.isLoading ?? {};
   const ledger = data.transactions ?? [];
@@ -1518,6 +1527,9 @@ describe('HomeScreen — loading gate', () => {
     const windowLoading = (bounds: unknown[]): boolean =>
       settledKey !== undefined && JSON.stringify(bounds) !== settledKey;
     const lastWindowKey = (): string => JSON.stringify(mockListBetween.mock.lastCall);
+    // The list's own ref, handed to the tab re-tap hook: a list that unmounted
+    // and mounted again would hand a different instance.
+    const listRef = (): { current: unknown } => mockUseScrollToTopOnTabPress.mock.lastCall?.[0];
 
     const rerenderHome = async (
       rerender: Awaited<ReturnType<typeof render>>['rerender'],
@@ -1546,6 +1558,9 @@ describe('HomeScreen — loading gate', () => {
         await renderHome();
 
       settledKey = lastWindowKey();
+      const listBefore = listRef().current;
+
+      expect(listBefore).not.toBeNull();
 
       await act(async () => {
         await fireEvent.press(getByLabelText('Date range'));
@@ -1571,7 +1586,10 @@ describe('HomeScreen — loading gate', () => {
       expect(getByText('Net worth')).toBeTruthy();
       expect(getByTestId('category-filter-menu')).toBeTruthy();
       expect(getByTestId('home-transactions-loading')).toBeTruthy();
-      expect(queryByTestId('home-transactions')).toBeNull();
+      // The same list stays mounted, so pull-to-refresh and the scroll target
+      // of the large title stay on it while the window loads.
+      expect(getByTestId('home-transactions').props.refreshControl).toBeTruthy();
+      expect(listRef().current).toBe(listBefore);
       // The previous range's rows are never shown under the new range.
       expect(queryByText('Recent')).toBeNull();
       expect(queryByText(i18n.t('home.emptyTransactions'))).toBeNull();
@@ -1580,6 +1598,7 @@ describe('HomeScreen — loading gate', () => {
       await rerenderHome(rerender);
 
       expect(queryByTestId('home-transactions-loading')).toBeNull();
+      expect(listRef().current).toBe(listBefore);
       expect(getByTestId('home-transactions')).toBeTruthy();
     });
 

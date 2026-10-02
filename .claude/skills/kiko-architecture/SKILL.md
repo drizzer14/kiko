@@ -432,9 +432,11 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   would drop its net-worth card, its filter bar and the open range
   sheet for a read that only affects the list. `data` still holds the
   previous key's rows while the new key loads, so the screen must
-  never show them (or the EMPTY state) under the new key: Home puts the
-  `LoadingState` in the list's place until the read lands. The screen's
-  first load per mount still gates the whole screen.
+  never show them (or the EMPTY state) under the new key: Home keeps its
+  list mounted (it carries pull-to-refresh and the large-title scroll
+  target), gives it no sections, and renders the `LoadingState` as its
+  empty component until the read lands. The screen's first load per mount
+  still gates the whole screen.
 - `LoadingState` (`src/design-system/components/loading-state/`) is
   the shared "not ready yet" visual: a plain centered native
   `ActivityIndicator`, no text at all — a spinner needs no i18n
