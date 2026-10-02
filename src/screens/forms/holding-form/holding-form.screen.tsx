@@ -21,7 +21,6 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import type { Currency } from '@kiko/currency/currency';
-import { usePriceBook } from '@kiko/prices/use-price-book';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
@@ -38,6 +37,7 @@ import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
 import CurrencyField from '@kiko/design-system/components/currency-field';
+import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { refreshAfterHoldingWrite } from '@kiko/sync/refresh-after-holding-write';
@@ -309,7 +309,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // mode) never reads it (`needsPriceBook`). Save waits for the book on an
   // edit: saved against a still-empty book, a loan changed into `'none'`
   // would store its schedule-only outstanding as a permanent manual point.
-  const { book: priceBook, isLoading: isPriceBookLoading } = usePriceBook(
+  const { book: priceBook, isLoading: isPriceBookLoading } = useCurrentPriceBook(
     needsPriceBook(editingHolding?.type ?? type),
   );
   const [currency, setCurrency] = useState<Currency>('UAH');

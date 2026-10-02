@@ -938,15 +938,11 @@ fixtures with the local `Date` constructor (`new Date(y, m - 1, d,
 ...)`), not `Date.UTC`, unless the value is a normalized UTC calendar
 day (see `dayKeyOf`).
 
-Known debt: 15 suites still feed `Date.UTC` midnight fixtures to
-local-day code — holdings (`property-item.descriptor`, `holding-value`,
-`lots`, `ownership`, `ownership-edits`, `existing-holdings-pin`), prices
-(`metal-refresh`, `price-book`), rates (`conversion`, `currency-totals`,
-`net-worth-view`), `holding-card.component`, and statistics
-(`account-contribution`, `net-worth-series`, `type-breakdown`). They
-pass under the Kyiv pin only because UTC midnight is 02:00/03:00 Kyiv on
-the same calendar day; a zone west of UTC would shift each fixture a
-day back.
+Known debt: some suites still feed `Date.UTC` midnight fixtures to
+local-day code; list them with `grep -rl 'Date.UTC' src --include='*.test.ts*'`.
+They pass under the Kyiv pin only because UTC midnight is 02:00/03:00
+Kyiv on the same calendar day; a zone west of UTC would shift each
+fixture a day back.
 
 Never build a test fixture as the real clock plus or minus a fixed day
 span (`Date.now() + DAY_MS`, `now - 2 * DAY` where `now = Date.now()`).
@@ -2364,8 +2360,8 @@ caught and logged, the same "log instead of drop" contract
 `refresh-market-data.ts` established for its own background refreshes, so
 a failed auto-link never turns a successful sync/import/save into a shown
 error. Called after: every sync completion path (`useSync`, `useSyncAll`,
-`useAutoSync` — the same three call sites `refreshMarketData` already
-established as "every sync surface"); `importParsedStatement` (ONE
+`useAutoSync` — the same three sync surfaces (`useSyncAll`/`useAutoSync` reach
+`refreshMarketData` through `settleJobsBesideMarketRefresh`; `grep -rn "refreshMarketData(" src` lists the direct callers)); `importParsedStatement` (ONE
 insertion point covers both its callers — the dedicated `importStatement`
 and the column-mapping screen's direct call); a `.kiko` backup restore
 (`data-transfer/import-data.ts`, fire-and-forget, right after the same
@@ -2496,7 +2492,7 @@ below until it is added there too. Seven steps, in order:
 5. Add an entry to `holdingDetailSpecs`
    (`src/screens/holding-detail/holding-detail-spec/`): its footer add
    action, its value-breakdown display, and its next-loan-installment
-   panel (or `noInstallment` for every type but a scheduled loan). The
+   panel (`upcomingInstallments`; `noInstallments` for every type but a scheduled loan). The
    breakdown is one of `{ kind: 'interest', principalLabelKey, expectedProfit }`
    (the deposit/bond principal-or-cost/gross/interest/tax table), `{ kind:
    'priced' }` (the cost/value/gain table a priced type shows — see

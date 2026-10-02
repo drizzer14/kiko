@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { type LiveQueryOptions, useLiveQuery } from '@kiko/db';
+import { type LiveQueryOptions, type PricePointRow, useLiveQuery } from '@kiko/db';
 
 import { pricePointsRepo } from '../price-points-repo';
 import { buildPriceBook, type PriceBook } from '../price-book';
@@ -8,12 +8,17 @@ import { buildPriceBook, type PriceBook } from '../price-book';
 type UsePriceBookResult = { book: PriceBook; isLoading: boolean };
 
 /**
+ * For a screen that values the PAST (statistics). Every screen that values
+ * only now reads `useCurrentPriceBook` (`../use-current-price-book`) instead:
+ * this table grows with every daily share and metal close.
+ *
  * Reactive `PriceBook`, subscribed to the whole `price_points` table AND to
  * every linked loan payment (one read across all loans — a loan's
  * outstanding reads its payments on every valuation site). Rebuilt only when
  * a live row set itself changes — `useMemo` keyed on both row sets, so a
  * re-render that touches unrelated state does not re-group every point.
- * `isLoading` is true while EITHER read is on its first load, so a screen can
+ * `isLoading` is true while EITHER read is on its first load or after it is
+ * turned back on, so a screen can
  * gate its own empty state on it — see `kiko-architecture`'s useLiveQuery
  * consumer rule — and never shows a loan's schedule-only value before its
  * payments arrive.
@@ -38,12 +43,22 @@ export const usePriceBook = (
   options: LiveQueryOptions = {},
   loanPaymentsEnabled = enabled,
 ): UsePriceBookResult => {
-  const { data: rows, isLoading: pointsLoading } = useLiveQuery(
-    pricePointsRepo.allQuery(),
-    ['price_points'],
-    enabled,
-    options,
-  );
+  const points = useLiveQuery(pricePointsRepo.allQuery(), ['price_points'], enabled, options);
+
+  return usePriceBookOfPoints(points, enabled, options, loanPaymentsEnabled);
+};
+
+/**
+ * The linked-payments read and the book assembly shared by every price-book
+ * hook; `points` is the hook's own `price_points` read, so the whole-table
+ * hook and the current-rows hook differ only in which rows they read.
+ */
+export const usePriceBookOfPoints = (
+  { data: rows, isLoading: pointsLoading }: { data: PricePointRow[]; isLoading: boolean },
+  enabled: boolean,
+  options: LiveQueryOptions,
+  loanPaymentsEnabled: boolean,
+): UsePriceBookResult => {
   const { data: payments, isLoading: paymentsLoading } = useLiveQuery(
     transactionsRepo.loanLedgerPaymentsQuery(),
     ['transactions', 'holdings'],

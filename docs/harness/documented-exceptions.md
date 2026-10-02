@@ -664,6 +664,19 @@ verified usage, not dead weight:
   `__tests__/pre-write-guard-rules.test.ts` prove the test, test-support,
   `e2e/`, and `src/dates/` paths.
 
+- **`kiko-no-whole-price-points-read` (`rules/semgrep-prewrite.yml`)
+  excludes `src/prices/use-price-book/**`, `src/prices/price-points-repo/**`,
+  `*.test.ts` and `*.test.tsx`.** The hook's folder is where
+  `usePriceBook` reads `pricePointsRepo.allQuery()` for a history screen, and
+  the repo's folder defines `allQuery` and the filtered selects: both are the
+  rule's owners, so the rule would only fire on its own definitions. Test
+  files mock or call the whole-table read to prove the current-rows book gives
+  the same numbers. Measured on 2026-10-02: without the excludes the rule draws
+  hits only in those folders and tests, plus the two overridden sites
+  (`statistics.screen.tsx`, `read-snapshot.ts`), each with a per-line
+  `nosemgrep ... OVERRIDE(...)` in the source, never a file exclude. The flat
+  fixture pair proves the rule in `check:rules`.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`

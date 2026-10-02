@@ -167,12 +167,11 @@ and immediately if a sync starts failing with a TLS error.
   `ios/Kiko/PrivacyInfo.xcprivacy` declares `NSPrivacyAccessedAPICategoryDiskSpace`
   (`E174.1`) while any dependency on that list ships (else ITMS-91053). `npm run check:plist` asserts it
   and fails closed when it cannot tell.
-- **The Monobank token field no longer prefills the input with the stored
-  secret.** `src/screens/account-detail/monobank-token-field/monobank-token-field.component.tsx`
-  reads only `hasToken()` (a boolean) to drive its "already saved" caption;
-  the real token is never read back into React state, so it cannot park in
-  the JS heap or a retained fiber. Changing a saved token means re-entering
-  it. Enforced by `kiko-no-keychain-secret-into-usestate` and
+- **The Monobank token input never prefills with the stored secret.**
+  Connect takes the text typed this session (`MonobankConnectField`; grep it
+  under `src/`), validates it, then writes the Keychain. The token is never
+  read back into React state, and a failed connect clears nothing it did not
+  store. Enforced by `kiko-no-keychain-secret-into-usestate` and
   `kiko-no-keychain-secret-through-then` in `rules/semgrep-mobile.yml`.
 - **`readCredentials` re-saves a legacy-policy Binance credential pair at most
   once per process, not on every call.** `src/crypto-sync/binance/binance.credentials.ts`
@@ -239,7 +238,7 @@ and immediately if a sync starts failing with a TLS error.
   `settings`-columns-have-a-reader test (`src/db/settings-columns.test.ts`), so
   neither a new dead column nor a silent re-wiring of this one can slip through.
 - **Every BTC sync discloses the wallet address to `blockstream.info`.**
-  `src/crypto-sync/btc-wallet/btc-wallet.client.ts:33` requests
+  `fetchAddressBalance` in `src/crypto-sync/btc-wallet/btc-wallet.client.ts` requests
   `${BTC_EXPLORER_ENDPOINT}/address/<address>` on every sync, so Blockstream
   learns `(address, source IP, timestamp)` and can correlate a specific wallet
   with a specific network location over time. Accepted: a public Esplora

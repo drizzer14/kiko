@@ -610,6 +610,60 @@ describe('useLiveQuery — the enabled argument', () => {
     expect(result.current.data).toEqual([]);
     expect(result.current.isLoading).toBe(false);
   });
+
+  it('reads as loading with no rows when re-enabled, until its new read lands (never the pre-disable rows)', async () => {
+    const { query, resolvers } = pendingQuery();
+
+    const { result, rerender } = await renderHook(
+      ({ enabled }: { enabled: boolean }) => useLiveQuery(query, ['accounts'], enabled),
+      { initialProps: { enabled: true } },
+    );
+    await settle(resolvers[0], [{ id: 'before-disable' }]);
+    expect(result.current.data).toEqual([{ id: 'before-disable' }]);
+
+    await act(async () => {
+      await rerender({ enabled: false });
+    });
+    await act(async () => {
+      await rerender({ enabled: true });
+    });
+
+    expect(resolvers).toHaveLength(2);
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.isFresh).toBe(false);
+    expect(result.current.data).toEqual([]);
+
+    await settle(resolvers[1], [{ id: 'after-enable' }]);
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isFresh).toBe(true);
+    expect(result.current.data).toEqual([{ id: 'after-enable' }]);
+  });
+
+  it('drops a read still in flight when it is disabled, so it never lands after a later re-enable', async () => {
+    const { query, resolvers } = pendingQuery();
+
+    const { result, rerender } = await renderHook(
+      ({ enabled }: { enabled: boolean }) => useLiveQuery(query, ['accounts'], enabled),
+      { initialProps: { enabled: true } },
+    );
+
+    await act(async () => {
+      await rerender({ enabled: false });
+    });
+    await act(async () => {
+      await rerender({ enabled: true });
+    });
+    await settle(resolvers[0], [{ id: 'stale-in-flight' }]);
+
+    expect(result.current.data).toEqual([]);
+    expect(result.current.isLoading).toBe(true);
+
+    await settle(resolvers[1], [{ id: 'current' }]);
+
+    expect(result.current.data).toEqual([{ id: 'current' }]);
+    expect(result.current.isLoading).toBe(false);
+  });
 });
 
 // kiko-architecture: a DISPLAY screen reopened within seconds shows its data on

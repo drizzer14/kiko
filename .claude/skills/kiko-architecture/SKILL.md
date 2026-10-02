@@ -309,8 +309,13 @@ one for the other:
   does not need right now (a gate like `needsPriceBook`/loan-only
   reads — see "App-open and refresh work is gated on data presence"
   below). It skips the read AND the subscription entirely: `data`
-  reads `[]`, `isLoading` reads `false`. Flipping it back to `true`
-  re-subscribes and re-reads from scratch.
+  reads `[]`, `isLoading` reads `false`. The hook forgets the rows it
+  read: flipping it back to `true` re-subscribes and re-reads from
+  scratch, and until that read lands `isLoading` is `true`, `isFresh`
+  is `false` and `data` is `[]` — never the rows from before the
+  disable (a key that did not change in between, such as a
+  parameterless read, would otherwise pass them off as the new
+  read's result).
 - **`paused: true`** (`LiveQueryOptions.paused`) is for a screen that
   is mounted but not visible right now — a background tab under a
   native tab bar, which stays mounted the whole time the app is open.
@@ -325,10 +330,12 @@ one for the other:
   read if the query went dirty while paused, zero if it did not; the
   MOUNT read always runs regardless of `paused`, since a screen can be
   mounted unfocused (a deep link, a restore) and still needs its first
-  real data. Toggling `paused` never re-subscribes. `statistics.screen.tsx`
-  passes `paused: !isFocused` (`useIsFocused` from
-  `@react-navigation/native`) to every one of its own
-  `useLiveQuery`/`usePriceBook` calls: `enabled: false` unsubscribes and
+  real data. Toggling `paused` never re-subscribes. `statistics.screen.tsx`,
+  `home.screen.tsx` and `accounts.screen.tsx` pass `paused: !isFocused`
+  (`useIsFocused` from `@react-navigation/native`) to every one of their own
+  `useLiveQuery`/price-book calls; each screen's test pins that no call
+  skips the flag and that a write made while hidden shows only once the tab
+  regains focus. `enabled: false` unsubscribes and
   returns `[]`, the wrong contract for a tab that stays mounted and must
   show its last rows the instant it regains focus — use `paused`, not
   `enabled`, for a hidden-but-mounted tab.
@@ -341,6 +348,24 @@ one for the other:
   exactly one recompute (check whether the net-worth line's own animation
   replays); no backfill request fires while hidden, only after the fresh
   read lands; an unfocused mount still loads its charts.
+
+### Home reads a windowed ledger, not every transaction
+
+The ledger grows with every transaction ever synced, and a read of it
+re-runs on every transactions/holdings/accounts write. Home therefore
+reads three queries on those tables instead of one whole-ledger list:
+`transactionsRepo.listWithContextBetweenQuery(from, to)` (the picked date
+range's rows, the screen's own inclusive day-aligned bounds, an
+`undefined` side open-ended; ordered `time desc` on the
+`transactions_time` index, so same-time rows keep their order),
+`contextSpanQuery()` (earliest and latest time of the whole
+ledger, for the date-range field) and `contextCategoriesQuery()` (each
+stored category once, newest-first, for the category filter). Those two
+aggregates are the only things Home needs from rows outside the range, so
+the window needs no earlier rows. The JavaScript range filter stays, and
+the screen test's mock answers the three queries by `kind`; the real SQL
+is pinned against a full-ledger filter in
+`transactions.repo.home-window.test.ts`.
 
 ### op-sqlite's ONE worker thread — every query, whole-app, one queue
 
@@ -364,7 +389,7 @@ consequences follow directly:
 
 ### `useLiveQuery` consumer rule: gate an empty state on `isLoading`, never on `data.length === 0` alone
 
-Every `useLiveQuery` (and `usePriceBook`, which wraps one) starts
+Every `useLiveQuery` (and `useCurrentPriceBook`/`usePriceBook`, which wrap one) starts
 `isLoading: true` — unless it opted into the live-query cache below and
 the cache has rows for its key — and clears it only once its FIRST read for its CURRENT
 sql+paramsKey settles — never before. Because of the
@@ -398,24 +423,34 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
 - `useDataReady(...isLoading)` (`src/db/use-data-ready.ts`) takes every
   `isLoading` flag a screen's own `useLiveQuery`/`usePriceBook` calls
   return and is `true` only once ALL of them are currently settled —
-  a plain `!loadingFlags.some(Boolean)`, no latch. An earlier revision
-  latched (stayed ready forever once every flag had settled once), as
-  a defensive backstop against `useLiveQuery`'s `isLoading` flipping
-  back to `true` after the gate had already opened; that never
-  actually happens for any current consumer, because a query's key
-  only ever changes while at least one of that SAME screen's OTHER
-  flags is still loading in that same render (the dependent-query case
-  above) — concretely, in holding-detail the ACCOUNT query's own
-  `isLoading` flips back to `true` the instant it re-keys off the
-  just-loaded holding, so `useDataReady`'s overall gate is already
-  not-ready for that render without any latch — so the latch was dead
-  weight once the flip moved to the right layer (`useLiveQuery` itself,
-  per-key, above). A future parameter-keyed query must keep the same
-  contract: keep the previous key's data visible through a later key
-  change and never show the EMPTY state for the new key before its own
-  result lands — the screen's first load per mount is what gates the
-  whole screen from ever showing empty on real data, not a per-key
-  reset in between.
+  a plain `!loadingFlags.some(Boolean)`, no latch. The flip lives in
+  the right layer (`useLiveQuery` itself, per-key, above): in
+  holding-detail the ACCOUNT query's own `isLoading` flips back to
+  `true` the instant it re-keys off the just-loaded holding, so the
+  gate is not-ready for that render with no latch. The gate also goes
+  not-ready again after it was ready whenever a query re-keys on
+  something the user picks or on the clock. A screen that would rather
+  keep its content mounted then latches its own first ready and gates
+  EACH re-keyable value locally, never by the latch: Home does, because a
+  date-range pick, a Clear and the local midnight re-key its windowed
+  ledger read, and the first priced holding (metal, share, property,
+  loan), a restore and the local midnight turn on or re-key its price
+  book. Swapping the whole screen for the spinner would drop its filter
+  bar and the open range sheet, so the list shows a `LoadingState` for
+  its window read and the net-worth card shows one for the price book:
+  the headline and the breakdown never render while that read loads,
+  because an empty book values a metal at its cost and a loan without
+  its payments, which is a wrong balance. A query turned on again
+  (`enabled` flipping back to `true`) reads as loading with `data` `[]`
+  until its new read lands, so the book is empty until then; a query
+  that RE-KEYS (the day roll, a picked date range) still holds the
+  previous key's rows while the new key loads (the price book holds
+  the earlier day's rows after a day roll). The screen must
+  never show either (or the EMPTY state) under the new key: Home keeps its
+  list mounted (it carries pull-to-refresh and the large-title scroll
+  target), gives it no sections, and renders the `LoadingState` as its
+  empty component until the read lands. The screen's first load per mount
+  still gates the whole screen.
 - `LoadingState` (`src/design-system/components/loading-state/`) is
   the shared "not ready yet" visual: a plain centered native
   `ActivityIndicator`, no text at all — a spinner needs no i18n
@@ -484,11 +519,12 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   against the SAME key that was already applied keeps that previous
   data, matching what a same-key success does.
 
-`usePriceBook(enabled?, options?, loanPaymentsEnabled?)`
-(`src/prices/use-price-book/`) returns `{ book, isLoading }`, not a bare
-`PriceBook` — every consumer destructures
-`const { book: priceBook } = usePriceBook();` (or additionally
-`isLoading: priceBookLoading` when gating). It runs TWO live reads —
+`useCurrentPriceBook(enabled?, options?, loanPaymentsEnabled?, now?)`
+(`src/prices/use-current-price-book/`), and `usePriceBook(...)` for past
+days (`src/prices/use-price-book/`), return `{ book, isLoading }`, not a
+bare `PriceBook` — every consumer destructures
+`const { book: priceBook } = useCurrentPriceBook();` (or additionally
+`isLoading: priceBookLoading` when gating). Each runs TWO live reads —
 `price_points` and every linked loan payment
 (`transactionsRepo.loanLedgerPaymentsQuery()`, ONE read across all loans,
 never one per holding: the one worker thread above) — and its `isLoading`
@@ -655,12 +691,14 @@ gate says there is nothing to do.
   that may add the first holding of a new currency or type triggers
   these gated refreshes WITHOUT awaiting them, so Save never blocks on
   the network.
-- **`usePriceBook`'s `enabled` argument**: `useLiveQuery`'s own
+- **`useCurrentPriceBook`'s and `usePriceBook`'s `enabled` argument**: `useLiveQuery`'s own
   `enabled` parameter (default `true`) skips BOTH the query and the
   reactive subscription while `false`, reporting `data: []` and
   `isLoading: false` — ready, never stuck (a gated-off screen must
   still flip its overall readiness, never spin forever on a query it
-  deliberately never ran). `usePriceBook(enabled)` forwards straight
+  deliberately never ran); turning it on again reads as loading with no
+  rows until the new read lands, never the rows read before it was
+  turned off. `usePriceBook(enabled)` forwards straight
   through; a screen passes `holdingsLoading || holdings.some((holding) =>
   needsPriceBook(holding.type))` (or the one displayed holding, for a
   detail screen) — never a conditional call to the hook itself, which
@@ -1133,7 +1171,34 @@ now happens on app open, not only on pull. `useAutoSync` is throttled by
 signal (it reads no `fastPhaseDone`), so an app-open sync drives only the
 determinate progress bar.
 
-so two of them firing at once produced two concurrent runs, two
+### The market refresh beside the sync fan-out
+
+Both also run `refreshMarketData` (rates, metals, shares) BESIDE the
+fan-out under a `Promise.all` of two never-rejecting promises, not after
+it: the provider requests are gated at one per minute per token, so a
+refresh queued behind K cards started K minutes late on the first open of
+the day. `runLoanAutoLink` stays after both, because the matcher needs the
+imported debits and the refreshed rates. The refresh's open-currencies
+gate reads the holdings when it starts, before the fan-out has written a
+currency it brings in for the first time, so when the held set gained one
+a rates-only refresh runs after the jobs (the rates throttle skips it
+unless that currency has no rate yet), and the new holding is priced in
+the same run. A run never asks a rate source twice: both passes share one
+`FiatRatesOfRun` (`refreshRates`), so the top-up reads the fiat answer, or
+the failure, of the first pass instead of calling Monobank (one
+`/bank/currency` call per client per five minutes, and its one response
+carries every fiat currency) or NBU again. A pass that already got an answer
+composes its rows from it, source label included; a pass after a failed
+answer reports the same failed fiat leg with no request. CoinGecko is the
+one exception: the top-up asks CoinGecko once more, for every held coin, since
+the first answer cannot include a coin the jobs added. The top-up does not
+rewrite the fiat rows the first pass already stored (kiko-pricing).
+`settle-jobs-beside-market-refresh.network-calls.test.ts` pins the
+request count per scenario.
+
+### The single-flight lock (continued)
+
+Two sync triggers firing at once produced two concurrent runs, two
 independent gates, and colliding 429s (the reported "inconsistent"
 sync). `runSync` therefore holds a **module-level single-flight lock**
 (`inFlightSync` in `src/monobank/`): while a run is in flight,
@@ -2059,7 +2124,7 @@ what a change must keep.
   `plan-reminder.ts`'s header. The smart-skip rule changed more than once, so it lives only in
   `plan-reminder.ts`'s header and the spec's "Smart skip" (worked cases):
   read them, do not restate it here. `activeSince` plays no part in the
-  skip; the overnight default of 2026-10-02 is pending the user. The ignored count
+  skip. The ignored count
   starts at the latest of `activeSince`, `deliverableSince`,
   `lastEngagedAt` and `lastDataAt`; `lastSnoozedAt` frees the regular occurrence at the
   snooze minute. The sync passes `lastSnoozedAt: null` once data

@@ -1,5 +1,6 @@
 import {
   refreshRates,
+  type FiatRatesOfRun,
   type RatesRefreshOutcome,
   type RefreshDeps,
 } from '@kiko/rates/rates-refresh';
@@ -35,6 +36,8 @@ type RefreshMarketDataOptions = {
   /** Also run `refreshSharePrices` under the same `Promise.allSettled`. It
    * spends the user's own EODHD calls, so a single-account sync leaves it out. */
   shares: boolean;
+  /** Shared by every pass of one sync run, so no fiat source is asked twice. */
+  fiatOfRun?: FiatRatesOfRun;
 };
 
 export type RefreshMarketDataDeps = {
@@ -140,7 +143,7 @@ export const refreshMarketData = async (
   }
 
   const [ratesSettled, metalsSettled, sharesSettled] = await Promise.allSettled([
-    runRefreshRates({ lastRefreshAt }),
+    runRefreshRates({ lastRefreshAt, fiatOfRun: options.fiatOfRun }),
     options.metals ? runRefreshMetalPrices() : Promise.resolve(),
     options.shares ? runRefreshSharePrices() : Promise.resolve('ok' as const),
   ]);

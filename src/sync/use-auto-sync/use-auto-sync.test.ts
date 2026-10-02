@@ -125,6 +125,46 @@ describe('useAutoSync', () => {
     await waitFor(() => expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1));
   });
 
+  it('starts the market data refresh while the bank fan-out is still running', async () => {
+    let releaseMonobank!: () => void;
+    mockMonobankRun.mockReturnValue(
+      new Promise<void>((resolve) => {
+        releaseMonobank = resolve;
+      }),
+    );
+    mockListQuery.mockResolvedValue([monobank]);
+
+    await renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockMonobankRun).toHaveBeenCalled());
+    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalledTimes(1));
+    expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
+
+    releaseMonobank();
+
+    await waitFor(() => expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1));
+  });
+
+  it('holds the loan auto-link until both the fan-out and the refresh have settled', async () => {
+    let releaseRefresh!: () => void;
+    mockRefreshMarketData.mockReturnValue(
+      new Promise((resolve) => {
+        releaseRefresh = () => resolve(right(undefined));
+      }),
+    );
+    mockListQuery.mockResolvedValue([monobank]);
+
+    await renderHook(() => useAutoSync());
+
+    await waitFor(() => expect(mockMonobankRun).toHaveBeenCalled());
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
+
+    releaseRefresh();
+
+    await waitFor(() => expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1));
+  });
+
   it('refreshes rates and metals but runs no sync for a manual-only user (no connected sync account)', async () => {
     // A manual-only user has no connected sync account, so the fan-out is empty.
     // The live currencyRates table must STILL be populated, or a
@@ -177,10 +217,12 @@ describe('useAutoSync', () => {
 
     await waitFor(() => expect(mockMonobankRun).toHaveBeenCalled());
     await waitFor(() =>
+      // The run hands its refresh passes one per-run record for the fiat answer.
       expect(mockRefreshMarketData).toHaveBeenCalledWith({
         throttled: true,
         metals: true,
         shares: true,
+        fiatOfRun: { storedFiat: new Set() },
       }),
     );
   });

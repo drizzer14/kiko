@@ -26,6 +26,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { metalInstrument } from '@kiko/prices/instrument';
 import { formatDate, defaultDateRange } from '@kiko/dates';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
@@ -86,7 +87,29 @@ const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
   isLiquidGlassSupported: boolean;
 };
 
+const mockUseIsFocused = jest.fn(() => true);
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useIsFocused: () => mockUseIsFocused(),
+}));
+
 const mockUseLiveQuery = jest.fn();
+
+// The REAL hook behind a spy, to read which instant the screen keys its price
+// book on.
+const mockUseCurrentPriceBook = jest.fn();
+jest.mock('@kiko/prices/use-current-price-book', () => {
+  const actual = jest.requireActual('@kiko/prices/use-current-price-book');
+
+  return {
+    ...actual,
+    useCurrentPriceBook: (...args: unknown[]) => {
+      mockUseCurrentPriceBook(...args);
+
+      return actual.useCurrentPriceBook(...args);
+    },
+  };
+});
 
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
@@ -109,9 +132,18 @@ jest.mock('@kiko/rates/repo', () => ({
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
+// The ledger is read through three queries on the same tables; each mock query
+// names its kind so `setLiveData` can answer it the way the real SQL would.
+const mockListBetween = jest.fn();
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
-    listAllWithContextQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    listWithContextBetweenQuery: (...args: unknown[]) => {
+      mockListBetween(...args);
+
+      return { kind: 'rows', bounds: args, toSQL: () => ({ sql: '', params: [] }) };
+    },
+    contextSpanQuery: () => ({ kind: 'span', toSQL: () => ({ sql: '', params: [] }) }),
+    contextCategoriesQuery: () => ({ kind: 'categories', toSQL: () => ({ sql: '', params: [] }) }),
     loanLedgerPaymentsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -194,14 +226,33 @@ type Transaction = {
   exchangeCounterpartHoldingId: string | null;
 };
 type Category = { key: string; title: string; icon: string };
+type PricePoint = {
+  instrument: string;
+  day: number;
+  price: string;
+  currency: string;
+  source: string;
+};
 
 type LiveData = {
   accounts?: Account[];
   holdings?: Holding[];
   rates?: Rate[];
   settings?: Settings[];
+  // The whole ledger: what the span and the category filter are read from.
   transactions?: Transaction[];
+  // The rows the windowed read returns; the whole ledger unless a test says
+  // the database narrowed it to the picked range.
+  windowRows?: Transaction[];
+  // What the distinct-categories read answers; derived from the whole ledger
+  // unless a test settles it separately from the rows.
+  categoryRows?: { category: string | null }[];
+  // Whether the windowed read of the given bounds is still on its first load,
+  // like the real hook, which is loading again on every new key.
+  windowLoading?: (bounds: unknown[]) => boolean;
   categories?: Category[];
+  // What the price book's `price_points` read answers.
+  pricePoints?: PricePoint[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
   // key defaults to `false` (an already-resolved query), so every existing
   // call site above keeps behaving exactly as before.
@@ -214,7 +265,12 @@ type LiveData = {
  * first render and crashes on the next). Keyed data still exercises the exact
  * call order the screen must use — asserted separately below.
  */
-const setLiveData = (data: LiveData): void => {
+const liveAnswersFor = (
+  data: LiveData,
+): ((
+  query: { kind?: string; bounds?: unknown[] },
+  tables: string[],
+) => { data: unknown[]; isLoading: boolean }) => {
   const byTable: Record<string, unknown[]> = {
     accounts: data.accounts ?? [],
     holdings: data.holdings ?? [],
@@ -224,14 +280,39 @@ const setLiveData = (data: LiveData): void => {
     // Default to the production-seeded rows so category resolution behaves as
     // it would on device unless a test overrides it (e.g. a rename).
     categories: data.categories ?? SEEDED_CATEGORIES,
-    price_points: [],
+    price_points: data.pricePoints ?? [],
   };
   const isLoadingByTable = data.isLoading ?? {};
-
-  mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
-    data: byTable[tables[0]] ?? [],
-    isLoading: isLoadingByTable[tables[0]] ?? false,
+  const ledger = data.transactions ?? [];
+  const newestFirst = [...ledger].sort((first, second) => second.time - first.time);
+  // What the database answers for the ledger's span and distinct categories.
+  const spanRow = {
+    earliest: ledger.length > 0 ? Math.min(...ledger.map((row) => row.time)) : null,
+    latest: ledger.length > 0 ? Math.max(...ledger.map((row) => row.time)) : null,
+  };
+  const categoryRows = [...new Set(newestFirst.map((row) => row.category))].map((category) => ({
+    category,
   }));
+  const ledgerAnswers: Record<string, unknown[]> = {
+    rows: data.windowRows ?? ledger,
+    span: [spanRow],
+    categories: data.categoryRows ?? categoryRows,
+  };
+
+  return (query, tables) => ({
+    data:
+      tables[0] === 'transactions' && tables.length === 3 && query.kind !== undefined
+        ? ledgerAnswers[query.kind]
+        : (byTable[tables[0]] ?? []),
+    isLoading:
+      query.kind === 'rows' && data.windowLoading !== undefined
+        ? data.windowLoading(query.bounds ?? [])
+        : (isLoadingByTable[tables[0]] ?? false),
+  });
+};
+
+const setLiveData = (data: LiveData): void => {
+  mockUseLiveQuery.mockImplementation(liveAnswersFor(data));
 };
 
 const navigation = navigationSpy();
@@ -869,6 +950,135 @@ describe('HomeScreen', () => {
     expect(queryByText('TooOld')).toBeNull();
   });
 
+  // The ledger grows with every transaction ever synced and re-reads on every
+  // write, so Home reads only the picked range's rows; the filter below it
+  // still applies the same inclusive, day-aligned bounds.
+  const dayStart = (date: Date): number =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayEnd = (date: Date): number =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime() - 1;
+
+  it('reads the ledger window between the default range’s day-aligned bounds', async () => {
+    seed();
+
+    await renderHome();
+
+    const range = defaultDateRange();
+
+    expect(mockListBetween).toHaveBeenLastCalledWith(dayStart(range.from), dayEnd(range.to));
+  });
+
+  it('reads the ledger window of a picked range', async () => {
+    // An older transaction sets the range's selectable floor below the pick.
+    seed({ transactions: [transaction({ time: localDaysFrom(Date.now(), -40) })] });
+
+    const { getByLabelText, getByTestId, getByText } = await renderHome();
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText('Date range'));
+    });
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const calendar = getByTestId('date-range-calendar').props as {
+      onDayPress: (day: unknown) => void;
+    };
+    await act(async () => {
+      calendar.onDayPress({
+        year: threeDaysAgo.getFullYear(),
+        month: threeDaysAgo.getMonth() + 1,
+        day: threeDaysAgo.getDate(),
+      });
+    });
+    await act(async () => {
+      await fireEvent.press(getByText('Apply'));
+    });
+
+    // A first pick narrows the range to that one day.
+    expect(mockListBetween).toHaveBeenLastCalledWith(dayStart(threeDaysAgo), dayEnd(threeDaysAgo));
+  });
+
+  it('keeps the date-range field’s selectable floor at the oldest transaction, though the window holds only recent rows', async () => {
+    const oldest = localDaysFrom(Date.now(), -300);
+    const recent = transaction({ id: 't1', time: localDaysFrom(Date.now(), -2) });
+    seed({
+      transactions: [recent, transaction({ id: 't2', time: oldest, description: 'Oldest' })],
+      windowRows: [recent],
+    });
+
+    const { getByLabelText, getByTestId } = await renderHome();
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText('Date range'));
+    });
+
+    const floor = new Date(oldest);
+    const pad = (value: number): string => String(value).padStart(2, '0');
+
+    expect((getByTestId('date-range-calendar').props as { minDate: string }).minDate).toBe(
+      `${floor.getFullYear()}-${pad(floor.getMonth() + 1)}-${pad(floor.getDate())}`,
+    );
+  });
+
+  it('lists a category only an older, out-of-window transaction holds in the category filter', async () => {
+    const recent = transaction({
+      id: 't1',
+      time: localDaysFrom(Date.now(), -2),
+      category: 'groceries',
+    });
+    const older = transaction({
+      id: 't2',
+      time: localDaysFrom(Date.now(), -200),
+      category: 'transport',
+    });
+    seed({ transactions: [recent, older], windowRows: [recent] });
+
+    const { getByTestId } = await renderHome();
+
+    await act(async () => {
+      await fireEvent.press(getByTestId('category-filter-menu'));
+    });
+
+    expect(getByTestId('category-filter-menu-option-transport')).toBeTruthy();
+    expect(getByTestId('category-filter-menu-option-groceries')).toBeTruthy();
+  });
+
+  it('lists a new category once the categories read settles after the window rows did', async () => {
+    const food = transaction({ id: 't1', category: 'food' });
+    const groceries = transaction({ id: 't2', category: 'groceries', description: 'Milk' });
+    const windowRows = [food, groceries];
+    seed({ transactions: [food], categoryRows: [{ category: 'food' }] });
+
+    const { getByTestId, queryByTestId, rerender } = await renderHome();
+
+    const rerenderHome = async (): Promise<void> => {
+      await act(async () => {
+        await rerender(
+          <HomeScreen
+            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+            route={asRouteProp<HomeProps['route']>('Home')}
+          />,
+        );
+      });
+    };
+
+    // The window rows settle first; the categories read still holds the old set.
+    seed({ transactions: [food], windowRows, categoryRows: [{ category: 'food' }] });
+    await rerenderHome();
+    // Then the categories read settles with the new category.
+    seed({
+      transactions: [food],
+      windowRows,
+      categoryRows: [{ category: 'food' }, { category: 'groceries' }],
+    });
+    await rerenderHome();
+
+    await act(async () => {
+      await fireEvent.press(getByTestId('category-filter-menu'));
+    });
+
+    expect(queryByTestId('category-filter-menu-option-groceries')).toBeTruthy();
+  });
+
   it('resets the date range to the 30-day default (not all-time) when Clear is pressed', async () => {
     const recent = transaction({
       id: 't1',
@@ -1101,9 +1311,9 @@ describe('HomeScreen', () => {
     expect(getByText('No transactions')).toBeTruthy();
   });
 
-  it('reads accounts, holdings, rates, prices with the linked loan payments, settings, then transactions in that order', async () => {
+  it('reads accounts, holdings, rates, prices with the linked loan payments, settings, then the ledger window, its span and its categories in that order', async () => {
     await renderHome();
-    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 7).map((call) => call[1].join(','));
+    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 9).map((call) => call[1].join(','));
     expect(tablesInOrder).toEqual([
       'accounts',
       'holdings',
@@ -1112,7 +1322,12 @@ describe('HomeScreen', () => {
       'transactions,holdings',
       'settings',
       'transactions,holdings,accounts',
+      'transactions,holdings,accounts',
+      'transactions,holdings,accounts',
     ]);
+    expect(
+      mockUseLiveQuery.mock.calls.slice(6, 9).map((call) => (call[0] as { kind: string }).kind),
+    ).toEqual(['rows', 'span', 'categories']);
   });
 
   // kiko-architecture: no request or query for data the user does not have —
@@ -1130,6 +1345,25 @@ describe('HomeScreen', () => {
     await renderHome();
     const priceCall = mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points');
     expect(priceCall?.[2]).toBe(true);
+  });
+
+  // The net worth values at the screen's own `now`; a book keyed off a second
+  // clock read could name another day than the one the screen values at when
+  // local midnight falls between the two reads.
+  it('keys the current price book on the same instant the screen values at', async () => {
+    const base = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(base);
+
+    await renderHome();
+
+    nowSpy.mockRestore();
+
+    expect(mockUseCurrentPriceBook).toHaveBeenLastCalledWith(
+      expect.any(Boolean),
+      expect.anything(),
+      expect.any(Boolean),
+      base,
+    );
   });
 
   it('reads price_points in parallel while holdings are still on their first load', async () => {
@@ -1286,6 +1520,193 @@ describe('HomeScreen — loading gate', () => {
 
     expect(getByTestId('home-loading-scroll').props.refreshControl).toBeFalsy();
   });
+
+  describe('once Home has been ready', () => {
+    // The windowed read is loading again on every key the real hook has not
+    // read yet; `settledKey` is the one key it has read so far.
+    let settledKey: string | undefined;
+    const windowLoading = (bounds: unknown[]): boolean =>
+      settledKey !== undefined && JSON.stringify(bounds) !== settledKey;
+    const lastWindowKey = (): string => JSON.stringify(mockListBetween.mock.lastCall);
+    // The list's own ref, handed to the tab re-tap hook: a list that unmounted
+    // and mounted again would hand a different instance.
+    const listRef = (): { current: unknown } => mockUseScrollToTopOnTabPress.mock.lastCall?.[0];
+
+    const rerenderHome = async (
+      rerender: Awaited<ReturnType<typeof render>>['rerender'],
+    ): Promise<void> => {
+      await act(async () => {
+        await rerender(
+          <HomeScreen
+            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+            route={asRouteProp<HomeProps['route']>('Home')}
+          />,
+        );
+      });
+    };
+
+    beforeEach(() => {
+      settledKey = undefined;
+    });
+
+    it('keeps the net-worth card and the filter bar mounted while a picked range loads, and shows a loading state in the list only', async () => {
+      const recent = transaction({ description: 'Recent' });
+      // An older transaction sets the range's selectable floor below the pick.
+      const older = transaction({ id: 't2', time: localDaysFrom(Date.now(), -40) });
+      seed({ transactions: [recent, older], windowRows: [recent], windowLoading });
+
+      const { getByLabelText, getByTestId, getByText, queryByTestId, queryByText, rerender } =
+        await renderHome();
+
+      settledKey = lastWindowKey();
+      const listBefore = listRef().current;
+
+      expect(listBefore).not.toBeNull();
+
+      await act(async () => {
+        await fireEvent.press(getByLabelText('Date range'));
+      });
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      const calendar = getByTestId('date-range-calendar').props as {
+        onDayPress: (day: unknown) => void;
+      };
+      await act(async () => {
+        calendar.onDayPress({
+          year: threeDaysAgo.getFullYear(),
+          month: threeDaysAgo.getMonth() + 1,
+          day: threeDaysAgo.getDate(),
+        });
+      });
+      await act(async () => {
+        await fireEvent.press(getByText('Apply'));
+      });
+
+      expect(queryByTestId('home-loading')).toBeNull();
+      expect(getByTestId('home-content')).toBeTruthy();
+      expect(getByText('Net worth')).toBeTruthy();
+      expect(getByTestId('category-filter-menu')).toBeTruthy();
+      expect(getByTestId('home-transactions-loading')).toBeTruthy();
+      // The same list stays mounted, so pull-to-refresh and the scroll target
+      // of the large title stay on it while the window loads.
+      expect(getByTestId('home-transactions').props.refreshControl).toBeTruthy();
+      expect(listRef().current).toBe(listBefore);
+      // The previous range's rows are never shown under the new range.
+      expect(queryByText('Recent')).toBeNull();
+      expect(queryByText(i18n.t('home.emptyTransactions'))).toBeNull();
+
+      settledKey = lastWindowKey();
+      await rerenderHome(rerender);
+
+      expect(queryByTestId('home-transactions-loading')).toBeNull();
+      expect(listRef().current).toBe(listBefore);
+      expect(getByTestId('home-transactions')).toBeTruthy();
+    });
+
+    it('keeps Home mounted when the local day rolls over and the default range re-keys the window read', async () => {
+      const base = Date.now();
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(base);
+      seed({ transactions: [transaction()], windowLoading });
+
+      const { getByTestId, queryByTestId, rerender } = await renderHome();
+
+      settledKey = lastWindowKey();
+      nowSpy.mockReturnValue(localDaysFrom(base, 1));
+      await rerenderHome(rerender);
+
+      nowSpy.mockRestore();
+
+      expect(queryByTestId('home-loading')).toBeNull();
+      expect(getByTestId('home-content')).toBeTruthy();
+      expect(getByTestId('home-transactions-loading')).toBeTruthy();
+    });
+
+    // The first metal holding turns the price-book read on after Home was
+    // ready: until that read lands the book is empty, so the metal would drop
+    // to its cost and the headline would be a wrong balance.
+    describe('when the price book read starts loading', () => {
+      const yesterday = localDaysFrom(Date.now(), -1);
+      const GOLD: Holding = {
+        id: 'gold',
+        name: 'Gold bar',
+        accountId: 'a',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        type: 'metal',
+        metadata: {
+          metal: 'XAU',
+          form: 'bar',
+          unit: 'oz',
+          purity: '1',
+          lots: [{ day: yesterday, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      };
+      const GOLD_PRICE: PricePoint = {
+        instrument: metalInstrument('XAU'),
+        day: yesterday,
+        price: '9000',
+        currency: 'UAH',
+        source: 'nbu',
+      };
+
+      it('shows a loading state in the net-worth card, never the headline, while the book loads, and the full-book value once it lands', async () => {
+        seed({ transactions: [transaction()] });
+
+        const { getByTestId, queryByTestId, queryByText, getAllByText, rerender } =
+          await renderHome();
+
+        // Without the book the gold would read at its cost (6,000.00 in total).
+        seed({
+          transactions: [transaction()],
+          holdings: [UAH_HOLDING, GOLD],
+          isLoading: { price_points: true },
+        });
+        await rerenderHome(rerender);
+
+        expect(getByTestId('home-net-worth-loading')).toBeTruthy();
+        expect(queryByText('Net worth')).toBeNull();
+        expect(queryByText(/6,000\.00 ₴/)).toBeNull();
+        expect(queryByText(/10,000\.00 ₴/)).toBeNull();
+        // The rest of Home stays: no whole-screen spinner, the filter bar and
+        // the list keep their place.
+        expect(queryByTestId('home-loading')).toBeNull();
+        expect(getByTestId('category-filter-menu')).toBeTruthy();
+        expect(getByTestId('home-transactions')).toBeTruthy();
+        expect(queryByText('Coffee')).toBeTruthy();
+
+        seed({
+          transactions: [transaction()],
+          holdings: [UAH_HOLDING, GOLD],
+          pricePoints: [GOLD_PRICE],
+        });
+        await rerenderHome(rerender);
+
+        expect(queryByTestId('home-net-worth-loading')).toBeNull();
+        expect(queryByText('Net worth')).toBeTruthy();
+        expect(getAllByText(/10,000\.00 ₴/).length).toBeGreaterThan(0);
+        expect(queryByText(/6,000\.00 ₴/)).toBeNull();
+      });
+
+      it('shows the loading state in the card while a re-keyed book loads even when no holding changed', async () => {
+        seed({ transactions: [transaction()], holdings: [UAH_HOLDING, GOLD] });
+
+        const { getByTestId, queryByTestId, rerender } = await renderHome();
+
+        expect(queryByTestId('home-net-worth-loading')).toBeNull();
+
+        seed({
+          transactions: [transaction()],
+          holdings: [UAH_HOLDING, GOLD],
+          isLoading: { price_points: true },
+        });
+        await rerenderHome(rerender);
+
+        expect(getByTestId('home-net-worth-loading')).toBeTruthy();
+        expect(queryByTestId('home-loading')).toBeNull();
+        expect(getByTestId('home-content')).toBeTruthy();
+      });
+    });
+  });
 });
 
 describe('HomeScreen — localization', () => {
@@ -1386,5 +1807,125 @@ describe('HomeScreen — localization', () => {
     const { getByText } = await renderHome();
 
     expect(getByText(i18n.t('transactions.exchangeTo', { name: 'Ощадний' }))).toBeTruthy();
+  });
+});
+
+// Home stays mounted under the native tab bar, so while another tab or a form
+// shows it keeps its subscriptions but defers every read: a write elsewhere
+// marks each query dirty and costs no read, no state change and no memo work
+// here — `paused`, not `enabled`, which would unsubscribe and drop to `[]`
+// (see kiko-architecture's `paused` vs `enabled`).
+describe('HomeScreen — paused while hidden', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsFocused.mockReturnValue(true);
+    mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
+    mockUseSyncStatus.mockReturnValue(false);
+    mockRefreshing.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    mockUseIsFocused.mockReturnValue(true);
+  });
+
+  it('pauses every live query while unfocused, keeping the cache option and the enabled argument', async () => {
+    mockUseIsFocused.mockReturnValue(false);
+    seed({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
+
+    await renderHome();
+
+    expect(mockUseLiveQuery.mock.calls.length).toBeGreaterThan(0);
+
+    for (const call of mockUseLiveQuery.mock.calls) {
+      expect(call[3]).toEqual({ cached: true, paused: true });
+    }
+
+    expect(mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points')?.[2]).toBe(
+      true,
+    );
+  });
+
+  it('leaves every live query unpaused while focused', async () => {
+    seed();
+
+    await renderHome();
+
+    for (const call of mockUseLiveQuery.mock.calls) {
+      expect(call[3]).toEqual({ cached: true, paused: false });
+    }
+  });
+
+  // Mirrors use-live-query.ts's own paused/dirty contract: a call made with
+  // `paused: true` never applies a pending write; the first call made with
+  // `paused: false` applies it, so a screen sees new data exactly when the
+  // real hook would have read it.
+  const pausedAwareLiveData = (initial: LiveData) => {
+    let committed = initial;
+    let pending: LiveData | undefined;
+
+    mockUseLiveQuery.mockImplementation(
+      (
+        query: { kind?: string },
+        tables: string[],
+        _enabled: boolean,
+        options?: { paused?: boolean },
+      ) => {
+        if (!(options?.paused ?? false) && pending !== undefined) {
+          committed = pending;
+          pending = undefined;
+        }
+
+        return liveAnswersFor(committed)(query, tables);
+      },
+    );
+
+    return {
+      writeWhileHidden: (next: LiveData): void => {
+        pending = next;
+      },
+    };
+  };
+
+  it('shows a transaction written while hidden once the tab regains focus, and not before', async () => {
+    const base: LiveData = {
+      accounts: [MONOBANK],
+      holdings: [UAH_HOLDING],
+      transactions: [transaction({ id: 't1', description: 'Coffee' })],
+    };
+    const stub = pausedAwareLiveData(base);
+    // A fresh element per render: React skips a re-render for the same element.
+    const element = () => (
+      <HomeScreen
+        navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+        route={asRouteProp<HomeProps['route']>('Home')}
+      />
+    );
+
+    const { getByText, queryByText, rerender } = await render(element());
+    expect(getByText('Coffee')).toBeTruthy();
+
+    mockUseIsFocused.mockReturnValue(false);
+    await act(async () => {
+      await rerender(element());
+    });
+
+    stub.writeWhileHidden({
+      ...base,
+      transactions: [
+        transaction({ id: 't1', description: 'Coffee' }),
+        transaction({ id: 't2', description: 'Tea', time: Date.now() + 1 }),
+      ],
+    });
+    await act(async () => {
+      await rerender(element());
+    });
+    expect(queryByText('Tea')).toBeNull();
+
+    mockUseIsFocused.mockReturnValue(true);
+    await act(async () => {
+      await rerender(element());
+    });
+    expect(getByText('Tea')).toBeTruthy();
+    expect(getByText('Coffee')).toBeTruthy();
   });
 });

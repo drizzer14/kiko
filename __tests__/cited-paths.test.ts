@@ -203,6 +203,7 @@ const citingFiles = (): string[] =>
       markdownFilesUnder(join(REPOSITORY_ROOT, directory)),
     ),
     join(REPOSITORY_ROOT, 'CLAUDE.md'),
+    join(REPOSITORY_ROOT, 'docs/security/README.md'),
   ].map((file) => file.slice(REPOSITORY_ROOT.length + 1));
 
 const missingCitations = (file: string): Array<{ file: string; line: number; path: string }> =>

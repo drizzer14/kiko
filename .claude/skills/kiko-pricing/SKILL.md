@@ -20,7 +20,17 @@ non-currency `price_points` store.
   `bank.gov.ua`, deliberately UNPINNED, fewer currencies than
   Monobank). It's a sequential fallback, not a second concurrent
   source — only one provider's rows are composed and written per
-  refresh; both failing writes nothing.
+  refresh; both failing writes nothing. Within one sync run the fiat
+  answer (or failure) is kept in `FiatRatesOfRun` (`rates-refresh.ts`), so
+  a second `refreshRates` pass of that run never asks Monobank or NBU again.
+  A later pass never rewrites a fiat row an earlier pass of the run already
+  stored (`FiatRatesOfRun.storedFiat`, recorded once the write succeeded):
+  `ratesRepo.upsertMany` has no `fetchedAt` guard, so a rewrite could
+  overwrite a newer rate another refresh stored in between. It writes only
+  rows not yet written (its crypto rows, a fiat currency the first pass did
+  not store). The answer carries the time it was asked for, and a pass that
+  writes a fiat row from it stamps that time (a crypto row, its own), so a
+  reused rate is never labelled newer than the answer it came from.
 - Fiat cross rates, offline floor: a bundled STATIC seed,
   `src/rates/fiat-rate-seed/fiat-rate-seed.ts`, covers all 107 fiat
   currencies vs UAH from a Monobank snapshot (see the file for the
@@ -309,17 +319,20 @@ link is null is skipped. `priceAt(book, instrument,
 instant)` is a CARRY-FORWARD lookup: the nearest point at or before
 `instant`'s local day, falling back to the EARLIEST point when every
 stored point is later than the requested day (mirrors
-`rateTableAt`/`earliestRateTable` above).
+`rateTableAt`/`earliestRateTable` above). It bisects the day-sorted series
+(O(log n) per call); the test pins it against a plain filter over the series on every day.
 
-**`usePriceBook()` contract: `{ book, isLoading }`, not a bare
-`PriceBook`.** (`src/prices/use-price-book/`) wraps `allQuery` in
-`useLiveQuery(..., ['price_points'])`, and
-`transactionsRepo.loanLedgerPaymentsQuery()` (one read across every loan,
-joined to the payer holding for its currency) in
-`useLiveQuery(..., ['transactions', 'holdings'])`, gated by its third
-argument `loanPaymentsEnabled` (kiko-architecture). Its `isLoading` is
-true while either read is on its first load — every consumer destructures `const {
-book: priceBook } = usePriceBook();`, and a screen that gates its own
+**`useCurrentPriceBook(...)` and `usePriceBook(...)` contract: `{ book,
+isLoading }`, not a bare `PriceBook`** (see "Current price book and
+whole-table price book" below for which one a screen reads).
+`usePriceBook` wraps `allQuery`, `useCurrentPriceBook` wraps `currentQuery`;
+both pass their rows to `usePriceBookOfPoints` (`src/prices/use-price-book/`),
+which adds the `loanLedgerPaymentsQuery()` read in
+`useLiveQuery(..., ['transactions', 'holdings'])`, gated by
+`loanPaymentsEnabled` (kiko-architecture). Its `isLoading` is
+true while either read is on its first load or after it is turned back
+on — every consumer destructures `const { book: priceBook } =
+useCurrentPriceBook(...)` (or `usePriceBook(...)`), and a screen that gates its own
 empty state additionally destructures `isLoading: priceBookLoading`
 and folds it into its `useDataReady(...)` call (see
 `kiko-architecture`'s useLiveQuery consumer rule). A form that WRITES
@@ -328,12 +341,8 @@ from the book (`holding-form`'s edit `saveEdit`: a loan changed into
 `isLoading: isPriceBookLoading` and keeps Save disabled on an edit until
 it is false — saved against a still-empty book, that point would be the
 schedule-only value, forever. This is the
-reactive entry point every value reader (`holdingValueBreakdown`,
-`createHoldingValuer`, `buildNetWorthSeries`, `netWorth`, `guardedNetWorth`/
-`guardedBreakdown`, `sumByCurrency`, `buildTypeBreakdown`,
-`buildAccountContribution`) and every screen that renders a value
-(`home`, `accounts`, `account-detail` + its `HoldingCard`,
-`holding-detail`, `statistics`, `holding-form`) threads through, same
+reactive entry point every value reader and every screen that renders a
+value threads through (find them with `grep -rn 'usePriceBook\|useCurrentPriceBook' src`), same
 pattern as the existing rate-table threading; `EMPTY_PRICE_BOOK` is
 the default for a caller with none available (e.g. a test fixture), so
 the default resolves to "no price, no loan payment," never a crash. A
@@ -354,6 +363,39 @@ fallback will otherwise hand back a later point to an earlier query.
 `loanOutstandingMinorAt` must guard against this: never anchor on a
 stored correction point dated after the queried instant — read
 `loan-schedule.ts`'s `loanOutstandingMinorAt` for the fix shape.
+
+### Current price book and whole-table price book
+
+`price_points` gains a row per share and metal per day and never shrinks,
+so two hooks build the same `PriceBook` from different row sets:
+
+- `useCurrentPriceBook(enabled, options, loanPaymentsEnabled, now)`
+  (`src/prices/use-current-price-book/`) reads
+  `pricePointsRepo.currentQuery(today)`: for every `share:` and `metal:`
+  series its latest point on or before `today` plus every point after it,
+  and every point of a `holding:` series. A screen that values only `now` or
+  later reads it (`grep "useCurrentPriceBook(" src` lists them). `now` is the instant the screen values at (Accounts passes
+  its focus-refreshed one), so the book and the screen agree on "today".
+  Every number is the one the whole-table book gives for an instant on or
+  after `today`, because `priceAt` there picks exactly that point, or the
+  earliest one for a series that has not started. The points after `today`
+  stay because NBU can publish tomorrow's metal price and a valuation on a
+  later day still reads it; a `holding:` series stays whole because a loan
+  counts its schedule down from the correction before a past payment day.
+- `usePriceBook(...)` (`src/prices/use-price-book/`) reads
+  `pricePointsRepo.allQuery()`, every stored close. Only a screen that values
+  PAST days reads it (Statistics' net-worth line).
+
+`kiko-no-whole-price-points-read` blocks `usePriceBook(...)`,
+`pricePointsRepo.allQuery` (called or kept as a reference), a bare
+`select().from(pricePoints)` and an unfiltered relational
+`query.pricePoints.<method>(...)` outside their own folders; each allowed site carries a
+per-line `OVERRIDE(...)` (`grep "nosemgrep.*kiko-no-whole-price-points-read" src`). A new screen that values a past day overrides the
+same way and names why. `metal-refresh` reads each metal's first and latest
+stored day (`metalDayRangesQuery`), the only two days its plan reads.
+`src/holdings/holding-value/holding-value.current-price-book.test.ts` pins
+the equality on a realistic ledger; extend its fixture when a valuation
+reads a new instant.
 
 ## Priced holdings
 

@@ -73,6 +73,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-fixed-day-offset-into-local-day',
   'kiko-no-redundant-button-full-width',
   'kiko-no-local-day-length-constant',
+  'kiko-no-whole-price-points-read',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -450,6 +451,37 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       if (status === 2) {
         const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
         expect(reason).toContain(`rule ${dayLength} at `);
+      }
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  // The whole-table read is allowed in its two owner folders and in tests,
+  // and denied everywhere else in app source.
+  // No import: the owner folders may not import their own feature by alias.
+  const wholeReadProbe = ['export const useBook = () => usePriceBook();', ''].join('\n');
+  const wholeRead = 'kiko-no-whole-price-points-read';
+
+  it.each([
+    ['src/probe/whole-read-probe.ts', 2],
+    ['src/screens/probe/whole-read-probe.tsx', 2],
+    ['src/probe/whole-read-probe.test.ts', 0],
+    ['src/prices/use-price-book/whole-read-probe.ts', 0],
+    ['src/prices/price-points-repo/whole-read-probe.ts', 0],
+  ])(`${wholeRead} on %s exits %s`, (target, status) => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-whole-read-scope-'));
+    try {
+      const targetFile = join(project, ...target.split('/'));
+      mkdirSync(join(targetFile, '..'), { recursive: true });
+
+      const result = runGuard(payloadFor(targetFile, wholeReadProbe), project);
+
+      expect(result.status).toBe(status);
+
+      if (status === 2) {
+        const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+        expect(reason).toContain(`rule ${wholeRead} at `);
       }
     } finally {
       rmSync(project, { recursive: true, force: true });

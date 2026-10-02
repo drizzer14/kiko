@@ -306,6 +306,7 @@ const StatisticsScreen: FC = () => {
   // stays enabled while holdings are still on their first load, so the two
   // reads run in parallel instead of price_points waiting on holdings. Only a
   // loan reads the linked-payments half of the book.
+  // nosemgrep: kiko-no-whole-price-points-read OVERRIDE(history valuation) the net-worth line values every past day, so it reads every stored close
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
     liveOptions,

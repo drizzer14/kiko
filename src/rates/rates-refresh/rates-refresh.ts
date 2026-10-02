@@ -37,7 +37,29 @@ type StoredRate = {
   fetchedAt: number;
 };
 
+// `fetchedAt` is when the answer was asked for: a pass that reuses it stamps the
+// fiat rows it composes with this time, never with its own.
+type FiatAnswer = { rates: RateEntry[]; source: 'monobank' | 'nbu'; fetchedAt: number };
+
+/**
+ * What one sync run's fiat sources already answered, shared by every
+ * `refreshRates` pass of that run. Monobank's `/bank/currency` allows about
+ * one call per client per five minutes and its one response carries every
+ * fiat currency, so a later pass reads this instead of asking again.
+ */
+export type FiatRatesOfRun = {
+  answer?: Promise<FiatAnswer>;
+  /**
+   * The fiat currencies a pass of this run already wrote. A later pass writes
+   * none of them again: `upsertMany` keeps no `fetchedAt` guard, so rewriting
+   * them would overwrite a newer rate another refresh stored in between.
+   */
+  storedFiat: Set<Currency>;
+};
+
 export type RefreshDeps = {
+  /** Set by a caller that runs `refreshRates` more than once in one sync run. */
+  fiatOfRun?: FiatRatesOfRun;
   fetchFiatRates?: () => Promise<RateEntry[]>;
   /**
    * NBU's unpinned current-rate fallback (`nbu-rates.ts`), tried only once
@@ -142,15 +164,20 @@ const buildUahPrice = (fiat: RateEntry[], crypto: RateEntry[]): UahPrice => {
  * `fiatSource` labels every composed fiat row with whichever provider's
  * UAH-anchored prices actually fed `price` — `refreshRates` below passes
  * `'nbu'` when the Monobank fetch failed and NBU's fallback rows supplied the
- * pivot instead, so a stored row's provenance stays accurate. Defaults to
- * `'monobank'` for every other caller (a live Monobank-sourced run). Every
- * crypto row is tagged `'coingecko'` regardless of `fiatSource`, since its
- * rate is CoinGecko's own USD price times the same-run fiat anchor.
+ * pivot instead, so a stored row's provenance stays accurate. Every crypto row
+ * is tagged `'coingecko'` regardless of `fiatSource`, since its rate is
+ * CoinGecko's own USD price times the same-run fiat anchor.
+ *
+ * `fiatFetchedAt` stamps the fiat rows: a pass that reuses an earlier pass's
+ * fiat answer must not label it newer than it is, or it would outrank a rate
+ * another refresh stored in between. A crypto row is always stamped
+ * `fetchedAt`, its own fetch.
  */
 const buildUahRows = (
   price: UahPrice,
   fetchedAt: number,
-  fiatSource: 'monobank' | 'nbu' = 'monobank',
+  fiatSource: 'monobank' | 'nbu',
+  fiatFetchedAt: number,
 ): StoredRate[] => {
   const rows: StoredRate[] = [];
 
@@ -165,11 +192,37 @@ const buildUahRows = (
       quote: 'UAH',
       rate: String(rate),
       source: isCrypto(base) ? 'coingecko' : fiatSource,
-      fetchedAt,
+      fetchedAt: isCrypto(base) ? fetchedAt : fiatFetchedAt,
     });
   }
 
   return rows;
+};
+
+/**
+ * Writes the rows this pass composed, except the fiat rows an earlier pass of
+ * the run already wrote (`FiatRatesOfRun.storedFiat`). A fiat currency counts
+ * as written only once its write succeeded, so a pass whose write failed
+ * leaves it for the next one. Crypto rows are always this pass's own.
+ */
+const upsertUnstoredRows = async (
+  rows: StoredRate[],
+  fiatOfRun: FiatRatesOfRun | undefined,
+  upsertMany: (rates: StoredRate[]) => Promise<void>,
+): Promise<void> => {
+  const storedFiat = fiatOfRun?.storedFiat;
+  const unstored = rows.filter((row) => isCrypto(row.base) || !storedFiat?.has(row.base));
+
+  if (unstored.length === 0) {
+    return;
+  }
+  await upsertMany(unstored);
+
+  for (const row of unstored) {
+    if (!isCrypto(row.base)) {
+      storedFiat?.add(row.base);
+    }
+  }
 };
 
 /** The fiat leg, gated on `needsFiat` — `[]` without ever calling `loadFiatWithFallback`. */
@@ -315,15 +368,14 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   // deliberately UNPINNED) is the live fallback, reached for only once
   // Monobank's own bounded retry (Part B, `withRetry`) is exhausted — a
   // SEQUENTIAL fallback, not a second concurrent provider: only ONE source's
-  // rows are ever composed and stored per run. `fiatSource` tracks which one
+  // rows are ever composed and stored per run. `fiatAnswer` tracks which one
   // answered so the composed rows are labeled with accurate provenance
   // (`buildUahRows` above).
-  let fiatSource: 'monobank' | 'nbu' = 'monobank';
-  const loadFiatWithFallback = async (): Promise<RateEntry[]> => {
+  let fiatAnswer: FiatAnswer | undefined;
+  const askFiatSources = async (): Promise<FiatAnswer> => {
     const attempt = await either<unknown, RateEntry[]>(() => withRetry(loadFiat, sleep));
 
     if (isLeft(attempt)) {
-      fiatSource = 'nbu';
       const nbuRates = await loadNbuFiat();
 
       // NBU's feed carries fewer currencies than Monobank's (kiko-pricing);
@@ -335,10 +387,31 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
         throw new Error('rates-refresh: NBU fallback returned no supported currency');
       }
 
-      return nbuRates;
+      return { rates: nbuRates, source: 'nbu', fetchedAt: at };
     }
 
-    return bifold(attempt);
+    return { rates: bifold(attempt), source: 'monobank', fetchedAt: at };
+  };
+
+  // The run keeps the answer's promise, set before anything awaits it: a pass
+  // that starts while the first is still asking joins it instead of asking
+  // again, and a failed answer is remembered too, so a later pass reports the
+  // same failed leg instead of retrying the sources that just failed.
+  const fiatAnswerOfRun = (): Promise<FiatAnswer> => {
+    if (deps.fiatOfRun === undefined) {
+      return askFiatSources();
+    }
+    deps.fiatOfRun.answer ??= askFiatSources();
+
+    return deps.fiatOfRun.answer;
+  };
+
+  const loadFiatWithFallback = async (): Promise<RateEntry[]> => {
+    const answer = await fiatAnswerOfRun();
+
+    fiatAnswer = answer;
+
+    return answer.rates;
   };
 
   // Settle the fiat (with its NBU fallback) and crypto pipelines
@@ -356,11 +429,17 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   ]);
   const fiat = fiatResult.status === 'fulfilled' ? fiatResult.value : [];
   const crypto = cryptoResult.status === 'fulfilled' ? cryptoResult.value : [];
-  const rows = buildUahRows(buildUahPrice(fiat, crypto), at, fiatSource);
 
-  if (rows.length > 0) {
-    await upsertMany(rows);
-  }
+  await upsertUnstoredRows(
+    buildUahRows(
+      buildUahPrice(fiat, crypto),
+      at,
+      fiatAnswer?.source ?? 'monobank',
+      fiatAnswer?.fetchedAt ?? at,
+    ),
+    deps.fiatOfRun,
+    upsertMany,
+  );
 
   return resolveOutcome(needsFiat, cryptoCurrencies.length > 0, fiatResult, cryptoResult);
 };

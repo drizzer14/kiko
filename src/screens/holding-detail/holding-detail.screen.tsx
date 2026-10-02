@@ -37,7 +37,6 @@ import type { Currency } from '@kiko/currency/currency';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { usePriceBook } from '@kiko/prices/use-price-book';
 import Button from '@kiko/design-system/components/button';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { groupByDay } from '@kiko/transactions/group-by-day';
@@ -60,6 +59,7 @@ import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
 import { buildRateTable, canConvert } from '@kiko/rates/net-worth-view';
 import SummaryTable from '@kiko/design-system/components/summary-table';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { asLots, changedLots, hasNegativeHolding } from '@kiko/holdings/lots';
@@ -804,7 +804,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // while holdings are still on their first load, so the two reads run in
   // parallel instead of price_points waiting on holdings. Only a loan reads
   // the linked-payments half of the book.
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+  const { book: priceBook, isLoading: priceBookLoading } = useCurrentPriceBook(
     holdingsLoading ||
       holdings.some((candidate) => candidate.id === holdingId && needsPriceBook(candidate.type)),
     { cached: true },

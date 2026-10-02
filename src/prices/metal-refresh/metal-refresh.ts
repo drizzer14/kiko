@@ -118,6 +118,17 @@ const storedRangeByMetal = (points: readonly StoredPoint[]): Map<Metal, MetalSto
   return ranges;
 };
 
+// The plan reads only each metal's first and last stored day, so the first and
+// last point of each series stand for the whole series.
+const storedMetalBounds = async (): Promise<StoredPoint[]> => {
+  const ranges = await pricePointsRepo.metalDayRangesQuery();
+
+  return ranges.flatMap(({ instrument, firstDay, lastDay }) => [
+    { instrument, day: firstDay },
+    { instrument, day: lastDay },
+  ]);
+};
+
 const toRow = (metal: Metal, day: number, price: string): NewPricePointRow => ({
   instrument: metalInstrument(metal),
   day,
@@ -274,7 +285,7 @@ export const refreshMetalPrices = async (deps: MetalRefreshDeps = {}): Promise<v
   const now = deps.now ?? Date.now;
   const fetchImpl = deps.fetchImpl ?? fetch;
   const listHoldings = deps.listHoldings ?? (() => holdingsRepo.allQuery());
-  const loadPoints = deps.loadPoints ?? (() => pricePointsRepo.allQuery());
+  const loadPoints = deps.loadPoints ?? storedMetalBounds;
   const fetchCurrent = deps.fetchCurrent ?? fetchNbuMetalsCurrent;
   const fetchHistory = deps.fetchHistory ?? fetchNbuMetalHistory;
   const upsertMany = deps.upsertMany ?? pricePointsRepo.upsertMany;

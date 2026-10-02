@@ -101,6 +101,41 @@ describe('useSyncAll', () => {
     expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
   });
 
+  it('starts the market data refresh while the fan-out is still running, and links loans after both settle', async () => {
+    let releaseMono!: () => void;
+    mockRunSync.mockReturnValue(
+      new Promise((resolve) => {
+        releaseMono = () => resolve({ importedTransactions: 0 });
+      }),
+    );
+    const { result } = await renderHook(() => useSyncAll([MONOBANK]));
+
+    await act(async () => {
+      const syncAllPromise = result.current.syncAll();
+
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(mockRunSync).toHaveBeenCalledTimes(1);
+      expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
+      expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
+
+      releaseMono();
+      await syncAllPromise;
+      expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('names the failed account even though the refresh finished first', async () => {
+    mockRunSync.mockRejectedValue(new Error('Monobank 429'));
+    const { result } = await renderHook(() => useSyncAll([MONOBANK, WALLET]));
+
+    await act(async () => {
+      await result.current.syncAll();
+    });
+
+    expect(result.current.failures).toEqual(['Monobank']);
+    expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
+  });
+
   it('syncs the Monobank and every connected crypto account, then refreshes rates + metals once', async () => {
     const { result } = await renderHook(() => useSyncAll([MONOBANK, WALLET, BINANCE, MANUAL]));
 
@@ -119,10 +154,12 @@ describe('useSyncAll', () => {
       targetAccountId: 'bin',
     });
     expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
+    // The run hands its refresh passes one per-run record for the fiat answer.
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: true,
       metals: true,
       shares: true,
+      fiatOfRun: { storedFiat: new Set() },
     });
     expect(result.current.failures).toEqual([]);
   });

@@ -18,7 +18,6 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { usePriceBook } from '@kiko/prices/use-price-book';
 import { activeHoldings } from '@kiko/rates/active-holdings';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
@@ -26,10 +25,9 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { CompositeScreenProps } from '@react-navigation/native';
-import { transactionSpan } from '@kiko/transactions/transaction-span';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type DaySection, groupByDay } from '@kiko/transactions/group-by-day';
@@ -38,6 +36,7 @@ import type { FilterOption } from '@kiko/design-system/components/filter-menu';
 import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
+import { type CompositeScreenProps, useIsFocused } from '@react-navigation/native';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
 import { type FC, type ReactElement, useCallback, useMemo, useRef, useState } from 'react';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
@@ -61,6 +60,8 @@ type HomeScreenProps = CompositeScreenProps<
 >;
 
 type DateRangeBounds = { from: number | undefined; to: number | undefined };
+
+const NO_SECTIONS: DaySection<HomeTransactionRow>[] = [];
 
 /**
  * The (inclusive) date-range bounds as raw instants, resolved ONCE per range
@@ -118,23 +119,62 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const listRef = useRef<SectionList<HomeTransactionRow, DaySection<HomeTransactionRow>>>(null);
   useScrollToTopOnTabPress(listRef);
 
+  // Read once here (rather than where the net-worth total needs it below) so
+  // the date-range state below can seed off this same instant instead of a
+  // second, separately-timed `Date.now()` read. The ledger query below needs
+  // the range's bounds, so this block sits above the reads.
+  const now = Date.now();
+
+  // `customRange` holds an explicit user pick; `null` means "show the default
+  // (last-30-days) range". The default is derived FRESH from `now` on every
+  // render instead of being frozen once in a `useState` initializer — this
+  // tab stays mounted after it is left, so a range seeded only at mount (or
+  // at the last Clear) silently stopped including "today" once a calendar day
+  // had passed. A user pick still stays exactly as given, even one side left
+  // null (open-ended) via the date-range field.
+  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null } | null>(
+    null,
+  );
+  const defaultRange = defaultDateRange(now);
+  const dateFrom = customRange !== null ? customRange.from : defaultRange.from;
+  const dateTo = customRange !== null ? customRange.to : defaultRange.to;
+  // Computed every render (cheap — two Date constructions, not the filter
+  // below), but its VALUES are what the ledger read and `filteredTransactions`
+  // key on: `bounds.from`/`bounds.to` are day-aligned numbers
+  // (`startOfLocalDay`/`endOfLocalDay`), so they only change once per calendar
+  // day even on the DEFAULT range, where `dateFrom`/`dateTo` are fresh `Date`
+  // objects on every render (see `defaultDateRange`) — keying on those raw
+  // `Date` objects would re-run the read, the filter (and the section
+  // grouping, and the SectionList it feeds) on every single render instead of
+  // once per day.
+  const { from: boundsFrom, to: boundsTo } = dateRangeBounds(dateFrom, dateTo);
+
+  // Deliberately `paused` (not `enabled`) while another tab or a form shows:
+  // this screen stays mounted, so its subscriptions stay and a write elsewhere
+  // only marks each query dirty — hiding Home costs no read and no re-render,
+  // and returning to it runs one read per dirty query (`enabled: false` would
+  // unsubscribe and drop every list to empty; see kiko-architecture's
+  // `paused` vs `enabled`).
+  const isFocused = useIsFocused();
+  const liveOptions = { cached: true, paused: !isFocused } as const;
+
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.listQuery(),
     ['accounts'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
     holdingsRepo.allQuery(),
     ['holdings'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: rates, isLoading: ratesLoading } = useLiveQuery(
     ratesRepo.allQuery(),
     ['currency_rates'],
     true,
-    { cached: true },
+    liveOptions,
   );
   // kiko-architecture: skip the price_points read while nothing rendered on
   // this screen ever reads it — a holding whose type carries no priced spec
@@ -142,28 +182,45 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // stays enabled while holdings are still on their first load, so the two
   // reads run in parallel instead of price_points waiting on holdings. Only a
   // loan reads the linked-payments half of the book.
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+  const { book: priceBook, isLoading: priceBookLoading } = useCurrentPriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
-    { cached: true },
+    liveOptions,
     holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
+    now,
   );
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
     settingsRepo.getQuery(),
     ['settings'],
     true,
-    { cached: true },
+    liveOptions,
   );
+  // The ledger rows of the picked date range only, not the whole ledger: it
+  // grows with every transaction ever synced and re-reads on every write. The
+  // range filter below still applies; the two reads after it carry what the
+  // screen shows of the rows OUTSIDE the range (their span and categories).
   const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
-    transactionsRepo.listAllWithContextQuery(),
+    transactionsRepo.listWithContextBetweenQuery(boundsFrom, boundsTo),
     ['transactions', 'holdings', 'accounts'],
     true,
-    { cached: true },
+    liveOptions,
+  );
+  const { data: spanRows, isLoading: spanLoading } = useLiveQuery(
+    transactionsRepo.contextSpanQuery(),
+    ['transactions', 'holdings', 'accounts'],
+    true,
+    liveOptions,
+  );
+  const { data: categoryRows, isLoading: categoryRowsLoading } = useLiveQuery(
+    transactionsRepo.contextCategoriesQuery(),
+    ['transactions', 'holdings', 'accounts'],
+    true,
+    liveOptions,
   );
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],
     true,
-    { cached: true },
+    liveOptions,
   );
   // The net-worth headline (it would otherwise read 0 while still loading)
   // and the empty-transactions text must never render while any of this
@@ -176,8 +233,20 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     priceBookLoading,
     settingsLoading,
     transactionsLoading,
+    spanLoading,
+    categoryRowsLoading,
     categoriesLoading,
   );
+  // `useDataReady` is true only until a query re-keys: the window read does on
+  // every date-range pick and clear and when the local day rolls over, and the
+  // price book does when a holding turns it on and on a day roll; each re-key
+  // reads loading again. Swapping the whole screen for the spinner then would
+  // drop the filter bar and its open sheet for a read that only affects one
+  // part, so only the FIRST ready gates the whole screen. Each re-keyable read
+  // is gated where it is shown: the list on `transactionsLoading`, the net-worth
+  // card on `priceBookLoading`.
+  const hasBeenReady = useRef(false);
+  hasBeenReady.current ||= isReady;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `buildCategoryDisplayMap` resolves each default category's title through i18n (`resolveDefaultCategoryTitle`) INTERNALLY, so `i18n.language` is a real dependency Biome cannot see — without it a live language switch leaves the resolved titles in the previous language.
   const categoryByKey = useMemo(
@@ -203,25 +272,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // Each dimension holds a set of selected values; an empty set means "all".
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
-
-  // Read once here (rather than where the net-worth total needs it below) so
-  // the date-range state below can seed off this same instant instead of a
-  // second, separately-timed `Date.now()` read.
-  const now = Date.now();
-
-  // `customRange` holds an explicit user pick; `null` means "show the default
-  // (last-30-days) range". The default is derived FRESH from `now` on every
-  // render instead of being frozen once in a `useState` initializer — this
-  // tab stays mounted after it is left, so a range seeded only at mount (or
-  // at the last Clear) silently stopped including "today" once a calendar day
-  // had passed. A user pick still stays exactly as given, even one side left
-  // null (open-ended) via the date-range field.
-  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null } | null>(
-    null,
-  );
-  const defaultRange = defaultDateRange(now);
-  const dateFrom = customRange !== null ? customRange.from : defaultRange.from;
-  const dateTo = customRange !== null ? customRange.to : defaultRange.to;
 
   const clearDateRange = (): void => {
     setCustomRange(null);
@@ -280,21 +330,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // display when no range is active. It never filters — it only tells the user
   // the range their data covers. With no transactions both bounds fall back to
   // today so the field always has something to render.
-  // The earliest/latest transaction time in ONE O(n) pass (see `transactionSpan`
-  // — `Math.min(...times)` spread the whole array and overflowed the stack on a
-  // long history, and re-ran on every reactive fire during a sync). Memoized on
-  // `transactions` alone; the empty-list fallback to `now` is applied outside,
-  // so a per-render `now` never invalidates the memo.
-  const span = useMemo(
-    () =>
-      transactionSpan(
-        transactions.map((row) => row.time),
-        0,
-      ),
-    [transactions],
-  );
-  const spanStart = transactions.length > 0 ? span.start : now;
-  const spanEnd = transactions.length > 0 ? span.end : now;
+  // The earliest/latest time come from the database in one aggregate row (null
+  // for an empty ledger), not from the rows this screen holds: those are only
+  // the picked range's, so they would shrink the span to the range itself.
+  const ledgerSpan = spanRows.at(0);
+  const spanStart = ledgerSpan?.earliest ?? now;
+  const spanEnd = ledgerSpan?.latest ?? now;
 
   // The date-range field's *selectable* bounds are distinct from the display
   // span above: the earliest a user may pick is the earliest transaction's day
@@ -349,7 +390,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const categoryOptions = useMemo(() => {
     const byKey = new Map<string, FilterOption>();
 
-    for (const row of transactions) {
+    // Every category the ledger holds, not only the picked range's: each
+    // stored category once, in the order the newest-first ledger meets it.
+    for (const row of categoryRows) {
       const key = categoryKeyForRow(row.category);
 
       if (byKey.has(key)) {
@@ -381,22 +424,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       return orderA - orderB;
     });
   }, [
-    transactions,
+    categoryRows,
     categories,
     categoryByKey,
     defaultCategoryKey,
     categoryKeyForRow,
     i18n.language,
   ]);
-  // Computed every render (cheap — two Date constructions, not the filter
-  // below), but its VALUES are what `filteredTransactions` keys its memo on:
-  // `bounds.from`/`bounds.to` are day-aligned numbers (`startOfLocalDay`/
-  // `endOfLocalDay`), so they only change once per calendar day even on the
-  // DEFAULT range, where `dateFrom`/`dateTo` are fresh `Date` objects on
-  // every render (see `defaultDateRange`) — keying the memo on those raw
-  // `Date` objects would re-run the filter (and the section grouping, and
-  // the SectionList it feeds) on every single render instead of once per day.
-  const { from: boundsFrom, to: boundsTo } = dateRangeBounds(dateFrom, dateTo);
   const filteredTransactions = useMemo(() => {
     return transactions.filter((row) => {
       const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
@@ -499,7 +533,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [sections],
   );
 
-  if (!isReady) {
+  if (!hasBeenReady.current) {
     return (
       // The SAME Screen mode as the ready branch below (`bleedBottom`), the
       // determinate sync progress bar (it shows the sync this screen's own
@@ -540,17 +574,28 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     <Screen bleedBottom>
       <Box gap={4} testID="home-content" style={styles.content}>
         <Card padding={4} radius="lg">
-          <Box gap={1} style={styles.header}>
-            <Text variant="caption" tone="textSecondary">
-              {t('home.netWorth')}
-            </Text>
+          {/* The price book changes after the first ready: the first metal,
+              share, property or loan holding turns its read on, and a day roll
+              re-keys it. Until the read lands the book is empty (turned on
+              again) or holds the earlier day's rows (a day roll), so a metal
+              would drop to its cost or an old price and a loan would be valued
+              without its payments: the headline and the breakdown wait for it,
+              nothing else does. */}
+          {priceBookLoading ? (
+            <LoadingState testID="home-net-worth-loading" />
+          ) : (
+            <Box gap={1} style={styles.header}>
+              <Text variant="caption" tone="textSecondary">
+                {t('home.netWorth')}
+              </Text>
 
-            <MoneyText money={total} context="balance" style={styles.balance} />
+              <MoneyText money={total} context="balance" style={styles.balance} />
 
-            <Box style={styles.breakdown}>
-              <CurrencyBreakdown items={breakdown} />
+              <Box style={styles.breakdown}>
+                <CurrencyBreakdown items={breakdown} />
+              </Box>
             </Box>
-          </Box>
+          )}
         </Card>
 
         {failures.length > 0 && (
@@ -593,10 +638,15 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             column's `gap(4)` sits between it and the list. */}
         <SyncProgressBar />
 
+        {/* While a new range's window read loads, `transactions` still holds the
+            previous range's rows and the empty text would be a lie, so the list
+            shows no section and the loading state in the empty slot. The list
+            stays mounted: it is the scroll view that carries pull-to-refresh and
+            the large-title collapse. */}
         <SectionList
           ref={listRef}
           testID="home-transactions"
-          sections={sections}
+          sections={transactionsLoading ? NO_SECTIONS : sections}
           keyExtractor={(item) => item.id}
           renderItem={renderTransaction}
           renderSectionHeader={renderDayHeader}
@@ -605,9 +655,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           contentContainerStyle={styles.listContent(listBottomClearance)}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
-            <Box style={styles.empty}>
-              <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>
-            </Box>
+            transactionsLoading ? (
+              <LoadingState testID="home-transactions-loading" />
+            ) : (
+              <Box style={styles.empty}>
+                <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>
+              </Box>
+            )
           }
         />
 

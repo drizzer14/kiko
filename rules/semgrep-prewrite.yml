@@ -1759,3 +1759,43 @@ rules:
           - metavariable-regex:
               metavariable: $OTHER
               regex: ^(?![0-9][0-9_.eE\s*()]*$)
+  # `price_points` gains a row per share and metal per day and never shrinks,
+  # so a read of the whole table costs more every month. Only a screen that
+  # values the PAST needs every close (Statistics, through `usePriceBook`);
+  # every other valuation reads `useCurrentPriceBook`. The four arms are the
+  # ways to reach the whole table: the repo's `allQuery` (called or kept as a
+  # reference), the hook that wraps it, a bare unfiltered select, and an
+  # unfiltered relational read. The hook's own folder and the repo are
+  # the owners and are excluded; the one legitimate consumer carries a
+  # per-line `nosemgrep` override. Scope and known limits: this rule's row in
+  # docs/harness/review-to-biome-inventory.md; the excludes:
+  # docs/harness/documented-exceptions.md.
+  - id: kiko-no-whole-price-points-read
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A read of the whole `price_points` table. It grows with every daily share
+      and metal close, so a screen that values only now reads the current
+      rows through `useCurrentPriceBook`; only a screen that values past days
+      (Statistics) reads every close — see kiko-pricing's "Current price book
+      and whole-table price book".
+    metadata:
+      fix: "Use `useCurrentPriceBook` (`@kiko/prices/use-current-price-book`); a history screen overrides the line with `// nosemgrep: kiko-no-whole-price-points-read OVERRIDE(<why it values past days>)`."
+      skill: "kiko-pricing › Current price book and whole-table price book"
+    paths:
+      exclude:
+        - "src/prices/use-price-book/**"
+        - "src/prices/price-points-repo/**"
+        - "*.test.ts"
+        - "*.test.tsx"
+    pattern-either:
+      - pattern: pricePointsRepo.allQuery
+      - pattern: usePriceBook(...)
+      - patterns:
+          - pattern: $DATABASE.select(...).from(pricePoints)
+          - pattern-not-inside: $QUERY.where(...)
+          - pattern-not-inside: $QUERY.limit(...)
+      - patterns:
+          - pattern: $DATABASE.query.pricePoints.$METHOD(...)
+          - pattern-not: "$DATABASE.query.pricePoints.$METHOD({where: ..., ...})"
+          - pattern-not: "$DATABASE.query.pricePoints.$METHOD({limit: ..., ...})"

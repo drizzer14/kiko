@@ -10,8 +10,8 @@ import { useUnistyles } from 'react-native-unistyles';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
+import { useIsFocused } from '@react-navigation/native';
 import type { Currency } from '@kiko/currency/currency';
-import { usePriceBook } from '@kiko/prices/use-price-book';
 import { isSyncedAccount } from '@kiko/holdings/deletable';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
@@ -26,6 +26,7 @@ import type { AccountsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { writeThenReplan } from '@kiko/reminders/use-reminder-scheduler';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -40,39 +41,53 @@ type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accou
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  // Deliberately `paused` (not `enabled`) while another tab or an account's
+  // own screens show: this screen stays mounted, so its subscriptions stay and
+  // a write elsewhere only marks each query dirty — hiding Accounts costs no
+  // read and no re-render, and returning to it runs one read per dirty query
+  // (`enabled: false` would unsubscribe and drop every card to empty; see
+  // kiko-architecture's `paused` vs `enabled`).
+  const isFocused = useIsFocused();
+  const liveOptions = { cached: true, paused: !isFocused } as const;
   const {
     data: accounts,
     isLoading: accountsLoading,
     isFresh: accountsFresh,
-  } = useLiveQuery(accountsRepo.listQuery(), ['accounts'], true, { cached: true });
+  } = useLiveQuery(accountsRepo.listQuery(), ['accounts'], true, liveOptions);
   const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
     holdingsRepo.allQuery(),
     ['holdings'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: rates, isLoading: ratesLoading } = useLiveQuery(
     ratesRepo.allQuery(),
     ['currency_rates'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
     settingsRepo.getQuery(),
     ['settings'],
     true,
-    { cached: true },
+    liveOptions,
   );
+  // Stable across a re-render, refreshed only on focus — a bare `Date.now()`
+  // here recomputed `debtsTotal`'s (and every card's) time-dependent value on
+  // EVERY render, not just when the screen actually regains focus.
+  const now = useFocusRefreshedNow();
   // kiko-architecture: skip the price_points read while nothing rendered on
   // this screen ever reads it — a holding whose type carries no priced spec
   // and is not a loan (`needsPriceBook`) never touches `price_points`. It
   // stays enabled while holdings are still on their first load, so the two
   // reads run in parallel instead of price_points waiting on holdings. Only a
-  // loan reads the linked-payments half of the book.
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+  // loan reads the linked-payments half of the book. It reads the current
+  // rows for the day of `now`, the instant this screen values at.
+  const { book: priceBook, isLoading: priceBookLoading } = useCurrentPriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
-    { cached: true },
+    liveOptions,
     holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
+    now,
   );
   // The empty-accounts text must never render while any of this screen's own
   // queries is still on its first load (kiko-architecture's useLiveQuery
@@ -87,10 +102,6 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
-  // Stable across a re-render, refreshed only on focus — a bare `Date.now()`
-  // here recomputed `debtsTotal`'s (and every card's) time-dependent value on
-  // EVERY render, not just when the screen actually regains focus.
-  const now = useFocusRefreshedNow();
 
   // The grid renders in the query's `sortOrder` order (the drag-and-drop order),
   // filtered to the non-archived accounts.
