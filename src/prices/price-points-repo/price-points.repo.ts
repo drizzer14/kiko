@@ -6,6 +6,20 @@ import { metalInstrument, shareInstrument } from '../instrument';
 
 type NewPricePointRow = Pick<PricePointRow, 'instrument' | 'day' | 'price' | 'currency' | 'source'>;
 
+// One row per instrument matching `instrumentPattern`, holding only its first
+// and latest stored day, so a caller that plans from the span never reads the
+// series itself.
+const dayRangesQuery = (instrumentPattern: string) =>
+  database
+    .select({
+      instrument: pricePoints.instrument,
+      firstDay: sql<number>`min(${pricePoints.day})`,
+      lastDay: sql<number>`max(${pricePoints.day})`,
+    })
+    .from(pricePoints)
+    .where(like(pricePoints.instrument, instrumentPattern))
+    .groupBy(pricePoints.instrument);
+
 // Mirrors `rateHistoryRepo.upsertMany` (`src/rates/rate-history-repo/`): a
 // chunk stays well under SQLite's SQLITE_MAX_VARIABLE_NUMBER (32766) bound
 // parameters — 2000 rows/chunk at 5 params/row = 10000 params.
@@ -83,27 +97,9 @@ export const pricePointsRepo = {
         ),
       ),
   /** The first and latest stored day of each metal series: one row per metal, not its whole history. */
-  metalDayRangesQuery: () =>
-    database
-      .select({
-        instrument: pricePoints.instrument,
-        firstDay: sql<number>`min(${pricePoints.day})`,
-        lastDay: sql<number>`max(${pricePoints.day})`,
-      })
-      .from(pricePoints)
-      .where(like(pricePoints.instrument, metalInstrument('%')))
-      .groupBy(pricePoints.instrument),
+  metalDayRangesQuery: () => dayRangesQuery(metalInstrument('%')),
   /** The first and latest stored day of each share series: one row per share, not its whole history. */
-  shareDayRangesQuery: () =>
-    database
-      .select({
-        instrument: pricePoints.instrument,
-        firstDay: sql<number>`min(${pricePoints.day})`,
-        lastDay: sql<number>`max(${pricePoints.day})`,
-      })
-      .from(pricePoints)
-      .where(like(pricePoints.instrument, shareInstrument('%')))
-      .groupBy(pricePoints.instrument),
+  shareDayRangesQuery: () => dayRangesQuery(shareInstrument('%')),
   upsertMany: (rows: NewPricePointRow[]) =>
     write((databaseTransaction) => upsertPricePointsDatabaseTransaction(databaseTransaction, rows)),
   /** Deletes every stored price point for one instrument, in one transaction. */
