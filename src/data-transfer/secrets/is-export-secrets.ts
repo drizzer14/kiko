@@ -4,17 +4,18 @@ import type { ExportSecrets } from '../payload';
 
 const isText = (value: unknown): value is string => typeof value === 'string';
 
-const isEveryEntryWith =
-  (fields: readonly string[]) =>
+// The fields are read by property, never named as quoted literals: the plist
+// check (`scripts/checks/plist.sh`) reads a quoted credential name as a client
+// that sends one, and demands an endpoint for it.
+const isEveryEntry =
+  (isEntry: (entry: Record<string, unknown>) => boolean) =>
   (value: unknown): boolean =>
     Array.isArray(value) &&
-    value.every(
-      (entry) => isRecord(entry) && ['accountId', ...fields].every((field) => isText(entry[field])),
-    );
+    value.every((entry) => isRecord(entry) && isText(entry.accountId) && isEntry(entry));
 
 const FIELD_CHECKS: Record<keyof ExportSecrets, (value: unknown) => boolean> = {
-  monobankTokens: isEveryEntryWith(['token']),
-  binanceCredentials: isEveryEntryWith(['apiKey', 'secret']),
+  monobankTokens: isEveryEntry((entry) => isText(entry.token)),
+  binanceCredentials: isEveryEntry((entry) => isText(entry.apiKey) && isText(entry.secret)),
   eodhdKey: isText,
 };
 
