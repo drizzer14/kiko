@@ -151,7 +151,16 @@ describe('restoreDataSnapshot', () => {
     ]);
     // `categories` appears here even though this snapshot carries none: the
     // `loan_interest` reseed (below) always runs, even into an empty table.
-    expect(insertedTables).toEqual(['accounts', 'holdings', 'categories', 'transactions']);
+    // And `settings`, because the live lock and quota ride on a row of their own
+    // when the snapshot carries no settings row.
+    expect(insertedTables).toEqual([
+      'accounts',
+      'holdings',
+      'categories',
+      'transactions',
+      'settings',
+    ]);
+    expect(insertedRows.settings).toEqual([{ id: 1, lockEnabled: false, quoteQuota: null }]);
     expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
     // `{ id: 'h1' }` carries no `balanceSetAt` key — the legacy-backfill path
     // (see the dedicated tests below) stamps `null` since `t1` (this test's
@@ -171,9 +180,10 @@ describe('restoreDataSnapshot', () => {
 
     await restoreDataSnapshot(emptySnapshot);
 
-    // `categories` is the one exception: the `loan_interest` reseed always
-    // inserts, even from an otherwise-empty snapshot.
-    expect(Object.keys(insertedRows)).toEqual(['categories']);
+    // `categories` is the exception: the `loan_interest` reseed always
+    // inserts, even from an otherwise-empty snapshot. So is `settings`: the
+    // live lock and quota ride on a row of their own.
+    expect(Object.keys(insertedRows)).toEqual(['categories', 'settings']);
   });
 
   // A pre-0039 `.kiko` file was exported before `loan_interest` existed, and
@@ -539,7 +549,7 @@ describe('restoreDataSnapshot', () => {
       'pricePoints',
       'bondRegister',
     ]);
-    expect(insertedTables).toEqual(['accounts', 'holdings', 'categories']);
+    expect(insertedTables).toEqual(['accounts', 'holdings', 'categories', 'settings']);
     expect(insertedRows.accounts).toEqual([
       sourceAccount,
       {

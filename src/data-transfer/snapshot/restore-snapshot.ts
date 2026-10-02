@@ -734,15 +734,15 @@ export const restoreDataSnapshot = (
     };
 
     // A file with no settings row would otherwise leave the row to the next
-    // launch's `ensure()`, which creates it with the lock off: a lock that is
-    // on is carried by a row of its own.
+    // launch's `ensure()`, which creates it with the defaults: the live lock
+    // and quota are carried by a row of their own.
     const settingsRowsToInsert = () => {
       const liveSettings = {
         lockEnabled: liveDeviceSettings.lockEnabled,
         quoteQuota: withRestoredPrices(liveDeviceSettings.quoteQuota),
       };
 
-      return settingsToInsert.length === 0 && liveDeviceSettings.lockEnabled
+      return settingsToInsert.length === 0
         ? [{ id: SETTINGS_ID, ...liveSettings }]
         : settingsToInsert.map((row) => ({ ...row, ...liveSettings }));
     };
