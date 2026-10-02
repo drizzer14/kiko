@@ -389,7 +389,7 @@ consequences follow directly:
 
 ### `useLiveQuery` consumer rule: gate an empty state on `isLoading`, never on `data.length === 0` alone
 
-Every `useLiveQuery` (and `usePriceBook`, which wraps one) starts
+Every `useLiveQuery` (and `useCurrentPriceBook`/`usePriceBook`, which wrap one) starts
 `isLoading: true` — unless it opted into the live-query cache below and
 the cache has rows for its key — and clears it only once its FIRST read for its CURRENT
 sql+paramsKey settles — never before. Because of the
@@ -519,11 +519,12 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   against the SAME key that was already applied keeps that previous
   data, matching what a same-key success does.
 
-`usePriceBook(enabled?, options?, loanPaymentsEnabled?)`
-(`src/prices/use-price-book/`) returns `{ book, isLoading }`, not a bare
-`PriceBook` — every consumer destructures
-`const { book: priceBook } = usePriceBook();` (or additionally
-`isLoading: priceBookLoading` when gating). It runs TWO live reads —
+`useCurrentPriceBook(enabled?, options?, loanPaymentsEnabled?, now?)`
+(`src/prices/use-current-price-book/`), and `usePriceBook(...)` for past
+days (`src/prices/use-price-book/`), return `{ book, isLoading }`, not a
+bare `PriceBook` — every consumer destructures
+`const { book: priceBook } = useCurrentPriceBook();` (or additionally
+`isLoading: priceBookLoading` when gating). Each runs TWO live reads —
 `price_points` and every linked loan payment
 (`transactionsRepo.loanLedgerPaymentsQuery()`, ONE read across all loans,
 never one per holding: the one worker thread above) — and its `isLoading`
@@ -690,7 +691,7 @@ gate says there is nothing to do.
   that may add the first holding of a new currency or type triggers
   these gated refreshes WITHOUT awaiting them, so Save never blocks on
   the network.
-- **`usePriceBook`'s `enabled` argument**: `useLiveQuery`'s own
+- **`useCurrentPriceBook`'s and `usePriceBook`'s `enabled` argument**: `useLiveQuery`'s own
   `enabled` parameter (default `true`) skips BOTH the query and the
   reactive subscription while `false`, reporting `data: []` and
   `isLoading: false` — ready, never stuck (a gated-off screen must
@@ -1170,6 +1171,8 @@ now happens on app open, not only on pull. `useAutoSync` is throttled by
 signal (it reads no `fastPhaseDone`), so an app-open sync drives only the
 determinate progress bar.
 
+### The market refresh beside the sync fan-out
+
 Both also run `refreshMarketData` (rates, metals, shares) BESIDE the
 fan-out under a `Promise.all` of two never-rejecting promises, not after
 it: the provider requests are gated at one per minute per token, so a
@@ -1193,7 +1196,9 @@ rewrite the fiat rows the first pass already stored (kiko-pricing).
 `settle-jobs-beside-market-refresh.network-calls.test.ts` pins the
 request count per scenario.
 
-so two of them firing at once produced two concurrent runs, two
+### The single-flight lock (continued)
+
+Two sync triggers firing at once produced two concurrent runs, two
 independent gates, and colliding 429s (the reported "inconsistent"
 sync). `runSync` therefore holds a **module-level single-flight lock**
 (`inFlightSync` in `src/monobank/`): while a run is in flight,

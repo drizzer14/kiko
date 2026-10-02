@@ -17,7 +17,8 @@ type UsePriceBookResult = { book: PriceBook; isLoading: boolean };
  * outstanding reads its payments on every valuation site). Rebuilt only when
  * a live row set itself changes — `useMemo` keyed on both row sets, so a
  * re-render that touches unrelated state does not re-group every point.
- * `isLoading` is true while EITHER read is on its first load, so a screen can
+ * `isLoading` is true while EITHER read is on its first load or after it is
+ * turned back on, so a screen can
  * gate its own empty state on it — see `kiko-architecture`'s useLiveQuery
  * consumer rule — and never shows a loan's schedule-only value before its
  * payments arrive.

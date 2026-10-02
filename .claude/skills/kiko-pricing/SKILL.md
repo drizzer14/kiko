@@ -322,15 +322,18 @@ stored point is later than the requested day (mirrors
 `rateTableAt`/`earliestRateTable` above). It bisects the day-sorted series
 (O(log n) per call); the test pins it against a plain filter over the series on every day.
 
-**`usePriceBook()` contract: `{ book, isLoading }`, not a bare
-`PriceBook`.** (`src/prices/use-price-book/`) wraps `allQuery` in
+**`useCurrentPriceBook(...)` and `usePriceBook(...)` contract: `{ book,
+isLoading }`, not a bare `PriceBook`** (see "Current price book and
+whole-table price book" below for which one a screen reads).
+`usePriceBook` (`src/prices/use-price-book/`) wraps `allQuery` in
 `useLiveQuery(..., ['price_points'])`, and
 `transactionsRepo.loanLedgerPaymentsQuery()` (one read across every loan,
 joined to the payer holding for its currency) in
 `useLiveQuery(..., ['transactions', 'holdings'])`, gated by its third
 argument `loanPaymentsEnabled` (kiko-architecture). Its `isLoading` is
-true while either read is on its first load — every consumer destructures `const {
-book: priceBook } = usePriceBook();`, and a screen that gates its own
+true while either read is on its first load or after it is turned back
+on — every consumer destructures `const { book: priceBook } =
+useCurrentPriceBook(...)` (or `usePriceBook(...)`), and a screen that gates its own
 empty state additionally destructures `isLoading: priceBookLoading`
 and folds it into its `useDataReady(...)` call (see
 `kiko-architecture`'s useLiveQuery consumer rule). A form that WRITES
@@ -376,8 +379,7 @@ so two hooks build the same `PriceBook` from different row sets:
   `pricePointsRepo.currentQuery(today)`: for every `share:` and `metal:`
   series its latest point on or before `today` plus every point after it,
   and every point of a `holding:` series. A screen that values only `now` or
-  later reads it: Home, Accounts, the account and holding details, and the
-  holding form. `now` is the instant the screen values at (Accounts passes
+  later reads it (`grep "useCurrentPriceBook(" src` lists them). `now` is the instant the screen values at (Accounts passes
   its focus-refreshed one), so the book and the screen agree on "today".
   Every number is the one the whole-table book gives for an instant on or
   after `today`, because `priceAt` there picks exactly that point, or the
@@ -392,8 +394,8 @@ so two hooks build the same `PriceBook` from different row sets:
 `kiko-no-whole-price-points-read` blocks `usePriceBook(...)`,
 `pricePointsRepo.allQuery` (called or kept as a reference), a bare
 `select().from(pricePoints)` and an unfiltered relational
-`query.pricePoints.<method>(...)` outside their own folders; Statistics and the snapshot export carry a
-per-line `OVERRIDE(...)`. A new screen that values a past day overrides the
+`query.pricePoints.<method>(...)` outside their own folders; each allowed site carries a
+per-line `OVERRIDE(...)` (`grep "nosemgrep.*kiko-no-whole-price-points-read" src`). A new screen that values a past day overrides the
 same way and names why. `metal-refresh` reads each metal's first and latest
 stored day (`metalDayRangesQuery`), the only two days its plan reads.
 `src/holdings/holding-value/holding-value.current-price-book.test.ts` pins

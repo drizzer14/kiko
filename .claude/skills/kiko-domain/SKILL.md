@@ -2364,8 +2364,8 @@ caught and logged, the same "log instead of drop" contract
 `refresh-market-data.ts` established for its own background refreshes, so
 a failed auto-link never turns a successful sync/import/save into a shown
 error. Called after: every sync completion path (`useSync`, `useSyncAll`,
-`useAutoSync` — the same three call sites `refreshMarketData` already
-established as "every sync surface"); `importParsedStatement` (ONE
+`useAutoSync` — the same three sync surfaces (`useSyncAll`/`useAutoSync` reach
+`refreshMarketData` through `settleJobsBesideMarketRefresh`; `grep -rn "refreshMarketData(" src` lists the direct callers)); `importParsedStatement` (ONE
 insertion point covers both its callers — the dedicated `importStatement`
 and the column-mapping screen's direct call); a `.kiko` backup restore
 (`data-transfer/import-data.ts`, fire-and-forget, right after the same

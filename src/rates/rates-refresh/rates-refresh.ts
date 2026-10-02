@@ -368,7 +368,7 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   // deliberately UNPINNED) is the live fallback, reached for only once
   // Monobank's own bounded retry (Part B, `withRetry`) is exhausted — a
   // SEQUENTIAL fallback, not a second concurrent provider: only ONE source's
-  // rows are ever composed and stored per run. `fiatSource` tracks which one
+  // rows are ever composed and stored per run. `fiatAnswer` tracks which one
   // answered so the composed rows are labeled with accurate provenance
   // (`buildUahRows` above).
   let fiatAnswer: FiatAnswer | undefined;
