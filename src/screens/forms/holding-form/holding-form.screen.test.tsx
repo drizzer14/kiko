@@ -4369,9 +4369,11 @@ describe('HoldingFormScreen name placeholder', () => {
     expect(screen.getByPlaceholderText('Vacation jar')).toBeTruthy();
   });
 
-  it('gives every holding type its own example', () => {
+  it('covers every holding type, each with its own example', () => {
+    const coveredTypes = [...createCases.map(([type]) => type), 'jar'];
     const examples = [...createCases.map(([, , , placeholder]) => placeholder), 'Vacation jar'];
 
+    expect([...coveredTypes].sort()).toEqual([...holdingTypes].sort());
     expect(new Set(examples).size).toBe(holdingTypes.length);
   });
 });

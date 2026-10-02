@@ -1,3 +1,5 @@
+import type { HoldingType } from '../holding-type';
+
 import {
   exchangeReceivePath,
   isExchangeCreateDestinationType,
@@ -5,6 +7,21 @@ import {
   isExchangeDestinationType,
   isExchangeSourceType,
 } from './exchange-destination';
+
+describe('a stored holding type this build no longer knows', () => {
+  const removedType = 'share' as unknown as HoldingType;
+  const inheritedKey = 'constructor' as unknown as HoldingType;
+
+  it('is never an Exchange source or destination, and does not throw', () => {
+    [removedType, inheritedKey].forEach((type) => {
+      expect(exchangeReceivePath(type)).toBe('excluded');
+      expect(isExchangeDestinationType(type)).toBe(false);
+      expect(isExchangeSourceType(type)).toBe(false);
+      expect(isExchangeCreateSourceType(type)).toBe(false);
+      expect(isExchangeCreateDestinationType(type)).toBe(false);
+    });
+  });
+});
 
 describe('exchangeReceivePath', () => {
   it('maps cash, card, and crypto_asset destinations to a plain transaction', () => {

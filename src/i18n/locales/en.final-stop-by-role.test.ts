@@ -31,6 +31,9 @@ import { flattenCatalog } from './flatten-catalog';
 
 const ERROR_KEY = /Error$/;
 const PLACEHOLDER_KEY = /Placeholder$/;
+// `forms.holding.namePlaceholders.<type>` leaves are named for the holding
+// type, so only their parent segment says they are placeholders.
+const PLACEHOLDER_PARENT_PATH = /\.namePlaceholders\./;
 const MESSAGE_KEY = /Message$/;
 const HINT_KEY = /Hint$/;
 const ERROR_TITLE_KEY = /ErrorTitle$/;
@@ -60,6 +63,9 @@ const LABEL_VALUE_ALLOWLIST = new Set([
 
 const leafName = (path: string): string => path.split('.').at(-1) ?? path;
 
+const isPlaceholderPath = (path: string): boolean =>
+  PLACEHOLDER_KEY.test(leafName(path)) || PLACEHOLDER_PARENT_PATH.test(path);
+
 // Titles disallow the DECLARATIVE final "." only — a confirm-sheet title
 // phrased as a real question ("Replace All Data?", the measure's own
 // documented outlier) still ends in "?" on purpose; that "?" is the
@@ -77,7 +83,7 @@ const isGovernedByAnotherRole = (path: string): boolean => {
   return (
     TITLE_KEYS.has(path) ||
     ERROR_KEY.test(name) ||
-    PLACEHOLDER_KEY.test(name) ||
+    isPlaceholderPath(path) ||
     MESSAGE_KEY.test(name) ||
     HINT_KEY.test(name) ||
     ERROR_TITLE_KEY.test(name) ||
@@ -109,10 +115,20 @@ describe.each([
 
   it('never ends a *Placeholder value with a final "."', () => {
     const offenders = leaves
-      .filter(({ path }) => PLACEHOLDER_KEY.test(leafName(path)))
+      .filter(({ path }) => isPlaceholderPath(path))
       .filter(({ value }) => endsWithFinalPeriod(value));
 
     expect(offenders).toEqual([]);
+  });
+
+  it('checks every forms.holding.namePlaceholders leaf as a placeholder', () => {
+    const nameExamples = leaves.filter(({ path }) =>
+      path.startsWith('forms.holding.namePlaceholders.'),
+    );
+
+    expect(nameExamples).toHaveLength(Object.keys(catalog.forms.holding.namePlaceholders).length);
+    expect(nameExamples.length).toBeGreaterThan(0);
+    expect(nameExamples.every(({ path }) => isPlaceholderPath(path))).toBe(true);
   });
 
   it('always ends a *Message value with "." or "?"', () => {
@@ -166,7 +182,7 @@ describe.each([
 
     expect(countFor((path) => TITLE_KEYS.has(path))).toBeGreaterThan(10);
     expect(countFor((path) => ERROR_KEY.test(leafName(path)))).toBeGreaterThan(20);
-    expect(countFor((path) => PLACEHOLDER_KEY.test(leafName(path)))).toBeGreaterThan(10);
+    expect(countFor(isPlaceholderPath)).toBeGreaterThan(10);
     expect(countFor((path) => MESSAGE_KEY.test(leafName(path)))).toBeGreaterThan(5);
   });
 });
