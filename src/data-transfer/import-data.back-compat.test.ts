@@ -23,16 +23,8 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (id: string, credentials: unknown) => mockSaveCredentials(id, credentials),
 }));
 
-const mockSaveEodhdKey = jest.fn();
-jest.mock('@kiko/prices/eodhd-key/eodhd-key', () => ({
-  saveEodhdKey: (key: string) => mockSaveEodhdKey(key),
-}));
-
 jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: jest.fn().mockResolvedValue(undefined),
-}));
-jest.mock('@kiko/prices/daily-limit', () => ({
-  confirmDailyLimit: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('@kiko/loans/use-loan-auto-link', () => ({
   runLoanAutoLink: jest.fn().mockResolvedValue(undefined),
@@ -159,7 +151,6 @@ describe('importing a version 1 file an earlier build wrote', () => {
   beforeEach(() => {
     mockSaveToken.mockReset().mockResolvedValue(undefined);
     mockSaveCredentials.mockReset().mockResolvedValue(undefined);
-    mockSaveEodhdKey.mockReset().mockResolvedValue(undefined);
   });
 
   describe('exported without keys', () => {
@@ -178,7 +169,6 @@ describe('importing a version 1 file an earlier build wrote', () => {
       expect(summary.unrestoredCredentials).toEqual([]);
       expect(mockSaveToken).not.toHaveBeenCalled();
       expect(mockSaveCredentials).not.toHaveBeenCalled();
-      expect(mockSaveEodhdKey).not.toHaveBeenCalled();
     });
   });
 
@@ -198,7 +188,25 @@ describe('importing a version 1 file an earlier build wrote', () => {
         apiKey: 'api-key',
         secret: 'api-secret',
       });
-      expect(mockSaveEodhdKey).not.toHaveBeenCalled();
+      expect(summary.unrestoredCredentials).toEqual([]);
+    });
+
+    // The share prices key was removed before any build with it shipped; an
+    // export made on a development build may still carry it, and it is
+    // dropped without a Keychain write or a failure.
+    it('restores the data and ignores an eodhdKey from an older build', async () => {
+      const payload = await earlierBuildPayload({
+        monobankTokens: [{ accountId: 'mono1', token: 'mono-token' }],
+        binanceCredentials: [{ accountId: 'bin1', apiKey: 'api-key', secret: 'api-secret' }],
+        eodhdKey: 'fake-eodhd-key-0000',
+      });
+      mockDatabase = openDatabase();
+
+      const summary = await importVersionOne(payload);
+
+      expect(storedAccountIds()).toEqual(['bin1', 'mono1']);
+      expect(mockSaveToken).toHaveBeenCalledTimes(1);
+      expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
       expect(summary.unrestoredCredentials).toEqual([]);
     });
   });
@@ -265,7 +273,6 @@ describe('importing a version 1 file an earlier build wrote', () => {
       const payload = await earlierBuildPayload({
         monobankTokens: [{ accountId: 'mono1', token: 'mono-token' }],
         binanceCredentials: [{ accountId: 'bin1', apiKey: 'api-key', secret: 'api-secret' }],
-        eodhdKey: 'fake-eodhd-key-0000',
       });
       mockDatabase = openDatabase();
       mockSaveToken.mockRejectedValue(new Error('keychain write failed'));
@@ -276,7 +283,6 @@ describe('importing a version 1 file an earlier build wrote', () => {
       expect(storedAccountIds()).toEqual(['bin1', 'mono1']);
       expect(summary.unrestoredCredentials).toEqual(['monobank']);
       expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
-      expect(mockSaveEodhdKey).toHaveBeenCalledTimes(1);
     });
   });
 });

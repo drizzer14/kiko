@@ -1,7 +1,5 @@
 import * as RNFS from 'react-native-fs';
-import { logFailure } from '@kiko/diagnostics';
 import { bifold, eitherSync, isLeft } from 'fnts/either';
-import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { recostStoredLots } from '@kiko/holdings/lot-recost';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
@@ -192,13 +190,9 @@ export const importData = async (options: {
   // awaited): the refresh is a background nicety, not an import
   // precondition — `importData` must resolve with its row-count summary
   // without sitting on the network; only fire the refresh after the write
-  // commits. A restored EODHD key's daily limit is unconfirmed, so the 0-call
-  // limit check goes first: the refresh must not plan under the limit stored
-  // before the restore.
-  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the catch handles a failed limit check and refreshMarketData never rejects
-  confirmDailyLimit()
-    .catch((error: unknown) => logFailure('[import-data] daily limit check failed', error))
-    .then(() => refreshMarketData({ throttled: false, metals: true }));
+  // commits.
+  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects
+  refreshMarketData({ throttled: false, metals: true });
   // A bulk restore bypasses the sync/import/loan-edit call sites that
   // normally trigger the auto-link matcher — trigger it explicitly
   // here too. `runLoanAutoLink` never rejects and returns early with no

@@ -1,12 +1,8 @@
 import { right } from 'fnts/either';
 
 const mockRefreshMarketData = jest.fn();
-const mockConfirmDailyLimit = jest.fn();
 const mockOpenCurrenciesQuery = jest.fn();
 
-jest.mock('@kiko/prices/daily-limit', () => ({
-  confirmDailyLimit: (...args: unknown[]) => mockConfirmDailyLimit(...args),
-}));
 jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
@@ -24,7 +20,6 @@ describe('settleJobsBesideMarketRefresh', () => {
   beforeEach(() => {
     warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     mockRefreshMarketData.mockResolvedValue(right(undefined));
-    mockConfirmDailyLimit.mockResolvedValue(undefined);
     mockOpenCurrenciesQuery.mockResolvedValue(rowsOf('UAH', 'USD'));
   });
 
@@ -41,7 +36,7 @@ describe('settleJobsBesideMarketRefresh', () => {
         }),
     );
 
-    const settled = settleJobsBesideMarketRefresh([{ name: 'Mono', run }], '[test]');
+    const settled = settleJobsBesideMarketRefresh([{ name: 'Mono', run }]);
 
     await new Promise((resolve) => setImmediate(resolve));
     expect(run).toHaveBeenCalledTimes(1);
@@ -55,32 +50,12 @@ describe('settleJobsBesideMarketRefresh', () => {
     await settled;
   });
 
-  it('confirms the daily limit before the refresh, and refreshes anyway when the check fails', async () => {
-    const order: string[] = [];
-    mockConfirmDailyLimit.mockImplementation(async () => {
-      order.push('confirm');
-      throw new Error('settings read failed');
-    });
-    mockRefreshMarketData.mockImplementation(async () => {
-      order.push('refresh');
-
-      return right(undefined);
-    });
-
-    await settleJobsBesideMarketRefresh([], '[test]');
-
-    expect(order).toEqual(['confirm', 'refresh']);
-  });
-
   it('returns one settled result per job, in job order, and does not reject on a failed job', async () => {
     const failure = new Error('429');
-    const results = await settleJobsBesideMarketRefresh(
-      [
-        { name: 'A', run: () => Promise.resolve('ok') },
-        { name: 'B', run: () => Promise.reject(failure) },
-      ],
-      '[test]',
-    );
+    const results = await settleJobsBesideMarketRefresh([
+      { name: 'A', run: () => Promise.resolve('ok') },
+      { name: 'B', run: () => Promise.reject(failure) },
+    ]);
 
     expect(results).toEqual([
       { status: 'fulfilled', value: 'ok' },
@@ -97,10 +72,9 @@ describe('settleJobsBesideMarketRefresh', () => {
     );
     let done = false;
 
-    const settled = settleJobsBesideMarketRefresh(
-      [{ name: 'A', run: () => Promise.resolve() }],
-      '[test]',
-    ).then(() => {
+    const settled = settleJobsBesideMarketRefresh([
+      { name: 'A', run: () => Promise.resolve() },
+    ]).then(() => {
       done = true;
     });
 
@@ -113,7 +87,7 @@ describe('settleJobsBesideMarketRefresh', () => {
   });
 
   it('refreshes once and reads no holdings when there is no job', async () => {
-    await settleJobsBesideMarketRefresh([], '[test]');
+    await settleJobsBesideMarketRefresh([]);
 
     expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
     expect(mockOpenCurrenciesQuery).not.toHaveBeenCalled();
@@ -124,7 +98,7 @@ describe('settleJobsBesideMarketRefresh', () => {
       .mockResolvedValueOnce(rowsOf('UAH', 'USD'))
       .mockResolvedValueOnce(rowsOf('USD', 'UAH'));
 
-    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }], '[test]');
+    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }]);
 
     expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
   });
@@ -134,7 +108,7 @@ describe('settleJobsBesideMarketRefresh', () => {
       .mockResolvedValueOnce(rowsOf('UAH', 'USD'))
       .mockResolvedValueOnce(rowsOf('UAH'));
 
-    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }], '[test]');
+    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }]);
 
     expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
   });
@@ -150,17 +124,14 @@ describe('settleJobsBesideMarketRefresh', () => {
       return right(undefined);
     });
 
-    await settleJobsBesideMarketRefresh(
-      [
-        {
-          name: 'Binance',
-          run: async () => {
-            order.push('job');
-          },
+    await settleJobsBesideMarketRefresh([
+      {
+        name: 'Binance',
+        run: async () => {
+          order.push('job');
         },
-      ],
-      '[test]',
-    );
+      },
+    ]);
 
     expect([...order].sort()).toEqual(['full refresh', 'job', 'rates top-up']);
     expect(order.at(-1)).toBe('rates top-up');
@@ -176,7 +147,7 @@ describe('settleJobsBesideMarketRefresh', () => {
       .mockResolvedValueOnce(rowsOf('UAH'))
       .mockResolvedValueOnce(rowsOf('UAH', 'BTC'));
 
-    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }], '[test]');
+    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }]);
 
     const [[firstOptions], [topUpOptions]] = mockRefreshMarketData.mock.calls;
 
@@ -184,8 +155,8 @@ describe('settleJobsBesideMarketRefresh', () => {
   });
 
   it('starts a new fiat answer record for every run', async () => {
-    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }], '[test]');
-    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }], '[test]');
+    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }]);
+    await settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }]);
 
     const [[firstRun], [secondRun]] = mockRefreshMarketData.mock.calls;
 
@@ -196,7 +167,7 @@ describe('settleJobsBesideMarketRefresh', () => {
     mockOpenCurrenciesQuery.mockRejectedValue(new Error('read failed'));
 
     await expect(
-      settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }], '[test]'),
+      settleJobsBesideMarketRefresh([{ name: 'A', run: () => Promise.resolve() }]),
     ).resolves.toHaveLength(1);
 
     expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);

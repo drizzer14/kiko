@@ -296,7 +296,7 @@ describe('ImportDataScreen', () => {
       mockImportData.mockResolvedValue({
         accountsRestored: 2,
         languageRestored: null,
-        unrestoredCredentials: ['monobank', 'binance', 'eodhd'],
+        unrestoredCredentials: ['monobank', 'binance'],
       });
       const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 
@@ -305,7 +305,7 @@ describe('ImportDataScreen', () => {
       expect(await findByText('Import complete — 2 accounts restored.')).toBeTruthy();
       expect(
         await findByText(
-          'Your data was restored, but the saved keys for Monobank, Binance, EODHD could not be stored on this iPhone. Add them again to reconnect.',
+          'Your data was restored, but the saved keys for Monobank, Binance could not be stored on this iPhone. Add them again to reconnect.',
         ),
       ).toBeTruthy();
       expect(alertSpy).not.toHaveBeenCalled();
@@ -315,14 +315,14 @@ describe('ImportDataScreen', () => {
       mockImportData.mockResolvedValue({
         accountsRestored: 1,
         languageRestored: 'uk',
-        unrestoredCredentials: ['eodhd'],
+        unrestoredCredentials: ['binance'],
       });
 
       const { findByText } = await pickAndConfirmImport();
 
       expect(
         await findByText(
-          'Дані відновлено, але збережені ключі для EODHD не вдалося зберегти на цьому iPhone. Додайте їх ще раз, щоб підключитися знову.',
+          'Дані відновлено, але збережені ключі для Binance не вдалося зберегти на цьому iPhone. Додайте їх ще раз, щоб підключитися знову.',
         ),
       ).toBeTruthy();
     });

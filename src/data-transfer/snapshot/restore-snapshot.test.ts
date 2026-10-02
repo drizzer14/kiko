@@ -57,7 +57,7 @@ const tableNameOf = (table: unknown): string => {
   throw new Error('unknown table');
 };
 
-// The restore reads the live settings row's quote quota and lock before it deletes it;
+// The restore reads the live settings row's lock before it deletes it;
 // these fakes start from no settings row.
 const noLiveSettings = {
   select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
@@ -151,7 +151,7 @@ describe('restoreDataSnapshot', () => {
     ]);
     // `categories` appears here even though this snapshot carries none: the
     // `loan_interest` reseed (below) always runs, even into an empty table.
-    // And `settings`, because the live lock and quota ride on a row of their own
+    // And `settings`, because the live lock rides on a row of its own
     // when the snapshot carries no settings row.
     expect(insertedTables).toEqual([
       'accounts',
@@ -161,7 +161,7 @@ describe('restoreDataSnapshot', () => {
       'settings',
     ]);
     expect(insertedRows.settings).toEqual([
-      { id: 1, lockEnabled: false, quoteQuota: null, notificationsDeliverableSince: null },
+      { id: 1, lockEnabled: false, notificationsDeliverableSince: null },
     ]);
     expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
     // `{ id: 'h1' }` carries no `balanceSetAt` key — the legacy-backfill path
@@ -184,7 +184,7 @@ describe('restoreDataSnapshot', () => {
 
     // `categories` is the exception: the `loan_interest` reseed always
     // inserts, even from an otherwise-empty snapshot. So is `settings`: the
-    // live lock and quota ride on a row of their own.
+    // live lock rides on a row of its own.
     expect(Object.keys(insertedRows)).toEqual(['categories', 'settings']);
   });
 
@@ -246,12 +246,12 @@ describe('restoreDataSnapshot', () => {
     await restoreDataSnapshot({
       ...emptySnapshot,
       pricePoints: [
-        { instrument: 'share:AAPL', day: 1, price: '190.00', currency: 'USD', source: 'eodhd' },
+        { instrument: 'metal:silver', day: 1, price: '190.00', currency: 'USD', source: 'nbu' },
       ] as never,
     });
 
     expect(insertedRows.pricePoints).toEqual([
-      { instrument: 'share:AAPL', day: 1, price: '190.00', currency: 'USD', source: 'eodhd' },
+      { instrument: 'metal:silver', day: 1, price: '190.00', currency: 'USD', source: 'nbu' },
     ]);
   });
 
@@ -1109,7 +1109,6 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           dedupKeysUpgraded: true,
           lockEnabled: false,
-          quoteQuota: null,
           notificationsDeliverableSince: null,
         },
       ]);
@@ -1134,7 +1133,6 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           dedupKeysUpgraded: true,
           lockEnabled: false,
-          quoteQuota: null,
           notificationsDeliverableSince: null,
         },
       ]);
@@ -1162,7 +1160,6 @@ describe('restoreDataSnapshot', () => {
         {
           ...alreadyMigratedSettingsRow,
           lockEnabled: false,
-          quoteQuota: null,
           notificationsDeliverableSince: null,
         },
       ]);
@@ -1220,7 +1217,6 @@ describe('restoreDataSnapshot', () => {
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
           lockEnabled: false,
-          quoteQuota: null,
           notificationsDeliverableSince: null,
         },
       ]);
@@ -1248,7 +1244,6 @@ describe('restoreDataSnapshot', () => {
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
           lockEnabled: false,
-          quoteQuota: null,
           notificationsDeliverableSince: null,
         },
       ]);
@@ -1278,7 +1273,6 @@ describe('restoreDataSnapshot', () => {
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
           lockEnabled: false,
-          quoteQuota: null,
           notificationsDeliverableSince: null,
         },
       ]);

@@ -1,6 +1,5 @@
 import type { AccountRow } from '@kiko/db';
 import { readToken } from '@kiko/monobank/token';
-import { readEodhdKey } from '@kiko/prices/eodhd-key';
 import { readCredentials } from '@kiko/crypto-sync/binance';
 
 import type { ExportSecrets } from '../payload';
@@ -8,9 +7,8 @@ import type { ExportSecrets } from '../payload';
 /**
  * Reads the Keychain secrets this feature bundles behind the "include
  * saved credentials" toggle: every CONNECTED account's Monobank token /
- * Binance credentials, and the one global EODHD key. An account with no
- * stored secret (never connected, or disconnected) is skipped rather than
- * producing an `undefined` entry; no saved EODHD key leaves `eodhdKey` out.
+ * Binance credentials. An account with no stored secret (never connected, or
+ * disconnected) is skipped rather than producing an `undefined` entry.
  */
 export const readExportSecrets = async (accounts: AccountRow[]): Promise<ExportSecrets> => {
   const monobankTokens: NonNullable<ExportSecrets['monobankTokens']> = [];
@@ -37,11 +35,5 @@ export const readExportSecrets = async (accounts: AccountRow[]): Promise<ExportS
     }
   }
 
-  const eodhdKey = await readEodhdKey();
-
-  if (eodhdKey === undefined) {
-    return { monobankTokens, binanceCredentials };
-  }
-
-  return { monobankTokens, binanceCredentials, eodhdKey };
+  return { monobankTokens, binanceCredentials };
 };

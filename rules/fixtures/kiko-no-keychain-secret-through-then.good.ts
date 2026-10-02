@@ -5,7 +5,6 @@
 import { useState } from 'react';
 
 import { hasToken } from '../../src/monobank/token';
-import { hasEodhdKey } from '../../src/prices/eodhd-key';
 
 export const FixtureGoodExistenceProbe = () => {
   const [isTokenSaved, setIsTokenSaved] = useState(false);
@@ -15,14 +14,4 @@ export const FixtureGoodExistenceProbe = () => {
   });
 
   return isTokenSaved;
-};
-
-export const FixtureGoodEodhdKeyExistenceProbe = () => {
-  const [isKeySaved, setIsKeySaved] = useState(false);
-
-  hasEodhdKey().then((exists) => {
-    setIsKeySaved(exists);
-  });
-
-  return isKeySaved;
 };

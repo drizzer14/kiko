@@ -6,9 +6,6 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   readCredentials: (id: string) => mockReadCredentials(id),
 }));
 
-const mockReadEodhdKey = jest.fn();
-jest.mock('@kiko/prices/eodhd-key/eodhd-key', () => ({ readEodhdKey: () => mockReadEodhdKey() }));
-
 import type { AccountRow } from '@kiko/db';
 
 import { readExportSecrets } from './read-secrets';
@@ -35,22 +32,6 @@ describe('readExportSecrets', () => {
     expect(secrets).not.toHaveProperty('dbKeyHex');
     expect(secrets.monobankTokens).toEqual([{ accountId: 'mono1', token: 'mono-token' }]);
     expect(secrets.binanceCredentials).toEqual([{ accountId: 'bin1', apiKey: 'k', secret: 's' }]);
-  });
-
-  it('adds the saved EODHD key, which belongs to no account', async () => {
-    mockReadEodhdKey.mockResolvedValue('fake-eodhd-key-0000');
-
-    const secrets = await readExportSecrets([]);
-
-    expect(secrets.eodhdKey).toBe('fake-eodhd-key-0000');
-  });
-
-  it('leaves the EODHD key out when none is saved', async () => {
-    mockReadEodhdKey.mockResolvedValue(undefined);
-
-    const secrets = await readExportSecrets([account('cash1', null)]);
-
-    expect(secrets).not.toHaveProperty('eodhdKey');
   });
 
   it('never reads a token/credential for a non-monobank/non-binance account', async () => {

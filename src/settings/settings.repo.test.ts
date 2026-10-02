@@ -215,36 +215,6 @@ describe('settingsRepo', () => {
     });
   });
 
-  it('builds a quote quota query that reads only the quota column of the single row', () => {
-    const { sql, params } = settingsRepo.quoteQuotaQuery().toSQL();
-
-    expect(sql).toContain('"quote_quota"');
-    expect(sql).not.toContain('"base_currency"');
-    expect(params).toEqual([1]);
-  });
-
-  it('updateQuoteQuota builds the new quota from the stored one, in one write', async () => {
-    const stored = { day: 86_400_000, calls: 3, dailyLimit: 20, symbols: ['AAPL.US'] };
-    const store: Record<string, unknown>[] = [{ id: 1, quoteQuota: stored }];
-    mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
-    const build = jest.fn((quota: unknown) => ({ ...(quota as object), dailyLimit: 100 }));
-
-    await settingsRepo.updateQuoteQuota(build as never);
-
-    expect(build).toHaveBeenCalledWith(stored);
-    expect(store[0].quoteQuota).toEqual({ ...stored, dailyLimit: 100 });
-  });
-
-  it('updateQuoteQuota hands a never-stored quota over as null', async () => {
-    const store: Record<string, unknown>[] = [{ id: 1, quoteQuota: null }];
-    mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
-    const build = jest.fn(() => ({ day: 0, calls: 0, dailyLimit: 20, symbols: [] }));
-
-    await settingsRepo.updateQuoteQuota(build);
-
-    expect(build).toHaveBeenCalledWith(null);
-  });
-
   it('dismissReminderOffer records a kind once, however often it is dismissed', async () => {
     const store: Record<string, unknown>[] = [{ id: 1, reminderOfferDismissals: null }];
     mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);

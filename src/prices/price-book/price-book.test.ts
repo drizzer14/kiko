@@ -2,7 +2,7 @@ import { DAY_MS } from '@kiko/dates';
 import type { PricePointRow } from '@kiko/db';
 import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
 
-import { shareInstrument } from '../instrument';
+import { metalInstrument } from '../instrument';
 
 import {
   dayKeyOf,
@@ -17,27 +17,27 @@ const monday = Date.UTC(2026, 8, 7); // 2026-09-07, a Monday, UTC midnight
 const tuesday = monday + DAY_MS;
 const friday = monday + 4 * DAY_MS;
 
-const AAPL = shareInstrument('AAPL');
-const MSFT = shareInstrument('MSFT');
+const SILVER = metalInstrument('silver');
+const PLATINUM = metalInstrument('platinum');
 
 const point = (instrument: string, day: number, price: string): PricePointRow => ({
   instrument,
   day,
   price,
   currency: 'USD',
-  source: 'eodhd',
+  source: 'nbu',
 });
 
 describe('buildPriceBook', () => {
   it('groups rows by instrument, sorted by day ascending', () => {
     const book = buildPriceBook([
-      point(AAPL, friday, '191'),
-      point(AAPL, monday, '190'),
-      point(MSFT, monday, '410'),
+      point(SILVER, friday, '191'),
+      point(SILVER, monday, '190'),
+      point(PLATINUM, monday, '410'),
     ]);
 
-    expect(book.points.get(AAPL)?.map((row) => row.day)).toEqual([monday, friday]);
-    expect(book.points.get(MSFT)?.map((row) => row.day)).toEqual([monday]);
+    expect(book.points.get(SILVER)?.map((row) => row.day)).toEqual([monday, friday]);
+    expect(book.points.get(PLATINUM)?.map((row) => row.day)).toEqual([monday]);
   });
 
   it('is empty for no rows', () => {
@@ -109,32 +109,32 @@ describe('localMidnightOfDayKey', () => {
 });
 
 describe('priceAt', () => {
-  const book = buildPriceBook([point(AAPL, monday, '190.00'), point(AAPL, friday, '195.00')]);
+  const book = buildPriceBook([point(SILVER, monday, '190.00'), point(SILVER, friday, '195.00')]);
 
   it('resolves the exact-day point when one exists', () => {
-    expect(priceAt(book, AAPL, monday)?.price).toBe('190.00');
+    expect(priceAt(book, SILVER, monday)?.price).toBe('190.00');
   });
 
   it('carries the nearest prior point forward across a gap', () => {
-    expect(priceAt(book, AAPL, tuesday)?.price).toBe('190.00');
+    expect(priceAt(book, SILVER, tuesday)?.price).toBe('190.00');
   });
 
   it('falls back to the earliest point for an instant before the first row', () => {
     const before = monday - DAY_MS;
 
-    expect(priceAt(book, AAPL, before)?.price).toBe('190.00');
+    expect(priceAt(book, SILVER, before)?.price).toBe('190.00');
   });
 
   it('returns undefined for an instrument with no stored points', () => {
-    expect(priceAt(book, shareInstrument('UNKNOWN'), monday)).toBeUndefined();
+    expect(priceAt(book, metalInstrument('unknown'), monday)).toBeUndefined();
   });
 
   it('resolves a Kyiv local-midnight DST instant to its own local-day point', () => {
     const dstDay = Date.UTC(2026, 2, 30);
-    const dstBook = buildPriceBook([point(AAPL, dstDay, '200.00')]);
+    const dstBook = buildPriceBook([point(SILVER, dstDay, '200.00')]);
     const kyivLocalMidnight = new Date(2026, 2, 30).getTime();
 
-    expect(priceAt(dstBook, AAPL, kyivLocalMidnight)?.price).toBe('200.00');
+    expect(priceAt(dstBook, SILVER, kyivLocalMidnight)?.price).toBe('200.00');
   });
 });
 
@@ -156,7 +156,7 @@ describe('priceAt against the filter it replaced', () => {
     return atOrBefore.length > 0 ? atOrBefore[atOrBefore.length - 1] : points[0];
   };
 
-  // A weekday-only share series with a gap, a gap-free metal series, a
+  // A weekday-only series with a gap, a gap-free metal series, a
   // single-point instrument, and a same-day pair, so every branch is hit.
   const rows: PricePointRow[] = [];
 
@@ -165,18 +165,18 @@ describe('priceAt against the filter it replaced', () => {
     const weekday = new Date(day).getUTCDay();
 
     if (weekday !== 0 && weekday !== 6 && (offset < 60 || offset > 80)) {
-      rows.push(point(AAPL, day, `${100 + offset}.00`));
+      rows.push(point(SILVER, day, `${100 + offset}.00`));
     }
 
     rows.push(point('metal:gold', day, `${2000 + offset}.00`));
   }
-  rows.push(point(MSFT, monday + 50 * DAY_MS, '410.00'));
-  rows.push(point('share:TWIN', monday + 10 * DAY_MS, '1.00'));
-  rows.push(point('share:TWIN', monday + 10 * DAY_MS, '2.00'));
-  rows.push(point('share:TWIN', monday + 20 * DAY_MS, '3.00'));
+  rows.push(point(PLATINUM, monday + 50 * DAY_MS, '410.00'));
+  rows.push(point('metal:twin', monday + 10 * DAY_MS, '1.00'));
+  rows.push(point('metal:twin', monday + 10 * DAY_MS, '2.00'));
+  rows.push(point('metal:twin', monday + 20 * DAY_MS, '3.00'));
 
   const book = buildPriceBook(rows);
-  const instruments = [AAPL, MSFT, 'metal:gold', 'share:TWIN', 'share:NOPE'];
+  const instruments = [SILVER, PLATINUM, 'metal:gold', 'metal:twin', 'metal:nope'];
 
   it('returns the same point for every instrument on every day, before, inside and after the series', () => {
     for (const instrument of instruments) {
@@ -192,13 +192,13 @@ describe('priceAt against the filter it replaced', () => {
     for (let offset = 0; offset < 100; offset += 1) {
       const instant = monday + offset * DAY_MS + 13 * 3_600_000 + 7;
 
-      expect(priceAt(book, AAPL, instant)).toBe(filterPriceAt(book, AAPL, instant));
+      expect(priceAt(book, SILVER, instant)).toBe(filterPriceAt(book, SILVER, instant));
     }
   });
 
   it('returns the same point across the Kyiv DST days', () => {
     const dstBook = buildPriceBook(
-      [28, 29, 30, 31].map((date) => point(AAPL, Date.UTC(2026, 2, date), `${date}.00`)),
+      [28, 29, 30, 31].map((date) => point(SILVER, Date.UTC(2026, 2, date), `${date}.00`)),
     );
 
     for (const [month, date, hours] of [
@@ -211,19 +211,19 @@ describe('priceAt against the filter it replaced', () => {
     ]) {
       const instant = new Date(2026, month, date, hours).getTime();
 
-      expect(priceAt(dstBook, AAPL, instant)).toBe(filterPriceAt(dstBook, AAPL, instant));
+      expect(priceAt(dstBook, SILVER, instant)).toBe(filterPriceAt(dstBook, SILVER, instant));
     }
   });
 
   it('keeps the last of two same-day points, as the filter did', () => {
-    expect(priceAt(book, 'share:TWIN', monday + 10 * DAY_MS)?.price).toBe('2.00');
-    expect(priceAt(book, 'share:TWIN', monday + 15 * DAY_MS)?.price).toBe('2.00');
+    expect(priceAt(book, 'metal:twin', monday + 10 * DAY_MS)?.price).toBe('2.00');
+    expect(priceAt(book, 'metal:twin', monday + 15 * DAY_MS)?.price).toBe('2.00');
   });
 
   it('reads a logarithmic number of points per lookup, not the whole series', () => {
     let reads = 0;
     const counted = Array.from({ length: 756 }, (_, offset) => {
-      const row = point(AAPL, monday + offset * DAY_MS, '1.00');
+      const row = point(SILVER, monday + offset * DAY_MS, '1.00');
 
       return Object.defineProperty({ ...row }, 'day', {
         get: () => {
@@ -236,10 +236,10 @@ describe('priceAt against the filter it replaced', () => {
     });
     const countedBook = {
       ...EMPTY_PRICE_BOOK,
-      points: new Map([[AAPL, counted]]),
+      points: new Map([[SILVER, counted]]),
     };
 
-    priceAt(countedBook, AAPL, monday + 400 * DAY_MS);
+    priceAt(countedBook, SILVER, monday + 400 * DAY_MS);
 
     expect(reads).toBeLessThanOrEqual(12);
   });
@@ -247,12 +247,12 @@ describe('priceAt against the filter it replaced', () => {
 
 describe('latestPoint', () => {
   it('returns the most recent point for an instrument', () => {
-    const book = buildPriceBook([point(AAPL, monday, '190.00'), point(AAPL, friday, '195.00')]);
+    const book = buildPriceBook([point(SILVER, monday, '190.00'), point(SILVER, friday, '195.00')]);
 
-    expect(latestPoint(book, AAPL)?.price).toBe('195.00');
+    expect(latestPoint(book, SILVER)?.price).toBe('195.00');
   });
 
   it('returns undefined for an instrument with no stored points', () => {
-    expect(latestPoint(EMPTY_PRICE_BOOK, AAPL)).toBeUndefined();
+    expect(latestPoint(EMPTY_PRICE_BOOK, SILVER)).toBeUndefined();
   });
 });

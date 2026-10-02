@@ -9,7 +9,7 @@
 // companion rule's own fixture, not this one.
 import { useState } from 'react';
 
-import { readEodhdKey } from '../../src/prices/eodhd-key';
+import { readToken } from '../../src/monobank/token';
 import { readCredentials } from '../../src/crypto-sync/binance/binance.credentials';
 
 export const FixtureBadAwaitForm = () => {
@@ -23,14 +23,14 @@ export const FixtureBadAwaitForm = () => {
   return { credentials, load };
 };
 
-export const FixtureBadEodhdKeyAwaitForm = () => {
-  const [key, setKey] = useState<string | undefined>(undefined);
+export const FixtureBadTokenAwaitForm = () => {
+  const [token, setToken] = useState<string | undefined>(undefined);
 
   const load = async (): Promise<void> => {
-    const stored = await readEodhdKey();
+    const stored = await readToken('acc-1');
     // EXPECT-FINDING
-    setKey(stored);
+    setToken(stored);
   };
 
-  return { key, load };
+  return { token, load };
 };

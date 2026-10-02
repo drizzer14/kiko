@@ -6,11 +6,6 @@ const mockRunSync = jest.fn();
 const mockRunCryptoSync = jest.fn();
 const mockRefreshMarketData = jest.fn();
 const mockRunLoanAutoLink = jest.fn();
-const mockConfirmDailyLimit = jest.fn();
-
-jest.mock('@kiko/prices/daily-limit', () => ({
-  confirmDailyLimit: (...args: unknown[]) => mockConfirmDailyLimit(...args),
-}));
 jest.mock('@kiko/monobank/sync', () => ({
   runSync: (...args: unknown[]) => mockRunSync(...args),
 }));
@@ -57,38 +52,6 @@ describe('useSyncAll', () => {
     mockRunCryptoSync.mockResolvedValue({ syncedHoldings: 1 });
     mockRefreshMarketData.mockResolvedValue(right(undefined));
     mockRunLoanAutoLink.mockResolvedValue(undefined);
-    mockConfirmDailyLimit.mockResolvedValue(undefined);
-  });
-
-  it('confirms an unconfirmed EODHD daily limit before the refresh', async () => {
-    const order: string[] = [];
-    mockConfirmDailyLimit.mockImplementation(async () => {
-      order.push('confirm');
-    });
-    mockRefreshMarketData.mockImplementation(async () => {
-      order.push('refresh');
-
-      return right(undefined);
-    });
-    const { result } = await renderHook(() => useSyncAll([MANUAL]));
-
-    await act(async () => {
-      await result.current.syncAll();
-    });
-
-    expect(order).toEqual(['confirm', 'refresh']);
-  });
-
-  it('still refreshes when the daily limit check fails', async () => {
-    mockConfirmDailyLimit.mockRejectedValue(new Error('settings read failed'));
-    const { result } = await renderHook(() => useSyncAll([MANUAL]));
-
-    await act(async () => {
-      await result.current.syncAll();
-    });
-
-    expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
-    expect(result.current.failures).toEqual([]);
   });
 
   it('runs the loan auto-link matcher once per fan-out, after the refresh', async () => {

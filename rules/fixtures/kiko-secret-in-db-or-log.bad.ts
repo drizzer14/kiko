@@ -6,7 +6,6 @@ declare const table: unknown;
 declare const token: string;
 declare const secret: string;
 declare const key: string;
-declare const eodhdKey: string;
 declare const apiKey: string;
 
 export const fixtureBadLogToken = (): void => {
@@ -16,15 +15,13 @@ export const fixtureBadLogToken = (): void => {
   console.warn(secret);
 };
 
-// The EODHD key is held in a variable named `key`.
+// A stored key is often held in a variable named `key`.
 export const fixtureBadLogKey = (): void => {
   // EXPECT-FINDING
   console.log(key);
 };
 
 export const fixtureBadLogNamedKey = (): void => {
-  // EXPECT-FINDING
-  console.error(eodhdKey);
   // EXPECT-FINDING
   console.info(apiKey);
 };

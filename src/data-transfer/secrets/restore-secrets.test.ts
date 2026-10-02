@@ -8,18 +8,6 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (id: string, creds: unknown) => mockSaveCredentials(id, creds),
 }));
 
-const mockSaveEodhdKey = jest.fn();
-jest.mock('@kiko/prices/eodhd-key/eodhd-key', () => ({
-  saveEodhdKey: (key: string) => mockSaveEodhdKey(key),
-}));
-
-// The quota a restored key starts with is pinned against real SQLite in
-// `restore-secrets.quote-quota.test.ts`.
-const mockUpdateQuoteQuota = jest.fn();
-jest.mock('@kiko/settings', () => ({
-  settingsRepo: { updateQuoteQuota: (build: unknown) => mockUpdateQuoteQuota(build) },
-}));
-
 // Mocked defensively even though `restore-secrets.ts` must never import this
 // module at all — if a future edit adds a `storeDbKey(...)` call, THIS mock
 // is what makes the "never restores the DB key" test below able to fail.
@@ -36,8 +24,6 @@ describe('restoreExportSecrets', () => {
   beforeEach(() => {
     mockSaveToken.mockReset().mockResolvedValue(undefined);
     mockSaveCredentials.mockReset().mockResolvedValue(undefined);
-    mockSaveEodhdKey.mockReset().mockResolvedValue(undefined);
-    mockUpdateQuoteQuota.mockReset().mockResolvedValue(undefined);
     mockStoreDbKey.mockReset();
     jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
@@ -80,31 +66,21 @@ describe('restoreExportSecrets', () => {
 
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
-    expect(mockSaveEodhdKey).not.toHaveBeenCalled();
   });
 
-  it('restores the EODHD key to the Keychain', async () => {
-    await restoreExportSecrets(
-      { monobankTokens: [], binanceCredentials: [], eodhdKey: 'fake-eodhd-key-0000' },
-      ACCOUNT_IDS,
-    );
+  it('ignores the removed share prices key an older export still carries, restoring the rest', async () => {
+    // The cast models the legacy JSON shape: `ExportSecrets` no longer has the field.
+    const olderSecrets = {
+      monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
+      binanceCredentials: [],
+      eodhdKey: 'fake-eodhd-key-0000',
+    } as unknown as ExportSecrets;
 
-    expect(mockSaveEodhdKey).toHaveBeenCalledWith('fake-eodhd-key-0000');
-  });
-
-  it('restores an export made before the EODHD key existed without writing one', async () => {
-    await expect(
-      restoreExportSecrets(
-        {
-          monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
-          binanceCredentials: [],
-        },
-        ACCOUNT_IDS,
-      ),
-    ).resolves.toEqual([]);
+    await expect(restoreExportSecrets(olderSecrets, ACCOUNT_IDS)).resolves.toEqual([]);
 
     expect(mockSaveToken).toHaveBeenCalledWith('a1', 'mono-token');
-    expect(mockSaveEodhdKey).not.toHaveBeenCalled();
+    expect(mockSaveToken).toHaveBeenCalledTimes(1);
+    expect(mockSaveCredentials).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -147,7 +123,6 @@ describe('restoreExportSecrets', () => {
             { accountId: 'a2', token: 'second' },
           ],
           binanceCredentials: [{ accountId: 'a1', apiKey: 'k', secret: 's' }],
-          eodhdKey: 'fake-eodhd-key-0000',
         },
         ACCOUNT_IDS,
       );
@@ -155,13 +130,11 @@ describe('restoreExportSecrets', () => {
       expect(unrestored).toEqual(['monobank']);
       expect(mockSaveToken).toHaveBeenCalledTimes(2);
       expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
-      expect(mockSaveEodhdKey).toHaveBeenCalledTimes(1);
     });
 
-    it('names every failed connection once, in the order Monobank, Binance, EODHD', async () => {
+    it('names every failed connection once, in the order Monobank, Binance', async () => {
       mockSaveToken.mockRejectedValue(new Error('keychain write failed'));
       mockSaveCredentials.mockRejectedValue(new Error('keychain write failed'));
-      mockSaveEodhdKey.mockRejectedValue(new Error('keychain write failed'));
 
       const unrestored = await restoreExportSecrets(
         {
@@ -170,12 +143,11 @@ describe('restoreExportSecrets', () => {
             { accountId: 'a2', token: 'second' },
           ],
           binanceCredentials: [{ accountId: 'a1', apiKey: 'k', secret: 's' }],
-          eodhdKey: 'fake-eodhd-key-0000',
         },
         ACCOUNT_IDS,
       );
 
-      expect(unrestored).toEqual(['monobank', 'binance', 'eodhd']);
+      expect(unrestored).toEqual(['monobank', 'binance']);
     });
 
     it('treats a write that throws before it returns a promise the same way', async () => {
@@ -189,29 +161,6 @@ describe('restoreExportSecrets', () => {
           ACCOUNT_IDS,
         ),
       ).resolves.toEqual(['binance']);
-    });
-
-    it('does not mark the EODHD key as new when it was never stored', async () => {
-      mockSaveEodhdKey.mockRejectedValue(new Error('keychain write failed'));
-
-      const unrestored = await restoreExportSecrets(
-        { eodhdKey: 'fake-eodhd-key-0000' },
-        ACCOUNT_IDS,
-      );
-
-      expect(unrestored).toEqual(['eodhd']);
-      expect(mockUpdateQuoteQuota).not.toHaveBeenCalled();
-    });
-
-    it('names the EODHD key when its quota write fails after the key was stored', async () => {
-      mockUpdateQuoteQuota.mockRejectedValue(new Error('database is locked'));
-
-      const unrestored = await restoreExportSecrets(
-        { eodhdKey: 'fake-eodhd-key-0000' },
-        ACCOUNT_IDS,
-      );
-
-      expect(unrestored).toEqual(['eodhd']);
     });
 
     it('never logs a secret', async () => {

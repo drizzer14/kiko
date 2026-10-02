@@ -27,11 +27,11 @@ type UseSyncAll = {
  */
 const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
   // One refresh for the whole fan-out (not per account), mirroring the single
-  // refresh a lone sync does — `metals` and `shares` since a pull-to-refresh
-  // also needs metal and share prices, unlike a single Monobank/crypto sync.
+  // refresh a lone sync does — `metals` since a pull-to-refresh also needs
+  // metal prices, unlike a single Monobank/crypto sync.
   // Results come back in job order, so `results[index]` still aligns to
   // `jobs[index]` for naming the failed accounts.
-  const results = await settleJobsBesideMarketRefresh(jobs, '[sync-all]');
+  const results = await settleJobsBesideMarketRefresh(jobs);
 
   // One matcher run for the whole fan-out too — any account's sync can bring
   // in a new loan-payment debit. Never rejects (its own doc comment), so a

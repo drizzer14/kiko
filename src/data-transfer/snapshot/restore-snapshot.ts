@@ -27,7 +27,6 @@ import { maxOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { SETTINGS_ID } from '@kiko/settings';
 import { OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
-import { withRestoredPrices } from '@kiko/prices/quote-quota';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { isFiat, type Currency } from '@kiko/currency/currency';
 import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
@@ -380,7 +379,6 @@ const withImportTimesRezoned = (
 type LiveDeviceSettings = Pick<SettingsRow, (typeof KEPT_FROM_LIVE_ON_RESTORE)[number]>;
 
 const NO_LIVE_DEVICE_SETTINGS = {
-  quoteQuota: null,
   lockEnabled: false,
   notificationsDeliverableSince: null,
 } satisfies LiveDeviceSettings;
@@ -392,12 +390,9 @@ const keptFromLive = (row: SettingsRow): LiveDeviceSettings =>
 
 /**
  * The settings this device owns (`KEPT_FROM_LIVE_ON_RESTORE`), which a restore
- * keeps from the live row and never takes from the backup. The EODHD quote
- * quota counts the calls this device's own key spent today, not the
- * backed-up device's (minus what it knew of the replaced prices: see
- * `withRestoredPrices`). The app lock is turned off only after the owner
- * confirms in Settings, so a file, which can carry any value or none, never
- * decides it.
+ * keeps from the live row and never takes from the backup. The app lock is
+ * turned off only after the owner confirms in Settings, so a file, which can
+ * carry any value or none, never decides it.
  */
 const readLiveDeviceSettings = async (
   databaseTransaction: typeof database,
@@ -767,17 +762,11 @@ export const restoreDataSnapshot = (
 
     // A file with no settings row would otherwise leave the row to the next
     // launch's `ensure()`, which creates it with the defaults: the live lock
-    // and quota are carried by a row of their own.
-    const settingsRowsToInsert = () => {
-      const liveSettings = {
-        ...liveDeviceSettings,
-        quoteQuota: withRestoredPrices(liveDeviceSettings.quoteQuota),
-      };
-
-      return settingsToInsert.length === 0
-        ? [{ id: SETTINGS_ID, ...liveSettings }]
-        : settingsToInsert.map((row) => ({ ...row, ...liveSettings }));
-    };
+    // is carried by a row of its own.
+    const settingsRowsToInsert = () =>
+      settingsToInsert.length === 0
+        ? [{ id: SETTINGS_ID, ...liveDeviceSettings }]
+        : settingsToInsert.map((row) => ({ ...row, ...liveDeviceSettings }));
 
     const insertRatesAndSettings = async (): Promise<void> => {
       // Migration 0042's own restore mirror: a pre-star `.kiko` export can

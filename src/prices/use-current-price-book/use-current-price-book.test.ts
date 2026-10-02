@@ -69,7 +69,7 @@ describe('useCurrentPriceBook', () => {
       tables[0] === 'price_points'
         ? {
             data: [
-              { instrument: 'share:AAPL', day: 1, price: '190', currency: 'USD', source: 'eodhd' },
+              { instrument: 'metal:silver', day: 1, price: '190', currency: 'USD', source: 'nbu' },
             ],
             isLoading: false,
           }
@@ -81,7 +81,7 @@ describe('useCurrentPriceBook', () => {
 
     const { result } = await renderHook(() => useCurrentPriceBook());
 
-    expect(result.current.book.points.get('share:AAPL')?.[0].price).toBe('190');
+    expect(result.current.book.points.get('metal:silver')?.[0].price).toBe('190');
     expect(result.current.book.loanPayments.get('loan-1')).toHaveLength(1);
     expect(result.current.isLoading).toBe(true);
   });

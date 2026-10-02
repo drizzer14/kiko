@@ -34,18 +34,18 @@ rules:
     severity: ERROR
     message: >
       A token/secret/credential/API key must never be written to the database
-      or a log. The Monobank token and the EODHD key live only in the iOS
-      Keychain (react-native-keychain).
+      or a log. The Monobank token and the Binance credentials live only in the
+      iOS Keychain (react-native-keychain).
     patterns:
       - pattern-either:
           - pattern: console.$M($TOKEN)
           - pattern: $DB.insert($TBL).values($TOKEN)
       # `key$` is the bare name `key` (the metavariable regex is start-anchored,
-      # so it never matches `monkey` or `keyboardHeight`): the EODHD key is held
-      # in a variable of exactly that name.
+      # so it never matches `monkey` or `keyboardHeight`): a stored key is
+      # often held in a variable of exactly that name.
       - metavariable-regex:
           metavariable: $TOKEN
-          regex: (?i).*(token|secret|password|credential|api_?key|eodhd_?key).*|key$
+          regex: (?i).*(token|secret|password|credential|api_?key).*|key$
   # Guideline 5.6 (App Store rejection of build 7: "features intentionally
   # hidden during review"). Three shapes, one rule: importing a
   # SHOW_*/HIDE_*/SCREENSHOT_* visibility-control @env flag (any flag named
@@ -315,7 +315,7 @@ rules:
           - pattern: $READ(...)
           - metavariable-regex:
               metavariable: $READ
-              regex: ^(readToken|readCredentials|readDbKey|readEodhdKey)$
+              regex: ^(readToken|readCredentials|readDbKey)$
     pattern-sinks:
       - patterns:
           - pattern: $SET($X)
@@ -351,7 +351,7 @@ rules:
       - pattern: $READ(...).then($F)
       - metavariable-regex:
           metavariable: $READ
-          regex: ^(readToken|readCredentials|readDbKey|readEodhdKey)$
+          regex: ^(readToken|readCredentials|readDbKey)$
   # kiko-domain "Money at the boundary" (D7b): a holding's raw
   # `balanceMinorUnits` column is converted to `Money` in exactly one place,
   # `holdingsRepo.balanceOf`. A `.balanceMinorUnits` member read anywhere else

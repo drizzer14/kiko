@@ -142,7 +142,7 @@ export const useAutoSync = (): void => {
       // Cap CONCURRENT syncs so a many-connection fan-out never fires N provider
       // requests at once (device load / provider rate limits) — see
       // `settleAllLimited`, which the helper below drives.
-      await settleJobsBesideMarketRefresh(jobs, '[auto-sync]');
+      await settleJobsBesideMarketRefresh(jobs);
       // Same reasoning as `refreshMarketData`: an on-open sync can bring in a
       // new loan-payment debit, and the matcher needs both the imports and
       // the refreshed rates, so it runs after both settle.
