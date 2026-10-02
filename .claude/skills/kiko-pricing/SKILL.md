@@ -310,7 +310,7 @@ instant)` is a CARRY-FORWARD lookup: the nearest point at or before
 `instant`'s local day, falling back to the EARLIEST point when every
 stored point is later than the requested day (mirrors
 `rateTableAt`/`earliestRateTable` above). It bisects the day-sorted series
-(O(log n) per call); the test pins it against the old filter on every day.
+(O(log n) per call); the test pins it against a plain filter over the series on every day.
 
 **`usePriceBook()` contract: `{ book, isLoading }`, not a bare
 `PriceBook`.** (`src/prices/use-price-book/`) wraps `allQuery` in
@@ -380,8 +380,9 @@ so two hooks build the same `PriceBook` from different row sets:
   PAST days reads it (Statistics' net-worth line).
 
 `kiko-no-whole-price-points-read` blocks `usePriceBook(...)`,
-`pricePointsRepo.allQuery()` and a bare `select().from(pricePoints)`
-outside their own folders; Statistics and the snapshot export carry a
+`pricePointsRepo.allQuery` (called or kept as a reference), a bare
+`select().from(pricePoints)` and an unfiltered relational
+`query.pricePoints.<method>(...)` outside their own folders; Statistics and the snapshot export carry a
 per-line `OVERRIDE(...)`. A new screen that values a past day overrides the
 same way and names why. `metal-refresh` reads each metal's first and latest
 stored day (`metalDayRangesQuery`), the only two days its plan reads.

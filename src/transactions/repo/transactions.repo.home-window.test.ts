@@ -1,8 +1,8 @@
 // Home's 30-day view reads a windowed ledger, the ledger's span and its distinct
 // categories instead of every row. Only a real engine shows that the SQL window
-// is the very predicate the screen's own filter applied in JavaScript, that
-// same-time rows keep their order, and that the aggregates equal what the full
-// list gave.
+// is the very predicate the screen's own filter applies in JavaScript, that
+// same-time rows keep their order, and that the aggregates equal what the whole
+// ledger holds.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
@@ -78,8 +78,8 @@ const seedLedger = (): void => {
 
 const idsOf = (rows: { id: string }[]): string[] => rows.map((row) => row.id);
 
-// The whole ledger: the same SQL as the full list Home used to read, with no
-// WHERE clause.
+// The whole ledger: the windowed query with no bounds, so it has no WHERE
+// clause and is the reference every window must match.
 const fullLedger = () => transactionsRepo.listWithContextBetweenQuery(undefined, undefined);
 
 type Range = { from?: number; to?: number };
@@ -98,8 +98,8 @@ describe('the windowed ledger Home reads', () => {
     seedLedger();
   });
 
-  // The filter `home.screen.tsx` applied to every row before the window moved
-  // into SQL.
+  // The range filter `home.screen.tsx` still applies in JavaScript, which the
+  // SQL window has to agree with row for row.
   const filteredInJavaScript = async (range: Range) =>
     (await fullLedger()).filter(
       (row) =>

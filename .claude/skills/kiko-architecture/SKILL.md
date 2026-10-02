@@ -353,7 +353,7 @@ reads three queries on those tables instead of one whole-ledger list:
 range's rows, the screen's own inclusive day-aligned bounds, an
 `undefined` side open-ended; ordered `time desc` on the
 `transactions_time` index, so same-time rows keep their order),
-`contextSpanQuery()` (count, earliest and latest time of the whole
+`contextSpanQuery()` (earliest and latest time of the whole
 ledger, for the date-range field) and `contextCategoriesQuery()` (each
 stored category once, newest-first, for the category filter). Those two
 aggregates are the only things Home needs from rows outside the range, so
@@ -418,24 +418,23 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
 - `useDataReady(...isLoading)` (`src/db/use-data-ready.ts`) takes every
   `isLoading` flag a screen's own `useLiveQuery`/`usePriceBook` calls
   return and is `true` only once ALL of them are currently settled —
-  a plain `!loadingFlags.some(Boolean)`, no latch. An earlier revision
-  latched (stayed ready forever once every flag had settled once), as
-  a defensive backstop against `useLiveQuery`'s `isLoading` flipping
-  back to `true` after the gate had already opened; that never
-  actually happens for any current consumer, because a query's key
-  only ever changes while at least one of that SAME screen's OTHER
-  flags is still loading in that same render (the dependent-query case
-  above) — concretely, in holding-detail the ACCOUNT query's own
-  `isLoading` flips back to `true` the instant it re-keys off the
-  just-loaded holding, so `useDataReady`'s overall gate is already
-  not-ready for that render without any latch — so the latch was dead
-  weight once the flip moved to the right layer (`useLiveQuery` itself,
-  per-key, above). A future parameter-keyed query must keep the same
-  contract: keep the previous key's data visible through a later key
-  change and never show the EMPTY state for the new key before its own
-  result lands — the screen's first load per mount is what gates the
-  whole screen from ever showing empty on real data, not a per-key
-  reset in between.
+  a plain `!loadingFlags.some(Boolean)`, no latch. The flip lives in
+  the right layer (`useLiveQuery` itself, per-key, above): in
+  holding-detail the ACCOUNT query's own `isLoading` flips back to
+  `true` the instant it re-keys off the just-loaded holding, so the
+  gate is not-ready for that render with no latch. The gate also goes
+  not-ready again after it was ready whenever a query re-keys on
+  something the user picks or on the clock. A screen that would rather
+  keep its content mounted then latches its own first ready and shows a
+  list-local `LoadingState` for the re-keyed read alone: Home does,
+  because a date-range pick, a Clear and the local midnight re-key its
+  windowed ledger read, and swapping the whole screen for the spinner
+  would drop its net-worth card, its filter bar and the open range
+  sheet for a read that only affects the list. `data` still holds the
+  previous key's rows while the new key loads, so the screen must
+  never show them (or the EMPTY state) under the new key: Home puts the
+  `LoadingState` in the list's place until the read lands. The screen's
+  first load per mount still gates the whole screen.
 - `LoadingState` (`src/design-system/components/loading-state/`) is
   the shared "not ready yet" visual: a plain centered native
   `ActivityIndicator`, no text at all — a spinner needs no i18n
@@ -1158,10 +1157,16 @@ fan-out under a `Promise.all` of two never-rejecting promises, not after
 it: the provider requests are gated at one per minute per token, so a
 refresh queued behind K cards started K minutes late on the first open of
 the day. `runLoanAutoLink` stays after both, because the matcher needs the
-imported debits and the refreshed rates. One accepted consequence: a
-holding in a currency the fan-out creates for the first time is priced by
-the NEXT refresh (the refresh's open-currencies gate reads the holdings
-before the fan-out has written it).
+imported debits and the refreshed rates. The refresh's open-currencies
+gate reads the holdings when it starts, before the fan-out has written a
+currency it brings in for the first time, so when the held set gained one
+a rates-only refresh runs after the jobs (the rates throttle skips it
+unless that currency has no rate yet), and the new holding is priced in
+the same run. It is conditional on purpose: an unconditional second rates
+refresh asks the same sources again when the first one's rates leg failed
+(3 Monobank + 1 NBU requests become 6 + 2).
+`settle-jobs-beside-market-refresh.network-calls.test.ts` pins the
+request count per scenario.
 
 so two of them firing at once produced two concurrent runs, two
 independent gates, and colliding 429s (the reported "inconsistent"
