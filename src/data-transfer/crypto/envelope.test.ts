@@ -2,8 +2,14 @@ import { migrationCount } from '@kiko/test-support/real-sqlite';
 
 import { decodeBase64ToBytes, encodeBytesToBase64 } from '../base64/base64';
 
+import {
+  decryptEnvelope,
+  encryptEnvelope,
+  EXPORT_FORMAT,
+  EXPORT_VERSION,
+  isReadableExportVersion,
+} from './envelope';
 import { generateExportKey } from './generate-key';
-import { decryptEnvelope, encryptEnvelope, EXPORT_FORMAT, EXPORT_VERSION } from './envelope';
 
 describe('encryptEnvelope / decryptEnvelope', () => {
   it('round-trips arbitrary plaintext under the same key', () => {
@@ -68,13 +74,17 @@ describe('encryptEnvelope / decryptEnvelope', () => {
     );
   });
 
-  it('still reads a file an earlier build wrote as version 1', () => {
-    const key = generateExportKey();
-    const plaintext = new TextEncoder().encode('{"hello":"world"}');
-    const envelope = encryptEnvelope(plaintext, key);
+  it.each(Array.from({ length: EXPORT_VERSION }, (_, index) => index + 1))(
+    'still reads a file an earlier build wrote as version %d',
+    (version) => {
+      const key = generateExportKey();
+      const plaintext = new TextEncoder().encode('{"hello":"world"}');
+      const envelope = encryptEnvelope(plaintext, key);
 
-    expect(decryptEnvelope({ ...envelope, version: 1 }, key)).toEqual(plaintext);
-  });
+      expect(decryptEnvelope({ ...envelope, version }, key)).toEqual(plaintext);
+      expect(isReadableExportVersion(version)).toBe(true);
+    },
+  );
 });
 
 // A file's `version` tells an older build that a newer build wrote it (which

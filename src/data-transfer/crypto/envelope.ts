@@ -12,9 +12,11 @@ export const EXPORT_FORMAT = 'kiko-export';
 // migration lands without a decision here.
 export const EXPORT_VERSION = 2;
 
-// Version 1 files hold the same rows (the whole row is serialized and a restore
-// derives what an older file lacks), so this build still reads them.
-const READABLE_EXPORT_VERSIONS: readonly number[] = [1, EXPORT_VERSION];
+// Every version this build reads, spelled out so a bump of EXPORT_VERSION
+// cannot drop the previous one: a file keeps its version, and an older file's
+// rows restore the same way (the whole row is serialized and a restore derives
+// what an older file lacks).
+const READABLE_EXPORT_VERSIONS: readonly number[] = [1, 2];
 
 export const isReadableExportVersion = (version: unknown): boolean =>
   typeof version === 'number' && READABLE_EXPORT_VERSIONS.includes(version);
