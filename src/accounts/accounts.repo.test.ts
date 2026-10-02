@@ -885,6 +885,43 @@ describe('accountsRepo.remove', () => {
     expect(order).toEqual(['token after 5 deletes', 'credentials after 5 deletes']);
   });
 
+  // The account is already gone when the clear runs, so a failed clear is not a
+  // failed delete: a rejection would show the save error and skip the
+  // reminders re-plan the delete needs.
+  it('still resolves, and tries the other item, when a Keychain clear fails after the commit', async () => {
+    const { databaseTransaction } = makeRemoveDatabaseTransaction({
+      account: { id: 'acc-1', institution: null },
+      holdings: [],
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    mockClearToken.mockRejectedValueOnce(new Error('keychain delete failed SECRET'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(accountsRepo.remove('acc-1')).resolves.toBeUndefined();
+
+    expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+
+    warn.mockRestore();
+  });
+
+  it('also resolves when the key pair clear is the one that fails', async () => {
+    const { databaseTransaction } = makeRemoveDatabaseTransaction({
+      account: { id: 'acc-1', institution: null },
+      holdings: [],
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    mockClearCredentials.mockRejectedValueOnce(new Error('keychain delete failed'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(accountsRepo.remove('acc-1')).resolves.toBeUndefined();
+
+    expect(mockClearToken).toHaveBeenCalledWith('acc-1');
+
+    warn.mockRestore();
+  });
+
   it('keeps the Keychain items of an account whose delete fails', async () => {
     const { databaseTransaction } = makeRemoveDatabaseTransaction({
       account: { id: 'acc-1', institution: 'monobank' },
