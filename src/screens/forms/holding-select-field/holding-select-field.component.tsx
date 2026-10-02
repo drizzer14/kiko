@@ -24,6 +24,8 @@ const HoldingSelectField = ({
   selectedId,
   onSelect,
   required,
+  error,
+  invalid,
 }: HoldingSelectFieldProps): ReactElement => {
   const [open, setOpen] = useState(false);
 
@@ -39,6 +41,8 @@ const HoldingSelectField = ({
       <FieldTrigger
         label={label}
         required={required}
+        error={error}
+        invalid={invalid}
         onPress={() => setOpen(true)}
         icon={selected?.icon}
         iconColor={selected?.color}

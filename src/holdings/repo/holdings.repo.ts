@@ -12,8 +12,11 @@ import {
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
-import { holdingInstrument } from '@kiko/prices/instrument';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { maxOf, minOf } from '@kiko/numbers';
+import { isRecord } from '@kiko/type-guards';
+import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { holdingInstrument, shareInstrument } from '@kiko/prices/instrument';
+import { upsertPricePointsDatabaseTransaction } from '@kiko/prices/price-points-repo';
 
 import {
   ownershipMetadata,
@@ -35,6 +38,7 @@ import {
   withWalkOwnedMetadataResetToFloor,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
+import { asLots, withLotChange, type LotChange } from '../lots';
 import { isCurrencyAllowedForHoldingType } from '../holding-currency';
 
 // The next free grid slot for a new holding under one account: one past that
@@ -345,6 +349,81 @@ const rewriteOwnership = (holdingId: string, rewrite: OwnershipRewrite) =>
       .where(eq(holdings.id, holdingId));
   });
 
+// Builds the metadata from the row stored at the time of the write, so a key
+// another write added while a form was open is never overwritten by the
+// form's seed. Returns the stored row the build read.
+const updateMetadataFromStoredDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  patch: Pick<HoldingRow, 'name' | 'color'>,
+  buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
+): Promise<{
+  stored: unknown;
+  currency: HoldingRow['currency'] | undefined;
+  metadata: Record<string, unknown>;
+}> => {
+  const rows = await databaseTransaction
+    .select({ currency: holdings.currency, metadata: holdings.metadata })
+    .from(holdings)
+    .where(eq(holdings.id, holdingId));
+  const stored = rows.at(0)?.metadata;
+  const metadata = buildMetadata(stored);
+
+  await databaseTransaction
+    .update(holdings)
+    .set({ ...patch, metadata })
+    .where(eq(holdings.id, holdingId));
+
+  return { stored, currency: rows.at(0)?.currency, metadata };
+};
+
+// A share switched from EODHD to manual takes the symbol's closes as its own
+// prices, so no past value moves with the switch. A price the user typed for
+// a day inside the closes' span gives way, since that value was not shown
+// while EODHD priced the share; one outside the span stays. A close in
+// another currency than the holding's never priced it (the value fell back
+// to cost), so it is neither carried nor allowed to displace a typed price.
+const carryShareClosesDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  symbol: string,
+  currency: HoldingRow['currency'],
+): Promise<void> => {
+  const closes = await databaseTransaction
+    .select()
+    .from(pricePoints)
+    .where(
+      and(eq(pricePoints.instrument, shareInstrument(symbol)), eq(pricePoints.currency, currency)),
+    );
+
+  if (closes.length === 0) {
+    return;
+  }
+
+  const days = closes.map((close) => close.day);
+  const instrument = holdingInstrument(holdingId);
+
+  await databaseTransaction
+    .delete(pricePoints)
+    .where(
+      and(
+        eq(pricePoints.instrument, instrument),
+        gte(pricePoints.day, minOf(days)),
+        lte(pricePoints.day, maxOf(days)),
+      ),
+    );
+  await upsertPricePointsDatabaseTransaction(
+    databaseTransaction,
+    closes.map(({ day, price, currency }) => ({
+      instrument,
+      day,
+      price,
+      currency,
+      source: 'manual' as const,
+    })),
+  );
+};
+
 // Skip the write entirely when the synced balance already matches —
 // `selectCardsToFetch` already skips a card whose bank-reported balance is
 // unchanged, but the daily full fetch still calls `setSyncedBalance` for
@@ -464,7 +543,8 @@ export const holdingsRepo = {
    * `transactionsRepo.importRows`'s own doc comment is the full statement of
    * why. `accountsRepo.createCashAccount` (a cash account's first holding)
    * stamps it too, for the same reason: a typed starting balance IS a
-   * hand-set balance, whichever create path writes it.
+   * hand-set balance, whichever create path writes it. Its row carries
+   * `transactions.setsBalance` and is the holding's `balanceSetRowId`.
    */
   create: ({ firstPricePoint, openingBalance, ...input }: NewHolding): Promise<string> =>
     write(async (databaseTransaction) => {
@@ -481,6 +561,7 @@ export const holdingsRepo = {
       }
 
       const holdingId = id();
+      const openingRowId = id();
       const sortOrder =
         input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.accountId));
       const openingBalanceMinorUnits = openingBalance?.minorUnits ?? 0;
@@ -492,17 +573,19 @@ export const holdingsRepo = {
         balanceMinorUnits: openingBalanceMinorUnits,
         sortOrder,
         balanceSetAt: openingBalanceMinorUnits !== 0 ? now : null,
+        balanceSetRowId: openingBalanceMinorUnits !== 0 ? openingRowId : null,
       });
 
       if (openingBalanceMinorUnits !== 0) {
         await databaseTransaction.insert(transactions).values({
-          id: id(),
+          id: openingRowId,
           holdingId,
           amountMinorUnits: openingBalanceMinorUnits,
           time: now,
           description: '',
           category: null,
           source: 'manual',
+          setsBalance: true,
         });
       }
 
@@ -552,14 +635,78 @@ export const holdingsRepo = {
     buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
   ) =>
     write(async (databaseTransaction) => {
+      await updateMetadataFromStoredDatabaseTransaction(
+        databaseTransaction,
+        holdingId,
+        patch,
+        buildMetadata,
+      );
+    }),
+  /**
+   * A share EDIT, built from the stored row like `updateMetadataFromStored`
+   * (the price refresh can store the listing's unit while the form is open).
+   * A switch from EODHD to manual carries the symbol's closes to the share's
+   * own series in the same write (`carryShareClosesDatabaseTransaction`).
+   */
+  updateShareFromStored: (
+    holdingId: string,
+    patch: Pick<HoldingRow, 'name' | 'color'>,
+    buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
+  ) =>
+    write(async (databaseTransaction) => {
+      const { stored, currency, metadata } = await updateMetadataFromStoredDatabaseTransaction(
+        databaseTransaction,
+        holdingId,
+        patch,
+        buildMetadata,
+      );
+      const before = asShareMeta(stored);
+
+      if (
+        currency !== undefined &&
+        before?.quoteSource === 'eodhd' &&
+        asShareMeta(metadata)?.quoteSource === 'manual'
+      ) {
+        await carryShareClosesDatabaseTransaction(
+          databaseTransaction,
+          holdingId,
+          before.symbol,
+          currency,
+        );
+      }
+    }),
+  /**
+   * Applies one lot change (`withLotChange`) to the lots stored at the time of
+   * the write, never a screen's copy, and rejects with
+   * `SaleExceedsHoldingError` when a sale would take more than is held before
+   * it. Every other metadata key is kept as stored.
+   */
+  changeLots: (holdingId: string, change: LotChange) =>
+    write(async (databaseTransaction) => {
       const rows = await databaseTransaction
-        .select({ metadata: holdings.metadata })
+        .select({ currency: holdings.currency, metadata: holdings.metadata })
         .from(holdings)
         .where(eq(holdings.id, holdingId));
+      const row = rows.at(0);
+
+      if (row === undefined) {
+        throw new Error('changeLots: no such holding');
+      }
+
+      const metadata = isRecord(row.metadata) ? row.metadata : {};
+      // A list with one unreadable entry is refused, never replaced: writing
+      // over it would drop every readable lot with it.
+      const stored = asLots(metadata.lots ?? []);
+
+      if (stored === null) {
+        throw new Error('changeLots: stored lots are unreadable');
+      }
+
+      const lots = withLotChange(stored, change, row.currency);
 
       await databaseTransaction
         .update(holdings)
-        .set({ ...patch, metadata: buildMetadata(rows.at(0)?.metadata) })
+        .set({ metadata: { ...metadata, lots } })
         .where(eq(holdings.id, holdingId));
     }),
   /**
@@ -604,7 +751,11 @@ export const holdingsRepo = {
    *
    * A non-zero delta also stamps `holdings.balanceSetAt` at this edit's own
    * `time`, in the SAME `.set(...)` as `patch` — `transactionsRepo.importRows`'s
-   * own doc comment is the full statement of why.
+   * own doc comment is the full statement of why — and points
+   * `holdings.balanceSetRowId` at the new row, which carries
+   * `transactions.setsBalance`: this edit is now the holding's current set.
+   * An older set's row keeps its mark, so its re-date or delete never moves
+   * the balance either.
    */
   updateWithBalanceDelta: (
     holdingId: string,
@@ -632,6 +783,7 @@ export const holdingsRepo = {
         nextBalanceMinorUnits !== undefined && stored !== undefined
           ? nextBalanceMinorUnits - stored
           : 0;
+      const adjustmentRowId = id();
 
       await databaseTransaction
         .update(holdings)
@@ -641,6 +793,7 @@ export const holdingsRepo = {
             balanceMinorUnits,
           })),
           balanceSetAt: delta !== 0 ? time : undefined,
+          balanceSetRowId: delta !== 0 ? adjustmentRowId : undefined,
         })
         .where(eq(holdings.id, holdingId));
 
@@ -649,13 +802,14 @@ export const holdingsRepo = {
       }
 
       await databaseTransaction.insert(transactions).values({
-        id: id(),
+        id: adjustmentRowId,
         holdingId,
         amountMinorUnits: delta,
         time,
         description: '',
         category: null,
         source: 'manual',
+        setsBalance: true,
       });
     }),
   /**
@@ -731,24 +885,6 @@ export const holdingsRepo = {
       }
 
       await upsertManualPricePoint(databaseTransaction, holdingId, point);
-    }),
-  /**
-   * A holding EDIT's patch plus, when `point` is set, one point on the
-   * holding's own `holding:<id>` manual series, in ONE transaction. A share
-   * switched from EODHD to manual carries its last EODHD price over this
-   * way, so its value never drops to cost basis between the two series.
-   */
-  updateWithManualPricePoint: (
-    holdingId: string,
-    patch: Partial<HoldingRow>,
-    point: ManualPricePoint | null,
-  ) =>
-    write(async (databaseTransaction) => {
-      await databaseTransaction.update(holdings).set(patch).where(eq(holdings.id, holdingId));
-
-      if (point !== null) {
-        await upsertManualPricePoint(databaseTransaction, holdingId, point);
-      }
     }),
   /**
    * Sets the holding's icon (an SF Symbol name) or, with `null`, clears it back

@@ -122,6 +122,7 @@ export const importParsedStatement = async (
       aliasExternalId: readInKyivTime
         ? noonAliasDedupKey(holdingId, transaction, occurrenceIndex)
         : undefined,
+      timeReading: transaction.timeReading,
     };
   });
   const imported = await transactionsRepo.importRows({

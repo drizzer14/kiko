@@ -63,8 +63,7 @@ const SYNCED_CRYPTO: Account = {
   institution: 'binance',
   archivedAt: null,
 };
-const NO_KINDS_CAPTION =
-  'Reminders are available for bank accounts and accounts you track by hand.';
+const NO_KINDS_CAPTION = 'Reminders are available for accounts you track by hand.';
 
 const seed = (data: { account?: Account; reminders?: ReminderRow[]; loading?: boolean }): void => {
   const resultByTable: Record<string, unknown[]> = {
@@ -111,13 +110,23 @@ describe('AccountRemindersScreen — rows', () => {
     ).toEqual(['Statement import', 'Add transactions']);
   });
 
-  it('offers only statement import on a synced bank account, before any import', async () => {
+  it('offers no kind on a synced bank account, and explains the empty page', async () => {
     seed({ account: SYNCED });
 
     const { getByText, queryByText } = await renderScreen();
 
-    expect(getByText('Statement import')).toBeTruthy();
+    expect(getByText(NO_KINDS_CAPTION)).toBeTruthy();
+    expect(queryByText('Statement import')).toBeNull();
     expect(queryByText('Add transactions')).toBeNull();
+  });
+
+  it('keeps a saved statement-import reminder on a synced bank, and says why it is not sent', async () => {
+    seed({ account: SYNCED, reminders: [savedReminder({ kind: 'statement_import' })] });
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Statement import')).toBeTruthy();
+    expect(getByText('Available only for bank accounts you track by hand.')).toBeTruthy();
   });
 
   it('offers only add transactions on an account that is not a bank', async () => {

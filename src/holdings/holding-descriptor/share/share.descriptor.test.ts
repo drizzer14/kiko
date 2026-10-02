@@ -1,6 +1,6 @@
 import { i18n } from '@kiko/i18n/init';
-import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { holdingInstrument, shareInstrument } from '@kiko/prices/instrument';
+import { buildPriceBook, dayKeyOf, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { holdingValueBreakdown, type ValuableHolding } from '@kiko/holdings/holding-value';
 
 import { shareDescriptor } from './share.descriptor';
@@ -99,11 +99,11 @@ describe('shareDescriptor value', () => {
 });
 
 describe('shareDescriptor entries', () => {
-  it('lists a buy lot as a purchase and a sell lot as a sale', () => {
+  it('lists a buy lot as a purchase and a sell lot as a sale, each naming its lot', () => {
     const holding = manualShare({
       lots: [
-        { day: buyDay, quantityDelta: '3', costMinorUnits: 90_000 },
-        { day: sellDay, quantityDelta: '-1', costMinorUnits: -30_000 },
+        { day: dayKeyOf(buyDay), quantityDelta: '3', costMinorUnits: 90_000 },
+        { day: dayKeyOf(sellDay), quantityDelta: '-1', costMinorUnits: -30_000 },
       ],
     });
 
@@ -115,14 +115,45 @@ describe('shareDescriptor entries', () => {
         time: buyDay,
         amountMinorUnits: -90_000,
         label: 'Purchase',
+        lotIndex: 0,
       }),
       expect.objectContaining({
         kind: 'sale',
         time: sellDay,
         amountMinorUnits: 30_000,
         label: 'Sale',
+        lotIndex: 1,
       }),
     ]);
+  });
+
+  it('lists a buy at no cost as a split, and a buy at any cost as a purchase', () => {
+    const holding = manualShare({
+      lots: [
+        { day: dayKeyOf(buyDay), quantityDelta: '3', costMinorUnits: 1 },
+        { day: dayKeyOf(sellDay), quantityDelta: '9', costMinorUnits: 0 },
+      ],
+    });
+
+    const entries = shareDescriptor.entries(holding, NOW, i18n.t, []);
+
+    expect(entries.map(({ kind, label }) => ({ kind, label }))).toEqual([
+      { kind: 'purchase', label: 'Purchase' },
+      { kind: 'purchase', label: 'Split' },
+    ]);
+  });
+
+  // A lot's day is a UTC-midnight key of a local date, so the row reads that
+  // local date in every zone, west of UTC too.
+  it('dates a lot row at the local midnight of its day', () => {
+    const day = dayKeyOf(new Date(2026, 8, 1).getTime());
+    const holding = manualShare({
+      lots: [{ day, quantityDelta: '3', costMinorUnits: 90_000 }],
+    });
+
+    expect(shareDescriptor.entries(holding, NOW, i18n.t, [])[0].time).toBe(
+      new Date(2026, 8, 1).getTime(),
+    );
   });
 
   it('lists nothing for unparsable metadata', () => {

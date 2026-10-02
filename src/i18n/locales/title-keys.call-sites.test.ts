@@ -28,6 +28,10 @@ const DYNAMIC_HEADING_KEYS: Record<string, readonly string[]> = {
   'screens/account-detail/bank-sync-section/bank-sync-section.component.tsx#titleKey': [
     'accountDetail.disconnectMonobank',
   ],
+  'screens/account-detail/close-holding-sheet/close-holding-sheet.component.tsx#copy.title': [
+    'accountDetail.closeHoldingTitle',
+    'accountDetail.closeLoanTitle',
+  ],
   'screens/forms/convert-exchange-fields/convert-exchange-fields.component.tsx#counterpartSheetTitle':
     ['forms.transaction.fromSheetTitle', 'forms.transaction.toSheetTitle'],
   'screens/forms/price-point-form/price-point-form.screen.tsx#copy.title': [

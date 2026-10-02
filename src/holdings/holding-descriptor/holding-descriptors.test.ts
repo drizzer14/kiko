@@ -3,6 +3,7 @@ import { holdingTypes, type HoldingType } from '../holding-type';
 import { holdingValueBreakdown, type ValuableHolding } from '../holding-value';
 
 import {
+  holdsOnlyDebts,
   holdingDescriptor,
   holdingDescriptors,
   holdingDescriptorOrUndefined,
@@ -14,6 +15,23 @@ describe('holdingDescriptors', () => {
   it.each(holdingTypes)('has a descriptor for %s', (type) => {
     expect(holdingDescriptors[type]).toBeDefined();
     expect(holdingDescriptor(type)).toBe(holdingDescriptors[type]);
+  });
+});
+
+describe('holdsOnlyDebts', () => {
+  it('is true for a debt account, whose only holding type is a loan', () => {
+    expect(holdsOnlyDebts('debt')).toBe(true);
+  });
+
+  it.each(['bank', 'cash', 'crypto', 'property', 'metals', 'broker'] as const)(
+    'is false for a %s account',
+    (kind) => {
+      expect(holdsOnlyDebts(kind)).toBe(false);
+    },
+  );
+
+  it('is false while the account row has not loaded', () => {
+    expect(holdsOnlyDebts(undefined)).toBe(false);
   });
 });
 

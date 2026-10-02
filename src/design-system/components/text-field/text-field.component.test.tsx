@@ -1,9 +1,18 @@
 import type { ComponentProps } from 'react';
 import { Keyboard, StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
 import TextField from '.';
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 // Every test below renders the same TextField shape with only a couple of
 // props varying (a label, a value, and whichever prop is under test), so this
@@ -278,6 +287,24 @@ describe('TextField', () => {
 
     expect(getByTestId('amount-field')).toBeTruthy();
     expect(getByTestId('amount-field-error')).toBeTruthy();
+  });
+
+  it('tints the label negative when `error` is set', async () => {
+    await renderField({ label: 'Amount', value: '', error: 'Enter an amount greater than 0.' });
+
+    expect(isLabelInvalid(mockFieldLabel, 'Amount')).toBe(true);
+  });
+
+  it('tints the label negative with no error line of its own when `invalid` is set', async () => {
+    const { queryByTestId } = await renderField({
+      label: 'Return 1',
+      value: '',
+      testID: 'return-field',
+      invalid: true,
+    });
+
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(true);
+    expect(queryByTestId('return-field-error')).toBeNull();
   });
 
   it('forwards inputRef to the underlying TextInput so a caller can focus it imperatively', async () => {

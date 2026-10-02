@@ -110,7 +110,30 @@ implemented, and callers must skip it rather than assume every id resolves.
   (see `schema.ts`'s `holdings.currency` enum), `icon`, `color`,
   `balanceMinorUnits` (integer), `metadata` (JSON: masked PAN, IBAN,
   deposit rate, maturity, Monobank account/jar id), `sortOrder`,
-  `closedAt` (nullable), `createdAt`.
+  `closedAt` (nullable), `createdAt`. A MANUAL holding the user sold or
+  gave away is Closed, not deleted (the card context menu's `closeAction`
+  -> `CloseHoldingSheet` -> `holdingsRepo.closeMany`, under
+  `src/screens/account-detail/`); it keeps its lots, prices, and ledger.
+  A synced holding gets no `closeAction` (`closeActionFor` returns
+  undefined); every manual holding gets one, and there is no reopen. A
+  loan is never called a holding there: `closeHoldingCopy(type)` picks
+  the `accountDetail.closeLoan*` keys (menu label, confirm title,
+  message, error title) for a type whose descriptor `side` is `'debt'`
+  and the `accountDetail.closeHolding*` ones otherwise. The menu entry is
+  neutral (only Delete is red); the confirm button is red
+  (`ConfirmSheet destructive`). The add flow of an account whose every
+  holding type is a debt (`holdsOnlyDebts(kind)`, the same descriptor
+  `side`; today the `debt` kind) says loan too: the account detail
+  footer reads `accountDetail.addLoan` ("Add loan" / "Додати кредит"),
+  the holding form's create title `forms.holding.addLoanTitle`
+  ("Add Loan" / "Додати кредит"), and its edit title
+  `forms.holding.editLoanTitle` ("Edit Loan" / "Редагувати кредит").
+  Account detail and holding detail pass the flag in the HoldingForm
+  route (`debtAccount`), so the title is right on the first frame; the
+  form reads the account row only when the route has no flag (the
+  statement-import and column-mapping entry points).
+  `holdsOnlyDebts(undefined)` is false: an account row still loading
+  names a holding.
 - **Transaction** — a movement against a holding. `id`, `holdingId`
   (FK), `amountMinorUnits` (signed integer), `time` (unix
   milliseconds), `description`, `category` (nullable), `mcc`
@@ -200,6 +223,82 @@ provider owns that number (`upsertByMetadataKey` in
 `src/holdings/`), and the form hides the balance field for a synced
 holding entirely.
 
+**The manual boundary rule.** Every manual write (`recordManual`, each
+exchange or change-return leg, `update`, `remove`) moves the stored
+balance only for a row dated STRICTLY AFTER the holding's boundary: the
+later of `holdings.balanceSetAt` and its newest sync-source row
+(`movesBalance`, `time > boundary`, in `src/transactions/balance-boundary/`).
+Every balance writer reads that boundary through one function,
+`readAnchoredHoldingDatabaseTransaction` (`transactions.repo.ts`), which
+`importRows` shares, and which combines the two sources with
+`balanceBoundaryOf` (`src/transactions/balance-boundary/`). A row AT or before
+the boundary is history the anchor already counts.
+
+**A balance-set row is a STORED mark, not a date.** Every row whose amount
+set the balance (an opening balance, a cash opening, a hand edit) carries
+`transactions.setsBalance` (migration 0047) for good: its amount is part
+of a balance that was set, so a re-date or a delete of it never moves the
+balance (`removeBalanceDelta`), whatever its date, description, or
+category has become, and `postClosingRowsWhere` never counts it in a
+closing import's post-closing sum. Only the CURRENT set's row
+(`holdings.balanceSetRowId`, same migration) moves the balance, and only
+by an amount edit: new − old, whatever its date (`editBalanceDelta`). An
+amount edit of any other marked row moves nothing. So from an opening of
+50,000: re-date it earlier, then edit it to 60,000, and the balance is
+60,000; re-date it later and back, or later and delete it, and the
+balance stays 50,000. The current row is known by id, not by
+`time === balanceSetAt`, because a re-date moves its time off the anchor.
+It counts only while its set IS the boundary (`isCurrentBalanceSetRow`:
+`holdings.balanceSetAt` equals the boundary); a newer synced row anchors
+the holding past it. `holdingsRepo.create` and
+`accountsRepo.createCashAccount` point `balanceSetRowId` at the opening
+row, `holdingsRepo.updateWithBalanceDelta` at its own adjustment row, and
+`importRows`'s closing-balance write sets it to NULL, since no row is
+written at a closing balance's as-of. A hand edit on Monday (+2,000),
+re-dated to Wednesday, then a statement closing on Tuesday ends on the
+closing figure; the Wednesday row's later amount edit or delete moves
+nothing. Re-stamping `balanceSetAt` on a re-date is not the design: it
+would re-judge every row between the old and the new date.
+
+Every other manual row keeps the generic rule above. A row entered at
+exactly a closing balance's as-of or the newest synced second belongs to
+that anchor, the same as `postClosingRowsWhere`'s strict `gt`, and its
+edit or deletion moves nothing. A closing balance AS OF exactly the
+boundary still applies (`>=`): it is an anchor, not a row.
+
+Data written before the mark gets it from migration 0047 and, for an older
+`.kiko` file, from `restoreDataSnapshot` (the same rule): per holding, the
+row shaped like a balance-set row (`isBalanceSetShapedRow`: manual, empty
+description, null category, no exchange or change-return marker) AND dated
+exactly at `holdings.balanceSetAt` is marked and becomes the holding's
+`balanceSetRowId`; on a same-millisecond tie, the smallest id. A pre-0047
+row that was already re-dated, described, or categorised, and an older
+set's row a newer set or a closing import superseded, gets no mark and
+stays an ordinary row.
+
+**A row that may be an older set's row cannot move past the boundary.** An
+older set's row a newer set superseded before 0047 has the exact shape of a
+blank-description income or expense an older build wrote (before the form
+required a category), so nothing tells the two apart. A user decision closes
+the gap from the one side that moves money: an UNMARKED row shaped like a
+balance-set row (`isBalanceSetShapedRow`) dated at or before the boundary
+cannot be re-dated to after it
+(`redatesPossibleBalanceSetRowPastBoundary`, `src/transactions/balance-boundary/`),
+because counting its amount again would add money the set balance already
+holds. Moving it earlier, or anywhere at or before the boundary, saves as
+before, and so does a marked row or a row with a description or a category
+(the STORED row is judged, so a description typed in the same edit does not
+free it: save the description first). Two places enforce it: the
+transaction form blocks Save with a field error under the Date and Time row
+(`forms.transaction.timeAfterBalanceSetError`, naming the boundary as the
+latest time the row can take), and `transactionsRepo.update` refuses the same
+edit with a typed error before it writes anything, for any other caller. The
+form reads the boundary from `transactionsRepo.balanceBoundaryQuery` and
+combines it with `balanceBoundaryOf`, the one function every balance writer
+uses. It reads it only when the edited row can hit the rule (unmarked and
+balance-set-shaped), and disables Save while it loads, so a fast Save never
+reaches the repo's refusal instead of the field error.
+
 ## Statement import moves the target holding's balance too
 
 A file-based statement import (`transactionsRepo.importRows`,
@@ -221,9 +320,12 @@ showed the real imported rows.
 
 `importRows`'s own doc comment (`transactions.repo.ts`) is the ONE
 full statement of the exact rule — the boundary, `holdings.balanceSetAt`,
-the closing-balance override, the synced-holding exception, and why no
-migration repairs pre-fix data — read it there rather than trusting a
-restated summary here.
+the closing-balance override, the synced-account refusal (any holding of
+an account `isSyncedAccount` owns, a hand-added one included), the ±60 s
+(or same-local-day, for a date-only row) match against a disconnected
+bank's synced rows, and why no migration
+repairs pre-fix data — read it there rather than trusting a restated
+summary here.
 
 ## `share` create-form section
 
@@ -235,7 +337,10 @@ and the price-source rule there): a price source (EODHD or manual), an
 optional ISIN, a ticker required for EODHD, and `lots`. Read the hook's
 own `createPayload` for which source writes a `firstPricePoint` (see
 `kiko-pricing`'s "Creating and clearing a priced holding's price
-series"). After create, lots change only through the Lot form.
+series"). After create, lots change only through `holdingsRepo.changeLots`
+(the Lot form's add/edit and the lot row's Delete); the share edit
+carries the stored lots unchanged. See `kiko-pricing`'s "Recording a lot:
+LotForm and the sell cost rule" for the order and the re-cost.
 
 A NEW share starts Manual when no EODHD key is saved; it starts EODHD
 only when a key is saved and the user has not touched the source
@@ -250,6 +355,9 @@ or still holds what the previous pick filled (`filledIsinRef`,
 kept, and a stale ISIN from an earlier pick is never kept. The picked
 `quoteCurrency` is kept only while the source is EODHD and the ticker
 equals the picked symbol (`keptQuoteCurrency`); a ticker edit drops it.
+The share's currency must fit its EODHD listing's unit, checked at Save on
+create and on an edit that names another listing (kiko-pricing's "Unit
+lookup at Save and the currency guard").
 
 ## `property_item` / `metal` create-form sections
 
@@ -404,7 +512,8 @@ differently for exactly this reason.
 
 Which holding types record their buy/sell history through the
 dedicated Lot form (`src/screens/forms/lot-form/`, reached from
-holding-detail's `addLot` footer action) rather than a fixed one-time
+holding-detail's `addLot` footer action, and from a lot row's
+long-press Edit) rather than a fixed one-time
 lot or a sync is decided by each type's own `footerAction(synced,
 holding)` in `holdingDetailSpecs` (`holding-detail-spec/`): a type is
 lot-form eligible when that function can return `'addLot'` or
@@ -622,6 +731,14 @@ the exchange-exclusion module (`src/statistics/`, the exchange-marker rule)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
+Which rows each step reads (`src/screens/statistics/statistics.screen.tsx`):
+the spending charts always draw every row of the holdings under the KEPT
+accounts, open or closed (`transactionsWithCurrency`, filtered from
+`filtered.netWorthHoldings`), so a closed card keeps its past spending.
+The internal-transfer matcher runs over `ledgerWithCurrency` (every
+holding, whatever the account filter or `closedAt`). The loan-payment
+exclusion runs over the account-filtered rows.
+
 A linked loan payment ("interest-only
 spending") is excluded the same way, but REPLACED rather than simply
 dropped: the loan-payments module (`src/statistics/loan-payments/`)
@@ -807,7 +924,10 @@ behavior must inject the offset or zone into the code under test
 explicitly (for example `formatDate`'s `{ timeZone: 'UTC' }` on an
 instant whose UTC and Kyiv days differ). Code that takes no zone input
 is tested under Kyiv only; do not add a production parameter just to
-inject one. Semgrep `kiko-no-process-env-time-zone-in-test` (ERROR)
+inject one. Exception: to PROVE a result is zone-independent, wrap the run
+in `withDeviceZoneOffset` (`src/test-support/device-zone-offset.ts`; read
+its header for exactly what it retargets — only the multi-argument local
+`Date` constructor). Semgrep `kiko-no-process-env-time-zone-in-test` (ERROR)
 denies the assignment in every test path.
 
 The pin does not make a test zone-correct. Many holdings, prices,
@@ -1037,6 +1157,10 @@ builder's own doc comment for why a same-day compare broke the rightmost
 the account pie, the Debts total) reads `filtered.visibleHoldings` instead
 — open holdings only, under a non-archived account — so a closed holding
 contributes to the LINE's past but never to a current snapshot.
+Invariant: the LAST net-worth bucket always equals
+`guardedNetWorth(open holdings, now)` — the number Home shows. Pinned by
+`net-worth-series.test.ts` ("ends on the net worth Home shows for a bond,
+a share, and a closed holding").
 
 `reconcile-bond-funding.ts`'s candidate-building pass was rewritten from a
 `.flatMap`/`.map`/`.filter` chain to a plain nested loop for the same
@@ -1754,10 +1878,14 @@ lives on the LINKED bank holding instead (the `loanHoldingId`
 column). `debt` maps to `loan` alone in `holdingTypesForAccountKind`,
 and `loan` is excluded from every Exchange source/destination
 predicate in `exchange-destination.ts` (a loan is never an Exchange
-leg). Entity glyph/color: `minus.circle.fill` / `entityColorsDark.red`,
-shared between the `debt` kind and its sole `loan` type — the same
-kind-and-type icon/color reuse `property`/`property_item` and
-`metals`/`metal` already follow.
+leg). Entity color: `entityColorsDark.red`, shared between the `debt`
+kind and its sole `loan` type. Glyphs differ: the `debt` kind keeps
+`minus.circle.fill` (persisted on existing account rows; changing it
+needs a 0032-style migration), while the `loan` type is
+`arrow.down.backward.circle.fill` (iOS 14), the mirror of a loan given's
+`arrow.up.forward.circle.fill` — a saved loan holding stores a null icon,
+so the new glyph needs no migration. A debt account's footer "Add loan"
+button leads with the loan glyph (kiko-design-system's footer mapping).
 
 `LoanMeta` (`src/holdings/holding-metadata/holding-metadata.ts`):
 `kind` (`'mortgage' | 'car_loan' | 'consumer_loan' | 'personal'` —
@@ -2110,7 +2238,8 @@ link".
 
 `restoreDataSnapshot` inserts every `transactions` row verbatim with no
 per-row column handling for these three columns (unlike
-`holdings.balanceSetAt`'s dedicated legacy backfill), so a `.kiko` exported
+`holdings.balanceSetAt`'s and `transactions.setsBalance`'s dedicated
+legacy backfills), so a `.kiko` exported
 before this migration — whose transaction rows carry no
 `loanHoldingId`/`loanLinkSource`/`loanLinkRejected` keys at all — restores
 unchanged and SQLite defaults the missing columns itself (null / null /
@@ -2346,7 +2475,16 @@ below until it is added there too. Seven steps, in order:
    `balanceMinorUnits: 0` unconditionally — its value derives entirely
    from its own lots/schedule, never a typed opening balance. Only
    `useBalanceFields.createPayload` reads its own live opening-balance
-   field; the screen calls `active.createPayload()` with no argument.
+   field. The screen writes through `checkedCreate(active)` and
+   `checkedEdit(active, context)` (`holding-form.screen.tsx`): a type whose
+   write can need one network answer first sets the optional
+   `checkCreate`/`checkEdit` (`holding-type-form.d.ts`), which never reject
+   and answer a `CreateCheck`/`EditCheck` — save (the payload, or the write
+   to run) or blocked on a `ScrollTarget`, whose field error the screen
+   reveals. Every other type falls back to `createPayload()`/`saveEdit`.
+   Find the types that set them with
+   `git grep -n 'checkCreate\|checkEdit' src/screens/forms` (the share
+   case: kiko-pricing's "Unit lookup at Save and the currency guard").
 4. Add en/uk label keys (`src/i18n/`) for `holding-form.screen.tsx`'s
    own `typeLabels: Record<HoldingType, string>` — usually a new
    `forms.holding.<type>` key, but `cash` reuses the account kind's own

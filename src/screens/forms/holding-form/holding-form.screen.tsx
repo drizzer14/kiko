@@ -5,6 +5,12 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
 } from '@kiko/holdings/holding-type';
+import type { TFunction } from 'i18next';
+import {
+  holdsOnlyDebts,
+  holdingDescriptor,
+  isLedgerlessHoldingType,
+} from '@kiko/holdings/holding-descriptor';
 import {
   useHeaderInset,
   scrollToField,
@@ -22,7 +28,6 @@ import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
-import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
@@ -35,14 +40,21 @@ import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { refreshAfterHoldingWrite } from '@kiko/sync/refresh-after-holding-write';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
 import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { holdingDescriptor, isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 
+import type {
+  EditCheck,
+  CreateCheck,
+  EditContext,
+  ScrollTarget,
+  HoldingTypeForm,
+} from './holding-type-form';
 import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
@@ -52,20 +64,19 @@ import { useLoanFields } from './loan/use-loan-fields';
 import { useBondFields } from './bond/use-bond-fields';
 import { useMetalFields } from './metal/use-metal-fields';
 import { useShareFields } from './share/use-share-fields';
+import { fieldErrorMessage } from './field-error-message';
 import BalanceFormBlock from './balance/balance-form-block';
 import PropertyFormBlock from './property/property-form-block';
 import PropertyTypeField from './property/property-type-field';
 import { useBalanceFields } from './balance/use-balance-fields';
 import { usePropertyFields } from './property/use-property-fields';
-import type { ScrollTarget, HoldingTypeForm } from './holding-type-form';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
 
 // Fire-and-forget, only for a loan: the matcher backfills from the loan's
 // own start date, so a create OR an edit (principal/schedule/
-// paymentHoldingId/lenderName/lenderIban can all change) needs a fresh run —
-// unlike `refreshMarketData`, which never fires on an edit at all
-// (type/currency are read-only there). Never rejects (its own doc comment),
+// paymentHoldingId/lenderName/lenderIban can all change) needs a fresh run.
+// Never rejects (its own doc comment),
 // so `save` never awaits or catches it. Extracted to a module-level function
 // (a plain call, not an inline `if`) so this ONE extra branch stays out of
 // `save`'s own cognitive-complexity budget.
@@ -75,6 +86,38 @@ const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
     runLoanAutoLink();
   }
 };
+
+// Of every edit, only a share's can change what is priced: its source or
+// ticker. Fire-and-forget like the create's refresh.
+const refreshAfterShareEdit = (type: HoldingType): void => {
+  if (type === 'share') {
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshAfterHoldingWrite catches the limit check's failure and refreshMarketData never rejects
+    refreshAfterHoldingWrite(true);
+  }
+};
+
+// Only a type whose create needs a network answer first (a share's listing
+// unit) checks it; every other type saves its payload as it stands.
+const checkedCreate = (form: HoldingTypeForm): Promise<CreateCheck> =>
+  form.checkCreate?.() ?? Promise.resolve({ kind: 'save', payload: form.createPayload() });
+
+// The same for an edit: only a share given another listing checks it.
+const checkedEdit = (form: HoldingTypeForm, context: EditContext): Promise<EditCheck> =>
+  form.checkEdit?.(context) ??
+  Promise.resolve({ kind: 'save', write: () => form.saveEdit(context) });
+
+// A share's Currency field names the currency its EODHD listing is priced in.
+const currencyFieldError = (
+  type: HoldingType,
+  share: ReturnType<typeof useShareFields>,
+  attemptedSave: boolean,
+  t: TFunction,
+): string | undefined =>
+  type === 'share'
+    ? fieldErrorMessage(t, attemptedSave, share.fieldErrors.currencyError, {
+        currency: share.listingCurrency,
+      })
+    : undefined;
 
 // The loan form's "Paid from" picker options: every OPEN, non-ledgerless
 // holding in the LOAN's own currency — a `paymentHoldingId` link is only
@@ -166,6 +209,18 @@ const typeSlotFor = (
 
   return { kind: 'generic' };
 };
+
+// A loading Button already ignores presses, and it must not dim the way a
+// disabled one does, so a submit that shows the spinner leaves Save enabled.
+const isSaveDisabled = ({
+  isSubmitting,
+  isLoading,
+  isWaitingForPrices,
+}: {
+  isSubmitting: boolean;
+  isLoading: boolean;
+  isWaitingForPrices: boolean;
+}): boolean => (isSubmitting && !isLoading) || isWaitingForPrices;
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
@@ -337,12 +392,21 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // type's own fields carry their input ref alongside their `scrollTargets`
   // entry instead (see each `use<Type>Fields` hook).
   const nameInputRef = useRef<TextInputInstance>(null);
+  const currencyFieldRef = useRef<FieldInstance>(null);
 
   const deposit = useTermDepositFields({ currency, scrollTo });
   const bond = useBondFields({ type, isEdit, currency, setCurrency, name, setName });
   const property = usePropertyFields({ isEdit, currency });
   const metal = useMetalFields({ isEdit });
-  const share = useShareFields({ type, isEdit, currency, setCurrency, name, setName });
+  const share = useShareFields({
+    type,
+    isEdit,
+    currency,
+    setCurrency,
+    name,
+    setName,
+    currencyFieldRef,
+  });
   const loanFields = useLoanFields({ currency });
   // Stays mounted across every type, not only while a balance type is
   // selected, so a value typed before switching away survives the switch.
@@ -444,12 +508,20 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   ]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
-  // "Edit Holding" so the header reads correctly for the update flow.
+  // "Edit Holding" so the header reads correctly for the update flow, and a
+  // debt account's form names a loan, never a "holding". The route says which
+  // on the first frame; the account row only arrives on a later render.
+  const debtAccount = route.params.debtAccount ?? holdsOnlyDebts(accountKind);
+
   useLayoutEffect(() => {
     if (isEdit) {
-      navigation.setOptions({ title: t('forms.holding.editTitle') });
+      navigation.setOptions({
+        title: debtAccount ? t('forms.holding.editLoanTitle') : t('forms.holding.editTitle'),
+      });
+    } else if (debtAccount) {
+      navigation.setOptions({ title: t('forms.holding.addLoanTitle') });
     }
-  }, [isEdit, navigation, t]);
+  }, [isEdit, debtAccount, navigation, t]);
 
   const isValid = name.trim().length > 0 && active.isValid;
 
@@ -459,50 +531,76 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // renders nothing before the first press.
   const showNameReason = attemptedSave && name.trim().length === 0;
 
+  // Every field shows its own error from now on; the first one still invalid
+  // scrolls into view.
+  const revealInvalid = (targets: readonly ScrollTarget[]): void => {
+    setAttemptedSave(true);
+
+    const target = targets.find((candidate) => candidate.invalid);
+
+    if (target) {
+      scrollTo(target.ref, target.focus);
+    }
+  };
+
+  // Type/currency are read-only in edit mode. The hook write carries no icon
+  // (each `saveEdit`'s own doc comment), so it is written here separately,
+  // unconditionally, so clearing a custom icon (icon === null) persists the
+  // removal rather than leaving the old glyph.
+  const saveEdit = async (editedHoldingId: string): Promise<void> => {
+    const check = await checkedEdit(active, {
+      holdingId: editedHoldingId,
+      name,
+      color,
+      currency,
+      isSynced: isSyncedEdit,
+      editingHolding,
+      book: priceBook,
+    });
+
+    if (check.kind === 'blocked') {
+      revealInvalid([check.target]);
+
+      return;
+    }
+
+    await check.write();
+    await holdingsRepo.setIcon(editedHoldingId, icon);
+
+    refreshAfterShareEdit(type);
+    // A loan's principal, schedule, paymentHoldingId, lenderName, and
+    // lenderIban all stay editable — any of them can change what the
+    // matcher would now link, so an EDIT backfills too (see
+    // `runLoanAutoLinkIfLoan`'s own doc comment).
+    runLoanAutoLinkIfLoan(type);
+
+    navigation.goBack();
+  };
+
   const save = async (): Promise<void> => {
     if (!isValid) {
-      setAttemptedSave(true);
-
       const nameTarget: ScrollTarget = {
         invalid: name.trim().length === 0,
         ref: nameFieldRef,
         focus: () => nameInputRef.current?.focus(),
       };
-      const target = [nameTarget, ...active.scrollTargets].find((candidate) => candidate.invalid);
 
-      if (target) {
-        scrollTo(target.ref, target.focus);
-      }
+      revealInvalid([nameTarget, ...active.scrollTargets]);
 
       return;
     }
 
     try {
       if (isEdit && holdingId !== undefined) {
-        // Type/currency are read-only in edit mode. The hook write carries no
-        // icon (each `saveEdit`'s own doc comment), so it is written here
-        // separately, unconditionally, so clearing a custom icon
-        // (icon === null) persists the removal rather than leaving the old
-        // glyph.
-        await active.saveEdit({
-          holdingId,
-          name,
-          color,
-          currency,
-          isSynced: isSyncedEdit,
-          editingHolding,
-          book: priceBook,
-        });
-        await holdingsRepo.setIcon(holdingId, icon);
+        await saveEdit(holdingId);
 
-        // Unlike `refreshMarketData` below (type/currency are read-only in
-        // edit mode, so it never fires here), a loan's principal, schedule,
-        // paymentHoldingId, lenderName, and lenderIban all stay editable —
-        // any of them can change what the matcher would now link, so an
-        // EDIT backfills too (see `runLoanAutoLinkIfLoan`'s own doc comment).
-        runLoanAutoLinkIfLoan(type);
+        return;
+      }
 
-        navigation.goBack();
+      const check = await checkedCreate(active);
+
+      if (check.kind === 'blocked') {
+        revealInvalid([check.target]);
 
         return;
       }
@@ -520,7 +618,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         // row follows its type's default at display time — the same fallback the
         // icon uses — so a type-default color is not frozen onto the row.
         color,
-        ...active.createPayload(),
+        ...check.payload,
       });
 
       // Persist the chosen icon on the freshly-created row, using the id the
@@ -541,8 +639,8 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // background nicety, not a save precondition — Save must not sit on
       // the network before navigating back; only fire the refresh after the
       // write commits.
-      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects; see the comment above
-      refreshMarketData({ throttled: false, metals: true, shares: type === 'share' });
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the limit check's failure is caught and refreshMarketData never rejects; see the comment above
+      refreshAfterHoldingWrite(type === 'share');
       // A freshly created loan can already have past ledger history worth
       // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).
       runLoanAutoLinkIfLoan(type);
@@ -607,7 +705,15 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         contentHeightRef.current = height;
       }}
       footer={
-        <Button onPress={onSave} disabled={isSubmitting || (isEdit && isPriceBookLoading)}>
+        <Button
+          onPress={onSave}
+          disabled={isSaveDisabled({
+            isSubmitting,
+            isLoading: share.isLookingUpUnit,
+            isWaitingForPrices: isEdit && isPriceBookLoading,
+          })}
+          loading={share.isLookingUpUnit}
+        >
           {t('common.save')}
         </Button>
       }
@@ -685,17 +791,20 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             that fixed value underneath regardless of what this field would
             otherwise show. */}
         {holdingDescriptor(type).fixedCurrency === null && (
-          <CurrencyField
-            label={t('forms.fields.currency')}
-            sheetTitle={t('forms.fields.currencySheetTitle')}
-            selected={currency}
-            onSelect={setCurrency}
-            options={holdingCurrencyOptions(type)}
-            cryptoFirst={type === 'crypto_asset'}
-            disabled={isEdit}
-            onOpenChange={setIsSearchSheetOpen}
-            testID="holding-currency-field"
-          />
+          <View ref={currencyFieldRef}>
+            <CurrencyField
+              label={t('forms.fields.currency')}
+              sheetTitle={t('forms.fields.currencySheetTitle')}
+              selected={currency}
+              onSelect={setCurrency}
+              options={holdingCurrencyOptions(type)}
+              cryptoFirst={type === 'crypto_asset'}
+              disabled={isEdit}
+              error={currencyFieldError(type, share, attemptedSave, t)}
+              onOpenChange={setIsSearchSheetOpen}
+              testID="holding-currency-field"
+            />
+          </View>
         )}
 
         {match(type)

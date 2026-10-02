@@ -14,7 +14,13 @@ import {
 import { refreshSharePrices } from '../share-refresh';
 import { settle, type QuoteQuota } from '../quote-quota';
 
-import { searchShares, type ShareSearchDeps } from './share-search';
+import {
+  searchShares,
+  lookupShareUnit,
+  unitHoldingCurrency,
+  isShareUnitSupported,
+  type ShareSearchDeps,
+} from './share-search';
 
 const KEY = 'fake-eodhd-key-0000';
 const TODAY = Date.UTC(2026, 9, 1);
@@ -48,6 +54,7 @@ const makeWorld = (overrides: Partial<World> = {}): World => ({
 const depsFor = (world: World): ShareSearchDeps => ({
   now: () => NOW,
   readKey: async () => world.key,
+  loadQuota: async () => world.quota,
   updateQuota: async (build) => {
     world.quota = build(world.quota);
     world.events.push(`quota ${world.quota?.calls}`);
@@ -71,17 +78,18 @@ const quota = (overrides: Partial<QuoteQuota> = {}): QuoteQuota => ({
   ...overrides,
 });
 
+// Every EODHD failure is logged; a test reads the log only where it asserts on it.
+let warn: jest.SpyInstance;
+
+beforeEach(() => {
+  warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
+
+afterEach(() => {
+  warn.mockRestore();
+});
+
 describe('searchShares', () => {
-  let warn: jest.SpyInstance;
-
-  beforeEach(() => {
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    warn.mockRestore();
-  });
-
   it('asks EODHD with the saved key and returns each listing in its holding currency', async () => {
     const world = makeWorld();
 
@@ -185,6 +193,15 @@ describe('searchShares', () => {
       });
       expect(world.events).toEqual([]);
     });
+
+    it('spends nothing while EODHD rejects the saved key', async () => {
+      const world = makeWorld({ quota: quota({ calls: 3, isKeyRejected: true }) });
+
+      await expect(searchShares('AAPL', FIAT, depsFor(world))).resolves.toEqual({
+        status: 'keyRejected',
+      });
+      expect(world.events).toEqual([]);
+    });
   });
 
   describe('quota', () => {
@@ -252,18 +269,24 @@ describe('searchShares', () => {
         readKey: async () => KEY,
         loadQuota: async () => world.quota,
         updateQuota: depsFor(world).updateQuota,
-        loadLatestPoints: async () => [],
+        loadDayRanges: async () => [],
         fetchEod: async () => {
           await searchShares('AAPL', FIAT, depsFor(world));
 
-          return [];
+          return [{ day: TODAY - DAY_MS, close: '254.63' }];
         },
         save: async ({ settlement }) => {
           world.quota = settle(world.quota, settlement);
         },
       });
 
-      expect(world.quota).toEqual(quota({ calls: 5, symbols: ['AAPL.US'] }));
+      expect(world.quota).toEqual(
+        quota({
+          calls: 5,
+          symbols: ['AAPL.US'],
+          backfilledFrom: { 'AAPL.US': TODAY - 30 * DAY_MS },
+        }),
+      );
     });
 
     it('gives the call back when EODHD never answered', async () => {
@@ -277,8 +300,31 @@ describe('searchShares', () => {
   });
 
   describe('failures', () => {
+    it('reports a rejected key, counts the call, and stops every later search', async () => {
+      const world = makeWorld({ quota: quota({ calls: 3 }), answer: new EodhdAuthError() });
+
+      await expect(searchShares('AAPL', FIAT, depsFor(world))).resolves.toEqual({
+        status: 'keyRejected',
+      });
+      expect(world.quota).toEqual(quota({ calls: 4, isKeyRejected: true }));
+    });
+
+    it('never marks a key saved while the search was out as rejected', async () => {
+      const world = makeWorld({ quota: quota({ calls: 3 }) });
+
+      await searchShares('AAPL', FIAT, {
+        ...depsFor(world),
+        searchSymbols: async () => {
+          world.quota = quota({ keyGeneration: 1 });
+
+          throw new EodhdAuthError();
+        },
+      });
+
+      expect(world.quota).not.toHaveProperty('isKeyRejected');
+    });
+
     it.each([
-      ['a rejected key', new EodhdAuthError()],
       ['a search outside the plan', new EodhdNotInPlanError()],
       ['the per-minute limit', new EodhdRateLimitError()],
       ['a server error', new EodhdServerError()],
@@ -304,5 +350,94 @@ describe('searchShares', () => {
       expect(JSON.stringify(warn.mock.calls)).not.toContain(KEY);
       expect(JSON.stringify(warn.mock.calls)).not.toContain('US0378331005');
     });
+  });
+});
+
+describe('lookupShareUnit', () => {
+  const vodafone = [
+    listing({ symbol: 'VOD.US', currency: 'USD' }),
+    listing({ symbol: 'VOD.LSE', currency: 'GBX' }),
+  ];
+
+  it("asks for the code on its exchange, as the refresh does, and returns that listing's unit", async () => {
+    const world = makeWorld({ answer: vodafone });
+
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toBe('GBX');
+    expect(world.events).toEqual(['quota 1', 'search VODLSE']);
+  });
+
+  it('gives up on an unanswered request after 10 seconds, not the 30 a refresh waits', async () => {
+    const timeouts: (number | undefined)[] = [];
+
+    await lookupShareUnit('VOD.LSE', {
+      ...depsFor(makeWorld()),
+      searchSymbols: async (_query, _key, _fetchImpl, _exchange, timeoutMs) => {
+        timeouts.push(timeoutMs);
+
+        return vodafone;
+      },
+    });
+
+    expect(timeouts).toEqual([10_000]);
+  });
+
+  it('finds nothing, and counts the call, when EODHD has no listing of that exact symbol', async () => {
+    const world = makeWorld({ quota: quota({ calls: 3 }), answer: vodafone });
+
+    await expect(lookupShareUnit('VOD.XETRA', depsFor(world))).resolves.toBeUndefined();
+    expect(world.quota).toEqual(quota({ calls: 4 }));
+  });
+
+  it('asks nothing for a symbol with no exchange', async () => {
+    const world = makeWorld();
+
+    await expect(lookupShareUnit('VOD', depsFor(world))).resolves.toBeUndefined();
+    expect(world.events).toEqual([]);
+  });
+
+  it.each([
+    ['without a saved key', { key: undefined }],
+    ['while EODHD rejects the saved key', { quota: quota({ isKeyRejected: true }) }],
+    ['once the day is used up', { quota: quota({ calls: 20 }) }],
+  ] as const)('asks nothing %s', async (_state, overrides) => {
+    const world = makeWorld(overrides);
+
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toBeUndefined();
+    expect(world.events.filter((event) => event.startsWith('search'))).toEqual([]);
+  });
+
+  it('gives the call back when EODHD never answered', async () => {
+    const world = makeWorld({ quota: quota({ calls: 3 }), answer: new EodhdNetworkError() });
+
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toBeUndefined();
+    expect(world.quota).toEqual(quota({ calls: 3 }));
+  });
+
+  it('marks a key EODHD rejects, as a search does', async () => {
+    const world = makeWorld({ quota: quota({ calls: 3 }), answer: new EodhdAuthError() });
+
+    await expect(lookupShareUnit('VOD.LSE', depsFor(world))).resolves.toBeUndefined();
+    expect(world.quota).toEqual(quota({ calls: 4, isKeyRejected: true }));
+  });
+});
+
+describe('isShareUnitSupported', () => {
+  it.each(['USD', 'GBX', 'GBP'])('holds a %s listing in a share currency', (unit) => {
+    expect(isShareUnitSupported(unit)).toBe(true);
+  });
+
+  it.each(['ZAC', 'ILA', 'BTC'])('has no share currency for a %s listing', (unit) => {
+    expect(isShareUnitSupported(unit)).toBe(false);
+  });
+});
+
+describe('unitHoldingCurrency', () => {
+  it.each([
+    ['USD', 'USD'],
+    ['GBX', 'GBP'],
+    ['GBP', 'GBP'],
+    ['ZAC', 'ZAC'],
+  ])('reads the %s unit as a %s holding', (unit, currency) => {
+    expect(unitHoldingCurrency(unit)).toBe(currency);
   });
 });

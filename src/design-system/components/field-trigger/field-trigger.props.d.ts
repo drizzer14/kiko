@@ -50,6 +50,10 @@ export type FieldTriggerProps = {
   // error model: no per-field outline; see `FieldError`). REFLOW, not
   // reserve: no error node at all while valid.
   error?: string;
+  // Tints the label negative with no error line of its own, for a field whose
+  // one error renders under its whole group (a split payment's return rows).
+  // Never set beside `error`. Defaults to false.
+  invalid?: boolean;
   // An optional testID applied to the Pressable trigger, so a flow can tap the
   // field to open its picker sheet. Omitted leaves the trigger untagged. When
   // set, the FieldError message (when shown) additionally takes

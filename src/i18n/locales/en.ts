@@ -127,17 +127,19 @@ export const en = {
     // nav title (see `dataExport.rowLabel`).
     sharePrices: 'Share prices',
     sharePricesScreen: {
-      dailyLimit: 'Daily limit: {{limit}}',
+      checkKeyAgain: 'Check again',
       intro:
-        'Kiko gets end-of-day share prices from EODHD with your own API key. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
+        'Kiko gets end-of-day share prices from EODHD with your own API key. To do this, Kiko sends EODHD your share tickers, the date range of the prices it needs (from your first purchase on), and your searches, but never how many shares you hold or what they cost. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
       invalidKeyError: 'EODHD did not accept this key.',
       keyLabel: 'API key',
       keyPlaceholder: 'Paste your EODHD key',
+      keyRejectedMessage:
+        'EODHD no longer accepts the saved key, so share prices are not updating. Save a new key, or check this one again.',
       keyRequiredError: 'Enter an API key.',
       keySaved: 'Key saved',
       pasteAccessibilityLabel: 'Paste key',
-      quotaUsedUpMessage:
-        'Today’s EODHD requests are used up. Prices update again after midnight GMT.',
+      // `time` is midnight GMT, when EODHD's day starts over, in the device's time.
+      quotaUsedUpMessage: 'Today’s EODHD requests are used up. Prices update again after {{time}}.',
       removeConfirmBody: 'Shares priced by EODHD keep their last price.',
       removeConfirmTitle: 'Remove Key?',
       removeKey: 'Remove key',
@@ -177,6 +179,11 @@ export const en = {
       thu: 'Thu',
       fri: 'Fri',
       sat: 'Sat',
+    },
+    // The marks after a time on the 12-hour clock ("9:05 PM").
+    dayPeriod: {
+      beforeNoon: 'AM',
+      afterNoon: 'PM',
     },
     previousYear: 'Previous year',
     previousMonth: 'Previous month',
@@ -311,6 +318,7 @@ export const en = {
     },
     holding: {
       addContribution: 'Add contribution',
+      addLoanTitle: 'Add Loan',
       addTitle: 'Add Holding',
       annualRateError: 'Enter a rate of 0 or higher.',
       annualRatePct: 'Annual rate',
@@ -353,6 +361,7 @@ export const en = {
       // bonds, it is a storefront for a partner bank/broker, so the bond is
       // added under whichever institution the user actually picked there.
       diiaHint: 'Bought in Diia? Add the bond under the bank or broker you chose there.',
+      editLoanTitle: 'Edit Loan',
       editTitle: 'Edit Holding',
       faceValue: 'Face value',
       faceValueError: 'Enter a face value greater than 0.',
@@ -470,12 +479,27 @@ export const en = {
       removeContribution: 'Remove contribution {{index}}',
       semiannually: 'Semiannually',
       share: 'Share',
+      // The same mismatch on an edit, where the currency is read-only: a new
+      // share in the listing's currency is the other way out.
+      shareCurrencyMismatchEditError:
+        'EODHD prices this share in {{currency}}. Set the price source to “Manual”, or delete this share and add it again in {{currency}}.',
+      // Under the Currency field when the EODHD listing is priced in another
+      // currency (a pence listing fits pounds): such a share never gets a price.
+      shareCurrencyMismatchError:
+        'EODHD prices this share in {{currency}}. Choose {{currency}}, or set the price source to “Manual”.',
+      // The same place, when no currency Kiko has fits the listing's unit
+      // (cents, agorot): only a manual price source works.
+      shareCurrencyUnsupportedError:
+        'EODHD prices this share in {{currency}}, which Kiko does not support. Set the price source to “Manual”.',
       shareFind: 'Find by ISIN or ticker',
       shareFindEmpty: 'Nothing found.',
+      shareFindKeyRejected:
+        'EODHD does not accept the saved key. Check it in Settings → “Share prices”.',
       shareFindPlaceholder: 'US0378331005',
       shareFindQuery: 'ISIN or ticker',
+      // `time` is midnight GMT, when EODHD's day starts over, in the device's time.
       shareFindQuotaExhausted:
-        'Today’s EODHD requests are used up. Search works again after midnight GMT.',
+        'Today’s EODHD requests are used up. Search works again after {{time}}.',
       shareFindSheetTitle: 'Find Share',
       shareFindSubmit: 'Search',
       shareFindUnavailable: 'Search is unavailable. Enter the ticker yourself.',
@@ -511,6 +535,8 @@ export const en = {
     lot: {
       addTitle: 'Add Lot',
       buy: 'Buy',
+      coversLaterSaleError: 'A later sale needs this quantity. Change or delete that sale first.',
+      editTitle: 'Edit Lot',
       quantity: 'Quantity',
       quantityError: 'Enter a quantity greater than 0.',
       quantityPlaceholder: '10',
@@ -520,6 +546,7 @@ export const en = {
       totalCost: 'Total cost',
       totalCostError: 'Total cost must be greater than 0.',
       totalCostPlaceholder: '1000.00',
+      totalCostRequiredError: 'Enter a total cost of 0 or more.',
       type: 'Type',
     },
     ownershipChange: {
@@ -593,8 +620,10 @@ export const en = {
       selectDestinationError: 'Select a destination account.',
       selectHolding: 'Select holding',
       split: 'Split',
-      splitInvalidError: 'Enter a payment amount and at least one valid return.',
+      splitInvalidError: 'Add at least one valid return, and keep the returns below the payment.',
       syncedNotice: 'This was synced, so only the category and loan link can be changed.',
+      timeAfterBalanceSetError:
+        'This transaction was saved without a description or category, so it may be an earlier balance change. Pick a date and time no later than {{dateTime}}.',
       title: 'Transaction',
       to: 'To',
       toSheetTitle: 'To',
@@ -661,6 +690,7 @@ export const en = {
     // case): the same string reads correctly in only one of the two roles.
     addBankSheetTitle: 'Add a Bank',
     addHolding: 'Add holding',
+    addLoan: 'Add loan',
     addressLabel: 'Address',
     apiKeyLabel: 'API key',
     apiKeyRequiredError: 'Enter the API key.',
@@ -685,10 +715,16 @@ export const en = {
     btcAddressPlaceholder: 'BTC address',
     changeBankAction: 'Change bank',
     checking: 'Checking…',
+    closeHoldingAction: 'Close holding',
     closeHoldingErrorTitle: 'Could not close holding',
     closeHoldingMessage:
       "It leaves your accounts and stops counting toward your net worth. Its past values stay on the net worth chart. A closed holding can't be reopened.",
     closeHoldingTitle: 'Close "{{name}}"',
+    closeLoanAction: 'Close loan',
+    closeLoanErrorTitle: 'Could not close loan',
+    closeLoanMessage:
+      "It leaves your accounts and stops counting against your net worth. Its past values stay on the net worth chart. A closed loan can't be reopened.",
+    closeLoanTitle: 'Close Loan "{{name}}"',
     connectBinance: 'Connect Binance',
     connectedAs: 'Connected as {{name}}',
     connectMonobank: 'Connect Monobank',
@@ -781,9 +817,20 @@ export const en = {
     // transactions the auto-link matcher (or a manual pick) linked to this
     // loan, newest first.
     linkedPayments: 'Linked Payments',
+    // A notice on an EODHD share held in another currency than its listing:
+    // it is never priced, and its currency cannot change.
+    listingCurrencyMismatch:
+      'EODHD prices this share in {{currency}}, so its value does not update. Edit it and set the price source to “Manual” (its cost stays), or delete it and add it again in {{currency}}.',
+    // The same notice when no currency Kiko has fits the listing's unit, so a
+    // new share in that currency is no way out.
+    listingCurrencyUnsupported:
+      'EODHD prices this share in {{currency}}, which Kiko does not support, so its value does not update. Edit it and set the price source to “Manual” (its cost stays).',
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',
+    // A notice on a share or metal whose stored lots hold a sale larger than
+    // the quantity before it; only that lot's Edit or Delete fixes its costs.
+    oversizedSale: 'A sale here is larger than what was held before it. Edit or delete that sale.',
     // A property owned in part: its cost basis and value times the share.
     ownedCost: 'Cost (your share)',
     ownedValue: 'Your value',
@@ -800,6 +847,8 @@ export const en = {
     shareChanges: 'Share Changes',
     // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
     shareSince: 'since {{date}}',
+    // A share's lot row for a buy at no cost: a stock split.
+    split: 'Split',
     tax: 'Tax',
     taxWithheld: 'Tax withheld',
     topUp: 'Top-up',
@@ -1166,7 +1215,7 @@ export const en = {
       statementImport: 'Reminds you to import a new statement for this account.',
       addTransactions: 'Reminds you to add new transactions to this account.',
     },
-    emptyNoKinds: 'Reminders are available for bank accounts and accounts you track by hand.',
+    emptyNoKinds: 'Reminders are available for accounts you track by hand.',
     emptyList: 'No reminders yet',
     emptyHint: 'Set up a reminder from an account’s page.',
     off: 'Off',
@@ -1176,6 +1225,7 @@ export const en = {
     pausedAfterNoResponse: 'Paused after 3 reminders with no response.',
     accountArchived: 'Not sent while the account is archived.',
     unavailable: {
+      statementImport: 'Available only for bank accounts you track by hand.',
       addTransactions: 'Available only for accounts you track by hand.',
     },
     enabledLabel: 'Reminder on',

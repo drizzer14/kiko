@@ -5,6 +5,7 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
@@ -89,6 +90,11 @@ jest.mock('@kiko/transactions/repo', () => ({
       __kind: 'latestManualHolding',
       toSQL: () => ({ sql: '', params: [] }),
     }),
+    // Tagged because it shares the `['holdings']` key with the holdings list.
+    balanceBoundaryQuery: (holdingId: string) => ({
+      __kind: 'balanceBoundary',
+      toSQL: () => ({ sql: '', params: [holdingId] }),
+    }),
   },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
@@ -115,6 +121,14 @@ jest.mock('@kiko/categories/category-overrides-repo', () => ({
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 type Holding = {
   id: string;
@@ -144,7 +158,10 @@ type Transaction = {
   loanHoldingId?: string | null;
   loanLinkSource?: 'auto' | 'manual' | null;
   exchangeCounterpartHoldingId?: string | null;
+  changeGroupId?: string | null;
+  setsBalance?: boolean;
 };
+type BalanceBoundarySources = { balanceSetAt: number | null; newestSyncTime: number | null };
 
 // The category options the picker renders in every test; a stable set so the
 // "category editing" cases can press a chip by its title.
@@ -165,6 +182,7 @@ const setLiveData = (
   overrideRules: OverrideRule[] = [],
   pastDescriptions: string[] = [],
   latestManualHoldingId: string | null = null,
+  balanceBoundary: BalanceBoundarySources | null = null,
 ): void => {
   const dataByTable: Record<string, unknown[]> = {
     holdings,
@@ -191,6 +209,10 @@ const setLiveData = (
         data: latestManualHoldingId ? [{ holdingId: latestManualHoldingId }] : [],
         isLoading: false,
       };
+    }
+
+    if (kind === 'balanceBoundary') {
+      return { data: balanceBoundary ? [balanceBoundary] : [] };
     }
 
     return { data: dataByTable[tables[0]] ?? [] };
@@ -556,6 +578,20 @@ describe('TransactionFormScreen — add mode', () => {
     await pickCategory(utils, 'Groceries');
 
     expect(utils.queryByText('Select a category.')).toBeNull();
+  });
+
+  it('turns the Category label red with its error, and back once a category is picked', async () => {
+    const utils = await renderAdd();
+
+    expect(isLabelInvalid(mockFieldLabel, 'Category')).toBe(false);
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(isLabelInvalid(mockFieldLabel, 'Category')).toBe(true);
+
+    await pickCategory(utils, 'Groceries');
+
+    expect(isLabelInvalid(mockFieldLabel, 'Category')).toBe(false);
   });
 
   it('adds the same vertical gap above the category error that a text field has above its own', async () => {
@@ -1325,6 +1361,231 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
 
     expect(queryByText('Delete')).toBeNull();
     expect(mockRemove).not.toHaveBeenCalled();
+  });
+});
+
+// Before migration 0047 a superseded balance-set row carried no mark, so a
+// row saved with no description and no category may be one.
+describe('TransactionFormScreen — re-dating a possible balance-set row', () => {
+  const BALANCE_SET_AT = new Date(2026, 8, 30, 12, 0).getTime();
+  const STORED_TIME = new Date(2026, 8, 10, 9, 15).getTime();
+
+  const possibleBalanceSetRow: Transaction = {
+    id: 'old-row',
+    holdingId: 'h1',
+    amountMinorUnits: 40_000,
+    time: STORED_TIME,
+    description: '',
+    source: 'manual',
+    category: null,
+    exchangeCounterpartHoldingId: null,
+    changeGroupId: null,
+    setsBalance: false,
+  };
+
+  const editRow = (
+    difference: Partial<Transaction> = {},
+    balanceBoundary: BalanceBoundarySources = {
+      balanceSetAt: BALANCE_SET_AT,
+      newestSyncTime: null,
+    },
+  ): ReturnType<typeof render> => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 100_000, type: 'cash' }],
+      { ...possibleBalanceSetRow, ...difference },
+      CATEGORIES,
+      [],
+      [],
+      [],
+      [],
+      null,
+      balanceBoundary,
+    );
+
+    return renderEdit('old-row');
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('blocks a re-date past the balance set and names the latest time it can take', async () => {
+    const utils = await editRow();
+
+    await pickDate(utils, 2026, 10, 5);
+
+    expect(utils.queryByTestId('transaction-time-error')).toBeNull();
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(
+      within(utils.getByTestId('transaction-time-error')).getByText(
+        /^This transaction was saved without a description or category, so it may be an earlier balance change\. Pick a date and time no later than /,
+      ),
+    ).toBeTruthy();
+    expect(utils.getByText(/no later than 30\.09\.2026 /)).toBeTruthy();
+  });
+
+  it('turns the Date and Time labels red with the reason', async () => {
+    const utils = await editRow();
+
+    await pickDate(utils, 2026, 10, 5);
+
+    expect(isLabelInvalid(mockFieldLabel, 'Date')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Time')).toBe(false);
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(isLabelInvalid(mockFieldLabel, 'Date')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Time')).toBe(true);
+  });
+
+  it('clears the reason once the time is moved back, and saves', async () => {
+    const utils = await editRow();
+
+    await pickDate(utils, 2026, 10, 5);
+    await fireEvent.press(utils.getByText('Save'));
+    await pickDate(utils, 2026, 9, 20);
+
+    expect(utils.queryByTestId('transaction-time-error')).toBeNull();
+    expect(isLabelInvalid(mockFieldLabel, 'Date')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Time')).toBe(false);
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ time: new Date(2026, 8, 20, 9, 15).getTime() }),
+    );
+  });
+
+  it('blocks a re-date past the newest synced row', async () => {
+    const utils = await editRow(
+      {},
+      { balanceSetAt: null, newestSyncTime: new Date(2026, 8, 20, 8, 0).getTime() },
+    );
+
+    await pickDate(utils, 2026, 9, 25);
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(utils.getByText(/no later than 20\.09\.2026 /)).toBeTruthy();
+  });
+
+  it.each([
+    ['earlier', 2026, 9, 1],
+    ['within the history side', 2026, 9, 30],
+  ])('saves a re-date %s', async (_name, year, month, day) => {
+    const utils = await editRow();
+
+    await pickDate(utils, year, month, day);
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ time: new Date(year, month - 1, day, 9, 15).getTime() }),
+    );
+    expect(utils.queryByTestId('transaction-time-error')).toBeNull();
+  });
+
+  it.each([
+    ['a marked row', { setsBalance: true }],
+    ['a row with a description', { description: 'Salary' }],
+    ['a row with a category', { category: 'groceries' }],
+  ])('saves %s re-dated past the balance set', async (_name, difference) => {
+    const utils = await editRow(difference);
+
+    await pickDate(utils, 2026, 10, 5);
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ time: new Date(2026, 9, 5, 9, 15).getTime() }),
+    );
+  });
+
+  it('shows the reason from the Ukrainian catalog', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const utils = await editRow();
+
+    await fireEvent.press(utils.getByTestId('transaction-date-field'));
+    await fireEvent(utils.getByTestId('Дата calendar'), 'dayPress', {
+      year: 2026,
+      month: 10,
+      day: 5,
+      dateString: '2026-10-05',
+      timestamp: 0,
+    });
+    await fireEvent.press(utils.getByText('Зберегти'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(
+      utils.getByText(
+        /^Цю транзакцію збережено без опису й категорії, тож вона може бути давнішою зміною балансу\. Оберіть дату й час не пізніше /,
+      ),
+    ).toBeTruthy();
+    expect(utils.getByText(/не пізніше 30\.09\.2026 /)).toBeTruthy();
+  });
+
+  // The boundary matters only for a row the rule can block.
+  const boundaryQueryEnabled = (): unknown =>
+    mockUseLiveQuery.mock.calls
+      .filter(([query]) => (query as { __kind?: string }).__kind === 'balanceBoundary')
+      .at(-1)?.[2];
+
+  it('reads the boundary for a row saved with no description or category', async () => {
+    await editRow();
+
+    expect(boundaryQueryEnabled()).toBe(true);
+  });
+
+  it.each([
+    ['a marked row', { setsBalance: true }],
+    ['a row with a description', { description: 'Salary' }],
+    ['a row with a category', { category: 'groceries' }],
+  ])('does not read the boundary for %s', async (_name, difference) => {
+    await editRow(difference);
+
+    expect(boundaryQueryEnabled()).toBe(false);
+  });
+
+  // A fast Save before the boundary arrives would reach the repo's refusal
+  // instead of the field error.
+  it('disables Save while the boundary loads', async () => {
+    const utils = await editRow();
+    const loaded = mockUseLiveQuery.getMockImplementation();
+
+    mockUseLiveQuery.mockImplementation((query: unknown, ...rest: unknown[]) =>
+      (query as { __kind?: string }).__kind === 'balanceBoundary'
+        ? { data: [], isLoading: true }
+        : loaded?.(query, ...rest),
+    );
+    await utils.rerender(
+      <TransactionFormScreen
+        route={transactionFormRoute({ transactionId: 'old-row' })}
+        navigation={navigationProp}
+      />,
+    );
+
+    expect(utils.getByText('Save').parent?.props.accessibilityState.disabled).toBe(true);
+
+    await pickDate(utils, 2026, 10, 5);
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('enables Save once the boundary has loaded', async () => {
+    const utils = await editRow();
+
+    expect(utils.getByText('Save').parent?.props.accessibilityState.disabled).toBe(false);
   });
 });
 
@@ -3123,10 +3384,12 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
     await pickCategory(utils, 'Groceries');
     await fireEvent.press(utils.getByText('Save'));
-    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+    expect(
+      utils.getByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeTruthy();
     expect(
       within(utils.getByTestId('screen-footer')).queryByText(
-        'Enter a payment amount and at least one valid return.',
+        'Add at least one valid return, and keep the returns below the payment.',
       ),
     ).toBeNull();
   });
@@ -3138,19 +3401,97 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await fireEvent.press(utils.getByText('Save'));
 
     expect(utils.getByText('Select a category.')).toBeTruthy();
-    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+    expect(
+      utils.getByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeTruthy();
 
     await pickCategory(utils, 'Groceries');
 
     expect(utils.queryByText('Select a category.')).toBeNull();
-    expect(utils.getByText('Enter a payment amount and at least one valid return.')).toBeTruthy();
+    expect(
+      utils.getByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeTruthy();
 
     await fireEvent.press(utils.getByLabelText('Return to 1'));
     await fireEvent.press(utils.getByText('Alice'));
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
 
-    expect(utils.queryByText('Enter a payment amount and at least one valid return.')).toBeNull();
+    expect(
+      utils.queryByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeNull();
+  });
+
+  // The split error renders under the return rows and judges every one of
+  // them, so every return row's labels turn red with it.
+  it('turns every return row label red with the split-returns error, and back once valid', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await pickCategory(utils, 'Groceries');
+
+    expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(true);
+
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
+
+    expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
+  });
+
+  it('gives an empty payment its own Amount error, leaving valid returns grey', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
+    expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
+    expect(isLabelInvalid(mockFieldLabel, 'Amount')).toBe(true);
+    expect(
+      utils.queryByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeNull();
+    expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
+  });
+
+  // The returns error then judges the payment too, so the Amount label turns
+  // red with the return rows, under the one returns message.
+  it('turns the Amount and return labels red while the returns total the payment or more', async () => {
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '1.50');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
+    expect(
+      utils.getByText('Add at least one valid return, and keep the returns below the payment.'),
+    ).toBeTruthy();
+    expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
+    expect(isLabelInvalid(mockFieldLabel, 'Amount')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(true);
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '2.00');
+
+    expect(isLabelInvalid(mockFieldLabel, 'Amount')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
   });
 
   it('does not write an otherwise-valid split until a category is picked', async () => {

@@ -97,7 +97,8 @@ const SHELL_WRITE_REASON_LINES = [
     'variable, a glob) counts when a folder in it is named src, rules, or __tests__: write the ' +
     'literal path, or use another folder name. Reading it, a redirect to /dev/null or to a path ' +
     'outside those trees (your scratchpad, /tmp), git itself (without a redirect into those ' +
-    "trees), and a formatter or fixer writing on its own (npx biome check --write, the harness's " +
+    'trees), and a formatter or fixer writing on its own (./node_modules/.bin/biome check ' +
+    "--write, the harness's " +
     'import-order --write) stay allowed.',
   'DO NOT:         route the write through a variable, a script file, a shell fed by a pipe, or ' +
     'another tool (cp, mv, dd) to get past this guard.',

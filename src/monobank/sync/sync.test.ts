@@ -250,6 +250,7 @@ const makeInMemoryDeps = (
       // A synced holding's balance is never SET by a statement import — the
       // sync pipeline owns it outright.
       balanceSetAt: null,
+      balanceSetRowId: null,
       ...rest,
       // The dep's input carries neither column, but a stored row declares both
       // as `string | null` — the real repository defaults them the same way.
@@ -311,6 +312,8 @@ const makeInMemoryDeps = (
         loanHoldingId: null,
         loanLinkSource: null,
         loanLinkRejected: false,
+        // Only a manual balance set marks its row.
+        setsBalance: false,
         comment: input.comment ?? null,
         externalId: input.externalId ?? null,
       });
@@ -2379,6 +2382,7 @@ describe('runSync stale-holding reconciliation', () => {
     createdAt: 0,
     syncedBalanceMinorUnits: null,
     balanceSetAt: null,
+    balanceSetRowId: null,
     ...over,
   });
 

@@ -151,7 +151,10 @@ backs its value at a flat rate instead of ever dropping the holding.
 The Statistics screen drives an incremental, non-blocking backfill of
 `currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`):
 `planBackfillRun` decides whether a mount/focus needs a run for the
-current transaction span, `missingDays` lists the still-uncovered UTC
+current span — from the earliest transaction OR the earliest priced-lot day
+(`earliestLotDay` in `src/screens/statistics/statistics.screen.tsx`,
+converted with `localMidnightOfDayKey`), whichever is older, to now; it
+runs when transactions OR holdings exist — `missingDays` lists the still-uncovered UTC
 days, and `runBackfill` fetches, composes and upserts them, returning
 a `BackfillStatus`. A failed run must NEVER be reported as `'complete'`,
 in either of the two ways it can fail: `runBackfill` settles NBU and
@@ -203,7 +206,7 @@ composed nothing for a NEVER-backfilled currency is).
 The caller's own `lastBackfilledDay` OVERRIDES that per-currency
 minimum with an explicit `null` — `resolveBackfillWindow` checks it
 first. `planBackfillRun` passes exactly that null whenever an older
-transaction extends `spanStart` EARLIER than any prior run covered (see
+transaction or lot extends `spanStart` EARLIER than any prior run covered (see
 below): the forward, per-currency minimum cannot see a gap that opens
 BELOW the newest day every held currency already reached, so without
 this override it would report nothing missing and silently skip the
@@ -233,7 +236,7 @@ drives the retry above) fires the identical cleanup lifecycle event and
 must not drop a still-pending run's eventual settle, or the line gets
 stuck on "loading" with no retry at all. A settle needs a SECOND,
 independent guard against a run SUPERSEDED by a later one, not merely
-against an unmount: an older transaction extending `spanStart` earlier
+against an unmount: an older transaction or lot extending `spanStart` earlier
 can start a new run before an already-in-flight run's own settle
 arrives, and that stale settle must not overwrite the newer run's
 state or reset its span ref out from under it. A run-token ref, bumped
@@ -277,7 +280,10 @@ in `src/prices/instrument/`) per `(instrument, day)` row:
   calendar date — same convention as `currencyRateHistory.day`. Read
   via `dayKeyOf` (`src/prices/price-book/`), which reads the
   DEVICE-LOCAL `Date` getters (not the UTC ones) so a Kyiv-local day
-  keys correctly across a DST transition.
+  keys correctly across a DST transition. A day key is a UTC-midnight
+  ENCODING of a local date, NOT an instant: never compare it with a real
+  instant directly — convert it first with `localMidnightOfDayKey`
+  (same module).
 - `price` is a decimal STRING (never a float), `currency` is the
   price's own currency, `source` is `manual | nbu | eodhd` — read
   `src/db/schema.ts` directly for the enum rather than trusting this
@@ -512,28 +518,56 @@ lot against a lot-form-eligible holding (`metal` and `share` — see
 `holdingDetailSpecs`, `holding-detail-spec/`, and the paragraph
 closing `kiko-domain`'s "Sync-only holding types are not manually
 creatable" section for that single-type entry), reached from
-holding-detail's `addLot` footer action. It writes NO `Transaction`
-row and NO `price_points` row for either
-direction — a buy/sell only appends to `holding.metadata.lots` via
-`holdingsRepo.update`, since the holding is ledgerless and priced off
-its price series, which the Lot form never writes.
+holding-detail's `addLot` footer action (a new lot), or from a lot
+row's long-press menu (`LotRowMenu`, `src/screens/holding-detail/lot-row-menu/`:
+Edit opens the form with `lotIndex`, Delete removes the lot). It writes
+NO `Transaction` row and NO `price_points` row for either direction:
+every add, edit, and delete goes through `holdingsRepo.changeLots(holdingId,
+change)` (a `LotChange`: `add`, `edit` at an index, or `remove` at an
+index), which re-reads the stored lots inside its own write, never a
+screen's copy, and keeps every other metadata key as stored. A stored
+list with one unreadable entry is refused, never written over. After the
+write, the form calls `refreshAfterHoldingWrite` (see kiko-architecture's
+"The first add triggers the gated refresh"), since a new or re-dated lot
+can fall before the stored prices.
 
-**Sell cost rule: proportional average cost, not FIFO/LIFO.** On a
-sell, the removed cost basis is `costBasisBeforeMajor * quantitySold /
-heldQuantity` — `costBasisMinorAt(existingLots, date)` shifted from
-minor to major (`shiftDecimal`), then run through
-`multiplyToMinorUnits([costBasisBeforeMajor, quantity], currency,
-heldQuantity)` (the BigInt-backed decimal helper, `src/currency/decimal/`).
-Stored as a NEGATIVE `costMinorUnits` on the new lot entry, mirroring
-`quantityDelta`'s own negative-on-sale sign (`lots.ts`'s documented
-contract). A sell whose quantity exceeds `sellableQuantityAt(lots, date)`
-— the LOWEST running quantity from the sell day onward, not just
-`quantityAt` on that day — is rejected client-side before save (the
-`sellExceeds` check) and never written. A backdated sell must leave enough
-for every sell already recorded after it: Jan +10, Mar −5, then a
-backdated Feb −8 is rejected (March would hold −3, and `quantityAt`'s
-clamp would hide it as 0 with a negative cost basis). `heldQuantity` (on
-the day) still sizes the cost-basis share.
+**Sell cost rule: proportional average cost, not FIFO/LIFO.** A sale
+removes `costBasisBefore * quantitySold / heldQuantity` (BigInt-backed
+`multiplyToMinorUnits`, `src/currency/decimal/`), stored as a NEGATIVE
+`costMinorUnits`, mirroring `quantityDelta`'s own negative-on-sale sign.
+A sale's cost is never typed: `withLotChange`
+(`src/holdings/lots/lot-change.ts`) applies the change and then works
+out EVERY sale's cost again, because a backdated, edited, or removed buy
+moves the average of every later sale.
+
+**One lot order for the cost and the overdraw check.** Every walk over
+the lots (`inLotOrder` there) takes the same order: by day, a day's buys
+before its sells, then the recorded order. So a buy recorded after a
+same-day sale still covers it. A change that leaves any sale larger than
+the quantity held before it in that order throws
+`SaleExceedsHoldingError`; no sale is ever costed from less than it
+takes, so no stale stored cost survives. Example: buy Jan 10 10 for
+1,000, sell Mar 10 4, buy Mar 10 10 for 3,000; delete the January buy →
+allowed (the March buy covers the sale), the sale re-costs to 1,200.00,
+and April holds 6 at a basis of 1,800.00. `hasNegativeHolding` walks the
+same order; the Lot form (`sellExceedsError`/`coversLaterSaleError`) and
+the lot row's Delete offer run it on `changedLots` (the change with no
+re-cost), and the repo refuses through `withLotChange` itself. A refusal
+inside the write (the lots changed since the render) shows the shared
+save-error alert. `share-money.matrix.test.ts`
+(`src/data-transfer/snapshot/`) holds the operation x state cells.
+
+**Stored lots are costed again once per device.** An older build costed a
+sale in recorded order, so `recostStoredLots` (`src/holdings/lot-recost/`)
+works every share, metal, and property lot list out again with
+`recostLots` (the same order), once (`settings.lotsRecosted`) and again
+after a restore of an older backup; kiko-architecture has the launch-step
+shape. A list with a sale larger than what is held before it stays as
+stored: the recost cannot cost it. The holding detail shows
+`OversizedSaleNotice` (`src/screens/holding-detail/oversized-sale-notice/`,
+share and metal, `hasNegativeHolding` over the stored lots, worked out on
+the fly) asking the user to edit or delete that sale, which re-costs
+every lot through `changeLots`.
 
 A lot-priced holding's lots also surface as ledger-display rows: the
 shared `lotEntries` (`src/holdings/holding-descriptor/entry-parts/entry-parts.ts`,
@@ -542,7 +576,10 @@ each lot into a `DerivedEntry`. Always reuse it for a new lot-priced
 type; never copy the mapping. It reuses the
 `'purchase'`/`'sale'` `DerivedEntryKind`s previously bond-only (a buy lot →
 `'purchase'`, a sell lot → `'sale'`) — do not assume those kinds mean "bond"
-when reading that file.
+when reading that file. Its label is "Sale" for a sell; with `canSplit`
+(the `share` descriptor passes it, a metal never splits) a buy at exactly 0
+cost reads "Split" (`holdingDetail.split`, a stock split), every other buy
+"Purchase".
 
 ## Creating and clearing a priced holding's price series
 
@@ -584,10 +621,18 @@ through `sharePriceOf` (`src/prices/share-price/`), which keeps up to
 `SHARE_PRICE_SCALE` decimal places (read the value there) — never
 through `Money`, which rounds to the currency's minor unit. The Price
 point form uses `sharePriceOf` for the `share` kind; totals keep the
-minor-unit `Money` path. When an edit switches a share from EODHD to
-Manual, the latest `share:<symbol>` point is carried to `holding:<id>`
-in one transaction by `holdingsRepo.updateWithManualPricePoint`
-(`src/holdings/repo/holdings.repo.ts`), so the holding keeps a price.
+minor-unit `Money` path. A share edit saves through
+`holdingsRepo.updateShareFromStored`, which builds the metadata from the
+row stored at the time of the write (the lots come from there; a stored
+list with one unreadable entry makes the build throw, so the write rolls
+back and the form shows the save-error alert). When that edit switches
+the share from EODHD to Manual, the same write carries EVERY
+`share:<symbol>` close to `holding:<id>` as `manual` points
+(`carryShareClosesDatabaseTransaction`), so no past value moves with
+the switch; a typed price inside the closes' day span gives way, one
+outside it stays. Only closes in the holding's own currency are carried
+or allowed to displace a typed price: a close in another currency never
+priced the holding (its value fell back to cost).
 
 **No "price as of" / "value as of" caption anywhere (user decision).** A priced holding's card and detail screen show only
 its computed value, never a caption naming the date of the underlying
@@ -779,10 +824,11 @@ client for the exact shapes.
   and a `GBX` close is in pence, not pounds. Refresh and search always read
   the unit from each listing's `Currency`, never from the exchange (an LSE
   row can be USD).
-- `searchSymbols(query, key, fetchImpl, exchange?)` is the third entry
-  point (share search and the refresh's unit lookup). A request past
-  `REQUEST_TIMEOUT_MS` (read it in the client) aborts as
-  `EodhdNetworkError`, 0 calls spent.
+- `searchSymbols(query, key, fetchImpl, exchange?, timeoutMs?)` is the third
+  entry point (share search, the refresh's unit lookup, and the share form's
+  Save lookup). A request past `REQUEST_TIMEOUT_MS` (read it in the client),
+  or past the caller's own shorter `timeoutMs`, aborts as `EodhdNetworkError`,
+  0 calls spent.
 - EODHD facts (live-verified): the demo token gets 403 on search and on
   non-US EOD; a search result's ISIN can be null; results include
   non-primary listings; `extraLimit` is never added to the daily limit;
@@ -807,41 +853,97 @@ exact constants (default limit, search reserve, history span).
 - **Serialised runs**: `refreshSharePrices` chains each run on the previous
   one's promise, so two overlapping runs never plan from the same quota.
 - **Gate order**: no active EODHD share → return before the Keychain read;
+  a stored `isKeyRejected` → `keyRejected` before the Keychain read (the key
+  state is read before the key, so a key saved in between is a newer key);
   no key → return before any network.
 - **Budget**: a refresh spends at most `refreshAllowance` (daily limit − the
   search reserve, R2); a search may use the rest. When more symbols need a
   call than the allowance covers, the OLDEST latest price goes first (R1).
-- **One call per symbol per UTC day**: a symbol already in
-  `quota.symbols` is never called again that day, even when its answer
-  brought no new close.
-- **Skip fresh symbols**: no call when a symbol's latest stored point is on
-  or after the last weekday.
-- **Backfill range**: from the day after the latest point, or from the
-  holding's earliest lot when there is none, clamped to the history span (1
-  year). A future-dated lot is skipped.
-- **Error handling** (`stopFor`, `costOfFailure`): 401 stops the run; 402
-  stops and marks the day used up; 429 stops only (does not mark the day);
-  403 and `EodhdUnavailableError` skip that symbol for the day; a network
-  error (a timeout included) stops the run and counts 0 calls spent;
+- **One forward call per symbol per UTC day**: a call for a symbol's newest
+  closes (`isForward`) is reserved in `quota.symbols`, and a symbol already
+  there gets no forward call again that day, even when its answer brought no
+  new close. A call for older history only is not reserved there.
+- **Skip fresh symbols**: no forward call while the symbol's latest stored
+  close (`lastDay`) is on or after the last weekday (for a sold-out listing,
+  the last weekday before its `lastLotDay`), or while the symbol is backed
+  off (`isBackedOff`).
+- **Backfill range**: a forward call runs from the day after the latest
+  point. History is asked for when the earliest wanted day (the listing's
+  earliest lot, clamped to the history span of 1 year) is before the earlier
+  of the first stored close and `backfilledFrom[symbol]`, and that gap holds
+  a weekday. It goes in ONE call with the forward one when both are due (the
+  same cost), else alone up to the day before the first stored close. An
+  answered call that reached back stores `backfilledFrom[symbol]`, so a range
+  with no close is never asked for again. History is not asked for while
+  `isBackfillBackedOff` holds (a back-off struck with the same `firstLotDay`,
+  before its `retryDay`); an even older lot asks again. A future-dated lot is
+  skipped.
+- **Error handling** (`stopFor`, `costOfFailure`): 401 stops the run and
+  stores `isKeyRejected`, which stops every later refresh and search until a
+  key is saved or checked again (`recheckRejectedKey`); 402 stops and marks
+  the day used up; 429 stops only (does not mark the day); a network error (a
+  timeout included) stops the run and counts 0 calls spent;
   `EodhdServerError` stops the run as failed, counts 1 call, and leaves the
-  unanswered symbols open for a later run. A 404 or a bad body stays a
-  per-symbol skip.
+  unanswered symbols open for a later run; a midnight UTC passed during the
+  run stops it (`dayChanged`, status `ok`), so the next run plans on the new
+  day. A 403, 404 or bad body (`EodhdNotInPlanError`,
+  `EodhdUnavailableError`), a unit search with no exact listing, and a
+  sold-out listing whose closes stop short of its sale STRIKE the symbol: it
+  is backed off for 2, 4, 8, 16, then every 30 days (`SymbolBackoff` in
+  `quote-quota.ts`, keyed by the `firstLotDay`/`lastLotDay` it was struck
+  with; a newer lot asks the newest closes again, an older lot its history).
+  A held symbol whose forward call EODHD answers with no close
+  `EMPTY_ANSWERS_BEFORE_STRIKE` times in a row (read its value in
+  `src/prices/quote-quota/quote-quota.ts`;`emptyAnswers`, counted in the same `SymbolBackoff`) is struck too, and
+  again at each empty answer after; a forward answer with a close newer than
+  the stored ones (`row.day > latestDay`) deletes the back-off and its count.
+  A forward call that also asked for history and brought only older closes
+  counts as empty. The count outlasts a week-long market holiday
+  (Golden Week, Lunar New Year), so such a pause never strikes a live
+  listing. An answer to a history-only
+  call neither ends a back-off nor counts as empty.
 - **Unit rule**: a listing with no `quoteCurrency` is resolved once by one
-  search call (that call costs 1 more) and saved on the holding. A `GBX`
-  close on a `GBP` holding is divided by 100; any other unit/currency
-  mismatch skips the symbol.
+  search call (that call costs 1 more) and saved on the holding. The holding
+  currency a unit fits is `unitHoldingCurrency` (`share-search.ts`): `GBX`
+  fits `GBP`, every other unit only its own currency. The refresh's
+  `pointUnit`, the share form's Currency check, and the detail notice all
+  read this one rule. A `GBX` close on a `GBP` holding is divided by 100; any
+  other unit/currency mismatch skips the symbol. A unit the share form
+  stored at Save (see "Share search") spends no refresh lookup.
+- **Key saves and restores** (`quote-quota.ts`): `withSavedKey` (a key saved
+  in Share prices) and `withRestoredKey` (a key restored from a backup,
+  `restore-secrets.ts`) both start a new key generation (`keyGeneration`,
+  `withNewKey`): the rejection and the back-offs go; `withSavedKey` also
+  starts today's calls and symbols over unless `/user` reported this key's
+  own count for today. `withRestoredKey` keeps the calls this device spent
+  and marks the limit unconfirmed. `withRestoredPrices` (a restore replaces
+  every price) forgets today's symbols, the back-offs and `backfilledFrom`,
+  keeping the calls and the key state. An answer about a key lands only
+  while its generation is still the stored one (`forKey` in `daily-limit.ts`,
+  `withKeyAnswers` in `settle`).
 - **Unconfirmed daily limit**: `QuoteQuota.isLimitUnconfirmed` (optional;
   read `quote-quota.ts`) is carried by `currentQuota` and cleared by
-  `withUserLimits`. A key saved while `/user` answers 402 stores
-  `markUsedUp(withUnconfirmedLimit(...))`; 429 stores
-  `withUnconfirmedLimit(...)` only (`acceptedKeyQuota` in
-  `src/screens/settings/share-prices/share-prices.screen.tsx`).
-  `confirmDailyLimit` (`src/prices/daily-limit/daily-limit.ts`) runs on each
-  Share prices open and acts only while the limit is unconfirmed: it reads
-  the key, calls `/user` (0 calls), and stores the limit and count, and it
-  overwrites only while the stored limit is still unconfirmed; a failure
-  leaves it unconfirmed. The refresh never reads `/user` (R3). In
-  `withUserLimits`, EODHD's count wins only when EODHD's day is today (UTC).
+  `withUserLimits`. A key saved while `/user` answers with a limit error is
+  still saved: `limitErrorQuota` (`src/prices/daily-limit/daily-limit.ts`)
+  builds `markUsedUp(withUnconfirmedLimit(...))` for a 402 and
+  `withUnconfirmedLimit(...)` for a 429, and `limitErrorKeyQuota` in
+  `src/screens/settings/share-prices/share-prices.screen.tsx` applies it
+  over `withSavedKey`. `confirmDailyLimit` acts only while the limit is
+  unconfirmed: it reads the key, calls `/user` (0 calls), and stores the
+  limit and count, overwriting only while the stored limit is still
+  unconfirmed; a 401 marks the key rejected; any other failure leaves the
+  limit unconfirmed. Rule: every refresh entry point that may plan
+  under a restored or saved key runs `confirmDailyLimit` first, and it never
+  blocks the refresh (fire-and-forget:
+  `confirmDailyLimit().catch(log).then(refresh)`; a failed check never holds
+  the refresh back). Share prices also runs it on each open. Find the
+  current call sites with `git grep confirmDailyLimit src`. The refresh itself never reads
+  `/user` (R3). In `withUserLimits`, EODHD's count wins only when EODHD's day
+  is today (UTC).
+- **Rejected key**: `recheckRejectedKey` (Share prices' "Check again") asks
+  `/user` again (0 calls); an accepted key, or a limit error, clears
+  `isKeyRejected` (`withoutRejection`) and stores the limit EODHD reports or
+  `limitErrorQuota`'s; any other answer leaves the key rejected.
 - **Accepted limit**: a key saved during a refresh can leave the local count
   too low (`withUserLimits` overwrites the calls, then the refresh's delta
   settle subtracts its reservation); the next 402 corrects it via
@@ -853,12 +955,15 @@ exact constants (default limit, search reserve, history span).
 
 Code: `src/prices/share-search/share-search.ts` (`searchShares`). Rules:
 
-- Read the key first; no key → `noKey`, no network.
+- Read the quota first: a stored `isKeyRejected` → `keyRejected`, no
+  Keychain read, no network. Then read the key; no key → `noKey`, no network.
 - Reserve 1 call atomically on the UTC day before the request. A search may
   use the calls up to `dailyLimit` itself (the refresh's search reserve is
   for it). A full day → `quotaExhausted`, no network.
-- 402 marks the day used up; a request with no answer (`EodhdNetworkError`)
-  gives the call back (spent 0); any other error spends 1.
+- 402 marks the day used up; 401 marks the key rejected (for the key
+  generation it read) and returns `keyRejected`; a request with no answer
+  (`EodhdNetworkError`) gives the call back (spent 0); any other error spends
+  1.
 - A `GBX` listing becomes a `GBP` holding with `quoteCurrency` `GBX`. Drop a
   listing whose currency is outside the form's own options. Primary
   listings first.
@@ -869,8 +974,53 @@ Code: `src/prices/share-search/share-search.ts` (`searchShares`). Rules:
   `share-search.test.ts`).
 - A picked listing's `quoteCurrency` is kept only while the source is EODHD
   and the ticker equals the picked symbol (`keptQuoteCurrency`,
-  `use-share-fields.ts`); a ticker edit drops it, and the refresh resolves
-  it again with one search call.
+  `use-share-fields.ts`); a ticker edit drops it, and Save looks it up again
+  (below), or else the refresh resolves it with one search call.
+
+### Unit lookup at Save and the currency guard
+
+A share held in another currency than the one its listing's unit fits is
+never priced, so the share form checks it before it writes.
+
+- **Picked listing**: its unit is known, so a currency it does not fit
+  blocks Save at once with an error on the Currency field
+  (`shareFieldErrors`' `currencyError`, `share-reasons.ts`). No call.
+- **Hand-typed EODHD ticker**: Save runs `lookupShareUnit(symbol)`
+  (`share-search.ts`): the refresh's own code + exchange search
+  (`listingSearchOf`), under the same quota rules as a search, with its own
+  shorter timeout (private `SAVE_LOOKUP_TIMEOUT_MS`,
+  `src/prices/share-search/share-search.ts`) instead of the client's
+  (`REQUEST_TIMEOUT_MS`, `src/prices/eodhd/eodhd.client.ts`); read the
+  values there. It
+  answers the exact listing's unit, or `undefined` (no key, a rejected key,
+  no calls left, no answer, no listing of that symbol, or a failed read),
+  which saves as before. A found unit is stored as `quoteCurrency`, so the
+  first refresh spends no lookup; a unit the currency does not fit blocks
+  Save on the Currency field. The same ticker is never looked up twice.
+- **Create and edit**: create runs it through `checkCreate`. An edit runs it
+  through `checkEdit` only when the share now names a listing its stored row
+  did not (a switch from Manual to EODHD, or another ticker) and no pick
+  told the unit; an unchanged source and ticker, a switch to Manual, or a
+  pick make no call. The form contract is kiko-domain's "Adding a holding
+  type" step 3.
+- **Save spinner**: Save shows its `loading` spinner only while this lookup
+  runs (`isLookingUpUnit`); it is not dimmed then (kiko-design-system's
+  Button `loading`), and stays disabled for any other submit.
+- **Mismatch text**: a create gets `forms.holding.shareCurrencyMismatchError`
+  ("Choose {{currency}}…"). An edit, where the Currency field is read-only,
+  gets `shareCurrencyMismatchEditError` instead: Manual, or delete the share
+  and add it again in that currency (`currencyFieldReasonKey` reads
+  `isEdit`, `share-reasons.ts`).
+- **Unsupported unit**: a unit whose currency no share can be held in
+  (`isShareUnitSupported` false; read the set there, e.g. `ZAC` cents) gets the
+  Manual-only text `forms.holding.shareCurrencyUnsupportedError` on create and
+  edit alike, instead of either mismatch text.
+- **Stored mismatch**: a share an older build stored in another currency
+  than its unit fits shows `ListingCurrencyNotice` on its detail
+  (`src/screens/holding-detail/listing-currency-notice/`, a NoticeBanner):
+  `holdingDetail.listingCurrencyMismatch` names both ways out (Manual, or a
+  new share in that currency), `holdingDetail.listingCurrencyUnsupported`
+  only Manual.
 
 ## Later (not built yet — do not invent detail)
 

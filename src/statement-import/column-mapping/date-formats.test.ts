@@ -4,12 +4,12 @@ import {
   type DateFormatId,
   dateFormatIds,
   dateFormatExamples,
-  parseDateWithFormat,
+  readDateWithFormat,
 } from './date-formats';
 import type { TableCell } from './table-rows';
 
 const parseInKyivTime = (raw: TableCell, id: DateFormatId): number | undefined =>
-  parseDateWithFormat(raw, id, KYIV_ZONE_RULE);
+  readDateWithFormat(raw, id, KYIV_ZONE_RULE)?.timeSeconds;
 
 // These dates read as Kyiv time, and `jest.config.js` pins the process to
 // Europe/Kyiv, so the local `Date` constructor here gives exactly that
@@ -47,7 +47,7 @@ describe('dateFormatExamples', () => {
     expect(Object.keys(dateFormatExamples).sort()).toEqual([...dateFormatIds].sort());
   });
 
-  it('every example round-trips through parseDateWithFormat under its own id, resolving to 31 Dec 2026', () => {
+  it('every example round-trips through readDateWithFormat under its own id, resolving to 31 Dec 2026', () => {
     for (const id of dateFormatIds) {
       const seconds = parseInKyivTime(dateFormatExamples[id], id);
 
@@ -65,7 +65,7 @@ describe('dateFormatExamples', () => {
   });
 });
 
-describe('parseDateWithFormat', () => {
+describe('readDateWithFormat', () => {
   it('parses DD.MM.YYYY HH:MM:SS as Kyiv time', () => {
     expect(parseInKyivTime('01.07.2025 10:15:00', 'DD.MM.YYYY HH:MM:SS')).toBe(
       localSeconds(2025, 7, 1, 10, 15, 0),

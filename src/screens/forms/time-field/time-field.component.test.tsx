@@ -1,7 +1,9 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
 import { formatTime } from '@kiko/dates';
+import { remindersNative } from '@kiko/reminders/native';
 
 import TimeField from './time-field.component';
 import type { TimeFieldProps } from './time-field.props';
@@ -32,8 +34,19 @@ describe('TimeField', () => {
     const value = new Date(2026, 2, 4, 9, 5).getTime();
     const { getByText } = await renderTimeField({ value });
 
-    expect(getByText(formatTime(value))).toBeTruthy();
+    expect(getByText(formatTime(value, { uses24Hour: true }))).toBeTruthy();
     expect(getByText('09:05')).toBeTruthy();
+  });
+
+  // The native picker follows the iOS 24-Hour Time setting, so the label must too.
+  it('shows the time on the 12-hour clock when the device uses it', async () => {
+    const uses24HourClock = jest.spyOn(remindersNative, 'uses24HourClock').mockReturnValue(false);
+    const value = new Date(2026, 2, 4, 21, 5).getTime();
+
+    const { getByText } = await renderTimeField({ value });
+
+    expect(getByText('9:05\xA0PM')).toBeTruthy();
+    uses24HourClock.mockRestore();
   });
 
   it('shows sheetTitle, not label, as the sheet header', async () => {

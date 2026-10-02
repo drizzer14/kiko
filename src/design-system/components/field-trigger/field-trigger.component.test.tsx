@@ -106,4 +106,20 @@ describe('FieldTrigger', () => {
     expect(getByTestId('category-field-error')).toBeTruthy();
     expect(getByText('Category').props.testID).toBe('text-tone-negative');
   });
+
+  it('tints the label negative with no error line of its own when `invalid` is set', async () => {
+    const { getByText, queryByTestId } = await render(
+      <FieldTrigger
+        label="Return to 1"
+        onPress={jest.fn()}
+        value="Select holding"
+        valueTone="textSecondary"
+        invalid
+        testID="return-field"
+      />,
+    );
+
+    expect(getByText('Return to 1').props.testID).toBe('text-tone-negative');
+    expect(queryByTestId('return-field-error')).toBeNull();
+  });
 });

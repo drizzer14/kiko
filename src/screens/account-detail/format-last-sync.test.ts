@@ -1,7 +1,10 @@
 import { i18n } from '@kiko/i18n/init';
-import { formatDateTime } from '@kiko/dates';
+import { formatDateTime, type TimeClock } from '@kiko/dates';
 
 import { formatLastSyncAt, latestSyncedAt } from './format-last-sync';
+
+const TWENTY_FOUR_HOUR: TimeClock = { uses24Hour: true };
+const TWELVE_HOUR: TimeClock = { uses24Hour: false, beforeNoon: 'AM', afterNoon: 'PM' };
 
 describe('formatLastSyncAt', () => {
   afterEach(async () => {
@@ -9,19 +12,21 @@ describe('formatLastSyncAt', () => {
   });
 
   it('resolves the never label from the catalogue', () => {
-    expect(formatLastSyncAt(null, i18n.t)).toBe(i18n.t('accountDetail.never'));
+    expect(formatLastSyncAt(null, i18n.t, TWENTY_FOUR_HOUR)).toBe(i18n.t('accountDetail.never'));
   });
 
   it('resolves the never label in Ukrainian', async () => {
     await i18n.changeLanguage('uk');
 
-    expect(formatLastSyncAt(null, i18n.t)).toBe('Ніколи');
+    expect(formatLastSyncAt(null, i18n.t, TWENTY_FOUR_HOUR)).toBe('Ніколи');
 
     await i18n.changeLanguage('en');
   });
 
-  it('still formats a real timestamp', () => {
-    expect(formatLastSyncAt(1_700_000_000_000, i18n.t)).toBe(formatDateTime(1_700_000_000_000));
+  it.each([TWENTY_FOUR_HOUR, TWELVE_HOUR])('still formats a real timestamp on %p', (clock) => {
+    expect(formatLastSyncAt(1_700_000_000_000, i18n.t, clock)).toBe(
+      formatDateTime(1_700_000_000_000, clock),
+    );
   });
 });
 

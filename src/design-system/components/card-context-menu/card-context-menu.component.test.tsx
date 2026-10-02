@@ -175,11 +175,16 @@ describe('CardContextMenu', () => {
     expect(queryByTestId(EDIT_ACTION_TEST_ID)).toBeNull();
   });
 
-  it('offers a Close/Delete action list on hold when onClose is provided, routing Close to onClose without deleting', async () => {
+  it('offers a Close/Delete action list on hold when a close action is provided, routing Close to it without deleting', async () => {
     const onClose = jest.fn();
     const onDelete = jest.fn();
     const { getByTestId, queryByTestId, queryByText } = await render(
-      <CardContextMenu name="Shares" deletable onDelete={onDelete} onClose={onClose}>
+      <CardContextMenu
+        name="Shares"
+        deletable
+        onDelete={onDelete}
+        closeAction={{ label: 'Close holding', onPress: onClose }}
+      >
         <Text>card</Text>
       </CardContextMenu>,
       { wrapper: GestureRootWrapper },
@@ -193,7 +198,7 @@ describe('CardContextMenu', () => {
       ]);
     });
 
-    expect(getByTestId(CLOSE_ACTION_TEST_ID)).toHaveTextContent('Close');
+    expect(getByTestId(CLOSE_ACTION_TEST_ID)).toHaveTextContent('Close holding');
     expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
     expect(queryByText('Delete "Shares"')).toBeNull();
 

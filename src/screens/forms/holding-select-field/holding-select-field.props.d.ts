@@ -21,4 +21,12 @@ export type HoldingSelectFieldProps = {
   // When true, the label shows a red asterisk marking the field as required.
   // Defaults to false. Forwarded to the shared FieldTrigger.
   required?: boolean;
+  // The validation-failure message, or `undefined` while valid. Forwarded to
+  // the shared FieldTrigger, which renders it under the field and turns the
+  // label red.
+  error?: string;
+  // Turns the label red with no error line of its own, for a field whose one
+  // error renders under its whole group (a split payment's return rows).
+  // Forwarded to the shared FieldTrigger.
+  invalid?: boolean;
 };

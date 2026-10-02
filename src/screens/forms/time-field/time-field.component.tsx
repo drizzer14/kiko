@@ -4,7 +4,9 @@ import { type FC, useState } from 'react';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import SymbolIcon from '@kiko/design-system/components/symbol';
+import FieldLabel from '@kiko/design-system/components/field-label';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
@@ -29,9 +31,10 @@ const combineDayAndTime = (dayMillis: number, picked: Date): number => {
 };
 
 // A single labeled time-of-day field that opens the native time picker in a
-// bottom sheet. Displays the current value's time as HH:mm (24-hour) and, on a
-// pick, keeps the value's DAY while replacing only its time-of-day — the mirror
-// of DateField, which keeps the time-of-day while replacing only the day.
+// bottom sheet. Displays the current value's time on the device's own clock, as
+// the picker does, and, on a pick, keeps the value's DAY while replacing only
+// its time-of-day — the mirror of DateField, which keeps the time-of-day while
+// replacing only the day.
 const TimeField: FC<TimeFieldProps> = ({
   label,
   sheetTitle,
@@ -39,9 +42,11 @@ const TimeField: FC<TimeFieldProps> = ({
   onChange,
   placeholder,
   disabled = false,
+  invalid = false,
   testID,
 }) => {
   const { theme } = useUnistyles();
+  const clock = useTimeClock();
   const [open, setOpen] = useState(false);
 
   const handleChange = (_event: DateTimePickerEvent, picked?: Date): void => {
@@ -54,9 +59,7 @@ const TimeField: FC<TimeFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <Text variant="caption" tone="textSecondary">
-        {label}
-      </Text>
+      <FieldLabel label={label} invalid={invalid} />
 
       <Pressable
         accessibilityRole="button"
@@ -70,7 +73,7 @@ const TimeField: FC<TimeFieldProps> = ({
           <SymbolIcon name="clock" size={theme.iconSizes.body} tone="textSecondary" />
 
           <Text variant="body" tone={disabled || value === null ? 'textSecondary' : 'textPrimary'}>
-            {value === null ? placeholder : formatTime(value)}
+            {value === null ? placeholder : formatTime(value, clock)}
           </Text>
         </Box>
       </Pressable>

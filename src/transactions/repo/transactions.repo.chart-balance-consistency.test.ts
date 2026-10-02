@@ -20,6 +20,15 @@ import { holdings } from '@kiko/db';
 
 import { transactionsRepo } from './transactions.repo';
 
+// The holding row a balance move reads, with no boundary set. A manual row
+// dated before a boundary moves no balance by design: it is history the
+// balance already counts (transactions.repo.balance-boundary.test.ts).
+const unanchoredBalance = (balanceMinorUnits: number) => ({
+  balanceMinorUnits,
+  balanceSetAt: null,
+  newestSyncTime: null,
+});
+
 // A fake database-transaction handle capturing inserts + balance updates in call order, answering
 // both the chained `.where(...).limit(1)` and the bare `await where(...)`
 // conventions — same shape as transactions.repo.test.ts's makeExchangeDatabaseTransaction.
@@ -65,7 +74,7 @@ const makeDatabaseTransaction = (
 describe('chart balance-consistency invariant', () => {
   it('recordManual pairs its single transaction insert with a holding balance update', async () => {
     const { databaseTransaction, inserts, updates } = makeDatabaseTransaction([
-      [{ balanceMinorUnits: 5_000 }],
+      [unanchoredBalance(5_000)],
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -86,9 +95,9 @@ describe('chart balance-consistency invariant', () => {
 
   it('recordManualWithReturns pairs EVERY inserted row with its own holding balance update', async () => {
     const { databaseTransaction, inserts, updates } = makeDatabaseTransaction([
-      [{ balanceMinorUnits: 50_000 }], // payer read
-      [{ balanceMinorUnits: 1_000 }], // return B read
-      [{ balanceMinorUnits: 2_000 }], // return C read
+      [unanchoredBalance(50_000)], // payer read
+      [unanchoredBalance(1_000)], // return B read
+      [unanchoredBalance(2_000)], // return C read
     ]);
     mockDatabaseTransaction = databaseTransaction;
 

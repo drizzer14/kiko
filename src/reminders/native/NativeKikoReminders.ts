@@ -12,6 +12,7 @@ export interface Spec extends TurboModule {
   registerCategories(snoozeTitle: string, hiddenPreviewsBodyPlaceholder: string): void;
   drainResponses(): Promise<string>;
   readonly onResponse: CodegenTypes.EventEmitter<string>;
+  uses24HourClock(): boolean;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('KikoReminders');

@@ -9,6 +9,7 @@ import '@kiko/i18n/init';
 import type { FC } from 'react';
 import { LockGate } from '@kiko/auth';
 import { useAutoSync } from '@kiko/sync/use-auto-sync';
+import { useLotRecost } from '@kiko/holdings/lot-recost';
 import RootNavigator from '@kiko/navigation/root-navigator';
 import MigrationsGate from '@kiko/migration/migrations-gate';
 import { NavigationContainer } from '@react-navigation/native';
@@ -26,6 +27,7 @@ import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-s
  * Hands off to the navigation stack. `useAutoSync` kicks off a throttled
  * background sync of the connected account without blocking this first
  * render. `useReminderScheduler` re-plans the pending reminder notifications.
+ * `useLotRecost` costs every stored sale again once, in the one lot order.
  */
 const AppRoot: FC = () => {
   useSyncLanguageWithSettings();
@@ -33,6 +35,8 @@ const AppRoot: FC = () => {
   useAutoSync();
 
   useReminderScheduler();
+
+  useLotRecost();
 
   return (
     <NavigationContainer ref={navigationRef} theme={navigationDarkTheme}>

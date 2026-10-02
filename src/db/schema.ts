@@ -87,6 +87,12 @@ export const holdings = sqliteTable('holdings', {
   // comment (`transactions/repo/transactions.repo.ts`) is the ONE full
   // statement of exactly which writes set it.
   balanceSetAt: integer('balance_set_at'),
+  // The `transactions.setsBalance` row whose set IS this balance, so only its
+  // amount edit moves the balance: an id, because a re-date leaves the row's
+  // time off `balanceSetAt`. NULL when a closing-balance import set it (no row
+  // is written at its as-of) or the balance was never hand-set. No foreign key:
+  // a deleted row's id is never reused, so a stale id matches nothing.
+  balanceSetRowId: text('balance_set_row_id'),
   metadata: text('metadata', { mode: 'json' }),
   sortOrder: integer('sort_order').notNull().default(0),
   closedAt: integer('closed_at'),
@@ -180,6 +186,13 @@ export const transactions = sqliteTable(
     // NOT NULL default 0: every existing row (pre-migration and every
     // ordinary transaction) has never been rejected.
     loanLinkRejected: integer('loan_link_rejected', { mode: 'boolean' }).notNull().default(false),
+    // True on every row whose amount set its holding's balance (an opening
+    // balance, a cash opening, a hand edit), for good: that amount is part of
+    // a balance that was set, so `transactionsRepo.update`/`remove` never let
+    // a re-date or a delete of the row move the balance, after a description
+    // or a category too, which its shape does not survive. Only the current
+    // set's row (`holdings.balanceSetRowId`) moves it, by an amount edit.
+    setsBalance: integer('sets_balance', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
     // BALANCE sync writes no transaction rows, but the Binance crypto sync now
@@ -414,6 +427,14 @@ export const settings = sqliteTable('settings', {
   // go out, so a crash can only over-count. NULL means no call was ever made
   // (and a restored pre-quota backup): the day starts at zero calls.
   quoteQuota: text('quote_quota', { mode: 'json' }).$type<QuoteQuota>(),
+  // One-shot flag: has this device already worked out every stored lot
+  // list's sale costs again in the one lot order (`recostStoredLots`,
+  // `holdings/lot-recost/`)? An older build costed a sale in the order the
+  // lots were recorded, so a backdated buy left a stale sale cost. Migration
+  // 0048 adds it as `false`; the app-open step sets it once the run commits.
+  // A restored backup without the key keeps the default `false`, so the
+  // restore runs it again.
+  lotsRecosted: integer('lots_recosted', { mode: 'boolean' }).notNull().default(false),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

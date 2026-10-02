@@ -40,6 +40,7 @@ const DateField: FC<DateFieldProps> = ({
   disabled = false,
   required,
   error,
+  invalid = false,
   testID,
 }) => {
   const { theme } = useUnistyles();
@@ -83,7 +84,7 @@ const DateField: FC<DateFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <FieldLabel label={label} required={required} invalid={hasError} />
+      <FieldLabel label={label} required={required} invalid={hasError || invalid} />
 
       <Pressable
         accessibilityRole="button"

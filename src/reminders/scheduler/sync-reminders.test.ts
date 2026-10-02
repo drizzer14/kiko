@@ -165,7 +165,7 @@ describe('syncReminders — the app-open gate', () => {
 });
 
 describe('syncReminders — which reminders are scheduled', () => {
-  it('skips a paused reminder, an archived account, and synced manual entry', async () => {
+  it('skips a paused reminder, an archived account, and a synced account', async () => {
     seedAccount('manual');
     seedAccount('archived', { archivedAt: local(9, 1) });
     seedAccount('synced', { institution: 'monobank', importedAt: local(9, 30) });
@@ -182,32 +182,27 @@ describe('syncReminders — which reminders are scheduled', () => {
 
     await syncReminders(english, NOW);
 
-    expect(scheduledIds().sort()).toEqual(['active', 'synced-import']);
+    expect(scheduledIds().sort()).toEqual(['active']);
   });
 
-  it.each([
-    ['a manual', undefined],
-    ['a synced', 'monobank'],
-  ])(
-    'schedules an import reminder on %s account with no import yet, saying so',
-    async (_label, institution) => {
-      seedAccount('account-1', { institution });
-      seedReminder({ id: 'import', accountId: 'account-1', kind: 'statement_import' });
+  it('schedules an import reminder on a manual bank account with no import yet, saying so', async () => {
+    seedAccount('account-1');
+    seedReminder({ id: 'import', accountId: 'account-1', kind: 'statement_import' });
 
-      await syncReminders(english, NOW);
+    await syncReminders(english, NOW);
 
-      expect(lastReplace().requests.map(({ identifier, body }) => [identifier, body])).toEqual([
-        ['kiko.reminder.import.202610012000', 'No statements imported yet.'],
-        ['kiko.reminder.import.202610022000', 'No statements imported yet.'],
-        ['kiko.reminder.import.202610032000', 'No statements imported yet.'],
-        ['kiko.reminder.import.paused', 'Turn them on again in Kiko.'],
-      ]);
-    },
-  );
+    expect(lastReplace().requests.map(({ identifier, body }) => [identifier, body])).toEqual([
+      ['kiko.reminder.import.202610012000', 'No statements imported yet.'],
+      ['kiko.reminder.import.202610022000', 'No statements imported yet.'],
+      ['kiko.reminder.import.202610032000', 'No statements imported yet.'],
+      ['kiko.reminder.import.paused', 'Turn them on again in Kiko.'],
+    ]);
+  });
 
   it.each([
     ['a cash', 'cash', undefined, ['entry']],
     ['a property', 'property', undefined, ['entry']],
+    ['a synced bank', 'bank', 'monobank', []],
     ['a synced crypto', 'crypto', 'binance', []],
   ])(
     'never schedules an import reminder on %s account, which has no statement import',
@@ -239,26 +234,26 @@ describe('syncReminders — which reminders are scheduled', () => {
 
   it('keeps the snoozes of exactly the scheduled reminders', async () => {
     seedAccount('manual');
-    seedAccount('synced', { institution: 'monobank', importedAt: local(9, 30) });
+    seedAccount('imported', { importedAt: local(9, 30) });
     seedReminder({ id: 'active', accountId: 'manual', kind: 'add_transactions' });
     seedReminder({ id: 'paused', accountId: 'manual', kind: 'statement_import', pausedAt: 1 });
-    seedReminder({ id: 'synced-import', accountId: 'synced', kind: 'statement_import' });
+    seedReminder({ id: 'imported-import', accountId: 'imported', kind: 'statement_import' });
 
     await syncReminders(english, NOW);
 
-    expect(lastReplace().keptSnoozeIds).toEqual(['active', 'synced-import']);
+    expect(lastReplace().keptSnoozeIds).toEqual(['active', 'imported-import']);
   });
 
   it('builds each native request from the plan and the active language', async () => {
-    seedAccount('synced', { institution: 'monobank', importedAt: local(9, 30, 9) });
-    seedReminder({ id: 'import', accountId: 'synced', kind: 'statement_import' });
+    seedAccount('imported', { importedAt: local(9, 30, 9) });
+    seedReminder({ id: 'import', accountId: 'imported', kind: 'statement_import' });
 
     await syncReminders(english, NOW);
 
     expect(lastReplace().requests[0]).toEqual({
       identifier: 'kiko.reminder.import.202610012000',
       reminderId: 'import',
-      accountId: 'synced',
+      accountId: 'imported',
       kind: 'statement_import',
       fireAt: { year: 2026, month: 10, day: 1, hour: 20, minute: 0 },
       title: 'Statement import',

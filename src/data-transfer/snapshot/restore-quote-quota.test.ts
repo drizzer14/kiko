@@ -6,6 +6,7 @@ jest.mock('@kiko/db/client', () => {
   return executingClient(() => mockDatabase);
 });
 
+import { DAY_MS } from '@kiko/dates';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
@@ -34,10 +35,13 @@ const exportedSnapshot = async (): Promise<DataSnapshot> =>
 
 const storedQuota = (): unknown => mockDatabase.prepare('SELECT quote_quota FROM settings').get();
 
+const storedQuotaObject = (): unknown =>
+  JSON.parse((storedQuota() as { quote_quota: string }).quote_quota);
+
 // The quota counts this device's EODHD key's calls today, so a backup's copy
 // never replaces it.
 describe('restoring the EODHD quote quota', () => {
-  it('leaves the live quota as it is when the backup predates the quota', async () => {
+  it('keeps the live quota when the backup predates the quota', async () => {
     mockDatabase = openDatabase();
     const legacy = await exportedSnapshot();
 
@@ -48,17 +52,34 @@ describe('restoring the EODHD quote quota', () => {
     mockDatabase = openDatabase(QUOTA);
     await restoreDataSnapshot(legacy);
 
-    expect(storedQuota()).toEqual({ quote_quota: JSON.stringify(QUOTA) });
+    expect(storedQuotaObject()).toEqual({ ...QUOTA, symbols: [] });
   });
 
-  it("keeps the live quota, never the backup's", async () => {
+  it("keeps the live quota's calls and key state, never the backup's", async () => {
+    mockDatabase = openDatabase(BACKED_UP_QUOTA);
+    const backup = await exportedSnapshot();
+    const live = { ...QUOTA, keyGeneration: 2, isLimitUnconfirmed: true };
+
+    mockDatabase = openDatabase(live);
+    await restoreDataSnapshot(backup);
+
+    expect(storedQuotaObject()).toEqual({ ...live, symbols: [] });
+  });
+
+  // The restored prices replace the ones the live quota's symbols were asked
+  // for: a symbol refreshed today must be asked again for the backup's series.
+  it('forgets which symbols the live quota asked today, backed off, or backfilled', async () => {
     mockDatabase = openDatabase(BACKED_UP_QUOTA);
     const backup = await exportedSnapshot();
 
-    mockDatabase = openDatabase(QUOTA);
+    mockDatabase = openDatabase({
+      ...QUOTA,
+      backoff: { 'DEAD.US': { strikes: 1, retryDay: QUOTA.day, lastLotDay: 0 } },
+      backfilledFrom: { 'VOD.LSE': QUOTA.day - 100 * DAY_MS },
+    });
     await restoreDataSnapshot(backup);
 
-    expect(storedQuota()).toEqual({ quote_quota: JSON.stringify(QUOTA) });
+    expect(storedQuotaObject()).toEqual({ ...QUOTA, symbols: [] });
   });
 
   it("leaves a device with no quota without one, whatever the backup's", async () => {

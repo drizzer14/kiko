@@ -22,7 +22,7 @@ export const DELETE_CONFIRM_TEST_ID = 'card-context-menu-delete-confirm';
 
 // The action-list buttons' jest test ids, exported so a consumer's test can
 // drive the CHOICE that a hold opens once `onDuplicate`, `onEdit`, or
-// `onClose` is wired. Only present then (a delete-only card never renders the
+// `closeAction` is wired. Only present then (a delete-only card never renders the
 // action list — it opens the confirm directly).
 export const DUPLICATE_ACTION_TEST_ID = 'card-context-menu-duplicate';
 export const EDIT_ACTION_TEST_ID = 'card-context-menu-edit';
@@ -51,21 +51,24 @@ const HOLD_LIFT_SCALE = 1.03;
 const HOLD_LIFT_DURATION_MS = 300;
 
 /**
- * Wraps a grid card in a self-contained "deep-press (haptic)" delete confirm.
+ * Wraps a grid card in a self-contained "deep-press (haptic)" context menu.
  *
- * A manual (deletable) entity gets a `react-native-gesture-handler` `LongPress`
- * composed alongside — never over — the card:
+ * A card with any action (deletable, or given `onDuplicate`/`onEdit`/
+ * `closeAction`) gets a `react-native-gesture-handler` `LongPress` composed
+ * alongside — never over — the card:
  *
  * - a quick TAP never activates the long-press (its min duration is not met), so
  *   it falls straight through to the child card's own `onPress` (open detail).
  *   Nothing is layered on top of the card that could swallow the tap.
  * - a touch-and-HOLD that stays still (past `HOLD_DURATION_MS`, within
- *   `HOLD_MAX_DISTANCE`) plays a medium-impact haptic and raises the shared,
- *   themed `ConfirmSheet` (a `BottomSheet`, NOT a native `ActionSheetIOS`),
- *   titled `Delete "<name>"` with a bare destructive `Delete` confirm and no
- *   body. Only that confirm routes to `onDelete`; Cancel and a scrim/back
- *   dismiss delete nothing. The named title keeps an accidental hold from
- *   deleting an unnamed item.
+ *   `HOLD_MAX_DISTANCE`) plays a medium-impact haptic. On a delete-only card
+ *   it raises the shared, themed `ConfirmSheet` (a `BottomSheet`, NOT a
+ *   native `ActionSheetIOS`) straight away, titled `Delete "<name>"` with a
+ *   bare destructive `Delete` confirm and no body. A card with another action
+ *   opens the action list instead, whose Delete (only when deletable) hands
+ *   off to that same confirm. Only the confirm routes to `onDelete`; Cancel
+ *   and a scrim/back dismiss delete nothing. The named title keeps an
+ *   accidental hold from deleting an unnamed item.
  * - a hold that MOVES past `HOLD_MAX_DISTANCE` fails the long-press, freeing the
  *   finger for the enclosing sortables drag-to-reorder.
  *
@@ -75,13 +78,13 @@ const HOLD_LIFT_DURATION_MS = 300;
  * callback (the haptic bridge plus the `setState`) runs on the JS thread
  * directly, neither being a worklet.
  *
- * A synced (Monobank) entity is not deletable here, so it renders bare — no
+ * A card with no action at all (a synced (Monobank) entity) renders bare — no
  * gesture and no sheet. This keeps the synced guard AND, deliberately, leaves
  * the touch-and-hold free for the enclosing sortables drag to claim, so a
  * synced card can still be reordered.
  *
  * COEXISTENCE NOTE: both this long-press and the sortables drag begin from a
- * hold. A hold that stays still opens this confirm; a hold that moves the finger
+ * hold. A hold that stays still opens this menu; a hold that moves the finger
  * fails this gesture (`HOLD_MAX_DISTANCE`) and reorders instead; a quick tap
  * opens the card. On-device, `HOLD_DURATION_MS` may need tuning against the
  * grid's drag activation so the two never both fire on a single hold.
@@ -90,11 +93,10 @@ const CardContextMenu: FC<{
   name: string;
   deletable: boolean;
   onDelete: () => void;
-  // An optional "duplicate this entity" action. When provided, a hold opens a
-  // themed CHOICE (Duplicate + Delete) instead of the delete confirm directly;
-  // when omitted, the hold keeps its original delete-only behavior byte-for-
-  // behavior. Only the transaction rows (Home + the holding-detail ledger) pass
-  // it, for manual rows only — the account/holding cards and grids never do.
+  // An optional "duplicate this entity" action. It joins the action list a
+  // hold opens instead of the delete confirm. Only the transaction rows (Home
+  // + the holding-detail ledger) pass it, for manual rows only — the
+  // account/holding cards and grids never do.
   onDuplicate?: () => void;
   // An optional "edit this entry" action for a row that has no tap target of
   // its own to open an editor (the holding detail's share changes). Joins
@@ -102,8 +104,9 @@ const CardContextMenu: FC<{
   onEdit?: () => void;
   // An optional "close this entity, keep its history" action (a manual
   // holding the user sold or gave away). Joins the same action list; the
-  // consumer owns its confirm, since what closing means is the entity's own.
-  onClose?: () => void;
+  // consumer owns its label and its confirm, since what closing means, and
+  // what the entity is called, is the entity's own.
+  closeAction?: { label: string; onPress: () => void };
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -120,7 +123,7 @@ const CardContextMenu: FC<{
   onDelete,
   onDuplicate,
   onEdit,
-  onClose,
+  closeAction,
   liftOnHold = false,
   children,
 }) => {
@@ -141,7 +144,7 @@ const CardContextMenu: FC<{
 
   const canDuplicate = onDuplicate !== undefined;
   const canEdit = onEdit !== undefined;
-  const canClose = onClose !== undefined;
+  const canClose = closeAction !== undefined;
   const hasActionList = canDuplicate || canEdit || canClose;
 
   // A card with NO action renders bare — no gesture, no sheet — leaving the
@@ -207,7 +210,7 @@ const CardContextMenu: FC<{
 
   const runClose = (): void => {
     setActionsVisible(false);
-    onClose?.();
+    closeAction?.onPress();
   };
 
   // Delete from the action list hands off to the SAME named confirm sheet the
@@ -259,7 +262,7 @@ const CardContextMenu: FC<{
 
           {canClose && (
             <Button onPress={runClose} testID={CLOSE_ACTION_TEST_ID}>
-              {t('common.close')}
+              {closeAction?.label}
             </Button>
           )}
 

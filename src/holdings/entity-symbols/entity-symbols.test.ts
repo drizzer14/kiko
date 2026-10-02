@@ -52,7 +52,7 @@ describe('holdingTypeSymbol', () => {
     }
   });
 
-  it('assigns card creditcard, term_deposit calendar, bond receipt, jar rectangle.portrait, cash banknote, crypto_asset bitcoinsign.circle, property_item house.fill, metal cube.fill, loan minus.circle.fill', () => {
+  it('assigns card creditcard, term_deposit calendar, bond receipt, jar rectangle.portrait, cash banknote, crypto_asset bitcoinsign.circle, property_item house.fill, metal cube.fill, loan arrow.down.backward.circle.fill', () => {
     expect(holdingTypeSymbol.card).toBe('creditcard');
     expect(holdingTypeSymbol.term_deposit).toBe('calendar');
     expect(holdingTypeSymbol.bond).toBe('receipt');
@@ -61,7 +61,9 @@ describe('holdingTypeSymbol', () => {
     expect(holdingTypeSymbol.crypto_asset).toBe('bitcoinsign.circle');
     expect(holdingTypeSymbol.property_item).toBe('house.fill');
     expect(holdingTypeSymbol.metal).toBe('cube.fill');
-    expect(holdingTypeSymbol.loan).toBe('minus.circle.fill');
+    expect(holdingTypeSymbol.loan).toBe('arrow.down.backward.circle.fill');
+    // The debt ACCOUNT keeps its own minus glyph, persisted on existing rows.
+    expect(holdingTypeSymbol.loan).not.toBe(accountKindSymbol.debt);
   });
 
   it('gives a share the broker kind glyph', () => {

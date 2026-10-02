@@ -39,10 +39,14 @@ export const upsertPricePointsDatabaseTransaction = async (
 export const pricePointsRepo = {
   /** Reactive select of the whole price-points table — hand straight to `useLiveQuery`. */
   allQuery: () => database.select().from(pricePoints),
-  /** The latest stored day of each share series: one row per share, not its whole history. */
-  latestShareDaysQuery: () =>
+  /** The first and latest stored day of each share series: one row per share, not its whole history. */
+  shareDayRangesQuery: () =>
     database
-      .select({ instrument: pricePoints.instrument, day: sql<number>`max(${pricePoints.day})` })
+      .select({
+        instrument: pricePoints.instrument,
+        firstDay: sql<number>`min(${pricePoints.day})`,
+        lastDay: sql<number>`max(${pricePoints.day})`,
+      })
       .from(pricePoints)
       .where(like(pricePoints.instrument, shareInstrument('%')))
       .groupBy(pricePoints.instrument),

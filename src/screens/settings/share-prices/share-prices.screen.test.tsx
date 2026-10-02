@@ -43,8 +43,11 @@ jest.mock('@kiko/prices/eodhd-key/eodhd-key', () => ({
 
 const mockUpdateQuoteQuota = jest.fn();
 const mockConfirmDailyLimit = jest.fn();
+const mockRecheckRejectedKey = jest.fn();
 jest.mock('@kiko/prices/daily-limit/daily-limit', () => ({
+  ...jest.requireActual('@kiko/prices/daily-limit/daily-limit'),
   confirmDailyLimit: () => mockConfirmDailyLimit(),
+  recheckRejectedKey: () => mockRecheckRejectedKey(),
 }));
 
 jest.mock('@kiko/settings', () => {
@@ -69,7 +72,10 @@ const KEY = 'fake-eodhd-key-0000';
 const PLACEHOLDER = 'Paste your EODHD key';
 const TODAY = Date.UTC(2026, 9, 1);
 const NOW = TODAY + 9 * 60 * 60 * 1000;
-const USED_UP = 'Today’s EODHD requests are used up. Prices update again after midnight GMT.';
+// Midnight GMT is 03:00 in Kyiv (summer time), the zone Jest runs in.
+const USED_UP = 'Today’s EODHD requests are used up. Prices update again after 03:00.';
+const KEY_REJECTED =
+  'EODHD no longer accepts the saved key, so share prices are not updating. Save a new key, or check this one again.';
 
 const storeQuota = (overrides: Partial<QuoteQuota> = {}): void => {
   mockQuotaRows = [
@@ -100,6 +106,7 @@ describe('SharePricesScreen', () => {
     mockReadEodhdKey.mockReset();
     mockUpdateQuoteQuota.mockReset().mockResolvedValue(undefined);
     mockConfirmDailyLimit.mockReset().mockResolvedValue(undefined);
+    mockRecheckRejectedKey.mockReset().mockResolvedValue({ isAccepted: true });
     mockOpenURL.mockReset();
     mockQuotaRows = [];
     mockQuotaLoading = false;
@@ -109,12 +116,12 @@ describe('SharePricesScreen', () => {
     });
   });
 
-  it('states that the user brings an own EODHD key and accepts its terms', async () => {
+  it('states that the user brings an own EODHD key, what goes to EODHD, and its terms', async () => {
     const { findByText } = await renderScreen();
 
     expect(
       await findByText(
-        'Kiko gets end-of-day share prices from EODHD with your own API key. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
+        'Kiko gets end-of-day share prices from EODHD with your own API key. To do this, Kiko sends EODHD your share tickers, the date range of the prices it needs (from your first purchase on), and your searches, but never how many shares you hold or what they cost. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
       ),
     ).toBeTruthy();
   });
@@ -199,12 +206,25 @@ describe('SharePricesScreen', () => {
   });
 
   describe('used-up banner', () => {
-    it("shows on a day the key's requests are used up", async () => {
+    it("shows on a day the key's requests are used up, with the reset in the device's time", async () => {
       mockHasEodhdKey.mockResolvedValue(true);
       storeQuota({ calls: 20 });
       const { findByText } = await renderScreen();
 
       expect(await findByText(USED_UP)).toBeTruthy();
+    });
+
+    it('names the reset time in Ukrainian too', async () => {
+      mockHasEodhdKey.mockResolvedValue(true);
+      storeQuota({ calls: 20 });
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+      const { findByText } = await renderScreen();
+
+      expect(
+        await findByText('Сьогоднішні запити EODHD вичерпано. Ціни знову оновляться після 03:00.'),
+      ).toBeTruthy();
     });
 
     it.each([
@@ -221,6 +241,60 @@ describe('SharePricesScreen', () => {
     });
   });
 
+  describe('rejected-key banner', () => {
+    it('shows while EODHD rejects the saved key', async () => {
+      mockHasEodhdKey.mockResolvedValue(true);
+      storeQuota({ isKeyRejected: true });
+      const { findByTestId, findByText } = await renderScreen();
+
+      expect(await findByTestId('share-prices-key-rejected-banner')).toBeTruthy();
+      expect(await findByText(KEY_REJECTED)).toBeTruthy();
+    });
+
+    it('stays hidden while EODHD accepts the key', async () => {
+      mockHasEodhdKey.mockResolvedValue(true);
+      storeQuota();
+      const { findByText, queryByText } = await renderScreen();
+
+      await findByText(/Requests today/);
+
+      expect(queryByText(KEY_REJECTED)).toBeNull();
+    });
+
+    it('stays hidden without a saved key', async () => {
+      storeQuota({ isKeyRejected: true });
+      const { queryByText } = await renderScreen();
+
+      await waitFor(() => expect(mockHasEodhdKey).toHaveBeenCalled());
+
+      expect(queryByText(KEY_REJECTED)).toBeNull();
+    });
+
+    it('checks the key again on Check again', async () => {
+      mockHasEodhdKey.mockResolvedValue(true);
+      storeQuota({ isKeyRejected: true });
+      const { findByText } = await renderScreen();
+
+      await fireEvent.press(await findByText('Check again'));
+
+      await waitFor(() => expect(mockRecheckRejectedKey).toHaveBeenCalledTimes(1));
+    });
+
+    it.each([
+      ['still rejects it', new EodhdAuthError(), 'EODHD did not accept this key.'],
+      ['cannot be reached', new EodhdServerError(), 'Could not reach EODHD. Try again.'],
+    ])('says so when EODHD %s', async (_case, error, message) => {
+      mockHasEodhdKey.mockResolvedValue(true);
+      mockRecheckRejectedKey.mockResolvedValue({ isAccepted: false, error });
+      storeQuota({ isKeyRejected: true });
+      const { findByText } = await renderScreen();
+
+      await fireEvent.press(await findByText('Check again'));
+
+      expect(await findByText(message)).toBeTruthy();
+    });
+  });
+
   it('shows the required error on a blank Save and never calls EODHD', async () => {
     const { getByTestId, findByText } = await renderScreen();
 
@@ -231,31 +305,17 @@ describe('SharePricesScreen', () => {
     expect(mockSaveEodhdKey).not.toHaveBeenCalled();
   });
 
-  it('checks the key with EODHD, stores it, and shows the daily limit', async () => {
-    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
+  it('checks the key with EODHD and stores it, with no daily limit caption', async () => {
+    const { getByTestId, getByPlaceholderText, findByText, queryByText } = await renderScreen();
 
     await fireEvent.changeText(getByPlaceholderText(PLACEHOLDER), `  ${KEY} `);
     await fireEvent.press(getByTestId('settings-button-save-eodhd-key'));
 
     expect(await findByText('Key saved')).toBeTruthy();
-    expect(await findByText('Daily limit: 20')).toBeTruthy();
+    expect(queryByText(/Daily limit/)).toBeNull();
     expect(mockFetchUserLimits).toHaveBeenCalledWith(KEY);
     expect(mockSaveEodhdKey).toHaveBeenCalledWith(KEY);
     expect(getByPlaceholderText(PLACEHOLDER).props.value).toBe('');
-  });
-
-  it('shows the daily limit for the active language', async () => {
-    mockFetchUserLimits.mockResolvedValue({
-      dailyLimit: 100_000,
-      requestsToday: 3,
-      requestsDay: TODAY,
-    });
-    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
-
-    await fireEvent.changeText(getByPlaceholderText(PLACEHOLDER), KEY);
-    await fireEvent.press(getByTestId('settings-button-save-eodhd-key'));
-
-    expect(await findByText('Daily limit: 100,000')).toBeTruthy();
   });
 
   it("stores the key's own daily limit and EODHD's count for its day", async () => {
@@ -273,7 +333,47 @@ describe('SharePricesScreen', () => {
       calls: 3,
       dailyLimit: 20,
       symbols: [],
+      keyGeneration: 1,
     });
+  });
+
+  it('starts the day over for a key EODHD reports no request today for', async () => {
+    const previousKey: QuoteQuota = {
+      day: TODAY,
+      calls: 20,
+      dailyLimit: 20,
+      symbols: ['AAPL.US'],
+      isKeyRejected: true,
+      keyGeneration: 4,
+    };
+    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
+
+    await fireEvent.changeText(getByPlaceholderText(PLACEHOLDER), KEY);
+    await fireEvent.press(getByTestId('settings-button-save-eodhd-key'));
+    await findByText('Key saved');
+
+    const [[build]] = mockUpdateQuoteQuota.mock.calls as [[(stored: QuoteQuota) => unknown]];
+
+    expect(build(previousKey)).toEqual({
+      day: TODAY,
+      calls: 0,
+      dailyLimit: 20,
+      symbols: [],
+      keyGeneration: 5,
+    });
+  });
+
+  it('stores the key before its quota, so a refresh never pairs the old key with it', async () => {
+    const order: string[] = [];
+    mockSaveEodhdKey.mockImplementation(async () => order.push('key'));
+    mockUpdateQuoteQuota.mockImplementation(async () => order.push('quota'));
+    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
+
+    await fireEvent.changeText(getByPlaceholderText(PLACEHOLDER), KEY);
+    await fireEvent.press(getByTestId('settings-button-save-eodhd-key'));
+    await findByText('Key saved');
+
+    expect(order).toEqual(['key', 'quota']);
   });
 
   it('checks a daily limit EODHD has not confirmed once, on open', async () => {
@@ -300,10 +400,11 @@ describe('SharePricesScreen', () => {
       dailyLimit: 20,
       symbols: [],
       isLimitUnconfirmed: true,
+      keyGeneration: 1,
     });
   });
 
-  it('stores a key EODHD answered with its per-minute limit, its limit left unconfirmed', async () => {
+  it('stores a key EODHD answered with its per-minute limit, its limit left unconfirmed and its day started over', async () => {
     mockFetchUserLimits.mockRejectedValue(new EodhdRateLimitError());
     const stored: QuoteQuota = { day: TODAY, calls: 4, dailyLimit: 100, symbols: ['AAPL.US'] };
     const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
@@ -316,18 +417,23 @@ describe('SharePricesScreen', () => {
 
     const [[build]] = mockUpdateQuoteQuota.mock.calls as [[(stored: QuoteQuota) => unknown]];
 
-    expect(build(stored)).toEqual({ ...stored, isLimitUnconfirmed: true });
+    expect(build(stored)).toEqual({
+      ...stored,
+      calls: 0,
+      symbols: [],
+      isLimitUnconfirmed: true,
+      keyGeneration: 1,
+    });
   });
 
-  it('keeps the key unsaved when the quota cannot be stored', async () => {
+  it('removes the new key again when its quota cannot be stored', async () => {
     mockUpdateQuoteQuota.mockRejectedValue(new Error('disk full'));
     const { getByTestId, getByPlaceholderText, queryByText } = await renderScreen();
 
     await fireEvent.changeText(getByPlaceholderText(PLACEHOLDER), KEY);
     await fireEvent.press(getByTestId('settings-button-save-eodhd-key'));
 
-    await waitFor(() => expect(mockUpdateQuoteQuota).toHaveBeenCalled());
-    expect(mockSaveEodhdKey).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockClearEodhdKey).toHaveBeenCalledTimes(1));
     expect(queryByText('Key saved')).toBeNull();
   });
 

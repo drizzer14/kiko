@@ -88,4 +88,17 @@ RCT_EXPORT_MODULE(KikoReminders)
   resolve([KikoRemindersCenter.shared drainResponses]);
 }
 
+// The "j" skeleton is the locale's preferred hour, which iOS rewrites for the
+// 24-Hour Time switch: a day-period mark ("a") means the 12-hour clock. The
+// autoupdating locale picks up a switch flipped while the app was in the
+// background.
+- (NSNumber *)uses24HourClock
+{
+  NSString *hourFormat = [NSDateFormatter dateFormatFromTemplate:@"j"
+                                                         options:0
+                                                          locale:[NSLocale autoupdatingCurrentLocale]];
+
+  return @(![hourFormat containsString:@"a"]);
+}
+
 @end

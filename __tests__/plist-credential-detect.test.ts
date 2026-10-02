@@ -53,26 +53,95 @@ const infoPlist = (pinnedDomains: Record<string, string[]>): string =>
     '',
   ].join('\n');
 
-const buildRoot = (pinnedDomains: Record<string, string[]>, client: string): string => {
+const PROJECT_PATH = 'ios/Kiko.xcodeproj/project.pbxproj';
+const ENGLISH_NAME_TABLE = 'ios/Kiko/en.lproj/InfoPlist.strings';
+const UKRAINIAN_NAME_TABLE = 'ios/Kiko/uk.lproj/InfoPlist.strings';
+const PRIVACY_MANIFEST = 'ios/Kiko/PrivacyInfo.xcprivacy';
+
+const BOTH_DISK_SPACE_SOURCES =
+  '{ "dependencies": { "react-native-fs": "2.20.0", "@op-engineering/op-sqlite": "18.1.4" } }\n';
+
+// The PBXBuildFile line also says "in Resources", so only an entry inside the
+// Resources build phase section proves the build copies the tables.
+const projectFile = (
+  nameTables: string[],
+  resourcesPhaseFiles: string[] = ['InfoPlist.strings'],
+): string =>
+  [
+    'name = "Inject Debug-only ATS local networking";',
+    '862F59B3640A40159C5B4910 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; };',
+    ...nameTables.map((table) => `path = Kiko/${table}.lproj/InfoPlist.strings;`),
+    '/* Begin PBXResourcesBuildPhase section */',
+    ...resourcesPhaseFiles.map((file) => `0000000000000000000000AA /* ${file} in Resources */,`),
+    '/* End PBXResourcesBuildPhase section */',
+    '',
+  ].join('\n');
+
+const privacyManifest = (categories: string[]): string =>
+  [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<plist version="1.0">',
+    '<dict>',
+    '<key>NSPrivacyAccessedAPITypes</key>',
+    '<array>',
+    ...categories.map(
+      (category) =>
+        `<dict><key>NSPrivacyAccessedAPIType</key><string>${category}</string><key>NSPrivacyAccessedAPITypeReasons</key><array><string>E174.1</string></array></dict>`,
+    ),
+    '</array>',
+    '</dict>',
+    '</plist>',
+    '',
+  ].join('\n');
+
+// Every root starts valid on every assertion but the one a case breaks: an
+// override replaces a file's body, and `null` deletes the file.
+const buildRoot = (
+  pinnedDomains: Record<string, string[]>,
+  client: string,
+  overrides: Record<string, string | null> = {},
+): string => {
   const root = mkdtempSync(join(tmpdir(), 'kiko-plist-'));
   createdPaths.push(root);
   mkdirSync(join(root, 'scripts/checks'), { recursive: true });
   copyFileSync(SCRIPT, join(root, 'scripts/checks/plist.sh'));
   copyFileSync(LIB, join(root, 'scripts/checks/_lib.sh'));
   writeFile(root, 'ios/Kiko/Info.plist', infoPlist(pinnedDomains));
-  writeFile(
-    root,
-    'ios/Kiko.xcodeproj/project.pbxproj',
-    'name = "Inject Debug-only ATS local networking";\n',
-  );
+  writeFile(root, PROJECT_PATH, projectFile(['en', 'uk']));
+  writeFile(root, ENGLISH_NAME_TABLE, '"CFBundleDisplayName" = "Kiko";\n');
+  writeFile(root, UKRAINIAN_NAME_TABLE, '"CFBundleDisplayName" = "Кіко";\n');
+  writeFile(root, PRIVACY_MANIFEST, privacyManifest(['NSPrivacyAccessedAPICategoryDiskSpace']));
+  writeFile(root, 'package.json', BOTH_DISK_SPACE_SOURCES);
   writeFile(root, '.env', `QUOTES_API_ENDPOINT=https://${QUOTES_HOST}/api\n`);
   writeFile(root, 'src/quotes.client.ts', client);
+
+  for (const [relativePath, body] of Object.entries(overrides)) {
+    if (body === null) {
+      rmSync(join(root, relativePath));
+    } else {
+      writeFile(root, relativePath, body);
+    }
+  }
 
   return root;
 };
 
-const runPlistCheck = (root: string) =>
-  spawnSync('bash', [join(root, 'scripts/checks/plist.sh')], { encoding: 'utf8' });
+const runPlistCheck = (root: string, environment: NodeJS.ProcessEnv = process.env) =>
+  spawnSync('bash', [join(root, 'scripts/checks/plist.sh')], {
+    encoding: 'utf8',
+    env: environment,
+  });
+
+// A `node` that always fails, first on PATH: the check must fail closed, not
+// read an empty answer as "react-native-fs does not ship".
+const brokenNodeEnvironment = (root: string): NodeJS.ProcessEnv => {
+  const shimDirectory = join(root, 'broken-node-bin');
+  mkdirSync(shimDirectory);
+  writeFileSync(join(shimDirectory, 'node'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+
+  return { ...process.env, PATH: `${shimDirectory}:${process.env.PATH}` };
+};
 
 const QUERY_TOKEN_CLIENT = [
   "import { QUOTES_API_ENDPOINT } from '@env';",
@@ -226,5 +295,105 @@ describe('scripts/checks/plist.sh credential detection', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
+  });
+});
+
+describe('scripts/checks/plist.sh localized home-screen name', () => {
+  it('fails (exit 2) naming the table when the Ukrainian name table is missing', () => {
+    const result = runPlistCheck(
+      buildRoot({}, NO_CREDENTIAL_CLIENT, { [UKRAINIAN_NAME_TABLE]: null }),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('uk.lproj/InfoPlist.strings');
+  });
+
+  it('fails (exit 2) when the Ukrainian table carries the Latin name', () => {
+    const result = runPlistCheck(
+      buildRoot({}, NO_CREDENTIAL_CLIENT, {
+        [UKRAINIAN_NAME_TABLE]: '"CFBundleDisplayName" = "Kiko";\n',
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('uk.lproj/InfoPlist.strings');
+  });
+
+  it('fails (exit 2) when the Xcode project does not reference the English table', () => {
+    const result = runPlistCheck(
+      buildRoot({}, NO_CREDENTIAL_CLIENT, { [PROJECT_PATH]: projectFile(['uk']) }),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('en.lproj/InfoPlist.strings');
+  });
+
+  it('fails (exit 2) when the tables are a build file but not in the Resources build phase', () => {
+    const result = runPlistCheck(
+      buildRoot({}, NO_CREDENTIAL_CLIENT, {
+        [PROJECT_PATH]: projectFile(['en', 'uk'], ['PrivacyInfo.xcprivacy']),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Resources build phase');
+  });
+});
+
+describe('scripts/checks/plist.sh disk-space privacy reason', () => {
+  it('fails (exit 2) when react-native-fs ships and the manifest declares no DiskSpace reason', () => {
+    const result = runPlistCheck(
+      buildRoot({}, NO_CREDENTIAL_CLIENT, { [PRIVACY_MANIFEST]: privacyManifest([]) }),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('NSPrivacyAccessedAPICategoryDiskSpace');
+  });
+
+  // op-sqlite's bundled SQLite (SQLCipher included) calls fstatfs on Apple
+  // platforms, so the reason stays required after react-native-fs goes.
+  it('fails (exit 2) when only op-sqlite ships and the manifest declares no DiskSpace reason', () => {
+    const result = runPlistCheck(
+      buildRoot({}, NO_CREDENTIAL_CLIENT, {
+        [PRIVACY_MANIFEST]: privacyManifest([]),
+        'package.json': '{ "dependencies": { "@op-engineering/op-sqlite": "18.1.4" } }\n',
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('@op-engineering/op-sqlite');
+    expect(result.stderr).toContain('NSPrivacyAccessedAPICategoryDiskSpace');
+  });
+
+  it('passes when only op-sqlite ships and the manifest declares the DiskSpace reason', () => {
+    const result = runPlistCheck(
+      buildRoot({}, NO_CREDENTIAL_CLIENT, {
+        'package.json': '{ "dependencies": { "@op-engineering/op-sqlite": "18.1.4" } }\n',
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+  });
+
+  it('passes without a DiskSpace reason once no disk-space API user is a dependency', () => {
+    const result = runPlistCheck(
+      buildRoot({}, NO_CREDENTIAL_CLIENT, {
+        [PRIVACY_MANIFEST]: privacyManifest([]),
+        'package.json': '{ "dependencies": {} }\n',
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+  });
+
+  it('fails (exit 2) when node cannot tell which disk-space API users ship', () => {
+    const root = buildRoot({}, NO_CREDENTIAL_CLIENT);
+    const result = runPlistCheck(root, brokenNodeEnvironment(root));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('react-native-fs');
+    expect(result.stderr).toContain('@op-engineering/op-sqlite');
   });
 });

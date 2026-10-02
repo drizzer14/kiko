@@ -1,10 +1,8 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import Box from '@kiko/design-system/components/box';
 import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import TextField from '@kiko/design-system/components/text-field';
-import FieldError from '@kiko/design-system/components/field-error';
 import HoldingSelectField from '@kiko/screens/forms/holding-select-field';
 
 import type { ConvertExchangeFieldsProps } from './convert-exchange-fields.props';
@@ -53,19 +51,16 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
       />
 
       <View ref={counterpartFieldRef}>
-        <Box gap={1}>
-          <HoldingSelectField
-            label={counterpartLabel}
-            sheetTitle={counterpartSheetTitle}
-            placeholder={counterpartPlaceholder}
-            options={counterpartOptions}
-            selectedId={counterpartHoldingId}
-            onSelect={onSelectCounterpart}
-            required
-          />
-
-          {counterpartError !== undefined && <FieldError message={counterpartError} />}
-        </Box>
+        <HoldingSelectField
+          label={counterpartLabel}
+          sheetTitle={counterpartSheetTitle}
+          placeholder={counterpartPlaceholder}
+          options={counterpartOptions}
+          selectedId={counterpartHoldingId}
+          onSelect={onSelectCounterpart}
+          required
+          error={counterpartError}
+        />
       </View>
 
       <View ref={counterpartAmountFieldRef}>

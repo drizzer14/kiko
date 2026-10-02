@@ -574,6 +574,14 @@ new component can land between reviews of this skill:
   sheet: Apply and "Just for this one") passes its `useSubmitOnce`
   `isSubmitting` as `loading`, and the surface it sits on stays open
   until the write is done — never a hand-rolled spinner beside a button.
+  The holding form's Save shows it only while a share's listing unit is
+  looked up at Save (`isLookingUpUnit`, a network wait bounded by `SAVE_LOOKUP_TIMEOUT_MS` in
+  `src/prices/share-search/share-search.ts`;
+  user decision), not for any other write. It drops `disabled` while the
+  spinner shows (`isSaveDisabled`, `holding-form.screen.tsx`), so it is not
+  dimmed then; `loading` alone blocks the presses. Any other submit keeps it
+  `disabled` (dimmed). Any button that passes both props drops `disabled`
+  while `loading` the same way.
   The shared `DISABLED_OPACITY` token
   (`src/design-system/disabled-opacity/disabled-opacity.ts`) is the ONE dimming a disabled
   pressable applies — `Button` reads it, and any new disabled pressable
@@ -613,6 +621,9 @@ new component can land between reviews of this skill:
   from its one source (never a re-typed string; read the symbol names
   in `src/holdings/entity-symbols/entity-symbols.ts`): Add holding /
   account / category / transaction → `genericEntitySymbol.<entity>`;
+  Add loan (a debt account's footer, `holdsOnlyDebts(kind)`) →
+  `holdingTypeSymbol.loan`, since a loan is the only thing it can add
+  (account detail's `addHoldingSymbol`);
   Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
@@ -918,7 +929,8 @@ new component can land between reviews of this skill:
   coupon-frequency picker (shared by both `BondIsinSection`'s ISIN-mode
   unmapped-frequency picker and `ManualBondFields`'s own frequency
   field), the holding-type picker, the column-mapping form's time-zone
-  field (44 zones), `AccountKindField`, and `ModeSelectField` all reach
+  field (every `sourceTimeZoneIds` entry,
+  `src/statement-import/column-mapping/source-time-zone.ts`), `AccountKindField`, and `ModeSelectField` all reach
   for it directly. `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
@@ -960,9 +972,14 @@ new component can land between reviews of this skill:
   `textSecondary` message, and an optional `secondaryTonal` `small`
   action button. The button renders only when BOTH `actionLabel` and
   `onAction` are given. Read `notice-banner.props.d.ts` for the props.
-  First consumer: the per-account reminders page's permission notice;
-  the Share prices screen's quota-day used-up banner
-  (`src/screens/settings/share-prices/`) also uses it.
+  Find its consumers with `git grep NoticeBanner src/screens`. On the
+  holding detail, a stored state the user must fix elsewhere is a
+  NoticeBanner with no action, worked out on the fly from the row, in its
+  own folder (`holding-detail/<name>-notice/`, `holding` prop, `null` when
+  nothing is wrong): `ListingCurrencyNotice` (an EODHD share held in another
+  currency than its listing, kiko-pricing) and `OversizedSaleNotice` (a
+  share or metal sale larger than what was held before it; kiko-pricing's
+  "Stored lots are costed again once per device").
 - **Search sheet pattern** (example:
   `src/screens/forms/holding-form/share/share-search-sheet/`): always a
   `BottomSheet` with a query field, an explicit Search button, and
@@ -973,8 +990,11 @@ new component can land between reviews of this skill:
   starts.
 - **Share prices quota line** (`src/screens/settings/share-prices/`):
   "Requests today: x / N" renders only with a saved key and after the quota
-  loaded; the used-up state shows only when the stored day is today. Open
-  USER question (pending): whether to show a "Daily limit: N" caption.
+  loaded; the used-up state shows only when the stored day is today. There
+  is no separate "Daily limit: N" caption (user decision). The used-up
+  banner, and the share search sheet's used-up message, name EODHD's reset
+  (midnight GMT, `quotaResetsAt`) in the device's local time, on the device's
+  12- or 24-hour clock (`formatTime` with `useTimeClock`; see kiko-translator).
 - **ReminderOfferCard** (`src/design-system/components/reminder-offer-card/`)
   — the NoticeBanner family's two-action sibling: an inline, non-modal
   invitation (never a notification, sheet, or alert, and never an
@@ -999,15 +1019,22 @@ new component can land between reviews of this skill:
   'Reminders').
 - **CardContextMenu** (`src/design-system/components/card-context-menu/`)
   — wraps a grid/list card in a touch-and-hold delete (and, when an
-  `onEdit`, `onDuplicate`, and/or `onClose` handler is passed, an
+  `onEdit`, `onDuplicate`, and/or `closeAction` is passed, an
   Edit/Duplicate/Close/Delete choice, in that order) menu. `onEdit` is
   for a row with no tap target of its own: the holding detail's
-  share-change rows (Edit + Delete); a transaction row keeps
-  tap-to-edit and passes only `onDuplicate`. `onClose` is the account
-  detail's manual holding cards (Close + Delete): a hold there opens
-  the action list, never the delete confirm directly, and the screen
-  owns Close's own confirm (`CloseHoldingSheet`). A synced holding
-  passes no `onClose`. The menu is: a
+  share-change rows and lot rows (`LotRowMenu`, Edit + Delete; Delete
+  is offered only while every later sale stays covered without the lot,
+  and a refusal inside the write shows the shared save-error alert). A
+  lot row is the user's own entry, so unlike every other derived ledger
+  row it is not captioned "Computed". A transaction row keeps
+  tap-to-edit and passes only `onDuplicate`. `closeAction`
+  (`{ label, onPress }`, the consumer names the entry) is the account
+  detail's manual holding cards ("Close holding"/"Close loan" + Delete):
+  a hold there opens the action list, never the delete confirm
+  directly, and the screen owns Close's own confirm
+  (`CloseHoldingSheet`, a `destructive` red confirm). Only Delete is red
+  in the menu; Edit, Duplicate, and Close stay neutral. A synced holding
+  passes no `closeAction`. The menu is: a
   `Gesture.LongPress()` that raises the shared `ConfirmSheet` above on a
   still hold, while a hold that MOVES fails the gesture so an enclosing
   `react-native-sortables` drag can still claim it — see `kiko-gestures`
@@ -1083,12 +1110,30 @@ new component can land between reviews of this skill:
   from that field's own `error` prop) at the same press, not just one
   — the first-invalid field in the form's top-to-bottom order is used
   ONLY to pick the scroll target, a SEPARATE concern from which fields
-  turn red. Save/Import is never disabled for VALIDATION; it validates
-  on press. It disables only while a submit is in flight, or when an
-  edit's saved value depends on data still loading (the holding form's
-  edit waits for the price book, kiko-pricing). Every form composes this instead of hand-rolling its own
-  error caption — see `kiko-code-style`'s "Form validation model" section for when to
-  show it.
+  turn red. A picker field takes the message through its own `error`
+  prop (`CategoryField`, `HoldingSelectField`, forwarded to
+  `FieldTrigger`), never a caller-rendered `FieldError` beside it,
+  which leaves its label grey. One error that judges a GROUP of fields
+  renders once under the group, and every field in the group turns its
+  label red through the label-only `invalid` prop (`DateTimeRow`, which
+  passes it to `DateField` and `TimeField`; `TextField`; `FieldTrigger`
+  and `HoldingSelectField`). `invalid` never renders a message and is
+  never set beside `error`. In the transaction form: the re-date error
+  under the Date and Time row (both labels), and the split-returns error
+  under the return rows (every row's "Return to N" and "Return N", plus
+  the payment Amount when the returns total it or more; an empty payment
+  is the Amount's own error). In the holding form, a contributions error
+  turns the amount and date labels of every row it refuses red.
+
+  Save/Import is never disabled for VALIDATION; it validates on press.
+  It disables only while a submit is in flight, or when an edit's saved
+  value depends on data still loading: the holding form's edit waits for
+  the price book (kiko-pricing), and the transaction form's edit waits
+  for the re-date boundary, only for a row the re-date rule can block
+  (`isPossibleBalanceSetRow`, `src/transactions/balance-boundary/`).
+  Every form composes this instead of hand-rolling its own error
+  caption — see `kiko-code-style`'s "Form validation model" section for
+  when to show it.
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
   the shared "labeled field that opens a picker sheet" trigger: a
   caption above a bordered row showing the current icon (or leading
@@ -1164,7 +1209,10 @@ new component can land between reviews of this skill:
   flips the two groups (each keeps its own order) — the crypto-holding
   create form sets it. Supports `hideLabel` for a caller that already labels the
   control externally (the Settings base-currency row), `required`, and
-  a `disabled` read-only state. A field opens a picker sheet for one
+  a `disabled` read-only state. `error` follows every field's contract:
+  `FieldTrigger` renders it under the trigger (reflow, not reserve, testID
+  `<testID>-error`) and tints the label (the holding form's share
+  Currency check). A field opens a picker sheet for one
   selection among many options; `ChipRow` below toggles inline
   among a small fixed set instead.
 - **ChipRow** (`src/design-system/components/chip-row/`) — the ONE

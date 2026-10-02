@@ -16,7 +16,6 @@ import type { Currency } from '@kiko/currency/currency';
 import { useAnimatedRef } from 'react-native-reanimated';
 import { useReminderOffer } from '@kiko/reminders/offer';
 import { usePriceBook } from '@kiko/prices/use-price-book';
-import { isSyncedHolding } from '@kiko/holdings/deletable';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { sumByCurrency } from '@kiko/rates/currency-totals';
@@ -26,13 +25,14 @@ import type { ReminderKind } from '@kiko/reminders/schedule';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { accountIdentity } from '@kiko/holdings/account-identity';
-import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { holdsOnlyDebts } from '@kiko/holdings/holding-descriptor';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
+import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
@@ -41,19 +41,27 @@ import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown
 import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
+import { genericEntitySymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
 
 import HoldingCard from './holding-card';
 import { styles } from './account-detail.styles';
 import BankSyncSection from './bank-sync-section';
-import CloseHoldingSheet from './close-holding-sheet';
 import CryptoSyncSection from './crypto-sync-section';
+import CloseHoldingSheet, { closeHoldingCopy } from './close-holding-sheet';
 
 const offerMessage = (kind: ReminderKind, t: TFunction): string =>
   match(kind)
     .with('statement_import', () => t('reminders.offer.statementImportMessage'))
     .with('add_transactions', () => t('reminders.offer.addTransactionsMessage'))
     .exhaustive();
+
+const addHoldingLabelKey = (debtAccount: boolean) =>
+  debtAccount ? 'accountDetail.addLoan' : 'accountDetail.addHolding';
+
+// A debt account adds only loans, so its button leads with the loan's own glyph.
+const addHoldingSymbol = (debtAccount: boolean): string =>
+  debtAccount ? holdingTypeSymbol.loan : genericEntitySymbol.holding;
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
@@ -108,6 +116,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     priceBookLoading,
   );
   const account = accounts.at(0);
+  const debtAccount = holdsOnlyDebts(account?.kind);
   // At most one offer per visit: once one is decided, clearing the import
   // param would otherwise fall back to the manual-entry offer at once.
   const [offerDecided, setOfferDecided] = useState(false);
@@ -183,14 +192,19 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // gone, so only a manual one offers Close.
   const [closeTarget, setCloseTarget] = useState<HoldingRow>();
   const [isCloseConfirmVisible, setCloseConfirmVisible] = useState(false);
-  const closeActionFor = (holding: HoldingRow): (() => void) | undefined => {
+  const closeActionFor = (
+    holding: HoldingRow,
+  ): { label: string; onPress: () => void } | undefined => {
     if (isSyncedHolding(holding, account)) {
       return undefined;
     }
 
-    return () => {
-      setCloseTarget(holding);
-      setCloseConfirmVisible(true);
+    return {
+      label: t(closeHoldingCopy(holding.type).action),
+      onPress: () => {
+        setCloseTarget(holding);
+        setCloseConfirmVisible(true);
+      },
     };
   };
 
@@ -213,6 +227,9 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
 
   const isBankAccount = account?.kind === 'bank';
+  // A connected bank sync already writes every row of the account; a statement
+  // of the same rows would land a second time under the import source.
+  const canImportStatement = account?.kind === 'bank' && !isSyncedAccount(account);
   const isCryptoAccount = account?.kind === 'crypto';
 
   // Every bank account shows the connect/sync affordance independently — there
@@ -296,11 +313,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
     navigation.setParams({ intent: undefined });
 
-    if (isBankAccount) {
+    if (canImportStatement) {
       // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures a failed copy, which then leaves the page as it was, the same as after the Import statement button
       either(pickAndOpenStatement);
     }
-  }, [intent, isReady, isBankAccount, navigation, pickAndOpenStatement]);
+  }, [intent, isReady, canImportStatement, navigation, pickAndOpenStatement]);
 
   if (!isReady) {
     // The SAME Screen mode/props as the ready branch below (`scroll` +
@@ -320,17 +337,17 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       scrollableRef={scrollableRef}
       footer={
         <Box gap={2}>
-          {isBankAccount && (
+          {canImportStatement && (
             <Button variant="secondaryTonal" onPress={pickAndOpenStatement} icon="doc.badge.plus">
               {t('accountDetail.importStatement')}
             </Button>
           )}
           <Button
             variant="primary"
-            onPress={() => navigation.navigate('HoldingForm', { accountId })}
-            icon={genericEntitySymbol.holding}
+            onPress={() => navigation.navigate('HoldingForm', { accountId, debtAccount })}
+            icon={addHoldingSymbol(debtAccount)}
           >
-            {t('accountDetail.addHolding')}
+            {t(addHoldingLabelKey(debtAccount))}
           </Button>
         </Box>
       }
@@ -410,7 +427,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                     name={item.name}
                     deletable={!isSyncedHolding(item, account)}
                     onDelete={() => holdingsRepo.remove(item.id)}
-                    onClose={closeActionFor(item)}
+                    closeAction={closeActionFor(item)}
                   >
                     <HoldingCard
                       holding={item}

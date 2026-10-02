@@ -86,7 +86,8 @@ project-level pointer to this section.
   REWRITES `drizzle/migrations/migrations.js` wholesale, in its own
   formatting (verified: it clobbered the repo's import/export layout
   and dropped a comma-per-line style). Re-check that file after every
-  generate, and run `npx biome check --write` over the generated
+  generate, and run `./node_modules/.bin/biome check --write` (never `npx biome`: RTK
+  rewrites it in agent Bash and it fails) over the generated
   artifacts: the snapshot and journal JSON are lint-checked like any
   other file.
 - Bundle migrations into the app and apply them on launch through
@@ -216,8 +217,31 @@ project-level pointer to this section.
   paths always agree on the same account for the same source.
   `0045_add_reminders` (additive: the `reminders` table and two
   `settings` columns) follows `0044` on `next`; `0046_add_quote_quota`
-  (the `settings.quote_quota` column) follows it. Next free migration
-  index: `0047`.
+  (the `settings.quote_quota` column) follows it.
+- **A column whose backfill SQL can derive adds it and backfills it in ONE
+  migration, mirrored on restore.** `0047_add_sets_balance` adds
+  `transactions.sets_balance` (the stored balance-set mark, kiko-domain's
+  "The manual boundary rule") and `holdings.balance_set_row_id` (the
+  current set's row) and, in the same transaction, points each holding at
+  its smallest-id row shaped like a balance-set row and dated at
+  `holdings.balance_set_at`, then marks that row (its doc comment is the
+  full statement). Additive only, so a crash rolls back to 0046 and retries
+  whole. `restore-snapshot.ts`'s `withLegacyBalanceSetMarksDerived` applies
+  the identical rule to a `.kiko` file whose rows carry no `setsBalance`
+  key, after the 0040 stray cleanup and before the import-time rezone — the
+  order a live device runs them. A two-path or migration test that reads
+  `holdings` from a database migrated only through an older tag selects
+  `columnsWithout(getTableColumns(holdings), 'balanceSetRowId')`
+  (`src/test-support/real-sqlite.ts`). Proven on both paths by
+  `drizzle/migrations/0047-add-sets-balance.test.ts` and
+  `restore-sets-balance.two-path.test.ts`.
+- **A flag whose work SQL cannot do follows the flag-plus-launch-step
+  shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
+  (`false`): re-costing a sale needs the BigInt decimal helpers, so the
+  JS pass `recostStoredLots` runs it once at app open (see "A launch step
+  cheap enough to run after the first paint" below). The next free
+  migration index is one past the last `idx` in
+  `drizzle/migrations/meta/_journal.json`; read it there.
 
 ## Hard rule: every write goes through `db.transaction()`
 
@@ -499,7 +523,7 @@ for its own read as above.
 
 **Never opt in a query that seeds a form or drives a write.** A write
 made while no subscriber of a key is mounted (the lot form's
-`holdingsRepo.update` while the holding form is closed) leaves that
+`holdingsRepo.changeLots` while the holding form is closed) leaves that
 key's entry one read old. A one-shot form seed (`hydrated` latch)
 reading it would latch the stale row, and Save would write it back over
 the newer one — this shipped as a data-loss bug (edit metal, cancel,
@@ -653,22 +677,25 @@ gate says there is nothing to do.
   `holdingsLoading || holdings.some((holding) => holding.type === 'loan')`
   (or the one displayed holding), so a metal- or property-only user never
   runs it. It never runs while `enabled` is `false`.
-- **The first add triggers the gated refresh**: creating the FIRST
-  metal/foreign-currency/crypto holding (`holding-form.screen.tsx`'s
-  manual create) or restoring a `.kiko` export (`importData`,
-  `src/data-transfer/import-data.ts`) triggers
-  `refreshMarketData({ throttled: false, metals: true, ... })`
-  (`src/sync/refresh-market-data/`) explicitly right after its own
-  write commits, since neither path runs through the sync fan-out that
-  otherwise triggers this — so the price/rate appears without an app
-  restart. Both underlying steps gate themselves, so this is a no-op
-  when neither is needed; `refreshMarketData` never rejects, and a
-  failure is only logged (`warnRefreshFailure`), never shown, so it
-  never turns a successful create/import into a shown error. `throttled:
-  false`: a manual create/import is a deliberate user action, not a
-  background poll, so it never reads the throttle cursor. An EDIT never
-  needs this trigger — a holding's type and currency are immutable once
-  created.
+- **The first add triggers the gated refresh**: a user's own holding
+  write that can change what is priced runs
+  `refreshAfterHoldingWrite(shares)` (`src/sync/refresh-after-holding-write/`)
+  right after the write commits. Rule: every user write that can add,
+  re-date, or re-source a priced holding or lot calls it, passing `shares`
+  when a share is involved. Find the current callers with
+  `git grep -n 'refreshAfterHoldingWrite(' src`.
+  It confirms an unconfirmed EODHD daily limit first when `shares` is
+  set, then calls `refreshMarketData({ throttled: false, metals: true,
+  shares })` (`src/sync/refresh-market-data/`). Restoring a `.kiko`
+  export (`importData`, `src/data-transfer/import-data.ts`) calls
+  `refreshMarketData` itself. None of these runs through the sync
+  fan-out that otherwise triggers this, so the price/rate appears without
+  an app restart. Every step gates itself, so this is a no-op when
+  nothing is needed; neither function rejects, and a failure is only
+  logged, never shown, so it never turns a successful save into a shown
+  error. `throttled: false`: the write is a deliberate user action, not
+  a background poll. Any other edit needs no trigger: a holding's type
+  and currency are immutable once created.
 - **Share price refresh**: `refreshSharePrices`
   (`src/prices/share-refresh/`) reads the active EODHD shares first; none →
   return with no Keychain read and no network. No saved key → return
@@ -1677,7 +1704,15 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   BOTH paths that can produce a row missing it — the migration path itself
   and the restore/import path (`restoreDataSnapshot`) — never only one.
   Follow the `balanceSetAt` / `loan_interest` re-seed precedent above for the
-  next such column.
+  next such column. `transactions.setsBalance` and
+  `holdings.balanceSetRowId` (migration 0047) follow it: a file whose
+  rows carry no `setsBalance` key gets the migration's own marks and
+  current-row ids (`withLegacyBalanceSetMarksDerived`); a row or holding
+  that carries its key restores it as exported, so a mark on a since
+  re-dated row survives an export round trip. Both fields ride inside their
+  `transactions`/`holdings` rows, so they need no `EXPORT_VERSION` change:
+  an older build ignores the keys (Drizzle inserts only its own schema's
+  columns), and this build derives them for an older file.
 - **A data-only cleanup migration follows the SAME two-path rule.**
   Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
   pre-existing stray create-time artifact (a term_deposit/bond holding whose
@@ -1736,6 +1771,20 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   rewrites an explicit `false` — a restore replaces the whole database,
   so there is no live device left to retry the rewrite on its own next
   launch, and the restored database must be final at once.
+- **A launch step cheap enough to run after the first paint is an
+  `AppRoot` effect, and its restore mirror is the same function called
+  from `importData`.** Migration 0048's flag (`settings.lotsRecosted`,
+  `false` by default) and `recostStoredLots` (`src/holdings/lot-recost/`,
+  kiko-pricing's "Stored lots are costed again once per device"):
+  `useLotRecost` runs it from an `AppRoot` effect in `App.tsx`, which fires
+  after the screens' own effects, so their first reads queue ahead of it on
+  op-sqlite's one worker thread; after the first run an open reads one
+  flag. The lots and the flag commit in ONE `write`, re-reading both inside
+  it, so a crash or a failed write leaves the flag unset and the next open
+  starts over; it never rejects (a failure is logged). A restore carries
+  no planner: a backup without the key restores the flag as `false`, and
+  `importData` awaits `recostStoredLots()` right after the restore, before
+  any screen reads the restored lots.
 - **A migration that reassigns rows between tables gets the SAME
   restore-side mirror, run FIRST.** Migration 0044 moves a 1.0-era `cash`
   holding in a crypto currency onto a `crypto_asset` holding under a
@@ -1821,13 +1870,14 @@ what a change must keep.
   file for signatures.
 - **Rules.** `src/reminders/rules/` is pure.
   `eligibleReminderKinds(account)` takes the account's `kind` and
-  `institution`: an import reminder is allowed on every BANK account
-  (`kind === 'bank'`), manual and synced (Monobank) ones and ones with
-  no import yet included (user decision 2026-09-30), and on no other
-  kind, since only a bank account has a statement import
+  `institution`: an import reminder is allowed on every BANK account no
+  sync owns (`kind === 'bank' && !isSyncedAccount(account)`, user
+  decision 2026-10-01), ones with no import yet included, and on no
+  other account, since only such an account takes a statement import
   (`account-detail.screen.tsx` shows Import and handles the
-  `importStatement` intent for `kind === 'bank'` only);
-  add-transactions reminders need a non-synced account of any kind.
+  `importStatement` intent only there, and `importRows` refuses a
+  synced account); add-transactions reminders need a non-synced account
+  of any kind.
   The scheduler's `isSchedulable` uses the same function (with
   `planInputsQuery`'s `accountKind` column, since that row's `kind` is
   the reminder's), so a reminder the page shows as unavailable is never
@@ -1842,19 +1892,20 @@ what a change must keep.
   typed text), not from the validated interval, so the unit agrees with
   what the user typed even out of range. The page
   lists eligible kinds plus any saved kind that is no longer eligible.
-  Only an add-transactions reminder can be unavailable (on a synced
-  account); its row shows `reminders.unavailable.addTransactions`. An
-  import reminder is never unavailable: it is offered only on a bank
-  account, and an account's kind is read-only after creation. A synced
-  account that is not a bank (Binance, a BTC wallet) has no eligible
+  A saved reminder on a synced account is unavailable, of either kind;
+  `reminder-row.component.tsx`'s `unavailableCaption` shows
+  `reminders.unavailable.statementImport` or
+  `reminders.unavailable.addTransactions` per kind. A synced account of
+  any kind (a Monobank bank, Binance, a BTC wallet) has no eligible
   kind; with no saved reminder either, its page shows the caption
   `reminders.emptyNoKinds` instead of rows.
-- **Summary.** `describeSchedule(schedule, t, firstDay)`
+- **Summary.** `describeSchedule(schedule, t, firstDay, clock)`
   (`src/reminders/schedule/describe-schedule.ts`) reads the time on the
-  24-hour clock. The uk preposition comes from `{{at}}`:
-  `reminders.schedule.atEleven` ('об') for 11:00-11:59 ONLY, and
-  `reminders.schedule.at` ('о') for every other hour, 23:xx and 1:xx
-  included (a user ruling). en has both keys as 'at'.
+  device's clock (`clock` from `useTimeClock`; see "Time of day" in
+  kiko-translator). The uk preposition comes from `{{at}}` and follows the
+  hour as shown (`hourOnClock`), choosing between `reminders.schedule.at`
+  and `reminders.schedule.atEleven`; the uk "о"/"об" rule itself lives in
+  kiko-translator ("Time of day") — read it there.
 - **Shared system status.** Any cached OS/system status (a permission,
   a sync status) that several screens show lives in ONE module store
   (`useSyncExternalStore`; see `src/monobank/sync-status/`,
@@ -2094,6 +2145,17 @@ in memory for the crash history this fixed.
   `reminders-native.lazy-load.test.ts` proves the lazy load, and the Semgrep
   rule `kiko-no-native-reminders-module-import` (`rules/semgrep-prewrite.yml`)
   denies any other value import, re-export, `require`, or dynamic `import()`.
+- **`KikoReminders` is the app's one TurboModule, so it also carries the one
+  non-reminder read: `uses24HourClock()`.** A SYNCHRONOUS method (spec
+  `NativeKikoReminders.ts`, `- (NSNumber *)uses24HourClock` in
+  `RCTKikoReminders.mm`): the iOS 24-Hour Time setting, read as "the `j`
+  hour skeleton of `[NSLocale autoupdatingCurrentLocale]` has no `a`".
+  Only `useTimeClock` (`src/i18n/use-time-clock/`) calls it, through
+  `remindersNative.uses24HourClock`, which throws where the module is
+  missing; the hook falls back then (en 12-hour, uk 24-hour). A new method
+  on the spec changes codegen: run `make pods` and commit
+  `ios/Podfile.lock` with the spec when it changes. The global jest mock
+  (`jest/setup.js`) returns `true`.
 - **An ObjC++ (`.mm`) file that imports `Kiko-Swift.h` must first import
   every framework the app target's `@objc` Swift classes use.** Xcode's
   generated `Kiko-Swift.h` declares EVERY `@objc` class in the app target,

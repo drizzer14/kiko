@@ -220,15 +220,12 @@ type ImportTransactionOptions = {
 };
 
 /** The rows one fake `select(fields).from(table).where(...)` resolves to,
- * dispatched by table identity — and, for the two no-`.limit()` `transactions`
- * reads (the sync-boundary aggregate vs. a conflict-key probe), by the
- * PROJECTED field set (`{ time }` vs one that carries `externalId`, answered
- * with every stored row's own projected columns), since both share the same
- * table identity. The post-closing `{ net }` sum answers empty, so it reads
- * 0. The "time" read mirrors the REAL query's
- * own sync-source filter (`source NOT IN ('manual', 'import')`) — the
- * hand-set boundary source comes back separately, straight off
- * `opts.holding.balanceSetAt`. */
+ * dispatched by table identity — and, for the no-`.limit()` `transactions`
+ * reads, by the PROJECTED field set: a conflict-key probe carries
+ * `externalId` and is answered with every stored row's own projected columns;
+ * the post-closing `{ net }` sum and the synced-row read answer empty. The
+ * holding read's `newestSyncTime` mirrors the REAL subquery's own sync-source
+ * filter (`source NOT IN ('manual', 'import')`). */
 const resolveImportSelect = (
   options: ImportTransactionOptions,
   table: unknown,
@@ -239,7 +236,12 @@ const resolveImportSelect = (
   }
 
   if (table === holdings) {
-    return options.holding ? [options.holding] : [];
+    const syncTimes = options.store.transactions
+      .filter((row) => row.source !== 'manual' && row.source !== 'import')
+      .map((row) => row.time);
+    const newestSyncTime = syncTimes.length > 0 ? Math.max(...syncTimes) : null;
+
+    return options.holding ? [{ ...options.holding, newestSyncTime }] : [];
   }
 
   if (table === accounts) {
@@ -250,14 +252,6 @@ const resolveImportSelect = (
     return options.store.transactions.map((row) =>
       Object.fromEntries(Object.keys(fields).map((field) => [field, row[field]])),
     );
-  }
-
-  if (table === transactions && fields && 'time' in fields) {
-    const syncTimes = options.store.transactions
-      .filter((row) => row.source !== 'manual' && row.source !== 'import')
-      .map((row) => row.time);
-
-    return syncTimes.length > 0 ? [{ time: Math.max(...syncTimes) }] : [{ time: null }];
   }
 
   return [];
@@ -482,6 +476,7 @@ describe('importStatement', () => {
           minute: 0,
           second: 0,
         }),
+        balanceSetRowId: null,
       });
     });
   });
@@ -560,7 +555,7 @@ describe('importStatement', () => {
   // `guardedNetWorth` (the Home net-worth path) read
   // `holding.balanceMinorUnits` verbatim (`holding-value.ts` `flat()`), so
   // proving the repo's write here is the same proof for Home.
-  describe('balance write (net of genuinely new rows at/after the boundary, plus the closing-balance override)', () => {
+  describe('balance write (net of genuinely new rows after the boundary, plus the closing-balance override)', () => {
     // Ukrsibbank business CSV carries no closing balance at all (its own
     // format doc comment; see `ParsedStatement.closingBalance`), so this
     // isolates the boundary's plain net-delta arithmetic with no closing-balance
@@ -633,10 +628,13 @@ describe('importStatement', () => {
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 10_000_000,
         balanceSetAt: 1_683_901_836_000,
+        balanceSetRowId: null,
       });
     });
 
-    it('never moves a SYNCED holding’s balance, even though its new rows still import', async () => {
+    // The sync already writes every row under its own source; the same rows
+    // under the import source would be a second, undeletable copy.
+    it('refuses to import into an account a bank sync owns, writing nothing', async () => {
       const store: { transactions: StoredRow[] } = { transactions: [] };
       const holding = defaultHolding({
         balanceMinorUnits: 0,
@@ -649,11 +647,10 @@ describe('importStatement', () => {
       });
       mockDatabaseTransaction = databaseTransaction;
 
-      const result = await importStatement(monobankInput, 'holding-1');
-
-      expect(result.imported).toBe(4);
-      expect(store.transactions).toHaveLength(4);
-      // The sync pipeline stays the sole owner of this holding's balance.
+      await expect(importStatement(monobankInput, 'holding-1')).rejects.toThrow(
+        'statement-import/synced-account',
+      );
+      expect(store.transactions).toHaveLength(0);
       expect(captured.holdingSet).toBeUndefined();
     });
 
@@ -700,6 +697,7 @@ describe('importStatement', () => {
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 10_000_000,
         balanceSetAt: 1_683_901_836_000,
+        balanceSetRowId: null,
       });
     });
 
@@ -959,6 +957,60 @@ describe('importParsedStatement runs the loan auto-link matcher', () => {
     await importParsedStatement(parsed, 'holding-1');
 
     expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('importParsedStatement hands each row its time reading', () => {
+  it("passes each row's own reading and stores no reading column", async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    const { databaseTransaction } = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    const importRows = jest.spyOn(transactionsRepo, 'importRows');
+    const parsed = {
+      formatId: 'sensebank-csv' as const,
+      account: { currency: 'UAH' as const },
+      transactions: [
+        {
+          currency: 'UAH' as const,
+          amountMinorUnits: -1_000,
+          timeSeconds: 1_700_000_040,
+          timeReading: { kind: 'minute' as const },
+          description: 'Coffee',
+        },
+        {
+          currency: 'UAH' as const,
+          amountMinorUnits: -2_000,
+          timeSeconds: 1_700_000_100,
+          description: 'Lunch',
+        },
+        {
+          currency: 'UAH' as const,
+          amountMinorUnits: -3_000,
+          timeSeconds: 1_700_043_200,
+          timeReading: {
+            kind: 'day' as const,
+            fromSeconds: 1_700_000_000,
+            untilSeconds: 1_700_086_400,
+          },
+          description: 'Market',
+        },
+      ],
+    };
+
+    await importParsedStatement(parsed, 'holding-1');
+
+    expect(importRows.mock.calls[0][0].rows.map((row) => row.timeReading)).toEqual([
+      { kind: 'minute' },
+      undefined,
+      { kind: 'day', fromSeconds: 1_700_000_000, untilSeconds: 1_700_086_400 },
+    ]);
+    expect(store.transactions.every((row) => !('timeReading' in row))).toBe(true);
+
+    importRows.mockRestore();
   });
 });
 

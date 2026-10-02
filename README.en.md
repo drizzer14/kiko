@@ -12,7 +12,8 @@ account, and no tracking.
   across banks, cash, and crypto in a single view.
 - **Monobank sync.** Pull your Monobank balance and statements with your
   personal API token.
-- **Binance sync.** Read your Binance spot balances with a read-only API key
+- **Binance sync.** Read your Binance balances (spot, funding, Simple Earn) and
+  deposit/withdrawal history with a read-only API key
   (requests are HMAC-signed on-device).
 - **Bitcoin on-chain.** Add a Bitcoin address and Kiko reads its balance from a
   public block explorer (Blockstream).

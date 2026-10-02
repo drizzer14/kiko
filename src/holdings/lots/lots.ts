@@ -1,3 +1,4 @@
+import { isRecord } from '@kiko/type-guards';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { addDecimal, compareDecimal } from '@kiko/currency/decimal';
 
@@ -26,9 +27,6 @@ export type Lot = {
 // normalization, unsigned only), a stored `quantityDelta` is a SIGNED
 // decimal — a sale's delta is negative — so this validator accepts a sign.
 const SIGNED_DECIMAL_PATTERN = /^-?\d+(\.\d+)?$/;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
 
 const asLot = (value: unknown): Lot | null => {
   if (!isRecord(value)) {
@@ -79,36 +77,6 @@ export const quantityAt = (lots: readonly Lot[], instant: number): string => {
     .reduce((sum, lot) => addDecimal(sum, lot.quantityDelta), '0');
 
   return compareDecimal(total, '0') < 0 ? '0' : total;
-};
-
-/**
- * The most a sell dated `instant`'s LOCAL calendar day may take: the LOWEST
- * running quantity from that day onward — held on the day itself, then after
- * each later lot in day order. A backdated sell must leave enough for every
- * sell already recorded after it, or the quantity on that later day would go
- * negative. Clamped to never go below `"0"`, like `quantityAt`.
- */
-export const sellableQuantityAt = (lots: readonly Lot[], instant: number): string => {
-  const day = dayKeyOf(instant);
-  const heldOnDay = lots
-    .filter((lot) => lot.day <= day)
-    .reduce((sum, lot) => addDecimal(sum, lot.quantityDelta), '0');
-  const { lowest } = lots
-    .filter((lot) => lot.day > day)
-    .sort((first, second) => first.day - second.day)
-    .reduce(
-      (state, lot) => {
-        const running = addDecimal(state.running, lot.quantityDelta);
-
-        return {
-          running,
-          lowest: compareDecimal(running, state.lowest) < 0 ? running : state.lowest,
-        };
-      },
-      { running: heldOnDay, lowest: heldOnDay },
-    );
-
-  return compareDecimal(lowest, '0') < 0 ? '0' : lowest;
 };
 
 /**

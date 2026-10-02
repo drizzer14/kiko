@@ -36,6 +36,11 @@ export type CurrencyFieldProps = {
   required?: boolean;
   /** Read-only: the trigger is inert and dimmed, no sheet opens. Defaults to false. */
   disabled?: boolean;
+  /**
+   * Same contract as every other field: FieldTrigger renders this under the
+   * field (reflow, not reserve) and tints the label negative.
+   */
+  error?: string;
   /** testID for the trigger, so a flow can open the sheet. */
   testID?: string;
   /**

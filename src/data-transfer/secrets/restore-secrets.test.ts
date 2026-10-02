@@ -13,6 +13,13 @@ jest.mock('@kiko/prices/eodhd-key/eodhd-key', () => ({
   saveEodhdKey: (key: string) => mockSaveEodhdKey(key),
 }));
 
+// The quota a restored key starts with is pinned against real SQLite in
+// `restore-secrets.quote-quota.test.ts`.
+const mockUpdateQuoteQuota = jest.fn();
+jest.mock('@kiko/settings', () => ({
+  settingsRepo: { updateQuoteQuota: (build: unknown) => mockUpdateQuoteQuota(build) },
+}));
+
 // Mocked defensively even though `restore-secrets.ts` must never import this
 // module at all — if a future edit adds a `storeDbKey(...)` call, THIS mock
 // is what makes the "never restores the DB key" test below able to fail.

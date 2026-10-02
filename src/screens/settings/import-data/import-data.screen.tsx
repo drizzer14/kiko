@@ -229,9 +229,8 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
               placeholder={t('settings.dataImport.keyPlaceholder')}
               pasteAccessibilityLabel={t('settings.dataImport.pasteKey')}
               secureTextEntry
+              error={keyTooShortError ? t('settings.dataImport.keyTooShortError') : undefined}
             />
-
-            {keyTooShortError && <FieldError message={t('settings.dataImport.keyTooShortError')} />}
           </Box>
         </Card>
 

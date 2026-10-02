@@ -2,8 +2,17 @@ import { ScrollView } from 'react-native';
 import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 
 import CategoryField from './category-field.component';
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 // The element type RNTL's own queries return (its bundled test-renderer
 // TestInstance), derived from the query signature so no react-test-renderer
@@ -79,6 +88,23 @@ describe('CategoryField', () => {
     );
 
     expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('shows its error directly under the field and turns the label red', async () => {
+    const { getByTestId } = await render(
+      <CategoryField
+        label="Category"
+        sheetTitle="Select a Category"
+        options={OPTIONS}
+        selectedKey={null}
+        onSelect={jest.fn()}
+        error="Select a category."
+        testID="category-field"
+      />,
+    );
+
+    expect(getByTestId('category-field-error')).toHaveTextContent('Select a category.');
+    expect(isLabelInvalid(mockFieldLabel, 'Category')).toBe(true);
   });
 
   it('shows sheetTitle, not label, as the sheet header', async () => {

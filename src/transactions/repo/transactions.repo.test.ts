@@ -14,7 +14,6 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
-import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
@@ -23,6 +22,15 @@ import { renderCondition } from '@kiko/db/render-condition-test-helper';
 import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
 
 import { transactionsRepo } from './transactions.repo';
+
+// The holding row a balance move reads, with no boundary set: every manual
+// write moves the balance (transactions.repo.balance-boundary.test.ts covers a
+// set boundary on a real engine).
+const unanchoredBalance = (balanceMinorUnits: number) => ({
+  balanceMinorUnits,
+  balanceSetAt: null,
+  newestSyncTime: null,
+});
 
 // Build a fake transaction handle for `update`. `select(...).from(...).where
 // (...).limit(...)` resolves the queued rows in call order (first the existing
@@ -41,7 +49,7 @@ const makeUpdateDatabaseTransaction = (options: {
 } => {
   const selectQueue: unknown[][] = [
     options.existing ? [options.existing] : [],
-    [{ balanceMinorUnits: options.holdingBalance }],
+    [unanchoredBalance(options.holdingBalance)],
   ];
   const captured: {
     transactionSet?: Record<string, unknown>;
@@ -248,7 +256,7 @@ describe('transactionsRepo', () => {
       }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 5000 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(5000)]) }),
         }),
       }),
       update: () => ({
@@ -290,7 +298,7 @@ describe('transactionsRepo', () => {
       }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 5000 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(5000)]) }),
         }),
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
@@ -319,7 +327,7 @@ describe('transactionsRepo', () => {
       }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 5000 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(5000)]) }),
         }),
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
@@ -336,7 +344,12 @@ describe('transactionsRepo', () => {
 
   it('updates a manual transaction and moves the balance by the amount delta when it grows', async () => {
     const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
-      existing: { holdingId: 'hold-1', amountMinorUnits: 1000, source: 'manual' },
+      existing: {
+        holdingId: 'hold-1',
+        amountMinorUnits: 1000,
+        source: 'manual',
+        setsBalance: false,
+      },
       holdingBalance: 5000,
     });
     mockDatabaseTransaction = databaseTransaction;
@@ -359,7 +372,12 @@ describe('transactionsRepo', () => {
 
   it('updates a manual transaction and moves the balance by the amount delta when it shrinks', async () => {
     const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
-      existing: { holdingId: 'hold-1', amountMinorUnits: 3000, source: 'manual' },
+      existing: {
+        holdingId: 'hold-1',
+        amountMinorUnits: 3000,
+        source: 'manual',
+        setsBalance: false,
+      },
       holdingBalance: 5000,
     });
     mockDatabaseTransaction = databaseTransaction;
@@ -377,7 +395,12 @@ describe('transactionsRepo', () => {
 
   it('leaves the balance untouched when only the description changes (amount unchanged)', async () => {
     const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
-      existing: { holdingId: 'hold-1', amountMinorUnits: 1000, source: 'manual' },
+      existing: {
+        holdingId: 'hold-1',
+        amountMinorUnits: 1000,
+        source: 'manual',
+        setsBalance: false,
+      },
       holdingBalance: 5000,
     });
     mockDatabaseTransaction = databaseTransaction;
@@ -397,7 +420,12 @@ describe('transactionsRepo', () => {
 
   it('never updates a synced (monobank) transaction and never moves the balance', async () => {
     const { databaseTransaction, captured } = makeUpdateDatabaseTransaction({
-      existing: { holdingId: 'hold-1', amountMinorUnits: 1000, source: 'monobank' },
+      existing: {
+        holdingId: 'hold-1',
+        amountMinorUnits: 1000,
+        source: 'monobank',
+        setsBalance: false,
+      },
       holdingBalance: 5000,
     });
     mockDatabaseTransaction = databaseTransaction;
@@ -453,7 +481,13 @@ const makeRemoveDatabaseTransaction = (options: {
   };
   const databaseTransaction = {
     select: () => ({
-      from: () => ({ where: () => Promise.resolve(selectQueue.shift() ?? []) }),
+      from: () => ({
+        where: () => {
+          const rows = selectQueue.shift() ?? [];
+
+          return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
+        },
+      }),
     }),
     delete: (table: unknown) => {
       captured.deletedFrom.push(table);
@@ -844,10 +878,11 @@ describe('transactionsRepo.addManyDedup chunking', () => {
 
     const insertStatements = statements.filter((statement) => statement.sql.startsWith('insert'));
     // id + the 11 NewTransaction fields set on every row above, plus
-    // `loanLinkRejected` — a NOT NULL column with a default, so Drizzle binds
-    // its default value as a real param instead of emitting a literal SQL
-    // `null` the way it does for the other omitted (nullable) columns.
-    const paramsPerRow = 13;
+    // `loanLinkRejected` and `setsBalance` — NOT NULL columns with a default,
+    // so Drizzle binds each default value as a real param instead of emitting
+    // a literal SQL `null` the way it does for the other omitted (nullable)
+    // columns.
+    const paramsPerRow = 14;
     expect(insertStatements.length).toBeGreaterThan(1);
     expect(insertStatements.reduce((sum, statement) => sum + statement.params.length, 0)).toBe(
       rowCount * paramsPerRow,
@@ -1403,8 +1438,9 @@ describe('transactionsRepo.remove', () => {
         holdingId: 'hold-1',
         amountMinorUnits: 2500,
         source: 'manual',
+        setsBalance: false,
       },
-      holding: { id: 'hold-1', balanceMinorUnits: 102500 },
+      holding: unanchoredBalance(102500),
     });
     mockDatabaseTransaction = databaseTransaction;
 
@@ -1421,8 +1457,9 @@ describe('transactionsRepo.remove', () => {
         holdingId: 'hold-1',
         amountMinorUnits: -1000,
         source: 'manual',
+        setsBalance: false,
       },
-      holding: { id: 'hold-1', balanceMinorUnits: 4000 },
+      holding: unanchoredBalance(4000),
     });
     mockDatabaseTransaction = databaseTransaction;
 
@@ -1439,8 +1476,9 @@ describe('transactionsRepo.remove', () => {
         holdingId: 'hold-1',
         amountMinorUnits: 2500,
         source: 'monobank',
+        setsBalance: false,
       },
-      holding: { id: 'hold-1', balanceMinorUnits: 102500 },
+      holding: unanchoredBalance(102500),
     });
     mockDatabaseTransaction = databaseTransaction;
 
@@ -1527,8 +1565,8 @@ const makeExchangeDatabaseTransaction = (
 describe('transactionsRepo.recordExchange', () => {
   it('writes both legs as independent ledger rows and updates both balances for a plain destination', async () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
-      [{ balanceMinorUnits: 10_000 }],
-      [{ balanceMinorUnits: 2_000 }],
+      [unanchoredBalance(10_000)],
+      [unanchoredBalance(2_000)],
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -1571,7 +1609,7 @@ describe('transactionsRepo.recordExchange', () => {
 
   it('routes a term_deposit destination through a contribution metadata rewrite, not a second ledger row', async () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
-      [{ balanceMinorUnits: 10_000 }],
+      [unanchoredBalance(10_000)],
       [{ type: 'term_deposit', metadata: depositMeta }],
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1636,9 +1674,7 @@ describe('transactionsRepo.recordExchange', () => {
   });
 
   it('rejects an excluded destination type (bond/jar)', async () => {
-    const { databaseTransaction } = makeExchangeDatabaseTransaction([
-      [{ balanceMinorUnits: 10_000 }],
-    ]);
+    const { databaseTransaction } = makeExchangeDatabaseTransaction([[unanchoredBalance(10_000)]]);
     mockDatabaseTransaction = databaseTransaction;
 
     await expect(
@@ -1672,7 +1708,7 @@ describe('transactionsRepo.recordExchange', () => {
               throw new Error('forced destination failure');
             }
 
-            return { limit: () => Promise.resolve([{ balanceMinorUnits: 10_000 }]) };
+            return { limit: () => Promise.resolve([unanchoredBalance(10_000)]) };
           },
         }),
       }),
@@ -1714,7 +1750,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 2_000 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(2_000)]) }),
         }),
       }),
       update: (table: unknown) => ({
@@ -1764,7 +1800,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 5_000 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(5_000)]) }),
         }),
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
@@ -1802,7 +1838,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
       [{ accountId: 'acc-dst', metadata: null }], // the counterpart's own holding, read by the synced guard
       [{ institution: null }], // the counterpart's own account, read by the synced guard
-      [{ balanceMinorUnits: 2_000 }], // the new leg's balance read
+      [unanchoredBalance(2_000)], // the new leg's balance read
       [{ source: 'manual' }], // the existing row, read INSIDE the transaction
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1827,7 +1863,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
       [{ accountId: 'acc-dst', metadata: null }], // the counterpart's own holding, read by the synced guard
       [{ institution: null }], // the counterpart's own account, read by the synced guard
-      [{ balanceMinorUnits: 2_000 }],
+      [unanchoredBalance(2_000)],
       [{ source: 'monobank' }],
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1877,7 +1913,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       insert: () => ({ values: () => Promise.resolve() }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 0 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(0)]) }),
         }),
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
@@ -1901,7 +1937,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       insert: () => ({ values: () => Promise.resolve() }),
       select: () => ({
         from: () => ({
-          where: () => ({ limit: () => Promise.resolve([{ balanceMinorUnits: 0 }]) }),
+          where: () => ({ limit: () => Promise.resolve([unanchoredBalance(0)]) }),
         }),
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
@@ -1950,9 +1986,9 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 describe('transactionsRepo.recordManualWithReturns', () => {
   it('writes the payment + N return rows sharing ONE changeGroupId in one transaction', async () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
-      [{ balanceMinorUnits: 50_000 }], // payer balance read
-      [{ balanceMinorUnits: 1_000 }], // return holding B balance read
-      [{ balanceMinorUnits: 2_000 }], // return holding C balance read
+      [unanchoredBalance(50_000)], // payer balance read
+      [unanchoredBalance(1_000)], // return holding B balance read
+      [unanchoredBalance(2_000)], // return holding C balance read
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -2006,7 +2042,7 @@ describe('transactionsRepo.recordManualWithReturns', () => {
 
   it('writes only the payment row when there are no returns', async () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
-      [{ balanceMinorUnits: 50_000 }],
+      [unanchoredBalance(50_000)],
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -2024,16 +2060,15 @@ describe('transactionsRepo.recordManualWithReturns', () => {
 });
 
 // A minimal fake for `importRows`: dispatches every `select` by the table it
-// targets, distinguishing the two no-`.limit()` `transactions` reads (the
-// sync-boundary aggregate vs. the dedup partition probe) by the PROJECTED
-// field set `select(fields)` is called with — `{ time }` for the aggregate,
-// `{ source, externalId }` for the probe — since both share the same table
-// identity and neither chains `.limit()`. `holdings`/`accounts` reads chain
+// targets, distinguishing the no-`.limit()` `transactions` reads (the
+// post-closing `{ net }` sum, the synced-row read, which answers none, and
+// the dedup partition probe) by the PROJECTED field set `select(fields)` is
+// called with, since they share the same table identity and none chains
+// `.limit()`. `holdings`/`accounts` reads chain
 // `.limit(1)`; every read here resolves either way, mirroring
-// `makeExchangeDatabaseTransaction`'s dual-calling-convention trick. `syncBoundaryTime`
-// answers the sync-source aggregate (boundary source (b)) — the hand-set
-// boundary (source (a)) comes straight off `holding.balanceSetAt` instead,
-// no separate query.
+// `makeExchangeDatabaseTransaction`'s dual-calling-convention trick.
+// `syncBoundaryTime` answers the holding read's `newestSyncTime` (boundary
+// source (b)); the hand-set boundary (source (a)) is `holding.balanceSetAt`.
 //
 // Review follow-up: `import-statement.test.ts` has its own, similarly-shaped
 // `makeImportDatabaseTransaction` — deliberately NOT shared with this one. That file's fake
@@ -2065,7 +2100,9 @@ const resolveImportRowsSelect = (
   }
 
   if (table === holdings) {
-    return options.holding ? [options.holding] : [];
+    return options.holding
+      ? [{ ...options.holding, newestSyncTime: options.syncBoundaryTime ?? null }]
+      : [];
   }
 
   if (table === accounts) {
@@ -2076,10 +2113,8 @@ const resolveImportRowsSelect = (
     return [{ net: options.existingPostClosingNetMinorUnits ?? 0 }];
   }
 
-  if (table === transactions && fields && 'time' in fields) {
-    const time = options.syncBoundaryTime;
-
-    return foldMap(maybe(time), (found) => [{ time: found }]) ?? [];
+  if (table === transactions && fields && !('externalId' in fields)) {
+    return [];
   }
 
   return options.existing ?? [];
@@ -2087,8 +2122,11 @@ const resolveImportRowsSelect = (
 
 const makeImportRowsDatabaseTransaction = (
   options: ImportRowsTransactionOptions,
-): { databaseTransaction: unknown; captured: { holdingSet?: Record<string, unknown> } } => {
-  const captured: { holdingSet?: Record<string, unknown> } = {};
+): {
+  databaseTransaction: unknown;
+  captured: { holdingSet?: Record<string, unknown>; inserted?: unknown[] };
+} => {
+  const captured: { holdingSet?: Record<string, unknown>; inserted?: unknown[] } = {};
   const resolveRows = (rows: unknown[]) =>
     Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
@@ -2099,7 +2137,11 @@ const makeImportRowsDatabaseTransaction = (
       }),
     }),
     insert: () => ({
-      values: () => ({ onConflictDoUpdate: async () => undefined }),
+      values: (values: unknown[]) => {
+        captured.inserted = (captured.inserted ?? []).concat(values);
+
+        return { onConflictDoUpdate: async () => undefined };
+      },
     }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
@@ -2245,10 +2287,11 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: -50_000,
       balanceSetAt: 2_000,
+      balanceSetRowId: null,
     });
   });
 
-  it('ignores an OLDER closing balance and adds the net of new rows instead, when the rows themselves are AT/AFTER the boundary', async () => {
+  it('ignores an OLDER closing balance and adds the net of new rows instead, when the rows themselves are AFTER the boundary', async () => {
     const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
@@ -2259,7 +2302,7 @@ describe('transactionsRepo.importRows', () => {
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [
-        // The row's own time (6_000) is AT/AFTER the boundary (5_000), so it
+        // The row's own time (6_000) is AFTER the boundary (5_000), so it
         // is "current" and its full amount is added — this test isolates "an
         // older closing balance is ignored" from the separate history-row
         // rule (covered by its own tests below).
@@ -2290,23 +2333,25 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({ balanceMinorUnits: -6_000 });
   });
 
-  it('never moves a SYNCED holding’s balance, even with new rows and a fresh closing balance', async () => {
+  it.each([
+    ['a synced holding', { monobankId: 'mono-1' }],
+    ['a hand-added holding', null],
+  ])('refuses %s in an account a bank sync owns, writing nothing', async (_name, metadata) => {
     const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
-      holding: { ...baseHolding, metadata: { monobankId: 'mono-1' } },
+      holding: { ...baseHolding, metadata },
       account: { institution: 'monobank' },
       syncBoundaryTime: 1,
     });
     mockDatabaseTransaction = databaseTransaction;
 
-    const imported = await transactionsRepo.importRows({
-      holdingId: 'hold-1',
-      rows: [{ holdingId: 'hold-1', amountMinorUnits: -1_000, time: 2, source: 'import' }],
-      closingBalance: { minorUnits: -777_777, currency: 'UAH', asOfSeconds: 2 },
-    });
-
-    // The rows still import (they're real ledger history), but the sync
-    // pipeline stays the sole owner of this holding's displayed balance.
-    expect(imported).toBe(1);
+    await expect(
+      transactionsRepo.importRows({
+        holdingId: 'hold-1',
+        rows: [{ holdingId: 'hold-1', amountMinorUnits: -1_000, time: 2, source: 'import' }],
+        closingBalance: { minorUnits: -777_777, currency: 'UAH', asOfSeconds: 2 },
+      }),
+    ).rejects.toThrow('statement-import/synced-account');
+    expect(captured.inserted).toBeUndefined();
     expect(captured.holdingSet).toBeUndefined();
   });
 
@@ -2331,6 +2376,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: -5_000,
       balanceSetAt: 1_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2357,6 +2403,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: -50_000,
       balanceSetAt: 2_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2384,7 +2431,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toBeUndefined();
   });
 
-  it('moves the balance by only the rows AT/AFTER the boundary, when a batch mixes history and current rows', async () => {
+  it('moves the balance by only the rows AFTER the boundary, when a batch mixes history and current rows', async () => {
     const { databaseTransaction, captured } = makeImportRowsDatabaseTransaction({
       holding: { ...baseHolding, balanceMinorUnits: -5_000 },
       account: unsyncedAccount,
@@ -2396,14 +2443,14 @@ describe('transactionsRepo.importRows', () => {
       holdingId: 'hold-1',
       rows: [
         { holdingId: 'hold-1', amountMinorUnits: -1_000, time: 1_000, source: 'import' }, // history: +0
-        { holdingId: 'hold-1', amountMinorUnits: -2_000, time: 5_000, source: 'import' }, // AT the boundary: counts
+        { holdingId: 'hold-1', amountMinorUnits: -2_000, time: 5_000, source: 'import' }, // AT the boundary: history
         { holdingId: 'hold-1', amountMinorUnits: -3_000, time: 6_000, source: 'import' }, // after: counts
       ],
     });
 
-    // base -5_000 + (-2_000 + -3_000) = -10_000; the 1_000-dated row's
-    // -1_000 is excluded as history.
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -10_000 });
+    // base -5_000 + -3_000 = -8_000; the rows at and before the boundary
+    // belong to the balance it already set.
+    expect(captured.holdingSet).toEqual({ balanceMinorUnits: -8_000 });
   });
 
   it('adds the net of new rows dated AFTER the closing balance’s own as-of, on top of the closing balance itself', async () => {
@@ -2431,6 +2478,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: -5_300,
       balanceSetAt: 1_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2454,6 +2502,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: 970_000,
       balanceSetAt: 2_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2475,6 +2524,7 @@ describe('transactionsRepo.importRows', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: 970_000,
       balanceSetAt: 2_000,
+      balanceSetRowId: null,
     });
   });
 
@@ -2620,6 +2670,7 @@ describe('transactionsRepo.importRows', () => {
       expect(captured.holdingSet).toEqual({
         balanceMinorUnits: 12_345,
         balanceSetAt: HAND_SET_TIME + 1,
+        balanceSetRowId: null,
       });
     });
 
@@ -2697,37 +2748,31 @@ type OrderedImportTransactionOptions = {
 };
 
 /** Mirrors `resolveImportRowsSelect`/`resolveImportSelect` in the sibling
- * fakes above and in `import-statement.test.ts`: dispatch by table identity,
- * and — for the two no-`.limit()` `transactions` reads sharing that table —
- * by the PROJECTED field set. Pulled out of the closure below purely to
- * stay under Biome's cognitive-complexity cap. The "time" read mirrors the
- * REAL query's own sync-source filter (`source NOT IN ('manual', 'import')`)
- * — the store's `manual`/`import`-sourced rows must NOT surface here, only a
- * sync row does; the hand-set boundary source comes back separately,
- * straight off `opts.holding.balanceSetAt`. */
+ * fakes above and in `import-statement.test.ts`: dispatch by table identity.
+ * Pulled out of the closure below purely to stay under Biome's
+ * cognitive-complexity cap. The holding read's `newestSyncTime` mirrors the
+ * REAL subquery's own sync-source filter (`source NOT IN ('manual', 'import')`)
+ * — the store's `manual`/`import`-sourced rows must NOT surface there, only a
+ * sync row does. */
 const resolveOrderedSelect = (
   options: OrderedImportTransactionOptions,
   table: unknown,
-  fields: Record<string, unknown> | undefined,
 ): unknown[] => {
   if (table === categoryOverrides) {
     return [];
   }
 
   if (table === holdings) {
-    return [options.holding];
+    const syncTimes = options.store
+      .filter((row) => row.source !== 'manual' && row.source !== 'import')
+      .map((row) => row.time);
+    const newestSyncTime = syncTimes.length > 0 ? Math.max(...syncTimes) : null;
+
+    return [{ ...options.holding, newestSyncTime }];
   }
 
   if (table === accounts) {
     return [options.account];
-  }
-
-  if (table === transactions && fields && 'time' in fields) {
-    const syncTimes = options.store
-      .filter((row) => row.source !== 'manual' && row.source !== 'import')
-      .map((row) => row.time);
-
-    return syncTimes.length > 0 ? [{ time: Math.max(...syncTimes) }] : [{ time: null }];
   }
 
   return options.store.map((row) => ({ source: row.source, externalId: row.externalId }));
@@ -2738,9 +2783,9 @@ const makeOrderedImportDatabaseTransaction = (options: OrderedImportTransactionO
     Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
   return {
-    select: (fields?: Record<string, unknown>) => ({
+    select: () => ({
       from: (table: unknown) => ({
-        where: () => resolveRows(resolveOrderedSelect(options, table, fields)),
+        where: () => resolveRows(resolveOrderedSelect(options, table)),
       }),
     }),
     insert: () => ({

@@ -32,6 +32,7 @@ const CategoryField = ({
   selectedKey,
   onSelect,
   required,
+  error,
   testID,
 }: CategoryFieldProps): ReactElement => {
   const { t } = useTranslation();
@@ -90,6 +91,7 @@ const CategoryField = ({
       <FieldTrigger
         label={label}
         required={required}
+        error={error}
         testID={testID}
         onPress={() => setOpen(true)}
         icon={selected?.icon ?? PLACEHOLDER_ICON}

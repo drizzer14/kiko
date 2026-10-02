@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { Alert } from 'react-native';
 import { readFileSync } from 'node:fs';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
@@ -706,6 +707,82 @@ describe('ColumnMappingScreen', () => {
         descriptionColumn: 1,
       }),
     );
+  });
+
+  // The mapping is a convenience for next time; the import itself already
+  // committed, so a failed save must not report the import as failed.
+  it('keeps a successful import shown as done when saving the mapping fails', async () => {
+    const alert = jest.spyOn(Alert, 'alert');
+    mockSaveStatementMapping.mockRejectedValue(new Error('disk full'));
+
+    const view = await renderMonobankImportSuccess();
+
+    await waitFor(() => expect(mockSaveStatementMapping).toHaveBeenCalledTimes(1));
+    expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy();
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  describe('the fixed currency', () => {
+    const usdHolding: Holding = { id: 'h2', name: 'Dollar card', accountId: 'a', currency: 'USD' };
+    const importedCurrency = (): string =>
+      mockImportParsedStatement.mock.calls[0][0].transactions[0].currency;
+    const importInto = async (
+      view: Awaited<ReturnType<typeof renderScreen>>,
+      holdingId: string,
+    ): Promise<void> => {
+      await fireEvent.press(view.getByTestId(`mock-select-holding-${holdingId}`));
+      await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+      await waitFor(() => expect(mockImportParsedStatement).toHaveBeenCalledTimes(1));
+    };
+
+    beforeEach(() => {
+      mockReadFile.mockResolvedValue(monobankFixtureBase64);
+      mockDefaultImportSuccess();
+    });
+
+    it('follows the target holding, not the account’s first holding', async () => {
+      setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding, usdHolding] });
+      const view = await renderMonobankScreen();
+      await mapMonobankColumns(view);
+
+      await importInto(view, 'h2');
+
+      expect(importedCurrency()).toBe('USD');
+    });
+
+    it('keeps a currency the user picked when the target changes', async () => {
+      setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding, usdHolding] });
+      const view = await renderMonobankScreen();
+      await mapMonobankColumns(view);
+      await fireEvent.press(view.getByTestId('column-mapping-fixed-currency'));
+      await fireEvent.changeText(
+        view.getByPlaceholderText(i18n.t('forms.fields.searchCurrencyPlaceholder')),
+        'USD',
+      );
+      await fireEvent.press(view.getByTestId('currency-option-USD'));
+
+      await importInto(view, 'h1');
+
+      expect(importedCurrency()).toBe('USD');
+    });
+
+    // A bank mapping is shared by every account of that bank; its currency
+    // belongs to the holding it was saved for.
+    it('ignores the currency a saved mapping carries from another account', async () => {
+      setLiveData({
+        accounts: [monobankAccount],
+        holdings: [monobankHolding, usdHolding],
+        statementMappings: { 'bank:monobank': savedMonobankMapping() },
+      });
+      const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+      await waitFor(() =>
+        expect(view.getByText(i18n.t('columnMapping.savedApplied'))).toBeTruthy(),
+      );
+
+      await importInto(view, 'h2');
+
+      expect(importedCurrency()).toBe('USD');
+    });
   });
 
   it('saves Kyiv as the time zone when the user leaves it as is', async () => {

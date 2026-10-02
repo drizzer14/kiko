@@ -571,6 +571,12 @@ one validation model — don't hand-roll a different one:
   `disabled={!isValid}` gate. Validate on press instead: the submit
   handler checks its own guard (e.g. `canSave = trimmedName !== ''`)
   and returns early when it fails, only then revealing the error.
+  Save disables only while a submit is in flight, or when an edit's
+  saved value depends on data still loading: the holding form's edit
+  waits for the price book, and the transaction form's edit waits for
+  the re-date boundary, only for a row the re-date rule can block
+  (`isPossibleBalanceSetRow`). See `kiko-design-system`'s FieldError
+  entry.
 - A blocked field shows its message via the shared `FieldError`
   component (`src/design-system/components/field-error/`), not a
   hand-rolled `Box`+`Text` caption — see that component's own doc
@@ -1022,6 +1028,11 @@ not redefined in the body on every call. A helper that returns JSX is
 a component instead, in its own file — see "One component per file"
 above. A helper that genuinely closes over a local value (a `theme`
 binding, say) may stay in the body.
+
+A stored JSON value read as named fields goes through the one shared
+`isRecord` (`@kiko/type-guards`), never a local copy. It rejects an
+array as well as `null` and primitives, because a field read off an
+array finds nothing instead of failing the parse.
 
 ## Repository type-safety: `satisfies`, not an annotation
 

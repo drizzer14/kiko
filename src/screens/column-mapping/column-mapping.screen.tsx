@@ -29,7 +29,6 @@ import {
   headerFingerprint,
   guessHeaderRowIndex,
 } from '@kiko/statement-import/column-mapping';
-import { bifoldr, eitherSync } from 'fnts/either';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import {
   fileNameOf,
@@ -43,6 +42,7 @@ import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
+import either, { bifoldr, eitherSync } from 'fnts/either';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -449,7 +449,6 @@ type SavedFormState = {
   descriptionColumn: number;
   currencyMode: CurrencyMode;
   currencyColumn: number | undefined;
-  explicitFixedCurrency: Currency | undefined;
   counterpartyColumn: number | undefined;
   balanceColumn: number | undefined;
 };
@@ -474,18 +473,14 @@ const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState 
       debitColumn: undefined,
       creditColumn: undefined,
     }));
-  const currencyFields = match(mapping.currency)
-    .with({ mode: 'column' }, (currency) => ({
-      currencyColumn: currency.column,
-      explicitFixedCurrency: undefined,
-    }))
-    .with({ mode: 'fixed' }, (currency) => ({
-      currencyColumn: undefined,
-      explicitFixedCurrency: currency.currency,
-    }))
+  // A saved fixed currency is not restored: a bank mapping is shared by every
+  // account of that bank, and its currency belongs to the holding it was saved
+  // for, so the fixed currency follows the target holding instead.
+  const currencyColumn = match(mapping.currency)
+    .with({ mode: 'column' }, (currency) => currency.column)
     // Not `.exhaustive()`: same reasoning as `amountFields` above — an
-    // unrecognized stored mode leaves both fields undefined.
-    .otherwise(() => ({ currencyColumn: undefined, explicitFixedCurrency: undefined }));
+    // unrecognized stored mode leaves the column undefined.
+    .otherwise(() => undefined);
 
   return {
     headerRowIndex: mapping.headerRowIndex,
@@ -499,7 +494,7 @@ const formStateFromSavedMapping = (mapping: SavedColumnMapping): SavedFormState 
     ...amountFields,
     descriptionColumn: mapping.descriptionColumn,
     currencyMode: mapping.currency.mode,
-    ...currencyFields,
+    currencyColumn,
     counterpartyColumn: mapping.counterpartyColumn,
     balanceColumn: mapping.balanceColumn,
   };
@@ -700,13 +695,15 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     setDescriptionColumn(state.descriptionColumn);
     setCurrencyMode(state.currencyMode);
     setCurrencyColumn(state.currencyColumn);
-    setExplicitFixedCurrency(state.explicitFixedCurrency);
     setCounterpartyColumn(state.counterpartyColumn);
     setBalanceColumn(state.balanceColumn);
     setSavedApplied(saved.exact);
   }, [rows, savedMappings, account?.bankId, accountsLoading, settingsLoading]);
 
-  const defaultCurrency: Currency = holdings.at(0)?.currency ?? 'UAH';
+  // Import skips every row whose currency is not the target holding's, so in
+  // fixed mode the target's own currency is the only default that imports.
+  const targetCurrency = holdings.find((holding) => holding.id === selectedHoldingId)?.currency;
+  const defaultCurrency: Currency = targetCurrency ?? holdings.at(0)?.currency ?? 'UAH';
   const fixedCurrency = explicitFixedCurrency ?? defaultCurrency;
 
   const headerRow = foldMap(maybe(headerRowIndex), (index) => rows[index] ?? []) ?? [];
@@ -821,11 +818,16 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
 
       const fingerprint = headerFingerprint(rows[mapping.headerRowIndex] ?? []);
       const key = mappingKeyFor(account?.bankId, fingerprint);
-      await settingsRepo.saveStatementMapping(key, {
-        ...mapping,
-        fingerprint,
-        savedAt: Date.now(),
-      });
+
+      // The import has already committed; a failed save costs only next
+      // time's pre-fill, so it must not reach the import-failure alert.
+      await either(async () =>
+        settingsRepo.saveStatementMapping(key, {
+          ...mapping,
+          fingerprint,
+          savedAt: Date.now(),
+        }),
+      );
     } catch {
       // A translated Alert, never raw `error.message` rendered inline — see
       // `statementImport.importErrorTitle`'s own doc comment.

@@ -55,7 +55,7 @@ const loanBreakdown = (
 };
 
 export const loanDescriptor: HoldingDescriptor = {
-  symbol: 'minus.circle.fill',
+  symbol: 'arrow.down.backward.circle.fill',
   defaultColor: entityColorsDark.red,
   side: 'debt',
   ledgerless: true,

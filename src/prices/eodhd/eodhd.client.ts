@@ -124,10 +124,11 @@ const requestJson = async (
   params: [string, string][],
   key: string,
   fetchImpl: typeof fetch,
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<unknown> => {
   const query = new URLSearchParams([['api_token', key], ['fmt', 'json'], ...params]);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const sent = await either<unknown, Response>(async () =>
     fetchImpl(`${EODHD_API_ENDPOINT}${path}?${query.toString()}`, {
       ...NO_STORE,
@@ -246,18 +247,23 @@ const toSymbolMatch = (row: unknown): SymbolMatch[] => {
   ];
 };
 
-/** Listings for a ticker, a name, or an ISIN; `exchange` narrows them to one exchange. */
+/**
+ * Listings for a ticker, a name, or an ISIN; `exchange` narrows them to one
+ * exchange. `timeoutMs` is shorter where the user waits on a pressed Save.
+ */
 export const searchSymbols = async (
   query: string,
   key: string,
   fetchImpl: typeof fetch = fetch,
   exchange?: string,
+  timeoutMs?: number,
 ): Promise<SymbolMatch[]> => {
   const body = await requestJson(
     `/search/${encodeURIComponent(query)}`,
     foldMap(maybe(exchange), (code): [string, string][] => [['exchange', code]]) ?? [],
     key,
     fetchImpl,
+    timeoutMs,
   );
 
   return Array.isArray(body) ? body.flatMap(toSymbolMatch) : unavailable();

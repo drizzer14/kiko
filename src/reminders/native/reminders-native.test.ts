@@ -81,6 +81,14 @@ describe('remindersNative.registerCategories', () => {
   });
 });
 
+describe('remindersNative.uses24HourClock', () => {
+  it.each([true, false])('reads %p from the device setting, synchronously', (uses24Hour) => {
+    nativeModule.uses24HourClock.mockReturnValueOnce(uses24Hour);
+
+    expect(remindersNative.uses24HourClock()).toBe(uses24Hour);
+  });
+});
+
 describe('remindersNative.drainResponses', () => {
   it('parses every valid queued response', async () => {
     const queued: NotificationResponse[] = [

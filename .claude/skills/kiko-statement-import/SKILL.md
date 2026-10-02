@@ -84,6 +84,64 @@ and `importRows`'s own doc comment, for the exact balance rule —
 `addManyDedup` is a DIFFERENT, still-live upsert-only path the sync
 routes use, not statement import).
 
+**A synced account refuses the import.** `importRows`
+(`src/transactions/repo/transactions.repo.ts`) throws an Error with the
+message statement-import/synced-account, before it writes anything, for any
+holding of an account `isSyncedAccount` owns (a hand-added holding there
+included): the sync already writes those rows under its own `source`, so
+an `import` copy would be a second one, and an import row cannot be
+deleted. Account detail hides "Import statement" there with no caption;
+the guard covers a stale route. The target-holding picker
+(`useTargetHoldingOptions`) applies the same `isSyncedAccount` test, so it
+never offers a holding the guard refuses; it also drops closed and
+ledgerless holdings.
+
+**A disconnected bank's synced rows count as present.** A disconnected
+account is manual again and imports, but its holdings keep their synced
+(`monobank`, ...) rows. `importRows` drops every statement row with a
+synced row of the same holding and the same amount dated within ±60 s
+(`dropRowsHeldBySync`): it is not inserted and adds nothing to the
+balance. One synced row stands for one statement row. Pairing is a sweep
+per amount, never in file order: the statement rows claim in order of
+where their reach ends, and each takes the EARLIEST unclaimed same-amount
+synced row in its reach. The reach end is the only primary key; a
+date-only row claims after a timed row only where both reaches end at the
+same instant. That holds as many statement rows as any pairing can. A
+nearest-first pairing does not: at the edge of the synced period it can
+give a synced row to the nearer of two statement rows and strand the
+other one's only match, so a row the bank already synced goes in twice.
+Neither does putting every timed row first: a timed row at 23:59:30 can
+take the synced 23:59:00 row that a date-only row of that day needed,
+although a synced 00:00:20 row the next day was in the timed row's reach
+too. When only one of two statement rows can be held, the earliest row in
+reach claims, and the later one goes in and counts toward the balance.
+That is correct, not a tie-break: the sync is complete up to its newest
+synced row, so a statement row before it with no synced twin cannot be a
+real extra; the earlier row is the synced row's twin, and the later one
+is a real purchase after the disconnect. The sweep builds no pair list:
+each amount's synced times stay sorted, and a linear scan finds the first
+one in reach (taking it out of the list is linear anyway).
+`importParsedStatement` hands
+`ParsedTransaction.timeReading` to `importRows` unchanged; the repository
+converts its seconds itself. A row
+whose clock is coarser than a second carries `ParsedTransaction.timeReading`:
+- `{ kind: 'minute' }` (Sensebank, the `HH:MM` column-mapping presets):
+  the distance runs from any second of that minute, so a floored `09:00`
+  row is not pushed behind a `09:01` row for a synced row at `09:00:40`.
+- `{ kind: 'day', fromSeconds, untilSeconds }` (a date-only
+  column-mapping cell, stored at noon; `readDateWithFormat` in
+  `date-formats.ts` reads the bounds from local midnight to the next one
+  in the mapping's zone, 23 or 25 hours on a summer-time switch day): it
+  is held only by a synced row of the same amount on that same local day,
+  with no ±60 s widening. Its reach ends at local midnight, so it claims
+  before a timed row whose reach runs past it, and after one whose reach
+  ends sooner; only on an exact tie does the timed row, which places the
+  same purchase more precisely, claim first. Two equal date-only rows on
+  one day against one synced row drop only one. A day after the newest
+  synced row has no synced row of its own, so its rows always go in.
+Rows an earlier build already imported over synced ones stay; no
+migration removes them.
+
 ## Dedup
 
 Every studied format ships with no bank-issued per-row id, so
@@ -254,7 +312,9 @@ with `utcDigitsOf`, and an instant's wall clock in a zone with
 `zoneWallClockOf`. The display formatters (`formatDate`, used by
 `preview-stats.ts`) stay allowed — they render an instant, never
 produce one. A `new Date(text)` whose argument TypeScript cannot type as
-`string` (an untyped `TableCell`) is not caught.
+`string` (an untyped `TableCell`) is not caught. The rules match on
+types: a `toLocaleString` on a `number` stays allowed, and a `Date` typed
+`any` is not caught.
 
 Tests that must prove a result does not depend on the device zone wrap
 the call in `@kiko/test-support/device-zone-offset`'s
@@ -272,8 +332,12 @@ is back. Read the file's header for the rest of its limits.
 - The EU summer-time rule (last Sunday of March/October, 01:00 UTC) is
   valid from 1996 onward and has no expiry date coded in. A 2024 Rada
   bill to abolish Ukraine's DST has not been signed as of this writing;
-  if it ever is, `@kiko/dates`'s `kyiv-wall-clock.ts` (`KYIV_ZONE_RULE`)
-  is the one place to update, with an effective-date guard.
+  if it ever is, update `@kiko/dates`'s `kyiv-wall-clock.ts`
+  (`KYIV_ZONE_RULE`) AND `zone-wall-clock.ts`: `ZoneRule` has no date
+  field, so the effective-date guard needs a new field there. The
+  column-mapping `eastern-europe` zone
+  (`src/statement-import/column-mapping/source-time-zone.ts`) must keep
+  the EU rule — it covers more than Ukraine.
 - A key written by a device outside Kyiv's zone rules before every path
   read a fixed zone — a legacy row the old rezone read in that device's
   zone, or a column-mapped row imported there — carries device-zone
@@ -349,6 +413,17 @@ comment in `parser.ts`), not a guarded one. `balanceColumn` is part of
 compatible, no migration needed). `timeZone` works the same way (see
 "Source time zone" above): a saved mapping without it reads Kyiv.
 
+### The fixed currency follows the target holding
+
+`importParsedStatement` skips every row whose currency is not the
+target holding's, so in fixed-currency mode the default currency is the
+SELECTED target's own (the account's first holding only before a target
+is picked), and it follows a target change until the user picks a
+currency by hand. A saved mapping does not restore its fixed currency: a
+`bank:<bankId>` mapping is shared by every account of that bank, and the
+currency belonged to the holding it was saved for. A saved currency
+COLUMN is still restored.
+
 ## Saved mappings
 
 A confirmed mapping is saved to `settings.statementMappings`
@@ -374,8 +449,8 @@ early run settles on a guessed header row for good. Its twin,
 ## Entry points
 
 Two entry points reach the column-mapping screen: "Import statement"
-shows on every bank account in account-detail (not gated on a
-recognized `bankId`/format), and "Map columns manually" in
+shows on every bank account no sync owns in account-detail (not gated
+on a recognized `bankId`/format), and "Map columns manually" in
 `statement-import.screen.tsx` offers a manual escape hatch from the
 generic statement-import screen whenever a file was read at all
 (including an unrecognized-format or bank-mismatch preview), routing

@@ -87,6 +87,9 @@ export type AccountsStackParamList = {
   HoldingForm: {
     accountId: string;
     holdingId?: string;
+    // Whether the account holds only debts, so the title reads "Loan" on the
+    // first frame; the form reads the account itself when this is absent.
+    debtAccount?: boolean;
     returnTo?:
       | { screen: 'StatementImport'; params: AccountsStackParamList['StatementImport'] }
       | { screen: 'ColumnMapping'; params: AccountsStackParamList['ColumnMapping'] };
@@ -103,13 +106,13 @@ export type AccountsStackParamList = {
   // revaluation moves no ledger balance, only the holding's `price_points`
   // series (kiko-domain).
   PricePointForm: { holdingId: string };
-  // Record a buy or sell lot against a lot-form-eligible holding (`metal` —
-  // kiko-pricing), reached from the holding-detail screen's "Add lot" footer
-  // action. Appends one entry to `metadata.lots` through `holdingsRepo.update`; unlike
-  // ContributionForm/PricePointForm it never touches a per-holding
-  // `holding:<id>` price series — a metal's price comes from the SHARED
-  // `metal:<XAU|...>` instrument (kiko-pricing).
-  LotForm: { holdingId: string };
+  // Record a buy or sell lot against a lot-form-eligible holding (`metal`,
+  // `share` — kiko-pricing), reached from the holding-detail screen's "Add
+  // lot" footer action; with `lotIndex`, edit that stored lot, reached from
+  // its row's long-press menu. Writes `metadata.lots` through
+  // `holdingsRepo.changeLots`, which re-reads the lots inside its write;
+  // unlike ContributionForm/PricePointForm it never touches a price series.
+  LotForm: { holdingId: string; lotIndex?: number };
   // Edit one stored share change of a property, reached from the holding
   // detail's Share changes list. `day` is the change's `dayKeyOf` key; the
   // repo re-reads the list inside its write rather than trusting a row.

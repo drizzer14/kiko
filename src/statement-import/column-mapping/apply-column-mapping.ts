@@ -21,7 +21,7 @@ import {
 
 import { parseAmountCell } from './amount';
 import type { TableCell } from './table-rows';
-import { type DateFormatId, parseDateWithFormat } from './date-formats';
+import { type DateFormatId, readDateWithFormat } from './date-formats';
 import { zoneRuleFor, type SourceTimeZoneId, sourceTimeZoneOrKyiv } from './source-time-zone';
 
 // Matches the ISO 13616 IBAN shape: 2 uppercase letters (country code), 2
@@ -157,13 +157,13 @@ type RowOutcome =
   | { kind: 'error'; error: ColumnMappingRowError };
 
 const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number): RowOutcome => {
-  const dateSeconds = parseDateWithFormat(
+  const dateReading = readDateWithFormat(
     row[mapping.dateColumn],
     mapping.dateFormat,
     zoneRuleFor(sourceTimeZoneOrKyiv(mapping.timeZone)),
   );
 
-  if (dateSeconds === undefined) {
+  if (dateReading === undefined) {
     return {
       kind: 'error',
       error: { rowNumber, reason: 'date', value: cellText(row[mapping.dateColumn]) },
@@ -205,7 +205,8 @@ const resolveRow = (row: TableCell[], mapping: ColumnMapping, rowNumber: number)
         transaction: {
           currency,
           amountMinorUnits: Money.fromMajor(currency, major).minorUnits,
-          timeSeconds: dateSeconds,
+          timeSeconds: dateReading.timeSeconds,
+          timeReading: dateReading.timeReading,
           description: cellText(row[mapping.descriptionColumn]),
           ...resolveCounterparty(row, mapping),
         },

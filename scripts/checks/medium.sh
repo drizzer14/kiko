@@ -27,12 +27,14 @@ done < <(
 )
 
 # Harness inputs: the Semgrep rule file, its fixtures, the check wrappers, and
-# every file plist.sh asserts on (both Info.plists and the Xcode project, which
-# carries the Debug-only ATS injection phase). Editing one of the first three
-# changes what the checks themselves prove, so a session that touched only a
-# rule, a fixture, or a wrapper must not be silent — that is precisely the
-# session most likely to have broken a rule. The plist.sh inputs are the
-# surfaces its assertions (pinned credential hosts, Release ATS hardening)
+# every iOS file plist.sh asserts on (the Info.plist, the localized
+# InfoPlist.strings name tables, the privacy manifest, and the Xcode project,
+# which carries the Debug-only ATS injection phase and the Resources wiring).
+# Editing one of the first three changes what the checks themselves prove, so a
+# session that touched only a rule, a fixture, or a wrapper must not be silent —
+# that is precisely the session most likely to have broken a rule. The plist.sh
+# inputs are the surfaces its assertions (pinned credential hosts, Release ATS
+# hardening, the localized home-screen name, the required-reason API entry)
 # exist to guard, so a session that edited only one of those must not be silent
 # either.
 harness_changed=()
@@ -40,7 +42,7 @@ while IFS= read -r f; do
   [ -n "$f" ] && harness_changed+=("$f")
 done < <(
   printf '%s\n' "$touched" \
-    | grep -E '^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj)$'
+    | grep -E '^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj|ios/Kiko/[a-z]+\.lproj/InfoPlist\.strings|ios/Kiko/PrivacyInfo\.xcprivacy)$'
 )
 
 # The guard replay also checks commits made in this worktree, so a turn that

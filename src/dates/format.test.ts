@@ -1,4 +1,12 @@
-import { formatDate, formatDateTime, formatDayMonth, formatTime, parseLocalDate } from './format';
+import {
+  formatDate,
+  formatTime,
+  hourOnClock,
+  type TimeClock,
+  formatDayMonth,
+  formatDateTime,
+  parseLocalDate,
+} from './format';
 
 describe('formatDate', () => {
   it('formats a Date as zero-padded DD.MM.YYYY', () => {
@@ -52,43 +60,87 @@ describe('formatDayMonth', () => {
   });
 });
 
+const TWENTY_FOUR_HOUR: TimeClock = { uses24Hour: true };
+const TWELVE_HOUR: TimeClock = { uses24Hour: false, beforeNoon: 'AM', afterNoon: 'PM' };
+
 describe('formatDateTime', () => {
   it('formats a Date as zero-padded DD.MM.YYYY HH:mm in 24-hour time', () => {
-    expect(formatDateTime(new Date(2026, 0, 5, 9, 3))).toBe('05.01.2026 09:03');
+    expect(formatDateTime(new Date(2026, 0, 5, 9, 3), TWENTY_FOUR_HOUR)).toBe('05.01.2026 09:03');
   });
 
   it('formats afternoon time in 24-hour form', () => {
-    expect(formatDateTime(new Date(2026, 11, 31, 23, 59))).toBe('31.12.2026 23:59');
+    expect(formatDateTime(new Date(2026, 11, 31, 23, 59), TWENTY_FOUR_HOUR)).toBe(
+      '31.12.2026 23:59',
+    );
   });
 
   it('accepts a numeric timestamp', () => {
     const timestamp = new Date(2026, 5, 7, 0, 0).getTime();
 
-    expect(formatDateTime(timestamp)).toBe('07.06.2026 00:00');
+    expect(formatDateTime(timestamp, TWENTY_FOUR_HOUR)).toBe('07.06.2026 00:00');
+  });
+
+  it('reads the time on the 12-hour clock', () => {
+    expect(formatDateTime(new Date(2026, 11, 31, 23, 59), TWELVE_HOUR)).toBe(
+      '31.12.2026 11:59\xA0PM',
+    );
   });
 });
 
 describe('formatTime', () => {
   it('formats a Date as zero-padded HH:MM in 24-hour time', () => {
-    expect(formatTime(new Date(2026, 0, 5, 9, 5))).toBe('09:05');
+    expect(formatTime(new Date(2026, 0, 5, 9, 5), TWENTY_FOUR_HOUR)).toBe('09:05');
   });
 
   it('zero-pads a single-digit hour and minute', () => {
-    expect(formatTime(new Date(2026, 5, 7, 3, 7))).toBe('03:07');
+    expect(formatTime(new Date(2026, 5, 7, 3, 7), TWENTY_FOUR_HOUR)).toBe('03:07');
   });
 
   it('renders midnight as 00:00', () => {
-    expect(formatTime(new Date(2026, 5, 7, 0, 0))).toBe('00:00');
+    expect(formatTime(new Date(2026, 5, 7, 0, 0), TWENTY_FOUR_HOUR)).toBe('00:00');
   });
 
   it('renders afternoon time in 24-hour form', () => {
-    expect(formatTime(new Date(2026, 11, 31, 23, 59))).toBe('23:59');
+    expect(formatTime(new Date(2026, 11, 31, 23, 59), TWENTY_FOUR_HOUR)).toBe('23:59');
   });
 
   it('accepts a numeric timestamp', () => {
     const timestamp = new Date(2026, 8, 2, 14, 30).getTime();
 
-    expect(formatTime(timestamp)).toBe('14:30');
+    expect(formatTime(timestamp, TWENTY_FOUR_HOUR)).toBe('14:30');
+  });
+
+  describe('on the 12-hour clock', () => {
+    it.each([
+      [0, 0, '12:00\xA0AM'],
+      [9, 5, '9:05\xA0AM'],
+      [11, 59, '11:59\xA0AM'],
+      [12, 0, '12:00\xA0PM'],
+      [21, 5, '9:05\xA0PM'],
+      [23, 59, '11:59\xA0PM'],
+    ])('reads %p:%p as %p, the hour unpadded', (hours, minutes, expected) => {
+      expect(formatTime(new Date(2026, 5, 7, hours, minutes), TWELVE_HOUR)).toBe(expected);
+    });
+
+    it("uses the language's own marks", () => {
+      const ukrainian: TimeClock = { uses24Hour: false, beforeNoon: 'дп', afterNoon: 'пп' };
+
+      expect(formatTime(new Date(2026, 5, 7, 21, 5), ukrainian)).toBe('9:05\xA0пп');
+      expect(formatTime(new Date(2026, 5, 7, 9, 5), ukrainian)).toBe('9:05\xA0дп');
+    });
+  });
+});
+
+describe('hourOnClock', () => {
+  it.each([
+    [0, 24, 0],
+    [23, 24, 23],
+    [0, 12, 12],
+    [11, 12, 11],
+    [12, 12, 12],
+    [23, 12, 11],
+  ])('reads hour %p on the %p-hour clock as %p', (hours, clockHours, expected) => {
+    expect(hourOnClock(hours, clockHours === 24 ? TWENTY_FOUR_HOUR : TWELVE_HOUR)).toBe(expected);
   });
 });
 

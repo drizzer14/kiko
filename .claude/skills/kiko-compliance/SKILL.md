@@ -48,8 +48,9 @@ Store reviewer imports `e2e/screenshot/fixtures/kiko-demo-en.kiko`
 (built from `e2e/screenshot/seed/screenshot-seed.ts`, see that folder's
 README) through the real Import UI; a feature the dataset never shows is
 one the reviewer cannot reach. Mechanized: `generate-demo-kiko.test.ts`
-fails unless every `accounts.kind` and every `holdings.type` enum member
-appears, and `build-demo-snapshot.test.ts` fails unless every holding
+fails unless every `accounts.kind`, every `holdings.type`, and every
+`reminders.kind` enum member appears (each reminder on an account eligible
+for its kind, with a valid schedule — read the test for the exact checks), and `build-demo-snapshot.test.ts` fails unless every holding
 with no ledger of its own (the set `isLedgerlessHoldingType` in
 `src/holdings/holding-descriptor/holding-descriptors.ts` defines — read it
 there) values to non-zero through the app's own valuation. A diff that adds an account
@@ -83,8 +84,9 @@ when a diff changes a screen one of the 10 shipped shots depicts.
 Always write a demo invariant over the domain predicate
 (`isLedgerlessHoldingType`), never a pinned count. When a feature needs a
 user credential the demo cannot carry (the demo has only a MANUAL share),
-the reviewer notes must say how to get it (for shares: "get a free EODHD
-key").
+the reviewer notes must supply it or say how to get it. For shares, the
+user creates a free EODHD key and the notes supply it to the reviewer,
+explaining the free plan's limit (20 requests a day).
 
 ## 5.1.1 / 5.1.2 — data collection and privacy
 
@@ -97,9 +99,10 @@ answers: what's declared, what's not, and why) and to
 may need to declare a required-reason API for.
 
 A new third-party data recipient also needs the privacy policy updated
-(`docs/privacy-policy*.md` §3), not only the App Privacy answers. Open
-gate (pending): EODHD receives share tickers, the exchange, the earliest
-lot date, and search queries.
+(`docs/privacy-policy*.md` §3), not only the App Privacy answers. The
+EODHD entry (share tickers, the exchange, the earliest lot date, search
+queries) is in the repo's policy markdown; publishing it to gh-pages is
+still pending — check the live policy before an upload.
 
 ## 5.1.5 / data storage — secrets never in `.env`, logs, or the DB
 
@@ -286,8 +289,13 @@ confirm the relevant check ran and stayed green:
 - `kiko-no-hidden-feature-flag-or-demo-import` (Semgrep, `check:security`) —
   the `SHOW_*`/`HIDE_*` flag and `e2e/` import pattern only.
 - `scripts/checks/plist.sh` (`check:plist`) — ATS pinning, arbitrary
-  loads, empty usage-description strings, and (section 1b) an
-  `api_token` client without a `Cache-Control: no-store` request header.
+  loads, empty usage-description strings, (section 1b) an `api_token`
+  client without a `Cache-Control: no-store` request header, the localized
+  app-name tables (`ios/Kiko/<language>.lproj/InfoPlist.strings`) wired
+  into the Kiko target's Resources build phase, and the DiskSpace
+  required-reason API declared in `ios/Kiko/PrivacyInfo.xcprivacy` while
+  any dependency on check 5's linked list in `scripts/checks/plist.sh`
+  ships (fail-closed). Read that list there for the exact set.
 - `gitleaks` (`check:secrets`) — a committed secret.
 - `kiko-no-raw-error-in-console` (Semgrep, pre-write guard and
   `check:security`) — a non-literal `console.*` argument (see "5.1.5 /

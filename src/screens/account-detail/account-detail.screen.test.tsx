@@ -586,7 +586,10 @@ describe('AccountDetailScreen', () => {
   it('navigates to HoldingForm when Add holding is pressed', async () => {
     const { getByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Add holding'));
-    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'a',
+      debtAccount: false,
+    });
   });
 
   it('pins the Add holding action to the screen footer', async () => {
@@ -811,7 +814,7 @@ describe('AccountDetailScreen', () => {
     const { getByText } = await renderScreen();
     // The shared formatDateTime helper (European DD.MM.YYYY, 24h) replaces the
     // old locale-dependent toLocaleString rendering.
-    const stamp = formatDateTime(1_700_000_000_000);
+    const stamp = formatDateTime(1_700_000_000_000, { uses24Hour: true });
     expect(getByText(new RegExp(stamp.replace(/[.]/g, '\\.')))).toBeTruthy();
   });
 
@@ -951,6 +954,89 @@ describe('AccountDetailScreen', () => {
 
       expect(alertSpy).toHaveBeenCalledWith('Could not close holding', 'Please try again.');
       alertSpy.mockRestore();
+    });
+
+    it('names the menu entry "Close holding" in a neutral button, and confirms in red', async () => {
+      seedShares();
+      mockButtonProps.length = 0;
+      const { getByTestId } = await renderScreen();
+
+      await openCloseConfirm(getByTestId);
+
+      const menuEntry = mockButtonProps.find((entry) => entry.children === 'Close holding');
+      const confirm = mockButtonProps.filter((entry) => entry.children === 'Close').at(-1);
+
+      expect(menuEntry?.variant).toBeUndefined();
+      expect(confirm?.variant).toBe('destructive');
+    });
+
+    describe('a loan', () => {
+      const seedLoan = (): void =>
+        setLiveData({
+          accounts: [account({ kind: 'debt' })],
+          holdings: [
+            { id: 'h1', name: 'Car', type: 'loan', currency: 'UAH', balanceMinorUnits: 0 },
+          ],
+        });
+
+      it('offers Add loan, never "holding", in the footer of a debt account', async () => {
+        seedLoan();
+        const { getByText, queryByText, navigation } = await renderScreen();
+
+        await fireEvent.press(getByText('Add loan'));
+
+        expect(queryByText('Add holding')).toBeNull();
+        expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+          accountId: 'a',
+          debtAccount: true,
+        });
+      });
+
+      it('leads Add loan with the loan glyph, not the generic holding one', async () => {
+        seedLoan();
+        mockButtonProps.length = 0;
+        await renderScreen();
+
+        const addLoanButton = mockButtonProps.find((props) => props.children === 'Add loan');
+
+        expect(addLoanButton?.icon).toBe('arrow.down.backward.circle.fill');
+      });
+
+      it('closes it under loan wording, never "holding"', async () => {
+        seedLoan();
+        const { getByTestId, getByText, queryByText } = await renderScreen();
+
+        await holdHoldingCard();
+
+        expect(getByTestId(CLOSE_ACTION_TEST_ID)).toHaveTextContent('Close loan');
+
+        await act(async () => {
+          await fireEvent.press(getByTestId(CLOSE_ACTION_TEST_ID));
+        });
+
+        expect(getByText('Close Loan "Car"')).toBeTruthy();
+        expect(
+          getByText(
+            "It leaves your accounts and stops counting against your net worth. Its past values stay on the net worth chart. A closed loan can't be reopened.",
+          ),
+        ).toBeTruthy();
+        expect(queryByText(/close holding/i)).toBeNull();
+      });
+
+      it('alerts under loan wording when the close fails', async () => {
+        mockCloseMany.mockRejectedValueOnce(new Error('write failed'));
+        const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+        seedLoan();
+        const { getByTestId } = await renderScreen();
+
+        await openCloseConfirm(getByTestId);
+        await act(async () => {
+          await fireEvent.press(getByTestId('close-holding-confirm'));
+        });
+
+        expect(alertSpy).toHaveBeenCalledWith('Could not close loan', 'Please try again.');
+        alertSpy.mockRestore();
+      });
     });
   });
 
@@ -1544,6 +1630,20 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     expect(within(footer).getByText('Add holding')).toBeTruthy();
   });
 
+  // The bank sync already writes every row of the account; a statement of the
+  // same rows would land a second time under the import source.
+  it('offers no Import statement on an account a bank sync owns', async () => {
+    setLiveData({
+      accounts: [account({ bankId: 'monobank', institution: 'monobank' })],
+      holdings: [],
+    });
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).queryByText('Import statement')).toBeNull();
+    expect(within(footer).getByText('Add holding')).toBeTruthy();
+  });
+
   it('renders Import statement with the secondaryTonal variant and its doc icon (Add holding stays primary)', async () => {
     await renderScreen();
 
@@ -1811,6 +1911,17 @@ describe('AccountDetailScreen — a tap on an import reminder', () => {
 
   it('opens no picker on an account that cannot import, and still clears the intent', async () => {
     setLiveData({ accounts: [account({ kind: 'cash', bankId: null })], holdings: [] });
+    const view = await renderTap();
+
+    expect(view.navigation.setParams).toHaveBeenCalledWith({ intent: undefined });
+    expect(mockPick).not.toHaveBeenCalled();
+  });
+
+  it('opens no picker on an account a bank sync owns, and still clears the intent', async () => {
+    setLiveData({
+      accounts: [account({ bankId: 'monobank', institution: 'monobank' })],
+      holdings: [],
+    });
     const view = await renderTap();
 
     expect(view.navigation.setParams).toHaveBeenCalledWith({ intent: undefined });

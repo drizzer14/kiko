@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
-import { formatTime } from '@kiko/dates';
 import type { TFunction } from 'i18next';
+import { formatTime, hourOnClock, type TimeClock } from '@kiko/dates';
 
 import type { ReminderSchedule, Weekday } from './reminder-schedule';
 
@@ -11,18 +11,19 @@ const DAYS_PER_WEEK = 7;
 
 const MINUTES_PER_HOUR = 60;
 
-// The time always reads on the 24-hour clock (`formatTime`), so 11 means
-// 11:00-11:59 only; 23:00 is "twenty-three", not "eleven".
+// The preposition follows the hour as it reads: on the 24-hour clock 23:00 is
+// "twenty-three", on the 12-hour clock 11:00 PM is "eleven" too.
 const ELEVEN_O_CLOCK = 11;
 
-const atLabel = (minuteOfDay: number, t: TFunction): string =>
-  Math.floor(minuteOfDay / MINUTES_PER_HOUR) === ELEVEN_O_CLOCK
+const atLabel = (minuteOfDay: number, t: TFunction, clock: TimeClock): string =>
+  hourOnClock(Math.floor(minuteOfDay / MINUTES_PER_HOUR), clock) === ELEVEN_O_CLOCK
     ? t('reminders.schedule.atEleven')
     : t('reminders.schedule.at');
 
 // Any day with no DST change reads back the same wall-clock time; `Date`
 // carries the minutes past 59 into the hours.
-const timeLabel = (minuteOfDay: number): string => formatTime(new Date(2000, 0, 1, 0, minuteOfDay));
+const timeLabel = (minuteOfDay: number, clock: TimeClock): string =>
+  formatTime(new Date(2000, 0, 1, 0, minuteOfDay), clock);
 
 const positionInWeek = (weekday: Weekday, firstDay: 0 | 1): number =>
   (weekday - firstDay + DAYS_PER_WEEK) % DAYS_PER_WEEK;
@@ -47,9 +48,10 @@ export const describeSchedule = (
   schedule: ReminderSchedule,
   t: TFunction,
   firstDay: 0 | 1,
+  clock: TimeClock,
 ): string => {
-  const time = timeLabel(schedule.minuteOfDay);
-  const at = atLabel(schedule.minuteOfDay, t);
+  const time = timeLabel(schedule.minuteOfDay, clock);
+  const at = atLabel(schedule.minuteOfDay, t, clock);
 
   return match(schedule)
     .with({ frequency: 'daily' }, () => t('reminders.schedule.daily', { at, time }))

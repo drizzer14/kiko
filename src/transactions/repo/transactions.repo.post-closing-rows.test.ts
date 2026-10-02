@@ -58,15 +58,21 @@ const openTestDatabase = (): DatabaseSync => {
   return database;
 };
 
-type TransactionRow = { id: string; holdingId: string; amountMinorUnits: number; time: number };
+type TransactionRow = {
+  id: string;
+  holdingId: string;
+  amountMinorUnits: number;
+  time: number;
+  setsBalance?: boolean;
+};
 
 const insertTransaction = (database: DatabaseSync, row: TransactionRow): void => {
   database
     .prepare(
-      `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source)
-       VALUES (?, ?, ?, ?, 'manual')`,
+      `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, sets_balance)
+       VALUES (?, ?, ?, ?, 'manual', ?)`,
     )
-    .run(row.id, row.holdingId, row.amountMinorUnits, row.time);
+    .run(row.id, row.holdingId, row.amountMinorUnits, row.time, row.setsBalance ? 1 : 0);
 };
 
 const netAfterAsOf = (
@@ -119,6 +125,22 @@ describe('postClosingRowsWhere — existing-rows-after-asOf read, against a real
       holdingId: 'h-2',
       amountMinorUnits: -700,
       time: AS_OF_MILLISECONDS + 1_000,
+    });
+
+    expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBeNull();
+  });
+
+  // Its amount is part of a balance that was set, so a re-date past the
+  // as-of must not add it to the closing figure.
+  it('excludes a row that set a balance, even one strictly after asOf', () => {
+    const database = openTestDatabase();
+
+    insertTransaction(database, {
+      id: 'tx-opening',
+      holdingId: 'h-1',
+      amountMinorUnits: 2_000,
+      time: AS_OF_MILLISECONDS + 1_000,
+      setsBalance: true,
     });
 
     expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBeNull();

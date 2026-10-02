@@ -59,6 +59,7 @@ const TextField: FC<TextFieldProps> = ({
   required,
   onBlur,
   error,
+  invalid = false,
   inputRef,
   testID,
 }) => {
@@ -78,8 +79,8 @@ const TextField: FC<TextFieldProps> = ({
   // Either inset wraps the input in a positioned container (below); a bare
   // field with neither is returned unwrapped, unchanged.
   const hasInset = hasSuffix || hasLeadingIcon;
-  // A defined, non-empty `error` IS the invalid signal — there is no separate
-  // `invalid` boolean (see text-field.props.d.ts).
+  // A defined, non-empty `error` IS the invalid signal for a field that owns its
+  // error (see text-field.props.d.ts).
   const hasError = error !== undefined && error !== '';
 
   const resolvedReturnKeyType = resolveReturnKeyType(returnKeyType, keyboardType);
@@ -118,7 +119,9 @@ const TextField: FC<TextFieldProps> = ({
   return (
     <>
       <Box gap={1} testID={testID}>
-        {label !== undefined && <FieldLabel label={label} required={required} invalid={hasError} />}
+        {label !== undefined && (
+          <FieldLabel label={label} required={required} invalid={hasError || invalid} />
+        )}
 
         {hasInset ? (
           <Box style={styles.insetContainer}>

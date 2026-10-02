@@ -169,6 +169,7 @@ const parseDataRow = (row: string[], currency: Currency): ParsedTransaction => (
   currency,
   amountMinorUnits: parseRowAmountMinorUnits(row, currency),
   timeSeconds: parseSensebankDateSeconds(row[COLUMN.date]),
+  timeReading: { kind: 'minute' },
   description: row[COLUMN.details],
   mcc: parseMcc(row[COLUMN.mcc]),
 });

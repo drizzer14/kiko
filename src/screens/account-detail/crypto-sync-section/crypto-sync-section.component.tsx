@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import type { AccountRow, HoldingRow } from '@kiko/db';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { resyncRequest } from '@kiko/crypto-sync/resync-request';
@@ -42,6 +43,7 @@ const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string 
 // connected: Sync with the last-sync stamp, and a confirmed Disconnect.
 const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) => {
   const { t } = useTranslation();
+  const clock = useTimeClock();
   const { isSyncing, error, sync } = useCryptoSync();
   // Multi-connection: each crypto account connects independently, so
   // there is no "connected elsewhere" gate — another account holding this source
@@ -107,7 +109,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
             <Text variant="body" tone="textSecondary">
               {t('accountDetail.lastSync', {
-                time: formatLastSyncAt(latestSyncedAt(holdings), t),
+                time: formatLastSyncAt(latestSyncedAt(holdings), t, clock),
               })}
             </Text>
           </Box>

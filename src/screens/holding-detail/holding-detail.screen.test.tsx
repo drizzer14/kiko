@@ -1,6 +1,6 @@
-import { StyleSheet } from 'react-native';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { ComponentProps } from 'react';
+import { Alert, StyleSheet } from 'react-native';
 import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
@@ -200,6 +200,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     }),
     appendDepositContribution: jest.fn(),
     removeOwnershipChange: jest.fn(),
+    changeLots: jest.fn(),
     updateName: jest.fn(),
     setIcon: jest.fn(),
     setColor: jest.fn(),
@@ -525,7 +526,11 @@ describe('HoldingDetailScreen', () => {
   });
 
   it('offers an Edit action in the header that opens the holding edit form', async () => {
-    seed({ ...cardHolding, accountId: 'acc-1' });
+    seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
+      id: 'acc-1',
+      kind: 'bank',
+      institution: null,
+    });
 
     await renderScreen();
 
@@ -548,6 +553,53 @@ describe('HoldingDetailScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
       accountId: 'acc-1',
       holdingId: 'h-1',
+      debtAccount: false,
+    });
+  });
+
+  it("tells the edit form that a debt account's holding is a loan", async () => {
+    seed({ ...annuityLoanHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
+      id: 'acc-1',
+      kind: 'debt',
+      institution: null,
+    });
+
+    await renderScreen();
+
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.unstable_headerRightItems,
+    );
+    call[0].unstable_headerRightItems({ canGoBack: true })[0].onPress();
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      holdingId: 'h-1',
+      debtAccount: true,
+    });
+  });
+
+  it('leaves the loan question to the edit form while the account row still loads', async () => {
+    seed(
+      { ...annuityLoanHolding, accountId: 'acc-1' },
+      [],
+      [],
+      [],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      undefined,
+      [],
+      { accounts: true },
+    );
+
+    await renderScreen();
+
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.unstable_headerRightItems,
+    );
+    call[0].unstable_headerRightItems({ canGoBack: true })[0].onPress();
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      holdingId: 'h-1',
+      debtAccount: undefined,
     });
   });
 
@@ -1327,6 +1379,177 @@ describe('HoldingDetailScreen', () => {
     // derived. depositHolding is a term_deposit (day-granular), so the marker
     // carries no trailing time separator.
     expect(getAllByText('Computed').length).toBeGreaterThanOrEqual(3);
+  });
+
+  // A lot is the user's own entry, unlike a computed one, so its row edits and
+  // deletes through the long-press menu.
+  describe('a lot row', () => {
+    const holdRow = async (): Promise<void> => {
+      await act(async () => {
+        fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+          { state: State.BEGAN },
+          { state: State.ACTIVE },
+          { state: State.END },
+        ]);
+      });
+    };
+
+    it('opens the Lot form for the held lot, by holding id and lot index', async () => {
+      seed(manualShareHolding);
+
+      const { getByTestId } = await renderScreen();
+
+      await holdRow();
+      await act(async () => {
+        await fireEvent.press(getByTestId(EDIT_ACTION_TEST_ID));
+      });
+
+      expect(navigation.navigate).toHaveBeenCalledWith('LotForm', {
+        holdingId: 'h-1',
+        lotIndex: 0,
+      });
+    });
+
+    it('deletes the held lot through the named confirm', async () => {
+      seed(metalHolding);
+
+      const { getByTestId, getByText } = await renderScreen();
+
+      await holdRow();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(getByText('Delete "Purchase 01.01.2024"')).toBeTruthy();
+      expect(holdingsRepo.changeLots).not.toHaveBeenCalled();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(holdingsRepo.changeLots).toHaveBeenCalledWith('h-1', { kind: 'remove', index: 0 });
+    });
+
+    it('alerts when the delete is refused', async () => {
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      (holdingsRepo.changeLots as jest.Mock).mockRejectedValueOnce(new Error('refused'));
+      seed(metalHolding);
+
+      const { getByTestId } = await renderScreen();
+
+      await holdRow();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+      });
+
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.');
+      alertSpy.mockRestore();
+    });
+
+    it('reads Split for a share buy at no cost, in the row and its delete confirm', async () => {
+      seed({
+        ...manualShareHolding,
+        metadata: {
+          ...manualShareHolding.metadata,
+          lots: [{ day: Date.UTC(2024, 0, 1), quantityDelta: '9', costMinorUnits: 0 }],
+        },
+      });
+
+      const { getByTestId, getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Split')).toBeTruthy();
+      expect(queryByText('Purchase')).toBeNull();
+
+      await holdRow();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(getByText('Delete "Split 01.01.2024"')).toBeTruthy();
+    });
+
+    it('is not captioned Computed, since the user entered it', async () => {
+      seed(metalHolding);
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Purchase')).toBeTruthy();
+      expect(queryByText(/Computed/)).toBeNull();
+    });
+
+    // The ledger lists newest first, so the January buy is the last row held.
+    it('offers no Delete for a buy a later sale needs', async () => {
+      seed({
+        ...manualShareHolding,
+        metadata: {
+          ...manualShareHolding.metadata,
+          lots: [
+            ...manualShareHolding.metadata.lots,
+            { day: Date.UTC(2024, 2, 1), quantityDelta: '-3', costMinorUnits: -90_000 },
+          ],
+        },
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await holdRow();
+
+      expect(getByTestId(EDIT_ACTION_TEST_ID)).toBeTruthy();
+      expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+    });
+  });
+
+  it('tells how to fix an EODHD share held in another currency than its listing', async () => {
+    seed({
+      ...manualShareHolding,
+      currency: 'UAH',
+      metadata: {
+        ...manualShareHolding.metadata,
+        quoteSource: 'eodhd',
+        symbol: 'AAPL.US',
+        quoteCurrency: 'USD',
+      },
+    });
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('listing-currency-notice')).toHaveTextContent(
+      /EODHD prices this share in USD/,
+    );
+  });
+
+  it('shows no listing notice for a share priced in its own currency', async () => {
+    seed(manualShareHolding);
+
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('listing-currency-notice')).toBeNull();
+  });
+
+  it('asks to fix a stored sale larger than what was held before it', async () => {
+    seed({
+      ...manualShareHolding,
+      metadata: {
+        ...manualShareHolding.metadata,
+        lots: [
+          ...manualShareHolding.metadata.lots,
+          { day: Date.UTC(2024, 1, 1), quantityDelta: '-5', costMinorUnits: -90_000 },
+        ],
+      },
+    });
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('oversized-sale-notice')).toHaveTextContent(/Edit or delete that sale/);
+  });
+
+  it('shows no oversized-sale notice while every sale is covered', async () => {
+    seed(manualShareHolding);
+
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('oversized-sale-notice')).toBeNull();
   });
 
   it('renders derived rows read-only: no context menu and not tappable to the form', async () => {

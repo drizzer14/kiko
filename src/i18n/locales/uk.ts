@@ -106,17 +106,19 @@ export const uk: typeof en = {
     language: 'Мова',
     sharePrices: 'Ціни акцій',
     sharePricesScreen: {
-      dailyLimit: 'Денний ліміт: {{limit}}',
+      checkKeyAgain: 'Перевірити ще раз',
       intro:
-        'Кіко отримує ціни акцій на кінець дня з EODHD за вашим власним API-ключем. Ви реєструєтеся в EODHD і приймаєте його умови. Ключ зберігається лише на цьому iPhone і в експортах із ключами.',
+        'Кіко отримує ціни акцій на кінець дня з EODHD за вашим власним API-ключем. Для цього Кіко надсилає в EODHD тікери ваших акцій, діапазон дат потрібних цін (від вашої першої купівлі) і ваші пошукові запити, але ніколи не надсилає кількість акцій чи суму, яку ви за них заплатили. Ви реєструєтеся в EODHD і приймаєте його умови. Ключ зберігається лише на цьому iPhone і в експортах із ключами.',
       invalidKeyError: 'EODHD не прийняв цей ключ.',
       keyLabel: 'API-ключ',
       keyPlaceholder: 'Вставте ключ EODHD',
+      keyRejectedMessage:
+        'EODHD більше не приймає збережений ключ, тому ціни акцій не оновлюються. Збережіть новий ключ або перевірте цей ще раз.',
       keyRequiredError: 'Введіть API-ключ.',
       keySaved: 'Ключ збережено',
       pasteAccessibilityLabel: 'Вставити ключ',
       quotaUsedUpMessage:
-        'Сьогоднішні запити EODHD вичерпано. Ціни знову оновляться після опівночі за GMT.',
+        'Сьогоднішні запити EODHD вичерпано. Ціни знову оновляться після {{time}}.',
       removeConfirmBody: 'Акції з цінами EODHD збережуть останню ціну.',
       removeConfirmTitle: 'Видалити ключ?',
       removeKey: 'Видалити ключ',
@@ -156,6 +158,10 @@ export const uk: typeof en = {
       thu: 'Чт',
       fri: 'Пт',
       sat: 'Сб',
+    },
+    dayPeriod: {
+      beforeNoon: 'дп',
+      afterNoon: 'пп',
     },
     previousYear: 'Попередній рік',
     previousMonth: 'Попередній місяць',
@@ -230,7 +236,7 @@ export const uk: typeof en = {
       bankTypeSheetTitle: 'Тип банку',
       broker: 'Брокер',
       brokerDisclaimer:
-        'Кіко — незалежний застосунок. Він не пов’язаний із жодним брокером і не схвалений ним.',
+        'Кіко — незалежний застосунок. Він не пов’язаний із жодним брокером і не є його партнером.',
       brokerType: 'Брокер',
       brokerTypePlaceholder: 'Оберіть брокера',
       brokerTypeSheetTitle: 'Брокер',
@@ -271,6 +277,7 @@ export const uk: typeof en = {
     },
     holding: {
       addContribution: 'Додати внесок',
+      addLoanTitle: 'Додати кредит',
       addTitle: 'Додати актив',
       annualRateError: 'Введіть ставку 0 або вище.',
       annualRatePct: 'Річна ставка',
@@ -303,6 +310,7 @@ export const uk: typeof en = {
       deposit: 'Депозит',
       details: 'Деталі',
       diiaHint: 'Придбали в Дії? Додайте облігацію до банку або брокера, якого ви обрали там.',
+      editLoanTitle: 'Редагувати кредит',
       editTitle: 'Редагувати актив',
       faceValue: 'Номінальна вартість',
       faceValueError: 'Введіть номінальну вартість більше 0.',
@@ -409,12 +417,20 @@ export const uk: typeof en = {
       removeContribution: 'Видалити внесок {{index}}',
       semiannually: 'Раз на півроку',
       share: 'Акція',
+      shareCurrencyMismatchEditError:
+        'EODHD подає ціну цієї акції в {{currency}}. Змініть джерело ціни на «Вручну» або видаліть цю акцію й додайте її знову в {{currency}}.',
+      shareCurrencyMismatchError:
+        'EODHD подає ціну цієї акції в {{currency}}. Оберіть {{currency}} або змініть джерело ціни на «Вручну».',
+      shareCurrencyUnsupportedError:
+        'EODHD подає ціну цієї акції в {{currency}}, якої Кіко не підтримує. Змініть джерело ціни на «Вручну».',
       shareFind: 'Знайти за ISIN або тікером',
       shareFindEmpty: 'Нічого не знайдено.',
+      shareFindKeyRejected:
+        'EODHD не приймає збережений ключ. Перевірте його в Налаштуваннях → «Ціни акцій».',
       shareFindPlaceholder: 'US0378331005',
       shareFindQuery: 'ISIN або тікер',
       shareFindQuotaExhausted:
-        'Сьогоднішні запити EODHD вичерпано. Пошук знову запрацює після опівночі за GMT.',
+        'Сьогоднішні запити EODHD вичерпано. Пошук знову запрацює після {{time}}.',
       shareFindSheetTitle: 'Пошук акції',
       shareFindSubmit: 'Шукати',
       shareFindUnavailable: 'Пошук недоступний. Введіть тікер вручну.',
@@ -442,6 +458,9 @@ export const uk: typeof en = {
     lot: {
       addTitle: 'Додати лот',
       buy: 'Купівля',
+      coversLaterSaleError:
+        'Ця кількість потрібна для пізнішого продажу. Спершу змініть або видаліть цей продаж.',
+      editTitle: 'Редагувати лот',
       quantity: 'Кількість',
       quantityError: 'Введіть кількість більше 0.',
       quantityPlaceholder: '10',
@@ -451,6 +470,7 @@ export const uk: typeof en = {
       totalCost: 'Загальна вартість',
       totalCostError: 'Загальна вартість має бути більшою за 0.',
       totalCostPlaceholder: '1 000,00',
+      totalCostRequiredError: 'Введіть загальну вартість від 0.',
       type: 'Тип',
     },
     ownershipChange: {
@@ -516,9 +536,12 @@ export const uk: typeof en = {
       selectDestinationError: 'Оберіть рахунок призначення.',
       selectHolding: 'Оберіть актив',
       split: 'Поділ',
-      splitInvalidError: 'Введіть суму платежу та щонайменше одне коректне повернення.',
+      splitInvalidError:
+        'Додайте принаймні одне коректне повернення, і нехай сума повернень буде меншою за платіж.',
       syncedNotice:
         'Цю транзакцію синхронізовано, тому можна змінити лише категорію та зв’язок із кредитом.',
+      timeAfterBalanceSetError:
+        'Цю транзакцію збережено без опису й категорії, тож вона може бути давнішою зміною балансу. Оберіть дату й час не пізніше {{dateTime}}.',
       title: 'Транзакція',
       to: 'Куди',
       toSheetTitle: 'Куди',
@@ -565,6 +588,7 @@ export const uk: typeof en = {
     addBankAction: 'Додати банк',
     addBankSheetTitle: 'Додати банк',
     addHolding: 'Додати актив',
+    addLoan: 'Додати кредит',
     addressLabel: 'Адреса',
     apiKeyLabel: 'API ключ',
     apiKeyRequiredError: 'Введіть API ключ.',
@@ -589,10 +613,16 @@ export const uk: typeof en = {
     btcAddressPlaceholder: 'BTC-адреса',
     changeBankAction: 'Змінити банк',
     checking: 'Перевірка…',
+    closeHoldingAction: 'Закрити актив',
     closeHoldingErrorTitle: 'Не вдалося закрити актив',
     closeHoldingMessage:
       'Актив зникне з рахунків і більше не входитиме в капітал. Його минулі значення залишаться на графіку капіталу. Закритий актив не можна відкрити знову.',
     closeHoldingTitle: 'Закрити «{{name}}»',
+    closeLoanAction: 'Закрити кредит',
+    closeLoanErrorTitle: 'Не вдалося закрити кредит',
+    closeLoanMessage:
+      'Кредит зникне з рахунків і більше не входитиме в капітал. Його минулі значення залишаться на графіку капіталу. Закритий кредит не можна відкрити знову.',
+    closeLoanTitle: 'Закрити кредит «{{name}}»',
     connectBinance: 'Підключити Binance',
     connectedAs: 'Підключено як {{name}}',
     connectMonobank: 'Підключити Monobank',
@@ -668,9 +698,15 @@ export const uk: typeof en = {
     interestEarned: 'Отримані відсотки',
     interestPaid: 'Сплачено відсотків',
     linkedPayments: 'Пов’язані платежі',
+    listingCurrencyMismatch:
+      'EODHD подає ціну цієї акції в {{currency}}, тому її вартість не оновлюється. Відредагуйте її та змініть джерело ціни на «Вручну» (вартість купівлі залишиться) або видаліть її й додайте знову в {{currency}}.',
+    listingCurrencyUnsupported:
+      'EODHD подає ціну цієї акції в {{currency}}, якої Кіко не підтримує, тому її вартість не оновлюється. Відредагуйте її та змініть джерело ціни на «Вручну» (вартість купівлі залишиться).',
     militaryLevy: 'Військовий збір {{pct}}%',
     openingDeposit: 'Відкриття депозиту',
     outstanding: 'Залишок боргу',
+    oversizedSale:
+      'Продаж тут більший, ніж було в наявності до нього. Відредагуйте або видаліть цей продаж.',
     ownedCost: 'Вартість (ваша частка)',
     ownedValue: 'Вартість вашої частки',
     paidSoFar: 'Сплачено',
@@ -683,6 +719,7 @@ export const uk: typeof en = {
     sale: 'Продаж',
     shareChanges: 'Зміни частки',
     shareSince: 'з {{date}}',
+    split: 'Дроблення',
     tax: 'Податок',
     taxWithheld: 'Утримано податку',
     topUp: 'Поповнення',
@@ -933,7 +970,7 @@ export const uk: typeof en = {
       statementImport: 'Нагадує імпортувати нову виписку для цього рахунку.',
       addTransactions: 'Нагадує додавати нові транзакції до цього рахунку.',
     },
-    emptyNoKinds: 'Нагадування доступні для банківських рахунків і рахунків, які ви ведете вручну.',
+    emptyNoKinds: 'Нагадування доступні для рахунків, які ви ведете вручну.',
     emptyList: 'Нагадувань ще немає',
     emptyHint: 'Налаштуйте нагадування на сторінці рахунку.',
     off: 'Вимкнено',
@@ -943,6 +980,7 @@ export const uk: typeof en = {
     pausedAfterNoResponse: 'Призупинено після 3 нагадувань без відповіді.',
     accountArchived: 'Не надсилається, поки рахунок в архіві.',
     unavailable: {
+      statementImport: 'Доступно лише для банківських рахунків, які ви ведете вручну.',
       addTransactions: 'Доступно лише для рахунків, які ви ведете вручну.',
     },
     enabledLabel: 'Нагадування ввімкнено',

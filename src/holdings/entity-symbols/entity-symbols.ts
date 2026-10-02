@@ -25,9 +25,10 @@ type AccountKind = AccountRow['kind'];
 // which refines un-customized existing rows. `cube.fill` (SF Symbols 1, safe
 // on the iOS 15.1 deployment target) is the pick for `metals` — icon choice was
 // unspecified for it, as with `house.fill` for `property`. `minus.circle.fill`
-// (SF Symbols 1) is the pick for `debt` — same "negative amount owed"
-// semantics as its sole holding type below, mirroring the property/metals
-// kind-and-type icon reuse. `chart.line.uptrend.xyaxis` (SF Symbols 3, iOS 15)
+// (SF Symbols 1) is the pick for `debt`, "an amount owed". Its sole holding
+// type, `loan`, has its own glyph below; the account default is persisted at
+// create time, so changing this one would need a 0032-style migration.
+// `chart.line.uptrend.xyaxis` (SF Symbols 3, iOS 15)
 // is the pick for `broker`, the same glyph the Share prices settings row uses.
 export const accountKindSymbol: Record<AccountKind, string> = {
   bank: 'building.columns.fill',
@@ -41,16 +42,20 @@ export const accountKindSymbol: Record<AccountKind, string> = {
 
 // card -> creditcard, term_deposit -> calendar, bond -> receipt, jar ->
 // rectangle.portrait, cash -> banknote, crypto_asset -> bitcoinsign.circle,
-// property_item -> house.fill, metal -> cube.fill, loan -> minus.circle.fill,
-// share -> chart.line.uptrend.xyaxis —
+// property_item -> house.fill, metal -> cube.fill, loan ->
+// arrow.down.backward.circle.fill, share -> chart.line.uptrend.xyaxis —
 // each type's own descriptor (`src/holdings/holding-descriptor/`) is the
 // source, read through `recordByType` for the same per-type exhaustiveness
 // guarantee as the account map above. The `jar` and `crypto_asset` HOLDING
 // defaults are pure render-time fallbacks (holdings persist a null icon
 // until the user picks one), so these changes update every un-customized
 // holding with NO data migration — unlike the crypto ACCOUNT default above.
-// `loan` shares its `debt` kind's icon and `share` its `broker` kind's, the
-// same reuse `property_item`/`metal` already follow for their own kinds.
+// `share` shares its `broker` kind's icon, the same reuse
+// `property_item`/`metal` already follow for their own kinds. `loan` does
+// not: a minus reads as "subtract", so a loan taken mirrors a loan given
+// (`propertyCategorySymbol.loan_given`), money coming in that is owed back.
+// SF Symbols 2 (iOS 14), safe on the deployment floor, and a holding's null
+// icon means the change needs no migration.
 export const holdingTypeSymbol: Record<HoldingType, string> = recordByType(
   (descriptor) => descriptor.symbol,
 );
@@ -81,7 +86,9 @@ export const defaultHoldingSymbol = (holding: Pick<HoldingRow, 'type' | 'metadat
 // `holding` uses `text.pad.header`, an iOS-26 symbol: SymbolIcon renders its
 // `list.bullet.rectangle` fallback centrally on an older device (see
 // symbol.availability.ts). Each also leads its entity's footer "Add …" button,
-// so the add action and the entity it creates read as the same thing.
+// so the add action and the entity it creates read as the same thing — which
+// is why a debt account's "Add loan" leads with `holdingTypeSymbol.loan`: it
+// can create nothing else.
 export const genericEntitySymbol = {
   account: 'tray',
   holding: 'text.pad.header',

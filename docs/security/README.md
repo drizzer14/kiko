@@ -157,6 +157,16 @@ and immediately if a sync starts failing with a TLS error.
 - **The empty `NSLocationWhenInUseUsageDescription` was deleted.** The app uses
   no location API and no pod requires one; an empty purpose string is an App
   Store review rejection trigger. Asserted by `npm run check:plist`.
+- **The localized app names ship.** `ios/Kiko/en.lproj/InfoPlist.strings` and
+  `ios/Kiko/uk.lproj/InfoPlist.strings` set `CFBundleDisplayName` (Kiko /
+  Кіко) and sit in the Kiko target's Resources build phase. Asserted by
+  `npm run check:plist`.
+- **The disk-space required-reason API is declared.** Some dependencies link a
+  disk-space API without a pod privacy manifest that covers it (the set is
+  check 5's linked list in `scripts/checks/plist.sh`; read it there). So
+  `ios/Kiko/PrivacyInfo.xcprivacy` declares `NSPrivacyAccessedAPICategoryDiskSpace`
+  (`E174.1`) while any dependency on that list ships (else ITMS-91053). `npm run check:plist` asserts it
+  and fails closed when it cannot tell.
 - **The Monobank token field no longer prefills the input with the stored
   secret.** `src/screens/account-detail/monobank-token-field/monobank-token-field.component.tsx`
   reads only `hasToken()` (a boolean) to drive its "already saved" caption;

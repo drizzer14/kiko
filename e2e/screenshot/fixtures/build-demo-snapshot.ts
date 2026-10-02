@@ -8,6 +8,7 @@ import type {
   AccountRow,
   HoldingRow,
   CategoryRow,
+  ReminderRow,
   SettingsRow,
   PricePointRow,
   TransactionRow,
@@ -86,6 +87,9 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     reminderOfferDismissals: null,
     notificationsDeliverableSince: null,
     quoteQuota: null,
+    // Every demo lot list is one buy, so the one-time recost has nothing to
+    // change: `true` skips it on import, the same as a recosted device.
+    lotsRecosted: true,
   },
 ];
 
@@ -168,6 +172,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
         balanceMinorUnits,
         syncedBalanceMinorUnits: null,
         balanceSetAt: null,
+        balanceSetRowId: null,
         metadata: holding.metadata ?? null,
         sortOrder: holdingIndex,
         closedAt: null,
@@ -194,6 +199,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
           loanHoldingId,
           loanLinkSource: loanHoldingId === null ? null : 'manual',
           loanLinkRejected: false,
+          setsBalance: false,
           comment: null,
           source: 'manual',
           externalId: null,
@@ -221,6 +227,30 @@ const buildPricePoints = (dataset: ScreenshotDataset): PricePointRow[] => {
   }));
 };
 
+// `rem-1..n`, numbered across every account, each on its own account's `acc-n`.
+const buildReminders = (dataset: ScreenshotDataset): ReminderRow[] =>
+  dataset.accounts
+    .flatMap((account, accountIndex) =>
+      (account.reminders ?? []).map(({ kind, schedule }) => ({
+        accountId: `acc-${accountIndex + 1}`,
+        kind,
+        schedule,
+      })),
+    )
+    .map((reminder, index) => ({
+      id: `rem-${index + 1}`,
+      accountId: reminder.accountId,
+      kind: reminder.kind,
+      schedule: reminder.schedule,
+      pausedAt: null,
+      pauseReason: null,
+      activeSince: ANCHOR,
+      lastEngagedAt: null,
+      lastSnoozedAt: null,
+      createdAt: ANCHOR,
+      updatedAt: ANCHOR,
+    }));
+
 export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
   const ledger = buildLedger(dataset);
 
@@ -236,6 +266,6 @@ export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
     categoryOverrides: [],
     pricePoints: buildPricePoints(dataset),
     bondRegister: dataset.bondRegister,
-    reminders: [],
+    reminders: buildReminders(dataset),
   };
 };

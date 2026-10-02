@@ -23,23 +23,23 @@ const insertPoint = (instrument: string, day: number): void => {
     .run(instrument, day);
 };
 
-describe('pricePointsRepo.latestShareDaysQuery', () => {
+describe('pricePointsRepo.shareDayRangesQuery', () => {
   beforeEach(() => {
     mockDatabase = new DatabaseSync(':memory:');
     applyAllMigrations(mockDatabase);
   });
 
-  it('reads one row per share series: its latest day', async () => {
-    insertPoint('share:AAPL.US', MONDAY);
-    insertPoint('share:AAPL.US', MONDAY + 2 * DAY_MS);
+  it('reads one row per share series: its first and its latest day', async () => {
     insertPoint('share:AAPL.US', MONDAY + DAY_MS);
-    insertPoint('share:VOD.LSE', MONDAY);
+    insertPoint('share:AAPL.US', MONDAY + 2 * DAY_MS);
+    insertPoint('share:AAPL.US', MONDAY);
+    insertPoint('share:VOD.LSE', MONDAY + DAY_MS);
 
-    const rows = await pricePointsRepo.latestShareDaysQuery();
+    const rows = await pricePointsRepo.shareDayRangesQuery();
 
-    expect([...rows].sort((first, second) => first.day - second.day)).toEqual([
-      { instrument: 'share:VOD.LSE', day: MONDAY },
-      { instrument: 'share:AAPL.US', day: MONDAY + 2 * DAY_MS },
+    expect([...rows].sort((first, second) => first.lastDay - second.lastDay)).toEqual([
+      { instrument: 'share:VOD.LSE', firstDay: MONDAY + DAY_MS, lastDay: MONDAY + DAY_MS },
+      { instrument: 'share:AAPL.US', firstDay: MONDAY, lastDay: MONDAY + 2 * DAY_MS },
     ]);
   });
 
@@ -47,6 +47,6 @@ describe('pricePointsRepo.latestShareDaysQuery', () => {
     insertPoint('metal:gold', MONDAY);
     insertPoint('holding:house', MONDAY);
 
-    await expect(pricePointsRepo.latestShareDaysQuery()).resolves.toEqual([]);
+    await expect(pricePointsRepo.shareDayRangesQuery()).resolves.toEqual([]);
   });
 });

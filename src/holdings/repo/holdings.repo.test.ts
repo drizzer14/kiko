@@ -241,12 +241,14 @@ describe('holdingsRepo', () => {
       source: 'manual',
       description: '',
       category: null,
+      setsBalance: true,
     });
     expect(typeof inserts[1].time).toBe('number');
     // A non-zero opening balance also stamps the holding's own
     // `balanceSetAt`, at the SAME instant as the ledger row's `time` —
     // `transactionsRepo.importRows`'s boundary reads it directly.
     expect(inserts[0].balanceSetAt).toBe(inserts[1].time);
+    expect(inserts[0].balanceSetRowId).toBe(inserts[1].id);
   });
 
   it('create seeds no transaction for a zero opening balance', async () => {
@@ -263,6 +265,7 @@ describe('holdingsRepo', () => {
 
     expect(insertTables).toEqual(['holdings']);
     expect(inserts[0].balanceSetAt).toBeNull();
+    expect(inserts[0].balanceSetRowId).toBeNull();
   });
 
   it('create seeds no transaction when no opening balance is given', async () => {
@@ -1360,15 +1363,18 @@ describe('disconnect then reconnect', () => {
 // writes the patch, and inserts a ledger row only for a non-zero balance delta —
 // this captures all three, so a test can prove exactly what each write carried.
 // `stored` is the holding row that read resolves to, or `null` for a missing id.
+// An update of `transactions` is captured apart from the holding's own
+// `.set(...)`, in issue order.
+type BalanceDeltaCapture = {
+  holdingSet?: Record<string, unknown>;
+  transactionSets: Record<string, unknown>[];
+  inserts: Record<string, unknown>[];
+};
+
 const makeBalanceDeltaDatabaseTransaction = (
   stored: Record<string, unknown> | null,
-): {
-  databaseTransaction: unknown;
-  captured: { holdingSet?: Record<string, unknown>; inserts: Record<string, unknown>[] };
-} => {
-  const captured: { holdingSet?: Record<string, unknown>; inserts: Record<string, unknown>[] } = {
-    inserts: [],
-  };
+): { databaseTransaction: unknown; captured: BalanceDeltaCapture } => {
+  const captured: BalanceDeltaCapture = { transactionSets: [], inserts: [] };
   const databaseTransaction = {
     select: () => ({
       from: () => ({
@@ -1377,9 +1383,13 @@ const makeBalanceDeltaDatabaseTransaction = (
         }),
       }),
     }),
-    update: () => ({
+    update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
-        captured.holdingSet = values;
+        if (table === transactions) {
+          captured.transactionSets.push(values);
+        } else {
+          captured.holdingSet = values;
+        }
 
         return { where: () => Promise.resolve() };
       },
@@ -1443,6 +1453,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     expect(captured.holdingSet).toEqual({
       balanceMinorUnits: 500_00,
       balanceSetAt: 1_700_000_000_000,
+      balanceSetRowId: captured.inserts[0]?.id,
     });
     expect(captured.inserts).toHaveLength(1);
     expect(captured.inserts[0]).toMatchObject({
@@ -1453,6 +1464,22 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
       source: 'manual',
       time: 1_700_000_000_000,
     });
+  });
+
+  // An earlier set's row keeps its mark: its amount is part of a balance that
+  // was set, so its re-date or delete must never move the balance either.
+  it('marks the new adjustment row as the current set, and leaves earlier marks', async () => {
+    const { databaseTransaction, captured } = makeBalanceDeltaDatabaseTransaction({
+      currency: 'UAH',
+      balanceMinorUnits: 100_00,
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 500_00) }, 1);
+
+    expect(captured.transactionSets).toEqual([]);
+    expect(captured.inserts[0]).toMatchObject({ setsBalance: true });
+    expect(captured.holdingSet).toMatchObject({ balanceSetRowId: captured.inserts[0]?.id });
   });
 
   it('leaves the adjustment row unlabelled and uncategorised', async () => {
@@ -1480,7 +1507,11 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 100_00) }, 1);
 
     expect(captured.inserts[0]).toMatchObject({ amountMinorUnits: -400_00 });
-    expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00, balanceSetAt: 1 });
+    expect(captured.holdingSet).toEqual({
+      balanceMinorUnits: 100_00,
+      balanceSetAt: 1,
+      balanceSetRowId: captured.inserts[0]?.id,
+    });
   });
 
   it('writes no transaction for a name-only edit', async () => {
@@ -1506,6 +1537,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 100_00) }, 1);
 
     expect(captured.inserts).toHaveLength(0);
+    expect(captured.transactionSets).toEqual([]);
     expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00 });
   });
 
@@ -1824,40 +1856,5 @@ describe('holdingsRepo.updateLoan', () => {
     await holdingsRepo.updateLoan('h-1', { name: 'Renamed' }, { kind: 'none' }, true);
 
     expect(captured.transactionsSet).toEqual({ loanHoldingId: null, loanLinkSource: null });
-  });
-});
-
-describe('holdingsRepo.updateWithManualPricePoint', () => {
-  it('writes only the patch when there is no point', async () => {
-    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
-    mockDatabaseTransaction = databaseTransaction;
-
-    await holdingsRepo.updateWithManualPricePoint('h-1', { name: 'Renamed' }, null);
-
-    expect(captured.holdingSet).toEqual({ name: 'Renamed' });
-    expect(captured.inserts).toHaveLength(0);
-  });
-
-  it("upserts the point on the holding's own manual series in the same write", async () => {
-    const { databaseTransaction, captured } = makeUpdateLoanDatabaseTransaction();
-    mockDatabaseTransaction = databaseTransaction;
-
-    await holdingsRepo.updateWithManualPricePoint(
-      'h-1',
-      { metadata: { quoteSource: 'manual' } },
-      { day: 19_000, price: '1.2345', currency: 'GBP' },
-    );
-
-    expect(captured.holdingSet).toEqual({ metadata: { quoteSource: 'manual' } });
-    expect(captured.deleteCalls).toBe(0);
-    expect(captured.inserts).toEqual([
-      {
-        instrument: 'holding:h-1',
-        day: 19_000,
-        price: '1.2345',
-        currency: 'GBP',
-        source: 'manual',
-      },
-    ]);
   });
 });

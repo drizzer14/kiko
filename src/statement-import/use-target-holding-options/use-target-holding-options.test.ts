@@ -80,21 +80,50 @@ describe('useTargetHoldingOptions', () => {
     expect(options[0]).toMatchObject({ icon: 'star', color: '#ABCDEF' });
   });
 
-  it("gives a property holding its category's glyph", async () => {
+  // Imported rows land in the ledger, but these holdings take their value
+  // from somewhere else, so the rows would change nothing they show.
+  it('offers only an open holding that keeps a ledger and no sync owns', async () => {
     serveRows(
       [
-        {
-          ...blackCard,
-          type: 'property_item',
-          metadata: { category: 'business_share', lots: [] },
-        },
+        blackCard,
+        { ...blackCard, id: 'deposit', type: 'term_deposit' },
+        { ...blackCard, id: 'bond', type: 'bond' },
+        { ...blackCard, id: 'metal', type: 'metal' },
+        { ...blackCard, id: 'property', type: 'property_item' },
+        { ...blackCard, id: 'closed', closedAt: 1_700_000_000_000 },
+        { ...blackCard, id: 'jar', type: 'jar' },
       ],
-      [{ id: 'a', name: 'Property' }],
+      [{ id: 'a', name: 'Bank', institution: null }],
     );
 
     const { options } = await optionsFor();
 
-    expect(options[0]?.icon).toBe('briefcase.fill');
+    expect(options.map(({ id }) => id)).toEqual(['h1', 'jar']);
+  });
+
+  it('offers no holding on an account a bank sync owns, a hand-added one included', async () => {
+    serveRows(
+      [
+        { ...blackCard, metadata: { monobankId: 'mono-1' } },
+        { ...blackCard, id: 'hand-added' },
+      ],
+      [{ id: 'a', name: 'Monobank', institution: 'monobank' }],
+    );
+
+    const { options } = await optionsFor();
+
+    expect(options).toEqual([]);
+  });
+
+  it('offers a holding a disconnected bank sync left behind', async () => {
+    serveRows(
+      [{ ...blackCard, metadata: { monobankId: 'mono-1' } }],
+      [{ id: 'a', name: 'Monobank', institution: null }],
+    );
+
+    const { options } = await optionsFor();
+
+    expect(options.map(({ id }) => id)).toEqual(['h1']);
   });
 
   it('reports isLoading while either its holdings or its accounts query is still on its first load', async () => {

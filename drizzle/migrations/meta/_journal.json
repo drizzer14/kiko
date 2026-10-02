@@ -330,6 +330,20 @@
       "when": 1790812131823,
       "tag": "0046_add_quote_quota",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1790867996042,
+      "tag": "0047_add_sets_balance",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1790886355551,
+      "tag": "0048_add_lots_recosted",
+      "breakpoints": true
     }
   ]
 }

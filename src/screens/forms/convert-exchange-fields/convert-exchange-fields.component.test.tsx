@@ -3,9 +3,18 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 import ConvertExchangeFields from './convert-exchange-fields.component';
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 const options: HoldingSelectOption[] = [
   {
@@ -102,6 +111,7 @@ describe('ConvertExchangeFields', () => {
     );
 
     expect(getByText('Select a counterpart account.')).toBeTruthy();
+    expect(isLabelInvalid(mockFieldLabel, 'To')).toBe(true);
   });
 
   it('adds the same vertical gap above the counterpart error that a text field has above its own', async () => {

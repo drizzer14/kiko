@@ -1,6 +1,7 @@
 // Explicit, locale-independent date formatting. The device locale would
-// otherwise reorder fields (MM/DD vs DD/MM) or switch to 12-hour time, so every
-// component is read off the Date and assembled by hand into a fixed layout.
+// otherwise reorder fields (MM/DD vs DD/MM), so every component is read off the
+// Date and assembled by hand into a fixed layout. Only the clock (12- or
+// 24-hour) is the caller's, through `TimeClock`.
 
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
 
@@ -37,20 +38,45 @@ export const formatDayMonth = (input: number | Date, options?: { timeZone?: 'UTC
   return `${pad2(day)}.${pad2(month + 1)}`;
 };
 
-// "HH:MM" in the device's local timezone, 24-hour time, both fields
-// zero-padded (e.g. 09:05, 00:00, 23:59). The time-of-day component only —
-// used to stamp a transaction row with when it happened.
-export const formatTime = (input: number | Date): string => {
-  const date = toDate(input);
+/**
+ * How a time of day reads: on the 24-hour clock, or on the 12-hour one with
+ * the language's own marks for the hours before and after noon. It follows
+ * the iOS 24-Hour Time setting (`useTimeClock` in `@kiko/i18n/use-time-clock`),
+ * so a time reads the same as in the system's own time pickers.
+ */
+export type TimeClock =
+  | { uses24Hour: true }
+  | { uses24Hour: false; beforeNoon: string; afterNoon: string };
 
-  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+// Keeps the mark on the same line as its time.
+const NO_BREAK_SPACE = '\xA0';
+
+/** The hour a clock face shows: 0-23 on the 24-hour clock, 1-12 on the 12-hour one. */
+export const hourOnClock = (hours: number, clock: TimeClock): number =>
+  clock.uses24Hour ? hours : hours % 12 || 12;
+
+// The time of day in the device's local timezone: "HH:MM" on the 24-hour
+// clock, both fields zero-padded (09:05, 00:00, 23:59); "H:MM" and the mark
+// on the 12-hour one (9:05 PM, 12:00 AM).
+export const formatTime = (input: number | Date, clock: TimeClock): string => {
+  const date = toDate(input);
+  const hours = date.getHours();
+  const minutes = pad2(date.getMinutes());
+
+  if (clock.uses24Hour) {
+    return `${pad2(hours)}:${minutes}`;
+  }
+
+  const mark = hours < 12 ? clock.beforeNoon : clock.afterNoon;
+
+  return `${hourOnClock(hours, clock)}:${minutes}${NO_BREAK_SPACE}${mark}`;
 };
 
-// "DD.MM.YYYY HH:mm" in the device's local timezone, 24-hour time.
-export const formatDateTime = (input: number | Date): string => {
+// "DD.MM.YYYY" and the time of day (`formatTime`), in the device's local timezone.
+export const formatDateTime = (input: number | Date, clock: TimeClock): string => {
   const date = toDate(input);
 
-  return `${formatDate(date)} ${formatTime(date)}`;
+  return `${formatDate(date)} ${formatTime(date, clock)}`;
 };
 
 // Parses a 'YYYY-MM-DD' calendar day into a LOCAL-midnight timestamp, matching

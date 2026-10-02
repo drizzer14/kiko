@@ -2,12 +2,14 @@ import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { TimeClock } from '@kiko/dates';
 import type { ViewProps } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import { deviceRegion } from '@kiko/i18n/device-region';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { weekStartFor } from '@kiko/calendar/week-start';
 import Switch from '@kiko/design-system/components/switch';
 import type { ReminderRow as SavedReminder } from '@kiko/db';
@@ -32,28 +34,29 @@ const kindLabel = (kind: ReminderKind, t: TFunction): string =>
 
 // A restored row may carry another build's schedule shape; it reads as Off
 // rather than breaking the page.
-const summaryOf = (reminder: SavedReminder | undefined, t: TFunction): string => {
+const summaryOf = (reminder: SavedReminder | undefined, t: TFunction, clock: TimeClock): string => {
   const schedule: unknown = reminder?.schedule;
 
   return isReminderSchedule(schedule)
-    ? describeSchedule(schedule, t, weekStartFor(deviceRegion()))
+    ? describeSchedule(schedule, t, weekStartFor(deviceRegion()), clock)
     : t('reminders.off');
 };
 
+const unavailableCaption = (kind: ReminderKind, t: TFunction): string =>
+  match(kind)
+    .with('statement_import', () => t('reminders.unavailable.statementImport'))
+    .with('add_transactions', () => t('reminders.unavailable.addTransactions'))
+    .exhaustive();
+
 // Why a saved reminder is not sent right now; every reason that holds shows.
-// Only an add-transactions reminder can be unavailable: this build offers an
-// import reminder only on a bank account, and an account's kind never changes.
-// Known limit: a .kiko backup from a never-deployed pre-release build can
-// restore an import reminder on a non-bank account; it is never scheduled,
-// and its row shows the add-transactions caption. Accepted while the app has
-// a single user, until App Store review.
 const statusCaptions = (
+  kind: ReminderKind,
   reminder: SavedReminder,
   available: boolean,
   accountArchived: boolean,
   t: TFunction,
 ): string[] => [
-  ...(available ? [] : [t('reminders.unavailable.addTransactions')]),
+  ...(available ? [] : [unavailableCaption(kind, t)]),
   ...(accountArchived ? [t('reminders.accountArchived')] : []),
   ...(reminder.pauseReason === 'backoff' ? [t('reminders.pausedAfterNoResponse')] : []),
 ];
@@ -99,10 +102,11 @@ const ReminderRow: FC<ReminderRowProps> = ({
   onDelete,
 }) => {
   const { t } = useTranslation();
+  const clock = useTimeClock();
   const label = kindLabel(kind, t);
   const saved = maybe(reminder);
   const captions =
-    foldMap(saved, (found) => statusCaptions(found, available, accountArchived, t)) ?? [];
+    foldMap(saved, (found) => statusCaptions(kind, found, available, accountArchived, t)) ?? [];
 
   return (
     <CardContextMenu name={label} deletable={reminder !== undefined} onDelete={onDelete}>
@@ -124,7 +128,7 @@ const ReminderRow: FC<ReminderRowProps> = ({
         >
           <Box gap={1}>
             <Text variant="caption" tone="textSecondary">
-              {summaryOf(reminder, t)}
+              {summaryOf(reminder, t, clock)}
             </Text>
 
             {captions.map((caption) => (

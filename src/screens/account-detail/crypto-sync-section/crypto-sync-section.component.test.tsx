@@ -121,6 +121,7 @@ const holding = (metadata: unknown): HoldingRow => ({
   balanceMinorUnits: 0,
   syncedBalanceMinorUnits: null,
   balanceSetAt: null,
+  balanceSetRowId: null,
   metadata,
   sortOrder: 0,
   closedAt: null,
@@ -231,7 +232,7 @@ describe('CryptoSyncSection', () => {
 
     expect(getByText('Sync')).toBeTruthy();
     expect(getByText('Disconnect')).toBeTruthy();
-    const stamp = formatDateTime(CONNECTED_WALLET_SYNCED_AT);
+    const stamp = formatDateTime(CONNECTED_WALLET_SYNCED_AT, { uses24Hour: true });
     expect(getByText(new RegExp(stamp.replace(/[.]/g, '\\.')))).toBeTruthy();
     expect(queryByText('Binance')).toBeNull();
     expect(queryByLabelText('wallet-field')).toBeNull();

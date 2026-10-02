@@ -296,10 +296,31 @@ signal to check by pattern) — add a new key to the SAME role's
 existing sibling keys' punctuation, by hand, per the DECISION above.
 
 The uk preposition before a time is "о", except "об" before 11 ("об
-одинадцятій"), ONLY for 11:xx on the 24-hour clock. Never hard-code it
-in a sentence that interpolates a time; split it into `{{at}}` (the
-`reminders.schedule.at`/`atEleven` pattern, with en keeping both as
-"at").
+одинадцятій"), ONLY when the time reads 11 (11:xx on the 24-hour clock;
+11:xx дп or пп on the 12-hour one — `hourOnClock` in `src/dates/format.ts`).
+Never hard-code it in a sentence that interpolates a time; split it into
+`{{at}}` (the `reminders.schedule.at`/`atEleven` pattern, with en keeping
+both as "at").
+
+## Time of day follows the iOS 24-Hour Time setting
+
+Every shown time of day goes through `formatTime(input, clock)` /
+`formatDateTime(input, clock)` (`src/dates/format.ts`), with the `clock`
+(`TimeClock`) from `useTimeClock()` (`src/i18n/use-time-clock/`), never a
+hard-coded 24-hour form: the native time picker follows the iOS switch, and a
+label next to it must agree. The 24-hour clock reads "21:05" (hours
+zero-padded); the 12-hour clock reads "9:05 PM" (en) / "9:05 пп" (uk), the
+hour not padded, the mark after a no-break space. The marks are
+`calendar.dayPeriod.beforeNoon`/`afterNoon` (en "AM"/"PM", uk "дп"/"пп", a
+user decision). The native read is synchronous, so the hook does not run it
+on every render: one module-level reading serves every mounted reader (the
+`useSyncExternalStore` snapshot), read on first use, read again when the app
+becomes active (one shared AppState listener) before the readers re-render,
+and dropped when the last reader unmounts. A switch flipped in iOS Settings
+shows without a relaunch. Where the setting
+cannot be read, the language decides: en 12-hour, uk 24-hour. A non-hook
+helper that formats a time (`describeSchedule`, `formatLastSyncAt`) takes the
+`clock` as a parameter from its component.
 
 ## Ukrainian is sentence case — no blanket `textTransform`
 

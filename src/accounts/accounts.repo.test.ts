@@ -400,6 +400,7 @@ describe('accountsRepo', () => {
       // No persisted sentence and no category: the label resolves at render time.
       description: '',
       category: null,
+      setsBalance: true,
     });
     expect(typeof openingRow.time).toBe('number');
     // A typed starting balance IS a hand-set
@@ -407,6 +408,7 @@ describe('accountsRepo', () => {
     // opening ledger row's `time`, or `transactionsRepo.importRows` never
     // sees this holding as ever hand-set.
     expect(holdingInsert.balanceSetAt).toBe(openingRow.time);
+    expect(holdingInsert.balanceSetRowId).toBe(openingRow.id);
   });
 
   it('seeds no transaction for a zero initial balance, and does not stamp balanceSetAt', async () => {

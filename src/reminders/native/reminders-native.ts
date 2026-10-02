@@ -110,4 +110,9 @@ export const remindersNative = {
   // running.
   onResponse: (listener: () => void): { remove: () => void } =>
     loadNativeModule().onResponse(() => listener()),
+
+  // The iOS 24-Hour Time setting, read synchronously so a time can be
+  // formatted in render; it lives here because this is the app's one
+  // TurboModule. Throws where the module is missing.
+  uses24HourClock: (): boolean => loadNativeModule().uses24HourClock(),
 };

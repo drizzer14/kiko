@@ -73,6 +73,9 @@ const TermDepositSection: FC<TermDepositSectionProps> = ({ fields, attemptedSave
     fieldErrors.contributionsError,
     'forms.holding.contributionIncompleteError',
   );
+  // Either contributions error judges every row it would refuse, so each
+  // such row turns its labels red with it.
+  const showsContributionsError = attemptedSave && fieldErrors.contributionsError !== null;
 
   return (
     <Box gap={4}>
@@ -110,6 +113,7 @@ const TermDepositSection: FC<TermDepositSectionProps> = ({ fields, attemptedSave
                   placeholder={t('forms.holding.contributionPlaceholder')}
                   suffix={currencySymbol[currency]}
                   required
+                  invalid={showsContributionsError && !isContributionRowValid(contribution)}
                 />
 
                 <DateField
@@ -119,6 +123,7 @@ const TermDepositSection: FC<TermDepositSectionProps> = ({ fields, attemptedSave
                   onChange={(next) => fields.updateContributionDate(index, next)}
                   placeholder={t('forms.fields.selectDatePlaceholder')}
                   required
+                  invalid={showsContributionsError && !isContributionRowValid(contribution)}
                 />
 
                 {index === 0 && contributionsRequiredMessage !== undefined && (

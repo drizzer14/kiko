@@ -6,6 +6,7 @@ import { saveToken } from '@kiko/monobank/token';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { type AccountRow, useLiveQuery } from '@kiko/db';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { type FC, type ReactNode, useState } from 'react';
 import Button from '@kiko/design-system/components/button';
 import SymbolIcon from '@kiko/design-system/components/symbol';
@@ -86,6 +87,7 @@ const disconnectCopyFor = (connectedProviderId: BankProviderId): DisconnectCopy 
 // provider.
 const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const { t } = useTranslation();
+  const clock = useTimeClock();
   // The bank "last sync" line reads this account's OWN cursor from the
   // per-connection `sync_state` table (de-globalized from `settings` — see
   // the `syncState` table comment in `db/schema.ts`), so a second connection
@@ -215,6 +217,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
                       syncStateRows.at(0)?.lastSyncAt ??
                       null,
                     t,
+                    clock,
                   ),
                 })}
               </Text>

@@ -24,25 +24,14 @@ import {
 import { eq } from 'drizzle-orm';
 import { maxOf } from '@kiko/numbers';
 import { SETTINGS_ID } from '@kiko/settings';
+import { withRestoredPrices } from '@kiko/prices/quote-quota';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { isFiat, type Currency } from '@kiko/currency/currency';
 import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
+import { isBalanceSetShapedRow } from '@kiko/transactions/balance-set-row';
 import { planImportTimeRezone } from '@kiko/statement-import/rezone-import-times';
 
 import type { DataSnapshot } from './data-snapshot';
-
-/** True for a manual transaction row shaped like a hand-set balance under
- * migration 0036's heuristic (`drizzle/migrations/0036_add_balance_set_at.sql`):
- * no description, no category, and neither the exchange-leg nor the
- * change-return structural marker. See `transactionsRepo.importRows`'s doc
- * comment (`transactions/repo/transactions.repo.ts`) for the single-source
- * rule this backfills toward. */
-const isBalanceSetShapedRow = (row: TransactionRow): boolean =>
-  row.source === 'manual' &&
-  row.description === '' &&
-  row.category === null &&
-  row.exchangeCounterpartHoldingId === null &&
-  row.changeGroupId === null;
 
 /** Migration 0036's `MAX(time)` per holding, computed in one pass over
  * `allTransactions` rather than re-filtering the whole array per holding. */
@@ -187,6 +176,58 @@ const withStrayDepositBondBalanceCleaned = (
   };
 };
 
+/**
+ * Migration 0047's backfill (`drizzle/migrations/0047_add_sets_balance.sql`'s
+ * doc comment is the full statement of WHY), mirrored for a `.kiko` file
+ * exported before `transactions.setsBalance` existed, whose rows carry no
+ * such key: per holding, the smallest-id row that is balance-set shaped AND
+ * dated at that holding's `balanceSetAt` gets the mark and becomes the
+ * holding's `balanceSetRowId`. Fed the holdings the stray cleanup produced,
+ * the same order a live device runs 0036, 0040, then 0047 — and before the
+ * import-time rezone, which a device runs only at launch, after every
+ * migration. A row or a holding that carries its key keeps it as exported.
+ * String comparison on `id` matches SQLite's own BINARY collation for ASCII
+ * ids, as in `cryptoCashReuseTarget`.
+ */
+const withLegacyBalanceSetMarksDerived = (
+  snapshotHoldings: HoldingRow[],
+  snapshotTransactions: TransactionRow[],
+): { holdings: HoldingRow[]; transactions: TransactionRow[] } => {
+  if (snapshotTransactions.every((row) => Object.hasOwn(row, 'setsBalance'))) {
+    return { holdings: snapshotHoldings, transactions: snapshotTransactions };
+  }
+
+  const balanceSetAtByHoldingId = new Map(
+    snapshotHoldings.map((holding) => [holding.id, holding.balanceSetAt]),
+  );
+  const markedIdByHoldingId = new Map<string, string>();
+
+  for (const row of snapshotTransactions) {
+    if (!isBalanceSetShapedRow(row) || row.time !== balanceSetAtByHoldingId.get(row.holdingId)) {
+      continue;
+    }
+
+    const marked = markedIdByHoldingId.get(row.holdingId);
+
+    if (marked === undefined || row.id < marked) {
+      markedIdByHoldingId.set(row.holdingId, row.id);
+    }
+  }
+
+  const markedIds = new Set(markedIdByHoldingId.values());
+
+  return {
+    holdings: snapshotHoldings.map((holding) =>
+      Object.hasOwn(holding, 'balanceSetRowId')
+        ? holding
+        : { ...holding, balanceSetRowId: markedIdByHoldingId.get(holding.id) ?? null },
+    ),
+    transactions: snapshotTransactions.map((row) =>
+      Object.hasOwn(row, 'setsBalance') ? row : { ...row, setsBalance: markedIds.has(row.id) },
+    ),
+  };
+};
+
 // Migration 0039's own seed values (`drizzle/migrations/0039_seed_loan_interest_category.sql`),
 // duplicated here rather than imported: that migration's SQL runs only on a
 // LIVE device upgrade, never against a restored snapshot's own categories.
@@ -322,7 +363,8 @@ const withImportTimesRezoned = (
 /**
  * The EODHD quote quota counts the calls this device's own key spent today,
  * not the backed-up device's, so a restore keeps the live row's quota and
- * never the backup's.
+ * never the backup's (minus what it knew of the replaced prices: see
+ * `withRestoredPrices`).
  */
 const readLiveQuoteQuota = async (
   databaseTransaction: typeof database,
@@ -634,12 +676,14 @@ export const restoreDataSnapshot = (
     );
     const { holdings: holdingsAfterStrayCleanup, transactions: transactionsAfterStrayCleanup } =
       withStrayDepositBondBalanceCleaned(holdingsAfterLegacyBackfill, snapshot.transactions);
+    const { holdings: holdingsAfterMarking, transactions: transactionsAfterMarking } =
+      withLegacyBalanceSetMarksDerived(holdingsAfterStrayCleanup, transactionsAfterStrayCleanup);
 
-    // Independent of the two backfills above (a different table, a different
-    // migration) — applied to the FINAL transaction set the stray cleanup
-    // produced, since that's what actually gets inserted.
+    // Independent of the backfills above (a different column, a different
+    // migration) — applied to the FINAL transaction set they produced, since
+    // that's what actually gets inserted.
     const { settings: dedupUpgradedSettings, transactions: dedupUpgradedTransactions } =
-      withLegacyDedupKeysUpgraded(snapshot.settings, transactionsAfterStrayCleanup);
+      withLegacyDedupKeysUpgraded(snapshot.settings, transactionsAfterMarking);
 
     // Applied last, to the FINAL settings/transactions/holdings sets every
     // step above produced — see its own doc comment for why it runs after
@@ -651,7 +695,7 @@ export const restoreDataSnapshot = (
     } = withImportTimesRezoned(
       dedupUpgradedSettings,
       dedupUpgradedTransactions,
-      holdingsAfterStrayCleanup,
+      holdingsAfterMarking,
     );
 
     // Split into four sequential groups (rather than one 10-loop function) to
@@ -707,7 +751,7 @@ export const restoreDataSnapshot = (
 
       for (const part of chunkForTable(
         settings,
-        settingsToInsert.map((row) => ({ ...row, quoteQuota: liveQuoteQuota })),
+        settingsToInsert.map((row) => ({ ...row, quoteQuota: withRestoredPrices(liveQuoteQuota) })),
       )) {
         await databaseTransaction.insert(settings).values(part);
       }

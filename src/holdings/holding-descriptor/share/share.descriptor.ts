@@ -55,7 +55,7 @@ const sharePricedSpec: PricedSpec = {
 
 const shareEntries = (holding: ValuableHolding, now: number, t: TFunction): DerivedEntry[] =>
   foldMap(maybe(asShareMeta(holding.metadata)), (meta) =>
-    lotEntries(meta.lots, holding.id, now, t),
+    lotEntries(meta.lots, holding.id, now, t, true),
   ) ?? [];
 
 // The broker kind's glyph and color: a share lives only under a broker, the

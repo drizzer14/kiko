@@ -104,6 +104,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   cryptoFirst = false,
   required,
   disabled,
+  error,
   hideLabel,
   testID,
   onOpenChange,
@@ -174,6 +175,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         hideLabel={hideLabel}
         required={required}
         disabled={disabled}
+        error={error}
         testID={testID}
         onPress={() => updateOpen(true)}
         leadingText={foldMap(maybe(selected), (currency) => currencySymbol[currency])}

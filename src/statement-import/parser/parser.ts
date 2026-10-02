@@ -27,6 +27,8 @@ export type ParsedTransaction = {
   currency: Currency;
   amountMinorUnits: number;
   timeSeconds: number;
+  /** Omitted for a clock that shows seconds. */
+  timeReading?: TimeReading;
   description: string;
   mcc?: number;
   counterIban?: string;
@@ -40,6 +42,13 @@ export type ParsedTransaction = {
    * Optional; every format shipped before PrivatBank XLSX omits it. */
   maskedCardHint?: string;
 };
+
+/** How coarse a row's clock is, when coarser than a second: a clock that shows
+ * minutes only (`HH:MM`), or a date with no time, whose local day runs from
+ * `fromSeconds` up to `untilSeconds` in the file's own zone. */
+export type TimeReading =
+  | { kind: 'minute' }
+  | { kind: 'day'; fromSeconds: number; untilSeconds: number };
 
 export type ParsedAccountHint = {
   currency: Currency;

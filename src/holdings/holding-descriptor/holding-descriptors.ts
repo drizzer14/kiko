@@ -1,4 +1,6 @@
-import { holdingTypes, type HoldingType } from '../holding-type';
+import type { AccountRow } from '@kiko/db';
+
+import { holdingTypes, type HoldingType, holdingTypesForAccountKind } from '../holding-type';
 
 import { loanDescriptor } from './loan';
 import { bondDescriptor } from './bond';
@@ -28,6 +30,13 @@ export const holdingDescriptors = {
 } as const satisfies Record<HoldingType, HoldingDescriptor>;
 
 export const holdingDescriptor = (type: HoldingType): HoldingDescriptor => holdingDescriptors[type];
+
+/** Whether every holding an account of this kind can hold is a debt: its add
+ * action and form name a loan, not a holding. Keyed off the same descriptor
+ * `side` net-worth math reads. An account row still loading names a holding. */
+export const holdsOnlyDebts = (kind: AccountRow['kind'] | undefined): boolean =>
+  kind !== undefined &&
+  holdingTypesForAccountKind[kind].every((type) => holdingDescriptor(type).side === 'debt');
 
 /**
  * A lookup safe for a `type` read straight off a stored row: the schema types

@@ -1,20 +1,16 @@
-import {
-  dayKeyOf,
-  buildPriceBook,
-  type PriceBook,
-  EMPTY_PRICE_BOOK,
-} from '@kiko/prices/price-book';
 import type { HoldingRow } from '@kiko/db';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { shareInstrument } from '@kiko/prices/instrument';
-import { fiatCurrencyOptions } from '@kiko/currency/currency';
 import type { ShareListing } from '@kiko/prices/share-search';
+import { dayKeyOf, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { type Currency, fiatCurrencyOptions } from '@kiko/currency/currency';
+
+import type { EditCheck } from '../../holding-type-form';
 
 import { useShareFields } from './use-share-fields';
 
 jest.mock('@kiko/holdings/repo', () => ({
-  holdingsRepo: { updateWithManualPricePoint: jest.fn().mockResolvedValue(undefined) },
+  holdingsRepo: { updateShareFromStored: jest.fn().mockResolvedValue(undefined) },
 }));
 
 const mockHasEodhdKey = jest.fn();
@@ -23,16 +19,21 @@ jest.mock('@kiko/prices/eodhd-key', () => ({
 }));
 
 const mockSearchShares = jest.fn();
+const mockLookupShareUnit = jest.fn();
 jest.mock('@kiko/prices/share-search', () => ({
+  ...jest.requireActual('@kiko/prices/share-search'),
   searchShares: (...args: unknown[]) => mockSearchShares(...args),
+  lookupShareUnit: (...args: unknown[]) => mockLookupShareUnit(...args),
 }));
 
-const updateMock = holdingsRepo.updateWithManualPricePoint as jest.Mock;
+const updateMock = holdingsRepo.updateShareFromStored as jest.Mock;
 
 const purchaseDay = new Date(2026, 8, 15).getTime();
 const lastDay = new Date(2026, 8, 25).getTime();
 
 type Params = Parameters<typeof useShareFields>[0];
+
+const currencyFieldRef = { current: null };
 
 const renderFields = (overrides: Partial<Params> = {}) =>
   renderHook(() =>
@@ -43,6 +44,7 @@ const renderFields = (overrides: Partial<Params> = {}) =>
       name: '',
       setName: jest.fn(),
       setCurrency: jest.fn(),
+      currencyFieldRef,
       ...overrides,
     }),
   );
@@ -68,6 +70,27 @@ const storedShare = (metadata: Record<string, unknown>) =>
     },
   }) as unknown as HoldingRow;
 
+const vodafone: ShareListing = {
+  symbol: 'VOD.LSE',
+  name: 'Vodafone Group PLC',
+  isin: 'GB00BH4HKS39',
+  currency: 'GBP',
+  quoteCurrency: 'GBX',
+};
+
+const storedVodafone = (metadata: Record<string, unknown> = {}) =>
+  storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', ...metadata });
+
+const renderEdit = async (stored: HoldingRow, overrides: Partial<Params> = {}) => {
+  const rendered = await renderFields({ isEdit: true, ...overrides });
+
+  await act(async () => {
+    rendered.result.current.seed(stored);
+  });
+
+  return rendered;
+};
+
 const editContext = {
   holdingId: 'share-1',
   name: 'Vodafone',
@@ -77,6 +100,10 @@ const editContext = {
   editingHolding: undefined,
   book: EMPTY_PRICE_BOOK,
 };
+
+// The edit builds its metadata from the row stored at the time of the write.
+const writtenMetadata = (stored: HoldingRow = storedShare({})): unknown =>
+  updateMock.mock.calls[0][2](stored.metadata);
 
 beforeEach(() => {
   mockHasEodhdKey.mockReset();
@@ -122,11 +149,12 @@ describe('useShareFields defaults and order', () => {
     expect(result.current.quoteSource).toBe('manual');
   });
 
-  it('orders scrollTargets ticker, ISIN, quantity, cost', async () => {
+  it('orders scrollTargets currency, ticker, ISIN, quantity, cost', async () => {
     const { result } = await renderFields();
     const { refs } = result.current;
 
     expect(result.current.scrollTargets.map((target) => target.ref)).toEqual([
+      currencyFieldRef,
       refs.tickerFieldRef,
       refs.isinFieldRef,
       refs.quantityFieldRef,
@@ -202,13 +230,7 @@ describe('useShareFields createPayload', () => {
 
 describe('useShareFields edit', () => {
   it('seeds the price source, ticker, and ISIN from the stored share', async () => {
-    const { result } = await renderFields({ isEdit: true });
-
-    await act(async () => {
-      result.current.seed(
-        storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', isin: 'GB00BH4HKS39' }),
-      );
-    });
+    const { result } = await renderEdit(storedVodafone({ isin: 'GB00BH4HKS39' }));
 
     expect(result.current.quoteSource).toBe('eodhd');
     expect(result.current.ticker).toBe('VOD.LSE');
@@ -216,13 +238,8 @@ describe('useShareFields edit', () => {
   });
 
   it('writes the edited fields back with the stored lots and quote currency', async () => {
-    const { result } = await renderFields({ isEdit: true });
+    const { result } = await renderEdit(storedVodafone({ quoteCurrency: 'GBX' }));
 
-    await act(async () => {
-      result.current.seed(
-        storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }),
-      );
-    });
     await act(async () => {
       result.current.setIsin('GB00BH4HKS39');
     });
@@ -230,132 +247,120 @@ describe('useShareFields edit', () => {
 
     expect(updateMock).toHaveBeenCalledWith(
       'share-1',
-      {
-        name: 'Vodafone',
-        color: null,
-        metadata: {
-          quoteSource: 'eodhd',
-          symbol: 'VOD.LSE',
-          isin: 'GB00BH4HKS39',
-          quoteCurrency: 'GBX',
-          lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
-        },
-      },
-      null,
+      { name: 'Vodafone', color: null },
+      expect.any(Function),
     );
+    expect(writtenMetadata(storedVodafone({ quoteCurrency: 'GBX' }))).toEqual({
+      quoteSource: 'eodhd',
+      symbol: 'VOD.LSE',
+      isin: 'GB00BH4HKS39',
+      quoteCurrency: 'GBX',
+      lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
+    });
+  });
+
+  it('keeps a quote currency and lots stored after the form opened', async () => {
+    const { result } = await renderEdit(storedVodafone());
+
+    await result.current.saveEdit(editContext);
+
+    const laterLots = [
+      { day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 },
+      { day: lastDay, quantityDelta: '5', costMinorUnits: 7_000 },
+    ];
+
+    expect(writtenMetadata(storedVodafone({ quoteCurrency: 'GBX', lots: laterLots }))).toEqual({
+      quoteSource: 'eodhd',
+      symbol: 'VOD.LSE',
+      quoteCurrency: 'GBX',
+      lots: laterLots,
+    });
+  });
+
+  // A stored share that no longer parses (an unknown source) still has its
+  // lots, and the edit that repairs it must keep them.
+  it('keeps readable stored lots when the rest of the stored share does not parse', async () => {
+    const { result } = await renderEdit(storedVodafone());
+
+    await result.current.saveEdit(editContext);
+
+    expect(writtenMetadata(storedShare({ quoteSource: 'yahoo' }))).toEqual({
+      quoteSource: 'eodhd',
+      symbol: 'VOD.LSE',
+      lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
+    });
+  });
+
+  // Writing over a list with one unreadable entry would drop every readable
+  // lot with it, so the build throws and the write rolls back.
+  it('refuses to write when one stored lot is unreadable', async () => {
+    const { result } = await renderEdit(storedVodafone());
+
+    await result.current.saveEdit(editContext);
+
+    expect(() =>
+      writtenMetadata(
+        storedVodafone({
+          lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }, { day: 'x' }],
+        }),
+      ),
+    ).toThrow('shareEdit: stored lots are unreadable');
+  });
+
+  it('writes no lots for a stored share with no lots key', async () => {
+    const { result } = await renderEdit(storedVodafone());
+
+    await result.current.saveEdit(editContext);
+
+    expect(writtenMetadata(storedShare({ quoteSource: 'yahoo', lots: undefined }))).toEqual({
+      quoteSource: 'eodhd',
+      symbol: 'VOD.LSE',
+      lots: [],
+    });
   });
 
   it('drops the stored quote currency once the ticker changes', async () => {
-    const { result } = await renderFields({ isEdit: true });
+    const { result } = await renderEdit(storedVodafone({ quoteCurrency: 'GBX' }));
 
-    await act(async () => {
-      result.current.seed(
-        storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }),
-      );
-    });
     await act(async () => {
       result.current.setTicker('BP.LSE');
     });
     await result.current.saveEdit(editContext);
 
-    expect(updateMock.mock.calls[0][1].metadata).toEqual({
+    expect(writtenMetadata(storedVodafone({ quoteCurrency: 'GBX' }))).toEqual({
       quoteSource: 'eodhd',
       symbol: 'BP.LSE',
       lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
     });
   });
 
-  describe('switched from EODHD to manual', () => {
-    const switchToManual = async (book: PriceBook) => {
-      const { result } = await renderFields({ isEdit: true });
-
-      await act(async () => {
-        result.current.seed(
-          storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }),
-        );
-      });
-      await act(async () => {
-        result.current.setQuoteSource('manual');
-      });
-      await result.current.saveEdit({ ...editContext, book });
-    };
-
-    const sharePoint = (day: number, price: string) => ({
-      instrument: shareInstrument('VOD.LSE'),
-      day,
-      price,
-      currency: 'GBP' as const,
-      source: 'eodhd' as const,
-    });
-
-    it('carries the latest EODHD price over to its own series, in the same write', async () => {
-      await switchToManual(
-        buildPriceBook([sharePoint(purchaseDay, '1.10'), sharePoint(lastDay, '1.2345')]),
-      );
-
-      expect(updateMock).toHaveBeenCalledTimes(1);
-      expect(updateMock).toHaveBeenCalledWith(
-        'share-1',
-        {
-          name: 'Vodafone',
-          color: null,
-          metadata: {
-            quoteSource: 'manual',
-            lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
-          },
-        },
-        { day: lastDay, price: '1.2345', currency: 'GBP' },
-      );
-    });
-
-    it('writes no price when the symbol has none yet', async () => {
-      await switchToManual(EMPTY_PRICE_BOOK);
-
-      expect(updateMock.mock.calls[0][2]).toBeNull();
-    });
-  });
-
-  it('writes no price when a manual share stays manual', async () => {
-    const { result } = await renderFields({ isEdit: true });
+  // The repo carries the symbol's closes over once it sees the switch.
+  it('writes a manual share with no symbol or quote currency', async () => {
+    const stored = storedVodafone({ quoteCurrency: 'GBX' });
+    const { result } = await renderEdit(stored);
 
     await act(async () => {
-      result.current.seed(storedShare({ quoteSource: 'manual', symbol: 'VOD.LSE' }));
+      result.current.setQuoteSource('manual');
     });
-    await result.current.saveEdit({
-      ...editContext,
-      book: buildPriceBook([
-        {
-          instrument: shareInstrument('VOD.LSE'),
-          day: lastDay,
-          price: '1.2345',
-          currency: 'GBP',
-          source: 'eodhd',
-        },
-      ]),
-    });
+    await result.current.saveEdit(editContext);
 
-    expect(updateMock.mock.calls[0][2]).toBeNull();
+    expect(writtenMetadata(stored)).toEqual({
+      quoteSource: 'manual',
+      lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
+    });
   });
 
   it('keeps a stored manual source once a saved key is found', async () => {
     mockHasEodhdKey.mockResolvedValue(true);
 
-    const { result } = await renderFields({ isEdit: true });
-
-    await act(async () => {
-      result.current.seed(storedShare({ quoteSource: 'manual' }));
-    });
+    const { result } = await renderEdit(storedShare({ quoteSource: 'manual' }));
 
     await waitFor(() => expect(result.current.hasEodhdKey).toBe(true));
     expect(result.current.quoteSource).toBe('manual');
   });
 
   it('keeps a stored EODHD source with no saved key', async () => {
-    const { result } = await renderFields({ isEdit: true });
-
-    await act(async () => {
-      result.current.seed(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE' }));
-    });
+    const { result } = await renderEdit(storedVodafone());
 
     await waitFor(() => expect(mockHasEodhdKey).toHaveBeenCalled());
     expect(result.current.quoteSource).toBe('eodhd');
@@ -364,39 +369,37 @@ describe('useShareFields edit', () => {
   // The price refresh resolves a missing unit again, so the form never has
   // to guess the new listing's unit.
   it('keeps the stored quote currency for the same ticker typed in another case', async () => {
-    const { result } = await renderFields({ isEdit: true });
+    const { result } = await renderEdit(storedVodafone({ quoteCurrency: 'GBX' }));
 
-    await act(async () => {
-      result.current.seed(
-        storedShare({ quoteSource: 'eodhd', symbol: 'VOD.LSE', quoteCurrency: 'GBX' }),
-      );
-    });
     await act(async () => {
       result.current.setTicker(' vod.lse ');
     });
     await result.current.saveEdit(editContext);
 
-    expect(updateMock.mock.calls[0][1].metadata).toHaveProperty('quoteCurrency', 'GBX');
+    expect(writtenMetadata(storedVodafone({ quoteCurrency: 'GBX' }))).toHaveProperty(
+      'quoteCurrency',
+      'GBX',
+    );
   });
 
   it('never blocks an edit on the first-lot fields', async () => {
-    const { result } = await renderFields({ isEdit: true });
-
-    await act(async () => {
-      result.current.seed(storedShare({ quoteSource: 'manual' }));
-    });
+    const { result } = await renderEdit(storedShare({ quoteSource: 'manual' }));
 
     expect(result.current.isValid).toBe(true);
   });
 });
 
 describe('useShareFields search', () => {
-  const vodafone: ShareListing = {
-    symbol: 'VOD.LSE',
-    name: 'Vodafone Group PLC',
-    isin: 'GB00BH4HKS39',
-    currency: 'GBP',
-    quoteCurrency: 'GBX',
+  const pickWithSavedKey = async () => {
+    mockHasEodhdKey.mockResolvedValue(true);
+    const rendered = await renderFields();
+
+    await waitFor(() => expect(rendered.result.current.quoteSource).toBe('eodhd'));
+    await act(async () => {
+      rendered.result.current.pickListing(vodafone);
+    });
+
+    return rendered;
   };
 
   beforeEach(() => {
@@ -436,13 +439,8 @@ describe('useShareFields search', () => {
   });
 
   it('writes the picked listing with its price unit', async () => {
-    mockHasEodhdKey.mockResolvedValue(true);
-    const rendered = await renderFields();
+    const rendered = await pickWithSavedKey();
 
-    await waitFor(() => expect(rendered.result.current.quoteSource).toBe('eodhd'));
-    await act(async () => {
-      rendered.result.current.pickListing(vodafone);
-    });
     await fillFirstLot(rendered, '10', '120');
 
     expect(rendered.result.current.createPayload().metadata).toEqual({
@@ -455,13 +453,8 @@ describe('useShareFields search', () => {
   });
 
   it('drops the picked price unit once the ticker is typed over', async () => {
-    mockHasEodhdKey.mockResolvedValue(true);
-    const rendered = await renderFields();
+    const rendered = await pickWithSavedKey();
 
-    await waitFor(() => expect(rendered.result.current.quoteSource).toBe('eodhd'));
-    await act(async () => {
-      rendered.result.current.pickListing(vodafone);
-    });
     await act(async () => {
       rendered.result.current.setTicker('BP.LSE');
     });
@@ -492,6 +485,7 @@ describe('useShareFields search', () => {
           name,
           setName,
           setCurrency: jest.fn(),
+          currencyFieldRef,
         }),
       { initialProps: { name: '' } },
     );
@@ -562,17 +556,16 @@ describe('useShareFields search', () => {
   });
 
   it('saves an edited share with the price unit of the listing picked for it', async () => {
-    const { result } = await renderFields({ isEdit: true, currency: 'GBP' });
-
-    await act(async () => {
-      result.current.seed(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.US' }));
+    const { result } = await renderEdit(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.US' }), {
+      currency: 'GBP',
     });
+
     await act(async () => {
       result.current.pickListing(vodafone);
     });
     await result.current.saveEdit(editContext);
 
-    expect(updateMock.mock.calls[0][1].metadata).toMatchObject({
+    expect(writtenMetadata(storedShare({ quoteSource: 'eodhd', symbol: 'VOD.US' }))).toMatchObject({
       symbol: 'VOD.LSE',
       quoteCurrency: 'GBX',
     });
@@ -601,5 +594,353 @@ describe('useShareFields saved EODHD key', () => {
     await renderFields({ type: 'metal' });
 
     expect(mockHasEodhdKey).not.toHaveBeenCalled();
+  });
+});
+
+describe('useShareFields currency against the listing', () => {
+  const pickEodhd = async (currency: Currency) => {
+    const rendered = await renderFields({ currency });
+
+    await act(async () => {
+      rendered.result.current.setQuoteSource('eodhd');
+      rendered.result.current.pickListing(vodafone);
+    });
+
+    return rendered;
+  };
+
+  const typeTicker = async (rendered: Rendered, ticker: string) => {
+    await act(async () => {
+      rendered.result.current.setQuoteSource('eodhd');
+      rendered.result.current.setTicker(ticker);
+    });
+    await fillFirstLot(rendered, '3', '900');
+  };
+
+  const firstLot = { day: dayKeyOf(purchaseDay), quantityDelta: '3', costMinorUnits: 90_000 };
+
+  beforeEach(() => {
+    mockLookupShareUnit.mockReset();
+  });
+
+  it('blocks Save on the Currency field for a picked listing held in another currency', async () => {
+    const rendered = await pickEodhd('USD');
+
+    await fillFirstLot(rendered, '3', '900');
+
+    expect(rendered.result.current.fieldErrors.currencyError).toBe(
+      'forms.holding.shareCurrencyMismatchError',
+    );
+    expect(rendered.result.current.listingCurrency).toBe('GBP');
+    expect(rendered.result.current.isValid).toBe(false);
+    expect(rendered.result.current.scrollTargets[0]).toMatchObject({
+      invalid: true,
+      ref: currencyFieldRef,
+    });
+  });
+
+  it('accepts a picked pence listing held in pounds', async () => {
+    const rendered = await pickEodhd('GBP');
+
+    expect(rendered.result.current.fieldErrors.currencyError).toBeNull();
+  });
+
+  it('never checks the currency of a manual share', async () => {
+    const rendered = await pickEodhd('USD');
+
+    await act(async () => {
+      rendered.result.current.setQuoteSource('manual');
+    });
+
+    expect(rendered.result.current.fieldErrors.currencyError).toBeNull();
+  });
+
+  it('saves a manual share with no lookup', async () => {
+    const rendered = await renderFields();
+
+    await act(async () => {
+      rendered.result.current.setQuoteSource('manual');
+    });
+    await fillFirstLot(rendered, '3', '900');
+
+    await expect(rendered.result.current.checkCreate?.()).resolves.toMatchObject({
+      kind: 'save',
+      payload: { metadata: { quoteSource: 'manual' } },
+    });
+    expect(mockLookupShareUnit).not.toHaveBeenCalled();
+  });
+
+  it('saves a picked listing with its own unit and no lookup', async () => {
+    const rendered = await pickEodhd('GBP');
+
+    await fillFirstLot(rendered, '3', '900');
+
+    await expect(rendered.result.current.checkCreate?.()).resolves.toMatchObject({
+      kind: 'save',
+      payload: { metadata: { symbol: 'VOD.LSE', quoteCurrency: 'GBX' } },
+    });
+    expect(mockLookupShareUnit).not.toHaveBeenCalled();
+  });
+
+  it('looks a hand-typed ticker up once and saves the unit it found', async () => {
+    mockLookupShareUnit.mockResolvedValue('USD');
+    const rendered = await renderFields({ currency: 'USD' });
+
+    await typeTicker(rendered, ' aapl.us ');
+
+    await expect(rendered.result.current.checkCreate?.()).resolves.toEqual({
+      kind: 'save',
+      payload: {
+        metadata: {
+          quoteSource: 'eodhd',
+          symbol: 'AAPL.US',
+          quoteCurrency: 'USD',
+          lots: [firstLot],
+        },
+      },
+    });
+    expect(mockLookupShareUnit.mock.calls).toEqual([['AAPL.US']]);
+  });
+
+  it('blocks a hand-typed ticker priced in another currency on the Currency field', async () => {
+    mockLookupShareUnit.mockResolvedValue('USD');
+    const rendered = await renderFields({ currency: 'UAH' });
+
+    await typeTicker(rendered, 'AAPL.US');
+
+    const checks: unknown[] = [];
+
+    await act(async () => {
+      checks.push(await rendered.result.current.checkCreate?.());
+    });
+
+    expect(checks).toEqual([
+      expect.objectContaining({
+        kind: 'blocked',
+        target: expect.objectContaining({ ref: currencyFieldRef }),
+      }),
+    ]);
+    expect(rendered.result.current.fieldErrors.currencyError).toBe(
+      'forms.holding.shareCurrencyMismatchError',
+    );
+    expect(rendered.result.current.listingCurrency).toBe('USD');
+  });
+
+  it('never looks the same ticker up twice', async () => {
+    mockLookupShareUnit.mockResolvedValue('USD');
+    const rendered = await renderFields({ currency: 'UAH' });
+
+    await typeTicker(rendered, 'AAPL.US');
+    await act(async () => {
+      await rendered.result.current.checkCreate?.();
+    });
+
+    expect(rendered.result.current.isValid).toBe(false);
+
+    await act(async () => {
+      rendered.result.current.setTicker('MSFT.US');
+    });
+
+    expect(rendered.result.current.fieldErrors.currencyError).toBeNull();
+
+    await act(async () => {
+      rendered.result.current.setTicker('AAPL.US');
+    });
+
+    expect(rendered.result.current.fieldErrors.currencyError).toBe(
+      'forms.holding.shareCurrencyMismatchError',
+    );
+    expect(mockLookupShareUnit).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the lookup as running only while it runs', async () => {
+    let answer: (unit: string | undefined) => void = () => undefined;
+    mockLookupShareUnit.mockReturnValue(
+      new Promise<string | undefined>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const rendered = await renderFields({ currency: 'USD' });
+
+    await typeTicker(rendered, 'AAPL.US');
+
+    expect(rendered.result.current.isLookingUpUnit).toBe(false);
+
+    let check: Promise<unknown> | undefined;
+
+    await act(async () => {
+      check = rendered.result.current.checkCreate?.();
+    });
+
+    expect(rendered.result.current.isLookingUpUnit).toBe(true);
+
+    await act(async () => {
+      answer('USD');
+      await check;
+    });
+
+    expect(rendered.result.current.isLookingUpUnit).toBe(false);
+  });
+
+  it('saves a hand-typed ticker as before when the lookup finds no unit', async () => {
+    mockLookupShareUnit.mockResolvedValue(undefined);
+    const rendered = await renderFields({ currency: 'UAH' });
+
+    await typeTicker(rendered, 'AAPL.US');
+
+    await expect(rendered.result.current.checkCreate?.()).resolves.toEqual({
+      kind: 'save',
+      payload: { metadata: { quoteSource: 'eodhd', symbol: 'AAPL.US', lots: [firstLot] } },
+    });
+  });
+
+  it('saves as before when the lookup itself fails', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockLookupShareUnit.mockRejectedValue(new Error('keychain'));
+    const rendered = await renderFields({ currency: 'UAH' });
+
+    await typeTicker(rendered, 'AAPL.US');
+
+    await expect(rendered.result.current.checkCreate?.()).resolves.toMatchObject({
+      kind: 'save',
+    });
+    warn.mockRestore();
+  });
+});
+
+describe('useShareFields edit against the listing', () => {
+  const storedManual = storedShare({ quoteSource: 'manual' });
+
+  // The edit's check, then its write when the check lets it save.
+  const checkAndWrite = async (rendered: Rendered, stored: HoldingRow) => {
+    let check: EditCheck | undefined;
+
+    await act(async () => {
+      check = await rendered.result.current.checkEdit?.({ ...editContext, editingHolding: stored });
+    });
+
+    if (check?.kind === 'save') {
+      await check.write();
+    }
+
+    return check;
+  };
+
+  const retype = async (rendered: Rendered, ticker: string) => {
+    await act(async () => {
+      rendered.result.current.setQuoteSource('eodhd');
+      rendered.result.current.setTicker(ticker);
+    });
+  };
+
+  beforeEach(() => {
+    mockLookupShareUnit.mockReset();
+  });
+
+  it('looks the unit up once a manual share switches to EODHD, and stores it', async () => {
+    mockLookupShareUnit.mockResolvedValue('GBX');
+    const rendered = await renderEdit(storedManual, { currency: 'GBP' });
+
+    await retype(rendered, ' vod.lse ');
+
+    await expect(checkAndWrite(rendered, storedManual)).resolves.toMatchObject({ kind: 'save' });
+    expect(mockLookupShareUnit.mock.calls).toEqual([['VOD.LSE']]);
+    expect(writtenMetadata(storedManual)).toEqual({
+      quoteSource: 'eodhd',
+      symbol: 'VOD.LSE',
+      quoteCurrency: 'GBX',
+      lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
+    });
+  });
+
+  it('blocks a new ticker priced in another currency on the Currency field', async () => {
+    mockLookupShareUnit.mockResolvedValue('USD');
+    const stored = storedVodafone({ quoteCurrency: 'GBX' });
+    const rendered = await renderEdit(stored, { currency: 'GBP' });
+
+    await retype(rendered, 'AAPL.US');
+
+    await expect(checkAndWrite(rendered, stored)).resolves.toMatchObject({
+      kind: 'blocked',
+      target: { invalid: true, ref: currencyFieldRef },
+    });
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(rendered.result.current.fieldErrors.currencyError).toBe(
+      'forms.holding.shareCurrencyMismatchEditError',
+    );
+    expect(rendered.result.current.listingCurrency).toBe('USD');
+  });
+
+  it('offers only Manual for a new ticker priced in a unit no share currency can hold', async () => {
+    mockLookupShareUnit.mockResolvedValue('ZAC');
+    const rendered = await renderEdit(storedManual, { currency: 'ZAR' });
+
+    await retype(rendered, 'NPN.JSE');
+
+    await expect(checkAndWrite(rendered, storedManual)).resolves.toMatchObject({
+      kind: 'blocked',
+    });
+    expect(rendered.result.current.fieldErrors.currencyError).toBe(
+      'forms.holding.shareCurrencyUnsupportedError',
+    );
+  });
+
+  it('saves a new ticker as before when the lookup finds no unit', async () => {
+    mockLookupShareUnit.mockResolvedValue(undefined);
+    const stored = storedVodafone({ quoteCurrency: 'GBX' });
+    const rendered = await renderEdit(stored, { currency: 'GBP' });
+
+    await retype(rendered, 'BP.LSE');
+
+    await expect(checkAndWrite(rendered, stored)).resolves.toMatchObject({ kind: 'save' });
+    expect(writtenMetadata(stored)).toEqual({
+      quoteSource: 'eodhd',
+      symbol: 'BP.LSE',
+      lots: [{ day: purchaseDay, quantityDelta: '10', costMinorUnits: 12_000 }],
+    });
+  });
+
+  it('shows the lookup as running only while it runs', async () => {
+    let answer: (unit: string | undefined) => void = () => undefined;
+    mockLookupShareUnit.mockReturnValue(
+      new Promise<string | undefined>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const rendered = await renderEdit(storedManual, { currency: 'GBP' });
+
+    await retype(rendered, 'VOD.LSE');
+
+    let check: Promise<unknown> | undefined;
+
+    await act(async () => {
+      check = rendered.result.current.checkEdit?.({ ...editContext, editingHolding: storedManual });
+    });
+
+    expect(rendered.result.current.isLookingUpUnit).toBe(true);
+
+    await act(async () => {
+      answer('GBX');
+      await check;
+    });
+
+    expect(rendered.result.current.isLookingUpUnit).toBe(false);
+  });
+
+  it.each<[string, (fields: Rendered['result']['current']) => void]>([
+    ['an unchanged source and ticker', (fields) => fields.setIsin('')],
+    ['a switch to Manual', (fields) => fields.setQuoteSource('manual')],
+    ['a listing picked for the share', (fields) => fields.pickListing(vodafone)],
+  ])('looks nothing up for %s', async (_change, change) => {
+    const stored = storedShare({ quoteSource: 'eodhd', symbol: 'VOD.US' });
+    const rendered = await renderEdit(stored, { currency: 'GBP' });
+
+    await act(async () => {
+      change(rendered.result.current);
+    });
+
+    await expect(checkAndWrite(rendered, stored)).resolves.toMatchObject({ kind: 'save' });
+    expect(mockLookupShareUnit).not.toHaveBeenCalled();
+    expect(updateMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,4 +1,5 @@
 import maybe, { foldMap } from 'fnts/maybe';
+import { isRecord } from '@kiko/type-guards';
 import { validateIsin } from '@kiko/bonds/isin';
 
 import { asLots, type Lot } from '../lots';
@@ -92,9 +93,6 @@ const bondCouponFrequencySet = new Set<string>(bondCouponFrequencies);
 
 const isBondCouponFrequency = (value: unknown): value is BondCouponFrequency =>
   typeof value === 'string' && bondCouponFrequencySet.has(value);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
 
 const isNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);

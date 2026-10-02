@@ -13,16 +13,19 @@
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		846F14066B8C2CA6E5707F03 /* RCTKikoReminders.mm in Sources */ = {isa = PBXBuildFile; fileRef = E130C34F45D22CC8AC8844DF /* RCTKikoReminders.mm */; };
+		862F59B3640A40159C5B4910 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 0C0C1FA3A559FE8AE5308C87 /* InfoPlist.strings */; };
 		9F1A2B3C4D5E6F708192A3B5 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F1A2B3C4D5E6F708192A3B4 /* SceneDelegate.swift */; };
 		AF302165096A0E369EF46EF3 /* libPods-Kiko.a in Frameworks */ = {isa = PBXBuildFile; fileRef = EB644446D98F6DD2E63A735C /* libPods-Kiko.a */; };
 		C4919CFE9414F1AE8AF0D959 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0DC43BDE57C70BAD60DA236A /* uk */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.strings; name = uk; path = Kiko/uk.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Kiko.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kiko.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Kiko/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Kiko/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = Kiko/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		6244C371759C2EAF185CB914 /* en */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.strings; name = en; path = Kiko/en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		6B9EA506C224646985930F8A /* Pods-Kiko.release-adhoc.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Kiko.release-adhoc.xcconfig"; path = "Target Support Files/Pods-Kiko/Pods-Kiko.release-adhoc.xcconfig"; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Kiko/AppDelegate.swift; sourceTree = "<group>"; };
 		8098F761CFA53B4B7DE31FE1 /* Pods-Kiko.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Kiko.release.xcconfig"; path = "Target Support Files/Pods-Kiko/Pods-Kiko.release.xcconfig"; sourceTree = "<group>"; };
@@ -57,6 +60,7 @@
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
 				9F1A2B3C4D5E6F708192A3B4 /* SceneDelegate.swift */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
+				0C0C1FA3A559FE8AE5308C87 /* InfoPlist.strings */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
 				B23A81201A6576C1474D2FB8 /* Kiko.entitlements */,
@@ -170,6 +174,7 @@
 			knownRegions = (
 				en,
 				Base,
+				uk,
 			);
 			mainGroup = 83CBB9F61A601CBA00E9B192;
 			productRefGroup = 83CBBA001A601CBA00E9B192 /* Products */;
@@ -189,6 +194,7 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				C4919CFE9414F1AE8AF0D959 /* PrivacyInfo.xcprivacy in Resources */,
+				862F59B3640A40159C5B4910 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -298,6 +304,18 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		0C0C1FA3A559FE8AE5308C87 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6244C371759C2EAF185CB914 /* en */,
+				0DC43BDE57C70BAD60DA236A /* uk */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {

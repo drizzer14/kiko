@@ -6,6 +6,7 @@ import {
 } from '@kiko/holdings/entity-symbols';
 import type { TFunction } from 'i18next';
 import {
+  holdsOnlyDebts,
   holdingDescriptorOrUndefined,
   isTimeExemptHoldingType,
   propertyOwnershipView,
@@ -20,6 +21,7 @@ import {
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
+import { isRecord } from '@kiko/type-guards';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +34,7 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
@@ -46,6 +49,7 @@ import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
@@ -58,6 +62,7 @@ import SummaryTable from '@kiko/design-system/components/summary-table';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { asLots, changedLots, hasNegativeHolding } from '@kiko/holdings/lots';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
@@ -78,6 +83,9 @@ import {
 } from './holding-detail-spec';
 import ShareChanges from './share-changes';
 import UpcomingPayments from './upcoming-payments';
+import OversizedSaleNotice from './oversized-sale-notice';
+import LotRowMenu, { type LotActions } from './lot-row-menu';
+import ListingCurrencyNotice from './listing-currency-notice';
 import { useBondRegisterTerms } from './use-bond-register-terms';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
@@ -389,7 +397,25 @@ type LedgerRowContext = {
   // manual rows only (a synced row is not duplicable), stateless via the
   // `duplicateOfTransactionId` route param.
   onDuplicateTransaction: (transactionId: string) => void;
+  lotActions: LotActions | undefined;
 };
+
+// A lot row is the user's own entry, so it is never marked "Computed"; a
+// future-dated one still reads "Projected".
+const derivedMarker = (entry: DerivedEntry, t: TFunction): string | undefined => {
+  if (entry.isFuture) {
+    return t('holdingDetail.projected');
+  }
+
+  if (entry.lotIndex !== undefined) {
+    return undefined;
+  }
+
+  return t('holdingDetail.computed');
+};
+
+const derivedFooterText = (entry: DerivedEntry, t: TFunction, timeText?: string): string =>
+  [derivedMarker(entry, t), timeText].filter((part) => part !== undefined).join(' · ');
 
 // A single ledger row, lifted verbatim out of the old eager `.map` so the
 // FlatList mounts only the visible rows — a synced card can carry thousands.
@@ -399,6 +425,7 @@ type LedgerRowContext = {
 const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row, context }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const clock = useTimeClock();
   const {
     currency,
     showTime,
@@ -408,46 +435,56 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     holdingNameById,
     onPressTransaction,
     onDuplicateTransaction,
+    lotActions,
   } = context;
 
   return match(row)
-    .with({ kind: 'derived' }, (derivedRow) => (
+    .with({ kind: 'derived' }, (derivedRow) => {
+      const footerText = derivedFooterText(
+        derivedRow.entry,
+        t,
+        showTime ? formatTime(derivedRow.entry.time, clock) : undefined,
+      );
+
       // A computed lifecycle entry (opening/top-up, interest accrual, the
       // 18%/5% withholding lines, capitalization, or a bond
-      // purchase/coupon/redemption): read-only — no delete gesture, not
-      // tappable — and marked "Computed" so it reads as derived, not a
-      // stored transaction. A projected (future-dated) entry — an
-      // upcoming accrual, coupon, or redemption — is dimmed and marked
+      // purchase/coupon/redemption): not tappable, and marked "Computed" so
+      // it reads as derived, not a stored transaction; only a lot row takes
+      // a long-press menu (`LotRowMenu`). A projected (future-dated) entry —
+      // an upcoming accrual, coupon, or redemption — is dimmed and marked
       // "Projected". The amount reads in its kind-derived tone (tax red,
       // interest/coupon green, principal movements neutral/by-sign).
-      <Card
-        padding={3}
-        testID="ledger-row"
-        style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
-      >
-        <Box gap={1}>
-          <Box direction="row" style={styles.rowMain}>
-            <Box style={styles.rowDescription}>
-              <Text variant="body">{derivedRow.entry.label}</Text>
+      return (
+        <LotRowMenu entry={derivedRow.entry} actions={lotActions}>
+          <Card
+            padding={3}
+            testID="ledger-row"
+            style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
+          >
+            <Box gap={1}>
+              <Box direction="row" style={styles.rowMain}>
+                <Box style={styles.rowDescription}>
+                  <Text variant="body">{derivedRow.entry.label}</Text>
+                </Box>
+                <Box style={styles.rowAmount}>
+                  <MoneyText
+                    money={Money.of(currency, derivedRow.entry.amountMinorUnits)}
+                    tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
+                  />
+                </Box>
+              </Box>
+              {footerText !== '' && (
+                <Box style={styles.rowFooter}>
+                  <Text variant="caption" tone="textSecondary">
+                    {footerText}
+                  </Text>
+                </Box>
+              )}
             </Box>
-            <Box style={styles.rowAmount}>
-              <MoneyText
-                money={Money.of(currency, derivedRow.entry.amountMinorUnits)}
-                tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
-              />
-            </Box>
-          </Box>
-          <Box style={styles.rowFooter}>
-            <Text variant="caption" tone="textSecondary">
-              {derivedRow.entry.isFuture
-                ? t('holdingDetail.projected')
-                : t('holdingDetail.computed')}
-              {showTime ? ` · ${formatTime(derivedRow.entry.time)}` : ''}
-            </Text>
-          </Box>
-        </Box>
-      </Card>
-    ))
+          </Card>
+        </LotRowMenu>
+      );
+    })
     .with({ kind: 'transaction' }, (transactionRow) => {
       // The row's stored category resolves to its icon + title through the
       // same shared mapping Home uses; a null/unknown category falls back
@@ -539,7 +576,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                 {showTime && (
                   <Box style={styles.rowFooter}>
                     <Text variant="caption" tone="textSecondary">
-                      {formatTime(transactionRow.transaction.time)}
+                      {formatTime(transactionRow.transaction.time, clock)}
                     </Text>
                   </Box>
                 )}
@@ -586,6 +623,31 @@ const LinkedPaymentsSection: FC<{
     </Box>
   );
 };
+
+// A lot's Delete is offered only while every sale stays covered without it;
+// the repo checks the same change again inside its write, and a refusal there
+// (the lots changed since this render) shows the shared save-error alert.
+const buildLotActions = (
+  holding: HoldingRow | undefined,
+  navigation: HoldingDetailScreenProps['navigation'],
+  t: TFunction,
+): LotActions | undefined =>
+  foldMap(maybe(holding), ({ id, metadata }): LotActions => {
+    const lots = asLots(isRecord(metadata) ? metadata.lots : undefined) ?? [];
+
+    return {
+      edit: (lotIndex) => navigation.navigate('LotForm', { holdingId: id, lotIndex }),
+      remove: async (lotIndex) => {
+        try {
+          await holdingsRepo.changeLots(id, { kind: 'remove', index: lotIndex });
+        } catch {
+          alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+        }
+      },
+      isRemovable: (lotIndex) =>
+        !hasNegativeHolding(changedLots(lots, { kind: 'remove', index: lotIndex })),
+    };
+  });
 
 // The footer's per-type primary action, extracted to module scope (mirroring
 // `resolveLedgerReadyView` below) so the `match` branching does not count
@@ -933,6 +995,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // the account's kind to constrain the type chips). Always present on a real
   // row (accountId is NOT NULL); the header Edit action is gated on it.
   const holdingAccountId = holding?.accountId;
+  // Unknown while the account row loads, so the form reads its own account
+  // instead of being told the holding is not a loan.
+  const debtAccount = foldMap(maybe(account), ({ kind }) => holdsOnlyDebts(kind));
 
   // The per-row read context, threaded into each ledger row so the row
   // component stays at module scope. `holdingName` is always a string (the
@@ -950,6 +1015,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       navigation.navigate('TransactionForm', { transactionId }),
     onDuplicateTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
+    lotActions: buildLotActions(holding, navigation, t),
   };
 
   // The header/summary block that scrolls above the ledger: the Value amount +
@@ -1009,6 +1075,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         </Box>
       )}
 
+      <ListingCurrencyNotice holding={holding} />
+
+      <OversizedSaleNotice holding={holding} />
+
       <LinkedPaymentsSection
         title={t('holdingDetail.linkedPayments')}
         payments={linkedPayments}
@@ -1037,12 +1107,24 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             label: t('common.edit'),
             tintColor: theme.colors.textPrimary,
             onPress: () =>
-              navigation.navigate('HoldingForm', { accountId: holdingAccountId, holdingId }),
+              navigation.navigate('HoldingForm', {
+                accountId: holdingAccountId,
+                holdingId,
+                debtAccount,
+              }),
           }),
         ],
       }),
     });
-  }, [navigation, holdingName, holdingAccountId, holdingId, t, theme.colors.textPrimary]);
+  }, [
+    navigation,
+    holdingName,
+    holdingAccountId,
+    holdingId,
+    debtAccount,
+    t,
+    theme.colors.textPrimary,
+  ]);
 
   const ledgerReadyView = resolveLedgerReadyView(
     isReady,

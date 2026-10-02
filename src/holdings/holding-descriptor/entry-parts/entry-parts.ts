@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import type { Lot } from '@kiko/holdings/lots';
 import { compareDecimal } from '@kiko/currency/decimal';
+import { localMidnightOfDayKey } from '@kiko/prices/price-book';
 import type { DerivedEntry, DerivedEntryKind, EntryTone } from '@kiko/holdings/derived-entries';
 
 // The ledger tone a derived entry reads in: withholding lines are `negative`
@@ -41,22 +42,35 @@ export const makeEntry = (
 // stores a buy's cost positive (money paid) and a sell's negative (cost basis
 // removed), so one negation gives the money-out/money-in sign the bond
 // purchase/redemption entries already use.
+//
+// A stock split adds shares at no cost, so on a holding that can split a buy
+// at exactly 0 reads "Split"; a metal never splits, so its free buy stays a
+// purchase.
 export const lotEntries = (
   lots: readonly Lot[],
   holdingId: string,
   now: number,
   t: TFunction,
+  canSplit = false,
 ): DerivedEntry[] =>
   lots.map((lot, index) => {
     const isSale = compareDecimal(lot.quantityDelta, '0') < 0;
+    const isSplit = canSplit && !isSale && lot.costMinorUnits === 0;
+    const label = match({ isSale, isSplit })
+      .with({ isSale: true }, () => t('holdingDetail.sale'))
+      .with({ isSplit: true }, () => t('holdingDetail.split'))
+      .otherwise(() => t('holdingDetail.purchase'));
 
-    return makeEntry(
-      holdingId,
-      isSale ? 'sale' : 'purchase',
-      index,
-      lot.day,
-      -lot.costMinorUnits,
-      isSale ? t('holdingDetail.sale') : t('holdingDetail.purchase'),
-      now,
-    );
+    return {
+      ...makeEntry(
+        holdingId,
+        isSale ? 'sale' : 'purchase',
+        index,
+        localMidnightOfDayKey(lot.day),
+        -lot.costMinorUnits,
+        label,
+        now,
+      ),
+      lotIndex: index,
+    };
   });
