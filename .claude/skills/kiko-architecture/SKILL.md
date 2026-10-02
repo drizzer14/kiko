@@ -342,6 +342,24 @@ one for the other:
   replays); no backfill request fires while hidden, only after the fresh
   read lands; an unfocused mount still loads its charts.
 
+### Home reads a windowed ledger, not every transaction
+
+The ledger grows with every transaction ever synced, and a read of it
+re-runs on every transactions/holdings/accounts write. Home therefore
+reads three queries on those tables instead of one whole-ledger list:
+`transactionsRepo.listWithContextBetweenQuery(from, to)` (the picked date
+range's rows, the screen's own inclusive day-aligned bounds, an
+`undefined` side open-ended; ordered `time desc` on the
+`transactions_time` index, so same-time rows keep their order),
+`contextSpanQuery()` (count, earliest and latest time of the whole
+ledger, for the date-range field) and `contextCategoriesQuery()` (each
+stored category once, newest-first, for the category filter). Those two
+aggregates are the only things Home needs from rows outside the range, so
+the window needs no earlier rows. The JavaScript range filter stays, and
+the screen test's mock answers the three queries by `kind`; the real SQL
+is pinned against a full-ledger filter in
+`transactions.repo.home-window.test.ts`.
+
 ### op-sqlite's ONE worker thread — every query, whole-app, one queue
 
 op-sqlite runs every query for the WHOLE APP on a single worker thread

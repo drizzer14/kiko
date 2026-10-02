@@ -92,7 +92,7 @@ describe('transactionsRepo', () => {
   });
 
   it('exposes a joined all-transactions query with account and holding labels', () => {
-    const query = transactionsRepo.listAllWithContextQuery();
+    const query = transactionsRepo.listWithContextBetweenQuery(undefined, undefined);
     const sql = query.toSQL().sql.toLowerCase();
     expect(sql).toContain('from "transactions"');
     expect(sql).toContain('join "holdings"');
@@ -104,19 +104,19 @@ describe('transactionsRepo', () => {
   });
 
   it('includes the change group id in the joined all-transactions projection', () => {
-    const sql = transactionsRepo.listAllWithContextQuery().toSQL().sql;
+    const sql = transactionsRepo.listWithContextBetweenQuery(undefined, undefined).toSQL().sql;
 
     expect(sql).toContain('change_group_id');
   });
 
   it('includes the source in the joined all-transactions projection, so Home can tell a synced row from a manual one', () => {
-    const sql = transactionsRepo.listAllWithContextQuery().toSQL().sql;
+    const sql = transactionsRepo.listWithContextBetweenQuery(undefined, undefined).toSQL().sql;
 
     expect(sql).toContain('"transactions"."source"');
   });
 
   it('includes the loan-link column in the joined all-transactions projection, so a list row can show its marker', () => {
-    const sql = transactionsRepo.listAllWithContextQuery().toSQL().sql;
+    const sql = transactionsRepo.listWithContextBetweenQuery(undefined, undefined).toSQL().sql;
 
     expect(sql).toContain('loan_holding_id');
   });

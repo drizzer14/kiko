@@ -26,7 +26,6 @@ import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CompositeScreenProps } from '@react-navigation/native';
-import { transactionSpan } from '@kiko/transactions/transaction-span';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
@@ -118,6 +117,36 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const listRef = useRef<SectionList<HomeTransactionRow, DaySection<HomeTransactionRow>>>(null);
   useScrollToTopOnTabPress(listRef);
 
+  // Read once here (rather than where the net-worth total needs it below) so
+  // the date-range state below can seed off this same instant instead of a
+  // second, separately-timed `Date.now()` read. The ledger query below needs
+  // the range's bounds, so this block sits above the reads.
+  const now = Date.now();
+
+  // `customRange` holds an explicit user pick; `null` means "show the default
+  // (last-30-days) range". The default is derived FRESH from `now` on every
+  // render instead of being frozen once in a `useState` initializer — this
+  // tab stays mounted after it is left, so a range seeded only at mount (or
+  // at the last Clear) silently stopped including "today" once a calendar day
+  // had passed. A user pick still stays exactly as given, even one side left
+  // null (open-ended) via the date-range field.
+  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null } | null>(
+    null,
+  );
+  const defaultRange = defaultDateRange(now);
+  const dateFrom = customRange !== null ? customRange.from : defaultRange.from;
+  const dateTo = customRange !== null ? customRange.to : defaultRange.to;
+  // Computed every render (cheap — two Date constructions, not the filter
+  // below), but its VALUES are what the ledger read and `filteredTransactions`
+  // key on: `bounds.from`/`bounds.to` are day-aligned numbers
+  // (`startOfLocalDay`/`endOfLocalDay`), so they only change once per calendar
+  // day even on the DEFAULT range, where `dateFrom`/`dateTo` are fresh `Date`
+  // objects on every render (see `defaultDateRange`) — keying on those raw
+  // `Date` objects would re-run the read, the filter (and the section
+  // grouping, and the SectionList it feeds) on every single render instead of
+  // once per day.
+  const { from: boundsFrom, to: boundsTo } = dateRangeBounds(dateFrom, dateTo);
+
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.listQuery(),
     ['accounts'],
@@ -153,8 +182,24 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     true,
     { cached: true },
   );
+  // The ledger rows of the picked date range only, not the whole ledger: it
+  // grows with every transaction ever synced and re-reads on every write. The
+  // range filter below still applies; the two reads after it carry what the
+  // screen shows of the rows OUTSIDE the range (their span and categories).
   const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
-    transactionsRepo.listAllWithContextQuery(),
+    transactionsRepo.listWithContextBetweenQuery(boundsFrom, boundsTo),
+    ['transactions', 'holdings', 'accounts'],
+    true,
+    { cached: true },
+  );
+  const { data: spanRows, isLoading: spanLoading } = useLiveQuery(
+    transactionsRepo.contextSpanQuery(),
+    ['transactions', 'holdings', 'accounts'],
+    true,
+    { cached: true },
+  );
+  const { data: categoryRows, isLoading: categoryRowsLoading } = useLiveQuery(
+    transactionsRepo.contextCategoriesQuery(),
     ['transactions', 'holdings', 'accounts'],
     true,
     { cached: true },
@@ -176,6 +221,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     priceBookLoading,
     settingsLoading,
     transactionsLoading,
+    spanLoading,
+    categoryRowsLoading,
     categoriesLoading,
   );
 
@@ -203,25 +250,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // Each dimension holds a set of selected values; an empty set means "all".
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
-
-  // Read once here (rather than where the net-worth total needs it below) so
-  // the date-range state below can seed off this same instant instead of a
-  // second, separately-timed `Date.now()` read.
-  const now = Date.now();
-
-  // `customRange` holds an explicit user pick; `null` means "show the default
-  // (last-30-days) range". The default is derived FRESH from `now` on every
-  // render instead of being frozen once in a `useState` initializer — this
-  // tab stays mounted after it is left, so a range seeded only at mount (or
-  // at the last Clear) silently stopped including "today" once a calendar day
-  // had passed. A user pick still stays exactly as given, even one side left
-  // null (open-ended) via the date-range field.
-  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null } | null>(
-    null,
-  );
-  const defaultRange = defaultDateRange(now);
-  const dateFrom = customRange !== null ? customRange.from : defaultRange.from;
-  const dateTo = customRange !== null ? customRange.to : defaultRange.to;
 
   const clearDateRange = (): void => {
     setCustomRange(null);
@@ -280,21 +308,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // display when no range is active. It never filters — it only tells the user
   // the range their data covers. With no transactions both bounds fall back to
   // today so the field always has something to render.
-  // The earliest/latest transaction time in ONE O(n) pass (see `transactionSpan`
-  // — `Math.min(...times)` spread the whole array and overflowed the stack on a
-  // long history, and re-ran on every reactive fire during a sync). Memoized on
-  // `transactions` alone; the empty-list fallback to `now` is applied outside,
-  // so a per-render `now` never invalidates the memo.
-  const span = useMemo(
-    () =>
-      transactionSpan(
-        transactions.map((row) => row.time),
-        0,
-      ),
-    [transactions],
-  );
-  const spanStart = transactions.length > 0 ? span.start : now;
-  const spanEnd = transactions.length > 0 ? span.end : now;
+  // The earliest/latest time come from the database in one aggregate row (null
+  // for an empty ledger), not from the rows this screen holds: those are only
+  // the picked range's, so they would shrink the span to the range itself.
+  const ledgerSpan = spanRows.at(0);
+  const spanStart = ledgerSpan?.earliest ?? now;
+  const spanEnd = ledgerSpan?.latest ?? now;
 
   // The date-range field's *selectable* bounds are distinct from the display
   // span above: the earliest a user may pick is the earliest transaction's day
@@ -349,7 +368,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const categoryOptions = useMemo(() => {
     const byKey = new Map<string, FilterOption>();
 
-    for (const row of transactions) {
+    // Every category the ledger holds, not only the picked range's: each
+    // stored category once, in the order the newest-first ledger meets it.
+    for (const row of categoryRows) {
       const key = categoryKeyForRow(row.category);
 
       if (byKey.has(key)) {
@@ -388,15 +409,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     categoryKeyForRow,
     i18n.language,
   ]);
-  // Computed every render (cheap — two Date constructions, not the filter
-  // below), but its VALUES are what `filteredTransactions` keys its memo on:
-  // `bounds.from`/`bounds.to` are day-aligned numbers (`startOfLocalDay`/
-  // `endOfLocalDay`), so they only change once per calendar day even on the
-  // DEFAULT range, where `dateFrom`/`dateTo` are fresh `Date` objects on
-  // every render (see `defaultDateRange`) — keying the memo on those raw
-  // `Date` objects would re-run the filter (and the section grouping, and
-  // the SectionList it feeds) on every single render instead of once per day.
-  const { from: boundsFrom, to: boundsTo } = dateRangeBounds(dateFrom, dateTo);
   const filteredTransactions = useMemo(() => {
     return transactions.filter((row) => {
       const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);

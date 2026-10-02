@@ -2,11 +2,11 @@ import type { transactionsRepo } from '@kiko/transactions/repo';
 import type { CategoryDisplay } from '@kiko/categories/category-display';
 
 // The Home transaction list's row shape — the display projection returned by
-// `listAllWithContextQuery`, the same type `useLiveQuery` infers for that query.
-// Derived here (rather than re-declared) so the row component and the screen
-// stay pinned to the query's own columns.
+// `listWithContextBetweenQuery`, the same type `useLiveQuery` infers for that
+// query. Derived here (rather than re-declared) so the row component and the
+// screen stay pinned to the query's own columns.
 export type HomeTransactionRow = Awaited<
-  ReturnType<typeof transactionsRepo.listAllWithContextQuery>
+  ReturnType<typeof transactionsRepo.listWithContextBetweenQuery>
 >[number];
 
 export type TransactionRowProps = {

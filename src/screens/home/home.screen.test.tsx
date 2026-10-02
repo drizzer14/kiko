@@ -109,9 +109,18 @@ jest.mock('@kiko/rates/repo', () => ({
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
+// The ledger is read through three queries on the same tables; each mock query
+// names its kind so `setLiveData` can answer it the way the real SQL would.
+const mockListBetween = jest.fn();
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
-    listAllWithContextQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    listWithContextBetweenQuery: (...args: unknown[]) => {
+      mockListBetween(...args);
+
+      return { kind: 'rows', toSQL: () => ({ sql: '', params: [] }) };
+    },
+    contextSpanQuery: () => ({ kind: 'span', toSQL: () => ({ sql: '', params: [] }) }),
+    contextCategoriesQuery: () => ({ kind: 'categories', toSQL: () => ({ sql: '', params: [] }) }),
     loanLedgerPaymentsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -200,7 +209,11 @@ type LiveData = {
   holdings?: Holding[];
   rates?: Rate[];
   settings?: Settings[];
+  // The whole ledger: what the span and the category filter are read from.
   transactions?: Transaction[];
+  // The rows the windowed read returns; the whole ledger unless a test says
+  // the database narrowed it to the picked range.
+  windowRows?: Transaction[];
   categories?: Category[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
   // key defaults to `false` (an already-resolved query), so every existing
@@ -227,9 +240,28 @@ const setLiveData = (data: LiveData): void => {
     price_points: [],
   };
   const isLoadingByTable = data.isLoading ?? {};
+  const ledger = data.transactions ?? [];
+  const newestFirst = [...ledger].sort((first, second) => second.time - first.time);
+  // What the database answers for the ledger's span and distinct categories.
+  const spanRow = {
+    count: ledger.length,
+    earliest: ledger.length > 0 ? Math.min(...ledger.map((row) => row.time)) : null,
+    latest: ledger.length > 0 ? Math.max(...ledger.map((row) => row.time)) : null,
+  };
+  const categoryRows = [...new Set(newestFirst.map((row) => row.category))].map((category) => ({
+    category,
+  }));
+  const ledgerAnswers: Record<string, unknown[]> = {
+    rows: data.windowRows ?? ledger,
+    span: [spanRow],
+    categories: categoryRows,
+  };
 
-  mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
-    data: byTable[tables[0]] ?? [],
+  mockUseLiveQuery.mockImplementation((query: { kind?: string }, tables: string[]) => ({
+    data:
+      tables[0] === 'transactions' && tables.length === 3 && query.kind !== undefined
+        ? ledgerAnswers[query.kind]
+        : (byTable[tables[0]] ?? []),
     isLoading: isLoadingByTable[tables[0]] ?? false,
   }));
 };
@@ -869,6 +901,98 @@ describe('HomeScreen', () => {
     expect(queryByText('TooOld')).toBeNull();
   });
 
+  // The ledger grows with every transaction ever synced and re-reads on every
+  // write, so Home reads only the picked range's rows; the filter below it
+  // still applies the same inclusive, day-aligned bounds.
+  const dayStart = (date: Date): number =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayEnd = (date: Date): number =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime() - 1;
+
+  it('reads the ledger window between the default range’s day-aligned bounds', async () => {
+    seed();
+
+    await renderHome();
+
+    const range = defaultDateRange();
+
+    expect(mockListBetween).toHaveBeenLastCalledWith(dayStart(range.from), dayEnd(range.to));
+  });
+
+  it('reads the ledger window of a picked range', async () => {
+    // An older transaction sets the range's selectable floor below the pick.
+    seed({ transactions: [transaction({ time: localDaysFrom(Date.now(), -40) })] });
+
+    const { getByLabelText, getByTestId, getByText } = await renderHome();
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText('Date range'));
+    });
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const calendar = getByTestId('date-range-calendar').props as {
+      onDayPress: (day: unknown) => void;
+    };
+    await act(async () => {
+      calendar.onDayPress({
+        year: threeDaysAgo.getFullYear(),
+        month: threeDaysAgo.getMonth() + 1,
+        day: threeDaysAgo.getDate(),
+      });
+    });
+    await act(async () => {
+      await fireEvent.press(getByText('Apply'));
+    });
+
+    // A first pick narrows the range to that one day.
+    expect(mockListBetween).toHaveBeenLastCalledWith(dayStart(threeDaysAgo), dayEnd(threeDaysAgo));
+  });
+
+  it('keeps the date-range field’s selectable floor at the oldest transaction, though the window holds only recent rows', async () => {
+    const oldest = localDaysFrom(Date.now(), -300);
+    const recent = transaction({ id: 't1', time: localDaysFrom(Date.now(), -2) });
+    seed({
+      transactions: [recent, transaction({ id: 't2', time: oldest, description: 'Oldest' })],
+      windowRows: [recent],
+    });
+
+    const { getByLabelText, getByTestId } = await renderHome();
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText('Date range'));
+    });
+
+    const floor = new Date(oldest);
+    const pad = (value: number): string => String(value).padStart(2, '0');
+
+    expect((getByTestId('date-range-calendar').props as { minDate: string }).minDate).toBe(
+      `${floor.getFullYear()}-${pad(floor.getMonth() + 1)}-${pad(floor.getDate())}`,
+    );
+  });
+
+  it('lists a category only an older, out-of-window transaction holds in the category filter', async () => {
+    const recent = transaction({
+      id: 't1',
+      time: localDaysFrom(Date.now(), -2),
+      category: 'groceries',
+    });
+    const older = transaction({
+      id: 't2',
+      time: localDaysFrom(Date.now(), -200),
+      category: 'transport',
+    });
+    seed({ transactions: [recent, older], windowRows: [recent] });
+
+    const { getByTestId } = await renderHome();
+
+    await act(async () => {
+      await fireEvent.press(getByTestId('category-filter-menu'));
+    });
+
+    expect(getByTestId('category-filter-menu-option-transport')).toBeTruthy();
+    expect(getByTestId('category-filter-menu-option-groceries')).toBeTruthy();
+  });
+
   it('resets the date range to the 30-day default (not all-time) when Clear is pressed', async () => {
     const recent = transaction({
       id: 't1',
@@ -1101,9 +1225,9 @@ describe('HomeScreen', () => {
     expect(getByText('No transactions')).toBeTruthy();
   });
 
-  it('reads accounts, holdings, rates, prices with the linked loan payments, settings, then transactions in that order', async () => {
+  it('reads accounts, holdings, rates, prices with the linked loan payments, settings, then the ledger window, its span and its categories in that order', async () => {
     await renderHome();
-    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 7).map((call) => call[1].join(','));
+    const tablesInOrder = mockUseLiveQuery.mock.calls.slice(0, 9).map((call) => call[1].join(','));
     expect(tablesInOrder).toEqual([
       'accounts',
       'holdings',
@@ -1112,7 +1236,12 @@ describe('HomeScreen', () => {
       'transactions,holdings',
       'settings',
       'transactions,holdings,accounts',
+      'transactions,holdings,accounts',
+      'transactions,holdings,accounts',
     ]);
+    expect(
+      mockUseLiveQuery.mock.calls.slice(6, 9).map((call) => (call[0] as { kind: string }).kind),
+    ).toEqual(['rows', 'span', 'categories']);
   });
 
   // kiko-architecture: no request or query for data the user does not have —

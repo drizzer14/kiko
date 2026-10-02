@@ -787,12 +787,49 @@ const resolveImportBalance = (
   };
 };
 
+// The display projection of every ledger row: the columns Home and the other
+// ledger lists read, joined to the holding and account each belongs to.
+const contextRowsQuery = () =>
+  database
+    .select({
+      id: transactions.id,
+      amountMinorUnits: transactions.amountMinorUnits,
+      currency: holdings.currency,
+      time: transactions.time,
+      description: transactions.description,
+      // The exchange marker travels with the display projection: Home reads
+      // it to resolve an exchange leg's label, and Statistics reads it to
+      // drop both legs from the spending pie.
+      exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+      // The split-change group id travels too: the spending pie nets a
+      // payment's linked returns into its category (statistics/category-breakdown).
+      changeGroupId: transactions.changeGroupId,
+      // Home reads the source to tell a synced (Monobank/crypto) row from a
+      // manual one (`isSyncedTransaction`), gating its long-press delete —
+      // only a manual row is deletable.
+      source: transactions.source,
+      category: transactions.category,
+      accountId: accounts.id,
+      accountName: accounts.name,
+      holdingName: holdings.name,
+      // Home reads the holding type to drop the HH:MM stamp on a
+      // term_deposit/bond row (those are day-granular events).
+      holdingType: holdings.type,
+      // The loan-link marker travels too: Home shows a small glyph on any
+      // row still carrying a link, regardless of `loanLinkSource` ('auto'
+      // or 'manual' read the same marker).
+      loanHoldingId: transactions.loanHoldingId,
+    })
+    .from(transactions)
+    .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
+    .innerJoin(accounts, eq(holdings.accountId, accounts.id));
+
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
   // Every transaction row, newest first, carrying its `holdingId` — the
   // Statistics line chart groups the whole ledger by holding to reconstruct
-  // each holding's balance over time, which `listAllWithContextQuery` (a
+  // each holding's balance over time, which `listWithContextBetweenQuery` (a
   // display projection without `holdingId`) cannot feed.
   listAllQuery: () => database.select().from(transactions).orderBy(desc(transactions.time)),
   getByIdQuery: (transactionId: string) =>
@@ -920,41 +957,50 @@ export const transactionsRepo = {
       .from(transactions)
       .where(eq(transactions.loanHoldingId, loanHoldingId))
       .orderBy(desc(transactions.time)),
-  listAllWithContextQuery: () =>
+  /**
+   * Every ledger row with its holding and account, newest first, whose time
+   * falls within the inclusive `[from, to]` bounds; an `undefined` side is
+   * open-ended, so an `undefined` pair is the whole ledger. Home reads its
+   * picked date range through this instead of every row.
+   */
+  listWithContextBetweenQuery: (from: number | undefined, to: number | undefined) =>
+    contextRowsQuery()
+      .where(
+        and(
+          foldMap(maybe(from), (start) => gte(transactions.time, start)),
+          foldMap(maybe(to), (end) => lte(transactions.time, end)),
+        ),
+      )
+      .orderBy(desc(transactions.time)),
+  /**
+   * How many rows the whole ledger holds (`listWithContextBetweenQuery` with
+   * no bounds) and the earliest and latest time among them (one row;
+   * `earliest`/`latest` are null for an empty ledger) — Home's date-range
+   * field shows the span of the whole ledger while it reads only a window of it.
+   */
+  contextSpanQuery: () =>
     database
       .select({
-        id: transactions.id,
-        amountMinorUnits: transactions.amountMinorUnits,
-        currency: holdings.currency,
-        time: transactions.time,
-        description: transactions.description,
-        // The exchange marker travels with the display projection: Home reads
-        // it to resolve an exchange leg's label, and Statistics reads it to
-        // drop both legs from the spending pie.
-        exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
-        // The split-change group id travels too: the spending pie nets a
-        // payment's linked returns into its category (statistics/category-breakdown).
-        changeGroupId: transactions.changeGroupId,
-        // Home reads the source to tell a synced (Monobank/crypto) row from a
-        // manual one (`isSyncedTransaction`), gating its long-press delete —
-        // only a manual row is deletable.
-        source: transactions.source,
-        category: transactions.category,
-        accountId: accounts.id,
-        accountName: accounts.name,
-        holdingName: holdings.name,
-        // Home reads the holding type to drop the HH:MM stamp on a
-        // term_deposit/bond row (those are day-granular events).
-        holdingType: holdings.type,
-        // The loan-link marker travels too: Home shows a small glyph on any
-        // row still carrying a link, regardless of `loanLinkSource` ('auto'
-        // or 'manual' read the same marker).
-        loanHoldingId: transactions.loanHoldingId,
+        count: sql<number>`count(*)`,
+        earliest: sql<number | null>`min(${transactions.time})`,
+        latest: sql<number | null>`max(${transactions.time})`,
       })
       .from(transactions)
       .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
+      .innerJoin(accounts, eq(holdings.accountId, accounts.id)),
+  /**
+   * Each stored category of the whole ledger once, in the order the newest-first
+   * ledger first meets it — Home's category filter lists every category the
+   * ledger holds while it reads only a window of it.
+   */
+  contextCategoriesQuery: () =>
+    database
+      .select({ category: transactions.category })
+      .from(transactions)
+      .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
       .innerJoin(accounts, eq(holdings.accountId, accounts.id))
-      .orderBy(desc(transactions.time)),
+      .groupBy(transactions.category)
+      .orderBy(desc(sql`max(${transactions.time})`)),
   /**
    * The DISTINCT, non-empty descriptions of the user's own MANUAL rows, newest
    * first — the source of the create-form's inline description suggestions.
