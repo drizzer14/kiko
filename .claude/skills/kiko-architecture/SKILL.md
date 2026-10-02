@@ -1828,6 +1828,15 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   decrypt, and relies on `@noble/ciphers`' GCM tag verification to fail closed
   on a wrong key or tampered ciphertext — see the file for the exact error
   strings. State nothing about the envelope beyond what `envelope.ts` shows.
+- **A migration forces an `EXPORT_VERSION` decision.** A build refuses a file
+  whose `version` it does not read, which keeps an older build from restoring
+  a newer file and then running a launch-time upgrade (the import-time
+  rezone) a second time on data that already had it. A new reader keeps
+  reading the older versions (`READABLE_EXPORT_VERSIONS`). `envelope.test.ts`
+  pins the version to the migration count at the last decision, so a new
+  migration fails it until the version is bumped or the count is recorded
+  with the reason no bump is needed (a column riding inside an existing row
+  and derived on restore needs none).
 
 ## Reminders (local notifications)
 

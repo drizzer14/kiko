@@ -27,6 +27,9 @@ const journalEntries = (): MigrationJournalEntry[] =>
     }
   ).entries;
 
+/** How many migrations the journal lists — for a test that pins a decision to the count. */
+export const migrationCount = (): number => journalEntries().length;
+
 const applyEntries = (database: DatabaseSync, entries: MigrationJournalEntry[]): void => {
   for (const entry of entries) {
     const sql = readFileSync(join(MIGRATIONS_ROOT, `${entry.tag}.sql`), 'utf8');

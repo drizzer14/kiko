@@ -5,12 +5,24 @@ import { bifold, eitherSync, isLeft } from 'fnts/either';
 import { decodeBase64ToBytes, encodeBytesToBase64 } from '../base64/base64';
 
 export const EXPORT_FORMAT = 'kiko-export';
-export const EXPORT_VERSION = 1;
+// Written into every file. A build refuses a version it does not read, so a
+// build that predates a schema change cannot restore a file that depends on it
+// and then run the change's one-time upgrade a second time (the 1.2 import-time
+// rezone did, on a file restored by 1.1). `envelope.test.ts` fails when a
+// migration lands without a decision here.
+export const EXPORT_VERSION = 2;
+
+// Version 1 files hold the same rows (the whole row is serialized and a restore
+// derives what an older file lacks), so this build still reads them.
+const READABLE_EXPORT_VERSIONS: readonly number[] = [1, EXPORT_VERSION];
+
+export const isReadableExportVersion = (version: unknown): boolean =>
+  typeof version === 'number' && READABLE_EXPORT_VERSIONS.includes(version);
 
 const GCM_NONCE_BYTES = 12;
 
 export type ExportEnvelope = {
-  version: typeof EXPORT_VERSION;
+  version: number;
   format: typeof EXPORT_FORMAT;
   /** base64-encoded 12-byte GCM nonce, fresh on every encrypt. */
   nonce: string;
@@ -43,7 +55,7 @@ export const encryptEnvelope = (plaintext: Uint8Array, key: Uint8Array): ExportE
  *     app-level error message over that same fail-closed behavior).
  */
 export const decryptEnvelope = (envelope: ExportEnvelope, key: Uint8Array): Uint8Array => {
-  if (envelope.format !== EXPORT_FORMAT || envelope.version !== EXPORT_VERSION) {
+  if (envelope.format !== EXPORT_FORMAT || !isReadableExportVersion(envelope.version)) {
     throw new Error('data-transfer/decrypt: unrecognized export file header');
   }
 

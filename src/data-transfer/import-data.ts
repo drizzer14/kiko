@@ -9,7 +9,7 @@ import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import {
   decryptEnvelope,
   EXPORT_FORMAT,
-  EXPORT_VERSION,
+  isReadableExportVersion,
   type ExportEnvelope,
 } from './crypto/envelope';
 import { utf8Decode } from './utf8/utf8';
@@ -37,7 +37,7 @@ const isExportEnvelope = (value: unknown): value is ExportEnvelope =>
   typeof value === 'object' &&
   value !== null &&
   (value as ExportEnvelope).format === EXPORT_FORMAT &&
-  (value as ExportEnvelope).version === EXPORT_VERSION &&
+  isReadableExportVersion((value as ExportEnvelope).version) &&
   typeof (value as ExportEnvelope).nonce === 'string' &&
   typeof (value as ExportEnvelope).ciphertext === 'string';
 

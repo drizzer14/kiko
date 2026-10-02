@@ -1,3 +1,5 @@
+import { migrationCount } from '@kiko/test-support/real-sqlite';
+
 import { decodeBase64ToBytes, encodeBytesToBase64 } from '../base64/base64';
 
 import { generateExportKey } from './generate-key';
@@ -61,8 +63,39 @@ describe('encryptEnvelope / decryptEnvelope', () => {
     expect(() =>
       decryptEnvelope({ ...envelope, format: 'not-kiko-export' as typeof EXPORT_FORMAT }, key),
     ).toThrow('data-transfer/decrypt');
-    expect(() =>
-      decryptEnvelope({ ...envelope, version: 99 as typeof EXPORT_VERSION }, key),
-    ).toThrow('data-transfer/decrypt');
+    expect(() => decryptEnvelope({ ...envelope, version: 99 }, key)).toThrow(
+      'data-transfer/decrypt',
+    );
+  });
+
+  it('still reads a file an earlier build wrote as version 1', () => {
+    const key = generateExportKey();
+    const plaintext = new TextEncoder().encode('{"hello":"world"}');
+    const envelope = encryptEnvelope(plaintext, key);
+
+    expect(decryptEnvelope({ ...envelope, version: 1 }, key)).toEqual(plaintext);
+  });
+});
+
+// A file's `version` tells an older build that a newer build wrote it (which
+// then refuses it) — needed when the schema grows a column or a one-time
+// upgrade step the older build lacks (2: the import-time rezone, 1.2 reminders
+// and quota; an older build restoring such a file would drop them and, after
+// updating, run the rezone again on already-rezoned times). Every migration
+// forces a decision here: bump EXPORT_VERSION and record the new journal
+// length, or, when the migration changes nothing a file carries or means,
+// record the new length alone with the reason beside it.
+describe('the export version against the migration journal', () => {
+  const VERSION_DECISIONS = {
+    version: 2,
+    // Through 0048_add_lots_recosted, which adds a settings flag that a file
+    // without it restores as unset, so it needed no bump of its own.
+    migrationCount: 49,
+  };
+
+  it('has a version decision for every migration', () => {
+    expect({ version: EXPORT_VERSION, migrationCount: migrationCount() }).toEqual(
+      VERSION_DECISIONS,
+    );
   });
 });

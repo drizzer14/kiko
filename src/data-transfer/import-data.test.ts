@@ -332,6 +332,21 @@ describe('importData', () => {
     expect(mockRestoreDataSnapshot).not.toHaveBeenCalled();
   });
 
+  it('reads a version 1 file an earlier build wrote, and refuses a version no build writes', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    const envelope = JSON.parse(fileText) as { version: number };
+
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...envelope, version: 1 }));
+    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+    expect(mockRestoreDataSnapshot).toHaveBeenCalledTimes(1);
+
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...envelope, version: 3 }));
+    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+      'data-transfer/import',
+    );
+    expect(mockRestoreDataSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it('throws an import-prefixed error on unparseable JSON', async () => {
     mockReadFile.mockResolvedValue('not json');
 
