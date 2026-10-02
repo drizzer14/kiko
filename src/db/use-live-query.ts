@@ -97,9 +97,10 @@ export function useLiveQuery<T>(
    * `false` skips the query AND the reactive subscription entirely — never a
    * request or read for data a disabled caller does not need
    * (kiko-architecture). `data` reads as `[]` and `isLoading` as `false`
-   * (ready, not stuck) while disabled; flipping back to `true` re-runs the
-   * effect below and starts the real query. Defaults to `true` so every
-   * existing call site is unaffected.
+   * (ready, not stuck) while disabled. Flipping back to `true` re-runs the
+   * effect below and reads from scratch: `isLoading` is `true` and `data` is
+   * `[]` until that read lands, never the rows read before it was disabled.
+   * Defaults to `true` so every existing call site is unaffected.
    */
   enabled = true,
   { cached = false, paused = false }: LiveQueryOptions = {},
@@ -175,6 +176,15 @@ export function useLiveQuery<T>(
   // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) sql/params/tables/query are re-derived every render from stable serialized primitives (paramsKey/tablesKey) and a fireOn memoized on tablesKey; depending on their object/array *references* instead would re-subscribe on every render whenever a caller passes an inline literal (e.g. `useLiveQuery(q, ['accounts'])` in JSX) and — because the native callback can fire synchronously — infinite-loop.
   useEffect(() => {
     if (!enabled) {
+      // A disabled query forgets what it read: the rows can be a day or one
+      // import old by the time it is enabled again, and a key that did not
+      // change in between (a parameterless read) would otherwise report them as
+      // this read's own result. Re-enabling reads as loading with no rows until
+      // the new read lands.
+      appliedKey.current = undefined;
+      freshKey.current = undefined;
+      setData((rows) => (rows.length === 0 ? rows : []));
+
       return;
     }
 

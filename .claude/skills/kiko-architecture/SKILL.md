@@ -309,8 +309,13 @@ one for the other:
   does not need right now (a gate like `needsPriceBook`/loan-only
   reads — see "App-open and refresh work is gated on data presence"
   below). It skips the read AND the subscription entirely: `data`
-  reads `[]`, `isLoading` reads `false`. Flipping it back to `true`
-  re-subscribes and re-reads from scratch.
+  reads `[]`, `isLoading` reads `false`. The hook forgets the rows it
+  read: flipping it back to `true` re-subscribes and re-reads from
+  scratch, and until that read lands `isLoading` is `true`, `isFresh`
+  is `false` and `data` is `[]` — never the rows from before the
+  disable (a key that did not change in between, such as a
+  parameterless read, would otherwise pass them off as the new
+  read's result).
 - **`paused: true`** (`LiveQueryOptions.paused`) is for a screen that
   is mounted but not visible right now — a background tab under a
   native tab bar, which stays mounted the whole time the app is open.
@@ -435,9 +440,13 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   its window read and the net-worth card shows one for the price book:
   the headline and the breakdown never render while that read loads,
   because an empty book values a metal at its cost and a loan without
-  its payments, which is a wrong balance. `data` still holds the
-  previous key's rows while the new key loads, so the screen must
-  never show them (or the EMPTY state) under the new key: Home keeps its
+  its payments, which is a wrong balance. A query turned on again
+  (`enabled` flipping back to `true`) reads as loading with `data` `[]`
+  until its new read lands, so the book is empty until then; a query
+  that RE-KEYS (the day roll, a picked date range) still holds the
+  previous key's rows while the new key loads (the price book holds
+  the earlier day's rows after a day roll). The screen must
+  never show either (or the EMPTY state) under the new key: Home keeps its
   list mounted (it carries pull-to-refresh and the large-title scroll
   target), gives it no sections, and renders the `LoadingState` as its
   empty component until the read lands. The screen's first load per mount
@@ -686,7 +695,9 @@ gate says there is nothing to do.
   reactive subscription while `false`, reporting `data: []` and
   `isLoading: false` — ready, never stuck (a gated-off screen must
   still flip its overall readiness, never spin forever on a query it
-  deliberately never ran). `usePriceBook(enabled)` forwards straight
+  deliberately never ran); turning it on again reads as loading with no
+  rows until the new read lands, never the rows read before it was
+  turned off. `usePriceBook(enabled)` forwards straight
   through; a screen passes `holdingsLoading || holdings.some((holding) =>
   needsPriceBook(holding.type))` (or the one displayed holding, for a
   detail screen) — never a conditional call to the hook itself, which

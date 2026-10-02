@@ -574,11 +574,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     <Screen bleedBottom>
       <Box gap={4} testID="home-content" style={styles.content}>
         <Card padding={4} radius="lg">
-          {/* The price book re-keys after the first ready: the first metal,
+          {/* The price book changes after the first ready: the first metal,
               share, property or loan holding turns its read on, and a day roll
-              re-keys it. Until it lands the book is empty, so a metal would
-              drop to its cost and a loan would be valued without its payments:
-              the headline and the breakdown wait for it, nothing else does. */}
+              re-keys it. Until the read lands the book is empty (turned on
+              again) or holds the earlier day's rows (a day roll), so a metal
+              would drop to its cost or an old price and a loan would be valued
+              without its payments: the headline and the breakdown wait for it,
+              nothing else does. */}
           {priceBookLoading ? (
             <LoadingState testID="home-net-worth-loading" />
           ) : (
