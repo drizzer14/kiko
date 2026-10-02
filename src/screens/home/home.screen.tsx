@@ -18,7 +18,6 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { usePriceBook } from '@kiko/prices/use-price-book';
 import { activeHoldings } from '@kiko/rates/active-holdings';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
@@ -30,6 +29,7 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 import { transactionSpan } from '@kiko/transactions/transaction-span';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type DaySection, groupByDay } from '@kiko/transactions/group-by-day';
@@ -142,7 +142,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // stays enabled while holdings are still on their first load, so the two
   // reads run in parallel instead of price_points waiting on holdings. Only a
   // loan reads the linked-payments half of the book.
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+  const { book: priceBook, isLoading: priceBookLoading } = useCurrentPriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
     { cached: true },
     holdingsLoading || holdings.some((holding) => holding.type === 'loan'),

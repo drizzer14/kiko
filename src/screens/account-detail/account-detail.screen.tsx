@@ -16,7 +16,6 @@ import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import { useAnimatedRef } from 'react-native-reanimated';
 import { useReminderOffer } from '@kiko/reminders/offer';
-import { usePriceBook } from '@kiko/prices/use-price-book';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { sumByCurrency } from '@kiko/rates/currency-totals';
@@ -32,6 +31,7 @@ import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
@@ -101,7 +101,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // stays enabled while holdings are still on their first load, so the two
   // reads run in parallel instead of price_points waiting on holdings. Only a
   // loan reads the linked-payments half of the book.
-  const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
+  const { book: priceBook, isLoading: priceBookLoading } = useCurrentPriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
     { cached: true },
     holdingsLoading || holdings.some((holding) => holding.type === 'loan'),

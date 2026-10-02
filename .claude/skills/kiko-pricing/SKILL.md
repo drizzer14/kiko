@@ -356,6 +356,39 @@ fallback will otherwise hand back a later point to an earlier query.
 stored correction point dated after the queried instant — read
 `loan-schedule.ts`'s `loanOutstandingMinorAt` for the fix shape.
 
+### Current price book and whole-table price book
+
+`price_points` gains a row per share and metal per day and never shrinks,
+so two hooks build the same `PriceBook` from different row sets:
+
+- `useCurrentPriceBook(enabled, options, loanPaymentsEnabled, now)`
+  (`src/prices/use-current-price-book/`) reads
+  `pricePointsRepo.currentQuery(today)`: for every `share:` and `metal:`
+  series its latest point on or before `today` plus every point after it,
+  and every point of a `holding:` series. A screen that values only `now` or
+  later reads it: Home, Accounts, the account and holding details, and the
+  holding form. `now` is the instant the screen values at (Accounts passes
+  its focus-refreshed one), so the book and the screen agree on "today".
+  Every number is the one the whole-table book gives for an instant on or
+  after `today`, because `priceAt` there picks exactly that point, or the
+  earliest one for a series that has not started. The points after `today`
+  stay because NBU can publish tomorrow's metal price and a valuation on a
+  later day still reads it; a `holding:` series stays whole because a loan
+  counts its schedule down from the correction before a past payment day.
+- `usePriceBook(...)` (`src/prices/use-price-book/`) reads
+  `pricePointsRepo.allQuery()`, every stored close. Only a screen that values
+  PAST days reads it (Statistics' net-worth line).
+
+`kiko-no-whole-price-points-read` blocks `usePriceBook(...)`,
+`pricePointsRepo.allQuery()` and a bare `select().from(pricePoints)`
+outside their own folders; Statistics and the snapshot export carry a
+per-line `OVERRIDE(...)`. A new screen that values a past day overrides the
+same way and names why. `metal-refresh` reads each metal's first and latest
+stored day (`metalDayRangesQuery`), the only two days its plan reads.
+`src/holdings/holding-value/holding-value.current-price-book.test.ts` pins
+the equality on a realistic ledger; extend its fixture when a valuation
+reads a new instant.
+
 ## Priced holdings
 
 A **priced holding type** — `property_item`, `metal`, and `share` are
