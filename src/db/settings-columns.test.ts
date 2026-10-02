@@ -64,7 +64,6 @@ const TAKEN_FROM_FILE_ON_RESTORE = [
   'dedupKeysUpgraded',
   'importTimesRezoned',
   'reminderOfferDismissals',
-  'notificationsDeliverableSince',
   'lotsRecosted',
 ];
 

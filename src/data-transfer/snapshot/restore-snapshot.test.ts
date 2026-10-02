@@ -160,7 +160,9 @@ describe('restoreDataSnapshot', () => {
       'transactions',
       'settings',
     ]);
-    expect(insertedRows.settings).toEqual([{ id: 1, lockEnabled: false, quoteQuota: null }]);
+    expect(insertedRows.settings).toEqual([
+      { id: 1, lockEnabled: false, quoteQuota: null, notificationsDeliverableSince: null },
+    ]);
     expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
     // `{ id: 'h1' }` carries no `balanceSetAt` key — the legacy-backfill path
     // (see the dedicated tests below) stamps `null` since `t1` (this test's
@@ -1108,6 +1110,7 @@ describe('restoreDataSnapshot', () => {
           dedupKeysUpgraded: true,
           lockEnabled: false,
           quoteQuota: null,
+          notificationsDeliverableSince: null,
         },
       ]);
     });
@@ -1132,6 +1135,7 @@ describe('restoreDataSnapshot', () => {
           dedupKeysUpgraded: true,
           lockEnabled: false,
           quoteQuota: null,
+          notificationsDeliverableSince: null,
         },
       ]);
     });
@@ -1155,7 +1159,12 @@ describe('restoreDataSnapshot', () => {
 
       expect(insertedRows.transactions).toEqual([legacyShapedTransaction]);
       expect(insertedRows.settings).toEqual([
-        { ...alreadyMigratedSettingsRow, lockEnabled: false, quoteQuota: null },
+        {
+          ...alreadyMigratedSettingsRow,
+          lockEnabled: false,
+          quoteQuota: null,
+          notificationsDeliverableSince: null,
+        },
       ]);
     });
   });
@@ -1212,6 +1221,7 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           lockEnabled: false,
           quoteQuota: null,
+          notificationsDeliverableSince: null,
         },
       ]);
     });
@@ -1239,6 +1249,7 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           lockEnabled: false,
           quoteQuota: null,
+          notificationsDeliverableSince: null,
         },
       ]);
     });
@@ -1268,6 +1279,7 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           lockEnabled: false,
           quoteQuota: null,
+          notificationsDeliverableSince: null,
         },
       ]);
     });

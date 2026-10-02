@@ -91,8 +91,32 @@ describe('restoring across the reminders migration', () => {
       mockDatabase
         .prepare('SELECT reminder_offer_dismissals, notifications_deliverable_since FROM settings')
         .all(),
-    ).toEqual([{ reminder_offer_dismissals: null, notifications_deliverable_since: null }]);
+    ).toEqual([{ reminder_offer_dismissals: null, notifications_deliverable_since: 5 }]);
   });
+
+  // When iOS first allowed notifications is a fact about this device, so a file
+  // never changes it: the reminders' ignored count starts from it.
+  it.each([
+    ['this device has it', 5],
+    ['this device has none', null],
+  ])(
+    'keeps this device’s notifications start when %s, whatever the file carries',
+    async (_name, liveSince) => {
+      mockDatabase = openDatabase();
+      mockDatabase.exec('UPDATE settings SET notifications_deliverable_since = 9');
+      const exported = JSON.parse(JSON.stringify(await readDataSnapshot())) as DataSnapshot;
+
+      mockDatabase = openDatabase();
+      mockDatabase
+        .prepare('UPDATE settings SET notifications_deliverable_since = ?')
+        .run(liveSince);
+      await restoreDataSnapshot(exported);
+
+      expect(
+        mockDatabase.prepare('SELECT notifications_deliverable_since FROM settings').all(),
+      ).toEqual([{ notifications_deliverable_since: liveSince }]);
+    },
+  );
 
   it('round-trips every reminder column and the offer dismissals through an export and an import', async () => {
     mockDatabase = openDatabase();

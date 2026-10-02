@@ -12,4 +12,7 @@ export const KEPT_FROM_LIVE_ON_RESTORE = [
   'lockEnabled',
   // Counts the calls this device's own EODHD key spent today.
   'quoteQuota',
+  // When iOS first allowed notifications on this device: the reminders'
+  // ignored count starts from it.
+  'notificationsDeliverableSince',
 ] as const satisfies readonly (keyof SettingsRow)[];
