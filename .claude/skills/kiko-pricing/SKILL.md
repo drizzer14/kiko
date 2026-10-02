@@ -560,9 +560,9 @@ change)` (a `LotChange`: `add`, `edit` at an index, or `remove` at an
 index), which re-reads the stored lots inside its own write, never a
 screen's copy, and keeps every other metadata key as stored. A stored
 list with one unreadable entry is refused, never written over. After the
-write, the form calls `refreshAfterHoldingWrite` (see kiko-architecture's
-"The first add triggers the gated refresh"), since a new or re-dated lot
-can fall before the stored prices.
+write, the form calls `refreshMarketData({ throttled: false, metals: true })`
+(see kiko-architecture's "The first add triggers the gated refresh"), since
+a new or re-dated lot can fall before the stored prices.
 
 **Sell cost rule: proportional average cost, not FIFO/LIFO.** A sale
 removes `costBasisBefore * quantitySold / heldQuantity` (BigInt-backed

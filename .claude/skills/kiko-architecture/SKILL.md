@@ -725,12 +725,11 @@ gate says there is nothing to do.
   runs it. It never runs while `enabled` is `false`.
 - **The first add triggers the gated refresh**: a user's own holding
   write that can change what is priced runs
-  `refreshAfterHoldingWrite()` (`src/sync/refresh-after-holding-write/`)
-  right after the write commits. Rule: every user write that can add,
-  re-date, or re-source a priced holding or lot calls it. Find the
-  current callers with `git grep -n 'refreshAfterHoldingWrite(' src`.
-  It calls `refreshMarketData({ throttled: false, metals: true })`
-  (`src/sync/refresh-market-data/`). Restoring a `.kiko`
+  `refreshMarketData({ throttled: false, metals: true })`
+  (`src/sync/refresh-market-data/`) right after the write commits. Rule:
+  every user write that can add, re-date, or re-source a priced holding
+  or lot calls it. Find the current callers with
+  `git grep -n 'throttled: false, metals: true' src`. Restoring a `.kiko`
   export (`importData`, `src/data-transfer/import-data.ts`) calls
   `refreshMarketData` itself. None of these runs through the sync
   fan-out that otherwise triggers this, so the price/rate appears without
