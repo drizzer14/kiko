@@ -325,10 +325,12 @@ one for the other:
   read if the query went dirty while paused, zero if it did not; the
   MOUNT read always runs regardless of `paused`, since a screen can be
   mounted unfocused (a deep link, a restore) and still needs its first
-  real data. Toggling `paused` never re-subscribes. `statistics.screen.tsx`
-  passes `paused: !isFocused` (`useIsFocused` from
-  `@react-navigation/native`) to every one of its own
-  `useLiveQuery`/`usePriceBook` calls: `enabled: false` unsubscribes and
+  real data. Toggling `paused` never re-subscribes. `statistics.screen.tsx`,
+  `home.screen.tsx` and `accounts.screen.tsx` pass `paused: !isFocused`
+  (`useIsFocused` from `@react-navigation/native`) to every one of their own
+  `useLiveQuery`/price-book calls; each screen's test pins that no call
+  skips the flag and that a write made while hidden shows only once the tab
+  regains focus. `enabled: false` unsubscribes and
   returns `[]`, the wrong contract for a tab that stays mounted and must
   show its last rows the instant it regains focus — use `paused`, not
   `enabled`, for a hidden-but-mounted tab.

@@ -25,7 +25,6 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { CompositeScreenProps } from '@react-navigation/native';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
@@ -37,6 +36,7 @@ import type { FilterOption } from '@kiko/design-system/components/filter-menu';
 import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
+import { type CompositeScreenProps, useIsFocused } from '@react-navigation/native';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
 import { type FC, type ReactElement, useCallback, useMemo, useRef, useState } from 'react';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
@@ -147,23 +147,32 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // once per day.
   const { from: boundsFrom, to: boundsTo } = dateRangeBounds(dateFrom, dateTo);
 
+  // Deliberately `paused` (not `enabled`) while another tab or a form shows:
+  // this screen stays mounted, so its subscriptions stay and a write elsewhere
+  // only marks each query dirty — hiding Home costs no read and no re-render,
+  // and returning to it runs one read per dirty query (`enabled: false` would
+  // unsubscribe and drop every list to empty; see kiko-architecture's
+  // `paused` vs `enabled`).
+  const isFocused = useIsFocused();
+  const liveOptions = { cached: true, paused: !isFocused } as const;
+
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.listQuery(),
     ['accounts'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
     holdingsRepo.allQuery(),
     ['holdings'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: rates, isLoading: ratesLoading } = useLiveQuery(
     ratesRepo.allQuery(),
     ['currency_rates'],
     true,
-    { cached: true },
+    liveOptions,
   );
   // kiko-architecture: skip the price_points read while nothing rendered on
   // this screen ever reads it — a holding whose type carries no priced spec
@@ -173,14 +182,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // loan reads the linked-payments half of the book.
   const { book: priceBook, isLoading: priceBookLoading } = useCurrentPriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
-    { cached: true },
+    liveOptions,
     holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
   );
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
     settingsRepo.getQuery(),
     ['settings'],
     true,
-    { cached: true },
+    liveOptions,
   );
   // The ledger rows of the picked date range only, not the whole ledger: it
   // grows with every transaction ever synced and re-reads on every write. The
@@ -190,25 +199,25 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     transactionsRepo.listWithContextBetweenQuery(boundsFrom, boundsTo),
     ['transactions', 'holdings', 'accounts'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: spanRows, isLoading: spanLoading } = useLiveQuery(
     transactionsRepo.contextSpanQuery(),
     ['transactions', 'holdings', 'accounts'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: categoryRows, isLoading: categoryRowsLoading } = useLiveQuery(
     transactionsRepo.contextCategoriesQuery(),
     ['transactions', 'holdings', 'accounts'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],
     true,
-    { cached: true },
+    liveOptions,
   );
   // The net-worth headline (it would otherwise read 0 while still loading)
   // and the empty-transactions text must never render while any of this

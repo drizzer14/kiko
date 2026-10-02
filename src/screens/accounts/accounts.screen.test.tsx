@@ -55,6 +55,12 @@ jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
   return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
 });
 
+const mockUseIsFocused = jest.fn(() => true);
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useIsFocused: () => mockUseIsFocused(),
+}));
+
 const mockUseLiveQuery = jest.fn();
 const mockAccountRemove = jest.fn();
 const mockAccountReorder = jest.fn();
@@ -1049,5 +1055,115 @@ describe('AccountsScreen — the price_points gate', () => {
     });
     await renderAccounts();
     expect(loanPaymentsCall()?.[2]).toBe(true);
+  });
+});
+
+// Accounts stays mounted under the native tab bar (and under an account's own
+// detail screens), so while it is hidden it keeps its subscriptions but defers
+// every read: a write elsewhere marks each query dirty and costs no read and no
+// re-render here — `paused`, not `enabled`, which would unsubscribe and drop
+// to `[]` (see kiko-architecture's `paused` vs `enabled`).
+describe('AccountsScreen — paused while hidden', () => {
+  const BANK = { id: 'a', name: 'Monobank', kind: 'bank' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsFocused.mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    mockUseIsFocused.mockReturnValue(true);
+  });
+
+  it('pauses every live query while unfocused, keeping the cache option and the enabled argument', async () => {
+    mockUseIsFocused.mockReturnValue(false);
+    setLiveData({
+      accounts: [BANK],
+      holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 0, type: 'metal' }],
+    });
+
+    await renderAccounts();
+
+    expect(mockUseLiveQuery.mock.calls.length).toBeGreaterThan(0);
+
+    for (const call of mockUseLiveQuery.mock.calls) {
+      expect(call[3]).toEqual({ cached: true, paused: true });
+    }
+
+    expect(mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points')?.[2]).toBe(
+      true,
+    );
+  });
+
+  it('leaves every live query unpaused while focused', async () => {
+    setLiveData({ accounts: [BANK] });
+
+    await renderAccounts();
+
+    for (const call of mockUseLiveQuery.mock.calls) {
+      expect(call[3]).toEqual({ cached: true, paused: false });
+    }
+  });
+
+  // Mirrors use-live-query.ts's own paused/dirty contract: a call made with
+  // `paused: true` never applies a pending write; the first call made with
+  // `paused: false` applies it, so a screen sees new data exactly when the
+  // real hook would have read it.
+  it('shows an account added while hidden once the tab regains focus, and not before', async () => {
+    const rowsOf = (accounts: { id: string; name: string; kind: string }[]) => ({
+      accounts,
+      holdings: [],
+      rates: [],
+      settings: [{ baseCurrency: 'UAH' }],
+    });
+    let committed = rowsOf([BANK]);
+    let pending: ReturnType<typeof rowsOf> | undefined;
+    const answer = (table: string): unknown[] =>
+      ({
+        accounts: committed.accounts,
+        holdings: committed.holdings,
+        currency_rates: committed.rates,
+        settings: committed.settings,
+      })[table as 'accounts'] ?? [];
+
+    mockUseLiveQuery.mockImplementation(
+      (_query: unknown, tables: string[], _enabled: boolean, options?: { paused?: boolean }) => {
+        if (!(options?.paused ?? false) && pending !== undefined) {
+          committed = pending;
+          pending = undefined;
+        }
+
+        return { data: answer(tables[0]), isLoading: false, isFresh: true };
+      },
+    );
+    const element = () => (
+      <AccountsScreen
+        navigation={asNavigationProp<AccountsProps['navigation']>(navigation)}
+        route={asRouteProp<AccountsProps['route']>('Accounts')}
+      />
+    );
+
+    const { getByText, queryByText, rerender } = await render(element(), {
+      wrapper: GestureRootWrapper,
+    });
+    expect(getByText('Monobank')).toBeTruthy();
+
+    mockUseIsFocused.mockReturnValue(false);
+    await act(async () => {
+      await rerender(element());
+    });
+
+    pending = rowsOf([BANK, { id: 'b', name: 'Savings', kind: 'bank' }]);
+    await act(async () => {
+      await rerender(element());
+    });
+    expect(queryByText('Savings')).toBeNull();
+
+    mockUseIsFocused.mockReturnValue(true);
+    await act(async () => {
+      await rerender(element());
+    });
+    expect(getByText('Savings')).toBeTruthy();
+    expect(getByText('Monobank')).toBeTruthy();
   });
 });

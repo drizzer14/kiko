@@ -86,6 +86,12 @@ const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
   isLiquidGlassSupported: boolean;
 };
 
+const mockUseIsFocused = jest.fn(() => true);
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useIsFocused: () => mockUseIsFocused(),
+}));
+
 const mockUseLiveQuery = jest.fn();
 
 jest.mock('@kiko/db/use-live-query', () => ({
@@ -227,7 +233,9 @@ type LiveData = {
  * first render and crashes on the next). Keyed data still exercises the exact
  * call order the screen must use — asserted separately below.
  */
-const setLiveData = (data: LiveData): void => {
+const liveAnswersFor = (
+  data: LiveData,
+): ((query: { kind?: string }, tables: string[]) => { data: unknown[]; isLoading: boolean }) => {
   const byTable: Record<string, unknown[]> = {
     accounts: data.accounts ?? [],
     holdings: data.holdings ?? [],
@@ -257,13 +265,17 @@ const setLiveData = (data: LiveData): void => {
     categories: categoryRows,
   };
 
-  mockUseLiveQuery.mockImplementation((query: { kind?: string }, tables: string[]) => ({
+  return (query, tables) => ({
     data:
       tables[0] === 'transactions' && tables.length === 3 && query.kind !== undefined
         ? ledgerAnswers[query.kind]
         : (byTable[tables[0]] ?? []),
     isLoading: isLoadingByTable[tables[0]] ?? false,
-  }));
+  });
+};
+
+const setLiveData = (data: LiveData): void => {
+  mockUseLiveQuery.mockImplementation(liveAnswersFor(data));
 };
 
 const navigation = navigationSpy();
@@ -1515,5 +1527,125 @@ describe('HomeScreen — localization', () => {
     const { getByText } = await renderHome();
 
     expect(getByText(i18n.t('transactions.exchangeTo', { name: 'Ощадний' }))).toBeTruthy();
+  });
+});
+
+// Home stays mounted under the native tab bar, so while another tab or a form
+// shows it keeps its subscriptions but defers every read: a write elsewhere
+// marks each query dirty and costs no read, no state change and no memo work
+// here — `paused`, not `enabled`, which would unsubscribe and drop to `[]`
+// (see kiko-architecture's `paused` vs `enabled`).
+describe('HomeScreen — paused while hidden', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsFocused.mockReturnValue(true);
+    mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
+    mockUseSyncStatus.mockReturnValue(false);
+    mockRefreshing.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    mockUseIsFocused.mockReturnValue(true);
+  });
+
+  it('pauses every live query while unfocused, keeping the cache option and the enabled argument', async () => {
+    mockUseIsFocused.mockReturnValue(false);
+    seed({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
+
+    await renderHome();
+
+    expect(mockUseLiveQuery.mock.calls.length).toBeGreaterThan(0);
+
+    for (const call of mockUseLiveQuery.mock.calls) {
+      expect(call[3]).toEqual({ cached: true, paused: true });
+    }
+
+    expect(mockUseLiveQuery.mock.calls.find((call) => call[1][0] === 'price_points')?.[2]).toBe(
+      true,
+    );
+  });
+
+  it('leaves every live query unpaused while focused', async () => {
+    seed();
+
+    await renderHome();
+
+    for (const call of mockUseLiveQuery.mock.calls) {
+      expect(call[3]).toEqual({ cached: true, paused: false });
+    }
+  });
+
+  // Mirrors use-live-query.ts's own paused/dirty contract: a call made with
+  // `paused: true` never applies a pending write; the first call made with
+  // `paused: false` applies it, so a screen sees new data exactly when the
+  // real hook would have read it.
+  const pausedAwareLiveData = (initial: LiveData) => {
+    let committed = initial;
+    let pending: LiveData | undefined;
+
+    mockUseLiveQuery.mockImplementation(
+      (
+        query: { kind?: string },
+        tables: string[],
+        _enabled: boolean,
+        options?: { paused?: boolean },
+      ) => {
+        if (!(options?.paused ?? false) && pending !== undefined) {
+          committed = pending;
+          pending = undefined;
+        }
+
+        return liveAnswersFor(committed)(query, tables);
+      },
+    );
+
+    return {
+      writeWhileHidden: (next: LiveData): void => {
+        pending = next;
+      },
+    };
+  };
+
+  it('shows a transaction written while hidden once the tab regains focus, and not before', async () => {
+    const base: LiveData = {
+      accounts: [MONOBANK],
+      holdings: [UAH_HOLDING],
+      transactions: [transaction({ id: 't1', description: 'Coffee' })],
+    };
+    const stub = pausedAwareLiveData(base);
+    // A fresh element per render: React skips a re-render for the same element.
+    const element = () => (
+      <HomeScreen
+        navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+        route={asRouteProp<HomeProps['route']>('Home')}
+      />
+    );
+
+    const { getByText, queryByText, rerender } = await render(element());
+    expect(getByText('Coffee')).toBeTruthy();
+
+    mockUseIsFocused.mockReturnValue(false);
+    await act(async () => {
+      await rerender(element());
+    });
+
+    stub.writeWhileHidden({
+      ...base,
+      transactions: [
+        transaction({ id: 't1', description: 'Coffee' }),
+        transaction({ id: 't2', description: 'Tea', time: Date.now() + 1 }),
+      ],
+    });
+    await act(async () => {
+      await rerender(element());
+    });
+    expect(queryByText('Tea')).toBeNull();
+
+    mockUseIsFocused.mockReturnValue(true);
+    await act(async () => {
+      await rerender(element());
+    });
+    expect(getByText('Tea')).toBeTruthy();
+    expect(getByText('Coffee')).toBeTruthy();
   });
 });

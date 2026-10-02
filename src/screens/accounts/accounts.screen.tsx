@@ -10,6 +10,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
+import { useIsFocused } from '@react-navigation/native';
 import type { Currency } from '@kiko/currency/currency';
 import { isSyncedAccount } from '@kiko/holdings/deletable';
 import Button from '@kiko/design-system/components/button';
@@ -40,28 +41,36 @@ type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accou
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  // Deliberately `paused` (not `enabled`) while another tab or an account's
+  // own screens show: this screen stays mounted, so its subscriptions stay and
+  // a write elsewhere only marks each query dirty — hiding Accounts costs no
+  // read and no re-render, and returning to it runs one read per dirty query
+  // (`enabled: false` would unsubscribe and drop every card to empty; see
+  // kiko-architecture's `paused` vs `enabled`).
+  const isFocused = useIsFocused();
+  const liveOptions = { cached: true, paused: !isFocused } as const;
   const {
     data: accounts,
     isLoading: accountsLoading,
     isFresh: accountsFresh,
-  } = useLiveQuery(accountsRepo.listQuery(), ['accounts'], true, { cached: true });
+  } = useLiveQuery(accountsRepo.listQuery(), ['accounts'], true, liveOptions);
   const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
     holdingsRepo.allQuery(),
     ['holdings'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: rates, isLoading: ratesLoading } = useLiveQuery(
     ratesRepo.allQuery(),
     ['currency_rates'],
     true,
-    { cached: true },
+    liveOptions,
   );
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
     settingsRepo.getQuery(),
     ['settings'],
     true,
-    { cached: true },
+    liveOptions,
   );
   // Stable across a re-render, refreshed only on focus — a bare `Date.now()`
   // here recomputed `debtsTotal`'s (and every card's) time-dependent value on
@@ -76,7 +85,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // rows for the day of `now`, the instant this screen values at.
   const { book: priceBook, isLoading: priceBookLoading } = useCurrentPriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
-    { cached: true },
+    liveOptions,
     holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
     now,
   );
