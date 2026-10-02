@@ -2142,7 +2142,10 @@ what a change must keep.
   `reminders` rows in the same transaction, before the account row (NO
   ACTION FK), next to the `sync_state` delete. The Accounts screen runs
   it through `writeThenReplan`, so the deleted reminders' pending
-  requests go at once.
+  requests go at once. After the commit it also clears the account's own
+  Keychain items (`clearToken`, `clearCredentials`): a failed first
+  Connect stores a token or key pair under the account's id while the
+  account still reads as manual, so a deletable account can own one.
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by
   `id`. `restoreDataSnapshot` deletes `reminders` before
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders

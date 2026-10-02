@@ -320,9 +320,13 @@ Open items, deferred (see `FINDINGS.md`):
 
 - **SEC-5** — the export key is copied to the general system pasteboard, with
   no expiry and no local-only restriction.
-- **SEC-3** — on import, secrets are validated only after the database has
-  already been replaced.
-- **SEC-4** — import/restore can leave orphaned Keychain items behind.
+- **SEC-4** — a restore can leave orphaned Keychain items behind (the
+  accounts it replaces keep theirs). Deleting one account clears its own
+  items (`accountsRepo.remove`, after the commit).
+
+On import, the credentials block is validated before the database is replaced
+(`secrets/is-export-secrets.ts`), and a restore keeps this device's app lock
+setting (`settings.lockEnabled`) whatever the file carries.
 
 ## Next steps
 
