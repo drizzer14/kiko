@@ -309,7 +309,8 @@ link is null is skipped. `priceAt(book, instrument,
 instant)` is a CARRY-FORWARD lookup: the nearest point at or before
 `instant`'s local day, falling back to the EARLIEST point when every
 stored point is later than the requested day (mirrors
-`rateTableAt`/`earliestRateTable` above).
+`rateTableAt`/`earliestRateTable` above). It bisects the day-sorted series
+(O(log n) per call); the test pins it against the old filter on every day.
 
 **`usePriceBook()` contract: `{ book, isLoading }`, not a bare
 `PriceBook`.** (`src/prices/use-price-book/`) wraps `allQuery` in

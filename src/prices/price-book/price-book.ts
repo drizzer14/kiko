@@ -120,9 +120,25 @@ export const priceAt = (
   }
 
   const day = dayKeyOf(instant);
-  const atOrBefore = points.filter((point) => point.day <= day);
+  // The series is sorted by day, so the last point at or before the day is
+  // found by bisection; a shares series grows by a point per trading day and
+  // a net-worth chart asks once per bucket per share.
+  let low = 0;
+  let high = points.length - 1;
+  let found = -1;
 
-  return atOrBefore.length > 0 ? atOrBefore[atOrBefore.length - 1] : points[0];
+  while (low <= high) {
+    const middle = (low + high) >>> 1;
+
+    if (points[middle].day <= day) {
+      found = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+
+  return found >= 0 ? points[found] : points[0];
 };
 
 /** The most recent stored price point for `instrument`, or undefined if none. */
