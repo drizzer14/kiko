@@ -1678,7 +1678,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   EODHD key only when present — a legacy file without `eodhdKey` restores
   fine. A restore keeps this device's live `settings.quoteQuota` (EODHD
   calls already spent on this key today — device/key state, like the key
-  itself), never the file's (`restore-snapshot.ts`). `restoreExportSecrets` still
+  itself) and `settings.lockEnabled` (the app lock is turned off only after
+  `confirmOwner` in Settings, so a file never decides it, including a file
+  with no lock key or no settings row), never the file's
+  (`restore-snapshot.ts`; `settings-columns.test.ts` classifies every
+  settings column as kept-live or from-file). `restoreExportSecrets` still
   never imports `db/keys/db-key.ts`: an older file that still carries a
   `dbKeyHex` field (from before that field was dropped) is read through
   as an unknown, unrestored property — re-storing a FOREIGN device's

@@ -360,21 +360,25 @@ const withImportTimesRezoned = (
   };
 };
 
+type LiveDeviceSettings = Pick<SettingsRow, 'lockEnabled' | 'quoteQuota'>;
+
 /**
- * The EODHD quote quota counts the calls this device's own key spent today,
- * not the backed-up device's, so a restore keeps the live row's quota and
- * never the backup's (minus what it knew of the replaced prices: see
- * `withRestoredPrices`).
+ * The settings this device owns, which a restore keeps from the live row and
+ * never takes from the backup. The EODHD quote quota counts the calls this
+ * device's own key spent today, not the backed-up device's (minus what it
+ * knew of the replaced prices: see `withRestoredPrices`). The app lock is
+ * turned off only after the owner confirms in Settings, so a file, which
+ * can carry any value or none, never decides it.
  */
-const readLiveQuoteQuota = async (
+const readLiveDeviceSettings = async (
   databaseTransaction: typeof database,
-): Promise<SettingsRow['quoteQuota']> => {
+): Promise<LiveDeviceSettings> => {
   const rows = await databaseTransaction
-    .select({ quoteQuota: settings.quoteQuota })
+    .select({ quoteQuota: settings.quoteQuota, lockEnabled: settings.lockEnabled })
     .from(settings)
     .where(eq(settings.id, SETTINGS_ID));
 
-  return rows.at(0)?.quoteQuota ?? null;
+  return rows.at(0) ?? { quoteQuota: null, lockEnabled: false };
 };
 
 /** The rate-row fields `withRatesNormalizedToUah` reads/rewrites; every other
@@ -729,6 +733,20 @@ export const restoreDataSnapshot = (
       }
     };
 
+    // A file with no settings row would otherwise leave the row to the next
+    // launch's `ensure()`, which creates it with the lock off: a lock that is
+    // on is carried by a row of its own.
+    const settingsRowsToInsert = () => {
+      const liveSettings = {
+        lockEnabled: liveDeviceSettings.lockEnabled,
+        quoteQuota: withRestoredPrices(liveDeviceSettings.quoteQuota),
+      };
+
+      return settingsToInsert.length === 0 && liveDeviceSettings.lockEnabled
+        ? [{ id: SETTINGS_ID, ...liveSettings }]
+        : settingsToInsert.map((row) => ({ ...row, ...liveSettings }));
+    };
+
     const insertRatesAndSettings = async (): Promise<void> => {
       // Migration 0042's own restore mirror: a pre-star `.kiko` export can
       // carry a legacy cross/inverse row `rateTableFromRows`/`rateTableAt`
@@ -749,10 +767,7 @@ export const restoreDataSnapshot = (
         await databaseTransaction.insert(currencyRateHistory).values(part);
       }
 
-      for (const part of chunkForTable(
-        settings,
-        settingsToInsert.map((row) => ({ ...row, quoteQuota: withRestoredPrices(liveQuoteQuota) })),
-      )) {
+      for (const part of chunkForTable(settings, settingsRowsToInsert())) {
         await databaseTransaction.insert(settings).values(part);
       }
       // `?? []`: see the doc comment above — an export that predates
@@ -781,7 +796,7 @@ export const restoreDataSnapshot = (
       }
     };
 
-    const liveQuoteQuota = await readLiveQuoteQuota(databaseTransaction);
+    const liveDeviceSettings = await readLiveDeviceSettings(databaseTransaction);
 
     await deleteAllTables();
     await insertAccountsHoldingsCategories();

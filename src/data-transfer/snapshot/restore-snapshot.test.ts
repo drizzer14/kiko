@@ -57,7 +57,7 @@ const tableNameOf = (table: unknown): string => {
   throw new Error('unknown table');
 };
 
-// The restore reads the live settings row's quote quota before it deletes it;
+// The restore reads the live settings row's quote quota and lock before it deletes it;
 // these fakes start from no settings row.
 const noLiveSettings = {
   select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
@@ -1093,6 +1093,7 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           importTimesRezoned: true,
           dedupKeysUpgraded: true,
+          lockEnabled: false,
           quoteQuota: null,
         },
       ]);
@@ -1116,6 +1117,7 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           importTimesRezoned: true,
           dedupKeysUpgraded: true,
+          lockEnabled: false,
           quoteQuota: null,
         },
       ]);
@@ -1139,7 +1141,9 @@ describe('restoreDataSnapshot', () => {
       });
 
       expect(insertedRows.transactions).toEqual([legacyShapedTransaction]);
-      expect(insertedRows.settings).toEqual([{ ...alreadyMigratedSettingsRow, quoteQuota: null }]);
+      expect(insertedRows.settings).toEqual([
+        { ...alreadyMigratedSettingsRow, lockEnabled: false, quoteQuota: null },
+      ]);
     });
   });
 
@@ -1193,6 +1197,7 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
+          lockEnabled: false,
           quoteQuota: null,
         },
       ]);
@@ -1219,6 +1224,7 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
+          lockEnabled: false,
           quoteQuota: null,
         },
       ]);
@@ -1247,6 +1253,7 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
+          lockEnabled: false,
           quoteQuota: null,
         },
       ]);

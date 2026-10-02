@@ -41,6 +41,39 @@ const DOCUMENTED_READERLESS_COLUMNS = [
   'trendCategoryKeys',
 ];
 
+// What a `.kiko` restore does with each column (`restoreDataSnapshot`). A file
+// can carry any value or none, so a column that belongs to THIS device (its
+// own lock choice, its own key's call count) is kept from the live row; every
+// other column comes from the file. Like the readerless list, the two lists
+// are exact: a new column fails here until someone decides which it is.
+const KEPT_FROM_LIVE_ON_RESTORE = [
+  // Turning the lock off needs the owner to confirm in Settings.
+  'lockEnabled',
+  // Counts the calls this device's own EODHD key spent today.
+  'quoteQuota',
+];
+
+const TAKEN_FROM_FILE_ON_RESTORE = [
+  'id',
+  'baseCurrency',
+  'lastSyncAt',
+  'defaultCategoryKey',
+  'lockGraceSeconds',
+  'language',
+  'appearance',
+  'lastSyncDisplayAt',
+  'lastFullSyncAt',
+  'trendCategoryKeys',
+  'trendFilter',
+  'failedSyncMonobankIds',
+  'statementMappings',
+  'dedupKeysUpgraded',
+  'importTimesRezoned',
+  'reminderOfferDismissals',
+  'notificationsDeliverableSince',
+  'lotsRecosted',
+];
+
 const SCHEMA_PATH = join(__dirname, 'schema.ts');
 // This test file must name the documented exception (`lockGraceSeconds`) in
 // its own comment and array literal above, which would otherwise register as
@@ -91,6 +124,12 @@ describe('settings schema columns', () => {
     );
 
     expect(readerless.sort()).toEqual([...DOCUMENTED_READERLESS_COLUMNS].sort());
+  });
+
+  it('has every column classified as kept from the live row or taken from the file on a restore', () => {
+    expect(settingsColumns().sort()).toEqual(
+      [...KEPT_FROM_LIVE_ON_RESTORE, ...TAKEN_FROM_FILE_ON_RESTORE].sort(),
+    );
   });
 
   it('adds import_times_rezoned via migration 0043, defaulting to false', () => {
