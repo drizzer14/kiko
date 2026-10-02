@@ -63,6 +63,7 @@ const mockSetIcon = jest.fn();
 const mockUpdate = jest.fn();
 const mockSaveToken = jest.fn();
 const mockSaveCredentials = jest.fn();
+const mockClearCredentials = jest.fn();
 const mockMonobankSync = jest.fn();
 const mockCryptoSync = jest.fn();
 const mockFetchAccount = jest.fn();
@@ -88,6 +89,7 @@ jest.mock('@kiko/monobank/token', () => ({
 }));
 jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (...args: unknown[]) => mockSaveCredentials(...args),
+  clearCredentials: (...args: unknown[]) => mockClearCredentials(...args),
 }));
 jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
@@ -1477,6 +1479,68 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockCryptoSync).not.toHaveBeenCalled();
     expect(isKindFieldDisabled(getByTestId)).toBe(false);
     expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
+  });
+
+  // The Binance field stores the key pair before it calls the screen's connect,
+  // so a connect that cannot create the row leaves a pair no account owns.
+  describe('the key pair the Binance field stored before the connect', () => {
+    it('is cleared when the empty name blocks the account row', async () => {
+      mockClearCredentials.mockResolvedValue(undefined);
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockClearCredentials).toHaveBeenCalledTimes(1));
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockClearCredentials).toHaveBeenCalledWith(expect.any(String));
+    });
+
+    it('is cleared when the account row cannot be inserted', async () => {
+      mockClearCredentials.mockResolvedValue(undefined);
+      mockCreate.mockRejectedValueOnce(new Error('db locked'));
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockClearCredentials).toHaveBeenCalledTimes(1));
+      expect(mockClearCredentials).toHaveBeenCalledWith(
+        (mockCreate.mock.calls[0][0] as { id: string }).id,
+      );
+      expect(mockCryptoSync).not.toHaveBeenCalled();
+    });
+
+    it('stays once the row exists, even when the first sync fails', async () => {
+      mockCryptoSync.mockResolvedValue(false);
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
+      expect(mockClearCredentials).not.toHaveBeenCalled();
+    });
+
+    it('does not fail the connect when the clear itself fails', async () => {
+      mockClearCredentials.mockRejectedValueOnce(new Error('keychain delete failed'));
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockClearCredentials).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
+
+      warn.mockRestore();
+    });
   });
 
   it('treats a whitespace-only name exactly like an empty name on the crypto form', async () => {

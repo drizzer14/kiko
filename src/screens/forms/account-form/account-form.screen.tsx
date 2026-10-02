@@ -5,19 +5,21 @@ import {
   type FieldInstance,
 } from '@kiko/design-system/scroll-to-field';
 import { useSync } from '@kiko/sync/use-sync';
-import either, { isRight } from 'fnts/either';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
+import { logFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
+import either, { bifoldMap, isRight } from 'fnts/either';
 import { type BrokerId, isBrokerId } from '@kiko/brokers';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
 import Divider from '@kiko/design-system/components/divider';
+import { clearCredentials } from '@kiko/crypto-sync/binance';
 import BankTypeField from '@kiko/screens/forms/bank-type-field';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -87,6 +89,20 @@ const INITIAL_KIND: Kind = 'bank';
 // generic account reference (`tray`) reads as "unset" — never the retired
 // `square.grid.2x2`.
 const FALLBACK_ICON = genericEntitySymbol.account;
+
+// The Binance field stores its key pair under the pre-generated account id
+// before it calls `connectBinance`, so a connect that cannot create the row
+// leaves a pair no account owns and nothing would ever clear. Never rejects: the
+// connect still reports its own failure to the field.
+const clearUnownedCredentials = async (accountId: string): Promise<void> => {
+  const attempt = await either<unknown, unknown>(async () => clearCredentials(accountId));
+
+  bifoldMap(
+    attempt,
+    (error) => logFailure('[account-form] the Binance key pair could not be cleared', error),
+    () => undefined,
+  );
+};
 
 // The cash-only initial value field's own two error reasons — a blank or
 // unparseable typed value is "missing", distinct from a valid but negative one
@@ -364,6 +380,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   const connectBinance = async (): Promise<boolean> => {
     if (!(await accountEnsured())) {
+      await clearUnownedCredentials(pendingAccountId);
+
       return false;
     }
 
