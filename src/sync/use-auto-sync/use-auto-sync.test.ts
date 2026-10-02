@@ -217,10 +217,12 @@ describe('useAutoSync', () => {
 
     await waitFor(() => expect(mockMonobankRun).toHaveBeenCalled());
     await waitFor(() =>
+      // The run hands its refresh passes one per-run record for the fiat answer.
       expect(mockRefreshMarketData).toHaveBeenCalledWith({
         throttled: true,
         metals: true,
         shares: true,
+        fiatOfRun: {},
       }),
     );
   });

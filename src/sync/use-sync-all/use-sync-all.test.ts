@@ -154,10 +154,12 @@ describe('useSyncAll', () => {
       targetAccountId: 'bin',
     });
     expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
+    // The run hands its refresh passes one per-run record for the fiat answer.
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: true,
       metals: true,
       shares: true,
+      fiatOfRun: {},
     });
     expect(result.current.failures).toEqual([]);
   });
