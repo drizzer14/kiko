@@ -23,6 +23,16 @@ describe('buildDemoSnapshot', () => {
     );
   });
 
+  it('gives every bank account the bank id other, as a post-0049 device stores it, and no other kind a bank id', () => {
+    const bankIdByKind = snapshot.accounts.map((account) => [account.kind, account.bankId]);
+
+    expect(bankIdByKind.filter(([kind]) => kind === 'bank').length).toBeGreaterThan(0);
+
+    for (const [kind, bankId] of bankIdByKind) {
+      expect(bankId).toBe(kind === 'bank' ? 'other' : null);
+    }
+  });
+
   it('gives every holding a balance equal to the sum of its own transactions', () => {
     for (const holding of snapshot.holdings) {
       const sum = snapshot.transactions

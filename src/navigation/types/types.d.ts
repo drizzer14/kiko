@@ -129,7 +129,7 @@ export type AccountsStackParamList = {
   // `expectedFormatId` scopes recognition to the account's own selected
   // bank when one is known — see `statementFormatIdForBank`
   // (`src/bank-sync/bank-catalog/`). Undefined falls back to the existing
-  // multi-format auto-detect (an account with no `bankId`).
+  // multi-format auto-detect (an account with no `bankId`, or `other`).
   // `holdingId` (merged into ONE field so a single field a fresh mount AND a
   // later param change both feed into the SAME "select this holding" effect
   // covers both cases cleanly) is the holding this screen should have

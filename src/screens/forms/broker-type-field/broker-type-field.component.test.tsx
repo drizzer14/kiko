@@ -83,4 +83,19 @@ describe('BrokerTypeField', () => {
       getByText('Kiko is an independent app. It is not affiliated with or endorsed by any broker.'),
     ).toBeTruthy();
   });
+
+  it('marks the field required and shows its error under it when the caller passes them', async () => {
+    const { getByText, getByTestId } = await setup({ required: true, error: 'Select a broker.' });
+
+    expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+    expect(getByText('Select a broker.')).toBeTruthy();
+    expect(getByTestId('broker-type-field-error')).toBeTruthy();
+  });
+
+  it('shows no asterisk and no error by default', async () => {
+    const { queryByText, queryByTestId } = await setup();
+
+    expect(queryByText('*', { includeHiddenElements: true })).toBeNull();
+    expect(queryByTestId('broker-type-field-error')).toBeNull();
+  });
 });

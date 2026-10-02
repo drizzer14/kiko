@@ -51,7 +51,7 @@ import StatementPreviewBlock from './statement-preview-block';
 type StatementImportScreenProps = NativeStackScreenProps<AccountsStackParamList, 'StatementImport'>;
 
 // The one format `expectedFormatId` names, or `undefined` when the route
-// carries none (an account with no `bankId`) — the caller then falls back
+// carries none (an account with no `bankId`, or `other`) — the caller then falls back
 // to the existing multi-format `detectFormat` auto-detect below.
 const expectedFormatOf = (id: StatementFormatId | undefined): StatementFormat | undefined =>
   foldMap(maybe(id), (found) => statementFormats.find((format) => format.id === found));

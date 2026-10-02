@@ -2,7 +2,7 @@
 // the same file shape can pre-fill the mapping form instead of asking the
 // user to remap every column again — a saved mapping only PRE-FILLS, the
 // user still taps Import; see `applyColumnMapping`'s caller.
-import { isBankId } from '@kiko/bank-sync/bank-catalog';
+import { isSpecificBankId } from '@kiko/bank-sync/bank-catalog';
 
 import type { TableCell } from './table-rows';
 import type { ColumnMapping } from './apply-column-mapping';
@@ -25,9 +25,11 @@ export const headerFingerprint = (row: TableCell[]): string =>
 /** The `settings.statementMappings` key a mapping is saved/looked-up under: a
  * catalog `BankId` mapping is keyed by the bank itself (`bank:<bankId>`), so
  * every file imported for that bank shares one saved mapping; any other
- * account ("Other") is keyed by its header row's own fingerprint instead. */
+ * account ("Other", whether stored as `other` or as no bank at all) is keyed
+ * by its header row's own fingerprint instead — one shared `bank:other` key
+ * would apply one bank's mapping to every unrelated bank's file. */
 export const mappingKeyFor = (bankId: string | null | undefined, fingerprint: string): string =>
-  isBankId(bankId) ? `bank:${bankId}` : `header:${fingerprint}`;
+  isSpecificBankId(bankId) ? `bank:${bankId}` : `header:${fingerprint}`;
 
 /**
  * Looks up a saved mapping for the file about to be imported. A known
@@ -52,7 +54,7 @@ export const findSavedMapping = (
   const isExactMatch = (mapping: SavedColumnMapping): boolean =>
     headerFingerprint(rows[mapping.headerRowIndex] ?? []) === mapping.fingerprint;
 
-  if (isBankId(bankId)) {
+  if (isSpecificBankId(bankId)) {
     const bankMapping = saved[mappingKeyFor(bankId, '')];
 
     return bankMapping ? { mapping: bankMapping, exact: isExactMatch(bankMapping) } : undefined;

@@ -26,6 +26,7 @@ import { eq } from 'drizzle-orm';
 import { maxOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { SETTINGS_ID } from '@kiko/settings';
+import { OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { withRestoredPrices } from '@kiko/prices/quote-quota';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { isFiat, type Currency } from '@kiko/currency/currency';
@@ -265,6 +266,20 @@ const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRo
     },
   ];
 };
+
+/**
+ * Migration 0049's rule, applied to a `.kiko` restore: a `bank` account that
+ * names no bank takes the bank id `other`. `??` rather than a `=== null` test, because an export from before
+ * `accounts.bank_id` existed (migration 0033) carries no `bankId` key at all,
+ * and the migration gives that column's NULL the same value. Only a `bank`
+ * account is touched — a broker with no pick, and every other kind, keep their
+ * NULL, and an account that names a bank (listed or since removed) is never
+ * rewritten, so a post-0049 export restores as exported.
+ */
+const withBankAccountsOtherBank = (snapshotAccounts: AccountRow[]): AccountRow[] =>
+  snapshotAccounts.map((account) =>
+    account.kind === 'bank' ? { ...account, bankId: account.bankId ?? OTHER_BANK_ID } : account,
+  );
 
 /**
  * Migration 0041's flag and its launch-time rewrite (`upgradeStoredDedupKeys`)
@@ -665,6 +680,9 @@ export const restoreDataSnapshot = (
     // `withCryptoCashHoldingsMoved`'s own doc comment.
     const { accounts: accountsAfterCryptoCashMove, holdings: holdingsAfterCryptoCashMove } =
       withCryptoCashHoldingsMoved(snapshot.accounts, snapshot.holdings);
+    // Independent of the move above (it adds only crypto accounts) — a
+    // different column, a different migration.
+    const accountsToInsert = withBankAccountsOtherBank(accountsAfterCryptoCashMove);
 
     const deleteAllTables = async (): Promise<void> => {
       await databaseTransaction.delete(transactions);
@@ -720,7 +738,7 @@ export const restoreDataSnapshot = (
     // stay under the cognitive-complexity ceiling; overall parent-before-child
     // insert order is unchanged because the groups themselves run in order.
     const insertAccountsHoldingsCategories = async (): Promise<void> => {
-      for (const part of chunkForTable(accounts, accountsAfterCryptoCashMove)) {
+      for (const part of chunkForTable(accounts, accountsToInsert)) {
         await databaseTransaction.insert(accounts).values(part);
       }
 
@@ -831,5 +849,5 @@ export const restoreDataSnapshot = (
     await insertBondRegister();
     await insertReminders();
 
-    return { accountsRestored: accountsAfterCryptoCashMove.length };
+    return { accountsRestored: accountsToInsert.length };
   });

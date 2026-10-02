@@ -7,9 +7,9 @@ import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
-import { bankCatalog, type BankId } from '@kiko/bank-sync/bank-catalog';
 import FieldTrigger from '@kiko/design-system/components/field-trigger';
 import SelectableRow from '@kiko/design-system/components/selectable-row';
+import { bankCatalog, type BankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 
 import type { BankTypeFieldProps } from './bank-type-field.props';
 
@@ -47,11 +47,16 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
   sheetTitle,
   selected,
   onSelect,
+  required,
+  error,
   testID,
 }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
+
+  const labelFor = (entry: (typeof bankCatalog)[number]): string =>
+    entry.displayName ?? t('forms.account.otherBank');
 
   const selectedEntry = foldMap(maybe(selected), (id) =>
     bankCatalog.find((entry) => entry.id === id),
@@ -62,21 +67,15 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
     setOpen(false);
   };
 
-  const handleSelectNone = (): void => {
-    onSelect(null);
-    setOpen(false);
-  };
-
   return (
     <Box gap={1}>
       <FieldTrigger
         label={label}
+        required={required}
         onPress={() => setOpen(true)}
-        // "Free" (`selected === null`) IS the default selection, not an
-        // unset placeholder state — `noBank` renders as a real, textPrimary
-        // value, the same as any other picked bank.
-        value={selectedEntry?.displayName ?? t('forms.account.noBank')}
-        valueTone="textPrimary"
+        value={foldMap(maybe(selectedEntry), labelFor) ?? t('forms.account.bankTypePlaceholder')}
+        valueTone={selected === null ? 'textSecondary' : 'textPrimary'}
+        error={error}
         testID={testID}
       />
 
@@ -94,20 +93,23 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
           {t('forms.account.bankDisclaimer')}
         </Text>
 
-        {/* The explicit "no bank" row: a plain manual bank account
-            with no specific bank identity is a valid, tested state
-            (kiko-domain: `bankId` is identity-only, independent of
-            `institution`) — this is how a user PICKS that state on purpose,
-            or returns to it from an already-tagged account in edit mode. */}
-        <SelectableRow
-          selected={selected === null}
-          onPress={handleSelectNone}
-          label={t('forms.account.noBank')}
-          testID="bank-type-option-none"
-        />
-
         {bankCatalog.map((entry) => {
           const isSelected = entry.id === selected;
+
+          // The catalog's last entry covers any bank not listed, so it names
+          // no capability: a plain row, the same as the broker list's.
+          if (entry.id === OTHER_BANK_ID) {
+            return (
+              <SelectableRow
+                key={entry.id}
+                selected={isSelected}
+                onPress={() => handleSelect(entry.id)}
+                label={labelFor(entry)}
+                testID={`bank-type-option-${entry.id}`}
+              />
+            );
+          }
+
           const caption = captionFor(entry, t);
           // The compliance-load-bearing branch: `entry.connectable` (a plain
           // catalog data field, never a build/env flag — see bank-catalog.ts)
@@ -129,8 +131,8 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
               key={entry.id}
               selected={isSelected}
               onPress={() => handleSelect(entry.id)}
-              label={entry.displayName}
-              accessibilityLabel={`${entry.displayName}. ${caption}`}
+              label={labelFor(entry)}
+              accessibilityLabel={`${labelFor(entry)}. ${caption}`}
               testID={`bank-type-option-${entry.id}`}
               trailing={
                 <Box direction="row" gap={1}>

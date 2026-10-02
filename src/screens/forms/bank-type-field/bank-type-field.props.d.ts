@@ -5,11 +5,14 @@ export type BankTypeFieldProps = {
   // The picker sheet's header: a Title Case sheet title, a separate key from
   // the sentence-case `label` (kiko-translator: one key per UI role).
   sheetTitle: string;
-  // null = either nothing picked yet, or the user explicitly picked the
-  // sheet's own "Free" row — the field is OPTIONAL either way (a plain
-  // manual bank account with no specific bank identity is valid); the
-  // caller never passes `required`.
+  // null = nothing picked yet, shown as the placeholder. A bank is picked
+  // from the list, `other` last, the same as a broker.
   selected: BankId | null;
-  onSelect: (bankId: BankId | null) => void;
+  onSelect: (bankId: BankId) => void;
+  // The create form passes `required` and, after a blocked Save, `error`; the
+  // edit form passes neither, since an account saved without a bank is never
+  // forced to pick one on edit.
+  required?: boolean;
+  error?: string;
   testID?: string;
 };

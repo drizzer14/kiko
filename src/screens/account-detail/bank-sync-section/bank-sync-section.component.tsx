@@ -305,7 +305,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
               render, so it visibly changes nothing. The bank is changed on
               the account form instead. Still shown when the user reached
               this field by picking a provider through `AddBankProviderSheet`
-              on an account with no `bankId` — there it genuinely clears the
+              on an account with no `bankId` (or `other`) — there it genuinely clears the
               pick and re-shows "Add a bank". */}
           {bankIdProviderId === undefined && (
             <Button

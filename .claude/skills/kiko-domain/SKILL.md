@@ -47,7 +47,8 @@ absent** — this skill states the shape and non-enum facts only:
   `src/holdings/holding-type/holding-type.ts` (read it there). Its broker identity comes
   from the broker catalog in `src/brokers/broker-catalog.ts`
   (`BrokerId`), picked in the account form via `BrokerTypeField`
-  (`src/screens/forms/broker-type-field/`).
+  (`src/screens/forms/broker-type-field/`); required on create
+  (`brokerRequiredError`), not forced on edit.
 
   **`accounts.bankId` always holds the catalog id for the account's
   own kind**: a bank-catalog id for a `bank` account, a broker-catalog
@@ -58,13 +59,20 @@ absent** — this skill states the shape and non-enum facts only:
   **`bankId`** is the "which bank does this account represent" field
   set from the account-form's bank picker (`BankTypeField`,
   `src/screens/forms/bank-type-field/`), rendered in BOTH create and
-  edit mode (423b6a6 — edit used to skip it entirely) with an explicit
-  no-bank row (`onSelect(null)`, `accountForm.noBank` i18n key in
-  `en.ts`/`uk.ts` — cite the key, not the rendered label, since it can
-  drift) so a Bank account can be created or
-  returned to on purpose with no bank identity at all — the intended
-  target for the generic column-mapping import when no dedicated
-  parser applies. The live-sync Connect field (Monobank) stays
+  edit mode. The catalog's LAST entry is `other` (`OTHER_BANK_ID` in
+  `src/bank-sync/bank-catalog/bank-catalog.ts`; i18n key
+  `forms.account.otherBank` — cite the symbol and key, not the label): a
+  STORED id that replaced the old NULL (migration 0049 and its restore
+  mirror `withBankAccountsOtherBank`). It is the target for the generic
+  column-mapping import and states no capability (not connectable, no
+  format, no metals). A NEW bank or broker account must pick (Save
+  blocked: `bankRequiredError`/`brokerRequiredError`, `missingCatalogPick`
+  in `account-form.screen.tsx`); edit never forces, and an untouched
+  picker on edit writes the stored id back (`savedCatalogId`), including
+  an id the picker cannot show. Use `isSpecificBankId` where code means a
+  real bank and `isBankId` where `other` is valid too. `accounts.bankId`
+  can still be NULL on a legacy broker row or an unforced edit; the
+  picker's `onSelect` takes a `BankId`, never null. The live-sync Connect field (Monobank) stays
   create-only; editing `bankId` on an already-connected account never
   writes `institution`, so its sync is untouched regardless of which
   identity is picked. Backed by the catalog at

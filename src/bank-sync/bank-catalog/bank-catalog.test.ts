@@ -4,11 +4,12 @@ import {
   bankSellsMetals,
   isBankId,
   isConnectableBank,
+  isSpecificBankId,
   statementFormatIdForBank,
 } from '.';
 
 describe('bankCatalog', () => {
-  it('lists exactly the ten banks, Monobank first', () => {
+  it('lists the ten banks, Monobank first, then "other" last — the broker catalog order', () => {
     expect(bankCatalog.map((entry) => entry.id)).toEqual([
       'monobank',
       'privatbank',
@@ -20,8 +21,28 @@ describe('bankCatalog', () => {
       'oschadbank',
       'raiffeisen',
       'ukrgasbank',
+      'other',
     ]);
     expect(bankIds).toEqual(bankCatalog.map((entry) => entry.id));
+  });
+
+  it('names no display name for "other" (it renders its translated label) and one for every real bank', () => {
+    const unnamed = bankCatalog
+      .filter((entry) => entry.displayName === undefined)
+      .map((entry) => entry.id);
+
+    expect(unnamed).toEqual(['other']);
+  });
+
+  it('states no capability for "other" (isConnectableBank and bankSellsMetals decide it), and both for every real bank', () => {
+    const other = bankCatalog.find((entry) => entry.id === 'other');
+    const unstated = bankCatalog
+      .filter((entry) => entry.connectable === undefined || entry.sellsMetals === undefined)
+      .map((entry) => entry.id);
+
+    expect(other).not.toHaveProperty('connectable');
+    expect(other).not.toHaveProperty('sellsMetals');
+    expect(unstated).toEqual(['other']);
   });
 
   it('marks only Monobank connectable; every other entry is import-only', () => {
@@ -46,22 +67,34 @@ describe('bankCatalog', () => {
       oschadbank: undefined,
       raiffeisen: undefined,
       ukrgasbank: undefined,
+      other: undefined,
     });
   });
 
-  it('isBankId guards a stored institution/bankId value', () => {
+  it('isBankId guards a stored institution/bankId value, "other" included', () => {
     expect(isBankId('monobank')).toBe(true);
     expect(isBankId('privatbank')).toBe(true);
     expect(isBankId('oschadbank')).toBe(true);
+    expect(isBankId('other')).toBe(true);
     expect(isBankId('revolut')).toBe(false);
     expect(isBankId('trading212')).toBe(false);
     expect(isBankId(null)).toBe(false);
     expect(isBankId(undefined)).toBe(false);
   });
 
+  it('isSpecificBankId is isBankId without "other": the ids that name one real bank', () => {
+    expect(isSpecificBankId('monobank')).toBe(true);
+    expect(isSpecificBankId('ukrgasbank')).toBe(true);
+    expect(isSpecificBankId('other')).toBe(false);
+    expect(isSpecificBankId('trading212')).toBe(false);
+    expect(isSpecificBankId(null)).toBe(false);
+    expect(isSpecificBankId(undefined)).toBe(false);
+  });
+
   it('statementFormatIdForBank resolves a stored bankId to its format id, or undefined', () => {
     expect(statementFormatIdForBank('privatbank')).toBe('privatbank-xlsx');
     expect(statementFormatIdForBank('oschadbank')).toBeUndefined();
+    expect(statementFormatIdForBank('other')).toBeUndefined();
     expect(statementFormatIdForBank(null)).toBeUndefined();
     expect(statementFormatIdForBank(undefined)).toBeUndefined();
     expect(statementFormatIdForBank('not-a-bank')).toBeUndefined();
@@ -80,7 +113,8 @@ describe('bankCatalog', () => {
     expect(isConnectableBank('ukrgasbank')).toBe(false);
   });
 
-  it('isConnectableBank defaults to true for an unset or unrecognized bankId', () => {
+  it('isConnectableBank defaults to true for an unset, unrecognized, or "other" bankId', () => {
+    expect(isConnectableBank('other')).toBe(true);
     expect(isConnectableBank(null)).toBe(true);
     expect(isConnectableBank(undefined)).toBe(true);
     expect(isConnectableBank('not-a-bank')).toBe(true);
@@ -105,7 +139,8 @@ describe('bankCatalog', () => {
     expect(bankSellsMetals('alfa')).toBe(false);
   });
 
-  it('bankSellsMetals defaults to false — UNLIKE isConnectableBank — for an unset or unrecognized bankId', () => {
+  it('bankSellsMetals defaults to false — UNLIKE isConnectableBank — for an unset, unrecognized, or "other" bankId', () => {
+    expect(bankSellsMetals('other')).toBe(false);
     expect(bankSellsMetals(null)).toBe(false);
     expect(bankSellsMetals(undefined)).toBe(false);
     expect(bankSellsMetals('not-a-bank')).toBe(false);

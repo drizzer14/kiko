@@ -50,6 +50,7 @@ import m0045 from './0045_add_reminders.sql';
 import m0046 from './0046_add_quote_quota.sql';
 import m0047 from './0047_add_sets_balance.sql';
 import m0048 from './0048_add_lots_recosted.sql';
+import m0049 from './0049_bank_accounts_other_bank.sql';
 
 export default {
   journal,
@@ -103,5 +104,6 @@ export default {
     m0046,
     m0047,
     m0048,
+    m0049,
   },
 };

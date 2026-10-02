@@ -39,7 +39,13 @@ const openDatabase = (): DatabaseSync => {
 };
 
 const insertAccount = (database: DatabaseSync, id: string): void => {
-  database.prepare("INSERT INTO accounts (id, name, kind) VALUES (?, 'Account', 'bank')").run(id);
+  // A bank account always names a bank (`other` when it is none listed), so a
+  // row restores as it was exported rather than through the 0049 mirror.
+  database
+    .prepare(
+      "INSERT INTO accounts (id, name, kind, bank_id) VALUES (?, 'Account', 'bank', 'other')",
+    )
+    .run(id);
 };
 
 const insertReminder = (database: DatabaseSync, id: string, accountId: string): void => {

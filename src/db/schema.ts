@@ -24,7 +24,11 @@ export const accounts = sqliteTable('accounts', {
   // id (`src/bank-sync/bank-catalog/`) for a `bank`, a `brokerCatalog` id
   // (`src/brokers/`) for a `broker`. Independent of `institution`
   // (which marks a LIVE sync connection). Set from the account-form's bank
-  // or broker picker.
+  // or broker picker, which a NEW bank or broker account must set. `other`
+  // (migration 0049 gave it to every bank account with no value) covers any
+  // bank not listed; an older broker, or any other kind, may still hold NULL.
+  // A value neither catalog lists (a bank since removed) is kept as stored:
+  // restore and the edit form leave it alone, and the pickers show no pick.
   // Deliberately NEVER read by `isSyncedAccount`/`isSyncedHolding`
   // (`src/holdings/deletable/`) or any registry lookup — those stay keyed
   // on `institution` alone, so tagging an account `bankId: 'privatbank'`

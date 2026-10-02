@@ -344,6 +344,13 @@
       "when": 1790886355551,
       "tag": "0048_add_lots_recosted",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1790963734711,
+      "tag": "0049_bank_accounts_other_bank",
+      "breakpoints": true
     }
   ]
 }

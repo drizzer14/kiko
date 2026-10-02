@@ -98,9 +98,11 @@ describe('encryptEnvelope / decryptEnvelope', () => {
 describe('the export version against the migration journal', () => {
   const VERSION_DECISIONS = {
     version: 2,
-    // Through 0048_add_lots_recosted, which adds a settings flag that a file
-    // without it restores as unset, so it needed no bump of its own.
-    migrationCount: 49,
+    // Through 0049_bank_accounts_other_bank, which gives a bank account's NULL
+    // bank_id the value `other`: an older build restoring a file that carries it
+    // reads it as no bank, and this build's restore derives it for an older
+    // file, so it needed no bump of its own.
+    migrationCount: 50,
   };
 
   it('has a version decision for every migration', () => {
