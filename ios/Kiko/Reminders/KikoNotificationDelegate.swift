@@ -67,17 +67,52 @@ final class KikoNotificationDelegate: NSObject, UNUserNotificationCenterDelegate
       trigger: UNCalendarNotificationTrigger(dateMatching: fireAt, repeats: false)
     )
 
+    // iOS can run this action with no JS at all (the app killed, or the
+    // device locked), and JS may not re-plan before the next fire. The snooze
+    // stands in for the regular request at its minute, so that one would fire
+    // twice; and a snooze restarts the ignored count, so the paused notice JS
+    // planned would come a fire early. JS plans both again on its next re-plan.
+    center.removePendingNotificationRequests(
+      withIdentifiers: Self.requestsReplacedBySnooze(of: reminderId, at: fireAt)
+    )
+
     center.add(request) { _ in
       completion()
     }
   }
 
+  // The identifiers JS gives the regular request at a minute and the paused
+  // notice (`plan-reminder.ts`): the reminder id, then the local fire minute as
+  // yyyyMMddHHmm, or "paused".
+  static func requestsReplacedBySnooze(of reminderId: String, at fireAt: DateComponents) -> [String] {
+    let prefix = KikoRemindersCenter.reminderIdentifierPrefix + reminderId + "."
+    let pausedNotice = prefix + "paused"
+
+    guard
+      let year = fireAt.year,
+      let month = fireAt.month,
+      let day = fireAt.day,
+      let hour = fireAt.hour,
+      let minute = fireAt.minute
+    else {
+      return [pausedNotice]
+    }
+
+    let fireStamp = String(format: "%ld%02ld%02ld%02ld%02ld", year, month, day, hour, minute)
+
+    return [prefix + fireStamp, pausedNotice]
+  }
+
   // The scheduled trigger's own hour and minute are preferred over the
   // delivery time, which can drift from the chosen time (a DST gap, a delayed
   // delivery). Built from local calendar days, with no time zone, the same
-  // floating form as every reminder.
+  // floating form as every reminder. Gregorian whatever calendar the user
+  // picked (Buddhist, Japanese): JS plans every request on Gregorian dates, so
+  // only a Gregorian day gives the identifier of the regular request this
+  // snooze replaces.
   static func tomorrow(atTimeOf notification: UNNotification, now: Date = Date()) -> DateComponents? {
-    let calendar = Calendar.current
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone.current
     let scheduledTime = (notification.request.trigger as? UNCalendarNotificationTrigger)?.dateComponents
     let deliveredTime = calendar.dateComponents([.hour, .minute], from: notification.date)
 

@@ -1,8 +1,8 @@
-import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
+import { Alert, StyleSheet } from 'react-native';
 import { State } from 'react-native-gesture-handler';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
-import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -58,9 +58,14 @@ jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
 const mockUseLiveQuery = jest.fn();
 const mockAccountRemove = jest.fn();
 const mockAccountReorder = jest.fn();
+const mockSyncReminders = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
+}));
+jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
+  syncReminders: (...args: unknown[]) => mockSyncReminders(...args),
+  drainReminderResponses: async () => [],
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
@@ -334,6 +339,47 @@ describe('AccountsScreen', () => {
     expect(getByText('Delete "Cash"')).toBeTruthy();
     await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
     expect(mockAccountRemove).toHaveBeenCalledWith('a');
+  });
+
+  describe('deleting an account with reminders', () => {
+    const deleteCash = async (): Promise<void> => {
+      setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
+      const { getByTestId } = await renderAccounts();
+
+      await act(async () => {
+        fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+          { state: State.BEGAN },
+          { state: State.ACTIVE },
+          { state: State.END },
+        ]);
+      });
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+    };
+
+    it('re-plans after the delete, so the account’s pending reminders are removed', async () => {
+      mockAccountRemove.mockResolvedValueOnce(undefined);
+
+      await deleteCash();
+
+      await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+      expect(mockAccountRemove.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
+      );
+    });
+
+    it('shows the save-error alert and re-plans nothing when the delete fails', async () => {
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      mockAccountRemove.mockRejectedValueOnce(new Error('database is locked'));
+
+      await deleteCash();
+
+      await waitFor(() =>
+        expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+      );
+      expect(mockSyncReminders).not.toHaveBeenCalled();
+
+      alertSpy.mockRestore();
+    });
   });
 
   it('opens the account (does not delete) on a plain tap of the card', async () => {

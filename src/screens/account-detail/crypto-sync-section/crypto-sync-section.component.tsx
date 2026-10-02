@@ -17,6 +17,8 @@ import { resyncRequest } from '@kiko/crypto-sync/resync-request';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
+import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 
 import { styles } from '../account-detail.styles';
@@ -55,18 +57,33 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
   // old native `Alert.alert`; a scrim/back dismiss behaves like Cancel.
   const [disconnectPending, setDisconnectPending] = useState(false);
 
+  // A synced account sends no reminder, and a disconnected one sends them
+  // again, so both re-plan; the sync can make the account synced even when it
+  // fails later on.
+  const connectThenReplan = async (request: CryptoSyncRequest): Promise<boolean> => {
+    const synced = await sync(request);
+
+    replanReminders();
+
+    return synced;
+  };
+
   const connectWallet = (address: string): Promise<boolean> =>
-    sync({ providerId: 'btc_wallet', targetAccountId: account.id, address });
+    connectThenReplan({ providerId: 'btc_wallet', targetAccountId: account.id, address });
 
   const connectBinance = (): Promise<boolean> =>
-    sync({ providerId: 'binance', targetAccountId: account.id });
+    connectThenReplan({ providerId: 'binance', targetAccountId: account.id });
 
   const runDisconnect = async (providerId: BalanceProviderId): Promise<void> => {
     try {
       await disconnectCryptoAccount(account.id, providerId);
     } catch {
       alertOnCatch(t, 'accountDetail.disconnectErrorTitle', 'accountDetail.tryAgainMessage');
+
+      return;
     }
+
+    replanReminders();
   };
 
   const confirmDisconnect = (): void => {

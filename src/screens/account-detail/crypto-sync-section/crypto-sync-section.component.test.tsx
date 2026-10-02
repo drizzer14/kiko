@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -12,9 +12,14 @@ const mockUseLiveQuery = jest.fn();
 const mockSync = jest.fn();
 const mockUseCryptoSync = jest.fn();
 const mockDisconnect = jest.fn();
+const mockSyncReminders = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
+}));
+jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
+  syncReminders: (...args: unknown[]) => mockSyncReminders(...args),
+  drainReminderResponses: async () => [],
 }));
 jest.mock('@kiko/sync/use-crypto-sync', () => ({
   useCryptoSync: () => mockUseCryptoSync(),
@@ -208,6 +213,37 @@ describe('CryptoSyncSection', () => {
     );
   });
 
+  it.each([true, false])(
+    'connecting Binance re-plans the reminders after the sync (sync succeeded: %s), since a synced account sends none',
+    async (synced) => {
+      mockSync.mockResolvedValue(synced);
+      const { getByText, getByLabelText } = await renderSection();
+
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+      expect(mockSync.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
+      );
+    },
+  );
+
+  it.each([true, false])(
+    'connecting a wallet re-plans the reminders after the sync (sync succeeded: %s), since a synced account sends none',
+    async (synced) => {
+      mockSync.mockResolvedValue(synced);
+      const { getByLabelText } = await renderSection();
+
+      await fireEvent.press(getByLabelText('wallet-field'));
+
+      await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+      expect(mockSync.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
+      );
+    },
+  );
+
   it('still shows the wallet field (no "connected elsewhere" hint) when another account holds a wallet', async () => {
     // Multi-connection: each crypto account connects independently, so
     // another account already holding a wallet no longer blocks this one's field.
@@ -302,6 +338,32 @@ describe('CryptoSyncSection', () => {
     await fireEvent.press(getByTestId('crypto-disconnect-confirm'));
 
     await waitFor(() => expect(mockDisconnect).toHaveBeenCalledWith('a', 'binance'));
+  });
+
+  it('re-plans the reminders after a Disconnect, since the manual account takes them again', async () => {
+    const { getByText, getByTestId } = await renderSection({ institution: 'binance' });
+
+    await fireEvent.press(getByText('Disconnect'));
+    await fireEvent.press(getByTestId('crypto-disconnect-confirm'));
+
+    await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+    expect(mockDisconnect.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it('re-plans nothing after a failed Disconnect', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockDisconnect.mockRejectedValue(new Error('keychain locked'));
+    const { getByText, getByTestId } = await renderSection({ institution: 'binance' });
+
+    await fireEvent.press(getByText('Disconnect'));
+    await fireEvent.press(getByTestId('crypto-disconnect-confirm'));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
+    expect(mockSyncReminders).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
   });
 
   it('disconnects nothing when the themed Disconnect confirm is dismissed via Cancel', async () => {

@@ -1451,6 +1451,41 @@ describe('AccountDetailScreen — reminder offer', () => {
     expect(navigation.setParams).toHaveBeenCalledWith({ reminderOffer: undefined });
   });
 
+  it('Set up records the decision, so the offer never returns, even with the form left unsaved', async () => {
+    offerOf('add_transactions');
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Set up reminder'));
+
+    expect(mockDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed record on Set up still opens the form, with no alert over it, and logs', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockDismiss.mockRejectedValue(new Error('database is locked SECRET'));
+    offerOf('add_transactions');
+    const { getByText, navigation } = await renderScreen();
+
+    await fireEvent.press(getByText('Set up reminder'));
+
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith('[reminders] offer decision not saved', {
+        name: 'Error',
+        code: undefined,
+      }),
+    );
+    expect(navigation.navigate).toHaveBeenCalledWith('ReminderForm', {
+      accountId: 'a',
+      kind: 'add_transactions',
+    });
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+
+    warn.mockRestore();
+    alertSpy.mockRestore();
+  });
+
   it('Not now dismisses the offer, then clears the import offer', async () => {
     offerOf('statement_import');
     const { getByText, navigation } = await renderScreen(afterImportRoute);

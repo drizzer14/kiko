@@ -420,7 +420,7 @@ As built, CS-C2 differs from the snippets below:
 - `useReminderOffer({ accountId, account, settings, trigger })` returns `{ kind, dismiss }`. It takes the page's own rows, has no `accept`/`openForm` (the screen navigates itself), and does no reads without a trigger.
 - `manualEntryDaysQuery` counts distinct entry keys (`coalesce(change_group_id, time + sorted holding pair, created_at)`) over user-entered rows only (category or transfer marker set), not `COUNT(DISTINCT created_at)` over all manual rows. The window starts at local midnight.
 - No offer on an archived account. At most one offer per visit (`offerDecided` latch on AccountDetail).
-- The restore calls `replanRestoredReminders()` (`restartIgnoredCounts`, then `replanReminders`) before the restored language is applied, not `syncReminders(t)`.
+- The restore calls `replanRestoredReminders()` (`restartIgnoredCounts`, then `replanReminders`; historical: `restartIgnoredCounts` no longer exists in src, read `replan-restored-reminders.ts`) before the restored language is applied, not `syncReminders(t)`.
 Read `src/reminders/`, the screens, and kiko-architecture 'Reminders (local notifications)' before building on them.
 
 Base: CS-C1 tip.

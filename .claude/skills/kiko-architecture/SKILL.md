@@ -1855,9 +1855,9 @@ what a change must keep.
   accounts-list order: `sort_order`, `created_at`, `id`; it reads no
   transactions, so the list subscribes to `reminders` and `accounts`
   only), and `manualEntryDaysQuery(accountId,
-  since)` (see "Offer"). Restore: `restartIgnoredCounts` (one `UPDATE
-  reminders SET active_since = now`; the pause, engagement and snooze
-  columns are kept). User writes: `create`,
+  since)` (see "Offer"). Restore: `restartAfterRestore` (one `UPDATE
+  reminders SET active_since = now, last_snoozed_at = NULL`; the pause
+  and engagement columns are kept). User writes: `create`,
   `update` (a changed schedule restarts `activeSince` and ends a
   back-off pause, but not a user pause; it keeps a pending snooze,
   because iOS keeps it), `setPaused` (resume restarts `activeSince`; a
@@ -1944,9 +1944,13 @@ what a change must keep.
 - **Re-plan after a write.** `replanReminders` (exported from
   `src/reminders/use-reminder-scheduler/`) is the module-level
   single-flight trigger that the scheduler hook ALSO uses. Every
-  reminder write (form save, pause, delete, permission answer) calls it
-  rather than `syncReminders` directly, so an older re-plan can never
-  overwrite a newer one. A page write goes through `writeThenReplan(write, t)`
+  reminder write (form save, pause, delete, permission answer), and
+  every write that changes what may be scheduled (an account delete,
+  which takes its reminder rows; a Monobank, Binance or wallet connect,
+  after its sync whatever the result, and a successful disconnect, since
+  a synced account sends no reminder), calls it rather than
+  `syncReminders` directly, so an older re-plan can never overwrite a
+  newer one. A page write goes through `writeThenReplan(write, t)`
   (same unit): a failed write shows the save-error alert and does not
   re-plan. After a backup restore, call `replanRestoredReminders()`
   instead (see "Backup/restore").
@@ -2004,16 +2008,23 @@ what a change must keep.
   `column-mapping.screen.tsx`). A per-mount `offerDecided` latch, set
   on accept and on a successful dismiss, makes the trigger `undefined`,
   so a visit shows at most ONE offer. Accept and dismiss both clear the
-  param. A failed dismiss shows the save-error alert and keeps the
-  card. The card (`ReminderOfferCard`) sits first in
+  param. Accept ("Set up") is the user's answer too: it opens the form
+  at once, then records the decision through the offer's `dismiss`, so
+  the offer never returns on that account even when the form is left
+  unsaved; a failed write there is only logged (no alert over the
+  form). A failed dismiss ("Not now") shows the save-error alert and
+  keeps the card. The card (`ReminderOfferCard`) sits first in
   `account-detail-content`. The hook runs above the page's loading
   gate, so a cached offer is there on the first ready frame. There is
   no offer on holding detail (user decision Q9).
 - **Planner.** `planReminder` / `planAllReminders`
   (`src/reminders/planner/`) are pure; the rules are in
-  `plan-reminder.ts`'s header. The ignored count starts at the latest
-  of `activeSince`, `deliverableSince`, `lastEngagedAt` and
-  `lastDataAt`; `lastSnoozedAt` frees the regular occurrence at the
+  `plan-reminder.ts`'s header. The smart-skip rule changed more than once, so it lives only in
+  `plan-reminder.ts`'s header and the spec's "Smart skip" (worked cases):
+  read them, do not restate it here. `activeSince` plays no part in the
+  skip; the overnight default of 2026-10-02 is pending the user. The ignored count
+  starts at the latest of `activeSince`, `deliverableSince`,
+  `lastEngagedAt` and `lastDataAt`; `lastSnoozedAt` frees the regular occurrence at the
   snooze minute. The sync passes `lastSnoozedAt: null` once data
   arrived at or after the snooze.
 - **Scheduler.** `src/reminders/scheduler/sync-reminders.ts` has two
@@ -2030,7 +2041,25 @@ what a change must keep.
   `REMINDER_CATEGORY_IDENTIFIER`/`NOTICE_CATEGORY_IDENTIFIER` in
   `reminders-native.ts` and must equal
   `reminderCategoryIdentifier`/`noticeCategoryIdentifier` in
-  `ios/Kiko/Reminders/KikoRemindersCenter.swift`. Then it gates
+  `ios/Kiko/Reminders/KikoRemindersCenter.swift`. The request
+  identifiers are a JS<->Swift contract too: `plan-reminder.ts`
+  (`requestIdentifier`/`pausedNoticeIdentifier`) names a regular request
+  `kiko.reminder.<reminder id>.<yyyyMMddHHmm>` (the local fire minute on
+  the GREGORIAN calendar, `fireStamp`) and the paused notice
+  `kiko.reminder.<reminder id>.paused`; a snooze is
+  `kiko.snooze.<reminder id>`. The native "Tomorrow"
+  (`ios/Kiko/Reminders/KikoNotificationDelegate.swift`,
+  `requestsReplacedBySnooze`) rebuilds the first two to remove the regular
+  request at the snooze minute and the paused notice, and `tomorrow`
+  builds its day on `Calendar(identifier: .gregorian)` (time zone =
+  current), never `Calendar.current`, so its stamp equals `fireStamp`
+  under any device calendar. Change the format on both sides together.
+  `replaceRequests` also removes every DELIVERED notification in the
+  `kiko.reminder` category (a regular reminder or a snooze) whose
+  reminder has no planned request and no kept snooze
+  (`orphanedReminderIdentifiers` in `KikoRemindersCenter.swift`), so a
+  deleted or paused reminder's banner offers no "Tomorrow"; the paused
+  notice (`kiko.reminder.notice`) stays. Then it gates
   on `hasAnyQuery` (no
   reminders -> `replaceRequests([], [])` and no plan-input query).
   Then it syncs `notifications_deliverable_since` from
@@ -2088,7 +2117,9 @@ what a change must keep.
   only.
 - **Account delete.** `accountsRepo.remove` deletes the account's
   `reminders` rows in the same transaction, before the account row (NO
-  ACTION FK), next to the `sync_state` delete.
+  ACTION FK), next to the `sync_state` delete. The Accounts screen runs
+  it through `writeThenReplan`, so the deleted reminders' pending
+  requests go at once.
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by
   `id`. `restoreDataSnapshot` deletes `reminders` before
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders
@@ -2100,10 +2131,13 @@ what a change must keep.
   (`src/reminders/use-reminder-scheduler/`) BEFORE it applies the
   restored language: the language change re-plans too, and that
   re-plan must see the restarted counts. The helper runs
-  `restartIgnoredCounts()` first (counted from the backup, every
-  reminder would read as ignored and back-off pause at once), then
-  `replanReminders()`. A failed restart is logged and still re-plans;
-  it never rejects. Do not move the restart into
+  `restartAfterRestore()` first (counted from the backup, every
+  reminder would read as ignored and back-off pause at once; a restored
+  snooze has no request on this device), then
+  `remindersNative.replaceRequests([], [])` (every pending request goes,
+  snoozes included: a snooze pending here belongs to the replaced data
+  and would fire beside the regular reminder), then `replanReminders()`.
+  A failed step is logged and still re-plans; it never rejects. Do not move the restart into
   `restoreDataSnapshot`'s transaction: that breaks the exact round-trip
   pinned by the test above.
 - SQLite's multi-argument `max(a, b)` returns NULL as soon as one

@@ -6,6 +6,7 @@ import { ratesRepo } from '@kiko/rates/repo';
 import Sortable from 'react-native-sortables';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
+import { logFailure } from '@kiko/diagnostics';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
@@ -128,10 +129,17 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     settings: settingsRows.at(0),
     trigger: offerDecided ? undefined : (reminderOffer ?? 'manualActivity'),
   });
-  const acceptOffer = (kind: ReminderKind): void => {
+  // "Set up" is the user's answer too, so the offer never returns, even when
+  // the form is left unsaved. The form opens at once rather than wait on the
+  // write, and a failed write only means one more offer later: not worth an
+  // alert over the form.
+  const acceptOffer = (kind: ReminderKind, recordDecision: () => Promise<void>): void => {
     setOfferDecided(true);
     navigation.navigate('ReminderForm', { accountId, kind });
     navigation.setParams({ reminderOffer: undefined });
+    recordDecision().catch((error: unknown) =>
+      logFailure('[reminders] offer decision not saved', error),
+    );
   };
   // A failed write keeps the offer on screen, so the user can try again.
   const dismissOffer = async (dismiss: () => Promise<void>): Promise<void> => {
@@ -359,7 +367,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             message={offerMessage(offer.kind, t)}
             acceptLabel={t('reminders.offer.setUp')}
             dismissLabel={t('reminders.offer.dismiss')}
-            onAccept={() => acceptOffer(offer.kind)}
+            onAccept={() => acceptOffer(offer.kind, offer.dismiss)}
             onDismiss={() => dismissOffer(offer.dismiss)}
           />
         )}
