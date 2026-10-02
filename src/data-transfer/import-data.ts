@@ -5,6 +5,7 @@ import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import { recostStoredLots } from '@kiko/holdings/lot-recost';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
+import { replanRestoredReminders } from '@kiko/reminders/use-reminder-scheduler';
 
 import {
   decryptEnvelope,
@@ -15,6 +16,7 @@ import {
 import { utf8Decode } from './utf8/utf8';
 import type { ExportPayload } from './payload';
 import { decodeBase64ToBytes } from './base64/base64';
+import { isExportSecrets } from './secrets/is-export-secrets';
 import { restoreExportSecrets } from './secrets/restore-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
 
@@ -53,6 +55,9 @@ const REQUIRED_TABLE_KEYS = [
   'categoryOverrides',
 ] as const;
 
+const restoredAccountIds = (accountRows: readonly { id?: unknown }[]): ReadonlySet<string> =>
+  new Set(accountRows.flatMap(({ id }) => (typeof id === 'string' ? [id] : [])));
+
 const isExportPayload = (value: unknown): value is ExportPayload => {
   if (
     typeof value !== 'object' ||
@@ -62,14 +67,15 @@ const isExportPayload = (value: unknown): value is ExportPayload => {
     return false;
   }
 
-  const tables = (value as ExportPayload).tables;
+  const { tables, secrets } = value as ExportPayload;
 
   if (typeof tables !== 'object' || tables === null) {
     return false;
   }
 
-  return REQUIRED_TABLE_KEYS.every((key) =>
-    Array.isArray((tables as Record<string, unknown>)[key]),
+  return (
+    REQUIRED_TABLE_KEYS.every((key) => Array.isArray((tables as Record<string, unknown>)[key])) &&
+    (secrets === undefined || isExportSecrets(secrets, restoredAccountIds(tables.accounts)))
   );
 };
 
@@ -152,11 +158,16 @@ export const importData = async (options: {
   }
 
   const { accountsRestored } = await restoreDataSnapshot(payload.tables);
-  await restoreExportSecrets(payload.secrets);
+  // Right after the commit, ahead of the credentials step that can still fail
+  // on a Keychain write: left to the screen, a failed step would skip the
+  // re-plan, and the next one would read every reminder as ignored since the
+  // backup and back-off pause them. Never rejects.
+  await replanRestoredReminders();
   // A backup made before the one-time lot recost restores with its flag
   // unset, so its stale sale costs are fixed before any screen reads them.
   // Local and quick, and it never rejects.
   await recostStoredLots();
+  await restoreExportSecrets(payload.secrets);
 
   // A restored foreign-currency/metal/crypto holding needs its price/rate
   // visible without an app restart — a bulk restore bypasses the sync

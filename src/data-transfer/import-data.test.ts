@@ -44,6 +44,13 @@ jest.mock('@kiko/holdings/lot-recost/lot-recost', () => ({
   recostStoredLots: () => mockRecostStoredLots(),
 }));
 
+// The restore re-plans the reminders the moment its data commits, so the plan
+// is never left to the steps after it.
+const mockReplanRestoredReminders = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/reminders/use-reminder-scheduler', () => ({
+  replanRestoredReminders: () => mockReplanRestoredReminders(),
+}));
+
 import { right } from 'fnts/either';
 import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
@@ -86,6 +93,118 @@ describe('importData', () => {
     mockRunLoanAutoLink.mockClear();
     mockRunLoanAutoLink.mockResolvedValue(undefined);
     mockRecostStoredLots.mockReset().mockResolvedValue(undefined);
+    mockReplanRestoredReminders.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('re-plans the reminders right after the restore commits', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    const order: string[] = [];
+    mockRestoreDataSnapshot.mockImplementation(async () => {
+      order.push('restore');
+
+      return { accountsRestored: 1 };
+    });
+    mockReplanRestoredReminders.mockImplementation(async () => {
+      order.push('replan');
+    });
+    mockRestoreExportSecrets.mockImplementation(async () => {
+      order.push('secrets');
+    });
+
+    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(order).toEqual(['restore', 'replan', 'secrets']);
+  });
+
+  it('still re-plans the reminders when the credentials step fails after the restore', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    mockRestoreExportSecrets.mockRejectedValue(new Error('keychain write failed'));
+
+    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+      'keychain write failed',
+    );
+
+    expect(mockReplanRestoredReminders).toHaveBeenCalledTimes(1);
+  });
+
+  it('never re-plans the reminders when the restore itself fails', async () => {
+    const { fileText, keyBase64 } = encryptedFixture();
+    mockReadFile.mockResolvedValue(fileText);
+    mockRestoreDataSnapshot.mockRejectedValue(new Error('restore failed'));
+
+    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow();
+
+    expect(mockReplanRestoredReminders).not.toHaveBeenCalled();
+  });
+
+  // The credentials are written after the data commits, so a malformed block
+  // is refused before it, with the live data untouched.
+  describe('a file whose credentials block is malformed', () => {
+    const encryptedWithSecrets = (secrets: unknown): { fileText: string; keyBase64: string } => {
+      const key = generateExportKey();
+      const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify({ ...payload, secrets })), key);
+
+      return { fileText: JSON.stringify(envelope), keyBase64: encodeBytesToBase64(key) };
+    };
+
+    const goodSecrets = {
+      monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
+      binanceCredentials: [{ accountId: 'a1', apiKey: 'k', secret: 's' }],
+      eodhdKey: 'eodhd-key',
+    };
+
+    it.each([
+      ['a string instead of an object', 'secrets'],
+      ['a null block', null],
+      ['monobankTokens that is not an array', { ...goodSecrets, monobankTokens: 'token' }],
+      ['binanceCredentials that is missing', { monobankTokens: [], eodhdKey: 'key' }],
+      [
+        'a token that is not a string',
+        { ...goodSecrets, monobankTokens: [{ accountId: 'a1', token: 7 }] },
+      ],
+      [
+        'a Binance entry without its secret',
+        { ...goodSecrets, binanceCredentials: [{ accountId: 'a1', apiKey: 'k' }] },
+      ],
+      ['an eodhdKey that is not a string', { ...goodSecrets, eodhdKey: 12345 }],
+      [
+        'a token for an account the file does not carry',
+        { ...goodSecrets, monobankTokens: [{ accountId: 'ghost', token: 'mono-token' }] },
+      ],
+      [
+        'a Binance entry for an account the file does not carry',
+        { ...goodSecrets, binanceCredentials: [{ accountId: 'ghost', apiKey: 'k', secret: 's' }] },
+      ],
+    ])('refuses %s before the restore touches the data', async (_name, secrets) => {
+      const { fileText, keyBase64 } = encryptedWithSecrets(secrets);
+      mockReadFile.mockResolvedValue(fileText);
+
+      await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+        'data-transfer/import',
+      );
+
+      expect(mockRestoreDataSnapshot).not.toHaveBeenCalled();
+      expect(mockRestoreExportSecrets).not.toHaveBeenCalled();
+      expect(mockReplanRestoredReminders).not.toHaveBeenCalled();
+    });
+
+    it('restores a well-formed credentials block, with or without an EODHD key', async () => {
+      const withoutKey = {
+        monobankTokens: goodSecrets.monobankTokens,
+        binanceCredentials: goodSecrets.binanceCredentials,
+      };
+
+      for (const secrets of [goodSecrets, withoutKey]) {
+        const { fileText, keyBase64 } = encryptedWithSecrets(secrets);
+        mockReadFile.mockResolvedValue(fileText);
+
+        await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+        expect(mockRestoreExportSecrets).toHaveBeenLastCalledWith(secrets);
+      }
+    });
   });
 
   it('costs the restored lots again before it resolves', async () => {

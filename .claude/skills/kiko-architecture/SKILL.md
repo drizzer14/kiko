@@ -1690,6 +1690,16 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   brick the importing device's own encrypted database on its very next
   launch (wrong key at `resolveDbKey()`), which is why the field was
   dropped rather than kept display-only.
+- **The `secrets` block is validated BEFORE the restore, not during it.**
+  `importData` writes the Keychain items after `restoreDataSnapshot`
+  commits, so a malformed block (`isExportSecrets`,
+  `secrets/is-export-secrets.ts`: arrays of the right entry shape, a string
+  `eodhdKey` or none, account ids the file itself restores) is refused as
+  "not a valid Kiko export file" while the live database is still
+  untouched. A new secret class in `ExportSecrets` extends that guard in
+  the same change. What can still fail after the commit is a Keychain write
+  itself; every local post-commit step (the reminder re-plan, the lot recost)
+  runs BEFORE the credentials step for that reason.
 - **A legacy export missing a newer field must still restore.**
   `restoreExportSecrets` treats an entirely absent `secrets` object (an export
   written before the credentials toggle, or with it off) as a no-op, not an
@@ -1965,8 +1975,8 @@ what a change must keep.
   `syncReminders` directly, so an older re-plan can never overwrite a
   newer one. A page write goes through `writeThenReplan(write, t)`
   (same unit): a failed write shows the save-error alert and does not
-  re-plan. After a backup restore, call `replanRestoredReminders()`
-  instead (see "Backup/restore").
+  re-plan. After a backup restore, `importData` calls
+  `replanRestoredReminders()` instead (see "Backup/restore").
 - **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
   params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
   (`src/screens/settings/account-reminders/`, params `{ accountId,
@@ -2139,11 +2149,13 @@ what a change must keep.
   ?? []`, so a pre-reminders `.kiko` restores with no reminders. The
   settings row is restored whole, so both reminder settings columns
   come from the backup (`restore-across-reminders-migration.test.ts`
-  pins the old-backup case). After a successful `importData`,
-  `ImportData` awaits `replanRestoredReminders()`
-  (`src/reminders/use-reminder-scheduler/`) BEFORE it applies the
-  restored language: the language change re-plans too, and that
-  re-plan must see the restarted counts. The helper runs
+  pins the old-backup case). `importData` awaits
+  `replanRestoredReminders()` (`src/reminders/use-reminder-scheduler/`)
+  right after the snapshot commits, ahead of the credentials step (which
+  can still fail on a Keychain write, and a re-plan left to the screen
+  would be skipped then); the screen applies the restored language only
+  after `importData` resolves, and that language change re-plans too, so
+  it sees the restarted counts. The helper runs
   `restartAfterRestore()` first (counted from the backup, every
   reminder would read as ignored and back-off pause at once; a restored
   snooze has no request on this device), then

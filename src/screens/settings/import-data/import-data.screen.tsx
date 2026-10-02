@@ -14,7 +14,6 @@ import type { SettingsStackParamList } from '@kiko/navigation/types';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { keepLocalCopy, pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { replanRestoredReminders } from '@kiko/reminders/use-reminder-scheduler';
 import ClipboardTextField from '@kiko/design-system/components/clipboard-text-field';
 
 type ImportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ImportData'>;
@@ -123,10 +122,6 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
 
     try {
       const summary = await importData({ fileUri, keyBase64 });
-
-      // Before the language change below, which re-plans too: that re-plan
-      // must already see the restarted counts. Never rejects.
-      await replanRestoredReminders();
 
       // The imported settings row can carry a different language than the
       // one currently active. Apply it BEFORE resolving the success
