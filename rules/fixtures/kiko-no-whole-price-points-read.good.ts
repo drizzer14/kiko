@@ -19,3 +19,5 @@ export const everyHoldingRelational = () => database.query.holdings.findMany();
 
 export const pointsOfDay = (day: number) =>
   database.query.pricePoints.findMany({ where: (point, { eq }) => eq(point.day, day) });
+
+export const firstPoints = () => database.query.pricePoints.findMany({ limit: 10 });
