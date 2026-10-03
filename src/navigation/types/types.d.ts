@@ -141,9 +141,8 @@ export type AccountsStackParamList = {
   // repo re-reads the list inside its write rather than trusting a row.
   OwnershipChangeForm: { holdingId: string; day: number };
   // The account's own reminders page, reached from the bell in the account
-  // detail header. `name` is the account's name at navigation time, like
-  // AccountDetail's.
-  AccountReminders: { accountId: string; name: string };
+  // detail header.
+  AccountReminders: { accountId: string };
   ReminderForm: ReminderFormParams;
   // The shared statement-import preview + target-holding screen, reached
   // from the in-app document-picker entry point (`account-detail.screen.tsx`'s

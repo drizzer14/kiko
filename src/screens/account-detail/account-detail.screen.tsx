@@ -174,7 +174,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           icon: { type: 'sfSymbol', name: 'bell' },
           tintColor: theme.colors.textPrimary,
           sharesBackground: false,
-          onPress: () => navigation.navigate('AccountReminders', { accountId, name: accountName }),
+          onPress: () => navigation.navigate('AccountReminders', { accountId }),
         },
         editBarItem({
           label: t('common.edit'),

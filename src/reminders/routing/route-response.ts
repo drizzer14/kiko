@@ -46,12 +46,12 @@ export const routeFor = (
 
     if (isImplicitAccount(found)) {
       return isPausedNoticeResponse(response)
-        ? { next: { screen: 'AccountReminders', params: accountDetail } }
+        ? { next: { screen: 'AccountReminders', params: { accountId } } }
         : {};
     }
 
     if (isPausedNoticeResponse(response)) {
-      return { accountDetail, next: { screen: 'AccountReminders', params: accountDetail } };
+      return { accountDetail, next: { screen: 'AccountReminders', params: { accountId } } };
     }
 
     return match(kind)

@@ -22,7 +22,7 @@ jest.mock('@kiko/transactions/group-by-day', () => {
 
 import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -750,9 +750,9 @@ describe('HomeScreen', () => {
     expect(queryByTestId('account-filter-menu-option-Closed')).toBeNull();
   });
 
-  // An implicit account's stored name is an English sentinel; the filter option
-  // and the row name it by its localized kind, so both sides of the name-keyed
-  // match have to go through `accountDisplayName`.
+  // An implicit account's stored name is an English sentinel: the filter option
+  // and the row SHOW its localized kind, while the filter matches on the stored
+  // name, which does not change with the language.
   describe('an implicit account under Ukrainian', () => {
     const PROPERTIES: Account = {
       id: 'p',
@@ -782,29 +782,56 @@ describe('HomeScreen', () => {
       });
     });
 
-    it('lists it in the account filter by its localized name, not the stored one', async () => {
+    it('lists it in the account filter under its localized name, keyed on the stored one', async () => {
       seed({ accounts: [MONOBANK, PROPERTIES] });
-      const { getByTestId, queryByTestId } = await renderHome();
+      const { getByTestId } = await renderHome();
 
       await act(async () => {
         await fireEvent.press(getByTestId('account-filter-menu'));
       });
+      const option = within(getByTestId('account-filter-menu-option-Properties'));
 
-      expect(getByTestId('account-filter-menu-option-Майно')).toBeTruthy();
-      expect(queryByTestId('account-filter-menu-option-Properties')).toBeNull();
+      expect(option.getByText('Майно')).toBeTruthy();
+      expect(option.queryByText('Properties')).toBeNull();
     });
 
-    it('selecting its localized name keeps that account’s rows and drops the others', async () => {
+    it('selecting it by its localized name keeps that account’s rows and drops the others', async () => {
       seed({
         accounts: [MONOBANK, PROPERTIES],
         transactions: [flatRow(), transaction({ id: 't-bank', description: 'Coffee' })],
       });
       const { getByText, queryByText, getByTestId } = await renderHome();
 
-      await pressFilter(getByTestId, 'account-filter-menu', 'Майно');
+      await act(async () => {
+        await fireEvent.press(getByTestId('account-filter-menu'));
+      });
+      await act(async () => {
+        await fireEvent.press(getByText('Майно'));
+      });
+      await act(async () => {
+        await fireEvent.press(getByTestId('account-filter-menu-backdrop'));
+      });
 
       expect(getByText('Roof repair')).toBeTruthy();
       expect(queryByText('Coffee')).toBeNull();
+    });
+
+    it('keeps a selection made under English filtering the same rows after the language switches', async () => {
+      await i18n.changeLanguage('en');
+      seed({
+        accounts: [MONOBANK, PROPERTIES],
+        transactions: [flatRow(), transaction({ id: 't-bank', description: 'Coffee' })],
+      });
+      const { getByText, queryByText, getByTestId } = await renderHome();
+
+      await pressFilter(getByTestId, 'account-filter-menu', 'Properties');
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      expect(getByText('Roof repair')).toBeTruthy();
+      expect(queryByText('Coffee')).toBeNull();
+      expect(getByText(/^Майно · /)).toBeTruthy();
     });
 
     it('names it by its localized name on its rows', async () => {

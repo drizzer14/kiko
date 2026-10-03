@@ -1327,10 +1327,17 @@ describe('StatisticsScreen', () => {
     expect(queryByTestId('pie-chart-arc-b')).toBeNull();
   });
 
-  // An implicit account is stored under an English sentinel; its filter option,
-  // the match on that option, and the contribution chart all name it by its
-  // localized kind.
+  // An implicit account is stored under an English sentinel: its filter option
+  // and the contribution chart SHOW its localized kind, while the filter keys on
+  // the stored name, which does not change with the language.
   describe('an implicit account under Ukrainian', () => {
+    const PROPERTIES: Account = {
+      id: 'p',
+      name: 'Properties',
+      kind: 'property',
+      color: null,
+      archivedAt: null,
+    };
     const LOANS: Account = {
       id: 'd',
       name: 'Loans',
@@ -1338,18 +1345,23 @@ describe('StatisticsScreen', () => {
       color: null,
       archivedAt: null,
     };
-    const LOANS_HOLDING: Holding = {
-      id: 'h-loans',
-      accountId: 'd',
+    const FLAT: Holding = {
+      id: 'h-flat',
+      accountId: 'p',
       currency: 'UAH',
-      type: 'cash',
-      balanceMinorUnits: 50_000,
-      metadata: null,
+      type: 'property_item',
+      balanceMinorUnits: 0,
+      metadata: {
+        category: 'real_estate',
+        lots: [
+          { day: toUtcMidnight(now) - 40 * DAY_MS, quantityDelta: '1', costMinorUnits: 500_000 },
+        ],
+      },
       closedAt: null,
     };
 
     beforeEach(async () => {
-      setLiveData({ accounts: [CASH, LOANS], holdings: [UAH_HOLDING, LOANS_HOLDING] });
+      setLiveData({ accounts: [CASH, PROPERTIES, LOANS], holdings: [UAH_HOLDING, FLAT] });
       await act(async () => {
         await i18n.changeLanguage('uk');
       });
@@ -1361,30 +1373,57 @@ describe('StatisticsScreen', () => {
       });
     });
 
-    it('lists it in the account filter by its localized name, not the stored one', async () => {
-      const { getByTestId, queryByTestId } = await renderScreen();
+    it('lists each implicit account in the account filter under its localized name, keyed on the stored one', async () => {
+      const { getByTestId } = await renderScreen();
 
       await act(async () => {
         await fireEvent.press(getByTestId(ACCOUNT_FILTER));
       });
 
-      expect(getByTestId(`${ACCOUNT_FILTER}-option-Кредити`)).toBeTruthy();
-      expect(queryByTestId(`${ACCOUNT_FILTER}-option-Loans`)).toBeNull();
+      expect(
+        within(getByTestId(`${ACCOUNT_FILTER}-option-Properties`)).getByText('Майно'),
+      ).toBeTruthy();
+      expect(
+        within(getByTestId(`${ACCOUNT_FILTER}-option-Loans`)).getByText('Кредити'),
+      ).toBeTruthy();
     });
 
-    it('selecting its localized name narrows the charts to that account', async () => {
+    it('selecting it by its localized name narrows the charts to that account', async () => {
       const { getByTestId, queryByTestId } = await renderScreen();
 
-      await pressFilter(getByTestId, ACCOUNT_FILTER, 'Кредити');
+      await act(async () => {
+        await fireEvent.press(getByTestId(ACCOUNT_FILTER));
+      });
+      await act(async () => {
+        await fireEvent.press(
+          within(getByTestId(`${ACCOUNT_FILTER}-option-Properties`)).getByText('Майно'),
+        );
+      });
+      await act(async () => {
+        await fireEvent.press(getByTestId(`${ACCOUNT_FILTER}-backdrop`));
+      });
 
-      expect(getByTestId('pie-chart-arc-d')).toBeTruthy();
+      expect(getByTestId('pie-chart-arc-p')).toBeTruthy();
+      expect(queryByTestId('pie-chart-arc-a')).toBeNull();
+    });
+
+    it('keeps a selection made under English narrowing the same charts after the language switches', async () => {
+      await i18n.changeLanguage('en');
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await pressFilter(getByTestId, ACCOUNT_FILTER, 'Properties');
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      expect(getByTestId('pie-chart-arc-p')).toBeTruthy();
       expect(queryByTestId('pie-chart-arc-a')).toBeNull();
     });
 
     it('names it by its localized name in the account contribution chart', async () => {
       const { getByTestId } = await renderScreen();
 
-      expect(within(getByTestId('pie-chart-legend-d')).getByText('Кредити')).toBeTruthy();
+      expect(within(getByTestId('pie-chart-legend-p')).getByText('Майно')).toBeTruthy();
     });
   });
 

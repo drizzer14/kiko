@@ -56,9 +56,12 @@ rule's sibling); the user sees `accounts.implicitName.{property,debt}`
 (uk `Майно` / `Кредити`) through `accountDisplayName(account, t)`
 (`src/holdings/implicit-account/`), which leaves any other account's name
 verbatim. EVERY place that renders an account's name takes the helper's
-result: a heading, a filter option AND the row match keyed on it (both
-sides, or a pick under `uk` matches nothing), a chart label, a picker
-caption, an accessibility label. A query that feeds such a site projects
+result: a heading, a filter option's `label`, a row's account name, a
+chart label, a picker caption, an accessibility label. A filter's `value`
+(its identity, which a selection and the row match key on) stays the STORED
+name, because the display name changes with the language and would strand a
+selection made before a live switch (`filter-menu.props.d.ts`). A query
+that feeds such a site projects
 `kind` and `archivedAt` beside `name` (`accountKind`/`accountArchivedAt` on
 the ledger rows). A test asserts the name under `uk`, where the stored
 sentinel would show English. A site that can never reach a live implicit

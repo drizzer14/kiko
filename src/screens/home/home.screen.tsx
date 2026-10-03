@@ -346,44 +346,31 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // (= `spanStart`) and its ceiling from today itself, so the display span
   // (earliest–latest transaction) stays independent of the selectable range.
 
-  // The account filter keys on the account's DISPLAY name: an implicit account
-  // is stored under an English sentinel, so the options and the rows below both
-  // resolve the localized name, or a pick under another language would match
-  // nothing.
-  const namedAccounts = useMemo(
-    () => accounts.map((account) => ({ ...account, name: accountDisplayName(account, t) })),
-    [accounts, t],
-  );
-  const namedTransactions = useMemo(
-    () =>
-      transactions.map((row) => ({
-        ...row,
-        accountName: accountDisplayName(
-          { kind: row.accountKind, name: row.accountName, archivedAt: row.accountArchivedAt },
-          t,
-        ),
-      })),
-    [transactions, t],
-  );
   // Every active (non-archived) account, so a newly-added account with no
   // transactions yet still appears in the Accounts filter. Sourced from the
   // accounts live query rather than from the transactions, which would omit it.
   // Each option carries the account's own identity icon + color for the
-  // menu row; transaction matching still keys off `option.value` (the account
-  // name, matched against `row.accountName` below). De-duplicated by name,
-  // first-seen-wins, preserving the old `Set`-based distinctness.
+  // menu row; transaction matching still keys off `option.value` (the STORED
+  // account name, matched against the stored `row.accountName` below), so a
+  // selection survives a language switch; only the option's `label` is the
+  // localized display name. De-duplicated by name, first-seen-wins, preserving
+  // the old `Set`-based distinctness.
   const accountOptions = useMemo(() => {
     const byName = new Map<string, FilterOption>();
 
-    for (const account of namedAccounts) {
+    for (const account of accounts) {
       if (account.archivedAt != null || byName.has(account.name)) {
         continue;
       }
-      byName.set(account.name, { value: account.name, ...accountIdentity(account) });
+      byName.set(account.name, {
+        value: account.name,
+        label: accountDisplayName(account, t),
+        ...accountIdentity(account),
+      });
     }
 
     return Array.from(byName.values());
-  }, [namedAccounts]);
+  }, [accounts, t]);
   // Group and match the category filter by the STABLE `categories.key` slug,
   // never by the resolved display title: the title is language-dependent (a
   // default category's title changes under a live language switch — see
@@ -452,7 +439,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     i18n.language,
   ]);
   const filteredTransactions = useMemo(() => {
-    return namedTransactions.filter((row) => {
+    return transactions.filter((row) => {
       const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
       const matchesCategory =
         selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
@@ -460,14 +447,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
       return matchesAccount && matchesCategory && matchesDate;
     });
-  }, [
-    namedTransactions,
-    selectedAccounts,
-    selectedCategories,
-    boundsFrom,
-    boundsTo,
-    categoryKeyForRow,
-  ]);
+  }, [transactions, selectedAccounts, selectedCategories, boundsFrom, boundsTo, categoryKeyForRow]);
 
   // Grouping/sorting happens after filtering, over the query's newest-first
   // order (transactionsRepo orders by time desc), so sections come out
@@ -476,8 +456,21 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // midnight, so this recomputes when the filtered rows change or the day rolls,
   // not on every reactive fire during a sync.
   const todayStart = startOfLocalDay(now);
+  // The rows RENDER the account's display name (an implicit account's stored
+  // name is an English sentinel); the filter above matched the stored one.
   const sections = useMemo(
-    () => groupByDay(filteredTransactions, todayStart, t),
+    () =>
+      groupByDay(
+        filteredTransactions.map((row) => ({
+          ...row,
+          accountName: accountDisplayName(
+            { kind: row.accountKind, name: row.accountName, archivedAt: row.accountArchivedAt },
+            t,
+          ),
+        })),
+        todayStart,
+        t,
+      ),
     [filteredTransactions, todayStart, t],
   );
 

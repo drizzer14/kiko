@@ -330,13 +330,6 @@ const StatisticsScreen: FC = () => {
     priceBookLoading,
   );
 
-  // The filter options, the match on them, and the account pie's legend all
-  // read the account's DISPLAY name: an implicit account's stored name is an
-  // English sentinel, so each of them reads the name resolved here once.
-  const namedAccounts = useMemo(
-    () => accounts.map((account) => ({ ...account, name: accountDisplayName(account, t) })),
-    [accounts, t],
-  );
   // Only non-archived accounts are ever shown; the account filter narrows within
   // those. `visibleHoldings` (open AND under a surviving account) feeds every
   // "now" snapshot (the by-type bar, the account pie, the Debts total).
@@ -348,7 +341,7 @@ const StatisticsScreen: FC = () => {
   // needs its own past lots. Memoized so all four builders below key off a
   // stable collection instead of a fresh array on every render.
   const filtered = useMemo(() => {
-    const visibleAccounts = namedAccounts.filter((account) => account.archivedAt == null);
+    const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
     const filteredAccounts = visibleAccounts.filter((account) => {
       return selectedAccounts.size === 0 || selectedAccounts.has(account.name);
     });
@@ -359,7 +352,7 @@ const StatisticsScreen: FC = () => {
     const visibleHoldings = netWorthHoldings.filter((holding) => holding.closedAt == null);
 
     return { visibleAccounts, filteredAccounts, visibleHoldings, netWorthHoldings };
-  }, [namedAccounts, holdings, selectedAccounts]);
+  }, [accounts, holdings, selectedAccounts]);
 
   // The full transaction and lot span drives the date field's default display,
   // the line's default window, and the backfill's earliest day. With neither the
@@ -650,14 +643,19 @@ const StatisticsScreen: FC = () => {
   const slices = useMemo(
     () =>
       buildAccountContribution({
-        accounts: filtered.filteredAccounts,
+        // The legend names an implicit account by its display name; the stored
+        // one is an English sentinel.
+        accounts: filtered.filteredAccounts.map((account) => ({
+          ...account,
+          name: accountDisplayName(account, t),
+        })),
         holdings: filtered.visibleHoldings,
         rateTable,
         baseCurrency,
         now,
         book: priceBook,
       }),
-    [filtered, rateTable, baseCurrency, now, priceBook],
+    [filtered, rateTable, baseCurrency, now, priceBook, t],
   );
 
   // The "Debts" total under the account pie
@@ -1146,9 +1144,12 @@ const StatisticsScreen: FC = () => {
 
   // One option per visible account, each carrying the account's own identity
   // icon + color for the menu row; matching still keys on `option.value` (the
-  // account name, compared to `account.name` in the `filtered` memo above).
+  // stored account name, compared to `account.name` in the `filtered` memo
+  // above, so a selection survives a language switch); the `label` is the
+  // display name, which an implicit account localizes.
   const accountOptions: FilterOption[] = filtered.visibleAccounts.map((account) => ({
     value: account.name,
+    label: accountDisplayName(account, t),
     ...accountIdentity(account),
   }));
 

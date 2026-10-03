@@ -2088,8 +2088,7 @@ what a change must keep.
   `replanRestoredReminders()` instead (see "Backup/restore").
 - **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
   params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
-  (`src/screens/settings/account-reminders/`, params `{ accountId,
-  name }`) — `AccountReminders` is registered in the Accounts stack.
+  (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.
   `ReminderForm` is registered in BOTH the Accounts and Settings
   stacks, so its props type is structural (`route.params:
   ReminderFormParams` plus the `goBack`/`setOptions` it reads), not
@@ -2234,11 +2233,19 @@ what a change must keep.
   the paused notice opens `AccountReminders` above `AccountDetail`. An
   IMPLICIT account (`isImplicitAccount`: a live property or debt account)
   has no `AccountDetail` page, so `routeFor` returns no `accountDetail` for
-  it: an open response gives `{}` and lands on the Accounts root, the
-  paused notice gives `AccountReminders` above the Accounts root, and
-  `navigateNow` skips `withAccountOnTop`. No new reminder entry point
-  exists for an implicit account; a merged reminder that survives stays
-  in Settings > Reminders (pause, delete) and still routes by this rule.
+  it: an open response gives `{}` and opens the Accounts tab with the pages
+  it already shows kept (like a bank tap, which also keeps them; a reset
+  would discard an open form's draft), so it is the Accounts root only when
+  the tab is unmounted or at its root; the paused notice gives
+  `AccountReminders` (params `{ accountId }`) above those pages, and
+  `navigateNow` skips `withAccountOnTop`. Nothing builds an entry point to
+  create a reminder for an implicit account; a merged reminder that
+  survives stays in Settings > Reminders (pause, delete) and still routes
+  by this rule. One path still reaches the create form:
+  `eligibleReminderKinds` offers `add_transactions` for any account no sync
+  owns, property and debt included, so after the paused-notice tap deletes
+  the reminder on `AccountReminders`, the page shows an unset
+  `add_transactions` row that opens `ReminderForm` in create mode.
   A reminder NOTIFICATION never names its account (its title and body are
   generic catalogue text), so the planner needs no display name. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole

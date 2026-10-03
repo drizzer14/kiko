@@ -1198,10 +1198,7 @@ describe('AccountDetailScreen', () => {
 
     items[0].onPress();
 
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountReminders', {
-      accountId: 'a',
-      name: 'Cash box',
-    });
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountReminders', { accountId: 'a' });
   });
 
   it('offers a Disconnect action on a connected account and confirms via the themed sheet before disconnecting', async () => {

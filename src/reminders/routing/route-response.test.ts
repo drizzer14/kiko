@@ -60,7 +60,7 @@ describe('routeFor', () => {
     (kind) => {
       expect(routeFor(pausedNoticeTap, kind, CASH, [WALLET])).toEqual({
         accountDetail: { accountId: 'cash', name: 'Cash' },
-        next: { screen: 'AccountReminders', params: { accountId: 'cash', name: 'Cash' } },
+        next: { screen: 'AccountReminders', params: { accountId: 'cash' } },
       });
     },
   );
@@ -89,10 +89,7 @@ describe('routeFor', () => {
       'opens only the account reminders page for a tap on the %s paused notice',
       (kind) => {
         expect(routeFor(pausedNoticeTap, kind, account, [])).toEqual({
-          next: {
-            screen: 'AccountReminders',
-            params: { accountId: account.id, name: account.name },
-          },
+          next: { screen: 'AccountReminders', params: { accountId: account.id } },
         });
       },
     );

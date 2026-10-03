@@ -248,7 +248,7 @@ describe('reminder tap routing (real router)', () => {
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
         onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
-        onStack('AccountReminders', { accountId: 'cash', name: 'Cash' }),
+        onStack('AccountReminders', { accountId: 'cash' }),
       ]);
     });
 
@@ -270,7 +270,7 @@ describe('reminder tap routing (real router)', () => {
       expect(focusedTab()).toBe('AccountsTab');
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountReminders', { accountId: 'properties', name: 'Properties' }),
+        onStack('AccountReminders', { accountId: 'properties' }),
       ]);
     });
 
@@ -367,7 +367,7 @@ describe('reminder tap routing (real router)', () => {
       state: {
         routes: [
           expect.objectContaining({ name: 'Accounts' }),
-          { name: 'AccountReminders', params: { accountId: 'properties', name: 'Properties' } },
+          { name: 'AccountReminders', params: { accountId: 'properties' } },
         ],
         index: 1,
       },
