@@ -30,6 +30,9 @@ Rules:
   it send its result the moment it is known instead of going quiet.
 - "DEFAULT, pending user" means apply it now, not merely record the decision and leave the old behavior in place. A change that states a DEFAULT ruling must change the code in that same change — a later change should never have to circle back to actually apply a decision an earlier one only annotated.
 - User questions go through the coordinator. An orchestrator session never asks the user in its own terminal (no AskUserQuestion there). It sends each user question or blocker to the coordinator by SendMessage: the question, 2-4 options with a one-line consequence each, the recommended option, and the work it can do meanwhile. The coordinator asks the user and relays the answer in the user's own words.
+- Every duration or ETA given to the user, and every BATCH READY's TIMES
+  line, follows `kiko:estimator` — it owns the estimate-from-history and
+  duration-log rules.
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
 
 ## Skill drift rule
