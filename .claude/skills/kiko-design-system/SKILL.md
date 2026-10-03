@@ -223,7 +223,7 @@ an entry (date + value) the moment the user approves a new visual.
   vertical alignment — `TransactionCard` top-aligns (`flex-start`, a
   body-size glyph), the holding-detail ledger rows stay `center`, and
   the account card (`accounts.screen.tsx` `renderAccountCard`, also the
-  Property and Debts grids) and the account-detail `HoldingCard` stay
+  Property and Debts grids) and the shared `HoldingCard` stay
   `center` beside their taller `EntityIconTile`. The Statistics pie legend's name
   wraps in its own `legendLabel` (`flex: 1`) box beside the swatch; its
   fixed-width value/percent columns are unchanged. Rows whose label is a
@@ -1009,8 +1009,9 @@ new component can land between reviews of this skill:
   (`{ label, onPress }`, the consumer names the entry) is the account
   detail's manual holding cards ("Close holding"/"Close loan" + Delete):
   a hold there opens the action list, never the delete confirm
-  directly, and the screen owns Close's own confirm
-  (`CloseHoldingSheet`, a `destructive` red confirm). Only Delete is red
+  directly, and the screen renders Close's own confirm
+  (`CloseHoldingSheet`, a `destructive` red confirm) through
+  `useCloseHoldingAction` below. Only Delete is red
   in the menu; Edit, Duplicate, and Close stay neutral. A synced holding
   passes no `closeAction`. The menu is: a
   `Gesture.LongPress()` that raises the shared `ConfirmSheet` above on a
@@ -1027,6 +1028,25 @@ new component can land between reviews of this skill:
   deleted only from its page's `CardContextMenu`, so nothing under
   `src/screens/forms/` imports `ConfirmSheet`
   (`kiko-no-confirm-sheet-in-form`, `rules/semgrep-prewrite.yml`).
+- **HoldingCard** (`src/design-system/components/holding-card/`) — one
+  holding as a wide row card, shared so a screen never imports another
+  screen's card (`kiko-no-cross-screen-import`): the entity icon tile and
+  name on the left, the holding's computed value (as of `now`) on the
+  right, a smaller base-currency line for a holding in another currency,
+  and the owned share of a part-owned property. A plain tap calls
+  `onOpen`; it carries no long-press of its own, so a grid wraps it in
+  `CardContextMenu` and `Sortable.Grid`. Consumers: the account-detail
+  holding grid and the Accounts screen's Property and Debts grids.
+- **CloseHoldingSheet** and `useCloseHoldingAction`
+  (`src/design-system/components/close-holding-sheet/`) — the Close
+  confirm for a manual holding (a `destructive` `ConfirmSheet`; the
+  copy comes from `closeHoldingCopy`, loan wording for a debt-side type)
+  and the hook a screen uses to wire it. `useCloseHoldingAction(account)`
+  returns `closeActionFor(holding)` (the `closeAction` for
+  `CardContextMenu`, `undefined` for a synced holding) and `closeSheet`
+  (render it once per screen). `account` is the HOLDING's own account,
+  read by `isSyncedHolding`; a screen listing the implicit account's
+  holdings passes that row.
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.

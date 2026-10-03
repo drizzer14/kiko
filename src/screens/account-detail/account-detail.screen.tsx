@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
+import { useDataReady, useLiveQuery } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
@@ -25,10 +26,10 @@ import type { ReminderKind } from '@kiko/reminders/schedule';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { accountIdentity } from '@kiko/holdings/account-identity';
-import { holdsOnlyDebts } from '@kiko/holdings/holding-descriptor';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
-import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
+import HoldingCard from '@kiko/design-system/components/holding-card';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
@@ -42,27 +43,18 @@ import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown
 import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
-import { genericEntitySymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
+import { useCloseHoldingAction } from '@kiko/design-system/components/close-holding-sheet';
 
-import HoldingCard from './holding-card';
 import { styles } from './account-detail.styles';
 import BankSyncSection from './bank-sync-section';
 import CryptoSyncSection from './crypto-sync-section';
-import CloseHoldingSheet, { closeHoldingCopy } from './close-holding-sheet';
 
 const offerMessage = (kind: ReminderKind, t: TFunction): string =>
   match(kind)
     .with('statement_import', () => t('reminders.offer.statementImportMessage'))
     .with('add_transactions', () => t('reminders.offer.addTransactionsMessage'))
     .exhaustive();
-
-const addHoldingLabelKey = (debtAccount: boolean) =>
-  debtAccount ? 'accountDetail.addLoan' : 'accountDetail.addHolding';
-
-// A debt account adds only loans, so its button leads with the loan's own glyph.
-const addHoldingSymbol = (debtAccount: boolean): string =>
-  debtAccount ? holdingTypeSymbol.loan : genericEntitySymbol.holding;
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
@@ -117,7 +109,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     priceBookLoading,
   );
   const account = accounts.at(0);
-  const debtAccount = holdsOnlyDebts(account?.kind);
   // At most one offer per visit: once one is decided, clearing the import
   // param would otherwise fall back to the manual-entry offer at once.
   const [offerDecided, setOfferDecided] = useState(false);
@@ -196,25 +187,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
   const activeHoldings = holdings.filter((holding) => holding.closedAt == null);
 
-  // A synced holding keeps its sync-driven close: the bank decides when it is
-  // gone, so only a manual one offers Close.
-  const [closeTarget, setCloseTarget] = useState<HoldingRow>();
-  const [isCloseConfirmVisible, setCloseConfirmVisible] = useState(false);
-  const closeActionFor = (
-    holding: HoldingRow,
-  ): { label: string; onPress: () => void } | undefined => {
-    if (isSyncedHolding(holding, account)) {
-      return undefined;
-    }
-
-    return {
-      label: t(closeHoldingCopy(holding.type).action),
-      onPress: () => {
-        setCloseTarget(holding);
-        setCloseConfirmVisible(true);
-      },
-    };
-  };
+  const { closeActionFor, closeSheet } = useCloseHoldingAction(account);
 
   // Reuse the accounts-list conversion path: sum this account's open holdings
   // into the base currency, then list each currency's own total beneath.
@@ -352,10 +325,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           )}
           <Button
             variant="primary"
-            onPress={() => navigation.navigate('HoldingForm', { accountId, debtAccount })}
-            icon={addHoldingSymbol(debtAccount)}
+            onPress={() => navigation.navigate('HoldingForm', { accountId })}
+            icon={genericEntitySymbol.holding}
           >
-            {t(addHoldingLabelKey(debtAccount))}
+            {t('accountDetail.addHolding')}
           </Button>
         </Box>
       }
@@ -459,13 +432,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
             />
           </Box>
 
-          {closeTarget !== undefined && (
-            <CloseHoldingSheet
-              holding={closeTarget}
-              visible={isCloseConfirmVisible}
-              onDismiss={() => setCloseConfirmVisible(false)}
-            />
-          )}
+          {closeSheet}
         </Box>
       </Box>
     </Screen>

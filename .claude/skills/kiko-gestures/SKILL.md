@@ -7,6 +7,8 @@ description: Invoke when touching a Gesture/GestureDetector, react-native-sortab
 
 Source files: `src/design-system/` (grid-interaction),
 `src/design-system/components/card-context-menu/`,
+`src/design-system/components/holding-card/`,
+`src/design-system/components/close-holding-sheet/`,
 `src/screens/accounts/accounts.screen.tsx`,
 `src/screens/account-detail/account-detail.screen.tsx`,
 `src/screens/settings/categories/`,

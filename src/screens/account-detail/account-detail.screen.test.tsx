@@ -586,10 +586,7 @@ describe('AccountDetailScreen', () => {
   it('navigates to HoldingForm when Add holding is pressed', async () => {
     const { getByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Add holding'));
-    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
-      accountId: 'a',
-      debtAccount: false,
-    });
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
   });
 
   it('pins the Add holding action to the screen footer', async () => {
@@ -986,29 +983,6 @@ describe('AccountDetailScreen', () => {
             { id: 'h1', name: 'Car', type: 'loan', currency: 'UAH', balanceMinorUnits: 0 },
           ],
         });
-
-      it('offers Add loan, never "holding", in the footer of a debt account', async () => {
-        seedLoan();
-        const { getByText, queryByText, navigation } = await renderScreen();
-
-        await fireEvent.press(getByText('Add loan'));
-
-        expect(queryByText('Add holding')).toBeNull();
-        expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
-          accountId: 'a',
-          debtAccount: true,
-        });
-      });
-
-      it('leads Add loan with the loan glyph, not the generic holding one', async () => {
-        seedLoan();
-        mockButtonProps.length = 0;
-        await renderScreen();
-
-        const addLoanButton = mockButtonProps.find((props) => props.children === 'Add loan');
-
-        expect(addLoanButton?.icon).toBe('arrow.down.backward.circle.fill');
-      });
 
       it('closes it under loan wording, never "holding"', async () => {
         seedLoan();

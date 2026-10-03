@@ -647,7 +647,6 @@ export const en = {
     // case): the same string reads correctly in only one of the two roles.
     addBankSheetTitle: 'Add a Bank',
     addHolding: 'Add holding',
-    addLoan: 'Add loan',
     addressLabel: 'Address',
     apiKeyLabel: 'API key',
     apiKeyRequiredError: 'Enter the API key.',
