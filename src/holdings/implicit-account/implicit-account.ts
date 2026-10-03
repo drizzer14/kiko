@@ -17,7 +17,7 @@ export const isImplicitAccountKind = (kind: AccountRow['kind']): kind is Implici
 // account that the index and every merge leave alone.
 export const isImplicitAccount = <Account extends Pick<AccountRow, 'kind' | 'archivedAt'>>(
   account: Account,
-): account is Account & { kind: ImplicitAccountKind } =>
+): account is Account & { kind: ImplicitAccountKind; archivedAt: null } =>
   isImplicitAccountKind(account.kind) && account.archivedAt === null;
 
 // The fixed English sentinel stored in `accounts.name` for an implicit account

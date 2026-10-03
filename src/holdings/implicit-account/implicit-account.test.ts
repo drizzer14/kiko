@@ -40,6 +40,23 @@ describe('isImplicitAccount', () => {
       expect(isImplicitAccount({ kind, archivedAt: 1 })).toBe(false);
     }
   });
+
+  // Compile-time half: an archived property account takes the false branch, and
+  // that branch must not narrow it to `never`, or its fields could not be read.
+  it('leaves an archived property account usable in the false branch', () => {
+    const archived = {
+      kind: 'property' as const,
+      name: 'Old flat',
+      archivedAt: 5 as number | null,
+    };
+
+    if (isImplicitAccount(archived)) {
+      throw new Error('an archived account is not implicit');
+    }
+
+    expect(archived.name).toBe('Old flat');
+    expect(archived.kind).toBe('property');
+  });
 });
 
 describe('IMPLICIT_ACCOUNT_STORED_NAME', () => {
