@@ -48,8 +48,8 @@ const FilterMenu: FC<FilterMenuProps> = ({
   // The sentinel's stored `value` (FILTER_ALL) stays the fixed English string
   // that toggleFilter/isChecked match on; only the DISPLAYED row label is
   // translated. A real option renders its own `label` when given one (e.g. a
-  // category's resolved, localized title, distinct from its stable `value`
-  // key) or falls back to `value` itself (an account name IS its own label).
+  // category's resolved title or an account's display name, each distinct from
+  // its stable `value`) or falls back to `value` itself.
   const rowLabel = (option: FilterOption): string =>
     option.value === FILTER_ALL ? t('common.all') : (option.label ?? option.value);
   // Reserve a fixed-width leading icon slot on every row only when at least one

@@ -13,8 +13,9 @@ import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { AccountsStackParamList, TabParamList } from '@kiko/navigation/types';
 
 type ReminderRoute = {
-  // Absent for an implicit account: it has no AccountDetail page, so the
-  // Accounts root is the page below `next`.
+  // Absent for an implicit account: it has no AccountDetail page, so `next`
+  // lands above the Accounts pages that are already open (the Accounts root
+  // when the tab is unmounted or at its root).
   accountDetail?: AccountsStackParamList['AccountDetail'];
   // Pushed above the account, so Back from it lands on the account.
   next?:
@@ -33,7 +34,9 @@ export const latestOpenResponse = (
 // where the user can resume it. A holding that takes no transactions (a
 // deposit, a bond, a property item, a metal, a loan) has no form to open. An
 // implicit account has no page at all, so a reminder that is still saved on one
-// opens the Accounts root, and its paused notice the reminders page above it.
+// opens the Accounts tab with its current pages kept (the root only when the
+// tab is unmounted or at its root), and its paused notice the reminders page
+// above them.
 export const routeFor = (
   response: NotificationResponse,
   kind: ReminderKind,

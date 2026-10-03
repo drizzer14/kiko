@@ -2243,8 +2243,9 @@ what a change must keep.
   survives stays in Settings > Reminders (pause, delete) and still routes
   by this rule. One path still reaches the create form:
   `eligibleReminderKinds` offers `add_transactions` for any account no sync
-  owns, property and debt included, so after the paused-notice tap deletes
-  the reminder on `AccountReminders`, the page shows an unset
+  owns, property and debt included, so once the user deletes the reminder on
+  `AccountReminders` (which the paused-notice tap opens; the tap itself
+  deletes nothing), the page shows an unset
   `add_transactions` row that opens `ReminderForm` in create mode.
   A reminder NOTIFICATION never names its account (its title and body are
   generic catalogue text), so the planner needs no display name. The
