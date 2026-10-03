@@ -57,9 +57,16 @@ account-detail holding grid):
   active item (`DragProvider.ts` `handleTouchStart`) — it never counts
   items — so a single card lifts and drops back (`onDragEnd` reports
   `fromIndex === toIndex`, which `onGridDragEnd` persists nothing for).
-- **A hold that lifted the card never fires the card's tap.** The finger
-  lifting off after a lift (moved or not, and the release after the
-  context menu opened) still reaches the card's `Pressable`/`onOpen`.
+- **A hold that lifted the card never fires the card's tap.** A moved
+  drag and an opened context menu deliver NO `onPress`: react-native-sortables
+  1.10.0 on RNGH 3.2.1 (v3 adapter,
+  `integrations/gesture-handler/adapters/v3.ts`) makes RNGH cancel the JS
+  responder when its gesture activates (`RNRootViewGestureRecognizer.m:39-52`,
+  `cancelsJSResponder` defaults to YES). The press reaches JS only on a
+  still hold released before the menu (450 ms) with no touch-move after the
+  lift, because the v3 adapter activates on the next move. That is the path
+  this guard covers; `onActiveItemDropped` clears the flag in every other
+  case.
   `useGridLiftGuard` (`src/design-system/use-grid-lift-guard/`) is the one
   shared mechanism: pass its `onDragStart` and `onActiveItemDropped` to
   the `Sortable.Grid` (both are JS callbacks the library hops to the JS

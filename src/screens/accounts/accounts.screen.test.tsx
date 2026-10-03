@@ -164,6 +164,68 @@ const setLiveData = (data: {
   }));
 };
 
+// A loan freshly started "now" (this test's own `Date.now()`, captured just
+// before render): no scheduled installment is due yet, so the outstanding
+// balance is deterministically the FULL principal — the loan's own held value
+// (`holding-value.ts`) is exactly `-principal`, never a computed partial payoff
+// this test would have to reproduce. THE implicit debt account: its stored name
+// is only the sentinel, and the section lists its loans one card each, never
+// the account itself.
+const debtAccount = (over: Partial<Account> = {}): Account => ({
+  id: 'd',
+  name: 'Loans',
+  kind: 'debt',
+  archivedAt: null,
+  ...over,
+});
+const loanHolding = (over: Partial<Holding> = {}): Holding => ({
+  id: 'l1',
+  name: 'Mortgage',
+  icon: null,
+  color: null,
+  accountId: 'd',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  type: 'loan',
+  metadata: {
+    kind: 'mortgage',
+    principalMinorUnits: 500_000, // 5,000.00 UAH
+    startDate: Date.now(),
+    annualRatePct: 10,
+    termMonths: 120,
+    schedule: 'annuity',
+  },
+  ...over,
+});
+
+// No price point is mocked anywhere in this file (`price_points` always
+// resolves empty — see `setLiveData`), so a `property_item`'s value falls back
+// to its lot's own cost basis (`priced-parts.ts`'s `pricedValueOrNull` -> null
+// -> `costBasisMinorAt`) rather than needing a real priced instrument —
+// 500_000 minor UAH -> 5,000.00 ₴.
+const propertyAccount = (over: Partial<Account> = {}): Account => ({
+  id: 'p',
+  name: 'Properties',
+  kind: 'property',
+  archivedAt: null,
+  ...over,
+});
+const propertyHolding = (over: Partial<Holding> = {}): Holding => ({
+  id: 'h1',
+  name: 'Apartment',
+  icon: null,
+  color: null,
+  accountId: 'p',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  type: 'property_item',
+  metadata: {
+    category: 'real_estate',
+    lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+  },
+  ...over,
+});
+
 const navigation = navigationSpy();
 
 const renderAccounts = (): ReturnType<typeof render> =>
@@ -677,40 +739,6 @@ describe('AccountsScreen', () => {
   });
 
   describe('Debts section', () => {
-    // A loan freshly started "now" (this test's own `Date.now()`, captured
-    // just before render): no scheduled installment is due yet, so the
-    // outstanding balance is deterministically the FULL principal — the
-    // loan's own held value (`holding-value.ts`) is exactly `-principal`,
-    // never a computed partial payoff this test would have to reproduce.
-    // THE implicit debt account: its stored name is only the sentinel, and
-    // the section lists its loans one card each, never the account itself.
-    const debtAccount = (over: Partial<Account> = {}): Account => ({
-      id: 'd',
-      name: 'Loans',
-      kind: 'debt',
-      archivedAt: null,
-      ...over,
-    });
-    const loanHolding = (over: Partial<Holding> = {}): Holding => ({
-      id: 'l1',
-      name: 'Mortgage',
-      icon: null,
-      color: null,
-      accountId: 'd',
-      currency: 'UAH',
-      balanceMinorUnits: 0,
-      type: 'loan',
-      metadata: {
-        kind: 'mortgage',
-        principalMinorUnits: 500_000, // 5,000.00 UAH
-        startDate: Date.now(),
-        annualRatePct: 10,
-        termMonths: 120,
-        schedule: 'annuity',
-      },
-      ...over,
-    });
-
     it('renders no Debts section when there is no debt account', async () => {
       const { queryByText } = await renderAccounts();
       expect(queryByText('Debts')).toBeNull();
@@ -867,57 +895,6 @@ describe('AccountsScreen', () => {
       });
 
       expect(await debtsGridSortEnabled()).toBe(false);
-    });
-
-    describe('a hold that lifted a loan card', () => {
-      const renderLoanGrid = async (): Promise<{
-        grid: LiftableGrid;
-        getByText: Awaited<ReturnType<typeof render>>['getByText'];
-      }> => {
-        setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] });
-        const { getByTestId, getByText } = await renderAccounts();
-
-        return {
-          grid: within(getByTestId('accounts-debts-grid')).getByTestId('sortable-grid'),
-          getByText,
-        };
-      };
-
-      it('does not open the holding when the finger ends in place', async () => {
-        const { grid, getByText } = await renderLoanGrid();
-
-        await liftCard(grid, 'l1');
-        await fireEvent.press(getByText('Mortgage'));
-
-        expect(navigation.navigate).not.toHaveBeenCalled();
-      });
-
-      it('opens the holding on the next quick tap', async () => {
-        const { grid, getByText } = await renderLoanGrid();
-
-        await liftCard(grid, 'l1');
-        await fireEvent.press(getByText('Mortgage'));
-        await fireEvent.press(getByText('Mortgage'));
-
-        expect(navigation.navigate).toHaveBeenCalledTimes(1);
-        expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
-          holdingId: 'l1',
-          name: 'Mortgage',
-        });
-      });
-
-      it('opens the holding on a quick tap once the card was dropped with no press', async () => {
-        const { grid, getByText } = await renderLoanGrid();
-
-        await liftCard(grid, 'l1');
-        await dropCard(grid, 'l1');
-        await fireEvent.press(getByText('Mortgage'));
-
-        expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
-          holdingId: 'l1',
-          name: 'Mortgage',
-        });
-      });
     });
 
     it('disables the sort while the holdings are still the cached read', async () => {
@@ -1103,34 +1080,6 @@ describe('AccountsScreen', () => {
   });
 
   describe('Property section', () => {
-    // No price point is mocked anywhere in this file (`price_points` always
-    // resolves empty — see `setLiveData`), so a `property_item`'s value falls
-    // back to its lot's own cost basis (`priced-parts.ts`'s
-    // `pricedValueOrNull` -> null -> `costBasisMinorAt`) rather than needing a
-    // real priced instrument — 500_000 minor UAH -> 5,000.00 ₴.
-    const propertyAccount = (over: Partial<Account> = {}): Account => ({
-      id: 'p',
-      name: 'Properties',
-      kind: 'property',
-      archivedAt: null,
-      ...over,
-    });
-    const propertyHolding = (over: Partial<Holding> = {}): Holding => ({
-      id: 'h1',
-      name: 'Apartment',
-      icon: null,
-      color: null,
-      accountId: 'p',
-      currency: 'UAH',
-      balanceMinorUnits: 0,
-      type: 'property_item',
-      metadata: {
-        category: 'real_estate',
-        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
-      },
-      ...over,
-    });
-
     it('renders no Property section when there is no property account', async () => {
       const { queryByText } = await renderAccounts();
       expect(queryByText('Property')).toBeNull();
@@ -1254,57 +1203,6 @@ describe('AccountsScreen', () => {
       ).toBe(false);
     });
 
-    describe('a hold that lifted a property card', () => {
-      const renderPropertyGrid = async (): Promise<{
-        grid: LiftableGrid;
-        getByText: Awaited<ReturnType<typeof render>>['getByText'];
-      }> => {
-        setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] });
-        const { getByTestId, getByText } = await renderAccounts();
-
-        return {
-          grid: within(getByTestId('accounts-property-grid')).getByTestId('sortable-grid'),
-          getByText,
-        };
-      };
-
-      it('does not open the holding when the finger ends in place', async () => {
-        const { grid, getByText } = await renderPropertyGrid();
-
-        await liftCard(grid, 'h1');
-        await fireEvent.press(getByText('Apartment'));
-
-        expect(navigation.navigate).not.toHaveBeenCalled();
-      });
-
-      it('opens the holding on the next quick tap', async () => {
-        const { grid, getByText } = await renderPropertyGrid();
-
-        await liftCard(grid, 'h1');
-        await fireEvent.press(getByText('Apartment'));
-        await fireEvent.press(getByText('Apartment'));
-
-        expect(navigation.navigate).toHaveBeenCalledTimes(1);
-        expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
-          holdingId: 'h1',
-          name: 'Apartment',
-        });
-      });
-
-      it('opens the holding on a quick tap once the card was dropped with no press', async () => {
-        const { grid, getByText } = await renderPropertyGrid();
-
-        await liftCard(grid, 'h1');
-        await dropCard(grid, 'h1');
-        await fireEvent.press(getByText('Apartment'));
-
-        expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
-          holdingId: 'h1',
-          name: 'Apartment',
-        });
-      });
-    });
-
     // The Property section owns its own close sheet, separate from the Debts
     // one: each hook instance's sheet has to render, or Close opens nothing.
     it('closes a property holding through the Property close sheet', async () => {
@@ -1368,6 +1266,74 @@ describe('AccountsScreen', () => {
       expect(queryByText('Property')).toBeNull();
       expect(queryByTestId('holding-card')).toBeNull();
       expect(getByText('No accounts yet')).toBeTruthy();
+    });
+  });
+
+  // The Debts and Property holding grids share one lift guard, so one table
+  // drives both.
+  describe.each([
+    {
+      kind: 'loan',
+      gridTestId: 'accounts-debts-grid',
+      holdingId: 'l1',
+      holdingName: 'Mortgage',
+      seed: () => setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] }),
+    },
+    {
+      kind: 'property',
+      gridTestId: 'accounts-property-grid',
+      holdingId: 'h1',
+      holdingName: 'Apartment',
+      seed: () => setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] }),
+    },
+  ])('a hold that lifted a $kind card', ({ gridTestId, holdingId, holdingName, seed }) => {
+    const renderGrid = async (): Promise<{
+      grid: LiftableGrid;
+      getByText: Awaited<ReturnType<typeof render>>['getByText'];
+    }> => {
+      seed();
+      const { getByTestId, getByText } = await renderAccounts();
+
+      return {
+        grid: within(getByTestId(gridTestId)).getByTestId('sortable-grid'),
+        getByText,
+      };
+    };
+
+    it('does not open the holding when the finger ends in place', async () => {
+      const { grid, getByText } = await renderGrid();
+
+      await liftCard(grid, holdingId);
+      await fireEvent.press(getByText(holdingName));
+
+      expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+
+    it('opens the holding on the next quick tap', async () => {
+      const { grid, getByText } = await renderGrid();
+
+      await liftCard(grid, holdingId);
+      await fireEvent.press(getByText(holdingName));
+      await fireEvent.press(getByText(holdingName));
+
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+        holdingId,
+        name: holdingName,
+      });
+    });
+
+    it('opens the holding on a quick tap once the card was dropped with no press', async () => {
+      const { grid, getByText } = await renderGrid();
+
+      await liftCard(grid, holdingId);
+      await dropCard(grid, holdingId);
+      await fireEvent.press(getByText(holdingName));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+        holdingId,
+        name: holdingName,
+      });
     });
   });
 
