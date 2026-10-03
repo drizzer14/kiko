@@ -112,6 +112,22 @@ hardcode a provider list — adding a new live-sync provider is one registry
 entry, not a change to either caller. The registry is intentionally
 `Partial`: a `BankProviderId` with no entry here is simply not yet
 implemented, and callers must skip it rather than assume every id resolves.
+
+  **Implicit accounts: at most one LIVE `property` account and one LIVE
+  `debt` account** (`archivedAt` NULL), enforced by the partial unique index
+  `accounts_implicit_kind` (migration `0050`, declared in `src/db/schema.ts`).
+  The unit is `src/holdings/implicit-account/`: `isImplicitAccountKind`,
+  `isImplicitAccount` (kind + live), and `accountDisplayName(account, t)`.
+  **A screen shows an implicit account's name through `accountDisplayName`
+  (i18n `accounts.implicitName.{property,debt}` by kind), never through the
+  stored `name`**: the stored `name` is only the fixed English sentinel
+  `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`), written by `0050`
+  and by every implicit create, and no code reads it back to detect an
+  implicit account (the kind decides). Their `icon` and `color` are NULL so
+  the kind defaults show. An ARCHIVED property/debt account is a plain account
+  outside the index, the merge, and `accountDisplayName`. Read the unit and
+  `0050`'s header comment for the merge rule (oldest `created_at` kept) rather
+  than a copy here.
 - **Holding** — a balance-bearing thing under an account (a card, a
   jar, a term deposit, a crypto asset). `id`, `accountId` (FK),
   `name`, `type` (see `schema.ts`'s `holdings.type` enum), `currency`
