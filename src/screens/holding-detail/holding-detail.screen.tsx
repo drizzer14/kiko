@@ -1,6 +1,5 @@
 import { match } from 'ts-pattern';
 import {
-  accountKindSymbol,
   defaultHoldingSymbol,
   genericEntitySymbol,
   holdingTypeSymbol,
@@ -751,6 +750,11 @@ const resolveLedgerReadyView = (
 const editableAccountId = (holding: HoldingRow | undefined): string | undefined =>
   foldMap(maybe(holding), (found) => (isHoldingType(found.type) ? found.accountId : undefined));
 
+// `accountKindSymbol`'s two implicit entries as literals: a native header item
+// types its SF Symbol name as the symbol catalogue's union, which the plain
+// `string` of `accountKindSymbol` does not satisfy.
+const accountBarGlyph = { property: 'house.fill', debt: 'minus.circle.fill' } as const;
+
 // The Property or Loans account's own glyph, left of the Edit pencil: it opens
 // that shared account for edit (name, icon, color). A holding of any other
 // account has no such button. Neither item shares its background, so the two
@@ -775,7 +779,7 @@ const accountBarItems = (
         type: 'button' as const,
         label,
         accessibilityLabel: label,
-        icon: { type: 'sfSymbol' as const, name: accountKindSymbol[found.kind] },
+        icon: { type: 'sfSymbol' as const, name: accountBarGlyph[found.kind] },
         tintColor,
         sharesBackground: false,
         onPress,
