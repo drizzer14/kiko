@@ -16,10 +16,14 @@ export const holdingTypes = [
   'property_item',
   'metal',
   'loan',
-  'share',
 ] as const satisfies readonly HoldingRow['type'][];
 
 export type HoldingType = (typeof holdingTypes)[number];
+
+// A stored `type` is typed as this enum, but SQLite enforces no such constraint
+// and a dev-build row of a since-removed type can still be on a device.
+export const isHoldingType = (type: string): type is HoldingType =>
+  (holdingTypes as readonly string[]).includes(type);
 
 type AccountKind = AccountRow['kind'];
 
@@ -37,7 +41,7 @@ export const holdingTypesForAccountKind: Record<AccountKind, readonly HoldingTyp
   property: ['property_item'],
   metals: ['metal'],
   debt: ['loan'],
-  broker: ['share', 'bond', 'cash'],
+  broker: ['bond', 'cash'],
 };
 
 // The holding types the Monobank sync pipeline OWNS: it creates a `card` per

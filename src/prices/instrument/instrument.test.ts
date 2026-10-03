@@ -1,10 +1,4 @@
-import { shareInstrument, metalInstrument, holdingInstrument } from './instrument';
-
-describe('shareInstrument', () => {
-  it('prefixes a symbol with "share:"', () => {
-    expect(shareInstrument('AAPL')).toBe('share:AAPL');
-  });
-});
+import { metalInstrument, holdingInstrument } from './instrument';
 
 describe('metalInstrument', () => {
   it('prefixes a metal with "metal:"', () => {

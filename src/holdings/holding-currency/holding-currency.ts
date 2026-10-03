@@ -7,14 +7,11 @@ import {
 
 import type { HoldingType } from '../holding-type';
 
-// The holding types a holding may be CREATED in with a fiat currency only.
-// Physical cash is never a cryptocurrency, and a share is priced in its
-// listing's fiat currency; every other type keeps the full set (a crypto
-// asset needs crypto). The create form's picker and every create path's
-// rejection read this one list, so the two cannot drift.
-const fiatOnlyHoldingTypes: readonly HoldingType[] = ['cash', 'share'];
-
-const isFiatOnlyHoldingType = (type: HoldingType): boolean => fiatOnlyHoldingTypes.includes(type);
+// Whether a holding of this type may be CREATED in a fiat currency only.
+// Physical cash is never a cryptocurrency; every other type keeps the full
+// set (a crypto asset needs crypto). The create form's picker and every create
+// path's rejection read this one predicate, so the two cannot drift.
+const isFiatOnlyHoldingType = (type: HoldingType): boolean => type === 'cash';
 
 export const holdingCurrencyOptions = (type: HoldingType): readonly Currency[] =>
   isFiatOnlyHoldingType(type) ? fiatCurrencyOptions : currencyOptions;

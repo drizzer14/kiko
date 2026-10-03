@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { currencyOptions } from '@kiko/currency/currency';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
-import type { QuoteQuota } from '@kiko/prices/quote-quota';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
@@ -61,7 +60,6 @@ export const holdings = sqliteTable('holdings', {
       'property_item',
       'metal',
       'loan',
-      'share',
     ],
   }).notNull(),
   currency: text('currency', { enum: currencyOptions }).notNull(),
@@ -426,11 +424,14 @@ export const settings = sqliteTable('settings', {
   // a reminder iOS never showed was not ignored. NULL while they are off, or
   // before the first sync.
   notificationsDeliverableSince: integer('notifications_deliverable_since'),
-  // The EODHD calls the share price refresh spent today (see `QuoteQuota`), so
-  // it never spends past the user's own daily limit. Written BEFORE the calls
-  // go out, so a crash can only over-count. NULL means no call was ever made
-  // (and a restored pre-quota backup): the day starts at zero calls.
-  quoteQuota: text('quote_quota', { mode: 'json' }).$type<QuoteQuota>(),
+  // LEGACY, zero readers. The removed EODHD share-price daily quota (migration
+  // 0046 created it). Deliberately not dropped — a schema removal here would
+  // make the next drizzle-kit generate emit a DROP that diverges from the
+  // migration snapshots, and the column is harmless. Pinned as a documented
+  // exception in `src/db/settings-columns.test.ts`; re-wiring it means
+  // removing it there first. A restore takes it from the file like any other
+  // legacy column.
+  quoteQuota: text('quote_quota', { mode: 'json' }),
   // One-shot flag: has this device already worked out every stored lot
   // list's sale costs again in the one lot order (`recostStoredLots`,
   // `holdings/lot-recost/`)? An older build costed a sale in the order the
@@ -511,7 +512,7 @@ export const categoryOverrides = sqliteTable('category_overrides', {
 export type CategoryOverrideRow = typeof categoryOverrides.$inferSelect;
 
 /**
- * One priced point for a share/metal/holding on a given day. Keyed the
+ * One priced point for a metal/holding on a given day. Keyed the
  * same way `currencyRateHistory` keys a rate: one row per (instrument, day),
  * carried forward across a gap by the reader (`src/prices/price-book/`), not
  * backfilled here.
@@ -520,10 +521,10 @@ export const pricePoints = sqliteTable(
   'price_points',
   {
     /**
-     * The priced thing's key — `share:<symbol>`, `metal:<metal>`, or
-     * `holding:<holdingId>` (see `src/prices/instrument/instrument.ts`).
-     * Free-text, not an FK: it may point at a symbol/metal with no matching
-     * row anywhere, or at a holding that has since been deleted.
+     * The priced thing's key — `metal:<metal>` or `holding:<holdingId>` (see
+     * `src/prices/instrument/instrument.ts`). Free-text, not an FK: it may
+     * point at a metal with no matching row anywhere, or at a holding that
+     * has since been deleted.
      */
     instrument: text('instrument').notNull(),
     /**
@@ -534,7 +535,7 @@ export const pricePoints = sqliteTable(
     day: integer('day').notNull(),
     price: text('price').notNull(),
     currency: text('currency', { enum: currencyOptions }).notNull(),
-    source: text('source', { enum: ['manual', 'nbu', 'eodhd'] }).notNull(),
+    source: text('source', { enum: ['manual', 'nbu'] }).notNull(),
   },
   (table) => ({
     instrumentDayUnique: uniqueIndex('price_points_instrument_day').on(table.instrument, table.day),

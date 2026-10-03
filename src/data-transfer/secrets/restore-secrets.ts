@@ -1,14 +1,11 @@
-import { settingsRepo } from '@kiko/settings';
 import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
-import { saveEodhdKey } from '@kiko/prices/eodhd-key';
-import { withRestoredKey } from '@kiko/prices/quote-quota';
 import { saveCredentials } from '@kiko/crypto-sync/binance';
 
 import type { ExportSecrets } from '../payload';
 
 /** The connection a secret belongs to, for telling the user which one to set up again. */
-export type ExportSecretKind = 'monobank' | 'binance' | 'eodhd';
+export type ExportSecretKind = 'monobank' | 'binance';
 
 const onlyRestoredAccounts = <Entry extends { accountId: string }>(
   entries: readonly Entry[] | undefined,
@@ -16,9 +13,9 @@ const onlyRestoredAccounts = <Entry extends { accountId: string }>(
 ): readonly Entry[] => (entries ?? []).filter(({ accountId }) => accountIds.has(accountId));
 
 /**
- * Restores ONLY the Monobank tokens, the Binance credentials, and the global
- * EODHD key (each absent from a file that did not carry it) from an imported
- * archive, each account secret to the SAME account id it was exported under —
+ * Restores ONLY the Monobank tokens and the Binance credentials (each absent
+ * from a file that did not carry it) from an imported archive, each secret to
+ * the SAME account id it was exported under —
  * `import-data.ts` calls `restoreDataSnapshot` (which preserves original ids)
  * BEFORE this, so `serviceFor(accountId)` (`monobank/token.ts` /
  * `binance.credentials.ts`) resolves to exactly the Keychain item the
@@ -30,6 +27,9 @@ const onlyRestoredAccounts = <Entry extends { accountId: string }>(
  * Never rejects. It resolves with the connections whose secret could not be
  * written (empty when all were), so the caller can tell the user which one to
  * set up again instead of reporting the whole import as failed.
+ *
+ * A legacy export file may still carry an `eodhdKey` field (the removed share
+ * prices key); it is ignored and never written to the Keychain.
  *
  * A legacy export file may still carry a `dbKeyHex` field, and it is
  * deliberately never restored — `storeDbKey` is not even imported here. The
@@ -71,17 +71,6 @@ export const restoreExportSecrets = async (
     accountIds,
   )) {
     await write('binance', () => saveCredentials(accountId, { apiKey, secret }));
-  }
-
-  const { eodhdKey } = secrets;
-
-  if (eodhdKey !== undefined) {
-    await write('eodhd', async () => {
-      await saveEodhdKey(eodhdKey);
-      // After the key, like a key save in Share prices: a refresh that read
-      // the previous key never pairs it with the restored key's state.
-      await settingsRepo.updateQuoteQuota((stored) => withRestoredKey(stored, Date.now()));
-    });
   }
 
   return [...failed];

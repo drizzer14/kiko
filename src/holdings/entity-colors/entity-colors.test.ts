@@ -69,8 +69,4 @@ describe('defaultHoldingColor', () => {
     expect(defaultHoldingColor.metal).toBe(gray);
     expect(defaultHoldingColor.loan).toBe(red);
   });
-
-  it('gives a share the broker kind color', () => {
-    expect(defaultHoldingColor.share).toBe(defaultAccountColor.broker);
-  });
 });

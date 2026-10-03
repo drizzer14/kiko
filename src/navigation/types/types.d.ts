@@ -106,8 +106,8 @@ export type AccountsStackParamList = {
   // revaluation moves no ledger balance, only the holding's `price_points`
   // series (kiko-domain).
   PricePointForm: { holdingId: string };
-  // Record a buy or sell lot against a lot-form-eligible holding (`metal`,
-  // `share` — kiko-pricing), reached from the holding-detail screen's "Add
+  // Record a buy or sell lot against a lot-form-eligible holding (`metal` —
+  // kiko-pricing), reached from the holding-detail screen's "Add
   // lot" footer action; with `lotIndex`, edit that stored lot, reached from
   // its row's long-press menu. Writes `metadata.lots` through
   // `holdingsRepo.changeLots`, which re-reads the lots inside its write;
@@ -182,7 +182,6 @@ export type SettingsStackParamList = {
   Categories: undefined;
   ExportData: undefined;
   ImportData: undefined;
-  SharePrices: undefined;
   Reminders: undefined;
   ReminderForm: ReminderFormParams;
 };

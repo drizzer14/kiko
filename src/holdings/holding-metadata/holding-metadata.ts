@@ -1,6 +1,5 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
-import { validateIsin } from '@kiko/bonds/isin';
 
 import { asLots, type Lot } from '../lots';
 import { asOwnershipChanges, type OwnershipChange } from '../ownership';
@@ -554,78 +553,6 @@ export const asMetalMeta = (value: unknown): MetalMeta | null => {
   }
 
   return { metal, form, unit, purity, lots: parsedLots };
-};
-
-// Where a share's price comes from: EODHD closes on the shared `share:<symbol>`
-// series, or prices the user enters on the holding's own `holding:<id>` series.
-export const shareQuoteSources = ['eodhd', 'manual'] as const;
-
-export type ShareQuoteSource = (typeof shareQuoteSources)[number];
-
-const isShareQuoteSource = (value: unknown): value is ShareQuoteSource =>
-  typeof value === 'string' && (shareQuoteSources as readonly string[]).includes(value);
-
-const QUOTE_CURRENCY_PATTERN = /^[A-Z]{3}$/;
-
-/**
- * The share name is `holding.name` and the exchange is the symbol suffix
- * (`AAPL.US`). `quoteCurrency` is the provider's price unit when it differs
- * from the holding currency (`GBX` pence for a `GBP` holding).
- */
-export type ShareMeta = {
-  isin?: string;
-  quoteCurrency?: string;
-  lots: Lot[];
-} & ({ quoteSource: 'eodhd'; symbol: string } | { quoteSource: 'manual'; symbol?: string });
-
-const isOptionalSymbol = (value: unknown): value is string | undefined =>
-  value === undefined || (typeof value === 'string' && value.trim() !== '');
-
-const isOptionalQuoteCurrency = (value: unknown): value is string | undefined =>
-  value === undefined || (typeof value === 'string' && QUOTE_CURRENCY_PATTERN.test(value));
-
-// `undefined` when absent, `null` when present but not a valid ISIN, so a
-// garbled ISIN rejects the whole record instead of reading as absent.
-const parseOptionalIsin = (value: unknown): string | null | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  const validation = typeof value === 'string' ? validateIsin(value) : null;
-
-  return validation?.ok === true ? validation.isin : null;
-};
-
-export const asShareMeta = (value: unknown): ShareMeta | null => {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const { quoteSource, symbol, isin, quoteCurrency, lots } = value;
-  const parsedLots = asLots(lots);
-  const parsedIsin = parseOptionalIsin(isin);
-
-  if (
-    !isShareQuoteSource(quoteSource) ||
-    parsedLots === null ||
-    parsedIsin === null ||
-    !isOptionalSymbol(symbol) ||
-    !isOptionalQuoteCurrency(quoteCurrency)
-  ) {
-    return null;
-  }
-
-  const shared = {
-    ...foldMap(maybe(parsedIsin), (found) => ({ isin: found })),
-    ...foldMap(maybe(quoteCurrency), (unit) => ({ quoteCurrency: unit })),
-    lots: parsedLots,
-  };
-
-  if (quoteSource === 'manual') {
-    return { quoteSource, ...foldMap(maybe(symbol), (found) => ({ symbol: found })), ...shared };
-  }
-
-  return foldMap(maybe(symbol), (found) => ({ quoteSource, symbol: found, ...shared })) ?? null;
 };
 
 // The closed set of `loan` kinds: the last, `personal`, is

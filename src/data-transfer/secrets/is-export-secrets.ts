@@ -16,7 +16,6 @@ const isEveryEntry =
 const FIELD_CHECKS: Record<keyof ExportSecrets, (value: unknown) => boolean> = {
   monobankTokens: isEveryEntry((entry) => isText(entry.token)),
   binanceCredentials: isEveryEntry((entry) => isText(entry.apiKey) && isText(entry.secret)),
-  eodhdKey: isText,
 };
 
 /**

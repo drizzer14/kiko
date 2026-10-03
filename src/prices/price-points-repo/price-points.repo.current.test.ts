@@ -20,7 +20,7 @@ const insertPoint = (instrument: string, day: number): void => {
   mockDatabase
     .prepare(
       `INSERT INTO price_points (instrument, day, price, currency, source)
-       VALUES (?, ?, ?, 'USD', 'eodhd')`,
+       VALUES (?, ?, ?, 'USD', 'nbu')`,
     )
     .run(instrument, day, String(day / DAY_MS));
 };
@@ -41,17 +41,17 @@ describe('pricePointsRepo.currentQuery', () => {
   beforeEach(() => {
     mockDatabase = new DatabaseSync(':memory:');
     applyAllMigrations(mockDatabase);
-    insertDays('share:AAPL.US', -400, 0);
-    insertDays('share:STALE.US', -420, -6);
-    insertDays('share:LATER.US', 2, 3);
+    insertDays('metal:XAG', -400, 0);
+    insertDays('metal:XPT', -420, -6);
+    insertDays('metal:XPD', 2, 3);
     insertDays('metal:XAU', -400, 1);
     insertDays('holding:loan-1', -100, -99);
     insertPoint('holding:loan-1', TODAY + 5 * DAY_MS);
   });
 
-  it("keeps a share's latest point on or before the day, not its history", async () => {
-    await expect(daysOf('share:AAPL.US')).resolves.toEqual([0]);
-    await expect(daysOf('share:STALE.US')).resolves.toEqual([-6]);
+  it("keeps a metal's latest point on or before the day, not its history", async () => {
+    await expect(daysOf('metal:XAG')).resolves.toEqual([0]);
+    await expect(daysOf('metal:XPT')).resolves.toEqual([-6]);
   });
 
   it('keeps a point dated after the day, so a later valuation still finds it', async () => {
@@ -59,7 +59,7 @@ describe('pricePointsRepo.currentQuery', () => {
   });
 
   it('keeps every point of a series that starts after the day, for the earliest-point fallback', async () => {
-    await expect(daysOf('share:LATER.US')).resolves.toEqual([2, 3]);
+    await expect(daysOf('metal:XPD')).resolves.toEqual([2, 3]);
   });
 
   it('keeps a directly priced holding whole, since a loan reads its own corrections at past days', async () => {
@@ -86,12 +86,12 @@ describe('pricePointsRepo.currentQuery', () => {
     const instant = TODAY + Math.round(offset * DAY_MS);
 
     for (const instrument of [
-      'share:AAPL.US',
-      'share:STALE.US',
-      'share:LATER.US',
+      'metal:XAG',
+      'metal:XPT',
+      'metal:XPD',
       'metal:XAU',
       'holding:loan-1',
-      'share:UNKNOWN.US',
+      'metal:UNKNOWN',
     ]) {
       expect(priceAt(current, instrument, instant)).toEqual(priceAt(whole, instrument, instant));
     }
@@ -116,8 +116,7 @@ describe('pricePointsRepo.metalDayRangesQuery', () => {
     ]);
   });
 
-  it('never reads a share or a directly priced holding', async () => {
-    insertPoint('share:AAPL.US', TODAY);
+  it('never reads a directly priced holding', async () => {
     insertPoint('holding:house', TODAY);
 
     await expect(pricePointsRepo.metalDayRangesQuery()).resolves.toEqual([]);

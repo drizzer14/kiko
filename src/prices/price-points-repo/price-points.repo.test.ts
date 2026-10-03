@@ -56,10 +56,10 @@ describe('pricePointsRepo', () => {
     mockDatabaseTransaction = makeUpsertDatabaseTransaction(store);
 
     await pricePointsRepo.upsertMany([
-      { instrument: 'share:AAPL', day: day1, price: '190.00', currency: 'USD', source: 'eodhd' },
+      { instrument: 'metal:XAU', day: day1, price: '190.00', currency: 'USD', source: 'nbu' },
     ]);
     await pricePointsRepo.upsertMany([
-      { instrument: 'share:AAPL', day: day1, price: '195.50', currency: 'USD', source: 'manual' },
+      { instrument: 'metal:XAU', day: day1, price: '195.50', currency: 'USD', source: 'manual' },
     ]);
 
     expect(store).toHaveLength(1);
@@ -72,8 +72,8 @@ describe('pricePointsRepo', () => {
     mockDatabaseTransaction = makeUpsertDatabaseTransaction(store);
 
     await pricePointsRepo.upsertMany([
-      { instrument: 'share:AAPL', day: day1, price: '190.00', currency: 'USD', source: 'eodhd' },
-      { instrument: 'share:AAPL', day: day2, price: '191.00', currency: 'USD', source: 'eodhd' },
+      { instrument: 'metal:XAU', day: day1, price: '190.00', currency: 'USD', source: 'nbu' },
+      { instrument: 'metal:XAU', day: day2, price: '191.00', currency: 'USD', source: 'nbu' },
     ]);
 
     expect(store).toHaveLength(2);
@@ -96,11 +96,11 @@ describe('pricePointsRepo', () => {
     };
 
     const rows: Row[] = Array.from({ length: 5000 }, (_, index) => ({
-      instrument: 'share:AAPL',
+      instrument: 'metal:XAU',
       day: day1 + index * DAY_MS,
       price: String(190 + index),
       currency: 'USD',
-      source: 'eodhd',
+      source: 'nbu',
     }));
 
     await pricePointsRepo.upsertMany(rows);
@@ -141,7 +141,7 @@ describe('pricePointsRepo', () => {
       }),
     };
 
-    await pricePointsRepo.removeInstrument('share:AAPL');
+    await pricePointsRepo.removeInstrument('holding:h1');
 
     expect(deleted).toHaveLength(1);
   });

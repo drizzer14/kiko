@@ -12,11 +12,9 @@ import {
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
-import { maxOf, minOf } from '@kiko/numbers';
 import { isRecord } from '@kiko/type-guards';
-import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
-import { holdingInstrument, shareInstrument } from '@kiko/prices/instrument';
-import { upsertPricePointsDatabaseTransaction } from '@kiko/prices/price-points-repo';
+import { holdingInstrument } from '@kiko/prices/instrument';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import {
   ownershipMetadata,
@@ -25,7 +23,6 @@ import {
   type OwnershipChange,
 } from '../ownership';
 import {
-  asShareMeta,
   asPropertyMeta,
   asTermDepositMeta,
   type PropertyMeta,
@@ -256,37 +253,6 @@ export const appendDepositContributionDatabaseTransaction = async (
     .where(eq(holdings.id, holdingId));
 };
 
-export type ShareQuoteCurrencyUpdate = { holdingId: string; symbol: string; quoteCurrency: string };
-
-/**
- * Records the price unit the share price refresh resolved for an EODHD share
- * that had none, inside that refresh's own `write()`. The metadata is re-read
- * there: a lot added while the refresh was on the network is kept, and a share
- * whose symbol was edited meanwhile never takes the old symbol's unit.
- */
-export const setShareQuoteCurrencyDatabaseTransaction = async (
-  databaseTransaction: typeof database,
-  { holdingId, symbol, quoteCurrency }: ShareQuoteCurrencyUpdate,
-): Promise<void> => {
-  const rows = await databaseTransaction
-    .select({ metadata: holdings.metadata })
-    .from(holdings)
-    .where(eq(holdings.id, holdingId));
-  const meta = asShareMeta(rows.at(0)?.metadata);
-
-  if (meta?.quoteSource !== 'eodhd' || meta.symbol !== symbol || meta.quoteCurrency !== undefined) {
-    return;
-  }
-
-  const metadata = { ...meta, quoteCurrency };
-
-  if (asShareMeta(metadata) === null) {
-    return;
-  }
-
-  await databaseTransaction.update(holdings).set({ metadata }).where(eq(holdings.id, holdingId));
-};
-
 // Clears `loanHoldingId`/`loanLinkSource` on every transaction row that
 // still points at one of `holdingIds`. A shared Tx helper (not private to
 // `holdingsRepo.remove`) so `accountsRepo.remove` runs the SAME cascade for
@@ -349,81 +315,6 @@ const rewriteOwnership = (holdingId: string, rewrite: OwnershipRewrite) =>
       .where(eq(holdings.id, holdingId));
   });
 
-// Builds the metadata from the row stored at the time of the write, so a key
-// another write added while a form was open is never overwritten by the
-// form's seed. Returns the stored row the build read.
-const updateMetadataFromStoredDatabaseTransaction = async (
-  databaseTransaction: typeof database,
-  holdingId: string,
-  patch: Pick<HoldingRow, 'name' | 'color'>,
-  buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
-): Promise<{
-  stored: unknown;
-  currency: HoldingRow['currency'] | undefined;
-  metadata: Record<string, unknown>;
-}> => {
-  const rows = await databaseTransaction
-    .select({ currency: holdings.currency, metadata: holdings.metadata })
-    .from(holdings)
-    .where(eq(holdings.id, holdingId));
-  const stored = rows.at(0)?.metadata;
-  const metadata = buildMetadata(stored);
-
-  await databaseTransaction
-    .update(holdings)
-    .set({ ...patch, metadata })
-    .where(eq(holdings.id, holdingId));
-
-  return { stored, currency: rows.at(0)?.currency, metadata };
-};
-
-// A share switched from EODHD to manual takes the symbol's closes as its own
-// prices, so no past value moves with the switch. A price the user typed for
-// a day inside the closes' span gives way, since that value was not shown
-// while EODHD priced the share; one outside the span stays. A close in
-// another currency than the holding's never priced it (the value fell back
-// to cost), so it is neither carried nor allowed to displace a typed price.
-const carryShareClosesDatabaseTransaction = async (
-  databaseTransaction: typeof database,
-  holdingId: string,
-  symbol: string,
-  currency: HoldingRow['currency'],
-): Promise<void> => {
-  const closes = await databaseTransaction
-    .select()
-    .from(pricePoints)
-    .where(
-      and(eq(pricePoints.instrument, shareInstrument(symbol)), eq(pricePoints.currency, currency)),
-    );
-
-  if (closes.length === 0) {
-    return;
-  }
-
-  const days = closes.map((close) => close.day);
-  const instrument = holdingInstrument(holdingId);
-
-  await databaseTransaction
-    .delete(pricePoints)
-    .where(
-      and(
-        eq(pricePoints.instrument, instrument),
-        gte(pricePoints.day, minOf(days)),
-        lte(pricePoints.day, maxOf(days)),
-      ),
-    );
-  await upsertPricePointsDatabaseTransaction(
-    databaseTransaction,
-    closes.map(({ day, price, currency }) => ({
-      instrument,
-      day,
-      price,
-      currency,
-      source: 'manual' as const,
-    })),
-  );
-};
-
 // Skip the write entirely when the synced balance already matches —
 // `selectCardsToFetch` already skips a card whose bank-reported balance is
 // unchanged, but the daily full fetch still calls `setSyncedBalance` for
@@ -481,19 +372,6 @@ export const holdingsRepo = {
    */
   historyCurrenciesQuery: () =>
     database.selectDistinct({ currency: holdings.currency }).from(holdings),
-  /**
-   * The share price refresh's gate: every share that counts toward net worth
-   * (open, under an unarchived account). A closed share keeps the prices it
-   * already has, since every refresh spends the user's scarce EODHD calls.
-   */
-  activeSharesQuery: () =>
-    database
-      .select({ id: holdings.id, currency: holdings.currency, metadata: holdings.metadata })
-      .from(holdings)
-      .innerJoin(accounts, eq(holdings.accountId, accounts.id))
-      .where(
-        and(eq(holdings.type, 'share'), isNull(holdings.closedAt), isNull(accounts.archivedAt)),
-      ),
   /**
    * Every OPEN loan holding — the loan-payment matcher's own gate query
    * (`src/loans/payment-matcher/`, `src/loans/use-loan-auto-link/`): it reads
@@ -635,45 +513,16 @@ export const holdingsRepo = {
     buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
   ) =>
     write(async (databaseTransaction) => {
-      await updateMetadataFromStoredDatabaseTransaction(
-        databaseTransaction,
-        holdingId,
-        patch,
-        buildMetadata,
-      );
-    }),
-  /**
-   * A share EDIT, built from the stored row like `updateMetadataFromStored`
-   * (the price refresh can store the listing's unit while the form is open).
-   * A switch from EODHD to manual carries the symbol's closes to the share's
-   * own series in the same write (`carryShareClosesDatabaseTransaction`).
-   */
-  updateShareFromStored: (
-    holdingId: string,
-    patch: Pick<HoldingRow, 'name' | 'color'>,
-    buildMetadata: (storedMetadata: unknown) => Record<string, unknown>,
-  ) =>
-    write(async (databaseTransaction) => {
-      const { stored, currency, metadata } = await updateMetadataFromStoredDatabaseTransaction(
-        databaseTransaction,
-        holdingId,
-        patch,
-        buildMetadata,
-      );
-      const before = asShareMeta(stored);
+      const rows = await databaseTransaction
+        .select({ metadata: holdings.metadata })
+        .from(holdings)
+        .where(eq(holdings.id, holdingId));
+      const metadata = buildMetadata(rows.at(0)?.metadata);
 
-      if (
-        currency !== undefined &&
-        before?.quoteSource === 'eodhd' &&
-        asShareMeta(metadata)?.quoteSource === 'manual'
-      ) {
-        await carryShareClosesDatabaseTransaction(
-          databaseTransaction,
-          holdingId,
-          before.symbol,
-          currency,
-        );
-      }
+      await databaseTransaction
+        .update(holdings)
+        .set({ ...patch, metadata })
+        .where(eq(holdings.id, holdingId));
     }),
   /**
    * Applies one lot change (`withLotChange`) to the lots stored at the time of

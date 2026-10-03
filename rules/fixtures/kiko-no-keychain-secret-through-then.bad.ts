@@ -7,7 +7,7 @@
 import { useState } from 'react';
 
 import { readToken } from '../../src/monobank/token';
-import { readEodhdKey } from '../../src/prices/eodhd-key';
+import { readCredentials } from '../../src/crypto-sync/binance/binance.credentials';
 
 export const FixtureBadThenForm = () => {
   const [token, setToken] = useState('');
@@ -22,15 +22,15 @@ export const FixtureBadThenForm = () => {
   return token;
 };
 
-export const FixtureBadEodhdKeyThenForm = () => {
-  const [key, setKey] = useState('');
+export const FixtureBadCredentialsThenForm = () => {
+  const [apiKey, setApiKey] = useState('');
 
   // EXPECT-FINDING
-  readEodhdKey().then((existing) => {
+  readCredentials('acc-1').then((existing) => {
     if (existing !== undefined) {
-      setKey(existing);
+      setApiKey(existing.apiKey);
     }
   });
 
-  return key;
+  return apiKey;
 };

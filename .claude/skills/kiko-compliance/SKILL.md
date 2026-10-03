@@ -87,10 +87,8 @@ when a diff changes a screen one of the 10 shipped shots depicts.
 
 Always write a demo invariant over the domain predicate
 (`isLedgerlessHoldingType`), never a pinned count. When a feature needs a
-user credential the demo cannot carry (the demo has only a MANUAL share),
-the reviewer notes must supply it or say how to get it. For shares, the
-user creates a free EODHD key and the notes supply it to the reviewer,
-explaining the free plan's limit (20 requests a day).
+user credential the demo cannot carry, the reviewer notes must supply it
+or say how to get it.
 
 ## 5.1.1 / 5.1.2 — data collection and privacy
 
@@ -103,10 +101,10 @@ answers: what's declared, what's not, and why) and to
 may need to declare a required-reason API for.
 
 A new third-party data recipient also needs the privacy policy updated
-(`docs/privacy-policy*.md` §3), not only the App Privacy answers. The
-EODHD entry (share tickers, the exchange, the earliest lot date, search
-queries) is in the repo's policy markdown; publishing it to gh-pages is
-still pending — check the live policy before an upload.
+(`docs/privacy-policy*.md` §3), not only the App Privacy answers. There
+is no EODHD entry (removed with the shares cut, Guideline 5.6). The live
+gh-pages policy may still name EODHD until the edited policy is
+published: check the live policy before an upload.
 
 ## 5.1.5 / data storage — secrets never in `.env`, logs, or the DB
 
@@ -118,28 +116,20 @@ anything there ships in plaintext) are in
 that section. A secret belongs in the iOS Keychain
 (`react-native-keychain`); see `.claude/skills/kiko-architecture/SKILL.md`
 for the existing Keychain-backed examples (the Monobank token, the
-SQLCipher database key in `src/db/keys/db-key.ts`, the EODHD key in
-`src/prices/eodhd-key/eodhd-key.ts` — read that file for its service name
-and `accessible` policy, `WHEN_UNLOCKED_THIS_DEVICE_ONLY` at the time of
-writing).
+SQLCipher database key in `src/db/keys/db-key.ts`, the Binance credentials in
+`src/crypto-sync/binance/binance.credentials.ts` — read that file for its
+service name and `accessible` policy, `WHEN_UNLOCKED_THIS_DEVICE_ONLY` at
+the time of writing).
 
-A key that travels in a request URL (EODHD's `api_token`) is a disk leak
-path through NSURLCache (`Cache.db` stores the response under its URL).
-Always send the request header `Cache-Control: no-store` on every such
-request — see `NO_STORE` in `src/prices/eodhd/eodhd.client.ts`. Verified on
-macOS CFNetwork: a per-request `cachePolicy` does NOT prevent the store, and
-React Native fetch's `cache: 'no-store'` only appends a `_=` cache-buster
-(a new cached URL per call). Never log the request URL, and give every error
-a fixed message (a rejected fetch can carry the URL). Device check: after
-an EODHD call, `sqlite3 Cache.db "select request_key from
-cfurl_cache_response where request_key like '%eodhd%'"` must return 0 rows.
-
-A user-typed share search query goes to EODHD only on an explicit Search
-press with a saved key (`src/prices/share-search/share-search.ts`), never
-per keystroke. The EODHD sign-up link opens the free registration page in
-Safari (`EODHD_SIGNUP_URL` from `@env`, opened in
-`src/screens/settings/share-prices/share-prices.screen.tsx`); never
-add paid-plan wording to it.
+A key that travels in a request URL (an `api_token` query parameter; no
+client sends one today) is a disk leak path through NSURLCache (`Cache.db`
+stores the response under its URL). Always send the request header
+`Cache-Control: no-store` on every such request; `npm run check:plist`
+fails a client without it. Verified on macOS CFNetwork: a per-request
+`cachePolicy` does NOT prevent the store, and React Native fetch's
+`cache: 'no-store'` only appends a `_=` cache-buster (a new cached URL per
+call). Never log the request URL, and give every error a fixed message (a
+rejected fetch can carry the URL).
 
 A log line is a leak path even without a secret in the code: React Native
 forwards every `console` level to os_log in a Release build, and an error

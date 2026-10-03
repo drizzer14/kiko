@@ -64,7 +64,7 @@ describe('usePriceBook', () => {
     liveByTable({
       price_points: {
         data: [
-          { instrument: 'share:AAPL', day: 1, price: '190.00', currency: 'USD', source: 'eodhd' },
+          { instrument: 'metal:silver', day: 1, price: '190.00', currency: 'USD', source: 'nbu' },
         ],
         isLoading: false,
       },
@@ -72,7 +72,7 @@ describe('usePriceBook', () => {
 
     const { result } = await renderHook(() => usePriceBook());
 
-    expect(result.current.book.points.get('share:AAPL')?.[0].price).toBe('190.00');
+    expect(result.current.book.points.get('metal:silver')?.[0].price).toBe('190.00');
   });
 
   it('returns an empty PriceBook before any row has loaded', async () => {

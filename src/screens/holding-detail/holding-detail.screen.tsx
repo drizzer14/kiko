@@ -38,6 +38,7 @@ import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import Button from '@kiko/design-system/components/button';
+import { isHoldingType } from '@kiko/holdings/holding-type';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { groupByDay } from '@kiko/transactions/group-by-day';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
@@ -85,7 +86,6 @@ import ShareChanges from './share-changes';
 import UpcomingPayments from './upcoming-payments';
 import OversizedSaleNotice from './oversized-sale-notice';
 import LotRowMenu, { type LotActions } from './lot-row-menu';
-import ListingCurrencyNotice from './listing-currency-notice';
 import { useBondRegisterTerms } from './use-bond-register-terms';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
@@ -186,7 +186,7 @@ const interestBreakdownRows = (
   ];
 };
 
-// A priced type's (`property_item`, `metal`, `share`) breakdown: its cost basis, its
+// A priced type's (`property_item`, `metal`) breakdown: its cost basis, its
 // current priced value, and the gain between them. No interest/tax rows — a
 // priced type accrues neither, so those would only ever read a misleading
 // zero. Gain carries no explicit tone: MoneyText's own sign-based fallback
@@ -672,12 +672,6 @@ const holdingDetailFooterAction = (
     return undefined;
   }
 
-  const addLotButton = (
-    <Button onPress={() => navigation.navigate('LotForm', { holdingId })} icon={lotSymbol}>
-      {t('holdingDetail.addLot')}
-    </Button>
-  );
-
   return match(footerAction)
     .with('contribution', () => (
       <Button
@@ -700,18 +694,10 @@ const holdingDetailFooterAction = (
         {t(isDebtHolding ? 'holdingDetail.updateOutstanding' : 'holdingDetail.updateValue')}
       </Button>
     ))
-    .with('addLot', () => addLotButton)
-    .with('addLotAndUpdatePrice', () => (
-      <Box gap={2}>
-        <Button
-          variant="secondaryTonal"
-          onPress={() => navigation.navigate('PricePointForm', { holdingId })}
-        >
-          {t('holdingDetail.updatePrice')}
-        </Button>
-
-        {addLotButton}
-      </Box>
+    .with('addLot', () => (
+      <Button onPress={() => navigation.navigate('LotForm', { holdingId })} icon={lotSymbol}>
+        {t('holdingDetail.addLot')}
+      </Button>
     ))
     .with('none', () => undefined)
     .exhaustive();
@@ -757,6 +743,11 @@ const resolveLedgerReadyView = (
     ),
   };
 };
+
+// A row of a type this build no longer has (an imported dev-build holding)
+// offers no Edit: the form dispatches on a descriptor that type does not have.
+const editableAccountId = (holding: HoldingRow | undefined): string | undefined =>
+  foldMap(maybe(holding), (found) => (isHoldingType(found.type) ? found.accountId : undefined));
 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
@@ -942,9 +933,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // holding, or a type this build's registry does not recognize
   // (`HoldingDetailSpec`, `holding-detail-spec/`).
   const footerAction: FooterAction =
-    foldMap(maybe(holding), (found) =>
-      spec?.footerAction(isSyncedHolding(found, account), found),
-    ) ?? 'none';
+    foldMap(maybe(holding), (found) => spec?.footerAction(isSyncedHolding(found, account))) ??
+    'none';
   const lotSymbol = foldMap(maybe(holding?.type), (type) => holdingTypeSymbol[type]);
   // The footer's own label for `'updateValue'`: a debt-side type (loan) reads
   // "Update outstanding"; every other priced type reads "Update value". Reads
@@ -994,7 +984,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // The holding's owning account, needed to open its edit form (the form reads
   // the account's kind to constrain the type chips). Always present on a real
   // row (accountId is NOT NULL); the header Edit action is gated on it.
-  const holdingAccountId = holding?.accountId;
+  const holdingAccountId = editableAccountId(holding);
   // Unknown while the account row loads, so the form reads its own account
   // instead of being told the holding is not a loan.
   const debtAccount = foldMap(maybe(account), ({ kind }) => holdsOnlyDebts(kind));
@@ -1074,8 +1064,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           )}
         </Box>
       )}
-
-      <ListingCurrencyNotice holding={holding} />
 
       <OversizedSaleNotice holding={holding} />
 

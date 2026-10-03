@@ -179,10 +179,10 @@ implemented, and callers must skip it rather than assume every id resolves.
   `src/statistics/`). It SUPERSEDES the retained-dead
   `trendCategoryKeys` column (migration 0025 copies any saved keys across
   as a manual filter; the old column is pinned reader-less in
-  `src/db/settings-columns.test.ts`). `quoteQuota` is a nullable JSON
-  `QuoteQuota` (the EODHD calls spent on the current UTC day — see
-  `src/db/schema.ts` and kiko-pricing "EODHD quota guard and share
-  refresh"). The Monobank token is never stored
+  `src/db/settings-columns.test.ts`). `quoteQuota` is a retained-dead nullable JSON column (the
+  removed EODHD share-price quota; migration 0046); nothing reads or
+  writes it, and a restore takes it from the file like the other
+  reader-less columns pinned in `src/db/settings-columns.test.ts`. The Monobank token is never stored
   here — see `kiko-architecture` for the Keychain rule (its Monobank sync
   section also carries the credit-limit known limit).
 
@@ -334,38 +334,6 @@ an account `isSyncedAccount` owns, a hand-added one included), the ±60 s
 bank's synced rows, and why no migration
 repairs pre-fix data — read it there rather than trusting a restated
 summary here.
-
-## `share` create-form section
-
-`src/screens/forms/holding-form/share/` (hook `use-share-fields/`,
-`share-section/`, `share-form-block/`) is the `share` create/edit form.
-Its metadata is `ShareMeta`, parsed strictly by `asShareMeta`
-(`src/holdings/holding-metadata/holding-metadata.ts` — read the fields
-and the price-source rule there): a price source (EODHD or manual), an
-optional ISIN, a ticker required for EODHD, and `lots`. Read the hook's
-own `createPayload` for which source writes a `firstPricePoint` (see
-`kiko-pricing`'s "Creating and clearing a priced holding's price
-series"). After create, lots change only through `holdingsRepo.changeLots`
-(the Lot form's add/edit and the lot row's Delete); the share edit
-carries the stored lots unchanged. See `kiko-pricing`'s "Recording a lot:
-LotForm and the sell cost rule" for the order and the re-cost.
-
-A NEW share starts Manual when no EODHD key is saved; it starts EODHD
-only when a key is saved and the user has not touched the source
-control. An edit always keeps the stored source (read
-`use-share-fields.ts`). An EODHD ticker must be `CODE.EXCHANGE` — read
-`EODHD_SYMBOL_PATTERN` in `use-share-fields/share-reasons.ts`; a class
-share uses EODHD's dash form (e.g. `BRK-B.US`).
-
-A search pick replaces the ISIN and the name only when the field is blank
-or still holds what the previous pick filled (`filledIsinRef`,
-`filledNameRef`, `isUserTyped` in `use-share-fields.ts`): a typed value is
-kept, and a stale ISIN from an earlier pick is never kept. The picked
-`quoteCurrency` is kept only while the source is EODHD and the ticker
-equals the picked symbol (`keptQuoteCurrency`); a ticker edit drops it.
-The share's currency must fit its EODHD listing's unit, checked at Save on
-create and on an edit that names another listing (kiko-pricing's "Unit
-lookup at Save and the currency guard").
 
 ## `property_item` / `metal` create-form sections
 
@@ -524,12 +492,8 @@ holding-detail's `addLot` footer action, and from a lot row's
 long-press Edit) rather than a fixed one-time
 lot or a sync is decided by each type's own `footerAction(synced,
 holding)` in `holdingDetailSpecs` (`holding-detail-spec/`): a type is
-lot-form eligible when that function can return `'addLot'` or
-`'addLotAndUpdatePrice'` (read the `FooterAction` union there). `metal`
-and `share` are eligible; a manual-price `share` gets
-`'addLotAndUpdatePrice'` (Add lot + Update price, the price going to the
-Price point form on `holding:<id>`), an EODHD `share` only `'addLot'`
-(see `shareFooterAction` there). See
+lot-form eligible when that function can return `'addLot'` (read the `FooterAction` union there). `metal`
+is eligible. See
 `kiko-pricing`'s "Recording a lot: LotForm and the sell cost rule"
 section for the form itself.
 
@@ -1164,7 +1128,7 @@ contributes to the LINE's past but never to a current snapshot.
 Invariant: the LAST net-worth bucket always equals
 `guardedNetWorth(open holdings, now)` — the number Home shows. Pinned by
 `net-worth-series.test.ts` ("ends on the net worth Home shows for a bond,
-a share, and a closed holding").
+a lot holding, and a closed holding").
 
 `reconcile-bond-funding.ts`'s candidate-building pass was rewritten from a
 `.flatMap`/`.map`/`.filter` chain to a plain nested loop for the same
@@ -2430,7 +2394,13 @@ once there are none — no placeholder heading over an empty list.
 Every per-type decision lives in one descriptor per layer, each keyed by
 `HoldingType` through an exhaustive `Record`/`satisfies` or a
 `match(...).exhaustive()` — a new type is a compile error at every site
-below until it is added there too. Seven steps, in order:
+below until it is added there too. A stored row of a REMOVED holding
+type is tolerated, not a crash: read sites use
+`holdingDescriptorOrUndefined`/`isHoldingType` (generic icon, no Edit,
+never an exchange source or destination — see
+`src/holdings/exchange-destination/exchange-destination.ts`); strict
+`holdingDescriptor(` stays only where the type comes from the
+`holdingTypes` tuple or the form's own selection. Seven steps, in order:
 
 1. Add the type to the `holdings.type` enum in `src/db/schema.ts` and to
    the `holdingTypes` tuple (`src/holdings/holding-type/holding-type.ts`)
@@ -2479,22 +2449,18 @@ below until it is added there too. Seven steps, in order:
    `balanceMinorUnits: 0` unconditionally — its value derives entirely
    from its own lots/schedule, never a typed opening balance. Only
    `useBalanceFields.createPayload` reads its own live opening-balance
-   field. The screen writes through `checkedCreate(active)` and
-   `checkedEdit(active, context)` (`holding-form.screen.tsx`): a type whose
-   write can need one network answer first sets the optional
-   `checkCreate`/`checkEdit` (`holding-type-form.d.ts`), which never reject
-   and answer a `CreateCheck`/`EditCheck` — save (the payload, or the write
-   to run) or blocked on a `ScrollTarget`, whose field error the screen
-   reveals. Every other type falls back to `createPayload()`/`saveEdit`.
-   Find the types that set them with
-   `git grep -n 'checkCreate\|checkEdit' src/screens/forms` (the share
-   case: kiko-pricing's "Unit lookup at Save and the currency guard").
+   field. The screen writes through each type's
+   `createPayload()`/`saveEdit`; there is no async pre-save check seam.
 4. Add en/uk label keys (`src/i18n/`) for `holding-form.screen.tsx`'s
    own `typeLabels: Record<HoldingType, string>` — usually a new
    `forms.holding.<type>` key, but `cash` reuses the account kind's own
    `forms.account.cash` key instead (a `forms.holding.*` /
    `forms.account.*` label key, not the enum value itself — see
    `typeLabels`'s own literal object for the current per-type mapping).
+   A new type also needs a `forms.holding.namePlaceholders.<key>` en/uk key
+   and an entry in `holding-form.screen.tsx`'s
+   `namePlaceholders: Record<HoldingType, string>` (a missing entry is a
+   compile error).
    The user reviews new/changed translation keys before any deploy that
    ships them (see `kiko-translator`).
 5. Add an entry to `holdingDetailSpecs`

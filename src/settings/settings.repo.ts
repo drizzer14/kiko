@@ -1,6 +1,5 @@
 import { eq } from 'drizzle-orm';
 import type { Currency } from '@kiko/currency/currency';
-import type { QuoteQuota } from '@kiko/prices/quote-quota';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
@@ -35,25 +34,6 @@ export const recordReminderOfferDismissal = async (
   await databaseTransaction
     .update(settings)
     .set({ reminderOfferDismissals: { ...existing, [accountId]: [...dismissedKinds, kind] } })
-    .where(eq(settings.id, SETTINGS_ID));
-};
-
-/**
- * `settingsRepo.updateQuoteQuota` inside the caller's own `write()`, so the
- * share price refresh commits its calls with the prices they fetched.
- */
-export const updateQuoteQuotaDatabaseTransaction = async (
-  databaseTransaction: typeof database,
-  build: (stored: QuoteQuota | null) => QuoteQuota | null,
-): Promise<void> => {
-  const rows = await databaseTransaction
-    .select({ quoteQuota: settings.quoteQuota })
-    .from(settings)
-    .where(eq(settings.id, SETTINGS_ID));
-
-  await databaseTransaction
-    .update(settings)
-    .set({ quoteQuota: build(rows[0]?.quoteQuota ?? null) })
     .where(eq(settings.id, SETTINGS_ID));
 };
 
@@ -144,20 +124,6 @@ export const settingsRepo = {
       .select({ notificationsDeliverableSince: settings.notificationsDeliverableSince })
       .from(settings)
       .where(eq(settings.id, SETTINGS_ID)),
-  quoteQuotaQuery: () =>
-    database
-      .select({ quoteQuota: settings.quoteQuota })
-      .from(settings)
-      .where(eq(settings.id, SETTINGS_ID)),
-  /**
-   * Read-modify-write in one `write()`: no other write lands between the read
-   * and the update. Every EODHD quota writer (a key save, a share refresh's
-   * reservation and its final settlement) rebuilds from the stored row this
-   * way, so none undoes another's change; a `build` that returns its own
-   * stale copy still would.
-   */
-  updateQuoteQuota: (build: (stored: QuoteQuota | null) => QuoteQuota | null) =>
-    write((databaseTransaction) => updateQuoteQuotaDatabaseTransaction(databaseTransaction, build)),
   setNotificationsDeliverableSince: (deliverableSince: number | null) =>
     write((databaseTransaction) =>
       databaseTransaction

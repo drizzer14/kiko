@@ -226,7 +226,7 @@ Exact-pinning, the `.npmrc` 7-day minimum age, the npm version
 requirement, the `.env` public-only rule, and the tracked/accepted
 dependency CVEs are documented IN FULL in
 **`docs/harness/dependency-hygiene.md`**. Standing rule: the accepted
-CVEs there (`image-size`, `decode-uri-component`) are tracked, real
+CVEs there (`image-size`, `decode-uri-component`, `braces`) are tracked, real
 debt, not a suppressed finding — never silence them; re-check
 periodically and pin the moment a fix ships.
 

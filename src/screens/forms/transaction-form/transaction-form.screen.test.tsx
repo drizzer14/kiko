@@ -3313,6 +3313,108 @@ const SPLIT_SYNCED_HOLDING: Holding = {
 
 const SPLIT_SYNCED_ACCOUNT: Account = { id: 'sync-acc', name: 'Binance', institution: 'binance' };
 
+// A row of the removed `share` type can still arrive through an old development
+// export or sit on a device that ran a development build; the form must still
+// render with it listed, and never offer it as an Exchange leg.
+const REMOVED_TYPE_HOLDING: Holding = {
+  id: 'share-1',
+  currency: 'USD',
+  balanceMinorUnits: 500,
+  type: 'share',
+  name: 'Apple stock',
+  accountId: 'acc-wallet',
+};
+
+describe('TransactionFormScreen — a stored holding of a removed type', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('renders the create form and offers the row as no Exchange destination', async () => {
+    setLiveData(
+      [...EXCHANGE_CREATE_HOLDINGS, REMOVED_TYPE_HOLDING],
+      undefined,
+      CATEGORIES,
+      EXCHANGE_CREATE_ACCOUNTS,
+    );
+    const { getByText, getByLabelText, queryByText } = await renderAddFromHolding('cash-1');
+
+    await fireEvent.press(getByLabelText('Type'));
+    await fireEvent.press(getByText('Exchange'));
+    await flushDeferredModeSelect();
+    await fireEvent.press(getByLabelText('To'));
+
+    expect(getByText('Cash USD')).toBeTruthy();
+    expect(queryByText('Apple stock')).toBeNull();
+  });
+
+  it('renders the create form opened from the removed-type row, with no Exchange mode', async () => {
+    setLiveData(
+      [...EXCHANGE_CREATE_HOLDINGS, REMOVED_TYPE_HOLDING],
+      undefined,
+      CATEGORIES,
+      EXCHANGE_CREATE_ACCOUNTS,
+    );
+    const { getByLabelText, queryByText } = await renderAddFromHolding('share-1');
+
+    await fireEvent.press(getByLabelText('Type'));
+
+    expect(queryByText('Exchange')).toBeNull();
+  });
+
+  it('offers the row as no convert destination for an expense', async () => {
+    setLiveData(
+      [...CONVERT_HOLDINGS, REMOVED_TYPE_HOLDING],
+      CONVERT_TRANSACTIONS['expense-manual'],
+      CATEGORIES,
+      CONVERT_ACCOUNTS,
+    );
+    const { getByText, getByLabelText, queryByText } = await renderEdit('expense-manual');
+
+    await fireEvent.press(getByText('Exchange'));
+    await fireEvent.press(getByLabelText('To'));
+
+    expect(getByText('Cash USD')).toBeTruthy();
+    expect(queryByText('Apple stock')).toBeNull();
+  });
+
+  it('offers the row as no convert source for an income', async () => {
+    setLiveData(
+      [...CONVERT_HOLDINGS, REMOVED_TYPE_HOLDING],
+      CONVERT_TRANSACTIONS['income-manual'],
+      CATEGORIES,
+      CONVERT_ACCOUNTS,
+    );
+    const { getByText, getByLabelText, queryByText } = await renderEdit('income-manual');
+
+    await fireEvent.press(getByText('Exchange'));
+    await fireEvent.press(getByLabelText('From'));
+
+    expect(getByText('Cash USD')).toBeTruthy();
+    expect(queryByText('Apple stock')).toBeNull();
+  });
+
+  it('shows no convert action on a transaction of the removed-type row itself', async () => {
+    setLiveData(
+      [...CONVERT_HOLDINGS, REMOVED_TYPE_HOLDING],
+      {
+        id: 'share-txn',
+        holdingId: 'share-1',
+        amountMinorUnits: -1_000,
+        time: 42,
+        description: 'Fee',
+        source: 'manual',
+      },
+      CATEGORIES,
+      CONVERT_ACCOUNTS,
+    );
+    const { getByLabelText, queryByText } = await renderEdit('share-txn');
+
+    expect(getByLabelText('Type')).toBeTruthy();
+    expect(queryByText('Exchange')).toBeNull();
+  });
+});
+
 describe('TransactionFormScreen — Split-change mode', () => {
   beforeEach(() => {
     jest.clearAllMocks();

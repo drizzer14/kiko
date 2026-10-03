@@ -441,7 +441,7 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   keep its content mounted then latches its own first ready and gates
   EACH re-keyable value locally, never by the latch: Home does, because a
   date-range pick, a Clear and the local midnight re-key its windowed
-  ledger read, and the first priced holding (metal, share, property,
+  ledger read, and the first priced holding (metal, property,
   loan), a restore and the local midnight turn on or re-key its price
   book. Swapping the whole screen for the spinner would drop its filter
   bar and the open range sheet, so the list shows a `LoadingState` for
@@ -725,32 +725,23 @@ gate says there is nothing to do.
   runs it. It never runs while `enabled` is `false`.
 - **The first add triggers the gated refresh**: a user's own holding
   write that can change what is priced runs
-  `refreshAfterHoldingWrite(shares)` (`src/sync/refresh-after-holding-write/`)
-  right after the write commits. Rule: every user write that can add,
-  re-date, or re-source a priced holding or lot calls it, passing `shares`
-  when a share is involved. Find the current callers with
-  `git grep -n 'refreshAfterHoldingWrite(' src`.
-  It confirms an unconfirmed EODHD daily limit first when `shares` is
-  set, then calls `refreshMarketData({ throttled: false, metals: true,
-  shares })` (`src/sync/refresh-market-data/`). Restoring a `.kiko`
+  `refreshMarketData({ throttled: false, metals: true })`
+  (`src/sync/refresh-market-data/`) right after the write commits. Rule:
+  every user write that can add, re-date, or re-source a priced holding
+  or lot calls it. Find the current callers with
+  `git grep -n 'throttled: false, metals: true' src`. Restoring a `.kiko`
   export (`importData`, `src/data-transfer/import-data.ts`) calls
   `refreshMarketData` itself. None of these runs through the sync
   fan-out that otherwise triggers this, so the price/rate appears without
   an app restart. Every step gates itself, so this is a no-op when
-  nothing is needed; neither function rejects, and a failure is only
+  nothing is needed; it never rejects, and a failure is only
   logged, never shown, so it never turns a successful save into a shown
   error. `throttled: false`: the write is a deliberate user action, not
   a background poll. Any other edit needs no trigger: a holding's type
   and currency are immutable once created.
-- **Share price refresh**: `refreshSharePrices`
-  (`src/prices/share-refresh/`) reads the active EODHD shares first; none →
-  return with no Keychain read and no network. No saved key → return
-  before any network. Quota rules: kiko-pricing "EODHD quota guard and
-  share refresh".
-- **`refreshMarketData` steps**: rates, metals, and `shares`; the
-  `metals`/`shares` options gate the last two. Read each call site
-  (`grep -rn "refreshMarketData(" src`) for its own flags: a create
-  passes `shares` only for a share holding.
+- **`refreshMarketData` steps**: rates and metals; the `metals` option
+  gates the second. Read each call site
+  (`grep -rn "refreshMarketData(" src`) for its own flags.
 - **Reminders re-plan**: `syncReminders` reads
   `remindersRepo.hasAnyQuery()` (`LIMIT 1`) before any plan-input query
   — see "Reminders (local notifications)". `drainReminderResponses` runs
@@ -1181,7 +1172,7 @@ determinate progress bar.
 
 ### The market refresh beside the sync fan-out
 
-Both also run `refreshMarketData` (rates, metals, shares) BESIDE the
+Both also run `refreshMarketData` (rates, metals) BESIDE the
 fan-out under a `Promise.all` of two never-rejecting promises, not after
 it: the provider requests are gated at one per minute per token, so a
 refresh queued behind K cards started K minutes late on the first open of
@@ -1741,17 +1732,14 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   list here.
 - **Every Keychain secret class the export carries is read and restored.**
   Read `payload.d.ts`'s `ExportSecrets` for the classes it carries: the
-  per-account `monobankTokens` and `binanceCredentials`, plus the optional
-  global `eodhdKey` (the user's own EODHD key, `src/prices/eodhd-key/`). The
+  per-account `monobankTokens` and `binanceCredentials`. The
   export never carries the SQLCipher DB key at all. Secrets are written only
   with the credentials toggle on. `secrets/read-secrets.ts` reads every class
-  from the Keychain (skipping an account with no stored secret, and leaving
-  `eodhdKey` out when no key is saved) and `secrets/restore-secrets.ts`
-  restores each account secret back to its original account id and the
-  EODHD key only when present — a legacy file without `eodhdKey` restores
-  fine. A restore keeps this device's live `settings.quoteQuota` (EODHD
-  calls already spent on this key today — device/key state, like the key
-  itself), `settings.lockEnabled` (the app lock is turned off only after
+  from the Keychain (skipping an account with no stored secret) and
+  `secrets/restore-secrets.ts` restores each account secret back to its
+  original account id — a legacy file that still carries the removed
+  `eodhdKey` imports fine, the key ignored and never written to the
+  Keychain. A restore keeps this device's live `settings.lockEnabled` (the app lock is turned off only after
   `confirmOwner` in Settings, so a file never decides it), and
   `settings.notificationsDeliverableSince` (when iOS first allowed
   notifications on this device), never the file's. They are the one list
@@ -1782,7 +1770,7 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   write that fails after the commit is not an import failure:
   `restoreExportSecrets` never rejects, tries every secret on its own, and
   resolves with the connections it could not write (`'monobank'`,
-  `'binance'`, `'eodhd'`); `importData` returns them as
+  `'binance'`); `importData` returns them as
   `unrestoredCredentials`, still runs the market refresh and the loan
   auto-link, and the screen shows the success plus a line naming the
   connections to set up again.

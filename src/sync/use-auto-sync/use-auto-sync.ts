@@ -132,9 +132,8 @@ export const useAutoSync = (): void => {
       // decoupled from it so a manual-only user still gets cross-rates
       // cached. Running it unconditionally is safe: `refreshMarketData` is
       // self-throttled (its own `refreshRates` step) and hits only PUBLIC,
-      // tokenless endpoints, except the share step, which spends the user's
-      // own EODHD calls under its own daily quota guard. `refreshMarketData`
-      // runs rates, metals, and shares CONCURRENTLY under its own
+      // tokenless endpoints. `refreshMarketData`
+      // runs rates and metals CONCURRENTLY under its own
       // `Promise.allSettled` (twin of
       // `useSyncAll`'s fan-out) and never rejects — it logs its own
       // rates/metals failure and returns a Left, which this effect passes to
@@ -143,7 +142,7 @@ export const useAutoSync = (): void => {
       // Cap CONCURRENT syncs so a many-connection fan-out never fires N provider
       // requests at once (device load / provider rate limits) — see
       // `settleAllLimited`, which the helper below drives.
-      await settleJobsBesideMarketRefresh(jobs, '[auto-sync]');
+      await settleJobsBesideMarketRefresh(jobs);
       // Same reasoning as `refreshMarketData`: an on-open sync can bring in a
       // new loan-payment debit, and the matcher needs both the imports and
       // the refreshed rates, so it runs after both settle.

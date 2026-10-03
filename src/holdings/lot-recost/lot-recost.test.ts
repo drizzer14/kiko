@@ -45,13 +45,6 @@ const RECOSTED_LOTS = [
 
 type Seed = { id: string; type: string; currency: string; metadata: Record<string, unknown> };
 
-const share = (id: string, lots: unknown): Seed => ({
-  id,
-  type: 'share',
-  currency: 'USD',
-  metadata: { quoteSource: 'eodhd', symbol: 'AAPL.US', quoteCurrency: 'USD', lots },
-});
-
 const metal = (id: string, lots: unknown): Seed => ({
   id,
   type: 'metal',
@@ -113,40 +106,32 @@ describe('recostStoredLots', () => {
   });
 
   it('costs a sale recorded before a later-added backdated buy again, in the one lot order', async () => {
-    openDatabase([share('share-1', STALE_LOTS)]);
-
-    await recostStoredLots();
-
-    expect(await storedMetadata('share-1')).toEqual(share('share-1', RECOSTED_LOTS).metadata);
-    expect(await isRecosted()).toBe(true);
-  });
-
-  it('costs a metal holding the same way, in its own currency', async () => {
     openDatabase([metal('metal-1', STALE_LOTS)]);
 
     await recostStoredLots();
 
-    expect((await storedMetadata('metal-1')).lots).toEqual(RECOSTED_LOTS);
+    expect(await storedMetadata('metal-1')).toEqual(metal('metal-1', RECOSTED_LOTS).metadata);
+    expect(await isRecosted()).toBe(true);
   });
 
   it('writes nothing to a list whose sale costs are already right', async () => {
-    openDatabase([share('share-1', RECOSTED_LOTS), share('share-2', STALE_LOTS)]);
+    openDatabase([metal('metal-1', RECOSTED_LOTS), metal('metal-2', STALE_LOTS)]);
 
     await recostStoredLots();
 
-    expect(writtenHoldingIds()).toEqual(['share-2']);
+    expect(writtenHoldingIds()).toEqual(['metal-2']);
     expect(await isRecosted()).toBe(true);
   });
 
   it('leaves a list with a sale larger than what is held before it as stored, and logs it', async () => {
     const oversized = [buy(JANUARY, '3', 90_000), sell(MARCH, '5', -90_000)];
-    openDatabase([share('share-1', oversized), share('share-2', STALE_LOTS)]);
+    openDatabase([metal('metal-1', oversized), metal('metal-2', STALE_LOTS)]);
 
     await recostStoredLots();
 
-    expect((await storedMetadata('share-1')).lots).toEqual(oversized);
-    expect((await storedMetadata('share-2')).lots).toEqual(RECOSTED_LOTS);
-    expect(writtenHoldingIds()).toEqual(['share-2']);
+    expect((await storedMetadata('metal-1')).lots).toEqual(oversized);
+    expect((await storedMetadata('metal-2')).lots).toEqual(RECOSTED_LOTS);
+    expect(writtenHoldingIds()).toEqual(['metal-2']);
     expect(warn).toHaveBeenCalledWith('[lot-recost] a holding keeps its stored lots', {
       name: 'SaleExceedsHoldingError',
       code: undefined,
@@ -156,28 +141,28 @@ describe('recostStoredLots', () => {
 
   it('leaves unreadable lots and holdings without lots as stored', async () => {
     const unreadable = [buy(JANUARY, '10', 100_000), { day: 'x' }];
-    openDatabase([share('share-1', unreadable), share('share-2', undefined)]);
+    openDatabase([metal('metal-1', unreadable), metal('metal-2', undefined)]);
 
     await recostStoredLots();
 
-    expect((await storedMetadata('share-1')).lots).toEqual(unreadable);
+    expect((await storedMetadata('metal-1')).lots).toEqual(unreadable);
     expect(writtenHoldingIds()).toEqual([]);
   });
 
   it('runs once: a later open reads the flag and writes nothing', async () => {
-    openDatabase([share('share-1', RECOSTED_LOTS)]);
+    openDatabase([metal('metal-1', RECOSTED_LOTS)]);
     await recostStoredLots();
     mockDatabase
-      .prepare("UPDATE holdings SET metadata = ? WHERE id = 'share-1'")
-      .run(JSON.stringify(share('share-1', STALE_LOTS).metadata));
+      .prepare("UPDATE holdings SET metadata = ? WHERE id = 'metal-1'")
+      .run(JSON.stringify(metal('metal-1', STALE_LOTS).metadata));
 
     await recostStoredLots();
 
-    expect((await storedMetadata('share-1')).lots).toEqual(STALE_LOTS);
+    expect((await storedMetadata('metal-1')).lots).toEqual(STALE_LOTS);
   });
 
   it('never rejects, and leaves the flag unset for the next open when its write fails', async () => {
-    openDatabase([share('share-1', STALE_LOTS)]);
+    openDatabase([metal('metal-1', STALE_LOTS)]);
     mockDatabase.exec(`
       CREATE TRIGGER refuse_writes BEFORE UPDATE ON holdings
       BEGIN SELECT RAISE(ABORT, 'disk full'); END;
@@ -186,7 +171,7 @@ describe('recostStoredLots', () => {
     await expect(recostStoredLots()).resolves.toBeUndefined();
 
     expect(await isRecosted()).toBe(false);
-    expect((await storedMetadata('share-1')).lots).toEqual(STALE_LOTS);
+    expect((await storedMetadata('metal-1')).lots).toEqual(STALE_LOTS);
     expect(warn).toHaveBeenCalledWith('[lot-recost] recost failed', expect.anything());
   });
 });

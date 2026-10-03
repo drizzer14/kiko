@@ -6,7 +6,6 @@ const mockSyncStateGetQuery = jest.fn();
 const mockListQuery = jest.fn();
 const mockMonobankHasCredentials = jest.fn();
 const mockRunLoanAutoLink = jest.fn();
-const mockConfirmDailyLimit = jest.fn();
 
 // Controllable per-institution job runs, so a test can assert which accounts the
 // app-open fan-out actually synced without exercising the real sync pipelines
@@ -53,9 +52,6 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 jest.mock('@kiko/loans/use-loan-auto-link', () => ({
   runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
 }));
-jest.mock('@kiko/prices/daily-limit', () => ({
-  confirmDailyLimit: (...args: unknown[]) => mockConfirmDailyLimit(...args),
-}));
 
 import { AUTO_SYNC_INTERVAL_MS, throttleElapsed, useAutoSync } from './use-auto-sync';
 
@@ -88,35 +84,10 @@ describe('useAutoSync', () => {
     mockListQuery.mockResolvedValue([]);
     mockMonobankHasCredentials.mockResolvedValue(true);
     mockRunLoanAutoLink.mockResolvedValue(undefined);
-    mockConfirmDailyLimit.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     warnSpy.mockRestore();
-  });
-
-  it('confirms an unconfirmed EODHD daily limit before the on-open refresh', async () => {
-    const order: string[] = [];
-    mockConfirmDailyLimit.mockImplementation(async () => {
-      order.push('confirm');
-    });
-    mockRefreshMarketData.mockImplementation(async () => {
-      order.push('refresh');
-
-      return right(undefined);
-    });
-
-    await renderHook(() => useAutoSync());
-
-    await waitFor(() => expect(order).toEqual(['confirm', 'refresh']));
-  });
-
-  it('still refreshes when the daily limit check fails', async () => {
-    mockConfirmDailyLimit.mockRejectedValue(new Error('settings read failed'));
-
-    await renderHook(() => useAutoSync());
-
-    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalledTimes(1));
   });
 
   it('runs the loan auto-link matcher once after the on-open refresh', async () => {
@@ -179,7 +150,6 @@ describe('useAutoSync', () => {
       expect(mockRefreshMarketData).toHaveBeenCalledWith({
         throttled: true,
         metals: true,
-        shares: true,
       }),
     );
 
@@ -221,7 +191,6 @@ describe('useAutoSync', () => {
       expect(mockRefreshMarketData).toHaveBeenCalledWith({
         throttled: true,
         metals: true,
-        shares: true,
         fiatOfRun: { storedFiat: new Set() },
       }),
     );

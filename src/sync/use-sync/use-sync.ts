@@ -51,7 +51,7 @@ export const useSyncAction = <Input>(
     // before this refactor. `refreshMarketData` never rejects and logs its
     // own failure with no UI surface, so a rate-refresh failure never turns
     // a successful sync into a reported error here.
-    await refreshMarketData({ throttled: true, metals: false, shares: false });
+    await refreshMarketData({ throttled: true, metals: false });
     // A sync can bring in a new loan-payment debit, so the matcher runs
     // right alongside the rate refresh — never rejects either (its own doc
     // comment), so a failed auto-link never turns a successful sync into a

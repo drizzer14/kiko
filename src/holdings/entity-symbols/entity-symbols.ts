@@ -1,8 +1,8 @@
 import type { AccountRow, HoldingRow } from '@kiko/db';
 
 import type { HoldingType } from '../holding-type';
-import { recordByType } from '../holding-descriptor';
 import { type PropertyCategory, propertyCategoryOf } from '../holding-metadata';
+import { holdingDescriptorOrUndefined, recordByType } from '../holding-descriptor';
 
 // The default SF Symbol shown for an account/holding icon, keyed by its
 // kind/type. Mirrors src/holdings/entity-colors.ts: fixed UI symbols (not
@@ -29,7 +29,7 @@ type AccountKind = AccountRow['kind'];
 // type, `loan`, has its own glyph below; the account default is persisted at
 // create time, so changing this one would need a 0032-style migration.
 // `chart.line.uptrend.xyaxis` (SF Symbols 3, iOS 15)
-// is the pick for `broker`, the same glyph the Share prices settings row uses.
+// is the pick for `broker`.
 export const accountKindSymbol: Record<AccountKind, string> = {
   bank: 'building.columns.fill',
   cash: 'banknote',
@@ -43,17 +43,16 @@ export const accountKindSymbol: Record<AccountKind, string> = {
 // card -> creditcard, term_deposit -> calendar, bond -> receipt, jar ->
 // rectangle.portrait, cash -> banknote, crypto_asset -> bitcoinsign.circle,
 // property_item -> house.fill, metal -> cube.fill, loan ->
-// arrow.down.backward.circle.fill, share -> chart.line.uptrend.xyaxis —
-// each type's own descriptor (`src/holdings/holding-descriptor/`) is the
-// source, read through `recordByType` for the same per-type exhaustiveness
-// guarantee as the account map above. The `jar` and `crypto_asset` HOLDING
+// arrow.down.backward.circle.fill — each type's own descriptor
+// (`src/holdings/holding-descriptor/`) is the source, read through
+// `recordByType` for the same per-type exhaustiveness guarantee as the
+// account map above. The `jar` and `crypto_asset` HOLDING
 // defaults are pure render-time fallbacks (holdings persist a null icon
 // until the user picks one), so these changes update every un-customized
 // holding with NO data migration — unlike the crypto ACCOUNT default above.
-// `share` shares its `broker` kind's icon, the same reuse
-// `property_item`/`metal` already follow for their own kinds. `loan` does
-// not: a minus reads as "subtract", so a loan taken mirrors a loan given
-// (`propertyCategorySymbol.loan_given`), money coming in that is owed back.
+// `loan` does not reuse its kind's icon: a minus reads as "subtract", so a
+// loan taken mirrors a loan given (`propertyCategorySymbol.loan_given`),
+// money coming in that is owed back.
 // SF Symbols 2 (iOS 14), safe on the deployment floor, and a holding's null
 // icon means the change needs no migration.
 export const holdingTypeSymbol: Record<HoldingType, string> = recordByType(
@@ -74,11 +73,13 @@ export const propertyCategorySymbol: Record<PropertyCategory, string> = {
 
 // The glyph a holding shows while the user has picked no icon of its own. The
 // category is read leniently (`propertyCategoryOf`), so garbled metadata still
-// gets a glyph rather than a blank tile.
+// gets a glyph rather than a blank tile. A stored type this build has no
+// descriptor for (a removed type's row) gets the generic holding glyph: an
+// undefined symbol reaches the native symbol view as a null prop and crashes.
 export const defaultHoldingSymbol = (holding: Pick<HoldingRow, 'type' | 'metadata'>): string =>
   holding.type === 'property_item'
     ? propertyCategorySymbol[propertyCategoryOf(holding.metadata)]
-    : holdingTypeSymbol[holding.type];
+    : (holdingDescriptorOrUndefined(holding.type)?.symbol ?? genericEntitySymbol.holding);
 
 // The GENERIC entity glyphs — TYPE-agnostic references used for headings, empty
 // states, and section labels, NOT a per-entity user-chosen icon and NOT the

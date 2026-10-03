@@ -28,8 +28,8 @@ The information you enter or sync is stored only on your device:
 
 - Your accounts, holdings, transactions, balances, prices, categories, and
   settings.
-- The API credentials you choose to add (for example a Monobank token, a
-  Binance API key and secret, or an EODHD API key).
+- The API credentials you choose to add (for example a Monobank token or a
+  Binance API key and secret).
 - The reminders you set up. iOS shows them as local notifications on your
   device; their text never names an account or an amount.
 
@@ -49,7 +49,7 @@ and its key safe.
 Kiko communicates directly from your device with the services below, only as
 far as your accounts and holdings need them. Some connections run only after
 you connect an account, add a Bitcoin address, or save a key (Monobank
-statements, Binance, Blockstream, EODHD). Others run automatically to value
+statements, Binance, Blockstream). Others run automatically to value
 what you track: currency exchange rates (Monobank and the National Bank of
 Ukraine), cryptocurrency prices (CoinGecko), and precious-metal prices and the
 government bond register (National Bank of Ukraine). Kiko does not route these
@@ -67,13 +67,6 @@ service can see your device's IP address.
 - **CoinGecko** (`api.coingecko.com`) — the current price and the daily price
   history of each cryptocurrency you hold. Kiko sends only the names of those
   coins (for example `bitcoin`); no address, amount, or credential is sent.
-- **EODHD** (`eodhd.com`) — end-of-day share prices, only after you save your
-  own EODHD API key in Settings → Share prices. Kiko sends your key, the ticker
-  and exchange of each share priced by EODHD (for example `AAPL.US`), the date
-  range of the prices it needs, and, when you tap Search, the ISIN, ticker, or
-  name you typed. It also asks EODHD how many of your key's daily requests are
-  used. Kiko never sends how many shares you hold or what you paid for them.
-  You sign up with EODHD and accept its terms.
 - **National Bank of Ukraine** (`bank.gov.ua`) — public currency exchange
   rates and their history, precious-metal prices, and the public register of
   government bonds. Kiko downloads the whole register, so the ISIN you enter is
@@ -101,10 +94,9 @@ you. Kiko does not display ads and does not sell or share your data.
 Your data lives only on your device. You can delete accounts, holdings, and
 transactions inside the app at any time. Deleting the app removes its database
 from your device, but iOS can keep items saved in the Keychain, such as your
-Monobank token, Binance keys, and EODHD key, after the app is deleted. To remove
-them, first disconnect each connected account (open the account and tap
-Disconnect) and remove your EODHD key (Settings → Share prices → Remove key),
-then delete the app.
+Monobank token and Binance keys, after the app is deleted. To remove them, first
+disconnect each connected account (open the account and tap Disconnect), then
+delete the app.
 
 ## 7. Children
 

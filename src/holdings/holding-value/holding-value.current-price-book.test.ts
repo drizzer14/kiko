@@ -21,9 +21,10 @@ import { holdingValueBreakdown, type ValuableHolding } from './holding-value';
 
 // Every screen that reads `useCurrentPriceBook` shows a number computed from
 // the book `currentQuery` builds. This proves each such number equals the one
-// the whole-table book gives, on a realistic ledger of daily share and metal
-// closes, a stale series, a series that has not started, and manual series,
-// on the days a local-day key is easiest to get wrong.
+// the whole-table book gives, on a realistic ledger of daily metal closes, a
+// stale series, a series that has not started, a priced holding with no series
+// at all, and manual series, on the days a local-day key is easiest to get
+// wrong.
 const SCENARIOS: [string, number][] = [
   ['an ordinary afternoon', new Date(2026, 8, 20, 15, 0).getTime()],
   ['Kyiv local midnight on the day DST starts', new Date(2026, 2, 29, 0, 0).getTime()],
@@ -58,13 +59,10 @@ const insertSeries = (
 };
 
 const seedPricePoints = (today: number): void => {
-  insertSeries('share:AAPL.US', today, -420, 0, 'USD');
-  insertSeries('share:STALE.US', today, -420, -6, 'USD');
-  insertSeries('share:LATER.US', today, 2, 3, 'USD');
+  insertSeries('metal:XAG', today, -420, 0, 'UAH');
+  insertSeries('metal:XPT', today, -420, -6, 'UAH');
+  insertSeries('metal:XPD', today, 2, 3, 'UAH');
   insertSeries('metal:XAU', today, -400, 1, 'UAH');
-  insertPoint('holding:manual-share', today - 90 * DAY_MS, '310.50', 'USD');
-  insertPoint('holding:manual-share', today - 30 * DAY_MS, '312.00', 'USD');
-  insertPoint('holding:manual-share', today - DAY_MS, '299.99', 'USD');
   insertPoint('holding:prop-1', today - 200 * DAY_MS, '2500000', 'UAH');
   insertPoint('holding:prop-1', today - 10 * DAY_MS, '2650000', 'UAH');
   insertPoint('holding:prop-1', today + 3 * DAY_MS, '2700000', 'UAH');
@@ -76,12 +74,16 @@ const seedPricePoints = (today: number): void => {
   insertPoint('holding:loan-3', today - 20 * DAY_MS, '55000', 'UAH');
 };
 
-const shareHolding = (id: string, metadata: Record<string, unknown>): ValuableHolding => ({
+const metalHolding = (
+  id: string,
+  metal: string,
+  lots: Record<string, unknown>[],
+): ValuableHolding => ({
   id,
-  type: 'share',
-  currency: 'USD',
+  type: 'metal',
+  currency: 'UAH',
   balanceMinorUnits: 0,
-  metadata,
+  metadata: { metal, form: 'bar', unit: 'g', purity: '1', lots },
 });
 
 const holdingsAt = (today: number): ValuableHolding[] => {
@@ -93,11 +95,9 @@ const holdingsAt = (today: number): ValuableHolding[] => {
     localMidnightOfDayKey(today) + offset * DAY_MS + 12 * 3_600_000;
 
   return [
-    shareHolding('aapl', { quoteSource: 'eodhd', symbol: 'AAPL.US', lots }),
-    shareHolding('stale', { quoteSource: 'eodhd', symbol: 'STALE.US', lots }),
-    shareHolding('later', { quoteSource: 'eodhd', symbol: 'LATER.US', lots }),
-    shareHolding('unpriced', { quoteSource: 'eodhd', symbol: 'NONE.US', lots }),
-    shareHolding('manual-share', { quoteSource: 'manual', lots }),
+    metalHolding('silver', 'XAG', lots),
+    metalHolding('stale', 'XPT', lots),
+    metalHolding('later', 'XPD', lots),
     {
       id: 'gold-1',
       type: 'metal',
@@ -121,6 +121,16 @@ const holdingsAt = (today: number): ValuableHolding[] => {
       metadata: {
         category: 'real_estate',
         lots: [{ day: today - 400 * DAY_MS, quantityDelta: '1', costMinorUnits: 2_000_000 }],
+      },
+    },
+    {
+      id: 'prop-unpriced',
+      type: 'property_item',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: today - 400 * DAY_MS, quantityDelta: '1', costMinorUnits: 1_500_000 }],
       },
     },
     {
@@ -238,10 +248,7 @@ describe.each(SCENARIOS)('current price book on %s', (_label, now) => {
 
   it('gives every loan and manual series the same value on days before today, which the loan ledger reads', () => {
     const directlyPriced = holdingsAt(today).filter(
-      (holding) =>
-        holding.type === 'loan' ||
-        holding.type === 'property_item' ||
-        holding.id === 'manual-share',
+      (holding) => holding.type === 'loan' || holding.type === 'property_item',
     );
 
     for (const offset of [-1, -2, -50, -119, -121, -200, -299, -301]) {

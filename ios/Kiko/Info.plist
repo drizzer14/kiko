@@ -85,22 +85,6 @@
 					</dict>
 				</array>
 			</dict>
-			<key>eodhd.com</key>
-			<dict>
-				<key>NSIncludesSubdomains</key>
-				<false/>
-				<key>NSPinnedCAIdentities</key>
-				<array>
-					<dict>
-						<key>SPKI-SHA256-BASE64</key>
-						<string>fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=</string>
-					</dict>
-					<dict>
-						<key>SPKI-SHA256-BASE64</key>
-						<string>C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=</string>
-					</dict>
-				</array>
-			</dict>
 		</dict>
 	</dict>
 	<key>NSFaceIDUsageDescription</key>

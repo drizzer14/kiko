@@ -56,7 +56,6 @@ describe('SettingsStack', () => {
     expect(titles.Categories).toBe('Categories');
     expect(titles.ExportData).toBe('Export Data');
     expect(titles.ImportData).toBe('Import Data');
-    expect(titles.SharePrices).toBe('Share Prices');
   });
 
   it('registers the reminders list and the reminder form it opens', () => {

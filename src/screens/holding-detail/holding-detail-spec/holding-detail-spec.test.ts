@@ -46,31 +46,10 @@ describe('holdingDetailSpecs footerAction', () => {
   it.each(table)(
     '$type: unsynced -> $unsynced, synced -> $synced',
     ({ type, unsynced, synced }) => {
-      expect(holdingDetailSpecs[type].footerAction(false, holding({ type }))).toBe(unsynced);
-      expect(holdingDetailSpecs[type].footerAction(true, holding({ type }))).toBe(synced);
+      expect(holdingDetailSpecs[type].footerAction(false)).toBe(unsynced);
+      expect(holdingDetailSpecs[type].footerAction(true)).toBe(synced);
     },
   );
-
-  // A manual share has no feed, so its footer also updates its price; an
-  // EODHD share's price comes from the refresh, so it only adds lots.
-  const shareHolding = (metadata: unknown) => holding({ type: 'share', metadata });
-  const lots = [{ day: Date.UTC(2026, 0, 1), quantityDelta: '1', costMinorUnits: 100 }];
-
-  it('offers a manual share both Add lot and Update price', () => {
-    const manual = shareHolding({ quoteSource: 'manual', lots });
-
-    expect(holdingDetailSpecs.share.footerAction(false, manual)).toBe('addLotAndUpdatePrice');
-  });
-
-  it('offers an EODHD share only Add lot', () => {
-    const eodhd = shareHolding({ quoteSource: 'eodhd', symbol: 'AAPL.US', lots });
-
-    expect(holdingDetailSpecs.share.footerAction(false, eodhd)).toBe('addLot');
-  });
-
-  it('offers a share with unreadable metadata only Add lot', () => {
-    expect(holdingDetailSpecs.share.footerAction(false, shareHolding(null))).toBe('addLot');
-  });
 });
 
 // Narrows a breakdown spec to its `interest` variant, or fails the test
@@ -222,10 +201,9 @@ describe('holdingDetailSpecs breakdown', () => {
   // property_item and metal show the cost/value/gain breakdown instead of the
   // deposit/bond interest/tax table (they accrue no interest and withhold no
   // tax, so those rows would only ever read a misleading zero).
-  it('shows property_item, metal, and share the priced breakdown', () => {
+  it('shows property_item and metal the priced breakdown', () => {
     expect(holdingDetailSpecs.property_item.breakdown).toEqual({ kind: 'priced' });
     expect(holdingDetailSpecs.metal.breakdown).toEqual({ kind: 'priced' });
-    expect(holdingDetailSpecs.share.breakdown).toEqual({ kind: 'priced' });
   });
 
   it('shows a loan the ledger breakdown', () => {
@@ -371,21 +349,23 @@ describe('holdingDetailSpecs upcomingInstallments', () => {
 
 describe('holdingDetailSpecFor', () => {
   it('returns the real spec for a known type', () => {
-    expect(holdingDetailSpecFor('metal').footerAction(false, holding())).toBe('addLot');
+    expect(holdingDetailSpecFor('metal').footerAction(false)).toBe('addLot');
   });
 
   it('falls back to the balance spec for a type the registry does not know', () => {
-    expect(holdingDetailSpecFor('not-a-real-type').footerAction(false, holding())).toBe(
-      'transaction',
-    );
+    expect(holdingDetailSpecFor('not-a-real-type').footerAction(false)).toBe('transaction');
   });
 
   it('falls back to the balance spec for an undefined type', () => {
-    expect(holdingDetailSpecFor(undefined).footerAction(false, holding())).toBe('transaction');
+    expect(holdingDetailSpecFor(undefined).footerAction(false)).toBe('transaction');
   });
 
   it("falls back to the balance spec for an inherited Object.prototype key, not that key's value", () => {
-    expect(holdingDetailSpecFor('constructor').footerAction(false, holding())).toBe('transaction');
+    expect(holdingDetailSpecFor('constructor').footerAction(false)).toBe('transaction');
+  });
+
+  it('falls back to the balance spec for a stored share type an older build wrote', () => {
+    expect(holdingDetailSpecFor('share').footerAction(false)).toBe('transaction');
   });
 });
 
@@ -399,13 +379,12 @@ describe('holdingDetailSpecs agreement with isLedgerlessHoldingType', () => {
   it.each(holdingTypes)('%s', (type) => {
     const ledgerless = isLedgerlessHoldingType(type);
     const spec = holdingDetailSpecs[type];
-    const row = holding({ type });
 
     if (ledgerless) {
-      expect(spec.footerAction(false, row)).not.toBe('transaction');
-      expect(spec.footerAction(true, row)).not.toBe('transaction');
+      expect(spec.footerAction(false)).not.toBe('transaction');
+      expect(spec.footerAction(true)).not.toBe('transaction');
     } else {
-      expect(spec.footerAction(false, row)).toBe('transaction');
+      expect(spec.footerAction(false)).toBe('transaction');
     }
   });
 });

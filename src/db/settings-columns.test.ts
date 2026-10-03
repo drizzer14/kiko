@@ -40,6 +40,11 @@ const DOCUMENTED_READERLESS_COLUMNS = [
   // deliberately not dropped (same additive-only class) — see the comment on
   // the column in schema.ts.
   'trendCategoryKeys',
+  // Legacy: the removed EODHD share-price daily quota. Nothing reads or writes
+  // it any more — deliberately not dropped, so a future drizzle-kit generate
+  // does not emit a DROP that diverges from the migration snapshots — see the
+  // comment on the column in schema.ts.
+  'quoteQuota',
 ];
 
 // What a `.kiko` restore does with each column (`restoreDataSnapshot`): the
@@ -65,6 +70,7 @@ const TAKEN_FROM_FILE_ON_RESTORE = [
   'importTimesRezoned',
   'reminderOfferDismissals',
   'lotsRecosted',
+  'quoteQuota',
 ];
 
 const SCHEMA_PATH = join(__dirname, 'schema.ts');

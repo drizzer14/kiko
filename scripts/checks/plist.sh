@@ -101,7 +101,7 @@ fi
 # --- 1b. A credential in the URL must not be cacheable -----------------------
 # An api_token query parameter is part of the request URL, and NSURLCache keys
 # its Cache.db entries by URL, so a response the server lets a cache keep
-# (EODHD answers `no-cache, private`) writes the key to disk. Pinning does not
+# (`no-cache, private` is one) writes the key to disk. Pinning does not
 # help there. Such a client must send the `Cache-Control: no-store` request
 # header, as an object key (`'Cache-Control': 'no-store'`) or a Headers call
 # (`headers.set('cache-control', 'no-store')`); header names and directives are

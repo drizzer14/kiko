@@ -24,6 +24,7 @@ import Screen from '@kiko/design-system/components/screen';
 import { asMetalMeta } from '@kiko/holdings/holding-metadata';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldLabel from '@kiko/design-system/components/field-label';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
@@ -36,7 +37,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
-import { refreshAfterHoldingWrite } from '@kiko/sync/refresh-after-holding-write';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 type LotFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'LotForm'>;
@@ -115,8 +115,8 @@ const changeOf = (lotIndex: number | undefined, fields: LotFields): LotChange =>
     lot: lotOf(fields),
   };
 
-// Records one buy or sell lot against a lot-form-eligible holding (`metal`,
-// `share` — kiko-pricing), reached from holding-detail's "Add lot" footer
+// Records one buy or sell lot against a lot-form-eligible holding (`metal` —
+// kiko-pricing), reached from holding-detail's "Add lot" footer
 // action, or edits one stored lot (`lotIndex`), reached from that lot row's
 // long-press menu. It never writes a `price_points` or `Transaction` row:
 // the holding is ledgerless (`isLedgerlessHoldingType`), so its quantity and
@@ -194,7 +194,7 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
     direction,
     t,
   });
-  // A stock split adds shares at no cost, so 0 is a valid total cost.
+  // A lot received at no cost reads 0, so 0 is a valid total cost.
   const costValid = parseAmount(costText) >= 0;
 
   const save = async (): Promise<void> => {
@@ -239,8 +239,8 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
 
     // A new or re-dated lot can fall before the stored prices, so its history
     // is asked for now, not at the next pull or cold launch.
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshAfterHoldingWrite catches the limit check's failure and refreshMarketData never rejects
-    refreshAfterHoldingWrite(holding.type === 'share');
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects
+    refreshMarketData({ throttled: false, metals: true });
     navigation.goBack();
   };
 

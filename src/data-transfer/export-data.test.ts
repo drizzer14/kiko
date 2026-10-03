@@ -95,22 +95,23 @@ describe('exportData', () => {
     expect(mockReadExportSecrets).toHaveBeenCalledWith(emptySnapshot.accounts);
   });
 
-  it('writes the EODHD key into the encrypted file only when the toggle is on', async () => {
+  it('writes the secrets into the encrypted file only when the toggle is on', async () => {
     mockReadExportSecrets.mockResolvedValue({
-      monobankTokens: [],
+      monobankTokens: [{ accountId: 'a1', token: 'fake-mono-token-0000' }],
       binanceCredentials: [],
-      eodhdKey: 'fake-eodhd-key-0000',
     });
 
     const withSecrets = await exportData({ includeSecrets: true });
 
-    expect(writtenPayload(withSecrets.keyBase64).secrets?.eodhdKey).toBe('fake-eodhd-key-0000');
+    expect(writtenPayload(withSecrets.keyBase64).secrets?.monobankTokens).toEqual([
+      { accountId: 'a1', token: 'fake-mono-token-0000' },
+    ]);
 
     mockWriteFile.mockClear();
     const withoutSecrets = await exportData({ includeSecrets: false });
 
     expect(writtenPayload(withoutSecrets.keyBase64)).not.toHaveProperty('secrets');
-    expect(mockWriteFile.mock.calls[0][1]).not.toContain('fake-eodhd-key-0000');
+    expect(mockWriteFile.mock.calls[0][1]).not.toContain('fake-mono-token-0000');
   });
 
   it('still joins a valid path when TemporaryDirectoryPath has NO trailing slash', async () => {

@@ -257,15 +257,6 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             onPress={() => navigation.navigate('Categories')}
           />
         </Card>
-
-        <Card testID="settings-card-share-prices" padding={3}>
-          <SettingsRow
-            testID="settings-row-share-prices"
-            icon="chart.line.uptrend.xyaxis"
-            label={t('settings.sharePrices')}
-            onPress={() => navigation.navigate('SharePrices')}
-          />
-        </Card>
       </Box>
     </Screen>
   );

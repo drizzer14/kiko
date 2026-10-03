@@ -1370,7 +1370,7 @@ describe('StatisticsScreen', () => {
     expect(mockRunBackfill).not.toHaveBeenCalled();
   });
 
-  // A share or metal records its purchases as lots, not transactions, so a
+  // A metal or property records its purchases as lots, not transactions, so a
   // foreign holding can exist with no ledger row anywhere.
   describe('with holdings but no transactions', () => {
     const backfillSpan = (): { earliestDay: number; today: number } =>
@@ -1385,13 +1385,13 @@ describe('StatisticsScreen', () => {
         accounts: [BANK],
         holdings: [
           {
-            id: 'share',
+            id: 'villa',
             accountId: BANK.id,
             currency: 'USD',
-            type: 'share',
+            type: 'property_item',
             balanceMinorUnits: 0,
             metadata: {
-              quoteSource: 'manual',
+              category: 'real_estate',
               lots: [{ day: lotDay, quantityDelta: '10', costMinorUnits: 150_000 }],
             },
             closedAt: null,

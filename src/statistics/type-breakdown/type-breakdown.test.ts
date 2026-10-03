@@ -71,6 +71,26 @@ describe('buildTypeBreakdown', () => {
     expect(result.map((slice) => slice.type)).toEqual(['card']);
   });
 
+  it('leaves a stored holding of a removed type out of every slice without throwing', () => {
+    const holdings = [
+      holding({ type: 'card', currency: 'USD', balanceMinorUnits: 10_000 }),
+      holding({
+        type: 'share' as unknown as HoldingRow['type'],
+        currency: 'USD',
+        balanceMinorUnits: 90_000,
+      }),
+    ];
+
+    const result = buildTypeBreakdown({
+      holdings,
+      rateTable: rates,
+      baseCurrency: 'USD',
+      now: 0,
+    });
+
+    expect(result).toEqual([{ type: 'card', amount: 10_000 }]);
+  });
+
   it('sorts the slices by amount descending', () => {
     const holdings = [
       holding({ type: 'cash', currency: 'USD', balanceMinorUnits: 5_000 }),

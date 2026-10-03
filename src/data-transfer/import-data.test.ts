@@ -21,13 +21,6 @@ jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
 
-// A restored key's daily limit is unconfirmed: the refresh must plan under the
-// limit EODHD reports, not the one stored before the restore.
-const mockConfirmDailyLimit = jest.fn().mockResolvedValue(undefined);
-jest.mock('@kiko/prices/daily-limit', () => ({
-  confirmDailyLimit: (...args: unknown[]) => mockConfirmDailyLimit(...args),
-}));
-
 // A bulk restore bypasses the sync/import/loan-edit call sites that
 // normally trigger the auto-link matcher — trigger it explicitly here too,
 // the same "first-add refresh" reasoning as `refreshMarketData` above.
@@ -90,7 +83,6 @@ describe('importData', () => {
     mockRestoreExportSecrets.mockReset().mockResolvedValue([]);
     mockRefreshMarketData.mockClear();
     mockRefreshMarketData.mockResolvedValue(right(undefined));
-    mockConfirmDailyLimit.mockReset().mockResolvedValue(undefined);
     mockRunLoanAutoLink.mockClear();
     mockRunLoanAutoLink.mockResolvedValue(undefined);
     mockRecostStoredLots.mockReset().mockResolvedValue(undefined);
@@ -125,7 +117,7 @@ describe('importData', () => {
   // set up again.
   describe('when a credential could not be written after the data committed', () => {
     beforeEach(() => {
-      mockRestoreExportSecrets.mockResolvedValue(['monobank', 'eodhd']);
+      mockRestoreExportSecrets.mockResolvedValue(['monobank', 'binance']);
     });
 
     it('resolves with the restored counts and the connections that need their key again', async () => {
@@ -139,7 +131,7 @@ describe('importData', () => {
         holdingsRestored: 1,
         transactionsRestored: 1,
         languageRestored: null,
-        unrestoredCredentials: ['monobank', 'eodhd'],
+        unrestoredCredentials: ['monobank', 'binance'],
       });
     });
 
@@ -180,7 +172,6 @@ describe('importData', () => {
     const goodSecrets = {
       monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
       binanceCredentials: [{ accountId: 'a1', apiKey: 'k', secret: 's' }],
-      eodhdKey: 'eodhd-key',
     };
 
     it.each([
@@ -205,7 +196,6 @@ describe('importData', () => {
         'a Binance entry without its secret',
         { ...goodSecrets, binanceCredentials: [{ accountId: 'a1', apiKey: 'k' }] },
       ],
-      ['an eodhdKey that is not a string', { ...goodSecrets, eodhdKey: 12345 }],
     ])('refuses %s before the restore touches the data', async (_name, secrets) => {
       const { fileText, keyBase64 } = encryptedWithSecrets(secrets);
       mockReadFile.mockResolvedValue(fileText);
@@ -219,21 +209,34 @@ describe('importData', () => {
       expect(mockReplanRestoredReminders).not.toHaveBeenCalled();
     });
 
-    it('restores a well-formed credentials block, with or without an EODHD key', async () => {
-      const withoutKey = {
-        monobankTokens: goodSecrets.monobankTokens,
-        binanceCredentials: goodSecrets.binanceCredentials,
-      };
+    it('restores a well-formed credentials block', async () => {
+      const { fileText, keyBase64 } = encryptedWithSecrets(goodSecrets);
+      mockReadFile.mockResolvedValue(fileText);
 
-      for (const secrets of [goodSecrets, withoutKey]) {
+      await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+      expect(mockRestoreExportSecrets).toHaveBeenLastCalledWith(goodSecrets, new Set(['a1']));
+    });
+
+    // The removed share prices key: an older export still carries it, and the
+    // validator checks only the fields it knows, so the file still imports.
+    it.each([
+      ['a text key', 'fake-eodhd-key-0000'],
+      ['a key of any other shape', 12345],
+    ])(
+      'still imports a file whose credentials block carries %s from an older build',
+      async (_name, eodhdKey) => {
+        const secrets = { ...goodSecrets, eodhdKey };
         const { fileText, keyBase64 } = encryptedWithSecrets(secrets);
         mockReadFile.mockResolvedValue(fileText);
 
-        await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+        const summary = await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
 
+        expect(summary.accountsRestored).toBe(1);
+        expect(mockRestoreDataSnapshot).toHaveBeenCalledTimes(1);
         expect(mockRestoreExportSecrets).toHaveBeenLastCalledWith(secrets, new Set(['a1']));
-      }
-    });
+      },
+    );
 
     // A file from an earlier build, or an export with nothing saved, carries
     // fewer of these, and a secret may name an account deleted before the
@@ -317,44 +320,7 @@ describe('importData', () => {
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: false,
       metals: true,
-      shares: true,
     });
-  });
-
-  it("confirms the restored key's daily limit before the refresh, without the import waiting on it", async () => {
-    const { fileText, keyBase64 } = encryptedFixture();
-    mockReadFile.mockResolvedValue(fileText);
-    let confirmLimit: () => void = () => {};
-    mockConfirmDailyLimit.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          confirmLimit = resolve;
-        }),
-    );
-
-    const summary = await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
-
-    expect(summary.accountsRestored).toBe(1);
-    expect(mockConfirmDailyLimit).toHaveBeenCalledWith();
-    expect(mockRefreshMarketData).not.toHaveBeenCalled();
-
-    confirmLimit();
-    await new Promise((resolve) => setImmediate(resolve));
-
-    expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
-  });
-
-  it('still refreshes when the daily limit check fails', async () => {
-    const { fileText, keyBase64 } = encryptedFixture();
-    mockReadFile.mockResolvedValue(fileText);
-    mockConfirmDailyLimit.mockRejectedValue(new Error('settings read failed'));
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
-    await new Promise((resolve) => setImmediate(resolve));
-
-    expect(mockRefreshMarketData).toHaveBeenCalledTimes(1);
-    warn.mockRestore();
   });
 
   // Fire-and-forget, after a successful restore.

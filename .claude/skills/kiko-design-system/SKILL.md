@@ -574,14 +574,9 @@ new component can land between reviews of this skill:
   sheet: Apply and "Just for this one") passes its `useSubmitOnce`
   `isSubmitting` as `loading`, and the surface it sits on stays open
   until the write is done — never a hand-rolled spinner beside a button.
-  The holding form's Save shows it only while a share's listing unit is
-  looked up at Save (`isLookingUpUnit`, a network wait bounded by `SAVE_LOOKUP_TIMEOUT_MS` in
-  `src/prices/share-search/share-search.ts`;
-  user decision), not for any other write. It drops `disabled` while the
-  spinner shows (`isSaveDisabled`, `holding-form.screen.tsx`), so it is not
-  dimmed then; `loading` alone blocks the presses. Any other submit keeps it
-  `disabled` (dimmed). Any button that passes both props drops `disabled`
-  while `loading` the same way.
+  `loading` alone blocks the presses, so a button that passes both props
+  drops `disabled` while `loading` and is not dimmed then. Any other submit
+  keeps it `disabled` (dimmed).
   The shared `DISABLED_OPACITY` token
   (`src/design-system/disabled-opacity/disabled-opacity.ts`) is the ONE dimming a disabled
   pressable applies — `Button` reads it, and any new disabled pressable
@@ -976,25 +971,8 @@ new component can land between reviews of this skill:
   holding detail, a stored state the user must fix elsewhere is a
   NoticeBanner with no action, worked out on the fly from the row, in its
   own folder (`holding-detail/<name>-notice/`, `holding` prop, `null` when
-  nothing is wrong): `ListingCurrencyNotice` (an EODHD share held in another
-  currency than its listing, kiko-pricing) and `OversizedSaleNotice` (a
-  share or metal sale larger than what was held before it; kiko-pricing's
-  "Stored lots are costed again once per device").
-- **Search sheet pattern** (example:
-  `src/screens/forms/holding-form/share/share-search-sheet/`): always a
-  `BottomSheet` with a query field, an explicit Search button, and
-  `SelectableRow` results, following `CurrencyField`'s sheet. A search that
-  costs a network call runs only on the button press, never per keystroke.
-  Always wrap Search in `useSubmitOnce` with its `isSubmitting` as the
-  button's loading state, and clear the previous results when a new search
-  starts.
-- **Share prices quota line** (`src/screens/settings/share-prices/`):
-  "Requests today: x / N" renders only with a saved key and after the quota
-  loaded; the used-up state shows only when the stored day is today. There
-  is no separate "Daily limit: N" caption (user decision). The used-up
-  banner, and the share search sheet's used-up message, name EODHD's reset
-  (midnight GMT, `quotaResetsAt`) in the device's local time, on the device's
-  12- or 24-hour clock (`formatTime` with `useTimeClock`; see kiko-translator).
+  nothing is wrong): `OversizedSaleNotice` (a metal sale larger than what was held before it;
+  kiko-pricing's "Stored lots are costed again once per device").
 - **ReminderOfferCard** (`src/design-system/components/reminder-offer-card/`)
   — the NoticeBanner family's two-action sibling: an inline, non-modal
   invitation (never a notification, sheet, or alert, and never an

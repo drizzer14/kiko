@@ -41,7 +41,6 @@ describe('useCryptoSync', () => {
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: true,
       metals: false,
-      shares: false,
     });
   });
 

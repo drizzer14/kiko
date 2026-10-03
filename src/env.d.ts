@@ -17,6 +17,4 @@ declare module '@env' {
   export const COINGECKO_MARKET_CHART_ENDPOINT: string;
   export const PRIVACY_POLICY_URL_EN: string;
   export const PRIVACY_POLICY_URL_UK: string;
-  export const EODHD_API_ENDPOINT: string;
-  export const EODHD_SIGNUP_URL: string;
 }

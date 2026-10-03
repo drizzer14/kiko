@@ -188,8 +188,8 @@ const multiplyToScale = (
  * cross-rate) — optionally dividing by one more decimal-string factor — and
  * rounds the exact result to `currency`'s minor-unit scale, half away from
  * zero. The one BigInt boundary every price/quantity/purity multiplication
- * in the app goes through (kiko-domain), so a share valuation or a metal
- * weight never drifts through float math.
+ * in the app goes through (kiko-domain), so a metal weight or a priced
+ * holding's value never drifts through float math.
  */
 export const multiplyToMinorUnits = (
   factors: readonly string[],

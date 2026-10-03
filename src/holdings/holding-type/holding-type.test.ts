@@ -1,6 +1,7 @@
 import {
   creatableHoldingTypesForAccount,
   holdingTypes,
+  isHoldingType,
   holdingTypesForAccountKind,
   isSyncOnlyHoldingType,
   syncOnlyHoldingTypes,
@@ -56,14 +57,26 @@ describe('holdingTypesForAccountKind', () => {
     expect(holdingTypesForAccountKind.debt).toEqual(['loan']);
   });
 
-  it('allows a broker account share, bond, and cash holdings, share first', () => {
-    expect(holdingTypesForAccountKind.broker).toEqual(['share', 'bond', 'cash']);
+  it('allows a broker account bond and cash holdings', () => {
+    expect(holdingTypesForAccountKind.broker).toEqual(['bond', 'cash']);
   });
 
-  it('allows a share only under a broker account', () => {
-    for (const [kind, allowed] of Object.entries(holdingTypesForAccountKind)) {
-      expect(allowed.includes('share')).toBe(kind === 'broker');
+  it('has no share holding type, so an old share row reads as an unknown type', () => {
+    expect(holdingTypes as readonly string[]).not.toContain('share');
+  });
+});
+
+describe('isHoldingType', () => {
+  it('accepts every listed holding type', () => {
+    for (const type of holdingTypes) {
+      expect(isHoldingType(type)).toBe(true);
     }
+  });
+
+  it('rejects a removed type, an empty string, and an inherited object key', () => {
+    expect(isHoldingType('share')).toBe(false);
+    expect(isHoldingType('')).toBe(false);
+    expect(isHoldingType('constructor')).toBe(false);
   });
 });
 
@@ -82,7 +95,6 @@ describe('sync-only holding types', () => {
     expect(isSyncOnlyHoldingType('property_item')).toBe(false);
     expect(isSyncOnlyHoldingType('metal')).toBe(false);
     expect(isSyncOnlyHoldingType('loan')).toBe(false);
-    expect(isSyncOnlyHoldingType('share')).toBe(false);
   });
 });
 
@@ -120,17 +132,12 @@ describe('creatableHoldingTypesForAccount', () => {
     expect(creatableHoldingTypesForAccount('debt', true)).toEqual(['loan']);
   });
 
-  it('offers share, bond, and cash on a broker account, whatever the broker', () => {
+  it('offers bond and cash on a broker account, whatever the broker', () => {
     expect(creatableHoldingTypesForAccount('broker', false, 'trading212')).toEqual([
-      'share',
       'bond',
       'cash',
     ]);
-    expect(creatableHoldingTypesForAccount('broker', false, null)).toEqual([
-      'share',
-      'bond',
-      'cash',
-    ]);
+    expect(creatableHoldingTypesForAccount('broker', false, null)).toEqual(['bond', 'cash']);
   });
 
   it('drops metal from a bank account with no bankId, other, an unlisted bankId, or monobank', () => {

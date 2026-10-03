@@ -83,7 +83,7 @@ export const en = {
       exportButton: 'Export data',
       includeSecrets: 'Include saved passwords & keys',
       includeSecretsHint:
-        'Adds your saved Monobank token, Binance API keys, and EODHD key to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
+        'Adds your saved Monobank token and Binance API keys to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
       keyLabel: 'Encryption key',
       keyWarning:
         'Save this key somewhere safe — it will not be shown again, and it is the only way to unlock this file.',
@@ -125,32 +125,6 @@ export const en = {
       privacyPolicy: 'Privacy policy',
     },
     language: 'Language',
-    // The Settings row label; `sharePricesScreen.title` is the same screen's
-    // nav title (see `dataExport.rowLabel`).
-    sharePrices: 'Share prices',
-    sharePricesScreen: {
-      checkKeyAgain: 'Check again',
-      intro:
-        'Kiko gets end-of-day share prices from EODHD with your own API key. To do this, Kiko sends EODHD your share tickers, the date range of the prices it needs (from your first purchase on), and your searches, but never how many shares you hold or what they cost. You sign up with EODHD and accept its terms. The key is saved only on this iPhone and in exports that include keys.',
-      invalidKeyError: 'EODHD did not accept this key.',
-      keyLabel: 'API key',
-      keyPlaceholder: 'Paste your EODHD key',
-      keyRejectedMessage:
-        'EODHD no longer accepts the saved key, so share prices are not updating. Save a new key, or check this one again.',
-      keyRequiredError: 'Enter an API key.',
-      keySaved: 'Key saved',
-      pasteAccessibilityLabel: 'Paste key',
-      // `time` is midnight GMT, when EODHD's day starts over, in the device's time.
-      quotaUsedUpMessage: 'Today’s EODHD requests are used up. Prices update again after {{time}}.',
-      removeConfirmBody: 'Shares priced by EODHD keep their last price.',
-      removeConfirmTitle: 'Remove Key?',
-      removeKey: 'Remove key',
-      requestsToday: 'Requests today: {{used}} / {{limit}}',
-      saveKey: 'Save key',
-      signUpHint: 'Get a free key at {{url}}.',
-      title: 'Share Prices',
-      unavailableError: 'Could not reach EODHD. Try again.',
-    },
     system: 'System',
     title: 'Settings',
   },
@@ -300,7 +274,7 @@ export const en = {
       kindSheetTitle: 'Account Kind',
       kindSubtitle: {
         bank: 'Synced or imported from a bank statement.',
-        broker: 'Shares, bonds, and cash at a broker.',
+        broker: 'Bonds and cash at a broker.',
         cash: 'Cash you hold outside a bank.',
         crypto: 'A wallet or exchange account.',
         debt: 'A loan or debt you owe.',
@@ -441,7 +415,17 @@ export const en = {
       metalUnitG: 'Grams',
       metalUnitOz: 'Troy ounces',
       monthly: 'Monthly',
-      namePlaceholder: 'Apple shares',
+      namePlaceholders: {
+        bond: 'Government bonds',
+        card: 'Salary card',
+        cash: 'Cash at home',
+        cryptoAsset: 'Bitcoin',
+        deposit: '6-month deposit',
+        jar: 'Vacation jar',
+        loan: 'Mortgage',
+        metal: 'Gold bar',
+        propertyItem: 'Apartment or car',
+      },
       ownership: 'Ownership',
       ownershipDenominator: 'Out of',
       ownershipEffectiveDate: 'Effective from',
@@ -483,40 +467,6 @@ export const en = {
       remove: 'Remove',
       removeContribution: 'Remove contribution {{index}}',
       semiannually: 'Semiannually',
-      share: 'Share',
-      // The same mismatch on an edit, where the currency is read-only: a new
-      // share in the listing's currency is the other way out.
-      shareCurrencyMismatchEditError:
-        'EODHD prices this share in {{currency}}. Set the price source to “Manual”, or delete this share and add it again in {{currency}}.',
-      // Under the Currency field when the EODHD listing is priced in another
-      // currency (a pence listing fits pounds): such a share never gets a price.
-      shareCurrencyMismatchError:
-        'EODHD prices this share in {{currency}}. Choose {{currency}}, or set the price source to “Manual”.',
-      // The same place, when no currency Kiko has fits the listing's unit
-      // (cents, agorot): only a manual price source works.
-      shareCurrencyUnsupportedError:
-        'EODHD prices this share in {{currency}}, which Kiko does not support. Set the price source to “Manual”.',
-      shareFind: 'Find by ISIN or ticker',
-      shareFindEmpty: 'Nothing found.',
-      shareFindKeyRejected:
-        'EODHD does not accept the saved key. Check it in Settings → “Share prices”.',
-      shareFindPlaceholder: 'US0378331005',
-      shareFindQuery: 'ISIN or ticker',
-      // `time` is midnight GMT, when EODHD's day starts over, in the device's time.
-      shareFindQuotaExhausted:
-        'Today’s EODHD requests are used up. Search works again after {{time}}.',
-      shareFindSheetTitle: 'Find Share',
-      shareFindSubmit: 'Search',
-      shareFindUnavailable: 'Search is unavailable. Enter the ticker yourself.',
-      // Shown under the price source in EODHD mode until a key is saved, so
-      // the EODHD option is never a dead control.
-      shareNoKeyHint:
-        'Add your EODHD key in Settings → “Share prices” to get prices automatically.',
-      sharePriceSource: 'Price source',
-      sharePriceSourceEodhd: 'EODHD',
-      shareTicker: 'Ticker',
-      shareTickerError: 'Enter a ticker, for example AAPL.US.',
-      shareTickerPlaceholder: 'AAPL.US',
       switchToManual: 'Switch to manual',
       termMonths: 'Term',
       termMonthsError: 'Enter a whole number of months greater than 0.',
@@ -564,13 +514,7 @@ export const en = {
       loanTitle: 'Update Outstanding',
       loanValue: 'Outstanding',
       loanValueError: 'Outstanding must be 0 or greater.',
-      // Share-specific title/field/button/error, applied once the holding
-      // loads as a share, so no wording still says "Value".
-      pricePerShare: 'Price per share',
-      pricePerShareError: 'Price must be greater than 0.',
       save: 'Save value',
-      shareSave: 'Save price',
-      shareTitle: 'Update Price',
       title: 'Update Value',
       value: 'Value',
       valueError: 'Value must be greater than 0.',
@@ -822,18 +766,10 @@ export const en = {
     // transactions the auto-link matcher (or a manual pick) linked to this
     // loan, newest first.
     linkedPayments: 'Linked Payments',
-    // A notice on an EODHD share held in another currency than its listing:
-    // it is never priced, and its currency cannot change.
-    listingCurrencyMismatch:
-      'EODHD prices this share in {{currency}}, so its value does not update. Edit it and set the price source to “Manual” (its cost stays), or delete it and add it again in {{currency}}.',
-    // The same notice when no currency Kiko has fits the listing's unit, so a
-    // new share in that currency is no way out.
-    listingCurrencyUnsupported:
-      'EODHD prices this share in {{currency}}, which Kiko does not support, so its value does not update. Edit it and set the price source to “Manual” (its cost stays).',
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',
-    // A notice on a share or metal whose stored lots hold a sale larger than
+    // A notice on a metal whose stored lots hold a sale larger than
     // the quantity before it; only that lot's Edit or Delete fixes its costs.
     oversizedSale: 'A sale here is larger than what was held before it. Edit or delete that sale.',
     // A property owned in part: its cost basis and value times the share.
@@ -852,8 +788,6 @@ export const en = {
     shareChanges: 'Share Changes',
     // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
     shareSince: 'since {{date}}',
-    // A share's lot row for a buy at no cost: a stock split.
-    split: 'Split',
     tax: 'Tax',
     taxWithheld: 'Tax withheld',
     topUp: 'Top-up',
@@ -865,8 +799,6 @@ export const en = {
     // manual outstanding series via `PricePointForm` (same mechanism as
     // `updateValue` below, for a priced holding).
     updateOutstanding: 'Update outstanding',
-    // A manual share's footer action beside "Add lot"; opens `PricePointForm`.
-    updatePrice: 'Update price',
     updateValue: 'Update value',
     // A priced type's (property, metal) breakdown value row — its current
     // priced value, distinct from `grossValue` (the deposit/bond breakdown's

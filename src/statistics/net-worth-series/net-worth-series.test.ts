@@ -1388,19 +1388,19 @@ describe('buildNetWorthSeries', () => {
       expect(amountAt(series, now)).toBe(200);
     });
 
-    // Deleting a sold-out share erased its lots while the broker cash kept the
-    // buy debit, so every bucket between buy and sale dropped by the share's
+    // Deleting a sold-out lot holding erased its lots while the cash kept the
+    // buy debit, so every bucket between buy and sale dropped by the holding's
     // value; closing it keeps them.
-    it('keeps every past bucket of a sold-out manual share closed after its sale', () => {
+    it('keeps every past bucket of a sold-out manually priced holding closed after its sale', () => {
       const month = (index: number, day: number): number => Date.UTC(2026, index, day);
       const buy = month(1, 1);
       const sale = month(5, 1);
-      const share = holding({
-        id: 'share',
-        type: 'share',
+      const lotHolding = holding({
+        id: 'lot-holding',
+        type: 'property_item',
         currency: 'UAH',
         metadata: {
-          quoteSource: 'manual',
+          category: 'real_estate',
           lots: [
             { day: buy, quantityDelta: '10', costMinorUnits: 10_000_00 },
             { day: sale, quantityDelta: '-10', costMinorUnits: -10_000_00 },
@@ -1420,23 +1420,23 @@ describe('buildNetWorthSeries', () => {
       ]);
       const book = buildPriceBook([
         {
-          instrument: holdingInstrument('share'),
+          instrument: holdingInstrument('lot-holding'),
           day: buy,
           price: '1000',
           currency: 'UAH',
           source: 'manual',
         },
         {
-          instrument: holdingInstrument('share'),
+          instrument: holdingInstrument('lot-holding'),
           day: month(3, 1),
           price: '1200',
           currency: 'UAH',
           source: 'manual',
         },
       ]);
-      const seriesWith = (shareClosedAt: number | null): number[] =>
+      const seriesWith = (closedAt: number | null): number[] =>
         buildNetWorthSeries({
-          holdings: [brokerCash, { ...share, closedAt: shareClosedAt }],
+          holdings: [brokerCash, { ...lotHolding, closedAt }],
           transactionsByHolding: ledger,
           historyRows: [],
           baseCurrency: 'UAH',
@@ -1453,7 +1453,7 @@ describe('buildNetWorthSeries', () => {
     });
   });
 
-  it('ends on the net worth Home shows for a bond, a share, and a closed holding', () => {
+  it('ends on the net worth Home shows for a bond, a lot holding, and a closed holding', () => {
     const start = new Date(2026, 8, 1).getTime();
     const day = (offset: number, hour = 0): number => addLocalDays(start, offset) + hour * HOUR;
     const now = day(29, 12);
@@ -1466,27 +1466,27 @@ describe('buildNetWorthSeries', () => {
       purchaseDate: day(9, 18),
       purchasePriceMinorUnits: 1_078_68,
     });
-    const share = holding({
-      id: 'share',
-      type: 'share',
+    const lotHolding = holding({
+      id: 'lot-holding',
+      type: 'property_item',
       metadata: {
-        quoteSource: 'manual',
+        category: 'real_estate',
         lots: [{ day: dayKeyOf(day(11)), quantityDelta: '10', costMinorUnits: 1_500_00 }],
       },
     });
     const brokerCash = holding({ id: 'broker', balanceMinorUnits: 500_00 });
     const closedJar = holding({ id: 'jar', balanceMinorUnits: 300_00, closedAt: day(19, 12) });
-    const holdings = [card, bond, share, brokerCash, closedJar];
+    const holdings = [card, bond, lotHolding, brokerCash, closedJar];
     const book = buildPriceBook([
       {
-        instrument: holdingInstrument('share'),
+        instrument: holdingInstrument('lot-holding'),
         day: dayKeyOf(day(11)),
         price: '150',
         currency: 'USD',
         source: 'manual',
       },
       {
-        instrument: holdingInstrument('share'),
+        instrument: holdingInstrument('lot-holding'),
         day: dayKeyOf(day(19)),
         price: '200',
         currency: 'USD',

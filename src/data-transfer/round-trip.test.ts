@@ -115,11 +115,11 @@ const fixturePayload = (): ExportPayload => ({
     ],
     pricePoints: [
       {
-        instrument: 'share:AAPL',
+        instrument: 'metal:silver',
         day: 1700000000000,
         price: '190.00',
         currency: 'USD',
-        source: 'eodhd',
+        source: 'nbu',
       } as never,
     ],
     bondRegister: [
@@ -156,7 +156,6 @@ const fixturePayload = (): ExportPayload => ({
   secrets: {
     monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
     binanceCredentials: [],
-    eodhdKey: 'fake-eodhd-key-0000',
   },
 });
 
@@ -214,20 +213,6 @@ describe('data-transfer full-pipeline round trip', () => {
     const roundTripped = JSON.parse(utf8Decode(decryptEnvelope(envelope, key))) as ExportPayload;
 
     expect(roundTripped).toEqual(legacyPayload);
-  });
-
-  it('round-trips an export made before the EODHD key existed with no key added', () => {
-    const key = generateExportKey();
-    const payload = fixturePayload();
-    const legacySecrets: Record<string, unknown> = { ...payload.secrets };
-    delete legacySecrets.eodhdKey;
-    const legacyPayload = { ...payload, secrets: legacySecrets } as unknown as ExportPayload;
-
-    const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(legacyPayload)), key);
-    const roundTripped = JSON.parse(utf8Decode(decryptEnvelope(envelope, key))) as ExportPayload;
-
-    expect(roundTripped).toEqual(legacyPayload);
-    expect(roundTripped.secrets).not.toHaveProperty('eodhdKey');
   });
 
   it('rejects a tampered ciphertext', () => {

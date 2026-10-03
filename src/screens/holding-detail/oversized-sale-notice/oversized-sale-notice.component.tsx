@@ -9,7 +9,7 @@ import type { OversizedSaleNoticeProps } from './oversized-sale-notice.props';
 
 // Only these types show their lots as rows with their own Edit and Delete,
 // the one way to fix a sale.
-const LOT_ROW_TYPES: readonly HoldingRow['type'][] = ['share', 'metal'];
+const LOT_ROW_TYPES: readonly HoldingRow['type'][] = ['metal'];
 
 const hasOversizedSale = ({
   type,

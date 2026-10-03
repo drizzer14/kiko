@@ -1,6 +1,4 @@
-import { logFailure } from '@kiko/diagnostics';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { confirmDailyLimit } from '@kiko/prices/daily-limit';
 import type { FiatRatesOfRun } from '@kiko/rates/rates-refresh';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
@@ -23,22 +21,9 @@ const gainedCurrency = (before: Set<string> | null, after: Set<string> | null): 
   return [...after].some((currency) => !before.has(currency));
 };
 
-// The share refresh never reads `/user` itself, so a daily limit left
-// unconfirmed (a restored key, or one saved during a limit error) is read
-// first, at no call; a failed check must not hold the refresh back.
-const refreshAfterLimitCheck = async (
-  logTag: string,
-  fiatOfRun?: FiatRatesOfRun,
-): Promise<void> => {
-  await confirmDailyLimit().catch((error: unknown) =>
-    logFailure(`${logTag} daily limit check failed`, error),
-  );
-  await refreshMarketData({ throttled: true, metals: true, shares: true, fiatOfRun });
-};
-
 /**
  * One sync fan-out (`useAutoSync` on open, `useSyncAll` on a pull) with the
- * market data refresh (rates, metals, shares) running BESIDE it. The refresh
+ * market data refresh (rates, metals) running BESIDE it. The refresh
  * needs none of the fan-out's output, and the provider requests are gated at
  * one per minute per token, so starting it after the fan-out would leave rates
  * and prices stale for as many minutes as there are cards. Both never reject,
@@ -57,10 +42,9 @@ const refreshAfterLimitCheck = async (
  */
 export const settleJobsBesideMarketRefresh = async (
   jobs: SyncJob[],
-  logTag: string,
 ): Promise<PromiseSettledResult<unknown>[]> => {
   if (jobs.length === 0) {
-    await refreshAfterLimitCheck(logTag);
+    await refreshMarketData({ throttled: true, metals: true });
 
     return [];
   }
@@ -75,11 +59,11 @@ export const settleJobsBesideMarketRefresh = async (
       jobs.map((job) => job.run),
       SYNC_CONCURRENCY_LIMIT,
     ),
-    refreshAfterLimitCheck(logTag, fiatOfRun),
+    refreshMarketData({ throttled: true, metals: true, fiatOfRun }),
   ]);
 
   if (gainedCurrency(await before, await heldCurrencies())) {
-    await refreshMarketData({ throttled: true, metals: false, shares: false, fiatOfRun });
+    await refreshMarketData({ throttled: true, metals: false, fiatOfRun });
   }
 
   return results;

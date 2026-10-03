@@ -10,7 +10,7 @@ type UsePriceBookResult = { book: PriceBook; isLoading: boolean };
 /**
  * For a screen that values the PAST (statistics). Every screen that values
  * only now reads `useCurrentPriceBook` (`../use-current-price-book`) instead:
- * this table grows with every daily share and metal close.
+ * this table grows with every daily metal close.
  *
  * Reactive `PriceBook`, subscribed to the whole `price_points` table AND to
  * every linked loan payment (one read across all loans — a loan's

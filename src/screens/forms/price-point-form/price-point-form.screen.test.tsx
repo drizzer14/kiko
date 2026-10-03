@@ -2,10 +2,8 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
-import type { PricePointRow } from '@kiko/db';
+import { dayKeyOf } from '@kiko/prices/price-book';
 import { pricePointsRepo } from '@kiko/prices/price-points-repo';
-import { buildPriceBook, dayKeyOf } from '@kiko/prices/price-book';
-import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import PricePointFormScreen from './price-point-form.screen';
@@ -191,77 +189,11 @@ describe('PricePointFormScreen', () => {
     expect(pricePointsRepo.upsertMany).not.toHaveBeenCalled();
   });
 
-  it('asks a share for its price per share and writes it on its own holding:<id> series', async () => {
+  it('reads a row of a type this build no longer has as a plain value', async () => {
     seed({ id: 'h-1', currency: 'USD', type: 'share' });
     const utils = await renderScreen();
 
-    await fireEvent.changeText(utils.getByLabelText('Price per share'), '187.25');
-    await fireEvent.press(utils.getByText('Save price'));
-
-    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Update Price' });
-    expect(pricePointsRepo.upsertMany).toHaveBeenCalledWith([
-      expect.objectContaining({
-        instrument: 'holding:h-1',
-        price: '187.25',
-        currency: 'USD',
-        source: 'manual',
-      }),
-    ]);
-  });
-
-  describe('a share price past the currency minor unit', () => {
-    const shareHolding = {
-      id: 'h-1',
-      type: 'share',
-      currency: 'USD',
-      balanceMinorUnits: 0,
-      metadata: {
-        quoteSource: 'manual',
-        lots: [{ day: dayKeyOf(today()), quantityDelta: '3', costMinorUnits: 100_000 }],
-      },
-    } as const;
-
-    const savePrice = async (price: string): Promise<PricePointRow> => {
-      seed(shareHolding);
-      const utils = await renderScreen();
-
-      await fireEvent.changeText(utils.getByLabelText('Price per share'), price);
-      await fireEvent.press(utils.getByText('Save price'));
-
-      return (pricePointsRepo.upsertMany as jest.Mock).mock.calls[0][0][0];
-    };
-
-    const breakdownWith = (written: PricePointRow) =>
-      holdingValueBreakdown(shareHolding, Date.now(), buildPriceBook([written]));
-
-    it('stores a penny price as typed, so the share values above 0', async () => {
-      const written = await savePrice('0.004');
-
-      expect(written.price).toBe('0.004');
-      expect(breakdownWith(written).gross.minorUnits).toBeGreaterThan(0);
-    });
-
-    it('stores every typed place, never rounded to cents', async () => {
-      expect((await savePrice('12.345')).price).toBe('12.345');
-    });
-
-    it('stores the cost per share exactly, so the share shows no loss it never had', async () => {
-      const written = await savePrice('333.33333333');
-      const { gross, principalOrCost } = breakdownWith(written);
-
-      expect(written.price).toBe('333.33333333');
-      expect(gross.minorUnits).toBe(principalOrCost.minorUnits);
-    });
-  });
-
-  it('blocks a share price of 0 with the price error', async () => {
-    seed({ id: 'h-1', currency: 'USD', type: 'share' });
-    const utils = await renderScreen();
-
-    await fireEvent.press(utils.getByText('Save price'));
-
-    expect(utils.getByText('Price must be greater than 0.')).toBeTruthy();
-    expect(pricePointsRepo.upsertMany).not.toHaveBeenCalled();
+    expect(utils.getByText('Save value')).toBeTruthy();
   });
 
   // A loan's field label, Save button, and error string all read

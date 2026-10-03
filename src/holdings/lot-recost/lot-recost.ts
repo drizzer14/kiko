@@ -12,7 +12,7 @@ type LotHolding = Pick<HoldingRow, 'id' | 'currency' | 'metadata'>;
 type RecostedHolding = { id: string; metadata: Record<string, unknown> };
 
 // The holding types that keep their quantity and cost in `metadata.lots`.
-const LOT_HOLDING_TYPES: HoldingType[] = ['share', 'metal', 'property_item'];
+const LOT_HOLDING_TYPES: HoldingType[] = ['metal', 'property_item'];
 
 const hasSameCosts = (stored: readonly Lot[], recosted: readonly Lot[]): boolean =>
   stored.every((lot, index) => lot.costMinorUnits === recosted[index]?.costMinorUnits);

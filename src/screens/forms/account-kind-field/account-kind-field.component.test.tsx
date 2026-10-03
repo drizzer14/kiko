@@ -33,7 +33,7 @@ const subtitles: Record<AccountKind, string> = {
   property: 'Real estate, car, valuables, money you lent',
   metals: 'Gold, silver, platinum, palladium',
   debt: 'A loan or debt you owe.',
-  broker: 'Shares, bonds, and cash at a broker.',
+  broker: 'Bonds and cash at a broker.',
 };
 
 const icons: Record<AccountKind, string> = {

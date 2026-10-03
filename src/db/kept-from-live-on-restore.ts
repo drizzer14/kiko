@@ -10,8 +10,6 @@ import type { SettingsRow } from './schema';
 export const KEPT_FROM_LIVE_ON_RESTORE = [
   // Turning the lock off needs the owner to confirm in Settings.
   'lockEnabled',
-  // Counts the calls this device's own EODHD key spent today.
-  'quoteQuota',
   // When iOS first allowed notifications on this device: the reminders'
   // ignored count starts from it.
   'notificationsDeliverableSince',

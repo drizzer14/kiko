@@ -11,10 +11,10 @@ import { darkTheme } from '@kiko/design-system/theme';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
-import type { HoldingType } from '@kiko/holdings/holding-type';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
+import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -51,7 +51,6 @@ jest.mock('@kiko/holdings/repo', () => ({
     update: jest.fn(),
     updateWithBalanceDelta: jest.fn(),
     updateMetadataFromStored: jest.fn(),
-    updateShareFromStored: jest.fn(),
     updateLoan: jest.fn(),
     balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
       currency: row.currency,
@@ -180,28 +179,11 @@ const mockRefreshMarketData = jest.fn().mockResolvedValue(right(undefined));
 jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
-const mockConfirmDailyLimit = jest.fn().mockResolvedValue(undefined);
-jest.mock('@kiko/prices/daily-limit', () => ({
-  confirmDailyLimit: (...args: unknown[]) => mockConfirmDailyLimit(...args),
-}));
 // The loan auto-link matcher's own follow-up after a loan create/edit —
 // spied the same way, so a test can assert it fires only for `type: 'loan'`.
 const mockRunLoanAutoLink = jest.fn().mockResolvedValue(undefined);
 jest.mock('@kiko/loans/use-loan-auto-link', () => ({
   runLoanAutoLink: (...args: unknown[]) => mockRunLoanAutoLink(...args),
-}));
-// The share form reads only whether an EODHD key is saved; no key by default.
-let mockHasEodhdKey = false;
-jest.mock('@kiko/prices/eodhd-key', () => ({
-  hasEodhdKey: () => Promise.resolve(mockHasEodhdKey),
-}));
-const mockSearchShares = jest.fn();
-// A hand-typed EODHD ticker's unit is looked up at Save; no key by default.
-const mockLookupShareUnit = jest.fn().mockResolvedValue(undefined);
-jest.mock('@kiko/prices/share-search', () => ({
-  ...jest.requireActual('@kiko/prices/share-search'),
-  searchShares: (...args: unknown[]) => mockSearchShares(...args),
-  lookupShareUnit: (...args: unknown[]) => mockLookupShareUnit(...args),
 }));
 // Auto-mocked so the scroll-order tests below can assert on WHICH field ref a
 // rejected Save targets, without a real ScrollView/measureLayout in the test
@@ -249,7 +231,6 @@ beforeEach(() => {
   mockPricePointsLoading = false;
   mockAllHoldings = [];
   mockAllAccounts = [];
-  mockHasEodhdKey = false;
 });
 
 const renderScreen = () =>
@@ -2604,10 +2585,7 @@ describe('HoldingFormScreen metal', () => {
   });
 });
 
-describe('HoldingFormScreen share', () => {
-  const NO_KEY_HINT =
-    'Add your EODHD key in Settings → “Share prices” to get prices automatically.';
-
+describe('HoldingFormScreen broker', () => {
   beforeEach(() => {
     createMock.mockClear();
     navigation.goBack.mockClear();
@@ -2616,445 +2594,15 @@ describe('HoldingFormScreen share', () => {
     mockAccountBankId = 'trading212';
   });
 
-  it('offers share first on a broker account and selects it by default', async () => {
+  it('offers bond first, then cash, on a broker account', async () => {
     const screen = await renderScreen();
-
-    expect(screen.getByText('Price source')).toBeTruthy();
 
     await openHoldingTypeSheet(screen);
 
     expect(typeOptionIds(screen)).toEqual([
-      'holding-type-field-option-share',
       'holding-type-field-option-bond',
       'holding-type-field-option-cash',
     ]);
-  });
-
-  it('creates a manual share with one lot and a first price of cost per share', async () => {
-    const screen = await renderScreen();
-
-    await fill(screen, 'Name', 'Apple');
-    await fireEvent.press(screen.getByText('Manual'));
-    await fill(screen, 'Quantity', '3');
-    await fill(screen, 'Total cost', '1000');
-    await fireEvent.press(screen.getByText('Save'));
-
-    const today = dayKeyOf(Date.now());
-
-    expect(createMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'share',
-        currency: 'UAH',
-        metadata: {
-          quoteSource: 'manual',
-          lots: [{ day: today, quantityDelta: '3', costMinorUnits: 100_000 }],
-        },
-        firstPricePoint: { day: today, price: '333.33333333' },
-      }),
-    );
-    expect(navigation.goBack).toHaveBeenCalled();
-  });
-
-  it('starts a new share in manual mode with no saved key', async () => {
-    const screen = await renderScreen();
-
-    await fill(screen, 'Name', 'Apple');
-    await fill(screen, 'Quantity', '3');
-    await fill(screen, 'Total cost', '1000');
-    await fireEvent.press(screen.getByText('Save'));
-
-    expect(screen.queryByLabelText('Ticker')).toBeNull();
-    expect(createMock).toHaveBeenCalledWith(
-      expect.objectContaining({ metadata: expect.objectContaining({ quoteSource: 'manual' }) }),
-    );
-  });
-
-  it('creates an EODHD share with its ticker and no price point, once a key is saved', async () => {
-    mockHasEodhdKey = true;
-    const screen = await renderScreen();
-
-    await fill(screen, 'Name', 'Apple');
-    await screen.findByLabelText('Ticker');
-    await fill(screen, 'Ticker', 'aapl.us');
-    await fill(screen, 'Quantity', '3');
-    await fill(screen, 'Total cost', '1000');
-    await fireEvent.press(screen.getByText('Save'));
-
-    expect(createMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'share',
-        metadata: {
-          quoteSource: 'eodhd',
-          symbol: 'AAPL.US',
-          lots: [{ day: dayKeyOf(Date.now()), quantityDelta: '3', costMinorUnits: 100_000 }],
-        },
-      }),
-    );
-    expect(createMock.mock.calls[0][0]).not.toHaveProperty('firstPricePoint');
-  });
-
-  it.each(['', 'AAPL'])(
-    'blocks Save on the ticker %p in EODHD mode, with its error',
-    async (ticker) => {
-      const screen = await renderScreen();
-
-      await fill(screen, 'Name', 'Apple');
-      await fireEvent.press(screen.getByText('EODHD'));
-      await fill(screen, 'Ticker', ticker);
-      await fill(screen, 'Quantity', '3');
-      await fill(screen, 'Total cost', '1000');
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(screen.getByText('Enter a ticker, for example AAPL.US.')).toBeTruthy();
-      expect(createMock).not.toHaveBeenCalled();
-    },
-  );
-
-  it('blocks Save on an ISIN with a wrong check digit', async () => {
-    const screen = await renderScreen();
-
-    await fill(screen, 'Name', 'Apple');
-    await fireEvent.press(screen.getByText('Manual'));
-    await fill(screen, 'ISIN', 'US0378331006');
-    await fill(screen, 'Quantity', '3');
-    await fill(screen, 'Total cost', '1000');
-    await fireEvent.press(screen.getByText('Save'));
-
-    expect(screen.getByText('ISIN check digit is wrong.')).toBeTruthy();
-    expect(createMock).not.toHaveBeenCalled();
-  });
-
-  it('shows a Settings hint once EODHD is picked with no saved key', async () => {
-    const screen = await renderScreen();
-
-    await fireEvent.press(screen.getByText('EODHD'));
-
-    expect(await screen.findByText(NO_KEY_HINT)).toBeTruthy();
-  });
-
-  it('shows the EODHD option and no hint once a key is saved', async () => {
-    mockHasEodhdKey = true;
-    const screen = await renderScreen();
-
-    await waitFor(() => expect(screen.queryByText(NO_KEY_HINT)).toBeNull());
-    expect(screen.getByText('EODHD')).toBeTruthy();
-  });
-
-  it('fills a new share from a picked search result and saves its price unit', async () => {
-    mockHasEodhdKey = true;
-    mockSearchShares.mockResolvedValue({
-      status: 'ok',
-      listings: [
-        {
-          symbol: 'VOD.LSE',
-          name: 'Vodafone Group PLC',
-          isin: 'GB00BH4HKS39',
-          currency: 'GBP',
-          quoteCurrency: 'GBX',
-        },
-      ],
-    });
-    const screen = await renderScreen();
-
-    await fireEvent.press(await screen.findByText('Find by ISIN or ticker'));
-    await fill(screen, 'ISIN or ticker', 'GB00BH4HKS39');
-    await fireEvent.press(screen.getByText('Search'));
-    await fireEvent.press(screen.getByTestId('share-search-option-VOD.LSE'));
-    await fill(screen, 'Quantity', '10');
-    await fill(screen, 'Total cost', '120');
-    await fireEvent.press(screen.getByText('Save'));
-
-    expect(mockSearchShares).toHaveBeenCalledWith('GB00BH4HKS39', expect.arrayContaining(['GBP']));
-    expect(createMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Vodafone Group PLC',
-        type: 'share',
-        currency: 'GBP',
-        metadata: {
-          quoteSource: 'eodhd',
-          symbol: 'VOD.LSE',
-          isin: 'GB00BH4HKS39',
-          quoteCurrency: 'GBX',
-          lots: [{ day: dayKeyOf(Date.now()), quantityDelta: '10', costMinorUnits: 12_000 }],
-        },
-      }),
-    );
-  });
-
-  it('alerts and stays open when a lot stored by the time of the write is unreadable', async () => {
-    const lot = { day: dayKeyOf(Date.now()), quantityDelta: '3', costMinorUnits: 100_000 };
-    const shareMetadata = { quoteSource: 'eodhd', symbol: 'AAPL.US', lots: [lot] };
-    const updateShareMock = holdingsRepo.updateShareFromStored as jest.Mock;
-    let written: unknown;
-    updateShareMock.mockImplementationOnce(async (_holdingId, _patch, buildMetadata) => {
-      written = buildMetadata({ ...shareMetadata, lots: [lot, { day: 'x' }] });
-    });
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    const screen = await renderEdit({
-      id: 'h1',
-      accountId: 'acc-1',
-      name: 'Apple',
-      type: 'share',
-      currency: 'USD',
-      balanceMinorUnits: 0,
-      icon: null,
-      color: null,
-      metadata: shareMetadata,
-    });
-
-    await fireEvent.press(screen.getByText('Save'));
-
-    await waitFor(() =>
-      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
-    );
-    expect(written).toBeUndefined();
-    expect(navigation.goBack).not.toHaveBeenCalled();
-    alertSpy.mockRestore();
-  });
-
-  it('offers fiat currencies only for a share', async () => {
-    const screen = await renderScreen();
-
-    await fireEvent.press(screen.getByTestId('holding-currency-field'));
-    await fireEvent.changeText(screen.getByPlaceholderText('Search by code or name'), 'BTC');
-
-    expect(screen.queryByTestId('currency-option-BTC')).toBeNull();
-  });
-
-  describe('currency against the EODHD listing', () => {
-    const USD_ERROR =
-      'EODHD prices this share in USD. Choose USD, or set the price source to “Manual”.';
-
-    const pickCurrency = async (screen: Screen, code: string) => {
-      await fireEvent.press(screen.getByTestId('holding-currency-field'));
-      await fireEvent.changeText(screen.getByPlaceholderText('Search by code or name'), code);
-      await fireEvent.press(screen.getByTestId(`currency-option-${code}`));
-    };
-
-    const typeShare = async (screen: Screen) => {
-      await fill(screen, 'Name', 'Apple');
-      await screen.findByLabelText('Ticker');
-      await fill(screen, 'Ticker', 'AAPL.US');
-      await fill(screen, 'Quantity', '3');
-      await fill(screen, 'Total cost', '1000');
-    };
-
-    beforeEach(() => {
-      mockHasEodhdKey = true;
-      mockLookupShareUnit.mockReset();
-      (scrollToField as jest.Mock).mockClear();
-    });
-
-    afterEach(() => {
-      mockHasEodhdKey = false;
-      mockLookupShareUnit.mockResolvedValue(undefined);
-    });
-
-    it('blocks Save on the Currency field when a picked listing is held in another currency', async () => {
-      mockSearchShares.mockResolvedValue({
-        status: 'ok',
-        listings: [{ symbol: 'AAPL.US', name: 'Apple Inc', currency: 'USD', quoteCurrency: 'USD' }],
-      });
-      const screen = await renderScreen();
-
-      await fireEvent.press(await screen.findByText('Find by ISIN or ticker'));
-      await fill(screen, 'ISIN or ticker', 'AAPL');
-      await fireEvent.press(screen.getByText('Search'));
-      await fireEvent.press(screen.getByTestId('share-search-option-AAPL.US'));
-      await pickCurrency(screen, 'EUR');
-      await fill(screen, 'Quantity', '3');
-      await fill(screen, 'Total cost', '1000');
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(USD_ERROR);
-      expect(createMock).not.toHaveBeenCalled();
-      expect(mockLookupShareUnit).not.toHaveBeenCalled();
-    });
-
-    it('looks a hand-typed ticker up at Save and stores the unit it found', async () => {
-      mockLookupShareUnit.mockResolvedValue('USD');
-      const screen = await renderScreen();
-
-      await typeShare(screen);
-      await pickCurrency(screen, 'USD');
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(mockLookupShareUnit).toHaveBeenCalledWith('AAPL.US');
-      expect(createMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          currency: 'USD',
-          metadata: expect.objectContaining({ symbol: 'AAPL.US', quoteCurrency: 'USD' }),
-        }),
-      );
-    });
-
-    it('blocks a hand-typed ticker priced in another currency, then saves once it is chosen', async () => {
-      mockLookupShareUnit.mockResolvedValue('USD');
-      const screen = await renderScreen();
-
-      await typeShare(screen);
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(USD_ERROR);
-      expect(createMock).not.toHaveBeenCalled();
-      expect(navigation.goBack).not.toHaveBeenCalled();
-
-      await pickCurrency(screen, 'USD');
-
-      expect(screen.queryByTestId('holding-currency-field-error')).toBeNull();
-
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(mockLookupShareUnit).toHaveBeenCalledTimes(1);
-      expect(createMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          currency: 'USD',
-          metadata: expect.objectContaining({ quoteCurrency: 'USD' }),
-        }),
-      );
-    });
-
-    it('offers only Manual when the listing is priced in a unit no share currency can hold', async () => {
-      mockLookupShareUnit.mockResolvedValue('ZAC');
-      const screen = await renderScreen();
-
-      await typeShare(screen);
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(
-        'EODHD prices this share in ZAC, which Kiko does not support. Set the price source to “Manual”.',
-      );
-      expect(createMock).not.toHaveBeenCalled();
-    });
-
-    it('scrolls to the Currency field when the lookup blocks Save', async () => {
-      mockLookupShareUnit.mockResolvedValue('USD');
-      const screen = await renderScreen();
-
-      await typeShare(screen);
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(scrollToField).toHaveBeenCalledTimes(1);
-    });
-
-    it('shows the Save spinner while the lookup runs', async () => {
-      let answer: (unit: string | undefined) => void = () => undefined;
-      mockLookupShareUnit.mockReturnValue(
-        new Promise<string | undefined>((resolve) => {
-          answer = resolve;
-        }),
-      );
-      const screen = await renderScreen();
-
-      await typeShare(screen);
-      await pickCurrency(screen, 'USD');
-
-      expect(screen.queryByTestId('button-loading-spinner')).toBeNull();
-
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(screen.getByTestId('button-loading-spinner')).toBeTruthy();
-      expect(
-        StyleSheet.flatten(screen.getByRole('button', { name: 'Save' }).props.style).opacity,
-      ).toBeUndefined();
-
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(mockLookupShareUnit).toHaveBeenCalledTimes(1);
-
-      await act(async () => {
-        answer('USD');
-      });
-
-      expect(createMock).toHaveBeenCalled();
-    });
-
-    it('shows no Save spinner while a manual share is written', async () => {
-      mockHasEodhdKey = false;
-      createMock.mockReturnValueOnce(new Promise(() => undefined));
-      const screen = await renderScreen();
-
-      await fill(screen, 'Name', 'Apple');
-      await fill(screen, 'Quantity', '3');
-      await fill(screen, 'Total cost', '1000');
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(createMock).toHaveBeenCalled();
-      expect(screen.queryByTestId('button-loading-spinner')).toBeNull();
-      expect(
-        StyleSheet.flatten(screen.getByRole('button', { name: 'Save' }).props.style).opacity,
-      ).toBe(0.4);
-    });
-
-    it('saves a hand-typed ticker as before when the lookup has no answer', async () => {
-      mockLookupShareUnit.mockResolvedValue(undefined);
-      const screen = await renderScreen();
-
-      await typeShare(screen);
-      await fireEvent.press(screen.getByText('Save'));
-
-      expect(createMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          currency: 'UAH',
-          metadata: expect.not.objectContaining({ quoteCurrency: expect.anything() }),
-        }),
-      );
-      expect(navigation.goBack).toHaveBeenCalled();
-    });
-
-    describe('on an edit', () => {
-      const updateShareMock = holdingsRepo.updateShareFromStored as jest.Mock;
-      const lot = { day: dayKeyOf(Date.now()), quantityDelta: '3', costMinorUnits: 100_000 };
-      const apple = {
-        id: 'h1',
-        accountId: 'acc-1',
-        name: 'Apple',
-        type: 'share',
-        currency: 'USD',
-        balanceMinorUnits: 0,
-        icon: null,
-        color: null,
-        metadata: { quoteSource: 'eodhd', symbol: 'AAPL.US', quoteCurrency: 'USD', lots: [lot] },
-      };
-
-      it('blocks a new ticker priced in another currency on the Currency field', async () => {
-        mockLookupShareUnit.mockResolvedValue('GBX');
-        const screen = await renderEdit(apple);
-
-        await fill(screen, 'Ticker', 'VOD.LSE');
-        await fireEvent.press(screen.getByText('Save'));
-
-        expect(mockLookupShareUnit).toHaveBeenCalledWith('VOD.LSE');
-        expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(
-          'EODHD prices this share in GBP. Set the price source to “Manual”, or delete this share and add it again in GBP.',
-        );
-        expect(updateShareMock).not.toHaveBeenCalled();
-        expect(navigation.goBack).not.toHaveBeenCalled();
-      });
-
-      it('offers only Manual for a new ticker priced in a unit no share currency can hold', async () => {
-        mockLookupShareUnit.mockResolvedValue('ZAC');
-        const screen = await renderEdit(apple);
-
-        await fill(screen, 'Ticker', 'NPN.JSE');
-        await fireEvent.press(screen.getByText('Save'));
-
-        expect(screen.getByTestId('holding-currency-field-error')).toHaveTextContent(
-          'EODHD prices this share in ZAC, which Kiko does not support. Set the price source to “Manual”.',
-        );
-        expect(updateShareMock).not.toHaveBeenCalled();
-      });
-
-      it('saves an unchanged ticker with no lookup', async () => {
-        const screen = await renderEdit(apple);
-
-        await fireEvent.press(screen.getByText('Save'));
-
-        expect(mockLookupShareUnit).not.toHaveBeenCalled();
-        expect(updateShareMock).toHaveBeenCalled();
-        expect(navigation.goBack).toHaveBeenCalled();
-      });
-    });
   });
 });
 
@@ -4708,56 +4256,6 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     mockRefreshMarketData.mockClear();
     mockRefreshMarketData.mockResolvedValue(right(undefined));
     mockRunLoanAutoLink.mockClear();
-    mockConfirmDailyLimit.mockReset();
-    mockConfirmDailyLimit.mockResolvedValue(undefined);
-  });
-
-  const createShare = async (): Promise<void> => {
-    mockAccountKind = 'broker';
-    mockHasEodhdKey = true;
-    const screen = await renderScreen();
-
-    await fill(screen, 'Name', 'Apple');
-    await screen.findByLabelText('Ticker');
-    await fill(screen, 'Ticker', 'aapl.us');
-    await fill(screen, 'Quantity', '3');
-    await fill(screen, 'Total cost', '1000');
-    await fireEvent.press(screen.getByText('Save'));
-  };
-
-  it('confirms an unconfirmed EODHD daily limit before a share create refreshes', async () => {
-    const order: string[] = [];
-    mockConfirmDailyLimit.mockImplementation(async () => {
-      order.push('confirm');
-    });
-    mockRefreshMarketData.mockImplementation(async () => {
-      order.push('refresh');
-
-      return right(undefined);
-    });
-
-    await createShare();
-
-    await waitFor(() => expect(order).toEqual(['confirm', 'refresh']));
-  });
-
-  it('still refreshes after a share create when the daily limit check fails', async () => {
-    mockConfirmDailyLimit.mockRejectedValue(new Error('settings read failed'));
-
-    await createShare();
-
-    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalledTimes(1));
-  });
-
-  it('does not check the daily limit after a create that refreshes no share', async () => {
-    mockAccountKind = 'cash';
-    const screen = await renderScreen();
-
-    await fill(screen, 'Name', 'My cash');
-    await fireEvent.press(screen.getByText('Save'));
-
-    await waitFor(() => expect(mockRefreshMarketData).toHaveBeenCalledTimes(1));
-    expect(mockConfirmDailyLimit).not.toHaveBeenCalled();
   });
 
   it('triggers the gated rate/metal refresh after a successful create, unthrottled', async () => {
@@ -4770,26 +4268,6 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: false,
       metals: true,
-      shares: false,
-    });
-  });
-
-  it('also refreshes share prices after a share create', async () => {
-    mockAccountKind = 'broker';
-    mockHasEodhdKey = true;
-    const screen = await renderScreen();
-
-    await fill(screen, 'Name', 'Apple');
-    await screen.findByLabelText('Ticker');
-    await fill(screen, 'Ticker', 'aapl.us');
-    await fill(screen, 'Quantity', '3');
-    await fill(screen, 'Total cost', '1000');
-    await fireEvent.press(screen.getByText('Save'));
-
-    expect(mockRefreshMarketData).toHaveBeenCalledWith({
-      throttled: false,
-      metals: true,
-      shares: true,
     });
   });
 
@@ -4834,46 +4312,6 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
   });
 
-  // A share edit can change its price source or ticker, so its prices are
-  // asked for at once.
-  it('refreshes share prices after a share edit, after the daily limit check', async () => {
-    const order: string[] = [];
-    mockConfirmDailyLimit.mockImplementation(async () => {
-      order.push('confirm');
-    });
-    mockRefreshMarketData.mockImplementation(async () => {
-      order.push('refresh');
-
-      return right(undefined);
-    });
-    mockAccountKind = 'broker';
-    const screen = await renderEdit({
-      id: 'h1',
-      accountId: 'acc-1',
-      name: 'Apple',
-      type: 'share',
-      currency: 'USD',
-      balanceMinorUnits: 0,
-      icon: null,
-      color: null,
-      metadata: {
-        quoteSource: 'eodhd',
-        symbol: 'AAPL.US',
-        lots: [{ day: dayKeyOf(Date.now()), quantityDelta: '3', costMinorUnits: 100_000 }],
-      },
-    });
-
-    await fill(screen, 'Ticker', 'MSFT.US');
-    await fireEvent.press(screen.getByText('Save'));
-
-    await waitFor(() => expect(order).toEqual(['confirm', 'refresh']));
-    expect(mockRefreshMarketData).toHaveBeenCalledWith({
-      throttled: false,
-      metals: true,
-      shares: true,
-    });
-  });
-
   // P-NOWORK: a non-loan create/edit never runs the loan auto-link matcher
   // at all — see `HoldingFormScreen loan`'s own describe block for the
   // matching POSITIVE loan create/edit cases.
@@ -4885,5 +4323,57 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     await fireEvent.press(screen.getByText('Save'));
 
     expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
+  });
+});
+
+describe('HoldingFormScreen name placeholder', () => {
+  // One example name per holding type, so the empty Name field never suggests
+  // a bond for a deposit, a loan, or a metal.
+  const createCases: [HoldingType, string, string | null, string][] = [
+    ['card', 'bank', null, 'Salary card'],
+    ['term_deposit', 'bank', 'monobank', '6-month deposit'],
+    ['bond', 'bank', 'monobank', 'Government bonds'],
+    ['cash', 'cash', 'monobank', 'Cash at home'],
+    ['crypto_asset', 'crypto', 'monobank', 'Bitcoin'],
+    ['property_item', 'property', 'monobank', 'Apartment or car'],
+    ['metal', 'metals', 'monobank', 'Gold bar'],
+    ['loan', 'debt', 'monobank', 'Mortgage'],
+  ];
+
+  it.each(createCases)(
+    'shows the %s example on a create under a %s account',
+    async (type, accountKind, institution, placeholder) => {
+      mockAccountKind = accountKind;
+      mockAccountInstitution = institution;
+      const screen = await renderScreen();
+
+      if (accountKind === 'bank') {
+        await selectHoldingType(screen, type);
+      }
+
+      expect(screen.getByPlaceholderText(placeholder)).toBeTruthy();
+    },
+  );
+
+  it('shows the jar example on an existing jar, which is never manually created', async () => {
+    const screen = await renderEdit({
+      id: 'h-9',
+      name: '',
+      type: 'jar',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      icon: null,
+      color: null,
+    });
+
+    expect(screen.getByPlaceholderText('Vacation jar')).toBeTruthy();
+  });
+
+  it('covers every holding type, each with its own example', () => {
+    const coveredTypes = [...createCases.map(([type]) => type), 'jar'];
+    const examples = [...createCases.map(([, , , placeholder]) => placeholder), 'Vacation jar'];
+
+    expect([...coveredTypes].sort()).toEqual([...holdingTypes].sort());
+    expect(new Set(examples).size).toBe(holdingTypes.length);
   });
 });

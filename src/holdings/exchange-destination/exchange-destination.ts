@@ -1,5 +1,5 @@
 import type { HoldingType } from '../holding-type';
-import { holdingDescriptor } from '../holding-descriptor';
+import { holdingDescriptorOrUndefined } from '../holding-descriptor';
 
 // The receive path an Exchange destination takes, keyed by its holding type.
 // This is the ONE source of truth for both `recordExchange`'s dispatch and the
@@ -7,10 +7,15 @@ import { holdingDescriptor } from '../holding-descriptor';
 // eligible; each type's own descriptor (`src/holdings/holding-descriptor/`)
 // carries it, so adding a holding type is a compile error there until this
 // mapping is updated.
+//
+// Every predicate below runs over ALL stored holdings (the transaction form's
+// pickers), and a stored `type` can be one this build no longer knows (a
+// removed type restored from an old export). Such a type is never an Exchange
+// leg, so each falls back to "not eligible" instead of throwing.
 export type ExchangeReceivePath = 'plain' | 'contribution' | 'excluded';
 
 export const exchangeReceivePath = (type: HoldingType): ExchangeReceivePath =>
-  holdingDescriptor(type).exchange.receivePath;
+  holdingDescriptorOrUndefined(type)?.exchange.receivePath ?? 'excluded';
 
 // A type is an eligible Exchange destination when it has any receive path other
 // than 'excluded' (bond/jar have no clear "receive an arbitrary amount" path).
@@ -19,7 +24,7 @@ export const isExchangeDestinationType = (type: HoldingType): boolean =>
 
 // Exchange is offered only from a liquid source — cash or card.
 export const isExchangeSourceType = (type: HoldingType): boolean =>
-  holdingDescriptor(type).exchange.source;
+  holdingDescriptorOrUndefined(type)?.exchange.source ?? false;
 
 // CREATE-mode eligibility: a NEW exchange must move cash -> cash. Narrower
 // than `isExchangeSourceType` / `isExchangeDestinationType` (the wider
@@ -29,7 +34,7 @@ export const isExchangeSourceType = (type: HoldingType): boolean =>
 // on the descriptor so the source and destination create-rules can diverge
 // later without a call-site change.
 export const isExchangeCreateSourceType = (type: HoldingType): boolean =>
-  holdingDescriptor(type).exchange.createSource;
+  holdingDescriptorOrUndefined(type)?.exchange.createSource ?? false;
 
 export const isExchangeCreateDestinationType = (type: HoldingType): boolean =>
-  holdingDescriptor(type).exchange.createDestination;
+  holdingDescriptorOrUndefined(type)?.exchange.createDestination ?? false;
