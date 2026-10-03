@@ -37,9 +37,17 @@ const fileResult = (counts: Record<string, number>) => ({
   ),
 });
 
-const writeReport = (directory: string, files: Record<string, Record<string, number>>): string => {
+// `config.mutate` is where Stryker's report records the scope of its own run;
+// it defaults to the files that carry mutants, and `scope` overrides it for the
+// files Stryker wrote no entry for (it omits a file with zero mutants).
+const writeReport = (
+  directory: string,
+  files: Record<string, Record<string, number>>,
+  scope: string[] = Object.keys(files),
+): string => {
   const reportPath = join(directory, 'mutation.json');
   const reportBody = {
+    config: { mutate: scope },
     files: Object.fromEntries(
       Object.entries(files).map(([path, counts]) => [path, fileResult(counts)]),
     ),
@@ -67,6 +75,14 @@ describe('mutation-score.js: the per-file and change-set formula', () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('src/a.ts: 80.00');
     expect(result.stdout).toContain('CHANGE SET TOTAL: 80.00');
+  });
+
+  it('prints its own thresholds so a wrapper never restates them', () => {
+    const reportPath = writeReport(directory, { 'src/a.ts': { Killed: 1 } });
+
+    const result = run(reportPath, ['src/a.ts']);
+
+    expect(result.stdout).toContain('GATE: change set >= 75, each file >= 60');
   });
 
   it('excludes RuntimeError, CompileError, Ignored, and Pending from both sides of the ratio', () => {
@@ -139,13 +155,76 @@ describe('mutation-score.js: the gate (75 change-set / 60 per-file floor)', () =
     expect(Number(totalLine)).toBeGreaterThanOrEqual(75);
   });
 
-  it('fails and names a changed file that is MISSING from the report entirely', () => {
+  it('does not fail an in-scope file the report has no entry for (it has no mutants)', () => {
+    const reportPath = writeReport(directory, { 'src/a.ts': { Killed: 100 } }, [
+      'src/a.ts',
+      'src/constant.ts',
+    ]);
+
+    const result = run(reportPath, ['src/a.ts', 'src/constant.ts']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('src/constant.ts: n/a (no mutants)');
+    expect(result.stdout).toContain('CHANGE SET TOTAL: 100.00');
+  });
+
+  it('passes a change set whose every file has no mutants', () => {
+    const reportPath = writeReport(directory, {}, ['src/constant.ts']);
+
+    const result = run(reportPath, ['src/constant.ts']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('CHANGE SET TOTAL: n/a (no graded mutants)');
+  });
+});
+
+describe('mutation-score.js: the report must belong to this run', () => {
+  it('fails when a changed file is not in the scope the report recorded', () => {
     const reportPath = writeReport(directory, { 'src/a.ts': { Killed: 100 } });
 
     const result = run(reportPath, ['src/a.ts', 'src/never-mutated.ts']);
 
     expect(result.code).toBe(1);
-    expect(result.stdout).toContain('src/never-mutated.ts: MISSING FROM REPORT');
+    expect(result.stdout).toContain('does not belong to this run');
+    expect(result.stdout).toContain('src/never-mutated.ts');
+  });
+
+  it('fails when the report recorded a file this run did not mutate', () => {
+    const reportPath = writeReport(directory, { 'src/a.ts': { Killed: 100 } }, [
+      'src/a.ts',
+      'src/other.ts',
+    ]);
+
+    const result = run(reportPath, ['src/a.ts']);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain('does not belong to this run');
+    expect(result.stdout).toContain('src/other.ts');
+  });
+
+  it('fails when the report records no scope at all', () => {
+    const reportPath = join(directory, 'mutation.json');
+    writeFileSync(
+      reportPath,
+      JSON.stringify({ files: { 'src/a.ts': fileResult({ Killed: 100 }) } }),
+    );
+
+    const result = run(reportPath, ['src/a.ts']);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain('does not belong to this run');
+  });
+
+  it('accepts the recorded scope in any order', () => {
+    const reportPath = writeReport(
+      directory,
+      { 'src/a.ts': { Killed: 100 }, 'src/b.ts': { Killed: 100 } },
+      ['src/b.ts', 'src/a.ts'],
+    );
+
+    const result = run(reportPath, ['src/a.ts', 'src/b.ts']);
+
+    expect(result.code).toBe(0);
   });
 });
 
@@ -190,11 +269,9 @@ describe('mutation-score.js: CLI contract', () => {
   });
 });
 
-// The exact per-file status counts below were read directly from a real Stryker
-// incremental report (base 3d032770, tip 0cc210fb) via the schema's own
-// `files[path].mutants[].status` field — not hand-invented — so this proves the
-// scorer's table and gate against a REAL run's numbers, reproduced here as
-// status-count fixtures rather than committing the ~190-file, multi-MB report.
+// Per-file status counts read from a real Stryker report's
+// `files[path].mutants[].status` field, reproduced as status-count fixtures
+// rather than committing the multi-MB report.
 const REAL_WINDOW_COUNTS: Record<string, Record<string, number>> = {
   'src/reminders/routing/route-response.ts': { Killed: 105, Survived: 7, NoCoverage: 1 },
   'src/screens/account-detail/account-detail.screen.tsx': {
@@ -225,7 +302,7 @@ const REAL_WINDOW_COUNTS: Record<string, Record<string, number>> = {
   },
 };
 
-describe('mutation-score.js against the real 2026-10-03 window (base 3d032770, tip 0cc210fb)', () => {
+describe('mutation-score.js against the status counts of a real report', () => {
   it('computes each file score and the change-set total, and PASSES both gates', () => {
     const changedFiles = Object.keys(REAL_WINDOW_COUNTS);
     const reportPath = writeReport(directory, REAL_WINDOW_COUNTS);
@@ -242,9 +319,8 @@ describe('mutation-score.js against the real 2026-10-03 window (base 3d032770, t
     );
     expect(result.stdout).toContain('src/screens/home/home.screen.tsx: 80.90');
     expect(result.stdout).toContain('src/screens/settings/reminders/reminders.screen.tsx: 94.83');
-    // The lowest file in this window (statistics.screen.tsx, 73.41) still
-    // clears the 60 per-file floor, and the 80.99 total clears the 75
-    // change-set threshold, so this real window PASSES the new gate.
+    // The lowest file (statistics.screen.tsx, 73.41) clears the 60 per-file
+    // floor, and the 80.99 total clears the 75 change-set threshold.
     expect(result.stdout).toContain('src/screens/statistics/statistics.screen.tsx: 73.41');
     expect(result.stdout).toContain('src/transactions/repo/transactions.repo.ts: 85.21');
     expect(result.stdout).toContain('CHANGE SET TOTAL: 80.99');

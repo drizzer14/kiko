@@ -1,6 +1,6 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 
 import {
   writeFile,
@@ -25,8 +25,9 @@ const freshProject = (): { temporaryDirectory: string; root: string } => {
   return { temporaryDirectory, root };
 };
 
-const reportOf = (statuses: string[]): string =>
+const reportOf = (statuses: string[], scope: string[] = ['src/changed.ts']): string =>
   JSON.stringify({
+    config: { mutate: scope },
     files: { 'src/changed.ts': { mutants: statuses.map((status) => ({ status })) } },
   });
 
@@ -64,6 +65,49 @@ describe('scripts/checks/mutation.sh change-set gate', () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('CHANGE SET TOTAL: 75.00');
+  });
+
+  it('exits 2 when the report was written for a different run than this one', () => {
+    const { temporaryDirectory } = freshProject();
+    const bin = writeStrykerStub(
+      temporaryDirectory,
+      stubWritingReport(reportOf(['Killed', 'Killed', 'Killed', 'Killed'], ['src/other.ts'])),
+    );
+
+    const result = runWithStub(bin, temporaryDirectory, join(temporaryDirectory, 'calls'));
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('does not belong to this run');
+  });
+
+  it('prints the thresholds from the scorer instead of restating them', () => {
+    const { temporaryDirectory } = freshProject();
+    const bin = writeStrykerStub(
+      temporaryDirectory,
+      stubWritingReport(reportOf(['Killed', 'Survived', 'Survived', 'Survived'])),
+    );
+
+    const result = runWithStub(bin, temporaryDirectory, join(temporaryDirectory, 'calls'));
+
+    expect(result.stderr).toContain('GATE: change set >= 75, each file >= 60');
+    expect(result.stderr).not.toContain('(75 total, 60 per file)');
+  });
+
+  it('treats exit 1 with no report as a crash and records nothing in the ETA history', () => {
+    const { temporaryDirectory } = freshProject();
+    const bin = writeStrykerStub(
+      temporaryDirectory,
+      '#!/usr/bin/env bash\nsleep 1\necho "No tests were executed"\nexit 1',
+    );
+
+    const result = runWithStub(bin, temporaryDirectory, join(temporaryDirectory, 'calls'));
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('rather than completing a run');
+    expect(result.stderr).toContain('No tests were executed');
+    expect(result.stderr).not.toContain('sanity floor (Stryker');
+    const progressLog = /tail -f (\S+)/.exec(result.stdout)?.[1] ?? '';
+    expect(existsSync(progressLog.replace('progress.log', 'history.tsv'))).toBe(false);
   });
 
   it('exits 2 when Stryker passes but writes no report', () => {

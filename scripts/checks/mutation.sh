@@ -97,9 +97,10 @@ MUTATION_FILE_CAP=30
 CAP_REASON="A big mutation run takes hours and starves the machine (a whole-release run went 10 h 16 min with no result)."
 
 # Reads candidate .ts/.tsx paths on stdin and prints the ones Stryker would
-# mutate, excluding tests and fixtures (matching the config's own mutate
-# excludes). It also drops zero/low-logic barrels (**/index.ts) +
-# pure-static *.styles.ts, preserving the 2 logic-bearing styles
+# mutate, excluding tests, fixtures, and test scaffolding (__mocks__/, e2e/,
+# test-support/, __fixtures__/, *-test-helper.ts, *-test-fixtures.ts). It also
+# drops zero/low-logic barrels (**/index.ts) + pure-static *.styles.ts,
+# preserving the 2 logic-bearing styles
 # (bottom-sheet.styles.ts, entity-icon-tile.styles.ts).
 # These MUST be filtered here too: on a diff-scoped run --mutate REPLACES
 # the config mutate[] wholesale (deepMerge replaces arrays, deep-merge.js:13),
@@ -107,7 +108,7 @@ CAP_REASON="A big mutation run takes hours and starves the machine (a whole-rele
 # bash-3.2-safe (no assoc arrays/namerefs) to match the rest of this script.
 mutable_source_files() {
   local candidates reinc
-  candidates="$(grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/|(^|/)scripts/checks/|(^|/)i18n/locales/|\.d\.ts$)' || true)"
+  candidates="$(grep -Ev '(\.test\.tsx?$|-test-(helper|fixtures)\.tsx?$|(^|/)(__tests__|__mocks__|__fixtures__|e2e|test-support)/|(^|/)rules/fixtures/|(^|/)scripts/checks/|(^|/)i18n/locales/|\.d\.ts$)' || true)"
   [ -n "$candidates" ] || return 0
   reinc="$(printf '%s\n' "$candidates" | grep -E '((^|/)bottom-sheet\.styles\.ts$|(^|/)entity-icon-tile\.styles\.ts$)' || true)"
   candidates="$(printf '%s\n' "$candidates" | grep -Ev '((^|/)index\.ts$|\.styles\.ts$)' || true)"
@@ -240,8 +241,11 @@ score="$(printf '%s' "$out" | grep -Eio 'mutation score[^0-9]*[0-9]+(\.[0-9]+)?'
 iso="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '')"
 
 # A code other than 0 or 1 is a CRASH (Stryker never finished a run at all),
-# not a completed run — never recorded in history.
-if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then
+# and so is code 1 with no report: Stryker also exits 1 on a failed run (for
+# example "No tests were executed"), while a run that completes and misses its
+# break threshold has written its report first. A crash is not a completed run,
+# so it is never recorded in history.
+if { [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; } || { [ "$code" -eq 1 ] && [ ! -f "$MUTATION_REPORT" ]; }; then
   print_block \
     "Stryker (mutation testing)" \
     "Stryker exited with code $code rather than completing a run." \
@@ -261,12 +265,10 @@ fi
 
 if [ "$code" -eq 1 ]; then
   # Stryker's OWN break threshold (stryker.conf.json's thresholds.break: 60)
-  # covers the WHOLE accumulated incremental report (191 files, ~13k mutants
-  # in one window), not this change set, so it barely moves per change set —
-  # one window printed 80.6-81.6 regardless of what changed. It is kept only
-  # as a SANITY FLOOR for a catastrophic whole-report regression; the REAL
-  # gate for a reviewed change set is its own score below, read from the json
-  # reporter's output rather than this whole-report number.
+  # covers the WHOLE accumulated incremental report, not this change set. It
+  # is kept only as a SANITY FLOOR for a catastrophic whole-report regression;
+  # the REAL gate for a reviewed change set is its own score below, read from
+  # the json reporter's output rather than this whole-report number.
   print_block \
     "Stryker (mutation testing)" \
     "The whole-report sanity floor (Stryker's own break threshold, 60 over every file Stryker has ever mutated) failed." \
@@ -304,9 +306,9 @@ printf '%s\n' "$score_out"
 if [ "$score_code" -ne 0 ]; then
   print_block \
     "Stryker (mutation testing)" \
-    "The CHANGE SET's own mutation score failed the gate (75 total, 60 per file)." \
+    "The CHANGE SET's own mutation score failed the gate (the thresholds are on the GATE line)." \
     "$score_out" \
-    "A surviving mutant in the files THIS change set touched means its own tests would not catch a real regression there — the number that matters for this review, not the whole accumulated report." \
+    "A surviving mutant in the files THIS change set touched means its own tests would not catch a real regression there — the number that matters for this review, not the whole accumulated report. A report whose recorded scope differs from this change set's files fails too, because it cannot vouch for them." \
     "Add a real assertion that fails when the mutated code is wrong, or (only for a declaration-only file with no behavioral branch) add it to the exclusion allowlist in mutation-score.js with a concrete reason, and mirror it in docs/harness/documented-exceptions.md. Re-run: npm run check:mutation" \
     "Do not delete the failing mutant's test, and do not add a file to the exclusion allowlist without a concrete, verifiable reason (see CLAUDE.md's Override protocol)."
   exit 2

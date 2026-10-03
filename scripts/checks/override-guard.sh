@@ -28,17 +28,20 @@ if [ "$#" -gt 0 ]; then
   fi
 fi
 
-hits="$(grep -nE 'biome-ignore|(//|/\*)\s*nosemgrep\b|(//|/\*)\s*kiko-override:' \
+# A Stryker disable comment turns the mutants it covers into Ignored, which the
+# mutation gate (mutation-score.js) leaves out of both the score and the floor,
+# so an unjustified one would let a file pass the gate unseen.
+hits="$(grep -nE 'biome-ignore|(//|/\*)\s*nosemgrep\b|(//|/\*)\s*kiko-override:|(//|/\*)\s*Stryker\s+disable\b' \
   --include='*.ts' --include='*.tsx' --include='*.js' \
   --exclude-dir=node_modules --exclude-dir=ios --exclude-dir=vendor -r "${scan_targets[@]}" \
   | grep -v 'OVERRIDE(')"
 if [ -n "$hits" ]; then
   print_block \
     "Override guard" \
-    "A biome-ignore, nosemgrep, or kiko-override comment has no OVERRIDE(...) justification." \
+    "A biome-ignore, nosemgrep, kiko-override, or Stryker disable comment has no OVERRIDE(...) justification." \
     "$hits" \
     "An unexplained suppression hides a real problem from the next reader and from review." \
-    "Add the reason: // biome-ignore <rule>: OVERRIDE(...) <reason>, // nosemgrep: <rule-id> OVERRIDE(...) <reason>, or // kiko-override: <rule-id> OVERRIDE(...) <reason>. Re-run: npm run check:overrides" \
+    "Add the reason: // biome-ignore <rule>: OVERRIDE(...) <reason>, // nosemgrep: <rule-id> OVERRIDE(...) <reason>, or // kiko-override: <rule-id> OVERRIDE(...) <reason>, or // Stryker disable <scope>: OVERRIDE(...) <reason>. Re-run: npm run check:overrides" \
     "Do not delete the guard. Justify the override, or fix the code so the ignore is not needed."
   exit 2
 fi

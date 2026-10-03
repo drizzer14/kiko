@@ -18,15 +18,31 @@ const SCRIPT = join(__dirname, '../../scripts/checks/mutation.sh');
 const LIB = join(__dirname, '../../scripts/checks/_lib.sh');
 const SCORE_SCRIPT = join(__dirname, '../../scripts/checks/mutation-score.js');
 
+// Bash lines that print one JSON entry per file of the comma list in
+// `$mutate_argument`, comma-separated. Bash 3.2-safe: IFS field-splitting, no
+// arrays.
+const printEachMutatedFile = (entryFormat: string): string[] => [
+  '  first=1',
+  '  old_ifs="$IFS"',
+  "  IFS=','",
+  '  for file in $mutate_argument; do',
+  '    [ -n "$file" ] || continue',
+  '    [ "$first" -eq 0 ] && printf \',\'',
+  '    first=0',
+  `    printf '${entryFormat}' "$file"`,
+  '  done',
+  '  IFS="$old_ifs"',
+];
+
 // Writes a trivial, fully-killed mutation.json report for every file named in
-// the stub's own `--mutate=` argument, so the CHANGE-SET gate
+// the stub's own `--mutate=` argument, with that list as the report's own
+// `config.mutate` scope, so the CHANGE-SET gate
 // (scripts/checks/mutation-score.js, run by mutation.sh after a passing
-// Stryker exit) finds a report that clears both the 75 total and the 60
-// per-file floor for whatever this test changed — these lines test the
-// surrounding wrapper machinery (cap, lock, ETA, streaming, dedup), not the
-// scorer itself (see __tests__/mutation-score.test.ts for that). Bash
-// 3.2-safe: IFS field-splitting on the comma list, no arrays.
-export const STUB_WRITES_PASSING_REPORT = [
+// Stryker exit) finds a report that belongs to this run and clears both the 75
+// total and the 60 per-file floor — these lines test the surrounding wrapper
+// machinery (cap, lock, ETA, streaming, dedup), not the scorer itself (see
+// __tests__/mutation-score.test.ts for that).
+const STUB_WRITES_PASSING_REPORT = [
   'mkdir -p reports/mutation',
   'mutate_argument=""',
   'for argument in "$@"; do',
@@ -38,17 +54,10 @@ export const STUB_WRITES_PASSING_REPORT = [
   '  esac',
   'done',
   '{',
-  '  printf \'{"files":{\'',
-  '  first=1',
-  '  old_ifs="$IFS"',
-  "  IFS=','",
-  '  for file in $mutate_argument; do',
-  '    [ -n "$file" ] || continue',
-  '    [ "$first" -eq 0 ] && printf \',\'',
-  '    first=0',
-  '    printf \'"%s":{"mutants":[{"status":"Killed"}]}\' "$file"',
-  '  done',
-  '  IFS="$old_ifs"',
+  '  printf \'{"config":{"mutate":[\'',
+  ...printEachMutatedFile('"%s"'),
+  '  printf \']},"files":{\'',
+  ...printEachMutatedFile('"%s":{"mutants":[{"status":"Killed"}]}'),
   "  printf '}}'",
   '} > reports/mutation/mutation.json',
 ].join('\n');
@@ -59,7 +68,7 @@ export const STUB_WRITES_PASSING_REPORT = [
 // so never need to read it back out of an argument list.
 export const PASSING_REPORT_FOR_CHANGED_FILE = [
   'mkdir -p reports/mutation',
-  'printf \'{"files":{"src/changed.ts":{"mutants":[{"status":"Killed"}]}}}\' > reports/mutation/mutation.json',
+  'printf \'{"config":{"mutate":["src/changed.ts"]},"files":{"src/changed.ts":{"mutants":[{"status":"Killed"}]}}}\' > reports/mutation/mutation.json',
 ].join('\n');
 
 const ARGUMENT_STUB = [
