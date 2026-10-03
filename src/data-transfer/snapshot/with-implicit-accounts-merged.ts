@@ -228,7 +228,8 @@ type MergeRows<
 
 /**
  * Migration 0050's rule (`drizzle/migrations/0050_implicit_property_debt_accounts.sql`'s
- * doc comment is the full statement of it), applied to a `.kiko` restore: a
+ * doc comment states the merge rule; for name, icon and color see
+ * `withDefaultIdentity` above), applied to a `.kiko` restore: a
  * kind with several LIVE property or debt accounts merges into its oldest one,
  * because the partial unique index `accounts_implicit_kind` would otherwise
  * refuse the insert. An archived account is outside the merge, the same as in

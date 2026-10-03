@@ -253,7 +253,8 @@ project-level pointer to this section.
   `src/data-transfer/snapshot/restore-bank-other.two-path.test.ts`.
 - **A uniqueness rule a merge must satisfy first is data merge, then
   partial unique index, in ONE migration.** `0050_implicit_property_debt_accounts`
-  (its own header comment is the full statement of the merge rule) merges the
+  (its own header comment states the merge rule; for name/icon/color see
+  `withDefaultIdentity` in the restore mirror below) merges the
   live property/debt accounts of a kind into the oldest, then creates the
   partial unique index `accounts_implicit_kind` (declared in
   `src/db/schema.ts`) LAST, so the index never meets a duplicate. The data
