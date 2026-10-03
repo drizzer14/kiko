@@ -350,27 +350,23 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // transactions yet still appears in the Accounts filter. Sourced from the
   // accounts live query rather than from the transactions, which would omit it.
   // Each option carries the account's own identity icon + color for the
-  // menu row; transaction matching still keys off `option.value` (the STORED
-  // account name, matched against the stored `row.accountName` below), so a
-  // selection survives a language switch; only the option's `label` is the
-  // localized display name. De-duplicated by name, first-seen-wins, preserving
-  // the old `Set`-based distinctness.
-  const accountOptions = useMemo(() => {
-    const byName = new Map<string, FilterOption>();
-
-    for (const account of accounts) {
-      if (account.archivedAt != null || byName.has(account.name)) {
-        continue;
-      }
-      byName.set(account.name, {
-        value: account.name,
-        label: accountDisplayName(account, t),
-        ...accountIdentity(account),
-      });
-    }
-
-    return Array.from(byName.values());
-  }, [accounts, t]);
+  // menu row; transaction matching keys off `option.value` (the account ID,
+  // matched against `row.accountId` below), never a name: two accounts may share
+  // a name (a renamed implicit account, two banks), a rename must keep the
+  // selection, and a name may equal the "All" option's value. The id is also
+  // language-independent, so a selection survives a language switch; only the
+  // option's `label` is the display name.
+  const accountOptions = useMemo(
+    () =>
+      accounts
+        .filter((account) => account.archivedAt == null)
+        .map((account) => ({
+          value: account.id,
+          label: accountDisplayName(account, t),
+          ...accountIdentity(account),
+        })),
+    [accounts, t],
+  );
   // Group and match the category filter by the STABLE `categories.key` slug,
   // never by the resolved display title: the title is language-dependent (a
   // default category's title changes under a live language switch — see
@@ -440,7 +436,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   ]);
   const filteredTransactions = useMemo(() => {
     return transactions.filter((row) => {
-      const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
+      const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountId);
       const matchesCategory =
         selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
       const matchesDate = withinBounds(row.time, { from: boundsFrom, to: boundsTo });

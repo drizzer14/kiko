@@ -375,12 +375,12 @@ describe('restoring a .kiko file exported before Property and Loans became impli
     ['several accounts of each kind, with ties', seedSeveralAccountsOfEachKind],
     ['one account of each kind', seedOneAccountOfEachKind],
   ])('with %s', (_name, seed) => {
-    it('ends with the same account ids, kinds and order as the live migration 0050 upgrade', async () => {
+    it('ends with the same accounts as the live migration 0050 upgrade, apart from name, icon and color', async () => {
       const { live, restored } = await bothPaths(seed);
-      const idsAndKinds = (rows: typeof live.accounts) =>
-        rows.map((row) => ({ id: row.id, kind: row.kind, sortOrder: row.sortOrder }));
+      const withoutIdentity = (rows: typeof live.accounts) =>
+        rows.map(({ name: _name, icon: _icon, color: _color, ...rest }) => rest);
 
-      expect(idsAndKinds(restored.accounts)).toEqual(idsAndKinds(live.accounts));
+      expect(withoutIdentity(restored.accounts)).toEqual(withoutIdentity(live.accounts));
     });
 
     it('ends with the same holdings as the live migration 0050 upgrade', async () => {

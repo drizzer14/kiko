@@ -198,7 +198,10 @@ const dismissalsMergedInto = (dismissals: Dismissals, members: Map<string, Membe
 // A kept account that absorbed others takes the stored sentinel name and the
 // kind's default icon and color, so one custom name or glyph picked for one
 // former account never stands for all of them. An account that merged nothing
-// keeps what its user chose.
+// keeps what its user chose. Migration 0050 resets EVERY live implicit account
+// instead, because it ran once, before a user could rename one (and it is
+// applied on devices, so its SQL is never edited); a restore runs after
+// renaming exists, so a lone account's name, icon and color must survive it.
 const withDefaultIdentity = <Account extends AccountFields>(
   snapshotAccounts: Account[],
   members: Map<string, Member>,

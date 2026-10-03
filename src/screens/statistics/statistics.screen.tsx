@@ -343,7 +343,7 @@ const StatisticsScreen: FC = () => {
   const filtered = useMemo(() => {
     const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
     const filteredAccounts = visibleAccounts.filter((account) => {
-      return selectedAccounts.size === 0 || selectedAccounts.has(account.name);
+      return selectedAccounts.size === 0 || selectedAccounts.has(account.id);
     });
     const filteredAccountIds = new Set(filteredAccounts.map((account) => account.id));
     const netWorthHoldings = holdings.filter((holding) =>
@@ -1143,12 +1143,13 @@ const StatisticsScreen: FC = () => {
   );
 
   // One option per visible account, each carrying the account's own identity
-  // icon + color for the menu row; matching still keys on `option.value` (the
-  // stored account name, compared to `account.name` in the `filtered` memo
-  // above, so a selection survives a language switch); the `label` is the
-  // display name, which an implicit account localizes.
+  // icon + color for the menu row; matching keys on `option.value` (the account
+  // id, compared to `account.id` in the `filtered` memo above, so a selection
+  // survives a rename and a language switch, and same-named accounts stay
+  // separate options); the `label` is the display name, which an implicit
+  // account localizes.
   const accountOptions: FilterOption[] = filtered.visibleAccounts.map((account) => ({
-    value: account.name,
+    value: account.id,
     label: accountDisplayName(account, t),
     ...accountIdentity(account),
   }));

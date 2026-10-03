@@ -1,7 +1,8 @@
 // One selectable row in a filter menu. `value` is the STABLE identity the
-// filter matches and toggles on (an account's stored name, or — since a
-// category's display title is language-dependent — a category's `categories.key`
-// slug, never its resolved title). `label`, when present, is the text actually
+// filter matches and toggles on (an account's id, never its name, which can be
+// renamed, shared or equal "All"; or — since a category's display title is
+// language-dependent — a category's `categories.key` slug, never its resolved
+// title). `label`, when present, is the text actually
 // rendered for the row and may differ from `value` (an account option's
 // localized display name, a category's resolved display title); when absent
 // the row renders `value` itself as its label. When present, `icon` is an SF

@@ -22,6 +22,7 @@ import {
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
@@ -574,11 +575,11 @@ describe('HoldingDetailScreen', () => {
     };
 
     it.each([
-      ['property', 'Properties', 'house.fill'],
-      ['debt', 'Loans', 'minus.circle.fill'],
-    ])(
+      ['property', 'Properties'],
+      ['debt', 'Loans'],
+    ] as const)(
       "puts the %s account's own glyph left of the pencil and opens that account for edit",
-      async (kind, accountName, glyph) => {
+      async (kind, accountName) => {
         seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
           id: 'acc-1',
           kind,
@@ -596,7 +597,7 @@ describe('HoldingDetailScreen', () => {
           type: 'button',
           label: `Account: ${accountName}`,
           accessibilityLabel: `Account: ${accountName}`,
-          icon: { type: 'sfSymbol', name: glyph },
+          icon: { type: 'sfSymbol', name: accountKindSymbol[kind] },
           sharesBackground: false,
         });
         expect(items[1]).toMatchObject({ label: 'Edit', icon: { name: 'pencil' } });
