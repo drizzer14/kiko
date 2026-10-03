@@ -3,19 +3,9 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
+import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
+
 import PropertyTypeField from './property-type-field.component';
-
-type RenderedNode = {
-  props: Record<string, unknown>;
-  children: readonly (RenderedNode | string)[];
-};
-
-// Every SF Symbol name rendered anywhere under `node` — v14 of the testing
-// library dropped the by-type queries, and a row's glyph carries no testID.
-const glyphNamesWithin = (node: RenderedNode): string[] => [
-  ...(typeof node.props.fallbackName === 'string' ? [String(node.props.name)] : []),
-  ...node.children.flatMap((child) => (typeof child === 'string' ? [] : glyphNamesWithin(child))),
-];
 
 describe('PropertyTypeField', () => {
   it("shows the selected category's label in the trigger, labeled Type", async () => {

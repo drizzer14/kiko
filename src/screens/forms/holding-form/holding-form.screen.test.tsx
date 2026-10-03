@@ -18,6 +18,7 @@ import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
+import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -2865,19 +2866,6 @@ describe('HoldingFormScreen loan', () => {
   });
 
   describe('loan kind in the Type slot', () => {
-    type RenderedNode = {
-      props: Record<string, unknown>;
-      children: readonly (RenderedNode | string)[];
-    };
-
-    // Every SF Symbol name rendered under `node` (a row's glyph has no testID).
-    const glyphNamesWithin = (node: RenderedNode): string[] => [
-      ...(typeof node.props.fallbackName === 'string' ? [String(node.props.name)] : []),
-      ...node.children.flatMap((child) =>
-        typeof child === 'string' ? [] : glyphNamesWithin(child),
-      ),
-    ];
-
     it('fills the Type slot with the four loan kinds, each with its own icon, and no loan type picker', async () => {
       const screen = await renderScreen();
 

@@ -88,12 +88,6 @@ describe('propertyCategorySymbol', () => {
 });
 
 describe('loanKindSymbol', () => {
-  it('maps every loan kind to a non-empty SF Symbol name', () => {
-    for (const kind of loanKinds) {
-      expect(loanKindSymbol[kind]).toMatch(SF_SYMBOL);
-    }
-  });
-
   it('assigns mortgage house.circle.fill, car_loan car.fill, consumer_loan cart.fill, personal person.fill', () => {
     expect(loanKindSymbol).toEqual({
       mortgage: 'house.circle.fill',
@@ -105,10 +99,6 @@ describe('loanKindSymbol', () => {
 
   it("keeps the mortgage off the Properties account's own house.fill glyph", () => {
     expect(loanKindSymbol.mortgage).not.toBe(accountKindSymbol.property);
-  });
-
-  it('gives every loan kind its own glyph', () => {
-    expect(new Set(Object.values(loanKindSymbol)).size).toBe(loanKinds.length);
   });
 });
 

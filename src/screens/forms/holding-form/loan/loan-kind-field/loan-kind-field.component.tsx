@@ -15,7 +15,7 @@ import type { LoanKindFieldProps } from './loan-kind-field.props';
 // `PropertyTypeField` use, so a debt account's form still reads "Type" like
 // every other account kind's holding form; never disabled (unlike the
 // generic field in edit mode) — the kind stays user-editable in both create
-// and edit mode, as the section field it replaces was.
+// and edit mode.
 const LoanKindField: FC<LoanKindFieldProps> = ({ selected, onSelect, testID }) => {
   const { t } = useTranslation();
 

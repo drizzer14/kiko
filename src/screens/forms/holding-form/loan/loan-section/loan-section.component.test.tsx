@@ -40,7 +40,7 @@ const CARD_OPTION = {
 };
 
 describe('LoanSection', () => {
-  // The kind is the form's Type slot now (`LoanKindField`), so this section
+  // The kind is the form's Type slot (`LoanKindField`), so this section
   // carries no second kind field.
   it('has no loan kind field', async () => {
     const { queryByTestId, queryByText } = await render(<LoanSection {...baseProps} />);
