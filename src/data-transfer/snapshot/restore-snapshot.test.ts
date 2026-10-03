@@ -400,6 +400,90 @@ describe('restoreDataSnapshot', () => {
     dateNow.mockRestore();
   });
 
+  describe('implicit Property and Loans accounts (migration 0050 restore mirror)', () => {
+    const twoPropertyAccounts = {
+      accounts: [
+        {
+          id: 'newer',
+          kind: 'property',
+          name: 'Flat',
+          sortOrder: 1,
+          createdAt: 9,
+          archivedAt: null,
+        },
+        {
+          id: 'older',
+          kind: 'property',
+          name: 'Villa',
+          sortOrder: 0,
+          createdAt: 2,
+          archivedAt: null,
+        },
+        { id: 'cash', kind: 'cash', name: 'Wallet', sortOrder: 0, createdAt: 1, archivedAt: null },
+      ],
+      holdings: [{ id: 'h-newer', accountId: 'newer', sortOrder: 0, createdAt: 3 }],
+      reminders: [
+        { id: 'r-newer', accountId: 'newer', kind: 'statement_import', createdAt: 5 },
+        { id: 'r-older', accountId: 'older', kind: 'statement_import', createdAt: 8 },
+      ],
+      settings: [{ id: 1, reminderOfferDismissals: { newer: ['statement_import'] } }],
+      syncState: [{ accountId: 'newer' }, { accountId: 'cash' }],
+    };
+
+    it('inserts the merged rows, and resolves with the number of accounts inserted after the merge', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      const summary = await restoreDataSnapshot({
+        ...emptySnapshot,
+        ...twoPropertyAccounts,
+      } as never);
+
+      expect((insertedRows.accounts as { id: string }[]).map((row) => row.id)).toEqual([
+        'older',
+        'cash',
+      ]);
+      expect(insertedRows.holdings).toEqual([
+        expect.objectContaining({ id: 'h-newer', accountId: 'older', sortOrder: 0 }),
+      ]);
+      expect(insertedRows.reminders).toEqual([
+        expect.objectContaining({ id: 'r-newer', accountId: 'older' }),
+      ]);
+      expect(insertedRows.settings).toEqual([
+        expect.objectContaining({ reminderOfferDismissals: { older: ['statement_import'] } }),
+      ]);
+      expect(insertedRows.syncState).toEqual([{ accountId: 'cash' }]);
+      expect(summary).toEqual({ accountsRestored: 2 });
+    });
+
+    it('keeps a restore of an already merged file as it is', async () => {
+      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      const summary = await restoreDataSnapshot({
+        ...emptySnapshot,
+        accounts: [
+          {
+            id: 'only',
+            kind: 'property',
+            name: 'Properties',
+            icon: null,
+            color: null,
+            sortOrder: 0,
+            createdAt: 2,
+            archivedAt: null,
+          },
+        ],
+        holdings: [{ id: 'h', accountId: 'only', sortOrder: 4, createdAt: 3 }],
+      } as never);
+
+      expect(insertedRows.holdings).toEqual([
+        expect.objectContaining({ id: 'h', accountId: 'only', sortOrder: 4 }),
+      ]);
+      expect(summary).toEqual({ accountsRestored: 1 });
+    });
+  });
+
   // Known limit: an export made before reminders existed restores with no
   // reminders at all.
   it('restores an empty reminders table for a legacy snapshot with no reminders field', async () => {

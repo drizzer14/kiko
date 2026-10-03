@@ -252,7 +252,8 @@ project-level pointer to this section.
   part is hand-authored above the generated index line; after
   `drizzle-kit generate`, check the index kept its `WHERE`. The restore
   mirror `withImplicitAccountsMerged`
-  (`src/data-transfer/snapshot/restore-snapshot.ts`) is mandatory: without it
+  (`src/data-transfer/snapshot/with-implicit-accounts-merged.ts`, called by
+  `restore-snapshot.ts`; see "Data transfer") is mandatory: without it
   a `.kiko` with two property accounts fails on the index. Proven by
   `drizzle/migrations/0050-implicit-property-debt-accounts.test.ts`.
 - **A flag whose work SQL cannot do follows the flag-plus-launch-step
@@ -1901,6 +1902,26 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   of the shared id. Runs FIRST (before `withLegacyBalanceSetAtBackfilled` and
   every later backfill), feeding its own output into every step after it,
   since it is the one step that can add a NEW account row.
+- **A merge migration's restore mirror covers every row it re-points or
+  deletes, and a two-path test proves it on ONE seeded database.**
+  `withImplicitAccountsMerged` (`snapshot/with-implicit-accounts-merged.ts`)
+  applies migration 0050's steps to the snapshot: holdings, reminders, the
+  `reminderOfferDismissals` map, AND the `syncState` rows of a merged-away
+  account (its foreign key would fail the insert), so it takes all five
+  row arrays and returns the same references when nothing needs merging or
+  renaming. It runs right after `withBankAccountsOtherBank`, the order a
+  live device runs 0044, 0049, 0050, and its output feeds every later
+  step. It compares ids by UTF-16 code unit (`a < b`), never
+  `localeCompare`, because SQLite's BINARY collation does, and a
+  `created_at` tie must pick the same kept account on both paths. The
+  returned `accountsRestored` counts the accounts inserted AFTER the merge.
+  `snapshot/restore-implicit-accounts.two-path.test.ts` seeds one pre-0050
+  database, runs the real 0050 SQL on it (path 1), exports it first with
+  `readDataSnapshot` and restores that into a fresh database (path 2),
+  then compares accounts, holdings, transactions, price points, sync state,
+  dismissal kinds (sorted) and reminders without `activeSince` and
+  `lastSnoozedAt`, which a restore restarts by design. The seed holds a
+  three-way tie whose ids differ by case, so a `localeCompare` fails it.
 - **A value that lives inside `holdings.metadata` needs NO restore
   mirror.** A property's dated ownership share (`metadata.ownership`,
   kiko-pricing "Ownership share") rides in the opaque JSON column: a

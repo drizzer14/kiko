@@ -1,0 +1,302 @@
+// src/data-transfer/snapshot/with-implicit-accounts-merged.ts
+import {
+  IMPLICIT_ACCOUNT_STORED_NAME,
+  implicitAccountKinds,
+  isImplicitAccount,
+} from '@kiko/holdings/implicit-account';
+import maybe, { foldMap } from 'fnts/maybe';
+import type { AccountRow, HoldingRow, ReminderRow, SettingsRow, SyncStateRow } from '@kiko/db';
+
+type AccountFields = Pick<
+  AccountRow,
+  'id' | 'kind' | 'name' | 'icon' | 'color' | 'sortOrder' | 'archivedAt' | 'createdAt'
+>;
+type HoldingFields = Pick<HoldingRow, 'id' | 'accountId' | 'sortOrder' | 'createdAt'>;
+type ReminderFields = Pick<ReminderRow, 'id' | 'accountId' | 'kind' | 'createdAt'>;
+type SettingsFields = Pick<SettingsRow, 'reminderOfferDismissals'>;
+type SyncStateFields = Pick<SyncStateRow, 'accountId'>;
+
+type Dismissals = NonNullable<SettingsFields['reminderOfferDismissals']>;
+
+type Comparison<Row> = (left: Row, right: Row) => number;
+
+const byNumber =
+  <Row>(read: (row: Row) => number): Comparison<Row> =>
+  (left, right) =>
+    read(left) - read(right);
+
+// UTF-16 code unit order, the way SQLite's BINARY collation orders the ids the
+// migration's ORDER BY compares; `localeCompare` would order 'B' after 'a'.
+const byText =
+  <Row>(read: (row: Row) => string): Comparison<Row> =>
+  (left, right) => {
+    const leftText = read(left);
+    const rightText = read(right);
+
+    if (leftText === rightText) {
+      return 0;
+    }
+
+    return leftText < rightText ? -1 : 1;
+  };
+
+const inOrder =
+  <Row>(...comparisons: Comparison<Row>[]): Comparison<Row> =>
+  (left, right) => {
+    for (const comparison of comparisons) {
+      const difference = comparison(left, right);
+
+      if (difference !== 0) {
+        return difference;
+      }
+    }
+
+    return 0;
+  };
+
+type Member = { keptId: string; rank: number };
+
+// The accounts of a kind with more than one live account, each mapped to the
+// account it merges into (the oldest: `created_at`, `sort_order`, `id`) and its
+// position in the old section order (`sort_order`, `created_at`, `id`).
+const mergeMembers = <Account extends AccountFields>(
+  snapshotAccounts: Account[],
+): Map<string, Member> => {
+  const byAge = inOrder<Account>(
+    byNumber((account) => account.createdAt),
+    byNumber((account) => account.sortOrder),
+    byText((account) => account.id),
+  );
+  const bySection = inOrder<Account>(
+    byNumber((account) => account.sortOrder),
+    byNumber((account) => account.createdAt),
+    byText((account) => account.id),
+  );
+  const members = new Map<string, Member>();
+
+  for (const kind of implicitAccountKinds) {
+    const live = snapshotAccounts.filter(
+      (account) => isImplicitAccount(account) && account.kind === kind,
+    );
+
+    if (live.length < 2) {
+      continue;
+    }
+
+    const keptId = live.reduce((oldest, account) =>
+      byAge(account, oldest) < 0 ? account : oldest,
+    ).id;
+
+    for (const [rank, account] of [...live].sort(bySection).entries()) {
+      members.set(account.id, { keptId, rank });
+    }
+  }
+
+  return members;
+};
+
+// Every holding of a merged account goes to the kept account and is numbered
+// 0..n-1 in the old visible order: the accounts in section order, then each
+// account's own order.
+const holdingsMergedInto = <Holding extends HoldingFields>(
+  snapshotHoldings: Holding[],
+  members: Map<string, Member>,
+): Holding[] => {
+  const byKeptId = new Map<string, { holding: Holding; rank: number }[]>();
+
+  for (const holding of snapshotHoldings) {
+    const member = members.get(holding.accountId);
+
+    if (member === undefined) {
+      continue;
+    }
+
+    const bucket = byKeptId.get(member.keptId) ?? [];
+
+    bucket.push({ holding, rank: member.rank });
+    byKeptId.set(member.keptId, bucket);
+  }
+
+  const placed = new Map<string, Holding>();
+
+  for (const [keptId, bucket] of byKeptId) {
+    const ordered = bucket.sort(
+      inOrder(
+        byNumber((entry) => entry.rank),
+        byNumber((entry) => entry.holding.sortOrder),
+        byNumber((entry) => entry.holding.createdAt),
+        byText((entry) => entry.holding.id),
+      ),
+    );
+
+    for (const [position, entry] of ordered.entries()) {
+      placed.set(entry.holding.id, { ...entry.holding, accountId: keptId, sortOrder: position });
+    }
+  }
+
+  return snapshotHoldings.map((holding) => placed.get(holding.id) ?? holding);
+};
+
+// Per (kept account, reminder kind) only the earliest-created reminder (ties by
+// id) survives, re-pointed to the kept account with the rest of its own state
+// as it was. The others go, so no two reminders of one kind share an account.
+const remindersMergedInto = <Reminder extends ReminderFields>(
+  snapshotReminders: Reminder[],
+  members: Map<string, Member>,
+): Reminder[] => {
+  const byKeptIdAndKind = new Map<string, { keptId: string; reminders: Reminder[] }>();
+
+  for (const reminder of snapshotReminders) {
+    const member = members.get(reminder.accountId);
+
+    if (member === undefined) {
+      continue;
+    }
+
+    const groupKey = JSON.stringify([member.keptId, reminder.kind]);
+    const group = byKeptIdAndKind.get(groupKey) ?? { keptId: member.keptId, reminders: [] };
+
+    group.reminders.push(reminder);
+    byKeptIdAndKind.set(groupKey, group);
+  }
+
+  const survivorAccountIds = new Map<string, string>();
+  const deletedIds = new Set<string>();
+
+  for (const { keptId, reminders } of byKeptIdAndKind.values()) {
+    const ordered = reminders.sort(
+      inOrder(
+        byNumber((reminder) => reminder.createdAt),
+        byText((reminder) => reminder.id),
+      ),
+    );
+
+    for (const [position, reminder] of ordered.entries()) {
+      if (position === 0) {
+        survivorAccountIds.set(reminder.id, keptId);
+      } else {
+        deletedIds.add(reminder.id);
+      }
+    }
+  }
+
+  return snapshotReminders
+    .filter((reminder) => !deletedIds.has(reminder.id))
+    .map(
+      (reminder) =>
+        foldMap(maybe(survivorAccountIds.get(reminder.id)), (accountId) => ({
+          ...reminder,
+          accountId,
+        })) ?? reminder,
+    );
+};
+
+// The kept account's entry is the union of the kinds dismissed on every merged
+// account; the merged-away keys go. An entry with an empty kind list drops out,
+// as it does in the migration's `json_each` join.
+const dismissalsMergedInto = (dismissals: Dismissals, members: Map<string, Member>): Dismissals => {
+  const kindsByKey = new Map<string, Set<ReminderRow['kind']>>();
+
+  for (const [accountId, kinds] of Object.entries(dismissals)) {
+    if (kinds.length === 0) {
+      continue;
+    }
+
+    const key = members.get(accountId)?.keptId ?? accountId;
+    const union = kindsByKey.get(key) ?? new Set<ReminderRow['kind']>();
+
+    for (const kind of kinds) {
+      union.add(kind);
+    }
+
+    kindsByKey.set(key, union);
+  }
+
+  return Object.fromEntries([...kindsByKey].map(([key, union]) => [key, [...union]]));
+};
+
+const needsSentinel = (account: AccountFields): boolean =>
+  isImplicitAccount(account) &&
+  (account.name !== IMPLICIT_ACCOUNT_STORED_NAME[account.kind] ||
+    account.icon !== null ||
+    account.color !== null);
+
+// Every live property/debt account takes the stored sentinel name and the kind's
+// default icon and color, so one custom glyph never stands for all of them.
+const withSentinelNames = <Account extends AccountFields>(
+  snapshotAccounts: Account[],
+): Account[] => {
+  if (!snapshotAccounts.some(needsSentinel)) {
+    return snapshotAccounts;
+  }
+
+  return snapshotAccounts.map((account) =>
+    isImplicitAccount(account) && needsSentinel(account)
+      ? { ...account, name: IMPLICIT_ACCOUNT_STORED_NAME[account.kind], icon: null, color: null }
+      : account,
+  );
+};
+
+type MergeRows<
+  Account extends AccountFields,
+  Holding extends HoldingFields,
+  Reminder extends ReminderFields,
+  Settings extends SettingsFields,
+  SyncState extends SyncStateFields,
+> = {
+  accounts: Account[];
+  holdings: Holding[];
+  reminders: Reminder[];
+  settings: Settings[];
+  syncState: SyncState[];
+};
+
+/**
+ * Migration 0050's rule (`drizzle/migrations/0050_implicit_property_debt_accounts.sql`'s
+ * doc comment is the full statement of it), applied to a `.kiko` restore: a
+ * kind with several LIVE property or debt accounts merges into its oldest one,
+ * because the partial unique index `accounts_implicit_kind` would otherwise
+ * refuse the insert. An archived account is outside the merge, the same as in
+ * the migration. Fed the rows the earlier mirrors produced, the order a live
+ * device runs 0044, 0049, then 0050.
+ *
+ * A stray `sync_state` row of a merged-away account is dropped with it, as the
+ * migration does, since its foreign key would otherwise fail the insert.
+ *
+ * A snapshot where no kind has more than one live account and every live
+ * implicit account already carries the sentinel name and no icon or color
+ * returns the SAME array references, a true no-op: that is an export from this
+ * build, or a second restore of the same file.
+ */
+export const withImplicitAccountsMerged = <
+  Account extends AccountFields,
+  Holding extends HoldingFields,
+  Reminder extends ReminderFields,
+  Settings extends SettingsFields,
+  SyncState extends SyncStateFields,
+>(
+  rows: MergeRows<Account, Holding, Reminder, Settings, SyncState>,
+): MergeRows<Account, Holding, Reminder, Settings, SyncState> => {
+  const members = mergeMembers(rows.accounts);
+
+  if (members.size === 0) {
+    return { ...rows, accounts: withSentinelNames(rows.accounts) };
+  }
+
+  const isMergedAway = (accountId: string): boolean =>
+    foldMap(maybe(members.get(accountId)), (member) => member.keptId !== accountId) ?? false;
+
+  return {
+    accounts: withSentinelNames(rows.accounts.filter((account) => !isMergedAway(account.id))),
+    holdings: holdingsMergedInto(rows.holdings, members),
+    reminders: remindersMergedInto(rows.reminders, members),
+    settings: rows.settings.map(
+      (row) =>
+        foldMap(maybe(row.reminderOfferDismissals), (dismissals) => ({
+          ...row,
+          reminderOfferDismissals: dismissalsMergedInto(dismissals, members),
+        })) ?? row,
+    ),
+    syncState: rows.syncState.filter((row) => !isMergedAway(row.accountId)),
+  };
+};
