@@ -920,7 +920,8 @@ new component can land between reviews of this skill:
   `property` account's Type-as-category field (`PropertyTypeField`,
   replacing the generic holding-type picker for that one account
   kind — see `kiko-domain`'s "`property_item`/`metal` create-form
-  sections"), `LoanSection`'s kind field (6 and
+  sections"), the `debt` account's Type-as-loan-kind field
+  (`LoanKindField`, with one `loanKindSymbol` glyph per kind; 6 and
   4 long option names, too wide for a `ChipRow`), the Bond form's
   coupon-frequency picker (shared by both `BondIsinSection`'s ISIN-mode
   unmapped-frequency picker and `ManualBondFields`'s own frequency

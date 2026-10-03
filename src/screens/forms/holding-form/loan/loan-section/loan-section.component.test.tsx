@@ -8,8 +8,6 @@ import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import LoanSection from './loan-section.component';
 
 const baseProps = {
-  kind: 'mortgage' as const,
-  onSelectKind: jest.fn(),
   principal: '',
   onChangePrincipal: jest.fn(),
   currencySuffix: '₴',
@@ -42,29 +40,13 @@ const CARD_OPTION = {
 };
 
 describe('LoanSection', () => {
-  it('shows the selected kind in the field trigger, labeled Loan kind', async () => {
-    const { getByTestId, getByText } = await render(<LoanSection {...baseProps} />);
+  // The kind is the form's Type slot now (`LoanKindField`), so this section
+  // carries no second kind field.
+  it('has no loan kind field', async () => {
+    const { queryByTestId, queryByText } = await render(<LoanSection {...baseProps} />);
 
-    expect(getByText('Loan kind')).toBeTruthy();
-    expect(getByTestId('loan-kind-field')).toHaveTextContent('Mortgage');
-  });
-
-  it('lists every loan kind in the sheet and reports the tapped one', async () => {
-    const onSelectKind = jest.fn();
-    const { getByTestId } = await render(
-      <LoanSection {...baseProps} onSelectKind={onSelectKind} />,
-    );
-
-    await fireEvent.press(getByTestId('loan-kind-field'));
-
-    expect(getByTestId('loan-kind-field-option-mortgage')).toBeTruthy();
-    expect(getByTestId('loan-kind-field-option-car_loan')).toBeTruthy();
-    expect(getByTestId('loan-kind-field-option-consumer_loan')).toBeTruthy();
-    expect(getByTestId('loan-kind-field-option-personal')).toBeTruthy();
-
-    await fireEvent.press(getByTestId('loan-kind-field-option-car_loan'));
-
-    expect(onSelectKind).toHaveBeenCalledWith('car_loan');
+    expect(queryByTestId('loan-kind-field')).toBeNull();
+    expect(queryByText('Loan kind')).toBeNull();
   });
 
   it('reports the entered principal', async () => {

@@ -359,20 +359,14 @@ export const en = {
       isinRequiredError: "Enter the bond's ISIN.",
       jar: 'Jar',
       loan: 'Loan',
-      // The Loan form's own kind SelectField option map; see loanKindLabel.
+      // The loan kinds the form's Type field offers; the field itself reuses
+      // the generic `type`/`typeSheetTitle`/`typePlaceholder` keys.
       loanKind: {
         carLoan: 'Car loan',
         consumerLoan: 'Consumer loan',
         mortgage: 'Mortgage',
         personal: 'From a person',
       },
-      loanKindLabel: 'Loan kind',
-      // The loan-kind select field's placeholder — unreachable today (see
-      // `categoryPlaceholder`'s own doc comment).
-      loanKindPlaceholder: 'Select a loan kind',
-      // The loan-kind SelectField's sheet header — Title Case, distinct from
-      // the sentence-case field label (`loanKindLabel` above).
-      loanKindSheetTitle: 'Loan Kind',
       // The loan-payment matcher's own optional inputs — the "Paid from"
       // holding picker's field label + its synthetic "None" row, and the
       // lender's own name/IBAN text fields. None of these are required.

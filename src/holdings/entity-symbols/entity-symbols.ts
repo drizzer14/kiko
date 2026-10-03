@@ -1,7 +1,14 @@
+import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 
+import {
+  type LoanKind,
+  type PropertyCategory,
+  loanKindOf,
+  propertyCategoryOf,
+} from '../holding-metadata';
 import type { HoldingType } from '../holding-type';
-import { type PropertyCategory, propertyCategoryOf } from '../holding-metadata';
 import { holdingDescriptorOrUndefined, recordByType } from '../holding-descriptor';
 
 // The default SF Symbol shown for an account/holding icon, keyed by its
@@ -59,6 +66,19 @@ export const holdingTypeSymbol: Record<HoldingType, string> = recordByType(
   (descriptor) => descriptor.symbol,
 );
 
+// Every `loan` shares one holding type, so its kind — not the type — picks the
+// default glyph, like a property's category below. All four are SF Symbols
+// 1/2 (iOS 13/14: `house.circle.fill` is 2020, the rest 2019), safe on the
+// deployment floor, checked against the SF Symbols app's name_availability
+// metadata. The mortgage is NOT `house.fill`, the Properties account's own
+// glyph, so a mortgage card never reads as a property.
+export const loanKindSymbol: Record<LoanKind, string> = {
+  mortgage: 'house.circle.fill',
+  car_loan: 'car.fill',
+  consumer_loan: 'cart.fill',
+  personal: 'person.fill',
+};
+
 // Every `property_item` shares one holding type, so its category — not the
 // type — picks the default glyph. All six are SF Symbols 1/2 (iOS 13/14), safe
 // on the deployment floor.
@@ -73,13 +93,23 @@ export const propertyCategorySymbol: Record<PropertyCategory, string> = {
 
 // The glyph a holding shows while the user has picked no icon of its own. The
 // category is read leniently (`propertyCategoryOf`), so garbled metadata still
-// gets a glyph rather than a blank tile. A stored type this build has no
-// descriptor for (a removed type's row) gets the generic holding glyph: an
-// undefined symbol reaches the native symbol view as a null prop and crashes.
+// gets a glyph rather than a blank tile. A loan's kind is read leniently too
+// (`loanKindOf`); one with no valid kind shows the loan type's own glyph. A
+// stored type this build has no descriptor for (a removed type's row) gets the
+// generic holding glyph: an undefined symbol reaches the native symbol view as
+// a null prop and crashes.
 export const defaultHoldingSymbol = (holding: Pick<HoldingRow, 'type' | 'metadata'>): string =>
-  holding.type === 'property_item'
-    ? propertyCategorySymbol[propertyCategoryOf(holding.metadata)]
-    : (holdingDescriptorOrUndefined(holding.type)?.symbol ?? genericEntitySymbol.holding);
+  match(holding.type)
+    .with('property_item', () => propertyCategorySymbol[propertyCategoryOf(holding.metadata)])
+    .with(
+      'loan',
+      () =>
+        foldMap(maybe(loanKindOf(holding.metadata)), (kind) => loanKindSymbol[kind]) ??
+        holdingTypeSymbol.loan,
+    )
+    .otherwise(
+      () => holdingDescriptorOrUndefined(holding.type)?.symbol ?? genericEntitySymbol.holding,
+    );
 
 // The GENERIC entity glyphs — TYPE-agnostic references used for headings, empty
 // states, and section labels, NOT a per-entity user-chosen icon and NOT the

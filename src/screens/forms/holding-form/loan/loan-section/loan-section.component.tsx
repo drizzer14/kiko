@@ -1,11 +1,5 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
-import {
-  loanKinds,
-  loanSchedules,
-  type LoanKind,
-  type LoanSchedule,
-} from '@kiko/holdings/holding-metadata';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
@@ -13,18 +7,11 @@ import DateField from '@kiko/screens/forms/date-field';
 import TermField from '@kiko/screens/forms/term-field';
 import TextField from '@kiko/design-system/components/text-field';
 import FieldLabel from '@kiko/design-system/components/field-label';
-import SelectField from '@kiko/design-system/components/select-field';
 import PaymentHoldingField from '@kiko/screens/forms/payment-holding-field';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
+import { loanSchedules, type LoanSchedule } from '@kiko/holdings/holding-metadata';
 
 import type { LoanSectionProps } from './loan-section.props';
-
-const loanKindLabels = (t: TFunction): Record<LoanKind, string> => ({
-  mortgage: t('forms.holding.loanKind.mortgage'),
-  car_loan: t('forms.holding.loanKind.carLoan'),
-  consumer_loan: t('forms.holding.loanKind.consumerLoan'),
-  personal: t('forms.holding.loanKind.personal'),
-});
 
 const loanScheduleLabels = (t: TFunction): Record<LoanSchedule, string> => ({
   annuity: t('forms.holding.loanSchedule.annuity'),
@@ -32,9 +19,8 @@ const loanScheduleLabels = (t: TFunction): Record<LoanSchedule, string> => ({
   none: t('forms.holding.loanSchedule.none'),
 });
 
-// The `loan` create/edit-form section: a kind select field
-// (a `ChipRow` read oversized for 4 long kind names, converted to the
-// `FieldTrigger`+`BottomSheet`+`SelectableRow` family), the
+// The `loan` create/edit-form section: the loan kind is not here, it fills
+// the form's Type slot (`LoanKindField`). The
 // principal + start-date fields, the schedule SegmentedControl (one
 // control type per kind of mode choice; the schedule DOES
 // change the visible fields below it, so the Q2 tabs-vs-chips rule keeps it
@@ -49,8 +35,6 @@ const loanScheduleLabels = (t: TFunction): Record<LoanSchedule, string> => ({
 // reason live in `useLoanFields`; this component only renders what it is
 // handed.
 const LoanSection: FC<LoanSectionProps> = ({
-  kind,
-  onSelectKind,
   principal,
   onChangePrincipal,
   principalError,
@@ -87,17 +71,6 @@ const LoanSection: FC<LoanSectionProps> = ({
 
   return (
     <Box gap={4}>
-      <SelectField
-        label={t('forms.holding.loanKindLabel')}
-        sheetTitle={t('forms.holding.loanKindSheetTitle')}
-        options={loanKinds}
-        selected={kind}
-        onSelect={onSelectKind}
-        labels={loanKindLabels(t)}
-        placeholder={t('forms.holding.loanKindPlaceholder')}
-        testID="loan-kind-field"
-      />
-
       <View ref={principalFieldRef}>
         <TextField
           label={t('forms.holding.loanPrincipal')}

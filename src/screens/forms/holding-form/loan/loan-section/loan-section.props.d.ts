@@ -1,13 +1,11 @@
 import type { RefObject } from 'react';
 import type { TextInputInstance } from 'react-native';
 import type { TermUnit } from '@kiko/screens/forms/term-reasons';
+import type { LoanSchedule } from '@kiko/holdings/holding-metadata';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
-import type { LoanKind, LoanSchedule } from '@kiko/holdings/holding-metadata';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 export type LoanSectionProps = {
-  kind: LoanKind;
-  onSelectKind: (kind: LoanKind) => void;
   principal: string;
   onChangePrincipal: (text: string) => void;
   principalError?: string;

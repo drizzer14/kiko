@@ -618,7 +618,11 @@ garbled metadata still gets the Other glyph), else `holdingTypeSymbol`
 (the holding card, the holding-detail header, the holding- and
 transaction-form holding pickers, the statement-import target options).
 The holding form's untouched icon chip follows the picked category live,
-and `PropertyTypeField` shows the same glyphs on its rows. The only
+and `PropertyTypeField` shows the same glyphs on its rows. A `loan` follows
+its KIND the same way (`loanKindSymbol`: mortgage `house.circle.fill`, car
+loan `car.fill`, consumer loan `cart.fill`, personal `person.fill` — the
+mortgage is not `house.fill`, the Properties account's glyph), falling back
+to `holdingTypeSymbol.loan` when the kind is missing or invalid. The only
 remaining `holdingTypeSymbol[...]` reader is `defaultHoldingSymbol`
 itself; the generic `HoldingTypeField` takes the whole record as its
 `icons`. A past
@@ -1937,8 +1941,28 @@ kind and its sole `loan` type. Glyphs differ: the `debt` kind keeps
 needs a 0032-style migration), while the `loan` type is
 `arrow.down.backward.circle.fill` (iOS 14), the mirror of a loan given's
 `arrow.up.forward.circle.fill` — a saved loan holding stores a null icon,
-so the new glyph needs no migration. There is no "Add loan" footer
+so the new glyph needs no migration. That type glyph is now only the
+fallback for a loan with no valid kind: a loan's default glyph follows its
+kind (below). There is no "Add loan" footer
 button any more (kiko-design-system's footer mapping).
+
+A `debt` account's Type field IS its loan-kind picker (`LoanKindField`,
+`src/screens/forms/holding-form/loan/loan-kind-field/`, testID
+`loan-kind-field`): `loan` is that account kind's only holding type, so
+`HoldingFormScreen`'s `typeSlotFor` renders this `SelectField` wrapper —
+over `loanKinds` in the fixed order Mortgage/Car loan/Consumer loan/From a
+person, one SF Symbol per kind (`loanKindSymbol`, `entity-symbols.ts`) — in
+the generic `HoldingTypeField`'s slot. The stored holding type stays `loan`;
+the pick writes `LoanMeta.kind` (`useLoanFields`' `kind`/`setKind`), and
+`LoanSection` carries no kind field. Same "Type" label/sheet-title/placeholder
+keys as the property field; editable in create and edit mode (as the
+section field it replaced was — never disabled). A loan card's default glyph
+follows its kind: `defaultHoldingSymbol` reads it leniently (`loanKindOf`),
+and a loan with a missing/invalid kind shows the loan type's own glyph
+(`holdingTypeSymbol.loan`); the form's untouched icon chip follows the
+picked kind until the user picks an icon. A stored icon is never changed: a
+loan saved with a NULL icon (what an untouched create writes) now follows its
+kind on every card, a loan with a stored icon keeps it.
 
 `LoanMeta` (`src/holdings/holding-metadata/holding-metadata.ts`):
 `kind` (`'mortgage' | 'car_loan' | 'consumer_loan' | 'personal'` —

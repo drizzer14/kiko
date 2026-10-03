@@ -52,6 +52,7 @@ import HoldingIdentityField from '@kiko/design-system/components/holding-identit
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import LoanFormBlock from './loan/loan-form-block';
+import LoanKindField from './loan/loan-kind-field';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
 import MetalTypeField from './metal/metal-type-field';
@@ -141,7 +142,8 @@ const buildPaymentHoldingOptions = (
 };
 
 // Which field fills the Type slot. A `property` account's only type IS its
-// category, so the category picker takes the slot. Wherever a `metal` holding
+// category, and a `debt` account's only type IS its loan kind, so the category
+// or kind picker takes the slot. Wherever a `metal` holding
 // can be created — a metals account, or a bank that sells metals — or one is
 // being edited, each metal is its own row (`MetalTypeField`), after the
 // account's other creatable types; an edit locks the type, so it lists the
@@ -149,6 +151,7 @@ const buildPaymentHoldingOptions = (
 // a bank that sells metals, keeps the generic field.
 type TypeSlot =
   | { kind: 'property' }
+  | { kind: 'loan' }
   | { kind: 'metal'; otherTypes: readonly HoldingType[] }
   | { kind: 'generic' };
 
@@ -160,6 +163,10 @@ const typeSlotFor = (
 ): TypeSlot => {
   if (accountKind === 'property') {
     return { kind: 'property' };
+  }
+
+  if (accountKind === 'debt') {
+    return { kind: 'loan' };
   }
 
   if (isEdit) {
@@ -742,7 +749,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           <HoldingIdentityField
             icons={KIKO_ENTITIES_ICONS}
             icon={icon}
-            fallbackIcon={defaultHoldingSymbol({ type, metadata: { category: property.category } })}
+            fallbackIcon={defaultHoldingSymbol({
+              type,
+              metadata: { category: property.category, kind: loanFields.kind },
+            })}
             iconColor={effectiveColor}
             name={name}
             onChangeName={setName}
@@ -786,15 +796,21 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             set so an existing synced card/jar row still displays its (read-only)
             type. */}
         {/* A select sheet, mirroring AccountKindField — up to 9 long type
-            names (e.g. "Строковий депозит") run too wide for a chip row, the
-            same label-width reasoning that moved LoanSection's kind onto
-            `SelectField`. `typeSlotFor` picks which field fills the slot. */}
+            names (e.g. "Строковий депозит") run too wide for a chip row.
+            `typeSlotFor` picks which field fills the slot. */}
         {match(typeSlotFor(accountKind, typeOptions, isEdit, type))
           .with({ kind: 'property' }, () => (
             <PropertyTypeField
               selected={property.category}
               onSelect={property.setCategory}
               testID="property-category-field"
+            />
+          ))
+          .with({ kind: 'loan' }, () => (
+            <LoanKindField
+              selected={loanFields.kind}
+              onSelect={loanFields.setKind}
+              testID="loan-kind-field"
             />
           ))
           .with({ kind: 'metal' }, ({ otherTypes }) => (
