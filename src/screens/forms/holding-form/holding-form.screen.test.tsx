@@ -6,6 +6,10 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
+import {
+  type ModalAnimationSpy,
+  spyOnModalAnimation,
+} from '@kiko/test-support/modal-animation-spy';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -4659,6 +4663,65 @@ describe('HoldingFormScreen implicit create', () => {
   });
 
   describe('switching the kind', () => {
+    let kindSheetModal: ModalAnimationSpy;
+
+    beforeEach(() => {
+      kindSheetModal = spyOnModalAnimation('account-kind-field-sheet-modal');
+    });
+
+    afterEach(() => {
+      kindSheetModal.restore();
+    });
+
+    // The sheet is still closing here, so the kind field is what tells the user
+    // the tap landed; left on the old kind the form looks frozen.
+    it.each([
+      ['bank', 'Bank'],
+      ['cash', 'Cash'],
+      ['crypto', 'Crypto'],
+      ['metals', 'Precious metals'],
+      ['broker', 'Broker'],
+    ] as const)(
+      'shows %s on the kind field at once, before the sheet has finished closing',
+      async (kind, label) => {
+        const screen = await renderImplicit({ implicitKind: 'property' });
+
+        await fireEvent.press(screen.getByTestId('account-kind-field'));
+        await fireEvent.press(screen.getByTestId(`account-kind-field-option-${kind}`));
+
+        expect(screen.getByTestId('account-kind-field')).toHaveTextContent(label);
+        expect(navigation.replace).not.toHaveBeenCalled();
+      },
+    );
+
+    // The fade is only a wait for a pick that leaves the form (the replace runs
+    // once the sheet is gone), so a pick that creates an account closes with
+    // none; the other implicit kind stays in this form and keeps it.
+    it.each([
+      ['bank', 'none'],
+      ['cash', 'none'],
+      ['crypto', 'none'],
+      ['metals', 'none'],
+      ['broker', 'none'],
+      ['debt', 'fade'],
+    ] as const)('closes the kind sheet for %s with animation "%s"', async (kind, animation) => {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fireEvent.press(screen.getByTestId('account-kind-field'));
+      await fireEvent.press(screen.getByTestId(`account-kind-field-option-${kind}`));
+
+      expect(kindSheetModal.lastHiddenAnimation()).toBe(animation);
+    });
+
+    it('closes the kind sheet for the other implicit kind with a fade from the loan form too', async () => {
+      const screen = await renderImplicit({ implicitKind: 'debt' });
+
+      await fireEvent.press(screen.getByTestId('account-kind-field'));
+      await fireEvent.press(screen.getByTestId('account-kind-field-option-property'));
+
+      expect(kindSheetModal.lastHiddenAnimation()).toBe('fade');
+    });
+
     it('replaces the screen with the account form on a kind that creates an account', async () => {
       const screen = await renderImplicit({ implicitKind: 'property' });
 

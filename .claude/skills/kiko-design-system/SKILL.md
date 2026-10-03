@@ -934,9 +934,11 @@ new component can land between reviews of this skill:
   `closesWithoutAnimation(option)` names the picks whose sheet closes with
   `BottomSheet`'s `animationType="none"` (`'fade' | 'slide' | 'none'`,
   default `'fade'`), so `onSelectClosed` follows the pick at once instead of
-  after the ~0.3-0.4 s cross-dissolve: only for a pick that LEAVES the
-  screen, where the fade is just a wait (the account form's Property and
-  Debt). It is opt-in per call site; every other pick and every other sheet
+  after the cross-dissolve (its length is inferred, unmeasured): only for a
+  pick that LEAVES the screen, where the fade is just a wait (the account
+  form's Property and Debt, and the holding form's Bank, Cash, Crypto,
+  Metals and Broker; the holding form's other implicit kind stays in that
+  form and keeps the fade). It is opt-in per call site; every other pick and every other sheet
   keeps the fade. It works because RN's iOS Modal host re-reads
   `animationType` on every props commit and uses it for the dismiss
   (`RCTModalHostViewComponentView.mm` `updateProps` sets

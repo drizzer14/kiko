@@ -399,7 +399,12 @@ Metals, or Broker there calls `navigation.replace('AccountForm', {
 initialKind, draft })`, which seeds the account form once (a carried icon
 counts as a pick); picking the other implicit kind calls
 `navigation.setParams({ implicitKind })`, and the type effect re-snaps
-the form in place. Both `replace` calls run from the field's
+the form in place. A pick that leaves for the account form is shown on the
+kind field in the tap's own frame (`leavingKind` state, the same
+picked-kind pattern as the account form's `pickedImplicitKind`) and its
+sheet closes with no fade (`closesWithoutAnimation={isLeavingKind}`, so
+`onSelectClosed` and the `replace` follow at once); the other implicit kind
+keeps the fade. Both `replace` calls run from the field's
 `onSelectClosed` (`SelectField`'s optional prop: runs once, with the
 pick, after the sheet has FINISHED closing, via `BottomSheet`'s
 `onClosed`), never on the pick itself: replacing mid-close would unmount

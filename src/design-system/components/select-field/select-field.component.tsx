@@ -41,7 +41,7 @@ const SelectField = <Option extends string>({
   const pendingPick = useRef<Option | undefined>(undefined);
   // Set in the same batch that hides the sheet, so the one render that hides
   // it hands the Modal `'none'` (native reads the animation flag again on that
-  // very commit); the next open clears it, so the sheet fades in as before.
+  // very commit); the next open clears it, so the next open fades in.
   const [closingWithoutAnimation, setClosingWithoutAnimation] = useState(false);
 
   const handleSelect = (option: Option): void => {

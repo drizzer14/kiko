@@ -225,14 +225,21 @@ type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ho
 type HoldingFormNavigation = HoldingFormScreenProps['navigation'];
 
 // The kind field's two outcomes in implicit mode. The other implicit kind
-// re-targets this form at once, in place.
+// re-targets this form at once, in place. Any other kind leaves for the account
+// form once the sheet has closed, so the field shows that pick at once: the
+// sheet is still closing, and left on the old kind the form looks frozen.
 const retargetImplicitKind = (
   navigation: HoldingFormNavigation,
   kind: AccountRow['kind'],
+  showLeavingKind: (kind: AccountRow['kind']) => void,
 ): void => {
   if (isImplicitAccountKind(kind)) {
     navigation.setParams({ implicitKind: kind });
+
+    return;
   }
+
+  showLeavingKind(kind);
 };
 
 // Any other kind creates an account, so the account form takes over. It runs
@@ -247,6 +254,19 @@ const leaveForAccountForm = (
     navigation.replace('AccountForm', { initialKind: kind, draft });
   }
 };
+
+// A kind that creates an account takes the user to the account form, which only
+// runs once the kind sheet's Modal is gone, so that sheet closes with no fade
+// rather than make the swap wait for it.
+const isLeavingKind = (kind: AccountRow['kind']): boolean => !isImplicitAccountKind(kind);
+
+// What the kind field shows: the kind just picked that leaves for the account
+// form, else the implicit kind this form is on. At module scope to keep this
+// branch out of HoldingFormScreen's own cognitive complexity score.
+const shownKind = (
+  implicitKind: AccountRow['kind'],
+  leavingKind: AccountRow['kind'] | undefined,
+): AccountRow['kind'] => leavingKind ?? implicitKind;
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { holdingId, returnTo } = route.params;
@@ -362,6 +382,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless (see
   // `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
+  // The kind just picked on the kind field that leaves for the account form,
+  // shown there until the swap replaces this screen (see `retargetImplicitKind`).
+  const [leavingKind, setLeavingKind] = useState<AccountRow['kind'] | undefined>(undefined);
   // The icon is null until the user picks one ("not dirty"): while null, the
   // chip shows the selected type's default glyph (`defaultHoldingSymbol`, a
   // property's own category glyph) and switching type or category re-derives
@@ -742,11 +765,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         {match(target)
           .with({ kind: 'implicit' }, ({ implicitKind }) => (
             <AccountKindField
-              selected={implicitKind}
-              onSelect={(kind) => retargetImplicitKind(navigation, kind)}
+              selected={shownKind(implicitKind, leavingKind)}
+              onSelect={(kind) => retargetImplicitKind(navigation, kind, setLeavingKind)}
               onSelectClosed={(kind) =>
                 leaveForAccountForm(navigation, kind, { name, icon, color })
               }
+              closesWithoutAnimation={isLeavingKind}
               disabled={false}
             />
           ))

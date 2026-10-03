@@ -5,9 +5,12 @@ const modalModule = require('react-native/Libraries/Modal/Modal') as {
 };
 
 export type ModalAnimationSpy = {
-  // The animation the Modal was handed in the render that hid it (the last
-  // render with `visible` false), which is what native reads for that dismiss.
+  // The animation the Modal was handed in the render that last hid it (the
+  // first render of the latest run with `visible` false), which is what native
+  // reads for that dismiss. A later re-render does not count: native has
+  // already started the dismiss.
   lastHiddenAnimation: () => string | undefined;
+  // The same for the render that last showed it.
   lastShownAnimation: () => string | undefined;
   restore: () => void;
 };
@@ -19,15 +22,20 @@ export type ModalAnimationSpy = {
 // `restore` in `afterEach`.
 export const spyOnModalAnimation = (modalTestID: string): ModalAnimationSpy => {
   const spy = jest.spyOn(modalModule, 'default');
-  const lastAnimation = (visible: boolean): string | undefined =>
-    spy.mock.calls
+  const transitionAnimation = (toVisible: boolean): string | undefined => {
+    const renders = spy.mock.calls
       .map(([props]) => props)
-      .filter((props) => props.testID === modalTestID && Boolean(props.visible) === visible)
-      .at(-1)?.animationType;
+      .filter((props) => props.testID === modalTestID);
+    const inState = renders.map((props) => Boolean(props.visible) === toVisible);
+    const lastInState = inState.lastIndexOf(true);
+    const runStart = inState.slice(0, lastInState + 1).lastIndexOf(false) + 1;
+
+    return lastInState === -1 ? undefined : renders[runStart]?.animationType;
+  };
 
   return {
-    lastHiddenAnimation: () => lastAnimation(false),
-    lastShownAnimation: () => lastAnimation(true),
+    lastHiddenAnimation: () => transitionAnimation(false),
+    lastShownAnimation: () => transitionAnimation(true),
     restore: () => spy.mockRestore(),
   };
 };

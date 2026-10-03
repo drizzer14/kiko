@@ -197,7 +197,7 @@ describe('SelectField', () => {
       const { getByTestId } = await setup({ closesWithoutAnimation: onlyB });
 
       await fireEvent.press(getByTestId('kind-field'));
-      await fireEvent(getByTestId('kind-field-sheet-modal'), 'dismiss');
+      await fireEvent(getByTestId('kind-field-sheet-modal'), 'requestClose');
 
       expect(modal.lastHiddenAnimation()).toBe('fade');
     });
