@@ -73,6 +73,14 @@ project-level pointer to this section.
 - `@op-engineering/op-sqlite` (^18.1.4) is the SQLite engine.
   `drizzle-orm` (^0.45.2) is the ORM on top of it: open the database
   with op-sqlite's `open()`, wrap it with `drizzle(opsqliteDb)`.
+- op-sqlite (package.json version; verify there) bundles SQLite
+  3.51.3 in both `cpp/sqlite3.c` and `cpp/sqlcipher/sqlite3.c`: JSON
+  functions (built in since 3.38) and window functions (since 3.25)
+  are available in migration SQL, and the podspec sets no OMIT flag
+  for them. Write string literals in migration SQL with SINGLE
+  quotes: op-sqlite's optional performance flags include
+  `SQLITE_DQS=0`, which rejects double-quoted string literals (double
+  quotes stay fine for identifiers).
 - The schema is defined in TypeScript (Drizzle schema, not raw SQL).
   The `@kiko/db` barrel exports the tables flat (`export * from
   './schema'`) and also as a namespace (`schema`). Mock the connection
