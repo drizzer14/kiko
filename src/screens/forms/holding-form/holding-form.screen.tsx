@@ -335,10 +335,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     editingHolding !== undefined && isSyncedHolding(editingHolding, accounts.at(0));
 
   const [name, setName] = useState(draft.name);
-  // The selected type starts at `card`, then the effect below snaps it to the
-  // first CREATABLE type for the account's kind once it loads — so a bank create
-  // (where card/jar are sync-only and excluded) defaults to `term_deposit`, and
-  // an edit seeds the real type from the row.
+  // The selected type starts at the first type the form offers right now
+  // (`typeOptions[0]`). The account loads asynchronously, so the effect below
+  // snaps it to the first CREATABLE type for the account's kind once the option
+  // set is known — a bank create (where card/jar are sync-only and excluded)
+  // lands on `term_deposit` — and an edit seeds the real type from the row.
   const [type, setType] = useState<HoldingType>(typeOptions[0]);
 
   // Reactive `PriceBook`, passed through `EditContext.book` to every hook's

@@ -136,13 +136,16 @@ describe('SelectField', () => {
     });
 
     it('is optional: a close without it changes nothing', async () => {
-      const { getByTestId } = await setup();
+      const { onSelect, getByTestId, queryByTestId } = await setup();
 
       await fireEvent.press(getByTestId('kind-field'));
       const sheet = getByTestId('kind-field-sheet-modal');
       await fireEvent.press(getByTestId('kind-field-option-b'));
+      await finishClosing(sheet);
 
-      await expect(finishClosing(sheet)).resolves.not.toThrow();
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(queryByTestId('kind-field-option-b')).toBeNull();
+      expect(getByTestId('kind-field')).toHaveTextContent('Alpha');
     });
   });
 
