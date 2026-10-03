@@ -22,6 +22,12 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
+# Stryker's own json reporter writes its report to a path RELATIVE to its own
+# cwd (reports/mutation/mutation.json by default), so the change-set gate below
+# must read it from the same place Stryker wrote it to, whatever cwd this
+# wrapper was invoked from.
+cd "$ROOT" || exit 2
+MUTATION_REPORT="$ROOT/reports/mutation/mutation.json"
 list=0
 # A mistyped `--list` must not fall through to a full Stryker run, so any
 # other argument is refused before the lock or Stryker.
@@ -212,6 +218,10 @@ else
 fi
 printf 'Watch live progress:  tail -f %s\n' "$log"
 
+# A report left by an earlier run must never be mistaken for THIS run's: remove
+# it so a Stryker that writes none is caught by the missing-report check below.
+rm -f "$MUTATION_REPORT"
+
 start="$(date +%s 2>/dev/null || printf '0')"
 "$BIN" run "$mutate_arg" 2>&1 | tee "$log" | harness_mutation_eta_filter "$rate"
 code="${PIPESTATUS[0]}"
@@ -228,29 +238,79 @@ score="$(printf '%s' "$out" | grep -Eio 'mutation score[^0-9]*[0-9]+(\.[0-9]+)?'
 [ -n "$count" ] && printf 'Mutants: %s\n' "$count"
 
 iso="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '')"
-# A backward clock jump mid-run can yield dur=0; a 0s record would drag the
-# rolling ETA average toward zero, so only a strictly-positive duration is ever
-# recorded. This never changes the gate exit code or any progress output.
-if [ "$code" -ne 0 ]; then
-  # A break-threshold failure (Stryker exit 1) still RAN to completion — record
-  # it in history so the ETA reflects real runs. Any other non-zero code is a
-  # crash, not a completed run, and is deliberately not recorded.
-  if [ "$code" -eq 1 ] && [ "$dur" -gt 0 ]; then
-    harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score"
-  fi
+
+# A code other than 0 or 1 is a CRASH (Stryker never finished a run at all),
+# not a completed run — never recorded in history.
+if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then
   print_block \
     "Stryker (mutation testing)" \
-    "Mutation score fell below the break threshold (60)." \
+    "Stryker exited with code $code rather than completing a run." \
     "$out" \
-    "A surviving mutant means the test suite would not catch a real regression in that code path. Tests that run but assert nothing give false confidence, a common LLM failure mode." \
-    "Add a real assertion that fails when the mutated code is wrong. Re-run: npm run check:mutation" \
-    "Do not delete the failing mutant's test. Add a real assertion that fails when the code is wrong."
+    "A crash produces no mutation report at all, so neither the whole-report sanity floor nor the change-set gate below can run; a check that never actually ran must never report success." \
+    "Read the output above for the crash cause (an instrumentation error, an out-of-memory worker, ...), fix it, and re-run: npm run check:mutation" \
+    "Do not treat a crash as a pass, and do not raise concurrency or memory limits to paper over an instrumentation bug."
   exit 2
 fi
 
-# Passed: record this completed run in history (feeds the next run's ETA) and
-# record the fingerprint so an identical source state skips next time. Only a
-# strictly-positive duration is recorded (see the clock-skew guard above).
+# A completed run (code 0 or 1) took real wall-clock time; record it in
+# history (feeds the next run's ETA) regardless of which gate below ends up
+# failing it. A backward clock jump mid-run can yield dur=0; a 0s record would
+# drag the rolling ETA average toward zero, so only a strictly-positive
+# duration is ever recorded. This never changes the gate's exit code.
 [ "$dur" -gt 0 ] && harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score"
+
+if [ "$code" -eq 1 ]; then
+  # Stryker's OWN break threshold (stryker.conf.json's thresholds.break: 60)
+  # covers the WHOLE accumulated incremental report (191 files, ~13k mutants
+  # in one window), not this change set, so it barely moves per change set —
+  # one window printed 80.6-81.6 regardless of what changed. It is kept only
+  # as a SANITY FLOOR for a catastrophic whole-report regression; the REAL
+  # gate for a reviewed change set is its own score below, read from the json
+  # reporter's output rather than this whole-report number.
+  print_block \
+    "Stryker (mutation testing)" \
+    "The whole-report sanity floor (Stryker's own break threshold, 60 over every file Stryker has ever mutated) failed." \
+    "$out" \
+    "This number covers the entire accumulated incremental report, not this change set — a regression this large usually means something is broken project-wide (a bad config, a swallowed exception in every test), not just in the files reviewed here." \
+    "Read the output above for the failing files, fix the regression, and re-run: npm run check:mutation" \
+    "Do not lower this sanity floor to get green; it almost never trips for a normal change set (see the header of this script)."
+  exit 2
+fi
+
+# code == 0: Stryker's own whole-report sanity floor passed. Gate on the
+# CHANGE SET's own score instead (scripts/checks/mutation-score.js), read from
+# the json reporter's output, restricted to the files THIS run mutated.
+if [ ! -f "$MUTATION_REPORT" ]; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "Stryker passed but wrote no JSON report at $MUTATION_REPORT." \
+    "$out" \
+    "Without the report the change-set score cannot be computed at all, and a missing result must never read as a pass." \
+    "Check that stryker.conf.json's reporters array still includes \"json\", then re-run: npm run check:mutation" \
+    "Do not skip the change-set gate when the report is missing; fix why it was not written."
+  exit 2
+fi
+
+# $changed is a newline-separated list (bash 3.2-safe: no mapfile), expanded
+# into one argv entry per file for mutation-score.js.
+file_arguments=()
+while IFS= read -r changed_file; do
+  [ -n "$changed_file" ] && file_arguments+=("$changed_file")
+done < <(printf '%s\n' "$changed")
+
+score_out="$(node "$DIR/mutation-score.js" "$MUTATION_REPORT" "${file_arguments[@]}" 2>&1)"
+score_code=$?
+printf '%s\n' "$score_out"
+if [ "$score_code" -ne 0 ]; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "The CHANGE SET's own mutation score failed the gate (75 total, 60 per file)." \
+    "$score_out" \
+    "A surviving mutant in the files THIS change set touched means its own tests would not catch a real regression there — the number that matters for this review, not the whole accumulated report." \
+    "Add a real assertion that fails when the mutated code is wrong, or (only for a declaration-only file with no behavioral branch) add it to the exclusion allowlist in mutation-score.js with a concrete reason, and mirror it in docs/harness/documented-exceptions.md. Re-run: npm run check:mutation" \
+    "Do not delete the failing mutant's test, and do not add a file to the exclusion allowlist without a concrete, verifiable reason (see CLAUDE.md's Override protocol)."
+  exit 2
+fi
+
 harness_mark_pass "$ROOT" "mutation" "$fp"
 exit 0

@@ -418,6 +418,29 @@ verified usage, not dead weight:
   `stryker.conf.json` and the changed-file `grep` filter in
   `scripts/checks/mutation.sh` for the exact patterns and re-includes
   (not restated in full here so they cannot drift).
+- **`scripts/checks/mutation-score.js` declaration-only exclusion
+  allowlist**: the CHANGE-SET mutation gate (CLAUDE.md's
+  `check:mutation` row) excludes a file from BOTH the change-set score
+  and its own per-file floor when it is purely declarative — Stryker
+  still instruments it (there is runtime-reachable syntax for its
+  mutators to touch), but every mutant flips a type, column, or
+  structural literal with no behavioral branch a test could kill with
+  a real assertion, so a surviving mutant there reflects an absent
+  GRADING TARGET, not a missing test. Today: **`src/db/schema.ts`**
+  (Drizzle table/column declarations — every mutant flips a column
+  type, default, or constraint literal). Also a PREFIX rule for
+  **`drizzle/migrations/meta/`** (generated Drizzle migration
+  snapshots — structural JSON describing a prior schema state, not
+  hand-written logic); that directory does not exist in this project
+  yet, so the rule is defensive — it excludes the moment such a
+  directory starts being mutated, rather than silently failing the
+  floor the day it first appears. This is the ONE allowlist in that
+  script (`EXCLUDED_FILES` + `EXCLUDED_PREFIXES`); a new entry needs
+  the same concrete, verifiable reason as any other suppression here
+  (CLAUDE.md's "Override protocol"), update this entry when one is
+  added. A changed file that is simply ABSENT from the json report and
+  NOT on this allowlist is a hard gate failure (fail-closed), not an
+  implicit exclusion — only a file named here is ever excluded.
 - **Stryker sandbox exclusions (`stryker.conf.json` `ignorePatterns`)**:
   Stryker copies every non-ignored project file into a temp sandbox before
   each run (verified in `@stryker-mutator/core` 8.7.1

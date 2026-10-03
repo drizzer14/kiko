@@ -7,6 +7,7 @@ import {
   runWithStub,
   writeStrykerStub,
   buildMutationRepository,
+  PASSING_REPORT_FOR_CHANGED_FILE,
 } from './test-support/mutation-repository';
 
 // scripts/checks/mutation.sh holds a GLOBAL (machine-wide) single-flight lock so
@@ -38,6 +39,7 @@ const makeStub = (temporaryDirectory: string, exitCode: number): string =>
       '#!/usr/bin/env bash',
       'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
       'echo "STRYKER-RAN"',
+      PASSING_REPORT_FOR_CHANGED_FILE,
       `exit ${exitCode}`,
     ].join('\n'),
   );

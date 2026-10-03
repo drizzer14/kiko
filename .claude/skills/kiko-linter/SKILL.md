@@ -471,6 +471,36 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   global mutual exclusion is verified without a real run by pre-holding
   the lock with a live pid and asserting the wrapper fails fast
   (`__tests__/mutation-lock.test.ts`).
+
+  After a Stryker run that completes with its own whole-report sanity
+  floor intact (exit 0 — Stryker's own `thresholds.break`, kept only as
+  a floor over the WHOLE accumulated incremental report, not this
+  change set), `mutation.sh` gates on the CHANGE SET's own score
+  instead: it reads `stryker.conf.json`'s `json` reporter output
+  (`reports/mutation/mutation.json`) and passes it, plus the same
+  changed-file list already computed for `--mutate`, to
+  `scripts/checks/mutation-score.js` — a dependency-free Node script
+  (`node:*` requires only, consistent with every other Node checker
+  here) that computes killed+timeout over
+  killed+timeout+survived+noCoverage per file and for the change set
+  as a whole, restricted to those files. Read CLAUDE.md's
+  `check:mutation` row for the exact thresholds (they ratchet over
+  time, so are not restated here) and `mutation-score.js` itself for
+  the declaration-only exclusion allowlist (one allowlist, each entry
+  with a concrete reason — mirrored in
+  `docs/harness/documented-exceptions.md`). A changed file missing
+  from the report entirely (not allowlisted) fails the gate outright —
+  fail-closed, the same standing rule as every other check here. The
+  scorer is unit-tested directly against constructed report fixtures
+  in `__tests__/mutation-score.test.ts` (no mutated-src-text parsing,
+  no real Stryker run); the existing cap/lock/streaming/eta tests drive
+  the real `mutation.sh` against a stub Stryker binary that also writes
+  a trivially-passing report, so they keep testing the WRAPPER's own
+  machinery rather than the scorer. `__tests__/mutation-gate.test.ts`
+  covers the wrapper's own handling of the verdict: a failing score, a
+  missing report, and a stale report (`mutation.sh` deletes
+  `reports/mutation/mutation.json` before each run so an earlier run's
+  report is never read as this run's).
 - Fail closed: a missing required tool (semgrep, plutil, tsc) or a
   tool that crashes/exits non-zero-non-one is a **failure block**, not
   a silent pass and not a skip. A scan that never actually ran must
