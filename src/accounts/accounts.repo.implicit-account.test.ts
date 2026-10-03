@@ -12,6 +12,7 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { DatabaseSync } from 'node:sqlite';
+import { Money } from '@kiko/currency/money';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { accountsRepo } from './accounts.repo';
@@ -194,11 +195,30 @@ describe('accountsRepo.createImplicitHolding', () => {
   it('a rejected holding rolls the account insert back, leaving no empty implicit account', async () => {
     await expect(
       accountsRepo.createImplicitHolding('property', {
-        name: 'Wallet',
-        type: 'cash',
-        currency: 'BTC',
+        ...flat,
+        openingBalance: Money.of('EUR', 100),
       }),
-    ).rejects.toThrow('a cash holding cannot hold BTC');
+    ).rejects.toThrow('opening balance currency does not match the holding currency');
+
+    expect(count('accounts')).toBe(0);
+    expect(count('holdings')).toBe(0);
+  });
+});
+
+describe('accountsRepo.createImplicitHolding: a holding type of the other kind', () => {
+  it('rejects a property item in the debt account before any insert', async () => {
+    await expect(accountsRepo.createImplicitHolding('debt', flat)).rejects.toThrow(
+      'accountsRepo.createImplicitHolding: a property_item holding does not belong in the debt account',
+    );
+
+    expect(count('accounts')).toBe(0);
+    expect(count('holdings')).toBe(0);
+  });
+
+  it('rejects a loan in the property account before any insert', async () => {
+    await expect(accountsRepo.createImplicitHolding('property', mortgage)).rejects.toThrow(
+      'accountsRepo.createImplicitHolding: a loan holding does not belong in the property account',
+    );
 
     expect(count('accounts')).toBe(0);
     expect(count('holdings')).toBe(0);

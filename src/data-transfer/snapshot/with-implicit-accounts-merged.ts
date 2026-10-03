@@ -1,6 +1,7 @@
 // src/data-transfer/snapshot/with-implicit-accounts-merged.ts
 import {
   IMPLICIT_ACCOUNT_STORED_NAME,
+  type ImplicitAccountKind,
   implicitAccountKinds,
   isImplicitAccount,
 } from '@kiko/holdings/implicit-account';
@@ -195,18 +196,17 @@ const dismissalsMergedInto = (dismissals: Dismissals, members: Map<string, Membe
   return Object.fromEntries([...kindsByKey].map(([key, union]) => [key, [...union]]));
 };
 
-const needsSentinel = (account: AccountFields): boolean =>
-  isImplicitAccount(account) &&
-  (account.name !== IMPLICIT_ACCOUNT_STORED_NAME[account.kind] ||
-    account.icon !== null ||
-    account.color !== null);
+const needsSentinel = (account: AccountFields & { kind: ImplicitAccountKind }): boolean =>
+  account.name !== IMPLICIT_ACCOUNT_STORED_NAME[account.kind] ||
+  account.icon !== null ||
+  account.color !== null;
 
 // Every live property/debt account takes the stored sentinel name and the kind's
 // default icon and color, so one custom glyph never stands for all of them.
 const withSentinelNames = <Account extends AccountFields>(
   snapshotAccounts: Account[],
 ): Account[] => {
-  if (!snapshotAccounts.some(needsSentinel)) {
+  if (!snapshotAccounts.some((account) => isImplicitAccount(account) && needsSentinel(account))) {
     return snapshotAccounts;
   }
 

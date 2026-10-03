@@ -27,6 +27,7 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { Currency } from '@kiko/currency/currency';
 import { clearCredentials } from '@kiko/crypto-sync/binance';
 import { SYNCED_AT_FIELD } from '@kiko/holdings/holding-metadata';
+import { holdingTypesForAccountKind } from '@kiko/holdings/holding-type';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 import { isSyncedAccount, type SyncedInstitution } from '@kiko/holdings/deletable';
 
@@ -185,7 +186,8 @@ export const accountsRepo = {
    * Insert a property or loan holding into the one live implicit account of its
    * kind, creating that account first when there is none, in ONE write: a
    * rejected holding rolls the account insert back too, so no empty implicit
-   * account is left behind. The lookup filters in SQL, never a full-table read.
+   * account is left behind. A type the kind does not hold is refused before
+   * any insert. The lookup filters in SQL, never a full-table read.
    * An archived account of the kind is never reused: the partial unique index
    * `accounts_implicit_kind` ignores it, so a live one is created beside it.
    */
@@ -194,6 +196,12 @@ export const accountsRepo = {
     input: Omit<NewHolding, 'accountId'>,
   ): Promise<{ accountId: string; holdingId: string }> =>
     write(async (databaseTransaction) => {
+      if (!holdingTypesForAccountKind[kind].includes(input.type)) {
+        throw new Error(
+          `accountsRepo.createImplicitHolding: a ${input.type} holding does not belong in the ${kind} account`,
+        );
+      }
+
       const existing = await databaseTransaction
         .select({ id: accounts.id })
         .from(accounts)
