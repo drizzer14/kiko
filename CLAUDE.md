@@ -182,8 +182,9 @@ never a bare `biome-ignore`:
 const raw: any = sdk.rawResponse();
 ```
 
-`npm run check:overrides` fails on any `biome-ignore`, `nosemgrep`, or
-`kiko-override:` comment that does not contain `OVERRIDE(...)`. A
+`npm run check:overrides` fails on any `biome-ignore`, `nosemgrep`,
+`kiko-override:`, or `Stryker disable` comment that does not contain
+`OVERRIDE(...)`. A
 `kiko-override:` on a Node rule passes only the pre-write guard;
 `check:all` still fails on that line, because the project-wide Node
 checkers have no inline override. Use `nosemgrep:` for Semgrep rules;

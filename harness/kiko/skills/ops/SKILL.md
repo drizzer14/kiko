@@ -57,13 +57,14 @@ Rules:
   and recreates the log at the start of every run — plain `-f` would
   keep following the old inode. If the user is already tailing the
   log, do not launch a duplicate `tail`.
-- Until the mutation-gate fix lands (branch mutation-gate), Stryker's
-  own "All files" / "Final mutation score" line covers the WHOLE
-  incremental report (all files ever mutated, most mutants reused),
-  not this run's change set: read the per-file rows of only the files
-  this run mutated. A dry run can time out under load ("Initial test
-  run timed out"): re-run. A window tip must be a commit where the
-  full jest suite passes.
+- The mutation pass/fail verdict and the change-set total and per-file
+  scores come from the output and exit code of
+  `scripts/checks/mutation-score.js` (called by `mutation.sh`); never
+  read Stryker's "All files" line or per-file rows by hand. That
+  "All files" line covers the whole incremental report and is only a
+  whole-report sanity floor. A dry run can time out under load
+  ("Initial test run timed out"): re-run. A window tip must be a commit
+  where the full jest suite passes.
 - **`make deep` / `check:deep` is the COORDINATOR's own job, not an ops
   dispatch.** The coordinator runs the long, no-incremental checks
   (Stryker mutation + osv) ITSELF as a background process and launches
