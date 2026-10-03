@@ -615,6 +615,14 @@ export const en = {
     debtsSection: 'Debts',
     emptyState: 'No accounts yet',
     icon: '{{name}} icon',
+    // The display name of THE implicit Property / Loans account
+    // (`accountDisplayName`, `src/holdings/implicit-account/`): at most one live
+    // account of each kind exists, so its stored name is only a sentinel and
+    // every screen shows this instead. The user approved the names on 2026-10-03.
+    implicitName: {
+      debt: 'Loans',
+      property: 'Properties',
+    },
     // The accounts list's own "Property" section heading, above the
     // property accounts' own drag-and-drop grid — mirrors `debtsSection`.
     propertySection: 'Property',

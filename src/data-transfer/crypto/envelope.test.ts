@@ -101,8 +101,13 @@ describe('the export version against the migration journal', () => {
     // Through 0049_bank_accounts_other_bank, which gives a bank account's NULL
     // bank_id the value `other`: an older build restoring a file that carries it
     // reads it as no bank, and this build's restore derives it for an older
-    // file, so it needed no bump of its own.
-    migrationCount: 50,
+    // file, so it needed no bump of its own. Through 0050_implicit_property_debt_accounts,
+    // which merges each kind's live property/debt accounts into one: a file
+    // that carries the merged rows is an ordinary set of accounts to an older
+    // build (one property account named by the sentinel, holdings under it), and
+    // this build's restore applies the same merge to an older file, so it needed
+    // no bump either.
+    migrationCount: 51,
   };
 
   it('has a version decision for every migration', () => {

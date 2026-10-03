@@ -351,6 +351,13 @@
       "when": 1790963734711,
       "tag": "0049_bank_accounts_other_bank",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1791029668733,
+      "tag": "0050_implicit_property_debt_accounts",
+      "breakpoints": true
     }
   ]
 }
