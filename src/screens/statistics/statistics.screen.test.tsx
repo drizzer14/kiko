@@ -143,7 +143,7 @@ jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
 type Account = {
   id: string;
   name: string;
-  kind?: 'bank' | 'cash' | 'crypto';
+  kind?: 'bank' | 'cash' | 'crypto' | 'property' | 'debt';
   icon?: string | null;
   color?: string | null;
   archivedAt?: number | null;
@@ -1325,6 +1325,67 @@ describe('StatisticsScreen', () => {
     expect(queryByTestId('bar-chart-bar-card')).toBeNull();
     expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
     expect(queryByTestId('pie-chart-arc-b')).toBeNull();
+  });
+
+  // An implicit account is stored under an English sentinel; its filter option,
+  // the match on that option, and the contribution chart all name it by its
+  // localized kind.
+  describe('an implicit account under Ukrainian', () => {
+    const LOANS: Account = {
+      id: 'd',
+      name: 'Loans',
+      kind: 'debt',
+      color: null,
+      archivedAt: null,
+    };
+    const LOANS_HOLDING: Holding = {
+      id: 'h-loans',
+      accountId: 'd',
+      currency: 'UAH',
+      type: 'cash',
+      balanceMinorUnits: 50_000,
+      metadata: null,
+      closedAt: null,
+    };
+
+    beforeEach(async () => {
+      setLiveData({ accounts: [CASH, LOANS], holdings: [UAH_HOLDING, LOANS_HOLDING] });
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('lists it in the account filter by its localized name, not the stored one', async () => {
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(ACCOUNT_FILTER));
+      });
+
+      expect(getByTestId(`${ACCOUNT_FILTER}-option-Кредити`)).toBeTruthy();
+      expect(queryByTestId(`${ACCOUNT_FILTER}-option-Loans`)).toBeNull();
+    });
+
+    it('selecting its localized name narrows the charts to that account', async () => {
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await pressFilter(getByTestId, ACCOUNT_FILTER, 'Кредити');
+
+      expect(getByTestId('pie-chart-arc-d')).toBeTruthy();
+      expect(queryByTestId('pie-chart-arc-a')).toBeNull();
+    });
+
+    it('names it by its localized name in the account contribution chart', async () => {
+      const { getByTestId } = await renderScreen();
+
+      expect(within(getByTestId('pie-chart-legend-d')).getByText('Кредити')).toBeTruthy();
+    });
   });
 
   it('shows each account filter option with its stored icon, or its kind glyph, in its resolved color', async () => {

@@ -80,13 +80,13 @@ const seed = (data: { account?: Account; reminders?: ReminderRow[]; loading?: bo
 
 let navigation = navigationSpy();
 
-const renderScreen = () =>
+const renderScreen = (name = 'Cash') =>
   render(
     <AccountRemindersScreen
       navigation={asNavigationProp<AccountRemindersProps['navigation']>(navigation)}
       route={asRouteProp<AccountRemindersProps['route']>('AccountReminders', {
         accountId: 'a-1',
-        name: 'Cash',
+        name,
       })}
     />,
     { wrapper: GestureRootWrapper },
@@ -156,6 +156,19 @@ describe('AccountRemindersScreen — rows', () => {
 
     expect(getByText('Add transactions')).toBeTruthy();
     expect(queryByText(NO_KINDS_CAPTION)).toBeNull();
+  });
+
+  // The page renders no account name (its nav title is the static "Reminders"),
+  // so the stored English sentinel of an implicit account has nowhere to show.
+  it.each([
+    ['property', 'Properties'],
+    ['debt', 'Loans'],
+  ])('shows no stored name for an implicit %s account', async (kind, storedName) => {
+    seed({ account: { ...MANUAL, kind } });
+
+    const { queryByText } = await renderScreen(storedName);
+
+    expect(queryByText(storedName)).toBeNull();
   });
 
   it('reads no transactions to decide which kinds it offers', async () => {

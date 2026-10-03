@@ -144,7 +144,13 @@ type Holding = {
   createdAt?: number;
   metadata?: unknown;
 };
-type Account = { id: string; name: string; institution?: string | null };
+type Account = {
+  id: string;
+  name: string;
+  institution?: string | null;
+  kind?: string;
+  archivedAt?: number | null;
+};
 type Category = { key: string; title: string; icon: string };
 type Transaction = {
   id: string;
@@ -2394,6 +2400,22 @@ describe('TransactionFormScreen — loan payment field', () => {
 
     expect(getByLabelText('Loan payment')).toBeTruthy();
     expect(getByText('Car loan')).toBeTruthy();
+  });
+
+  // A loan lives under the implicit debt account, whose stored name is an
+  // English sentinel: the picker row names it by its display name.
+  it('names the implicit debt account in the loan picker by its display name, not the stored one', async () => {
+    setLiveData([PAYER_HOLDING, LOAN_HOLDING], debitTransaction, undefined, [
+      { ...DEBT_ACCOUNT, name: 'Stored sentinel', kind: 'debt', archivedAt: null },
+    ]);
+
+    const { getByLabelText, getByText, queryByText } = await renderEdit('txn-1');
+
+    await fireEvent.press(getByLabelText('Loan payment'));
+
+    expect(getByLabelText('Car loan, Loans')).toBeTruthy();
+    expect(getByText('Loans · UAH')).toBeTruthy();
+    expect(queryByText('Stored sentinel · UAH')).toBeNull();
   });
 
   it('persists a picked loan as a MANUAL link at once, with no Save press', async () => {

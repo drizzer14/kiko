@@ -25,6 +25,7 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
@@ -345,6 +346,25 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // (= `spanStart`) and its ceiling from today itself, so the display span
   // (earliest–latest transaction) stays independent of the selectable range.
 
+  // The account filter keys on the account's DISPLAY name: an implicit account
+  // is stored under an English sentinel, so the options and the rows below both
+  // resolve the localized name, or a pick under another language would match
+  // nothing.
+  const namedAccounts = useMemo(
+    () => accounts.map((account) => ({ ...account, name: accountDisplayName(account, t) })),
+    [accounts, t],
+  );
+  const namedTransactions = useMemo(
+    () =>
+      transactions.map((row) => ({
+        ...row,
+        accountName: accountDisplayName(
+          { kind: row.accountKind, name: row.accountName, archivedAt: row.accountArchivedAt },
+          t,
+        ),
+      })),
+    [transactions, t],
+  );
   // Every active (non-archived) account, so a newly-added account with no
   // transactions yet still appears in the Accounts filter. Sourced from the
   // accounts live query rather than from the transactions, which would omit it.
@@ -355,7 +375,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const accountOptions = useMemo(() => {
     const byName = new Map<string, FilterOption>();
 
-    for (const account of accounts) {
+    for (const account of namedAccounts) {
       if (account.archivedAt != null || byName.has(account.name)) {
         continue;
       }
@@ -363,7 +383,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     }
 
     return Array.from(byName.values());
-  }, [accounts]);
+  }, [namedAccounts]);
   // Group and match the category filter by the STABLE `categories.key` slug,
   // never by the resolved display title: the title is language-dependent (a
   // default category's title changes under a live language switch — see
@@ -432,7 +452,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     i18n.language,
   ]);
   const filteredTransactions = useMemo(() => {
-    return transactions.filter((row) => {
+    return namedTransactions.filter((row) => {
       const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
       const matchesCategory =
         selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
@@ -440,7 +460,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
       return matchesAccount && matchesCategory && matchesDate;
     });
-  }, [transactions, selectedAccounts, selectedCategories, boundsFrom, boundsTo, categoryKeyForRow]);
+  }, [
+    namedTransactions,
+    selectedAccounts,
+    selectedCategories,
+    boundsFrom,
+    boundsTo,
+    categoryKeyForRow,
+  ]);
 
   // Grouping/sorting happens after filtering, over the query's newest-first
   // order (transactionsRepo orders by time desc), so sections come out

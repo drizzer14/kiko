@@ -3,7 +3,7 @@ import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 import { remindersRepo } from '@kiko/reminders/repo';
 import type { AccountRow, ReminderRow } from '@kiko/db';
 import { remindersNative } from '@kiko/reminders/native';
@@ -142,6 +142,41 @@ describe('RemindersScreen — list', () => {
       'Card',
       'Cash',
     ]);
+  });
+
+  describe('an implicit account', () => {
+    const PROPERTY: Account = { ...CASH, name: 'Properties', kind: 'property' };
+    const DEBT: Account = { ...CASH, name: 'Loans', kind: 'debt' };
+
+    afterEach(async () => {
+      await i18n.changeLanguage('en');
+    });
+
+    it.each([
+      ['property', PROPERTY, 'Майно'],
+      ['debt', DEBT, 'Кредити'],
+    ])(
+      'is headed by its localized %s name, not the stored sentinel',
+      async (_kind, account, name) => {
+        await i18n.changeLanguage('uk');
+        seed([listed({ id: 'r-1', accountId: 'a-1' }, account)]);
+
+        const { getByTestId } = await renderScreen();
+        const heading = within(getByTestId('reminders-account-a-1'));
+
+        expect(heading.getByText(name)).toBeTruthy();
+        expect(heading.queryByText(account.name)).toBeNull();
+      },
+    );
+
+    it('keeps the stored name once it is archived, as a plain account', async () => {
+      await i18n.changeLanguage('uk');
+      seed([listed({ id: 'r-1', accountId: 'a-1' }, { ...PROPERTY, archivedAt: 1 })]);
+
+      const { getByTestId } = await renderScreen();
+
+      expect(within(getByTestId('reminders-account-a-1')).getByText('Properties')).toBeTruthy();
+    });
   });
 
   it('shows each account’s compact icon tile beside its name', async () => {

@@ -1,4 +1,5 @@
 import type { FC } from 'react';
+import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { remindersRepo } from '@kiko/reminders/repo';
@@ -10,6 +11,7 @@ import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import ReminderRow from '@kiko/screens/settings/reminder-row';
 import { usePermissionNotice } from '@kiko/reminders/permission';
 import { accountIdentity } from '@kiko/holdings/account-identity';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import NoticeBanner from '@kiko/design-system/components/notice-banner';
@@ -38,13 +40,13 @@ type AccountGroup = {
 
 // Groups keep the accounts list order the rows arrive in; within a group,
 // import comes first, as on the account's own page.
-const groupByAccount = (rows: readonly ListedReminder[]): AccountGroup[] =>
+const groupByAccount = (rows: readonly ListedReminder[], t: TFunction): AccountGroup[] =>
   [
     ...rows
       .reduce((groups, { reminder, account }) => {
         const group = groups.get(reminder.accountId) ?? {
           accountId: reminder.accountId,
-          name: account.name,
+          name: accountDisplayName(account, t),
           ...accountIdentity(account),
           archived: account.archivedAt !== null,
           eligibleKinds: eligibleReminderKinds(account),
@@ -85,7 +87,7 @@ const RemindersScreen: FC<RemindersScreenProps> = ({ navigation }) => {
     );
   }
 
-  const groups = groupByAccount(rows);
+  const groups = groupByAccount(rows, t);
 
   return (
     <>

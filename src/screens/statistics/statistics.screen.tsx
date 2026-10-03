@@ -66,6 +66,7 @@ import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { transactionSpan } from '@kiko/transactions/transaction-span';
@@ -329,6 +330,13 @@ const StatisticsScreen: FC = () => {
     priceBookLoading,
   );
 
+  // The filter options, the match on them, and the account pie's legend all
+  // read the account's DISPLAY name: an implicit account's stored name is an
+  // English sentinel, so each of them reads the name resolved here once.
+  const namedAccounts = useMemo(
+    () => accounts.map((account) => ({ ...account, name: accountDisplayName(account, t) })),
+    [accounts, t],
+  );
   // Only non-archived accounts are ever shown; the account filter narrows within
   // those. `visibleHoldings` (open AND under a surviving account) feeds every
   // "now" snapshot (the by-type bar, the account pie, the Debts total).
@@ -340,7 +348,7 @@ const StatisticsScreen: FC = () => {
   // needs its own past lots. Memoized so all four builders below key off a
   // stable collection instead of a fresh array on every render.
   const filtered = useMemo(() => {
-    const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
+    const visibleAccounts = namedAccounts.filter((account) => account.archivedAt == null);
     const filteredAccounts = visibleAccounts.filter((account) => {
       return selectedAccounts.size === 0 || selectedAccounts.has(account.name);
     });
@@ -351,7 +359,7 @@ const StatisticsScreen: FC = () => {
     const visibleHoldings = netWorthHoldings.filter((holding) => holding.closedAt == null);
 
     return { visibleAccounts, filteredAccounts, visibleHoldings, netWorthHoldings };
-  }, [accounts, holdings, selectedAccounts]);
+  }, [namedAccounts, holdings, selectedAccounts]);
 
   // The full transaction and lot span drives the date field's default display,
   // the line's default window, and the backfill's earliest day. With neither the

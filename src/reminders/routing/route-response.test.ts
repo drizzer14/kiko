@@ -2,7 +2,15 @@ import type { NotificationResponse } from '@kiko/reminders/native';
 
 import { latestOpenResponse, routeFor } from './route-response';
 
-const CASH = { id: 'cash', name: 'Cash' };
+const CASH = { id: 'cash', name: 'Cash', kind: 'cash', archivedAt: null } as const;
+const PROPERTIES = {
+  id: 'properties',
+  name: 'Properties',
+  kind: 'property',
+  archivedAt: null,
+} as const;
+const LOANS = { id: 'loans', name: 'Loans', kind: 'debt', archivedAt: null } as const;
+const ARCHIVED_PROPERTIES = { ...PROPERTIES, archivedAt: 1 } as const;
 const WALLET = { id: 'wallet', type: 'cash' } as const;
 const DEPOSIT = { id: 'deposit', type: 'term_deposit' } as const;
 
@@ -59,6 +67,41 @@ describe('routeFor', () => {
 
   it('goes nowhere for a paused notice tap whose account is gone', () => {
     expect(routeFor(pausedNoticeTap, 'add_transactions', undefined, [])).toBeUndefined();
+  });
+
+  // An implicit account has no AccountDetail page, so a reminder on it never
+  // opens one: a tap lands on the Accounts root, and the paused notice opens
+  // the reminders page above it.
+  describe.each([
+    ['property', PROPERTIES],
+    ['debt', LOANS],
+  ])('an implicit %s account', (_kind, account) => {
+    it.each([
+      ['statement_import', []],
+      ['add_transactions', []],
+      ['add_transactions', [{ id: 'flat', type: 'property_item' } as const]],
+      ['add_transactions', [WALLET]],
+    ] as const)('opens the Accounts root, with no account page, for a %s tap', (kind, holdings) => {
+      expect(routeFor(tap(), kind, account, holdings)).toEqual({});
+    });
+
+    it.each(['statement_import', 'add_transactions'] as const)(
+      'opens only the account reminders page for a tap on the %s paused notice',
+      (kind) => {
+        expect(routeFor(pausedNoticeTap, kind, account, [])).toEqual({
+          next: {
+            screen: 'AccountReminders',
+            params: { accountId: account.id, name: account.name },
+          },
+        });
+      },
+    );
+  });
+
+  it('routes an archived property account like any other account', () => {
+    expect(routeFor(tap(), 'add_transactions', ARCHIVED_PROPERTIES, [])).toEqual({
+      accountDetail: { accountId: 'properties', name: 'Properties' },
+    });
   });
 });
 

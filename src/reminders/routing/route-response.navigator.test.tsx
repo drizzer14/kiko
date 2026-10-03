@@ -185,6 +185,8 @@ beforeEach(() => {
   seedAccount('bank', 'Mono', 'bank');
   seedReminder('add-cash', 'cash', 'add_transactions');
   seedReminder('import-bank', 'bank', 'statement_import');
+  seedAccount('properties', 'Properties', 'property');
+  seedReminder('add-properties', 'properties', 'add_transactions');
 });
 
 describe('reminder tap routing (real router)', () => {
@@ -247,6 +249,28 @@ describe('reminder tap routing (real router)', () => {
         onStack('Accounts'),
         onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
         onStack('AccountReminders', { accountId: 'cash', name: 'Cash' }),
+      ]);
+    });
+
+    // An implicit account has no AccountDetail page, so a tap never opens one.
+    it('opens only the Accounts root for a tap on an implicit account reminder', async () => {
+      seedHolding('flat', 'properties', null, 'property_item');
+
+      await routeTap([tap('add-properties')]);
+
+      expect(focusedTab()).toBe('AccountsTab');
+      expect(accountsStack()).toEqual([onStack('Accounts')]);
+    });
+
+    it('opens the account reminders page above the Accounts root for its paused notice', async () => {
+      await routeTap([
+        tap('add-properties', { requestIdentifier: 'kiko.reminder.add-properties.paused' }),
+      ]);
+
+      expect(focusedTab()).toBe('AccountsTab');
+      expect(accountsStack()).toEqual([
+        onStack('Accounts'),
+        onStack('AccountReminders', { accountId: 'properties', name: 'Properties' }),
       ]);
     });
 
@@ -328,6 +352,41 @@ describe('reminder tap routing (real router)', () => {
       onStack('AccountDetail', { accountId: 'bank', name: 'Mono', intent: 'importStatement' }),
     ]);
     expect(accountsStack()[1]?.key).toBe(pageBefore?.key);
+  });
+
+  it('navigates once, with a stack that ends at the account reminders page, for an implicit account’s paused notice', async () => {
+    await renderApp();
+    const navigate = jest.spyOn(navigationRef, 'navigate');
+
+    await route([
+      tap('add-properties', { requestIdentifier: 'kiko.reminder.add-properties.paused' }),
+    ]);
+
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith('AccountsTab', {
+      state: {
+        routes: [
+          expect.objectContaining({ name: 'Accounts' }),
+          { name: 'AccountReminders', params: { accountId: 'properties', name: 'Properties' } },
+        ],
+        index: 1,
+      },
+    });
+    navigate.mockRestore();
+  });
+
+  it('keeps the pages the tab shows, adding no account page, for an implicit account’s tap', async () => {
+    await renderApp();
+    await openAccount('bank', 'Mono');
+    const keysBefore = accountsStack().map(({ key }) => key);
+
+    await route([tap('add-properties')]);
+
+    expect(accountsStack()).toEqual([
+      onStack('Accounts'),
+      onStack('AccountDetail', { accountId: 'bank', name: 'Mono' }),
+    ]);
+    expect(accountsStack().map(({ key }) => key)).toEqual(keysBefore);
   });
 
   it('opens the next screen above the page of the tapped account already on top', async () => {
