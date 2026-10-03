@@ -3343,7 +3343,7 @@ describe('HoldingFormScreen icon', () => {
     updateDeltaMock.mockClear();
   });
 
-  it('sets the picked icon on the new holding using the returned id', async () => {
+  it('hands the picked icon to create, in the same write as the row, with no second write', async () => {
     // A cash holding is valid with just a name (a bank create defaults to a term
     // deposit, which needs contributions), so it is the simplest create path.
     mockAccountKind = 'cash';
@@ -3354,9 +3354,37 @@ describe('HoldingFormScreen icon', () => {
     await fireEvent.press(screen.getByLabelText('Choose icon banknote'));
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(createMock).toHaveBeenCalled();
-    expect(setIconMock).toHaveBeenCalledWith('new-holding-id', 'banknote');
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ icon: 'banknote' }));
+    expect(setIconMock).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('a failed Save then a retry sends the whole create again and never a second icon write', async () => {
+    // The create is ONE write that rolls back whole (holdings.repo.create-icon
+    // test), so the failed attempt left no row and the retry makes exactly one.
+    // The old icon write ran after the row was committed: its failure left a row
+    // and the retry made a duplicate.
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    createMock.mockRejectedValueOnce(new Error('disk full'));
+    mockAccountKind = 'cash';
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My cash');
+    await fireEvent.press(screen.getByLabelText('Change Icon'));
+    await fireEvent.press(screen.getByLabelText('Choose icon banknote'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledTimes(2);
+    expect(createMock).toHaveBeenLastCalledWith(expect.objectContaining({ icon: 'banknote' }));
+    expect(setIconMock).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    alertSpy.mockRestore();
   });
 
   it('hands a create-mode opening balance to create, the one path that seeds its ledger row', async () => {
@@ -3382,14 +3410,14 @@ describe('HoldingFormScreen icon', () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it('does not set an icon when none is picked', async () => {
+  it('creates with no icon when none is picked', async () => {
     mockAccountKind = 'cash';
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(createMock).toHaveBeenCalled();
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ icon: null }));
     expect(setIconMock).not.toHaveBeenCalled();
   });
 
@@ -4507,7 +4535,7 @@ describe('HoldingFormScreen implicit create', () => {
       expect(navigation.goBack).toHaveBeenCalledTimes(1);
     });
 
-    it('persists the picked icon on the holding the write returned, not on the account', async () => {
+    it('hands the picked icon to the one implicit write, with no second write', async () => {
       const screen = await renderImplicit({ implicitKind: 'property' });
 
       await fill(screen, 'Name', 'Apartment');
@@ -4516,8 +4544,34 @@ describe('HoldingFormScreen implicit create', () => {
       await fireEvent.press(screen.getByLabelText('Choose icon giftcard'));
       await fireEvent.press(screen.getByText('Save'));
 
-      expect(setIconMock).toHaveBeenCalledTimes(1);
-      expect(setIconMock).toHaveBeenCalledWith('new-holding-id', 'giftcard');
+      expect(createImplicitHoldingMock).toHaveBeenCalledTimes(1);
+      expect(createImplicitHoldingMock).toHaveBeenCalledWith(
+        'property',
+        expect.objectContaining({ icon: 'giftcard' }),
+      );
+      expect(setIconMock).not.toHaveBeenCalled();
+    });
+
+    it('a failed Save then a retry sends the whole implicit create again and never a second icon write', async () => {
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      createImplicitHoldingMock.mockRejectedValueOnce(new Error('disk full'));
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fill(screen, 'Name', 'Apartment');
+      await fill(screen, 'Cost', '5000');
+      await fireEvent.press(screen.getByLabelText('Change Icon'));
+      await fireEvent.press(screen.getByLabelText('Choose icon giftcard'));
+      await fireEvent.press(screen.getByText('Save'));
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createImplicitHoldingMock).toHaveBeenCalledTimes(2);
+      expect(createImplicitHoldingMock).toHaveBeenLastCalledWith(
+        'property',
+        expect.objectContaining({ icon: 'giftcard' }),
+      );
+      expect(setIconMock).not.toHaveBeenCalled();
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+      alertSpy.mockRestore();
     });
 
     it('blocks a nameless Save, scrolling to the name', async () => {
@@ -4566,9 +4620,9 @@ describe('HoldingFormScreen implicit create', () => {
 
       expect(createImplicitHoldingMock).toHaveBeenCalledWith(
         'property',
-        expect.objectContaining({ name: 'Flat', color: entityColors.violet }),
+        expect.objectContaining({ name: 'Flat', color: entityColors.violet, icon: 'giftcard' }),
       );
-      expect(setIconMock).toHaveBeenCalledWith('new-holding-id', 'giftcard');
+      expect(setIconMock).not.toHaveBeenCalled();
     });
 
     it('keeps the type default icon and color when the draft carries none', async () => {
@@ -4584,7 +4638,7 @@ describe('HoldingFormScreen implicit create', () => {
 
       expect(createImplicitHoldingMock).toHaveBeenCalledWith(
         'property',
-        expect.objectContaining({ name: 'Flat', color: null }),
+        expect.objectContaining({ name: 'Flat', color: null, icon: null }),
       );
       expect(setIconMock).not.toHaveBeenCalled();
     });

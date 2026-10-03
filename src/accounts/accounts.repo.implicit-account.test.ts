@@ -205,6 +205,37 @@ describe('accountsRepo.createImplicitHolding', () => {
   });
 });
 
+describe('accountsRepo.createImplicitHolding: the icon', () => {
+  it('stores the icon passed to create on the new holding, in the same write', async () => {
+    const { holdingId } = await accountsRepo.createImplicitHolding('property', {
+      ...flat,
+      icon: 'house',
+    });
+
+    expect(mockDatabase.prepare('SELECT icon FROM holdings WHERE id = ?').get(holdingId)).toEqual({
+      icon: 'house',
+    });
+  });
+
+  it('a failure after the holding insert rolls back the holding and the account it created', async () => {
+    const failingFirstPricePoint = { day: 1, price: null } as unknown as {
+      day: number;
+      price: string;
+    };
+
+    await expect(
+      accountsRepo.createImplicitHolding('property', {
+        ...flat,
+        icon: 'house',
+        firstPricePoint: failingFirstPricePoint,
+      }),
+    ).rejects.toThrow();
+
+    expect(count('holdings')).toBe(0);
+    expect(count('accounts')).toBe(0);
+  });
+});
+
 describe('accountsRepo.createImplicitHolding: a holding type of the other kind', () => {
   it('rejects a property item in the debt account before any insert', async () => {
     await expect(accountsRepo.createImplicitHolding('debt', flat)).rejects.toThrow(

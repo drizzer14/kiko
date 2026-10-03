@@ -56,7 +56,7 @@ const nextSortOrder = async (
 };
 
 type NewHoldingBase = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
-  Partial<Pick<HoldingRow, 'metadata' | 'sortOrder' | 'color'>>;
+  Partial<Pick<HoldingRow, 'metadata' | 'sortOrder' | 'color' | 'icon'>>;
 
 // `holdingsRepo.create`'s own input: the identity fields above, plus an
 // OPTIONAL opening balance as `Money` (kiko-domain "Money at the boundary")
@@ -490,9 +490,9 @@ export const holdingsRepo = {
     ),
   /**
    * Generic partial update for a holding row (name, color, metadata), mirroring
-   * `accountsRepo.update`. The icon routes through `setIcon` instead (so a
-   * cleared icon persists an explicit null), the same split the create form
-   * uses.
+   * `accountsRepo.update`. The icon routes through `setIcon` instead, so a
+   * cleared icon persists an explicit null. A create takes the icon in its own
+   * input.
    *
    * A patch that touches the balance belongs on `updateWithBalanceDelta`
    * below, NOT here: this bare `set(patch)` moves a balance with no ledger

@@ -626,14 +626,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         // row follows its type's default at display time — the same fallback the
         // icon uses — so a type-default color is not frozen onto the row.
         color,
+        // The icon goes in the create's own write: a second write could fail
+        // after the row exists, and the retry would then insert it again.
+        icon,
         ...active.createPayload(),
       });
-
-      // Persist the chosen icon on the freshly-created row, using the id the
-      // create resolved to. Awaited so it commits before navigating away.
-      if (icon !== null) {
-        await holdingsRepo.setIcon(newHoldingId, icon);
-      }
 
       // The FIRST metal, foreign-currency, or crypto holding needs its
       // price/rate visible without an app restart — trigger the SAME gated

@@ -277,6 +277,18 @@ including a single-statement one — must be wrapped in
 `db.transaction()`. There is no exception for "it's just one
 statement."
 
+**A create writes everything the user typed in its own `write()`.** The
+icon (and color) are part of the create input: `holdingsRepo.create`,
+`accountsRepo.createImplicitHolding`, `accountsRepo.create`, and
+`accountsRepo.createCashAccount` insert them with the row. Never call
+`setIcon` after a create: if that second write fails, the form shows the
+save error with the row already stored, and the retry inserts it again.
+A one-write create that fails leaves no row, so the retry is the first
+attempt. `setIcon` on an EDIT is fine (it re-applies the same value on
+retry). Tests: `holdings.repo.create-icon.test.ts` and
+`accounts.repo.implicit-account.test.ts` (real SQLite, forced failure
+after the row insert).
+
 ## No full-table select inside a write
 
 A `write(...)` callback holds op-sqlite's one worker thread (see "op-sqlite's

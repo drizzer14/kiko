@@ -390,9 +390,9 @@ in the account form's own slot, under the divider; keeps the title "Add
 Account" (the stack sets it statically for an `implicitKind` route too);
 seeds name, icon and color from the draft ONCE (`useState` initial
 values); and Save is `accountsRepo.createImplicitHolding(implicitKind, {
-name, type, currency, color, ...active.createPayload() })` (one write: it
-finds or creates the implicit account), then the unchanged `setIcon`
-(on the holding id the write returned), `refreshMarketData`,
+name, type, currency, color, icon, ...active.createPayload() })` (one
+write: it finds or creates the implicit account and stores the icon with
+the holding, never in a second write), then `refreshMarketData`,
 `runLoanAutoLinkIfLoan`, and `goBack()`. Picking Bank, Cash, Crypto,
 Metals, or Broker there calls `navigation.replace('AccountForm', {
 initialKind, draft })`, which seeds the account form once (a carried icon
