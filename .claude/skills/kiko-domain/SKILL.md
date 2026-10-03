@@ -154,15 +154,15 @@ implemented, and callers must skip it rather than assume every id resolves.
   neutral (only Delete is red); the confirm button is red
   (`ConfirmSheet destructive`). The add flow of an account whose every
   holding type is a debt (`holdsOnlyDebts(kind)`, the same descriptor
-  `side`; today the `debt` kind) says loan too: the account detail
-  footer reads `accountDetail.addLoan` ("Add loan" / "Додати кредит"),
-  the holding form's create title `forms.holding.addLoanTitle`
-  ("Add Loan" / "Додати кредит"), and its edit title
-  `forms.holding.editLoanTitle` ("Edit Loan" / "Редагувати кредит").
-  Account detail and holding detail pass the flag in the HoldingForm
-  route (`debtAccount`), so the title is right on the first frame; the
-  form reads the account row only when the route has no flag (the
-  statement-import and column-mapping entry points).
+  `side`; today the `debt` kind) says loan too: the holding form's
+  create title `forms.holding.addLoanTitle` ("Add Loan" / "Додати
+  кредит") and its edit title `forms.holding.editLoanTitle` ("Edit Loan"
+  / "Редагувати кредит"). There is no "Add loan" footer
+  (`accountDetail.addLoan` is gone). Holding detail passes the flag in
+  the HoldingForm route (`debtAccount`) on edit, so the title is right
+  on the first frame; the form reads the account row when the route has
+  no flag (account detail's Add holding, the statement-import and
+  column-mapping entry points).
   `holdsOnlyDebts(undefined)` is false: an account row still loading
   names a holding.
 - **Transaction** — a movement against a holding. `id`, `holdingId`
@@ -1875,8 +1875,8 @@ kind and its sole `loan` type. Glyphs differ: the `debt` kind keeps
 needs a 0032-style migration), while the `loan` type is
 `arrow.down.backward.circle.fill` (iOS 14), the mirror of a loan given's
 `arrow.up.forward.circle.fill` — a saved loan holding stores a null icon,
-so the new glyph needs no migration. A debt account's footer "Add loan"
-button leads with the loan glyph (kiko-design-system's footer mapping).
+so the new glyph needs no migration. There is no "Add loan" footer
+button any more (kiko-design-system's footer mapping).
 
 `LoanMeta` (`src/holdings/holding-metadata/holding-metadata.ts`):
 `kind` (`'mortgage' | 'car_loan' | 'consumer_loan' | 'personal'` —

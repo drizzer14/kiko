@@ -616,9 +616,9 @@ new component can land between reviews of this skill:
   from its one source (never a re-typed string; read the symbol names
   in `src/holdings/entity-symbols/entity-symbols.ts`): Add holding /
   account / category / transaction → `genericEntitySymbol.<entity>`;
-  Add loan (a debt account's footer, `holdsOnlyDebts(kind)`) →
-  `holdingTypeSymbol.loan`, since a loan is the only thing it can add
-  (account detail's `addHoldingSymbol`);
+  there is no "Add loan" footer: a loan is added through the implicit
+  account's create flow, and account detail's footer is always "Add
+  holding" with `genericEntitySymbol.holding`;
   Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
@@ -1041,10 +1041,14 @@ new component can land between reviews of this skill:
   (`src/design-system/components/close-holding-sheet/`) — the Close
   confirm for a manual holding (a `destructive` `ConfirmSheet`; the
   copy comes from `closeHoldingCopy`, loan wording for a debt-side type)
-  and the hook a screen uses to wire it. `useCloseHoldingAction(account)`
+  and the hook a screen uses to wire it. The sheet is reached only
+  through the hook (the folder's barrel exports only
+  `useCloseHoldingAction`); a screen never imports the sheet itself.
+  `useCloseHoldingAction(account)`
   returns `closeActionFor(holding)` (the `closeAction` for
   `CardContextMenu`, `undefined` for a synced holding) and `closeSheet`
-  (render it once per screen). `account` is the HOLDING's own account,
+  (render each hook instance's `closeSheet` once; a screen with two hook
+  instances renders both). `account` is the HOLDING's own account,
   read by `isSyncedHolding`; a screen listing the implicit account's
   holdings passes that row.
 - **SymbolIcon** — wraps an SF Symbol glyph
