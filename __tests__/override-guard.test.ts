@@ -126,6 +126,41 @@ describe('scripts/checks/override-guard.sh (npm run check:overrides)', () => {
     expect(result.stderr).toContain(`${'biome-ig'}nore`);
   });
 
+  it.each([
+    ['a next-line line comment', `${'// Stryker dis'}able next-line all: not worth killing`],
+    ['a whole-file line comment', `${'// Stryker dis'}able all`],
+    ['a block comment', `${'/* Stryker dis'}able StringLiteral: not worth killing */`],
+  ])('fails a bare Stryker disable comment (%s) with no OVERRIDE(...)', (_form, comment) => {
+    // Split across `+`, same reason as bareOverrideComment above. A disabled
+    // mutant becomes Ignored, which the mutation gate leaves out of the score,
+    // so an unjustified one would lift a file past the gate unseen.
+    const filePath = writeTempFile(`${comment}\nexport const value = 1;\n`);
+
+    const result = runGuard([filePath]);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Stryker');
+  });
+
+  it('passes a Stryker disable comment carrying OVERRIDE(...)', () => {
+    const justifiedComment = `${'// Stryker dis'}able next-line StringLiteral: OVERRIDE(reason) the label is display-only`;
+    const filePath = writeTempFile(`${justifiedComment}\nexport const value = 'label';\n`);
+
+    const result = runGuard([filePath]);
+
+    expect(result.status).toBe(0);
+  });
+
+  it('does not flag a Stryker restore comment or the word in prose', () => {
+    const filePath = writeTempFile(
+      '// Stryker restore all\n// the Stryker runner disables nothing here\nexport const value = 1;\n',
+    );
+
+    const result = runGuard([filePath]);
+
+    expect(result.status).toBe(0);
+  });
+
   it('passes scripts/checks/pre-write-guard.js itself', () => {
     const result = runGuard([join(__dirname, '../scripts/checks/pre-write-guard.js')]);
 

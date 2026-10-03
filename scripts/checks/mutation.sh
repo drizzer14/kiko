@@ -22,6 +22,12 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
+# Stryker's own json reporter writes its report to a path RELATIVE to its own
+# cwd (reports/mutation/mutation.json by default), so the change-set gate below
+# must read it from the same place Stryker wrote it to, whatever cwd this
+# wrapper was invoked from.
+cd "$ROOT" || exit 2
+MUTATION_REPORT="$ROOT/reports/mutation/mutation.json"
 list=0
 # A mistyped `--list` must not fall through to a full Stryker run, so any
 # other argument is refused before the lock or Stryker.
@@ -91,9 +97,11 @@ MUTATION_FILE_CAP=30
 CAP_REASON="A big mutation run takes hours and starves the machine (a whole-release run went 10 h 16 min with no result)."
 
 # Reads candidate .ts/.tsx paths on stdin and prints the ones Stryker would
-# mutate, excluding tests and fixtures (matching the config's own mutate
-# excludes). It also drops zero/low-logic barrels (**/index.ts) +
-# pure-static *.styles.ts, preserving the 2 logic-bearing styles
+# mutate, excluding tests, fixtures, and test scaffolding (__mocks__/, e2e/,
+# test-support/, __fixtures__/, *-test-helper.ts, *-test-fixtures.ts) and the
+# test-less build config (drizzle.config.ts). It also
+# drops zero/low-logic barrels (**/index.ts) + pure-static *.styles.ts,
+# preserving the 2 logic-bearing styles
 # (bottom-sheet.styles.ts, entity-icon-tile.styles.ts).
 # These MUST be filtered here too: on a diff-scoped run --mutate REPLACES
 # the config mutate[] wholesale (deepMerge replaces arrays, deep-merge.js:13),
@@ -101,7 +109,7 @@ CAP_REASON="A big mutation run takes hours and starves the machine (a whole-rele
 # bash-3.2-safe (no assoc arrays/namerefs) to match the rest of this script.
 mutable_source_files() {
   local candidates reinc
-  candidates="$(grep -Ev '(\.test\.tsx?$|(^|/)__tests__/|(^|/)rules/fixtures/|(^|/)scripts/checks/|(^|/)i18n/locales/|\.d\.ts$)' || true)"
+  candidates="$(grep -Ev '(\.test\.tsx?$|-test-(helper|fixtures)\.tsx?$|(^|/)(__tests__|__mocks__|__fixtures__|e2e|test-support)/|(^|/)rules/fixtures/|(^|/)scripts/checks/|(^|/)i18n/locales/|(^|/)drizzle\.config\.ts$|\.d\.ts$)' || true)"
   [ -n "$candidates" ] || return 0
   reinc="$(printf '%s\n' "$candidates" | grep -E '((^|/)bottom-sheet\.styles\.ts$|(^|/)entity-icon-tile\.styles\.ts$)' || true)"
   candidates="$(printf '%s\n' "$candidates" | grep -Ev '((^|/)index\.ts$|\.styles\.ts$)' || true)"
@@ -212,6 +220,10 @@ else
 fi
 printf 'Watch live progress:  tail -f %s\n' "$log"
 
+# A report left by an earlier run must never be mistaken for THIS run's: remove
+# it so a Stryker that writes none is caught by the missing-report check below.
+rm -f "$MUTATION_REPORT"
+
 start="$(date +%s 2>/dev/null || printf '0')"
 "$BIN" run "$mutate_arg" 2>&1 | tee "$log" | harness_mutation_eta_filter "$rate"
 code="${PIPESTATUS[0]}"
@@ -228,29 +240,95 @@ score="$(printf '%s' "$out" | grep -Eio 'mutation score[^0-9]*[0-9]+(\.[0-9]+)?'
 [ -n "$count" ] && printf 'Mutants: %s\n' "$count"
 
 iso="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '')"
-# A backward clock jump mid-run can yield dur=0; a 0s record would drag the
-# rolling ETA average toward zero, so only a strictly-positive duration is ever
-# recorded. This never changes the gate exit code or any progress output.
-if [ "$code" -ne 0 ]; then
-  # A break-threshold failure (Stryker exit 1) still RAN to completion — record
-  # it in history so the ETA reflects real runs. Any other non-zero code is a
-  # crash, not a completed run, and is deliberately not recorded.
-  if [ "$code" -eq 1 ] && [ "$dur" -gt 0 ]; then
-    harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score"
-  fi
+
+# A code other than 0 or 1 is a CRASH (Stryker never finished a run at all),
+# and so is code 1 with no report: Stryker also exits 1 on a failed run (for
+# example "No tests were executed"), while a run that completes and misses its
+# break threshold has written its report first. A crash is not a completed run,
+# so it is never recorded in history.
+if { [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; } || { [ "$code" -eq 1 ] && [ ! -f "$MUTATION_REPORT" ]; }; then
   print_block \
     "Stryker (mutation testing)" \
-    "Mutation score fell below the break threshold (60)." \
+    "Stryker exited with code $code rather than completing a run." \
     "$out" \
-    "A surviving mutant means the test suite would not catch a real regression in that code path. Tests that run but assert nothing give false confidence, a common LLM failure mode." \
-    "Add a real assertion that fails when the mutated code is wrong. Re-run: npm run check:mutation" \
-    "Do not delete the failing mutant's test. Add a real assertion that fails when the code is wrong."
+    "A crash produces no mutation report at all, so neither the whole-report sanity floor nor the change-set gate below can run; a check that never actually ran must never report success." \
+    "Read the output above for the crash cause (an instrumentation error, an out-of-memory worker, ...), fix it, and re-run: npm run check:mutation" \
+    "Do not treat a crash as a pass, and do not raise concurrency or memory limits to paper over an instrumentation bug."
   exit 2
 fi
 
-# Passed: record this completed run in history (feeds the next run's ETA) and
-# record the fingerprint so an identical source state skips next time. Only a
-# strictly-positive duration is recorded (see the clock-skew guard above).
+# Stryker only WARNS when a --mutate entry resolves to no file (it falls under
+# stryker.conf.json's ignorePatterns, or holds a glob special character), yet
+# the report's recorded scope still lists it, so the scorer would grade that
+# file "n/a (no mutants)" and pass. The warning is the only signal, so it fails.
+if printf '%s\n' "$out" | grep -q 'did not result in any files'; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "Stryker could not resolve a changed file passed to --mutate (\"did not result in any files\")." \
+    "$out" \
+    "A file Stryker never mutated would be graded n/a and the gate would pass without any mutant run on it." \
+    "Find the Glob pattern named in the output above: a path under stryker.conf.json's ignorePatterns, or one with a glob special character (such as brackets, parentheses, or braces), is not mutable. Exclude that file from the change set (add it to mutable_source_files in mutation.sh when it needs no mutation) or rename it, then re-run: npm run check:mutation" \
+    "Do not treat the n/a score as a pass, and do not remove an ignorePatterns entry just to make the file resolve."
+  exit 2
+fi
+
+# A completed run (code 0 or 1) took real wall-clock time; record it in
+# history (feeds the next run's ETA) regardless of which gate below ends up
+# failing it. A backward clock jump mid-run can yield dur=0; a 0s record would
+# drag the rolling ETA average toward zero, so only a strictly-positive
+# duration is ever recorded. This never changes the gate's exit code.
 [ "$dur" -gt 0 ] && harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score"
+
+if [ "$code" -eq 1 ]; then
+  # Stryker's OWN break threshold (stryker.conf.json's thresholds.break: 60)
+  # covers the WHOLE accumulated incremental report, not this change set. It
+  # is kept only as a SANITY FLOOR for a catastrophic whole-report regression;
+  # the REAL gate for a reviewed change set is its own score below, read from
+  # the json reporter's output rather than this whole-report number.
+  print_block \
+    "Stryker (mutation testing)" \
+    "The whole-report sanity floor (Stryker's own break threshold, 60 over every file Stryker has ever mutated) failed." \
+    "$out" \
+    "This number covers the entire accumulated incremental report, not this change set — a regression this large usually means something is broken project-wide (a bad config, a swallowed exception in every test), not just in the files reviewed here." \
+    "Read the output above for the failing files, fix the regression, and re-run: npm run check:mutation" \
+    "Do not lower this sanity floor to get green; it almost never trips for a normal change set (see the header of this script)."
+  exit 2
+fi
+
+# code == 0: Stryker's own whole-report sanity floor passed. Gate on the
+# CHANGE SET's own score instead (scripts/checks/mutation-score.js), read from
+# the json reporter's output, restricted to the files THIS run mutated.
+if [ ! -f "$MUTATION_REPORT" ]; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "Stryker passed but wrote no JSON report at $MUTATION_REPORT." \
+    "$out" \
+    "Without the report the change-set score cannot be computed at all, and a missing result must never read as a pass." \
+    "Check that stryker.conf.json's reporters array still includes \"json\", then re-run: npm run check:mutation" \
+    "Do not skip the change-set gate when the report is missing; fix why it was not written."
+  exit 2
+fi
+
+# $changed is a newline-separated list (bash 3.2-safe: no mapfile), expanded
+# into one argv entry per file for mutation-score.js.
+file_arguments=()
+while IFS= read -r changed_file; do
+  [ -n "$changed_file" ] && file_arguments+=("$changed_file")
+done < <(printf '%s\n' "$changed")
+
+score_out="$(node "$DIR/mutation-score.js" "$MUTATION_REPORT" "${file_arguments[@]}" 2>&1)"
+score_code=$?
+printf '%s\n' "$score_out"
+if [ "$score_code" -ne 0 ]; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "The CHANGE SET's own mutation score failed the gate (the thresholds are on the GATE line)." \
+    "$score_out" \
+    "A surviving mutant in the files THIS change set touched means its own tests would not catch a real regression there — the number that matters for this review, not the whole accumulated report. A report whose recorded scope differs from this change set's files fails too, because it cannot vouch for them." \
+    "Add a real assertion that fails when the mutated code is wrong, or (only for a declaration-only file with no behavioral branch) add it to the exclusion allowlist in mutation-score.js with a concrete reason, and mirror it in docs/harness/documented-exceptions.md. Re-run: npm run check:mutation" \
+    "Do not delete the failing mutant's test, and do not add a file to the exclusion allowlist without a concrete, verifiable reason (see CLAUDE.md's Override protocol)."
+  exit 2
+fi
+
 harness_mark_pass "$ROOT" "mutation" "$fp"
 exit 0

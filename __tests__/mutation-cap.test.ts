@@ -171,6 +171,26 @@ describe('scripts/checks/mutation.sh file cap', () => {
     expect(result.stubArguments).toBeNull();
   });
 
+  it('--list leaves out test scaffolding (mocks, e2e, test-support, fixtures, test helpers) and drizzle.config.ts', () => {
+    const { root, script } = buildRepository(sources('changed', 1));
+    writeFile(root, '__mocks__/react-native-svg.tsx', 'export default {};\n');
+    writeFile(root, 'e2e/screenshot/seed/screenshot-seed.ts', 'export const seed = 1;\n');
+    writeFile(root, 'src/test-support/real-sqlite.ts', 'export const sqlite = 1;\n');
+    writeFile(root, 'src/db/__fixtures__/seeded-categories.ts', 'export const seeded = 1;\n');
+    writeFile(root, 'src/db/render-condition-test-helper.ts', 'export const render = 1;\n');
+    writeFile(root, 'src/statement-import/format-test-fixtures.ts', 'export const cases = 1;\n');
+    writeFile(root, 'src/db/render-condition.ts', 'export const production = 1;\n');
+    writeFile(root, 'drizzle.config.ts', 'export default {};\n');
+    commitAll(root, 'scaffolding files');
+
+    const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, ['--list']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(
+      'src/changed-0.ts\nsrc/db/render-condition.ts\nmutable files: 2 (cap 30)\n',
+    );
+  });
+
   it('--list prints a zero count when no mutable file changed', () => {
     const { script } = buildRepository({});
 

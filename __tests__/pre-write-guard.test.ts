@@ -34,9 +34,11 @@ function createTempDirectory(prefix: string): string {
 }
 
 // Bash 3.2 (the macOS /usr/bin/env bash) has no millisecond clock, so a
-// stub reads one from the Node binary the test itself runs on.
+// stub reads one from the Node binary the test itself runs on. It writes the
+// number with `-e`, not `-p`: `-p` colors its output when FORCE_COLOR is set,
+// and an ANSI-wrapped stamp does not parse as a number.
 function timingLineFor(stubName: string, phase: 'start' | 'end'): string {
-  return `if [ -n "$STUB_TIMING_FILE" ]; then printf '${stubName} ${phase} %s\\n' "$("$STUB_NODE" -p 'Date.now()')" >> "$STUB_TIMING_FILE"; fi`;
+  return `if [ -n "$STUB_TIMING_FILE" ]; then printf '${stubName} ${phase} %s\\n' "$("$STUB_NODE" -e 'process.stdout.write(String(Date.now()))')" >> "$STUB_TIMING_FILE"; fi`;
 }
 
 // The guard's own `runSemgrep` always sends the SAME 9 fixed flag/value
@@ -2393,6 +2395,12 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
       stamps
         .filter(([name, stampPhase]) => name === stubName && stampPhase === phase)
         .map(([, , time]) => Number(time));
+    const unparsedStamps = stamps
+      .map(([, , time]) => time)
+      .filter((time) => !Number.isFinite(Number(time)));
+    // Lists the offending stamps in the failure diff instead of a later NaN
+    // comparison failing with no hint of its cause.
+    expect(unparsedStamps).toEqual([]);
     const [semgrepStart] = stampsOf('semgrep', 'start');
     const [semgrepEnd] = stampsOf('semgrep', 'end');
     const nodeStarts = stampsOf('node', 'start');

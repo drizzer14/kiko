@@ -16,10 +16,65 @@ import { execFileSync, spawnSync } from 'node:child_process';
 // scripts/checks/../.. and the real worktree is far above the file cap.
 const SCRIPT = join(__dirname, '../../scripts/checks/mutation.sh');
 const LIB = join(__dirname, '../../scripts/checks/_lib.sh');
+const SCORE_SCRIPT = join(__dirname, '../../scripts/checks/mutation-score.js');
+
+// Bash lines that print one JSON entry per file of the comma list in
+// `$mutate_argument`, comma-separated. Bash 3.2-safe: IFS field-splitting, no
+// arrays.
+const printEachMutatedFile = (entryFormat: string): string[] => [
+  '  first=1',
+  '  old_ifs="$IFS"',
+  "  IFS=','",
+  '  for file in $mutate_argument; do',
+  '    [ -n "$file" ] || continue',
+  '    [ "$first" -eq 0 ] && printf \',\'',
+  '    first=0',
+  `    printf '${entryFormat}' "$file"`,
+  '  done',
+  '  IFS="$old_ifs"',
+];
+
+// Writes a trivial, fully-killed mutation.json report for every file named in
+// the stub's own `--mutate=` argument, with that list as the report's own
+// `config.mutate` scope, so the CHANGE-SET gate
+// (scripts/checks/mutation-score.js, run by mutation.sh after a passing
+// Stryker exit) finds a report that belongs to this run and clears both the 75
+// total and the 60 per-file floor — these lines test the surrounding wrapper
+// machinery (cap, lock, ETA, streaming, dedup), not the scorer itself (see
+// __tests__/mutation-score.test.ts for that).
+const STUB_WRITES_PASSING_REPORT = [
+  'mkdir -p reports/mutation',
+  'mutate_argument=""',
+  'for argument in "$@"; do',
+  '  case "$argument" in',
+  // "--mutate=" is 9 characters; cut avoids bash parameter-expansion syntax
+  // that a JS string literal containing it reads as an (unintended) template
+  // placeholder to a linter.
+  '    --mutate=*) mutate_argument="$(printf %s "$argument" | cut -c10-)" ;;',
+  '  esac',
+  'done',
+  '{',
+  '  printf \'{"config":{"mutate":[\'',
+  ...printEachMutatedFile('"%s"'),
+  '  printf \']},"files":{\'',
+  ...printEachMutatedFile('"%s":{"mutants":[{"status":"Killed"}]}'),
+  "  printf '}}'",
+  '} > reports/mutation/mutation.json',
+].join('\n');
+
+// Same idea as STUB_WRITES_PASSING_REPORT above, for the raw bash stub bodies
+// in mutation-stream.test.ts/mutation-lock.test.ts, which always change the
+// one fixed file `src/changed.ts` (buildMutationRepository's own default) and
+// so never need to read it back out of an argument list.
+export const PASSING_REPORT_FOR_CHANGED_FILE = [
+  'mkdir -p reports/mutation',
+  'printf \'{"config":{"mutate":["src/changed.ts"]},"files":{"src/changed.ts":{"mutants":[{"status":"Killed"}]}}}\' > reports/mutation/mutation.json',
+].join('\n');
 
 const ARGUMENT_STUB = [
   '#!/usr/bin/env bash',
   'printf "%s\\n" "$@" >> "$KIKO_STUB_ARGUMENTS"',
+  STUB_WRITES_PASSING_REPORT,
   'exit 0',
 ].join('\n');
 
@@ -60,6 +115,7 @@ export const copyMutationScripts = (root: string): string => {
   mkdirSync(dirname(script), { recursive: true });
   copyFileSync(SCRIPT, script);
   copyFileSync(LIB, join(root, 'scripts/checks/_lib.sh'));
+  copyFileSync(SCORE_SCRIPT, join(root, 'scripts/checks/mutation-score.js'));
 
   return script;
 };

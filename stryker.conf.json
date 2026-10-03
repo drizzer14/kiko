@@ -21,7 +21,7 @@
   "ignorePatterns": ["ios", "android", "vendor", "coverage", "docs", ".superpowers"],
   "incremental": true,
   "concurrency": 2,
-  "reporters": ["clear-text", "progress"],
+  "reporters": ["clear-text", "progress", "json"],
   "thresholds": { "high": 80, "low": 60, "break": 60 },
   "coverageAnalysis": "perTest"
 }

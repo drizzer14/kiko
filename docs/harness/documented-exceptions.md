@@ -418,6 +418,30 @@ verified usage, not dead weight:
   `stryker.conf.json` and the changed-file `grep` filter in
   `scripts/checks/mutation.sh` for the exact patterns and re-includes
   (not restated in full here so they cannot drift).
+- **`scripts/checks/mutation-score.js` declaration-only exclusion
+  allowlist**: the CHANGE-SET mutation gate (CLAUDE.md's
+  `check:mutation` row) excludes a file from BOTH the change-set score
+  and its own per-file floor when it is a declaration file. Today:
+  **`src/db/schema.ts`** (Drizzle table/column declarations): its
+  string-literal mutants (column names) are the schema itself, not
+  logic. A real report shows 98 StringLiteral mutants killed in it, so
+  the reason is not "no runtime branch". The Drizzle migration
+  snapshots and journal under `drizzle/migrations/meta/` are `.json`
+  files, and `mutation.sh` passes only `.ts`/`.tsx` files to the gate,
+  so they never reach it and need no entry. This is the ONE allowlist
+  in that script (`EXCLUDED_FILES`); a new entry needs the same
+  concrete, verifiable reason as any other suppression here
+  (CLAUDE.md's "Override protocol"), update this entry when one is
+  added. A changed file that is ABSENT from the json report is a file
+  with no mutants (Stryker writes only files that have some) and is
+  n/a, but only after the scorer has checked that the report's own
+  recorded scope (`config.mutate`) equals the changed-file list; a
+  report that does not match fails the gate.
+- **`Stryker disable` comments**: not an allowlist. `check:overrides`
+  (`override-guard.sh`) fails a `Stryker disable` comment without
+  `OVERRIDE(...)`, because a disabled mutant becomes Ignored and the
+  mutation gate leaves Ignored mutants out of the score and the floor.
+  No such comment exists in the repo today.
 - **Stryker sandbox exclusions (`stryker.conf.json` `ignorePatterns`)**:
   Stryker copies every non-ignored project file into a temp sandbox before
   each run (verified in `@stryker-mutator/core` 8.7.1

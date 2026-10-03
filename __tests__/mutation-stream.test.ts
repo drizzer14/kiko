@@ -9,6 +9,7 @@ import {
   writeStrykerStub,
   runWithArgumentStub,
   buildMutationRepository,
+  PASSING_REPORT_FOR_CHANGED_FILE,
 } from './test-support/mutation-repository';
 
 // scripts/checks/mutation.sh (the check:deep mutation step) must STREAM Stryker's
@@ -65,6 +66,9 @@ const stubBody = (exitCode: number): string =>
     'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
     'echo "STRYKER-STREAM-LINE-1"',
     'echo "STRYKER-STREAM-LINE-2"',
+    // Written whether this stub passes or fails: the change-set gate is only
+    // reached on an exit-0 Stryker, so it is harmless, unread noise on exit 1.
+    PASSING_REPORT_FOR_CHANGED_FILE,
     `exit ${exitCode}`,
   ].join('\n');
 
@@ -130,6 +134,7 @@ describe('scripts/checks/mutation.sh streaming', () => {
         'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
         'sleep 1',
         'echo "STRYKER-STREAM-LINE-1"',
+        PASSING_REPORT_FOR_CHANGED_FILE,
         'exit 0',
       ].join('\n'),
     );
@@ -169,6 +174,7 @@ describe('scripts/checks/mutation.sh streaming', () => {
         'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
         'echo "10/500 tested"',
         'sleep 1',
+        PASSING_REPORT_FOR_CHANGED_FILE,
         'exit 0',
       ].join('\n'),
     );
