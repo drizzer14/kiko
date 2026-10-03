@@ -68,8 +68,6 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
   'design-system/components/summary-table/summary-table.component.tsx#title': 'SummaryTable.title',
   'screens/column-mapping/column-select-field/column-select-field.component.tsx#sheetTitle':
     'ColumnSelectField.sheetTitle',
-  'screens/forms/account-kind-field/account-kind-field.component.tsx#sheetTitle':
-    'AccountKindField.sheetTitle',
   'screens/forms/bank-type-field/bank-type-field.component.tsx#sheetTitle':
     'BankTypeField.sheetTitle',
   'screens/forms/broker-type-field/broker-type-field.component.tsx#sheetTitle':
