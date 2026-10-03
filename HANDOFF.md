@@ -2,7 +2,76 @@
 
 
 
-## ⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-29 11:05) — READ THIS FIRST
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-03 21:55) — READ THIS FIRST
+Previous coordinator: pff-ios-9b (cleared on user request after the retrospect). FIRST ACTIONS of the new coordinator:
+1. SendMessage your name to implicit-accounts-a5 (orchestrator, terminal term_4c35e90a-1333-4daf-9b38-f34b74e25212, worktree ~/orca/workspaces/pff-ios/implicit-accounts) and the PM pff-ios-89; they report to "pff-ios-9b".
+2. Re-arm the gauge watcher: `bash memory/refs/gaugewatch.sh term_4c35e90a-1333-4daf-9b38-f34b74e25212` (Bash run_in_background); on "HANDOVER" ask for its handoff file. Brief template: memory/refs/brief-implicit-accounts.md.
+3. Read memory/refs/duration-log.md (estimates come from it, skill kiko:estimator) and memory/refs/morning-list-2026-10-03.md (user items).
+4. The MUTATION-GATE subagent of the old coordinator session may be gone after /clear: check ~/orca/workspaces/pff-ios/mutation-gate (see below) and resume with a NEW kiko:developer if its work is uncommitted.
+
+### State (2026-10-03 21:55)
+| Thing | Value |
+|---|---|
+| main | ce40f411 (old; plugin 0.2.7 live). WAITS for the user's device OK, then `git -C <main> merge --ff-only <next sha>` from a verified state + `claude plugin update kiko@kiko-marketplace` + /reload-plugins (plugin 0.3.0 adds kiko:estimator). This handoff commit sits on main: merge main into next first (clean, docs only) |
+| next | 51804bc7 (coordinator retrospect drift fix 2026-10-03: ops mutation caveat, harness-workflow fresh-agent rule, kiko-architecture op-sqlite SQLite 3.51.3 + single quotes) on c37d866a = Round B 1/9-9/9, shares-cut (required bank/broker pick + "Other bank" migration 0049; shares/EODHD REMOVED, no migration; per-type name placeholders), implicit-accounts spec 50f8b776 + plan 0e507f16, kiko:estimator skill + plugin 0.3.0. Migrations 0046-0049 (0050 comes with implicit accounts). |
+| implicit-accounts (implicit-accounts-a5) | tasks 1/9-8/9 DONE (tip 348b3738); mutation PASS for 1-7 (changed-file scores 52-100, see below), task 8/9 window (base 0cc210fb, tip 348b3738) PASS: changed files 81-93 (holdings.repo 88.02, accounts.stack 88.89, account-form 82.71, holding-form 83.38, accounts.repo 90.51, filter-menu 81.08, route-response 92.92), 20 min, osv accepted advisories only. ALL 8 code tasks passed mutation. Task 9/9 RUNNING since 21:35 (whole-branch review + retrospect + scribe, then make verify, TRACK DONE with the device checklist; estimate 22:45-23:15). Then: ONE merge of the branch tip into next (conditional merge-tree), make verify, device install. |
+| mutation-gate (worktree ~/orca/workspaces/pff-ios/mutation-gate, branch mutation-gate, base c37d866a) | kiko:developer (subagent of the old coordinator) building the gate fix: score ONLY the change set's files from Stryker's report, FAIL if change set < 75 or any file < 60, declaration files (src/db/schema.ts, migration snapshots) excluded with a documented reason. At 21:51: UNCOMMITTED edits in mutation.sh, stryker.conf.json, CLAUDE.md, kiko-linter, documented-exceptions, knip.json, tests + new __tests__/mutation-score.test.ts. Fixture copy of the incremental report: .superpowers/fixtures/stryker-incremental-after-ia7.json (100 MB, never commit). Then: kiko:reviewer, merge into next. |
+| deep-gate | ~/orca/workspaces/pff-ios/deep-gate detached at 348b3738, idle. One mutation run at a time |
+| iPhone | 10aef4f2 build (Round B, migrations 0046-0048). Next install = next after implicit-accounts merge (migrations 0049 + 0050): user takes a .kiko export FIRST |
+| App Store | 1.0.0 build 25 "Waiting for Review". No next version yet: do not bump versions |
+| Worktrees removed | round-b (tag round-b-end), shares-cut (tag shares-cut-end); notes in memory/refs/round-b-superpowers/ and shares-cut-superpowers/ |
+
+### User decisions this run (all relayed; also in memory)
+- Round B: all overnight defaults approved (REM-2 midpoint skip rule; silent back-off pause accepted; restore keeps the live lock; appVersion stays 1.0.0; credentialsNotRestoredMessage approved; task 9/9 perf defaults).
+- SHARES CUT (decided 2026-10-02): no shares, no EODHD; broker accounts + bonds + metals with lots stay; no share migration (no such data ever existed); keep every migration file (counting runner).
+- New bank/broker accounts need an explicit pick (create only); "Free" -> "Other bank" (id 'other', last row, migration 0049).
+- Per-type holding name placeholders (loan "Mortgage"/"Іпотека", property "Apartment or car"/"Квартира або авто").
+- IMPLICIT ACCOUNTS (spec + plan approved): one Properties ("Майно") and one Loans ("Кредити") account by kind; existing ones merge (migration 0050); holdings listed directly with drag order; create from Add account; no new reminders for these kinds; Back animates; icon written in the same insert as the create.
+- Accepted osv debt: image-size, decode-uri-component, braces (build-time only, no fix).
+- Mutation gate: change set >= 75, file >= 60 (fix in progress).
+- Agents: a FRESH agent by default; reuse via SendMessage only for a same-task re-review/fix round with small context. Finished agents cannot be removed from the list (never `claude rm`). Keep ipad-adaptive-e7 and duo-adaptive-d4 open.
+- Do no work for states the single user's data cannot have (no reminders on property/debt, no duplicate account names, no share data, no EODHD key).
+- Durations: estimate from memory/refs/duration-log.md (kiko:estimator), TIMES line in every BATCH READY, a row per task and per mutation window.
+
+### Open user items
+Privacy policy text review + gh-pages publish before the 1.2 upload (policy date stays 2 October 2026); App Store Connect: confirm 1.0.0 was never approved; device checks of Round B 1-9, shares-cut and implicit accounts (lists in the BATCH READY / TRACK DONE files under memory/refs/*-superpowers and the implicit-accounts worktree); pay-in-parts research (docs/research/pay-in-parts.md) waits for a scope decision.
+
+### Next steps, in order
+1. implicit-accounts: task 8/9 mutation result -> task 9/9 TRACK DONE -> merge into next (one merge) -> make verify.
+2. mutation-gate: finish (developer), review, merge into next.
+3. Device install of next (export first; ops brief pins UDID 00008130-0018712A1E32001C, Release-AdHoc, EXPECT key).
+4. After the user's device OK: main ff, plugin update + reload, close the implicit-accounts session, tag + remove its worktree.
+
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-02) — superseded by 2026-10-03 above
+Previous coordinator: pff-ios-9b (handover on user request after the retrospect). FIRST ACTIONS of the new coordinator:
+1. SendMessage your name to round-b-b6 (Round B orchestrator, terminal term_52a0c6da-cf54-46c0-94b8-02ac5d1fc8d6, worktree ~/orca/workspaces/pff-ios/round-b) and the PM pff-ios-89; they report to "pff-ios-9b".
+2. Re-arm ONLY the gauge watcher: `bash memory/refs/gaugewatch.sh term_52a0c6da-cf54-46c0-94b8-02ac5d1fc8d6` with Bash run_in_background; on "HANDOVER" ask the session for its handoff file. Brief template: memory/refs/brief-round-b.md.
+3. Read memory/refs/morning-list-2026-10-02.md (all questions ANSWERED 2026-10-02 morning; the answers are in the Round B triage below) and memory/refs/followups-after-round-a.md (open follow-ups).
+
+### State (2026-10-02)
+| Thing | Value |
+|---|---|
+| main | c6098ad3 (follow-ups track; plugin 0.2.7 live). main waits for the user's P5 device check before the next ff |
+| next | 253708dc (retrospect drift fix, plugin 0.2.9; goes live after the next main ff + claude plugin update) on top of b9da9588 = Round A, Reminders + round 2, follow-ups, P5 tasks 1/8-8/8 (broker kind, shares, EODHD BYOK, quota guard, migration 0046_add_quote_quota; next free migration 0047) |
+| Round B (round-b-b6) | steps 1-2 DONE (FINDINGS: ~/orca/workspaces/pff-ios/round-b/.superpowers/sdd/round-b/FINDINGS.md; 1 Critical, 2 Critical-conditional, 18 Important, ~70 Minor). Step 3 RUNNING: Round B task 1/9 import times + keys; then 2/9 statistics + Close holding; 3/9 release docs + kit (1.2 reviewer Notes DRAFT for user review, privacy policy, demo .kiko, localized display name Kiko/Кіко, DiskSpace manifest); 4/9 balance anchor + block import on synced accounts; 5/9 share refresh + invalid-key status + quota text (local reset time; uk disclaimer "...і не є його партнером."; drop "Daily limit" caption); 6/9 share form + lot edit/delete + currency guard + split lots; 7/9 reminders (snooze fix, skip rules); 8/9 backup + auth (EXPORT_VERSION 2, keep live lockEnabled); 9/9 perf. Per task: BATCH READY -> coordinator mutation run in deep-gate -> merge into next |
+| deep-gate | ~/orca/workspaces/pff-ios/deep-gate detached b9da9588 (one mutation run at a time; Semgrep timeouts under load = re-run at low load) |
+| iPhone | c6098ad3 build. NEXT device session = P5 + Round B, AFTER Round B tasks 5/9 and 6/9 (user choice); the user takes a .kiko export FIRST (migration 0046) |
+| harness repo | drizzer14/harness 1.2.0 PUBLISHED (main 1b9b164, pushed 2026-10-02, no tag) |
+| App Store | 1.0.0 build 25 "Waiting for Review". There is NO next App Store version yet (user): do not bump versions |
+
+### Round B triage answers (user, 2026-10-02)
+iPhone zone Kyiv on 09-30 and now (INT-B1 does not touch the user's data; code fix only). Closed Monobank cards/jars are outside Kiko's known range (STAT-N1 = code fix, Important). App Review key = a separate FREE EODHD key the user creates (notes explain 20/day). Do NOT ask EODHD for a written OK. Build 25 App Privacy = "Data Not Collected". Home-screen name localized: Kiko (en) / Кіко (uk). Rulings: REM-2 skip tonight if data was added today, an edit keeps the skip; skip rule = skip a fire only if data was added on its own local day before it fires; REM-5 "Set up" counts as the decision; block "Import statement" on Monobank-synced accounts; STAT-N3 bond line ends at the typed price. Scope = Critical + Important + cheap same-file Minors. P5 keys and overnight defaults approved with 2 changes (uk broker disclaimer; reset time in local time).
+
+### Next steps for the coordinator, in order
+1. Round B tasks 1/9-9/9 as BATCH READY arrives (mutation per task, merge, tell round-b-b6). Relay the 1.2 Notes draft (task 3/9) and the new local-time wording (task 5/9) to the user.
+2. After tasks 5/9 + 6/9: the combined device session (export first; then P5 + Round B device checks from each BATCH READY). Then main ff after the user's LGTM, plugin update.
+3. Round B end: drift pass, TRACK DONE, close the session (copy .superpowers to memory/refs, tag, remove the worktree).
+4. Then 1.2 release prep only when the user names a version (gates: reviewer Notes + free key, privacy policy + App Privacy for EODHD, demo .kiko, screenshots).
+
+### Rules learned this run (all in memory)
+CVE patch/minor fixes older than 7 days: no user OK needed. Orchestrators report at EVERY milestone and route user items through the coordinator. Numbered names only ("task N/M", "step N/M", "option N"), never letters or "CS-n". A session outside pff-ios needs `claude --plugin-dir`; harness-repo plugin/** edits need auto mode OFF. `orca worktree rm` deletes the branch (tag first). Brief memory path is ~/.claude/projects/.../memory/MEMORY.md. Verify a device install with devicectl device info apps. Hold a merge whose text promises a later change set's feature. Hermes has no Intl.PluralRules.
+
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-09-29 11:05) — superseded by 2026-10-02 above
 Previous coordinator: pff-ios-9b (handover on user request after the retrospect). FIRST ACTIONS of the new coordinator:
 1. SendMessage your name to round-a-b7 (Round A, terminal term_f33cae3e-52bb-4734-8bb6-b84558b4c75c) and reminders-8e (Reminders, terminal term_06904bf8-4706-44bf-a28a-3c665bce472b) and the PM pff-ios-89; they report to "pff-ios-9b".
 2. Re-arm ONLY the gauge watcher (user rules: no idle/prompt/long-agent polling): `bash memory/refs/gaugewatch.sh <terminal>` with Bash run_in_background, one per orchestrator terminal; on "HANDOVER" ask that session for its handoff file; brief templates: memory/refs/brief-round-a-2.md, memory/refs/brief-reminders-2.md.
