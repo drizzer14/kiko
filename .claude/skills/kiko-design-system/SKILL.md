@@ -927,7 +927,10 @@ new component can land between reviews of this skill:
   field), the holding-type picker, the column-mapping form's time-zone
   field (every `sourceTimeZoneIds` entry,
   `src/statement-import/column-mapping/source-time-zone.ts`), `AccountKindField`, and `ModeSelectField` all reach
-  for it directly. `AccountKindField` and
+  for it directly. `SelectField`'s optional `onSelectClosed(option)` runs
+  once after the sheet a pick closed has finished closing (the
+  `onClosed` contract above): wire a screen navigation to it, never to
+  `onSelect` (`AccountKindField` forwards it). `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`

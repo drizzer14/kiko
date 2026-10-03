@@ -380,12 +380,14 @@ holdingId?, debtAccount?, returnTo? }`, resolved by
 'implicit', implicitKind }`; `holdingFormDraft` reads the draft, empty
 when absent). In implicit mode the form: queries no account
 (`byIdQuery('')`); takes its offered types from
-`creatableHoldingTypesForAccount(implicitKind, false, null)`
-(`['property_item']` / `['loan']`); shows `ImplicitKindField`
-(`holding-form/implicit-kind-field/`, the shared `AccountKindField` with
-`useAccountKindLabels()`'s labels and subtitles, which
-`src/screens/forms/account-kind-field/` also gives the account form) in the
-account form's own slot, under the divider; keeps the title "Add Account";
+`creatableHoldingTypesForAccount(implicitKind, false, undefined)` (its
+own call, with `implicitKind` as the account kind and no account row;
+`['property_item']` / `['loan']`), and starts `type` on the first of them;
+shows the shared `AccountKindField` (`src/screens/forms/account-kind-field/`,
+which resolves its own label, sheet title, kinds, texts and glyphs, so a
+form passes only `selected`, `onSelect`, `onSelectClosed` and `disabled`)
+in the account form's own slot, under the divider; keeps the title "Add
+Account" (the stack sets it statically for an `implicitKind` route too);
 seeds name, icon and color from the draft ONCE (`useState` initial
 values); and Save is `accountsRepo.createImplicitHolding(implicitKind, {
 name, type, currency, color, ...active.createPayload() })` (one write: it
@@ -396,7 +398,11 @@ Metals, or Broker there calls `navigation.replace('AccountForm', {
 initialKind, draft })`, which seeds the account form once (a carried icon
 counts as a pick); picking the other implicit kind calls
 `navigation.setParams({ implicitKind })`, and the type effect re-snaps
-the form in place. `replace`, never `navigate`: Back from either form
+the form in place. Both `replace` calls run from the field's
+`onSelectClosed` (`SelectField`'s optional prop: runs once, with the
+pick, after the sheet has FINISHED closing, via `BottomSheet`'s
+`onClosed`), never on the pick itself: replacing mid-close would unmount
+the screen that owns the sheet's Modal. `setParams` is immediate. `replace`, never `navigate`: Back from either form
 leaves to the Accounts root instead of landing on a stale sibling
 (`accounts.stack.swap.navigator.test.tsx` proves it on the real
 router, not a spy). `accounts.stack.tsx` gives a route that carries a
