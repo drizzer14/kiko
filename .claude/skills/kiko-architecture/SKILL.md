@@ -2231,7 +2231,16 @@ what a change must keep.
   `ledgerless: true` for the current ledgerless set), opens
   `TransactionForm { holdingId }` above `AccountDetail`, and otherwise
   `AccountDetail` only (a single ledgerless holding included);
-  the paused notice opens `AccountReminders` above `AccountDetail`. The
+  the paused notice opens `AccountReminders` above `AccountDetail`. An
+  IMPLICIT account (`isImplicitAccount`: a live property or debt account)
+  has no `AccountDetail` page, so `routeFor` returns no `accountDetail` for
+  it: an open response gives `{}` and lands on the Accounts root, the
+  paused notice gives `AccountReminders` above the Accounts root, and
+  `navigateNow` skips `withAccountOnTop`. No new reminder entry point
+  exists for an implicit account; a merged reminder that survives stays
+  in Settings > Reminders (pause, delete) and still routes by this rule.
+  A reminder NOTIFICATION never names its account (its title and body are
+  generic catalogue text), so the planner needs no display name. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
   Accounts stack: the routes it has now (or `Accounts` while the tab has
   not mounted), then the new ones. Two nested navigates back to back lose
