@@ -245,6 +245,13 @@ an entry (date + value) the moment the user approves a new visual.
   `accountKindSymbol` glyph in its resolved color, never an empty icon
   slot. The "All" row lines up under the glyph column:
   `filter-menu` reserves the icon slot when any option has an icon.
+- **A filter's selection is the stored Set minus values not among the
+  current options** (2026-10-04). An account archived or deleted while
+  selected leaves no checked row to clear it, so Home and Statistics pass
+  the stored Set through `visibleSelection`
+  (`src/design-system/visible-selection`) and filter, count ("Label · N")
+  and render checked rows from the result; an empty result is "All". The
+  stored Set is derived from, never rewritten.
 
 ## UX patterns
 

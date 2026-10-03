@@ -1398,6 +1398,76 @@ describe('StatisticsScreen', () => {
       expect(queryByTestId('pie-chart-arc-a')).toBeNull();
     });
 
+    // A selected account that is archived or deleted leaves no checked row to
+    // clear, so its stale id must neither filter nor count.
+    describe('a selected account that is no longer among the options', () => {
+      const SAVINGS: Account = { id: 'c', name: 'Savings', kind: 'cash', color: null };
+      const SAVINGS_HOLDING: Holding = { ...UAH_HOLDING, id: 'h-savings', accountId: 'c' };
+      const archiveCash = async (
+        rerender: Awaited<ReturnType<typeof render>>['rerender'],
+        otherAccounts: Account[] = [BANK],
+        otherHoldings: Holding[] = [USD_HOLDING],
+      ): Promise<void> => {
+        setLiveData({
+          accounts: [{ ...CASH, archivedAt: 123 }, ...otherAccounts],
+          holdings: [UAH_HOLDING, ...otherHoldings],
+          rates: [USD_UAH_RATE],
+          transactions: TRANSACTIONS,
+          history: HISTORY,
+        });
+        await act(async () => {
+          rerender(<StatisticsScreen />);
+        });
+      };
+
+      it('filters nothing and shows no count once the only selected account is archived', async () => {
+        const { getByTestId, getByText, queryByText, queryByTestId, rerender } =
+          await renderScreen();
+
+        await pressFilter(getByTestId, ACCOUNT_FILTER, CASH.id);
+        expect(queryByTestId('pie-chart-arc-b')).toBeNull();
+        expect(getByText('Accounts · 1')).toBeTruthy();
+
+        await archiveCash(rerender);
+
+        expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
+        expect(getByTestId('bar-chart-bar-card')).toBeTruthy();
+        expect(getByText('Accounts')).toBeTruthy();
+        expect(queryByText(/^Accounts · /)).toBeNull();
+      });
+
+      it('keeps filtering by a second selected account that is still among the options', async () => {
+        setLiveData({
+          accounts: [CASH, BANK, SAVINGS],
+          holdings: [UAH_HOLDING, USD_HOLDING, SAVINGS_HOLDING],
+          rates: [USD_UAH_RATE],
+          transactions: TRANSACTIONS,
+          history: HISTORY,
+        });
+        const { getByTestId, getByText, queryByTestId, rerender } = await renderScreen();
+
+        await act(async () => {
+          await fireEvent.press(getByTestId(ACCOUNT_FILTER));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId(`${ACCOUNT_FILTER}-option-a`));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId(`${ACCOUNT_FILTER}-option-b`));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId(`${ACCOUNT_FILTER}-backdrop`));
+        });
+        expect(getByText('Accounts · 2')).toBeTruthy();
+
+        await archiveCash(rerender, [BANK, SAVINGS], [USD_HOLDING, SAVINGS_HOLDING]);
+
+        expect(getByText('Accounts · 1')).toBeTruthy();
+        expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
+        expect(queryByTestId('pie-chart-arc-c')).toBeNull();
+      });
+    });
+
     it('filters an account named "All" as one account, not as the clear-all option', async () => {
       setLiveData({
         accounts: [{ ...CASH, name: FILTER_ALL }, BANK],

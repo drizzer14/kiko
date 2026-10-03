@@ -820,6 +820,78 @@ describe('HomeScreen', () => {
       expect(queryByText('Coffee')).toBeNull();
     });
 
+    // A selected account that is archived or deleted leaves no checked row to
+    // clear, so its stale id must neither filter nor count.
+    describe('a selected account that is no longer among the options', () => {
+      const rerenderHome = async (
+        rerender: Awaited<ReturnType<typeof renderHome>>['rerender'],
+      ): Promise<void> => {
+        await act(async () => {
+          await rerender(
+            <HomeScreen
+              navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+              route={asRouteProp<HomeProps['route']>('Home')}
+            />,
+          );
+        });
+      };
+
+      it('filters nothing and shows no count once the only selected account is archived', async () => {
+        seed({
+          accounts: [MONOBANK, PRIVATBANK],
+          transactions: rowsOfTwoAccounts,
+        });
+        const { getByText, queryByText, getByTestId, rerender } = await renderHome();
+
+        await pressFilter(getByTestId, 'account-filter-menu', 'a');
+        expect(queryByText('Groceries')).toBeNull();
+        expect(getByText('Accounts · 1')).toBeTruthy();
+
+        seed({
+          accounts: [{ ...MONOBANK, archivedAt: 123 }, PRIVATBANK],
+          transactions: rowsOfTwoAccounts,
+        });
+        await rerenderHome(rerender);
+
+        expect(getByText('Coffee')).toBeTruthy();
+        expect(getByText('Groceries')).toBeTruthy();
+        expect(getByText('Accounts')).toBeTruthy();
+        expect(queryByText(/^Accounts · /)).toBeNull();
+      });
+
+      it('keeps filtering by a second selected account that is still among the options', async () => {
+        seed({
+          accounts: [MONOBANK, PRIVATBANK],
+          transactions: rowsOfTwoAccounts,
+        });
+        const { getByText, queryByText, getByTestId, rerender } = await renderHome();
+
+        await act(async () => {
+          await fireEvent.press(getByTestId('account-filter-menu'));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId('account-filter-menu-option-a'));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId('account-filter-menu-option-b'));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId('account-filter-menu-backdrop'));
+        });
+        expect(getByText('Accounts · 2')).toBeTruthy();
+
+        seed({
+          accounts: [{ ...MONOBANK, archivedAt: 123 }, PRIVATBANK],
+          transactions: rowsOfTwoAccounts,
+        });
+        await rerenderHome(rerender);
+
+        expect(getByText('Accounts · 1')).toBeTruthy();
+        expect(getByText('Groceries')).toBeTruthy();
+        expect(queryByText('Coffee')).toBeNull();
+      });
+    });
+
     it('filters an account named "All" as one account, not as the clear-all option', async () => {
       seed({
         accounts: [{ id: 'x', name: 'All', kind: 'bank' }, PRIVATBANK],
