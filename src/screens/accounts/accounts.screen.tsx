@@ -1,4 +1,4 @@
-import { type FC, useMemo } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import Sortable from 'react-native-sortables';
 import { accountsRepo } from '@kiko/accounts';
@@ -7,12 +7,11 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
-import { useDataReady, useLiveQuery } from '@kiko/db';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import { useIsFocused } from '@react-navigation/native';
 import type { Currency } from '@kiko/currency/currency';
-import { isSyncedAccount } from '@kiko/holdings/deletable';
+import { type FC, type ReactNode, useMemo } from 'react';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
@@ -23,20 +22,30 @@ import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
+import HoldingCard from '@kiko/design-system/components/holding-card';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { writeThenReplan } from '@kiko/reminders/use-reminder-scheduler';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
+import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-now';
+import { type AccountRow, type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
+import { useCloseHoldingAction } from '@kiko/design-system/components/close-holding-sheet';
+import { isImplicitAccount, type ImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
 import { styles } from './accounts.styles';
 
 type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accounts'>;
+
+const openHoldingsOf = (
+  holdingsByAccount: Map<string, HoldingRow[]>,
+  account: AccountRow | undefined,
+): HoldingRow[] => foldMap(maybe(account), (found) => holdingsByAccount.get(found.id)) ?? [];
 
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
@@ -54,12 +63,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     isLoading: accountsLoading,
     isFresh: accountsFresh,
   } = useLiveQuery(accountsRepo.listQuery(), ['accounts'], true, liveOptions);
-  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
-    holdingsRepo.allQuery(),
-    ['holdings'],
-    true,
-    liveOptions,
-  );
+  const {
+    data: holdings,
+    isLoading: holdingsLoading,
+    isFresh: holdingsFresh,
+  } = useLiveQuery(holdingsRepo.allQuery(), ['holdings'], true, liveOptions);
   const { data: rates, isLoading: ratesLoading } = useLiveQuery(
     ratesRepo.allQuery(),
     ['currency_rates'],
@@ -110,30 +118,27 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     [accounts],
   );
 
-  // A property or debt account gets its OWN section, in its own
-  // drag-and-drop grid below the main one — never mixed into it, so a drag
-  // reorder in any grid can only ever reorder within that same section
-  // (`Sortable.Grid`'s `data` is scoped per grid). All three stay in the
-  // query's `sortOrder` order, same as the single grid did before this
-  // split. One partition pass over `activeAccounts` rather than three
-  // separate filters.
-  const { mainAccounts, propertyAccounts, debtAccounts } = useMemo(() => {
+  // The live property and debt accounts are the implicit accounts: never a
+  // card of their own, and no AccountDetail page. Each one's open holdings
+  // are listed as cards in its own section, in its own drag-and-drop grid
+  // below the main one — never mixed into it, so a drag reorder in any grid
+  // can only ever reorder within that same section (`Sortable.Grid`'s `data`
+  // is scoped per grid). One partition pass over `activeAccounts`.
+  const { mainAccounts, implicitAccountByKind } = useMemo(() => {
     const main: typeof activeAccounts = [];
-    const property: typeof activeAccounts = [];
-    const debt: typeof activeAccounts = [];
+    const byKind: Partial<Record<ImplicitAccountKind, AccountRow>> = {};
 
     for (const account of activeAccounts) {
-      if (account.kind === 'debt') {
-        debt.push(account);
-      } else if (account.kind === 'property') {
-        property.push(account);
+      if (isImplicitAccount(account)) {
+        byKind[account.kind] = account;
       } else {
         main.push(account);
       }
     }
 
-    return { mainAccounts: main, propertyAccounts: property, debtAccounts: debt };
+    return { mainAccounts: main, implicitAccountByKind: byKind };
   }, [activeAccounts]);
+  const { property: propertyAccount, debt: debtAccount } = implicitAccountByKind;
 
   // Group every open holding by its account id in ONE O(H) pass, so each card
   // indexes into this map instead of re-filtering all holdings per card — the
@@ -160,39 +165,38 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     return byAccount;
   }, [holdings]);
 
-  // The Property section shows a SECTION total, the same "sum every member
-  // account's holdings through guardedNetWorth" pattern the Debts section
-  // below uses. Every property-kind account holds only `property_item`
-  // holdings (`holdingTypesForAccountKind`), so this total is always the sum
-  // the section's own cards already individually show.
-  const propertyTotal = useMemo(
-    () =>
-      guardedNetWorth(
-        propertyAccounts.flatMap((account) => holdingsByAccount.get(account.id) ?? []),
-        baseCurrency,
-        rateTable,
-        now,
-        priceBook,
-      ),
-    [propertyAccounts, holdingsByAccount, baseCurrency, rateTable, now, priceBook],
+  // A section's cards are the OPEN holdings of its implicit account, in the
+  // query's order. A section whose account is missing or holds nothing open
+  // is empty, and does not render.
+  const propertyHoldings = useMemo(
+    () => openHoldingsOf(holdingsByAccount, propertyAccount),
+    [holdingsByAccount, propertyAccount],
+  );
+  const debtHoldings = useMemo(
+    () => openHoldingsOf(holdingsByAccount, debtAccount),
+    [holdingsByAccount, debtAccount],
   );
 
-  // The Debts section shows a SECTION total
-  // (negative), not just each card's own balance. Every debt-kind account holds
-  // only `loan` holdings (`holdingTypesForAccountKind`), so summing them all
-  // through `guardedNetWorth` gives the same negative total the section's
-  // cards already individually show, added together.
-  const debtsTotal = useMemo(
-    () =>
-      guardedNetWorth(
-        debtAccounts.flatMap((account) => holdingsByAccount.get(account.id) ?? []),
-        baseCurrency,
-        rateTable,
-        now,
-        priceBook,
-      ),
-    [debtAccounts, holdingsByAccount, baseCurrency, rateTable, now, priceBook],
+  // Each section shows a SECTION total: the sum of its own cards' values
+  // through `guardedNetWorth`. A property section holds only `property_item`
+  // holdings and the debts section only `loan` holdings
+  // (`holdingTypesForAccountKind`), so the debts total is negative.
+  const propertyTotal = useMemo(
+    () => guardedNetWorth(propertyHoldings, baseCurrency, rateTable, now, priceBook),
+    [propertyHoldings, baseCurrency, rateTable, now, priceBook],
   );
+  const debtsTotal = useMemo(
+    () => guardedNetWorth(debtHoldings, baseCurrency, rateTable, now, priceBook),
+    [debtHoldings, baseCurrency, rateTable, now, priceBook],
+  );
+
+  // One close hook per implicit account: its sync check reads that account.
+  // Each hook's own `closeSheet` must render, or "Close" in that section
+  // opens nothing.
+  const { closeActionFor: closePropertyActionFor, closeSheet: closePropertySheet } =
+    useCloseHoldingAction(propertyAccount);
+  const { closeActionFor: closeDebtActionFor, closeSheet: closeDebtSheet } =
+    useCloseHoldingAction(debtAccount);
 
   // The parent ScrollView's animated ref, shared with the sortable grid so a
   // drag near the top/bottom edge auto-scrolls the list (the grid is nested
@@ -260,10 +264,9 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     );
   };
 
-  // A single-column drag-and-drop grid of wide account cards, shared by the
-  // main grid and the Debts grid below — the two differ only in which
-  // accounts they list and how a reorder is persisted (see the main grid's
-  // own `persistOrder` comment below for why).
+  // The main grid: a single-column drag-and-drop grid of wide account cards
+  // (see its own `persistOrder` comment below for why a reorder persists the
+  // whole order).
   const renderGrid = (
     data: typeof activeAccounts,
     persistOrder: (orderedIds: string[]) => void,
@@ -295,6 +298,78 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     />
   );
 
+  // One Property or Debts section: its heading with the section total, then
+  // a grid with one card per open holding of that implicit account. A drag
+  // persists that account's open holdings only (`holdingsRepo.reorder`),
+  // the account-detail contract. The grid is gated on the HOLDINGS query's
+  // fresh read, since it persists the holdings on screen.
+  const renderHoldingSection = ({
+    account,
+    sectionHoldings,
+    total,
+    heading,
+    totalTestID,
+    gridTestID,
+    closeActionFor,
+    showDivider,
+  }: {
+    account: AccountRow | undefined;
+    sectionHoldings: HoldingRow[];
+    total: ReturnType<typeof guardedNetWorth>;
+    heading: ReactNode;
+    totalTestID: string;
+    gridTestID: string;
+    closeActionFor: ReturnType<typeof useCloseHoldingAction>['closeActionFor'];
+    showDivider: boolean;
+  }) => (
+    <>
+      {showDivider && <Divider spacing={2} />}
+      <Box gap={3}>
+        <Box direction="row" style={styles.sectionHeadingRow}>
+          {heading}
+          <Box testID={totalTestID}>
+            <MoneyText money={total} context="balance" />
+          </Box>
+        </Box>
+        <Box testID={gridTestID}>
+          <Sortable.Grid
+            data={sectionHoldings}
+            sortEnabled={holdingsFresh && sectionHoldings.length > 1}
+            activeItemScale={1.03}
+            columns={1}
+            overDrag="vertical"
+            rowGap={theme.spacing(4)}
+            scrollableRef={scrollableRef}
+            autoScrollActivationOffset={75}
+            keyExtractor={(holding) => holding.id}
+            renderItem={({ item }) => (
+              <CardContextMenu
+                name={item.name}
+                deletable={!isSyncedHolding(item, account)}
+                onDelete={() => holdingsRepo.remove(item.id)}
+                closeAction={closeActionFor(item)}
+              >
+                <HoldingCard
+                  holding={item}
+                  now={now}
+                  baseCurrency={baseCurrency}
+                  rateTable={rateTable}
+                  priceBook={priceBook}
+                  onOpen={() =>
+                    navigation.navigate('HoldingDetail', { holdingId: item.id, name: item.name })
+                  }
+                />
+              </CardContextMenu>
+            )}
+            onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+              onGridDragEnd({ fromIndex, toIndex, indexToKey }, holdingsRepo.reorder)
+            }
+          />
+        </Box>
+      </Box>
+    </>
+  );
+
   if (!isReady) {
     return (
       <Screen scroll scrollableRef={scrollableRef}>
@@ -320,7 +395,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       }
     >
       <Box gap={4} style={styles.content}>
-        {activeAccounts.length === 0 ? (
+        {mainAccounts.length === 0 && propertyHoldings.length === 0 && debtHoldings.length === 0 ? (
           <Box style={styles.empty}>
             <Text tone="textSecondary">{t('accounts.emptyState')}</Text>
           </Box>
@@ -341,79 +416,49 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               // every other `listQuery` consumer) interleaves the sections
               // instead of keeping assets first, then property, then debts.
               // Always persist the WHOLE order: this grid's new order, then
-              // every property and debt account's id unchanged.
+              // the property and debt accounts' ids unchanged.
               <Box testID="accounts-grid">
                 {renderGrid(mainAccounts, (ids) =>
                   accountsRepo.reorder([
                     ...ids,
-                    ...propertyAccounts.map((account) => account.id),
-                    ...debtAccounts.map((account) => account.id),
+                    ...[propertyAccount, debtAccount].flatMap((account) =>
+                      account ? [account.id] : [],
+                    ),
                   ]),
                 )}
               </Box>
             )}
 
-            {propertyAccounts.length > 0 && (
-              // The "Property" section — its own heading + its
-              // own grid, so a drag reorder here can never move a property
-              // account into the main grid above (or vice versa). Rendered
-              // only when the user actually has a property account
-              // (data-driven, not a build flag — Guideline 5.6).
-              <>
-                {mainAccounts.length > 0 && <Divider spacing={2} />}
-                <Box gap={3}>
-                  <Box direction="row" style={styles.sectionHeadingRow}>
-                    <Text variant="heading">{t('accounts.propertySection')}</Text>
-                    <Box testID="accounts-property-total">
-                      <MoneyText money={propertyTotal} context="balance" />
-                    </Box>
-                  </Box>
-                  <Box testID="accounts-property-grid">
-                    {/* Mirrors the main grid's persist-order fix above. */}
-                    {renderGrid(propertyAccounts, (ids) =>
-                      accountsRepo.reorder([
-                        ...mainAccounts.map((account) => account.id),
-                        ...ids,
-                        ...debtAccounts.map((account) => account.id),
-                      ]),
-                    )}
-                  </Box>
-                </Box>
-              </>
-            )}
+            {/* The "Property" and "Debts" sections render from data (a
+                non-empty holding list), never a build flag (Guideline 5.6). */}
+            {propertyHoldings.length > 0 &&
+              renderHoldingSection({
+                account: propertyAccount,
+                sectionHoldings: propertyHoldings,
+                total: propertyTotal,
+                heading: <Text variant="heading">{t('accounts.propertySection')}</Text>,
+                totalTestID: 'accounts-property-total',
+                gridTestID: 'accounts-property-grid',
+                closeActionFor: closePropertyActionFor,
+                showDivider: mainAccounts.length > 0,
+              })}
 
-            {debtAccounts.length > 0 && (
-              // The "Debts" section — its own heading + its
-              // own grid, so a drag reorder here can never move a debt account
-              // into the main grid above (or vice versa). Rendered only when
-              // the user actually has a debt account (data-driven, not a
-              // build flag — Guideline 5.6).
-              <>
-                {(mainAccounts.length > 0 || propertyAccounts.length > 0) && (
-                  <Divider spacing={2} />
-                )}
-                <Box gap={3}>
-                  <Box direction="row" style={styles.sectionHeadingRow}>
-                    <Text variant="heading">{t('accounts.debtsSection')}</Text>
-                    <Box testID="accounts-debts-total">
-                      <MoneyText money={debtsTotal} context="balance" />
-                    </Box>
-                  </Box>
-                  <Box testID="accounts-debts-grid">
-                    {/* Mirrors the main grid's persist-order fix above. */}
-                    {renderGrid(debtAccounts, (ids) =>
-                      accountsRepo.reorder([
-                        ...mainAccounts.map((account) => account.id),
-                        ...propertyAccounts.map((account) => account.id),
-                        ...ids,
-                      ]),
-                    )}
-                  </Box>
-                </Box>
-              </>
-            )}
+            {debtHoldings.length > 0 &&
+              renderHoldingSection({
+                account: debtAccount,
+                sectionHoldings: debtHoldings,
+                total: debtsTotal,
+                heading: <Text variant="heading">{t('accounts.debtsSection')}</Text>,
+                totalTestID: 'accounts-debts-total',
+                gridTestID: 'accounts-debts-grid',
+                closeActionFor: closeDebtActionFor,
+                showDivider: mainAccounts.length > 0 || propertyHoldings.length > 0,
+              })}
           </>
         )}
+
+        {closePropertySheet}
+        {closeDebtSheet}
       </Box>
     </Screen>
   );

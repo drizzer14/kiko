@@ -120,16 +120,22 @@ from there throws or silently no-ops.
 
 ## Sortables grid conventions
 
-Three grids — `accounts.screen.tsx`'s main grid (1 column), its own
-"Debts" section grid below it (also 1 column — see "Section-scoped
-grids must persist the FULL order" below), and the account-detail
-holding grid (2 columns) — share the same tuning, so a value drifting
-on one and not the others is a bug, not a deliberate difference. Read
-the current values in all three before restating them; do not trust a
-copy in this skill. As of this writing all three grids use
+Four grids — `accounts.screen.tsx`'s main grid (1 column, account
+cards), its "Property" and "Debts" section grids below it (also 1
+column, but HOLDING grids: one `HoldingCard` per open holding of the
+implicit property / debt account, with `holdingsRepo.reorder`; see
+"Section-scoped grids must persist the FULL order" below), and the
+account-detail holding grid — share the same tuning, so a value
+drifting on one and not the others is a bug, not a deliberate
+difference. Read the current values in all of them before restating
+them; do not trust a copy in this skill. As of this writing all use
 `activeItemScale={1.03}` (a barely-there lift on touch-and-hold — the
-library default of `1.1` pops the card up too far) and
-`autoScrollActivationOffset={75}`. (The categories grid,
+library default of `1.1` pops the card up too far),
+`overDrag="vertical"`, and `autoScrollActivationOffset={75}`. The
+accounts main grid gates `sortEnabled` on the ACCOUNTS query's
+`isFresh`; the two section grids gate it on the HOLDINGS query's
+`isFresh` (a drag persists the rows on screen, so it never starts from
+a cached read), each with `data.length > 1`. (The categories grid,
 `src/screens/settings/categories/`, is a FOURTH grid with a
 deliberately different `dragActivationDelay` — see its own entry below
 — it is not part of this shared-tuning claim.)
@@ -139,19 +145,34 @@ deliberately different `dragActivationDelay` — see its own entry below
 `accountsRepo.reorder(orderedIds)` rewrites `sortOrder = index` for
 ONLY the ids it is given — its contract is "the full new front-to-back
 order", not "this grid's own ids". When a screen splits one list into
-several grids by a filter (accounts.screen.tsx's main grid vs. its
-Debts grid, by `kind === 'debt'`), persisting only the dragged grid's
-own reordered ids restarts THAT SECTION's `sortOrder` back at 0 on
-every drag, colliding with the other section's own 0-based run — every
+several grids by a filter, persisting only the dragged grid's own
+reordered ids restarts THAT SECTION's `sortOrder` back at 0 on every
+drag, colliding with the other section's own 0-based run — every
 OTHER `listQuery` consumer that reads the full, unfiltered list
 (Statistics' account filter, the transaction-form account rank, Home,
-statement import) then sees the two sections interleaved instead of
-kept apart. Fix: each grid's `onDragEnd` persists the WHOLE order,
-splicing its own new order back into the other section's (unchanged)
-ids at the same relative position — read `accounts.screen.tsx`'s two
-`onDragEnd` handlers for the current exact shape. A screen introducing
-a THIRD such filtered section must extend this the same way, not
-revert to passing a single grid's own ids straight through.
+statement import) then sees the sections interleaved instead of kept
+apart. Fix: a grid's `onDragEnd` persists the WHOLE order, splicing
+its own new order back into the other sections' (unchanged) ids.
+
+Today `accounts.screen.tsx` has ONE account-order grid, the main one
+(every non-implicit kind): its `onDragEnd` persists
+`accountsRepo.reorder([...mainIds, ...implicitAccountIds])`, the
+property account's id first, then the debt account's. The Property and
+Debts sections are no longer account grids: each lists the OPEN
+holdings of its implicit account (at most one live account per kind,
+`src/holdings/implicit-account/`), and its `onDragEnd` persists that
+account's open holdings only through
+`onGridDragEnd(…, holdingsRepo.reorder)` — the same contract as the
+account-detail grid (`holdingsRepo.reorder` rewrites only the ids it is
+given, so no other account's holdings move). Closed holdings keep
+their old `sortOrder`. A screen introducing a NEW filtered account
+section must extend the account-order rule the same way, not revert to
+passing a single grid's own ids straight through.
+
+Each section keeps its own long-press `CardContextMenu` (Close / Delete)
+and its own `useCloseHoldingAction` instance (one per implicit
+account); render EACH instance's `closeSheet`, or "Close" in that
+section opens nothing.
 
 - **`scrollableRef` + `autoScrollActivationOffset`**: the grid is nested
   inside the screen's own `ScrollView`, so it needs that `ScrollView`'s
