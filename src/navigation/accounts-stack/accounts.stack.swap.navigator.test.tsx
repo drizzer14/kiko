@@ -138,6 +138,64 @@ describe('AccountsStack — swapping between the account form and the implicit h
     expect(view.queryByTestId('holding-form')).toBeNull();
   });
 
+  // native-stack pops a screen with the animation that screen carries when it is
+  // popped (react-native-screens `RNSScreenStack animationControllerForOperation`
+  // reads `fromVC.screenView.stackAnimation`), so a route that swapped in with
+  // 'none' would also leave with none.
+  describe('the animation of a swapped-in screen', () => {
+    // The native screens that carry an animation, in stack order: the Accounts
+    // root sets none, so these are the form screens.
+    const stackAnimations = (view: View): unknown[] =>
+      view.container
+        .queryAll((node) => node.props.stackAnimation !== undefined)
+        .map((node) => node.props.stackAnimation);
+
+    // The native stack reports a screen as shown with its `onAppear`, which it
+    // calls whatever the animation was.
+    const appear = async (view: View): Promise<void> => {
+      const screens = view.container.queryAll((node) => node.props.stackAnimation !== undefined);
+
+      await act(async () => screens.at(-1)?.props.onAppear());
+    };
+
+    it('swaps in the holding form with no animation, then restores the default so Back animates', async () => {
+      const view = await renderStack();
+
+      await openAddAccount();
+      await pickKind(view, 'property');
+
+      expect(stackAnimations(view)).toEqual(['none']);
+
+      await appear(view);
+
+      expect(stackAnimations(view)).toEqual(['default']);
+    });
+
+    it('swaps back to the account form with no animation, then restores the default', async () => {
+      const view = await renderStack();
+
+      await openAddAccount();
+      await pickKind(view, 'property');
+      await appear(view);
+      await pickKind(view, 'cash');
+
+      expect(stackAnimations(view)).toEqual(['none']);
+
+      await appear(view);
+
+      expect(stackAnimations(view)).toEqual(['default']);
+    });
+
+    it('keeps a form opened from the Accounts screen on the default animation', async () => {
+      const view = await renderStack();
+
+      await openAddAccount();
+      await appear(view);
+
+      expect(stackAnimations(view)).toEqual(['default']);
+    });
+  });
+
   it('leaves the flow on Back after swapping there and back again', async () => {
     const view = await renderStack();
 

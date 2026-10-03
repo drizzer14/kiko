@@ -407,7 +407,13 @@ leaves to the Accounts root instead of landing on a stale sibling
 (`accounts.stack.swap.navigator.test.tsx` proves it on the real
 router, not a spy). `accounts.stack.tsx` gives a route that carries a
 `draft` `animation: 'none'`, so the swap reads as one form whose fields
-change; the same option makes Back from a swapped route unanimated.
+change. native-stack pops a screen with the animation it carries then
+(react-native-screens `RNSScreenStack` reads `fromVC.screenView.stackAnimation`), so
+the same option would make Back unanimated: both routes carry a
+`transitionEnd` listener that sets `animation: 'default'` once the swapped
+form has appeared (never a layout effect on mount: it can reach the native
+screen in the same mount batch and animate the swap), so Back (header button
+and edge swipe) animates like any other screen.
 `debtAccount` stays an EDIT-only route flag (holding detail passes it).
 
 A `property` account's Type field IS its category picker

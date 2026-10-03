@@ -21,6 +21,27 @@ import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 
 const Stack = createNativeStackNavigator<AccountsStackParamList>();
 
+// A swapped-in form (one that carries a `draft`) mounts with `animation:
+// 'none'` so the swap is instant. native-stack pops a screen with the animation
+// it carries at that moment, so the 'none' would also make Back from it
+// instant. Once the form has appeared, which the native stack reports with
+// `transitionEnd` whatever the animation was, its animation goes back to the
+// default. A layout effect on mount is too early: it can reach the native
+// screen in the same mount batch and animate the swap.
+const restoreDefaultAnimationOnceSwapped = ({
+  navigation,
+  route,
+}: {
+  navigation: { setOptions: (options: { animation: 'default' }) => void };
+  route: { params?: object };
+}) => ({
+  transitionEnd: () => {
+    if (route.params !== undefined && 'draft' in route.params && route.params.draft !== undefined) {
+      navigation.setOptions({ animation: 'default' });
+    }
+  },
+});
+
 /**
  * The Accounts tab's native stack. The list and form screens use a large title,
  * the standard iOS pattern. The tab root ("Accounts") and the form screens carry
@@ -61,6 +82,7 @@ const AccountsStack: FC = () => {
       <Stack.Screen
         name="AccountForm"
         component={AccountFormScreen}
+        listeners={restoreDefaultAnimationOnceSwapped}
         options={({ route }) => ({
           title: t('forms.account.addTitle'),
           animation: route.params?.draft === undefined ? 'default' : 'none',
@@ -70,6 +92,7 @@ const AccountsStack: FC = () => {
       <Stack.Screen
         name="HoldingForm"
         component={HoldingFormScreen}
+        listeners={restoreDefaultAnimationOnceSwapped}
         options={({ route }) => ({
           title:
             'implicitKind' in route.params
