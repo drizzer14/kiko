@@ -210,11 +210,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const scrollOffset = useScrollOffset(scrollableRef);
   useScrollToTopOnTabPress(scrollableRef, scrollOffset);
 
-  // One account card, shared by the main grid and the Debts grid below — a
-  // debt account's balance reads negative through the SAME `MoneyText`
-  // rendering every other account uses (`holding-value.ts` already values a
-  // `loan` holding at minus its outstanding balance, so nothing here needs to
-  // know it is rendering a debt specifically).
+  // One card of the main grid. The implicit property and debt accounts never
+  // render here: their holdings are the cards of their own sections below.
   const renderAccountCard = (item: (typeof activeAccounts)[number]) => {
     const accountHoldings = holdingsByAccount.get(item.id) ?? [];
     const balance = guardedNetWorth(accountHoldings, baseCurrency, rateTable, now, priceBook);
@@ -263,40 +260,6 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       </CardContextMenu>
     );
   };
-
-  // The main grid: a single-column drag-and-drop grid of wide account cards
-  // (see its own `persistOrder` comment below for why a reorder persists the
-  // whole order).
-  const renderGrid = (
-    data: typeof activeAccounts,
-    persistOrder: (orderedIds: string[]) => void,
-  ) => (
-    <Sortable.Grid
-      data={data}
-      // A drag persists the WHOLE account order from the rows on screen, so it
-      // never starts from the cached (possibly one-read-old) order — only
-      // once the accounts query's own fresh read has applied
-      // (kiko-architecture).
-      sortEnabled={accountsFresh && data.length > 1}
-      // A subtle lift on touch-and-hold: the library default (1.1) pops the
-      // card up too much, so scale it just barely (see the account-detail
-      // grid, which uses the same value).
-      activeItemScale={1.03}
-      columns={1}
-      // Keep a dragged card on its vertical axis — a single column has no
-      // horizontal move to make, so the library default ('both') only lets a
-      // card wander sideways off the list.
-      overDrag="vertical"
-      rowGap={theme.spacing(4)}
-      scrollableRef={scrollableRef}
-      autoScrollActivationOffset={75}
-      keyExtractor={(account) => account.id}
-      renderItem={({ item }) => renderAccountCard(item)}
-      onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
-        onGridDragEnd({ fromIndex, toIndex, indexToKey }, persistOrder)
-      }
-    />
-  );
 
   // One Property or Debts section: its heading with the section total, then
   // a grid with one card per open holding of that implicit account. A drag
@@ -418,14 +381,38 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               // Always persist the WHOLE order: this grid's new order, then
               // the property and debt accounts' ids unchanged.
               <Box testID="accounts-grid">
-                {renderGrid(mainAccounts, (ids) =>
-                  accountsRepo.reorder([
-                    ...ids,
-                    ...[propertyAccount, debtAccount].flatMap((account) =>
-                      account ? [account.id] : [],
-                    ),
-                  ]),
-                )}
+                <Sortable.Grid
+                  data={mainAccounts}
+                  // A drag persists the WHOLE account order from the rows on screen, so it
+                  // never starts from the cached (possibly one-read-old) order — only
+                  // once the accounts query's own fresh read has applied
+                  // (kiko-architecture).
+                  sortEnabled={accountsFresh && mainAccounts.length > 1}
+                  // A subtle lift on touch-and-hold: the library default (1.1) pops the
+                  // card up too much, so scale it just barely (see the account-detail
+                  // grid, which uses the same value).
+                  activeItemScale={1.03}
+                  columns={1}
+                  // Keep a dragged card on its vertical axis — a single column has no
+                  // horizontal move to make, so the library default ('both') only lets a
+                  // card wander sideways off the list.
+                  overDrag="vertical"
+                  rowGap={theme.spacing(4)}
+                  scrollableRef={scrollableRef}
+                  autoScrollActivationOffset={75}
+                  keyExtractor={(account) => account.id}
+                  renderItem={({ item }) => renderAccountCard(item)}
+                  onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+                    onGridDragEnd({ fromIndex, toIndex, indexToKey }, (ids) =>
+                      accountsRepo.reorder([
+                        ...ids,
+                        ...[propertyAccount, debtAccount].flatMap((account) =>
+                          account ? [account.id] : [],
+                        ),
+                      ]),
+                    )
+                  }
+                />
               </Box>
             )}
 

@@ -222,8 +222,9 @@ an entry (date + value) the moment the user approves a new visual.
   Short titles render exactly as before: each family keeps its own
   vertical alignment — `TransactionCard` top-aligns (`flex-start`, a
   body-size glyph), the holding-detail ledger rows stay `center`, and
-  the account card (`accounts.screen.tsx` `renderAccountCard`, also the
-  Property and Debts grids) and the shared `HoldingCard` stay
+  the account card (`accounts.screen.tsx` `renderAccountCard`, the main
+  grid only) and the shared `HoldingCard` (also the Property and Debts
+  section cards) stay
   `center` beside their taller `EntityIconTile`. The Statistics pie legend's name
   wraps in its own `legendLabel` (`flex: 1`) box beside the swatch; its
   fixed-width value/percent columns are unchanged. Rows whose label is a

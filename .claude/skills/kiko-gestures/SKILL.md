@@ -136,7 +136,7 @@ accounts main grid gates `sortEnabled` on the ACCOUNTS query's
 `isFresh`; the two section grids gate it on the HOLDINGS query's
 `isFresh` (a drag persists the rows on screen, so it never starts from
 a cached read), each with `data.length > 1`. (The categories grid,
-`src/screens/settings/categories/`, is a FOURTH grid with a
+`src/screens/settings/categories/`, is a FIFTH grid with a
 deliberately different `dragActivationDelay` — see its own entry below
 — it is not part of this shared-tuning claim.)
 

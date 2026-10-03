@@ -1077,14 +1077,14 @@ SIGNED (net) sums of every holding, so the breakdown still adds up to
 the headline exactly as it always did — a debt nets into its own
 currency's cell there, unlike Statistics' assets-only pie. Accounts'
 own "Debts" section (`accounts.screen.tsx`) computes its OWN section
-total independently, via `guardedNetWorth` of just the debt-kind
-accounts' holdings (every debt-kind account holds only `loan`
-holdings, so this total is always <= 0); it does not call
-`buildDebtTotal`, which sums across every account kind. A
-property-kind account gets the SAME treatment: its own "Property"
-section, its own `guardedNetWorth`-summed section total over just the
-property-kind accounts' holdings, rendered between the main grid and
-the Debts section. Read `kiko-charts` for the pie/line-specific rules.
+total independently, via `guardedNetWorth` of the OPEN holdings of the
+implicit debt account (it holds only `loan` holdings, so this total is
+always <= 0; one card per loan); it does not call `buildDebtTotal`,
+which sums across every account kind. The implicit property account
+gets the SAME treatment: its own "Property" section (one card per open
+holding), its own `guardedNetWorth`-summed section total over that
+account's open holdings, rendered between the main grid and the Debts
+section. A section with no open holding does not render. Read `kiko-charts` for the pie/line-specific rules.
 
 ### Bond funding recognition (net-worth series only)
 
