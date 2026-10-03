@@ -132,7 +132,8 @@ implemented, and callers must skip it rather than assume every id resolves.
   `nextSortOrder`: a property account sorts before every debt account, a debt
   account appends after every account), then inserts the holding through
   `insertHoldingDatabaseTransaction`, so a rejected holding rolls the account
-  insert back. `accountsRepo.create` throws for a property or debt kind. Read the unit and
+  insert back. A type the kind does not hold (`holdingTypesForAccountKind[kind]`)
+  throws before any insert. `accountsRepo.create` throws for a property or debt kind. Read the unit and
   `0050`'s header comment for the merge rule (oldest `created_at` kept) rather
   than a copy here.
 - **Holding** — a balance-bearing thing under an account (a card, a
@@ -143,8 +144,9 @@ implemented, and callers must skip it rather than assume every id resolves.
   deposit rate, maturity, Monobank account/jar id), `sortOrder`,
   `closedAt` (nullable), `createdAt`. A MANUAL holding the user sold or
   gave away is Closed, not deleted (the card context menu's `closeAction`
-  -> `CloseHoldingSheet` -> `holdingsRepo.closeMany`, under
-  `src/screens/account-detail/`); it keeps its lots, prices, and ledger.
+  -> `CloseHoldingSheet` -> `holdingsRepo.closeMany`; both live in
+  `src/design-system/components/close-holding-sheet/`, whose barrel exports
+  only `useCloseHoldingAction`); it keeps its lots, prices, and ledger.
   A synced holding gets no `closeAction` (`closeActionFor` returns
   undefined); every manual holding gets one, and there is no reopen. A
   loan is never called a holding there: `closeHoldingCopy(type)` picks
@@ -158,15 +160,14 @@ implemented, and callers must skip it rather than assume every id resolves.
   create title `forms.holding.addLoanTitle` ("Add Loan" / "Додати
   кредит") and its edit title `forms.holding.editLoanTitle` ("Edit Loan"
   / "Редагувати кредит"). There is no "Add loan" footer
-  (`accountDetail.addLoan` is gone). Holding detail passes the flag in
+  Holding detail passes the flag in
   the HoldingForm route (`debtAccount`) on edit, so the title is right
   on the first frame; the form reads the account row when the route has
   no flag (account detail's Add holding, the statement-import and
-  column-mapping entry points). The
-  create title `addLoanTitle` therefore names only an account-mode create
-  into a debt account, which no screen opens now: the implicit create
-  keeps the account form's `forms.account.addTitle` ("Add Account") for
-  both kinds (see "`property_item` / `metal` create-form sections").
+  column-mapping entry points). `forms.holding.addLoanTitle` is the title of an account-mode create
+  into a debt-only account (`headerTitle`, `holding-form.screen.tsx`). An
+  implicit create keeps the account form's `forms.account.addTitle`
+  ("Add Account") for both kinds (see "`property_item` / `metal` create-form sections").
   `holdsOnlyDebts(undefined)` is false: an account row still loading
   names a holding.
 - **Transaction** — a movement against a holding. `id`, `holdingId`
@@ -368,7 +369,7 @@ summary here.
 property or loan is never created as an account. In the account form's
 CREATE mode, picking Property or Debt calls
 `navigation.replace('HoldingForm', { implicitKind, draft })`
-(`handleSelectKind`, `account-form.screen.tsx`), where `draft` is the
+(`swapToHoldingForm`, run from `AccountKindField`'s `onSelectClosed` after the sheet has closed; `handleSelectKind` returns early for implicit kinds; `account-form.screen.tsx`), where `draft` is the
 `FormDraft` (`{ name, icon, color }`, `src/navigation/types/`) typed so
 far: `icon` is the user's own pick only (the form's `iconIsDirty` flag,
 reset by every kind switch), null otherwise, so the holding form keeps
