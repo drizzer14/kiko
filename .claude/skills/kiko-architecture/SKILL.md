@@ -245,27 +245,16 @@ project-level pointer to this section.
   `src/data-transfer/snapshot/restore-bank-other.two-path.test.ts`.
 - **A uniqueness rule a merge must satisfy first is data merge, then
   partial unique index, in ONE migration.** `0050_implicit_property_debt_accounts`
-  merges each kind (`property`, `debt`) that has more than one LIVE
-  (`archived_at IS NULL`) account into its oldest one (`created_at`, then
-  `sort_order`, then `id`: stable across a restore), then creates
-  `accounts_implicit_kind` (`UNIQUE (kind) WHERE kind IN ('property','debt')
-  AND archived_at IS NULL`, declared in `src/db/schema.ts`) LAST. It derives
-  into TEMP tables (`implicit_account_members`, `implicit_holding_order`,
-  `implicit_reminder_rank`) before it mutates, so the runner's one
-  transaction rolls a crash back to 0049. Holdings move and are renumbered in
-  the old visible order, a reminder kind keeps only its earliest reminder
-  whole, `settings.reminder_offer_dismissals` unions onto the kept key,
-  merged-away `sync_state` rows go before their account, and every live
-  implicit account gets the sentinel name `IMPLICIT_ACCOUNT_STORED_NAME`
-  and NULL `icon`/`color`. A kind with one live account is never touched, and
-  an archived account is never merged. Hand-authored data part above the
-  generated index line; the snapshot comes from `drizzle-kit generate` (check
-  the generated index kept its `WHERE`). The restore mirror is
-  `withImplicitAccountsMerged` (`src/data-transfer/snapshot/restore-snapshot.ts`,
-  mandatory: without it a `.kiko` with two property accounts fails on the
-  index). Proven by
-  `drizzle/migrations/0050-implicit-property-debt-accounts.test.ts` (real
-  SQLite: merge, ties, archived, index, idempotent, empty-DB runner path).
+  (its own header comment is the full statement of the merge rule) merges the
+  live property/debt accounts of a kind into the oldest, then creates the
+  partial unique index `accounts_implicit_kind` (declared in
+  `src/db/schema.ts`) LAST, so the index never meets a duplicate. The data
+  part is hand-authored above the generated index line; after
+  `drizzle-kit generate`, check the index kept its `WHERE`. The restore
+  mirror `withImplicitAccountsMerged`
+  (`src/data-transfer/snapshot/restore-snapshot.ts`) is mandatory: without it
+  a `.kiko` with two property accounts fails on the index. Proven by
+  `drizzle/migrations/0050-implicit-property-debt-accounts.test.ts`.
 - **A flag whose work SQL cannot do follows the flag-plus-launch-step
   shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
   (`false`): re-costing a sale needs the BigInt decimal helpers, so the
@@ -1942,8 +1931,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   reading the older versions (`READABLE_EXPORT_VERSIONS`). `envelope.test.ts`
   pins the version to the migration count at the last decision, so a new
   migration fails it until the version is bumped or the count is recorded
-  with the reason no bump is needed (a column riding inside an existing row
-  and derived on restore needs none).
+  with the reason no bump is needed: a column riding inside an existing row
+  and derived on restore needs none, and neither does an idempotent data
+  rewrite that the restore mirror re-applies to an older file (0049, 0050).
 
 ## Reminders (local notifications)
 

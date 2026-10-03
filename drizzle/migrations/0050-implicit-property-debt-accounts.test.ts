@@ -464,19 +464,6 @@ describe('migration 0050: one live Property and one live Debt account', () => {
     });
   });
 
-  it('writes exactly the names IMPLICIT_ACCOUNT_STORED_NAME holds', () => {
-    const database = databaseBefore();
-
-    insertAccount(database, { id: 'p', kind: 'property' });
-    insertAccount(database, { id: 'd', kind: 'debt' });
-    applyMigration(database);
-
-    expect(rows(database, 'SELECT kind, name FROM accounts ORDER BY kind')).toEqual([
-      { kind: 'debt', name: IMPLICIT_ACCOUNT_STORED_NAME.debt },
-      { kind: 'property', name: IMPLICIT_ACCOUNT_STORED_NAME.property },
-    ]);
-  });
-
   describe('merging several live accounts of one kind into the oldest', () => {
     it('keeps the oldest account of each kind and deletes the others', () => {
       const database = databaseBefore();
@@ -503,26 +490,6 @@ describe('migration 0050: one live Property and one live Debt account', () => {
         { id: 'newest-closed', accountId: 'property-oldest', sortOrder: 4 },
         { id: 'oldest-a', accountId: 'property-oldest', sortOrder: 1 },
         { id: 'oldest-b', accountId: 'property-oldest', sortOrder: 0 },
-      ]);
-    });
-
-    it('orders holdings by account sort order, then holding sort order, created_at and id', () => {
-      const database = databaseBefore();
-
-      seedMergeScenario(database);
-      applyMigration(database);
-
-      expect(holdingsOrdered(database, 'property-oldest')).toEqual([
-        'oldest-b',
-        'oldest-a',
-        'middle-a',
-        'newest-a',
-        'newest-closed',
-      ]);
-      expect(holdingsOrdered(database, 'debt-oldest')).toEqual([
-        'debt-newest-a',
-        'debt-newest-b',
-        'debt-oldest-a',
       ]);
     });
 

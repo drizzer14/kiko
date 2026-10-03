@@ -536,7 +536,6 @@ export const uk: typeof en = {
     debtsSection: 'Борги',
     emptyState: 'Ще немає рахунків',
     icon: 'Іконка {{name}}',
-    // The user approved the names on 2026-10-03 (see the en.ts entry).
     implicitName: {
       debt: 'Кредити',
       property: 'Майно',

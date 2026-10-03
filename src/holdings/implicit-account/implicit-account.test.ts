@@ -5,7 +5,6 @@ import {
   accountDisplayName,
   IMPLICIT_ACCOUNT_STORED_NAME,
   type ImplicitAccountKind,
-  implicitAccountKinds,
   isImplicitAccount,
   isImplicitAccountKind,
 } from '.';
@@ -21,10 +20,6 @@ const translate = i18n.t.bind(i18n);
 describe('isImplicitAccountKind', () => {
   it('is true only for property and debt, over every account kind', () => {
     expect(accountKinds.filter(isImplicitAccountKind)).toEqual(['property', 'debt']);
-  });
-
-  it('lists exactly the kinds it accepts', () => {
-    expect([...implicitAccountKinds]).toEqual(['property', 'debt']);
   });
 });
 

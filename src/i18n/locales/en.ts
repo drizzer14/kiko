@@ -618,7 +618,7 @@ export const en = {
     // The display name of THE implicit Property / Loans account
     // (`accountDisplayName`, `src/holdings/implicit-account/`): at most one live
     // account of each kind exists, so its stored name is only a sentinel and
-    // every screen shows this instead. The user approved the names on 2026-10-03.
+    // every screen shows this instead.
     implicitName: {
       debt: 'Loans',
       property: 'Properties',

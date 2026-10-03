@@ -15,7 +15,9 @@ export const isImplicitAccountKind = (kind: AccountRow['kind']): kind is Implici
 // kind: the partial unique index `accounts_implicit_kind` (migration 0050, in
 // `src/db/schema.ts`) allows at most one per kind. An archived one is a plain
 // account that the index and every merge leave alone.
-export const isImplicitAccount = (account: Pick<AccountRow, 'kind' | 'archivedAt'>): boolean =>
+export const isImplicitAccount = <Account extends Pick<AccountRow, 'kind' | 'archivedAt'>>(
+  account: Account,
+): account is Account & { kind: ImplicitAccountKind } =>
   isImplicitAccountKind(account.kind) && account.archivedAt === null;
 
 // The fixed English sentinel stored in `accounts.name` for an implicit account
@@ -36,6 +38,4 @@ export const accountDisplayName = (
   account: Pick<AccountRow, 'kind' | 'name' | 'archivedAt'>,
   t: TFunction,
 ): string =>
-  isImplicitAccountKind(account.kind) && account.archivedAt === null
-    ? t(`accounts.implicitName.${account.kind}`)
-    : account.name;
+  isImplicitAccount(account) ? t(`accounts.implicitName.${account.kind}`) : account.name;
