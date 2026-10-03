@@ -126,7 +126,8 @@ describe('AccountsStack', () => {
 
     it('keeps the static titles on the swapped routes', () => {
       expect(optionsOf('AccountForm', { initialKind: 'bank', draft })?.title).toBe('Add Account');
-      expect(optionsOf('HoldingForm', { implicitKind: 'debt', draft })?.title).toBe('Add Holding');
+      expect(optionsOf('HoldingForm', { implicitKind: 'debt', draft })?.title).toBe('Add Account');
+      expect(optionsOf('HoldingForm', { accountId: 'account-1' })?.title).toBe('Add Holding');
     });
   });
 

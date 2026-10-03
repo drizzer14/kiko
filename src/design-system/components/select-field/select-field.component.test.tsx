@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 import '@kiko/design-system/unistyles';
 import SelectField from '.';
@@ -29,6 +29,13 @@ const setup = async (overrides: Partial<SelectFieldProps<Kind>> = {}) => {
   );
 
   return { onSelect, ...utils };
+};
+
+// The Modal's own `onDismiss`, which fires once the close animation has
+// finished. The Modal has left the tree by then, so the host read while the
+// sheet was open is called directly.
+const finishClosing = async (sheet: { props: Record<string, unknown> }): Promise<void> => {
+  await act(async () => (sheet.props.onDismiss as () => void)());
 };
 
 describe('SelectField', () => {
@@ -62,6 +69,81 @@ describe('SelectField', () => {
 
     expect(onSelect).toHaveBeenCalledWith('b');
     expect(queryByTestId('kind-field-option-b')).toBeNull();
+  });
+
+  describe('onSelectClosed', () => {
+    it('does not run on the pick itself, while the sheet is still closing', async () => {
+      const onSelectClosed = jest.fn();
+      const { getByTestId } = await setup({ onSelectClosed });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+
+      expect(onSelectClosed).not.toHaveBeenCalled();
+    });
+
+    it('runs with the pick once the sheet reports it has finished closing', async () => {
+      const onSelectClosed = jest.fn();
+      const { getByTestId } = await setup({ onSelectClosed });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      // The sheet's Modal leaves the tree once closed, so its host is read while open.
+      const sheet = getByTestId('kind-field-sheet-modal');
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+      await finishClosing(sheet);
+
+      expect(onSelectClosed).toHaveBeenCalledTimes(1);
+      expect(onSelectClosed).toHaveBeenCalledWith('b');
+    });
+
+    it('runs once per pick, however often the sheet reports closed', async () => {
+      const onSelectClosed = jest.fn();
+      const { getByTestId } = await setup({ onSelectClosed });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      const sheet = getByTestId('kind-field-sheet-modal');
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+      await finishClosing(sheet);
+      await finishClosing(sheet);
+
+      expect(onSelectClosed).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not run when the sheet closes without a pick', async () => {
+      const onSelectClosed = jest.fn();
+      const { getByTestId } = await setup({ onSelectClosed });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      await fireEvent(getByTestId('kind-field-sheet-modal'), 'dismiss');
+
+      expect(onSelectClosed).not.toHaveBeenCalled();
+    });
+
+    it('runs again for a later pick', async () => {
+      const onSelectClosed = jest.fn();
+      const { getByTestId } = await setup({ onSelectClosed });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      const firstSheet = getByTestId('kind-field-sheet-modal');
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+      await finishClosing(firstSheet);
+      await fireEvent.press(getByTestId('kind-field'));
+      const secondSheet = getByTestId('kind-field-sheet-modal');
+      await fireEvent.press(getByTestId('kind-field-option-c'));
+      await finishClosing(secondSheet);
+
+      expect(onSelectClosed).toHaveBeenNthCalledWith(2, 'c');
+    });
+
+    it('is optional: a close without it changes nothing', async () => {
+      const { getByTestId } = await setup();
+
+      await fireEvent.press(getByTestId('kind-field'));
+      const sheet = getByTestId('kind-field-sheet-modal');
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+
+      await expect(finishClosing(sheet)).resolves.not.toThrow();
+    });
   });
 
   it('renders the field error under the trigger, matching FieldTrigger', async () => {

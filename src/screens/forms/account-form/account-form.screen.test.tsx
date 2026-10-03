@@ -46,7 +46,10 @@ const selectKind = async (
   kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals' | 'debt' | 'broker',
 ): Promise<void> => {
   await fireEvent.press(getByTestId('account-kind-field'));
+  const sheet = getByTestId('account-kind-field-sheet-modal');
   await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
+  // The sheet's close animation ending, which is when a swap may navigate.
+  await act(async () => sheet.props.onDismiss());
 };
 
 // A new bank account cannot Save until a bank is picked; tests about anything
@@ -370,6 +373,22 @@ describe('AccountFormScreen', () => {
         draft: { name: 'My House', icon: null, color: null },
       });
       expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+
+    it('waits for the kind sheet to finish closing before replacing the screen', async () => {
+      const { getByLabelText, getByTestId, navigation } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My House');
+      await fireEvent.press(getByTestId('account-kind-field'));
+      const sheet = getByTestId('account-kind-field-sheet-modal');
+      await fireEvent.press(getByTestId('account-kind-field-option-property'));
+
+      // Replacing now would unmount the screen that owns the sheet mid-close.
+      expect(navigation.replace).not.toHaveBeenCalled();
+
+      await act(async () => sheet.props.onDismiss());
+
+      expect(navigation.replace).toHaveBeenCalledTimes(1);
     });
 
     it('replaces the screen with the loan holding form when Debt is picked', async () => {

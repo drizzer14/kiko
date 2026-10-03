@@ -9,10 +9,6 @@ import { useSync } from '@kiko/sync/use-sync';
 import { accountsRepo } from '@kiko/accounts';
 import either, { isRight } from 'fnts/either';
 import { useTranslation } from 'react-i18next';
-import AccountKindField, {
-  accountKinds,
-  useAccountKindLabels,
-} from '@kiko/screens/forms/account-kind-field';
 import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
@@ -34,6 +30,7 @@ import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
+import AccountKindField from '@kiko/screens/forms/account-kind-field';
 import { isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import CurrencyField from '@kiko/design-system/components/currency-field';
@@ -87,8 +84,7 @@ const createSeed = (initialKind: Kind | undefined, draft: FormDraft | undefined)
 // hydration below against that case so an unrecognized stored kind never
 // assigns outside `Kind`'s own type (and the symbol/color lookups below never
 // silently miss).
-const isSupportedKind = (value: string): value is Kind =>
-  (accountKinds as readonly string[]).includes(value);
+const isSupportedKind = (value: string): value is Kind => Object.hasOwn(accountKindSymbol, value);
 
 // `accounts.bankId` holds the catalog identity of whichever kind has a picker,
 // so each kind writes only its own picker's pick: a broker id never lands on a
@@ -186,7 +182,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const seed = createSeed(route.params?.initialKind, route.params?.draft);
 
   const { t } = useTranslation();
-  const { labels: kindLabels, subtitles: kindSubtitles } = useAccountKindLabels();
 
   const [name, setName] = useState(seed.name);
   const [kind, setKind] = useState<Kind>(seed.kind);
@@ -589,15 +584,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // a different type resets the icon to the new type's default. Only reachable
   // in create mode — the kind chip is disabled in edit mode below.
   const handleSelectKind = (nextKind: Kind): void => {
-    // Property and Loan are the one implicit account of their kind, so there is
-    // no account to describe here: the holding form takes over, and `replace`
-    // keeps Back from returning to this form.
+    // Property and Loan leave this form (see `swapToHoldingForm`), so there is
+    // no kind to switch to here.
     if (isImplicitAccountKind(nextKind)) {
-      navigation.replace('HoldingForm', {
-        implicitKind: nextKind,
-        draft: { name, icon: iconIsDirty ? icon : null, color },
-      });
-
       return;
     }
 
@@ -606,6 +595,20 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     setIconIsDirty(false);
     setBankId(null);
     setBrokerId(null);
+  };
+
+  // Property and Loan are the one implicit account of their kind, so there is
+  // no account to describe here: the holding form takes over, and `replace`
+  // keeps Back from returning to this form. It runs once the kind sheet has
+  // finished closing, as replacing sooner would unmount the screen that owns
+  // the sheet mid-close.
+  const swapToHoldingForm = (nextKind: Kind): void => {
+    if (isImplicitAccountKind(nextKind)) {
+      navigation.replace('HoldingForm', {
+        implicitKind: nextKind,
+        draft: { name, icon: iconIsDirty ? icon : null, color },
+      });
+    }
   };
 
   const pickIcon = (picked: string): void => {
@@ -666,16 +669,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             inserted the row): switching kind afterwards would make Save create a
             SECOND account and orphan the started row. */}
         <AccountKindField
-          label={t('forms.account.kind')}
-          sheetTitle={t('forms.account.kindSheetTitle')}
-          options={accountKinds}
           selected={kind}
           onSelect={handleSelectKind}
-          labels={kindLabels}
-          subtitles={kindSubtitles}
-          icons={accountKindSymbol}
+          onSelectClosed={swapToHoldingForm}
           disabled={isEdit || accountRowStarted}
-          testID="account-kind-field"
         />
 
         {/* In create AND edit mode, like the bank picker. A broker account is

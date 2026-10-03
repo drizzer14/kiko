@@ -90,7 +90,10 @@ type View = Awaited<ReturnType<typeof renderStack>>;
 
 const pickKind = async (view: View, kind: string): Promise<void> => {
   await fireEvent.press(view.getByTestId('account-kind-field'));
+  const sheet = view.getByTestId('account-kind-field-sheet-modal');
   await fireEvent.press(view.getByTestId(`account-kind-field-option-${kind}`));
+  // The sheet's close animation ending, which is when the swap navigates.
+  await act(async () => sheet.props.onDismiss());
 };
 
 describe('AccountsStack — swapping between the account form and the implicit holding form', () => {

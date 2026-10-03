@@ -71,7 +71,10 @@ const AccountsStack: FC = () => {
         name="HoldingForm"
         component={HoldingFormScreen}
         options={({ route }) => ({
-          title: t('forms.holding.addTitle'),
+          title:
+            'implicitKind' in route.params
+              ? t('forms.account.addTitle')
+              : t('forms.holding.addTitle'),
           animation: 'draft' in route.params ? 'none' : 'default',
         })}
       />

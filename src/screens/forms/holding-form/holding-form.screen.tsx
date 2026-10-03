@@ -32,9 +32,10 @@ import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
-import type { AccountsStackParamList } from '@kiko/navigation/types';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import HoldingTypeField from '@kiko/screens/forms/holding-type-field';
+import AccountKindField from '@kiko/screens/forms/account-kind-field';
+import { isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
@@ -42,6 +43,7 @@ import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
@@ -53,7 +55,6 @@ import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
 import MetalTypeField from './metal/metal-type-field';
-import ImplicitKindField from './implicit-kind-field';
 import { useLoanFields } from './loan/use-loan-fields';
 import { useBondFields } from './bond/use-bond-fields';
 import { useMetalFields } from './metal/use-metal-fields';
@@ -221,6 +222,32 @@ const headerTitle = (
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
+type HoldingFormNavigation = HoldingFormScreenProps['navigation'];
+
+// The kind field's two outcomes in implicit mode. The other implicit kind
+// re-targets this form at once, in place.
+const retargetImplicitKind = (
+  navigation: HoldingFormNavigation,
+  kind: AccountRow['kind'],
+): void => {
+  if (isImplicitAccountKind(kind)) {
+    navigation.setParams({ implicitKind: kind });
+  }
+};
+
+// Any other kind creates an account, so the account form takes over. It runs
+// once the kind sheet has finished closing, as replacing sooner would unmount
+// the screen that owns the sheet mid-close.
+const leaveForAccountForm = (
+  navigation: HoldingFormNavigation,
+  kind: AccountRow['kind'],
+  draft: FormDraft,
+): void => {
+  if (!isImplicitAccountKind(kind)) {
+    navigation.replace('AccountForm', { initialKind: kind, draft });
+  }
+};
+
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { holdingId, returnTo } = route.params;
   // A named account, or the implicit one a create finds or makes on Save, and
@@ -312,7 +339,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // first CREATABLE type for the account's kind once it loads — so a bank create
   // (where card/jar are sync-only and excluded) defaults to `term_deposit`, and
   // an edit seeds the real type from the row.
-  const [type, setType] = useState<HoldingType>('card');
+  const [type, setType] = useState<HoldingType>(typeOptions[0]);
 
   // Reactive `PriceBook`, passed through `EditContext.book` to every hook's
   // own `saveEdit`: a loan edit that changes its schedule INTO `'none'`
@@ -716,12 +743,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             there swaps the fields below it and leaves this one in place. */}
         {match(target)
           .with({ kind: 'implicit' }, ({ implicitKind }) => (
-            <ImplicitKindField
+            <AccountKindField
               selected={implicitKind}
-              onSelectImplicit={(nextKind) => navigation.setParams({ implicitKind: nextKind })}
-              onSelectAccountKind={(initialKind) =>
-                navigation.replace('AccountForm', { initialKind, draft: { name, icon, color } })
+              onSelect={(kind) => retargetImplicitKind(navigation, kind)}
+              onSelectClosed={(kind) =>
+                leaveForAccountForm(navigation, kind, { name, icon, color })
               }
+              disabled={false}
             />
           ))
           .with({ kind: 'account' }, () => null)

@@ -81,7 +81,11 @@ export type AccountsStackParamList = {
   // (see `HoldingForm`'s `implicitKind`), and the holding form swaps back when
   // any other kind is picked: `initialKind` and `draft` carry the swap, seeding
   // the form once on mount.
-  AccountForm: { accountId?: string; initialKind?: AccountRow['kind']; draft?: FormDraft };
+  AccountForm: {
+    accountId?: string;
+    initialKind?: Exclude<AccountRow['kind'], ImplicitAccountKind>;
+    draft?: FormDraft;
+  };
   // `returnTo` is the CREATE-only return channel for a "Create new holding"
   // launched from the statement-import preview or Map Columns: the caller's
   // OWN full route params (so a re-`popTo` never needs to reconstruct

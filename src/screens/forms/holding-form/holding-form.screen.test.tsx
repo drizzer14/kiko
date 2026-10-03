@@ -4377,7 +4377,10 @@ describe('HoldingFormScreen implicit create', () => {
 
   const pickKind = async (screen: Screen, kind: string): Promise<void> => {
     await fireEvent.press(screen.getByTestId('account-kind-field'));
+    const sheet = screen.getByTestId('account-kind-field-sheet-modal');
     await fireEvent.press(screen.getByTestId(`account-kind-field-option-${kind}`));
+    // The sheet's close animation ending, which is when a swap may navigate.
+    await act(async () => sheet.props.onDismiss());
   };
 
   beforeEach(() => {
@@ -4614,6 +4617,21 @@ describe('HoldingFormScreen implicit create', () => {
         draft: { name: 'Flat', icon: null, color: null },
       });
       expect(navigation.setParams).not.toHaveBeenCalled();
+    });
+
+    it('waits for the kind sheet to finish closing before replacing the screen', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fireEvent.press(screen.getByTestId('account-kind-field'));
+      const sheet = screen.getByTestId('account-kind-field-sheet-modal');
+      await fireEvent.press(screen.getByTestId('account-kind-field-option-bank'));
+
+      // Replacing now would unmount the screen that owns the sheet mid-close.
+      expect(navigation.replace).not.toHaveBeenCalled();
+
+      await act(async () => sheet.props.onDismiss());
+
+      expect(navigation.replace).toHaveBeenCalledTimes(1);
     });
 
     it('carries the icon and color the user picked back to the account form', async () => {
