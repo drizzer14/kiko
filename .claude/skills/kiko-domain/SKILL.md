@@ -162,7 +162,11 @@ implemented, and callers must skip it rather than assume every id resolves.
   the HoldingForm route (`debtAccount`) on edit, so the title is right
   on the first frame; the form reads the account row when the route has
   no flag (account detail's Add holding, the statement-import and
-  column-mapping entry points).
+  column-mapping entry points). The
+  create title `addLoanTitle` therefore names only an account-mode create
+  into a debt account, which no screen opens now: the implicit create
+  keeps the account form's `forms.account.addTitle` ("Add Account") for
+  both kinds (see "`property_item` / `metal` create-form sections").
   `holdsOnlyDebts(undefined)` is false: an account row still loading
   names a holding.
 - **Transaction** — a movement against a holding. `id`, `holdingId`
@@ -359,6 +363,46 @@ repairs pre-fix data — read it there rather than trusting a restated
 summary here.
 
 ## `property_item` / `metal` create-form sections
+
+**The implicit entry: the account form swaps screens, not fields.** A
+property or loan is never created as an account. In the account form's
+CREATE mode, picking Property or Debt calls
+`navigation.replace('HoldingForm', { implicitKind, draft })`
+(`handleSelectKind`, `account-form.screen.tsx`), where `draft` is the
+`FormDraft` (`{ name, icon, color }`, `src/navigation/types/`) typed so
+far: `icon` is the user's own pick only (the form's `iconIsDirty` flag,
+reset by every kind switch), null otherwise, so the holding form keeps
+following its own type default; `color` is null until picked. The
+`HoldingForm` route is `({ accountId } | { implicitKind, draft? }) & {
+holdingId?, debtAccount?, returnTo? }`, resolved by
+`holdingFormTarget` (`holding-form/holding-form-target/`, a
+`ts-pattern` match to `{ kind: 'account', accountId } | { kind:
+'implicit', implicitKind }`; `holdingFormDraft` reads the draft, empty
+when absent). In implicit mode the form: queries no account
+(`byIdQuery('')`); takes its offered types from
+`creatableHoldingTypesForAccount(implicitKind, false, null)`
+(`['property_item']` / `['loan']`); shows `ImplicitKindField`
+(`holding-form/implicit-kind-field/`, the shared `AccountKindField` with
+`useAccountKindLabels()`'s labels and subtitles, which
+`src/screens/forms/account-kind-field/` also gives the account form) in the
+account form's own slot, under the divider; keeps the title "Add Account";
+seeds name, icon and color from the draft ONCE (`useState` initial
+values); and Save is `accountsRepo.createImplicitHolding(implicitKind, {
+name, type, currency, color, ...active.createPayload() })` (one write: it
+finds or creates the implicit account), then the unchanged `setIcon`
+(on the holding id the write returned), `refreshMarketData`,
+`runLoanAutoLinkIfLoan`, and `goBack()`. Picking Bank, Cash, Crypto,
+Metals, or Broker there calls `navigation.replace('AccountForm', {
+initialKind, draft })`, which seeds the account form once (a carried icon
+counts as a pick); picking the other implicit kind calls
+`navigation.setParams({ implicitKind })`, and the type effect re-snaps
+the form in place. `replace`, never `navigate`: Back from either form
+leaves to the Accounts root instead of landing on a stale sibling
+(`accounts.stack.swap.navigator.test.tsx` proves it on the real
+router, not a spy). `accounts.stack.tsx` gives a route that carries a
+`draft` `animation: 'none'`, so the swap reads as one form whose fields
+change; the same option makes Back from a swapped route unanimated.
+`debtAccount` stays an EDIT-only route flag (holding detail passes it).
 
 A `property` account's Type field IS its category picker
 (`PropertyTypeField`, `src/screens/forms/holding-form/property/property-type-field/`):
@@ -2034,6 +2078,11 @@ automatic loan-payment matcher" subsection below for the matcher's own
 rules and every call site.
 
 ### Loan form + detail
+
+A loan is created through the implicit entry (see "`property_item` /
+`metal` create-form sections"): Debt in the account form swaps in this
+holding form with `implicitKind: 'debt'`, and Save creates the loan under
+the one implicit debt account.
 
 `src/screens/forms/holding-form/loan/loan-section/` (kind `SelectField`,
 principal, start date, schedule SegmentedControl, rate/term AND the
