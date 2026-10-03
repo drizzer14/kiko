@@ -23,6 +23,7 @@ const SelectField = <Option extends string>({
   selected,
   onSelect,
   onSelectClosed,
+  closesWithoutAnimation,
   labels,
   subtitles,
   icons,
@@ -38,11 +39,21 @@ const SelectField = <Option extends string>({
   // sheet closed by a scrim tap leaves it empty, so `onSelectClosed` never
   // fires without a pick.
   const pendingPick = useRef<Option | undefined>(undefined);
+  // Set in the same batch that hides the sheet, so the one render that hides
+  // it hands the Modal `'none'` (native reads the animation flag again on that
+  // very commit); the next open clears it, so the sheet fades in as before.
+  const [closingWithoutAnimation, setClosingWithoutAnimation] = useState(false);
 
   const handleSelect = (option: Option): void => {
     pendingPick.current = option;
+    setClosingWithoutAnimation(closesWithoutAnimation?.(option) ?? false);
     setOpen(false);
     onSelect(option);
+  };
+
+  const handleOpen = (): void => {
+    setClosingWithoutAnimation(false);
+    setOpen(true);
   };
 
   const handleClosed = (): void => {
@@ -58,7 +69,7 @@ const SelectField = <Option extends string>({
         label={label}
         required={required}
         disabled={disabled}
-        onPress={() => setOpen(true)}
+        onPress={handleOpen}
         icon={foldMap(selectedOption, (option) => icons?.[option])}
         value={foldMap(selectedOption, (option) => labels[option]) ?? placeholder}
         valueTone={selected === null ? 'textSecondary' : 'textPrimary'}
@@ -70,6 +81,7 @@ const SelectField = <Option extends string>({
         visible={open}
         onDismiss={() => setOpen(false)}
         onClosed={handleClosed}
+        animationType={closingWithoutAnimation ? 'none' : undefined}
         testID={testID && `${testID}-sheet`}
         gap={2}
         header={<Text variant="heading">{sheetTitle}</Text>}

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 /** The Modal transition used to present the sheet. */
-type BottomSheetAnimation = 'fade' | 'slide';
+type BottomSheetAnimation = 'fade' | 'slide' | 'none';
 
 export type BottomSheetProps = {
   /** Whether the sheet and its dismiss scrim are mounted and shown. */
@@ -41,7 +41,12 @@ export type BottomSheetProps = {
    * than a shared constant. Defaults to 3.
    */
   gap?: number;
-  /** The Modal transition. Defaults to `'fade'`. */
+  /**
+   * The Modal transition. Defaults to `'fade'`. `'none'` shows and dismisses
+   * with no animation, so `onClosed` follows at once; a caller that needs it
+   * for ONE close sets it in the same render that hides the sheet (the native
+   * Modal reads it again on every props commit, dismiss included).
+   */
   animationType?: BottomSheetAnimation;
   /**
    * An optional STRICTER cap on the sheet's height, in pixels, for a sheet

@@ -16,6 +16,7 @@ const AccountKindField: FC<AccountKindFieldProps> = ({
   selected,
   onSelect,
   onSelectClosed,
+  closesWithoutAnimation,
   disabled,
 }) => {
   const { t } = useTranslation();
@@ -29,6 +30,7 @@ const AccountKindField: FC<AccountKindFieldProps> = ({
       selected={selected}
       onSelect={onSelect}
       onSelectClosed={onSelectClosed}
+      closesWithoutAnimation={closesWithoutAnimation}
       labels={labels}
       subtitles={subtitles}
       icons={accountKindSymbol}

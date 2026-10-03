@@ -172,6 +172,12 @@ const INITIAL_VALUE_ERROR_KEY = {
   negative: 'forms.account.initialValueNegativeError',
 } as const;
 
+// What the kind field shows: the Property or Loan just picked, else the form's
+// own kind. At module scope to keep this branch out of AccountFormScreen's own
+// cognitive complexity score, which already sits at Biome's cap.
+const shownKind = (kind: Kind, pickedImplicitKind: Kind | undefined): Kind =>
+  pickedImplicitKind ?? kind;
+
 const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) => {
   // An `accountId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing account, saving through the update path
@@ -185,6 +191,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   const [name, setName] = useState(seed.name);
   const [kind, setKind] = useState<Kind>(seed.kind);
+  // The Property or Loan the user just picked, shown on the kind field until
+  // the swap replaces this screen (see `handleSelectKind`).
+  const [pickedImplicitKind, setPickedImplicitKind] = useState<Kind | undefined>(undefined);
   const [currency, setCurrency] = useState<Currency>('UAH');
   const [initialValue, setInitialValue] = useState('');
   // A create form seeds the icon with the initially-selected kind's default
@@ -586,8 +595,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // in create mode — the kind chip is disabled in edit mode below.
   const handleSelectKind = (nextKind: Kind): void => {
     // Property and Loan leave this form (see `swapToHoldingForm`), so there is
-    // no kind to switch to here.
+    // no kind to switch to here. Only the kind field shows the pick, at once:
+    // the sheet is still closing, and left on the old kind the form looks
+    // frozen. `kind` itself stays, so the fields, icon and color the swap is
+    // about to remove do not jump away first.
     if (isImplicitAccountKind(nextKind)) {
+      setPickedImplicitKind(nextKind);
+
       return;
     }
 
@@ -670,9 +684,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             inserted the row): switching kind afterwards would make Save create a
             SECOND account and orphan the started row. */}
         <AccountKindField
-          selected={kind}
+          selected={shownKind(kind, pickedImplicitKind)}
           onSelect={handleSelectKind}
           onSelectClosed={swapToHoldingForm}
+          closesWithoutAnimation={isImplicitAccountKind}
           disabled={isEdit || accountRowStarted}
         />
 

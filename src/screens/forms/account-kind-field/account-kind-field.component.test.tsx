@@ -1,4 +1,8 @@
 import { StyleSheet } from 'react-native';
+import {
+  type ModalAnimationSpy,
+  spyOnModalAnimation,
+} from '@kiko/test-support/modal-animation-spy';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
@@ -78,6 +82,43 @@ describe('AccountKindField', () => {
 
     expect(onSelectClosed).toHaveBeenCalledTimes(1);
     expect(onSelectClosed).toHaveBeenCalledWith('debt');
+  });
+
+  describe('closesWithoutAnimation', () => {
+    let modal: ModalAnimationSpy;
+
+    beforeEach(() => {
+      modal = spyOnModalAnimation('account-kind-field-sheet-modal');
+    });
+
+    afterEach(() => {
+      modal.restore();
+    });
+
+    it('closes the sheet with no animation for a kind the screen names, and fades for the rest', async () => {
+      const { getByTestId } = await setup({
+        closesWithoutAnimation: (kind) => kind === 'property',
+      });
+
+      await fireEvent.press(getByTestId('account-kind-field'));
+      await fireEvent.press(getByTestId('account-kind-field-option-property'));
+
+      expect(modal.lastHiddenAnimation()).toBe('none');
+
+      await fireEvent.press(getByTestId('account-kind-field'));
+      await fireEvent.press(getByTestId('account-kind-field-option-cash'));
+
+      expect(modal.lastHiddenAnimation()).toBe('fade');
+    });
+
+    it('fades for every kind when the screen names none', async () => {
+      const { getByTestId } = await setup();
+
+      await fireEvent.press(getByTestId('account-kind-field'));
+      await fireEvent.press(getByTestId('account-kind-field-option-property'));
+
+      expect(modal.lastHiddenAnimation()).toBe('fade');
+    });
   });
 
   it('shows a checkmark on the currently-selected kind option', async () => {

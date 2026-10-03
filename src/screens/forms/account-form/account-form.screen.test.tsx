@@ -10,6 +10,10 @@ import {
   type NavigationSpy,
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
+import {
+  type ModalAnimationSpy,
+  spyOnModalAnimation,
+} from '@kiko/test-support/modal-animation-spy';
 import { darkTheme } from '@kiko/design-system/theme';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -359,6 +363,16 @@ describe('AccountFormScreen', () => {
   });
 
   describe('picking an implicit kind swaps in the holding form', () => {
+    let kindSheetModal: ModalAnimationSpy;
+
+    beforeEach(() => {
+      kindSheetModal = spyOnModalAnimation('account-kind-field-sheet-modal');
+    });
+
+    afterEach(() => {
+      kindSheetModal.restore();
+    });
+
     it('replaces the screen with the property holding form, carrying the typed name', async () => {
       const { getByLabelText, getByTestId, navigation } = await renderForm();
 
@@ -389,6 +403,58 @@ describe('AccountFormScreen', () => {
       await act(async () => sheet.props.onDismiss());
 
       expect(navigation.replace).toHaveBeenCalledTimes(1);
+    });
+
+    // The sheet is still closing here, so the kind field is what tells the user
+    // the tap landed; left on the old kind the form looks frozen.
+    it.each([
+      ['property', 'Property'],
+      ['debt', 'Debt'],
+    ] as const)(
+      'shows %s on the kind field at once, before the sheet has finished closing',
+      async (kind, label) => {
+        const { getByTestId, navigation } = await renderForm();
+
+        await fireEvent.press(getByTestId('account-kind-field'));
+        await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
+
+        expect(getByTestId('account-kind-field')).toHaveTextContent(label);
+        expect(navigation.replace).not.toHaveBeenCalled();
+      },
+    );
+
+    // The fade is only a wait for a pick that leaves the form (the replace runs
+    // once the sheet is gone), so Property and Loan close with none; a pick that
+    // stays keeps it.
+    it.each([
+      ['property', 'none'],
+      ['debt', 'none'],
+      ['bank', 'fade'],
+      ['cash', 'fade'],
+      ['crypto', 'fade'],
+      ['metals', 'fade'],
+      ['broker', 'fade'],
+    ] as const)('closes the kind sheet for %s with animation "%s"', async (kind, animation) => {
+      const { getByTestId } = await renderForm();
+
+      await fireEvent.press(getByTestId('account-kind-field'));
+      await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
+
+      expect(kindSheetModal.lastHiddenAnimation()).toBe(animation);
+    });
+
+    // The swap removes the kind-specific fields anyway, so they stay put rather
+    // than jumping away for the frames before it.
+    it('keeps the fields of the kind it was on while the sheet closes', async () => {
+      const { getByTestId, queryByTestId } = await renderForm();
+
+      await selectKind(getByTestId, 'broker');
+      expect(queryByTestId('account-broker-type-field')).not.toBeNull();
+
+      await fireEvent.press(getByTestId('account-kind-field'));
+      await fireEvent.press(getByTestId('account-kind-field-option-property'));
+
+      expect(queryByTestId('account-broker-type-field')).not.toBeNull();
     });
 
     it('replaces the screen with the loan holding form when Debt is picked', async () => {

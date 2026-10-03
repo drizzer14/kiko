@@ -930,7 +930,20 @@ new component can land between reviews of this skill:
   for it directly. `SelectField`'s optional `onSelectClosed(option)` runs
   once after the sheet a pick closed has finished closing (the
   `onClosed` contract above): wire a screen navigation to it, never to
-  `onSelect` (`AccountKindField` forwards it). `AccountKindField` and
+  `onSelect` (`AccountKindField` forwards it). `SelectField`'s optional
+  `closesWithoutAnimation(option)` names the picks whose sheet closes with
+  `BottomSheet`'s `animationType="none"` (`'fade' | 'slide' | 'none'`,
+  default `'fade'`), so `onSelectClosed` follows the pick at once instead of
+  after the ~0.3-0.4 s cross-dissolve: only for a pick that LEAVES the
+  screen, where the fade is just a wait (the account form's Property and
+  Debt). It is opt-in per call site; every other pick and every other sheet
+  keeps the fade. It works because RN's iOS Modal host re-reads
+  `animationType` on every props commit and uses it for the dismiss
+  (`RCTModalHostViewComponentView.mm` `updateProps` sets
+  `_shouldAnimatePresentation`, then `ensurePresentedOnlyIfNeeded` dismisses
+  with it), so `SelectField` sets `'none'` in the SAME render that hides the
+  sheet and clears it on the next open (`AccountKindField` forwards the prop,
+  the owning screen decides which kinds). `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`

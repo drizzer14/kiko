@@ -369,7 +369,7 @@ summary here.
 property or loan is never created as an account. In the account form's
 CREATE mode, picking Property or Debt calls
 `navigation.replace('HoldingForm', { implicitKind, draft })`
-(`swapToHoldingForm`, run from `AccountKindField`'s `onSelectClosed` after the sheet has closed; `handleSelectKind` returns early for implicit kinds; `account-form.screen.tsx`), where `draft` is the
+(`swapToHoldingForm`, run from `AccountKindField`'s `onSelectClosed` after the sheet has closed; `handleSelectKind` does not switch `kind` for an implicit kind, it only stores `pickedImplicitKind` so the kind field shows the pick in the tap's own frame while the fields, icon and color stay put; the form passes `closesWithoutAnimation={isImplicitAccountKind}`, so that sheet closes with no fade and `onSelectClosed` (hence the `replace`) follows at once, while every other kind keeps the fade; `account-form.screen.tsx`), where `draft` is the
 `FormDraft` (`{ name, icon, color }`, `src/navigation/types/`) typed so
 far: `icon` is the user's own pick only (the form's `iconIsDirty` flag,
 reset by every kind switch), null otherwise, so the holding form keeps

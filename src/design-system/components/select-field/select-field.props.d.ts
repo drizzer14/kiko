@@ -18,6 +18,11 @@ export type SelectFieldProps<Option extends string> = {
   // a sheet closed without one. For what must not happen while the sheet is
   // still closing, such as navigating the owning screen away.
   onSelectClosed?: (option: Option) => void;
+  // Names the picks whose sheet closes with no animation, so `onSelectClosed`
+  // follows the pick at once instead of after the fade. For a pick that leaves
+  // the screen, where the fade is only a wait. Every other pick, and a sheet
+  // closed without one, keeps the fade; omitted = the fade for all.
+  closesWithoutAnimation?: (option: Option) => boolean;
   // The catalog-resolved display label for each option, resolved by the
   // caller so the field stays translation-agnostic.
   labels: Record<Option, string>;
