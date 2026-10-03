@@ -8,9 +8,11 @@ export type ModalAnimationSpy = {
   // The animation the Modal was handed in the render that last hid it (the
   // first render of the latest run with `visible` false), which is what native
   // reads for that dismiss. A later re-render does not count: native has
-  // already started the dismiss.
+  // already started the dismiss. The mount render is not a hide, so a Modal
+  // that mounted hidden and was never shown then hidden reports undefined.
   lastHiddenAnimation: () => string | undefined;
-  // The same for the render that last showed it.
+  // The same for the render that last showed it (undefined when it mounted
+  // visible and was never hidden then shown).
   lastShownAnimation: () => string | undefined;
   restore: () => void;
 };
@@ -30,7 +32,8 @@ export const spyOnModalAnimation = (modalTestID: string): ModalAnimationSpy => {
     const lastInState = inState.lastIndexOf(true);
     const runStart = inState.slice(0, lastInState + 1).lastIndexOf(false) + 1;
 
-    return lastInState === -1 ? undefined : renders[runStart]?.animationType;
+    // A run that starts at the first render is the mount, not a transition.
+    return lastInState === -1 || runStart === 0 ? undefined : renders[runStart]?.animationType;
   };
 
   return {
