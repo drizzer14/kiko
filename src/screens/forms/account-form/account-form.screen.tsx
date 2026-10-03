@@ -1,3 +1,8 @@
+import {
+  accountDisplayName,
+  implicitAccountStoredName,
+  isImplicitAccountKind,
+} from '@kiko/holdings/implicit-account';
 import type { TFunction } from 'i18next';
 import { Money } from '@kiko/currency/money';
 import {
@@ -31,7 +36,6 @@ import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
-import { isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
@@ -171,6 +175,17 @@ const INITIAL_VALUE_ERROR_KEY = {
   missing: 'forms.account.initialValueRequiredError',
   negative: 'forms.account.initialValueNegativeError',
 } as const;
+
+// The glyph an unset icon shows: an implicit account's own kind glyph (its
+// stored icon is NULL until the user picks one, and the lists show the kind's
+// glyph for it), else the neutral placeholder.
+const fallbackIconFor = (kind: Kind): string =>
+  isImplicitAccountKind(kind) ? accountKindSymbol[kind] : FALLBACK_ICON;
+
+// The name an edit writes: an implicit account whose name is still its default
+// stays the sentinel (see `implicitAccountStoredName`), any other is as typed.
+const storedName = (kind: Kind, trimmedName: string, t: TFunction): string =>
+  isImplicitAccountKind(kind) ? implicitAccountStoredName(kind, trimmedName, t) : trimmedName;
 
 // What the kind field shows: the Property or Loan just picked, else the form's
 // own kind. At module scope to keep this branch out of AccountFormScreen's own
@@ -451,7 +466,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       return;
     }
     hydrated.current = true;
-    setName(editingAccount.name);
+    setName(accountDisplayName(editingAccount, t));
     setKind(isSupportedKind(editingAccount.kind) ? editingAccount.kind : INITIAL_KIND);
     setIcon(editingAccount.icon);
     setColor(editingAccount.color);
@@ -462,7 +477,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // entry, mirroring `isSupportedKind` above.
     setBankId(isBankId(editingAccount.bankId) ? editingAccount.bankId : null);
     setBrokerId(isBrokerId(editingAccount.bankId) ? editingAccount.bankId : null);
-  }, [isEdit, editingAccount]);
+  }, [isEdit, editingAccount, t]);
 
   // The stack sets the static "Add Account" title; in edit mode override it with
   // "Edit Account" so the header reads correctly for the update flow.
@@ -532,7 +547,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // live-connected account's sync stays untouched no matter what bank
         // identity is picked here.
         await accountsRepo.update(editId, {
-          name: trimmedName,
+          name: storedName(kind, trimmedName, t),
           color,
           bankId: savedCatalogId(catalogId, storedCatalogId),
         });
@@ -659,7 +674,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           <HoldingIdentityField
             icons={KIKO_ENTITIES_ICONS}
             icon={icon}
-            fallbackIcon={FALLBACK_ICON}
+            fallbackIcon={fallbackIconFor(kind)}
             iconColor={effectiveColor}
             name={name}
             onChangeName={setName}

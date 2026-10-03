@@ -2,8 +2,10 @@
  Makes the Property and the Loans accounts "implicit": at most one LIVE
  (`archived_at IS NULL`) `property` account and one LIVE `debt` account exist,
  and the Accounts screen lists their holdings directly. The display name comes
- from i18n by kind (`accountDisplayName`, `src/holdings/implicit-account/`),
- never from the stored `name`.
+ from `accountDisplayName` (`src/holdings/implicit-account/`): the stored
+ `name` when a user renamed the account, else the localized kind name for the
+ sentinel this migration writes. (Comment updated after this migration ran, with
+ no SQL change.)
 
  Why a merge: a device may hold several accounts of one of those kinds, and the
  partial unique index at the end of this file would refuse to build over them.
@@ -45,7 +47,9 @@
  run finds one live account per kind, so no member row exists and the data
  statements change nothing. The restore path
  (`src/data-transfer/snapshot/restore-snapshot.ts`, `withImplicitAccountsMerged`)
- applies the IDENTICAL rule to a `.kiko` import.
+ applies the same merge to a `.kiko` import, but resets name, icon and color
+ only for a kept account that absorbed others (this file resets every live
+ account, as it ran before a user could rename one).
 */
 CREATE TEMP TABLE `implicit_account_members` AS
 SELECT

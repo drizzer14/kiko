@@ -611,8 +611,8 @@ export const en = {
     icon: '{{name}} icon',
     // The display name of THE implicit Property / Loans account
     // (`accountDisplayName`, `src/holdings/implicit-account/`): at most one live
-    // account of each kind exists, so its stored name is only a sentinel and
-    // every screen shows this instead.
+    // account of each kind exists, and until the user renames it its stored
+    // name is only a sentinel, so every screen shows this instead.
     implicitName: {
       debt: 'Loans',
       property: 'Properties',
@@ -736,6 +736,9 @@ export const en = {
     ofWhole: 'of {{whole}}',
   },
   holdingDetail: {
+    // The header button of a Property or Loan holding that opens its shared
+    // account for edit (VoiceOver name, and its row in the More overflow menu).
+    accountLabel: 'Account: {{name}}',
     addLot: 'Add lot',
     addTransaction: 'Add transaction',
     // The derived lifecycle ledger lines (src/holdings/derived-entries.ts) a

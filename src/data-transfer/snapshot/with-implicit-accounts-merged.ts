@@ -1,7 +1,6 @@
 // src/data-transfer/snapshot/with-implicit-accounts-merged.ts
 import {
   IMPLICIT_ACCOUNT_STORED_NAME,
-  type ImplicitAccountKind,
   implicitAccountKinds,
   isImplicitAccount,
 } from '@kiko/holdings/implicit-account';
@@ -196,26 +195,19 @@ const dismissalsMergedInto = (dismissals: Dismissals, members: Map<string, Membe
   return Object.fromEntries([...kindsByKey].map(([key, union]) => [key, [...union]]));
 };
 
-const needsSentinel = (account: AccountFields & { kind: ImplicitAccountKind }): boolean =>
-  account.name !== IMPLICIT_ACCOUNT_STORED_NAME[account.kind] ||
-  account.icon !== null ||
-  account.color !== null;
-
-// Every live property/debt account takes the stored sentinel name and the kind's
-// default icon and color, so one custom glyph never stands for all of them.
-const withSentinelNames = <Account extends AccountFields>(
+// A kept account that absorbed others takes the stored sentinel name and the
+// kind's default icon and color, so one custom name or glyph picked for one
+// former account never stands for all of them. An account that merged nothing
+// keeps what its user chose.
+const withDefaultIdentity = <Account extends AccountFields>(
   snapshotAccounts: Account[],
-): Account[] => {
-  if (!snapshotAccounts.some((account) => isImplicitAccount(account) && needsSentinel(account))) {
-    return snapshotAccounts;
-  }
-
-  return snapshotAccounts.map((account) =>
-    isImplicitAccount(account) && needsSentinel(account)
+  members: Map<string, Member>,
+): Account[] =>
+  snapshotAccounts.map((account) =>
+    isImplicitAccount(account) && members.has(account.id)
       ? { ...account, name: IMPLICIT_ACCOUNT_STORED_NAME[account.kind], icon: null, color: null }
       : account,
   );
-};
 
 type MergeRows<
   Account extends AccountFields,
@@ -243,10 +235,13 @@ type MergeRows<
  * A stray `sync_state` row of a merged-away account is dropped with it, as the
  * migration does, since its foreign key would otherwise fail the insert.
  *
- * A snapshot where no kind has more than one live account and every live
- * implicit account already carries the sentinel name and no icon or color
- * returns the SAME array references, a true no-op: that is an export from this
- * build, or a second restore of the same file.
+ * Unlike the migration, which resets every live implicit account's identity
+ * (it ran once, before a user could rename one), a restore keeps the name, icon
+ * and color a user gave an implicit account, and applies the default identity
+ * (the sentinel name, no icon or color) only to a kept account that absorbed
+ * others. A snapshot where no kind has more than one live account returns the
+ * SAME array references, a true no-op: that is an export from this build, or a
+ * second restore of the same file.
  */
 export const withImplicitAccountsMerged = <
   Account extends AccountFields,
@@ -260,14 +255,17 @@ export const withImplicitAccountsMerged = <
   const members = mergeMembers(rows.accounts);
 
   if (members.size === 0) {
-    return { ...rows, accounts: withSentinelNames(rows.accounts) };
+    return rows;
   }
 
   const isMergedAway = (accountId: string): boolean =>
     (members.get(accountId)?.keptId ?? accountId) !== accountId;
 
   return {
-    accounts: withSentinelNames(rows.accounts.filter((account) => !isMergedAway(account.id))),
+    accounts: withDefaultIdentity(
+      rows.accounts.filter((account) => !isMergedAway(account.id)),
+      members,
+    ),
     holdings: holdingsMergedInto(rows.holdings, members),
     reminders: remindersMergedInto(rows.reminders, members),
     settings: rows.settings.map(

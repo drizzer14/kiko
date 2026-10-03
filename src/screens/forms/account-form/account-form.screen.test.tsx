@@ -1565,6 +1565,160 @@ describe('AccountFormScreen edit mode', () => {
   });
 });
 
+describe('AccountFormScreen edit mode — implicit Properties / Loans account', () => {
+  const implicitAccount = (overrides: Record<string, unknown> = {}) => ({
+    id: 'implicit-1',
+    name: 'Properties',
+    kind: 'property',
+    icon: null,
+    color: null,
+    bankId: null,
+    archivedAt: null,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAccounts = [implicitAccount()];
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('opens a Properties account holding the sentinel with the localized default name', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByDisplayValue } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByDisplayValue('Майно')).toBeTruthy();
+  });
+
+  it('opens a Loans account holding the sentinel with the localized default name', async () => {
+    mockAccounts = [implicitAccount({ id: 'implicit-2', name: 'Loans', kind: 'debt' })];
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByDisplayValue } = await renderForm({ accountId: 'implicit-2' });
+
+    expect(getByDisplayValue('Кредити')).toBeTruthy();
+  });
+
+  it('opens a renamed account with the name as typed, in any language', async () => {
+    mockAccounts = [implicitAccount({ name: 'Family assets' })];
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByDisplayValue } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByDisplayValue('Family assets')).toBeTruthy();
+  });
+
+  it('saves the sentinel when the localized default is left unchanged', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText, navigation } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.press(getByText('Зберегти'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-1', {
+      name: 'Properties',
+      color: null,
+      bankId: null,
+    });
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('saves the sentinel of a Loans account left unchanged in English', async () => {
+    mockAccounts = [implicitAccount({ id: 'implicit-2', name: 'Loans', kind: 'debt' })];
+
+    const { getByText } = await renderForm({ accountId: 'implicit-2' });
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-2', {
+      name: 'Loans',
+      color: null,
+      bankId: null,
+    });
+  });
+
+  it('saves a renamed account under the name typed, and the picked color', async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), '  Family assets ');
+    await fireEvent.press(getByLabelText('Color teal'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-1', {
+      name: 'Family assets',
+      color: entityColors.teal,
+      bankId: null,
+    });
+  });
+
+  it("saves the OTHER kind's sentinel typed as a name as the name typed", async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Loans');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-1', {
+      name: 'Loans',
+      color: null,
+      bankId: null,
+    });
+  });
+
+  it('does not save a blank name', async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), '   ');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("shows the kind's default glyph while the stored icon is NULL, and keeps it NULL on Save", async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByLabelText(`Icon ${accountKindSymbol.property}`)).toBeTruthy();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockSetIcon).toHaveBeenCalledWith('implicit-1', null);
+  });
+
+  it("shows a Loans account's default glyph while the stored icon is NULL", async () => {
+    mockAccounts = [implicitAccount({ id: 'implicit-2', name: 'Loans', kind: 'debt' })];
+    const { getByLabelText } = await renderForm({ accountId: 'implicit-2' });
+
+    expect(getByLabelText(`Icon ${accountKindSymbol.debt}`)).toBeTruthy();
+  });
+
+  it('shows the stored icon over the default', async () => {
+    mockAccounts = [implicitAccount({ icon: 'star.fill' })];
+    const { getByLabelText } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByLabelText('Icon star.fill')).toBeTruthy();
+  });
+
+  it('keeps the title and the read-only kind field', async () => {
+    const { getByTestId, navigation } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Edit Account' });
+    expect(isKindFieldDisabled(getByTestId)).toBe(true);
+  });
+});
+
 describe('AccountFormScreen — localization', () => {
   beforeEach(() => {
     jest.clearAllMocks();

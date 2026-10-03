@@ -644,6 +644,7 @@ export const uk: typeof en = {
     ofWhole: 'з {{whole}}',
   },
   holdingDetail: {
+    accountLabel: 'Рахунок: {{name}}',
     addLot: 'Додати лот',
     addTransaction: 'Додати транзакцію',
     capitalization: 'Капіталізація',

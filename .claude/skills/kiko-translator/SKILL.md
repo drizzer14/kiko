@@ -48,14 +48,15 @@ through `resolveCategoryDisplay`/`buildCategoryDisplayMap`
 `rules/semgrep-prewrite.yml`): a `t(key, { title|name: <...category>.title })`
 is denied unless that `category` is a `resolveCategoryDisplay(...)` result.
 
-## An implicit account is named by `accountDisplayName`, never by `account.name`
+## An implicit account is named by `accountDisplayName`, never by the raw `account.name`
 
-The property and debt accounts' stored name is an English sentinel
-(`IMPLICIT_ACCOUNT_STORED_NAME`: `Properties` / `Loans`, the seeded-category
-rule's sibling); the user sees `accounts.implicitName.{property,debt}`
-(uk `Майно` / `Кредити`) through `accountDisplayName(account, t)`
-(`src/holdings/implicit-account/`), which leaves any other account's name
-verbatim. EVERY place that renders an account's name takes the helper's
+The property and debt accounts' stored name is an English sentinel while the
+account is unrenamed (`IMPLICIT_ACCOUNT_STORED_NAME`: `Properties` / `Loans`,
+the seeded-category rule's sibling); the user sees
+`accounts.implicitName.{property,debt}` (uk `Майно` / `Кредити`) through
+`accountDisplayName(account, t)` (`src/holdings/implicit-account/`), which
+returns the name a user typed as it is (a renamed account) and leaves any other
+account's name verbatim. EVERY place that renders an account's name takes the helper's
 result: a heading, a filter option's `label`, a row's account name, a
 chart label, a picker caption, an accessibility label. A filter's `value`
 (its identity, which a selection and the row match key on) stays the STORED

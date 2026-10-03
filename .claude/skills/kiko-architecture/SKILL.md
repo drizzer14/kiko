@@ -1928,8 +1928,12 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   applies migration 0050's steps to the snapshot: holdings, reminders, the
   `reminderOfferDismissals` map, AND the `syncState` rows of a merged-away
   account (its foreign key would fail the insert), so it takes all five
-  row arrays and returns the same references when nothing needs merging or
-  renaming. It runs right after `withBankAccountsOtherBank`, the order a
+  row arrays and returns the same references when no kind has 2+ live
+  accounts. Unlike the migration (which reset every live implicit account's
+  name, icon and color, before a user could rename one), a restore keeps a
+  lone account's name, icon and color, and resets them (sentinel name, NULL
+  icon and color) only on the KEPT account of a merge, so one custom name or
+  glyph never stands for several former accounts. It runs right after `withBankAccountsOtherBank`, the order a
   live device runs 0044, 0049, 0050, and its output feeds every later
   step. It compares ids with `<` and `>`, never `localeCompare`, because
   that matches SQLite's BINARY collation for ASCII and UUID ids, and a
@@ -1938,7 +1942,8 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `snapshot/restore-implicit-accounts.two-path.test.ts` seeds one pre-0050
   database, runs the real 0050 SQL on it (path 1), exports it first with
   `readDataSnapshot` and restores that into a fresh database (path 2),
-  then compares accounts, holdings, transactions, price points, sync state,
+  then compares accounts (the lone-account seed differs on purpose in name,
+  icon and color only), holdings, transactions, price points, sync state,
   dismissal kinds (sorted) and reminders without `activeSince` and
   `lastSnoozedAt`, which a restore restarts by design. The seed holds a
   three-way tie whose ids differ by case, so a `localeCompare` fails it.

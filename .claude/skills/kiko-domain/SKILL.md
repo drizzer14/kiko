@@ -118,14 +118,22 @@ implemented, and callers must skip it rather than assume every id resolves.
   `accounts_implicit_kind` (migration `0050`, declared in `src/db/schema.ts`).
   The unit is `src/holdings/implicit-account/`: `isImplicitAccountKind`,
   `isImplicitAccount` (kind + live), and `accountDisplayName(account, t)`.
-  **A screen shows an implicit account's name through `accountDisplayName`
-  (i18n `accounts.implicitName.{property,debt}` by kind), never through the
-  stored `name`**: the stored `name` is only the fixed English sentinel
-  `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`), written by `0050`
-  and by every implicit create, and no code reads it back to detect an
-  implicit account (the kind decides). Their `icon` and `color` are NULL so
-  the kind defaults show. An ARCHIVED property/debt account is a plain account
-  outside the index, the merge, and `accountDisplayName`. **Create a property
+  **A screen shows an implicit account's name through `accountDisplayName`,
+  never through the raw stored `name`**: the stored `name` is the fixed English
+  sentinel `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`) while the
+  account is unrenamed (written by `0050` and by every implicit create), and
+  `accountDisplayName` then shows the localized
+  `accounts.implicitName.{property,debt}`; once the user renames the account
+  (the account icon in a Property/Loan holding's header opens `AccountForm`
+  for edit) the typed name is stored and shown as it is. The account form
+  stores the sentinel back when the name is the localized default left
+  unchanged (`implicitAccountStoredName`). The kind decides whether an account
+  is implicit, never its name. A new account's `icon` and `color` are NULL so
+  the kind defaults show; the user can set both. An ARCHIVED property/debt
+  account is a plain account outside the index, the merge, and
+  `accountDisplayName`. A `.kiko` restore keeps a lone implicit account's
+  name, icon and color and resets them to the defaults only on the kept
+  account of a merge of 2+ (see kiko-architecture). **Create a property
   or loan holding only through `accountsRepo.createImplicitHolding(kind, input)`**:
   one `write()` that finds the live account of the kind (a SQL lookup with
   `LIMIT 1`), inserts it when none exists (sentinel name, NULL icon/color,
