@@ -1,7 +1,6 @@
 // src/data-transfer/snapshot/with-implicit-accounts-merged.ts
 import {
   IMPLICIT_ACCOUNT_STORED_NAME,
-  type ImplicitAccountKind,
   implicitAccountKinds,
   isImplicitAccount,
 } from '@kiko/holdings/implicit-account';
@@ -148,7 +147,7 @@ const remindersMergedInto = <Reminder extends ReminderFields>(
     byKeptIdAndKind.set(groupKey, group);
   }
 
-  // A survivor maps to the account it moves to, a reminder that goes to null.
+  // A survivor maps to the account it moves to, a reminder that is dropped maps to null.
   const placement = new Map<string, string | null>();
 
   for (const { keptId, reminders } of byKeptIdAndKind.values()) {
@@ -196,9 +195,7 @@ const dismissalsMergedInto = (dismissals: Dismissals, members: Map<string, Membe
   return Object.fromEntries([...kindsByKey].map(([key, union]) => [key, [...union]]));
 };
 
-const needsSentinel = <Account extends AccountFields>(
-  account: Account,
-): account is Account & { kind: ImplicitAccountKind; archivedAt: null } =>
+const needsSentinel = (account: AccountFields): boolean =>
   isImplicitAccount(account) &&
   (account.name !== IMPLICIT_ACCOUNT_STORED_NAME[account.kind] ||
     account.icon !== null ||
@@ -214,7 +211,7 @@ const withSentinelNames = <Account extends AccountFields>(
   }
 
   return snapshotAccounts.map((account) =>
-    needsSentinel(account)
+    isImplicitAccount(account) && needsSentinel(account)
       ? { ...account, name: IMPLICIT_ACCOUNT_STORED_NAME[account.kind], icon: null, color: null }
       : account,
   );
