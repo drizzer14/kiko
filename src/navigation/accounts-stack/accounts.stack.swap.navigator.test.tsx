@@ -186,6 +186,17 @@ describe('AccountsStack — swapping between the account form and the implicit h
       expect(stackAnimations(view)).toEqual(['default']);
     });
 
+    it('keeps the default animation when the kind changes between property and debt in place', async () => {
+      const view = await renderStack();
+
+      await openAddAccount();
+      await pickKind(view, 'property');
+      await appear(view);
+      await pickKind(view, 'debt');
+
+      expect(stackAnimations(view)).toEqual(['default']);
+    });
+
     it('keeps a form opened from the Accounts screen on the default animation', async () => {
       const view = await renderStack();
 

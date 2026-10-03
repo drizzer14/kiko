@@ -21,14 +21,19 @@ import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 
 const Stack = createNativeStackNavigator<AccountsStackParamList>();
 
-// A swapped-in form (one that carries a `draft`) mounts with `animation:
-// 'none'` so the swap is instant. native-stack pops a screen with the animation
-// it carries at that moment, so the 'none' would also make Back from it
-// instant. Once the form has appeared, which the native stack reports with
-// `transitionEnd` whatever the animation was, its animation goes back to the
-// default. A layout effect on mount is too early: it can reach the native
-// screen in the same mount batch and animate the swap.
-const restoreDefaultAnimationOnceSwapped = ({
+// A route swapped in from the other form carries a `draft`.
+const carriesDraft = (params: object | undefined): boolean =>
+  params !== undefined && 'draft' in params && params.draft !== undefined;
+
+// A swapped-in form mounts with `animation: 'none'` so the swap is instant.
+// native-stack pops a screen with the animation it carries at that moment, so
+// the 'none' would also make Back from it instant. Once the form has appeared,
+// which the native stack reports with `transitionEnd` whatever the animation
+// was, its animation goes back to the default (every later `transitionEnd`
+// sets it again, which changes nothing). A layout effect on mount is too
+// early: it can reach the native screen in the same mount batch and animate
+// the swap.
+const restoreDefaultAnimationOfSwappedForm = ({
   navigation,
   route,
 }: {
@@ -36,7 +41,7 @@ const restoreDefaultAnimationOnceSwapped = ({
   route: { params?: object };
 }) => ({
   transitionEnd: () => {
-    if (route.params !== undefined && 'draft' in route.params && route.params.draft !== undefined) {
+    if (carriesDraft(route.params)) {
       navigation.setOptions({ animation: 'default' });
     }
   },
@@ -82,23 +87,23 @@ const AccountsStack: FC = () => {
       <Stack.Screen
         name="AccountForm"
         component={AccountFormScreen}
-        listeners={restoreDefaultAnimationOnceSwapped}
+        listeners={restoreDefaultAnimationOfSwappedForm}
         options={({ route }) => ({
           title: t('forms.account.addTitle'),
-          animation: route.params?.draft === undefined ? 'default' : 'none',
+          animation: carriesDraft(route.params) ? 'none' : 'default',
         })}
       />
 
       <Stack.Screen
         name="HoldingForm"
         component={HoldingFormScreen}
-        listeners={restoreDefaultAnimationOnceSwapped}
+        listeners={restoreDefaultAnimationOfSwappedForm}
         options={({ route }) => ({
           title:
             'implicitKind' in route.params
               ? t('forms.account.addTitle')
               : t('forms.holding.addTitle'),
-          animation: 'draft' in route.params ? 'none' : 'default',
+          animation: carriesDraft(route.params) ? 'none' : 'default',
         })}
       />
 

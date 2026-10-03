@@ -516,11 +516,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     try {
       if (isEdit) {
         // Update the editable identity fields in one transaction; the icon routes
-        // through setIcon, so a cleared icon persists an explicit null. Kind is read-only, and the cash currency +
-        // initial value belong to the create-time initial holding, so neither is
-        // touched here. `bankId` is editable too — this patch never
-        // carries `institution`, so a live-connected account's sync stays
-        // untouched no matter what bank identity is picked here.
+        // through setIcon, so a cleared icon persists an explicit null. Kind is
+        // read-only, and the cash currency + initial value belong to the
+        // create-time initial holding, so neither is touched here. `bankId` is
+        // editable too — this patch never carries `institution`, so a
+        // live-connected account's sync stays untouched no matter what bank
+        // identity is picked here.
         await accountsRepo.update(editId, {
           name: trimmedName,
           color,

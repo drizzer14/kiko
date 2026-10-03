@@ -4,10 +4,10 @@
 // slug, never its resolved title). `label`, when present, is the text actually
 // rendered for the row and may differ from `value` (an account option's
 // localized display name, a category's resolved display title); when absent
-// the row renders `value` itself as its label. When present, `icon` is an SF Symbol rendered before the label
-// and `color` tints that glyph (an entity/category color hex); both — like
-// `label` — may be absent (e.g. the synthetic "All" row), and the row then
-// renders label-only.
+// the row renders `value` itself as its label. When present, `icon` is an SF
+// Symbol rendered before the label and `color` tints that glyph (an
+// entity/category color hex); both — like `label` — may be absent (e.g. the
+// synthetic "All" row), and the row then renders label-only.
 export type FilterOption = {
   value: string;
   label?: string;

@@ -41,6 +41,9 @@ type ScreenOptions = { title?: string; animation?: string };
 type ScreenElement = ReactElement<{
   name: string;
   options?: ScreenOptions | ((args: { route: { params: unknown } }) => ScreenOptions);
+  listeners?: (args: { navigation: { setOptions: jest.Mock }; route: { params: unknown } }) => {
+    transitionEnd: () => void;
+  };
 }>;
 
 const screenElements = (): ScreenElement[] => {
@@ -122,6 +125,45 @@ describe('AccountsStack', () => {
 
     it('swaps back to the account form with no animation', () => {
       expect(optionsOf('AccountForm', { initialKind: 'bank', draft })?.animation).toBe('none');
+    });
+
+    // native-stack pops with the animation a screen carries, so the swap's
+    // 'none' is undone once the form has appeared, and only for a route that
+    // swapped in: any other route has nothing to undo.
+    describe('the transitionEnd listener', () => {
+      const transitionEndFor = (name: string, params: unknown): { setOptions: jest.Mock } => {
+        const listeners = screenElements().find((screen) => screen.props.name === name)?.props
+          .listeners;
+        const setOptions = jest.fn();
+
+        if (typeof listeners !== 'function') {
+          throw new Error(`${name} has no listeners function`);
+        }
+
+        listeners({ navigation: { setOptions }, route: { params } }).transitionEnd();
+
+        return { setOptions };
+      };
+
+      it.each(['AccountForm', 'HoldingForm'])(
+        'sets the default animation on a %s route that carries a draft',
+        (name) => {
+          const { setOptions } = transitionEndFor(name, { draft });
+
+          expect(setOptions).toHaveBeenCalledTimes(1);
+          expect(setOptions).toHaveBeenCalledWith({ animation: 'default' });
+        },
+      );
+
+      it.each([
+        ['no params', undefined],
+        ['empty params', {}],
+        ['an account id', { accountId: 'account-1' }],
+        ['an undefined draft', { draft: undefined }],
+      ])('leaves a route with %s alone', (_label, params) => {
+        expect(transitionEndFor('AccountForm', params).setOptions).not.toHaveBeenCalled();
+        expect(transitionEndFor('HoldingForm', params).setOptions).not.toHaveBeenCalled();
+      });
     });
 
     it('keeps the static titles on the swapped routes', () => {

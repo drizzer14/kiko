@@ -3362,9 +3362,9 @@ describe('HoldingFormScreen icon', () => {
 
   it('a failed Save then a retry sends the whole create again and never a second icon write', async () => {
     // The create is ONE write that rolls back whole (holdings.repo.create-icon
-    // test), so the failed attempt left no row and the retry makes exactly one.
-    // The old icon write ran after the row was committed: its failure left a row
-    // and the retry made a duplicate.
+    // test), so the failed attempt leaves no row and the retry makes exactly
+    // one. A separate icon write could fail after the row was committed, and
+    // the retry would then make a duplicate.
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     createMock.mockRejectedValueOnce(new Error('disk full'));
     mockAccountKind = 'cash';

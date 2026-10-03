@@ -160,7 +160,8 @@ export const accountsRepo = {
     database.select().from(accounts).where(eq(accounts.institution, institution)),
   /**
    * Insert a new account and resolve to its app id (the text UUID), so a caller
-   * can immediately act on the new row (e.g. set its icon). The id is generated
+   * can act on the new row. The icon and color are part of the input and go in
+   * this same write, never in a second one. The id is generated
    * here unless the caller pre-generated one and passes it in `input.id` — the
    * create form does this so the shared crypto sync fields (which bind to an
    * existing account id) can key their Keychain write and connect to the future

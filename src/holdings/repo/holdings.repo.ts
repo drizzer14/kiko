@@ -455,8 +455,8 @@ export const holdingsRepo = {
     Money.of(row.currency, row.balanceMinorUnits),
   /**
    * Insert a new holding and resolve to its generated app id (the text UUID),
-   * so a caller can immediately act on the new row (e.g. set its icon). The
-   * op-sqlite insert result (rowsAffected/lastInsertRowId) is the SQLite rowid,
+   * so a caller can act on the new row. The icon and color are part of the
+   * input and go in this same write, never in a second one. The op-sqlite insert result (rowsAffected/lastInsertRowId) is the SQLite rowid,
    * not this id, so it is not returned. A new holding appends to the end of its
    * account's grid via `sortOrder = max + 1` unless an explicit order is given.
    *
