@@ -33,6 +33,7 @@ import HoldingCard from '@kiko/design-system/components/holding-card';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
+import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
@@ -206,6 +207,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // drag near the top/bottom edge auto-scrolls the list (the grid is nested
   // inside this Screen's ScrollView, so it cannot scroll it without the ref).
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
+
+  const { onDragStart, onActiveItemDropped, openUnlessLifted } = useGridLiftGuard();
 
   const isBankAccount = account?.kind === 'bank';
   // A connected bank sync already writes every row of the account; a statement
@@ -383,15 +386,16 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               and `onGridDragEnd`. `overDrag="vertical"` keeps a dragged card on
               its vertical axis (a single column has no horizontal move to make).
               `scrollableRef` + `autoScrollActivationOffset` let a drag near an
-              edge scroll the parent list. `sortEnabled` is off with a single
-              holding, where there is nothing to reorder, and until the
+              edge scroll the parent list. `sortEnabled` is off until the
               holdings query's own fresh read has applied — a drag persists
               the order of the rows on screen, never the cached
-              (possibly one-read-old) order (kiko-architecture). */}
+              (possibly one-read-old) order (kiko-architecture). A lone
+              holding stays enabled: it lifts on a hold and drops back, like
+              every other card. */}
           <Box testID="holdings-grid">
             <Sortable.Grid
               data={activeHoldings}
-              sortEnabled={holdingsFresh && activeHoldings.length > 1}
+              sortEnabled={holdingsFresh}
               // A subtle lift on touch-and-hold: the library default (1.1) pops
               // the card up too much, so scale it just barely (matches the
               // accounts grid).
@@ -416,16 +420,18 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                       baseCurrency={baseCurrency}
                       rateTable={rateTable}
                       priceBook={priceBook}
-                      onOpen={() =>
+                      onOpen={openUnlessLifted(item.id, () =>
                         navigation.navigate('HoldingDetail', {
                           holdingId: item.id,
                           name: item.name,
-                        })
-                      }
+                        }),
+                      )}
                     />
                   </CardContextMenu>
                 </Box>
               )}
+              onDragStart={onDragStart}
+              onActiveItemDropped={onActiveItemDropped}
               onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
                 onGridDragEnd({ fromIndex, toIndex, indexToKey }, holdingsRepo.reorder)
               }

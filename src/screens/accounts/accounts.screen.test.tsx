@@ -17,6 +17,7 @@ import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AccountsScreen from './accounts.screen';
@@ -459,6 +460,61 @@ describe('AccountsScreen', () => {
     expect(getByTestId('sortable-grid').props.sortEnabled).toBe(true);
   });
 
+  // A hold lifts the card; with one card there is nothing to reorder, it lifts
+  // and drops back, so the lone card feels the same as one among many.
+  it('lets a lone account card lift on a hold once the accounts have their own fresh read', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }] });
+    const { getByTestId } = await renderAccounts();
+
+    expect(getByTestId('sortable-grid').props.sortEnabled).toBe(true);
+  });
+
+  it('keeps a lone account card from lifting while the accounts are still the cached order', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      isStale: { accounts: true },
+    });
+    const { getByTestId } = await renderAccounts();
+
+    expect(getByTestId('sortable-grid').props.sortEnabled).toBe(false);
+  });
+
+  it('does not open the account when a hold lifted its card and the finger ends in place', async () => {
+    const { getByTestId, getByText } = await renderAccounts();
+
+    await liftCard(getByTestId('sortable-grid'), 'a');
+    await fireEvent.press(getByText('Monobank'));
+
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it('opens the account on the next quick tap after a lifted release', async () => {
+    const { getByTestId, getByText } = await renderAccounts();
+
+    await liftCard(getByTestId('sortable-grid'), 'a');
+    await fireEvent.press(getByText('Monobank'));
+    await fireEvent.press(getByText('Monobank'));
+
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'a',
+      name: 'Monobank',
+    });
+  });
+
+  it('opens the account on a quick tap after the lifted card was dropped with no press', async () => {
+    const { getByTestId, getByText } = await renderAccounts();
+
+    await liftCard(getByTestId('sortable-grid'), 'a');
+    await dropCard(getByTestId('sortable-grid'), 'a');
+    await fireEvent.press(getByText('Monobank'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'a',
+      name: 'Monobank',
+    });
+  });
+
   it('persists a reorder to accountsRepo.reorder when a card is dragged to a new slot', async () => {
     setLiveData({
       accounts: [
@@ -797,10 +853,71 @@ describe('AccountsScreen', () => {
         .sortEnabled;
     };
 
-    it('disables the sort with one loan', async () => {
+    it('enables the sort with one loan once the holdings have their own fresh read, so the lone card lifts on a hold', async () => {
       setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] });
 
+      expect(await debtsGridSortEnabled()).toBe(true);
+    });
+
+    it('keeps a lone loan from lifting while the holdings are still the cached read', async () => {
+      setLiveData({
+        accounts: [debtAccount()],
+        holdings: [loanHolding()],
+        isStale: { holdings: true },
+      });
+
       expect(await debtsGridSortEnabled()).toBe(false);
+    });
+
+    describe('a hold that lifted a loan card', () => {
+      const renderLoanGrid = async (): Promise<{
+        grid: LiftableGrid;
+        getByText: Awaited<ReturnType<typeof render>>['getByText'];
+      }> => {
+        setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] });
+        const { getByTestId, getByText } = await renderAccounts();
+
+        return {
+          grid: within(getByTestId('accounts-debts-grid')).getByTestId('sortable-grid'),
+          getByText,
+        };
+      };
+
+      it('does not open the holding when the finger ends in place', async () => {
+        const { grid, getByText } = await renderLoanGrid();
+
+        await liftCard(grid, 'l1');
+        await fireEvent.press(getByText('Mortgage'));
+
+        expect(navigation.navigate).not.toHaveBeenCalled();
+      });
+
+      it('opens the holding on the next quick tap', async () => {
+        const { grid, getByText } = await renderLoanGrid();
+
+        await liftCard(grid, 'l1');
+        await fireEvent.press(getByText('Mortgage'));
+        await fireEvent.press(getByText('Mortgage'));
+
+        expect(navigation.navigate).toHaveBeenCalledTimes(1);
+        expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+          holdingId: 'l1',
+          name: 'Mortgage',
+        });
+      });
+
+      it('opens the holding on a quick tap once the card was dropped with no press', async () => {
+        const { grid, getByText } = await renderLoanGrid();
+
+        await liftCard(grid, 'l1');
+        await dropCard(grid, 'l1');
+        await fireEvent.press(getByText('Mortgage'));
+
+        expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+          holdingId: 'l1',
+          name: 'Mortgage',
+        });
+      });
     });
 
     it('disables the sort while the holdings are still the cached read', async () => {
@@ -1111,7 +1228,7 @@ describe('AccountsScreen', () => {
       expect(mockAccountReorder).not.toHaveBeenCalled();
     });
 
-    it('disables the sort with one property holding', async () => {
+    it('enables the sort with one property holding once the holdings have their own fresh read, so the lone card lifts on a hold', async () => {
       setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] });
 
       const { getByTestId } = await renderAccounts();
@@ -1119,7 +1236,73 @@ describe('AccountsScreen', () => {
       expect(
         within(getByTestId('accounts-property-grid')).getByTestId('sortable-grid').props
           .sortEnabled,
+      ).toBe(true);
+    });
+
+    it('keeps a lone property holding from lifting while the holdings are still the cached read', async () => {
+      setLiveData({
+        accounts: [propertyAccount()],
+        holdings: [propertyHolding()],
+        isStale: { holdings: true },
+      });
+
+      const { getByTestId } = await renderAccounts();
+
+      expect(
+        within(getByTestId('accounts-property-grid')).getByTestId('sortable-grid').props
+          .sortEnabled,
       ).toBe(false);
+    });
+
+    describe('a hold that lifted a property card', () => {
+      const renderPropertyGrid = async (): Promise<{
+        grid: LiftableGrid;
+        getByText: Awaited<ReturnType<typeof render>>['getByText'];
+      }> => {
+        setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] });
+        const { getByTestId, getByText } = await renderAccounts();
+
+        return {
+          grid: within(getByTestId('accounts-property-grid')).getByTestId('sortable-grid'),
+          getByText,
+        };
+      };
+
+      it('does not open the holding when the finger ends in place', async () => {
+        const { grid, getByText } = await renderPropertyGrid();
+
+        await liftCard(grid, 'h1');
+        await fireEvent.press(getByText('Apartment'));
+
+        expect(navigation.navigate).not.toHaveBeenCalled();
+      });
+
+      it('opens the holding on the next quick tap', async () => {
+        const { grid, getByText } = await renderPropertyGrid();
+
+        await liftCard(grid, 'h1');
+        await fireEvent.press(getByText('Apartment'));
+        await fireEvent.press(getByText('Apartment'));
+
+        expect(navigation.navigate).toHaveBeenCalledTimes(1);
+        expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+          holdingId: 'h1',
+          name: 'Apartment',
+        });
+      });
+
+      it('opens the holding on a quick tap once the card was dropped with no press', async () => {
+        const { grid, getByText } = await renderPropertyGrid();
+
+        await liftCard(grid, 'h1');
+        await dropCard(grid, 'h1');
+        await fireEvent.press(getByText('Apartment'));
+
+        expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+          holdingId: 'h1',
+          name: 'Apartment',
+        });
+      });
     });
 
     // The Property section owns its own close sheet, separate from the Debts

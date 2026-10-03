@@ -87,7 +87,10 @@ const HOLD_LIFT_DURATION_MS = 300;
  * hold. A hold that stays still opens this menu; a hold that moves the finger
  * fails this gesture (`HOLD_MAX_DISTANCE`) and reorders instead; a quick tap
  * opens the card. On-device, `HOLD_DURATION_MS` may need tuning against the
- * grid's drag activation so the two never both fire on a single hold.
+ * grid's drag activation so the two never both fire on a single hold. The grid
+ * lifts the card at its own 200 ms activation, before this menu's hold, so the
+ * release that follows a lift (menu or not) is kept from opening the card by
+ * the grid's `useGridLiftGuard`, not by this component.
  */
 const CardContextMenu: FC<{
   name: string;
