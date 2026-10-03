@@ -20,8 +20,10 @@ export type ModalAnimationSpy = {
 // The jest Modal renders nothing once hidden, so a test cannot read the close
 // animation off the tree. This spies on the Modal's render and reads the props
 // every render was handed instead, for the one Modal whose `testID` is given
-// (a screen renders other sheets too, and they re-render with it). Call
-// `restore` in `afterEach`.
+// (a screen renders other sheets too, and they re-render with it). It filters
+// by `testID` only, so it assumes one mounted Modal instance per `testID` for
+// the test's lifetime (a remount, or two live Modals with the same `testID`,
+// would mix their runs). Call `restore` in `afterEach`.
 export const spyOnModalAnimation = (modalTestID: string): ModalAnimationSpy => {
   const spy = jest.spyOn(modalModule, 'default');
   const transitionAnimation = (toVisible: boolean): string | undefined => {
