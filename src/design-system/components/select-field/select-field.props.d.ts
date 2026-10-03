@@ -13,13 +13,16 @@ export type SelectFieldProps<Option extends string> = {
   // always-populated selection just never passes `null`.
   selected: Option | null;
   onSelect: (option: Option) => void;
+  // Runs once, with the pick, after the sheet a pick closed has FINISHED
+  // closing (BottomSheet's `onClosed`), never on the pick itself and never for
+  // a sheet closed without one. For what must not happen while the sheet is
+  // still closing, such as navigating the owning screen away.
+  onSelectClosed?: (option: Option) => void;
   // The catalog-resolved display label for each option, resolved by the
-  // caller so the field stays translation-agnostic — mirrors ModeSelectField/
-  // AccountKindField's own `labels` prop.
+  // caller so the field stays translation-agnostic.
   labels: Record<Option, string>;
-  // An optional second line rendered under each row's label in the sheet
-  // (AccountKindField's own `subtitles`) — omitted renders a plain one-line
-  // SelectableRow.
+  // An optional second line rendered under each row's label in the sheet —
+  // omitted renders a plain one-line SelectableRow.
   subtitles?: Record<Option, string>;
   // An optional leading SF Symbol per option, shown on the trigger AND each
   // sheet row — omitted renders no icon slot.

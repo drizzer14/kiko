@@ -10,15 +10,25 @@ import {
   syncState,
   transactions,
 } from '@kiko/db';
-import { asc, eq, sql } from 'drizzle-orm';
+import {
+  clearLoanLinksForHoldingsDatabaseTransaction,
+  insertHoldingDatabaseTransaction,
+  type NewHolding,
+} from '@kiko/holdings/repo';
+import {
+  IMPLICIT_ACCOUNT_STORED_NAME,
+  type ImplicitAccountKind,
+  isImplicitAccountKind,
+} from '@kiko/holdings/implicit-account';
 import { logOnFailure } from '@kiko/diagnostics';
 import { clearToken } from '@kiko/monobank/token';
 import type { Money } from '@kiko/currency/money';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { Currency } from '@kiko/currency/currency';
 import { clearCredentials } from '@kiko/crypto-sync/binance';
 import { SYNCED_AT_FIELD } from '@kiko/holdings/holding-metadata';
+import { holdingTypesForAccountKind } from '@kiko/holdings/holding-type';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
-import { clearLoanLinksForHoldingsDatabaseTransaction } from '@kiko/holdings/repo';
 import { isSyncedAccount, type SyncedInstitution } from '@kiko/holdings/deletable';
 
 // A failed first Connect stores its Monobank token or Binance key pair under
@@ -74,6 +84,29 @@ const nextSortOrder = async (
   return candidate;
 };
 
+// The stored name is the fixed English sentinel; the display name comes from
+// i18n by kind (`accountDisplayName`). No icon or color, so the kind defaults
+// show (kiko-domain "The three levels").
+const insertImplicitAccount = async (
+  databaseTransaction: typeof database,
+  kind: ImplicitAccountKind,
+): Promise<string> => {
+  const accountId = id();
+
+  await databaseTransaction.insert(accounts).values({
+    id: accountId,
+    name: IMPLICIT_ACCOUNT_STORED_NAME[kind],
+    kind,
+    icon: null,
+    color: null,
+    institution: null,
+    bankId: null,
+    sortOrder: await nextSortOrder(databaseTransaction, kind),
+  });
+
+  return accountId;
+};
+
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
   Partial<Pick<AccountRow, 'id' | 'institution' | 'bankId' | 'sortOrder' | 'color' | 'icon'>>;
 
@@ -127,21 +160,62 @@ export const accountsRepo = {
     database.select().from(accounts).where(eq(accounts.institution, institution)),
   /**
    * Insert a new account and resolve to its app id (the text UUID), so a caller
-   * can immediately act on the new row (e.g. set its icon). The id is generated
-   * here unless the caller pre-generated one and passes it in `input.id` — the
-   * create form does this so the shared crypto sync fields (which bind to an
-   * existing account id) can key their Keychain write and connect to the future
-   * row before it is inserted. The op-sqlite insert result
+   * can act on the new row. The icon and color are part of the input and go in
+   * this same write, never in a second one. The id is generated here unless
+   * the caller pre-generated one and passes it in `input.id` — the create form
+   * does this so the shared crypto sync fields (which bind to an existing
+   * account id) can key their Keychain write and connect to the future row
+   * before it is inserted. The op-sqlite insert result
    * (rowsAffected/lastInsertRowId) is the SQLite rowid, not this id, so it is
    * not returned.
    */
   create: (input: NewAccount): Promise<string> =>
     write(async (databaseTransaction) => {
+      if (isImplicitAccountKind(input.kind)) {
+        throw new Error(
+          'accountsRepo.create: a property/debt account is implicit; use createImplicitHolding',
+        );
+      }
+
       const accountId = input.id ?? id();
       const sortOrder = input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.kind));
       await databaseTransaction.insert(accounts).values({ ...input, id: accountId, sortOrder });
 
       return accountId;
+    }),
+  /**
+   * Insert a property or loan holding into the one live implicit account of its
+   * kind, creating that account first when there is none, in ONE write: a
+   * rejected holding rolls the account insert back too, so no empty implicit
+   * account is left behind. A type the kind does not hold is refused before
+   * any insert. The lookup filters in SQL, never a full-table read.
+   * An archived account of the kind is never reused: the partial unique index
+   * `accounts_implicit_kind` ignores it, so a live one is created beside it.
+   */
+  createImplicitHolding: (
+    kind: ImplicitAccountKind,
+    input: Omit<NewHolding, 'accountId'>,
+  ): Promise<{ accountId: string; holdingId: string }> =>
+    write(async (databaseTransaction) => {
+      if (!holdingTypesForAccountKind[kind].includes(input.type)) {
+        throw new Error(
+          `accountsRepo.createImplicitHolding: a ${input.type} holding does not belong in the ${kind} account`,
+        );
+      }
+
+      const existing = await databaseTransaction
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(and(eq(accounts.kind, kind), isNull(accounts.archivedAt)))
+        .limit(1);
+      const accountId =
+        existing.at(0)?.id ?? (await insertImplicitAccount(databaseTransaction, kind));
+      const holdingId = await insertHoldingDatabaseTransaction(databaseTransaction, {
+        ...input,
+        accountId,
+      });
+
+      return { accountId, holdingId };
     }),
   /**
    * Create a cash account, its initial cash holding, and — for a non-zero

@@ -70,6 +70,7 @@ import FieldError from '@kiko/design-system/components/field-error';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
@@ -1677,7 +1678,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // thread a plain string onto each holding option without a per-row lookup
   // query.
   const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
-  const accountNameById = new Map(accounts.map((account) => [account.id, account.name]));
+  // The display name, not the stored one: a loan option sits under the implicit
+  // debt account, whose stored name is an English sentinel.
+  const accountNameById = new Map(
+    accounts.map((account) => [account.id, accountDisplayName(account, t)]),
+  );
   // The full account rows keyed by id, so the return picker can ask
   // `isSyncedHolding` whether a candidate's account is connected to a sync
   // (item 6) — the name/order maps above drop the `institution` that check needs.

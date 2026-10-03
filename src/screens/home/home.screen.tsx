@@ -25,6 +25,7 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
@@ -349,9 +350,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // transactions yet still appears in the Accounts filter. Sourced from the
   // accounts live query rather than from the transactions, which would omit it.
   // Each option carries the account's own identity icon + color for the
-  // menu row; transaction matching still keys off `option.value` (the account
-  // name, matched against `row.accountName` below). De-duplicated by name,
-  // first-seen-wins, preserving the old `Set`-based distinctness.
+  // menu row; transaction matching still keys off `option.value` (the STORED
+  // account name, matched against the stored `row.accountName` below), so a
+  // selection survives a language switch; only the option's `label` is the
+  // localized display name. De-duplicated by name, first-seen-wins, preserving
+  // the old `Set`-based distinctness.
   const accountOptions = useMemo(() => {
     const byName = new Map<string, FilterOption>();
 
@@ -359,11 +362,15 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       if (account.archivedAt != null || byName.has(account.name)) {
         continue;
       }
-      byName.set(account.name, { value: account.name, ...accountIdentity(account) });
+      byName.set(account.name, {
+        value: account.name,
+        label: accountDisplayName(account, t),
+        ...accountIdentity(account),
+      });
     }
 
     return Array.from(byName.values());
-  }, [accounts]);
+  }, [accounts, t]);
   // Group and match the category filter by the STABLE `categories.key` slug,
   // never by the resolved display title: the title is language-dependent (a
   // default category's title changes under a live language switch — see
@@ -449,8 +456,21 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // midnight, so this recomputes when the filtered rows change or the day rolls,
   // not on every reactive fire during a sync.
   const todayStart = startOfLocalDay(now);
+  // The rows RENDER the account's display name (an implicit account's stored
+  // name is an English sentinel); the filter above matched the stored one.
   const sections = useMemo(
-    () => groupByDay(filteredTransactions, todayStart, t),
+    () =>
+      groupByDay(
+        filteredTransactions.map((row) => ({
+          ...row,
+          accountName: accountDisplayName(
+            { kind: row.accountKind, name: row.accountName, archivedAt: row.accountArchivedAt },
+            t,
+          ),
+        })),
+        todayStart,
+        t,
+      ),
     [filteredTransactions, todayStart, t],
   );
 

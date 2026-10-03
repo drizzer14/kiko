@@ -66,6 +66,7 @@ import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { transactionSpan } from '@kiko/transactions/transaction-span';
@@ -642,14 +643,19 @@ const StatisticsScreen: FC = () => {
   const slices = useMemo(
     () =>
       buildAccountContribution({
-        accounts: filtered.filteredAccounts,
+        // The legend names an implicit account by its display name; the stored
+        // one is an English sentinel.
+        accounts: filtered.filteredAccounts.map((account) => ({
+          ...account,
+          name: accountDisplayName(account, t),
+        })),
         holdings: filtered.visibleHoldings,
         rateTable,
         baseCurrency,
         now,
         book: priceBook,
       }),
-    [filtered, rateTable, baseCurrency, now, priceBook],
+    [filtered, rateTable, baseCurrency, now, priceBook, t],
   );
 
   // The "Debts" total under the account pie
@@ -1138,9 +1144,12 @@ const StatisticsScreen: FC = () => {
 
   // One option per visible account, each carrying the account's own identity
   // icon + color for the menu row; matching still keys on `option.value` (the
-  // account name, compared to `account.name` in the `filtered` memo above).
+  // stored account name, compared to `account.name` in the `filtered` memo
+  // above, so a selection survives a language switch); the `label` is the
+  // display name, which an implicit account localizes.
   const accountOptions: FilterOption[] = filtered.visibleAccounts.map((account) => ({
     value: account.name,
+    label: accountDisplayName(account, t),
     ...accountIdentity(account),
   }));
 

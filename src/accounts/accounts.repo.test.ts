@@ -213,19 +213,6 @@ describe('accountsRepo', () => {
     expect(updates).toEqual([]);
   });
 
-  it('create appends a new DEBT account at sortOrder = max(ALL accounts) + 1, not max(asset) + 1', async () => {
-    // Two asset accounts (max sortOrder 1) and a debt account already at
-    // sortOrder 4 (allMax) — the new debt account must land after every
-    // existing debt account too, not merely after the assets.
-    const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(1, 4, 4);
-    mockDatabaseTransaction = databaseTransaction;
-
-    await accountsRepo.create({ name: 'Mortgage', kind: 'debt' });
-
-    expect(inserts[0]).toMatchObject({ sortOrder: 5 });
-    expect(updates).toEqual([]);
-  });
-
   // A real archive-then-reorder flow: `reorder` rewrites only the ACTIVE ids
   // it is given, so an archived account keeps its old `sortOrder` and can end
   // up tied with (or past) the first debt account's own slot — the shape the

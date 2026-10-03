@@ -36,7 +36,29 @@ jest.mock('react-i18next', () => ({
 
 import AccountsStack from './accounts.stack';
 
-type ScreenElement = ReactElement<{ name: string; options?: { title?: string } }>;
+type ScreenOptions = { title?: string; animation?: string };
+
+type ScreenElement = ReactElement<{
+  name: string;
+  options?: ScreenOptions | ((args: { route: { params: unknown } }) => ScreenOptions);
+  listeners?: (args: { navigation: { setOptions: jest.Mock }; route: { params: unknown } }) => {
+    transitionEnd: () => void;
+  };
+}>;
+
+const screenElements = (): ScreenElement[] => {
+  const navigator = AccountsStack({}) as ReactElement<{ children: ScreenElement[] }>;
+
+  return navigator.props.children.filter(isValidElement);
+};
+
+// A screen's options as the navigator resolves them for a route with these
+// params: a static object as it is, a function called with the route.
+const optionsOf = (name: string, params: unknown): ScreenOptions | undefined => {
+  const options = screenElements().find((screen) => screen.props.name === name)?.props.options;
+
+  return typeof options === 'function' ? options({ route: { params } }) : options;
+};
 
 /**
  * Walk the `Stack.Screen` children the `AccountsStack` component renders and
@@ -46,14 +68,13 @@ type ScreenElement = ReactElement<{ name: string; options?: { title?: string } }
  * a dynamic title in-screen once their entity loads, so they intentionally
  * have no static title on the navigator.
  */
-const titleByScreen = (): Record<string, string | undefined> => {
-  const navigator = AccountsStack({}) as ReactElement<{ children: ScreenElement[] }>;
-  const screens = navigator.props.children.filter(isValidElement);
-
-  return Object.fromEntries(
-    screens.map((screen) => [screen.props.name, screen.props.options?.title]),
+const titleByScreen = (): Record<string, string | undefined> =>
+  Object.fromEntries(
+    screenElements().map((screen) => [
+      screen.props.name,
+      optionsOf(screen.props.name, { accountId: 'account-1' })?.title,
+    ]),
   );
-};
 
 describe('AccountsStack', () => {
   it('gives the tab-root Accounts list a static, localized title', () => {
@@ -86,6 +107,70 @@ describe('AccountsStack', () => {
 
   it('gives the reminder form the create title, which an edit replaces', () => {
     expect(titleByScreen().ReminderForm).toBe('New Reminder');
+  });
+
+  describe('the account form and the implicit holding form swap without an animation', () => {
+    const draft = { name: 'Flat', icon: null, color: null };
+
+    it('animates a form opened from the Accounts screen as usual', () => {
+      expect(optionsOf('AccountForm', {})?.animation).toBe('default');
+      expect(optionsOf('AccountForm', undefined)?.animation).toBe('default');
+      expect(optionsOf('AccountForm', { accountId: 'account-1' })?.animation).toBe('default');
+      expect(optionsOf('HoldingForm', { accountId: 'account-1' })?.animation).toBe('default');
+    });
+
+    it('swaps in the holding form with no animation', () => {
+      expect(optionsOf('HoldingForm', { implicitKind: 'property', draft })?.animation).toBe('none');
+    });
+
+    it('swaps back to the account form with no animation', () => {
+      expect(optionsOf('AccountForm', { initialKind: 'bank', draft })?.animation).toBe('none');
+    });
+
+    // native-stack pops with the animation a screen carries, so the swap's
+    // 'none' is undone once the form has appeared, and only for a route that
+    // swapped in: any other route has nothing to undo.
+    describe('the transitionEnd listener', () => {
+      const transitionEndFor = (name: string, params: unknown): { setOptions: jest.Mock } => {
+        const listeners = screenElements().find((screen) => screen.props.name === name)?.props
+          .listeners;
+        const setOptions = jest.fn();
+
+        if (typeof listeners !== 'function') {
+          throw new Error(`${name} has no listeners function`);
+        }
+
+        listeners({ navigation: { setOptions }, route: { params } }).transitionEnd();
+
+        return { setOptions };
+      };
+
+      it.each(['AccountForm', 'HoldingForm'])(
+        'sets the default animation on a %s route that carries a draft',
+        (name) => {
+          const { setOptions } = transitionEndFor(name, { draft });
+
+          expect(setOptions).toHaveBeenCalledTimes(1);
+          expect(setOptions).toHaveBeenCalledWith({ animation: 'default' });
+        },
+      );
+
+      it.each([
+        ['no params', undefined],
+        ['empty params', {}],
+        ['an account id', { accountId: 'account-1' }],
+        ['an undefined draft', { draft: undefined }],
+      ])('leaves a route with %s alone', (_label, params) => {
+        expect(transitionEndFor('AccountForm', params).setOptions).not.toHaveBeenCalled();
+        expect(transitionEndFor('HoldingForm', params).setOptions).not.toHaveBeenCalled();
+      });
+    });
+
+    it('keeps the static titles on the swapped routes', () => {
+      expect(optionsOf('AccountForm', { initialKind: 'bank', draft })?.title).toBe('Add Account');
+      expect(optionsOf('HoldingForm', { implicitKind: 'debt', draft })?.title).toBe('Add Account');
+      expect(optionsOf('HoldingForm', { accountId: 'account-1' })?.title).toBe('Add Holding');
+    });
   });
 
   it('leaves the detail screens without a static title (they set it dynamically)', () => {

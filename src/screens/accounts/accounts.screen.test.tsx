@@ -8,6 +8,8 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import {
+  CLOSE_ACTION_TEST_ID,
+  DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
@@ -64,6 +66,9 @@ jest.mock('@react-navigation/native', () => ({
 const mockUseLiveQuery = jest.fn();
 const mockAccountRemove = jest.fn();
 const mockAccountReorder = jest.fn();
+const mockHoldingRemove = jest.fn();
+const mockHoldingReorder = jest.fn();
+const mockHoldingCloseMany = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
 const mockSyncReminders = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('@kiko/db/use-live-query', () => ({
@@ -83,6 +88,9 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    remove: (...args: unknown[]) => mockHoldingRemove(...args),
+    reorder: (...args: unknown[]) => mockHoldingReorder(...args),
+    closeMany: (...args: unknown[]) => mockHoldingCloseMany(...args),
     balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
       currency: row.currency,
       minorUnits: row.balanceMinorUnits,
@@ -106,6 +114,10 @@ type Account = {
   color?: string | null;
 };
 type Holding = {
+  id?: string;
+  name?: string;
+  icon?: string | null;
+  color?: string | null;
   accountId: string;
   currency: string;
   balanceMinorUnits: number;
@@ -614,13 +626,20 @@ describe('AccountsScreen', () => {
     // outstanding balance is deterministically the FULL principal — the
     // loan's own held value (`holding-value.ts`) is exactly `-principal`,
     // never a computed partial payoff this test would have to reproduce.
+    // THE implicit debt account: its stored name is only the sentinel, and
+    // the section lists its loans one card each, never the account itself.
     const debtAccount = (over: Partial<Account> = {}): Account => ({
       id: 'd',
-      name: 'Mortgage',
+      name: 'Loans',
       kind: 'debt',
+      archivedAt: null,
       ...over,
     });
     const loanHolding = (over: Partial<Holding> = {}): Holding => ({
+      id: 'l1',
+      name: 'Mortgage',
+      icon: null,
+      color: null,
       accountId: 'd',
       currency: 'UAH',
       balanceMinorUnits: 0,
@@ -641,27 +660,36 @@ describe('AccountsScreen', () => {
       expect(queryByText('Debts')).toBeNull();
     });
 
-    it('renders a Debts section with the debt account, its total negative', async () => {
+    it('renders a Debts section with one holding card per open loan, its total negative', async () => {
       setLiveData({
         accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, debtAccount()],
-        holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 }, loanHolding()],
+        holdings: [
+          { accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 },
+          loanHolding(),
+          loanHolding({ id: 'l2', name: 'Car loan' }),
+          loanHolding({ id: 'l3', name: 'Paid off', closedAt: 1_700_000_000_000 }),
+        ],
       });
 
-      const { getByText, getAllByText } = await renderAccounts();
+      const { getByText, queryByText, getAllByTestId } = await renderAccounts();
 
       expect(getByText('Debts')).toBeTruthy();
       expect(getByText('Mortgage')).toBeTruthy();
-      // The card's own negative balance AND the section total (one debt
-      // account -> the same figure) both read -5,000.00 ₴.
-      expect(getAllByText(/-5,000\.00 ₴/).length).toBe(2);
+      expect(getByText('Car loan')).toBeTruthy();
+      // The closed loan is excluded, and the implicit account itself never
+      // renders as a card: one account card (Monobank), two loan cards.
+      expect(queryByText('Paid off')).toBeNull();
+      expect(queryByText('Loans')).toBeNull();
+      expect(getAllByTestId('holding-card')).toHaveLength(2);
+      expect(getAllByTestId('account-card')).toHaveLength(1);
     });
 
     // The Debts section shows a SECTION total
     // (negative), not only each card's own negative balance.
-    it('shows a Debts section total next to the heading, summing every debt account', async () => {
+    it('shows a Debts section total next to the heading, summing every open loan', async () => {
       setLiveData({
-        accounts: [debtAccount(), debtAccount({ id: 'e', name: 'Car loan' })],
-        holdings: [loanHolding(), loanHolding({ accountId: 'e' })],
+        accounts: [debtAccount()],
+        holdings: [loanHolding(), loanHolding({ id: 'l2', name: 'Car loan' })],
       });
 
       const { getByTestId } = await renderAccounts();
@@ -671,15 +699,14 @@ describe('AccountsScreen', () => {
       expect(within(getByTestId('accounts-debts-total')).getByText(/-10,000\.00 ₴/)).toBeTruthy();
     });
 
-    it('keeps the debt account out of the main grid, in its own section grid', async () => {
+    it('keeps the loans out of the main grid, in their own section grid', async () => {
       setLiveData({
         accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, debtAccount()],
         holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 }, loanHolding()],
       });
 
-      const { getByTestId, getAllByTestId } = await renderAccounts();
+      const { getByTestId } = await renderAccounts();
 
-      expect(getAllByTestId('account-card')).toHaveLength(2);
       // Both grids default to the mocked `sortable-grid` testID (there is no
       // typed way to override it — `Sortable.Grid`'s props carry no `testID`),
       // so each grid is scoped by its own wrapping Box instead.
@@ -689,20 +716,25 @@ describe('AccountsScreen', () => {
       expect(within(debtsGrid).getByText('Mortgage')).toBeTruthy();
     });
 
-    // A Debts-section drag must persist the FULL account
-    // order (main accounts first, then the debts section), never just its
-    // own section's ids starting back at 0 — otherwise every OTHER screen
-    // that lists all accounts (Statistics' account filter, the
-    // transaction-form account rank, Home, statement import) interleaves the
-    // two sections instead of keeping assets first, then debts.
-    it('persists the FULL account order (main accounts first, then debts) when the Debts grid is reordered', async () => {
+    it('opens the holding detail, never an account detail, when a loan card is tapped', async () => {
+      setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] });
+
+      const { getByText } = await renderAccounts();
+      await fireEvent.press(getByText('Mortgage'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+        holdingId: 'l1',
+        name: 'Mortgage',
+      });
+      expect(navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
+    });
+
+    // A Debts-grid drag persists the implicit debt account's open loans only,
+    // the same contract the account-detail grid has.
+    it("persists the section's own holding order when the Debts grid is reordered", async () => {
       setLiveData({
-        accounts: [
-          { id: 'a', name: 'Monobank', kind: 'bank' },
-          debtAccount(),
-          debtAccount({ id: 'e', name: 'Car loan' }),
-        ],
-        holdings: [loanHolding(), loanHolding({ accountId: 'e' })],
+        accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, debtAccount()],
+        holdings: [loanHolding(), loanHolding({ id: 'l2', name: 'Car loan' })],
       });
 
       const { getByTestId } = await renderAccounts();
@@ -710,21 +742,167 @@ describe('AccountsScreen', () => {
 
       await act(async () => {
         debtsGrid.props.onDragEnd({
-          key: 'e',
+          key: 'l2',
           fromIndex: 1,
           toIndex: 0,
-          indexToKey: ['e', 'd'],
+          indexToKey: ['l2', 'l1'],
         });
       });
 
-      expect(mockAccountReorder).toHaveBeenCalledWith(['a', 'e', 'd']);
+      expect(mockHoldingReorder).toHaveBeenCalledWith(['l2', 'l1']);
+      expect(mockAccountReorder).not.toHaveBeenCalled();
     });
 
-    it('persists the FULL account order (main accounts, then debts unchanged) when the main grid is reordered', async () => {
+    it('persists nothing when a loan card is held in place', async () => {
+      setLiveData({
+        accounts: [debtAccount()],
+        holdings: [loanHolding(), loanHolding({ id: 'l2', name: 'Car loan' })],
+      });
+
+      const { getByTestId } = await renderAccounts();
+      const debtsGrid = within(getByTestId('accounts-debts-grid')).getByTestId('sortable-grid');
+
+      await act(async () => {
+        debtsGrid.props.onDragEnd({
+          key: 'l1',
+          fromIndex: 0,
+          toIndex: 0,
+          indexToKey: ['l1', 'l2'],
+        });
+      });
+
+      expect(mockHoldingReorder).not.toHaveBeenCalled();
+    });
+
+    it('keeps the grid tuning of the main grid on the Debts grid', async () => {
+      setLiveData({
+        accounts: [debtAccount()],
+        holdings: [loanHolding(), loanHolding({ id: 'l2', name: 'Car loan' })],
+      });
+
+      const { getByTestId } = await renderAccounts();
+      const { props } = within(getByTestId('accounts-debts-grid')).getByTestId('sortable-grid');
+
+      expect(props.activeItemScale).toBe(1.03);
+      expect(props.autoScrollActivationOffset).toBe(75);
+      expect(props.overDrag).toBe('vertical');
+      expect(props.columns).toBe(1);
+      expect(props.scrollableRef).toBeDefined();
+    });
+
+    const debtsGridSortEnabled = async (): Promise<unknown> => {
+      const { getByTestId } = await renderAccounts();
+
+      return within(getByTestId('accounts-debts-grid')).getByTestId('sortable-grid').props
+        .sortEnabled;
+    };
+
+    it('disables the sort with one loan', async () => {
+      setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] });
+
+      expect(await debtsGridSortEnabled()).toBe(false);
+    });
+
+    it('disables the sort while the holdings are still the cached read', async () => {
+      setLiveData({
+        accounts: [debtAccount()],
+        holdings: [loanHolding(), loanHolding({ id: 'l2', name: 'Car loan' })],
+        isStale: { holdings: true },
+      });
+
+      expect(await debtsGridSortEnabled()).toBe(false);
+    });
+
+    it('enables the sort with two loans once the holdings have their own fresh read', async () => {
+      setLiveData({
+        accounts: [debtAccount()],
+        holdings: [loanHolding(), loanHolding({ id: 'l2', name: 'Car loan' })],
+      });
+
+      expect(await debtsGridSortEnabled()).toBe(true);
+    });
+
+    // A hold on a loan card opens the shared action list: Close loan and Delete.
+    describe('the long-press menu of a loan', () => {
+      const holdCard = async (): Promise<void> => {
+        await act(async () => {
+          fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+            { state: State.BEGAN },
+            { state: State.ACTIVE },
+            { state: State.END },
+          ]);
+        });
+      };
+
+      it('offers Close loan and Delete, and Delete removes that holding', async () => {
+        setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] });
+        const { getByTestId, getByText } = await renderAccounts();
+
+        await holdCard();
+
+        expect(getByTestId(CLOSE_ACTION_TEST_ID)).toHaveTextContent('Close loan');
+        await act(async () => {
+          await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+        });
+        expect(getByText('Delete "Mortgage"')).toBeTruthy();
+        await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+        expect(mockHoldingRemove).toHaveBeenCalledWith('l1');
+        expect(mockAccountRemove).not.toHaveBeenCalled();
+      });
+
+      // The Debts section owns its own close sheet: Close loan opens it, and
+      // its confirm closes that holding (not a property one).
+      it('closes the loan through the Debts close sheet', async () => {
+        setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] });
+        const { getByTestId, getByText } = await renderAccounts();
+
+        await holdCard();
+        await act(async () => {
+          await fireEvent.press(getByTestId(CLOSE_ACTION_TEST_ID));
+        });
+        expect(getByText('Close Loan "Mortgage"')).toBeTruthy();
+        await act(async () => {
+          await fireEvent.press(getByTestId('close-holding-confirm'));
+        });
+
+        expect(mockHoldingCloseMany).toHaveBeenCalledWith(['l1']);
+      });
+    });
+
+    // A closed loan is out of the section, so a debt account whose loans are
+    // all closed leaves nothing to list.
+    it('renders no Debts section when every loan is closed', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, debtAccount()],
+        holdings: [loanHolding({ closedAt: 1_700_000_000_000 })],
+      });
+
+      const { queryByText, queryByTestId } = await renderAccounts();
+
+      expect(queryByText('Debts')).toBeNull();
+      expect(queryByTestId('accounts-debts-grid')).toBeNull();
+    });
+
+    it('renders no Debts section for an archived debt account', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, debtAccount({ archivedAt: 123 })],
+        holdings: [loanHolding()],
+      });
+
+      const { queryByText, queryByTestId } = await renderAccounts();
+
+      expect(queryByText('Debts')).toBeNull();
+      expect(queryByText('Mortgage')).toBeNull();
+      expect(queryByTestId('holding-card')).toBeNull();
+    });
+
+    it('persists the FULL account order (main accounts, then property, then debt) when the main grid is reordered', async () => {
       setLiveData({
         accounts: [
           { id: 'a', name: 'Monobank', kind: 'bank' },
           { id: 'c', name: 'Privat', kind: 'bank' },
+          { id: 'p', name: 'Properties', kind: 'property', archivedAt: null },
           debtAccount(),
         ],
         holdings: [loanHolding()],
@@ -742,7 +920,7 @@ describe('AccountsScreen', () => {
         });
       });
 
-      expect(mockAccountReorder).toHaveBeenCalledWith(['c', 'a', 'd']);
+      expect(mockAccountReorder).toHaveBeenCalledWith(['c', 'a', 'p', 'd']);
     });
 
     // `debtsTotal` used to depend on a bare `Date.now()` read fresh on every
@@ -815,11 +993,16 @@ describe('AccountsScreen', () => {
     // real priced instrument — 500_000 minor UAH -> 5,000.00 ₴.
     const propertyAccount = (over: Partial<Account> = {}): Account => ({
       id: 'p',
-      name: 'Apartment',
+      name: 'Properties',
       kind: 'property',
+      archivedAt: null,
       ...over,
     });
     const propertyHolding = (over: Partial<Holding> = {}): Holding => ({
+      id: 'h1',
+      name: 'Apartment',
+      icon: null,
+      color: null,
       accountId: 'p',
       currency: 'UAH',
       balanceMinorUnits: 0,
@@ -836,44 +1019,36 @@ describe('AccountsScreen', () => {
       expect(queryByText('Property')).toBeNull();
     });
 
-    it('renders a Property section with the property account and its own section total', async () => {
+    it('renders a Property section with one holding card per open property, and its own section total', async () => {
       setLiveData({
         accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, propertyAccount()],
         holdings: [
           { accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 },
           propertyHolding(),
+          propertyHolding({ id: 'h2', name: 'Garage' }),
+          propertyHolding({ id: 'h3', name: 'Sold flat', closedAt: 1_700_000_000_000 }),
         ],
       });
 
-      const { getByText, getAllByText } = await renderAccounts();
+      const { getByText, queryByText, getAllByTestId, getByTestId } = await renderAccounts();
 
-      // "Property" reads twice on purpose — the section heading AND the
-      // card's own kind caption (`forms.account.property`) share the exact
-      // same word, unlike "Debts"/"Debt".
-      expect(getAllByText('Property').length).toBe(2);
+      expect(getByText('Property')).toBeTruthy();
       expect(getByText('Apartment')).toBeTruthy();
-      // The card's own value AND the section total (one property account ->
-      // the same figure) both read 5,000.00 ₴.
-      expect(getAllByText(/5,000\.00 ₴/).length).toBe(2);
-    });
-
-    it('shows a Property section total next to the heading, summing every property account', async () => {
-      setLiveData({
-        accounts: [propertyAccount(), propertyAccount({ id: 'q', name: 'Car' })],
-        holdings: [propertyHolding(), propertyHolding({ accountId: 'q' })],
-      });
-
-      const { getByTestId } = await renderAccounts();
-
+      expect(getByText('Garage')).toBeTruthy();
+      expect(queryByText('Sold flat')).toBeNull();
+      expect(queryByText('Properties')).toBeNull();
+      expect(getAllByTestId('holding-card')).toHaveLength(2);
+      expect(getAllByTestId('account-card')).toHaveLength(1);
+      // Two open holdings at 5,000.00 each; the closed one does not count.
       expect(within(getByTestId('accounts-property-total')).getByText(/10,000\.00 ₴/)).toBeTruthy();
     });
 
-    it('keeps the property account out of the main and Debts grids, in its own section grid', async () => {
+    it('keeps the property holdings out of the main and Debts grids, in their own section grid', async () => {
       setLiveData({
         accounts: [
           { id: 'a', name: 'Monobank', kind: 'bank' },
           propertyAccount(),
-          { id: 'd', name: 'Mortgage', kind: 'debt' },
+          { id: 'd', name: 'Loans', kind: 'debt', archivedAt: null },
         ],
         holdings: [
           { accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 },
@@ -881,7 +1056,7 @@ describe('AccountsScreen', () => {
         ],
       });
 
-      const { getByTestId } = await renderAccounts();
+      const { getByTestId, queryByTestId } = await renderAccounts();
 
       const mainGrid = within(getByTestId('accounts-grid')).getByTestId('sortable-grid');
       expect(within(mainGrid).queryByText('Apartment')).toBeNull();
@@ -889,17 +1064,33 @@ describe('AccountsScreen', () => {
         'sortable-grid',
       );
       expect(within(propertyGrid).getByText('Apartment')).toBeTruthy();
+      // The debt account has no holding, so it has no section.
+      expect(queryByTestId('accounts-debts-grid')).toBeNull();
     });
 
-    it('persists the FULL account order (main, then property, then debts) when the Property grid is reordered', async () => {
+    it('opens the holding detail, never an account detail, when a property card is tapped', async () => {
+      setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] });
+
+      const { getByText } = await renderAccounts();
+      await fireEvent.press(getByText('Apartment'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+        holdingId: 'h1',
+        name: 'Apartment',
+      });
+      expect(navigation.navigate).not.toHaveBeenCalledWith('AccountDetail', expect.anything());
+    });
+
+    // A Property-grid drag persists the implicit property account's open
+    // holdings only; the accounts' own order is untouched.
+    it("persists the section's own holding order when the Property grid is reordered", async () => {
       setLiveData({
         accounts: [
           { id: 'a', name: 'Monobank', kind: 'bank' },
           propertyAccount(),
-          propertyAccount({ id: 'q', name: 'Car' }),
-          { id: 'd', name: 'Mortgage', kind: 'debt' },
+          { id: 'd', name: 'Loans', kind: 'debt', archivedAt: null },
         ],
-        holdings: [propertyHolding(), propertyHolding({ accountId: 'q' })],
+        holdings: [propertyHolding(), propertyHolding({ id: 'h2', name: 'Garage' })],
       });
 
       const { getByTestId } = await renderAccounts();
@@ -909,14 +1100,91 @@ describe('AccountsScreen', () => {
 
       await act(async () => {
         propertyGrid.props.onDragEnd({
-          key: 'q',
+          key: 'h2',
           fromIndex: 1,
           toIndex: 0,
-          indexToKey: ['q', 'p'],
+          indexToKey: ['h2', 'h1'],
         });
       });
 
-      expect(mockAccountReorder).toHaveBeenCalledWith(['a', 'q', 'p', 'd']);
+      expect(mockHoldingReorder).toHaveBeenCalledWith(['h2', 'h1']);
+      expect(mockAccountReorder).not.toHaveBeenCalled();
+    });
+
+    it('disables the sort with one property holding', async () => {
+      setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] });
+
+      const { getByTestId } = await renderAccounts();
+
+      expect(
+        within(getByTestId('accounts-property-grid')).getByTestId('sortable-grid').props
+          .sortEnabled,
+      ).toBe(false);
+    });
+
+    // The Property section owns its own close sheet, separate from the Debts
+    // one: each hook instance's sheet has to render, or Close opens nothing.
+    it('closes a property holding through the Property close sheet', async () => {
+      setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] });
+      const { getByTestId, getByText } = await renderAccounts();
+
+      await act(async () => {
+        fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+          { state: State.BEGAN },
+          { state: State.ACTIVE },
+          { state: State.END },
+        ]);
+      });
+      expect(getByTestId(CLOSE_ACTION_TEST_ID)).toHaveTextContent('Close holding');
+      await act(async () => {
+        await fireEvent.press(getByTestId(CLOSE_ACTION_TEST_ID));
+      });
+      expect(getByText('Close "Apartment"')).toBeTruthy();
+      await act(async () => {
+        await fireEvent.press(getByTestId('close-holding-confirm'));
+      });
+
+      expect(mockHoldingCloseMany).toHaveBeenCalledWith(['h1']);
+    });
+
+    // An implicit account whose last holding was deleted stays, so it must
+    // read as "nothing here", with no empty section heading.
+    it('shows the empty state, with no section heading, for an empty implicit account alone', async () => {
+      setLiveData({
+        accounts: [propertyAccount(), { id: 'd', name: 'Loans', kind: 'debt', archivedAt: null }],
+        holdings: [],
+      });
+
+      const { getByText, queryByText, queryByTestId } = await renderAccounts();
+
+      expect(getByText('No accounts yet')).toBeTruthy();
+      expect(queryByText('Property')).toBeNull();
+      expect(queryByText('Debts')).toBeNull();
+      expect(queryByTestId('accounts-property-grid')).toBeNull();
+    });
+
+    it('does not show the empty state once a property holding exists', async () => {
+      setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] });
+
+      const { queryByText } = await renderAccounts();
+
+      expect(queryByText('No accounts yet')).toBeNull();
+    });
+
+    // An archived property account's holdings show nowhere, and the empty
+    // state reads as if it were not there.
+    it('shows an archived property account’s holdings nowhere', async () => {
+      setLiveData({
+        accounts: [propertyAccount({ archivedAt: 123 })],
+        holdings: [propertyHolding()],
+      });
+
+      const { getByText, queryByText, queryByTestId } = await renderAccounts();
+
+      expect(queryByText('Apartment')).toBeNull();
+      expect(queryByText('Property')).toBeNull();
+      expect(queryByTestId('holding-card')).toBeNull();
+      expect(getByText('No accounts yet')).toBeTruthy();
     });
   });
 

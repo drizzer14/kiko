@@ -86,7 +86,6 @@ const renderScreen = () =>
       navigation={asNavigationProp<AccountRemindersProps['navigation']>(navigation)}
       route={asRouteProp<AccountRemindersProps['route']>('AccountReminders', {
         accountId: 'a-1',
-        name: 'Cash',
       })}
     />,
     { wrapper: GestureRootWrapper },

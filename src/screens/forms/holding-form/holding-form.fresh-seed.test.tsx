@@ -59,6 +59,9 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
         mockTables.accounts.filter((row) => row.id === accountId),
       ),
     listQuery: () => mockQuery('all accounts', [], () => mockTables.accounts),
+    createImplicitHolding: jest
+      .fn()
+      .mockResolvedValue({ accountId: 'implicit-account-id', holdingId: 'new-holding-id' }),
   },
 }));
 jest.mock('@kiko/prices/price-points-repo', () => ({

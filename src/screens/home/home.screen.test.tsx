@@ -22,7 +22,7 @@ jest.mock('@kiko/transactions/group-by-day', () => {
 
 import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -221,6 +221,8 @@ type Transaction = {
   category: string | null;
   accountId: string;
   accountName: string;
+  accountKind: string;
+  accountArchivedAt: number | null;
   holdingName: string;
   holdingType: string;
   exchangeCounterpartHoldingId: string | null;
@@ -339,6 +341,8 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
   category: 'food',
   accountId: 'a',
   accountName: 'Monobank',
+  accountKind: 'bank',
+  accountArchivedAt: null,
   holdingName: 'Card',
   // Default to a time-specific holding (a card), so an ordinary row keeps its
   // HH:MM stamp; a deposit/bond test overrides this to drop the time.
@@ -744,6 +748,108 @@ describe('HomeScreen', () => {
     expect(getByTestId('account-filter-menu-option-PrivatBank')).toBeTruthy();
     // ...while the archived account is excluded.
     expect(queryByTestId('account-filter-menu-option-Closed')).toBeNull();
+  });
+
+  // An implicit account's stored name is an English sentinel: the filter option
+  // and the row SHOW its localized kind, while the filter matches on the stored
+  // name, which does not change with the language.
+  describe('an implicit account under Ukrainian', () => {
+    const PROPERTIES: Account = {
+      id: 'p',
+      name: 'Properties',
+      kind: 'property',
+      archivedAt: null,
+    };
+    const flatRow = (overrides: Partial<Transaction> = {}): Transaction =>
+      transaction({
+        id: 't-flat',
+        accountId: 'p',
+        accountName: 'Properties',
+        accountKind: 'property',
+        description: 'Roof repair',
+        ...overrides,
+      });
+
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('lists it in the account filter under its localized name, keyed on the stored one', async () => {
+      seed({ accounts: [MONOBANK, PROPERTIES] });
+      const { getByTestId } = await renderHome();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId('account-filter-menu'));
+      });
+      const option = within(getByTestId('account-filter-menu-option-Properties'));
+
+      expect(option.getByText('Майно')).toBeTruthy();
+      expect(option.queryByText('Properties')).toBeNull();
+    });
+
+    it('selecting it by its localized name keeps that account’s rows and drops the others', async () => {
+      seed({
+        accounts: [MONOBANK, PROPERTIES],
+        transactions: [flatRow(), transaction({ id: 't-bank', description: 'Coffee' })],
+      });
+      const { getByText, queryByText, getByTestId } = await renderHome();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId('account-filter-menu'));
+      });
+      await act(async () => {
+        await fireEvent.press(getByText('Майно'));
+      });
+      await act(async () => {
+        await fireEvent.press(getByTestId('account-filter-menu-backdrop'));
+      });
+
+      expect(getByText('Roof repair')).toBeTruthy();
+      expect(queryByText('Coffee')).toBeNull();
+    });
+
+    it('keeps a selection made under English filtering the same rows after the language switches', async () => {
+      await i18n.changeLanguage('en');
+      seed({
+        accounts: [MONOBANK, PROPERTIES],
+        transactions: [flatRow(), transaction({ id: 't-bank', description: 'Coffee' })],
+      });
+      const { getByText, queryByText, getByTestId } = await renderHome();
+
+      await pressFilter(getByTestId, 'account-filter-menu', 'Properties');
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      expect(getByText('Roof repair')).toBeTruthy();
+      expect(queryByText('Coffee')).toBeNull();
+      expect(getByText(/^Майно · /)).toBeTruthy();
+    });
+
+    it('names it by its localized name on its rows', async () => {
+      seed({ accounts: [MONOBANK, PROPERTIES], transactions: [flatRow()] });
+      const { getByText } = await renderHome();
+
+      expect(getByText(/^Майно · /)).toBeTruthy();
+    });
+
+    it('keeps an archived property account’s stored name on its rows', async () => {
+      seed({
+        accounts: [MONOBANK, { ...PROPERTIES, archivedAt: 5 }],
+        transactions: [flatRow({ accountArchivedAt: 5 })],
+      });
+      const { getByText } = await renderHome();
+
+      expect(getByText(/^Properties · /)).toBeTruthy();
+    });
   });
 
   it('shows each account filter option with its stored icon, or its kind glyph, in its resolved color', async () => {

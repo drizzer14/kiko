@@ -251,6 +251,19 @@ project-level pointer to this section.
   `src/data-transfer/snapshot/restore-snapshot.ts`; tests
   `drizzle/migrations/0049-bank-accounts-other-bank.test.ts` and
   `src/data-transfer/snapshot/restore-bank-other.two-path.test.ts`.
+- **A uniqueness rule a merge must satisfy first is data merge, then
+  partial unique index, in ONE migration.** `0050_implicit_property_debt_accounts`
+  (its own header comment is the full statement of the merge rule) merges the
+  live property/debt accounts of a kind into the oldest, then creates the
+  partial unique index `accounts_implicit_kind` (declared in
+  `src/db/schema.ts`) LAST, so the index never meets a duplicate. The data
+  part is hand-authored above the generated index line; after
+  `drizzle-kit generate`, check the index kept its `WHERE`. The restore
+  mirror `withImplicitAccountsMerged`
+  (`src/data-transfer/snapshot/with-implicit-accounts-merged.ts`, called by
+  `restore-snapshot.ts`; see "Data transfer") is mandatory: without it
+  a `.kiko` with two property accounts fails on the index. Proven by
+  `drizzle/migrations/0050-implicit-property-debt-accounts.test.ts`.
 - **A flag whose work SQL cannot do follows the flag-plus-launch-step
   shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
   (`false`): re-costing a sale needs the BigInt decimal helpers, so the
@@ -271,6 +284,18 @@ This is non-negotiable: **every** insert, update, and delete —
 including a single-statement one — must be wrapped in
 `db.transaction()`. There is no exception for "it's just one
 statement."
+
+**A create writes everything the user typed in its own `write()`.** The
+icon (and color) are part of the create input: `holdingsRepo.create`,
+`accountsRepo.createImplicitHolding`, `accountsRepo.create`, and
+`accountsRepo.createCashAccount` insert them with the row. Never call
+`setIcon` after a create: if that second write fails, the form shows the
+save error with the row already stored, and the retry inserts it again.
+A one-write create that fails leaves no row, so the retry is the first
+attempt. `setIcon` on an EDIT is fine (it re-applies the same value on
+retry). Tests: `holdings.repo.create-icon.test.ts` and
+`accounts.repo.implicit-account.test.ts` (real SQLite, forced failure
+after the row insert).
 
 ## No full-table select inside a write
 
@@ -1897,6 +1922,26 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   of the shared id. Runs FIRST (before `withLegacyBalanceSetAtBackfilled` and
   every later backfill), feeding its own output into every step after it,
   since it is the one step that can add a NEW account row.
+- **A merge migration's restore mirror covers every row it re-points or
+  deletes, and a two-path test proves it on ONE seeded database.**
+  `withImplicitAccountsMerged` (`snapshot/with-implicit-accounts-merged.ts`)
+  applies migration 0050's steps to the snapshot: holdings, reminders, the
+  `reminderOfferDismissals` map, AND the `syncState` rows of a merged-away
+  account (its foreign key would fail the insert), so it takes all five
+  row arrays and returns the same references when nothing needs merging or
+  renaming. It runs right after `withBankAccountsOtherBank`, the order a
+  live device runs 0044, 0049, 0050, and its output feeds every later
+  step. It compares ids with `<` and `>`, never `localeCompare`, because
+  that matches SQLite's BINARY collation for ASCII and UUID ids, and a
+  `created_at` tie must pick the same kept account on both paths. The
+  returned `accountsRestored` counts the accounts inserted AFTER the merge.
+  `snapshot/restore-implicit-accounts.two-path.test.ts` seeds one pre-0050
+  database, runs the real 0050 SQL on it (path 1), exports it first with
+  `readDataSnapshot` and restores that into a fresh database (path 2),
+  then compares accounts, holdings, transactions, price points, sync state,
+  dismissal kinds (sorted) and reminders without `activeSince` and
+  `lastSnoozedAt`, which a restore restarts by design. The seed holds a
+  three-way tie whose ids differ by case, so a `localeCompare` fails it.
 - **A value that lives inside `holdings.metadata` needs NO restore
   mirror.** A property's dated ownership share (`metadata.ownership`,
   kiko-pricing "Ownership share") rides in the opaque JSON column: a
@@ -1927,8 +1972,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   reading the older versions (`READABLE_EXPORT_VERSIONS`). `envelope.test.ts`
   pins the version to the migration count at the last decision, so a new
   migration fails it until the version is bumped or the count is recorded
-  with the reason no bump is needed (a column riding inside an existing row
-  and derived on restore needs none).
+  with the reason no bump is needed: a column riding inside an existing row
+  and derived on restore needs none, and neither does an idempotent data
+  rewrite that the restore mirror re-applies to an older file (0049, 0050).
 
 ## Reminders (local notifications)
 
@@ -2062,8 +2108,7 @@ what a change must keep.
   `replanRestoredReminders()` instead (see "Backup/restore").
 - **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
   params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
-  (`src/screens/settings/account-reminders/`, params `{ accountId,
-  name }`) — `AccountReminders` is registered in the Accounts stack.
+  (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.
   `ReminderForm` is registered in BOTH the Accounts and Settings
   stacks, so its props type is structural (`route.params:
   ReminderFormParams` plus the `goBack`/`setOptions` it reads), not
@@ -2205,7 +2250,25 @@ what a change must keep.
   `ledgerless: true` for the current ledgerless set), opens
   `TransactionForm { holdingId }` above `AccountDetail`, and otherwise
   `AccountDetail` only (a single ledgerless holding included);
-  the paused notice opens `AccountReminders` above `AccountDetail`. The
+  the paused notice opens `AccountReminders` above `AccountDetail`. An
+  IMPLICIT account (`isImplicitAccount`: a live property or debt account)
+  has no `AccountDetail` page, so `routeFor` returns no `accountDetail` for
+  it: an open response gives `{}` and opens the Accounts tab with the pages
+  it already shows kept (like a bank tap, which also keeps them; a reset
+  would discard an open form's draft), so it is the Accounts root only when
+  the tab is unmounted or at its root; the paused notice gives
+  `AccountReminders` (params `{ accountId }`) above those pages, and
+  `navigateNow` skips `withAccountOnTop`. Nothing builds an entry point to
+  create a reminder for an implicit account; a merged reminder that
+  survives stays in Settings > Reminders (pause, delete) and still routes
+  by this rule. One path still reaches the create form:
+  `eligibleReminderKinds` offers `add_transactions` for any account no sync
+  owns, property and debt included, so once the user deletes the reminder on
+  `AccountReminders` (which the paused-notice tap opens; the tap itself
+  deletes nothing), the page shows an unset
+  `add_transactions` row that opens `ReminderForm` in create mode.
+  A reminder NOTIFICATION never names its account (its title and body are
+  generic catalogue text), so the planner needs no display name. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
   Accounts stack: the routes it has now (or `Accounts` while the tab has
   not mounted), then the new ones. Two nested navigates back to back lose

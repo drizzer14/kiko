@@ -12,34 +12,45 @@ import { type ReminderKind, type ReminderSchedule, reminderKinds } from '@kiko/r
 // currency.ts so the persisted set can never drift from the app's supported
 // currencies — the same single-source-of-truth rule the rate layer follows.
 
-export const accounts = sqliteTable('accounts', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  kind: text('kind', {
-    enum: ['bank', 'cash', 'crypto', 'property', 'metals', 'debt', 'broker'],
-  }).notNull(),
-  institution: text('institution'),
-  // The catalog identity this account REPRESENTS, per kind: a `bankCatalog`
-  // id (`src/bank-sync/bank-catalog/`) for a `bank`, a `brokerCatalog` id
-  // (`src/brokers/`) for a `broker`. Independent of `institution`
-  // (which marks a LIVE sync connection). Set from the account-form's bank
-  // or broker picker, which a NEW bank or broker account must set. `other`
-  // (migration 0049 gave it to every bank account with no value) covers any
-  // bank not listed; an older broker, or any other kind, may still hold NULL.
-  // A value neither catalog lists (a bank since removed) is kept as stored:
-  // restore and the edit form leave it alone, and the pickers show no pick.
-  // Deliberately NEVER read by `isSyncedAccount`/`isSyncedHolding`
-  // (`src/holdings/deletable/`) or any registry lookup — those stay keyed
-  // on `institution` alone, so tagging an account `bankId: 'privatbank'`
-  // can never make it look connected. TS-only enum (no DB CHECK), matching
-  // every other free-text catalog-id column in this table.
-  bankId: text('bank_id'),
-  icon: text('icon'),
-  color: text('color'),
-  sortOrder: integer('sort_order').notNull().default(0),
-  archivedAt: integer('archived_at'),
-  createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
-});
+export const accounts = sqliteTable(
+  'accounts',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    kind: text('kind', {
+      enum: ['bank', 'cash', 'crypto', 'property', 'metals', 'debt', 'broker'],
+    }).notNull(),
+    institution: text('institution'),
+    // The catalog identity this account REPRESENTS, per kind: a `bankCatalog`
+    // id (`src/bank-sync/bank-catalog/`) for a `bank`, a `brokerCatalog` id
+    // (`src/brokers/`) for a `broker`. Independent of `institution`
+    // (which marks a LIVE sync connection). Set from the account-form's bank
+    // or broker picker, which a NEW bank or broker account must set. `other`
+    // (migration 0049 gave it to every bank account with no value) covers any
+    // bank not listed; an older broker, or any other kind, may still hold NULL.
+    // A value neither catalog lists (a bank since removed) is kept as stored:
+    // restore and the edit form leave it alone, and the pickers show no pick.
+    // Deliberately NEVER read by `isSyncedAccount`/`isSyncedHolding`
+    // (`src/holdings/deletable/`) or any registry lookup — those stay keyed
+    // on `institution` alone, so tagging an account `bankId: 'privatbank'`
+    // can never make it look connected. TS-only enum (no DB CHECK), matching
+    // every other free-text catalog-id column in this table.
+    bankId: text('bank_id'),
+    icon: text('icon'),
+    color: text('color'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    archivedAt: integer('archived_at'),
+    createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => ({
+    // At most one LIVE account per implicit kind (migration 0050 merged the
+    // existing ones; `isImplicitAccount`, `src/holdings/implicit-account/`, is
+    // the same predicate). An archived property/debt account is outside it.
+    implicitKindUnique: uniqueIndex('accounts_implicit_kind')
+      .on(table.kind)
+      .where(sql`${table.kind} IN ('property', 'debt') AND ${table.archivedAt} IS NULL`),
+  }),
+);
 
 export type AccountRow = typeof accounts.$inferSelect;
 

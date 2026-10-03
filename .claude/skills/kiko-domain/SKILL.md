@@ -112,6 +112,30 @@ hardcode a provider list — adding a new live-sync provider is one registry
 entry, not a change to either caller. The registry is intentionally
 `Partial`: a `BankProviderId` with no entry here is simply not yet
 implemented, and callers must skip it rather than assume every id resolves.
+
+  **Implicit accounts: at most one LIVE `property` account and one LIVE
+  `debt` account** (`archivedAt` NULL), enforced by the partial unique index
+  `accounts_implicit_kind` (migration `0050`, declared in `src/db/schema.ts`).
+  The unit is `src/holdings/implicit-account/`: `isImplicitAccountKind`,
+  `isImplicitAccount` (kind + live), and `accountDisplayName(account, t)`.
+  **A screen shows an implicit account's name through `accountDisplayName`
+  (i18n `accounts.implicitName.{property,debt}` by kind), never through the
+  stored `name`**: the stored `name` is only the fixed English sentinel
+  `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`), written by `0050`
+  and by every implicit create, and no code reads it back to detect an
+  implicit account (the kind decides). Their `icon` and `color` are NULL so
+  the kind defaults show. An ARCHIVED property/debt account is a plain account
+  outside the index, the merge, and `accountDisplayName`. **Create a property
+  or loan holding only through `accountsRepo.createImplicitHolding(kind, input)`**:
+  one `write()` that finds the live account of the kind (a SQL lookup with
+  `LIMIT 1`), inserts it when none exists (sentinel name, NULL icon/color,
+  `nextSortOrder`: a property account sorts before every debt account, a debt
+  account appends after every account), then inserts the holding through
+  `insertHoldingDatabaseTransaction`, so a rejected holding rolls the account
+  insert back. A type the kind does not hold (`holdingTypesForAccountKind[kind]`)
+  throws before any insert. `accountsRepo.create` throws for a property or debt kind. Read the unit and
+  `0050`'s header comment for the merge rule (oldest `created_at` kept) rather
+  than a copy here.
 - **Holding** — a balance-bearing thing under an account (a card, a
   jar, a term deposit, a crypto asset). `id`, `accountId` (FK),
   `name`, `type` (see `schema.ts`'s `holdings.type` enum), `currency`
@@ -120,8 +144,9 @@ implemented, and callers must skip it rather than assume every id resolves.
   deposit rate, maturity, Monobank account/jar id), `sortOrder`,
   `closedAt` (nullable), `createdAt`. A MANUAL holding the user sold or
   gave away is Closed, not deleted (the card context menu's `closeAction`
-  -> `CloseHoldingSheet` -> `holdingsRepo.closeMany`, under
-  `src/screens/account-detail/`); it keeps its lots, prices, and ledger.
+  -> `CloseHoldingSheet` -> `holdingsRepo.closeMany`; both live in
+  `src/design-system/components/close-holding-sheet/`, whose barrel exports
+  only `useCloseHoldingAction`); it keeps its lots, prices, and ledger.
   A synced holding gets no `closeAction` (`closeActionFor` returns
   undefined); every manual holding gets one, and there is no reopen. A
   loan is never called a holding there: `closeHoldingCopy(type)` picks
@@ -131,15 +156,18 @@ implemented, and callers must skip it rather than assume every id resolves.
   neutral (only Delete is red); the confirm button is red
   (`ConfirmSheet destructive`). The add flow of an account whose every
   holding type is a debt (`holdsOnlyDebts(kind)`, the same descriptor
-  `side`; today the `debt` kind) says loan too: the account detail
-  footer reads `accountDetail.addLoan` ("Add loan" / "Додати кредит"),
-  the holding form's create title `forms.holding.addLoanTitle`
-  ("Add Loan" / "Додати кредит"), and its edit title
-  `forms.holding.editLoanTitle` ("Edit Loan" / "Редагувати кредит").
-  Account detail and holding detail pass the flag in the HoldingForm
-  route (`debtAccount`), so the title is right on the first frame; the
-  form reads the account row only when the route has no flag (the
-  statement-import and column-mapping entry points).
+  `side`; today the `debt` kind) says loan too: the holding form's
+  create title `forms.holding.addLoanTitle` ("Add Loan" / "Додати
+  кредит") and its edit title `forms.holding.editLoanTitle` ("Edit Loan"
+  / "Редагувати кредит"). There is no "Add loan" footer
+  Holding detail passes the flag in
+  the HoldingForm route (`debtAccount`) on edit, so the title is right
+  on the first frame; the form reads the account row when the route has
+  no flag (account detail's Add holding, the statement-import and
+  column-mapping entry points). `forms.holding.addLoanTitle` is the title of an account-mode create
+  into a debt-only account (`headerTitle`, `holding-form.screen.tsx`). An
+  implicit create keeps the account form's `forms.account.addTitle`
+  ("Add Account") for both kinds (see "`property_item` / `metal` create-form sections").
   `holdsOnlyDebts(undefined)` is false: an account row still loading
   names a holding.
 - **Transaction** — a movement against a holding. `id`, `holdingId`
@@ -336,6 +364,58 @@ repairs pre-fix data — read it there rather than trusting a restated
 summary here.
 
 ## `property_item` / `metal` create-form sections
+
+**The implicit entry: the account form swaps screens, not fields.** A
+property or loan is never created as an account. In the account form's
+CREATE mode, picking Property or Debt calls
+`navigation.replace('HoldingForm', { implicitKind, draft })`
+(`swapToHoldingForm`, run from `AccountKindField`'s `onSelectClosed` after the sheet has closed; `handleSelectKind` returns early for implicit kinds; `account-form.screen.tsx`), where `draft` is the
+`FormDraft` (`{ name, icon, color }`, `src/navigation/types/`) typed so
+far: `icon` is the user's own pick only (the form's `iconIsDirty` flag,
+reset by every kind switch), null otherwise, so the holding form keeps
+following its own type default; `color` is null until picked. The
+`HoldingForm` route is `({ accountId } | { implicitKind, draft? }) & {
+holdingId?, debtAccount?, returnTo? }`, resolved by
+`holdingFormTarget` (`holding-form/holding-form-target/`, a
+`ts-pattern` match to `{ kind: 'account', accountId } | { kind:
+'implicit', implicitKind }`; `holdingFormDraft` reads the draft, empty
+when absent). In implicit mode the form: queries no account
+(`byIdQuery('')`); takes its offered types from
+`creatableHoldingTypesForAccount(implicitKind, false, undefined)` (its
+own call, with `implicitKind` as the account kind and no account row;
+`['property_item']` / `['loan']`), and starts `type` on the first of them;
+shows the shared `AccountKindField` (`src/screens/forms/account-kind-field/`,
+which resolves its own label, sheet title, kinds, texts and glyphs, so a
+form passes only `selected`, `onSelect`, `onSelectClosed` and `disabled`)
+in the account form's own slot, under the divider; keeps the title "Add
+Account" (the stack sets it statically for an `implicitKind` route too);
+seeds name, icon and color from the draft ONCE (`useState` initial
+values); and Save is `accountsRepo.createImplicitHolding(implicitKind, {
+name, type, currency, color, icon, ...active.createPayload() })` (one
+write: it finds or creates the implicit account and stores the icon with
+the holding, never in a second write), then `refreshMarketData`,
+`runLoanAutoLinkIfLoan`, and `goBack()`. Picking Bank, Cash, Crypto,
+Metals, or Broker there calls `navigation.replace('AccountForm', {
+initialKind, draft })`, which seeds the account form once (a carried icon
+counts as a pick); picking the other implicit kind calls
+`navigation.setParams({ implicitKind })`, and the type effect re-snaps
+the form in place. Both `replace` calls run from the field's
+`onSelectClosed` (`SelectField`'s optional prop: runs once, with the
+pick, after the sheet has FINISHED closing, via `BottomSheet`'s
+`onClosed`), never on the pick itself: replacing mid-close would unmount
+the screen that owns the sheet's Modal. `setParams` is immediate. `replace`, never `navigate`: Back from either form
+leaves to the Accounts root instead of landing on a stale sibling
+(`accounts.stack.swap.navigator.test.tsx` proves it on the real
+router, not a spy). `accounts.stack.tsx` gives a route that carries a
+`draft` `animation: 'none'`, so the swap reads as one form whose fields
+change. native-stack pops a screen with the animation it carries then
+(react-native-screens `RNSScreenStack` reads `fromVC.screenView.stackAnimation`), so
+the same option would make Back unanimated: both routes carry a
+`transitionEnd` listener that sets `animation: 'default'` once the swapped
+form has appeared (never a layout effect on mount: it can reach the native
+screen in the same mount batch and animate the swap), so Back (header button
+and edge swipe) animates like any other screen.
+`debtAccount` stays an EDIT-only route flag (holding detail passes it).
 
 A `property` account's Type field IS its category picker
 (`PropertyTypeField`, `src/screens/forms/holding-form/property/property-type-field/`):
@@ -1054,14 +1134,14 @@ SIGNED (net) sums of every holding, so the breakdown still adds up to
 the headline exactly as it always did — a debt nets into its own
 currency's cell there, unlike Statistics' assets-only pie. Accounts'
 own "Debts" section (`accounts.screen.tsx`) computes its OWN section
-total independently, via `guardedNetWorth` of just the debt-kind
-accounts' holdings (every debt-kind account holds only `loan`
-holdings, so this total is always <= 0); it does not call
-`buildDebtTotal`, which sums across every account kind. A
-property-kind account gets the SAME treatment: its own "Property"
-section, its own `guardedNetWorth`-summed section total over just the
-property-kind accounts' holdings, rendered between the main grid and
-the Debts section. Read `kiko-charts` for the pie/line-specific rules.
+total independently, via `guardedNetWorth` of the OPEN holdings of the
+implicit debt account (it holds only `loan` holdings, so this total is
+always <= 0; one card per loan); it does not call `buildDebtTotal`,
+which sums across every account kind. The implicit property account
+gets the SAME treatment: its own "Property" section (one card per open
+holding), its own `guardedNetWorth`-summed section total over that
+account's open holdings, rendered between the main grid and the Debts
+section. A section with no open holding does not render. Read `kiko-charts` for the pie/line-specific rules.
 
 ### Bond funding recognition (net-worth series only)
 
@@ -1852,8 +1932,8 @@ kind and its sole `loan` type. Glyphs differ: the `debt` kind keeps
 needs a 0032-style migration), while the `loan` type is
 `arrow.down.backward.circle.fill` (iOS 14), the mirror of a loan given's
 `arrow.up.forward.circle.fill` — a saved loan holding stores a null icon,
-so the new glyph needs no migration. A debt account's footer "Add loan"
-button leads with the loan glyph (kiko-design-system's footer mapping).
+so the new glyph needs no migration. There is no "Add loan" footer
+button any more (kiko-design-system's footer mapping).
 
 `LoanMeta` (`src/holdings/holding-metadata/holding-metadata.ts`):
 `kind` (`'mortgage' | 'car_loan' | 'consumer_loan' | 'personal'` —
@@ -2011,6 +2091,11 @@ automatic loan-payment matcher" subsection below for the matcher's own
 rules and every call site.
 
 ### Loan form + detail
+
+A loan is created through the implicit entry (see "`property_item` /
+`metal` create-form sections"): Debt in the account form swaps in this
+holding form with `implicitKind: 'debt'`, and Save creates the loan under
+the one implicit debt account.
 
 `src/screens/forms/holding-form/loan/loan-section/` (kind `SelectField`,
 principal, start date, schedule SegmentedControl, rate/term AND the

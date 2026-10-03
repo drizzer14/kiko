@@ -610,13 +610,21 @@ export const en = {
   },
   accounts: {
     addAccount: 'Add account',
-    // The accounts list's own "Debts" section heading, above the debt
-    // accounts' own drag-and-drop grid.
+    // The accounts list's own "Debts" section heading, above the grid of the
+    // implicit Loans account's open holdings (one card per loan).
     debtsSection: 'Debts',
     emptyState: 'No accounts yet',
     icon: '{{name}} icon',
-    // The accounts list's own "Property" section heading, above the
-    // property accounts' own drag-and-drop grid — mirrors `debtsSection`.
+    // The display name of THE implicit Property / Loans account
+    // (`accountDisplayName`, `src/holdings/implicit-account/`): at most one live
+    // account of each kind exists, so its stored name is only a sentinel and
+    // every screen shows this instead.
+    implicitName: {
+      debt: 'Loans',
+      property: 'Properties',
+    },
+    // The accounts list's own "Property" section heading, above the grid of
+    // the implicit Properties account's open holdings — mirrors `debtsSection`.
     propertySection: 'Property',
     title: 'Accounts',
   },
@@ -639,7 +647,6 @@ export const en = {
     // case): the same string reads correctly in only one of the two roles.
     addBankSheetTitle: 'Add a Bank',
     addHolding: 'Add holding',
-    addLoan: 'Add loan',
     addressLabel: 'Address',
     apiKeyLabel: 'API key',
     apiKeyRequiredError: 'Enter the API key.',

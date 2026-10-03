@@ -1,6 +1,8 @@
+import type { AccountRow } from '@kiko/db';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
+import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
 /**
  * Per-tab native-stack param lists. Each tab owns its own stack, so screens
@@ -37,6 +39,14 @@ export type TransactionFormParams =
  */
 export type ReminderFormParams = { reminderId: string } | { accountId: string; kind: ReminderKind };
 
+/**
+ * The identity the account form and the implicit holding form carry across the
+ * screen swap, so what the user typed before picking a kind survives it. `icon`
+ * and `color` are null until the user picked one, so an untouched one keeps
+ * following the destination's own default.
+ */
+export type FormDraft = { name: string; icon: string | null; color: string | null };
+
 export type HomeStackParamList = {
   Home: undefined;
   TransactionForm: TransactionFormParams;
@@ -67,7 +77,15 @@ export type AccountsStackParamList = {
   // update path; absent, the form creates. HoldingForm always carries the owning
   // `accountId` (its kind constrains the offered holding types) whether creating
   // a new holding or editing an existing one.
-  AccountForm: { accountId?: string };
+  // A create form swaps for the holding form when Property or Loan is picked
+  // (see `HoldingForm`'s `implicitKind`), and the holding form swaps back when
+  // any other kind is picked: `initialKind` and `draft` carry the swap, seeding
+  // the form once on mount.
+  AccountForm: {
+    accountId?: string;
+    initialKind?: Exclude<AccountRow['kind'], ImplicitAccountKind>;
+    draft?: FormDraft;
+  };
   // `returnTo` is the CREATE-only return channel for a "Create new holding"
   // launched from the statement-import preview or Map Columns: the caller's
   // OWN full route params (so a re-`popTo` never needs to reconstruct
@@ -84,11 +102,16 @@ export type AccountsStackParamList = {
   // back no id at all. Absent for every other HoldingForm entry point
   // (account-detail's "Add holding", holding-detail's "Edit"), which keep
   // the plain `goBack()`.
-  HoldingForm: {
-    accountId: string;
+  // `implicitKind` (instead of `accountId`) opens the form in implicit create
+  // mode: the one property or debt account is found or created on Save, and
+  // `draft` seeds the identity the account form carried over.
+  HoldingForm: (
+    | { accountId: string }
+    | { implicitKind: ImplicitAccountKind; draft?: FormDraft }
+  ) & {
     holdingId?: string;
-    // Whether the account holds only debts, so the title reads "Loan" on the
-    // first frame; the form reads the account itself when this is absent.
+    // Edit only: whether the account holds only debts, so the title reads "Loan"
+    // on the first frame; the form reads the account itself when this is absent.
     debtAccount?: boolean;
     returnTo?:
       | { screen: 'StatementImport'; params: AccountsStackParamList['StatementImport'] }
@@ -118,9 +141,8 @@ export type AccountsStackParamList = {
   // repo re-reads the list inside its write rather than trusting a row.
   OwnershipChangeForm: { holdingId: string; day: number };
   // The account's own reminders page, reached from the bell in the account
-  // detail header. `name` is the account's name at navigation time, like
-  // AccountDetail's.
-  AccountReminders: { accountId: string; name: string };
+  // detail header.
+  AccountReminders: { accountId: string };
   ReminderForm: ReminderFormParams;
   // The shared statement-import preview + target-holding screen, reached
   // from the in-app document-picker entry point (`account-detail.screen.tsx`'s

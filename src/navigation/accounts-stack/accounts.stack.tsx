@@ -21,6 +21,32 @@ import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 
 const Stack = createNativeStackNavigator<AccountsStackParamList>();
 
+// A route swapped in from the other form carries a `draft`.
+const carriesDraft = (params: object | undefined): boolean =>
+  params !== undefined && 'draft' in params && params.draft !== undefined;
+
+// A swapped-in form mounts with `animation: 'none'` so the swap is instant.
+// native-stack pops a screen with the animation it carries at that moment, so
+// the 'none' would also make Back from it instant. Once the form has appeared,
+// which the native stack reports with `transitionEnd` whatever the animation
+// was, its animation goes back to the default (every later `transitionEnd`
+// sets it again, which changes nothing). A layout effect on mount is too
+// early: it can reach the native screen in the same mount batch and animate
+// the swap.
+const restoreDefaultAnimationOfSwappedForm = ({
+  navigation,
+  route,
+}: {
+  navigation: { setOptions: (options: { animation: 'default' }) => void };
+  route: { params?: object };
+}) => ({
+  transitionEnd: () => {
+    if (carriesDraft(route.params)) {
+      navigation.setOptions({ animation: 'default' });
+    }
+  },
+});
+
 /**
  * The Accounts tab's native stack. The list and form screens use a large title,
  * the standard iOS pattern. The tab root ("Accounts") and the form screens carry
@@ -55,16 +81,30 @@ const AccountsStack: FC = () => {
 
       <Stack.Screen name="HoldingDetail" component={HoldingDetailScreen} />
 
+      {/* The account form and the implicit holding form replace each other when
+          the kind changes, and a `draft` marks that swap: it has no animation, so
+          it reads as one form whose fields change rather than a screen transition. */}
       <Stack.Screen
         name="AccountForm"
         component={AccountFormScreen}
-        options={{ title: t('forms.account.addTitle') }}
+        listeners={restoreDefaultAnimationOfSwappedForm}
+        options={({ route }) => ({
+          title: t('forms.account.addTitle'),
+          animation: carriesDraft(route.params) ? 'none' : 'default',
+        })}
       />
 
       <Stack.Screen
         name="HoldingForm"
         component={HoldingFormScreen}
-        options={{ title: t('forms.holding.addTitle') }}
+        listeners={restoreDefaultAnimationOfSwappedForm}
+        options={({ route }) => ({
+          title:
+            'implicitKind' in route.params
+              ? t('forms.account.addTitle')
+              : t('forms.holding.addTitle'),
+          animation: carriesDraft(route.params) ? 'none' : 'default',
+        })}
       />
 
       <Stack.Screen

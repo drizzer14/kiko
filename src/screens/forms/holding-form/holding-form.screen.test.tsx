@@ -5,6 +5,7 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
+import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -170,6 +171,9 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     listQuery: () => ({ __kind: 'list', toSQL: () => ({ sql: '', params: [] }) }),
+    createImplicitHolding: jest
+      .fn()
+      .mockResolvedValue({ accountId: 'implicit-account-id', holdingId: 'new-holding-id' }),
   },
 }));
 // The first-add refresh trigger (a create's own follow-up, kiko-architecture):
@@ -202,6 +206,7 @@ const navigation = navigationSpy();
 const route = asRouteProp<HoldingFormProps['route']>('HoldingForm', { accountId: 'acc-1' });
 
 const createMock = holdingsRepo.create as jest.Mock;
+const createImplicitHoldingMock = accountsRepo.createImplicitHolding as jest.Mock;
 const setIconMock = holdingsRepo.setIcon as jest.Mock;
 const updateMock = holdingsRepo.update as jest.Mock;
 // An edit saves through `updateWithBalanceDelta`, which writes the patch AND the
@@ -2625,23 +2630,6 @@ describe('HoldingFormScreen loan', () => {
     expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Add Loan' });
   });
 
-  it('titles the create header "Add Loan" from its route before the account row loads', async () => {
-    mockAccountLoaded = false;
-    navigation.setOptions.mockClear();
-
-    await render(
-      <HoldingFormScreen
-        navigation={navigationProp(navigation)}
-        route={asRouteProp<HoldingFormProps['route']>('HoldingForm', {
-          accountId: 'acc-1',
-          debtAccount: true,
-        })}
-      />,
-    );
-
-    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Add Loan' });
-  });
-
   const carLoan = {
     id: 'h1',
     accountId: 'acc-1',
@@ -3355,7 +3343,7 @@ describe('HoldingFormScreen icon', () => {
     updateDeltaMock.mockClear();
   });
 
-  it('sets the picked icon on the new holding using the returned id', async () => {
+  it('hands the picked icon to create, in the same write as the row, with no second write', async () => {
     // A cash holding is valid with just a name (a bank create defaults to a term
     // deposit, which needs contributions), so it is the simplest create path.
     mockAccountKind = 'cash';
@@ -3366,9 +3354,37 @@ describe('HoldingFormScreen icon', () => {
     await fireEvent.press(screen.getByLabelText('Choose icon banknote'));
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(createMock).toHaveBeenCalled();
-    expect(setIconMock).toHaveBeenCalledWith('new-holding-id', 'banknote');
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ icon: 'banknote' }));
+    expect(setIconMock).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('a failed Save then a retry sends the whole create again and never a second icon write', async () => {
+    // The create is ONE write that rolls back whole (holdings.repo.create-icon
+    // test), so the failed attempt leaves no row and the retry makes exactly
+    // one. A separate icon write could fail after the row was committed, and
+    // the retry would then make a duplicate.
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    createMock.mockRejectedValueOnce(new Error('disk full'));
+    mockAccountKind = 'cash';
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My cash');
+    await fireEvent.press(screen.getByLabelText('Change Icon'));
+    await fireEvent.press(screen.getByLabelText('Choose icon banknote'));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(createMock).toHaveBeenCalledTimes(2);
+    expect(createMock).toHaveBeenLastCalledWith(expect.objectContaining({ icon: 'banknote' }));
+    expect(setIconMock).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    alertSpy.mockRestore();
   });
 
   it('hands a create-mode opening balance to create, the one path that seeds its ledger row', async () => {
@@ -3394,14 +3410,14 @@ describe('HoldingFormScreen icon', () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it('does not set an icon when none is picked', async () => {
+  it('creates with no icon when none is picked', async () => {
     mockAccountKind = 'cash';
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByText('Save'));
 
-    expect(createMock).toHaveBeenCalled();
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ icon: null }));
     expect(setIconMock).not.toHaveBeenCalled();
   });
 
@@ -4375,5 +4391,361 @@ describe('HoldingFormScreen name placeholder', () => {
 
     expect([...coveredTypes].sort()).toEqual([...holdingTypes].sort());
     expect(new Set(examples).size).toBe(holdingTypes.length);
+  });
+});
+
+describe('HoldingFormScreen implicit create', () => {
+  type Params = HoldingFormProps['route']['params'];
+
+  const routeFor = (params: Params) =>
+    asRouteProp<HoldingFormProps['route']>('HoldingForm', params);
+
+  const renderImplicit = (params: Params) =>
+    render(<HoldingFormScreen navigation={navigationProp(navigation)} route={routeFor(params)} />);
+
+  const pickKind = async (screen: Screen, kind: string): Promise<void> => {
+    await fireEvent.press(screen.getByTestId('account-kind-field'));
+    const sheet = screen.getByTestId('account-kind-field-sheet-modal');
+    await fireEvent.press(screen.getByTestId(`account-kind-field-option-${kind}`));
+    // The sheet's close animation ending, which is when a swap may navigate.
+    await act(async () => sheet.props.onDismiss());
+  };
+
+  beforeEach(() => {
+    // The implicit form queries no account (`byIdQuery('')` matches no row).
+    mockAccountLoaded = false;
+    createMock.mockClear();
+    setIconMock.mockClear();
+    createImplicitHoldingMock.mockClear();
+    navigation.goBack.mockClear();
+    navigation.replace.mockClear();
+    navigation.setParams.mockClear();
+    navigation.setOptions.mockClear();
+    mockRefreshMarketData.mockClear();
+    mockRefreshMarketData.mockResolvedValue(right(undefined));
+    mockRunLoanAutoLink.mockClear();
+    (scrollToField as jest.Mock).mockClear();
+  });
+
+  it.each(['property', 'debt'] as const)(
+    'titles the create header "Add Account" for %s, never "Add Loan"',
+    async (implicitKind) => {
+      await renderImplicit({ implicitKind });
+
+      expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Add Account' });
+      expect(navigation.setOptions).not.toHaveBeenCalledWith({ title: 'Add Loan' });
+      expect(navigation.setOptions).not.toHaveBeenCalledWith({ title: 'Add Holding' });
+    },
+  );
+
+  it('shows the property fields under the kind field, with no account or type pickers', async () => {
+    const screen = await renderImplicit({ implicitKind: 'property' });
+
+    expect(screen.getByTestId('account-kind-field')).toHaveTextContent('Property');
+    expect(screen.getByTestId('property-category-field')).toHaveTextContent('Real estate');
+    expect(screen.getByLabelText('Cost')).toBeTruthy();
+    expect(screen.queryByTestId('holding-type-field')).toBeNull();
+    expect(screen.queryByTestId('account-bank-type-field')).toBeNull();
+    expect(screen.queryByTestId('account-broker-type-field')).toBeNull();
+  });
+
+  it('shows the loan fields under the kind field, offering only the loan type', async () => {
+    const screen = await renderImplicit({ implicitKind: 'debt' });
+
+    expect(screen.getByTestId('account-kind-field')).toHaveTextContent('Debt');
+    expect(screen.getByLabelText('Principal')).toBeTruthy();
+
+    await openHoldingTypeSheet(screen);
+
+    expect(typeOptionIds(screen)).toEqual(['holding-type-field-option-loan']);
+  });
+
+  it('offers every account kind in the kind sheet, in the account form order', async () => {
+    const screen = await renderImplicit({ implicitKind: 'property' });
+
+    await fireEvent.press(screen.getByTestId('account-kind-field'));
+
+    const order = screen
+      .getAllByTestId(/^account-kind-field-option-[a-z]+$/)
+      .map((node) => String(node.props.testID).replace('account-kind-field-option-', ''));
+
+    expect(order).toEqual(['bank', 'cash', 'crypto', 'property', 'metals', 'debt', 'broker']);
+  });
+
+  it('offers the kind field in the active language', async () => {
+    await i18n.changeLanguage('uk');
+
+    try {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      expect(screen.getByTestId('account-kind-field')).toHaveTextContent('Майно');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  describe('Save', () => {
+    it('creates the property through the one implicit-account write, then goes back', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fill(screen, 'Name', 'Apartment');
+      await fill(screen, 'Cost', '5000');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createImplicitHoldingMock).toHaveBeenCalledTimes(1);
+      expect(createImplicitHoldingMock).toHaveBeenCalledWith(
+        'property',
+        expect.objectContaining({
+          name: 'Apartment',
+          type: 'property_item',
+          currency: 'UAH',
+          color: null,
+          metadata: {
+            category: 'real_estate',
+            lots: [{ day: expect.any(Number), quantityDelta: '1', costMinorUnits: 500_000 }],
+          },
+          firstPricePoint: { day: expect.any(Number), price: '5000.00' },
+        }),
+      );
+      expect(createImplicitHoldingMock.mock.calls[0][1]).not.toHaveProperty('accountId');
+      expect(createMock).not.toHaveBeenCalled();
+      expect(setIconMock).not.toHaveBeenCalled();
+      expect(mockRefreshMarketData).toHaveBeenCalledWith({ throttled: false, metals: true });
+      expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    });
+
+    it('creates the loan under the debt kind and runs the loan auto-link', async () => {
+      const screen = await renderImplicit({ implicitKind: 'debt' });
+
+      await fill(screen, 'Name', 'Car loan');
+      await fill(screen, 'Principal', '500000');
+      await pickDate(screen, 'Start date', 2026, 1, 1);
+      await fill(screen, 'Annual rate', '12');
+      await fill(screen, 'Term', '24');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createImplicitHoldingMock).toHaveBeenCalledTimes(1);
+      expect(createImplicitHoldingMock).toHaveBeenCalledWith(
+        'debt',
+        expect.objectContaining({ name: 'Car loan', type: 'loan' }),
+      );
+      expect(createMock).not.toHaveBeenCalled();
+      expect(mockRunLoanAutoLink).toHaveBeenCalledTimes(1);
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    });
+
+    it('hands the picked icon to the one implicit write, with no second write', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fill(screen, 'Name', 'Apartment');
+      await fill(screen, 'Cost', '5000');
+      await fireEvent.press(screen.getByLabelText('Change Icon'));
+      await fireEvent.press(screen.getByLabelText('Choose icon giftcard'));
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createImplicitHoldingMock).toHaveBeenCalledTimes(1);
+      expect(createImplicitHoldingMock).toHaveBeenCalledWith(
+        'property',
+        expect.objectContaining({ icon: 'giftcard' }),
+      );
+      expect(setIconMock).not.toHaveBeenCalled();
+    });
+
+    it('a failed Save then a retry sends the whole implicit create again and never a second icon write', async () => {
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      createImplicitHoldingMock.mockRejectedValueOnce(new Error('disk full'));
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fill(screen, 'Name', 'Apartment');
+      await fill(screen, 'Cost', '5000');
+      await fireEvent.press(screen.getByLabelText('Change Icon'));
+      await fireEvent.press(screen.getByLabelText('Choose icon giftcard'));
+      await fireEvent.press(screen.getByText('Save'));
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createImplicitHoldingMock).toHaveBeenCalledTimes(2);
+      expect(createImplicitHoldingMock).toHaveBeenLastCalledWith(
+        'property',
+        expect.objectContaining({ icon: 'giftcard' }),
+      );
+      expect(setIconMock).not.toHaveBeenCalled();
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+      alertSpy.mockRestore();
+    });
+
+    it('blocks a nameless Save, scrolling to the name', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createImplicitHoldingMock).not.toHaveBeenCalled();
+      expect(scrollToField).toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('keeps the form open and says so when the write fails', async () => {
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      createImplicitHoldingMock.mockRejectedValueOnce(new Error('disk full'));
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fill(screen, 'Name', 'Apartment');
+      await fill(screen, 'Cost', '5000');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(navigation.goBack).not.toHaveBeenCalled();
+      expect(mockRefreshMarketData).not.toHaveBeenCalled();
+      expect(setIconMock).not.toHaveBeenCalled();
+      alertSpy.mockRestore();
+    });
+  });
+
+  describe('the identity carried from the account form', () => {
+    const draft = { name: 'Flat', icon: 'giftcard', color: entityColors.violet };
+
+    it('seeds the name, icon and color', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property', draft });
+
+      expect(screen.getByLabelText('Name').props.value).toBe('Flat');
+      expect(screen.getByLabelText('Icon giftcard')).toBeTruthy();
+      expect(screen.getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+    });
+
+    it('saves the seeded identity', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property', draft });
+
+      await fill(screen, 'Cost', '5000');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createImplicitHoldingMock).toHaveBeenCalledWith(
+        'property',
+        expect.objectContaining({ name: 'Flat', color: entityColors.violet, icon: 'giftcard' }),
+      );
+      expect(setIconMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps the type default icon and color when the draft carries none', async () => {
+      const screen = await renderImplicit({
+        implicitKind: 'property',
+        draft: { name: 'Flat', icon: null, color: null },
+      });
+
+      expect(screen.getByLabelText('Icon house.fill')).toBeTruthy();
+
+      await fill(screen, 'Cost', '5000');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createImplicitHoldingMock).toHaveBeenCalledWith(
+        'property',
+        expect.objectContaining({ name: 'Flat', color: null, icon: null }),
+      );
+      expect(setIconMock).not.toHaveBeenCalled();
+    });
+
+    it('seeds once: a later param change keeps what the user typed', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property', draft });
+
+      await fill(screen, 'Name', 'My own flat');
+      await screen.rerender(
+        <HoldingFormScreen
+          navigation={navigationProp(navigation)}
+          route={routeFor({ implicitKind: 'debt', draft })}
+        />,
+      );
+
+      expect(screen.getByLabelText('Name').props.value).toBe('My own flat');
+    });
+  });
+
+  describe('switching the kind', () => {
+    it('replaces the screen with the account form on a kind that creates an account', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fill(screen, 'Name', 'Flat');
+      await pickKind(screen, 'bank');
+
+      expect(navigation.replace).toHaveBeenCalledTimes(1);
+      expect(navigation.replace).toHaveBeenCalledWith('AccountForm', {
+        initialKind: 'bank',
+        draft: { name: 'Flat', icon: null, color: null },
+      });
+      expect(navigation.setParams).not.toHaveBeenCalled();
+    });
+
+    it('waits for the kind sheet to finish closing before replacing the screen', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fireEvent.press(screen.getByTestId('account-kind-field'));
+      const sheet = screen.getByTestId('account-kind-field-sheet-modal');
+      await fireEvent.press(screen.getByTestId('account-kind-field-option-bank'));
+
+      // Replacing now would unmount the screen that owns the sheet mid-close.
+      expect(navigation.replace).not.toHaveBeenCalled();
+
+      await act(async () => sheet.props.onDismiss());
+
+      expect(navigation.replace).toHaveBeenCalledTimes(1);
+    });
+
+    it('carries the icon and color the user picked back to the account form', async () => {
+      const screen = await renderImplicit({ implicitKind: 'debt' });
+
+      await fireEvent.press(screen.getByLabelText('Change Icon'));
+      await fireEvent.press(screen.getByLabelText('Choose icon giftcard'));
+      await fireEvent.press(screen.getByLabelText('Color violet'));
+      await pickKind(screen, 'cash');
+
+      expect(navigation.replace).toHaveBeenCalledWith('AccountForm', {
+        initialKind: 'cash',
+        draft: { name: '', icon: 'giftcard', color: entityColors.violet },
+      });
+    });
+
+    it('stays on this form for the other implicit kind, changing only its param', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await pickKind(screen, 'debt');
+
+      expect(navigation.setParams).toHaveBeenCalledTimes(1);
+      expect(navigation.setParams).toHaveBeenCalledWith({ implicitKind: 'debt' });
+      expect(navigation.replace).not.toHaveBeenCalled();
+    });
+
+    it('turns into the loan form when the kind param becomes debt', async () => {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await screen.rerender(
+        <HoldingFormScreen
+          navigation={navigationProp(navigation)}
+          route={routeFor({ implicitKind: 'debt' })}
+        />,
+      );
+
+      expect(screen.getByTestId('account-kind-field')).toHaveTextContent('Debt');
+      expect(screen.getByLabelText('Principal')).toBeTruthy();
+      expect(screen.queryByTestId('property-category-field')).toBeNull();
+
+      await fill(screen, 'Name', 'Car loan');
+      await fill(screen, 'Principal', '500000');
+      await pickDate(screen, 'Start date', 2026, 1, 1);
+      await fill(screen, 'Annual rate', '12');
+      await fill(screen, 'Term', '24');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createImplicitHoldingMock).toHaveBeenCalledWith(
+        'debt',
+        expect.objectContaining({ type: 'loan' }),
+      );
+    });
+  });
+
+  it('leaves the account-mode form without a kind field', async () => {
+    mockAccountLoaded = true;
+    mockAccountKind = 'bank';
+
+    const screen = await renderScreen();
+
+    expect(screen.queryByTestId('account-kind-field')).toBeNull();
   });
 });

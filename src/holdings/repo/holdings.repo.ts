@@ -56,13 +56,13 @@ const nextSortOrder = async (
 };
 
 type NewHoldingBase = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency'> &
-  Partial<Pick<HoldingRow, 'metadata' | 'sortOrder' | 'color'>>;
+  Partial<Pick<HoldingRow, 'metadata' | 'sortOrder' | 'color' | 'icon'>>;
 
 // `holdingsRepo.create`'s own input: the identity fields above, plus an
 // OPTIONAL opening balance as `Money` (kiko-domain "Money at the boundary")
 // — converted to minor units, and currency-checked against `currency`,
 // inside the write itself, never by the caller.
-type NewHolding = NewHoldingBase & {
+export type NewHolding = NewHoldingBase & {
   openingBalance?: Money;
   // A priced holding's (property_item) first manual price point,
   // written on the holding's own `holding:<id>` instrument in the SAME
@@ -328,6 +328,64 @@ const rewriteOwnership = (holdingId: string, rewrite: OwnershipRewrite) =>
 export const syncedBalanceUpdateWhere = (holdingId: string, minorUnits: number) =>
   and(eq(holdings.id, holdingId), sql`${holdings.syncedBalanceMinorUnits} IS NOT ${minorUnits}`);
 
+// `holdingsRepo.create`'s body, exported so `accountsRepo.createImplicitHolding`
+// inserts the holding in the same write as the implicit account it may create:
+// a rejected holding then rolls that account insert back too.
+export const insertHoldingDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  { firstPricePoint, openingBalance, ...input }: NewHolding,
+): Promise<string> => {
+  if (openingBalance !== undefined && openingBalance.currency !== input.currency) {
+    throw new Error(
+      'holdingsRepo.create: opening balance currency does not match the holding currency',
+    );
+  }
+
+  if (!isCurrencyAllowedForHoldingType(input.type, input.currency)) {
+    throw new Error(`holdingsRepo.create: a ${input.type} holding cannot hold ${input.currency}`);
+  }
+
+  const holdingId = id();
+  const openingRowId = id();
+  const sortOrder = input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.accountId));
+  const openingBalanceMinorUnits = openingBalance?.minorUnits ?? 0;
+  const now = Date.now();
+
+  await databaseTransaction.insert(holdings).values({
+    id: holdingId,
+    ...input,
+    balanceMinorUnits: openingBalanceMinorUnits,
+    sortOrder,
+    balanceSetAt: openingBalanceMinorUnits !== 0 ? now : null,
+    balanceSetRowId: openingBalanceMinorUnits !== 0 ? openingRowId : null,
+  });
+
+  if (openingBalanceMinorUnits !== 0) {
+    await databaseTransaction.insert(transactions).values({
+      id: openingRowId,
+      holdingId,
+      amountMinorUnits: openingBalanceMinorUnits,
+      time: now,
+      description: '',
+      category: null,
+      source: 'manual',
+      setsBalance: true,
+    });
+  }
+
+  if (firstPricePoint) {
+    await databaseTransaction.insert(pricePoints).values({
+      instrument: holdingInstrument(holdingId),
+      day: firstPricePoint.day,
+      price: firstPricePoint.price,
+      currency: input.currency,
+      source: 'manual',
+    });
+  }
+
+  return holdingId;
+};
+
 export const holdingsRepo = {
   // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
   // with `createdAt` as a stable tiebreak so rows sharing a rank keep a
@@ -397,9 +455,10 @@ export const holdingsRepo = {
     Money.of(row.currency, row.balanceMinorUnits),
   /**
    * Insert a new holding and resolve to its generated app id (the text UUID),
-   * so a caller can immediately act on the new row (e.g. set its icon). The
-   * op-sqlite insert result (rowsAffected/lastInsertRowId) is the SQLite rowid,
-   * not this id, so it is not returned. A new holding appends to the end of its
+   * so a caller can act on the new row. The icon and color are part of the
+   * input and go in this same write, never in a second one. The op-sqlite
+   * insert result (rowsAffected/lastInsertRowId) is the SQLite rowid, not this
+   * id, so it is not returned. A new holding appends to the end of its
    * account's grid via `sortOrder = max + 1` unless an explicit order is given.
    *
    * A non-zero opening balance additionally seeds its own `manual` transaction
@@ -424,70 +483,17 @@ export const holdingsRepo = {
    * hand-set balance, whichever create path writes it. Its row carries
    * `transactions.setsBalance` and is the holding's `balanceSetRowId`.
    */
-  create: ({ firstPricePoint, openingBalance, ...input }: NewHolding): Promise<string> =>
-    write(async (databaseTransaction) => {
-      if (openingBalance !== undefined && openingBalance.currency !== input.currency) {
-        throw new Error(
-          'holdingsRepo.create: opening balance currency does not match the holding currency',
-        );
-      }
-
-      if (!isCurrencyAllowedForHoldingType(input.type, input.currency)) {
-        throw new Error(
-          `holdingsRepo.create: a ${input.type} holding cannot hold ${input.currency}`,
-        );
-      }
-
-      const holdingId = id();
-      const openingRowId = id();
-      const sortOrder =
-        input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.accountId));
-      const openingBalanceMinorUnits = openingBalance?.minorUnits ?? 0;
-      const now = Date.now();
-
-      await databaseTransaction.insert(holdings).values({
-        id: holdingId,
-        ...input,
-        balanceMinorUnits: openingBalanceMinorUnits,
-        sortOrder,
-        balanceSetAt: openingBalanceMinorUnits !== 0 ? now : null,
-        balanceSetRowId: openingBalanceMinorUnits !== 0 ? openingRowId : null,
-      });
-
-      if (openingBalanceMinorUnits !== 0) {
-        await databaseTransaction.insert(transactions).values({
-          id: openingRowId,
-          holdingId,
-          amountMinorUnits: openingBalanceMinorUnits,
-          time: now,
-          description: '',
-          category: null,
-          source: 'manual',
-          setsBalance: true,
-        });
-      }
-
-      if (firstPricePoint) {
-        await databaseTransaction.insert(pricePoints).values({
-          instrument: holdingInstrument(holdingId),
-          day: firstPricePoint.day,
-          price: firstPricePoint.price,
-          currency: input.currency,
-          source: 'manual',
-        });
-      }
-
-      return holdingId;
-    }),
+  create: (input: NewHolding): Promise<string> =>
+    write((databaseTransaction) => insertHoldingDatabaseTransaction(databaseTransaction, input)),
   updateName: (holdingId: string, name: string) =>
     write((databaseTransaction) =>
       databaseTransaction.update(holdings).set({ name }).where(eq(holdings.id, holdingId)),
     ),
   /**
    * Generic partial update for a holding row (name, color, metadata), mirroring
-   * `accountsRepo.update`. The icon routes through `setIcon` instead (so a
-   * cleared icon persists an explicit null), the same split the create form
-   * uses.
+   * `accountsRepo.update`. The icon routes through `setIcon` instead, so a
+   * cleared icon persists an explicit null. A create takes the icon in its own
+   * input.
    *
    * A patch that touches the balance belongs on `updateWithBalanceDelta`
    * below, NOT here: this bare `set(patch)` moves a balance with no ledger

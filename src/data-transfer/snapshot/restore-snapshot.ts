@@ -34,6 +34,7 @@ import { isBalanceSetShapedRow } from '@kiko/transactions/balance-set-row';
 import { planImportTimeRezone } from '@kiko/statement-import/rezone-import-times';
 
 import type { DataSnapshot } from './data-snapshot';
+import { withImplicitAccountsMerged } from './with-implicit-accounts-merged';
 
 /** Migration 0036's `MAX(time)` per holding, computed in one pass over
  * `allTransactions` rather than re-filtering the whole array per holding. */
@@ -661,11 +662,13 @@ export const withCryptoCashHoldingsMoved = (
  * holding would come back with a NULL boundary the live database never
  * actually had, undoing migration 0036's own backfill for that user.
  *
- * Resolves with the count of accounts actually INSERTED — not
- * `snapshot.accounts.length` — because `withCryptoCashHoldingsMoved` can add
- * one beyond what the snapshot itself carried; the caller (`import-data.ts`)
- * surfaces this count to the user, and a file that restores 3 accounts but
- * leaves 4 on the Accounts screen would look like data loss, not a bonus.
+ * Resolves with the count of accounts actually INSERTED, AFTER the implicit
+ * merge — not `snapshot.accounts.length` — because `withCryptoCashHoldingsMoved`
+ * can add one beyond what the snapshot itself carried, and
+ * `withImplicitAccountsMerged` can fold several property or debt accounts into
+ * one; the caller (`import-data.ts`) surfaces this count to the user, and a
+ * count that differs from what the Accounts screen lists would look like data
+ * loss, not a bonus.
  */
 export const restoreDataSnapshot = (
   snapshot: DataSnapshot,
@@ -677,7 +680,25 @@ export const restoreDataSnapshot = (
       withCryptoCashHoldingsMoved(snapshot.accounts, snapshot.holdings);
     // Independent of the move above (it adds only crypto accounts) — a
     // different column, a different migration.
-    const accountsToInsert = withBankAccountsOtherBank(accountsAfterCryptoCashMove);
+    const accountsAfterBankOtherBank = withBankAccountsOtherBank(accountsAfterCryptoCashMove);
+    // After the two above, the order a live device runs 0044, 0049, then 0050.
+    // It changes only the accounts, each merged holding's account and position,
+    // the reminders, the sync state and the dismissal map. The steps below
+    // neither read nor rewrite those fields, so they take its holdings and
+    // settings as their input.
+    const {
+      accounts: accountsToInsert,
+      holdings: holdingsAfterImplicitMerge,
+      reminders: remindersToInsert,
+      settings: settingsAfterImplicitMerge,
+      syncState: syncStateToInsert,
+    } = withImplicitAccountsMerged({
+      accounts: accountsAfterBankOtherBank,
+      holdings: holdingsAfterCryptoCashMove,
+      reminders: snapshot.reminders ?? [],
+      settings: snapshot.settings,
+      syncState: snapshot.syncState,
+    });
 
     const deleteAllTables = async (): Promise<void> => {
       await databaseTransaction.delete(transactions);
@@ -698,11 +719,11 @@ export const restoreDataSnapshot = (
     // into the exact stray shape migration 0040 cleans), then the stray
     // cleanup — computed ONCE, ahead of both insert groups below, since it
     // decides what BOTH `holdings` and `transactions` actually insert.
-    // Fed the crypto-cash-move's OWN holdings, not the snapshot's original
-    // ones, so a moved holding's `crypto_asset` type/account rides through
-    // every later step below.
+    // Fed the merge's OWN holdings, not the snapshot's original ones, so a
+    // moved holding's `crypto_asset` type/account and a merged holding's
+    // account ride through every later step below.
     const boundaries = balanceSetAtBoundariesByHoldingId(snapshot.transactions);
-    const holdingsAfterLegacyBackfill = holdingsAfterCryptoCashMove.map((holding) =>
+    const holdingsAfterLegacyBackfill = holdingsAfterImplicitMerge.map((holding) =>
       withLegacyBalanceSetAtBackfilled(holding, boundaries),
     );
     const { holdings: holdingsAfterStrayCleanup, transactions: transactionsAfterStrayCleanup } =
@@ -714,7 +735,7 @@ export const restoreDataSnapshot = (
     // migration) — applied to the FINAL transaction set they produced, since
     // that's what actually gets inserted.
     const { settings: dedupUpgradedSettings, transactions: dedupUpgradedTransactions } =
-      withLegacyDedupKeysUpgraded(snapshot.settings, transactionsAfterMarking);
+      withLegacyDedupKeysUpgraded(settingsAfterImplicitMerge, transactionsAfterMarking);
 
     // Applied last, to the FINAL settings/transactions/holdings sets every
     // step above produced — see its own doc comment for why it runs after
@@ -755,7 +776,7 @@ export const restoreDataSnapshot = (
         await databaseTransaction.insert(transactions).values(part);
       }
 
-      for (const part of chunkForTable(syncState, snapshot.syncState)) {
+      for (const part of chunkForTable(syncState, syncStateToInsert)) {
         await databaseTransaction.insert(syncState).values(part);
       }
     };
@@ -808,8 +829,8 @@ export const restoreDataSnapshot = (
       }
     };
 
-    // `?? []`: an export from before reminders existed carries no
-    // `reminders` key, and restores with no reminders. Runs after the
+    // An export from before reminders existed carries no `reminders` key, and
+    // restores with no reminders (the `?? []` at the merge above). Runs after the
     // accounts insert, which a reminder's `accountId` references. Each one
     // restarts from now: counted from the backup, every reminder sent since
     // would read as ignored and back-off pause on the first re-plan, and a
@@ -818,7 +839,7 @@ export const restoreDataSnapshot = (
     // between the two cannot leave the backup's start behind.
     const insertReminders = async (): Promise<void> => {
       const restoredAt = Date.now();
-      const restartedReminders = (snapshot.reminders ?? []).map((reminder) => ({
+      const restartedReminders = remindersToInsert.map((reminder) => ({
         ...reminder,
         activeSince: restoredAt,
         lastSnoozedAt: null,

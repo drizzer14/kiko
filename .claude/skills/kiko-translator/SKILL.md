@@ -48,6 +48,30 @@ through `resolveCategoryDisplay`/`buildCategoryDisplayMap`
 `rules/semgrep-prewrite.yml`): a `t(key, { title|name: <...category>.title })`
 is denied unless that `category` is a `resolveCategoryDisplay(...)` result.
 
+## An implicit account is named by `accountDisplayName`, never by `account.name`
+
+The property and debt accounts' stored name is an English sentinel
+(`IMPLICIT_ACCOUNT_STORED_NAME`: `Properties` / `Loans`, the seeded-category
+rule's sibling); the user sees `accounts.implicitName.{property,debt}`
+(uk `Майно` / `Кредити`) through `accountDisplayName(account, t)`
+(`src/holdings/implicit-account/`), which leaves any other account's name
+verbatim. EVERY place that renders an account's name takes the helper's
+result: a heading, a filter option's `label`, a row's account name, a
+chart label, a picker caption, an accessibility label. A filter's `value`
+(its identity, which a selection and the row match key on) stays the STORED
+name, because the display name changes with the language and would strand a
+selection made before a live switch (`filter-menu.props.d.ts`). A query
+that feeds such a site projects
+`kind` and `archivedAt` beside `name` (`accountKind`/`accountArchivedAt` on
+the ledger rows). A test asserts the name under `uk`, where the stored
+sentinel would show English. A site that can never reach a live implicit
+account (it drops ledgerless holdings, and a property or debt account holds
+only ledgerless ones) may read `account.name`, as the loan form's "Paid
+from" picker and the statement-import target picker do. The transaction
+form's pickers are NOT such sites: its loan-payment picker lists the loans
+themselves, which live under the debt account, so its account-name map goes
+through the helper.
+
 ## The two catalogues change together; a parity test enforces it
 
 `src/i18n/locales/en.ts` and `src/i18n/locales/uk.ts` must carry the

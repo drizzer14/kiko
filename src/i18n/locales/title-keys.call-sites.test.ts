@@ -28,12 +28,18 @@ const DYNAMIC_HEADING_KEYS: Record<string, readonly string[]> = {
   'screens/account-detail/bank-sync-section/bank-sync-section.component.tsx#titleKey': [
     'accountDetail.disconnectMonobank',
   ],
-  'screens/account-detail/close-holding-sheet/close-holding-sheet.component.tsx#copy.title': [
+  'design-system/components/close-holding-sheet/close-holding-sheet.component.tsx#copy.title': [
     'accountDetail.closeHoldingTitle',
     'accountDetail.closeLoanTitle',
   ],
   'screens/forms/convert-exchange-fields/convert-exchange-fields.component.tsx#counterpartSheetTitle':
     ['forms.transaction.fromSheetTitle', 'forms.transaction.toSheetTitle'],
+  'screens/forms/holding-form/holding-form.screen.tsx#title': [
+    'forms.holding.editLoanTitle',
+    'forms.holding.editTitle',
+    'forms.account.addTitle',
+    'forms.holding.addLoanTitle',
+  ],
   'screens/forms/price-point-form/price-point-form.screen.tsx#copy.title': [
     'forms.pricePoint.loanTitle',
   ],
@@ -62,8 +68,6 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
   'design-system/components/summary-table/summary-table.component.tsx#title': 'SummaryTable.title',
   'screens/column-mapping/column-select-field/column-select-field.component.tsx#sheetTitle':
     'ColumnSelectField.sheetTitle',
-  'screens/forms/account-kind-field/account-kind-field.component.tsx#sheetTitle':
-    'AccountKindField.sheetTitle',
   'screens/forms/bank-type-field/bank-type-field.component.tsx#sheetTitle':
     'BankTypeField.sheetTitle',
   'screens/forms/broker-type-field/broker-type-field.component.tsx#sheetTitle':

@@ -129,6 +129,30 @@ describe('the windowed ledger Home reads', () => {
     },
   );
 
+  it('carries the kind and archive time of the account each row belongs to', async () => {
+    mockDatabase.exec(`
+      INSERT INTO accounts (id, name, kind, archived_at) VALUES
+        ('a-3', 'Properties', 'property', NULL), ('a-4', 'Old flat', 'property', 5);
+      INSERT INTO holdings (id, account_id, name, type, currency) VALUES
+        ('h-3', 'a-3', 'Flat', 'property_item', 'UAH'), ('h-4', 'a-4', 'Garage', 'property_item', 'UAH');
+    `);
+    insertTransaction('live-implicit', 'h-3', NOW, 'other');
+    insertTransaction('archived-property', 'h-4', NOW, 'other');
+    const rows = await fullLedger();
+    const accountOf = (id: string) => rows.find((row) => row.id === id);
+
+    expect(accountOf('same-0')).toMatchObject({ accountKind: 'bank', accountArchivedAt: null });
+    expect(accountOf('live-implicit')).toMatchObject({
+      accountName: 'Properties',
+      accountKind: 'property',
+      accountArchivedAt: null,
+    });
+    expect(accountOf('archived-property')).toMatchObject({
+      accountKind: 'property',
+      accountArchivedAt: 5,
+    });
+  });
+
   it('keeps the order of rows that share one exact time', async () => {
     const range = bounds(new Date(2026, 8, 10), new Date(2026, 8, 10));
     const windowed = await transactionsRepo.listWithContextBetweenQuery(range.from, range.to);

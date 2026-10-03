@@ -1,68 +1,16 @@
 import { StyleSheet } from 'react-native';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
 import AccountKindField from '.';
-import type { AccountKind } from './account-kind-field.props';
-
-const options: readonly AccountKind[] = [
-  'bank',
-  'cash',
-  'crypto',
-  'property',
-  'metals',
-  'debt',
-  'broker',
-];
-
-const labels: Record<AccountKind, string> = {
-  bank: 'Bank',
-  cash: 'Cash',
-  crypto: 'Crypto',
-  property: 'Property',
-  metals: 'Precious metals',
-  debt: 'Debt',
-  broker: 'Broker',
-};
-
-const subtitles: Record<AccountKind, string> = {
-  bank: 'A bank account you sync or import statements for.',
-  cash: 'Cash you hold outside a bank.',
-  crypto: 'A wallet or exchange account.',
-  property: 'Real estate, car, valuables, money you lent',
-  metals: 'Gold, silver, platinum, palladium',
-  debt: 'A loan or debt you owe.',
-  broker: 'Bonds and cash at a broker.',
-};
-
-const icons: Record<AccountKind, string> = {
-  bank: 'building.columns.fill',
-  cash: 'banknote',
-  crypto: 'bitcoinsign.circle',
-  property: 'house.fill',
-  metals: 'cube.fill',
-  debt: 'minus.circle.fill',
-  broker: 'chart.line.uptrend.xyaxis',
-};
 
 const setup = async (overrides: Partial<Parameters<typeof AccountKindField>[0]> = {}) => {
   const onSelect = jest.fn();
 
   const utils = await render(
-    <AccountKindField
-      label="Kind"
-      sheetTitle="Account Kind"
-      options={options}
-      selected="bank"
-      onSelect={onSelect}
-      labels={labels}
-      subtitles={subtitles}
-      icons={icons}
-      disabled={false}
-      testID="account-kind-field"
-      {...overrides}
-    />,
+    <AccountKindField selected="bank" onSelect={onSelect} disabled={false} {...overrides} />,
   );
 
   return { onSelect, ...utils };
@@ -76,21 +24,34 @@ describe('AccountKindField', () => {
     expect(JSON.stringify(toJSON())).toContain('building.columns.fill');
   });
 
-  it('lists every offered kind, each with its label and subtitle, on trigger press', async () => {
-    const { getByTestId, queryByTestId } = await setup();
+  it('lists every kind in display order, each with its subtitle, on trigger press', async () => {
+    const { getByTestId, queryByTestId, getAllByTestId } = await setup();
 
     // Each option row is only mounted once the sheet opens.
     expect(queryByTestId('account-kind-field-option-cash')).toBeNull();
 
     await fireEvent.press(getByTestId('account-kind-field'));
 
-    for (const kind of options) {
-      const row = getByTestId(`account-kind-field-option-${kind}`);
-      expect(row).toBeTruthy();
-      expect(getByTestId(`account-kind-field-option-${kind}-description`)).toHaveTextContent(
-        subtitles[kind],
-      );
-    }
+    const order = getAllByTestId(/^account-kind-field-option-[a-z]+$/).map((node) =>
+      String(node.props.testID).replace('account-kind-field-option-', ''),
+    );
+
+    expect(order).toEqual(['bank', 'cash', 'crypto', 'property', 'metals', 'debt', 'broker']);
+    expect(getByTestId('account-kind-field-option-debt-description')).toHaveTextContent(
+      'A loan or debt you owe.',
+    );
+    expect(getByTestId('account-kind-field-option-broker-description')).toHaveTextContent(
+      'Bonds and cash at a broker.',
+    );
+  });
+
+  it('titles the field "Kind" and the sheet "Account Kind"', async () => {
+    const { getByTestId, getByText } = await setup();
+
+    await fireEvent.press(getByTestId('account-kind-field'));
+
+    expect(getByText('Kind')).toBeTruthy();
+    expect(getByText('Account Kind')).toBeTruthy();
   });
 
   it('reports the picked kind and closes the sheet', async () => {
@@ -101,6 +62,22 @@ describe('AccountKindField', () => {
 
     expect(onSelect).toHaveBeenCalledWith('property');
     expect(queryByTestId('account-kind-field-option-property')).toBeNull();
+  });
+
+  it('reports the pick again once the sheet has finished closing', async () => {
+    const onSelectClosed = jest.fn();
+    const { getByTestId } = await setup({ onSelectClosed });
+
+    await fireEvent.press(getByTestId('account-kind-field'));
+    const sheet = getByTestId('account-kind-field-sheet-modal');
+    await fireEvent.press(getByTestId('account-kind-field-option-debt'));
+
+    expect(onSelectClosed).not.toHaveBeenCalled();
+
+    await act(async () => sheet.props.onDismiss());
+
+    expect(onSelectClosed).toHaveBeenCalledTimes(1);
+    expect(onSelectClosed).toHaveBeenCalledWith('debt');
   });
 
   it('shows a checkmark on the currently-selected kind option', async () => {

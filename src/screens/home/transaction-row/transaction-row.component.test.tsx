@@ -38,6 +38,8 @@ const baseItem: HomeTransactionRow = {
   category: 'food',
   accountId: 'a-1',
   accountName: 'Monobank',
+  accountKind: 'bank',
+  accountArchivedAt: null,
   holdingName: 'Card',
   holdingType: 'card',
   source: 'manual',

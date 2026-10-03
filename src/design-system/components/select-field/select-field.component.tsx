@@ -1,5 +1,5 @@
 import maybe, { foldMap } from 'fnts/maybe';
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useRef, useState } from 'react';
 
 import Box from '../box';
 import Text from '../text';
@@ -22,6 +22,7 @@ const SelectField = <Option extends string>({
   options,
   selected,
   onSelect,
+  onSelectClosed,
   labels,
   subtitles,
   icons,
@@ -33,10 +34,22 @@ const SelectField = <Option extends string>({
 }: SelectFieldProps<Option>): ReactElement => {
   const [open, setOpen] = useState(false);
   const selectedOption = maybe(selected);
+  // The pick the sheet is closing for, held until the close has finished: a
+  // sheet closed by a scrim tap leaves it empty, so `onSelectClosed` never
+  // fires without a pick.
+  const pendingPick = useRef<Option | undefined>(undefined);
 
   const handleSelect = (option: Option): void => {
+    pendingPick.current = option;
     setOpen(false);
     onSelect(option);
+  };
+
+  const handleClosed = (): void => {
+    foldMap(maybe(pendingPick.current), (option) => {
+      pendingPick.current = undefined;
+      onSelectClosed?.(option);
+    });
   };
 
   return (
@@ -56,6 +69,8 @@ const SelectField = <Option extends string>({
       <BottomSheet
         visible={open}
         onDismiss={() => setOpen(false)}
+        onClosed={handleClosed}
+        testID={testID && `${testID}-sheet`}
         gap={2}
         header={<Text variant="heading">{sheetTitle}</Text>}
       >

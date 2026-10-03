@@ -811,6 +811,11 @@ const contextRowsQuery = () =>
       category: transactions.category,
       accountId: accounts.id,
       accountName: accounts.name,
+      // With the name, what `accountDisplayName` needs to show an implicit
+      // account (whose stored name is an English sentinel) by its localized
+      // kind name.
+      accountKind: accounts.kind,
+      accountArchivedAt: accounts.archivedAt,
       holdingName: holdings.name,
       // Home reads the holding type to drop the HH:MM stamp on a
       // term_deposit/bond row (those are day-granular events).

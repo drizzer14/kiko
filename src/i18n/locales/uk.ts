@@ -536,6 +536,10 @@ export const uk: typeof en = {
     debtsSection: 'Борги',
     emptyState: 'Ще немає рахунків',
     icon: 'Іконка {{name}}',
+    implicitName: {
+      debt: 'Кредити',
+      property: 'Майно',
+    },
     propertySection: 'Майно',
     title: 'Рахунки',
   },
@@ -550,7 +554,6 @@ export const uk: typeof en = {
     addBankAction: 'Додати банк',
     addBankSheetTitle: 'Додати банк',
     addHolding: 'Додати актив',
-    addLoan: 'Додати кредит',
     addressLabel: 'Адреса',
     apiKeyLabel: 'API ключ',
     apiKeyRequiredError: 'Введіть API ключ.',

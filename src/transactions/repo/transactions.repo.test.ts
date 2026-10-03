@@ -103,6 +103,13 @@ describe('transactionsRepo', () => {
     expect(sql).toContain('"holdings"."type"');
   });
 
+  it('includes the account kind and archive time in the joined all-transactions projection, so Home can resolve an implicit account’s display name', () => {
+    const sql = transactionsRepo.listWithContextBetweenQuery(undefined, undefined).toSQL().sql;
+
+    expect(sql).toContain('"accounts"."kind"');
+    expect(sql).toContain('"accounts"."archived_at"');
+  });
+
   it('includes the change group id in the joined all-transactions projection', () => {
     const sql = transactionsRepo.listWithContextBetweenQuery(undefined, undefined).toSQL().sql;
 

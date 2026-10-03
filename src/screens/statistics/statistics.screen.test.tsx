@@ -143,7 +143,7 @@ jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now',
 type Account = {
   id: string;
   name: string;
-  kind?: 'bank' | 'cash' | 'crypto';
+  kind?: 'bank' | 'cash' | 'crypto' | 'property' | 'debt';
   icon?: string | null;
   color?: string | null;
   archivedAt?: number | null;
@@ -1325,6 +1325,106 @@ describe('StatisticsScreen', () => {
     expect(queryByTestId('bar-chart-bar-card')).toBeNull();
     expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
     expect(queryByTestId('pie-chart-arc-b')).toBeNull();
+  });
+
+  // An implicit account is stored under an English sentinel: its filter option
+  // and the contribution chart SHOW its localized kind, while the filter keys on
+  // the stored name, which does not change with the language.
+  describe('an implicit account under Ukrainian', () => {
+    const PROPERTIES: Account = {
+      id: 'p',
+      name: 'Properties',
+      kind: 'property',
+      color: null,
+      archivedAt: null,
+    };
+    const LOANS: Account = {
+      id: 'd',
+      name: 'Loans',
+      kind: 'debt',
+      color: null,
+      archivedAt: null,
+    };
+    const FLAT: Holding = {
+      id: 'h-flat',
+      accountId: 'p',
+      currency: 'UAH',
+      type: 'property_item',
+      balanceMinorUnits: 0,
+      metadata: {
+        category: 'real_estate',
+        lots: [
+          { day: toUtcMidnight(now) - 40 * DAY_MS, quantityDelta: '1', costMinorUnits: 500_000 },
+        ],
+      },
+      closedAt: null,
+    };
+
+    beforeEach(async () => {
+      setLiveData({ accounts: [CASH, PROPERTIES, LOANS], holdings: [UAH_HOLDING, FLAT] });
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('lists each implicit account in the account filter under its localized name, keyed on the stored one', async () => {
+      const { getByTestId } = await renderScreen();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(ACCOUNT_FILTER));
+      });
+
+      expect(
+        within(getByTestId(`${ACCOUNT_FILTER}-option-Properties`)).getByText('Майно'),
+      ).toBeTruthy();
+      expect(
+        within(getByTestId(`${ACCOUNT_FILTER}-option-Loans`)).getByText('Кредити'),
+      ).toBeTruthy();
+    });
+
+    it('selecting it by its localized name narrows the charts to that account', async () => {
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(ACCOUNT_FILTER));
+      });
+      await act(async () => {
+        await fireEvent.press(
+          within(getByTestId(`${ACCOUNT_FILTER}-option-Properties`)).getByText('Майно'),
+        );
+      });
+      await act(async () => {
+        await fireEvent.press(getByTestId(`${ACCOUNT_FILTER}-backdrop`));
+      });
+
+      expect(getByTestId('pie-chart-arc-p')).toBeTruthy();
+      expect(queryByTestId('pie-chart-arc-a')).toBeNull();
+    });
+
+    it('keeps a selection made under English narrowing the same charts after the language switches', async () => {
+      await i18n.changeLanguage('en');
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await pressFilter(getByTestId, ACCOUNT_FILTER, 'Properties');
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      expect(getByTestId('pie-chart-arc-p')).toBeTruthy();
+      expect(queryByTestId('pie-chart-arc-a')).toBeNull();
+    });
+
+    it('names it by its localized name in the account contribution chart', async () => {
+      const { getByTestId } = await renderScreen();
+
+      expect(within(getByTestId('pie-chart-legend-p')).getByText('Майно')).toBeTruthy();
+    });
   });
 
   it('shows each account filter option with its stored icon, or its kind glyph, in its resolved color', async () => {

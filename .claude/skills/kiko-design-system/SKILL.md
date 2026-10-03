@@ -222,8 +222,9 @@ an entry (date + value) the moment the user approves a new visual.
   Short titles render exactly as before: each family keeps its own
   vertical alignment — `TransactionCard` top-aligns (`flex-start`, a
   body-size glyph), the holding-detail ledger rows stay `center`, and
-  the account card (`accounts.screen.tsx` `renderAccountCard`, also the
-  Property and Debts grids) and the account-detail `HoldingCard` stay
+  the account card (`accounts.screen.tsx` `renderAccountCard`, the main
+  grid only) and the shared `HoldingCard` (also the Property and Debts
+  section cards) stay
   `center` beside their taller `EntityIconTile`. The Statistics pie legend's name
   wraps in its own `legendLabel` (`flex: 1`) box beside the swatch; its
   fixed-width value/percent columns are unchanged. Rows whose label is a
@@ -616,9 +617,9 @@ new component can land between reviews of this skill:
   from its one source (never a re-typed string; read the symbol names
   in `src/holdings/entity-symbols/entity-symbols.ts`): Add holding /
   account / category / transaction → `genericEntitySymbol.<entity>`;
-  Add loan (a debt account's footer, `holdsOnlyDebts(kind)`) →
-  `holdingTypeSymbol.loan`, since a loan is the only thing it can add
-  (account detail's `addHoldingSymbol`);
+  there is no "Add loan" footer: a loan is added through the implicit
+  account's create flow, and account detail's footer is always "Add
+  holding" with `genericEntitySymbol.holding`;
   Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
@@ -926,7 +927,10 @@ new component can land between reviews of this skill:
   field), the holding-type picker, the column-mapping form's time-zone
   field (every `sourceTimeZoneIds` entry,
   `src/statement-import/column-mapping/source-time-zone.ts`), `AccountKindField`, and `ModeSelectField` all reach
-  for it directly. `AccountKindField` and
+  for it directly. `SelectField`'s optional `onSelectClosed(option)` runs
+  once after the sheet a pick closed has finished closing (the
+  `onClosed` contract above): wire a screen navigation to it, never to
+  `onSelect` (`AccountKindField` forwards it). `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
@@ -1009,8 +1013,9 @@ new component can land between reviews of this skill:
   (`{ label, onPress }`, the consumer names the entry) is the account
   detail's manual holding cards ("Close holding"/"Close loan" + Delete):
   a hold there opens the action list, never the delete confirm
-  directly, and the screen owns Close's own confirm
-  (`CloseHoldingSheet`, a `destructive` red confirm). Only Delete is red
+  directly, and the screen renders Close's own confirm
+  (`CloseHoldingSheet`, a `destructive` red confirm) through
+  `useCloseHoldingAction` below. Only Delete is red
   in the menu; Edit, Duplicate, and Close stay neutral. A synced holding
   passes no `closeAction`. The menu is: a
   `Gesture.LongPress()` that raises the shared `ConfirmSheet` above on a
@@ -1027,6 +1032,29 @@ new component can land between reviews of this skill:
   deleted only from its page's `CardContextMenu`, so nothing under
   `src/screens/forms/` imports `ConfirmSheet`
   (`kiko-no-confirm-sheet-in-form`, `rules/semgrep-prewrite.yml`).
+- **HoldingCard** (`src/design-system/components/holding-card/`) — one
+  holding as a wide row card, shared so a screen never imports another
+  screen's card (`kiko-no-cross-screen-import`): the entity icon tile and
+  name on the left, the holding's computed value (as of `now`) on the
+  right, a smaller base-currency line for a holding in another currency,
+  and the owned share of a part-owned property. A plain tap calls
+  `onOpen`; it carries no long-press of its own, so a grid wraps it in
+  `CardContextMenu` and `Sortable.Grid`. Consumers: the account-detail
+  holding grid and the Accounts screen's Property and Debts grids.
+- **CloseHoldingSheet** and `useCloseHoldingAction`
+  (`src/design-system/components/close-holding-sheet/`) — the Close
+  confirm for a manual holding (a `destructive` `ConfirmSheet`; the
+  copy comes from `closeHoldingCopy`, loan wording for a debt-side type)
+  and the hook a screen uses to wire it. The sheet is reached only
+  through the hook (the folder's barrel exports only
+  `useCloseHoldingAction`); a screen never imports the sheet itself.
+  `useCloseHoldingAction(account)`
+  returns `closeActionFor(holding)` (the `closeAction` for
+  `CardContextMenu`, `undefined` for a synced holding) and `closeSheet`
+  (render each hook instance's `closeSheet` once; a screen with two hook
+  instances renders both). `account` is the HOLDING's own account,
+  read by `isSyncedHolding`; a screen listing the implicit account's
+  holdings passes that row.
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   below before passing it a color.

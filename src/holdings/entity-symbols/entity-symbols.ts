@@ -87,9 +87,7 @@ export const defaultHoldingSymbol = (holding: Pick<HoldingRow, 'type' | 'metadat
 // `holding` uses `text.pad.header`, an iOS-26 symbol: SymbolIcon renders its
 // `list.bullet.rectangle` fallback centrally on an older device (see
 // symbol.availability.ts). Each also leads its entity's footer "Add …" button,
-// so the add action and the entity it creates read as the same thing — which
-// is why a debt account's "Add loan" leads with `holdingTypeSymbol.loan`: it
-// can create nothing else.
+// so the add action and the entity it creates read as the same thing.
 export const genericEntitySymbol = {
   account: 'tray',
   holding: 'text.pad.header',

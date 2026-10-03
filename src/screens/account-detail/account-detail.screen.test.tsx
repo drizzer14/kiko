@@ -586,10 +586,7 @@ describe('AccountDetailScreen', () => {
   it('navigates to HoldingForm when Add holding is pressed', async () => {
     const { getByText, navigation } = await renderScreen();
     await fireEvent.press(getByText('Add holding'));
-    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
-      accountId: 'a',
-      debtAccount: false,
-    });
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
   });
 
   it('pins the Add holding action to the screen footer', async () => {
@@ -987,29 +984,6 @@ describe('AccountDetailScreen', () => {
           ],
         });
 
-      it('offers Add loan, never "holding", in the footer of a debt account', async () => {
-        seedLoan();
-        const { getByText, queryByText, navigation } = await renderScreen();
-
-        await fireEvent.press(getByText('Add loan'));
-
-        expect(queryByText('Add holding')).toBeNull();
-        expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
-          accountId: 'a',
-          debtAccount: true,
-        });
-      });
-
-      it('leads Add loan with the loan glyph, not the generic holding one', async () => {
-        seedLoan();
-        mockButtonProps.length = 0;
-        await renderScreen();
-
-        const addLoanButton = mockButtonProps.find((props) => props.children === 'Add loan');
-
-        expect(addLoanButton?.icon).toBe('arrow.down.backward.circle.fill');
-      });
-
       it('closes it under loan wording, never "holding"', async () => {
         seedLoan();
         const { getByTestId, getByText, queryByText } = await renderScreen();
@@ -1224,10 +1198,7 @@ describe('AccountDetailScreen', () => {
 
     items[0].onPress();
 
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountReminders', {
-      accountId: 'a',
-      name: 'Cash box',
-    });
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountReminders', { accountId: 'a' });
   });
 
   it('offers a Disconnect action on a connected account and confirms via the themed sheet before disconnecting', async () => {
