@@ -1911,8 +1911,8 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   row arrays and returns the same references when nothing needs merging or
   renaming. It runs right after `withBankAccountsOtherBank`, the order a
   live device runs 0044, 0049, 0050, and its output feeds every later
-  step. It compares ids by UTF-16 code unit (`a < b`), never
-  `localeCompare`, because SQLite's BINARY collation does, and a
+  step. It compares ids with `<` and `>`, never `localeCompare`, because
+  that matches SQLite's BINARY collation for ASCII and UUID ids, and a
   `created_at` tie must pick the same kept account on both paths. The
   returned `accountsRestored` counts the accounts inserted AFTER the merge.
   `snapshot/restore-implicit-accounts.two-path.test.ts` seeds one pre-0050

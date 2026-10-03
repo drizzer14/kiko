@@ -190,8 +190,8 @@ const insertPricePoint = (target: DatabaseSync, holdingId: string): void => {
 
 // Several accounts of each kind, with ties. property: `property-oldest` is the
 // kept one. debt: three accounts tie on created_at AND sort_order, and their
-// ids differ by case, so the kept one is `debt-B` by UTF-16 code unit
-// (SQLite BINARY collation) and would be `debt-a` by locale order. An archived
+// ids differ by case, so the kept one is `debt-B` in SQLite's BINARY
+// collation and would be `debt-a` by locale order. An archived
 // account of each kind stays out of the merge.
 const seedSeveralAccountsOfEachKind = (target: DatabaseSync): void => {
   insertAccount(target, { id: 'wallet', kind: 'cash' });
@@ -408,7 +408,7 @@ describe('restoring a .kiko file exported before Property and Loans became impli
     });
   });
 
-  it('keeps the account the UTF-16 code unit order picks on a three-way created_at tie, on both paths', async () => {
+  it("keeps the account SQLite's BINARY order picks on a three-way created_at tie, on both paths", async () => {
     const { live, restored } = await bothPaths(seedSeveralAccountsOfEachKind);
     const liveDebtIds = live.accounts.filter((row) => row.kind === 'debt').map((row) => row.id);
 

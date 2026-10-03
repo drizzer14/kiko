@@ -509,7 +509,7 @@ describe('withImplicitAccountsMerged', () => {
 
     // `localeCompare` puts 'a' and 'c' before 'B'; SQLite's BINARY collation, and
     // so the migration, puts 'B' (66) before 'a' (97) and 'c' (99).
-    it('compares ids by UTF-16 code unit, as SQLite BINARY collation does, never by locale', () => {
+    it('compares ids as SQLite BINARY collation does, never by locale', () => {
       const rows = rowsOf({
         accounts: [
           account({ id: 'c', kind: 'property', createdAt: 10, sortOrder: 0 }),

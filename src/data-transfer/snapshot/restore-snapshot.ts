@@ -682,9 +682,10 @@ export const restoreDataSnapshot = (
     // different column, a different migration.
     const accountsAfterBankOtherBank = withBankAccountsOtherBank(accountsAfterCryptoCashMove);
     // After the two above, the order a live device runs 0044, 0049, then 0050.
-    // It changes only the account, its holdings' placement, the reminders and
-    // the dismissal map, none of which a step below reads, so those steps take
-    // its output as their input.
+    // It changes only the accounts, each merged holding's account and position,
+    // the reminders, the sync state and the dismissal map. The steps below
+    // neither read nor rewrite those fields, so they take its holdings and
+    // settings as their input.
     const {
       accounts: accountsToInsert,
       holdings: holdingsAfterImplicitMerge,

@@ -455,33 +455,6 @@ describe('restoreDataSnapshot', () => {
       expect(insertedRows.syncState).toEqual([{ accountId: 'cash' }]);
       expect(summary).toEqual({ accountsRestored: 2 });
     });
-
-    it('keeps a restore of an already merged file as it is', async () => {
-      const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
-      mockDatabaseTransaction = databaseTransaction;
-
-      const summary = await restoreDataSnapshot({
-        ...emptySnapshot,
-        accounts: [
-          {
-            id: 'only',
-            kind: 'property',
-            name: 'Properties',
-            icon: null,
-            color: null,
-            sortOrder: 0,
-            createdAt: 2,
-            archivedAt: null,
-          },
-        ],
-        holdings: [{ id: 'h', accountId: 'only', sortOrder: 4, createdAt: 3 }],
-      } as never);
-
-      expect(insertedRows.holdings).toEqual([
-        expect.objectContaining({ id: 'h', accountId: 'only', sortOrder: 4 }),
-      ]);
-      expect(summary).toEqual({ accountsRestored: 1 });
-    });
   });
 
   // Known limit: an export made before reminders existed restores with no

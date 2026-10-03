@@ -1,6 +1,7 @@
 // src/data-transfer/snapshot/with-implicit-accounts-merged.ts
 import {
   IMPLICIT_ACCOUNT_STORED_NAME,
+  type ImplicitAccountKind,
   implicitAccountKinds,
   isImplicitAccount,
 } from '@kiko/holdings/implicit-account';
@@ -18,41 +19,47 @@ type SyncStateFields = Pick<SyncStateRow, 'accountId'>;
 
 type Dismissals = NonNullable<SettingsFields['reminderOfferDismissals']>;
 
-type Comparison<Row> = (left: Row, right: Row) => number;
+// Orders rows by each key in turn. `<` and `>` on text match SQLite's BINARY
+// collation for ASCII and UUID ids, which the migration's ORDER BY compares;
+// `localeCompare` would order 'B' after 'a'.
+const byKeys =
+  <Row>(keys: (row: Row) => (number | string)[]) =>
+  (left: Row, right: Row): number => {
+    const rightKeys = keys(right);
 
-const byNumber =
-  <Row>(read: (row: Row) => number): Comparison<Row> =>
-  (left, right) =>
-    read(left) - read(right);
+    for (const [position, leftKey] of keys(left).entries()) {
+      const rightKey = rightKeys[position];
 
-// UTF-16 code unit order, the way SQLite's BINARY collation orders the ids the
-// migration's ORDER BY compares; `localeCompare` would order 'B' after 'a'.
-const byText =
-  <Row>(read: (row: Row) => string): Comparison<Row> =>
-  (left, right) => {
-    const leftText = read(left);
-    const rightText = read(right);
-
-    if (leftText === rightText) {
-      return 0;
-    }
-
-    return leftText < rightText ? -1 : 1;
-  };
-
-const inOrder =
-  <Row>(...comparisons: Comparison<Row>[]): Comparison<Row> =>
-  (left, right) => {
-    for (const comparison of comparisons) {
-      const difference = comparison(left, right);
-
-      if (difference !== 0) {
-        return difference;
+      if (leftKey !== rightKey) {
+        return leftKey < rightKey ? -1 : 1;
       }
     }
 
     return 0;
   };
+
+type RankedHolding<Holding extends HoldingFields> = { holding: Holding; rank: number };
+
+const byAge = byKeys((account: AccountFields) => [
+  account.createdAt,
+  account.sortOrder,
+  account.id,
+]);
+
+const bySection = byKeys((account: AccountFields) => [
+  account.sortOrder,
+  account.createdAt,
+  account.id,
+]);
+
+const byHoldingOrder = byKeys((entry: RankedHolding<HoldingFields>) => [
+  entry.rank,
+  entry.holding.sortOrder,
+  entry.holding.createdAt,
+  entry.holding.id,
+]);
+
+const byReminderAge = byKeys((reminder: ReminderFields) => [reminder.createdAt, reminder.id]);
 
 type Member = { keptId: string; rank: number };
 
@@ -62,16 +69,6 @@ type Member = { keptId: string; rank: number };
 const mergeMembers = <Account extends AccountFields>(
   snapshotAccounts: Account[],
 ): Map<string, Member> => {
-  const byAge = inOrder<Account>(
-    byNumber((account) => account.createdAt),
-    byNumber((account) => account.sortOrder),
-    byText((account) => account.id),
-  );
-  const bySection = inOrder<Account>(
-    byNumber((account) => account.sortOrder),
-    byNumber((account) => account.createdAt),
-    byText((account) => account.id),
-  );
   const members = new Map<string, Member>();
 
   for (const kind of implicitAccountKinds) {
@@ -87,7 +84,7 @@ const mergeMembers = <Account extends AccountFields>(
       byAge(account, oldest) < 0 ? account : oldest,
     ).id;
 
-    for (const [rank, account] of [...live].sort(bySection).entries()) {
+    for (const [rank, account] of live.sort(bySection).entries()) {
       members.set(account.id, { keptId, rank });
     }
   }
@@ -102,7 +99,7 @@ const holdingsMergedInto = <Holding extends HoldingFields>(
   snapshotHoldings: Holding[],
   members: Map<string, Member>,
 ): Holding[] => {
-  const byKeptId = new Map<string, { holding: Holding; rank: number }[]>();
+  const byKeptId = new Map<string, RankedHolding<Holding>[]>();
 
   for (const holding of snapshotHoldings) {
     const member = members.get(holding.accountId);
@@ -120,16 +117,7 @@ const holdingsMergedInto = <Holding extends HoldingFields>(
   const placed = new Map<string, Holding>();
 
   for (const [keptId, bucket] of byKeptId) {
-    const ordered = bucket.sort(
-      inOrder(
-        byNumber((entry) => entry.rank),
-        byNumber((entry) => entry.holding.sortOrder),
-        byNumber((entry) => entry.holding.createdAt),
-        byText((entry) => entry.holding.id),
-      ),
-    );
-
-    for (const [position, entry] of ordered.entries()) {
+    for (const [position, entry] of bucket.sort(byHoldingOrder).entries()) {
       placed.set(entry.holding.id, { ...entry.holding, accountId: keptId, sortOrder: position });
     }
   }
@@ -160,35 +148,28 @@ const remindersMergedInto = <Reminder extends ReminderFields>(
     byKeptIdAndKind.set(groupKey, group);
   }
 
-  const survivorAccountIds = new Map<string, string>();
-  const deletedIds = new Set<string>();
+  // A survivor maps to the account it moves to, a reminder that goes to null.
+  const placement = new Map<string, string | null>();
 
   for (const { keptId, reminders } of byKeptIdAndKind.values()) {
-    const ordered = reminders.sort(
-      inOrder(
-        byNumber((reminder) => reminder.createdAt),
-        byText((reminder) => reminder.id),
-      ),
-    );
-
-    for (const [position, reminder] of ordered.entries()) {
-      if (position === 0) {
-        survivorAccountIds.set(reminder.id, keptId);
-      } else {
-        deletedIds.add(reminder.id);
-      }
+    for (const [position, reminder] of reminders.sort(byReminderAge).entries()) {
+      placement.set(reminder.id, position === 0 ? keptId : null);
     }
   }
 
-  return snapshotReminders
-    .filter((reminder) => !deletedIds.has(reminder.id))
-    .map(
-      (reminder) =>
-        foldMap(maybe(survivorAccountIds.get(reminder.id)), (accountId) => ({
-          ...reminder,
-          accountId,
-        })) ?? reminder,
-    );
+  return snapshotReminders.flatMap((reminder) => {
+    const keptId = placement.get(reminder.id);
+
+    if (keptId === undefined) {
+      return [reminder];
+    }
+
+    if (keptId === null) {
+      return [];
+    }
+
+    return [{ ...reminder, accountId: keptId }];
+  });
 };
 
 // The kept account's entry is the union of the kinds dismissed on every merged
@@ -215,7 +196,9 @@ const dismissalsMergedInto = (dismissals: Dismissals, members: Map<string, Membe
   return Object.fromEntries([...kindsByKey].map(([key, union]) => [key, [...union]]));
 };
 
-const needsSentinel = (account: AccountFields): boolean =>
+const needsSentinel = <Account extends AccountFields>(
+  account: Account,
+): account is Account & { kind: ImplicitAccountKind; archivedAt: null } =>
   isImplicitAccount(account) &&
   (account.name !== IMPLICIT_ACCOUNT_STORED_NAME[account.kind] ||
     account.icon !== null ||
@@ -231,7 +214,7 @@ const withSentinelNames = <Account extends AccountFields>(
   }
 
   return snapshotAccounts.map((account) =>
-    isImplicitAccount(account) && needsSentinel(account)
+    needsSentinel(account)
       ? { ...account, name: IMPLICIT_ACCOUNT_STORED_NAME[account.kind], icon: null, color: null }
       : account,
   );
@@ -284,7 +267,7 @@ export const withImplicitAccountsMerged = <
   }
 
   const isMergedAway = (accountId: string): boolean =>
-    foldMap(maybe(members.get(accountId)), (member) => member.keptId !== accountId) ?? false;
+    (members.get(accountId)?.keptId ?? accountId) !== accountId;
 
   return {
     accounts: withSentinelNames(rows.accounts.filter((account) => !isMergedAway(account.id))),
