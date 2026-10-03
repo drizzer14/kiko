@@ -1,6 +1,9 @@
-# Functional flow for T33 (shares-property-metals-debts P1-P4): a Property
-# account + item (created, then revalued through "Update value"), a Metals
-# account with a gold bar, and a Debt account with an annuity loan. NOT a
+# Functional flow for T33 (shares-property-metals-debts P1-P4): a property
+# item (created straight from "Add account", then revalued through "Update
+# value"), a Metals account with a gold bar, and an annuity loan (also created
+# straight from "Add account"). Property and Loan are implicit accounts: picking
+# either kind in the account form swaps in the holding form, so there is no
+# separate account step and no account card to open. NOT a
 # screenshot-diff check — no `takeScreenshot` step, no baseline; there is no
 # automated screenshot check of any kind any more (2026-09-19, Guideline 5.6
 # remediation). This asserts real end-to-end BEHAVIOR: the Home net-worth
@@ -84,8 +87,10 @@ appId: com.dmytro-vasylkivskyi.kiko
 - evalScript: ${output.before = maestro.copiedText}
 
 # ---------------------------------------------------------------------------
-# P1: a Property account, one property item, then a revaluation through
-#     the holding's own "Update value" action (PricePointForm).
+# P1: one property item created straight from "Add account" (picking Property
+#     swaps the account form for the holding form), shown as its own card in
+#     the Property section, then revalued through the holding's own "Update
+#     value" action (PricePointForm).
 # ---------------------------------------------------------------------------
 - tapOn:
     id: "tray"
@@ -94,30 +99,19 @@ appId: com.dmytro-vasylkivskyi.kiko
 - assertVisible:
     id: "account-form"
 - tapOn:
-    text: "Name"
-    index: 1
-- inputText: "Kyiv Apartment"
-- tapOn:
     id: "account-kind-field"
 - tapOn:
     id: "account-kind-field-option-property"
-- tapOn:
-    text: "Save"
-
-- tapOn:
-    text: "Kyiv Apartment"
-- tapOn:
-    text: "Add holding"
 - assertVisible:
     id: "holding-form"
 - tapOn:
     text: "Name"
     index: 1
 - inputText: "Apartment"
-# The Type slot is `PropertyTypeField` under a `property` account (PROP-UX:
-# property's only holding type IS its category, no separate Category field
-# any more) — its default, "Real estate", is already the category this
-# holding wants, so no tap is needed here.
+# The Type slot is `PropertyTypeField` (PROP-UX: property's only holding type
+# IS its category, no separate Category field any more) — its default,
+# "Real estate", is already the category this holding wants, so no tap is
+# needed here.
 - tapOn:
     text: "Cost"
     index: 1
@@ -126,9 +120,13 @@ appId: com.dmytro-vasylkivskyi.kiko
     text: "Save"
 
 - assertVisible:
-    id: "holding-grid-item"
+    id: "accounts-property-grid"
+- assertVisible:
+    text: "Apartment"
+    childOf:
+      id: "accounts-property-grid"
 - tapOn:
-    id: "holding-grid-item"
+    text: "Apartment"
 - assertVisible:
     id: "holding-value-header"
 - tapOn:
@@ -187,7 +185,8 @@ appId: com.dmytro-vasylkivskyi.kiko
     text: "Save"
 
 # ---------------------------------------------------------------------------
-# P4: a Debt account holding one annuity loan. `useLoanFields`'s own defaults
+# P4: one annuity loan created straight from "Add account" (picking Debt swaps
+#     the account form for the holding form). `useLoanFields`'s own defaults
 #     (`kind: 'mortgage'`, `schedule: 'annuity'`) already select an annuity
 #     schedule — no SelectField/SegmentedControl tap needed, only the
 #     required principal/start-date/rate/term fields (LoanSection hides
@@ -198,28 +197,17 @@ appId: com.dmytro-vasylkivskyi.kiko
 - tapOn:
     text: "Add account"
 - tapOn:
-    text: "Name"
-    index: 1
-- inputText: "Auto Loan"
-- tapOn:
     id: "account-kind-field"
 - tapOn:
     id: "account-kind-field-option-debt"
-- tapOn:
-    text: "Save"
-
-- tapOn:
-    text: "Auto Loan"
-- tapOn:
-    text: "Add holding"
 - assertVisible:
     id: "holding-form"
 - tapOn:
     text: "Name"
     index: 1
 - inputText: "Car Note"
-# A `debt`-kind account offers exactly one holding type (`loan`), so the
-# same type-sync effect as the metals account above snaps to it automatically.
+# The debt kind offers exactly one holding type (`loan`), so the type-sync
+# effect snaps to it automatically, as it does for the metals account above.
 - tapOn:
     text: "Principal"
     index: 1
@@ -244,14 +232,23 @@ appId: com.dmytro-vasylkivskyi.kiko
 
 # ---------------------------------------------------------------------------
 # P5: the Accounts screen shows its own dedicated Property and Debts
-#     sections (PROP-UX), and the Home headline has moved from its P0 value.
+#     sections (PROP-UX), one card per holding, and the Home headline has
+#     moved from its P0 value.
 # ---------------------------------------------------------------------------
 - tapOn:
     id: "tray"
 - assertVisible:
     id: "accounts-property-grid"
 - assertVisible:
+    text: "Apartment"
+    childOf:
+      id: "accounts-property-grid"
+- assertVisible:
     id: "accounts-debts-grid"
+- assertVisible:
+    text: "Car Note"
+    childOf:
+      id: "accounts-debts-grid"
 - assertVisible:
     text: "Property"
 - assertVisible:

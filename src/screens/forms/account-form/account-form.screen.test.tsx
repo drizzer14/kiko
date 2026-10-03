@@ -43,7 +43,7 @@ const selectedSwatchHex = (
 // the field's own sheet-based interaction.
 const selectKind = async (
   getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
-  kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals' | 'broker',
+  kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals' | 'debt' | 'broker',
 ): Promise<void> => {
   await fireEvent.press(getByTestId('account-kind-field'));
   await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
@@ -187,7 +187,7 @@ jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
   };
 });
 
-type RouteParams = { accountId?: string };
+type RouteParams = AccountFormProps['route']['params'];
 
 const renderForm = async (
   params: RouteParams = {},
@@ -262,7 +262,7 @@ describe('AccountFormScreen', () => {
   it('marks only the required Name field with an asterisk on a kind that picks no bank or broker', async () => {
     const { getByText, getAllByText, getByTestId } = await renderForm();
 
-    await selectKind(getByTestId, 'property');
+    await selectKind(getByTestId, 'metals');
 
     // Name gates save (canSave = trimmed name), so it shows the marker; Kind and
     // Color are optional (they carry defaults), so no other asterisk renders.
@@ -355,32 +355,168 @@ describe('AccountFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  it('creates a property account with the property kind (no bank/crypto section rendered)', async () => {
-    // Property has no extra creation fields yet, so it shares the generic
-    // create path with bank/crypto: the row inserts
-    // with just name/kind/color/icon, and neither the cash currency fields nor
-    // the bank/crypto sync sections render for it.
-    const { getByLabelText, getByTestId, getByText, navigation, queryByText, queryByTestId } =
-      await renderForm();
+  describe('picking an implicit kind swaps in the holding form', () => {
+    it('replaces the screen with the property holding form, carrying the typed name', async () => {
+      const { getByLabelText, getByTestId, navigation } = await renderForm();
 
-    await fireEvent.changeText(getByLabelText('Name'), 'My House');
-    await selectKind(getByTestId, 'property');
+      await fireEvent.changeText(getByLabelText('Name'), 'My House');
+      await selectKind(getByTestId, 'property');
 
-    expect(queryByTestId('account-currency-field')).toBeNull();
-    expect(queryByText('Synchronization')).toBeNull();
+      // `replace`, not `navigate`: Back from the holding form must leave the
+      // flow rather than land on this stale form.
+      expect(navigation.replace).toHaveBeenCalledTimes(1);
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: 'My House', icon: null, color: null },
+      });
+      expect(navigation.navigate).not.toHaveBeenCalled();
+    });
 
-    await fireEvent.press(getByText('Save'));
+    it('replaces the screen with the loan holding form when Debt is picked', async () => {
+      const { getByLabelText, getByTestId, navigation } = await renderForm();
 
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My House', kind: 'property', color: null }),
-    );
-    expect(mockCreateCashAccount).not.toHaveBeenCalled();
-    expect(navigation.goBack).toHaveBeenCalled();
+      await fireEvent.changeText(getByLabelText('Name'), 'Car loan');
+      await selectKind(getByTestId, 'debt');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'debt',
+        draft: { name: 'Car loan', icon: null, color: null },
+      });
+    });
+
+    it('carries the icon and color the user picked', async () => {
+      const { getByLabelText, getByTestId, navigation } = await renderForm();
+
+      await fireEvent.press(getByLabelText('Change Icon'));
+      await fireEvent.press(getByLabelText('Choose icon giftcard'));
+      await fireEvent.press(getByLabelText('Color violet'));
+      await selectKind(getByTestId, 'property');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: '', icon: 'giftcard', color: entityColors.violet },
+      });
+    });
+
+    it('does not carry the kind default icon, only a pick', async () => {
+      const { getByTestId, navigation } = await renderForm();
+
+      await selectKind(getByTestId, 'cash');
+      await selectKind(getByTestId, 'debt');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'debt',
+        draft: { name: '', icon: null, color: null },
+      });
+    });
+
+    it('drops an icon picked before a kind switch, as the switch resets it to the default', async () => {
+      const { getByLabelText, getByTestId, navigation } = await renderForm();
+
+      await fireEvent.press(getByLabelText('Change Icon'));
+      await fireEvent.press(getByLabelText('Choose icon giftcard'));
+      await selectKind(getByTestId, 'crypto');
+      await selectKind(getByTestId, 'property');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: '', icon: null, color: null },
+      });
+    });
+
+    it('does not carry a cleared icon', async () => {
+      const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
+
+      await fireEvent.press(getByLabelText('Change Icon'));
+      await fireEvent.press(getByLabelText('Choose icon giftcard'));
+      await fireEvent.press(getByLabelText('Change Icon'));
+      await fireEvent.press(getByText('Remove'));
+      await selectKind(getByTestId, 'property');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: '', icon: null, color: null },
+      });
+    });
+
+    it('creates nothing and does not leave the screen by itself', async () => {
+      const { getByTestId, navigation } = await renderForm();
+
+      await selectKind(getByTestId, 'property');
+
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockCreateImplicitHolding).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('does not swap for a kind that creates an account', async () => {
+      const { getByTestId, navigation } = await renderForm();
+
+      await selectKind(getByTestId, 'metals');
+
+      expect(navigation.replace).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('seeding from a swap back', () => {
+    it('opens on the initial kind, with the draft name, icon and color', async () => {
+      const { getByLabelText, getByTestId } = await renderForm({
+        initialKind: 'cash',
+        draft: { name: 'Wallet', icon: 'giftcard', color: entityColors.violet },
+      });
+
+      expect(getByTestId('account-kind-field')).toHaveTextContent('Cash');
+      expect(getByLabelText('Name').props.value).toBe('Wallet');
+      expect(getByLabelText('Icon giftcard')).toBeTruthy();
+      expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+    });
+
+    it("shows the initial kind's default icon and color when the draft carries none", async () => {
+      const { getByLabelText } = await renderForm({
+        initialKind: 'crypto',
+        draft: { name: 'Wallet', icon: null, color: null },
+      });
+
+      expect(getByLabelText(`Icon ${accountKindSymbol.crypto}`)).toBeTruthy();
+      expect(selectedSwatchHex(getByLabelText)).toBe(entityColors.yellow);
+    });
+
+    it('treats a carried icon as the user pick, so a swap forward again keeps it', async () => {
+      const { getByTestId, navigation } = await renderForm({
+        initialKind: 'cash',
+        draft: { name: '', icon: 'giftcard', color: null },
+      });
+
+      await selectKind(getByTestId, 'property');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: '', icon: 'giftcard', color: null },
+      });
+    });
+
+    it('seeds the kind default icon, not a carried pick, once the kind changes again', async () => {
+      const { getByLabelText, getByTestId } = await renderForm({
+        initialKind: 'cash',
+        draft: { name: '', icon: 'giftcard', color: null },
+      });
+
+      await selectKind(getByTestId, 'crypto');
+
+      expect(getByLabelText(`Icon ${accountKindSymbol.crypto}`)).toBeTruthy();
+    });
+
+    it('still opens a plain create form on bank when no initial kind is given', async () => {
+      const { getByLabelText, getByTestId } = await renderForm({});
+
+      expect(getByTestId('account-kind-field')).toHaveTextContent('Bank');
+      expect(getByLabelText('Name').props.value).toBe('');
+    });
   });
 
   it('creates a metals account with the metals kind (no bank/crypto section rendered)', async () => {
     // Metals has no extra creation fields yet, so it shares the generic
-    // create path with bank/crypto/property: the row
+    // create path with bank/crypto: the row
     // inserts with just name/kind/color/icon, and neither the cash currency
     // fields nor the bank/crypto sync sections render for it.
     const { getByLabelText, getByTestId, getByText, navigation, queryByText, queryByTestId } =
@@ -675,8 +811,8 @@ describe('AccountFormScreen', () => {
     await selectKind(getByTestId, 'crypto');
     expect(getByLabelText(`Icon ${accountKindSymbol.crypto}`)).toBeTruthy();
 
-    await selectKind(getByTestId, 'property');
-    expect(getByLabelText(`Icon ${accountKindSymbol.property}`)).toBeTruthy();
+    await selectKind(getByTestId, 'metals');
+    expect(getByLabelText(`Icon ${accountKindSymbol.metals}`)).toBeTruthy();
 
     await selectKind(getByTestId, 'bank');
     expect(getByLabelText(`Icon ${accountKindSymbol.bank}`)).toBeTruthy();

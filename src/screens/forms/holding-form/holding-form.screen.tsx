@@ -5,11 +5,13 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
 } from '@kiko/holdings/holding-type';
+import type { TFunction } from 'i18next';
 import {
   holdsOnlyDebts,
   holdingDescriptor,
   isLedgerlessHoldingType,
 } from '@kiko/holdings/holding-descriptor';
+import maybe, { foldMap } from 'fnts/maybe';
 import {
   useHeaderInset,
   scrollToField,
@@ -51,6 +53,7 @@ import LoanFormBlock from './loan/loan-form-block';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
 import MetalTypeField from './metal/metal-type-field';
+import ImplicitKindField from './implicit-kind-field';
 import { useLoanFields } from './loan/use-loan-fields';
 import { useBondFields } from './bond/use-bond-fields';
 import { useMetalFields } from './metal/use-metal-fields';
@@ -62,6 +65,7 @@ import { usePropertyFields } from './property/use-property-fields';
 import type { ScrollTarget, HoldingTypeForm } from './holding-type-form';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
+import { type HoldingFormTarget, holdingFormDraft, holdingFormTarget } from './holding-form-target';
 
 // Fire-and-forget, only for a loan: the matcher backfills from the loan's
 // own start date, so a create OR an edit (principal/schedule/
@@ -168,10 +172,61 @@ const typeSlotFor = (
   return { kind: 'generic' };
 };
 
+// An implicit create names no account, so the account query it shares with the
+// account mode gets the empty id that matches no row.
+const targetAccountId = (target: HoldingFormTarget): string =>
+  match(target)
+    .with({ kind: 'account' }, ({ accountId }) => accountId)
+    .with({ kind: 'implicit' }, () => '')
+    .exhaustive();
+
+// What constrains the offered holding types: the named account's kind once its
+// row loads, or the kind an implicit create was opened for.
+const kindOfTarget = (
+  target: HoldingFormTarget,
+  account: AccountRow | undefined,
+): AccountRow['kind'] | undefined =>
+  match(target)
+    .with({ kind: 'account' }, () => account?.kind)
+    .with({ kind: 'implicit' }, ({ implicitKind }) => implicitKind)
+    .exhaustive();
+
+type NewHoldingInput = Parameters<typeof accountsRepo.createImplicitHolding>[1];
+
+// Inserts the holding and resolves to its id: into the named account, or into
+// the implicit account of the kind, which that one write finds or creates.
+const createHolding = (target: HoldingFormTarget, input: NewHoldingInput): Promise<string> =>
+  match(target)
+    .with({ kind: 'account' }, ({ accountId }) => holdingsRepo.create({ accountId, ...input }))
+    .with({ kind: 'implicit' }, async ({ implicitKind }) => {
+      const { holdingId } = await accountsRepo.createImplicitHolding(implicitKind, input);
+
+      return holdingId;
+    })
+    .exhaustive();
+
+// The header names what the form does. An implicit create keeps the account
+// form's title, since on screen it is that form with the fields swapped, and a
+// debt account's form names a loan, never a "holding".
+const headerTitle = (
+  t: TFunction,
+  flags: { isEdit: boolean; isImplicit: boolean; debtAccount: boolean },
+): string | undefined =>
+  match(flags)
+    .with({ isEdit: true, debtAccount: true }, () => t('forms.holding.editLoanTitle'))
+    .with({ isEdit: true }, () => t('forms.holding.editTitle'))
+    .with({ isImplicit: true }, () => t('forms.account.addTitle'))
+    .with({ debtAccount: true }, () => t('forms.holding.addLoanTitle'))
+    .otherwise(() => undefined);
+
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
-  const { accountId, holdingId, returnTo } = route.params;
+  const { holdingId, returnTo } = route.params;
+  // A named account, or the implicit one a create finds or makes on Save, and
+  // the identity the account form carried over (an implicit create only).
+  const target = holdingFormTarget(route.params);
+  const draft = holdingFormDraft(route.params);
   const { t } = useTranslation();
   // Human display text for the id-like holding types (the select field
   // below still reports the underlying value on select). Built from the
@@ -207,9 +262,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const isEdit = holdingId !== undefined;
   // The account this holding is created under; its `kind` constrains which
   // holding types are offered (a bank can't hold a crypto asset or cash, etc.).
-  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
+  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(targetAccountId(target)), [
+    'accounts',
+  ]);
   const account = accounts.at(0);
-  const accountKind = account?.kind;
+  const accountKind = kindOfTarget(target, account);
   // Whether THIS account is a live sync connection (see `isSyncedAccount` in
   // `../../../holdings/deletable`) — an unresolved account (query still
   // loading) is treated as not-yet-synced.
@@ -250,7 +307,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const isSyncedEdit =
     editingHolding !== undefined && isSyncedHolding(editingHolding, accounts.at(0));
 
-  const [name, setName] = useState('');
+  const [name, setName] = useState(draft.name);
   // The selected type starts at `card`, then the effect below snaps it to the
   // first CREATABLE type for the account's kind once it loads — so a bank create
   // (where card/jar are sync-only and excluded) defaults to `term_deposit`, and
@@ -283,13 +340,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // it, so an untouched icon follows the selection. Once the user picks (icon
   // !== null, "dirty"), that choice overrides the default and type changes no
   // longer move it.
-  const [icon, setIcon] = useState<string | null>(null);
+  const [icon, setIcon] = useState<string | null>(draft.icon);
   // The color mirrors the icon's dirty pattern: null until the user taps a
   // swatch ("not dirty"). While null, the effective color follows the selected
   // type's default (defaultHoldingColor[type]), so the ColorPicker highlights
   // that swatch and switching type moves it. Once picked (color !== null,
   // "dirty"), the choice sticks and type changes no longer move it.
-  const [color, setColor] = useState<string | null>(null);
+  const [color, setColor] = useState<string | null>(draft.color);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the type default —
   // because `color` here is seeded straight from a stored row
   // (setColor(holding.color) below): a stored empty-string color reaches
@@ -452,20 +509,17 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   ]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
-  // "Edit Holding" so the header reads correctly for the update flow, and a
-  // debt account's form names a loan, never a "holding". The route says which
-  // on the first frame; the account row only arrives on a later render.
+  // "Edit Holding" so the header reads correctly for the update flow. An edit's
+  // route says on the first frame whether it is a loan; the account row only
+  // arrives on a later render.
   const debtAccount = route.params.debtAccount ?? holdsOnlyDebts(accountKind);
+  const isImplicit = target.kind === 'implicit';
 
   useLayoutEffect(() => {
-    if (isEdit) {
-      navigation.setOptions({
-        title: debtAccount ? t('forms.holding.editLoanTitle') : t('forms.holding.editTitle'),
-      });
-    } else if (debtAccount) {
-      navigation.setOptions({ title: t('forms.holding.addLoanTitle') });
-    }
-  }, [isEdit, debtAccount, navigation, t]);
+    foldMap(maybe(headerTitle(t, { isEdit, isImplicit, debtAccount })), (title) =>
+      navigation.setOptions({ title }),
+    );
+  }, [isEdit, isImplicit, debtAccount, navigation, t]);
 
   const isValid = name.trim().length > 0 && active.isValid;
 
@@ -536,8 +590,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // `createPayload` writes a zero stored balance — its value derives
       // entirely from its own lots/schedule. Only `useBalanceFields`
       // (card/cash/crypto_asset/jar) reads its own live opening-balance field.
-      const newHoldingId = await holdingsRepo.create({
-        accountId,
+      const newHoldingId = await createHolding(target, {
         name,
         type,
         currency,
@@ -658,6 +711,21 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
 
         <Divider testID="form-divider" />
+
+        {/* Where the account form's kind field sits, so picking Property or Loan
+            there swaps the fields below it and leaves this one in place. */}
+        {match(target)
+          .with({ kind: 'implicit' }, ({ implicitKind }) => (
+            <ImplicitKindField
+              selected={implicitKind}
+              onSelectImplicit={(nextKind) => navigation.setParams({ implicitKind: nextKind })}
+              onSelectAccountKind={(initialKind) =>
+                navigation.replace('AccountForm', { initialKind, draft: { name, icon, color } })
+              }
+            />
+          ))
+          .with({ kind: 'account' }, () => null)
+          .exhaustive()}
 
         {/* A holding's type shapes its metadata and value math, and its currency
             fixes the unit of every stored balance/transaction; no repo path

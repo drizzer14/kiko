@@ -55,16 +55,25 @@ const AccountsStack: FC = () => {
 
       <Stack.Screen name="HoldingDetail" component={HoldingDetailScreen} />
 
+      {/* The account form and the implicit holding form replace each other when
+          the kind changes, and a `draft` marks that swap: it has no animation, so
+          it reads as one form whose fields change rather than a screen transition. */}
       <Stack.Screen
         name="AccountForm"
         component={AccountFormScreen}
-        options={{ title: t('forms.account.addTitle') }}
+        options={({ route }) => ({
+          title: t('forms.account.addTitle'),
+          animation: route.params?.draft === undefined ? 'default' : 'none',
+        })}
       />
 
       <Stack.Screen
         name="HoldingForm"
         component={HoldingFormScreen}
-        options={{ title: t('forms.holding.addTitle') }}
+        options={({ route }) => ({
+          title: t('forms.holding.addTitle'),
+          animation: 'draft' in route.params ? 'none' : 'default',
+        })}
       />
 
       <Stack.Screen
