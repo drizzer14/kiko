@@ -80,6 +80,9 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    createImplicitHolding: jest
+      .fn()
+      .mockResolvedValue({ accountId: 'implicit-account-id', holdingId: 'new-holding-id' }),
   },
 }));
 

@@ -125,7 +125,14 @@ implemented, and callers must skip it rather than assume every id resolves.
   and by every implicit create, and no code reads it back to detect an
   implicit account (the kind decides). Their `icon` and `color` are NULL so
   the kind defaults show. An ARCHIVED property/debt account is a plain account
-  outside the index, the merge, and `accountDisplayName`. Read the unit and
+  outside the index, the merge, and `accountDisplayName`. **Create a property
+  or loan holding only through `accountsRepo.createImplicitHolding(kind, input)`**:
+  one `write()` that finds the live account of the kind (a SQL lookup with
+  `LIMIT 1`), inserts it when none exists (sentinel name, NULL icon/color,
+  `nextSortOrder`: a property account sorts before every debt account, a debt
+  account appends after every account), then inserts the holding through
+  `insertHoldingDatabaseTransaction`, so a rejected holding rolls the account
+  insert back. `accountsRepo.create` throws for a property or debt kind. Read the unit and
   `0050`'s header comment for the merge rule (oldest `created_at` kept) rather
   than a copy here.
 - **Holding** — a balance-bearing thing under an account (a card, a

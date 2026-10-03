@@ -170,6 +170,9 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     listQuery: () => ({ __kind: 'list', toSQL: () => ({ sql: '', params: [] }) }),
+    createImplicitHolding: jest
+      .fn()
+      .mockResolvedValue({ accountId: 'implicit-account-id', holdingId: 'new-holding-id' }),
   },
 }));
 // The first-add refresh trigger (a create's own follow-up, kiko-architecture):

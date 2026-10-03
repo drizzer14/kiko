@@ -68,6 +68,7 @@ const isKindFieldDisabled = (
 
 const mockCreate = jest.fn();
 const mockCreateCashAccount = jest.fn();
+const mockCreateImplicitHolding = jest.fn();
 const mockSetIcon = jest.fn();
 const mockUpdate = jest.fn();
 const mockSaveToken = jest.fn();
@@ -89,6 +90,7 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     create: (...args: unknown[]) => mockCreate(...args),
     createCashAccount: (...args: unknown[]) => mockCreateCashAccount(...args),
+    createImplicitHolding: (...args: unknown[]) => mockCreateImplicitHolding(...args),
     setIcon: (...args: unknown[]) => mockSetIcon(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
   },
@@ -209,6 +211,10 @@ describe('AccountFormScreen', () => {
     mockAccounts = [];
     // create resolves to the new row's id so the form can set its icon on it.
     mockCreate.mockResolvedValue('new-account-id');
+    mockCreateImplicitHolding.mockResolvedValue({
+      accountId: 'implicit-account-id',
+      holdingId: 'new-holding-id',
+    });
     mockSetIcon.mockResolvedValue(undefined);
     // The credential writes resolve so the save flow can await them, and the
     // sync hooks resolve a boolean like the real fire-and-forget connect.

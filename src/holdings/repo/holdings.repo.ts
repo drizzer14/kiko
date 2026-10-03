@@ -62,7 +62,7 @@ type NewHoldingBase = Pick<HoldingRow, 'accountId' | 'name' | 'type' | 'currency
 // OPTIONAL opening balance as `Money` (kiko-domain "Money at the boundary")
 // — converted to minor units, and currency-checked against `currency`,
 // inside the write itself, never by the caller.
-type NewHolding = NewHoldingBase & {
+export type NewHolding = NewHoldingBase & {
   openingBalance?: Money;
   // A priced holding's (property_item) first manual price point,
   // written on the holding's own `holding:<id>` instrument in the SAME
@@ -328,6 +328,64 @@ const rewriteOwnership = (holdingId: string, rewrite: OwnershipRewrite) =>
 export const syncedBalanceUpdateWhere = (holdingId: string, minorUnits: number) =>
   and(eq(holdings.id, holdingId), sql`${holdings.syncedBalanceMinorUnits} IS NOT ${minorUnits}`);
 
+// `holdingsRepo.create`'s body, exported so `accountsRepo.createImplicitHolding`
+// inserts the holding in the same write as the implicit account it may create:
+// a rejected holding then rolls that account insert back too.
+export const insertHoldingDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  { firstPricePoint, openingBalance, ...input }: NewHolding,
+): Promise<string> => {
+  if (openingBalance !== undefined && openingBalance.currency !== input.currency) {
+    throw new Error(
+      'holdingsRepo.create: opening balance currency does not match the holding currency',
+    );
+  }
+
+  if (!isCurrencyAllowedForHoldingType(input.type, input.currency)) {
+    throw new Error(`holdingsRepo.create: a ${input.type} holding cannot hold ${input.currency}`);
+  }
+
+  const holdingId = id();
+  const openingRowId = id();
+  const sortOrder = input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.accountId));
+  const openingBalanceMinorUnits = openingBalance?.minorUnits ?? 0;
+  const now = Date.now();
+
+  await databaseTransaction.insert(holdings).values({
+    id: holdingId,
+    ...input,
+    balanceMinorUnits: openingBalanceMinorUnits,
+    sortOrder,
+    balanceSetAt: openingBalanceMinorUnits !== 0 ? now : null,
+    balanceSetRowId: openingBalanceMinorUnits !== 0 ? openingRowId : null,
+  });
+
+  if (openingBalanceMinorUnits !== 0) {
+    await databaseTransaction.insert(transactions).values({
+      id: openingRowId,
+      holdingId,
+      amountMinorUnits: openingBalanceMinorUnits,
+      time: now,
+      description: '',
+      category: null,
+      source: 'manual',
+      setsBalance: true,
+    });
+  }
+
+  if (firstPricePoint) {
+    await databaseTransaction.insert(pricePoints).values({
+      instrument: holdingInstrument(holdingId),
+      day: firstPricePoint.day,
+      price: firstPricePoint.price,
+      currency: input.currency,
+      source: 'manual',
+    });
+  }
+
+  return holdingId;
+};
+
 export const holdingsRepo = {
   // Ordered by the user-controlled `sortOrder` (the drag-and-drop grid order),
   // with `createdAt` as a stable tiebreak so rows sharing a rank keep a
@@ -424,61 +482,8 @@ export const holdingsRepo = {
    * hand-set balance, whichever create path writes it. Its row carries
    * `transactions.setsBalance` and is the holding's `balanceSetRowId`.
    */
-  create: ({ firstPricePoint, openingBalance, ...input }: NewHolding): Promise<string> =>
-    write(async (databaseTransaction) => {
-      if (openingBalance !== undefined && openingBalance.currency !== input.currency) {
-        throw new Error(
-          'holdingsRepo.create: opening balance currency does not match the holding currency',
-        );
-      }
-
-      if (!isCurrencyAllowedForHoldingType(input.type, input.currency)) {
-        throw new Error(
-          `holdingsRepo.create: a ${input.type} holding cannot hold ${input.currency}`,
-        );
-      }
-
-      const holdingId = id();
-      const openingRowId = id();
-      const sortOrder =
-        input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.accountId));
-      const openingBalanceMinorUnits = openingBalance?.minorUnits ?? 0;
-      const now = Date.now();
-
-      await databaseTransaction.insert(holdings).values({
-        id: holdingId,
-        ...input,
-        balanceMinorUnits: openingBalanceMinorUnits,
-        sortOrder,
-        balanceSetAt: openingBalanceMinorUnits !== 0 ? now : null,
-        balanceSetRowId: openingBalanceMinorUnits !== 0 ? openingRowId : null,
-      });
-
-      if (openingBalanceMinorUnits !== 0) {
-        await databaseTransaction.insert(transactions).values({
-          id: openingRowId,
-          holdingId,
-          amountMinorUnits: openingBalanceMinorUnits,
-          time: now,
-          description: '',
-          category: null,
-          source: 'manual',
-          setsBalance: true,
-        });
-      }
-
-      if (firstPricePoint) {
-        await databaseTransaction.insert(pricePoints).values({
-          instrument: holdingInstrument(holdingId),
-          day: firstPricePoint.day,
-          price: firstPricePoint.price,
-          currency: input.currency,
-          source: 'manual',
-        });
-      }
-
-      return holdingId;
-    }),
+  create: (input: NewHolding): Promise<string> =>
+    write((databaseTransaction) => insertHoldingDatabaseTransaction(databaseTransaction, input)),
   updateName: (holdingId: string, name: string) =>
     write((databaseTransaction) =>
       databaseTransaction.update(holdings).set({ name }).where(eq(holdings.id, holdingId)),
