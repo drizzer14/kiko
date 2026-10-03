@@ -120,6 +120,27 @@ describe('scripts/checks/mutation.sh change-set gate', () => {
     expect(result.stderr).toContain('wrote no JSON report');
   });
 
+  it('exits 2 when Stryker warns that a --mutate glob matched no file, even with a passing report', () => {
+    const { temporaryDirectory } = freshProject();
+    const bin = writeStrykerStub(
+      temporaryDirectory,
+      [
+        '#!/usr/bin/env bash',
+        'echo \'WARN ProjectReader Glob pattern "src/changed.ts" did not result in any files.\'',
+        'mkdir -p reports/mutation',
+        `printf '%s' '${reportOf(['Killed', 'Killed', 'Killed', 'Killed'])}' > ${REPORT_PATH}`,
+        'exit 0',
+      ].join('\n'),
+    );
+
+    const result = runWithStub(bin, temporaryDirectory, join(temporaryDirectory, 'calls'));
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('did not result in any files');
+    expect(result.stderr).toContain('ignorePatterns');
+    expect(result.stdout).not.toContain('CHANGE SET TOTAL');
+  });
+
   it('never reads a stale report left by an earlier run', () => {
     const { temporaryDirectory, root } = freshProject();
     writeFile(root, REPORT_PATH, reportOf(['Killed', 'Killed', 'Killed', 'Killed']));

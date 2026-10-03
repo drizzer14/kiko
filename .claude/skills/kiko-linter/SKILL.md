@@ -495,7 +495,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   differs from the changed-file list (the report is not this run's).
   Given that match, a changed file with no entry in `report.files` is a
   file with no mutants (Stryker writes only files that have some) and
-  is n/a, not a failure. Stryker `disable` comments turn mutants into
+  is n/a, not a failure; but a changed file Stryker cannot resolve
+  (its `did not result in any files` warning) fails the run. Stryker `disable` comments turn mutants into
   Ignored, which the score leaves out, so `check:overrides` fails any
   such comment without `OVERRIDE(...)`. The
   scorer is unit-tested directly against constructed report fixtures

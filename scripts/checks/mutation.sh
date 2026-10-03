@@ -98,7 +98,8 @@ CAP_REASON="A big mutation run takes hours and starves the machine (a whole-rele
 
 # Reads candidate .ts/.tsx paths on stdin and prints the ones Stryker would
 # mutate, excluding tests, fixtures, and test scaffolding (__mocks__/, e2e/,
-# test-support/, __fixtures__/, *-test-helper.ts, *-test-fixtures.ts). It also
+# test-support/, __fixtures__/, *-test-helper.ts, *-test-fixtures.ts) and the
+# test-less build config (drizzle.config.ts). It also
 # drops zero/low-logic barrels (**/index.ts) + pure-static *.styles.ts,
 # preserving the 2 logic-bearing styles
 # (bottom-sheet.styles.ts, entity-icon-tile.styles.ts).
@@ -108,7 +109,7 @@ CAP_REASON="A big mutation run takes hours and starves the machine (a whole-rele
 # bash-3.2-safe (no assoc arrays/namerefs) to match the rest of this script.
 mutable_source_files() {
   local candidates reinc
-  candidates="$(grep -Ev '(\.test\.tsx?$|-test-(helper|fixtures)\.tsx?$|(^|/)(__tests__|__mocks__|__fixtures__|e2e|test-support)/|(^|/)rules/fixtures/|(^|/)scripts/checks/|(^|/)i18n/locales/|\.d\.ts$)' || true)"
+  candidates="$(grep -Ev '(\.test\.tsx?$|-test-(helper|fixtures)\.tsx?$|(^|/)(__tests__|__mocks__|__fixtures__|e2e|test-support)/|(^|/)rules/fixtures/|(^|/)scripts/checks/|(^|/)i18n/locales/|(^|/)drizzle\.config\.ts$|\.d\.ts$)' || true)"
   [ -n "$candidates" ] || return 0
   reinc="$(printf '%s\n' "$candidates" | grep -E '((^|/)bottom-sheet\.styles\.ts$|(^|/)entity-icon-tile\.styles\.ts$)' || true)"
   candidates="$(printf '%s\n' "$candidates" | grep -Ev '((^|/)index\.ts$|\.styles\.ts$)' || true)"
@@ -253,6 +254,21 @@ if { [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; } || { [ "$code" -eq 1 ] && [ ! -f 
     "A crash produces no mutation report at all, so neither the whole-report sanity floor nor the change-set gate below can run; a check that never actually ran must never report success." \
     "Read the output above for the crash cause (an instrumentation error, an out-of-memory worker, ...), fix it, and re-run: npm run check:mutation" \
     "Do not treat a crash as a pass, and do not raise concurrency or memory limits to paper over an instrumentation bug."
+  exit 2
+fi
+
+# Stryker only WARNS when a --mutate entry resolves to no file (it falls under
+# stryker.conf.json's ignorePatterns, or holds a glob special character), yet
+# the report's recorded scope still lists it, so the scorer would grade that
+# file "n/a (no mutants)" and pass. The warning is the only signal, so it fails.
+if printf '%s\n' "$out" | grep -q 'did not result in any files'; then
+  print_block \
+    "Stryker (mutation testing)" \
+    "Stryker could not resolve a changed file passed to --mutate (\"did not result in any files\")." \
+    "$out" \
+    "A file Stryker never mutated would be graded n/a and the gate would pass without any mutant run on it." \
+    "Find the Glob pattern named in the output above: a path under stryker.conf.json's ignorePatterns, or one with a glob special character (such as brackets, parentheses, or braces), is not mutable. Exclude that file from the change set (add it to mutable_source_files in mutation.sh when it needs no mutation) or rename it, then re-run: npm run check:mutation" \
+    "Do not treat the n/a score as a pass, and do not remove an ignorePatterns entry just to make the file resolve."
   exit 2
 fi
 
