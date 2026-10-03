@@ -199,10 +199,10 @@ ESM-compatible or patched line.
 `check:deep` also flags `braces` 3.0.3, advisory GHSA-vfj7-8cjw-p6xm /
 CVE-2026-93687 (published 2026-09-18, severity high, 8.7): a
 stack-exhaustion denial of service through deeply nested patterns. No
-fixed version exists. It is reached only through `micromatch` from
-build and dev tools (`@react-native/metro-config`, `jest`, `babel-jest`,
-`@types/jest`, `knip`, `depcheck`, `patch-package`), never the app
-bundle. Accepted as tracked debt (user decision 2026-10-03), same class
+fixed version exists. It is installed only through `micromatch` under
+`@jest/transform`, from `babel-jest` (a test tool), never in the app
+bundle (`npm ls braces --all` shows that one path). Accepted as tracked
+debt (user decision 2026-10-03), same class
 as the `image-size` CVEs above — do not suppress it; re-check
 periodically with `bash scripts/checks/osv.sh` and bump the moment a
 fix ships. Last checked 2026-10-03.
