@@ -610,8 +610,8 @@ export const en = {
   },
   accounts: {
     addAccount: 'Add account',
-    // The accounts list's own "Debts" section heading, above the debt
-    // accounts' own drag-and-drop grid.
+    // The accounts list's own "Debts" section heading, above the grid of the
+    // implicit Loans account's open holdings (one card per loan).
     debtsSection: 'Debts',
     emptyState: 'No accounts yet',
     icon: '{{name}} icon',
@@ -623,8 +623,8 @@ export const en = {
       debt: 'Loans',
       property: 'Properties',
     },
-    // The accounts list's own "Property" section heading, above the
-    // property accounts' own drag-and-drop grid — mirrors `debtsSection`.
+    // The accounts list's own "Property" section heading, above the grid of
+    // the implicit Properties account's open holdings — mirrors `debtsSection`.
     propertySection: 'Property',
     title: 'Accounts',
   },

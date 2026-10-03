@@ -556,8 +556,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // already handled the credential + first sync). Otherwise this Save is
       // the first write, so create the row now — an unconnected bank/crypto
       // account is valid (the user connects a source later from its detail
-      // screen), and a property or metals account has no source to connect at
-      // all — it always takes this branch.
+      // screen), and a metals account has no source to connect at all — it
+      // always takes this branch. (Property and debt never get here: picking
+      // either swaps to the holding form, which leaves this form first.)
       if (accountCreate.current !== null) {
         await accountsRepo.update(pendingAccountId, {
           name: trimmedName,
