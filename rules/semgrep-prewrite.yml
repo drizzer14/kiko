@@ -419,7 +419,8 @@ rules:
               - pattern: '<$COMPONENT label="$VALUE" placeholder="$VALUE" ... />'
   # Known Nitro props whose native binding requires a non-null value and
   # throws/serializes-to-null on `undefined`: `SFSymbolView.fallbackName`
-  # (see `symbol.availability.ts`'s `effectiveFallbackName` doc comment — a
+  # (see the `fallbackName={name}` comment in
+  # `src/design-system/components/symbol/symbol.component.tsx` — a
   # persistent native view's prop update, not just its initial mount, hits
   # this path, since a changed prop that becomes `undefined` still
   # serializes to native `null` on the very next Fabric update). Extend this
@@ -433,9 +434,8 @@ rules:
   # expression is exactly that name, never an unrelated local variable — but
   # the literal-name match alone still can't tell a raw destructured
   # parameter/prop apart from a local re-declared under that SAME name after
-  # already being routed through `effectiveFallbackName(...)` (`const
-  # fallbackName = effectiveFallbackName(name, x)`, then `fallbackName={
-  # fallbackName}`), which is safe. Two `pattern-not-inside` arms (a
+  # already resolved to a string (`const fallbackName = resolveFallback(name,
+  # x)`, then `fallbackName={fallbackName}`), which is safe. Two `pattern-not-inside` arms (a
   # `function $FN(...) { ... }` declaration, and a `(...) => { ... }` arrow,
   # each wrapping `const fallbackName = $ANY;`) scope the fifth arm to skip
   # exactly that shape — but ONLY within the SAME enclosing function/arrow
@@ -455,13 +455,12 @@ rules:
     message: >
       `undefined` reaching a Nitro prop with a non-null native contract
       (`SFSymbolView.fallbackName`) serializes to native `null` and crashes
-      Release, with no redbox to catch it there. Route the value through
-      `effectiveFallbackName(...)` (`symbol.availability.ts`), which never
-      returns `undefined`, instead of passing it, a nullish-coalesced/
-      ternary expression that can still be `undefined`, or a bare optional
-      prop straight through.
+      Release, with no redbox to catch it there. Pass a value that is always
+      a string (`SymbolIcon` passes the symbol's own `name`) instead of
+      `undefined`, a nullish-coalesced/ternary expression that can still be
+      `undefined`, or a bare optional prop straight through.
     metadata:
-      fix: "Route the value through `effectiveFallbackName(...)` instead of passing a value that can still be `undefined`."
+      fix: "Pass a value that is always a string (e.g. the symbol's own `name`, as `SymbolIcon` does) instead of a value that can still be `undefined`."
       skill: "kiko-design-system › Component set (SymbolIcon)"
     patterns:
       - pattern-either:

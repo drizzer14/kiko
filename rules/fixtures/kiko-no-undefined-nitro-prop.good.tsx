@@ -1,25 +1,27 @@
 import { SFSymbolView } from 'react-native-nitro-sfsymbols';
 
-// The symbol unit keeps this helper private (its barrel exports only the
-// component), so the fixture declares its signature instead of importing
-// across features; Semgrep matches the JSX either way.
-declare const effectiveFallbackName: (name: string, fallbackName: string | undefined) => string;
+// A string-returning resolver, declared so the fixture imports nothing; Semgrep matches the JSX either way.
+declare const resolveFallback: (name: string, fallbackName: string | undefined) => string;
 
-// Semgrep fixture (NEGATIVE): a string literal, or a value routed through
-// `effectiveFallbackName` (the same guard `symbol.component.tsx` uses,
-// which never returns `undefined`), never reaches native `null` —
+// Semgrep fixture (NEGATIVE): a string literal, the symbol's own name (what
+// `symbol.component.tsx` passes), or a value from a resolver that returns a
+// string never reaches native `null` —
 // `kiko-no-undefined-nitro-prop` MUST report nothing here.
 
 export const literalFallback = <SFSymbolView name="star" fallbackName="star.fill" />;
 
+declare const symbolName: string;
+
+export const ownNameFallback = <SFSymbolView name={symbolName} fallbackName={symbolName} />;
+
 export const guardedFallback = (name: string, fallbackName: string | undefined) => {
-  const resolvedFallback = effectiveFallbackName(name, fallbackName);
+  const resolvedFallback = resolveFallback(name, fallbackName);
 
   return <SFSymbolView name={name} fallbackName={resolvedFallback} />;
 };
 
 // A local re-declared under the SAME name as the prop it replaces, still
-// routed through `effectiveFallbackName` first — the bare pass-through arm
+// routed through `resolveFallback` first — the bare pass-through arm
 // must not flag this local just because its own name is the literal
 // identifier `fallbackName`; it is not a raw, unguarded pass-through. The
 // safe-local exclusion is scoped to the ENCLOSING function/arrow body (see
@@ -33,7 +35,7 @@ export const guardedFallback = (name: string, fallbackName: string | undefined) 
 declare const incomingFallback: string | undefined;
 
 function resolveGuardedFallbackSameName() {
-  const fallbackName = effectiveFallbackName('star', incomingFallback);
+  const fallbackName = resolveFallback('star', incomingFallback);
 
   return <SFSymbolView name="star" fallbackName={fallbackName} />;
 }

@@ -466,10 +466,13 @@ verified usage, not dead weight:
   report (`incremental: true`) is read from the PROJECT ROOT and is already
   in the always-ignored set, so keeping the dir is harmless and safer than
   excluding it. `ios` stays ignored even though `__tests__/info-plist.test.ts`
-  reads `ios/Kiko/Info.plist`: the Stryker jest-runner defaults
-  `enableFindRelatedTests: true`, so only tests transitively importing a
-  mutated source file run, and that test imports no app source — it never
-  runs under Stryker, so the missing `ios/` in the sandbox never breaks it.
+  reads `ios/Kiko/Info.plist` and
+  `__tests__/test-support/deployment-target.test.ts` reads
+  `ios/Kiko.xcodeproj/project.pbxproj` and `ios/Podfile`: the Stryker
+  jest-runner defaults `enableFindRelatedTests: true`, so only tests
+  transitively importing a mutated source file run, and neither test imports
+  app source — neither runs under Stryker, so the missing `ios/` in the
+  sandbox never breaks them.
   Final confirmation of any missing-file mistake comes from the FIRST real
   mutation run after integration: Stryker runs the covering test suite once
   before mutating, so a wrongly-excluded read fails FAST with a clear
@@ -722,7 +725,7 @@ verified usage, not dead weight:
   `^2.1.0` and `react-native-bottom-tabs` `^2.0.0`), and `package-lock.json`
   locks it at 2.2.0. depcheck and Knip see no import of it, so neither
   reports it. A missing or reshaped file (a dependant dropped, the package
-  moved or its comments changed) fails `__tests__/symbol-deployment-target.test.tsx`
-  and `sf-symbol-catalogue.test.ts` loudly, never silently. If a dependant
+  moved or its comments changed) fails `__tests__/symbol-deployment-target.test.tsx`,
+  `sf-symbol-catalogue.test.ts` and `deployment-target.test.ts` loudly, never silently. If a dependant
   stops installing it, add it to `package.json` as an exact-pinned
   devDependency instead.
