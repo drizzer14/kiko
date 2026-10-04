@@ -109,38 +109,40 @@ describe('BankTypeField', () => {
     expect(optionIds).toEqual([...bankIds]);
   });
 
-  it('renders "Other bank" with no capability caption and no capability icon of a named bank', async () => {
+  it('renders "Other bank" with no capability caption and no connect or statement-format icon', async () => {
     const { getByTestId } = await renderOpenSheet();
 
     const optionTree = JSON.stringify(getByTestId('bank-type-option-other').toJSON());
     expect(optionTree).toContain('Other bank');
     expect(optionTree).not.toContain('receipt');
-    expect(optionTree).not.toContain('increase.indent');
     expect(optionTree).not.toContain('arrow.trianglehead.2.clockwise.rotate.90');
     expect(optionTree).not.toContain('Statement import only');
   });
 
-  // An unlisted bank has no parser, so the way to bring its statements in is
-  // by hand: the same "import a statement" glyph the account screen's Import
-  // statement button and the statement reminder row use.
-  it('shows the manual-import icon on "Other bank", at the caption icon-size step', async () => {
+  // An unlisted bank has no parser, so its statements come in through the
+  // column-mapping screen: the very glyph the no-parser banks show for it.
+  it('shows the column-mapping icon on "Other bank", at the caption icon-size step', async () => {
     const { getByTestId } = await renderOpenSheet();
 
-    const icon = getByTestId('bank-type-option-other-manual-import-icon');
+    const icon = getByTestId('bank-type-option-other-column-mapping-icon');
 
-    expect(icon.props.name).toBe('doc.badge.plus');
+    expect(icon.props.name).toBe('increase.indent');
     expect(icon.props.size).toBe(darkTheme.iconSizes.caption);
   });
 
-  it('shows the manual-import icon on no named bank', async () => {
-    const { queryByTestId } = await renderOpenSheet();
+  it('draws "Other bank" the same column-mapping glyph a no-parser bank shows, not the Import statement glyph', async () => {
+    const { getByTestId } = await renderOpenSheet();
 
-    for (const bankId of bankIds.filter((id) => id !== OTHER_BANK_ID)) {
-      expect(queryByTestId(`bank-type-option-${bankId}-manual-import-icon`)).toBeNull();
-    }
+    const otherIcon = getByTestId('bank-type-option-other-column-mapping-icon');
+    const pumbIcon = getByTestId('bank-type-option-pumb-column-mapping-icon');
+
+    expect(otherIcon.props.name).toBe(pumbIcon.props.name);
+    expect(JSON.stringify(getByTestId('bank-type-option-other').toJSON())).not.toContain(
+      'doc.badge.plus',
+    );
   });
 
-  it('draws the picked "Other bank" row\'s manual-import glyph in the white on-accent hex', async () => {
+  it('draws the picked "Other bank" row\'s column-mapping glyph in the white on-accent hex', async () => {
     const { getByTestId } = await render(
       <BankTypeField
         label="Bank type"
@@ -153,9 +155,9 @@ describe('BankTypeField', () => {
 
     await fireEvent.press(getByTestId('bank-type-field'));
 
-    const icon = getByTestId('bank-type-option-other-manual-import-icon');
+    const icon = getByTestId('bank-type-option-other-column-mapping-icon');
 
-    expect(icon.props.name).toBe('doc.badge.plus');
+    expect(icon.props.name).toBe('increase.indent');
     // `onAccent` is a hex token, which `toSFSymbolTintColor` hands to the
     // native tint unchanged. It equals `textPrimary` in the one dark theme, so
     // this pins that the glyph has a resolved white tint, not that it differs
@@ -348,17 +350,15 @@ describe('BankTypeField', () => {
 
   // Column-mapping import is a capability shown on EVERY catalog bank — a
   // sync-connectable bank, one with a
-  // dedicated statement format, and a column-mapping-only bank all get it.
-  it.each(bankIds.filter((bankId) => bankId !== OTHER_BANK_ID))(
-    'shows the column-mapping capability icon on %s',
-    async (bankId) => {
-      const { getByTestId } = await renderOpenSheet();
+  // dedicated statement format, a column-mapping-only bank and "Other bank"
+  // all get it.
+  it.each([...bankIds])('shows the column-mapping capability icon on %s', async (bankId) => {
+    const { getByTestId } = await renderOpenSheet();
 
-      expect(getByTestId(`bank-type-option-${bankId}-column-mapping-icon`).props.name).toBe(
-        'increase.indent',
-      );
-    },
-  );
+    expect(getByTestId(`bank-type-option-${bankId}-column-mapping-icon`).props.name).toBe(
+      'increase.indent',
+    );
+  });
 
   describe('the not-a-bank disclaimer under the field', () => {
     const englishClause =

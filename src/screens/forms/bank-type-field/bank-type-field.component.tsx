@@ -13,6 +13,10 @@ import { bankCatalog, type BankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-ca
 
 import type { BankTypeFieldProps } from './bank-type-field.props';
 
+// The column-mapping capability glyph, shared by every named bank's row and
+// the "Other bank" row so the two can never drift apart.
+const COLUMN_MAPPING_SYMBOL = 'increase.indent';
+
 // The caption a bank's row shows in the picker: a live-sync bank shows
 // `bankConnectable`; an import-only bank with its own dedicated
 // `statement-import` parser shows `bankImportOnly`; an import-only bank with
@@ -98,12 +102,12 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
           const isSelected = entry.id === selected;
 
           // The catalog's last entry covers any bank not listed, so it shows
-          // no capability caption and no connect, statement-format or
-          // column-mapping icon. Its statements come in by hand, so it carries
-          // the glyph the account screen's Import statement button uses
-          // (`doc.badge.plus`, SF Symbols 2, iOS 14), in the capability
+          // no capability caption and no connect or statement-format icon.
+          // It has no parser, so its statements come in through the
+          // column-mapping screen: it carries the one column-mapping glyph
+          // the banks with no dedicated parser show, in the capability
           // icons' own tone and size, and VoiceOver reads it out with the
-          // description the banks that have no dedicated parser use.
+          // description those banks use.
           if (entry.id === OTHER_BANK_ID) {
             return (
               <SelectableRow
@@ -115,10 +119,10 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
                 testID={`bank-type-option-${entry.id}`}
                 trailing={
                   <SymbolIcon
-                    name="doc.badge.plus"
+                    name={COLUMN_MAPPING_SYMBOL}
                     size={theme.iconSizes.caption}
                     tone={isSelected ? 'onAccent' : 'textPrimary'}
-                    testID={`bank-type-option-${entry.id}-manual-import-icon`}
+                    testID={`bank-type-option-${entry.id}-column-mapping-icon`}
                   />
                 }
               />
@@ -175,16 +179,15 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
                       testID={`bank-type-option-${entry.id}-import-icon`}
                     />
                   )}
-                  {/* `increase.indent`: column-mapping import is a capability
-                      EVERY catalog bank offers — a bank with a dedicated
-                      `statementFormatId` still falls through to the generic
-                      column-mapping screen for anything its own parser
-                      doesn't recognize, and a bank with none uses it
-                      exclusively (`bankColumnMappingOnly` above) — so this
-                      renders unconditionally, not gated on
-                      `entry.statementFormatId`. */}
+                  {/* Column-mapping import is a capability EVERY catalog bank
+                      offers — a bank with a dedicated `statementFormatId`
+                      still falls through to the generic column-mapping
+                      screen for anything its own parser doesn't recognize,
+                      and a bank with none uses it exclusively
+                      (`bankColumnMappingOnly` above) — so this renders
+                      unconditionally, not gated on `entry.statementFormatId`. */}
                   <SymbolIcon
-                    name="increase.indent"
+                    name={COLUMN_MAPPING_SYMBOL}
                     size={theme.iconSizes.caption}
                     tone={titleTone}
                     testID={`bank-type-option-${entry.id}-column-mapping-icon`}

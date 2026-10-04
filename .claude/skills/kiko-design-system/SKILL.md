@@ -971,11 +971,11 @@ new component can land between reviews of this skill:
   is the one remaining hand-rolled implementation, kept apart because it
   carries extra behavior `SelectField` doesn't generalize (an
   always-last "Other bank" row (`OTHER_BANK_ID`) that shows no capability
-  caption and carries one manual-import glyph (`doc.badge.plus`, the account
-  screen's Import statement glyph, testID `bank-type-option-other-manual-import-icon`)
-  instead of the connect, statement-format and column-mapping icons the named
-  banks show (its VoiceOver label reads the no-parser banks' description,
-  `bankColumnMappingOnly`), the Guideline-5.6 "not a bank" disclaimer as a
+  caption and carries one column-mapping glyph (`increase.indent`, the same
+  `COLUMN_MAPPING_SYMBOL` constant every named bank's column-mapping icon uses,
+  testID `bank-type-option-other-column-mapping-icon`) instead of the connect
+  and statement-format icons the named banks show (its VoiceOver label reads
+  the no-parser banks' description, `bankColumnMappingOnly`), the Guideline-5.6 "not a bank" disclaimer as a
   caption under the trigger (`forms.account.bankDisclaimer`, the same place and
   `caption`/`textSecondary` style as `BrokerTypeField`'s `brokerDisclaimer`,
   shown whatever is picked, "Other bank" included: it names no bank; the sheet
@@ -1514,8 +1514,9 @@ catalog's own `statementFormatId` field, so a column-mapping-only bank
 (no dedicated parser) does not show it, even though it still offers
 import (through the generic column-mapping screen, which
 `increase.indent` names); `increase.indent` means "column-mapping import
-is available" — shown on every SPECIFIC bank row (a dedicated parser or not); the
-`other` row renders no capability icons or captions; `arrow.trianglehead.2.clockwise.rotate.90`
+is available" — shown on every bank row (a dedicated parser or not), the `other`
+row included, from one `COLUMN_MAPPING_SYMBOL` constant; the `other` row shows
+no connect or statement-format icon and no caption; `arrow.trianglehead.2.clockwise.rotate.90`
 means "this bank supports a live sync connection" — gated on the
 catalog's own `connectable` field. Derive a capability icon's gate from
 catalog DATA (a field on the entry), never a hard-coded id list — a
