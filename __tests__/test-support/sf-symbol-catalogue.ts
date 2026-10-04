@@ -56,9 +56,9 @@ export const parseSymbolCatalogue = (text: string): SymbolCatalogue => {
 };
 
 // The app's deployment target: the ONE place the number is written for the
-// tests. `__tests__/symbol-deployment-target.test.tsx` asserts every build file
+// tests. `deployment-target.test.ts` asserts every build file
 // (`deployment-target.ts`) states this same iOS, so raising it is one edit here
-// plus the build files, and a build file that drifts fails the guard.
+// plus the build files, and a build file that drifts fails that test.
 export const DEPLOYMENT_TARGET = '18.2';
 
 const versionParts = (version: string): [number, number] => {
@@ -67,12 +67,9 @@ const versionParts = (version: string): [number, number] => {
   return [major, minor];
 };
 
-export const isNewerThanDeploymentTarget = (
-  minimumIos: string,
-  target: string = DEPLOYMENT_TARGET,
-): boolean => {
+export const isNewerThanDeploymentTarget = (minimumIos: string): boolean => {
   const [major, minor] = versionParts(minimumIos);
-  const [targetMajor, targetMinor] = versionParts(target);
+  const [targetMajor, targetMinor] = versionParts(DEPLOYMENT_TARGET);
 
   return major > targetMajor || (major === targetMajor && minor > targetMinor);
 };

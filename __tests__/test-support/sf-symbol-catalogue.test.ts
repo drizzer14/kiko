@@ -77,10 +77,4 @@ describe('isNewerThanDeploymentTarget', () => {
   ])('is iOS %s newer than the iOS 18.2 deployment target: %s', (ios, expected) => {
     expect(isNewerThanDeploymentTarget(ios)).toBe(expected);
   });
-
-  it('compares against an explicit target, on the minor version too', () => {
-    expect(isNewerThanDeploymentTarget('16.1', '16.0')).toBe(true);
-    expect(isNewerThanDeploymentTarget('16.1', '16.1')).toBe(false);
-    expect(isNewerThanDeploymentTarget('17', '16.4')).toBe(true);
-  });
 });

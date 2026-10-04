@@ -4,7 +4,6 @@ import { SFSymbolView } from 'react-native-nitro-sfsymbols';
 
 import type { SymbolProps } from './symbol.props';
 import { toSFSymbolTintColor } from './symbol.color';
-import { effectiveFallbackName } from './symbol.availability';
 
 // Named SymbolIcon, not Symbol, to avoid shadowing the global `Symbol`
 // constructor (lint/suspicious/noShadowRestrictedNames). Callers must import
@@ -12,7 +11,6 @@ import { effectiveFallbackName } from './symbol.availability';
 // e.g. `import SymbolIcon from '.../design-system/components/symbol'`.
 const SymbolIcon: FC<SymbolProps> = ({
   name,
-  fallbackName,
   size,
   tone = 'textSecondary',
   color,
@@ -26,14 +24,13 @@ const SymbolIcon: FC<SymbolProps> = ({
   // type context.
   const resolvedSize = size ?? theme.iconSizes.body;
 
-  // The native `fallbackName` is the runtime net for a name the OS cannot
-  // resolve; it is always a string (see symbol.availability.ts).
-  const resolvedFallback = effectiveFallbackName(name, fallbackName);
-
   return (
     <SFSymbolView
       name={name}
-      fallbackName={resolvedFallback}
+      // Always the symbol's own name, a stable string: the native Nitro prop
+      // requires a String, and a persistent instance whose prop became undefined
+      // on an update would hand it null and crash Release.
+      fallbackName={name}
       size={resolvedSize}
       // See symbol.color.ts: SFSymbolView's tintColor only accepts hex,
       // while theme.colors.textSecondary is an rgba() string. Passed

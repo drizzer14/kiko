@@ -74,22 +74,18 @@ describe('Symbol', () => {
     expect(getByLabelText('Favorite').props.tintColor).toBe('#ffd60aff');
   });
 
-  it('forwards an explicit fallbackName to the native view as a runtime net', async () => {
-    const { getByLabelText } = await render(
-      <SymbolIcon name="some.newer.symbol" fallbackName="heart" accessibilityLabel="Glyph" />,
-    );
-
-    expect(getByLabelText('Glyph').props.fallbackName).toBe('heart');
-  });
-
-  it('hands the symbol its own name as the fallbackName when no explicit one is passed', async () => {
-    // The native `fallbackName` is a `String`, never `null` (see
-    // symbol.availability.ts), so it is a string on every render.
-    const { getByLabelText } = await render(
+  it('hands the native view its own name as a non-empty string fallbackName, kept on a rename', async () => {
+    // The native `fallbackName` is a `String`, never `null`; a persistent
+    // instance re-rendered with a new name must keep handing it one.
+    const { getByLabelText, rerender } = await render(
       <SymbolIcon name="arrow.trianglehead.branch" accessibilityLabel="Split" />,
     );
 
     expect(getByLabelText('Split').props.fallbackName).toBe('arrow.trianglehead.branch');
+
+    await rerender(<SymbolIcon name="arrow.up" accessibilityLabel="Split" />);
+
+    expect(getByLabelText('Split').props.fallbackName).toBe('arrow.up');
   });
 
   it('passes the symbol name straight through on every OS', async () => {

@@ -2,9 +2,9 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 
 // The minimum iOS a build file states, read as text. The guard in
-// `__tests__/symbol-deployment-target.test.tsx` compares every one of them with
-// the single DEPLOYMENT_TARGET constant, so the symbols it checks and the iOS
-// the app is built for cannot disagree.
+// `deployment-target.test.ts` (here) compares every one of them with the single
+// DEPLOYMENT_TARGET constant, so the symbols the guard checks and the iOS the
+// app is built for cannot disagree.
 const IOS_ROOT = path.join(__dirname, '..', '..', 'ios');
 const PROJECT_FILE = path.join(IOS_ROOT, 'Kiko.xcodeproj', 'project.pbxproj');
 const PODFILE = path.join(IOS_ROOT, 'Podfile');

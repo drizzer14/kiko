@@ -23,19 +23,18 @@ import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
 
 import {
   type SymbolCatalogue,
-  DEPLOYMENT_TARGET,
   isNewerThanDeploymentTarget,
   symbolCatalogue,
 } from './test-support/sf-symbol-catalogue';
-import { buildFileTargets, buildFilesNotAtTarget } from './test-support/deployment-target';
 
 // The deployment target is iOS 18.2 (DEPLOYMENT_TARGET), and `SFSymbolView`
 // draws a symbol the running OS does not know as a BLANK glyph. The app has no
 // per-symbol swap, so every symbol it can draw must already exist on 18.2.
 // This invariant fails when a symbol the app can draw is unknown to the SF
-// Symbols catalogue or newer than 18.2, and when a build file states an iOS
-// other than DEPLOYMENT_TARGET (the symbols are only safe on the iOS the app
-// is actually built for).
+// Symbols catalogue or newer than 18.2. That the build files state the same iOS
+// (the symbols are only safe on the iOS the app is built for) is checked in
+// `test-support/deployment-target.test.ts`: it reads `ios/`, which Stryker's
+// sandbox lacks, and this file imports src, so Stryker would run it there.
 // Symbols are collected two ways. Module reads (the entity maps, both icon
 // pools and the pools the forms open, the native header's Edit item, the tab
 // bar) are exact. A scan of the quoted string literals in `src/` that equal a
@@ -125,17 +124,6 @@ describe('the invariant checks (synthetic data)', () => {
 
   it('flags a symbol the catalogue does not know', () => {
     expect(unknownSymbols(['old.symbol', 'typo.symbol'], catalogue)).toEqual(['typo.symbol']);
-  });
-});
-
-describe('the build files', () => {
-  it('state the one deployment target on every IPHONEOS_DEPLOYMENT_TARGET line and in the Podfile', () => {
-    const targets = buildFileTargets();
-
-    // A reader that finds no line would pass the check below; the app has one
-    // native target (three configurations) plus the project's own three.
-    expect(targets.project).toHaveLength(6);
-    expect(buildFilesNotAtTarget(targets, DEPLOYMENT_TARGET)).toEqual([]);
   });
 });
 

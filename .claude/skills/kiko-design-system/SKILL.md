@@ -1623,19 +1623,23 @@ map and `SymbolIcon` passes the name straight to the native view. A symbol
 newer than 18.2 (for example the iOS-26 `text.pad.header`, which the generic
 holding glyph used to be) is replaced by an older one that reads the same
 (`list.bullet.rectangle`), not shimmed at runtime. `receipt` (iOS 18.2) is
-the newest symbol in use. `effectiveFallbackName`
-(`symbol/symbol.availability.ts`) is `fallbackName ?? name` and always
-returns a string (a `null` `fallbackName` crashes Release). A native
-header or tab-bar item has no `fallbackName` prop; the same rule covers it.
+the newest symbol in use. `SymbolIcon` has no `fallbackName` prop: it
+hands the native view `fallbackName={name}`, always a string (a `null`
+`fallbackName` crashes Release; `symbol.component.test.tsx` pins it). A
+native header or tab-bar item has no `fallbackName` prop; the same rule
+covers it.
 
-The deployment target lives in four build places that must agree: the six
+The deployment target lives in three build places that must agree: the six
 `IPHONEOS_DEPLOYMENT_TARGET` lines of `ios/Kiko.xcodeproj/project.pbxproj`,
 `platform :ios` in `ios/Podfile`, and the Podfile's `post_install` pod floor
-(`Gem::Version.new(...)`). `__tests__/symbol-deployment-target.test.tsx` is
-the guard. It reads those files as text
+(`Gem::Version.new(...)`).
+`__tests__/test-support/deployment-target.test.ts` reads those files as text
 (`__tests__/test-support/deployment-target.ts`) and fails when any of them
 differs from the ONE constant `DEPLOYMENT_TARGET`
-(`__tests__/test-support/sf-symbol-catalogue.ts`). It also reads the
+(`__tests__/test-support/sf-symbol-catalogue.ts`). That check lives there, not
+in the guard, because it reads `ios/`, which Stryker's sandbox does not copy,
+and the guard imports `src/` modules so Stryker would run it there.
+`__tests__/symbol-deployment-target.test.tsx` is the guard. It reads the
 `sf-symbols-typescript` catalogue as text (the `@name SF Symbols N.M` and
 `iOS vX.Y+` JSDoc, plus the `| 'name'` lines) and fails when a symbol the
 app can draw is unknown to it or newer than the target. It collects the

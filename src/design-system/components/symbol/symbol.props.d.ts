@@ -8,11 +8,6 @@ type SymbolTone = 'positive' | 'negative' | 'textPrimary' | 'textSecondary' | 'o
 
 export type SymbolProps = {
   name: string;
-  // Optional. The glyph to render if `name` cannot be resolved on the running
-  // iOS. Every symbol the app draws exists on the deployment target (the Jest
-  // guard enforces it), so a caller rarely needs this; when omitted it is the
-  // symbol's own name. See symbol.availability.ts.
-  fallbackName?: string;
   size?: number;
   tone?: SymbolTone;
   // An explicit tint color (any CSS color string; hex or rgba). When set it
