@@ -79,12 +79,13 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
         testID={testID}
       />
 
-      {/* The same clause the broker field carries under its trigger (kiko-
-          compliance, third-party trademarks): every bank is named in plain
-          text, so the field says Kiko is not affiliated with any of them,
-          whether or not the sheet is open. */}
+      {/* Guideline 5.6 "not a bank" disclaimer, and the third-party-trademark
+          clause (kiko-compliance) the broker field carries under its trigger:
+          every bank is named in plain text, so the field says Kiko is not a
+          bank and not affiliated with any of them, whether or not the sheet
+          is open. */}
       <Text variant="caption" tone="textSecondary">
-        {t('forms.account.bankAffiliationDisclaimer')}
+        {t('forms.account.bankDisclaimer')}
       </Text>
 
       <BottomSheet
@@ -93,23 +94,16 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
         header={<Text variant="heading">{sheetTitle}</Text>}
         testID="bank-type-sheet"
       >
-        {/* Guideline 5.6 "not a bank" disclaimer: a footer caption visible
-            while the user is actively choosing a bank, the least-intrusive
-            spot on this surface per the design system's existing hint
-            pattern (see `forms.account.importOnlyBankHint`). */}
-        <Text variant="caption" tone="textSecondary">
-          {t('forms.account.bankDisclaimer')}
-        </Text>
-
         {bankCatalog.map((entry) => {
           const isSelected = entry.id === selected;
 
-          // The catalog's last entry covers any bank not listed, so it names
+          // The catalog's last entry covers any bank not listed, so it shows
           // no capability caption and no connect, statement-format or
           // column-mapping icon. Its statements come in by hand, so it carries
           // the glyph the account screen's Import statement button uses
           // (`doc.badge.plus`, SF Symbols 2, iOS 14), in the capability
-          // icons' own tone and size.
+          // icons' own tone and size, and VoiceOver reads it out with the
+          // description the banks that have no dedicated parser use.
           if (entry.id === OTHER_BANK_ID) {
             return (
               <SelectableRow
@@ -117,6 +111,7 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
                 selected={isSelected}
                 onPress={() => handleSelect(entry.id)}
                 label={labelFor(entry)}
+                accessibilityLabel={`${labelFor(entry)}. ${captionFor(entry, t)}`}
                 testID={`bank-type-option-${entry.id}`}
                 trailing={
                   <SymbolIcon

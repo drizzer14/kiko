@@ -12,13 +12,6 @@ import type { ImplicitAccountKind } from '../implicit-account';
 // native-stack, so read through the item's own type rather than imported).
 type HeaderSymbol = Extract<NativeStackHeaderItemButton['icon'], { type: 'sfSymbol' }>['name'];
 
-// `accountKindSymbol`'s two implicit entries, picked so the `satisfies` proves
-// each is a member of `HeaderSymbol` at compile time.
-const implicitKindSymbol = {
-  property: accountKindSymbol.property,
-  debt: accountKindSymbol.debt,
-} as const satisfies Record<ImplicitAccountKind, HeaderSymbol>;
-
 // The icons an implicit account can hold in this app: a pick from the account
 // picker's pool (`accountIconPool`, the very list the AccountForm offers, so
 // the two cannot drift; it includes every kind glyph), or from the category
@@ -45,5 +38,5 @@ export const accountHeaderSymbol = (
 ): HeaderSymbol => {
   const { icon } = accountIdentity(account);
 
-  return isHeaderSymbol(icon) ? icon : implicitKindSymbol[account.kind];
+  return isHeaderSymbol(icon) ? icon : accountKindSymbol[account.kind];
 };

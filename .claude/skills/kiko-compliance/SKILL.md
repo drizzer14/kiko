@@ -252,9 +252,8 @@ that could read as an official partnership or endorsement Kiko does
 not have? Judgment only — no mechanized check. Satisfied today for the
 account form's bank and broker pickers: each shows a "not affiliated with
 or endorsed by any bank/broker" caption under its trigger
-(`forms.account.bankAffiliationDisclaimer`, `brokerDisclaimer`), the bank
-sheet adds a "not a bank" caption (`bankDisclaimer`), and neither picker
-draws a logo.
+(`forms.account.bankDisclaimer`, which also says Kiko is not a bank, and
+`brokerDisclaimer`), and neither picker draws a logo.
 
 ## No tracking/analytics SDKs
 

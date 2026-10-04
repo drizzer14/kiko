@@ -153,8 +153,21 @@ describe('BankTypeField', () => {
 
     await fireEvent.press(getByTestId('bank-type-field'));
 
-    expect(getByTestId('bank-type-option-other-manual-import-icon').props.name).toBe(
-      'doc.badge.plus',
+    const icon = getByTestId('bank-type-option-other-manual-import-icon');
+
+    expect(icon.props.name).toBe('doc.badge.plus');
+    // `onAccent` is a hex token, which `toSFSymbolTintColor` hands to the
+    // native tint unchanged.
+    expect(icon.props.tintColor).toBe(darkTheme.colors.onAccent);
+  });
+
+  // The same description the named banks without a dedicated statement parser
+  // read out (`captionFor`), so VoiceOver says what the row can do.
+  it('reads "Other bank" out with the description the no-parser banks use', async () => {
+    const { getByTestId } = await renderOpenSheet();
+
+    expect(getByTestId('bank-type-option-other').props.accessibilityLabel).toBe(
+      'Other bank. Import with column mapping',
     );
   });
 
@@ -345,21 +358,18 @@ describe('BankTypeField', () => {
     },
   );
 
-  it('shows the not-a-bank disclaimer as a caption on the bank-selection sheet', async () => {
-    const { getByText } = await renderOpenSheet();
-
-    expect(
-      getByText(
-        'Kiko is an independent app. It is not a bank and is not affiliated with or endorsed by any bank.',
-      ),
-    ).toBeTruthy();
-  });
-
-  describe('the not-affiliated clause under the field', () => {
+  describe('the not-a-bank disclaimer under the field', () => {
     const englishClause =
-      'Kiko is an independent app. It is not affiliated with or endorsed by any bank.';
+      'Kiko is an independent app. It is not a bank and is not affiliated with or endorsed by any bank.';
     const ukrainianClause =
-      'Кіко — незалежний застосунок. Він не пов’язаний із жодним банком і не є його партнером.';
+      'Кіко — незалежний застосунок. Це не банк, не є партнером та не пов’язаний з жодним банком.';
+
+    // One caption, under the trigger: the sheet repeats nothing.
+    it('shows the clause once, under the field, while the sheet is open', async () => {
+      const { getAllByText } = await renderOpenSheet();
+
+      expect(getAllByText(englishClause)).toHaveLength(1);
+    });
 
     afterEach(async () => {
       await act(async () => {
@@ -367,8 +377,8 @@ describe('BankTypeField', () => {
       });
     });
 
-    // The same place and wording as the broker field's clause: a caption under
-    // the trigger, there before any bank is picked and with the sheet closed.
+    // The same place as the broker field's clause: a caption under the
+    // trigger, there before any bank is picked and with the sheet closed.
     it('shows the clause under the trigger before a bank is picked, with the sheet closed', async () => {
       const { getByText } = await render(
         <BankTypeField

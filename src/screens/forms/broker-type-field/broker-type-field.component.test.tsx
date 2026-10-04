@@ -84,21 +84,25 @@ describe('BrokerTypeField', () => {
     ).toBeTruthy();
   });
 
-  it('states the same in Ukrainian, naming the app Кіко', async () => {
-    await act(async () => {
-      await i18n.changeLanguage('uk');
+  describe('in Ukrainian', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
     });
 
-    const { getByText } = await setup();
+    it('states the same, naming the app Кіко', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
 
-    expect(
-      getByText(
-        'Кіко — незалежний застосунок. Він не пов’язаний із жодним брокером і не є його партнером.',
-      ),
-    ).toBeTruthy();
+      const { getByText } = await setup();
 
-    await act(async () => {
-      await i18n.changeLanguage('en');
+      expect(
+        getByText(
+          'Кіко — незалежний застосунок. Він не пов’язаний із жодним брокером і не є його партнером.',
+        ),
+      ).toBeTruthy();
     });
   });
 

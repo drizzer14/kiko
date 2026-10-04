@@ -967,15 +967,16 @@ new component can land between reviews of this skill:
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
   is the one remaining hand-rolled implementation, kept apart because it
   carries extra behavior `SelectField` doesn't generalize (an
-  always-last "Other bank" row (`OTHER_BANK_ID`) that states no capability
+  always-last "Other bank" row (`OTHER_BANK_ID`) that shows no capability
   caption and carries one manual-import glyph (`doc.badge.plus`, the account
   screen's Import statement glyph, testID `bank-type-option-other-manual-import-icon`)
   instead of the connect, statement-format and column-mapping icons the named
-  banks show, a Guideline-5.6 "not a bank" disclaimer in the sheet, the
-  not-affiliated caption under the trigger (`forms.account.bankAffiliationDisclaimer`,
-  the same place, `caption`/`textSecondary` style and wording as
-  `BrokerTypeField`'s `brokerDisclaimer`, shown whatever is picked, "Other
-  bank" included: it names no bank), and dual capability icons) — retrofitting it onto `SelectField` is a separate,
+  banks show (its VoiceOver label reads the no-parser banks' description,
+  `bankColumnMappingOnly`), the Guideline-5.6 "not a bank" disclaimer as a
+  caption under the trigger (`forms.account.bankDisclaimer`, the same place and
+  `caption`/`textSecondary` style as `BrokerTypeField`'s `brokerDisclaimer`,
+  shown whatever is picked, "Other bank" included: it names no bank; the sheet
+  carries no second caption), and dual capability icons) — retrofitting it onto `SelectField` is a separate,
   larger task. `sheetTitle` is REQUIRED and distinct from `label` — a
   field label (sentence case) and a sheet title (Title Case) are two
   different UI roles per `kiko-translator`'s casing-by-role rule, so the

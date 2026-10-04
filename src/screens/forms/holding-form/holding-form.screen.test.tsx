@@ -4285,7 +4285,7 @@ describe('HoldingFormScreen — the icon picker offers the default glyph of ever
   ];
 
   it.each(cases)(
-    'lets %s that stores a custom icon pick its default glyph back, first in the picker',
+    'lets %s that stores a custom icon pick its default glyph back',
     async (_label, type, metadata) => {
       const defaultIcon = defaultHoldingSymbol({ type, metadata });
       const screen = await renderEdit(storedHolding(type, metadata));
