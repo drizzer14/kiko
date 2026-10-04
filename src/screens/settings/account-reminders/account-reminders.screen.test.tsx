@@ -176,6 +176,22 @@ describe('AccountRemindersScreen — rows', () => {
     expect(getByText('Available only for accounts you track by hand.')).toBeTruthy();
   });
 
+  // The AccountDetail of an implicit account has no bell and offers no new
+  // reminder, but one a merge left on it stays active and manageable here:
+  // never marked as unavailable, and still paused and deleted from its row.
+  it.each(['property', 'debt'])(
+    'keeps a saved reminder on a live %s account active, with no unavailable note',
+    async (kind) => {
+      seed({ account: { ...CASH, kind }, reminders: [savedReminder()] });
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Add transactions')).toBeTruthy();
+      expect(queryByText('Available only for accounts you track by hand.')).toBeNull();
+      expect(queryByText('Not sent while the account is archived.')).toBeNull();
+    },
+  );
+
   it('says saved reminders are not sent while the account is archived', async () => {
     seed({ account: { ...MANUAL, archivedAt: 1 }, reminders: [savedReminder()] });
 

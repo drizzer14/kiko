@@ -1,3 +1,4 @@
+import { i18n } from '@kiko/i18n/init';
 import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
 import { isMatching, match, P } from 'ts-pattern';
@@ -7,15 +8,12 @@ import type { AccountRow, HoldingRow } from '@kiko/db';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import { isPausedNoticeResponse } from '@kiko/reminders/planner';
 import type { NotificationResponse } from '@kiko/reminders/native';
-import { isImplicitAccount } from '@kiko/holdings/implicit-account';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import type { NavigationContainerRef } from '@react-navigation/native';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { AccountsStackParamList, TabParamList } from '@kiko/navigation/types';
 
 type ReminderRoute = {
-  // Absent for an implicit account: it has no AccountDetail page, so `next`
-  // lands above the Accounts pages that are already open (the Accounts root
-  // when the tab is unmounted or at its root).
   accountDetail?: AccountsStackParamList['AccountDetail'];
   // Pushed above the account, so Back from it lands on the account.
   next?:
@@ -33,10 +31,10 @@ export const latestOpenResponse = (
 // The paused notice says the reminder has stopped, so its tap opens the page
 // where the user can resume it. A holding that takes no transactions (a
 // deposit, a bond, a property item, a metal, a loan) has no form to open. An
-// implicit account has no page at all, so a reminder that is still saved on one
-// opens the Accounts tab with its current pages kept (the root only when the
-// tab is unmounted or at its root), and its paused notice the reminders page
-// above them.
+// implicit account (property or debt) opens its AccountDetail like any other,
+// titled by `accountDisplayName` (the stored name is an English sentinel while
+// the account is unrenamed), so a reminder a merge left on one routes by the
+// same rules.
 export const routeFor = (
   response: NotificationResponse,
   kind: ReminderKind,
@@ -44,14 +42,8 @@ export const routeFor = (
   openHoldings: readonly Pick<HoldingRow, 'id' | 'type'>[],
 ): ReminderRoute | undefined =>
   foldMap(maybe(account), (found): ReminderRoute => {
-    const { id: accountId, name } = found;
-    const accountDetail = { accountId, name };
-
-    if (isImplicitAccount(found)) {
-      return isPausedNoticeResponse(response)
-        ? { next: { screen: 'AccountReminders', params: { accountId } } }
-        : {};
-    }
+    const accountId = found.id;
+    const accountDetail = { accountId, name: accountDisplayName(found, i18n.t) };
 
     if (isPausedNoticeResponse(response)) {
       return { accountDetail, next: { screen: 'AccountReminders', params: { accountId } } };

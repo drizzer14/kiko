@@ -124,14 +124,27 @@ implemented, and callers must skip it rather than assume every id resolves.
   account is unrenamed (written by `0050` and by every implicit create), and
   `accountDisplayName` then shows the localized
   `accounts.implicitName.{property,debt}`; once the user renames the account
-  (the small pencil right of the section total on the Accounts screen,
-  `accounts-property-edit` / `accounts-debts-edit`, opens `AccountForm` for
-  edit; the holding-detail header has no account button) the typed name is stored and shown as it is. The Accounts screen's
+  (from the Edit item of the account's own `AccountDetail`, opened by tapping
+  its section heading on the Accounts screen; the holding-detail header has
+  no account button) the typed name is stored and shown as it is. The Accounts screen's
   Property and Debts section headings show that display name beside the
   account's compact squircle icon tile (`ImplicitAccountHeading`,
   `src/screens/accounts/implicit-account-heading/`, testIDs
   `accounts-property-heading` / `accounts-debts-heading`; the tile is a trial,
-  drop it by deleting the `EntityIconTile` element). The account form
+  drop it by deleting the `EntityIconTile` element); the whole heading row is
+  one button with a chevron that opens `AccountDetail { accountId, name:
+  accountDisplayName(account, t) }` (`accounts-property-open` /
+  `accounts-debts-open`; see kiko-design-system's "Section heading disclosure
+  row"). **An implicit account's `AccountDetail` takes no NEW reminders**:
+  its title is `accountDisplayName`, it has no Reminders bell (Edit only) and
+  never shows the reminder offer (the screen asks `useReminderOffer` for no
+  trigger on a live implicit account), while import statement and bank/crypto
+  sync stay hidden by their own kind gates and Add holding opens
+  `HoldingForm { accountId }` (`holdingTypesForAccountKind` limits it to
+  `property_item` / `loan`). `eligibleReminderKinds` is NOT narrowed for the
+  implicit kinds: it also decides which saved reminders are scheduled
+  (`isSchedulable`) and listed as active in Settings > Reminders, so a merged
+  reminder keeps firing and stays manageable there. The account form
   stores the sentinel back when the name is the localized default left
   unchanged (`implicitAccountStoredName`). The kind decides whether an account
   is implicit, never its name. A new account's `icon` and `color` are NULL so

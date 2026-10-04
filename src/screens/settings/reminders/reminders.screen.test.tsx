@@ -169,6 +169,22 @@ describe('RemindersScreen — list', () => {
       },
     );
 
+    // AccountDetail offers no new reminder on it, but a reminder a merge left
+    // there stays listed here, active, to pause or delete.
+    it.each([
+      ['property', PROPERTY],
+      ['debt', DEBT],
+    ])('still lists a saved reminder on a live %s account as active', async (_kind, account) => {
+      seed([listed({ id: 'r-1', accountId: 'a-1' }, account)]);
+
+      const { getByTestId, queryByText } = await renderScreen();
+
+      expect(
+        within(getByTestId('reminders-account-a-1')).getByText('Add transactions'),
+      ).toBeTruthy();
+      expect(queryByText('Available only for accounts you track by hand.')).toBeNull();
+    });
+
     it('keeps the stored name once it is archived, as a plain account', async () => {
       await i18n.changeLanguage('uk');
       seed([listed({ id: 'r-1', accountId: 'a-1' }, { ...PROPERTY, archivedAt: 1 })]);

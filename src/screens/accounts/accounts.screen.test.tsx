@@ -1431,9 +1431,10 @@ describe('AccountsScreen', () => {
     });
   });
 
-  // A small pencil right of each implicit section's total edits that shared
-  // account (name, icon, color): the only place an implicit account is edited.
-  describe('implicit account edit button', () => {
+  // The whole section heading row (tile, name, total, chevron) is one button
+  // that opens the shared implicit account's own AccountDetail screen, the
+  // page that replaces the account's card in the list.
+  describe('implicit account heading row', () => {
     const bothSections = () =>
       setLiveData({
         accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, propertyAccount(), debtAccount()],
@@ -1451,90 +1452,188 @@ describe('AccountsScreen', () => {
     });
 
     it.each([
-      ['accounts-property-edit', 'p'],
-      ['accounts-debts-edit', 'd'],
-    ])('opens the account form of the section’s own account from %s', async (testID, accountId) => {
-      bothSections();
+      ['accounts-property-open', 'p', 'Properties'],
+      ['accounts-debts-open', 'd', 'Loans'],
+    ])(
+      'opens the AccountDetail of the section’s own account from %s',
+      async (testID, accountId, name) => {
+        bothSections();
 
-      const { getByTestId } = await renderAccounts();
-      await fireEvent.press(getByTestId(testID));
+        const { getByTestId } = await renderAccounts();
+        await fireEvent.press(getByTestId(testID));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId });
-    });
+        expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId, name });
+      },
+    );
 
-    it('reads out as Edit, in English and in Ukrainian', async () => {
-      bothSections();
+    // The route name is what the pushed screen titles itself with before its
+    // own read lands, so it is the localized name, never the stored sentinel.
+    it.each([
+      ['accounts-property-open', 'p', 'Майно'],
+      ['accounts-debts-open', 'd', 'Кредити'],
+    ])(
+      'passes the Ukrainian default name to AccountDetail from %s',
+      async (testID, accountId, name) => {
+        await act(async () => {
+          await i18n.changeLanguage('uk');
+        });
+        bothSections();
 
-      const { getByTestId, getAllByLabelText } = await renderAccounts();
+        const { getByTestId } = await renderAccounts();
+        await fireEvent.press(getByTestId(testID));
 
-      expect(getByTestId('accounts-property-edit').props.accessibilityLabel).toBe('Edit');
-      expect(getAllByLabelText('Edit')).toHaveLength(2);
+        expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId, name });
+      },
+    );
 
-      await act(async () => {
-        await i18n.changeLanguage('uk');
+    it('passes the typed name of a renamed account to AccountDetail', async () => {
+      setLiveData({
+        accounts: [propertyAccount({ name: 'Real estate' })],
+        holdings: [propertyHolding()],
       });
 
-      expect(getByTestId('accounts-debts-edit').props.accessibilityLabel).toBe('Редагувати');
+      const { getByTestId } = await renderAccounts();
+      await fireEvent.press(getByTestId('accounts-property-open'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+        accountId: 'p',
+        name: 'Real estate',
+      });
     });
 
-    // Jest cannot lay out pixels: the small ghost Button is the shared 44pt
-    // icon-only control (its 34pt pill gets 5pt of hit slop above and below,
-    // and its width is already 44pt). iOS delivers no touch outside the parent
-    // view's bounds, so that slop only counts inside a 44pt region: the wrapper
-    // that also centres the pencil on the row (the Button's own `alignSelf`
-    // would pin it to the row's top edge).
-    it('is the shared small icon-only Button, centred in a 44pt region that holds its hit slop', async () => {
+    it('opens AccountDetail from a tap on the heading text or the total, not only the chevron', async () => {
+      bothSections();
+
+      const { getByText, getByTestId } = await renderAccounts();
+      await fireEvent.press(getByText('Properties'));
+      await fireEvent.press(getByTestId('accounts-debts-total'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+        accountId: 'p',
+        name: 'Properties',
+      });
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+        accountId: 'd',
+        name: 'Loans',
+      });
+    });
+
+    it('is one button, reading out its name and its total', async () => {
       bothSections();
 
       const { getByTestId } = await renderAccounts();
-      const region = StyleSheet.flatten(getByTestId('accounts-property-edit-region').props.style);
+      const row = getByTestId('accounts-property-open');
 
-      expect(getByTestId('accounts-property-edit').props.hitSlop).toEqual({ top: 5, bottom: 5 });
-      expect(region.minHeight).toBe(44);
-      expect(region.minWidth).toBe(44);
-      expect(region.alignItems).toBe('center');
-      expect(region.justifyContent).toBe('center');
-      expect(getByTestId('accounts-property-edit').parent?.props.testID).toBe(
-        'accounts-property-edit-region',
-      );
+      expect(row.props.accessibilityRole).toBe('button');
+      expect(within(row).getByText('Properties')).toBeTruthy();
+      expect(within(row).getByTestId('accounts-property-total')).toBeTruthy();
     });
 
-    it('sits right of its section total, in the same row as the heading and the total', async () => {
+    it('shows a disclosure chevron at the end of each heading row, hidden from the accessibility tree', async () => {
       bothSections();
 
       const { getByTestId } = await renderAccounts();
-      const row = getByTestId('accounts-property-total').parent;
-      const order = row?.children.map((child) =>
+
+      for (const kind of ['property', 'debts']) {
+        const chevron = getByTestId(`accounts-${kind}-chevron`, { includeHiddenElements: true });
+
+        expect(
+          within(getByTestId(`accounts-${kind}-open`)).getByTestId(`accounts-${kind}-chevron`, {
+            includeHiddenElements: true,
+          }),
+        ).toBe(chevron);
+        expect(chevron.props.accessibilityElementsHidden).toBe(true);
+        expect(chevron.props.importantForAccessibility).toBe('no-hide-descendants');
+      }
+    });
+
+    // The disclosure glyph is the small caption-size secondary-tone chevron,
+    // one per section row (the SF Symbol mock renders a View carrying the
+    // glyph's own props; a rgba tone reaches it as its #RRGGBBAA hex).
+    it('draws the chevron.right glyph at the caption icon size in the secondary tone', async () => {
+      bothSections();
+
+      const { getByTestId } = await renderAccounts();
+
+      for (const kind of ['property', 'debts']) {
+        const chevron = getByTestId(`accounts-${kind}-chevron`, { includeHiddenElements: true });
+        const glyphs = chevron.children.filter((child) => typeof child !== 'string');
+
+        expect(glyphs).toHaveLength(1);
+        expect(glyphs[0].props.name).toBe('chevron.right');
+        expect(glyphs[0].props.size).toBe(darkTheme.iconSizes.caption);
+        expect(glyphs[0].props.tintColor).toMatch(/^#ebebf599$/i);
+        expect(StyleSheet.flatten(chevron.props.style).marginLeft).toBe(darkTheme.spacing(2));
+        expect(StyleSheet.flatten(chevron.props.style).flexShrink).toBe(0);
+      }
+    });
+
+    // Jest cannot lay out pixels: the row holds a 44pt minimum height inside
+    // its own bounds, so the whole row is the touch target.
+    it('is at least 44pt tall, with its content centred', async () => {
+      bothSections();
+
+      const { getByTestId } = await renderAccounts();
+      const row = StyleSheet.flatten(getByTestId('accounts-property-open').props.style);
+
+      expect(row.minHeight).toBe(44);
+      expect(row.flexDirection).toBe('row');
+      expect(row.alignItems).toBe('center');
+    });
+
+    it('lays the heading, the total and the chevron out in one row, in that order', async () => {
+      bothSections();
+
+      const { getByTestId } = await renderAccounts();
+      const order = getByTestId('accounts-property-open').children.map((child) =>
         typeof child === 'string' ? child : child.props.testID,
       );
 
       expect(order).toEqual([
         'accounts-property-heading',
         'accounts-property-total',
-        'accounts-property-edit-region',
+        'accounts-property-chevron',
       ]);
     });
 
-    it('shows no edit button on the main grid’s account cards', async () => {
-      const { queryAllByLabelText, queryByTestId } = await renderAccounts();
+    it('has no edit pencil any more, on a section or on a main-grid account card', async () => {
+      bothSections();
 
+      const { getByTestId, queryAllByLabelText, queryByTestId } = await renderAccounts();
+
+      expect(getByTestId('accounts-property-open')).toBeTruthy();
+      expect(getByTestId('accounts-debts-open')).toBeTruthy();
       expect(queryAllByLabelText('Edit')).toHaveLength(0);
+      expect(queryAllByLabelText('Редагувати')).toHaveLength(0);
       expect(queryByTestId('accounts-property-edit')).toBeNull();
       expect(queryByTestId('accounts-debts-edit')).toBeNull();
+      expect(queryByTestId('accounts-property-edit-region')).toBeNull();
+    });
+
+    it('opens no AccountForm from the heading row', async () => {
+      bothSections();
+
+      const { getByTestId } = await renderAccounts();
+      await fireEvent.press(getByTestId('accounts-property-open'));
+
+      expect(navigation.navigate).not.toHaveBeenCalledWith('AccountForm', expect.anything());
     });
 
     // No live implicit account (or none with an open holding) means no section
-    // at all, so there is nothing to edit.
+    // at all, so no heading row and no chevron.
     it.each([
       ['no property account', [{ id: 'a', name: 'Monobank', kind: 'bank' }], []],
       ['an archived property account', [propertyAccount({ archivedAt: 123 })], [propertyHolding()]],
       ['a property account with nothing open', [propertyAccount()], []],
-    ])('shows no property edit button for %s', async (_label, accounts, holdings) => {
+    ])('shows no property heading row for %s', async (_label, accounts, holdings) => {
       setLiveData({ accounts, holdings });
 
       const { queryByTestId } = await renderAccounts();
 
-      expect(queryByTestId('accounts-property-edit')).toBeNull();
+      expect(queryByTestId('accounts-property-open')).toBeNull();
+      expect(
+        queryByTestId('accounts-property-chevron', { includeHiddenElements: true }),
+      ).toBeNull();
     });
   });
 

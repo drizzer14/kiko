@@ -1,4 +1,9 @@
 import { type FC, useMemo } from 'react';
+import {
+  accountDisplayName,
+  isImplicitAccount,
+  type ImplicitAccountKind,
+} from '@kiko/holdings/implicit-account';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import Sortable from 'react-native-sortables';
@@ -16,6 +21,7 @@ import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
+import SymbolIcon from '@kiko/design-system/components/symbol';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
@@ -37,7 +43,6 @@ import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-no
 import { type AccountRow, type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { useCloseHoldingAction } from '@kiko/design-system/components/close-holding-sheet';
-import { isImplicitAccount, type ImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
 import { styles } from './accounts.styles';
 import ImplicitAccountHeading from './implicit-account-heading';
@@ -121,7 +126,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   );
 
   // The live property and debt accounts are the implicit accounts: never a
-  // card of their own, and no AccountDetail page. Each one's open holdings
+  // card of their own: their section heading opens the account's own
+  // AccountDetail page instead. Each one's open holdings
   // are listed as cards in its own section, in its own drag-and-drop grid
   // below the main one — never mixed into it, so a drag reorder in any grid
   // can only ever reorder within that same section (`Sortable.Grid`'s `data`
@@ -279,7 +285,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     total,
     headingTestID,
     totalTestID,
-    editTestID,
+    openTestID,
+    chevronTestID,
     gridTestID,
     closeActionFor,
     showDivider,
@@ -289,7 +296,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     total: ReturnType<typeof guardedNetWorth>;
     headingTestID: string;
     totalTestID: string;
-    editTestID: string;
+    openTestID: string;
+    chevronTestID: string;
     gridTestID: string;
     closeActionFor: ReturnType<typeof useCloseHoldingAction>['closeActionFor'];
     showDivider: boolean;
@@ -297,32 +305,39 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     <>
       {showDivider && <Divider spacing={2} />}
       <Box gap={3}>
-        <Box direction="row" style={styles.sectionHeadingRow}>
+        {/* The whole heading row is one button, the iOS disclosure-row
+            pattern: it opens the implicit account's own AccountDetail page
+            (the page that replaces the account's card in this list), and the
+            chevron at its end is only the affordance. Like the account
+            card's button it carries no label of its own, so VoiceOver reads
+            the name and the total. */}
+        <Pressable
+          testID={openTestID}
+          accessibilityRole="button"
+          onPress={() =>
+            navigation.navigate('AccountDetail', {
+              accountId: account.id,
+              name: accountDisplayName(account, t),
+            })
+          }
+          style={styles.sectionHeadingRow}
+        >
           <ImplicitAccountHeading account={account} testID={headingTestID} />
 
           <Box testID={totalTestID} style={styles.rowAmount}>
             <MoneyText money={total} context="balance" />
           </Box>
 
-          {/* The one place the shared implicit account is edited (name, icon,
-              color). The small ghost icon-only Button is the app's secondary
-              icon control: its pill is under 44pt tall and it restores the
-              44pt hit region with its own hitSlop, which iOS only honours
-              inside the parent's bounds: the 44pt region box is that parent
-              (and centres the pencil on the row). */}
-          <Box testID={`${editTestID}-region`} style={styles.sectionEditRegion}>
-            <Button
-              variant="ghost"
-              size="small"
-              fullWidth={false}
-              icon="pencil"
-              textColor={theme.colors.textSecondary}
-              accessibilityLabel={t('common.edit')}
-              testID={editTestID}
-              onPress={() => navigation.navigate('AccountForm', { accountId: account.id })}
-            />
+          {/* Decorative: the row's button role already says it navigates. */}
+          <Box
+            testID={chevronTestID}
+            style={styles.sectionChevron}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <SymbolIcon name="chevron.right" size={theme.iconSizes.caption} tone="textSecondary" />
           </Box>
-        </Box>
+        </Pressable>
 
         <Box testID={gridTestID}>
           <Sortable.Grid
@@ -463,7 +478,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                 total: propertyTotal,
                 headingTestID: 'accounts-property-heading',
                 totalTestID: 'accounts-property-total',
-                editTestID: 'accounts-property-edit',
+                openTestID: 'accounts-property-open',
+                chevronTestID: 'accounts-property-chevron',
                 gridTestID: 'accounts-property-grid',
                 closeActionFor: closePropertyActionFor,
                 showDivider: mainAccounts.length > 0,
@@ -477,7 +493,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                 total: debtsTotal,
                 headingTestID: 'accounts-debts-heading',
                 totalTestID: 'accounts-debts-total',
-                editTestID: 'accounts-debts-edit',
+                openTestID: 'accounts-debts-open',
+                chevronTestID: 'accounts-debts-chevron',
                 gridTestID: 'accounts-debts-grid',
                 closeActionFor: closeDebtActionFor,
                 showDivider: mainAccounts.length > 0 || propertyHoldings.length > 0,

@@ -1,3 +1,4 @@
+import { i18n } from '@kiko/i18n/init';
 import type { NotificationResponse } from '@kiko/reminders/native';
 
 import { latestOpenResponse, routeFor } from './route-response';
@@ -69,30 +70,61 @@ describe('routeFor', () => {
     expect(routeFor(pausedNoticeTap, 'add_transactions', undefined, [])).toBeUndefined();
   });
 
-  // An implicit account has no AccountDetail page, so a reminder on it never
-  // opens one: a tap lands on the Accounts root, and the paused notice opens
-  // the reminders page above it.
+  // An implicit account has its own AccountDetail page (its section heading
+  // on the Accounts screen opens it), so a reminder merged onto it opens that
+  // page like any other account's, titled with its localized default name.
   describe.each([
-    ['property', PROPERTIES],
-    ['debt', LOANS],
-  ])('an implicit %s account', (_kind, account) => {
+    ['property', PROPERTIES, 'Properties'],
+    ['debt', LOANS, 'Loans'],
+  ])('an implicit %s account', (_kind, account, title) => {
+    const accountDetail = { accountId: account.id, name: title };
+
     it.each([
-      ['statement_import', []],
-      ['add_transactions', []],
-      ['add_transactions', [{ id: 'flat', type: 'property_item' } as const]],
-      ['add_transactions', [WALLET]],
-    ] as const)('opens the Accounts root, with no account page, for a %s tap', (kind, holdings) => {
-      expect(routeFor(tap(), kind, account, holdings)).toEqual({});
+      ['no open holdings', []],
+      ['one open property item', [{ id: 'flat', type: 'property_item' } as const]],
+      ['one open loan', [{ id: 'car', type: 'loan' } as const]],
+    ])('opens only its AccountDetail for an add-transactions tap with %s', (_label, holdings) => {
+      expect(routeFor(tap(), 'add_transactions', account, holdings)).toEqual({ accountDetail });
+    });
+
+    it('opens its AccountDetail with the file-picker intent for an import reminder tap', () => {
+      expect(routeFor(tap(), 'statement_import', account, [])).toEqual({
+        accountDetail: { ...accountDetail, intent: 'importStatement' },
+      });
     });
 
     it.each(['statement_import', 'add_transactions'] as const)(
-      'opens only the account reminders page for a tap on the %s paused notice',
+      'opens the account reminders page above its AccountDetail for a tap on the %s paused notice',
       (kind) => {
         expect(routeFor(pausedNoticeTap, kind, account, [])).toEqual({
+          accountDetail,
           next: { screen: 'AccountReminders', params: { accountId: account.id } },
         });
       },
     );
+  });
+
+  describe('the page title of an implicit account', () => {
+    afterEach(async () => {
+      await i18n.changeLanguage('en');
+    });
+
+    it('is the localized default name, not the stored English sentinel', async () => {
+      await i18n.changeLanguage('uk');
+
+      expect(routeFor(tap(), 'add_transactions', PROPERTIES, [])).toEqual({
+        accountDetail: { accountId: 'properties', name: 'Майно' },
+      });
+      expect(routeFor(tap(), 'add_transactions', LOANS, [])).toEqual({
+        accountDetail: { accountId: 'loans', name: 'Кредити' },
+      });
+    });
+
+    it('is the name the user typed once the account is renamed', () => {
+      expect(
+        routeFor(tap(), 'add_transactions', { ...PROPERTIES, name: 'Real estate' }, []),
+      ).toEqual({ accountDetail: { accountId: 'properties', name: 'Real estate' } });
+    });
   });
 
   it('routes an archived property account like any other account', () => {
