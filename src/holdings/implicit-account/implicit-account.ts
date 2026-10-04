@@ -27,8 +27,9 @@ export const isImplicitAccount = <Account extends Pick<AccountRow, 'kind' | 'arc
 // it, and a transaction can only hang off a holding (`transactions.holding_id`
 // is NOT NULL), so no holding means no transaction either. One that still
 // holds a CLOSED holding stays listed, because that holding's history still
-// counts in the totals and must stay selectable. This shapes the option list
-// only: no total or account filter reads it.
+// counts in the totals and must stay selectable. No total reads this list
+// directly; a stored selection of a left-out account is pruned to All against
+// it (that account holds nothing).
 export const accountsForFilter = <Account extends Pick<AccountRow, 'id' | 'kind' | 'archivedAt'>>(
   accounts: readonly Account[],
   holdings: readonly Pick<HoldingRow, 'accountId'>[],

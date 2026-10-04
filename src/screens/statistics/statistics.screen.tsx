@@ -344,12 +344,10 @@ const StatisticsScreen: FC = () => {
   const filtered = useMemo(() => {
     const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
     // The stored selection can name an account archived or deleted since, with no
-    // checked row left to clear it: only a still-visible id filters and counts,
-    // and an empty result is "All".
-    // Pruned against the filter's OPTIONS, which leave out an implicit account
-    // with no holding left: its stale selection clears to "All" (it holds
-    // nothing, so no total changes), while `visibleAccounts` and everything
-    // computed from it stay as they were.
+    // checked row left to clear it, so it is pruned against the filter's OPTIONS
+    // and an empty result is "All". The options leave out an implicit account
+    // with no holding left: it holds nothing, so "All" totals are unchanged,
+    // while `visibleAccounts` and everything computed from it stay as they were.
     const optionAccounts = accountsForFilter(accounts, holdings);
     const visibleSelectedAccounts = visibleSelection(
       selectedAccounts,

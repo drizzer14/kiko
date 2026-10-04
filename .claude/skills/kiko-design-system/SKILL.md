@@ -287,8 +287,9 @@ The established patterns grouped under this heading:
   (`src/holdings/implicit-account/`): every live account, except a live
   implicit account with no holding at all (its last holding deleted, which
   also deleted its transactions); one with only a closed holding stays
-  listed, because that history still counts. It shapes the options only, no
-  total reads it. A value that only fell out of scope (a category outside the date range)
+  listed, because that history still counts. No total reads it
+  directly; a stored selection of a left-out account is pruned to All (that
+  account holds nothing). A value that only fell out of scope (a category outside the date range)
   is still unioned back, never pruned (the rule above).
 - **SettingsRow** (`src/screens/settings/settings-row/`): `onPress`
   makes the row a `Pressable` (with a chevron). `trailing` pins an

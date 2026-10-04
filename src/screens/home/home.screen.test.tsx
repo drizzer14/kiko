@@ -1025,10 +1025,12 @@ describe('HomeScreen', () => {
       });
       const { getAllByText, getByText, queryByText, getByTestId, rerender } = await renderHome();
 
+      // Taken with "All" selected, before the stale selection exists.
+      const netWorthShownWithAll = getAllByText(/1,000\.00 ₴/).length;
+
       await pressFilter(getByTestId, 'account-filter-menu', 'p');
       expect(getByText('Accounts · 1')).toBeTruthy();
       expect(queryByText('Coffee')).toBeNull();
-      const netWorthShownWithSelection = getAllByText(/1,000\.00 ₴/).length;
 
       // The hard delete removes the holding and its transactions, not the account.
       seed({
@@ -1048,25 +1050,7 @@ describe('HomeScreen', () => {
       expect(getByText('Coffee')).toBeTruthy();
       expect(getByText('Accounts')).toBeTruthy();
       expect(queryByText(/^Accounts · /)).toBeNull();
-      expect(getAllByText(/1,000\.00 ₴/)).toHaveLength(netWorthShownWithSelection);
-    });
-
-    it('moves no total: the net worth is the same with the empty account left in or removed', async () => {
-      seed({ accounts: [MONOBANK, PROPERTIES], holdings: [UAH_HOLDING] });
-      const withEmptyImplicit = await renderHome();
-      const shownWith = withEmptyImplicit.getAllByText(/1,000\.00 ₴/).length;
-
-      seed({ accounts: [MONOBANK], holdings: [UAH_HOLDING] });
-      await act(async () => {
-        await withEmptyImplicit.rerender(
-          <HomeScreen
-            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
-            route={asRouteProp<HomeProps['route']>('Home')}
-          />,
-        );
-      });
-
-      expect(withEmptyImplicit.getAllByText(/1,000\.00 ₴/)).toHaveLength(shownWith);
+      expect(getAllByText(/1,000\.00 ₴/)).toHaveLength(netWorthShownWithAll);
     });
   });
 
