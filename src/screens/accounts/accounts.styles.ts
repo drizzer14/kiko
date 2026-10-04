@@ -1,12 +1,25 @@
 import { StyleSheet } from 'react-native-unistyles';
 
+// The iOS HIG 44pt touch-target minimum.
+const TOUCH_TARGET_MIN_HEIGHT = 44;
+
 export const styles = StyleSheet.create((theme) => ({
-  // A section heading row (Property, Debts) — the section's own label on
-  // the left, its section total on the right, same space-between shape the
-  // account card's own `row` style below uses.
+  // A section heading row (Property, Debts), one pressable: the implicit
+  // account's heading on the left, then its section total, then the
+  // disclosure chevron, same space-between shape the account card's own `row`
+  // style below uses. The 44pt minimum keeps the touch target inside the
+  // row's own bounds, so a short single-line heading still meets it.
   sectionHeadingRow: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    minHeight: TOUCH_TARGET_MIN_HEIGHT,
+  },
+  // The disclosure chevron at the row's end: a small gap off the total, and
+  // never squeezed by a long name or a wide total.
+  sectionChevron: {
+    flexShrink: 0,
+    marginLeft: theme.spacing(2),
   },
   // The screen's content column: fills the available space below the header.
   content: {

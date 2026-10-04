@@ -1,6 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 import { brokerIds } from '@kiko/brokers';
 
 import BrokerTypeField from '.';
@@ -82,6 +82,28 @@ describe('BrokerTypeField', () => {
     expect(
       getByText('Kiko is an independent app. It is not affiliated with or endorsed by any broker.'),
     ).toBeTruthy();
+  });
+
+  describe('in Ukrainian', () => {
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('states the same, naming the app Кіко', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByText } = await setup();
+
+      expect(
+        getByText(
+          'Кіко — незалежний застосунок. Він не пов’язаний із жодним брокером і не є його партнером.',
+        ),
+      ).toBeTruthy();
+    });
   });
 
   it('marks the field required and shows its error under it when the caller passes them', async () => {

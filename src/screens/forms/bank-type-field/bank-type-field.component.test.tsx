@@ -1,6 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { bankIds, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 
@@ -109,7 +109,7 @@ describe('BankTypeField', () => {
     expect(optionIds).toEqual([...bankIds]);
   });
 
-  it('renders "Other bank" as a plain row with no capability caption or icon', async () => {
+  it('renders "Other bank" with no capability caption and no capability icon of a named bank', async () => {
     const { getByTestId } = await renderOpenSheet();
 
     const optionTree = JSON.stringify(getByTestId('bank-type-option-other').toJSON());
@@ -117,6 +117,60 @@ describe('BankTypeField', () => {
     expect(optionTree).not.toContain('receipt');
     expect(optionTree).not.toContain('increase.indent');
     expect(optionTree).not.toContain('arrow.trianglehead.2.clockwise.rotate.90');
+    expect(optionTree).not.toContain('Statement import only');
+  });
+
+  // An unlisted bank has no parser, so the way to bring its statements in is
+  // by hand: the same "import a statement" glyph the account screen's Import
+  // statement button and the statement reminder row use.
+  it('shows the manual-import icon on "Other bank", at the caption icon-size step', async () => {
+    const { getByTestId } = await renderOpenSheet();
+
+    const icon = getByTestId('bank-type-option-other-manual-import-icon');
+
+    expect(icon.props.name).toBe('doc.badge.plus');
+    expect(icon.props.size).toBe(darkTheme.iconSizes.caption);
+  });
+
+  it('shows the manual-import icon on no named bank', async () => {
+    const { queryByTestId } = await renderOpenSheet();
+
+    for (const bankId of bankIds.filter((id) => id !== OTHER_BANK_ID)) {
+      expect(queryByTestId(`bank-type-option-${bankId}-manual-import-icon`)).toBeNull();
+    }
+  });
+
+  it('draws the picked "Other bank" row\'s manual-import glyph in the white on-accent hex', async () => {
+    const { getByTestId } = await render(
+      <BankTypeField
+        label="Bank type"
+        sheetTitle="Select a Bank"
+        selected="other"
+        onSelect={jest.fn()}
+        testID="bank-type-field"
+      />,
+    );
+
+    await fireEvent.press(getByTestId('bank-type-field'));
+
+    const icon = getByTestId('bank-type-option-other-manual-import-icon');
+
+    expect(icon.props.name).toBe('doc.badge.plus');
+    // `onAccent` is a hex token, which `toSFSymbolTintColor` hands to the
+    // native tint unchanged. It equals `textPrimary` in the one dark theme, so
+    // this pins that the glyph has a resolved white tint, not that it differs
+    // from an unselected row.
+    expect(icon.props.tintColor).toBe(darkTheme.colors.onAccent);
+  });
+
+  // The same description the named banks without a dedicated statement parser
+  // read out (`captionFor`), so VoiceOver says what the row can do.
+  it('reads "Other bank" out with the description the no-parser banks use', async () => {
+    const { getByTestId } = await renderOpenSheet();
+
+    expect(getByTestId('bank-type-option-other').props.accessibilityLabel).toBe(
+      'Other bank. Import with column mapping',
+    );
   });
 
   it('shows "Other bank" as the trigger value, and its row selected, when picked', async () => {
@@ -306,14 +360,75 @@ describe('BankTypeField', () => {
     },
   );
 
-  it('shows the not-a-bank disclaimer as a caption on the bank-selection sheet', async () => {
-    const { getByText } = await renderOpenSheet();
+  describe('the not-a-bank disclaimer under the field', () => {
+    const englishClause =
+      'Kiko is an independent app. It is not a bank and is not affiliated with or endorsed by any bank.';
+    const ukrainianClause =
+      'Кіко — незалежний застосунок. Це не банк, не є партнером та не пов’язаний з жодним банком.';
 
-    expect(
-      getByText(
-        'Kiko is an independent app. It is not a bank and is not affiliated with or endorsed by any bank.',
-      ),
-    ).toBeTruthy();
+    // One caption, under the trigger: the sheet repeats nothing.
+    it('shows the clause once, under the field, while the sheet is open', async () => {
+      const { getAllByText } = await renderOpenSheet();
+
+      expect(getAllByText(englishClause)).toHaveLength(1);
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    // The same place as the broker field's clause: a caption under the
+    // trigger, there before any bank is picked and with the sheet closed.
+    it('shows the clause under the trigger before a bank is picked, with the sheet closed', async () => {
+      const { getByText } = await render(
+        <BankTypeField
+          label="Bank type"
+          sheetTitle="Select a Bank"
+          selected={null}
+          onSelect={jest.fn()}
+          testID="bank-type-field"
+        />,
+      );
+
+      expect(getByText(englishClause)).toBeTruthy();
+    });
+
+    it.each([
+      ['a named bank', 'privatbank'],
+      ['Other bank', OTHER_BANK_ID],
+    ] as const)('shows the same clause when %s is picked', async (_label, selected) => {
+      const { getByText } = await render(
+        <BankTypeField
+          label="Bank type"
+          sheetTitle="Select a Bank"
+          selected={selected}
+          onSelect={jest.fn()}
+          testID="bank-type-field"
+        />,
+      );
+
+      expect(getByText(englishClause)).toBeTruthy();
+    });
+
+    it('shows the Ukrainian clause, naming the app Кіко, in uk', async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      const { getByText } = await render(
+        <BankTypeField
+          label="Тип банку"
+          sheetTitle="Тип банку"
+          selected={null}
+          onSelect={jest.fn()}
+          testID="bank-type-field"
+        />,
+      );
+
+      expect(getByText(ukrainianClause)).toBeTruthy();
+    });
   });
 
   it.each(['privatbank', 'sensebank', 'procredit', 'ukrsib', 'alfa'])(

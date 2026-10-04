@@ -11,14 +11,16 @@
 //
 // Both lists are copied VERBATIM from the curated "Kiko Entities" and "Kiko
 // Categories" SF Symbols collections. A unit of its own, apart from the
-// modal, so domain code that only needs the names (the header symbol guard)
+// modal, so domain code that only needs the names (the entity icon pool)
 // does not load the modal component and its styles; the screen call sites
 // import the matching pool and thread it through the shared identity field →
 // IconEditor → IconPickerModal.
 
-// Kiko Entities pool (62) — the account/holding IconEditor pool, opened
-// from the account form and the holding form. Does NOT include the per-KIND
-// type-defaults; those stay decided in the central entity-symbols map.
+// Kiko Entities pool (62) — the curated base of the account/holding IconEditor
+// pools. Does NOT include the per-KIND type-defaults, which stay decided in the
+// central entity-symbols map: the account and holding forms open the pools
+// `@kiko/holdings/entity-icon-pool` composes (these icons after those defaults),
+// so a user who picks a custom icon can pick the entity's own glyph back.
 export const KIKO_ENTITIES_ICONS = [
   'archivebox',
   'australiandollarsign',

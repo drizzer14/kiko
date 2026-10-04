@@ -216,7 +216,7 @@ describe('reminder tap routing (real router)', () => {
       expect(focusedTab()).toBe('AccountsTab');
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+        onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
         onStack('TransactionForm', { holdingId: 'wallet' }),
       ]);
     });
@@ -229,7 +229,7 @@ describe('reminder tap routing (real router)', () => {
 
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+        onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
       ]);
     });
 
@@ -238,7 +238,12 @@ describe('reminder tap routing (real router)', () => {
 
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'bank', name: 'Mono', intent: 'importStatement' }),
+        onStack('AccountDetail', {
+          accountId: 'bank',
+          name: 'Mono',
+          kind: 'bank',
+          intent: 'importStatement',
+        }),
       ]);
     });
 
@@ -247,22 +252,30 @@ describe('reminder tap routing (real router)', () => {
 
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+        onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
         onStack('AccountReminders', { accountId: 'cash' }),
       ]);
     });
 
-    // An implicit account has no AccountDetail page, so a tap never opens one.
-    it('opens only the Accounts root for a tap on an implicit account reminder', async () => {
+    // An implicit account has its own AccountDetail page, so a tap opens it
+    // like any other account's (a single ledgerless holding opens no form).
+    it('opens the AccountDetail of an implicit account for a tap on its reminder', async () => {
       seedHolding('flat', 'properties', null, 'property_item');
 
       await routeTap([tap('add-properties')]);
 
       expect(focusedTab()).toBe('AccountsTab');
-      expect(accountsStack()).toEqual([onStack('Accounts')]);
+      expect(accountsStack()).toEqual([
+        onStack('Accounts'),
+        onStack('AccountDetail', {
+          accountId: 'properties',
+          name: 'Properties',
+          kind: 'property',
+        }),
+      ]);
     });
 
-    it('opens the account reminders page above the Accounts root for its paused notice', async () => {
+    it('opens the account reminders page above its AccountDetail for its paused notice', async () => {
       await routeTap([
         tap('add-properties', { requestIdentifier: 'kiko.reminder.add-properties.paused' }),
       ]);
@@ -270,6 +283,11 @@ describe('reminder tap routing (real router)', () => {
       expect(focusedTab()).toBe('AccountsTab');
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
+        onStack('AccountDetail', {
+          accountId: 'properties',
+          name: 'Properties',
+          kind: 'property',
+        }),
         onStack('AccountReminders', { accountId: 'properties' }),
       ]);
     });
@@ -282,7 +300,12 @@ describe('reminder tap routing (real router)', () => {
 
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'bank', name: 'Mono', intent: 'importStatement' }),
+        onStack('AccountDetail', {
+          accountId: 'bank',
+          name: 'Mono',
+          kind: 'bank',
+          intent: 'importStatement',
+        }),
       ]);
     });
 
@@ -302,7 +325,7 @@ describe('reminder tap routing (real router)', () => {
 
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
     ]);
   });
 
@@ -335,7 +358,7 @@ describe('reminder tap routing (real router)', () => {
       onStack('Accounts'),
       onStack('AccountDetail', { accountId: 'bank', name: 'Mono' }),
       onStack('HoldingDetail'),
-      onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
     ]);
     expect(accountsStack().map(({ key }) => key)).toEqual([...keysBefore, expect.any(String)]);
   });
@@ -349,12 +372,17 @@ describe('reminder tap routing (real router)', () => {
 
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'bank', name: 'Mono', intent: 'importStatement' }),
+      onStack('AccountDetail', {
+        accountId: 'bank',
+        name: 'Mono',
+        kind: 'bank',
+        intent: 'importStatement',
+      }),
     ]);
     expect(accountsStack()[1]?.key).toBe(pageBefore?.key);
   });
 
-  it('navigates once, with a stack that ends at the account reminders page, for an implicit account’s paused notice', async () => {
+  it('navigates once, with a stack that ends at the account reminders page above its AccountDetail, for an implicit account’s paused notice', async () => {
     await renderApp();
     const navigate = jest.spyOn(navigationRef, 'navigate');
 
@@ -367,15 +395,19 @@ describe('reminder tap routing (real router)', () => {
       state: {
         routes: [
           expect.objectContaining({ name: 'Accounts' }),
+          {
+            name: 'AccountDetail',
+            params: { accountId: 'properties', name: 'Properties', kind: 'property' },
+          },
           { name: 'AccountReminders', params: { accountId: 'properties' } },
         ],
-        index: 1,
+        index: 2,
       },
     });
     navigate.mockRestore();
   });
 
-  it('keeps the pages the tab shows, adding no account page, for an implicit account’s tap', async () => {
+  it('keeps the pages the tab shows and adds the implicit account’s page above them, for its tap', async () => {
     await renderApp();
     await openAccount('bank', 'Mono');
     const keysBefore = accountsStack().map(({ key }) => key);
@@ -385,8 +417,35 @@ describe('reminder tap routing (real router)', () => {
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
       onStack('AccountDetail', { accountId: 'bank', name: 'Mono' }),
+      onStack('AccountDetail', {
+        accountId: 'properties',
+        name: 'Properties',
+        kind: 'property',
+      }),
     ]);
-    expect(accountsStack().map(({ key }) => key)).toEqual(keysBefore);
+    expect(
+      accountsStack()
+        .map(({ key }) => key)
+        .slice(0, keysBefore.length),
+    ).toEqual(keysBefore);
+  });
+
+  it('gives the implicit account’s page, already on top, the new params in place', async () => {
+    await renderApp();
+    await openAccount('properties', 'Properties');
+    const [, pageBefore] = accountsStack();
+
+    await route([tap('add-properties')]);
+
+    expect(accountsStack()).toEqual([
+      onStack('Accounts'),
+      onStack('AccountDetail', {
+        accountId: 'properties',
+        name: 'Properties',
+        kind: 'property',
+      }),
+    ]);
+    expect(accountsStack()[1]?.key).toBe(pageBefore?.key);
   });
 
   it('opens the next screen above the page of the tapped account already on top', async () => {
@@ -398,7 +457,7 @@ describe('reminder tap routing (real router)', () => {
 
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
       onStack('TransactionForm', { holdingId: 'wallet' }),
     ]);
   });
@@ -410,7 +469,12 @@ describe('reminder tap routing (real router)', () => {
 
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'bank', name: 'Mono', intent: 'importStatement' }),
+      onStack('AccountDetail', {
+        accountId: 'bank',
+        name: 'Mono',
+        kind: 'bank',
+        intent: 'importStatement',
+      }),
     ]);
   });
 });

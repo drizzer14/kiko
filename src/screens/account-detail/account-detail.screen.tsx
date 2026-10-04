@@ -1,5 +1,10 @@
 import either from 'fnts/either';
 import { match } from 'ts-pattern';
+import {
+  accountDisplayName,
+  isImplicitAccount,
+  isImplicitAccountKind,
+} from '@kiko/holdings/implicit-account';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
@@ -11,7 +16,6 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
-import { useDataReady, useLiveQuery } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
@@ -30,6 +34,7 @@ import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import HoldingCard from '@kiko/design-system/components/holding-card';
+import { type AccountRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
@@ -59,8 +64,19 @@ const offerMessage = (kind: ReminderKind, t: TFunction): string =>
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
+// The header items are set before the account row loads, so the bell cannot
+// wait on the row: the loaded account decides, else the route's kind hint, and
+// with neither the bell is left out until the row loads.
+const showsRemindersBell = (
+  account: Pick<AccountRow, 'kind' | 'archivedAt'> | undefined,
+  kindHint: AccountRow['kind'] | undefined,
+): boolean =>
+  foldMap(maybe(account), (found) => !isImplicitAccount(found)) ??
+  foldMap(maybe(kindHint), (kind) => !isImplicitAccountKind(kind)) ??
+  false;
+
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
-  const { accountId, name: initialName, reminderOffer, intent } = route.params;
+  const { accountId, name: initialName, kind: kindHint, reminderOffer, intent } = route.params;
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
@@ -110,6 +126,13 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     priceBookLoading,
   );
   const account = accounts.at(0);
+  // The implicit property and debt accounts take no NEW reminders: their
+  // holdings hold no ledger a reminder could ask the user to fill. Gated
+  // here, not in `eligibleReminderKinds`, which also decides whether a
+  // reminder an old merge left on such an account is still scheduled and
+  // listed as active in Settings > Reminders.
+  const isImplicit = account !== undefined && isImplicitAccount(account);
+  const showsBell = showsRemindersBell(account, kindHint);
   // At most one offer per visit: once one is decided, clearing the import
   // param would otherwise fall back to the manual-entry offer at once.
   const [offerDecided, setOfferDecided] = useState(false);
@@ -119,7 +142,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     accountId,
     account,
     settings: settingsRows.at(0),
-    trigger: offerDecided ? undefined : (reminderOffer ?? 'manualActivity'),
+    trigger: offerDecided || isImplicit ? undefined : (reminderOffer ?? 'manualActivity'),
   });
   // "Set up" is the user's answer too, so the offer never returns, even when
   // the form is left unsaved. The form opens at once rather than wait on the
@@ -155,7 +178,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // a rename flows back through. This drops the old async `headerLargeTitle: false`
   // + custom `headerTitle` toggle, which briefly blanked the pushed screen's back
   // button and flashed the large title collapsing on load.
-  const accountName = account?.name ?? initialName;
+  // An unrenamed implicit account stores an English sentinel, so the title
+  // goes through `accountDisplayName` (the route's `name` is already that).
+  const accountName =
+    foldMap(maybe(account), (found) => accountDisplayName(found, t)) ?? initialName;
   // The account's effective icon + color, rendered as the identity glyph beside
   // the Balance amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon
   // slot below) rather than in the nav title.
@@ -168,15 +194,20 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     navigation.setOptions({
       title: accountName,
       unstable_headerRightItems: () => [
-        {
-          type: 'button',
-          label: t('reminders.rowLabel'),
-          accessibilityLabel: t('reminders.rowLabel'),
-          icon: { type: 'sfSymbol', name: 'bell' },
-          tintColor: theme.colors.textPrimary,
-          sharesBackground: false,
-          onPress: () => navigation.navigate('AccountReminders', { accountId }),
-        },
+        // No bell for an implicit account: it takes no new reminders.
+        ...(showsBell
+          ? [
+              {
+                type: 'button' as const,
+                label: t('reminders.rowLabel'),
+                accessibilityLabel: t('reminders.rowLabel'),
+                icon: { type: 'sfSymbol' as const, name: 'bell' as const },
+                tintColor: theme.colors.textPrimary,
+                sharesBackground: false,
+                onPress: () => navigation.navigate('AccountReminders', { accountId }),
+              },
+            ]
+          : []),
         editBarItem({
           label: t('common.edit'),
           tintColor: theme.colors.textPrimary,
@@ -184,7 +215,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         }),
       ],
     });
-  }, [navigation, accountName, accountId, t, theme.colors.textPrimary]);
+  }, [navigation, accountName, accountId, showsBell, t, theme.colors.textPrimary]);
 
   const activeHoldings = holdings.filter((holding) => holding.closedAt == null);
 

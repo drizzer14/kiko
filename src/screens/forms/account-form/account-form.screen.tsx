@@ -30,6 +30,7 @@ import BankTypeField from '@kiko/screens/forms/bank-type-field';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
+import { accountIconPool } from '@kiko/holdings/entity-icon-pool';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
@@ -40,7 +41,6 @@ import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-pools';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -672,7 +672,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             their own atomic insert. */}
         <View ref={nameFieldRef}>
           <HoldingIdentityField
-            icons={KIKO_ENTITIES_ICONS}
+            icons={accountIconPool}
             icon={icon}
             fallbackIcon={fallbackIconFor(kind)}
             iconColor={effectiveColor}

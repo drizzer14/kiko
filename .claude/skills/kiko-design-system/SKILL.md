@@ -228,8 +228,10 @@ an entry (date + value) the moment the user approves a new visual.
   `center` beside their taller `EntityIconTile`. The Statistics pie legend's name
   wraps in its own `legendLabel` (`flex: 1`) box beside the swatch; its
   fixed-width value/percent columns are unchanged. Rows whose label is a
-  fixed short string (`SummaryTable`, the bar chart's type rows, the
-  section heading rows, upcoming payments' dates) are not this pattern.
+  fixed short string (`SummaryTable`, the bar chart's type rows,
+  upcoming payments' dates) are not this pattern. The Accounts screen's
+  Property and Debts section headings are user data (the implicit
+  account's name) and DO follow it (`ImplicitAccountHeading`).
   Pinned per family by a style-contract test (`ancestorWithStyle`: the
   title's own box is `flex: 1` with no row direction, no
   `numberOfLines`). The two card tests also pin the amount's box
@@ -341,7 +343,7 @@ The established patterns grouped under this heading:
   native-stack 7.18.9 sends it with no index, so react-native-screens
   inserts it at the trailing edge. A native item takes no `testID`; a
   test reads the item list from `setOptions` and calls its `onPress`.
-  Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (for a holding of the Property or Loans account, that account's stored icon, else its kind glyph from `accountKindSymbol`, which opens `AccountForm` for edit, then Edit; any other holding shows Edit only). A native item types its SF Symbol `name` as the symbol catalogue's union, so the stored icon goes through `accountHeaderSymbol` (`src/holdings/account-header-symbol/`): it narrows to a known name (both icon pools in `@kiko/design-system/components/icon-pools`, a pools-only unit apart from the picker modal, plus the two implicit kind glyphs, proved members of that union by the `Set<HeaderSymbol>` element type) and falls back to the kind glyph for any other string (a restored .kiko), because UIKit draws no image for an unknown name.
+  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see "Section heading disclosure row" below, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
   The pre-write guard enforces both bans: Semgrep
   `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
   other than `undefined` (a `StyleSheet.create` style and a destructuring
@@ -967,8 +969,16 @@ new component can land between reviews of this skill:
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
   is the one remaining hand-rolled implementation, kept apart because it
   carries extra behavior `SelectField` doesn't generalize (an
-  always-last "Other bank" row (`OTHER_BANK_ID`) that states no capability, a Guideline-5.6 disclaimer, and dual
-  capability icons) — retrofitting it onto `SelectField` is a separate,
+  always-last "Other bank" row (`OTHER_BANK_ID`) that shows no capability
+  caption and carries one manual-import glyph (`doc.badge.plus`, the account
+  screen's Import statement glyph, testID `bank-type-option-other-manual-import-icon`)
+  instead of the connect, statement-format and column-mapping icons the named
+  banks show (its VoiceOver label reads the no-parser banks' description,
+  `bankColumnMappingOnly`), the Guideline-5.6 "not a bank" disclaimer as a
+  caption under the trigger (`forms.account.bankDisclaimer`, the same place and
+  `caption`/`textSecondary` style as `BrokerTypeField`'s `brokerDisclaimer`,
+  shown whatever is picked, "Other bank" included: it names no bank; the sheet
+  carries no second caption), and dual capability icons) — retrofitting it onto `SelectField` is a separate,
   larger task. `sheetTitle` is REQUIRED and distinct from `label` — a
   field label (sentence case) and a sheet title (Title Case) are two
   different UI roles per `kiko-translator`'s casing-by-role rule, so the
@@ -1096,15 +1106,40 @@ new component can land between reviews of this skill:
   nullable value) and derives its own gradient from that hex via
   `entityIconTileGradient`. An optional `size` mirrors `SymbolIcon`'s
   own, defaulting to the `body` icon-size token when omitted.
-  Consumers: the account card, the holding card, and the Settings >
+  Consumers: the account card, the holding card, the Settings >
   Reminders account heading (2026-09-30, user request), where the
   tile sits left of the `heading` name, both centered, and carries no
-  `accessibilityLabel` because the name beside it already reads it.
+  `accessibilityLabel` because the name beside it already reads it, and
+  the Accounts screen's Property / Debts section headings
+  (`ImplicitAccountHeading`, the same compact tile and layout, a TRIAL
+  the user judges on device: "add their squircle icons too, let's see how
+  it looks").
   Tile size: 36pt (`spacing(9)`) by default; `compact` draws it one
   spacing step smaller, 32pt (`spacing(8)`), with the glyph unchanged.
   **Locked (2026-09-30, user request "Slightly decrease reminder's
   squircle size."):** the Settings > Reminders heading tile is
   `compact`; the account and holding cards keep 36pt.
+- **Section heading disclosure row** (device fix 6, 2026-10-04, user
+  request "a smaller > icon button across the implicit account title ...
+  opens that account's screen ... replaces the account's card in the
+  list"). The Accounts screen's Property / Debts section heading row
+  (`renderHoldingSection` in `src/screens/accounts/accounts.screen.tsx`)
+  is ONE `Pressable` (`accessibilityRole="button"`, no label of its
+  own, so VoiceOver reads the name and the total as the account card's
+  button does; testIDs `accounts-property-open` / `accounts-debts-open`)
+  holding `ImplicitAccountHeading` (tile + name, testIDs
+  `accounts-property-heading` / `accounts-debts-heading`), the section
+  total, and at the END a decorative chevron: `SymbolIcon`
+  `chevron.right`, `theme.iconSizes.caption`, `textSecondary` tone, in a
+  `Box` (testIDs `accounts-property-chevron` / `accounts-debts-chevron`,
+  `accessibilityElementsHidden` + `importantForAccessibility=
+  "no-hide-descendants"`, `marginLeft` `spacing(2)`, `flexShrink: 0`), the
+  iOS disclosure-row pattern `SettingsRow` also follows. The row's style
+  is `sectionHeadingRow` (row, space-between, centred, `minHeight` 44, so
+  the touch target sits inside the row's own bounds). A tap navigates to
+  `AccountDetail { accountId, name: accountDisplayName(account, t) }`.
+  The fix-5 edit pencil (`accounts-*-edit`, its 44pt `sectionEditRegion`
+  box) is gone: the account is edited from AccountDetail's Edit item.
 - **Switch** — a toggle that wraps RN's `Switch` with theme track/thumb
   colors. With `label` it renders a labeled row (label left, toggle
   right), the toggle centered on the label. **Locked (2026-09-30, user

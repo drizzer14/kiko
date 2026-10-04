@@ -176,6 +176,79 @@ describe('AccountRemindersScreen — rows', () => {
     expect(getByText('Available only for accounts you track by hand.')).toBeTruthy();
   });
 
+  // The AccountDetail of an implicit account has no bell and offers no new
+  // reminder, but one a merge left on it stays active and manageable here:
+  // never marked as unavailable, and still paused and deleted from its row.
+  it.each(['property', 'debt'])(
+    'keeps a saved reminder on a live %s account active, with no unavailable note',
+    async (kind) => {
+      seed({ account: { ...CASH, kind }, reminders: [savedReminder()] });
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Add transactions')).toBeTruthy();
+      expect(queryByText('Available only for accounts you track by hand.')).toBeNull();
+      expect(queryByText('Not sent while the account is archived.')).toBeNull();
+    },
+  );
+
+  // No NEW reminder for an implicit account: the page lists only what is
+  // saved, so deleting the last one leaves no row that opens the create form.
+  describe.each(['property', 'debt'])('a live %s account', (kind) => {
+    const implicit = { ...CASH, kind };
+
+    it('offers no row to create a reminder when it has none saved', async () => {
+      seed({ account: implicit });
+
+      const { queryByText, getByText } = await renderScreen();
+
+      expect(queryByText('Add transactions')).toBeNull();
+      expect(queryByText('Statement import')).toBeNull();
+      expect(getByText(NO_KINDS_CAPTION)).toBeTruthy();
+    });
+
+    it('lists only the saved reminder, and opens it by its id', async () => {
+      seed({ account: implicit, reminders: [savedReminder()] });
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(queryByText(NO_KINDS_CAPTION)).toBeNull();
+
+      await fireEvent.press(getByText('Add transactions'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('ReminderForm', { reminderId: 'r-1' });
+    });
+
+    it('offers no create row once its only saved reminder is deleted', async () => {
+      seed({ account: implicit, reminders: [savedReminder()] });
+
+      const { getByText, queryByText, rerender } = await renderScreen();
+
+      expect(getByText('Add transactions')).toBeTruthy();
+
+      seed({ account: implicit, reminders: [] });
+      await rerender(
+        <AccountRemindersScreen
+          navigation={asNavigationProp<AccountRemindersProps['navigation']>(navigation)}
+          route={asRouteProp<AccountRemindersProps['route']>('AccountReminders', {
+            accountId: 'a-1',
+          })}
+        />,
+      );
+
+      expect(queryByText('Add transactions')).toBeNull();
+      expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+  });
+
+  it('lists the eligible kinds of an ARCHIVED implicit-kind account, a plain account', async () => {
+    seed({ account: { ...CASH, kind: 'property', archivedAt: 5 } });
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Add transactions')).toBeTruthy();
+  });
+
   it('says saved reminders are not sent while the account is archived', async () => {
     seed({ account: { ...MANUAL, archivedAt: 1 }, reminders: [savedReminder()] });
 

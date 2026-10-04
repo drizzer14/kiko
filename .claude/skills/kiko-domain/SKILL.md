@@ -124,8 +124,29 @@ implemented, and callers must skip it rather than assume every id resolves.
   account is unrenamed (written by `0050` and by every implicit create), and
   `accountDisplayName` then shows the localized
   `accounts.implicitName.{property,debt}`; once the user renames the account
-  (the account icon in a Property/Loan holding's header opens `AccountForm`
-  for edit) the typed name is stored and shown as it is. The account form
+  (from the Edit item of the account's own `AccountDetail`, opened by tapping
+  its section heading on the Accounts screen; the holding-detail header has
+  no account button) the typed name is stored and shown as it is. The Accounts screen's
+  Property and Debts section headings show that display name beside the
+  account's compact squircle icon tile (`ImplicitAccountHeading`,
+  `src/screens/accounts/implicit-account-heading/`, testIDs
+  `accounts-property-heading` / `accounts-debts-heading`; the tile is a trial,
+  drop it by deleting the `EntityIconTile` element); the whole heading row is
+  one button with a chevron that opens `AccountDetail { accountId, name:
+  accountDisplayName(account, t), kind }` (`kind` is the hint that keeps the
+  bell off the page's first render) (`accounts-property-open` /
+  `accounts-debts-open`; see kiko-design-system's "Section heading disclosure
+  row"). **An implicit account's `AccountDetail` takes no NEW reminders**:
+  its title is `accountDisplayName`, it has no Reminders bell (Edit only) and
+  never shows the reminder offer (the screen asks `useReminderOffer` for no
+  trigger on a live implicit account), while import statement and bank/crypto
+  sync stay hidden by their own kind gates and Add holding opens
+  `HoldingForm { accountId }` (`holdingTypesForAccountKind` limits it to
+  `property_item` / `loan`). Settings > Reminders' account page lists only the
+  reminders SAVED on a live implicit account (no create row). `eligibleReminderKinds` is NOT narrowed for the
+  implicit kinds: it also decides which saved reminders are scheduled
+  (`isSchedulable`) and listed as active in Settings > Reminders, so a merged
+  reminder keeps firing and stays manageable there. The account form
   stores the sentinel back when the name is the localized default left
   unchanged (`implicitAccountStoredName`). The kind decides whether an account
   is implicit, never its name. A new account's `icon` and `color` are NULL so
@@ -610,12 +631,7 @@ An account row's displayed icon + color come from one helper,
 or `accountKindSymbol[kind]`, and the color through
 `resolveEntityColor` with `defaultAccountColor[kind]`. Every screen
 that shows a stored account row's icon or color calls it; never rebuild the
-`icon ?? accountKindSymbol[kind]` pair in a screen. The one reader that
-cannot take its plain `string` is the Property/Loans button in the
-holding-detail header: a native header item types its symbol name as the
-catalogue union, so it calls `accountHeaderSymbol`
-(`src/holdings/account-header-symbol/`), which wraps `accountIdentity` and
-narrows (a stored icon outside the known set falls back to the kind glyph). There are two
+`icon ?? accountKindSymbol[kind]` pair in a screen. There are two
 exceptions: the account form edits a draft, not a stored row; and the
 Charts contribution builder
 (`src/statistics/account-contribution/account-contribution.ts`) calls
@@ -642,6 +658,21 @@ itself; the generic `HoldingTypeField` takes the whole record as its
 `holding-icon.ts` plus a screen-exported `KIND_ICON` drifted from
 this file, so the icon a user picked in a select differed from the
 card glyph.
+
+The icon pickers offer those defaults. A default is not a member of the
+curated Kiko Entities pool (`@kiko/design-system/components/icon-pools`), so
+`src/holdings/entity-icon-pool/` composes the pools the account and holding
+forms open: `accountIconPool` (every `accountKindSymbol` value) and
+`holdingIconPool` (every `holdingTypeSymbol`, `loanKindSymbol` and
+`propertyCategorySymbol` value), each followed by the Kiko Entities pool,
+deduplicated with the defaults first, so a user who picked a custom icon can
+pick the entity's own glyph back. The defaults are read from the maps, never
+copied, and it lives in `holdings` because the design system must not import
+the maps; the screen passes the pool to `HoldingIdentityField`. A new default
+glyph must be an SF Symbol of iOS 15.1 or older. `entity-icon-pool.test.ts`
+catches only a glyph with an `IOS26_SYMBOL_FALLBACKS` entry (an iOS 26 symbol);
+an iOS 16-25 symbol (such as `receipt`, iOS 18) passes it, so check the
+availability by hand. The category pool already holds every category default.
 
 ## The `Money` value object
 

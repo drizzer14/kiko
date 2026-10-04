@@ -1,3 +1,9 @@
+import { type FC, useMemo } from 'react';
+import {
+  accountDisplayName,
+  isImplicitAccount,
+  type ImplicitAccountKind,
+} from '@kiko/holdings/implicit-account';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import Sortable from 'react-native-sortables';
@@ -11,11 +17,11 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import { useIsFocused } from '@react-navigation/native';
 import type { Currency } from '@kiko/currency/currency';
-import { type FC, type ReactNode, useMemo } from 'react';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
+import SymbolIcon from '@kiko/design-system/components/symbol';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
@@ -37,9 +43,9 @@ import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-no
 import { type AccountRow, type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { useCloseHoldingAction } from '@kiko/design-system/components/close-holding-sheet';
-import { isImplicitAccount, type ImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
 import { styles } from './accounts.styles';
+import ImplicitAccountHeading from './implicit-account-heading';
 
 type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accounts'>;
 
@@ -120,7 +126,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   );
 
   // The live property and debt accounts are the implicit accounts: never a
-  // card of their own, and no AccountDetail page. Each one's open holdings
+  // card of their own: their section heading opens the account's own
+  // AccountDetail page instead. Each one's open holdings
   // are listed as cards in its own section, in its own drag-and-drop grid
   // below the main one — never mixed into it, so a drag reorder in any grid
   // can only ever reorder within that same section (`Sortable.Grid`'s `data`
@@ -240,7 +247,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
           <Pressable
             accessibilityRole="button"
             onPress={openUnlessLifted(item.id, () =>
-              navigation.navigate('AccountDetail', { accountId: item.id, name: item.name }),
+              navigation.navigate('AccountDetail', {
+                accountId: item.id,
+                name: item.name,
+                kind: item.kind,
+              }),
             )}
             style={styles.row}
           >
@@ -276,17 +287,21 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     account,
     sectionHoldings,
     total,
-    heading,
+    headingTestID,
     totalTestID,
+    openTestID,
+    chevronTestID,
     gridTestID,
     closeActionFor,
     showDivider,
   }: {
-    account: AccountRow | undefined;
+    account: AccountRow;
     sectionHoldings: HoldingRow[];
     total: ReturnType<typeof guardedNetWorth>;
-    heading: ReactNode;
+    headingTestID: string;
     totalTestID: string;
+    openTestID: string;
+    chevronTestID: string;
     gridTestID: string;
     closeActionFor: ReturnType<typeof useCloseHoldingAction>['closeActionFor'];
     showDivider: boolean;
@@ -294,12 +309,41 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     <>
       {showDivider && <Divider spacing={2} />}
       <Box gap={3}>
-        <Box direction="row" style={styles.sectionHeadingRow}>
-          {heading}
-          <Box testID={totalTestID}>
+        {/* The whole heading row is one button, the iOS disclosure-row
+            pattern: it opens the implicit account's own AccountDetail page
+            (the page that replaces the account's card in this list), and the
+            chevron at its end is only the affordance. Like the account
+            card's button it carries no label of its own, so VoiceOver reads
+            the name and the total. */}
+        <Pressable
+          testID={openTestID}
+          accessibilityRole="button"
+          onPress={() =>
+            navigation.navigate('AccountDetail', {
+              accountId: account.id,
+              name: accountDisplayName(account, t),
+              kind: account.kind,
+            })
+          }
+          style={styles.sectionHeadingRow}
+        >
+          <ImplicitAccountHeading account={account} testID={headingTestID} />
+
+          <Box testID={totalTestID} style={styles.rowAmount}>
             <MoneyText money={total} context="balance" />
           </Box>
-        </Box>
+
+          {/* Decorative: the row's button role already says it navigates. */}
+          <Box
+            testID={chevronTestID}
+            style={styles.sectionChevron}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <SymbolIcon name="chevron.right" size={theme.iconSizes.caption} tone="textSecondary" />
+          </Box>
+        </Pressable>
+
         <Box testID={gridTestID}>
           <Sortable.Grid
             data={sectionHoldings}
@@ -427,27 +471,35 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               </Box>
             )}
 
-            {/* The "Property" and "Debts" sections render from data (a
-                non-empty holding list), never a build flag (Guideline 5.6). */}
-            {propertyHoldings.length > 0 &&
+            {/* The Properties and Loans sections render from data (a
+                non-empty holding list of a live implicit account, so the
+                heading always has an account to name), never a build flag
+                (Guideline 5.6). */}
+            {propertyAccount !== undefined &&
+              propertyHoldings.length > 0 &&
               renderHoldingSection({
                 account: propertyAccount,
                 sectionHoldings: propertyHoldings,
                 total: propertyTotal,
-                heading: <Text variant="heading">{t('accounts.propertySection')}</Text>,
+                headingTestID: 'accounts-property-heading',
                 totalTestID: 'accounts-property-total',
+                openTestID: 'accounts-property-open',
+                chevronTestID: 'accounts-property-chevron',
                 gridTestID: 'accounts-property-grid',
                 closeActionFor: closePropertyActionFor,
                 showDivider: mainAccounts.length > 0,
               })}
 
-            {debtHoldings.length > 0 &&
+            {debtAccount !== undefined &&
+              debtHoldings.length > 0 &&
               renderHoldingSection({
                 account: debtAccount,
                 sectionHoldings: debtHoldings,
                 total: debtsTotal,
-                heading: <Text variant="heading">{t('accounts.debtsSection')}</Text>,
+                headingTestID: 'accounts-debts-heading',
                 totalTestID: 'accounts-debts-total',
+                openTestID: 'accounts-debts-open',
+                chevronTestID: 'accounts-debts-chevron',
                 gridTestID: 'accounts-debts-grid',
                 closeActionFor: closeDebtActionFor,
                 showDivider: mainAccounts.length > 0 || propertyHoldings.length > 0,

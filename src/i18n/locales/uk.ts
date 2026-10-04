@@ -530,14 +530,12 @@ export const uk: typeof en = {
   },
   accounts: {
     addAccount: 'Додати рахунок',
-    debtsSection: 'Борги',
     emptyState: 'Ще немає рахунків',
     icon: 'Іконка {{name}}',
     implicitName: {
       debt: 'Кредити',
       property: 'Майно',
     },
-    propertySection: 'Майно',
     title: 'Рахунки',
   },
   addBank: {
@@ -644,7 +642,6 @@ export const uk: typeof en = {
     ofWhole: 'з {{whole}}',
   },
   holdingDetail: {
-    accountLabel: 'Рахунок: {{name}}',
     addLot: 'Додати лот',
     addTransaction: 'Додати транзакцію',
     capitalization: 'Капіталізація',

@@ -2129,8 +2129,9 @@ what a change must keep.
   (`settings-row-reminders`). The account page is reached from a
   native `bell` bar item in `AccountDetail`'s
   `unstable_headerRightItems`, left of Edit in its own glass capsule
-  (see kiko-design-system's "Header bar items"), shown on EVERY
-  account. The form has NO Delete: a reminder is deleted only
+  (see kiko-design-system's "Header bar items"), shown on every account
+  EXCEPT a live implicit property or debt account (which takes no new
+  reminders; see "Tap routing" below). The form has NO Delete: a reminder is deleted only
   from the page row's touch-and-hold `CardContextMenu`, the same as a
   transaction.
 - **Offer.** `useReminderOffer({ accountId, account, settings, trigger })`
@@ -2164,7 +2165,8 @@ what a change must keep.
   `popTo` of BOTH import screens (`statement-import.screen.tsx`,
   `column-mapping.screen.tsx`). A per-mount `offerDecided` latch, set
   on accept and on a successful dismiss, makes the trigger `undefined`,
-  so a visit shows at most ONE offer. Accept and dismiss both clear the
+  so a visit shows at most ONE offer; a live implicit account (property or
+  debt) always gets an `undefined` trigger, so it never shows one. Accept and dismiss both clear the
   param. Accept ("Set up") is the user's answer too: it opens the form
   at once, then records the decision through the offer's `dismiss`, so
   the offer never returns on that account even when the form is left
@@ -2258,21 +2260,33 @@ what a change must keep.
   `AccountDetail` only (a single ledgerless holding included);
   the paused notice opens `AccountReminders` above `AccountDetail`. An
   IMPLICIT account (`isImplicitAccount`: a live property or debt account)
-  has no `AccountDetail` page, so `routeFor` returns no `accountDetail` for
-  it: an open response gives `{}` and opens the Accounts tab with the pages
-  it already shows kept (like a bank tap, which also keeps them; a reset
-  would discard an open form's draft), so it is the Accounts root only when
-  the tab is unmounted or at its root; the paused notice gives
-  `AccountReminders` (params `{ accountId }`) above those pages, and
-  `navigateNow` skips `withAccountOnTop`. Nothing builds an entry point to
-  create a reminder for an implicit account; a merged reminder that
-  survives stays in Settings > Reminders (pause, delete) and still routes
-  by this rule. One path still reaches the create form:
-  `eligibleReminderKinds` offers `add_transactions` for any account no sync
-  owns, property and debt included, so once the user deletes the reminder on
-  `AccountReminders` (which the paused-notice tap opens; the tap itself
-  deletes nothing), the page shows an unset
-  `add_transactions` row that opens `ReminderForm` in create mode.
+  routes like any other account, since it has its own `AccountDetail` (its
+  section heading on the Accounts screen opens it): the page title is
+  `accountDisplayName(account, i18n.t)` (the stored name is an English
+  sentinel while unrenamed; `routeFor` is pure but reads the module-level
+  `i18n`, as the other non-React modules do), and a merged reminder on one
+  opens `AccountDetail` only (its holdings are ledgerless), or its paused
+  notice `AccountReminders` above `AccountDetail`. That AccountDetail has no
+  Reminders bell and never shows the reminder offer (the screen passes
+  `useReminderOffer` no trigger for a live implicit account), so nothing
+  builds an entry point to create a reminder for one; a merged reminder that
+  survives stays in Settings > Reminders (pause, delete) and is still
+  scheduled, which is why `eligibleReminderKinds` is NOT narrowed for the
+  implicit kinds (it also decides `isSchedulable` and the "available" state
+  of a saved reminder). `AccountReminders` closes the last path to the
+  create form: for a live implicit account it lists ONLY the reminders
+  saved on it (`kinds = isImplicitAccount(account) ? saved : eligible ∪
+  saved`; a saved one still reads as available, since `available` keeps
+  using `eligibleReminderKinds`), so deleting the merged reminder leaves no
+  unset `add_transactions` row to open `ReminderForm` in create mode. An
+  implicit account with none saved shows the empty caption.
+  `AccountDetail` takes an optional `kind` route param (the account's kind;
+  every navigate site passes it: the Accounts heading row, the main-grid
+  card, `routeFor`; a `popTo` with `merge` keeps the one already there):
+  the header items are set before the account row loads, so the bell is
+  decided from the loaded account's kind, else the `kind` hint, and with
+  neither it is left out until the row loads, so it never flashes on an
+  implicit account.
   A reminder NOTIFICATION never names its account (its title and body are
   generic catalogue text), so the planner needs no display name. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole

@@ -604,9 +604,6 @@ export const en = {
   },
   accounts: {
     addAccount: 'Add account',
-    // The accounts list's own "Debts" section heading, above the grid of the
-    // implicit Loans account's open holdings (one card per loan).
-    debtsSection: 'Debts',
     emptyState: 'No accounts yet',
     icon: '{{name}} icon',
     // The display name of THE implicit Property / Loans account
@@ -617,9 +614,6 @@ export const en = {
       debt: 'Loans',
       property: 'Properties',
     },
-    // The accounts list's own "Property" section heading, above the grid of
-    // the implicit Properties account's open holdings — mirrors `debtsSection`.
-    propertySection: 'Property',
     title: 'Accounts',
   },
   // The "add a bank" catalog copy (src/bank-sync/provider-catalog/): one
@@ -736,9 +730,6 @@ export const en = {
     ofWhole: 'of {{whole}}',
   },
   holdingDetail: {
-    // The header button of a Property or Loan holding that opens its shared
-    // account for edit (VoiceOver name, and its row in the More overflow menu).
-    accountLabel: 'Account: {{name}}',
     addLot: 'Add lot',
     addTransaction: 'Add transaction',
     // The derived lifecycle ledger lines (src/holdings/derived-entries.ts) a

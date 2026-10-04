@@ -1719,6 +1719,65 @@ describe('AccountFormScreen edit mode — implicit Properties / Loans account', 
   });
 });
 
+describe('AccountFormScreen — the icon picker offers the default glyph of every account kind', () => {
+  const defaults: readonly string[] = Object.values(accountKindSymbol);
+
+  const offeredIcons = (
+    getAllByLabelText: Awaited<ReturnType<typeof render>>['getAllByLabelText'],
+  ) =>
+    getAllByLabelText(/^Choose icon /).map((option) =>
+      String(option.props.accessibilityLabel).replace('Choose icon ', ''),
+    );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAccounts = [];
+    mockSetIcon.mockResolvedValue(undefined);
+  });
+
+  it.each(Object.entries(accountKindSymbol))(
+    'lets a %s account that stores a custom icon pick its default %s back',
+    async (kind, defaultIcon) => {
+      mockAccounts = [
+        {
+          id: 'acc-1',
+          name: 'Account',
+          kind,
+          icon: 'giftcard',
+          color: null,
+          bankId: null,
+          archivedAt: null,
+        },
+      ];
+      const { getAllByLabelText, getByLabelText, getByText } = await renderForm({
+        accountId: 'acc-1',
+      });
+
+      await fireEvent.press(getByLabelText('Change Icon'));
+
+      const offered = offeredIcons(getAllByLabelText);
+
+      expect(offered.slice(0, defaults.length)).toEqual(defaults);
+      expect(new Set(offered).size).toBe(offered.length);
+
+      await fireEvent.press(getByLabelText(`Choose icon ${defaultIcon}`));
+      await fireEvent.press(getByText('Save'));
+
+      expect(mockSetIcon).toHaveBeenCalledWith('acc-1', defaultIcon);
+    },
+  );
+
+  it('offers a new account the defaults first once it holds a custom icon', async () => {
+    const { getAllByLabelText, getByLabelText } = await renderForm();
+
+    await fireEvent.press(getByLabelText('Change Icon'));
+    await fireEvent.press(getByLabelText('Choose icon giftcard'));
+    await fireEvent.press(getByLabelText('Change Icon'));
+
+    expect(offeredIcons(getAllByLabelText).slice(0, defaults.length)).toEqual(defaults);
+  });
+});
+
 describe('AccountFormScreen — localization', () => {
   beforeEach(() => {
     jest.clearAllMocks();

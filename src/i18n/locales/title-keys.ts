@@ -25,8 +25,6 @@ export const TITLE_KEYS = new Set([
   'accountDetail.disconnectProvider',
   'accountDetail.holdingsHeading',
   'accountDetail.synchronization',
-  'accounts.debtsSection',
-  'accounts.propertySection',
   'accounts.title',
   'categories.chooseIconHeading',
   'columnMapping.amountColumnSheetTitle',

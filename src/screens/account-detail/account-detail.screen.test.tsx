@@ -205,6 +205,7 @@ type Account = {
   kind: string;
   institution?: string | null;
   bankId?: string | null;
+  archivedAt?: number | null;
   icon?: string | null;
   color?: string | null;
 };
@@ -2123,4 +2124,297 @@ describe('AccountDetailScreen — the price_points gate', () => {
     await renderScreen();
     expect(loanPaymentsCall()?.[2]).toBe(true);
   });
+});
+
+// The implicit property and debt accounts have no card in the Accounts list:
+// their section heading opens this screen instead, so it must read as the
+// account's own page (localized name, holdings, Add holding, Edit) without
+// the controls that make no sense for an account that holds ledgerless
+// holdings (reminders, statement import, bank or crypto sync).
+describe('AccountDetailScreen — an implicit account', () => {
+  const kinds = [
+    ['property', 'Properties', 'Майно'],
+    ['debt', 'Loans', 'Кредити'],
+  ] as const;
+
+  const mockDismiss = jest.fn();
+
+  const implicitAccount = (kind: 'property' | 'debt', overrides: Partial<Account> = {}) =>
+    account({
+      kind,
+      name: kind === 'property' ? 'Properties' : 'Loans',
+      bankId: null,
+      archivedAt: null,
+      ...overrides,
+    });
+
+  const headerItems = (navigation: ReturnType<typeof navigationSpy>) => {
+    const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+      ([options]) => options.unstable_headerRightItems,
+    );
+
+    return call[0].unstable_headerRightItems({ canGoBack: true });
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockButtonProps.length = 0;
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    // An offer for any trigger it is given: no card then proves the screen
+    // asked for none.
+    mockUseReminderOffer.mockReset();
+    mockUseReminderOffer.mockImplementation(({ trigger }: { trigger?: string }) =>
+      trigger === undefined ? undefined : { kind: 'add_transactions', dismiss: mockDismiss },
+    );
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it.each(kinds)('titles a %s account with its localized default name', async (kind, english) => {
+    setLiveData({ accounts: [implicitAccount(kind)], holdings: [] });
+
+    const { navigation } = await renderScreen();
+
+    expect(navigation.setOptions).toHaveBeenCalledWith(expect.objectContaining({ title: english }));
+  });
+
+  it.each(kinds)(
+    'titles a %s account in Ukrainian, though the stored name is the English sentinel',
+    async (kind, _english, ukrainian) => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+      setLiveData({ accounts: [implicitAccount(kind)], holdings: [] });
+
+      const { navigation } = await renderScreen(
+        asRouteProp<AccountDetailProps['route']>('AccountDetail', {
+          accountId: 'a',
+          name: ukrainian,
+        }),
+      );
+      const titles = (navigation.setOptions as jest.Mock).mock.calls.map(
+        ([options]) => options.title,
+      );
+
+      expect(titles).toContain(ukrainian);
+      expect(titles).not.toContain('Properties');
+      expect(titles).not.toContain('Loans');
+    },
+  );
+
+  it('titles a renamed implicit account with the name the user typed', async () => {
+    setLiveData({ accounts: [implicitAccount('property', { name: 'Real estate' })], holdings: [] });
+
+    const { navigation } = await renderScreen();
+
+    expect(navigation.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Real estate' }),
+    );
+  });
+
+  it('shows the route name as the title until the account has loaded', async () => {
+    setLiveData({ accounts: [], accountsIsLoading: true, holdings: [] });
+
+    const { navigation } = await renderScreen(
+      asRouteProp<AccountDetailProps['route']>('AccountDetail', { accountId: 'a', name: 'Майно' }),
+    );
+
+    expect(navigation.setOptions).toHaveBeenCalledWith(expect.objectContaining({ title: 'Майно' }));
+  });
+
+  it.each(kinds)('has no Reminders bell on a %s account, only the Edit pencil', async (kind) => {
+    setLiveData({ accounts: [implicitAccount(kind)], holdings: [] });
+
+    const { navigation } = await renderScreen();
+    const items = headerItems(navigation);
+
+    expect(items.map((item: { icon: { name: string } }) => item.icon.name)).toEqual(['pencil']);
+    expect(items.some((item: { label: string }) => item.label === 'Reminders')).toBe(false);
+
+    items[0].onPress();
+
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'a' });
+    expect(navigation.navigate).not.toHaveBeenCalledWith('AccountReminders', expect.anything());
+  });
+
+  // Before the account row loads, the route's kind hint is all the screen
+  // knows: the bell must never show for a hinted implicit kind, even on the
+  // first render, or it would flash and a tap in that window would open the
+  // reminders of an account that takes none.
+  describe('before the account row has loaded', () => {
+    const hinted = (kind?: Account['kind']) =>
+      asRouteProp<AccountDetailProps['route']>('AccountDetail', {
+        accountId: 'a',
+        name: 'Hinted',
+        kind,
+      });
+
+    const everyHeaderItemSet = (navigation: ReturnType<typeof navigationSpy>) =>
+      (navigation.setOptions as jest.Mock).mock.calls
+        .filter(([options]) => options.unstable_headerRightItems)
+        .map(([options]) =>
+          options
+            .unstable_headerRightItems({ canGoBack: true })
+            .map((item: { icon: { name: string } }) => item.icon.name),
+        );
+
+    it.each(kinds)('never builds the bell when the hint says %s', async (kind) => {
+      setLiveData({ accounts: [], accountsIsLoading: true, holdings: [] });
+
+      const { navigation } = await renderScreen(hinted(kind));
+      const itemSets = everyHeaderItemSet(navigation);
+
+      expect(itemSets.length).toBeGreaterThan(0);
+      expect(itemSets).toEqual(itemSets.map(() => ['pencil']));
+    });
+
+    it('builds the bell when the hint says bank', async () => {
+      setLiveData({ accounts: [], accountsIsLoading: true, holdings: [] });
+
+      const { navigation } = await renderScreen(hinted('bank'));
+
+      expect(everyHeaderItemSet(navigation).at(0)).toEqual(['bell', 'pencil']);
+    });
+
+    it('builds no bell when there is no hint either, and adds it once the account loads', async () => {
+      setLiveData({ accounts: [], accountsIsLoading: true, holdings: [] });
+
+      const { navigation, rerender } = await renderScreen(hinted());
+      const before = everyHeaderItemSet(navigation);
+
+      expect(before.length).toBeGreaterThan(0);
+      expect(before).toEqual(before.map(() => ['pencil']));
+
+      setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [] });
+      await rerender(
+        <AccountDetailScreen
+          route={hinted()}
+          navigation={asNavigationProp<AccountDetailProps['navigation']>(navigation)}
+        />,
+      );
+
+      expect(everyHeaderItemSet(navigation).at(-1)).toEqual(['bell', 'pencil']);
+    });
+
+    it('lets the loaded account override the hint, both ways', async () => {
+      setLiveData({ accounts: [implicitAccount('property')], holdings: [] });
+      const implicitUnderBankHint = await renderScreen(hinted('bank'));
+
+      expect(everyHeaderItemSet(implicitUnderBankHint.navigation).at(-1)).toEqual(['pencil']);
+
+      setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [] });
+      const bankUnderImplicitHint = await renderScreen(hinted('property'));
+
+      expect(everyHeaderItemSet(bankUnderImplicitHint.navigation).at(-1)).toEqual([
+        'bell',
+        'pencil',
+      ]);
+    });
+
+    it('keeps the bell on an ARCHIVED implicit account whatever the hint says', async () => {
+      setLiveData({ accounts: [implicitAccount('debt', { archivedAt: 5 })], holdings: [] });
+
+      const { navigation } = await renderScreen(hinted('debt'));
+
+      expect(everyHeaderItemSet(navigation).at(-1)).toEqual(['bell', 'pencil']);
+    });
+  });
+
+  it('keeps the Reminders bell on an ARCHIVED property account, a plain account', async () => {
+    setLiveData({
+      accounts: [implicitAccount('property', { archivedAt: 5 })],
+      holdings: [],
+    });
+
+    const { navigation } = await renderScreen();
+
+    expect(
+      headerItems(navigation).map((item: { icon: { name: string } }) => item.icon.name),
+    ).toEqual(['bell', 'pencil']);
+  });
+
+  it.each(kinds)(
+    'offers no reminder on a %s account, whatever the visit asks for',
+    async (kind) => {
+      setLiveData({ accounts: [implicitAccount(kind)], holdings: [] });
+
+      const manual = await renderScreen();
+
+      expect(manual.queryByTestId('reminder-offer')).toBeNull();
+      expect(mockUseReminderOffer).toHaveBeenLastCalledWith(
+        expect.objectContaining({ trigger: undefined }),
+      );
+
+      mockUseReminderOffer.mockClear();
+      const afterImport = await renderScreen(
+        asRouteProp<AccountDetailProps['route']>('AccountDetail', {
+          accountId: 'a',
+          name: 'Cash',
+          reminderOffer: 'afterImport',
+        }),
+      );
+
+      expect(afterImport.queryByTestId('reminder-offer')).toBeNull();
+      expect(mockUseReminderOffer).toHaveBeenLastCalledWith(
+        expect.objectContaining({ trigger: undefined }),
+      );
+    },
+  );
+
+  it('still asks for the offer on a non-implicit account (the gate is the implicit kind only)', async () => {
+    setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [] });
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('reminder-offer')).toBeTruthy();
+    expect(mockUseReminderOffer).toHaveBeenLastCalledWith(
+      expect.objectContaining({ trigger: 'manualActivity' }),
+    );
+  });
+
+  it.each(kinds)(
+    'opens the holding form for the account from Add holding on a %s account',
+    async (kind) => {
+      setLiveData({ accounts: [implicitAccount(kind)], holdings: [] });
+
+      const { getByText, navigation } = await renderScreen();
+      await fireEvent.press(getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
+    },
+  );
+
+  it.each(kinds)(
+    'shows no statement import, sync, or crypto section on a %s account',
+    async (kind) => {
+      setLiveData({ accounts: [implicitAccount(kind)], holdings: [] });
+
+      const { queryByText, queryByTestId } = await renderScreen();
+
+      expect(queryByText('Import statement')).toBeNull();
+      expect(queryByText(i18n.t('accountDetail.synchronization'))).toBeNull();
+      expect(queryByTestId('crypto-sync-section')).toBeNull();
+    },
+  );
+
+  it.each(kinds)(
+    'lists the open holdings of a %s account and offers no account delete or archive',
+    async (kind) => {
+      setLiveData({
+        accounts: [implicitAccount(kind)],
+        holdings: [{ id: 'h1', name: 'Apartment', currency: 'UAH', balanceMinorUnits: 100 }],
+      });
+
+      const { getByText, queryByText, queryByLabelText } = await renderScreen();
+
+      expect(getByText('Apartment')).toBeTruthy();
+      expect(queryByText(/archive/i)).toBeNull();
+      expect(queryByText(/delete account/i)).toBeNull();
+      expect(queryByLabelText(/delete account|archive/i)).toBeNull();
+    },
+  );
 });

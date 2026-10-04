@@ -10,6 +10,7 @@ import Screen from '@kiko/design-system/components/screen';
 import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import ReminderRow from '@kiko/screens/settings/reminder-row';
 import { usePermissionNotice } from '@kiko/reminders/permission';
+import { isImplicitAccount } from '@kiko/holdings/implicit-account';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import NoticeBanner from '@kiko/design-system/components/notice-banner';
@@ -23,8 +24,9 @@ type AccountRemindersScreenProps = NativeStackScreenProps<
   'AccountReminders'
 >;
 
-// One row per reminder the account can have, plus any saved reminder the
-// account no longer allows, so the user can still see and remove it. The
+// One row per reminder the account can have (an implicit account: only its
+// saved ones), plus any saved reminder the account no longer allows, so the
+// user can still see and remove it. The
 // permission notice shows only once there is a reminder that could not be
 // delivered.
 const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, navigation }) => {
@@ -56,8 +58,12 @@ const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, naviga
   const account = accounts.at(0);
   const eligibleKinds = foldMap(maybe(account), eligibleReminderKinds) ?? [];
   const reminderOf = (kind: ReminderKind) => reminders.find((saved) => saved.kind === kind);
+  // A live implicit account takes no NEW reminder, so it lists only its saved
+  // ones: deleting the last leaves no row that opens the create form. They
+  // still count as eligible (`available`), so one a merge left stays active.
+  const offeredKinds = foldMap(maybe(account), isImplicitAccount) ? [] : eligibleKinds;
   const kinds = reminderKinds.filter(
-    (kind) => eligibleKinds.includes(kind) || reminderOf(kind) !== undefined,
+    (kind) => offeredKinds.includes(kind) || reminderOf(kind) !== undefined,
   );
 
   return (
