@@ -530,14 +530,12 @@ export const uk: typeof en = {
   },
   accounts: {
     addAccount: 'Додати рахунок',
-    debtsSection: 'Борги',
     emptyState: 'Ще немає рахунків',
     icon: 'Іконка {{name}}',
     implicitName: {
       debt: 'Кредити',
       property: 'Майно',
     },
-    propertySection: 'Майно',
     title: 'Рахунки',
   },
   addBank: {

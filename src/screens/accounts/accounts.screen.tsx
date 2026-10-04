@@ -1,3 +1,4 @@
+import { type FC, useMemo } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import Sortable from 'react-native-sortables';
@@ -11,7 +12,6 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import { useIsFocused } from '@react-navigation/native';
 import type { Currency } from '@kiko/currency/currency';
-import { type FC, type ReactNode, useMemo } from 'react';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
@@ -40,6 +40,7 @@ import { useCloseHoldingAction } from '@kiko/design-system/components/close-hold
 import { isImplicitAccount, type ImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
 import { styles } from './accounts.styles';
+import ImplicitAccountHeading from './implicit-account-heading';
 
 type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accounts'>;
 
@@ -276,16 +277,16 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     account,
     sectionHoldings,
     total,
-    heading,
+    headingTestID,
     totalTestID,
     gridTestID,
     closeActionFor,
     showDivider,
   }: {
-    account: AccountRow | undefined;
+    account: AccountRow;
     sectionHoldings: HoldingRow[];
     total: ReturnType<typeof guardedNetWorth>;
-    heading: ReactNode;
+    headingTestID: string;
     totalTestID: string;
     gridTestID: string;
     closeActionFor: ReturnType<typeof useCloseHoldingAction>['closeActionFor'];
@@ -295,8 +296,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       {showDivider && <Divider spacing={2} />}
       <Box gap={3}>
         <Box direction="row" style={styles.sectionHeadingRow}>
-          {heading}
-          <Box testID={totalTestID}>
+          <ImplicitAccountHeading account={account} testID={headingTestID} />
+          <Box testID={totalTestID} style={styles.rowAmount}>
             <MoneyText money={total} context="balance" />
           </Box>
         </Box>
@@ -427,26 +428,30 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               </Box>
             )}
 
-            {/* The "Property" and "Debts" sections render from data (a
-                non-empty holding list), never a build flag (Guideline 5.6). */}
-            {propertyHoldings.length > 0 &&
+            {/* The Properties and Loans sections render from data (a
+                non-empty holding list of a live implicit account, so the
+                heading always has an account to name), never a build flag
+                (Guideline 5.6). */}
+            {propertyAccount !== undefined &&
+              propertyHoldings.length > 0 &&
               renderHoldingSection({
                 account: propertyAccount,
                 sectionHoldings: propertyHoldings,
                 total: propertyTotal,
-                heading: <Text variant="heading">{t('accounts.propertySection')}</Text>,
+                headingTestID: 'accounts-property-heading',
                 totalTestID: 'accounts-property-total',
                 gridTestID: 'accounts-property-grid',
                 closeActionFor: closePropertyActionFor,
                 showDivider: mainAccounts.length > 0,
               })}
 
-            {debtHoldings.length > 0 &&
+            {debtAccount !== undefined &&
+              debtHoldings.length > 0 &&
               renderHoldingSection({
                 account: debtAccount,
                 sectionHoldings: debtHoldings,
                 total: debtsTotal,
-                heading: <Text variant="heading">{t('accounts.debtsSection')}</Text>,
+                headingTestID: 'accounts-debts-heading',
                 totalTestID: 'accounts-debts-total',
                 gridTestID: 'accounts-debts-grid',
                 closeActionFor: closeDebtActionFor,

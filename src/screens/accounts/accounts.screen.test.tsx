@@ -16,6 +16,7 @@ import {
 import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -740,8 +741,8 @@ describe('AccountsScreen', () => {
 
   describe('Debts section', () => {
     it('renders no Debts section when there is no debt account', async () => {
-      const { queryByText } = await renderAccounts();
-      expect(queryByText('Debts')).toBeNull();
+      const { queryByTestId } = await renderAccounts();
+      expect(queryByTestId('accounts-debts-heading')).toBeNull();
     });
 
     it('renders a Debts section with one holding card per open loan, its total negative', async () => {
@@ -755,15 +756,14 @@ describe('AccountsScreen', () => {
         ],
       });
 
-      const { getByText, queryByText, getAllByTestId } = await renderAccounts();
+      const { getByText, queryByText, getAllByTestId, getByTestId } = await renderAccounts();
 
-      expect(getByText('Debts')).toBeTruthy();
+      expect(within(getByTestId('accounts-debts-heading')).getByText('Loans')).toBeTruthy();
       expect(getByText('Mortgage')).toBeTruthy();
       expect(getByText('Car loan')).toBeTruthy();
       // The closed loan is excluded, and the implicit account itself never
       // renders as a card: one account card (Monobank), two loan cards.
       expect(queryByText('Paid off')).toBeNull();
-      expect(queryByText('Loans')).toBeNull();
       expect(getAllByTestId('holding-card')).toHaveLength(2);
       expect(getAllByTestId('account-card')).toHaveLength(1);
     });
@@ -972,9 +972,9 @@ describe('AccountsScreen', () => {
         holdings: [loanHolding({ closedAt: 1_700_000_000_000 })],
       });
 
-      const { queryByText, queryByTestId } = await renderAccounts();
+      const { queryByTestId } = await renderAccounts();
 
-      expect(queryByText('Debts')).toBeNull();
+      expect(queryByTestId('accounts-debts-heading')).toBeNull();
       expect(queryByTestId('accounts-debts-grid')).toBeNull();
     });
 
@@ -986,7 +986,7 @@ describe('AccountsScreen', () => {
 
       const { queryByText, queryByTestId } = await renderAccounts();
 
-      expect(queryByText('Debts')).toBeNull();
+      expect(queryByTestId('accounts-debts-heading')).toBeNull();
       expect(queryByText('Mortgage')).toBeNull();
       expect(queryByTestId('holding-card')).toBeNull();
     });
@@ -1081,8 +1081,8 @@ describe('AccountsScreen', () => {
 
   describe('Property section', () => {
     it('renders no Property section when there is no property account', async () => {
-      const { queryByText } = await renderAccounts();
-      expect(queryByText('Property')).toBeNull();
+      const { queryByTestId } = await renderAccounts();
+      expect(queryByTestId('accounts-property-heading')).toBeNull();
     });
 
     it('renders a Property section with one holding card per open property, and its own section total', async () => {
@@ -1098,11 +1098,10 @@ describe('AccountsScreen', () => {
 
       const { getByText, queryByText, getAllByTestId, getByTestId } = await renderAccounts();
 
-      expect(getByText('Property')).toBeTruthy();
+      expect(within(getByTestId('accounts-property-heading')).getByText('Properties')).toBeTruthy();
       expect(getByText('Apartment')).toBeTruthy();
       expect(getByText('Garage')).toBeTruthy();
       expect(queryByText('Sold flat')).toBeNull();
-      expect(queryByText('Properties')).toBeNull();
       expect(getAllByTestId('holding-card')).toHaveLength(2);
       expect(getAllByTestId('account-card')).toHaveLength(1);
       // Two open holdings at 5,000.00 each; the closed one does not count.
@@ -1236,11 +1235,11 @@ describe('AccountsScreen', () => {
         holdings: [],
       });
 
-      const { getByText, queryByText, queryByTestId } = await renderAccounts();
+      const { getByText, queryByTestId } = await renderAccounts();
 
       expect(getByText('No accounts yet')).toBeTruthy();
-      expect(queryByText('Property')).toBeNull();
-      expect(queryByText('Debts')).toBeNull();
+      expect(queryByTestId('accounts-property-heading')).toBeNull();
+      expect(queryByTestId('accounts-debts-heading')).toBeNull();
       expect(queryByTestId('accounts-property-grid')).toBeNull();
     });
 
@@ -1263,7 +1262,7 @@ describe('AccountsScreen', () => {
       const { getByText, queryByText, queryByTestId } = await renderAccounts();
 
       expect(queryByText('Apartment')).toBeNull();
-      expect(queryByText('Property')).toBeNull();
+      expect(queryByTestId('accounts-property-heading')).toBeNull();
       expect(queryByTestId('holding-card')).toBeNull();
       expect(getByText('No accounts yet')).toBeTruthy();
     });
@@ -1334,6 +1333,122 @@ describe('AccountsScreen', () => {
         holdingId,
         name: holdingName,
       });
+    });
+  });
+
+  // The Property and Debts sections are headed by the implicit account's own
+  // display name and squircle tile, keyed by kind in the test ids.
+  describe('implicit account section headings', () => {
+    const bothSections = (over: { property?: Partial<Account>; debt?: Partial<Account> } = {}) =>
+      setLiveData({
+        accounts: [propertyAccount(over.property), debtAccount(over.debt)],
+        holdings: [propertyHolding(), loanHolding()],
+      });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it.each([
+      ['en', 'Properties', 'Loans'],
+      ['uk', 'Майно', 'Кредити'],
+    ])(
+      'heads the sections with the localized default names in %s',
+      async (language, property, debt) => {
+        await act(async () => {
+          await i18n.changeLanguage(language);
+        });
+        bothSections();
+
+        const { getByTestId } = await renderAccounts();
+
+        expect(within(getByTestId('accounts-property-heading')).getByText(property)).toBeTruthy();
+        expect(within(getByTestId('accounts-debts-heading')).getByText(debt)).toBeTruthy();
+      },
+    );
+
+    it('never shows the old fixed Property or Debts text', async () => {
+      bothSections();
+
+      const { queryByText } = await renderAccounts();
+
+      expect(queryByText('Property')).toBeNull();
+      expect(queryByText('Debts')).toBeNull();
+    });
+
+    it('shows the typed name once an account is renamed, and follows the rename live', async () => {
+      bothSections();
+      const buildElement = () => (
+        <AccountsScreen
+          navigation={asNavigationProp<AccountsProps['navigation']>(navigation)}
+          route={asRouteProp<AccountsProps['route']>('Accounts')}
+        />
+      );
+      const { getByTestId, rerender } = await render(buildElement(), {
+        wrapper: GestureRootWrapper,
+      });
+
+      bothSections({ property: { name: 'Real estate' }, debt: { name: 'Mortgages' } });
+      await act(async () => rerender(buildElement()));
+
+      expect(
+        within(getByTestId('accounts-property-heading')).getByText('Real estate'),
+      ).toBeTruthy();
+      expect(within(getByTestId('accounts-debts-heading')).getByText('Mortgages')).toBeTruthy();
+    });
+
+    // A long name wraps beside the tile while the section total keeps its own
+    // width; Jest cannot lay out pixels, so this pins the style contract.
+    it('wraps a long name in the heading while the section total keeps its own width', async () => {
+      const longName = 'Спільне майно для сімейних заощаджень та довгострокових вкладень';
+      bothSections({ property: { name: longName } });
+
+      const { getByTestId, getByText } = await renderAccounts();
+      const heading = StyleSheet.flatten(getByTestId('accounts-property-heading').props.style);
+
+      expect(getByText(longName).props.numberOfLines).toBeUndefined();
+      expect(heading.flex).toBe(1);
+      expect(
+        StyleSheet.flatten(
+          ancestorWithStyle(getByTestId('accounts-property-total'), 'flexShrink').props.style,
+        ).flexShrink,
+      ).toBe(0);
+    });
+
+    it("shows each account's squircle tile in its heading, in the account's own color", async () => {
+      bothSections({ property: { color: darkTheme.colors.entityColors.blue } });
+
+      const { getByTestId } = await renderAccounts();
+
+      const property = within(getByTestId('accounts-property-heading'));
+      expect(property.getByTestId('entity-icon-tile')).toBeTruthy();
+      const [top, bottom] = entityIconTileGradient(darkTheme.colors.entityColors.blue);
+      expect(property.getByTestId('entity-icon-tile-gradient-stop-top').props.stopColor).toBe(top);
+      expect(property.getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(
+        bottom,
+      );
+      expect(
+        within(getByTestId('accounts-debts-heading')).getByTestId('entity-icon-tile'),
+      ).toBeTruthy();
+    });
+
+    it("draws the account's stored icon in its heading tile, the kind glyph otherwise", async () => {
+      bothSections({ property: { icon: 'building.2' } });
+
+      const { getByTestId } = await renderAccounts();
+
+      expect(
+        glyphNamesWithin(
+          within(getByTestId('accounts-property-heading')).getByTestId('entity-icon-tile'),
+        ),
+      ).toEqual(['building.2']);
+      expect(
+        glyphNamesWithin(
+          within(getByTestId('accounts-debts-heading')).getByTestId('entity-icon-tile'),
+        ),
+      ).toEqual([accountKindSymbol.debt]);
     });
   });
 

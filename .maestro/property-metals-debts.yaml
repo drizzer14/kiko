@@ -250,9 +250,13 @@ appId: com.dmytro-vasylkivskyi.kiko
     childOf:
       id: "accounts-debts-grid"
 - assertVisible:
-    text: "Property"
+    text: "Properties"
+    childOf:
+      id: "accounts-property-heading"
 - assertVisible:
-    text: "Debts"
+    text: "Loans"
+    childOf:
+      id: "accounts-debts-heading"
 
 - tapOn:
     id: "house.fill"

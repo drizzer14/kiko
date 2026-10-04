@@ -1104,10 +1104,14 @@ new component can land between reviews of this skill:
   nullable value) and derives its own gradient from that hex via
   `entityIconTileGradient`. An optional `size` mirrors `SymbolIcon`'s
   own, defaulting to the `body` icon-size token when omitted.
-  Consumers: the account card, the holding card, and the Settings >
+  Consumers: the account card, the holding card, the Settings >
   Reminders account heading (2026-09-30, user request), where the
   tile sits left of the `heading` name, both centered, and carries no
-  `accessibilityLabel` because the name beside it already reads it.
+  `accessibilityLabel` because the name beside it already reads it, and
+  the Accounts screen's Property / Debts section headings
+  (`ImplicitAccountHeading`, the same compact tile and layout, a TRIAL
+  the user judges on device: "add their squircle icons too, let's see how
+  it looks").
   Tile size: 36pt (`spacing(9)`) by default; `compact` draws it one
   spacing step smaller, 32pt (`spacing(8)`), with the glyph unchanged.
   **Locked (2026-09-30, user request "Slightly decrease reminder's

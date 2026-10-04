@@ -125,7 +125,12 @@ implemented, and callers must skip it rather than assume every id resolves.
   `accountDisplayName` then shows the localized
   `accounts.implicitName.{property,debt}`; once the user renames the account
   (the account icon in a Property/Loan holding's header opens `AccountForm`
-  for edit) the typed name is stored and shown as it is. The account form
+  for edit) the typed name is stored and shown as it is. The Accounts screen's
+  Property and Debts section headings show that display name beside the
+  account's compact squircle icon tile (`ImplicitAccountHeading`,
+  `src/screens/accounts/implicit-account-heading/`, testIDs
+  `accounts-property-heading` / `accounts-debts-heading`; the tile is a trial,
+  drop it by deleting the `EntityIconTile` element). The account form
   stores the sentinel back when the name is the localized default left
   unchanged (`implicitAccountStoredName`). The kind decides whether an account
   is implicit, never its name. A new account's `icon` and `color` are NULL so
