@@ -635,9 +635,10 @@ new component can land between reviews of this skill:
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
   "Update outstanding" add no entity, so they stay text-only. An
-  iOS-26 generic glyph has its fallback in `genericEntitySymbolFallback`
-  (`entity-symbols.ts`) and SymbolIcon's central map
-  (`symbol.availability.ts`); read them there. A new footer
+  generic glyph newer than iOS 15.1 (`text.pad.header`) has its fallback
+  in `genericEntitySymbolFallback` (`entity-symbols.ts`) and SymbolIcon's
+  central `SYMBOL_FALLBACKS` map (`symbol.availability.ts`); read them
+  there, and see "SF Symbol availability" below. A new footer
   "Add …" action takes its entity's glyph the same way.
 
   **Sizes — `regular` / `compact` / `small`** (read `button.props.d.ts`'s
@@ -1607,6 +1608,37 @@ a fully invisible glyph, easy to mistake for a layout bug. Convert any
 already does this for both its `tone` and its explicit `color` prop;
 a caller building a raw `SFSymbolView` outside `SymbolIcon` must do
 the same conversion itself.
+
+## SF Symbol availability
+
+The deployment target is iOS 15.1, and `SFSymbolView` draws a symbol the
+running OS does not know as a BLANK glyph, not an error. Every symbol the
+app can draw that is newer than iOS 15.1 therefore has ONE entry in
+`SYMBOL_FALLBACKS` (`symbol/symbol.availability.ts`), keyed by name, with
+the `major.minor` iOS that introduced it (`minimumIos`) and an iOS 15.1
+`fallback`. `SymbolIcon` swaps to the fallback when the running iOS
+(`major.minor`, so a 16.1 symbol such as `handbag` or an 18.2 one such as
+`receipt` still swaps on 16.0 or 18.1) is below `minimumIos`; the swap
+changes only the drawn glyph, never a stored icon name. A fallback only
+shows on an old iOS, so it never changes the approved iOS 26 look.
+`effectiveFallbackName` always returns a string (a `null` `fallbackName`
+crashes Release). A native header or tab-bar item has no `fallbackName`
+prop: use a symbol that is SF Symbols 3.1 or older (the bell and the Edit
+pencil are SF Symbols 1.0), and only a name that comes from a stored
+value or a pool would need `resolveSymbolName(name, undefined,
+currentOsVersion())` before it is handed to UIKit.
+
+A new symbol newer than iOS 15.1 needs an entry, with a fallback that is
+itself SF Symbols 3.1 or older and close to it in meaning and shape.
+`__tests__/symbol-fallbacks.test.ts` is the guard. It reads the
+`sf-symbols-typescript` catalogue as text
+(`__tests__/test-support/sf-symbol-catalogue.ts`: the `@name SF Symbols
+N.M` and `iOS vX.Y+` JSDoc, plus the `| 'name'` lines) and fails when a
+symbol the app can draw has no entry, when a fallback is newer than iOS
+15.1, or when an entry's `minimumIos` disagrees with the catalogue. It
+collects the entity maps, both icon pools and the pools the forms open, the
+Edit bar item, and every quoted literal in `src/` that equals a catalogue
+name (a name built at runtime is out of its reach).
 
 ## GlassSurface `isLiquidGlassSupported` branch
 

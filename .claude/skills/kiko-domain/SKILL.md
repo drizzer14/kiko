@@ -671,10 +671,11 @@ deduplicated with the defaults first, so a user who picked a custom icon can
 pick the entity's own glyph back. The defaults are read from the maps, never
 copied, and it lives in `holdings` because the design system must not import
 the maps; the screen passes the pool to `HoldingIdentityField`. A new default
-glyph must be an SF Symbol of iOS 15.1 or older. `entity-icon-pool.test.ts`
-catches only a glyph with an `IOS26_SYMBOL_FALLBACKS` entry (an iOS 26 symbol);
-an iOS 16-25 symbol (such as `receipt`, iOS 18) passes it, so check the
-availability by hand. The category pool already holds every category default.
+glyph must be an SF Symbol of iOS 15.1 or older, or have a `SYMBOL_FALLBACKS`
+entry (`symbol.availability.ts`; `receipt`, iOS 18.2, is one).
+`__tests__/symbol-fallbacks.test.ts` fails a default without one (see
+kiko-design-system's "SF Symbol availability"). The category pool already
+holds every category default.
 
 ## The `Money` value object
 

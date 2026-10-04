@@ -582,8 +582,8 @@ const resolveModeOptions = (
 // The SF Symbol shown for each transaction type (the select trigger's glyph
 // and each sheet row's leading icon). Note the deliberate, spec-mandated
 // asymmetry: expense points UP and income points DOWN (money leaving vs.
-// arriving). `split`'s `arrow.trianglehead.branch` is an iOS-26 symbol —
-// SymbolIcon supplies its `arrow.branch` fallback centrally, so no fallback is
+// arriving). `split`'s `arrow.trianglehead.branch` is an iOS-18 symbol —
+// SymbolIcon supplies its `arrow.triangle.branch` fallback centrally, so no fallback is
 // threaded through the select here.
 const MODE_ICONS: Record<FormMode, string> = {
   income: 'arrow.down',

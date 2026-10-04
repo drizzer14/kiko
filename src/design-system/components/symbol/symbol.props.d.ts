@@ -10,10 +10,10 @@ export type SymbolProps = {
   name: string;
   // Optional. The glyph to render if `name` cannot be resolved on the running
   // iOS (a symbol added in a newer release renders blank on an older device,
-  // and the deployment target is iOS 15.1). Handled by the symbol.availability seam: the
-  // three KNOWN iOS-26 symbols supply their own fallback centrally, so a caller
-  // only passes this to override that default or to guard a symbol not yet in
-  // the central map. See symbol.availability.ts.
+  // and the deployment target is iOS 15.1). Handled by the symbol.availability
+  // seam: every KNOWN symbol newer than iOS 15.1 supplies its own fallback
+  // centrally, so a caller only passes this to override that default or to
+  // guard a symbol not yet in the central map. See symbol.availability.ts.
   fallbackName?: string;
   size?: number;
   tone?: SymbolTone;

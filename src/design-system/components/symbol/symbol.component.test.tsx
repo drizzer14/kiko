@@ -89,14 +89,14 @@ describe('Symbol', () => {
     expect(getByLabelText('Glyph').props.fallbackName).toBe('heart');
   });
 
-  it('auto-supplies the central fallback for a known iOS-26 symbol with no explicit fallback', async () => {
+  it('auto-supplies the central fallback for a mapped symbol with no explicit fallback', async () => {
     // The transaction-type ChipRow passes only a plain name; the split chip's
-    // iOS-26 `arrow.trianglehead.branch` must still carry `arrow.branch`.
+    // iOS-18 `arrow.trianglehead.branch` must still carry `arrow.triangle.branch`.
     const { getByLabelText } = await render(
       <SymbolIcon name="arrow.trianglehead.branch" accessibilityLabel="Split" />,
     );
 
-    expect(getByLabelText('Split').props.fallbackName).toBe('arrow.branch');
+    expect(getByLabelText('Split').props.fallbackName).toBe('arrow.triangle.branch');
   });
 
   it('renders a known iOS-26 symbol as its fallback NAME on a device below iOS 26', async () => {
@@ -108,6 +108,21 @@ describe('Symbol', () => {
 
     // Deterministic name swap, independent of the native fallbackName net.
     expect(getByLabelText('Holdings').props.name).toBe('list.bullet.rectangle');
+  });
+
+  it('swaps a symbol on its minor-version boundary: 18.1 gets the fallback, 18.2 the symbol', async () => {
+    const renderedName = async (osVersion: string) => {
+      jest.spyOn(Platform, 'Version', 'get').mockReturnValue(osVersion);
+
+      const { getByLabelText } = await render(
+        <SymbolIcon name="receipt" accessibilityLabel="Bond" />,
+      );
+
+      return getByLabelText('Bond').props.name;
+    };
+
+    expect(await renderedName('18.1')).toBe('doc.text');
+    expect(await renderedName('18.2')).toBe('receipt');
   });
 
   it('renders a known iOS-26 symbol as itself on a device on iOS 26 or above', async () => {

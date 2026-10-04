@@ -1180,7 +1180,7 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
 
     // Exchange and Split appear together off a cash source; open the type sheet
     // so their option rows mount, then their glyphs render via the mocked
-    // SFSymbolView. Split's `arrow.trianglehead.branch` is an iOS-26 symbol
+    // SFSymbolView. Split's `arrow.trianglehead.branch` is an iOS-18 symbol
     // carried through the shared SymbolIcon fallback seam.
     await fireEvent.press(utils.getByLabelText('Type'));
     const tree = JSON.stringify(utils.toJSON());

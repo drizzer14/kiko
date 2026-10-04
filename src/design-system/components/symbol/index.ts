@@ -1,2 +1,2 @@
 export { default } from './symbol.component';
-export { IOS26_SYMBOL_FALLBACKS } from './symbol.availability';
+export { SYMBOL_FALLBACKS } from './symbol.availability';
