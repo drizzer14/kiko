@@ -160,25 +160,21 @@ const typeSlotFor = (
   typeOptions: readonly HoldingType[],
   isEdit: boolean,
   type: HoldingType,
-): TypeSlot => {
-  if (accountKind === 'property') {
-    return { kind: 'property' };
-  }
+): TypeSlot =>
+  match(accountKind)
+    .with('property', (): TypeSlot => ({ kind: 'property' }))
+    .with('debt', (): TypeSlot => ({ kind: 'loan' }))
+    .otherwise((): TypeSlot => {
+      if (isEdit) {
+        return type === 'metal' ? { kind: 'metal', otherTypes: [] } : { kind: 'generic' };
+      }
 
-  if (accountKind === 'debt') {
-    return { kind: 'loan' };
-  }
+      if (typeOptions.includes('metal')) {
+        return { kind: 'metal', otherTypes: typeOptions.filter((option) => option !== 'metal') };
+      }
 
-  if (isEdit) {
-    return type === 'metal' ? { kind: 'metal', otherTypes: [] } : { kind: 'generic' };
-  }
-
-  if (typeOptions.includes('metal')) {
-    return { kind: 'metal', otherTypes: typeOptions.filter((option) => option !== 'metal') };
-  }
-
-  return { kind: 'generic' };
-};
+      return { kind: 'generic' };
+    });
 
 // An implicit create names no account, so the account query it shares with the
 // account mode gets the empty id that matches no row.
