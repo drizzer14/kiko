@@ -145,7 +145,7 @@ describe('defaultHoldingSymbol', () => {
 describe('genericEntitySymbol', () => {
   it('maps each generic entity reference to its decided glyph', () => {
     expect(genericEntitySymbol.account).toBe('tray');
-    expect(genericEntitySymbol.holding).toBe('text.pad.header');
+    expect(genericEntitySymbol.holding).toBe('list.bullet.rectangle');
     expect(genericEntitySymbol.transaction).toBe('arrow.up.arrow.down');
     expect(genericEntitySymbol.category).toBe('tag');
   });

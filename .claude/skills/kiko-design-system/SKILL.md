@@ -641,10 +641,10 @@ new component can land between reviews of this skill:
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
   "Update outstanding" add no entity, so they stay text-only. A
-  generic glyph newer than iOS 15.1 (`text.pad.header`) has its fallback
-  in SymbolIcon's central `SYMBOL_FALLBACKS` map (`symbol.availability.ts`);
-  read it there, and see "SF Symbol availability" below. A new footer
-  "Add …" action takes its entity's glyph the same way.
+  generic glyph must exist on the iOS 18.2 deployment target (the holding
+  glyph is `list.bullet.rectangle`, not the iOS-26 `text.pad.header`); see
+  "SF Symbol availability" below. A new footer "Add …" action takes its
+  entity's glyph the same way.
 
   **Sizes — `regular` / `compact` / `small`** (read `button.props.d.ts`'s
   `ButtonSize` for the exact current set). `regular` is the 50pt tall
@@ -1616,34 +1616,35 @@ the same conversion itself.
 
 ## SF Symbol availability
 
-The deployment target is iOS 15.1, and `SFSymbolView` draws a symbol the
-running OS does not know as a BLANK glyph, not an error. Every symbol the
-app can draw that is newer than iOS 15.1 therefore has ONE entry in
-`SYMBOL_FALLBACKS` (`symbol/symbol.availability.ts`), keyed by name, with
-the `major.minor` iOS that introduced it (`minimumIos`) and an iOS 15.1
-`fallback`. `SymbolIcon` swaps to the fallback when the running iOS
-(`major.minor`, so a 16.1 symbol such as `handbag` or an 18.2 one such as
-`receipt` still swaps on 16.0 or 18.1) is below `minimumIos`; the swap
-changes only the drawn glyph, never a stored icon name. A fallback only
-shows on an old iOS, so it never changes the approved iOS 26 look.
-`effectiveFallbackName` always returns a string (a `null` `fallbackName`
-crashes Release). A native header or tab-bar item has no `fallbackName`
-prop: use a symbol that is SF Symbols 3.1 or older (the bell and the Edit
-pencil are SF Symbols 1.0), and only a name that comes from a stored
-value or a pool would need `resolveSymbolName(name, undefined,
-currentOsVersion())` before it is handed to UIKit.
+The deployment target is iOS 18.2, and `SFSymbolView` draws a symbol the
+running OS does not know as a BLANK glyph, not an error. So every symbol
+the app can draw MUST exist on iOS 18.2: there is no per-symbol fallback
+map and `SymbolIcon` passes the name straight to the native view. A symbol
+newer than 18.2 (for example the iOS-26 `text.pad.header`, which the generic
+holding glyph used to be) is replaced by an older one that reads the same
+(`list.bullet.rectangle`), not shimmed at runtime. `receipt` (iOS 18.2) is
+the newest symbol in use. `effectiveFallbackName`
+(`symbol/symbol.availability.ts`) is `fallbackName ?? name` and always
+returns a string (a `null` `fallbackName` crashes Release). A native
+header or tab-bar item has no `fallbackName` prop; the same rule covers it.
 
-A new symbol newer than iOS 15.1 needs an entry, with a fallback that is
-itself SF Symbols 3.1 or older and close to it in meaning and shape.
-`__tests__/symbol-fallbacks.test.tsx` is the guard. It reads the
-`sf-symbols-typescript` catalogue as text
-(`__tests__/test-support/sf-symbol-catalogue.ts`: the `@name SF Symbols
-N.M` and `iOS vX.Y+` JSDoc, plus the `| 'name'` lines) and fails when a
-symbol the app can draw has no entry, when a fallback is newer than iOS
-15.1, or when an entry's `minimumIos` disagrees with the catalogue. It
-collects the entity maps, both icon pools and the pools the forms open, the
-Edit bar item, and every quoted literal in `src/` that equals a catalogue
-name (a name built at runtime is out of its reach).
+The deployment target lives in four build places that must agree: the six
+`IPHONEOS_DEPLOYMENT_TARGET` lines of `ios/Kiko.xcodeproj/project.pbxproj`,
+`platform :ios` in `ios/Podfile`, and the Podfile's `post_install` pod floor
+(`Gem::Version.new(...)`). `__tests__/symbol-deployment-target.test.tsx` is
+the guard. It reads those files as text
+(`__tests__/test-support/deployment-target.ts`) and fails when any of them
+differs from the ONE constant `DEPLOYMENT_TARGET`
+(`__tests__/test-support/sf-symbol-catalogue.ts`). It also reads the
+`sf-symbols-typescript` catalogue as text (the `@name SF Symbols N.M` and
+`iOS vX.Y+` JSDoc, plus the `| 'name'` lines) and fails when a symbol the
+app can draw is unknown to it or newer than the target. It collects the
+entity maps, both icon pools and the pools the forms open, the Edit bar
+item and the Reminders bell, the tab bar, and every quoted literal in
+`src/` that equals a catalogue name (a name built at runtime is out of its
+reach). Raising the target again is one edit to `DEPLOYMENT_TARGET` plus the
+build files, then `pod install`; lowering it needs every symbol re-checked
+by the same guard.
 
 ## GlassSurface `isLiquidGlassSupported` branch
 

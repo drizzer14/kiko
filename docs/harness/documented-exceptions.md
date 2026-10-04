@@ -722,7 +722,7 @@ verified usage, not dead weight:
   `^2.1.0` and `react-native-bottom-tabs` `^2.0.0`), and `package-lock.json`
   locks it at 2.2.0. depcheck and Knip see no import of it, so neither
   reports it. A missing or reshaped file (a dependant dropped, the package
-  moved or its comments changed) fails `__tests__/symbol-fallbacks.test.tsx`
+  moved or its comments changed) fails `__tests__/symbol-deployment-target.test.tsx`
   and `sf-symbol-catalogue.test.ts` loudly, never silently. If a dependant
   stops installing it, add it to `package.json` as an exact-pinned
   devDependency instead.

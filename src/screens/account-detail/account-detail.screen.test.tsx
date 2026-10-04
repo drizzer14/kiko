@@ -400,8 +400,7 @@ describe('AccountDetailScreen', () => {
     mockButtonProps.length = 0;
     await renderScreen();
 
-    // Sync-now takes the iOS-26 rotate glyph (central availability map supplies
-    // the iOS-15.1-safe fallback for free); Disconnect takes the open-lock glyph.
+    // Sync-now takes the iOS-18 rotate glyph; Disconnect takes the open-lock glyph.
     const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
     expect(syncEntry?.icon).toBe('arrow.trianglehead.2.clockwise.rotate.90');
@@ -1745,7 +1744,7 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
 
     const addHoldingButton = mockButtonProps.find((props) => props.children === 'Add holding');
 
-    expect(addHoldingButton?.icon).toBe('text.pad.header');
+    expect(addHoldingButton?.icon).toBe('list.bullet.rectangle');
   });
 
   it('renders Import statement full-width, stacked above Add holding (not sharing a row)', async () => {

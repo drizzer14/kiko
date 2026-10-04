@@ -8,9 +8,8 @@ import type { SyncDisconnectActionsRowProps } from './sync-disconnect-actions-ro
 // The shared Sync + Disconnect action row for a connected bank/crypto
 // account — both buttons take the neutral `secondaryTonal` treatment (see
 // kiko-design-system's "Component set (Button)"), Sync taking the iOS-18
-// rotate glyph (the central SYMBOL_FALLBACKS map hands the iOS-15.1-safe
-// fallback for free, even through the shared Button's `icon` prop) and
-// Disconnect the open-lock glyph.
+// rotate glyph (it exists on the iOS 18.2 deployment target) and Disconnect
+// the open-lock glyph.
 const SyncDisconnectActionsRow: FC<SyncDisconnectActionsRowProps> = ({
   onSync,
   isSyncing,

@@ -55,16 +55,26 @@ export const parseSymbolCatalogue = (text: string): SymbolCatalogue => {
   return { minimumIos };
 };
 
-// The app's deployment target. Written out here, not imported from the
-// fallback map, so the guard that checks the map does not trust the map.
-const DEPLOYMENT_TARGET = [15, 1];
+// The app's deployment target: the ONE place the number is written for the
+// tests. `__tests__/symbol-deployment-target.test.tsx` asserts every build file
+// (`deployment-target.ts`) states this same iOS, so raising it is one edit here
+// plus the build files, and a build file that drifts fails the guard.
+export const DEPLOYMENT_TARGET = '18.2';
 
-export const isNewerThanDeploymentTarget = (minimumIos: string): boolean => {
-  const [major, minor] = minimumIos.split('.').map(Number);
+const versionParts = (version: string): [number, number] => {
+  const [major, minor = 0] = version.split('.').map(Number);
 
-  return (
-    major > DEPLOYMENT_TARGET[0] || (major === DEPLOYMENT_TARGET[0] && minor > DEPLOYMENT_TARGET[1])
-  );
+  return [major, minor];
+};
+
+export const isNewerThanDeploymentTarget = (
+  minimumIos: string,
+  target: string = DEPLOYMENT_TARGET,
+): boolean => {
+  const [major, minor] = versionParts(minimumIos);
+  const [targetMajor, targetMinor] = versionParts(target);
+
+  return major > targetMajor || (major === targetMajor && minor > targetMinor);
 };
 
 export const symbolCatalogue: SymbolCatalogue = parseSymbolCatalogue(

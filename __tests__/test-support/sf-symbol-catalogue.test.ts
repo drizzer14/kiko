@@ -68,13 +68,19 @@ describe('the installed sf-symbols-typescript catalogue', () => {
 describe('isNewerThanDeploymentTarget', () => {
   it.each([
     ['13.0', false],
-    ['15.0', false],
     ['15.1', false],
-    ['15.2', true],
-    ['15.4', true],
-    ['16.0', true],
+    ['18.0', false],
+    ['18.2', false],
+    ['18.3', true],
+    ['19.0', true],
     ['26.0', true],
-  ])('is iOS %s newer than the iOS 15.1 deployment target: %s', (ios, expected) => {
+  ])('is iOS %s newer than the iOS 18.2 deployment target: %s', (ios, expected) => {
     expect(isNewerThanDeploymentTarget(ios)).toBe(expected);
+  });
+
+  it('compares against an explicit target, on the minor version too', () => {
+    expect(isNewerThanDeploymentTarget('16.1', '16.0')).toBe(true);
+    expect(isNewerThanDeploymentTarget('16.1', '16.1')).toBe(false);
+    expect(isNewerThanDeploymentTarget('17', '16.4')).toBe(true);
   });
 });

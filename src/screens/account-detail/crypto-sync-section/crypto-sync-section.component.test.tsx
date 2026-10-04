@@ -298,8 +298,7 @@ describe('CryptoSyncSection', () => {
     mockButtonProps.length = 0;
     await renderConnectedWallet();
 
-    // Sync-now takes the iOS-26 rotate glyph (the central availability map
-    // hands the iOS-15.1-safe fallback for free); Disconnect takes the open-lock
+    // Sync-now takes the iOS-18 rotate glyph; Disconnect takes the open-lock
     // glyph mirroring the lock used by the Connect affordance.
     const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');

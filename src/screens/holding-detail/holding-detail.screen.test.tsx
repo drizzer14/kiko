@@ -615,7 +615,7 @@ describe('HoldingDetailScreen', () => {
     const { getByLabelText } = await renderScreen();
 
     // The edit form has no descriptor for the type and would crash on it.
-    expect(getByLabelText('Icon text.pad.header')).toBeTruthy();
+    expect(getByLabelText('Icon list.bullet.rectangle')).toBeTruthy();
     expect(
       (navigation.setOptions as jest.Mock).mock.calls.some(
         ([options]) => options.unstable_headerRightItems,

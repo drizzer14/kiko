@@ -3829,8 +3829,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
   it('switches from Split to another type without throwing (crash regression)', async () => {
     // The reported crash's actual root cause: the transaction-type select
     // trigger renders ONE persistent `<SymbolIcon>` whose `fallbackName` prop
-    // toggled from a string (Split's mapped fallback) to `undefined` on
-    // leaving Split — an UPDATE, not a fresh mount, which Fabric serializes
+    // toggled from a string to `undefined` on leaving Split — an UPDATE, not a fresh mount, which Fabric serializes
     // as native `null`, and the native SFSymbolView binding throws on `null`
     // (see symbol.availability.ts's `effectiveFallbackName` doc comment).
     // Jest cannot reproduce that native host-function throw itself (the real

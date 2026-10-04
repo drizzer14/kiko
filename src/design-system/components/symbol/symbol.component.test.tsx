@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -14,12 +13,6 @@ import { darkTheme } from '@kiko/design-system/theme';
 import SymbolIcon from '.';
 
 describe('Symbol', () => {
-  // The three OS-version tests below spy on Platform.Version's getter; restore it
-  // so the default jest platform version is back for every other test.
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
   it('renders without crashing (react-native-nitro-sfsymbols is mocked under Jest)', async () => {
     const { toJSON } = await render(<SymbolIcon name="heart.fill" accessibilityLabel="Favorite" />);
 
@@ -89,49 +82,21 @@ describe('Symbol', () => {
     expect(getByLabelText('Glyph').props.fallbackName).toBe('heart');
   });
 
-  it('auto-supplies the central fallback for a mapped symbol with no explicit fallback', async () => {
-    // The transaction-type ChipRow passes only a plain name; the split chip's
-    // iOS-18 `arrow.trianglehead.branch` must still carry `arrow.triangle.branch`.
+  it('hands the symbol its own name as the fallbackName when no explicit one is passed', async () => {
+    // The native `fallbackName` is a `String`, never `null` (see
+    // symbol.availability.ts), so it is a string on every render.
     const { getByLabelText } = await render(
       <SymbolIcon name="arrow.trianglehead.branch" accessibilityLabel="Split" />,
     );
 
-    expect(getByLabelText('Split').props.fallbackName).toBe('arrow.triangle.branch');
+    expect(getByLabelText('Split').props.fallbackName).toBe('arrow.trianglehead.branch');
   });
 
-  it('renders a known iOS-26 symbol as its fallback NAME on a device below iOS 26', async () => {
-    jest.spyOn(Platform, 'Version', 'get').mockReturnValue('16.4');
-
+  it('passes the symbol name straight through on every OS', async () => {
     const { getByLabelText } = await render(
-      <SymbolIcon name="text.pad.header" accessibilityLabel="Holdings" />,
+      <SymbolIcon name="receipt" accessibilityLabel="Bond" />,
     );
 
-    // Deterministic name swap, independent of the native fallbackName net.
-    expect(getByLabelText('Holdings').props.name).toBe('list.bullet.rectangle');
-  });
-
-  it('swaps a symbol on its minor-version boundary: 18.1 gets the fallback, 18.2 the symbol', async () => {
-    const renderedName = async (osVersion: string) => {
-      jest.spyOn(Platform, 'Version', 'get').mockReturnValue(osVersion);
-
-      const { getByLabelText } = await render(
-        <SymbolIcon name="receipt" accessibilityLabel="Bond" />,
-      );
-
-      return getByLabelText('Bond').props.name;
-    };
-
-    expect(await renderedName('18.1')).toBe('doc.text');
-    expect(await renderedName('18.2')).toBe('receipt');
-  });
-
-  it('renders a known iOS-26 symbol as itself on a device on iOS 26 or above', async () => {
-    jest.spyOn(Platform, 'Version', 'get').mockReturnValue('26.0');
-
-    const { getByLabelText } = await render(
-      <SymbolIcon name="text.pad.header" accessibilityLabel="Holdings" />,
-    );
-
-    expect(getByLabelText('Holdings').props.name).toBe('text.pad.header');
+    expect(getByLabelText('Bond').props.name).toBe('receipt');
   });
 });
