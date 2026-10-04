@@ -1,4 +1,7 @@
-import '@kiko/design-system/unistyles';
+import {
+  KIKO_CATEGORIES_ICONS,
+  KIKO_ENTITIES_ICONS,
+} from '@kiko/design-system/components/icon-pools';
 
 import { accountKindSymbol } from '../entity-symbols';
 import { implicitAccountKinds } from '../implicit-account';
@@ -23,6 +26,20 @@ describe('accountHeaderSymbol', () => {
     expect(accountHeaderSymbol({ kind, icon: accountKindSymbol[kind], color: null })).toBe(
       accountKindSymbol[kind],
     );
+  });
+
+  // A backup from before the pool split kept the account picker's own pick,
+  // and the AccountForm chip and the Home filter show it as is.
+  it.each(['house', 'car'])('keeps the stored legacy %s icon', (icon) => {
+    expect(accountHeaderSymbol({ kind: 'property', icon, color: null })).toBe(icon);
+  });
+
+  it.each(KIKO_CATEGORIES_ICONS)('keeps the stored category-pool icon %s', (icon) => {
+    expect(accountHeaderSymbol({ kind: 'debt', icon, color: null })).toBe(icon);
+  });
+
+  it.each(KIKO_ENTITIES_ICONS)('keeps the stored entity-pool icon %s', (icon) => {
+    expect(accountHeaderSymbol({ kind: 'property', icon, color: null })).toBe(icon);
   });
 
   // A restored .kiko can carry any string: the native bar item draws no image

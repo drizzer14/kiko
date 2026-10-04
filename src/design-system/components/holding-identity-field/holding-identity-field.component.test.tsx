@@ -5,7 +5,7 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme as theme } from '@kiko/design-system/theme';
 
-import { KIKO_CATEGORIES_ICONS } from '../icon-picker-modal';
+import { KIKO_CATEGORIES_ICONS } from '../icon-pools';
 
 import HoldingIdentityField from '.';
 

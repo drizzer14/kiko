@@ -21,8 +21,8 @@ import { DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
+import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
-import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
 
 import AddCategoryRow from './add-category-row';
 

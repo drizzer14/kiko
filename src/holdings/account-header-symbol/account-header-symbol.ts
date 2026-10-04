@@ -1,6 +1,9 @@
 import type { AccountRow } from '@kiko/db';
+import {
+  KIKO_CATEGORIES_ICONS,
+  KIKO_ENTITIES_ICONS,
+} from '@kiko/design-system/components/icon-pools';
 import type { NativeStackHeaderItemButton } from '@react-navigation/native-stack';
-import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
 
 import { accountIdentity } from '../account-identity';
 import type { ImplicitAccountKind } from '../implicit-account';
@@ -18,17 +21,25 @@ const implicitKindSymbol = {
   debt: 'minus.circle.fill',
 } as const satisfies Record<ImplicitAccountKind, HeaderSymbol>;
 
-// The icons an implicit account can store through this app: a pick from the
-// account icon pool, or the kind glyph written at create time. `satisfies`
-// proves every one is in `HeaderSymbol`, so a `has` check narrows soundly.
-// A restored .kiko can hold any string, and the native bar item draws no image
-// at all for a name UIKit does not know.
-const headerSymbols: ReadonlySet<string> = new Set<string>([
-  ...(KIKO_ENTITIES_ICONS satisfies readonly HeaderSymbol[]),
+// The icons an implicit account can hold in this app: a pick from either icon
+// pool the app ships (the account picker's pool today, and the pools an
+// older build offered it, such as the category pool's `house`), or the kind
+// glyph, which only a restored row stores (the app itself writes NULL). The
+// `Set<HeaderSymbol>` element type proves every one is in `HeaderSymbol`, so
+// a `has` check narrows soundly. A restored .kiko can hold any other string,
+// and the native bar item draws no image at all for a name UIKit does not
+// know.
+const headerSymbols: ReadonlySet<HeaderSymbol> = new Set<HeaderSymbol>([
+  ...KIKO_ENTITIES_ICONS,
+  ...KIKO_CATEGORIES_ICONS,
   ...Object.values(implicitKindSymbol),
 ]);
 
-const isHeaderSymbol = (name: string): name is HeaderSymbol => headerSymbols.has(name);
+const isHeaderSymbol = (name: string): name is HeaderSymbol => {
+  const trustedNames: ReadonlySet<string> = headerSymbols;
+
+  return trustedNames.has(name);
+};
 
 // The glyph on the header button of an implicit account: its stored icon (or
 // the kind glyph when none is stored, per `accountIdentity`), and the kind

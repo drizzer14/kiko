@@ -6,7 +6,7 @@ import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
-import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
+import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
 
 import AddCategoryRow from './add-category-row.component';
 
