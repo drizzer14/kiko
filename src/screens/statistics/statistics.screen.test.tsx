@@ -1436,6 +1436,31 @@ describe('StatisticsScreen', () => {
         expect(queryByText(/^Accounts · /)).toBeNull();
       });
 
+      // Deleting is the in-app path to this state: nothing in the app archives.
+      it('filters nothing and shows no count once the only selected account is deleted', async () => {
+        const { getByTestId, getByText, queryByText, queryByTestId, rerender } =
+          await renderScreen();
+
+        await pressFilter(getByTestId, ACCOUNT_FILTER, CASH.id);
+        expect(queryByTestId('pie-chart-arc-b')).toBeNull();
+        expect(getByText('Accounts · 1')).toBeTruthy();
+
+        setLiveData({
+          accounts: [BANK],
+          holdings: [USD_HOLDING],
+          rates: [USD_UAH_RATE],
+          transactions: TRANSACTIONS.filter((row) => row.holdingId !== UAH_HOLDING.id),
+          history: HISTORY,
+        });
+        await act(async () => {
+          rerender(<StatisticsScreen />);
+        });
+
+        expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
+        expect(getByText('Accounts')).toBeTruthy();
+        expect(queryByText(/^Accounts · /)).toBeNull();
+      });
+
       it('keeps filtering by a second selected account that is still among the options', async () => {
         setLiveData({
           accounts: [CASH, BANK, SAVINGS],

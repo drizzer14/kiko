@@ -859,6 +859,29 @@ describe('HomeScreen', () => {
         expect(queryByText(/^Accounts · /)).toBeNull();
       });
 
+      // Deleting is the in-app path to this state: nothing in the app archives.
+      it('filters nothing and shows no count once the only selected account is deleted', async () => {
+        seed({
+          accounts: [MONOBANK, PRIVATBANK],
+          transactions: rowsOfTwoAccounts,
+        });
+        const { getByText, queryByText, getByTestId, rerender } = await renderHome();
+
+        await pressFilter(getByTestId, 'account-filter-menu', 'a');
+        expect(queryByText('Groceries')).toBeNull();
+        expect(getByText('Accounts · 1')).toBeTruthy();
+
+        seed({
+          accounts: [PRIVATBANK],
+          transactions: rowsOfTwoAccounts.filter((row) => row.accountId !== 'a'),
+        });
+        await rerenderHome(rerender);
+
+        expect(getByText('Groceries')).toBeTruthy();
+        expect(getByText('Accounts')).toBeTruthy();
+        expect(queryByText(/^Accounts · /)).toBeNull();
+      });
+
       it('keeps filtering by a second selected account that is still among the options', async () => {
         seed({
           accounts: [MONOBANK, PRIVATBANK],
