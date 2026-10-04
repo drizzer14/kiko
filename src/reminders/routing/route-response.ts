@@ -43,7 +43,13 @@ export const routeFor = (
 ): ReminderRoute | undefined =>
   foldMap(maybe(account), (found): ReminderRoute => {
     const accountId = found.id;
-    const accountDetail = { accountId, name: accountDisplayName(found, i18n.t) };
+    // The kind rides along so the page knows its header items (no Reminders
+    // bell for an implicit account) from its first render.
+    const accountDetail = {
+      accountId,
+      name: accountDisplayName(found, i18n.t),
+      kind: found.kind,
+    };
 
     if (isPausedNoticeResponse(response)) {
       return { accountDetail, next: { screen: 'AccountReminders', params: { accountId } } };

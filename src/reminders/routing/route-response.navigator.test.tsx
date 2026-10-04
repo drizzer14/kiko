@@ -216,7 +216,7 @@ describe('reminder tap routing (real router)', () => {
       expect(focusedTab()).toBe('AccountsTab');
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+        onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
         onStack('TransactionForm', { holdingId: 'wallet' }),
       ]);
     });
@@ -229,7 +229,7 @@ describe('reminder tap routing (real router)', () => {
 
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+        onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
       ]);
     });
 
@@ -238,7 +238,12 @@ describe('reminder tap routing (real router)', () => {
 
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'bank', name: 'Mono', intent: 'importStatement' }),
+        onStack('AccountDetail', {
+          accountId: 'bank',
+          name: 'Mono',
+          kind: 'bank',
+          intent: 'importStatement',
+        }),
       ]);
     });
 
@@ -247,7 +252,7 @@ describe('reminder tap routing (real router)', () => {
 
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+        onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
         onStack('AccountReminders', { accountId: 'cash' }),
       ]);
     });
@@ -262,7 +267,11 @@ describe('reminder tap routing (real router)', () => {
       expect(focusedTab()).toBe('AccountsTab');
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'properties', name: 'Properties' }),
+        onStack('AccountDetail', {
+          accountId: 'properties',
+          name: 'Properties',
+          kind: 'property',
+        }),
       ]);
     });
 
@@ -274,7 +283,11 @@ describe('reminder tap routing (real router)', () => {
       expect(focusedTab()).toBe('AccountsTab');
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'properties', name: 'Properties' }),
+        onStack('AccountDetail', {
+          accountId: 'properties',
+          name: 'Properties',
+          kind: 'property',
+        }),
         onStack('AccountReminders', { accountId: 'properties' }),
       ]);
     });
@@ -287,7 +300,12 @@ describe('reminder tap routing (real router)', () => {
 
       expect(accountsStack()).toEqual([
         onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'bank', name: 'Mono', intent: 'importStatement' }),
+        onStack('AccountDetail', {
+          accountId: 'bank',
+          name: 'Mono',
+          kind: 'bank',
+          intent: 'importStatement',
+        }),
       ]);
     });
 
@@ -307,7 +325,7 @@ describe('reminder tap routing (real router)', () => {
 
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
     ]);
   });
 
@@ -340,7 +358,7 @@ describe('reminder tap routing (real router)', () => {
       onStack('Accounts'),
       onStack('AccountDetail', { accountId: 'bank', name: 'Mono' }),
       onStack('HoldingDetail'),
-      onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
     ]);
     expect(accountsStack().map(({ key }) => key)).toEqual([...keysBefore, expect.any(String)]);
   });
@@ -354,7 +372,12 @@ describe('reminder tap routing (real router)', () => {
 
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'bank', name: 'Mono', intent: 'importStatement' }),
+      onStack('AccountDetail', {
+        accountId: 'bank',
+        name: 'Mono',
+        kind: 'bank',
+        intent: 'importStatement',
+      }),
     ]);
     expect(accountsStack()[1]?.key).toBe(pageBefore?.key);
   });
@@ -372,7 +395,10 @@ describe('reminder tap routing (real router)', () => {
       state: {
         routes: [
           expect.objectContaining({ name: 'Accounts' }),
-          { name: 'AccountDetail', params: { accountId: 'properties', name: 'Properties' } },
+          {
+            name: 'AccountDetail',
+            params: { accountId: 'properties', name: 'Properties', kind: 'property' },
+          },
           { name: 'AccountReminders', params: { accountId: 'properties' } },
         ],
         index: 2,
@@ -391,7 +417,11 @@ describe('reminder tap routing (real router)', () => {
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
       onStack('AccountDetail', { accountId: 'bank', name: 'Mono' }),
-      onStack('AccountDetail', { accountId: 'properties', name: 'Properties' }),
+      onStack('AccountDetail', {
+        accountId: 'properties',
+        name: 'Properties',
+        kind: 'property',
+      }),
     ]);
     expect(
       accountsStack()
@@ -409,7 +439,11 @@ describe('reminder tap routing (real router)', () => {
 
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'properties', name: 'Properties' }),
+      onStack('AccountDetail', {
+        accountId: 'properties',
+        name: 'Properties',
+        kind: 'property',
+      }),
     ]);
     expect(accountsStack()[1]?.key).toBe(pageBefore?.key);
   });
@@ -423,7 +457,7 @@ describe('reminder tap routing (real router)', () => {
 
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'cash', name: 'Cash' }),
+      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
       onStack('TransactionForm', { holdingId: 'wallet' }),
     ]);
   });
@@ -435,7 +469,12 @@ describe('reminder tap routing (real router)', () => {
 
     expect(accountsStack()).toEqual([
       onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'bank', name: 'Mono', intent: 'importStatement' }),
+      onStack('AccountDetail', {
+        accountId: 'bank',
+        name: 'Mono',
+        kind: 'bank',
+        intent: 'importStatement',
+      }),
     ]);
   });
 });

@@ -2273,12 +2273,20 @@ what a change must keep.
   survives stays in Settings > Reminders (pause, delete) and is still
   scheduled, which is why `eligibleReminderKinds` is NOT narrowed for the
   implicit kinds (it also decides `isSchedulable` and the "available" state
-  of a saved reminder). One path still reaches the create form:
-  `eligibleReminderKinds` offers `add_transactions` for any account no sync
-  owns, property and debt included, so once the user deletes the reminder on
-  `AccountReminders` (which the paused-notice tap opens; the tap itself
-  deletes nothing), the page shows an unset
-  `add_transactions` row that opens `ReminderForm` in create mode.
+  of a saved reminder). `AccountReminders` closes the last path to the
+  create form: for a live implicit account it lists ONLY the reminders
+  saved on it (`kinds = isImplicitAccount(account) ? saved : eligible ∪
+  saved`; a saved one still reads as available, since `available` keeps
+  using `eligibleReminderKinds`), so deleting the merged reminder leaves no
+  unset `add_transactions` row to open `ReminderForm` in create mode. An
+  implicit account with none saved shows the empty caption.
+  `AccountDetail` takes an optional `kind` route param (the account's kind;
+  every navigate site passes it: the Accounts heading row, the main-grid
+  card, `routeFor`; a `popTo` with `merge` keeps the one already there):
+  the header items are set before the account row loads, so the bell is
+  decided from the loaded account's kind, else the `kind` hint, and with
+  neither it is left out until the row loads, so it never flashes on an
+  implicit account.
   A reminder NOTIFICATION never names its account (its title and body are
   generic catalogue text), so the planner needs no display name. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole

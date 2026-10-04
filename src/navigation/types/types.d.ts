@@ -64,9 +64,14 @@ export type AccountsStackParamList = {
   // offers an import reminder then; the page clears it once the offer is
   // decided. `intent: 'importStatement'` is set only by a tap on an import
   // reminder, so the page opens the file picker once, then clears it.
+  // `kind` is the account's kind as the navigating screen knows it: until the
+  // page's own read of the account lands, it decides the header items (no
+  // Reminders bell for an implicit property or debt account), so the bell
+  // never shows for a moment and then goes. The loaded account's kind wins.
   AccountDetail: {
     accountId: string;
     name: string;
+    kind?: AccountRow['kind'];
     reminderOffer?: 'afterImport';
     intent?: 'importStatement';
   };

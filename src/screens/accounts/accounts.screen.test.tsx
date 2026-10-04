@@ -332,9 +332,12 @@ describe('AccountsScreen', () => {
     await fireEvent.press(getByText('Monobank'));
     // The account's name rides along so the detail screen's large title (and any
     // back button pushed from it) reads immediately, before its own live query.
+    // The kind rides along too, so the page knows its header items (no
+    // Reminders bell for an implicit account) from its first render.
     expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
       accountId: 'a',
       name: 'Monobank',
+      kind: 'bank',
     });
   });
 
@@ -472,6 +475,7 @@ describe('AccountsScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
       accountId: 'a',
       name: 'Wallet',
+      kind: 'cash',
     });
     expect(mockAccountRemove).not.toHaveBeenCalled();
   });
@@ -561,6 +565,7 @@ describe('AccountsScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
       accountId: 'a',
       name: 'Monobank',
+      kind: 'bank',
     });
   });
 
@@ -574,6 +579,7 @@ describe('AccountsScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
       accountId: 'a',
       name: 'Monobank',
+      kind: 'bank',
     });
   });
 
@@ -1451,29 +1457,35 @@ describe('AccountsScreen', () => {
       });
     });
 
+    // The kind is the hint that keeps the Reminders bell off the pushed page
+    // from its first render, before its own read of the account lands.
     it.each([
-      ['accounts-property-open', 'p', 'Properties'],
-      ['accounts-debts-open', 'd', 'Loans'],
+      ['accounts-property-open', 'p', 'Properties', 'property'],
+      ['accounts-debts-open', 'd', 'Loans', 'debt'],
     ])(
       'opens the AccountDetail of the section’s own account from %s',
-      async (testID, accountId, name) => {
+      async (testID, accountId, name, kind) => {
         bothSections();
 
         const { getByTestId } = await renderAccounts();
         await fireEvent.press(getByTestId(testID));
 
-        expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId, name });
+        expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+          accountId,
+          name,
+          kind,
+        });
       },
     );
 
     // The route name is what the pushed screen titles itself with before its
     // own read lands, so it is the localized name, never the stored sentinel.
     it.each([
-      ['accounts-property-open', 'p', 'Майно'],
-      ['accounts-debts-open', 'd', 'Кредити'],
+      ['accounts-property-open', 'p', 'Майно', 'property'],
+      ['accounts-debts-open', 'd', 'Кредити', 'debt'],
     ])(
       'passes the Ukrainian default name to AccountDetail from %s',
-      async (testID, accountId, name) => {
+      async (testID, accountId, name, kind) => {
         await act(async () => {
           await i18n.changeLanguage('uk');
         });
@@ -1482,7 +1494,11 @@ describe('AccountsScreen', () => {
         const { getByTestId } = await renderAccounts();
         await fireEvent.press(getByTestId(testID));
 
-        expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', { accountId, name });
+        expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+          accountId,
+          name,
+          kind,
+        });
       },
     );
 
@@ -1498,6 +1514,7 @@ describe('AccountsScreen', () => {
       expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
         accountId: 'p',
         name: 'Real estate',
+        kind: 'property',
       });
     });
 
@@ -1511,10 +1528,12 @@ describe('AccountsScreen', () => {
       expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
         accountId: 'p',
         name: 'Properties',
+        kind: 'property',
       });
       expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
         accountId: 'd',
         name: 'Loans',
+        kind: 'debt',
       });
     });
 

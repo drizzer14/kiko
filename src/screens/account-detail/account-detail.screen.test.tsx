@@ -2241,6 +2241,89 @@ describe('AccountDetailScreen — an implicit account', () => {
     expect(navigation.navigate).not.toHaveBeenCalledWith('AccountReminders', expect.anything());
   });
 
+  // Before the account row loads, the route's kind hint is all the screen
+  // knows: the bell must never show for a hinted implicit kind, even on the
+  // first render, or it would flash and a tap in that window would open the
+  // reminders of an account that takes none.
+  describe('before the account row has loaded', () => {
+    const hinted = (kind?: Account['kind']) =>
+      asRouteProp<AccountDetailProps['route']>('AccountDetail', {
+        accountId: 'a',
+        name: 'Hinted',
+        kind,
+      });
+
+    const everyHeaderItemSet = (navigation: ReturnType<typeof navigationSpy>) =>
+      (navigation.setOptions as jest.Mock).mock.calls
+        .filter(([options]) => options.unstable_headerRightItems)
+        .map(([options]) =>
+          options
+            .unstable_headerRightItems({ canGoBack: true })
+            .map((item: { icon: { name: string } }) => item.icon.name),
+        );
+
+    it.each(kinds)('never builds the bell when the hint says %s', async (kind) => {
+      setLiveData({ accounts: [], accountsIsLoading: true, holdings: [] });
+
+      const { navigation } = await renderScreen(hinted(kind));
+      const itemSets = everyHeaderItemSet(navigation);
+
+      expect(itemSets.length).toBeGreaterThan(0);
+      expect(itemSets).toEqual(itemSets.map(() => ['pencil']));
+    });
+
+    it('builds the bell when the hint says bank', async () => {
+      setLiveData({ accounts: [], accountsIsLoading: true, holdings: [] });
+
+      const { navigation } = await renderScreen(hinted('bank'));
+
+      expect(everyHeaderItemSet(navigation).at(0)).toEqual(['bell', 'pencil']);
+    });
+
+    it('builds no bell when there is no hint either, and adds it once the account loads', async () => {
+      setLiveData({ accounts: [], accountsIsLoading: true, holdings: [] });
+
+      const { navigation, rerender } = await renderScreen(hinted());
+      const before = everyHeaderItemSet(navigation);
+
+      expect(before.length).toBeGreaterThan(0);
+      expect(before).toEqual(before.map(() => ['pencil']));
+
+      setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [] });
+      await rerender(
+        <AccountDetailScreen
+          route={hinted()}
+          navigation={asNavigationProp<AccountDetailProps['navigation']>(navigation)}
+        />,
+      );
+
+      expect(everyHeaderItemSet(navigation).at(-1)).toEqual(['bell', 'pencil']);
+    });
+
+    it('lets the loaded account override the hint, both ways', async () => {
+      setLiveData({ accounts: [implicitAccount('property')], holdings: [] });
+      const implicitUnderBankHint = await renderScreen(hinted('bank'));
+
+      expect(everyHeaderItemSet(implicitUnderBankHint.navigation).at(-1)).toEqual(['pencil']);
+
+      setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [] });
+      const bankUnderImplicitHint = await renderScreen(hinted('property'));
+
+      expect(everyHeaderItemSet(bankUnderImplicitHint.navigation).at(-1)).toEqual([
+        'bell',
+        'pencil',
+      ]);
+    });
+
+    it('keeps the bell on an ARCHIVED implicit account whatever the hint says', async () => {
+      setLiveData({ accounts: [implicitAccount('debt', { archivedAt: 5 })], holdings: [] });
+
+      const { navigation } = await renderScreen(hinted('debt'));
+
+      expect(everyHeaderItemSet(navigation).at(-1)).toEqual(['bell', 'pencil']);
+    });
+  });
+
   it('keeps the Reminders bell on an ARCHIVED property account, a plain account', async () => {
     setLiveData({
       accounts: [implicitAccount('property', { archivedAt: 5 })],

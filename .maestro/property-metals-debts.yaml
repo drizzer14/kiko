@@ -249,14 +249,15 @@ appId: com.dmytro-vasylkivskyi.kiko
     text: "Car Note"
     childOf:
       id: "accounts-debts-grid"
+# The heading row is ONE accessible button, so on iOS its children (the
+# heading and total testIDs) are not in the XCUITest tree; the assertions
+# target the button itself, whose label joins the name and the total.
 - assertVisible:
-    text: "Properties"
-    childOf:
-      id: "accounts-property-heading"
+    id: "accounts-property-open"
+    text: "Properties.*"
 - assertVisible:
-    text: "Loans"
-    childOf:
-      id: "accounts-debts-heading"
+    id: "accounts-debts-open"
+    text: "Loans.*"
 # The whole Properties heading row (tile, name, total, chevron) opens the
 # shared implicit account's own AccountDetail screen; a left-edge swipe pops
 # back to the Accounts screen (Maestro's `back` is Android-only). Nothing is

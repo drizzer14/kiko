@@ -247,7 +247,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
           <Pressable
             accessibilityRole="button"
             onPress={openUnlessLifted(item.id, () =>
-              navigation.navigate('AccountDetail', { accountId: item.id, name: item.name }),
+              navigation.navigate('AccountDetail', {
+                accountId: item.id,
+                name: item.name,
+                kind: item.kind,
+              }),
             )}
             style={styles.row}
           >
@@ -318,6 +322,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
             navigation.navigate('AccountDetail', {
               accountId: account.id,
               name: accountDisplayName(account, t),
+              kind: account.kind,
             })
           }
           style={styles.sectionHeadingRow}

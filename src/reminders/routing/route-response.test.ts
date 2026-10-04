@@ -35,13 +35,13 @@ describe('routeFor', () => {
 
   it('opens the account and asks it to show the file picker for an import reminder', () => {
     expect(routeFor(tap(), 'statement_import', CASH, [WALLET])).toEqual({
-      accountDetail: { accountId: 'cash', name: 'Cash', intent: 'importStatement' },
+      accountDetail: { accountId: 'cash', name: 'Cash', kind: 'cash', intent: 'importStatement' },
     });
   });
 
   it('opens the new-transaction form above the account when it has one open holding', () => {
     expect(routeFor(tap(), 'add_transactions', CASH, [WALLET])).toEqual({
-      accountDetail: { accountId: 'cash', name: 'Cash' },
+      accountDetail: { accountId: 'cash', name: 'Cash', kind: 'cash' },
       next: { screen: 'TransactionForm', params: { holdingId: 'wallet' } },
     });
   });
@@ -52,7 +52,7 @@ describe('routeFor', () => {
     ['one open holding that takes no transactions', [DEPOSIT]],
   ])('opens only the account for an add-transactions tap with %s', (_holdings, openHoldings) => {
     expect(routeFor(tap(), 'add_transactions', CASH, openHoldings)).toEqual({
-      accountDetail: { accountId: 'cash', name: 'Cash' },
+      accountDetail: { accountId: 'cash', name: 'Cash', kind: 'cash' },
     });
   });
 
@@ -60,7 +60,7 @@ describe('routeFor', () => {
     'opens the account reminders page for a tap on the %s paused notice',
     (kind) => {
       expect(routeFor(pausedNoticeTap, kind, CASH, [WALLET])).toEqual({
-        accountDetail: { accountId: 'cash', name: 'Cash' },
+        accountDetail: { accountId: 'cash', name: 'Cash', kind: 'cash' },
         next: { screen: 'AccountReminders', params: { accountId: 'cash' } },
       });
     },
@@ -77,7 +77,9 @@ describe('routeFor', () => {
     ['property', PROPERTIES, 'Properties'],
     ['debt', LOANS, 'Loans'],
   ])('an implicit %s account', (_kind, account, title) => {
-    const accountDetail = { accountId: account.id, name: title };
+    // The kind rides along as the hint that keeps the Reminders bell off the
+    // pushed page before its own read of the account lands.
+    const accountDetail = { accountId: account.id, name: title, kind: account.kind };
 
     it.each([
       ['no open holdings', []],
@@ -113,23 +115,25 @@ describe('routeFor', () => {
       await i18n.changeLanguage('uk');
 
       expect(routeFor(tap(), 'add_transactions', PROPERTIES, [])).toEqual({
-        accountDetail: { accountId: 'properties', name: 'Майно' },
+        accountDetail: { accountId: 'properties', name: 'Майно', kind: 'property' },
       });
       expect(routeFor(tap(), 'add_transactions', LOANS, [])).toEqual({
-        accountDetail: { accountId: 'loans', name: 'Кредити' },
+        accountDetail: { accountId: 'loans', name: 'Кредити', kind: 'debt' },
       });
     });
 
     it('is the name the user typed once the account is renamed', () => {
       expect(
         routeFor(tap(), 'add_transactions', { ...PROPERTIES, name: 'Real estate' }, []),
-      ).toEqual({ accountDetail: { accountId: 'properties', name: 'Real estate' } });
+      ).toEqual({
+        accountDetail: { accountId: 'properties', name: 'Real estate', kind: 'property' },
+      });
     });
   });
 
   it('routes an archived property account like any other account', () => {
     expect(routeFor(tap(), 'add_transactions', ARCHIVED_PROPERTIES, [])).toEqual({
-      accountDetail: { accountId: 'properties', name: 'Properties' },
+      accountDetail: { accountId: 'properties', name: 'Properties', kind: 'property' },
     });
   });
 });

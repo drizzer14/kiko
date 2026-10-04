@@ -1,5 +1,10 @@
 import either from 'fnts/either';
 import { match } from 'ts-pattern';
+import {
+  accountDisplayName,
+  isImplicitAccount,
+  isImplicitAccountKind,
+} from '@kiko/holdings/implicit-account';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
@@ -11,7 +16,6 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
-import { useDataReady, useLiveQuery } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
@@ -30,6 +34,7 @@ import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import HoldingCard from '@kiko/design-system/components/holding-card';
+import { type AccountRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
@@ -44,7 +49,6 @@ import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown
 import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
-import { accountDisplayName, isImplicitAccount } from '@kiko/holdings/implicit-account';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
 import { useCloseHoldingAction } from '@kiko/design-system/components/close-holding-sheet';
 
@@ -60,8 +64,19 @@ const offerMessage = (kind: ReminderKind, t: TFunction): string =>
 
 type AccountDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
+// The header items are set before the account row loads, so the bell cannot
+// wait on the row: the loaded account decides, else the route's kind hint, and
+// with neither the bell is left out until the row loads.
+const showsRemindersBell = (
+  account: Pick<AccountRow, 'kind' | 'archivedAt'> | undefined,
+  kindHint: AccountRow['kind'] | undefined,
+): boolean =>
+  foldMap(maybe(account), (found) => !isImplicitAccount(found)) ??
+  foldMap(maybe(kindHint), (kind) => !isImplicitAccountKind(kind)) ??
+  false;
+
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
-  const { accountId, name: initialName, reminderOffer, intent } = route.params;
+  const { accountId, name: initialName, kind: kindHint, reminderOffer, intent } = route.params;
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
@@ -117,6 +132,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // reminder an old merge left on such an account is still scheduled and
   // listed as active in Settings > Reminders.
   const isImplicit = account !== undefined && isImplicitAccount(account);
+  const showsBell = showsRemindersBell(account, kindHint);
   // At most one offer per visit: once one is decided, clearing the import
   // param would otherwise fall back to the manual-entry offer at once.
   const [offerDecided, setOfferDecided] = useState(false);
@@ -179,9 +195,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       title: accountName,
       unstable_headerRightItems: () => [
         // No bell for an implicit account: it takes no new reminders.
-        ...(isImplicit
-          ? []
-          : [
+        ...(showsBell
+          ? [
               {
                 type: 'button' as const,
                 label: t('reminders.rowLabel'),
@@ -191,7 +206,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                 sharesBackground: false,
                 onPress: () => navigation.navigate('AccountReminders', { accountId }),
               },
-            ]),
+            ]
+          : []),
         editBarItem({
           label: t('common.edit'),
           tintColor: theme.colors.textPrimary,
@@ -199,7 +215,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         }),
       ],
     });
-  }, [navigation, accountName, accountId, isImplicit, t, theme.colors.textPrimary]);
+  }, [navigation, accountName, accountId, showsBell, t, theme.colors.textPrimary]);
 
   const activeHoldings = holdings.filter((holding) => holding.closedAt == null);
 
