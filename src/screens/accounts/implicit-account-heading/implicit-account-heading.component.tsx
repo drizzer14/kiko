@@ -13,8 +13,7 @@ import type { ImplicitAccountHeadingProps } from './implicit-account-heading.pro
 // account's squircle icon tile (the compact one the Settings > Reminders
 // account heading uses, since the tile sits beside a heading over cards of its
 // own) and its display name. It carries no accessibility label of its own: the
-// name beside the tile already reads out. To drop the tile, delete the
-// `EntityIconTile` element and the `accountIdentity` line.
+// name beside the tile already reads out.
 const ImplicitAccountHeading: FC<ImplicitAccountHeadingProps> = ({ account, testID }) => {
   const { t } = useTranslation();
   const { icon, color } = accountIdentity(account);

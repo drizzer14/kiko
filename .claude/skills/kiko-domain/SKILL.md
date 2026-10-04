@@ -138,8 +138,7 @@ implemented, and callers must skip it rather than assume every id resolves.
   Property and Debts section headings show that display name beside the
   account's compact squircle icon tile (`ImplicitAccountHeading`,
   `src/screens/accounts/implicit-account-heading/`, testIDs
-  `accounts-property-heading` / `accounts-debts-heading`; the tile is a trial,
-  drop it by deleting the `EntityIconTile` element); the whole heading row is
+  `accounts-property-heading` / `accounts-debts-heading`); the whole heading row is
   one button with a chevron that opens `AccountDetail { accountId, name:
   accountDisplayName(account, t), kind }`. `kind` is the hint that keeps the
   bell off the page's first render. The row's testIDs are
