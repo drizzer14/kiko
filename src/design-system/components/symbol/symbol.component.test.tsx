@@ -14,7 +14,7 @@ import { darkTheme } from '@kiko/design-system/theme';
 import SymbolIcon from '.';
 
 describe('Symbol', () => {
-  // The two OS-version tests below spy on Platform.Version's getter; restore it
+  // The three OS-version tests below spy on Platform.Version's getter; restore it
   // so the default jest platform version is back for every other test.
   afterEach(() => {
     jest.restoreAllMocks();

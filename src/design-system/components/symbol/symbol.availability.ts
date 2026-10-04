@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 
 type SymbolFallback = {
   // The `major.minor` iOS that introduced the symbol, as the SF Symbols
-  // catalogue records it (`__tests__/symbol-fallbacks.test.ts` checks it).
+  // catalogue records it (`__tests__/symbol-fallbacks.test.tsx` checks it).
   minimumIos: string;
   // A symbol that exists on iOS 15.1, the deployment target.
   fallback: string;

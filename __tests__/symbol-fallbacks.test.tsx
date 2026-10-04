@@ -10,10 +10,17 @@ import {
   KIKO_CATEGORIES_ICONS,
   KIKO_ENTITIES_ICONS,
 } from '@kiko/design-system/components/icon-pools';
+import { render } from '@testing-library/react-native';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { NavigationContainer } from '@react-navigation/native';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { SYMBOL_FALLBACKS } from '@kiko/design-system/components/symbol';
 import { accountIconPool, holdingIconPool } from '@kiko/holdings/entity-icon-pool';
+
+import '@kiko/design-system/unistyles';
+
+import RootNavigator from '@kiko/navigation/root-navigator';
+import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
 
 import {
   type SymbolCatalogue,
@@ -32,7 +39,12 @@ import {
 // catalogue symbol name covers every other call site (SymbolIcon, Button and
 // SettingsRow `icon`, the Reminders bell, the tab bar, the bank capability
 // icons), without parsing JSX. A name built at runtime is out of reach of the
-// scan.
+// scan, and so is a symbol newer than the installed catalogue (the literal
+// scan drops a name the catalogue does not list).
+//
+// A tab bar and a header bar item draw their symbol natively, where
+// SYMBOL_FALLBACKS never applies, so the symbols they draw must exist on
+// iOS 15.1 themselves.
 
 type Fallbacks = Record<string, { minimumIos: string; fallback: string }>;
 
@@ -122,9 +134,13 @@ const entriesForSafeSymbols = (fallbacks: Fallbacks, catalogue: SymbolCatalogue)
     (name) => !isNewerThanDeploymentTarget(catalogue.minimumIos.get(name) ?? '99.0'),
   );
 
+const symbolsNewerThanTarget = (symbols: Iterable<string>, catalogue: SymbolCatalogue): string[] =>
+  [...symbols].filter((name) =>
+    isNewerThanDeploymentTarget(catalogue.minimumIos.get(name) ?? '99.0'),
+  );
+
 const catalogueOf = (entries: [string, string][]): SymbolCatalogue => ({
   minimumIos: new Map(entries),
-  releases: new Map(),
 });
 
 describe('the invariant checks (synthetic data)', () => {
@@ -180,6 +196,12 @@ describe('the invariant checks (synthetic data)', () => {
     expect(entriesForSafeSymbols(fallbacks, catalogue)).toEqual(['old.symbol']);
   });
 
+  it('flags a symbol newer than iOS 15.1, or unknown to the catalogue, as newer than the target', () => {
+    expect(
+      symbolsNewerThanTarget(['old.symbol', 'target.symbol', 'new.symbol', 'typo'], catalogue),
+    ).toEqual(['new.symbol', 'typo']);
+  });
+
   it('flags a symbol the catalogue does not know', () => {
     expect(unknownSymbols(['old.symbol', 'typo.symbol'], catalogue)).toEqual(['typo.symbol']);
   });
@@ -210,6 +232,37 @@ describe('every SF Symbol the app can draw', () => {
 
   it('has an iOS-15.1-safe fallback for each symbol newer than iOS 15.1', () => {
     expect(symbolsMissingFallback(drawn, SYMBOL_FALLBACKS, symbolCatalogue)).toEqual([]);
+  });
+});
+
+describe('every SF Symbol a native bar draws', () => {
+  // The tab bar is read through the `@bottom-tabs/react-navigation` manual mock,
+  // which surfaces each tab's `tabBarIcon()` symbol on a `tab-icon-<name>` view.
+  const tabBarSymbols = async (): Promise<string[]> => {
+    const { findAllByTestId, unmount } = await render(
+      <NavigationContainer theme={navigationDarkTheme}>
+        <RootNavigator />
+      </NavigationContainer>,
+    );
+    const icons = await findAllByTestId(/^tab-icon-/);
+
+    await unmount();
+
+    return icons.map((icon) => icon.props.sfSymbol);
+  };
+
+  it('reads the symbol of every tab and of the header Edit item', async () => {
+    expect(await tabBarSymbols()).toEqual(
+      expect.arrayContaining(['house.fill', 'tray', 'chart.xyaxis.line', 'gear']),
+    );
+    expect(headerSymbols()).toEqual(['pencil']);
+  });
+
+  it('draws only symbols that exist on iOS 15.1, as SYMBOL_FALLBACKS cannot swap them', async () => {
+    const native = [...(await tabBarSymbols()), ...headerSymbols()];
+
+    expect(unknownSymbols(native, symbolCatalogue)).toEqual([]);
+    expect(symbolsNewerThanTarget(native, symbolCatalogue)).toEqual([]);
   });
 });
 

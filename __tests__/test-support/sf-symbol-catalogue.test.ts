@@ -47,31 +47,9 @@ describe('parseSymbolCatalogue', () => {
     expect(minimumIos.get('house')).toBe('13.0');
     expect(minimumIos.has('not.a.symbol')).toBe(false);
   });
-
-  it('records each release with its minimum iOS', () => {
-    expect(parseSymbolCatalogue(SAMPLE).releases).toEqual(
-      new Map([
-        ['1.0', '13.0'],
-        ['6.2', '18.2'],
-      ]),
-    );
-  });
 });
 
 describe('the installed sf-symbols-typescript catalogue', () => {
-  it.each([
-    ['1.0', '13.0'],
-    ['3.1', '15.1'],
-    ['3.2', '15.2'],
-    ['4.0', '16.0'],
-    ['4.1', '16.1'],
-    ['6.0', '18.0'],
-    ['6.2', '18.2'],
-    ['7.0', '26.0'],
-  ])('maps SF Symbols %s to iOS %s', (release, ios) => {
-    expect(symbolCatalogue.releases.get(release)).toBe(ios);
-  });
-
   it('reads thousands of symbols, one iOS per symbol', () => {
     expect(symbolCatalogue.minimumIos.size).toBeGreaterThan(5000);
   });

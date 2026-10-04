@@ -6,8 +6,10 @@ import { readFileSync } from 'node:fs';
 // union per release: the JSDoc above a union names the release
 // (`@name SF Symbols 6.2`) and its minimum iOS (`iOS v18.2+,`), and every
 // `  | 'name'` line below lists a symbol. The first union that lists a symbol
-// is its release. The package is hoisted into node_modules by
-// react-native-screens; a missing file fails the suite loudly.
+// is its release. The package is a transitive dependency (hoisted into
+// node_modules by @react-navigation/native-stack and react-native-bottom-tabs),
+// read here by path; a missing or reshaped file fails the suite loudly. See
+// docs/harness/documented-exceptions.md.
 const CATALOGUE_PATH = path.join(
   __dirname,
   '..',
@@ -20,21 +22,17 @@ const CATALOGUE_PATH = path.join(
 
 // The union that merges every release, after the last per-release one.
 const MERGED_UNION = /^export type SFSymbol =/;
-const RELEASE_HEADER = /@name SF Symbols (\d+\.\d+)/;
+const RELEASE_HEADER = /@name SF Symbols \d+\.\d+/;
 const RELEASE_IOS = /^\s*\*\s*iOS v(\d+\.\d+)\+/;
 const SYMBOL_LINE = /^\s*\|\s*'([^']+)'/;
 
 export type SymbolCatalogue = {
   // Symbol name -> the `major.minor` iOS that introduced it.
   minimumIos: ReadonlyMap<string, string>;
-  // Release (`6.2`) -> its `major.minor` iOS (`18.2`).
-  releases: ReadonlyMap<string, string>;
 };
 
 export const parseSymbolCatalogue = (text: string): SymbolCatalogue => {
   const minimumIos = new Map<string, string>();
-  const releases = new Map<string, string>();
-  let release = '';
   let releaseIos = '';
 
   for (const line of text.split('\n')) {
@@ -42,22 +40,19 @@ export const parseSymbolCatalogue = (text: string): SymbolCatalogue => {
       break;
     }
 
-    const header = RELEASE_HEADER.exec(line);
     const ios = RELEASE_IOS.exec(line);
     const symbol = SYMBOL_LINE.exec(line);
 
-    if (header !== null) {
-      release = header[1];
+    if (RELEASE_HEADER.test(line)) {
       releaseIos = '';
     } else if (ios !== null && releaseIos === '') {
       releaseIos = ios[1];
-      releases.set(release, releaseIos);
     } else if (symbol !== null && releaseIos !== '' && !minimumIos.has(symbol[1])) {
       minimumIos.set(symbol[1], releaseIos);
     }
   }
 
-  return { minimumIos, releases };
+  return { minimumIos };
 };
 
 // The app's deployment target. Written out here, not imported from the

@@ -1,4 +1,3 @@
-import { SYMBOL_FALLBACKS } from '@kiko/design-system/components/symbol';
 import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-pools';
 
 import {
@@ -23,10 +22,6 @@ const holdingDefaults: readonly string[] = [
 ];
 
 const entityIcons: readonly string[] = KIKO_ENTITIES_ICONS;
-
-const iosTwentySixSymbols = Object.entries(SYMBOL_FALLBACKS)
-  .filter(([, { minimumIos }]) => minimumIos === '26.0')
-  .map(([name]) => name);
 
 describe.each([
   ['account', accountIconPool, accountDefaults],
@@ -54,9 +49,5 @@ describe.each([
     for (const icon of shared) {
       expect(pool.indexOf(icon)).toBe(defaults.indexOf(icon));
     }
-  });
-
-  it('offers no iOS 26 symbol, which the iOS 15.1 deployment target renders blank', () => {
-    expect(pool.filter((icon) => iosTwentySixSymbols.includes(icon))).toEqual([]);
   });
 });

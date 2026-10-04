@@ -712,3 +712,17 @@ verified usage, not dead weight:
   `kiko-no-native-reminders-module-import` Semgrep rule
   (`rules/semgrep-prewrite.yml`) denies any other value import. Add another
   `Native*` spec only for a new app TurboModule.
+
+- **`sf-symbols-typescript` — a transitive package read by path in a test,
+  invisible to depcheck and Knip.** `__tests__/test-support/sf-symbol-catalogue.ts`
+  reads `node_modules/sf-symbols-typescript/dist/index.d.ts` as text, because
+  the package is type-only (it exports no runtime value) and its SF Symbols
+  availability data lives in that declaration file. The package is not in
+  `package.json`: two packages depend on it (`@react-navigation/native-stack`
+  `^2.1.0` and `react-native-bottom-tabs` `^2.0.0`), and `package-lock.json`
+  locks it at 2.2.0. depcheck and Knip see no import of it, so neither
+  reports it. A missing or reshaped file (a dependant dropped, the package
+  moved or its comments changed) fails `__tests__/symbol-fallbacks.test.tsx`
+  and `sf-symbol-catalogue.test.ts` loudly, never silently. If a dependant
+  stops installing it, add it to `package.json` as an exact-pinned
+  devDependency instead.

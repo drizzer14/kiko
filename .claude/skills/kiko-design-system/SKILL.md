@@ -639,11 +639,10 @@ new component can land between reviews of this skill:
   Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
-  "Update outstanding" add no entity, so they stay text-only. An
+  "Update outstanding" add no entity, so they stay text-only. A
   generic glyph newer than iOS 15.1 (`text.pad.header`) has its fallback
-  in `genericEntitySymbolFallback` (`entity-symbols.ts`) and SymbolIcon's
-  central `SYMBOL_FALLBACKS` map (`symbol.availability.ts`); read them
-  there, and see "SF Symbol availability" below. A new footer
+  in SymbolIcon's central `SYMBOL_FALLBACKS` map (`symbol.availability.ts`);
+  read it there, and see "SF Symbol availability" below. A new footer
   "Add …" action takes its entity's glyph the same way.
 
   **Sizes — `regular` / `compact` / `small`** (read `button.props.d.ts`'s
@@ -1636,7 +1635,7 @@ currentOsVersion())` before it is handed to UIKit.
 
 A new symbol newer than iOS 15.1 needs an entry, with a fallback that is
 itself SF Symbols 3.1 or older and close to it in meaning and shape.
-`__tests__/symbol-fallbacks.test.ts` is the guard. It reads the
+`__tests__/symbol-fallbacks.test.tsx` is the guard. It reads the
 `sf-symbols-typescript` catalogue as text
 (`__tests__/test-support/sf-symbol-catalogue.ts`: the `@name SF Symbols
 N.M` and `iOS vX.Y+` JSDoc, plus the `| 'name'` lines) and fails when a

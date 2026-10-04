@@ -126,12 +126,3 @@ export const genericEntitySymbol = {
   transaction: 'arrow.up.arrow.down',
   category: 'tag',
 } as const;
-
-// The iOS-15.1-safe fallback for any generic glyph that is an iOS-26 symbol,
-// exported alongside so a consumer rendering the glyph OUTSIDE SymbolIcon can
-// pass it explicitly. Only `holding` needs one today.
-export const genericEntitySymbolFallback: Partial<
-  Record<keyof typeof genericEntitySymbol, string>
-> = {
-  holding: 'list.bullet.rectangle',
-};

@@ -6,12 +6,7 @@ import {
 } from './symbol.availability';
 
 describe('SYMBOL_FALLBACKS', () => {
-  it('holds one entry per symbol newer than iOS 15.1 that the app can draw', () => {
-    expect(Object.keys(SYMBOL_FALLBACKS)).toHaveLength(73);
-  });
-
-  it('records the real minimum iOS of the three symbols the old iOS-26-only map covered', () => {
-    // Two of the three were never iOS 26: they are SF Symbols 6.0 (iOS 18.0).
+  it('records the minimum iOS of the rotate, branch and text-pad symbols', () => {
     expect(SYMBOL_FALLBACKS['arrow.trianglehead.2.clockwise.rotate.90']).toEqual({
       minimumIos: '18.0',
       fallback: 'arrow.triangle.2.circlepath',

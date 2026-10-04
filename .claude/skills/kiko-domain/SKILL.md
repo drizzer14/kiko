@@ -676,7 +676,7 @@ copied, and it lives in `holdings` because the design system must not import
 the maps; the screen passes the pool to `HoldingIdentityField`. A new default
 glyph must be an SF Symbol of iOS 15.1 or older, or have a `SYMBOL_FALLBACKS`
 entry (`symbol.availability.ts`; `receipt`, iOS 18.2, is one).
-`__tests__/symbol-fallbacks.test.ts` fails a default without one (see
+`__tests__/symbol-fallbacks.test.tsx` fails a default without one (see
 kiko-design-system's "SF Symbol availability"). The category pool already
 holds every category default.
 
