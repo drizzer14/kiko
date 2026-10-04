@@ -188,7 +188,9 @@ const loanHolding = (over: Partial<Holding> = {}): Holding => ({
   balanceMinorUnits: 0,
   type: 'loan',
   metadata: {
-    kind: 'mortgage',
+    // Not 'mortgage': a card shows its kind label under the title, so that
+    // label would equal the name 'Mortgage' this file looks cards up by.
+    kind: 'personal',
     principalMinorUnits: 500_000, // 5,000.00 UAH
     startDate: Date.now(),
     annualRatePct: 10,
@@ -773,6 +775,26 @@ describe('AccountsScreen', () => {
       expect(getAllByTestId('account-card')).toHaveLength(1);
     });
 
+    it("shows each loan card's kind under its title", async () => {
+      setLiveData({
+        accounts: [debtAccount()],
+        holdings: [
+          loanHolding(),
+          loanHolding({
+            id: 'l2',
+            name: 'Flat loan',
+            metadata: { kind: 'mortgage' },
+          }),
+        ],
+      });
+
+      const { getAllByTestId } = await renderAccounts();
+      const [personal, mortgage] = getAllByTestId('holding-card-type');
+
+      expect(personal).toHaveTextContent('From a person');
+      expect(mortgage).toHaveTextContent('Mortgage');
+    });
+
     // The Debts section shows a SECTION total
     // (negative), not only each card's own negative balance.
     it('shows a Debts section total next to the heading, summing every open loan', async () => {
@@ -1111,6 +1133,26 @@ describe('AccountsScreen', () => {
       expect(getAllByTestId('account-card')).toHaveLength(1);
       // Two open holdings at 5,000.00 each; the closed one does not count.
       expect(within(getByTestId('accounts-property-total')).getByText(/10,000\.00 ₴/)).toBeTruthy();
+    });
+
+    it("shows each property card's category under its title", async () => {
+      setLiveData({
+        accounts: [propertyAccount()],
+        holdings: [
+          propertyHolding(),
+          propertyHolding({
+            id: 'h2',
+            name: 'Sedan',
+            metadata: { category: 'vehicle', lots: [] },
+          }),
+        ],
+      });
+
+      const { getAllByTestId } = await renderAccounts();
+      const [flat, sedan] = getAllByTestId('holding-card-type');
+
+      expect(flat).toHaveTextContent('Real estate');
+      expect(sedan).toHaveTextContent('Vehicle');
     });
 
     it('keeps the property holdings out of the main and Debts grids, in their own section grid', async () => {

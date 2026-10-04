@@ -1085,8 +1085,14 @@ new component can land between reviews of this skill:
 - **HoldingCard** (`src/design-system/components/holding-card/`) — one
   holding as a wide row card, shared so a screen never imports another
   screen's card (`kiko-no-cross-screen-import`): the entity icon tile and
-  name on the left, the holding's computed value (as of `now`) on the
-  right, a smaller base-currency line for a holding in another currency,
+  name on the left, with the holding's type under the name (a `caption`
+  `textSecondary` line in the title column's `gap={1}`, exactly the account
+  card's kind line, testID `holding-card-type`; the label is what the
+  holding form's Type field shows, from `holdingTypeLabel`
+  (`src/holdings/holding-type-label/`): a property item's category, a
+  loan's kind, a metal's element, any other type's own name; a stored type
+  with no descriptor shows no line), the holding's computed value (as of
+  `now`) on the right, a smaller base-currency line for a holding in another currency,
   and the owned share of a part-owned property. A plain tap calls
   `onOpen`; it carries no long-press of its own, so a grid wraps it in
   `CardContextMenu` and `Sortable.Grid`. Consumers: the account-detail

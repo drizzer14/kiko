@@ -16,6 +16,7 @@ import { convert, type RateTable } from '@kiko/rates/conversion';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
+import { holdingTypeLabel } from '@kiko/holdings/holding-type-label';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
@@ -52,6 +53,7 @@ const HoldingCard: FC<{
   const { t } = useTranslation();
   const color = resolveEntityColor(holding.color, defaultHoldingColor[holding.type]);
   const value = holdingValue(holding, now, priceBook);
+  const typeLabel = holdingTypeLabel(holding, t);
   // A property owned in part reads its owned value as the main line, and the
   // share of the whole asset beneath it.
   const ownership = propertyOwnershipView(holding, now, priceBook);
@@ -73,8 +75,16 @@ const HoldingCard: FC<{
             color={color}
             accessibilityLabel={`${holding.name} icon`}
           />
-          <Box style={styles.rowDescription}>
+          <Box gap={1} style={styles.rowDescription}>
             <Text variant="body">{holding.name}</Text>
+
+            {typeLabel && (
+              <Box testID="holding-card-type">
+                <Text variant="caption" tone="textSecondary">
+                  {typeLabel}
+                </Text>
+              </Box>
+            )}
           </Box>
         </Box>
 
