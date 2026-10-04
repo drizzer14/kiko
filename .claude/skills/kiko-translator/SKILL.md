@@ -60,8 +60,7 @@ account's name verbatim. EVERY place that renders an account's name takes the he
 result: a heading, a filter option's `label`, a row's account name, a
 chart label, a picker caption, an accessibility label. The Accounts screen's
 Property and Debts section headings are such headings: each shows
-`accountDisplayName` of its implicit account (the fixed
-`accounts.propertySection` / `debtsSection` keys no longer exist), through
+`accountDisplayName` of its implicit account, through
 `ImplicitAccountHeading` (`src/screens/accounts/`). An account filter's
 `value` (its identity, which a selection and the row match key on) is the
 account ID, never a name: the display name changes with the language and with a

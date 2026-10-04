@@ -557,7 +557,7 @@ describe('HoldingDetailScreen', () => {
     });
   });
 
-  describe('the account button of a Property or Loan holding', () => {
+  describe('the header of a Property or Loan holding', () => {
     const headerItems = (): {
       type: string;
       label: string;

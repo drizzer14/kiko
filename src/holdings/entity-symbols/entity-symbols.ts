@@ -38,7 +38,7 @@ type AccountKind = AccountRow['kind'];
 // `chart.line.uptrend.xyaxis` (SF Symbols 3, iOS 15)
 // is the pick for `broker`.
 // Kept as literals (`satisfies`, not an annotation) so the account icon pool
-// derived from it stays a literal union, which the header symbol guard needs.
+// derived from it stays a literal union.
 export const accountKindSymbol = {
   bank: 'building.columns.fill',
   cash: 'banknote',

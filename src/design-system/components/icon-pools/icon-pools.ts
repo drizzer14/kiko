@@ -11,7 +11,7 @@
 //
 // Both lists are copied VERBATIM from the curated "Kiko Entities" and "Kiko
 // Categories" SF Symbols collections. A unit of its own, apart from the
-// modal, so domain code that only needs the names (the header symbol guard)
+// modal, so domain code that only needs the names (the entity icon pool)
 // does not load the modal component and its styles; the screen call sites
 // import the matching pool and thread it through the shared identity field →
 // IconEditor → IconPickerModal.

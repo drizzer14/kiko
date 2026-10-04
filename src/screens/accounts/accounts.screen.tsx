@@ -307,17 +307,21 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
           {/* The one place the shared implicit account is edited (name, icon,
               color). The small ghost icon-only Button is the app's secondary
               icon control: its pill is under 44pt tall and it restores the
-              44pt hit region with its own hitSlop. */}
-          <Button
-            variant="ghost"
-            size="small"
-            fullWidth={false}
-            icon="pencil"
-            textColor={theme.colors.textSecondary}
-            accessibilityLabel={t('common.edit')}
-            testID={editTestID}
-            onPress={() => navigation.navigate('AccountForm', { accountId: account.id })}
-          />
+              44pt hit region with its own hitSlop, which iOS only honours
+              inside the parent's bounds: the 44pt region box is that parent
+              (and centres the pencil on the row). */}
+          <Box testID={`${editTestID}-region`} style={styles.sectionEditRegion}>
+            <Button
+              variant="ghost"
+              size="small"
+              fullWidth={false}
+              icon="pencil"
+              textColor={theme.colors.textSecondary}
+              accessibilityLabel={t('common.edit')}
+              testID={editTestID}
+              onPress={() => navigation.navigate('AccountForm', { accountId: account.id })}
+            />
+          </Box>
         </Box>
 
         <Box testID={gridTestID}>

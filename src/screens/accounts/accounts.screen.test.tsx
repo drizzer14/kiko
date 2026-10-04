@@ -16,7 +16,6 @@ import {
 import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
-import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -1417,38 +1416,18 @@ describe('AccountsScreen', () => {
       ).toBe(0);
     });
 
-    it("shows each account's squircle tile in its heading, in the account's own color", async () => {
-      bothSections({ property: { color: darkTheme.colors.entityColors.blue } });
+    // The tile's icon and color are pinned by the heading component's own test.
+    it("shows each account's squircle tile in its heading", async () => {
+      bothSections();
 
       const { getByTestId } = await renderAccounts();
 
-      const property = within(getByTestId('accounts-property-heading'));
-      expect(property.getByTestId('entity-icon-tile')).toBeTruthy();
-      const [top, bottom] = entityIconTileGradient(darkTheme.colors.entityColors.blue);
-      expect(property.getByTestId('entity-icon-tile-gradient-stop-top').props.stopColor).toBe(top);
-      expect(property.getByTestId('entity-icon-tile-gradient-stop-bottom').props.stopColor).toBe(
-        bottom,
-      );
+      expect(
+        within(getByTestId('accounts-property-heading')).getByTestId('entity-icon-tile'),
+      ).toBeTruthy();
       expect(
         within(getByTestId('accounts-debts-heading')).getByTestId('entity-icon-tile'),
       ).toBeTruthy();
-    });
-
-    it("draws the account's stored icon in its heading tile, the kind glyph otherwise", async () => {
-      bothSections({ property: { icon: 'building.2' } });
-
-      const { getByTestId } = await renderAccounts();
-
-      expect(
-        glyphNamesWithin(
-          within(getByTestId('accounts-property-heading')).getByTestId('entity-icon-tile'),
-        ),
-      ).toEqual(['building.2']);
-      expect(
-        glyphNamesWithin(
-          within(getByTestId('accounts-debts-heading')).getByTestId('entity-icon-tile'),
-        ),
-      ).toEqual([accountKindSymbol.debt]);
     });
   });
 
@@ -1500,13 +1479,24 @@ describe('AccountsScreen', () => {
 
     // Jest cannot lay out pixels: the small ghost Button is the shared 44pt
     // icon-only control (its 34pt pill gets 5pt of hit slop above and below,
-    // and its width is already 44pt).
-    it('is the shared small icon-only Button, which keeps a 44pt hit region', async () => {
+    // and its width is already 44pt). iOS delivers no touch outside the parent
+    // view's bounds, so that slop only counts inside a 44pt region: the wrapper
+    // that also centres the pencil on the row (the Button's own `alignSelf`
+    // would pin it to the row's top edge).
+    it('is the shared small icon-only Button, centred in a 44pt region that holds its hit slop', async () => {
       bothSections();
 
       const { getByTestId } = await renderAccounts();
+      const region = StyleSheet.flatten(getByTestId('accounts-property-edit-region').props.style);
 
       expect(getByTestId('accounts-property-edit').props.hitSlop).toEqual({ top: 5, bottom: 5 });
+      expect(region.minHeight).toBe(44);
+      expect(region.minWidth).toBe(44);
+      expect(region.alignItems).toBe('center');
+      expect(region.justifyContent).toBe('center');
+      expect(getByTestId('accounts-property-edit').parent?.props.testID).toBe(
+        'accounts-property-edit-region',
+      );
     });
 
     it('sits right of its section total, in the same row as the heading and the total', async () => {
@@ -1521,7 +1511,7 @@ describe('AccountsScreen', () => {
       expect(order).toEqual([
         'accounts-property-heading',
         'accounts-property-total',
-        'accounts-property-edit',
+        'accounts-property-edit-region',
       ]);
     });
 

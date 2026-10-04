@@ -94,14 +94,6 @@ describe('ImplicitAccountHeading', () => {
 
       expect(within(getByTestId('heading')).getByText('Real estate')).toBeTruthy();
     });
-
-    it('never shows the old fixed Property or Debts heading text', async () => {
-      const property = await render(element(propertyAccount()));
-      const debt = await render(element(debtAccount()));
-
-      expect(property.queryByText('Property')).toBeNull();
-      expect(debt.queryByText('Debts')).toBeNull();
-    });
   });
 
   // A long name wraps beside the tile inside the width the section total

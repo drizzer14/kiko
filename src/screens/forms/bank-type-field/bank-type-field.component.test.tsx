@@ -140,7 +140,7 @@ describe('BankTypeField', () => {
     }
   });
 
-  it('keeps the manual-import icon on "Other bank" when it is the picked row', async () => {
+  it('draws the picked "Other bank" row\'s manual-import glyph in the white on-accent hex', async () => {
     const { getByTestId } = await render(
       <BankTypeField
         label="Bank type"
@@ -157,7 +157,9 @@ describe('BankTypeField', () => {
 
     expect(icon.props.name).toBe('doc.badge.plus');
     // `onAccent` is a hex token, which `toSFSymbolTintColor` hands to the
-    // native tint unchanged.
+    // native tint unchanged. It equals `textPrimary` in the one dark theme, so
+    // this pins that the glyph has a resolved white tint, not that it differs
+    // from an unselected row.
     expect(icon.props.tintColor).toBe(darkTheme.colors.onAccent);
   });
 

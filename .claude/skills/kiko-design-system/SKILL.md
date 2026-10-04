@@ -228,8 +228,10 @@ an entry (date + value) the moment the user approves a new visual.
   `center` beside their taller `EntityIconTile`. The Statistics pie legend's name
   wraps in its own `legendLabel` (`flex: 1`) box beside the swatch; its
   fixed-width value/percent columns are unchanged. Rows whose label is a
-  fixed short string (`SummaryTable`, the bar chart's type rows, the
-  section heading rows, upcoming payments' dates) are not this pattern.
+  fixed short string (`SummaryTable`, the bar chart's type rows,
+  upcoming payments' dates) are not this pattern. The Accounts screen's
+  Property and Debts section headings are user data (the implicit
+  account's name) and DO follow it (`ImplicitAccountHeading`).
   Pinned per family by a style-contract test (`ancestorWithStyle`: the
   title's own box is `flex: 1` with no row direction, no
   `numberOfLines`). The two card tests also pin the amount's box
@@ -341,7 +343,7 @@ The established patterns grouped under this heading:
   native-stack 7.18.9 sends it with no index, so react-native-screens
   inserts it at the trailing edge. A native item takes no `testID`; a
   test reads the item list from `setOptions` and calls its `onPress`.
-  Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; that account is edited from the small pencil right of its section total on the Accounts screen: the shared `size="small"` ghost icon-only `Button`, `icon="pencil"`, `textColor` `textSecondary`, label `common.edit`, testIDs `accounts-property-edit` / `accounts-debts-edit`, its 44pt hit region from the Button's own hitSlop). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
+  Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; that account is edited from the small pencil right of its section total on the Accounts screen: the shared `size="small"` ghost icon-only `Button`, `icon="pencil"`, `textColor` `textSecondary`, label `common.edit`, testIDs `accounts-property-edit` / `accounts-debts-edit`, its 44pt hit region from the Button's own hitSlop, which iOS honours only inside the parent's bounds: the Button sits in a 44x44 `minWidth`/`minHeight` `Box` (`sectionEditRegion`) that also centres it on the row, since the small Button's own `alignSelf: 'flex-start'` would pin it to the row's top edge). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
   The pre-write guard enforces both bans: Semgrep
   `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
   other than `undefined` (a `StyleSheet.create` style and a destructuring

@@ -257,6 +257,16 @@ appId: com.dmytro-vasylkivskyi.kiko
     text: "Loans"
     childOf:
       id: "accounts-debts-heading"
+# The pencil right of the Property total edits the shared implicit account;
+# saving the untouched form returns to the Accounts screen.
+- tapOn:
+    id: "accounts-property-edit"
+- assertVisible:
+    id: "account-form"
+- tapOn:
+    text: "Save"
+- assertVisible:
+    id: "accounts-property-grid"
 
 - tapOn:
     id: "house.fill"
