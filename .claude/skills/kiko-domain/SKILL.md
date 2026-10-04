@@ -133,18 +133,20 @@ implemented, and callers must skip it rather than assume every id resolves.
   `accounts-property-heading` / `accounts-debts-heading`; the tile is a trial,
   drop it by deleting the `EntityIconTile` element); the whole heading row is
   one button with a chevron that opens `AccountDetail { accountId, name:
-  accountDisplayName(account, t), kind }` (`kind` is the hint that keeps the
-  bell off the page's first render) (`accounts-property-open` /
-  `accounts-debts-open`; see kiko-design-system's "Section heading disclosure
-  row"). **An implicit account's `AccountDetail` takes no NEW reminders**:
+  accountDisplayName(account, t), kind }`. `kind` is the hint that keeps the
+  bell off the page's first render. The row's testIDs are
+  `accounts-property-open` / `accounts-debts-open`; see kiko-design-system's
+  "Section heading disclosure row". **An implicit account's `AccountDetail`
+  takes no NEW reminders**:
   its title is `accountDisplayName`, it has no Reminders bell (Edit only) and
   never shows the reminder offer (the screen asks `useReminderOffer` for no
   trigger on a live implicit account), while import statement and bank/crypto
   sync stay hidden by their own kind gates and Add holding opens
   `HoldingForm { accountId }` (`holdingTypesForAccountKind` limits it to
   `property_item` / `loan`). Settings > Reminders' account page lists only the
-  reminders SAVED on a live implicit account (no create row). `eligibleReminderKinds` is NOT narrowed for the
-  implicit kinds: it also decides which saved reminders are scheduled
+  reminders SAVED on a live implicit account (no create row).
+  `eligibleReminderKinds` is NOT narrowed for the implicit kinds: it also
+  decides which saved reminders are scheduled
   (`isSchedulable`) and listed as active in Settings > Reminders, so a merged
   reminder keeps firing and stays manageable there. The account form
   stores the sentinel back when the name is the localized default left
