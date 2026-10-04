@@ -1,4 +1,3 @@
-import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { match } from 'ts-pattern';
 import {
   defaultHoldingSymbol,
@@ -73,6 +72,7 @@ import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
 import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/money-text';
+import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '@kiko/holdings/derived-entries';
