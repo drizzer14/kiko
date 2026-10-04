@@ -22,8 +22,8 @@ const implicitKindSymbol = {
 } as const satisfies Record<ImplicitAccountKind, HeaderSymbol>;
 
 // The icons an implicit account can hold in this app: a pick from either icon
-// pool the app ships (the account picker's pool today, and the pools an
-// older build offered it, such as the category pool's `house`), or the kind
+// pool the app ships (the account picker's pool today, and the category pool,
+// which covers part of the account picker's pool before the split), or the kind
 // glyph, which only a restored row stores (the app itself writes NULL). The
 // `Set<HeaderSymbol>` element type proves every one is in `HeaderSymbol`, so
 // a `has` check narrows soundly. A restored .kiko can hold any other string,
