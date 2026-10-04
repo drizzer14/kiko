@@ -79,6 +79,14 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
         testID={testID}
       />
 
+      {/* The same clause the broker field carries under its trigger (kiko-
+          compliance, third-party trademarks): every bank is named in plain
+          text, so the field says Kiko is not affiliated with any of them,
+          whether or not the sheet is open. */}
+      <Text variant="caption" tone="textSecondary">
+        {t('forms.account.bankAffiliationDisclaimer')}
+      </Text>
+
       <BottomSheet
         visible={open}
         onDismiss={() => setOpen(false)}
@@ -97,7 +105,11 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
           const isSelected = entry.id === selected;
 
           // The catalog's last entry covers any bank not listed, so it names
-          // no capability: a plain row, the same as the broker list's.
+          // no capability caption and no connect, statement-format or
+          // column-mapping icon. Its statements come in by hand, so it carries
+          // the glyph the account screen's Import statement button uses
+          // (`doc.badge.plus`, SF Symbols 2, iOS 14), in the capability
+          // icons' own tone and size.
           if (entry.id === OTHER_BANK_ID) {
             return (
               <SelectableRow
@@ -106,6 +118,14 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
                 onPress={() => handleSelect(entry.id)}
                 label={labelFor(entry)}
                 testID={`bank-type-option-${entry.id}`}
+                trailing={
+                  <SymbolIcon
+                    name="doc.badge.plus"
+                    size={theme.iconSizes.caption}
+                    tone={isSelected ? 'onAccent' : 'textPrimary'}
+                    testID={`bank-type-option-${entry.id}-manual-import-icon`}
+                  />
+                }
               />
             );
           }

@@ -249,7 +249,12 @@ loads remote code, so this stays a reviewer question backed by
 
 Ask: does this diff add a bank/exchange logo asset, name, or wording
 that could read as an official partnership or endorsement Kiko does
-not have? Judgment only — no mechanized check.
+not have? Judgment only — no mechanized check. Satisfied today for the
+account form's bank and broker pickers: each shows a "not affiliated with
+or endorsed by any bank/broker" caption under its trigger
+(`forms.account.bankAffiliationDisclaimer`, `brokerDisclaimer`), the bank
+sheet adds a "not a bank" caption (`bankDisclaimer`), and neither picker
+draws a logo.
 
 ## No tracking/analytics SDKs
 

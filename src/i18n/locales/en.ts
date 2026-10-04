@@ -238,6 +238,8 @@ export const en = {
     account: {
       addTitle: 'Add Account',
       bank: 'Bank',
+      bankAffiliationDisclaimer:
+        'Kiko is an independent app. It is not affiliated with or endorsed by any bank.',
       bankColumnMappingOnly: 'Import with column mapping',
       bankConnectable: 'Connect and import statements.',
       bankDisclaimer:

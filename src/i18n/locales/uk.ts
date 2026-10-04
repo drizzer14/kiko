@@ -205,6 +205,8 @@ export const uk: typeof en = {
     account: {
       addTitle: 'Додати рахунок',
       bank: 'Банк',
+      bankAffiliationDisclaimer:
+        'Кіко — незалежний застосунок. Він не пов’язаний із жодним банком і не є його партнером.',
       bankColumnMappingOnly: 'Імпорт через зіставлення стовпців',
       bankConnectable: 'Автоматична синхронізація та імпорт виписок.',
       bankDisclaimer:
