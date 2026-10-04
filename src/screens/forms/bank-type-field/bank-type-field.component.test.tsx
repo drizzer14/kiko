@@ -48,6 +48,56 @@ describe('BankTypeField', () => {
     expect(getByTestId('bank-type-sheet')).toBeTruthy();
   });
 
+  it('shows a disabled bank read-only: VoiceOver reads it as disabled and a press opens no sheet', async () => {
+    const onSelect = jest.fn();
+    const { getByTestId, queryByTestId } = await render(
+      <BankTypeField
+        label="Bank type"
+        sheetTitle="Select a Bank"
+        selected="privatbank"
+        onSelect={onSelect}
+        disabled
+        testID="bank-type-field"
+      />,
+    );
+
+    expect(getByTestId('bank-type-field')).toHaveTextContent('PrivatBank');
+    expect(getByTestId('bank-type-field').props.accessibilityState.disabled).toBe(true);
+
+    await fireEvent.press(getByTestId('bank-type-field'));
+
+    expect(queryByTestId('bank-type-option-other')).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('keeps the not-a-bank disclaimer under a disabled field, since the bank is still named', async () => {
+    const { getByText } = await render(
+      <BankTypeField
+        label="Bank type"
+        sheetTitle="Select a Bank"
+        selected="privatbank"
+        onSelect={jest.fn()}
+        disabled
+      />,
+    );
+
+    expect(getByText(i18n.t('forms.account.bankDisclaimer'))).toBeTruthy();
+  });
+
+  it('is enabled by default', async () => {
+    const { getByTestId } = await render(
+      <BankTypeField
+        label="Bank type"
+        sheetTitle="Select a Bank"
+        selected={null}
+        onSelect={jest.fn()}
+        testID="bank-type-field"
+      />,
+    );
+
+    expect(getByTestId('bank-type-field').props.accessibilityState.disabled).toBe(false);
+  });
+
   it('shows sheetTitle, not label, as the sheet header', async () => {
     const { getByText } = await renderOpenSheet();
 

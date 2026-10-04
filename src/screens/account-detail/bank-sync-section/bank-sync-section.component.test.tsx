@@ -186,8 +186,8 @@ describe('BankSyncSection — disconnected', () => {
   // When `bankId` already identifies Monobank, `selectedProviderId`
   // is always undefined and `shownProviderId` falls straight back to
   // `bankIdProviderId` — pressing "Change bank" would visibly change nothing.
-  // The bank is changed on the account
-  // form instead, so the button is hidden here rather than left as a no-op.
+  // The bank is set on create only, so the button is hidden here rather than
+  // left as a no-op.
   it('hides "Change bank" when bankId already identifies Monobank (it would do nothing)', async () => {
     const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
 

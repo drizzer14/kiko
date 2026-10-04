@@ -32,6 +32,26 @@ describe('BrokerTypeField', () => {
     });
   });
 
+  it('shows a disabled broker read-only: VoiceOver reads it as disabled and a press opens no sheet', async () => {
+    const { getByTestId, queryByTestId, onSelect } = await setup({
+      selected: 'trading212',
+      disabled: true,
+    });
+
+    expect(getByTestId('broker-type-field').props.accessibilityState.disabled).toBe(true);
+
+    await fireEvent.press(getByTestId('broker-type-field'));
+
+    expect(queryByTestId('broker-type-field-option-other')).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('is enabled by default', async () => {
+    const { getByTestId } = await setup();
+
+    expect(getByTestId('broker-type-field').props.accessibilityState.disabled).toBe(false);
+  });
+
   it("shows the picked broker's plain name", async () => {
     const { getByTestId } = await setup({ selected: 'trading212' });
 

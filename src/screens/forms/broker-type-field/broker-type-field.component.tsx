@@ -16,6 +16,7 @@ const BrokerTypeField: FC<BrokerTypeFieldProps> = ({
   selected,
   onSelect,
   required,
+  disabled,
   error,
   testID,
 }) => {
@@ -36,6 +37,7 @@ const BrokerTypeField: FC<BrokerTypeFieldProps> = ({
         labels={labels}
         placeholder={t('forms.account.brokerTypePlaceholder')}
         required={required}
+        disabled={disabled}
         error={error}
         testID={testID}
       />

@@ -280,7 +280,11 @@ const MONOBANK_BANK_ID = 'monobank' satisfies BankId;
  * export carries — takes `monobank`, so a NULL id on such an account lands on
  * `monobank` directly. A broker with no pick and every other kind keep their
  * NULL, and an account that names a bank (listed or since removed) is never
- * rewritten, so a post-0051 export restores as exported.
+ * rewritten. An account's bank is set on create only (the edit form shows it
+ * disabled and never writes it) and Other bank is not connectable, so `other`
+ * with institution `monobank` cannot arise after 0051: it is only a pre-0051
+ * leftover, this rule is exact for it, and a post-0051 export restores as
+ * exported.
  */
 const withBankAccountsBankIdBackfilled = (snapshotAccounts: AccountRow[]): AccountRow[] =>
   snapshotAccounts.map((account) => {

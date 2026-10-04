@@ -99,14 +99,6 @@ const catalogIdFor = (
   brokerId: BrokerId | null,
 ): BankId | BrokerId | null => (kind === 'broker' ? brokerId : bankId);
 
-// What an edit writes as `bankId`: a pick the user made wins, and a picker left
-// untouched writes back the stored value as it is. A stored id neither picker
-// lists (a bank since removed from the catalog, or a bank id on a broker row)
-// seeds the picker as no pick, so without this it would be saved as NULL and
-// the account would lose it though the user never touched that field.
-const savedCatalogId = (picked: string | null, stored: string | null): string | null =>
-  picked ?? stored;
-
 // A NEW bank or broker account must say which one it is; the picker's kind
 // names the issue so its error key follows. Edit never requires it, so an
 // account saved before the pick was required is not forced to pick on its next
@@ -235,9 +227,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const [bankId, setBankId] = useState<BankId | null>(null);
   // The broker picked in BrokerTypeField, the same shape as `bankId`.
   const [brokerId, setBrokerId] = useState<BrokerId | null>(null);
-  // The stored `bankId` as the edit form loaded it, which the two pickers above
-  // cannot always show (see `savedCatalogId`).
-  const [storedCatalogId, setStoredCatalogId] = useState<string | null>(null);
   const catalogId = catalogIdFor(kind, bankId, brokerId);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the kind default —
   // because `color`/`kind` here are seeded straight from a stored row
@@ -470,9 +459,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     setKind(isSupportedKind(editingAccount.kind) ? editingAccount.kind : INITIAL_KIND);
     setIcon(editingAccount.icon);
     setColor(editingAccount.color);
-    // The edit form seeds `bankId` too, so the picker below renders and the
-    // user can view or change an account's bank identity after create.
-    setStoredCatalogId(editingAccount.bankId);
+    // The edit form seeds `bankId` too, so the disabled picker below shows the
+    // bank or broker the account was created with.
     // `isBankId` guards against a stored value from a since-removed catalog
     // entry, mirroring `isSupportedKind` above.
     setBankId(isBankId(editingAccount.bankId) ? editingAccount.bankId : null);
@@ -539,17 +527,15 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
     try {
       if (isEdit) {
-        // Update the editable identity fields in one transaction; the icon routes
-        // through setIcon, so a cleared icon persists an explicit null. Kind is
-        // read-only, and the cash currency + initial value belong to the
-        // create-time initial holding, so neither is touched here. `bankId` is
-        // editable too — this patch never carries `institution`, so a
-        // live-connected account's sync stays untouched no matter what bank
-        // identity is picked here.
+        // Update the editable fields in one transaction; the icon routes
+        // through setIcon, so a cleared icon persists an explicit null. What an
+        // account IS — its kind, its bank or broker, and the cash currency +
+        // initial value of its create-time initial holding — is set on create
+        // only, so this patch never carries any of it (nor `institution`, so a
+        // live-connected account's sync stays untouched).
         await accountsRepo.update(editId, {
           name: storedName(kind, trimmedName, t),
           color,
-          bankId: savedCatalogId(catalogId, storedCatalogId),
         });
         await accountsRepo.setIcon(editId, icon);
         navigation.goBack();
@@ -706,8 +692,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           disabled={isEdit || accountRowStarted}
         />
 
-        {/* In create AND edit mode, like the bank picker. A broker account is
-            manual only, so no sync section follows it. */}
+        {/* In create AND edit mode, like the bank picker; edit shows it disabled,
+            since a broker is picked on create only. A broker account is manual
+            only, so no sync section follows it. */}
         {kind === 'broker' && (
           <View ref={catalogFieldRef}>
             <BrokerTypeField
@@ -716,6 +703,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               selected={brokerId}
               onSelect={setBrokerId}
               required={!isEdit}
+              disabled={isEdit}
               error={catalogPickError}
               testID="account-broker-type-field"
             />
@@ -754,16 +742,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         )}
 
         {/* The "which bank does this account represent" identity picker —
-            shown in BOTH create and edit mode, so the edit
-            form can view or change `bankId` too. The
+            shown in BOTH create and edit mode, so the edit form shows the
+            account's bank, but DISABLED there: `bankId` is picked on create
+            only, whether or not the account is connected. The
             live-sync Connect field stays CREATE-ONLY — editing an already-
             connected account's real connection is BankSyncSection's job on
             the account-detail screen (Monobank-only, Guideline 5.6),
-            untouched here. Changing `bankId` in this field never writes
-            `institution`/the Keychain/sync state (kiko-domain: `bankId` is
-            deliberately never read by `isSyncedAccount`), so it stays safe
-            to edit even on an already-connected Monobank account. The
-            credential field itself is NOT required (no asterisk): an
+            untouched here. The credential field itself is NOT required (no asterisk): an
             account still creates with no credentials — a secret is masked
             and write-only, going straight to the Keychain on save, never
             into a stored row or a log. */}
@@ -784,6 +769,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
                 selected={bankId}
                 onSelect={setBankId}
                 required={!isEdit}
+                disabled={isEdit}
                 error={catalogPickError}
                 testID="account-bank-type-field"
               />

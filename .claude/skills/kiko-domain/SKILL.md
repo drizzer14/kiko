@@ -48,7 +48,7 @@ absent** — this skill states the shape and non-enum facts only:
   from the broker catalog in `src/brokers/broker-catalog.ts`
   (`BrokerId`), picked in the account form via `BrokerTypeField`
   (`src/screens/forms/broker-type-field/`); required on create
-  (`brokerRequiredError`), not forced on edit.
+  (`brokerRequiredError`); on edit it is shown disabled and never written.
 
   **`accounts.bankId` always holds the catalog id for the account's
   own kind**: a bank-catalog id for a `bank` account, a broker-catalog
@@ -76,15 +76,20 @@ absent** — this skill states the shape and non-enum facts only:
   Other bank must (0051 corrects a Monobank one; the guard stays for any
   other provider's connection). A NEW bank or broker account must pick (Save
   blocked: `bankRequiredError`/`brokerRequiredError`, `missingCatalogPick`
-  in `account-form.screen.tsx`); edit never forces, and an untouched
-  picker on edit writes the stored id back (`savedCatalogId`), including
-  an id the picker cannot show. Use `isSpecificBankId` where code means a
+  in `account-form.screen.tsx`). **An account's kind, bank and broker are
+  set on create only**: the edit form shows the kind field
+  (`AccountKindField`), the bank field (`BankTypeField`) and the broker
+  field (`BrokerTypeField`) DISABLED (the `disabled` state of the shared
+  `FieldTrigger`, so VoiceOver reads each as dimmed/not adjustable; no
+  caption explains it), and an edit Save writes only the name, color and icon
+  — never `kind`, `bankId` or `institution`. A wrong kind or bank therefore
+  has no edit path; delete and recreate the account. The same rule makes
+  `other` with `institution = 'monobank'` a pre-0051 leftover that the 0051
+  migration and its restore mirror correct exactly. Use `isSpecificBankId` where code means a
   real bank and `isBankId` where `other` is valid too. `accounts.bankId`
-  can still be NULL on a legacy broker row or an unforced edit; the
+  can still be NULL on a legacy broker row; the
   picker's `onSelect` takes a `BankId`, never null. The live-sync Connect field (Monobank) stays
-  create-only; editing `bankId` on an already-connected account never
-  writes `institution`, so its sync is untouched regardless of which
-  identity is picked. Backed by the catalog at
+  create-only. Backed by the catalog at
   `src/bank-sync/bank-catalog/` — read that file for the current bank
   set (`BankId`/`bankCatalog`) rather than trusting a count or list
   copied here; it grows over time (P3 added PUMB, Oschadbank,

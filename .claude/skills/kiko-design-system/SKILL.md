@@ -984,7 +984,10 @@ new component can land between reviews of this skill:
   caption under the trigger (`forms.account.bankDisclaimer`, the same place and
   `caption`/`textSecondary` style as `BrokerTypeField`'s `brokerDisclaimer`,
   shown whatever is picked, "Other bank" included: it names no bank; the sheet
-  carries no second caption), and dual capability icons) — retrofitting it onto `SelectField` is a separate,
+  carries no second caption), a `disabled` prop the edit form sets
+  (`FieldTrigger`'s dimmed, inert state, like the kind field; no hint caption,
+  and the disclaimer stays because the field still names a bank), and dual
+  capability icons) — retrofitting it onto `SelectField` is a separate,
   larger task. `sheetTitle` is REQUIRED and distinct from `label` — a
   field label (sentence case) and a sheet title (Title Case) are two
   different UI roles per `kiko-translator`'s casing-by-role rule, so the

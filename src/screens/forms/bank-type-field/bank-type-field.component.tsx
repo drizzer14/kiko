@@ -52,6 +52,7 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
   selected,
   onSelect,
   required,
+  disabled,
   error,
   testID,
 }) => {
@@ -76,6 +77,7 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
       <FieldTrigger
         label={label}
         required={required}
+        disabled={disabled}
         onPress={() => setOpen(true)}
         value={foldMap(maybe(selectedEntry), labelFor) ?? t('forms.account.bankTypePlaceholder')}
         valueTone={selected === null ? 'textSecondary' : 'textPrimary'}
