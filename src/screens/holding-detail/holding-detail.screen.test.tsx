@@ -22,7 +22,6 @@ import {
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
-import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
@@ -578,7 +577,7 @@ describe('HoldingDetailScreen', () => {
       ['property', 'Properties'],
       ['debt', 'Loans'],
     ] as const)(
-      "puts the %s account's own glyph left of the pencil and opens that account for edit",
+      'offers the pencil only for a %s holding, with no account button',
       async (kind, accountName) => {
         seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
           id: 'acc-1',
@@ -592,188 +591,18 @@ describe('HoldingDetailScreen', () => {
 
         const items = headerItems();
 
-        expect(items).toHaveLength(2);
-        expect(items[0]).toMatchObject({
-          type: 'button',
-          label: `Account: ${accountName}`,
-          accessibilityLabel: `Account: ${accountName}`,
-          icon: { type: 'sfSymbol', name: accountKindSymbol[kind] },
-          sharesBackground: false,
-        });
-        expect(items[1]).toMatchObject({ label: 'Edit', icon: { name: 'pencil' } });
+        expect(items).toHaveLength(1);
+        expect(items[0]).toMatchObject({ label: 'Edit', icon: { name: 'pencil' } });
+        expect(JSON.stringify(items)).not.toContain('Account:');
         items[0].onPress();
-        expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'acc-1' });
-      },
-    );
-
-    const implicitAccount = (kind: 'property' | 'debt', icon: string | null) => ({
-      id: 'acc-1',
-      kind,
-      name: kind === 'property' ? 'Properties' : 'Loans',
-      icon,
-      archivedAt: null,
-      institution: null,
-    });
-
-    it.each([
-      ['property', 'dollarsign.circle'],
-      ['debt', 'eurosign.circle'],
-    ] as const)("shows the %s account's stored icon, not its kind glyph", async (kind, icon) => {
-      seed(
-        { ...cardHolding, accountId: 'acc-1' },
-        [],
-        [],
-        [],
-        [],
-        [{ baseCurrency: 'UAH' }],
-        implicitAccount(kind, icon),
-      );
-
-      await renderScreen();
-
-      expect(headerItems()[0]).toMatchObject({ icon: { type: 'sfSymbol', name: icon } });
-    });
-
-    it.each(['property', 'debt'] as const)(
-      'shows the kind glyph of a %s account with no stored icon',
-      async (kind) => {
-        seed(
-          { ...cardHolding, accountId: 'acc-1' },
-          [],
-          [],
-          [],
-          [],
-          [{ baseCurrency: 'UAH' }],
-          implicitAccount(kind, null),
-        );
-
-        await renderScreen();
-
-        expect(headerItems()[0]).toMatchObject({
-          icon: { type: 'sfSymbol', name: accountKindSymbol[kind] },
+        expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+          accountId: 'acc-1',
+          holdingId: 'h-1',
+          debtAccount: kind === 'debt',
         });
+        expect(navigation.navigate).not.toHaveBeenCalledWith('AccountForm', expect.anything());
       },
     );
-
-    // A restored .kiko can store a name no SF Symbol has; the native bar item
-    // would then draw no image at all.
-    it('shows the kind glyph when the stored icon is outside the symbol catalogue', async () => {
-      seed(
-        { ...cardHolding, accountId: 'acc-1' },
-        [],
-        [],
-        [],
-        [],
-        [{ baseCurrency: 'UAH' }],
-        implicitAccount('property', 'not.a.symbol'),
-      );
-
-      await renderScreen();
-
-      expect(headerItems()[0]).toMatchObject({
-        icon: { type: 'sfSymbol', name: accountKindSymbol.property },
-      });
-    });
-
-    it('shows the new icon once the user picks another one and returns', async () => {
-      seed(
-        { ...cardHolding, accountId: 'acc-1' },
-        [],
-        [],
-        [],
-        [],
-        [{ baseCurrency: 'UAH' }],
-        implicitAccount('debt', null),
-      );
-
-      const { rerender } = await renderScreen();
-
-      expect(headerItems()[0]).toMatchObject({ icon: { name: accountKindSymbol.debt } });
-
-      (navigation.setOptions as jest.Mock).mockClear();
-      seed(
-        { ...cardHolding, accountId: 'acc-1' },
-        [],
-        [],
-        [],
-        [],
-        [{ baseCurrency: 'UAH' }],
-        implicitAccount('debt', 'eurosign.circle'),
-      );
-      await rerender(
-        <HoldingDetailScreen
-          navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
-          route={route}
-        />,
-      );
-
-      expect(headerItems()[0]).toMatchObject({ icon: { name: 'eurosign.circle' } });
-    });
-
-    it("names the button by the account's own name once the user renamed it", async () => {
-      seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
-        id: 'acc-1',
-        kind: 'property',
-        name: 'Family assets',
-        archivedAt: null,
-        institution: null,
-      });
-
-      await renderScreen();
-
-      expect(headerItems()[0]).toMatchObject({ label: 'Account: Family assets' });
-    });
-
-    it('keeps the pencil opening the holding edit form', async () => {
-      seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
-        id: 'acc-1',
-        kind: 'property',
-        name: 'Properties',
-        archivedAt: null,
-        institution: null,
-      });
-
-      await renderScreen();
-
-      headerItems()[1].onPress();
-
-      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
-        accountId: 'acc-1',
-        holdingId: 'h-1',
-        debtAccount: false,
-      });
-    });
-
-    it('is absent for the holding of a normal account', async () => {
-      seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
-        id: 'acc-1',
-        kind: 'bank',
-        name: 'Monobank',
-        archivedAt: null,
-        institution: null,
-      });
-
-      await renderScreen();
-
-      const items = headerItems();
-
-      expect(items).toHaveLength(1);
-      expect(items[0]).toMatchObject({ label: 'Edit' });
-    });
-
-    it('is absent for the holding of an archived Property account', async () => {
-      seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
-        id: 'acc-1',
-        kind: 'property',
-        name: 'Old flat',
-        archivedAt: 5,
-        institution: null,
-      });
-
-      await renderScreen();
-
-      expect(headerItems()).toHaveLength(1);
-    });
   });
 
   it('renders a stored holding of a removed type with a generic glyph and no Edit action', async () => {

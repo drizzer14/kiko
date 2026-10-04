@@ -22,8 +22,7 @@ const defaultsFirst = <Icon extends string>(
 ): readonly Icon[] => [...new Set<Icon>([...defaults, ...pool])];
 
 // Every account kind's default: the form can open on any kind, and an implicit
-// Properties/Loans account's glyph is the kind default too. Kept a literal
-// union so the header symbol guard can derive its trusted set from it.
+// Properties/Loans account's glyph is the kind default too.
 export const accountIconPool = defaultsFirst(Object.values(accountKindSymbol), KIKO_ENTITIES_ICONS);
 
 // Every holding default: each type's glyph, each loan kind's and each property

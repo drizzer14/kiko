@@ -1,10 +1,4 @@
-import {
-  useDataReady,
-  useLiveQuery,
-  type AccountRow,
-  type HoldingRow,
-  type TransactionRow,
-} from '@kiko/db';
+import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { match } from 'ts-pattern';
 import {
   defaultHoldingSymbol,
@@ -69,7 +63,6 @@ import SummaryTable from '@kiko/design-system/components/summary-table';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
-import { accountHeaderSymbol } from '@kiko/holdings/account-header-symbol';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { asLots, changedLots, hasNegativeHolding } from '@kiko/holdings/lots';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
@@ -79,7 +72,6 @@ import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon'
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
-import { accountDisplayName, isImplicitAccount } from '@kiko/holdings/implicit-account';
 import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/money-text';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '@kiko/holdings/holding-value';
@@ -757,38 +749,6 @@ const resolveLedgerReadyView = (
 const editableAccountId = (holding: HoldingRow | undefined): string | undefined =>
   foldMap(maybe(holding), (found) => (isHoldingType(found.type) ? found.accountId : undefined));
 
-// The Property or Loans account's own glyph (its stored icon, else the kind
-// glyph), left of the Edit pencil: it opens that shared account for edit (name,
-// icon, color). A holding of any other account has no such button. Neither item
-// shares its background, so the two glyphs do not read as one control on iOS 26+
-// (as with the account page's bell and Edit). Its label names the account as
-// every other screen does: the name the user gave it, else the localized default.
-const accountBarItems = (
-  account: Pick<AccountRow, 'kind' | 'name' | 'archivedAt' | 'icon' | 'color'> | undefined,
-  t: TFunction,
-  tintColor: string,
-  onPress: () => void,
-): ReturnType<typeof editBarItem>[] =>
-  foldMap(maybe(account), (found) => {
-    if (!isImplicitAccount(found)) {
-      return [];
-    }
-
-    const label = t('holdingDetail.accountLabel', { name: accountDisplayName(found, t) });
-
-    return [
-      {
-        type: 'button' as const,
-        label,
-        accessibilityLabel: label,
-        icon: { type: 'sfSymbol' as const, name: accountHeaderSymbol(found) },
-        tintColor,
-        sharesBackground: false,
-        onPress,
-      },
-    ];
-  }) ?? [];
-
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
@@ -1131,9 +1091,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       title: holdingName,
       ...(holdingAccountId !== undefined && {
         unstable_headerRightItems: () => [
-          ...accountBarItems(account, t, theme.colors.textPrimary, () =>
-            navigation.navigate('AccountForm', { accountId: holdingAccountId }),
-          ),
           editBarItem({
             label: t('common.edit'),
             tintColor: theme.colors.textPrimary,
@@ -1153,7 +1110,6 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     holdingAccountId,
     holdingId,
     debtAccount,
-    account,
     t,
     theme.colors.textPrimary,
   ]);

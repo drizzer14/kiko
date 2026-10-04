@@ -730,9 +730,6 @@ export const en = {
     ofWhole: 'of {{whole}}',
   },
   holdingDetail: {
-    // The header button of a Property or Loan holding that opens its shared
-    // account for edit (VoiceOver name, and its row in the More overflow menu).
-    accountLabel: 'Account: {{name}}',
     addLot: 'Add lot',
     addTransaction: 'Add transaction',
     // The derived lifecycle ledger lines (src/holdings/derived-entries.ts) a
