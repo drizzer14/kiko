@@ -1452,6 +1452,102 @@ describe('AccountsScreen', () => {
     });
   });
 
+  // A small pencil right of each implicit section's total edits that shared
+  // account (name, icon, color): the only place an implicit account is edited.
+  describe('implicit account edit button', () => {
+    const bothSections = () =>
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, propertyAccount(), debtAccount()],
+        holdings: [
+          { accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 },
+          propertyHolding(),
+          loanHolding(),
+        ],
+      });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it.each([
+      ['accounts-property-edit', 'p'],
+      ['accounts-debts-edit', 'd'],
+    ])('opens the account form of the section’s own account from %s', async (testID, accountId) => {
+      bothSections();
+
+      const { getByTestId } = await renderAccounts();
+      await fireEvent.press(getByTestId(testID));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId });
+    });
+
+    it('reads out as Edit, in English and in Ukrainian', async () => {
+      bothSections();
+
+      const { getByTestId, getAllByLabelText } = await renderAccounts();
+
+      expect(getByTestId('accounts-property-edit').props.accessibilityLabel).toBe('Edit');
+      expect(getAllByLabelText('Edit')).toHaveLength(2);
+
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      expect(getByTestId('accounts-debts-edit').props.accessibilityLabel).toBe('Редагувати');
+    });
+
+    // Jest cannot lay out pixels: the small ghost Button is the shared 44pt
+    // icon-only control (its 34pt pill gets 5pt of hit slop above and below,
+    // and its width is already 44pt).
+    it('is the shared small icon-only Button, which keeps a 44pt hit region', async () => {
+      bothSections();
+
+      const { getByTestId } = await renderAccounts();
+
+      expect(getByTestId('accounts-property-edit').props.hitSlop).toEqual({ top: 5, bottom: 5 });
+    });
+
+    it('sits right of its section total, in the same row as the heading and the total', async () => {
+      bothSections();
+
+      const { getByTestId } = await renderAccounts();
+      const row = getByTestId('accounts-property-total').parent;
+      const order = row?.children.map((child) =>
+        typeof child === 'string' ? child : child.props.testID,
+      );
+
+      expect(order).toEqual([
+        'accounts-property-heading',
+        'accounts-property-total',
+        'accounts-property-edit',
+      ]);
+    });
+
+    it('shows no edit button on the main grid’s account cards', async () => {
+      const { queryAllByLabelText, queryByTestId } = await renderAccounts();
+
+      expect(queryAllByLabelText('Edit')).toHaveLength(0);
+      expect(queryByTestId('accounts-property-edit')).toBeNull();
+      expect(queryByTestId('accounts-debts-edit')).toBeNull();
+    });
+
+    // No live implicit account (or none with an open holding) means no section
+    // at all, so there is nothing to edit.
+    it.each([
+      ['no property account', [{ id: 'a', name: 'Monobank', kind: 'bank' }], []],
+      ['an archived property account', [propertyAccount({ archivedAt: 123 })], [propertyHolding()]],
+      ['a property account with nothing open', [propertyAccount()], []],
+    ])('shows no property edit button for %s', async (_label, accounts, holdings) => {
+      setLiveData({ accounts, holdings });
+
+      const { queryByTestId } = await renderAccounts();
+
+      expect(queryByTestId('accounts-property-edit')).toBeNull();
+    });
+  });
+
   describe('localization', () => {
     afterEach(async () => {
       await act(async () => {

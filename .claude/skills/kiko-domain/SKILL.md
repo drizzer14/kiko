@@ -124,8 +124,9 @@ implemented, and callers must skip it rather than assume every id resolves.
   account is unrenamed (written by `0050` and by every implicit create), and
   `accountDisplayName` then shows the localized
   `accounts.implicitName.{property,debt}`; once the user renames the account
-  (the pencil beside the section total on the Accounts screen opens
-  `AccountForm` for edit) the typed name is stored and shown as it is. The Accounts screen's
+  (the small pencil right of the section total on the Accounts screen,
+  `accounts-property-edit` / `accounts-debts-edit`, opens `AccountForm` for
+  edit; the holding-detail header has no account button) the typed name is stored and shown as it is. The Accounts screen's
   Property and Debts section headings show that display name beside the
   account's compact squircle icon tile (`ImplicitAccountHeading`,
   `src/screens/accounts/implicit-account-heading/`, testIDs

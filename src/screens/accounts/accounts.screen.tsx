@@ -279,6 +279,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     total,
     headingTestID,
     totalTestID,
+    editTestID,
     gridTestID,
     closeActionFor,
     showDivider,
@@ -288,6 +289,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     total: ReturnType<typeof guardedNetWorth>;
     headingTestID: string;
     totalTestID: string;
+    editTestID: string;
     gridTestID: string;
     closeActionFor: ReturnType<typeof useCloseHoldingAction>['closeActionFor'];
     showDivider: boolean;
@@ -297,10 +299,27 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       <Box gap={3}>
         <Box direction="row" style={styles.sectionHeadingRow}>
           <ImplicitAccountHeading account={account} testID={headingTestID} />
+
           <Box testID={totalTestID} style={styles.rowAmount}>
             <MoneyText money={total} context="balance" />
           </Box>
+
+          {/* The one place the shared implicit account is edited (name, icon,
+              color). The small ghost icon-only Button is the app's secondary
+              icon control: its pill is under 44pt tall and it restores the
+              44pt hit region with its own hitSlop. */}
+          <Button
+            variant="ghost"
+            size="small"
+            fullWidth={false}
+            icon="pencil"
+            textColor={theme.colors.textSecondary}
+            accessibilityLabel={t('common.edit')}
+            testID={editTestID}
+            onPress={() => navigation.navigate('AccountForm', { accountId: account.id })}
+          />
         </Box>
+
         <Box testID={gridTestID}>
           <Sortable.Grid
             data={sectionHoldings}
@@ -440,6 +459,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                 total: propertyTotal,
                 headingTestID: 'accounts-property-heading',
                 totalTestID: 'accounts-property-total',
+                editTestID: 'accounts-property-edit',
                 gridTestID: 'accounts-property-grid',
                 closeActionFor: closePropertyActionFor,
                 showDivider: mainAccounts.length > 0,
@@ -453,6 +473,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                 total: debtsTotal,
                 headingTestID: 'accounts-debts-heading',
                 totalTestID: 'accounts-debts-total',
+                editTestID: 'accounts-debts-edit',
                 gridTestID: 'accounts-debts-grid',
                 closeActionFor: closeDebtActionFor,
                 showDivider: mainAccounts.length > 0 || propertyHoldings.length > 0,
