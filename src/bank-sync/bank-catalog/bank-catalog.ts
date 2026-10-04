@@ -35,9 +35,10 @@ export type BankId = (typeof bankIds)[number];
 
 /** `other` covers any bank not listed, the same as the broker catalog's own
  * `other`, and is the LAST entry. It is a STORED id (migration 0049 gave
- * every bank account that had none this one), so every reader treats it
- * exactly as the NULL it replaced: no bank format, no live connection, no
- * metals, and no saved column mapping keyed on it. */
+ * every bank account that had none this one). It reads as no bank for the
+ * statement format, metals and the saved column mapping, exactly as the NULL
+ * it replaced. Only `isConnectableBank` treats it differently: `other` is
+ * import-only (no Connect), while an unset id stays connectable. */
 export const OTHER_BANK_ID = 'other' satisfies BankId;
 
 type BankCatalogEntryBase = {
