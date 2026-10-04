@@ -39,7 +39,7 @@ Composite scripts:
 - `npm run check:all` — the fast + medium tier checks, in order:
   lint, dup, knip, deps, security, rules, plist, secrets, overrides,
   import-order, full-word-identifiers, screen-imports, feature-imports,
-  blank-line-separation, guard-replay, shipped-migrations, typecheck.
+  blank-line-separation, shipped-migrations, guard-replay, typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. It is not wired to any hook because it is slow; it is a
   manual checkpoint. **Mutation testing runs per SMALL change set only,

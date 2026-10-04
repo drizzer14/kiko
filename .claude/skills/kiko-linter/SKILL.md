@@ -1845,8 +1845,13 @@ stays allowed.
 
 `scripts/checks/shipped-migrations.sh` (+ `shipped-migrations.js`,
 dependency-free like every checker; knip-ignored) is
-`npm run check:shipped-migrations`, in `check:all` right after
-`check:guard-replay`. It has no override and no exemption list.
+`npm run check:shipped-migrations`, in `check:all` right BEFORE
+`check:guard-replay`, the same order as `medium.sh`. It has no override and
+no exemption list. A standalone `npm run check:guard-replay` also moves the
+mark ref to HEAD, and a clean tree at the mark makes the next Stop exit
+early, so after one a committed migration edit shows again only at
+`check:all` / `make verify` (the order above keeps it first there), not at
+a later Stop.
 
 - **Baseline ("shipped").** For each LOCAL branch of main and next that
   resolves, the base is `git merge-base HEAD <branch>`. The protected set
@@ -1911,7 +1916,13 @@ dependency-free like every checker; knip-ignored) is
   inserted `migrations.js` line can still change what a shipped entry
   means: a duplicate key such as `m0036: m0052,`, or a block comment
   wrapped around shipped lines. The check proves only that no base line
-  was removed or changed. (3) The check reads local branches only. Tests
+  was removed or changed. (3) The check reads local branches only. (4)
+  When next does not extend main for `meta/_journal.json` or
+  `migrations.js` (next changed an entry or line main shipped), main alone
+  decides, so the entries and lines next appended stay unprotected until
+  next is fixed; the Stop tier on next catches the main-entry change
+  itself. When two bases both decide a file and report the same change,
+  the line is printed once, with the first base's hint. Tests
   live in `__tests__/shipped-migrations.test.ts` (a throwaway git repo
   with a copy of the wrapper; the other medium wrappers are stubs that
   exit 2 with a marker, and `guard-replay.sh` is a stub that records the
