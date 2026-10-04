@@ -1,11 +1,9 @@
 import type { AccountRow } from '@kiko/db';
-import {
-  KIKO_CATEGORIES_ICONS,
-  KIKO_ENTITIES_ICONS,
-} from '@kiko/design-system/components/icon-pools';
+import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
 import type { NativeStackHeaderItemButton } from '@react-navigation/native-stack';
 
 import { accountIdentity } from '../account-identity';
+import { accountIconPool } from '../entity-icon-pool';
 import type { ImplicitAccountKind } from '../implicit-account';
 
 // The name type a native header item takes for its SF Symbol: the symbol
@@ -21,16 +19,16 @@ const implicitKindSymbol = {
   debt: 'minus.circle.fill',
 } as const satisfies Record<ImplicitAccountKind, HeaderSymbol>;
 
-// The icons an implicit account can hold in this app: a pick from either icon
-// pool the app ships (the account picker's pool today, and the category pool,
-// which covers part of the account picker's pool before the split), or the kind
-// glyph, which only a restored row stores (the app itself writes NULL). The
-// `Set<HeaderSymbol>` element type proves every one is in `HeaderSymbol`, so
-// a `has` check narrows soundly. A restored .kiko can hold any other string,
-// and the native bar item draws no image at all for a name UIKit does not
-// know.
+// The icons an implicit account can hold in this app: a pick from the account
+// picker's pool (`accountIconPool`, the very list the AccountForm offers, so
+// the two cannot drift), or from the category pool, which covers part of the
+// account picker's pool before the split, or the kind glyph, which only a
+// restored row stores (the app itself writes NULL). The `Set<HeaderSymbol>`
+// element type proves every one is in `HeaderSymbol`, so a `has` check narrows
+// soundly. A restored .kiko can hold any other string, and the native bar item
+// draws no image at all for a name UIKit does not know.
 const headerSymbols: ReadonlySet<HeaderSymbol> = new Set<HeaderSymbol>([
-  ...KIKO_ENTITIES_ICONS,
+  ...accountIconPool,
   ...KIKO_CATEGORIES_ICONS,
   ...Object.values(implicitKindSymbol),
 ]);

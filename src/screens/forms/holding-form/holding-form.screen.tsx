@@ -28,6 +28,7 @@ import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { holdingIconPool } from '@kiko/holdings/entity-icon-pool';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
@@ -43,7 +44,6 @@ import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-pools';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
@@ -743,7 +743,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       <Box gap={4} testID="holding-form">
         <View ref={nameFieldRef}>
           <HoldingIdentityField
-            icons={KIKO_ENTITIES_ICONS}
+            icons={holdingIconPool}
             icon={icon}
             fallbackIcon={defaultHoldingSymbol({
               type,

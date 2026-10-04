@@ -4,6 +4,12 @@ import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import {
+  defaultHoldingSymbol,
+  holdingTypeSymbol,
+  loanKindSymbol,
+  propertyCategorySymbol,
+} from '@kiko/holdings/entity-symbols';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import {
@@ -4226,6 +4232,96 @@ describe('HoldingFormScreen edit mode', () => {
     expect(newRemove.props.accessibilityState.disabled).toBe(false);
     await fireEvent.press(newRemove);
     expect(screen.queryByLabelText('Contribution 2 amount')).toBeNull();
+  });
+});
+
+describe('HoldingFormScreen — the icon picker offers the default glyph of every holding', () => {
+  const holdingDefaults: readonly string[] = [
+    ...new Set([
+      ...Object.values(holdingTypeSymbol),
+      ...Object.values(loanKindSymbol),
+      ...Object.values(propertyCategorySymbol),
+    ]),
+  ];
+
+  const storedHolding = (
+    type: HoldingType,
+    metadata?: Record<string, unknown>,
+  ): Record<string, unknown> => ({
+    id: 'h1',
+    accountId: 'acc-1',
+    name: 'Holding',
+    type,
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    icon: 'giftcard',
+    color: null,
+    metadata,
+  });
+
+  const loanMetadata = (kind: string) => ({
+    kind,
+    principalMinorUnits: 50_000_000,
+    startDate: localDay(2026, 1, 1),
+    schedule: 'annuity',
+    annualRatePct: 12,
+    termMonths: 24,
+  });
+
+  const propertyMetadata = (category: string) => ({
+    category,
+    lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAllHoldings = [];
+  });
+
+  const cases: readonly (readonly [string, HoldingType, Record<string, unknown> | undefined])[] = [
+    ['a card', 'card', undefined],
+    ['a cash holding', 'cash', undefined],
+    ['a crypto asset', 'crypto_asset', undefined],
+    ['a jar', 'jar', undefined],
+    ...Object.keys(loanKindSymbol).map(
+      (kind) => [`a ${kind} loan`, 'loan', loanMetadata(kind)] as const,
+    ),
+    ...Object.keys(propertyCategorySymbol).map(
+      (category) =>
+        [`a ${category} property`, 'property_item', propertyMetadata(category)] as const,
+    ),
+  ];
+
+  it.each(cases)(
+    'lets %s that stores a custom icon pick its default glyph back, first in the picker',
+    async (_label, type, metadata) => {
+      const defaultIcon = defaultHoldingSymbol({ type, metadata });
+      const screen = await renderEdit(storedHolding(type, metadata));
+
+      await fireEvent.press(screen.getByLabelText('Change Icon'));
+
+      const offered = screen
+        .getAllByLabelText(/^Choose icon /)
+        .map((option) => String(option.props.accessibilityLabel).replace('Choose icon ', ''));
+
+      expect(offered.slice(0, holdingDefaults.length)).toEqual(holdingDefaults);
+      expect(offered.filter((icon) => icon === defaultIcon)).toHaveLength(1);
+      expect(new Set(offered).size).toBe(offered.length);
+
+      await fireEvent.press(screen.getByLabelText(`Choose icon ${defaultIcon}`));
+
+      expect(screen.getByLabelText(`Icon ${defaultIcon}`)).toBeTruthy();
+    },
+  );
+
+  it('stores the default glyph it picked back on Save', async () => {
+    const screen = await renderEdit(storedHolding('card'));
+
+    await fireEvent.press(screen.getByLabelText('Change Icon'));
+    await fireEvent.press(screen.getByLabelText(`Choose icon ${holdingTypeSymbol.card}`));
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(setIconMock).toHaveBeenCalledWith('h1', holdingTypeSymbol.card);
   });
 });
 

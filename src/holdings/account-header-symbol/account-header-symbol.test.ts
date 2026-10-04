@@ -3,8 +3,9 @@ import {
   KIKO_ENTITIES_ICONS,
 } from '@kiko/design-system/components/icon-pools';
 
-import { accountKindSymbol } from '../entity-symbols';
+import { accountIconPool } from '../entity-icon-pool';
 import { implicitAccountKinds } from '../implicit-account';
+import { accountKindSymbol, propertyCategorySymbol } from '../entity-symbols';
 
 import { accountHeaderSymbol } from '.';
 
@@ -42,12 +43,19 @@ describe('accountHeaderSymbol', () => {
     expect(accountHeaderSymbol({ kind: 'property', icon, color: null })).toBe(icon);
   });
 
+  // The invariant: whatever the AccountForm picker can write for an implicit
+  // account, the header button draws.
+  it.each(accountIconPool)('keeps the stored account-picker icon %s', (icon) => {
+    expect(accountHeaderSymbol({ kind: 'property', icon, color: null })).toBe(icon);
+    expect(accountHeaderSymbol({ kind: 'debt', icon, color: null })).toBe(icon);
+  });
+
   // A restored .kiko can carry any string: the native bar item draws no image
   // at all for a name UIKit does not know, so such an icon falls back.
   it.each([
     ['an unknown name', 'not.a.symbol'],
     ['an empty string', ''],
-    ["another kind's default", accountKindSymbol.bank],
+    ['a glyph the account picker does not offer', propertyCategorySymbol.valuable],
   ])('falls back to the kind default for %s', (_label, icon) => {
     expect(accountHeaderSymbol({ kind: 'property', icon, color: null })).toBe(
       accountKindSymbol.property,

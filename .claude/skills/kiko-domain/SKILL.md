@@ -643,6 +643,20 @@ itself; the generic `HoldingTypeField` takes the whole record as its
 this file, so the icon a user picked in a select differed from the
 card glyph.
 
+The icon pickers offer those defaults. A default is not a member of the
+curated Kiko Entities pool (`@kiko/design-system/components/icon-pools`), so
+`src/holdings/entity-icon-pool/` composes the pools the account and holding
+forms open: `accountIconPool` (every `accountKindSymbol` value) and
+`holdingIconPool` (every `holdingTypeSymbol`, `loanKindSymbol` and
+`propertyCategorySymbol` value), each followed by the Kiko Entities pool,
+deduplicated with the defaults first, so a user who picked a custom icon can
+pick the entity's own glyph back. The defaults are read from the maps, never
+copied, and it lives in `holdings` because the design system must not import
+the maps; the screen passes the pool to `HoldingIdentityField`. A new default
+glyph must be an SF Symbol of iOS 15.1 or older (no `IOS26_SYMBOL_FALLBACKS`
+entry; a test checks it). The category pool already holds every category
+default.
+
 ## The `Money` value object
 
 `Money` is the one place amounts are OOP (see `kiko-code-style` for

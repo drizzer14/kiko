@@ -37,7 +37,9 @@ type AccountKind = AccountRow['kind'];
 // create time, so changing this one would need a 0032-style migration.
 // `chart.line.uptrend.xyaxis` (SF Symbols 3, iOS 15)
 // is the pick for `broker`.
-export const accountKindSymbol: Record<AccountKind, string> = {
+// Kept as literals (`satisfies`, not an annotation) so the account icon pool
+// derived from it stays a literal union, which the header symbol guard needs.
+export const accountKindSymbol = {
   bank: 'building.columns.fill',
   cash: 'banknote',
   crypto: 'bitcoinsign.circle',
@@ -45,7 +47,7 @@ export const accountKindSymbol: Record<AccountKind, string> = {
   metals: 'cube.fill',
   debt: 'minus.circle.fill',
   broker: 'chart.line.uptrend.xyaxis',
-};
+} as const satisfies Record<AccountKind, string>;
 
 // card -> creditcard, term_deposit -> calendar, bond -> receipt, jar ->
 // rectangle.portrait, cash -> banknote, crypto_asset -> bitcoinsign.circle,

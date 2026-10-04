@@ -4,7 +4,8 @@ export type IconPickerModalProps = {
   visible: boolean;
   // The closed pool of SF Symbol names to offer as pickable swatches. The picker
   // is deliberately pool-driven, not hardcoded: the caller selects which pool to
-  // show — KIKO_ENTITIES_ICONS for the account/holding IconEditor, or
+  // show — the account/holding pool (Kiko Entities icons after the entity's
+  // default glyphs, composed in `@kiko/holdings/entity-icon-pool`), or
   // KIKO_CATEGORIES_ICONS for the category picker (see ../icon-pools).
   icons: readonly string[];
   // The row's current icon, highlighted in the grid so the active choice reads
