@@ -341,7 +341,7 @@ The established patterns grouped under this heading:
   native-stack 7.18.9 sends it with no index, so react-native-screens
   inserts it at the trailing edge. A native item takes no `testID`; a
   test reads the item list from `setOptions` and calls its `onPress`.
-  Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (for a holding of the Property or Loans account, that account's own glyph from `accountKindSymbol`, which opens `AccountForm` for edit, then Edit; any other holding shows Edit only).
+  Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (for a holding of the Property or Loans account, that account's stored icon, else its kind glyph from `accountKindSymbol`, which opens `AccountForm` for edit, then Edit; any other holding shows Edit only). A native item types its SF Symbol `name` as the symbol catalogue's union, so the stored icon goes through `accountHeaderSymbol` (`src/holdings/account-header-symbol/`): it narrows to a known name (the account icon pool plus the two implicit kind glyphs, proved members of that union by `satisfies`) and falls back to the kind glyph for any other string (a restored .kiko), because UIKit draws no image for an unknown name.
   The pre-write guard enforces both bans: Semgrep
   `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
   other than `undefined` (a `StyleSheet.create` style and a destructuring
