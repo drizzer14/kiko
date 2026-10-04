@@ -80,10 +80,13 @@ absent** — this skill states the shape and non-enum facts only:
   set on create only**: the edit form shows the kind field
   (`AccountKindField`), the bank field (`BankTypeField`) and the broker
   field (`BrokerTypeField`) DISABLED (the `disabled` state of the shared
-  `FieldTrigger`, so VoiceOver reads each as dimmed/not adjustable; no
+  `FieldTrigger`, so VoiceOver reads each as dimmed; no
   caption explains it), and an edit Save writes only the name, color and icon
   — never `kind`, `bankId` or `institution`. A wrong kind or bank therefore
-  has no edit path; delete and recreate the account. The same rule makes
+  has no edit path; delete and recreate the account. A wrongly picked bank
+  stays (user decision 2026-10-05): the bank drives only the import parser
+  pre-select, the saved-mapping key and the metals/trademark hints, never an
+  amount. The same rule makes
   `other` with `institution = 'monobank'` a pre-0051 leftover that the 0051
   migration and its restore mirror correct exactly. Use `isSpecificBankId` where code means a
   real bank and `isBankId` where `other` is valid too. `accounts.bankId`

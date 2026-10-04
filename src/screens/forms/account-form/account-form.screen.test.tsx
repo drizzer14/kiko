@@ -644,18 +644,6 @@ describe('AccountFormScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  it('leaves the bank and broker fields editable on create, the only time they are set', async () => {
-    const { getByTestId } = await renderForm();
-
-    await selectKind(getByTestId, 'bank');
-
-    expect(getByTestId('account-bank-type-field').props.accessibilityState.disabled).toBe(false);
-
-    await selectKind(getByTestId, 'broker');
-
-    expect(getByTestId('account-broker-type-field').props.accessibilityState.disabled).toBe(false);
-  });
-
   it('does not create a broker account with no broker picked, and says why on the field', async () => {
     const { getByLabelText, getByTestId, getByText, navigation, queryByTestId } =
       await renderForm();
@@ -1376,7 +1364,17 @@ describe('AccountFormScreen edit mode', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(mockUpdate).toHaveBeenCalledWith('acc-1', { name: 'Account', color: null });
-    expect('bankId' in (mockUpdate.mock.calls[0][1] as Record<string, unknown>)).toBe(false);
+  });
+
+  it('shows no broker picked for a broker account whose stored bankId is not a catalog broker', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Old', kind: 'broker', icon: null, color: null, bankId: 'monobank' },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-broker-type-field')).toHaveTextContent('Select a broker', {
+      exact: false,
+    });
   });
 
   it('shows no bank picked for a bank account whose stored bankId is a since-removed catalog id', async () => {

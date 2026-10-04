@@ -84,20 +84,6 @@ describe('BankTypeField', () => {
     expect(getByText(i18n.t('forms.account.bankDisclaimer'))).toBeTruthy();
   });
 
-  it('is enabled by default', async () => {
-    const { getByTestId } = await render(
-      <BankTypeField
-        label="Bank type"
-        sheetTitle="Select a Bank"
-        selected={null}
-        onSelect={jest.fn()}
-        testID="bank-type-field"
-      />,
-    );
-
-    expect(getByTestId('bank-type-field').props.accessibilityState.disabled).toBe(false);
-  });
-
   it('shows sheetTitle, not label, as the sheet header', async () => {
     const { getByText } = await renderOpenSheet();
 

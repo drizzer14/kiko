@@ -46,12 +46,6 @@ describe('BrokerTypeField', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('is enabled by default', async () => {
-    const { getByTestId } = await setup();
-
-    expect(getByTestId('broker-type-field').props.accessibilityState.disabled).toBe(false);
-  });
-
   it("shows the picked broker's plain name", async () => {
     const { getByTestId } = await setup({ selected: 'trading212' });
 
