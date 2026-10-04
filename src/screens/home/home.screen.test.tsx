@@ -328,6 +328,15 @@ const UAH_HOLDING: Holding = {
   currency: 'UAH',
   balanceMinorUnits: 100000,
 };
+// The one holding an implicit property account needs to stay in the account filter.
+const PROPERTY_HOLDING: Holding = {
+  id: 'h-flat',
+  name: 'Flat',
+  accountId: 'p',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  type: 'property_item',
+};
 
 // `time` defaults to "now" — the Home screen's date filter defaults to the
 // last 30 days on mount, so a fixed historical default would fall outside it
@@ -953,6 +962,114 @@ describe('HomeScreen', () => {
     expect(queryByTestId('account-filter-menu-option-c')).toBeNull();
   });
 
+  // Deleting an implicit account's last holding leaves the account row behind;
+  // it must leave the filter options too, but a closed holding's history still
+  // counts, so one holding of either state keeps it listed.
+  describe('an implicit account in the account filter', () => {
+    const PROPERTIES: Account = {
+      id: 'p',
+      name: 'Properties',
+      kind: 'property',
+      archivedAt: null,
+    };
+    const flatRow = transaction({
+      id: 't-flat',
+      accountId: 'p',
+      accountName: 'Properties',
+      accountKind: 'property',
+      description: 'Roof repair',
+    });
+
+    const openFilter = async (getByTestId: (id: string) => Parameters<typeof fireEvent.press>[0]) =>
+      act(async () => {
+        await fireEvent.press(getByTestId('account-filter-menu'));
+      });
+
+    it('is left out when it has no holding at all', async () => {
+      seed({ accounts: [MONOBANK, PROPERTIES] });
+      const { getByTestId, queryByTestId } = await renderHome();
+
+      await openFilter(getByTestId);
+
+      expect(getByTestId('account-filter-menu-option-a')).toBeTruthy();
+      expect(queryByTestId('account-filter-menu-option-p')).toBeNull();
+    });
+
+    it('stays listed with an open holding', async () => {
+      seed({ accounts: [MONOBANK, PROPERTIES], holdings: [UAH_HOLDING, PROPERTY_HOLDING] });
+      const { getByTestId } = await renderHome();
+
+      await openFilter(getByTestId);
+
+      expect(getByTestId('account-filter-menu-option-p')).toBeTruthy();
+    });
+
+    it('stays listed with only a closed holding, its history still counting', async () => {
+      seed({
+        accounts: [MONOBANK, PROPERTIES],
+        holdings: [UAH_HOLDING, { ...PROPERTY_HOLDING, closedAt: 5 }],
+        transactions: [flatRow],
+      });
+      const { getByTestId } = await renderHome();
+
+      await openFilter(getByTestId);
+
+      expect(getByTestId('account-filter-menu-option-p')).toBeTruthy();
+    });
+
+    it('prunes a stored selection of it once its last holding is deleted, filtering nothing', async () => {
+      seed({
+        accounts: [MONOBANK, PROPERTIES],
+        holdings: [UAH_HOLDING, PROPERTY_HOLDING],
+        transactions: [flatRow, transaction({ id: 't-bank', description: 'Coffee' })],
+      });
+      const { getAllByText, getByText, queryByText, getByTestId, rerender } = await renderHome();
+
+      await pressFilter(getByTestId, 'account-filter-menu', 'p');
+      expect(getByText('Accounts · 1')).toBeTruthy();
+      expect(queryByText('Coffee')).toBeNull();
+      const netWorthShownWithSelection = getAllByText(/1,000\.00 ₴/).length;
+
+      // The hard delete removes the holding and its transactions, not the account.
+      seed({
+        accounts: [MONOBANK, PROPERTIES],
+        holdings: [UAH_HOLDING],
+        transactions: [transaction({ id: 't-bank', description: 'Coffee' })],
+      });
+      await act(async () => {
+        await rerender(
+          <HomeScreen
+            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+            route={asRouteProp<HomeProps['route']>('Home')}
+          />,
+        );
+      });
+
+      expect(getByText('Coffee')).toBeTruthy();
+      expect(getByText('Accounts')).toBeTruthy();
+      expect(queryByText(/^Accounts · /)).toBeNull();
+      expect(getAllByText(/1,000\.00 ₴/)).toHaveLength(netWorthShownWithSelection);
+    });
+
+    it('moves no total: the net worth is the same with the empty account left in or removed', async () => {
+      seed({ accounts: [MONOBANK, PROPERTIES], holdings: [UAH_HOLDING] });
+      const withEmptyImplicit = await renderHome();
+      const shownWith = withEmptyImplicit.getAllByText(/1,000\.00 ₴/).length;
+
+      seed({ accounts: [MONOBANK], holdings: [UAH_HOLDING] });
+      await act(async () => {
+        await withEmptyImplicit.rerender(
+          <HomeScreen
+            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+            route={asRouteProp<HomeProps['route']>('Home')}
+          />,
+        );
+      });
+
+      expect(withEmptyImplicit.getAllByText(/1,000\.00 ₴/)).toHaveLength(shownWith);
+    });
+  });
+
   // An implicit account's stored name is an English sentinel: the filter option
   // and the row SHOW its localized kind, while the filter matches on the account
   // id, which does not change with the language.
@@ -986,7 +1103,7 @@ describe('HomeScreen', () => {
     });
 
     it('lists it in the account filter under its localized name, keyed on its id', async () => {
-      seed({ accounts: [MONOBANK, PROPERTIES] });
+      seed({ accounts: [MONOBANK, PROPERTIES], holdings: [UAH_HOLDING, PROPERTY_HOLDING] });
       const { getByTestId } = await renderHome();
 
       await act(async () => {
@@ -1001,6 +1118,7 @@ describe('HomeScreen', () => {
     it('selecting it by its localized name keeps that account’s rows and drops the others', async () => {
       seed({
         accounts: [MONOBANK, PROPERTIES],
+        holdings: [UAH_HOLDING, PROPERTY_HOLDING],
         transactions: [flatRow(), transaction({ id: 't-bank', description: 'Coffee' })],
       });
       const { getByText, queryByText, getByTestId } = await renderHome();
@@ -1023,6 +1141,7 @@ describe('HomeScreen', () => {
       await i18n.changeLanguage('en');
       seed({
         accounts: [MONOBANK, PROPERTIES],
+        holdings: [UAH_HOLDING, PROPERTY_HOLDING],
         transactions: [flatRow(), transaction({ id: 't-bank', description: 'Coffee' })],
       });
       const { getByText, queryByText, getByTestId } = await renderHome();

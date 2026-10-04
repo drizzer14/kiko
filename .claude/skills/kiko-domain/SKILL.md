@@ -117,7 +117,10 @@ implemented, and callers must skip it rather than assume every id resolves.
   `debt` account** (`archivedAt` NULL), enforced by the partial unique index
   `accounts_implicit_kind` (migration `0050`, declared in `src/db/schema.ts`).
   The unit is `src/holdings/implicit-account/`: `isImplicitAccountKind`,
-  `isImplicitAccount` (kind + live), and `accountDisplayName(account, t)`.
+  `isImplicitAccount` (kind + live), `accountDisplayName(account, t)`, and
+  `accountsForFilter(accounts, holdings)` (the Home and Statistics account
+  filter options: live accounts, minus an implicit one with no holding at all
+  — a transaction always hangs off a holding, so none is left either).
   **A screen shows an implicit account's name through `accountDisplayName`,
   never through the raw stored `name`**: the stored `name` is the fixed English
   sentinel `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`) while the

@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { AccountRow } from '@kiko/db';
+import type { AccountRow, HoldingRow } from '@kiko/db';
 
 export const implicitAccountKinds = [
   'property',
@@ -19,6 +19,28 @@ export const isImplicitAccount = <Account extends Pick<AccountRow, 'kind' | 'arc
   account: Account,
 ): account is Account & { kind: ImplicitAccountKind; archivedAt: null } =>
   isImplicitAccountKind(account.kind) && account.archivedAt === null;
+
+// The accounts the Home and Statistics account filters offer: every live
+// (non-archived) account, except a live implicit account with no holding at
+// all. Such an account (its last holding deleted) has nothing left to isolate:
+// a holding's delete is hard and takes its transactions and price series with
+// it, and a transaction can only hang off a holding (`transactions.holding_id`
+// is NOT NULL), so no holding means no transaction either. One that still
+// holds a CLOSED holding stays listed, because that holding's history still
+// counts in the totals and must stay selectable. This shapes the option list
+// only: no total or account filter reads it.
+export const accountsForFilter = <Account extends Pick<AccountRow, 'id' | 'kind' | 'archivedAt'>>(
+  accounts: readonly Account[],
+  holdings: readonly Pick<HoldingRow, 'accountId'>[],
+): Account[] => {
+  const accountIdsWithHoldings = new Set(holdings.map((holding) => holding.accountId));
+
+  return accounts.filter(
+    (account) =>
+      account.archivedAt == null &&
+      (!isImplicitAccount(account) || accountIdsWithHoldings.has(account.id)),
+  );
+};
 
 // The fixed English sentinel stored in `accounts.name` for an UNRENAMED implicit
 // account (migration 0050 and every implicit create write it). It stands for

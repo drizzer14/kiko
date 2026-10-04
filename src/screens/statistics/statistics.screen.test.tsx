@@ -1543,8 +1543,15 @@ describe('StatisticsScreen', () => {
       closedAt: null,
     };
 
+    // Only the account link counts for the filter: an implicit account with no
+    // holding at all is left out of its options.
+    const LOAN_HOLDING: Holding = { ...FLAT, id: 'h-loan', accountId: 'd' };
+
     beforeEach(async () => {
-      setLiveData({ accounts: [CASH, PROPERTIES, LOANS], holdings: [UAH_HOLDING, FLAT] });
+      setLiveData({
+        accounts: [CASH, PROPERTIES, LOANS],
+        holdings: [UAH_HOLDING, FLAT, LOAN_HOLDING],
+      });
       await act(async () => {
         await i18n.changeLanguage('uk');
       });
@@ -1607,6 +1614,99 @@ describe('StatisticsScreen', () => {
       const { getByTestId } = await renderScreen();
 
       expect(within(getByTestId('pie-chart-legend-p')).getByText('Майно')).toBeTruthy();
+    });
+  });
+
+  // Deleting an implicit account's last holding leaves the account row behind;
+  // it must leave the filter options too, but a closed holding's history still
+  // counts, so one holding of either state keeps it listed.
+  describe('an implicit account in the account filter', () => {
+    const PROPERTIES: Account = {
+      id: 'p',
+      name: 'Properties',
+      kind: 'property',
+      color: null,
+      archivedAt: null,
+    };
+    const FLAT: Holding = {
+      id: 'h-flat',
+      accountId: 'p',
+      currency: 'UAH',
+      type: 'property_item',
+      balanceMinorUnits: 0,
+      metadata: {
+        category: 'real_estate',
+        lots: [
+          { day: toUtcMidnight(now) - 40 * DAY_MS, quantityDelta: '1', costMinorUnits: 500_000 },
+        ],
+      },
+      closedAt: null,
+    };
+    const openFilter = async (getByTestId: (id: string) => Parameters<typeof fireEvent.press>[0]) =>
+      act(async () => {
+        await fireEvent.press(getByTestId(ACCOUNT_FILTER));
+      });
+
+    it('is left out when it has no holding at all', async () => {
+      setLiveData({ accounts: [CASH, PROPERTIES], holdings: [UAH_HOLDING] });
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await openFilter(getByTestId);
+
+      expect(getByTestId(`${ACCOUNT_FILTER}-option-${CASH.id}`)).toBeTruthy();
+      expect(queryByTestId(`${ACCOUNT_FILTER}-option-${PROPERTIES.id}`)).toBeNull();
+    });
+
+    it('stays listed with an open holding', async () => {
+      setLiveData({ accounts: [CASH, PROPERTIES], holdings: [UAH_HOLDING, FLAT] });
+      const { getByTestId } = await renderScreen();
+
+      await openFilter(getByTestId);
+
+      expect(getByTestId(`${ACCOUNT_FILTER}-option-${PROPERTIES.id}`)).toBeTruthy();
+    });
+
+    it('stays listed with only a closed holding, its history still counting', async () => {
+      setLiveData({
+        accounts: [CASH, PROPERTIES],
+        holdings: [UAH_HOLDING, { ...FLAT, closedAt: toUtcMidnight(now) - 10 * DAY_MS }],
+      });
+      const { getByTestId } = await renderScreen();
+
+      await openFilter(getByTestId);
+
+      expect(getByTestId(`${ACCOUNT_FILTER}-option-${PROPERTIES.id}`)).toBeTruthy();
+    });
+
+    it('keeps an empty bank account listed', async () => {
+      setLiveData({ accounts: [CASH, BANK], holdings: [UAH_HOLDING] });
+      const { getByTestId } = await renderScreen();
+
+      await openFilter(getByTestId);
+
+      expect(getByTestId(`${ACCOUNT_FILTER}-option-${BANK.id}`)).toBeTruthy();
+    });
+
+    it('prunes a stored selection of it once its last holding is deleted, moving no total', async () => {
+      setLiveData({ accounts: [CASH, PROPERTIES], holdings: [UAH_HOLDING, FLAT] });
+      const { getByTestId, getByText, queryByText, queryByTestId, rerender, toJSON } =
+        await renderScreen();
+
+      await pressFilter(getByTestId, ACCOUNT_FILTER, PROPERTIES.id);
+      expect(getByText('Accounts · 1')).toBeTruthy();
+      expect(queryByTestId('pie-chart-arc-a')).toBeNull();
+
+      setLiveData({ accounts: [CASH, PROPERTIES], holdings: [UAH_HOLDING] });
+      await act(async () => {
+        rerender(<StatisticsScreen />);
+      });
+      const afterPrune = JSON.stringify(toJSON());
+      const everything = await renderScreen();
+
+      expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
+      expect(getByText('Accounts')).toBeTruthy();
+      expect(queryByText(/^Accounts · /)).toBeNull();
+      expect(afterPrune).toBe(JSON.stringify(everything.toJSON()));
     });
   });
 

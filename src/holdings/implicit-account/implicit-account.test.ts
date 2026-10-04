@@ -3,6 +3,7 @@ import { accounts, type AccountRow } from '@kiko/db';
 
 import {
   accountDisplayName,
+  accountsForFilter,
   IMPLICIT_ACCOUNT_STORED_NAME,
   type ImplicitAccountKind,
   implicitAccountStoredName,
@@ -57,6 +58,55 @@ describe('isImplicitAccount', () => {
 
     expect(archived.name).toBe('Old flat');
     expect(archived.kind).toBe('property');
+  });
+});
+
+describe('accountsForFilter', () => {
+  const account = (
+    id: string,
+    kind: AccountKind,
+    archivedAt: number | null = null,
+  ): Pick<AccountRow, 'id' | 'kind' | 'archivedAt'> => ({ id, kind, archivedAt });
+
+  it('lists a live implicit account that still has a holding, open or closed', () => {
+    const accountList = [account('open', 'property'), account('closed', 'debt')];
+
+    expect(
+      accountsForFilter(accountList, [{ accountId: 'open' }, { accountId: 'closed' }]).map(
+        (listed) => listed.id,
+      ),
+    ).toEqual(['open', 'closed']);
+  });
+
+  // A transaction hangs off a holding (`transactions.holding_id` is NOT NULL)
+  // and a holding's delete removes its transactions, so no holding means no
+  // transaction and no history left to isolate.
+  it('leaves out a live implicit account with no holding at all', () => {
+    const accountList = [account('flat', 'property'), account('loans', 'debt')];
+
+    expect(accountsForFilter(accountList, [])).toEqual([]);
+  });
+
+  it('keeps an empty bank account and any other kind listed', () => {
+    const accountList = otherKinds.map((kind) => account(kind, kind));
+
+    expect(accountsForFilter(accountList, [])).toEqual(accountList);
+  });
+
+  it('drops an archived account, implicit or not, whatever it holds', () => {
+    const accountList = [account('old-flat', 'property', 5), account('old-bank', 'bank', 5)];
+
+    expect(
+      accountsForFilter(accountList, [{ accountId: 'old-flat' }, { accountId: 'old-bank' }]),
+    ).toEqual([]);
+  });
+
+  it('treats only the holding of its own account as that account holding', () => {
+    const accountList = [account('flat', 'property'), account('loans', 'debt')];
+
+    expect(
+      accountsForFilter(accountList, [{ accountId: 'flat' }]).map((listed) => listed.id),
+    ).toEqual(['flat']);
   });
 });
 
