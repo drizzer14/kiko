@@ -175,13 +175,14 @@ export const statementFormatIdForBank = (
 ): StatementFormatId | undefined => specificBankEntry(bankId)?.statementFormatId;
 
 /** Resolves a stored `accounts.bankId` to whether it is CONNECTABLE: `true`
- * for an unset, `other`, or unrecognized value (the account has not declared a
+ * for an unset or unrecognized value (the account has not declared a
  * bank, or predates this feature — the
  * connect affordance stays available rather than guessing it is import-only)
- * and for Monobank; `false` for a known import-only bank (PrivatBank etc.),
- * which must show NO sync/connect affordance — only its statement import. */
+ * and for Monobank; `false` for `other` (Other bank is manual import only)
+ * and for a known import-only bank (PrivatBank etc.), which must show NO
+ * sync/connect affordance — only its statement import. */
 export const isConnectableBank = (bankId: string | null | undefined): boolean =>
-  specificBankEntry(bankId)?.connectable ?? true;
+  bankId !== OTHER_BANK_ID && (specificBankEntry(bankId)?.connectable ?? true);
 
 /** Resolves a stored `accounts.bankId` to whether that bank sells precious
  * metals (the `metal` holding allow-list): `false` for an unset, `other`, or

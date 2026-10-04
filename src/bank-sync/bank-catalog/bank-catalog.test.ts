@@ -113,8 +113,11 @@ describe('bankCatalog', () => {
     expect(isConnectableBank('ukrgasbank')).toBe(false);
   });
 
-  it('isConnectableBank defaults to true for an unset, unrecognized, or "other" bankId', () => {
-    expect(isConnectableBank('other')).toBe(true);
+  it('isConnectableBank is false for "other": Other bank is manual import only', () => {
+    expect(isConnectableBank('other')).toBe(false);
+  });
+
+  it('isConnectableBank defaults to true for an unset or unrecognized bankId', () => {
     expect(isConnectableBank(null)).toBe(true);
     expect(isConnectableBank(undefined)).toBe(true);
     expect(isConnectableBank('not-a-bank')).toBe(true);

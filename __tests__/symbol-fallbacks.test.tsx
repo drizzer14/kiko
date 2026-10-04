@@ -13,9 +13,9 @@ import {
 import { render } from '@testing-library/react-native';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { NavigationContainer } from '@react-navigation/native';
-import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { SYMBOL_FALLBACKS } from '@kiko/design-system/components/symbol';
 import { accountIconPool, holdingIconPool } from '@kiko/holdings/entity-icon-pool';
+import { editBarItem, REMINDERS_BELL_SYMBOL } from '@kiko/design-system/edit-bar-item';
 
 import '@kiko/design-system/unistyles';
 
@@ -79,7 +79,7 @@ const literalSymbols = (catalogue: SymbolCatalogue): Set<string> =>
 const headerSymbols = (): string[] => {
   const { icon } = editBarItem({ label: 'Edit', tintColor: 'white', onPress: () => undefined });
 
-  return icon?.type === 'sfSymbol' ? [icon.name] : [];
+  return [REMINDERS_BELL_SYMBOL, ...(icon?.type === 'sfSymbol' ? [icon.name] : [])];
 };
 
 const moduleSymbols = (): string[] => [
@@ -255,7 +255,7 @@ describe('every SF Symbol a native bar draws', () => {
     expect(await tabBarSymbols()).toEqual(
       expect.arrayContaining(['house.fill', 'tray', 'chart.xyaxis.line', 'gear']),
     );
-    expect(headerSymbols()).toEqual(['pencil']);
+    expect(headerSymbols()).toEqual(['bell', 'pencil']);
   });
 
   it('draws only symbols that exist on iOS 15.1, as SYMBOL_FALLBACKS cannot swap them', async () => {

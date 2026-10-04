@@ -690,12 +690,26 @@ describe('AccountDetailScreen', () => {
       hidden: ['Connect Monobank'],
     },
     {
-      // "Other bank" is the stored id a bank account with no listed bank
-      // carries (migration 0049), and it gates exactly as no bank at all.
-      description: 'a bank account stored as Other bank, not yet connected to Monobank',
+      // "Other bank" is manual import only: it shows no connect affordance at
+      // all, not even the "Add a bank" trigger.
+      description: 'a bank account stored as Other bank, not connected',
       account: account({ kind: 'bank', bankId: 'other', institution: null }),
-      visible: ['Add a bank'],
-      hidden: ['Connect Monobank', 'Sync'],
+      visible: [],
+      hidden: ['Connect Monobank', 'Sync', 'Add a bank'],
+    },
+    {
+      // A legacy Monobank connection made before the bank picker carries the
+      // `other` id migration 0049 wrote; it must keep its Sync and Disconnect.
+      description: 'a bank account stored as Other bank that is still connected to Monobank',
+      account: account({ kind: 'bank', bankId: 'other', institution: 'monobank' }),
+      visible: ['Sync', 'Disconnect'],
+      hidden: ['Connect Monobank', 'Add a bank'],
+    },
+    {
+      description: 'a bank account whose picked bank is import-only but is still connected',
+      account: account({ kind: 'bank', bankId: 'privatbank', institution: 'monobank' }),
+      visible: ['Sync', 'Disconnect'],
+      hidden: ['Connect Monobank', 'Add a bank'],
     },
     {
       description: 'a cash account',

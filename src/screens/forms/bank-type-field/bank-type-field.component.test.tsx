@@ -119,6 +119,13 @@ describe('BankTypeField', () => {
     expect(optionTree).not.toContain('Statement import only');
   });
 
+  it('shows the live-sync icon on Monobank only, never on "Other bank"', async () => {
+    const { getByTestId, queryByTestId } = await renderOpenSheet();
+
+    expect(getByTestId('bank-type-option-monobank-connect-icon')).toBeTruthy();
+    expect(queryByTestId('bank-type-option-other-connect-icon')).toBeNull();
+  });
+
   // An unlisted bank has no parser, so its statements come in through the
   // column-mapping screen: the very glyph the no-parser banks show for it.
   it('shows the column-mapping icon on "Other bank", at the caption icon-size step', async () => {

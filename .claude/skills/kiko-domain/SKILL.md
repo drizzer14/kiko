@@ -65,7 +65,12 @@ absent** — this skill states the shape and non-enum facts only:
   STORED id that replaced the old NULL (migration 0049 and its restore
   mirror `withBankAccountsOtherBank`). It is the target for the generic
   column-mapping import and states no capability (not connectable, no
-  format, no metals). A NEW bank or broker account must pick (Save
+  format, no metals): `isConnectableBank('other')` is false, so AccountDetail
+  shows Other bank no Connect and no "Add a bank" (manual import only), and
+  the picker row no live-sync glyph. An account already connected keeps its
+  Sync / Disconnect section whatever its bank (`showsBankSync` in
+  `account-detail.screen.tsx`), as a legacy Monobank connection stored as
+  Other bank by migration 0049 must. A NEW bank or broker account must pick (Save
   blocked: `bankRequiredError`/`brokerRequiredError`, `missingCatalogPick`
   in `account-form.screen.tsx`); edit never forces, and an untouched
   picker on edit writes the stored id back (`savedCatalogId`), including
