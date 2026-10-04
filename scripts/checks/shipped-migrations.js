@@ -10,18 +10,29 @@
 // Usage: shipped-migrations.js <root> <base sha>...
 //
 // Each base sha is a commit that is already shipped (the wrapper passes the
-// merge-bases with main and next). The protected set is the union of the files
-// under drizzle/migrations/ at those commits. Each protected file is compared
-// with the WORKING TREE, so an uncommitted edit, a committed edit and a write
-// that skipped the pre-write guard are all caught.
+// merge-bases with main and next, main first). The protected set is the union
+// of the files under drizzle/migrations/ at those commits. Each protected file
+// is compared with the WORKING TREE, so an uncommitted edit, a committed edit
+// and a write that skipped the pre-write guard are all caught.
 //
 //   - .sql, snapshots, and any other file type: byte-identical.
 //   - meta/_journal.json: every top-level key but "entries" deep-equal, and the
 //     new entries start with the base entries, each deep-equal, in order.
 //     Appended entries are allowed (drizzle-kit appends one per migration).
 //   - migrations.js: the base lines stay an in-order subsequence of the new
-//     lines (drizzle-kit regenerates the file by insertion).
+//     lines (drizzle-kit regenerates the file by insertion). An inserted line
+//     can still change what a shipped entry means (a duplicate key, a block
+//     comment around shipped lines); the check proves only that no base line
+//     was removed or changed.
 //   - *.test.ts: never protected, a test is not a shipped artifact.
+//
+// The EARLIEST base that has a file decides it (bases are in the order given,
+// main's first). A later base (next's) decides only a file the earlier ones do
+// not have, and, for the journal and migrations.js, only when it extends the
+// earlier base's content: then it also holds, and being stricter it protects
+// what next appended. When it does not extend it (next edited something main
+// shipped), the earlier base alone decides, so a branch cut from next can
+// restore main's content and pass instead of failing one base or the other.
 //
 // A file that is absent at every base (added on this branch) is free to change.
 //
@@ -54,7 +65,7 @@ function listBaseFiles(root, sha) {
   return runGit(root, ['ls-tree', '-r', '-z', '--name-only', sha, '--', MIGRATIONS_DIRECTORY])
     .toString('utf8')
     .split('\0')
-    .filter((file) => file !== '');
+    .filter((file) => file !== '' && !TEST_FILE_PATTERN.test(file));
 }
 
 function readBaseFile(root, sha, file) {
@@ -62,40 +73,38 @@ function readBaseFile(root, sha, file) {
 }
 
 function listWorkingFiles(root) {
-  const files = [];
-  const pending = [path.join(root, MIGRATIONS_DIRECTORY)];
+  const directory = path.join(root, MIGRATIONS_DIRECTORY);
 
-  while (pending.length > 0) {
-    const directory = pending.pop();
-
-    if (!fs.existsSync(directory)) {
-      continue;
-    }
-
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      const absolute = path.join(directory, entry.name);
-
-      if (entry.isDirectory()) {
-        pending.push(absolute);
-      } else if (entry.isFile()) {
-        files.push(path.relative(root, absolute).split(path.sep).join('/'));
-      }
-    }
+  if (!fs.existsSync(directory)) {
+    return [];
   }
 
-  return files;
-}
-
-function parseJournal(buffer, file) {
-  try {
-    return JSON.parse(buffer.toString('utf8'));
-  } catch (error) {
-    throw new Error(`${file} is not valid JSON: ${error.message}`);
-  }
+  return fs
+    .readdirSync(directory, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)))
+    .map((file) => file.split(path.sep).join('/'))
+    .filter((file) => !TEST_FILE_PATTERN.test(file));
 }
 
 function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseJournal(buffer, file) {
+  let journal;
+
+  try {
+    journal = JSON.parse(buffer.toString('utf8'));
+  } catch (error) {
+    throw new Error(`${file} is not valid JSON: ${error.message}`);
+  }
+
+  if (!isPlainObject(journal) || !Array.isArray(journal.entries)) {
+    throw new Error(`${file} is not a journal object with an entries array`);
+  }
+
+  return journal;
 }
 
 function describeEntryChange(position, entry, change) {
@@ -104,34 +113,36 @@ function describeEntryChange(position, entry, change) {
   return `journal entry ${position} ${change}${tag}`;
 }
 
+// A change is { change, restore }. A change without `restore` is a whole-file
+// change, restored from the base with `git show`.
 function compareJournals(baseBuffer, workingBuffer) {
   const base = parseJournal(baseBuffer, `${JOURNAL_PATH} at the base`);
   const working = parseJournal(workingBuffer, JOURNAL_PATH);
-
-  if (!isPlainObject(base) || !isPlainObject(working)) {
-    return isDeepStrictEqual(base, working) ? [] : ['journal changed'];
-  }
-
   const changes = [];
-  const keys = new Set([...Object.keys(base), ...Object.keys(working)]);
 
-  for (const key of keys) {
+  for (const key of new Set([...Object.keys(base), ...Object.keys(working)])) {
     if (key !== 'entries' && !isDeepStrictEqual(base[key], working[key])) {
-      changes.push(`journal top-level key "${key}" changed`);
+      changes.push({
+        change: `journal top-level key "${key}" changed`,
+        restore:
+          base[key] === undefined
+            ? `remove the key "${key}" and keep the appended entries`
+            : `restore the key "${key}" to its base value ${JSON.stringify(base[key])} and keep the appended entries`,
+      });
     }
-  }
-
-  if (!Array.isArray(base.entries) || !Array.isArray(working.entries)) {
-    return isDeepStrictEqual(base.entries, working.entries)
-      ? changes
-      : [...changes, 'journal "entries" changed'];
   }
 
   base.entries.forEach((entry, position) => {
     if (position >= working.entries.length) {
-      changes.push(describeEntryChange(position, entry, 'removed'));
+      changes.push({
+        change: describeEntryChange(position, entry, 'removed'),
+        restore: `put this entry back as ${JSON.stringify(entry)}, and keep the appended entries`,
+      });
     } else if (!isDeepStrictEqual(entry, working.entries[position])) {
-      changes.push(describeEntryChange(position, entry, 'changed'));
+      changes.push({
+        change: describeEntryChange(position, entry, 'changed'),
+        restore: `restore this entry to its base content ${JSON.stringify(entry)} and keep the appended entries`,
+      });
     }
   });
 
@@ -151,7 +162,10 @@ function compareRunnerMaps(baseBuffer, workingBuffer) {
     const found = workingLines.indexOf(line, cursor);
 
     if (found === -1) {
-      changes.push(`migrations.js line removed or changed: line ${position + 1} "${line}"`);
+      changes.push({
+        change: `migrations.js line removed or changed: line ${position + 1} "${line}"`,
+        restore: `restore this line to its base text "${line}" and keep the inserted lines`,
+      });
     } else {
       cursor = found + 1;
     }
@@ -169,7 +183,27 @@ function compareContent(file, baseBuffer, workingBuffer) {
     return compareRunnerMaps(baseBuffer, workingBuffer);
   }
 
-  return baseBuffer.equals(workingBuffer) ? [] : ['modified'];
+  return baseBuffer.equals(workingBuffer) ? [] : [{ change: 'modified' }];
+}
+
+function decidingBases(file, holders) {
+  const [earliest, ...later] = holders;
+
+  if (file !== JOURNAL_PATH && file !== RUNNER_MAP_PATH) {
+    return [earliest];
+  }
+
+  const deciding = [earliest];
+
+  for (const holder of later) {
+    const drift = compareContent(file, deciding[deciding.length - 1].buffer, holder.buffer);
+
+    if (drift.length === 0) {
+      deciding.push(holder);
+    }
+  }
+
+  return deciding;
 }
 
 function describeMissing(root, baseBuffer, addedFiles) {
@@ -180,35 +214,53 @@ function describeMissing(root, baseBuffer, addedFiles) {
   return renamedTo === undefined ? 'deleted' : `renamed to ${renamedTo}`;
 }
 
-function findViolationsAgainstBase(root, sha, workingFiles) {
-  const baseFiles = listBaseFiles(root, sha).filter((file) => !TEST_FILE_PATTERN.test(file));
-  const working = new Set(workingFiles);
-  const shipped = new Set(baseFiles);
-  const addedFiles = workingFiles.filter((file) => !shipped.has(file));
-  const violations = [];
+function formatViolation(file, sha, { change, restore }) {
+  const short = sha.slice(0, SHORT_SHA_LENGTH);
 
-  for (const file of baseFiles.sort()) {
-    const baseBuffer = readBaseFile(root, sha, file);
-    const changes = working.has(file)
-      ? compareContent(file, baseBuffer, fs.readFileSync(path.join(root, file)))
-      : [describeMissing(root, baseBuffer, addedFiles)];
+  return `${file}: ${change} (base ${short}; ${restore ?? `restore: git show ${short}:${file} > ${file}`})`;
+}
 
-    const short = sha.slice(0, SHORT_SHA_LENGTH);
+function findFileViolations(root, file, holders, working, addedFiles) {
+  const decisive = decidingBases(
+    file,
+    holders.map((holder) => ({ sha: holder.sha, buffer: readBaseFile(root, holder.sha, file) })),
+  );
 
-    for (const change of changes) {
-      violations.push(
-        `${file}: ${change} (base ${short}; restore: git show ${short}:${file} > ${file})`,
-      );
-    }
+  if (!working.has(file)) {
+    const [earliest] = decisive;
+
+    return [
+      formatViolation(file, earliest.sha, {
+        change: describeMissing(root, earliest.buffer, addedFiles),
+      }),
+    ];
   }
 
-  return violations;
+  const workingBuffer = fs.readFileSync(path.join(root, file));
+
+  return decisive.flatMap((base) =>
+    compareContent(file, base.buffer, workingBuffer).map((change) =>
+      formatViolation(file, base.sha, change),
+    ),
+  );
 }
 
 function findViolations(root, shas) {
-  const workingFiles = listWorkingFiles(root).filter((file) => !TEST_FILE_PATTERN.test(file));
+  const workingFiles = listWorkingFiles(root);
+  const working = new Set(workingFiles);
+  const bases = [...new Set(shas)].map((sha) => ({ sha, files: listBaseFiles(root, sha) }));
+  const shipped = new Set(bases.flatMap((base) => base.files));
+  const addedFiles = workingFiles.filter((file) => !shipped.has(file));
 
-  return [...new Set(shas)].flatMap((sha) => findViolationsAgainstBase(root, sha, workingFiles));
+  return [...shipped].sort().flatMap((file) =>
+    findFileViolations(
+      root,
+      file,
+      bases.filter((base) => base.files.includes(file)),
+      working,
+      addedFiles,
+    ),
+  );
 }
 
 function runCli() {

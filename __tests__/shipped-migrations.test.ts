@@ -1,6 +1,5 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
 
@@ -86,18 +85,30 @@ const writeAll = (root: string, files: Record<string, string>): void => {
   }
 };
 
-// The medium tier runs these before and after the check under test; each is a
-// pass here, so only shipped-migrations.sh decides the medium tier's result.
+// The medium tier runs these around the check under test. Each exits 2 with a
+// marker, so a result of 0 proves the tier never reached it (the early exit) and
+// a failure that names the marker proves it ran. guard-replay.sh is the one
+// exception: it records this worktree's mark ref the way the real one does, with
+// the same helpers from _lib.sh, so the mark moves to HEAD on a pass.
 const OTHER_MEDIUM_WRAPPERS = [
   'dup.sh',
   'override-guard.sh',
-  'guard-replay.sh',
   'knip.sh',
   'deps.sh',
   'semgrep-rules.sh',
   'plist.sh',
   'typecheck.sh',
 ];
+
+const RECORDING_REPLAY = [
+  '#!/usr/bin/env bash',
+  'DIR="$(cd "$(dirname "$0")" && pwd)"',
+  'source "$DIR/_lib.sh"',
+  'ROOT="$(cd "$DIR/../.." && pwd)"',
+  'git -C "$ROOT" update-ref "$(harness_replay_ref "$ROOT")" "$(harness_replay_mark "$ROOT")"',
+  'exit 0',
+  '',
+].join('\n');
 
 const copyWrapper = (root: string): void => {
   mkdirSync(join(root, 'scripts/checks'), { recursive: true });
@@ -106,18 +117,29 @@ const copyWrapper = (root: string): void => {
     copyFileSync(join(CHECKS, name), join(root, 'scripts/checks', name));
   }
 
+  writeExecutable(join(root, 'scripts/checks/guard-replay.sh'), RECORDING_REPLAY);
+
   for (const name of OTHER_MEDIUM_WRAPPERS) {
-    writeExecutable(join(root, 'scripts/checks', name), '#!/usr/bin/env bash\nexit 0\n');
+    writeExecutable(
+      join(root, 'scripts/checks', name),
+      `#!/usr/bin/env bash\necho "stub ${name} ran" >&2\nexit 2\n`,
+    );
   }
 };
 
 // `main` ships the first and second migrations. `nextMode` decides what `next`
 // is: absent, equal to main, an older commit than main (only the first
-// migration), or a newer commit than main (it also shipped the third). HEAD is a
-// `feature` branch cut from main, or from next when next is newer.
-type NextMode = 'missing' | 'same' | 'older' | 'newer';
+// migration), a newer commit than main (it also shipped the third), or an edited
+// commit (it rewrote `nextFiles`, files main already shipped). HEAD is a
+// `feature` branch cut from main, or from next when next is newer or edited.
+type NextMode = 'missing' | 'same' | 'older' | 'newer' | 'edited';
 
-const buildRepository = (root: string, nextMode: NextMode, mainName = 'main'): void => {
+const buildRepository = (
+  root: string,
+  nextMode: NextMode,
+  mainName = 'main',
+  nextFiles: Record<string, string> = {},
+): void => {
   mkdirSync(root, { recursive: true });
   git(root, 'init', '-q', '-b', 'main');
   git(root, 'config', 'user.email', 'test@example.com');
@@ -147,6 +169,12 @@ const buildRepository = (root: string, nextMode: NextMode, mainName = 'main'): v
     commitAll(root, 'next ships the third migration');
   }
 
+  if (nextMode === 'edited') {
+    git(root, 'switch', '-q', '-c', 'next');
+    writeAll(root, nextFiles);
+    commitAll(root, 'next edits files main shipped');
+  }
+
   git(root, 'switch', '-q', '-c', 'feature');
 
   if (mainName !== 'main') {
@@ -159,15 +187,39 @@ type Run = { code: number | null; stdout: string; stderr: string };
 let temporaryDirectory: string;
 let root: string;
 let state: string;
+let shimDirectory: string | undefined;
 
-const freshRepository = (nextMode: NextMode = 'same', mainName = 'main'): void => {
-  buildRepository(root, nextMode, mainName);
+const freshRepository = (
+  nextMode: NextMode = 'same',
+  mainName = 'main',
+  nextFiles: Record<string, string> = {},
+): void => {
+  buildRepository(root, nextMode, mainName, nextFiles);
+};
+
+// Puts a `git` ahead of the real one that exits 128 for `git merge-base HEAD
+// <tip>` and runs the real git for every other call.
+const breakMergeBaseWith = (tip: string): void => {
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  shimDirectory = join(temporaryDirectory, 'shims');
+  mkdirSync(shimDirectory);
+  writeExecutable(
+    join(shimDirectory, 'git'),
+    [
+      '#!/usr/bin/env bash',
+      `if [ "$1" = merge-base ] && [ "$3" = "${tip}" ]; then exit 128; fi`,
+      `exec "${realGit}" "$@"`,
+      '',
+    ].join('\n'),
+  );
 };
 
 const check = (script = 'shipped-migrations.sh'): Run => {
+  const shimmedPath =
+    shimDirectory === undefined ? process.env.PATH : `${shimDirectory}:${process.env.PATH}`;
   const result = spawnSync('bash', [join(root, 'scripts/checks', script)], {
     cwd: root,
-    env: { ...process.env, TMPDIR: state },
+    env: { ...process.env, TMPDIR: state, PATH: shimmedPath },
     encoding: 'utf8',
   });
 
@@ -187,6 +239,7 @@ beforeEach(() => {
   temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiko-shipped-migrations-'));
   root = join(temporaryDirectory, 'project');
   state = join(temporaryDirectory, 'state');
+  shimDirectory = undefined;
   mkdirSync(state);
 });
 
@@ -414,13 +467,160 @@ describe('the baseline', () => {
   });
 });
 
+describe('the earliest base that has a file decides', () => {
+  const NEXT_COMMENT_EDIT = '-- edited on next\nCREATE TABLE a (id integer);\n';
+
+  it('passes when the branch restores the main bytes of a file next edited', () => {
+    freshRepository('edited', 'main', { [FIRST_SQL]: NEXT_COMMENT_EDIT });
+    writeFile(root, FIRST_SQL, FIRST_FILES[FIRST_SQL] as string);
+
+    expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('fails with the next bytes of that file, naming the main base', () => {
+    freshRepository('edited', 'main', { [FIRST_SQL]: NEXT_COMMENT_EDIT });
+    const mainSha = git(root, 'rev-parse', 'main').trim().slice(0, 12);
+
+    expectFailureNaming(
+      check(),
+      FIRST_SQL,
+      'modified',
+      `base ${mainSha}`,
+      `git show ${mainSha}:${FIRST_SQL} > ${FIRST_SQL}`,
+    );
+  });
+
+  it('passes when the branch restores a journal entry next changed, and fails without', () => {
+    const changedJournal = journalOf([FIRST_ENTRY, { ...SECOND_ENTRY, when: 5 }]);
+    freshRepository('edited', 'main', { [JOURNAL]: changedJournal });
+    const mainSha = git(root, 'rev-parse', 'main').trim().slice(0, 12);
+
+    expectFailureNaming(check(), JOURNAL, 'journal entry 1 changed', `base ${mainSha}`);
+
+    writeFile(root, JOURNAL, SECOND_FILES[JOURNAL] as string);
+
+    expect(check().code).toBe(0);
+  });
+
+  it('passes when the branch restores a runner-map line next changed, and fails without', () => {
+    freshRepository('edited', 'main', {
+      [RUNNER_MAP]: (SECOND_FILES[RUNNER_MAP] as string).replace('    m0001,', '    m0001x,'),
+    });
+    const mainSha = git(root, 'rev-parse', 'main').trim().slice(0, 12);
+
+    expectFailureNaming(check(), RUNNER_MAP, 'line removed or changed', `base ${mainSha}`);
+
+    writeFile(root, RUNNER_MAP, SECOND_FILES[RUNNER_MAP] as string);
+
+    expect(check().code).toBe(0);
+  });
+
+  it('still protects the entries only next shipped, naming the next base', () => {
+    freshRepository('newer');
+    const nextSha = git(root, 'rev-parse', 'next').trim().slice(0, 12);
+    writeFile(root, JOURNAL, journalOf([FIRST_ENTRY, SECOND_ENTRY]));
+
+    expectFailureNaming(check(), JOURNAL, 'journal entry 2 removed', `base ${nextSha}`);
+  });
+});
+
+describe('the failure hint for the journal and the runner map', () => {
+  it('keeps the appended entries: it names the entry to restore, not the whole file', () => {
+    freshRepository();
+    writeFile(
+      root,
+      JOURNAL,
+      journalOf([FIRST_ENTRY, { ...SECOND_ENTRY, when: 99999 }, THIRD_ENTRY]),
+    );
+    const run = check();
+
+    expectFailureNaming(run, 'journal entry 1 changed', JSON.stringify(SECOND_ENTRY), 'keep');
+    expect(run.stderr).not.toContain(`> ${JOURNAL}`);
+  });
+
+  it('keeps the inserted lines: it shows the base text of the line', () => {
+    freshRepository();
+    writeFile(
+      root,
+      RUNNER_MAP,
+      readFileSync(join(root, RUNNER_MAP), 'utf8').replace('    m0001,', '    m0001x,'),
+    );
+    const run = check();
+
+    expectFailureNaming(run, 'line removed or changed', '"    m0001,"', 'keep');
+    expect(run.stderr).not.toContain(`> ${RUNNER_MAP}`);
+  });
+});
+
+describe('the baseline resolution', () => {
+  it('treats a next that shares no history with HEAD as no next base', () => {
+    freshRepository('missing');
+    git(root, 'switch', '-q', '--orphan', 'next');
+    git(root, 'switch', '-q', 'feature');
+
+    expect(check()).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('fails closed when merge-base with next fails for a reason other than no history', () => {
+    freshRepository('newer');
+    breakMergeBaseWith(git(root, 'rev-parse', 'next').trim());
+
+    expectFailureNaming(check(), 'baseline');
+  });
+
+  it('fails closed when merge-base with main fails for a reason other than no history', () => {
+    freshRepository('newer');
+    breakMergeBaseWith(git(root, 'rev-parse', 'main').trim());
+
+    expectFailureNaming(check(), 'baseline');
+  });
+});
+
+describe('a journal that is not an object with an entries array', () => {
+  it.each([
+    ['null', 'null\n'],
+    ['an array', '[]\n'],
+    ['no entries array', '{"entries":5}\n'],
+  ])('fails closed with a clear message for %s', (_name, body) => {
+    freshRepository();
+    writeFile(root, JOURNAL, body);
+
+    expectFailureNaming(check(), JOURNAL, 'is not a journal object with an entries array');
+  });
+});
+
+describe('the runner map subsequence', () => {
+  it('fails when a changed line reappears later, so its original text is found only after its neighbours', () => {
+    freshRepository();
+    writeFile(
+      root,
+      RUNNER_MAP,
+      readFileSync(join(root, RUNNER_MAP), 'utf8')
+        .replace('    m0001,', '    m0001x,')
+        .replace('};\n', '    m0001,\n};\n'),
+    );
+
+    expectFailureNaming(check(), RUNNER_MAP, 'line removed or changed');
+  });
+
+  it('fails when one of two identical base lines is removed', () => {
+    freshRepository();
+    const withoutBlankLine = readFileSync(join(root, RUNNER_MAP), 'utf8').replace(
+      ';\n\nexport default {',
+      ';\nexport default {',
+    );
+    expect(withoutBlankLine).not.toBe(readFileSync(join(root, RUNNER_MAP), 'utf8'));
+    writeFile(root, RUNNER_MAP, withoutBlankLine);
+
+    expectFailureNaming(check(), RUNNER_MAP, 'line removed or changed');
+  });
+});
+
 describe('the medium tier', () => {
-  // guard-replay's mark ref for this worktree: once HEAD is recorded there, a
-  // clean tree leaves the medium tier nothing to do.
+  // The recording stub moves this worktree's mark ref to HEAD, as a passed
+  // replay does, so a clean tree then leaves the medium tier nothing to do.
   const recordPassedReplay = (): void => {
-    const gitDirectory = git(root, 'rev-parse', '--absolute-git-dir').trim();
-    const worktreeId = createHash('sha1').update(gitDirectory).digest('hex').slice(0, 16);
-    git(root, 'update-ref', `refs/kiko/guard-replay/${worktreeId}`, 'HEAD');
+    expect(check('guard-replay.sh').code).toBe(0);
   };
 
   it('runs on a turn that only committed an edit to a shipped migration', () => {
@@ -439,9 +639,26 @@ describe('the medium tier', () => {
     expectFailureNaming(check('medium.sh'), FIRST_SQL, 'modified');
   });
 
-  it('stays silent when nothing changed', () => {
+  it('stays silent when nothing changed, before any other wrapper runs', () => {
     freshRepository();
     recordPassedReplay();
+
+    expect(check('medium.sh')).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('fails again on the next Stop after a committed shipped edit, because the replay mark never moved', () => {
+    freshRepository();
+    writeFile(root, FIRST_SQL, '-- edited\nCREATE TABLE a (id integer);\n');
+    commitAll(root, 'edit a shipped migration');
+
+    expectFailureNaming(check('medium.sh'), FIRST_SQL, 'modified');
+    expectFailureNaming(check('medium.sh'), FIRST_SQL, 'modified');
+  });
+
+  it('stops after a clean committed turn, before the project-wide wrappers', () => {
+    freshRepository();
+    writeFile(root, THIRD_SQL, 'CREATE TABLE c (id integer);\n');
+    commitAll(root, 'add a migration');
 
     expect(check('medium.sh')).toEqual({ code: 0, stdout: '', stderr: '' });
   });

@@ -85,14 +85,18 @@ if [ ${#changed[@]} -gt 0 ]; then
   "$DIR/dup.sh" "${changed[@]}" || exit 2
   "$DIR/override-guard.sh" "${changed[@]}" || exit 2
 fi
+# Compares the working tree with the shipped baseline, so it also catches a
+# commit that edited a shipped migration; it runs before the early exit below
+# for the same reason the replay does. It must run BEFORE the replay: a passing
+# replay moves this worktree's mark ref to HEAD, and a failure after that would
+# leave the next Stop a clean tree with no pending replay, which exits early and
+# hides the committed violation. Failing first leaves the mark where it was, so
+# every later Stop fails again until the migration is restored.
+"$DIR/shipped-migrations.sh" || exit 2
 # Session-change scope: the pre-write guard, replayed on every .ts/.tsx file
 # the session changed, whatever wrote it (guard-replay.js computes its own
 # set), with the Stop-tier deadline.
 "$DIR/guard-replay.sh" --stop-tier "$hookStarted" || exit 2
-# Compares the working tree with the shipped baseline, so it also catches a
-# commit that edited a shipped migration; it runs before the early exit below
-# for the same reason the replay does.
-"$DIR/shipped-migrations.sh" || exit 2
 # Only HEAD moved (a commit, no file change): the replay and the shipped-migrations
 # check were the checks due.
 if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ]; then
