@@ -516,6 +516,21 @@ describe('AccountDetailScreen', () => {
     ).toBeUndefined();
   });
 
+  it("shows each holding's type under its title in the grid", async () => {
+    setLiveData({
+      accounts: [account()],
+      holdings: [
+        { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
+        { id: 'h2', name: 'Savings', type: 'term_deposit', currency: 'UAH', balanceMinorUnits: 0 },
+      ],
+    });
+    const { getAllByTestId } = await renderScreen();
+    const [card, deposit] = getAllByTestId('holding-card-type');
+
+    expect(card).toHaveTextContent('Card');
+    expect(deposit).toHaveTextContent('Deposit');
+  });
+
   it('renders holdings in the query sort_order, with no zero-value auto-sink', async () => {
     setLiveData({
       accounts: [account()],
