@@ -103,7 +103,12 @@ describe('the export version against the migration journal', () => {
     // is an ordinary set of accounts to an older build (one property account
     // named by the sentinel, holdings under it), and this build's restore applies
     // the same merge to an older file, so it needed no bump of its own.
-    migrationCount: 51,
+    // Through 0051_monobank_accounts_bank_id, which names a connected Monobank
+    // account stored as `other` `monobank`: an older build reads either id as a
+    // bank it lists or none (neither changes what a file carries), and this
+    // build's restore applies the same rule to an older file, so it needed no
+    // bump either.
+    migrationCount: 52,
   };
 
   it('has a version decision for every migration', () => {

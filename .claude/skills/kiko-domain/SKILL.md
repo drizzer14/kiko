@@ -63,14 +63,18 @@ absent** — this skill states the shape and non-enum facts only:
   `src/bank-sync/bank-catalog/bank-catalog.ts`; i18n key
   `forms.account.otherBank` — cite the symbol and key, not the label): a
   STORED id that replaced the old NULL (migration 0049 and its restore
-  mirror `withBankAccountsOtherBank`). It is the target for the generic
+  mirror `withBankAccountsBankIdBackfilled`; migration 0051 then moved a
+  bank account connected to Monobank, `institution = 'monobank'`, from
+  `other` to `monobank`, and the same restore function does it for an older
+  file). It is the target for the generic
   column-mapping import and states no capability (not connectable, no
   format, no metals): `isConnectableBank('other')` is false, so AccountDetail
   shows Other bank no Connect and no "Add a bank" (manual import only), and
   the picker row no live-sync glyph. An account already connected keeps its
   Sync / Disconnect section whatever its bank (`showsBankSync` in
-  `account-detail.screen.tsx`), as a legacy Monobank connection stored as
-  Other bank by migration 0049 must. A NEW bank or broker account must pick (Save
+  `account-detail.screen.tsx`), as any connected account stored as
+  Other bank must (0051 corrects a Monobank one; the guard stays for any
+  other provider's connection). A NEW bank or broker account must pick (Save
   blocked: `bankRequiredError`/`brokerRequiredError`, `missingCatalogPick`
   in `account-form.screen.tsx`); edit never forces, and an untouched
   picker on edit writes the stored id back (`savedCatalogId`), including

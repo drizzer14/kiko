@@ -52,6 +52,7 @@ import m0047 from './0047_add_sets_balance.sql';
 import m0048 from './0048_add_lots_recosted.sql';
 import m0049 from './0049_bank_accounts_other_bank.sql';
 import m0050 from './0050_implicit_property_debt_accounts.sql';
+import m0051 from './0051_monobank_accounts_bank_id.sql';
 
 export default {
   journal,
@@ -107,5 +108,6 @@ export default {
     m0048,
     m0049,
     m0050,
+    m0051,
   },
 };
