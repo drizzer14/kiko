@@ -1963,8 +1963,8 @@ person, one SF Symbol per kind (`loanKindSymbol`, `entity-symbols.ts`) — in
 the generic `HoldingTypeField`'s slot. The stored holding type stays `loan`;
 the pick writes `LoanMeta.kind` (`useLoanFields`' `kind`/`setKind`), and
 `LoanSection` carries no kind field. Same "Type" label/sheet-title/placeholder
-keys as the property field; editable in create and edit mode (as the
-section field it replaced was — never disabled). A loan card's default glyph
+keys as the property field; editable in create and edit mode, never
+disabled. A loan card's default glyph
 follows its kind: `defaultHoldingSymbol` reads it leniently (`loanKindOf`),
 and a loan with a missing/invalid kind shows the loan type's own glyph
 (`holdingTypeSymbol.loan`); the form's untouched icon chip follows the

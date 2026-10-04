@@ -948,18 +948,20 @@ new component can land between reviews of this skill:
   pick that LEAVES the screen, where the fade is just a wait (the account
   form's Property and Debt, and the holding form's Bank, Cash, Crypto,
   Metals and Broker; the holding form's other implicit kind stays in that
-  form and keeps the fade). It is opt-in per call site; every other pick and every other sheet
-  keeps the fade. Jest renders a hidden Modal as nothing; assert the close animation with
-  `spyOnModalAnimation(testID)` (`src/test-support/modal-animation-spy.ts`), which reads the
-  TRANSITION render (the first render of the latest run in that state), never the last render
-  or the mount render. It assumes one mounted Modal per testID; restore it in afterEach. Read a
-  row's SF Symbols in a test with `glyphNamesWithin` (`src/test-support/glyph-names-within.ts`). It works because RN's iOS Modal host re-reads
-  `animationType` on every props commit and uses it for the dismiss
+  form and keeps the fade). It is opt-in per call site; every other pick and
+  every other sheet keeps the fade. It works because RN's iOS Modal host
+  re-reads `animationType` on every props commit and uses it for the dismiss
   (`RCTModalHostViewComponentView.mm` `updateProps` sets
   `_shouldAnimatePresentation`, then `ensurePresentedOnlyIfNeeded` dismisses
   with it), so `SelectField` sets `'none'` in the SAME render that hides the
   sheet and clears it on the next open (`AccountKindField` forwards the prop,
-  the owning screen decides which kinds). `AccountKindField` and
+  the owning screen decides which kinds). Jest renders a hidden Modal as
+  nothing; assert the close animation with `spyOnModalAnimation(testID)`
+  (`src/test-support/modal-animation-spy.ts`), which reads the TRANSITION
+  render (the first render of the latest run in that state), never the last
+  render or the mount render. It assumes one mounted Modal per testID; restore
+  it in afterEach. Read a row's SF Symbols in a test with `glyphNamesWithin`
+  (`src/test-support/glyph-names-within.ts`). `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`

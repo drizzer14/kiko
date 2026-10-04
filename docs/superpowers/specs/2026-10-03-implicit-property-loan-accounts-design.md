@@ -76,8 +76,10 @@ only repeats the holding.
 2. Display name: the implicit account's name is rendered from i18n by
    kind ("Properties" / "Нерухомість", "Loans" / "Кредити" — en+uk
    pending the user's text review), never read from the stored `name`
-   column. That column stays NOT NULL; it stores a fixed sentinel value,
-   decided at plan time.
+   column, until the user renames the account: the localized default
+   shows until then, and a typed name then shows everywhere
+   (`accountDisplayName`). That column stays NOT NULL; it stores a fixed
+   sentinel value, decided at plan time.
 3. Migration (one, crash-safe, per the migration-ordering convention):
    per kind (`property`, `debt`) — keep the OLDEST account of that kind
    (by `createdAt` or `sortOrder`; the plan picks and justifies one),
