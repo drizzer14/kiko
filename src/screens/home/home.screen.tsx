@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -350,27 +351,34 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // transactions yet still appears in the Accounts filter. Sourced from the
   // accounts live query rather than from the transactions, which would omit it.
   // Each option carries the account's own identity icon + color for the
-  // menu row; transaction matching still keys off `option.value` (the STORED
-  // account name, matched against the stored `row.accountName` below), so a
-  // selection survives a language switch; only the option's `label` is the
-  // localized display name. De-duplicated by name, first-seen-wins, preserving
-  // the old `Set`-based distinctness.
-  const accountOptions = useMemo(() => {
-    const byName = new Map<string, FilterOption>();
-
-    for (const account of accounts) {
-      if (account.archivedAt != null || byName.has(account.name)) {
-        continue;
-      }
-      byName.set(account.name, {
-        value: account.name,
-        label: accountDisplayName(account, t),
-        ...accountIdentity(account),
-      });
-    }
-
-    return Array.from(byName.values());
-  }, [accounts, t]);
+  // menu row; transaction matching keys off `option.value` (the account ID,
+  // matched against `row.accountId` below), never a name: two accounts may share
+  // a name (a renamed implicit account, two banks), a rename must keep the
+  // selection, and a name may equal the "All" option's value. The id is also
+  // language-independent, so a selection survives a language switch; only the
+  // option's `label` is the display name.
+  const accountOptions = useMemo(
+    () =>
+      accounts
+        .filter((account) => account.archivedAt == null)
+        .map((account) => ({
+          value: account.id,
+          label: accountDisplayName(account, t),
+          ...accountIdentity(account),
+        })),
+    [accounts, t],
+  );
+  // The stored selection can name an account that was archived or deleted since,
+  // with no checked row left to clear it, so only the ids still among the options
+  // filter and count; an empty result is "All".
+  const visibleSelectedAccounts = useMemo(
+    () =>
+      visibleSelection(
+        selectedAccounts,
+        accountOptions.map((option) => option.value),
+      ),
+    [selectedAccounts, accountOptions],
+  );
   // Group and match the category filter by the STABLE `categories.key` slug,
   // never by the resolved display title: the title is language-dependent (a
   // default category's title changes under a live language switch — see
@@ -440,14 +448,22 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   ]);
   const filteredTransactions = useMemo(() => {
     return transactions.filter((row) => {
-      const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
+      const matchesAccount =
+        visibleSelectedAccounts.size === 0 || visibleSelectedAccounts.has(row.accountId);
       const matchesCategory =
         selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
       const matchesDate = withinBounds(row.time, { from: boundsFrom, to: boundsTo });
 
       return matchesAccount && matchesCategory && matchesDate;
     });
-  }, [transactions, selectedAccounts, selectedCategories, boundsFrom, boundsTo, categoryKeyForRow]);
+  }, [
+    transactions,
+    visibleSelectedAccounts,
+    selectedCategories,
+    boundsFrom,
+    boundsTo,
+    categoryKeyForRow,
+  ]);
 
   // Grouping/sorting happens after filtering, over the query's newest-first
   // order (transactionsRepo orders by time desc), so sections come out
@@ -635,7 +651,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             <TransactionFilterBar
               accounts={accountOptions}
               categories={categoryOptions}
-              selectedAccount={selectedAccounts}
+              selectedAccount={visibleSelectedAccounts}
               selectedCategory={selectedCategories}
               onToggleAccount={toggleFilter(setSelectedAccounts)}
               onToggleCategory={toggleFilter(setSelectedCategories)}

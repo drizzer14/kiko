@@ -723,10 +723,213 @@ describe('HomeScreen', () => {
     expect(getByText('Coffee')).toBeTruthy();
     expect(getByText('Groceries')).toBeTruthy();
 
-    await pressFilter(getByTestId, 'account-filter-menu', 'Monobank');
+    await pressFilter(getByTestId, 'account-filter-menu', MONOBANK.id);
 
     expect(getByText('Coffee')).toBeTruthy();
     expect(queryByText('Groceries')).toBeNull();
+  });
+
+  // The filter keys on the account id, never the name: two accounts may share a
+  // name (a renamed implicit account, two banks), and a name may be "All".
+  describe('the account filter keys on the account id', () => {
+    const SAME_NAME_A: Account = { id: 'a', name: 'Loans', kind: 'bank' };
+    const SAME_NAME_B: Account = { id: 'b', name: 'Loans', kind: 'bank' };
+    const rowsOfTwoAccounts = [
+      transaction({ id: 't1', accountId: 'a', accountName: 'Loans', description: 'Coffee' }),
+      transaction({ id: 't2', accountId: 'b', accountName: 'Loans', description: 'Groceries' }),
+    ];
+
+    it('lists two accounts with the same name as two separate options', async () => {
+      seed({ accounts: [SAME_NAME_A, SAME_NAME_B], transactions: rowsOfTwoAccounts });
+      const { getByTestId } = await renderHome();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId('account-filter-menu'));
+      });
+
+      expect(getByTestId('account-filter-menu-option-a')).toBeTruthy();
+      expect(getByTestId('account-filter-menu-option-b')).toBeTruthy();
+    });
+
+    it('selecting one of two same-named accounts keeps only its rows and checks only its option', async () => {
+      seed({ accounts: [SAME_NAME_A, SAME_NAME_B], transactions: rowsOfTwoAccounts });
+      const { getByText, queryByText, getByTestId } = await renderHome();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId('account-filter-menu'));
+      });
+      await act(async () => {
+        await fireEvent.press(getByTestId('account-filter-menu-option-b'));
+      });
+
+      expect(getByTestId('account-filter-menu-option-b').props.accessibilityState?.checked).toBe(
+        true,
+      );
+      expect(getByTestId('account-filter-menu-option-a').props.accessibilityState?.checked).toBe(
+        false,
+      );
+
+      await act(async () => {
+        await fireEvent.press(getByTestId('account-filter-menu-backdrop'));
+      });
+
+      expect(getByText('Groceries')).toBeTruthy();
+      expect(queryByText('Coffee')).toBeNull();
+    });
+
+    it('keeps a selection when its account is renamed', async () => {
+      seed({
+        accounts: [{ id: 'p', name: 'Properties', kind: 'property' }, PRIVATBANK],
+        transactions: [
+          transaction({
+            id: 't-flat',
+            accountId: 'p',
+            accountName: 'Properties',
+            accountKind: 'property',
+            description: 'Roof repair',
+          }),
+          transaction({ id: 't-bank', accountId: 'b', description: 'Coffee' }),
+        ],
+      });
+      const { getByText, queryByText, getByTestId, rerender } = await renderHome();
+
+      await pressFilter(getByTestId, 'account-filter-menu', 'p');
+      seed({
+        accounts: [{ id: 'p', name: 'Family assets', kind: 'property' }, PRIVATBANK],
+        transactions: [
+          transaction({
+            id: 't-flat',
+            accountId: 'p',
+            accountName: 'Family assets',
+            accountKind: 'property',
+            description: 'Roof repair',
+          }),
+          transaction({ id: 't-bank', accountId: 'b', description: 'Coffee' }),
+        ],
+      });
+      await act(async () => {
+        await rerender(
+          <HomeScreen
+            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+            route={asRouteProp<HomeProps['route']>('Home')}
+          />,
+        );
+      });
+
+      expect(getByText('Roof repair')).toBeTruthy();
+      expect(queryByText('Coffee')).toBeNull();
+    });
+
+    // A selected account that is archived or deleted leaves no checked row to
+    // clear, so its stale id must neither filter nor count.
+    describe('a selected account that is no longer among the options', () => {
+      const rerenderHome = async (
+        rerender: Awaited<ReturnType<typeof renderHome>>['rerender'],
+      ): Promise<void> => {
+        await act(async () => {
+          await rerender(
+            <HomeScreen
+              navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+              route={asRouteProp<HomeProps['route']>('Home')}
+            />,
+          );
+        });
+      };
+
+      it('filters nothing and shows no count once the only selected account is archived', async () => {
+        seed({
+          accounts: [MONOBANK, PRIVATBANK],
+          transactions: rowsOfTwoAccounts,
+        });
+        const { getByText, queryByText, getByTestId, rerender } = await renderHome();
+
+        await pressFilter(getByTestId, 'account-filter-menu', 'a');
+        expect(queryByText('Groceries')).toBeNull();
+        expect(getByText('Accounts · 1')).toBeTruthy();
+
+        seed({
+          accounts: [{ ...MONOBANK, archivedAt: 123 }, PRIVATBANK],
+          transactions: rowsOfTwoAccounts,
+        });
+        await rerenderHome(rerender);
+
+        expect(getByText('Coffee')).toBeTruthy();
+        expect(getByText('Groceries')).toBeTruthy();
+        expect(getByText('Accounts')).toBeTruthy();
+        expect(queryByText(/^Accounts · /)).toBeNull();
+      });
+
+      // Deleting is the in-app path to this state: nothing in the app archives.
+      it('filters nothing and shows no count once the only selected account is deleted', async () => {
+        seed({
+          accounts: [MONOBANK, PRIVATBANK],
+          transactions: rowsOfTwoAccounts,
+        });
+        const { getByText, queryByText, getByTestId, rerender } = await renderHome();
+
+        await pressFilter(getByTestId, 'account-filter-menu', 'a');
+        expect(queryByText('Groceries')).toBeNull();
+        expect(getByText('Accounts · 1')).toBeTruthy();
+
+        seed({
+          accounts: [PRIVATBANK],
+          transactions: rowsOfTwoAccounts.filter((row) => row.accountId !== 'a'),
+        });
+        await rerenderHome(rerender);
+
+        expect(getByText('Groceries')).toBeTruthy();
+        expect(getByText('Accounts')).toBeTruthy();
+        expect(queryByText(/^Accounts · /)).toBeNull();
+      });
+
+      it('keeps filtering by a second selected account that is still among the options', async () => {
+        seed({
+          accounts: [MONOBANK, PRIVATBANK],
+          transactions: rowsOfTwoAccounts,
+        });
+        const { getByText, queryByText, getByTestId, rerender } = await renderHome();
+
+        await act(async () => {
+          await fireEvent.press(getByTestId('account-filter-menu'));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId('account-filter-menu-option-a'));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId('account-filter-menu-option-b'));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId('account-filter-menu-backdrop'));
+        });
+        expect(getByText('Accounts · 2')).toBeTruthy();
+
+        seed({
+          accounts: [{ ...MONOBANK, archivedAt: 123 }, PRIVATBANK],
+          transactions: rowsOfTwoAccounts,
+        });
+        await rerenderHome(rerender);
+
+        expect(getByText('Accounts · 1')).toBeTruthy();
+        expect(getByText('Groceries')).toBeTruthy();
+        expect(queryByText('Coffee')).toBeNull();
+      });
+    });
+
+    it('filters an account named "All" as one account, not as the clear-all option', async () => {
+      seed({
+        accounts: [{ id: 'x', name: 'All', kind: 'bank' }, PRIVATBANK],
+        transactions: [
+          transaction({ id: 't1', accountId: 'x', accountName: 'All', description: 'Coffee' }),
+          transaction({ id: 't2', accountId: 'b', description: 'Groceries' }),
+        ],
+      });
+      const { getByText, queryByText, getByTestId } = await renderHome();
+
+      await pressFilter(getByTestId, 'account-filter-menu', 'x');
+
+      expect(getByText('Coffee')).toBeTruthy();
+      expect(queryByText('Groceries')).toBeNull();
+    });
   });
 
   it('lists every active account in the account filter, even one with no transactions', async () => {
@@ -743,16 +946,16 @@ describe('HomeScreen', () => {
       await fireEvent.press(getByTestId('account-filter-menu'));
     });
 
-    expect(getByTestId('account-filter-menu-option-Monobank')).toBeTruthy();
+    expect(getByTestId('account-filter-menu-option-a')).toBeTruthy();
     // Present despite having zero transactions...
-    expect(getByTestId('account-filter-menu-option-PrivatBank')).toBeTruthy();
+    expect(getByTestId('account-filter-menu-option-b')).toBeTruthy();
     // ...while the archived account is excluded.
-    expect(queryByTestId('account-filter-menu-option-Closed')).toBeNull();
+    expect(queryByTestId('account-filter-menu-option-c')).toBeNull();
   });
 
   // An implicit account's stored name is an English sentinel: the filter option
-  // and the row SHOW its localized kind, while the filter matches on the stored
-  // name, which does not change with the language.
+  // and the row SHOW its localized kind, while the filter matches on the account
+  // id, which does not change with the language.
   describe('an implicit account under Ukrainian', () => {
     const PROPERTIES: Account = {
       id: 'p',
@@ -782,14 +985,14 @@ describe('HomeScreen', () => {
       });
     });
 
-    it('lists it in the account filter under its localized name, keyed on the stored one', async () => {
+    it('lists it in the account filter under its localized name, keyed on its id', async () => {
       seed({ accounts: [MONOBANK, PROPERTIES] });
       const { getByTestId } = await renderHome();
 
       await act(async () => {
         await fireEvent.press(getByTestId('account-filter-menu'));
       });
-      const option = within(getByTestId('account-filter-menu-option-Properties'));
+      const option = within(getByTestId('account-filter-menu-option-p'));
 
       expect(option.getByText('Майно')).toBeTruthy();
       expect(option.queryByText('Properties')).toBeNull();
@@ -824,7 +1027,7 @@ describe('HomeScreen', () => {
       });
       const { getByText, queryByText, getByTestId } = await renderHome();
 
-      await pressFilter(getByTestId, 'account-filter-menu', 'Properties');
+      await pressFilter(getByTestId, 'account-filter-menu', PROPERTIES.id);
       await act(async () => {
         await i18n.changeLanguage('uk');
       });
@@ -865,10 +1068,10 @@ describe('HomeScreen', () => {
       await fireEvent.press(getByTestId('account-filter-menu'));
     });
 
-    const kindGlyph = getByTestId('account-filter-menu-option-Monobank')
+    const kindGlyph = getByTestId(`account-filter-menu-option-${MONOBANK.id}`)
       .queryAll((node) => node.props.name === 'building.columns.fill')
       .at(0);
-    const storedGlyph = getByTestId('account-filter-menu-option-PrivatBank')
+    const storedGlyph = getByTestId(`account-filter-menu-option-${PRIVATBANK.id}`)
       .queryAll((node) => node.props.name === 'creditcard')
       .at(0);
 
@@ -1411,7 +1614,7 @@ describe('HomeScreen', () => {
     });
     const { getByText, getByTestId } = await renderHome();
 
-    await pressFilter(getByTestId, 'account-filter-menu', 'Monobank');
+    await pressFilter(getByTestId, 'account-filter-menu', MONOBANK.id);
     await pressFilter(getByTestId, 'category-filter-menu', 'transport');
 
     expect(getByText('No transactions')).toBeTruthy();

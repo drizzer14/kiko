@@ -6,6 +6,10 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
+import {
+  type ModalAnimationSpy,
+  spyOnModalAnimation,
+} from '@kiko/test-support/modal-animation-spy';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -14,6 +18,7 @@ import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
+import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -2860,6 +2865,126 @@ describe('HoldingFormScreen loan', () => {
     );
   });
 
+  describe('loan kind in the Type slot', () => {
+    it('fills the Type slot with the four loan kinds, each with its own icon, and no loan type picker', async () => {
+      const screen = await renderScreen();
+
+      expect(screen.queryByTestId('holding-type-field')).toBeNull();
+      expect(screen.getAllByTestId('loan-kind-field')).toHaveLength(1);
+      expect(screen.getByTestId('loan-kind-field')).toHaveTextContent('Mortgage');
+
+      await fireEvent.press(screen.getByTestId('loan-kind-field'));
+
+      expect(
+        screen.getAllByTestId(/^loan-kind-field-option-/).map((row) => String(row.props.testID)),
+      ).toEqual([
+        'loan-kind-field-option-mortgage',
+        'loan-kind-field-option-car_loan',
+        'loan-kind-field-option-consumer_loan',
+        'loan-kind-field-option-personal',
+      ]);
+      expect(glyphNamesWithin(screen.getByTestId('loan-kind-field-option-mortgage'))).toContain(
+        'house.circle.fill',
+      );
+      expect(glyphNamesWithin(screen.getByTestId('loan-kind-field-option-car_loan'))).toContain(
+        'car.fill',
+      );
+      expect(
+        glyphNamesWithin(screen.getByTestId('loan-kind-field-option-consumer_loan')),
+      ).toContain('cart.fill');
+      expect(glyphNamesWithin(screen.getByTestId('loan-kind-field-option-personal'))).toContain(
+        'person.fill',
+      );
+    });
+
+    it('keeps the stored holding type loan whichever kind is picked', async () => {
+      const screen = await renderScreen();
+
+      await fireEvent.press(screen.getByTestId('loan-kind-field'));
+      await fireEvent.press(screen.getByTestId('loan-kind-field-option-personal'));
+      await fillLoanFields(screen);
+      await fireEvent.press(screen.getByText('No schedule'));
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'loan',
+          metadata: expect.objectContaining({ kind: 'personal' }),
+        }),
+      );
+    });
+
+    it('seeds the icon tile from the picked kind until the user picks an icon', async () => {
+      const screen = await renderScreen();
+
+      expect(screen.getByLabelText('Icon house.circle.fill')).toBeTruthy();
+
+      await fireEvent.press(screen.getByTestId('loan-kind-field'));
+      await fireEvent.press(screen.getByTestId('loan-kind-field-option-car_loan'));
+
+      expect(screen.getByLabelText('Icon car.fill')).toBeTruthy();
+
+      await fireEvent.press(screen.getByLabelText('Change Icon'));
+      await fireEvent.press(screen.getByLabelText('Choose icon giftcard'));
+      await fireEvent.press(screen.getByTestId('loan-kind-field'));
+      await fireEvent.press(screen.getByTestId('loan-kind-field-option-consumer_loan'));
+
+      expect(screen.getByLabelText('Icon giftcard')).toBeTruthy();
+      expect(screen.queryByLabelText('Icon cart.fill')).toBeNull();
+    });
+
+    it('stores no icon for an untouched one, so the card keeps following the kind', async () => {
+      const screen = await renderScreen();
+
+      await fireEvent.press(screen.getByTestId('loan-kind-field'));
+      await fireEvent.press(screen.getByTestId('loan-kind-field-option-car_loan'));
+      await fillLoanFields(screen);
+      await fill(screen, 'Annual rate', '9');
+      await fill(screen, 'Term', '36');
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ icon: null }));
+    });
+
+    it('hydrates the stored kind on edit, still editable, with the tile following it', async () => {
+      const screen = await renderEdit(carLoan);
+
+      expect(screen.queryByTestId('holding-type-field')).toBeNull();
+      expect(screen.getByTestId('loan-kind-field')).toHaveTextContent('Car loan');
+      expect(screen.getByTestId('loan-kind-field').props.accessibilityState?.disabled).not.toBe(
+        true,
+      );
+      expect(screen.getByLabelText('Icon car.fill')).toBeTruthy();
+
+      await fireEvent.press(screen.getByTestId('loan-kind-field'));
+      await fireEvent.press(screen.getByTestId('loan-kind-field-option-personal'));
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(updateLoanMock).toHaveBeenCalledWith(
+        'h1',
+        expect.objectContaining({ metadata: expect.objectContaining({ kind: 'personal' }) }),
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('keeps the stored icon of a loan that has one, whatever its kind', async () => {
+      const screen = await renderEdit({ ...carLoan, icon: 'giftcard' });
+
+      expect(screen.getByLabelText('Icon giftcard')).toBeTruthy();
+      expect(screen.queryByLabelText('Icon car.fill')).toBeNull();
+    });
+
+    it('shows the first kind for a loan whose stored kind is invalid, as today', async () => {
+      const screen = await renderEdit({
+        ...carLoan,
+        metadata: { ...carLoan.metadata, kind: 'nonsense' },
+      });
+
+      expect(screen.getByTestId('loan-kind-field')).toHaveTextContent('Mortgage');
+    });
+  });
+
   it('creates a "none" (informal) loan with a first manual price point equal to the principal at the start date', async () => {
     const screen = await renderScreen();
 
@@ -3013,7 +3138,8 @@ describe('HoldingFormScreen loan', () => {
   it('renders a visible text label above every loan field', async () => {
     const screen = await renderScreen();
 
-    expect(screen.getByText('Loan kind')).toBeTruthy();
+    expect(screen.getByText('Type')).toBeTruthy();
+    expect(screen.queryByText('Loan kind')).toBeNull();
     expect(screen.getByLabelText('Principal')).toBeTruthy();
     expect(screen.getByLabelText('Start date')).toBeTruthy();
     expect(screen.getByText('Schedule')).toBeTruthy();
@@ -4449,15 +4575,23 @@ describe('HoldingFormScreen implicit create', () => {
     expect(screen.queryByTestId('account-broker-type-field')).toBeNull();
   });
 
-  it('shows the loan fields under the kind field, offering only the loan type', async () => {
+  it('shows the loan fields under the kind field, offering the loan kinds in the Type slot', async () => {
     const screen = await renderImplicit({ implicitKind: 'debt' });
 
     expect(screen.getByTestId('account-kind-field')).toHaveTextContent('Debt');
     expect(screen.getByLabelText('Principal')).toBeTruthy();
+    expect(screen.queryByTestId('holding-type-field')).toBeNull();
 
-    await openHoldingTypeSheet(screen);
+    await fireEvent.press(screen.getByTestId('loan-kind-field'));
 
-    expect(typeOptionIds(screen)).toEqual(['holding-type-field-option-loan']);
+    expect(
+      screen.getAllByTestId(/^loan-kind-field-option-/).map((row) => String(row.props.testID)),
+    ).toEqual([
+      'loan-kind-field-option-mortgage',
+      'loan-kind-field-option-car_loan',
+      'loan-kind-field-option-consumer_loan',
+      'loan-kind-field-option-personal',
+    ]);
   });
 
   it('offers every account kind in the kind sheet, in the account form order', async () => {
@@ -4659,6 +4793,65 @@ describe('HoldingFormScreen implicit create', () => {
   });
 
   describe('switching the kind', () => {
+    let kindSheetModal: ModalAnimationSpy;
+
+    beforeEach(() => {
+      kindSheetModal = spyOnModalAnimation('account-kind-field-sheet-modal');
+    });
+
+    afterEach(() => {
+      kindSheetModal.restore();
+    });
+
+    // The sheet is still closing here, so the kind field is what tells the user
+    // the tap landed; left on the old kind the form looks frozen.
+    it.each([
+      ['bank', 'Bank'],
+      ['cash', 'Cash'],
+      ['crypto', 'Crypto'],
+      ['metals', 'Precious metals'],
+      ['broker', 'Broker'],
+    ] as const)(
+      'shows %s on the kind field at once, before the sheet has finished closing',
+      async (kind, label) => {
+        const screen = await renderImplicit({ implicitKind: 'property' });
+
+        await fireEvent.press(screen.getByTestId('account-kind-field'));
+        await fireEvent.press(screen.getByTestId(`account-kind-field-option-${kind}`));
+
+        expect(screen.getByTestId('account-kind-field')).toHaveTextContent(label);
+        expect(navigation.replace).not.toHaveBeenCalled();
+      },
+    );
+
+    // The fade is only a wait for a pick that leaves the form (the replace runs
+    // once the sheet is gone), so a pick that creates an account closes with
+    // none; the other implicit kind stays in this form and keeps it.
+    it.each([
+      ['bank', 'none'],
+      ['cash', 'none'],
+      ['crypto', 'none'],
+      ['metals', 'none'],
+      ['broker', 'none'],
+      ['debt', 'fade'],
+    ] as const)('closes the kind sheet for %s with animation "%s"', async (kind, animation) => {
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fireEvent.press(screen.getByTestId('account-kind-field'));
+      await fireEvent.press(screen.getByTestId(`account-kind-field-option-${kind}`));
+
+      expect(kindSheetModal.lastHiddenAnimation()).toBe(animation);
+    });
+
+    it('closes the kind sheet for the other implicit kind with a fade from the loan form too', async () => {
+      const screen = await renderImplicit({ implicitKind: 'debt' });
+
+      await fireEvent.press(screen.getByTestId('account-kind-field'));
+      await fireEvent.press(screen.getByTestId('account-kind-field-option-property'));
+
+      expect(kindSheetModal.lastHiddenAnimation()).toBe('fade');
+    });
+
     it('replaces the screen with the account form on a kind that creates an account', async () => {
       const screen = await renderImplicit({ implicitKind: 'property' });
 

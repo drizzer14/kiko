@@ -17,6 +17,7 @@ import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AccountsScreen from './accounts.screen';
@@ -162,6 +163,68 @@ const setLiveData = (data: {
     isFresh: !(isStaleByTable[tables[0]] ?? false),
   }));
 };
+
+// A loan freshly started "now" (this test's own `Date.now()`, captured just
+// before render): no scheduled installment is due yet, so the outstanding
+// balance is deterministically the FULL principal — the loan's own held value
+// (`holding-value.ts`) is exactly `-principal`, never a computed partial payoff
+// this test would have to reproduce. THE implicit debt account: its stored name
+// is only the sentinel, and the section lists its loans one card each, never
+// the account itself.
+const debtAccount = (over: Partial<Account> = {}): Account => ({
+  id: 'd',
+  name: 'Loans',
+  kind: 'debt',
+  archivedAt: null,
+  ...over,
+});
+const loanHolding = (over: Partial<Holding> = {}): Holding => ({
+  id: 'l1',
+  name: 'Mortgage',
+  icon: null,
+  color: null,
+  accountId: 'd',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  type: 'loan',
+  metadata: {
+    kind: 'mortgage',
+    principalMinorUnits: 500_000, // 5,000.00 UAH
+    startDate: Date.now(),
+    annualRatePct: 10,
+    termMonths: 120,
+    schedule: 'annuity',
+  },
+  ...over,
+});
+
+// No price point is mocked anywhere in this file (`price_points` always
+// resolves empty — see `setLiveData`), so a `property_item`'s value falls back
+// to its lot's own cost basis (`priced-parts.ts`'s `pricedValueOrNull` -> null
+// -> `costBasisMinorAt`) rather than needing a real priced instrument —
+// 500_000 minor UAH -> 5,000.00 ₴.
+const propertyAccount = (over: Partial<Account> = {}): Account => ({
+  id: 'p',
+  name: 'Properties',
+  kind: 'property',
+  archivedAt: null,
+  ...over,
+});
+const propertyHolding = (over: Partial<Holding> = {}): Holding => ({
+  id: 'h1',
+  name: 'Apartment',
+  icon: null,
+  color: null,
+  accountId: 'p',
+  currency: 'UAH',
+  balanceMinorUnits: 0,
+  type: 'property_item',
+  metadata: {
+    category: 'real_estate',
+    lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+  },
+  ...over,
+});
 
 const navigation = navigationSpy();
 
@@ -459,6 +522,61 @@ describe('AccountsScreen', () => {
     expect(getByTestId('sortable-grid').props.sortEnabled).toBe(true);
   });
 
+  // A hold lifts the card; with one card there is nothing to reorder, it lifts
+  // and drops back, so the lone card feels the same as one among many.
+  it('lets a lone account card lift on a hold once the accounts have their own fresh read', async () => {
+    setLiveData({ accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }] });
+    const { getByTestId } = await renderAccounts();
+
+    expect(getByTestId('sortable-grid').props.sortEnabled).toBe(true);
+  });
+
+  it('keeps a lone account card from lifting while the accounts are still the cached order', async () => {
+    setLiveData({
+      accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }],
+      isStale: { accounts: true },
+    });
+    const { getByTestId } = await renderAccounts();
+
+    expect(getByTestId('sortable-grid').props.sortEnabled).toBe(false);
+  });
+
+  it('does not open the account when a hold lifted its card and the finger ends in place', async () => {
+    const { getByTestId, getByText } = await renderAccounts();
+
+    await liftCard(getByTestId('sortable-grid'), 'a');
+    await fireEvent.press(getByText('Monobank'));
+
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it('opens the account on the next quick tap after a lifted release', async () => {
+    const { getByTestId, getByText } = await renderAccounts();
+
+    await liftCard(getByTestId('sortable-grid'), 'a');
+    await fireEvent.press(getByText('Monobank'));
+    await fireEvent.press(getByText('Monobank'));
+
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'a',
+      name: 'Monobank',
+    });
+  });
+
+  it('opens the account on a quick tap after the lifted card was dropped with no press', async () => {
+    const { getByTestId, getByText } = await renderAccounts();
+
+    await liftCard(getByTestId('sortable-grid'), 'a');
+    await dropCard(getByTestId('sortable-grid'), 'a');
+    await fireEvent.press(getByText('Monobank'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountDetail', {
+      accountId: 'a',
+      name: 'Monobank',
+    });
+  });
+
   it('persists a reorder to accountsRepo.reorder when a card is dragged to a new slot', async () => {
     setLiveData({
       accounts: [
@@ -621,40 +739,6 @@ describe('AccountsScreen', () => {
   });
 
   describe('Debts section', () => {
-    // A loan freshly started "now" (this test's own `Date.now()`, captured
-    // just before render): no scheduled installment is due yet, so the
-    // outstanding balance is deterministically the FULL principal — the
-    // loan's own held value (`holding-value.ts`) is exactly `-principal`,
-    // never a computed partial payoff this test would have to reproduce.
-    // THE implicit debt account: its stored name is only the sentinel, and
-    // the section lists its loans one card each, never the account itself.
-    const debtAccount = (over: Partial<Account> = {}): Account => ({
-      id: 'd',
-      name: 'Loans',
-      kind: 'debt',
-      archivedAt: null,
-      ...over,
-    });
-    const loanHolding = (over: Partial<Holding> = {}): Holding => ({
-      id: 'l1',
-      name: 'Mortgage',
-      icon: null,
-      color: null,
-      accountId: 'd',
-      currency: 'UAH',
-      balanceMinorUnits: 0,
-      type: 'loan',
-      metadata: {
-        kind: 'mortgage',
-        principalMinorUnits: 500_000, // 5,000.00 UAH
-        startDate: Date.now(),
-        annualRatePct: 10,
-        termMonths: 120,
-        schedule: 'annuity',
-      },
-      ...over,
-    });
-
     it('renders no Debts section when there is no debt account', async () => {
       const { queryByText } = await renderAccounts();
       expect(queryByText('Debts')).toBeNull();
@@ -797,8 +881,18 @@ describe('AccountsScreen', () => {
         .sortEnabled;
     };
 
-    it('disables the sort with one loan', async () => {
+    it('enables the sort with one loan once the holdings have their own fresh read, so the lone card lifts on a hold', async () => {
       setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] });
+
+      expect(await debtsGridSortEnabled()).toBe(true);
+    });
+
+    it('keeps a lone loan from lifting while the holdings are still the cached read', async () => {
+      setLiveData({
+        accounts: [debtAccount()],
+        holdings: [loanHolding()],
+        isStale: { holdings: true },
+      });
 
       expect(await debtsGridSortEnabled()).toBe(false);
     });
@@ -986,34 +1080,6 @@ describe('AccountsScreen', () => {
   });
 
   describe('Property section', () => {
-    // No price point is mocked anywhere in this file (`price_points` always
-    // resolves empty — see `setLiveData`), so a `property_item`'s value falls
-    // back to its lot's own cost basis (`priced-parts.ts`'s
-    // `pricedValueOrNull` -> null -> `costBasisMinorAt`) rather than needing a
-    // real priced instrument — 500_000 minor UAH -> 5,000.00 ₴.
-    const propertyAccount = (over: Partial<Account> = {}): Account => ({
-      id: 'p',
-      name: 'Properties',
-      kind: 'property',
-      archivedAt: null,
-      ...over,
-    });
-    const propertyHolding = (over: Partial<Holding> = {}): Holding => ({
-      id: 'h1',
-      name: 'Apartment',
-      icon: null,
-      color: null,
-      accountId: 'p',
-      currency: 'UAH',
-      balanceMinorUnits: 0,
-      type: 'property_item',
-      metadata: {
-        category: 'real_estate',
-        lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
-      },
-      ...over,
-    });
-
     it('renders no Property section when there is no property account', async () => {
       const { queryByText } = await renderAccounts();
       expect(queryByText('Property')).toBeNull();
@@ -1111,8 +1177,23 @@ describe('AccountsScreen', () => {
       expect(mockAccountReorder).not.toHaveBeenCalled();
     });
 
-    it('disables the sort with one property holding', async () => {
+    it('enables the sort with one property holding once the holdings have their own fresh read, so the lone card lifts on a hold', async () => {
       setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] });
+
+      const { getByTestId } = await renderAccounts();
+
+      expect(
+        within(getByTestId('accounts-property-grid')).getByTestId('sortable-grid').props
+          .sortEnabled,
+      ).toBe(true);
+    });
+
+    it('keeps a lone property holding from lifting while the holdings are still the cached read', async () => {
+      setLiveData({
+        accounts: [propertyAccount()],
+        holdings: [propertyHolding()],
+        isStale: { holdings: true },
+      });
 
       const { getByTestId } = await renderAccounts();
 
@@ -1185,6 +1266,74 @@ describe('AccountsScreen', () => {
       expect(queryByText('Property')).toBeNull();
       expect(queryByTestId('holding-card')).toBeNull();
       expect(getByText('No accounts yet')).toBeTruthy();
+    });
+  });
+
+  // The Debts and Property holding grids share one lift guard, so one table
+  // drives both.
+  describe.each([
+    {
+      kind: 'loan',
+      gridTestId: 'accounts-debts-grid',
+      holdingId: 'l1',
+      holdingName: 'Mortgage',
+      seed: () => setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] }),
+    },
+    {
+      kind: 'property',
+      gridTestId: 'accounts-property-grid',
+      holdingId: 'h1',
+      holdingName: 'Apartment',
+      seed: () => setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] }),
+    },
+  ])('a hold that lifted a $kind card', ({ gridTestId, holdingId, holdingName, seed }) => {
+    const renderGrid = async (): Promise<{
+      grid: LiftableGrid;
+      getByText: Awaited<ReturnType<typeof render>>['getByText'];
+    }> => {
+      seed();
+      const { getByTestId, getByText } = await renderAccounts();
+
+      return {
+        grid: within(getByTestId(gridTestId)).getByTestId('sortable-grid'),
+        getByText,
+      };
+    };
+
+    it('does not open the holding when the finger ends in place', async () => {
+      const { grid, getByText } = await renderGrid();
+
+      await liftCard(grid, holdingId);
+      await fireEvent.press(getByText(holdingName));
+
+      expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+
+    it('opens the holding on the next quick tap', async () => {
+      const { grid, getByText } = await renderGrid();
+
+      await liftCard(grid, holdingId);
+      await fireEvent.press(getByText(holdingName));
+      await fireEvent.press(getByText(holdingName));
+
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+        holdingId,
+        name: holdingName,
+      });
+    });
+
+    it('opens the holding on a quick tap once the card was dropped with no press', async () => {
+      const { grid, getByText } = await renderGrid();
+
+      await liftCard(grid, holdingId);
+      await dropCard(grid, holdingId);
+      await fireEvent.press(getByText(holdingName));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+        holdingId,
+        name: holdingName,
+      });
     });
   });
 

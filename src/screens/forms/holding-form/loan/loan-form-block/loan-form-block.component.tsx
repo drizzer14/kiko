@@ -29,8 +29,6 @@ const LoanFormBlock: FC<LoanFormBlockProps> = ({
       <Text variant="heading">{t('forms.holding.details')}</Text>
 
       <LoanSection
-        kind={fields.kind}
-        onSelectKind={fields.setKind}
         principal={fields.principal}
         onChangePrincipal={(text) => fields.setPrincipal(groupAmount(text))}
         principalError={fieldErrorMessage(t, attemptedSave, fieldErrors.principalError)}

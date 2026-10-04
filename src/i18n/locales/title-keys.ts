@@ -66,7 +66,6 @@ export const TITLE_KEYS = new Set([
   'forms.holding.details',
   'forms.holding.editLoanTitle',
   'forms.holding.editTitle',
-  'forms.holding.loanKindSheetTitle',
   'forms.holding.loanPaidFromSheetTitle',
   'forms.holding.loanStartDateSheetTitle',
   'forms.holding.maturityDateSheetTitle',

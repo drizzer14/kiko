@@ -22,6 +22,7 @@ import {
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
@@ -554,6 +555,120 @@ describe('HoldingDetailScreen', () => {
       accountId: 'acc-1',
       holdingId: 'h-1',
       debtAccount: false,
+    });
+  });
+
+  describe('the account button of a Property or Loan holding', () => {
+    const headerItems = (): {
+      type: string;
+      label: string;
+      accessibilityLabel: string;
+      icon: unknown;
+      sharesBackground: boolean;
+      onPress: () => void;
+    }[] => {
+      const call = (navigation.setOptions as jest.Mock).mock.calls.find(
+        ([options]) => options.unstable_headerRightItems,
+      );
+
+      return call[0].unstable_headerRightItems({ canGoBack: true });
+    };
+
+    it.each([
+      ['property', 'Properties'],
+      ['debt', 'Loans'],
+    ] as const)(
+      "puts the %s account's own glyph left of the pencil and opens that account for edit",
+      async (kind, accountName) => {
+        seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
+          id: 'acc-1',
+          kind,
+          name: accountName,
+          archivedAt: null,
+          institution: null,
+        });
+
+        await renderScreen();
+
+        const items = headerItems();
+
+        expect(items).toHaveLength(2);
+        expect(items[0]).toMatchObject({
+          type: 'button',
+          label: `Account: ${accountName}`,
+          accessibilityLabel: `Account: ${accountName}`,
+          icon: { type: 'sfSymbol', name: accountKindSymbol[kind] },
+          sharesBackground: false,
+        });
+        expect(items[1]).toMatchObject({ label: 'Edit', icon: { name: 'pencil' } });
+        items[0].onPress();
+        expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', { accountId: 'acc-1' });
+      },
+    );
+
+    it("names the button by the account's own name once the user renamed it", async () => {
+      seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
+        id: 'acc-1',
+        kind: 'property',
+        name: 'Family assets',
+        archivedAt: null,
+        institution: null,
+      });
+
+      await renderScreen();
+
+      expect(headerItems()[0]).toMatchObject({ label: 'Account: Family assets' });
+    });
+
+    it('keeps the pencil opening the holding edit form', async () => {
+      seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
+        id: 'acc-1',
+        kind: 'property',
+        name: 'Properties',
+        archivedAt: null,
+        institution: null,
+      });
+
+      await renderScreen();
+
+      headerItems()[1].onPress();
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+        accountId: 'acc-1',
+        holdingId: 'h-1',
+        debtAccount: false,
+      });
+    });
+
+    it('is absent for the holding of a normal account', async () => {
+      seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
+        id: 'acc-1',
+        kind: 'bank',
+        name: 'Monobank',
+        archivedAt: null,
+        institution: null,
+      });
+
+      await renderScreen();
+
+      const items = headerItems();
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ label: 'Edit' });
+    });
+
+    it('is absent for the holding of an archived Property account', async () => {
+      seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
+        id: 'acc-1',
+        kind: 'property',
+        name: 'Old flat',
+        archivedAt: 5,
+        institution: null,
+      });
+
+      await renderScreen();
+
+      expect(headerItems()).toHaveLength(1);
     });
   });
 

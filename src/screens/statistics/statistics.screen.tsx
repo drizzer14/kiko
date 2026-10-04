@@ -74,6 +74,7 @@ import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import SummaryTable from '@kiko/design-system/components/summary-table';
+import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
@@ -342,8 +343,15 @@ const StatisticsScreen: FC = () => {
   // stable collection instead of a fresh array on every render.
   const filtered = useMemo(() => {
     const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
+    // The stored selection can name an account archived or deleted since, with no
+    // checked row left to clear it: only a still-visible id filters and counts,
+    // and an empty result is "All".
+    const visibleSelectedAccounts = visibleSelection(
+      selectedAccounts,
+      visibleAccounts.map((account) => account.id),
+    );
     const filteredAccounts = visibleAccounts.filter((account) => {
-      return selectedAccounts.size === 0 || selectedAccounts.has(account.name);
+      return visibleSelectedAccounts.size === 0 || visibleSelectedAccounts.has(account.id);
     });
     const filteredAccountIds = new Set(filteredAccounts.map((account) => account.id));
     const netWorthHoldings = holdings.filter((holding) =>
@@ -351,7 +359,13 @@ const StatisticsScreen: FC = () => {
     );
     const visibleHoldings = netWorthHoldings.filter((holding) => holding.closedAt == null);
 
-    return { visibleAccounts, filteredAccounts, visibleHoldings, netWorthHoldings };
+    return {
+      visibleAccounts,
+      visibleSelectedAccounts,
+      filteredAccounts,
+      visibleHoldings,
+      netWorthHoldings,
+    };
   }, [accounts, holdings, selectedAccounts]);
 
   // The full transaction and lot span drives the date field's default display,
@@ -1143,12 +1157,13 @@ const StatisticsScreen: FC = () => {
   );
 
   // One option per visible account, each carrying the account's own identity
-  // icon + color for the menu row; matching still keys on `option.value` (the
-  // stored account name, compared to `account.name` in the `filtered` memo
-  // above, so a selection survives a language switch); the `label` is the
-  // display name, which an implicit account localizes.
+  // icon + color for the menu row; matching keys on `option.value` (the account
+  // id, compared to `account.id` in the `filtered` memo above, so a selection
+  // survives a rename and a language switch, and same-named accounts stay
+  // separate options); the `label` is the display name, which an implicit
+  // account localizes.
   const accountOptions: FilterOption[] = filtered.visibleAccounts.map((account) => ({
-    value: account.name,
+    value: account.id,
     label: accountDisplayName(account, t),
     ...accountIdentity(account),
   }));
@@ -1170,7 +1185,7 @@ const StatisticsScreen: FC = () => {
             sheetTitle={t('statistics.filterAccountsSheetTitle')}
             testID="statistics-account-filter"
             options={accountOptions}
-            selected={selectedAccounts}
+            selected={filtered.visibleSelectedAccounts}
             onToggle={toggleFilter(setSelectedAccounts)}
             triggerIcon="tray"
           />

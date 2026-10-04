@@ -48,19 +48,22 @@ through `resolveCategoryDisplay`/`buildCategoryDisplayMap`
 `rules/semgrep-prewrite.yml`): a `t(key, { title|name: <...category>.title })`
 is denied unless that `category` is a `resolveCategoryDisplay(...)` result.
 
-## An implicit account is named by `accountDisplayName`, never by `account.name`
+## An implicit account is named by `accountDisplayName`, never by the raw `account.name`
 
-The property and debt accounts' stored name is an English sentinel
-(`IMPLICIT_ACCOUNT_STORED_NAME`: `Properties` / `Loans`, the seeded-category
-rule's sibling); the user sees `accounts.implicitName.{property,debt}`
-(uk `Майно` / `Кредити`) through `accountDisplayName(account, t)`
-(`src/holdings/implicit-account/`), which leaves any other account's name
-verbatim. EVERY place that renders an account's name takes the helper's
+The property and debt accounts' stored name is an English sentinel while the
+account is unrenamed (`IMPLICIT_ACCOUNT_STORED_NAME`: `Properties` / `Loans`,
+the seeded-category rule's sibling); the user sees
+`accounts.implicitName.{property,debt}` (uk `Майно` / `Кредити`) through
+`accountDisplayName(account, t)` (`src/holdings/implicit-account/`), which
+returns the name a user typed as it is (a renamed account) and leaves any other
+account's name verbatim. EVERY place that renders an account's name takes the helper's
 result: a heading, a filter option's `label`, a row's account name, a
-chart label, a picker caption, an accessibility label. A filter's `value`
-(its identity, which a selection and the row match key on) stays the STORED
-name, because the display name changes with the language and would strand a
-selection made before a live switch (`filter-menu.props.d.ts`). A query
+chart label, a picker caption, an accessibility label. An account filter's
+`value` (its identity, which a selection and the row match key on) is the
+account ID, never a name: the display name changes with the language and with a
+rename (a selection would strand), two accounts may share a name (they would
+merge into one option), and a name may equal the "All" option's value
+(`filter-menu.props.d.ts`). A query
 that feeds such a site projects
 `kind` and `archivedAt` beside `name` (`accountKind`/`accountArchivedAt` on
 the ledger rows). A test asserts the name under `uk`, where the stored

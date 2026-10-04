@@ -359,20 +359,14 @@ export const en = {
       isinRequiredError: "Enter the bond's ISIN.",
       jar: 'Jar',
       loan: 'Loan',
-      // The Loan form's own kind SelectField option map; see loanKindLabel.
+      // The loan kinds the form's Type field offers; the field itself reuses
+      // the generic `type`/`typeSheetTitle`/`typePlaceholder` keys.
       loanKind: {
         carLoan: 'Car loan',
         consumerLoan: 'Consumer loan',
         mortgage: 'Mortgage',
         personal: 'From a person',
       },
-      loanKindLabel: 'Loan kind',
-      // The loan-kind select field's placeholder — unreachable today (see
-      // `categoryPlaceholder`'s own doc comment).
-      loanKindPlaceholder: 'Select a loan kind',
-      // The loan-kind SelectField's sheet header — Title Case, distinct from
-      // the sentence-case field label (`loanKindLabel` above).
-      loanKindSheetTitle: 'Loan Kind',
       // The loan-payment matcher's own optional inputs — the "Paid from"
       // holding picker's field label + its synthetic "None" row, and the
       // lender's own name/IBAN text fields. None of these are required.
@@ -617,8 +611,8 @@ export const en = {
     icon: '{{name}} icon',
     // The display name of THE implicit Property / Loans account
     // (`accountDisplayName`, `src/holdings/implicit-account/`): at most one live
-    // account of each kind exists, so its stored name is only a sentinel and
-    // every screen shows this instead.
+    // account of each kind exists, and until the user renames it its stored
+    // name is only a sentinel, so every screen shows this instead.
     implicitName: {
       debt: 'Loans',
       property: 'Properties',
@@ -742,6 +736,9 @@ export const en = {
     ofWhole: 'of {{whole}}',
   },
   holdingDetail: {
+    // The header button of a Property or Loan holding that opens its shared
+    // account for edit (VoiceOver name, and its row in the More overflow menu).
+    accountLabel: 'Account: {{name}}',
     addLot: 'Add lot',
     addTransaction: 'Add transaction',
     // The derived lifecycle ledger lines (src/holdings/derived-entries.ts) a

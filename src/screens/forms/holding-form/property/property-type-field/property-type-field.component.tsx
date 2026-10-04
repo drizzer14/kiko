@@ -26,7 +26,7 @@ const propertyTypeOptions: readonly PropertyCategory[] = [
 // the generic `HoldingTypeField` uses, so a property account's form still
 // reads "Type" like every other account kind's holding form; never disabled
 // (unlike the generic field in edit mode) — the category stays user-editable
-// in both create and edit mode, mirroring the field it replaces.
+// in both create and edit mode.
 const PropertyTypeField: FC<PropertyTypeFieldProps> = ({ selected, onSelect, testID }) => {
   const { t } = useTranslation();
 

@@ -1,3 +1,7 @@
+import {
+  type ModalAnimationSpy,
+  spyOnModalAnimation,
+} from '@kiko/test-support/modal-animation-spy';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import '@kiko/design-system/unistyles';
@@ -39,6 +43,16 @@ const finishClosing = async (sheet: { props: Record<string, unknown> }): Promise
 };
 
 describe('SelectField', () => {
+  let modal: ModalAnimationSpy;
+
+  beforeEach(() => {
+    modal = spyOnModalAnimation('kind-field-sheet-modal');
+  });
+
+  afterEach(() => {
+    modal.restore();
+  });
+
   it("shows the selected option's label in the trigger", async () => {
     const { getByTestId } = await setup();
 
@@ -146,6 +160,82 @@ describe('SelectField', () => {
       expect(onSelect).toHaveBeenCalledTimes(1);
       expect(queryByTestId('kind-field-option-b')).toBeNull();
       expect(getByTestId('kind-field')).toHaveTextContent('Alpha');
+    });
+  });
+
+  describe('closesWithoutAnimation', () => {
+    const onlyB = (option: Kind): boolean => option === 'b';
+
+    it('closes with no animation for a pick it names', async () => {
+      const { getByTestId } = await setup({ closesWithoutAnimation: onlyB });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+
+      expect(modal.lastHiddenAnimation()).toBe('none');
+    });
+
+    it('keeps the fade for a pick it does not name', async () => {
+      const { getByTestId } = await setup({ closesWithoutAnimation: onlyB });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      await fireEvent.press(getByTestId('kind-field-option-c'));
+
+      expect(modal.lastHiddenAnimation()).toBe('fade');
+    });
+
+    it('keeps the fade for every pick when it is omitted', async () => {
+      const { getByTestId } = await setup();
+
+      await fireEvent.press(getByTestId('kind-field'));
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+
+      expect(modal.lastHiddenAnimation()).toBe('fade');
+    });
+
+    it('keeps the fade when the sheet is closed without a pick', async () => {
+      const { getByTestId } = await setup({ closesWithoutAnimation: onlyB });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      await fireEvent(getByTestId('kind-field-sheet-modal'), 'requestClose');
+
+      expect(modal.lastHiddenAnimation()).toBe('fade');
+    });
+
+    it('still reports the pick only once the sheet has finished closing', async () => {
+      const onSelectClosed = jest.fn();
+      const { getByTestId } = await setup({ closesWithoutAnimation: onlyB, onSelectClosed });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      const sheet = getByTestId('kind-field-sheet-modal');
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+
+      expect(onSelectClosed).not.toHaveBeenCalled();
+
+      await finishClosing(sheet);
+
+      expect(onSelectClosed).toHaveBeenCalledWith('b');
+    });
+
+    it('fades the sheet in again when it reopens after a pick that closed it with no animation', async () => {
+      const { getByTestId } = await setup({ closesWithoutAnimation: onlyB });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+      await fireEvent.press(getByTestId('kind-field'));
+
+      expect(modal.lastShownAnimation()).toBe('fade');
+    });
+
+    it('fades the second close after a no-animation one when the next pick is not named', async () => {
+      const { getByTestId } = await setup({ closesWithoutAnimation: onlyB });
+
+      await fireEvent.press(getByTestId('kind-field'));
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+      await fireEvent.press(getByTestId('kind-field'));
+      await fireEvent.press(getByTestId('kind-field-option-c'));
+
+      expect(modal.lastHiddenAnimation()).toBe('fade');
     });
   });
 

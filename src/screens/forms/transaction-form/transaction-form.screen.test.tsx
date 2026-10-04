@@ -2403,19 +2403,42 @@ describe('TransactionFormScreen — loan payment field', () => {
   });
 
   // A loan lives under the implicit debt account, whose stored name is an
-  // English sentinel: the picker row names it by its display name.
-  it('names the implicit debt account in the loan picker by its display name, not the stored one', async () => {
+  // English sentinel until the user renames it: the picker row names it by its
+  // display name.
+  it('names the unrenamed implicit debt account in the loan picker by its localized default', async () => {
     setLiveData([PAYER_HOLDING, LOAN_HOLDING], debitTransaction, undefined, [
-      { ...DEBT_ACCOUNT, name: 'Stored sentinel', kind: 'debt', archivedAt: null },
+      { ...DEBT_ACCOUNT, name: 'Loans', kind: 'debt', archivedAt: null },
+    ]);
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    try {
+      const { getByLabelText, getByText } = await renderEdit('txn-1');
+
+      await fireEvent.press(getByLabelText('Платіж за кредитом'));
+
+      expect(getByLabelText('Car loan, Кредити')).toBeTruthy();
+      expect(getByText('Кредити · UAH')).toBeTruthy();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
+  });
+
+  it('names a renamed implicit debt account in the loan picker by the name the user gave it', async () => {
+    setLiveData([PAYER_HOLDING, LOAN_HOLDING], debitTransaction, undefined, [
+      { ...DEBT_ACCOUNT, name: 'Bank debts', kind: 'debt', archivedAt: null },
     ]);
 
     const { getByLabelText, getByText, queryByText } = await renderEdit('txn-1');
 
     await fireEvent.press(getByLabelText('Loan payment'));
 
-    expect(getByLabelText('Car loan, Loans')).toBeTruthy();
-    expect(getByText('Loans · UAH')).toBeTruthy();
-    expect(queryByText('Stored sentinel · UAH')).toBeNull();
+    expect(getByLabelText('Car loan, Bank debts')).toBeTruthy();
+    expect(getByText('Bank debts · UAH')).toBeTruthy();
+    expect(queryByText('Loans · UAH')).toBeNull();
   });
 
   it('persists a picked loan as a MANUAL link at once, with no Save press', async () => {

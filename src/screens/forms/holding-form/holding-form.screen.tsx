@@ -52,6 +52,7 @@ import HoldingIdentityField from '@kiko/design-system/components/holding-identit
 import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import LoanFormBlock from './loan/loan-form-block';
+import LoanKindField from './loan/loan-kind-field';
 import BondFormBlock from './bond/bond-form-block';
 import MetalFormBlock from './metal/metal-form-block';
 import MetalTypeField from './metal/metal-type-field';
@@ -141,7 +142,8 @@ const buildPaymentHoldingOptions = (
 };
 
 // Which field fills the Type slot. A `property` account's only type IS its
-// category, so the category picker takes the slot. Wherever a `metal` holding
+// category, and a `debt` account's only type IS its loan kind, so the category
+// or kind picker takes the slot. Wherever a `metal` holding
 // can be created — a metals account, or a bank that sells metals — or one is
 // being edited, each metal is its own row (`MetalTypeField`), after the
 // account's other creatable types; an edit locks the type, so it lists the
@@ -149,6 +151,7 @@ const buildPaymentHoldingOptions = (
 // a bank that sells metals, keeps the generic field.
 type TypeSlot =
   | { kind: 'property' }
+  | { kind: 'loan' }
   | { kind: 'metal'; otherTypes: readonly HoldingType[] }
   | { kind: 'generic' };
 
@@ -157,21 +160,21 @@ const typeSlotFor = (
   typeOptions: readonly HoldingType[],
   isEdit: boolean,
   type: HoldingType,
-): TypeSlot => {
-  if (accountKind === 'property') {
-    return { kind: 'property' };
-  }
+): TypeSlot =>
+  match(accountKind)
+    .with('property', (): TypeSlot => ({ kind: 'property' }))
+    .with('debt', (): TypeSlot => ({ kind: 'loan' }))
+    .otherwise((): TypeSlot => {
+      if (isEdit) {
+        return type === 'metal' ? { kind: 'metal', otherTypes: [] } : { kind: 'generic' };
+      }
 
-  if (isEdit) {
-    return type === 'metal' ? { kind: 'metal', otherTypes: [] } : { kind: 'generic' };
-  }
+      if (typeOptions.includes('metal')) {
+        return { kind: 'metal', otherTypes: typeOptions.filter((option) => option !== 'metal') };
+      }
 
-  if (typeOptions.includes('metal')) {
-    return { kind: 'metal', otherTypes: typeOptions.filter((option) => option !== 'metal') };
-  }
-
-  return { kind: 'generic' };
-};
+      return { kind: 'generic' };
+    });
 
 // An implicit create names no account, so the account query it shares with the
 // account mode gets the empty id that matches no row.
@@ -225,14 +228,21 @@ type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Ho
 type HoldingFormNavigation = HoldingFormScreenProps['navigation'];
 
 // The kind field's two outcomes in implicit mode. The other implicit kind
-// re-targets this form at once, in place.
+// re-targets this form at once, in place. Any other kind leaves for the account
+// form once the sheet has closed, so the field shows that pick at once: the
+// sheet is still closing, and left on the old kind the form looks frozen.
 const retargetImplicitKind = (
   navigation: HoldingFormNavigation,
   kind: AccountRow['kind'],
+  showLeavingKind: (kind: AccountRow['kind']) => void,
 ): void => {
   if (isImplicitAccountKind(kind)) {
     navigation.setParams({ implicitKind: kind });
+
+    return;
   }
+
+  showLeavingKind(kind);
 };
 
 // Any other kind creates an account, so the account form takes over. It runs
@@ -247,6 +257,19 @@ const leaveForAccountForm = (
     navigation.replace('AccountForm', { initialKind: kind, draft });
   }
 };
+
+// A kind that creates an account takes the user to the account form, which only
+// runs once the kind sheet's Modal is gone, so that sheet closes with no fade
+// rather than make the swap wait for it.
+const isLeavingKind = (kind: AccountRow['kind']): boolean => !isImplicitAccountKind(kind);
+
+// What the kind field shows: the kind just picked that leaves for the account
+// form, else the implicit kind this form is on. At module scope to keep this
+// branch out of HoldingFormScreen's own cognitive complexity score.
+const shownKind = (
+  implicitKind: AccountRow['kind'],
+  leavingKind: AccountRow['kind'] | undefined,
+): AccountRow['kind'] => leavingKind ?? implicitKind;
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { holdingId, returnTo } = route.params;
@@ -362,6 +385,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless (see
   // `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
+  // The kind just picked on the kind field that leaves for the account form,
+  // shown there until the swap replaces this screen (see `retargetImplicitKind`).
+  const [leavingKind, setLeavingKind] = useState<AccountRow['kind'] | undefined>(undefined);
   // The icon is null until the user picks one ("not dirty"): while null, the
   // chip shows the selected type's default glyph (`defaultHoldingSymbol`, a
   // property's own category glyph) and switching type or category re-derives
@@ -719,7 +745,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           <HoldingIdentityField
             icons={KIKO_ENTITIES_ICONS}
             icon={icon}
-            fallbackIcon={defaultHoldingSymbol({ type, metadata: { category: property.category } })}
+            fallbackIcon={defaultHoldingSymbol({
+              type,
+              metadata: { category: property.category, kind: loanFields.kind },
+            })}
             iconColor={effectiveColor}
             name={name}
             onChangeName={setName}
@@ -742,11 +771,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
         {match(target)
           .with({ kind: 'implicit' }, ({ implicitKind }) => (
             <AccountKindField
-              selected={implicitKind}
-              onSelect={(kind) => retargetImplicitKind(navigation, kind)}
+              selected={shownKind(implicitKind, leavingKind)}
+              onSelect={(kind) => retargetImplicitKind(navigation, kind, setLeavingKind)}
               onSelectClosed={(kind) =>
                 leaveForAccountForm(navigation, kind, { name, icon, color })
               }
+              closesWithoutAnimation={isLeavingKind}
               disabled={false}
             />
           ))
@@ -762,15 +792,21 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             set so an existing synced card/jar row still displays its (read-only)
             type. */}
         {/* A select sheet, mirroring AccountKindField — up to 9 long type
-            names (e.g. "Строковий депозит") run too wide for a chip row, the
-            same label-width reasoning that moved LoanSection's kind onto
-            `SelectField`. `typeSlotFor` picks which field fills the slot. */}
+            names (e.g. "Строковий депозит") run too wide for a chip row.
+            `typeSlotFor` picks which field fills the slot. */}
         {match(typeSlotFor(accountKind, typeOptions, isEdit, type))
           .with({ kind: 'property' }, () => (
             <PropertyTypeField
               selected={property.category}
               onSelect={property.setCategory}
               testID="property-category-field"
+            />
+          ))
+          .with({ kind: 'loan' }, () => (
+            <LoanKindField
+              selected={loanFields.kind}
+              onSelect={loanFields.setKind}
+              testID="loan-kind-field"
             />
           ))
           .with({ kind: 'metal' }, ({ otherTypes }) => (

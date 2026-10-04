@@ -375,10 +375,12 @@ describe('restoring a .kiko file exported before Property and Loans became impli
     ['several accounts of each kind, with ties', seedSeveralAccountsOfEachKind],
     ['one account of each kind', seedOneAccountOfEachKind],
   ])('with %s', (_name, seed) => {
-    it('ends with the same accounts as the live migration 0050 upgrade', async () => {
+    it('ends with the same accounts as the live migration 0050 upgrade, apart from name, icon and color', async () => {
       const { live, restored } = await bothPaths(seed);
+      const withoutIdentity = (rows: typeof live.accounts) =>
+        rows.map(({ name: _name, icon: _icon, color: _color, ...rest }) => rest);
 
-      expect(restored.accounts).toEqual(live.accounts);
+      expect(withoutIdentity(restored.accounts)).toEqual(withoutIdentity(live.accounts));
     });
 
     it('ends with the same holdings as the live migration 0050 upgrade', async () => {
@@ -405,6 +407,30 @@ describe('restoring a .kiko file exported before Property and Loans became impli
       const { live, restored } = await bothPaths(seed);
 
       expect(restored.dismissals).toEqual(live.dismissals);
+    });
+  });
+
+  // The ONE place the two paths differ, on purpose: migration 0050 resets the
+  // identity of every live implicit account, but a restore resets it only for a
+  // kept account that absorbed others and keeps what the user chose otherwise.
+  it('ends with exactly the same accounts as the live upgrade when several accounts merged', async () => {
+    const { live, restored } = await bothPaths(seedSeveralAccountsOfEachKind);
+
+    expect(restored.accounts).toEqual(live.accounts);
+  });
+
+  it('keeps the name, icon and color of a lone account that the live upgrade resets to the defaults', async () => {
+    const { live, restored } = await bothPaths(seedOneAccountOfEachKind);
+
+    expect(live.accounts.find((row) => row.id === 'only-property')).toMatchObject({
+      name: 'Properties',
+      icon: null,
+      color: null,
+    });
+    expect(restored.accounts.find((row) => row.id === 'only-property')).toMatchObject({
+      name: 'only-property',
+      icon: 'custom-glyph',
+      color: '#112233',
     });
   });
 

@@ -171,6 +171,27 @@ describe('HoldingCard', () => {
     expect(getByLabelText('Sedan icon').props.name).toBe('car.fill');
   });
 
+  it("shows a loan's kind glyph when it has no icon of its own", async () => {
+    const { getByLabelText } = await renderCard({
+      holding: holding({ name: 'Car loan', type: 'loan', metadata: { kind: 'car_loan' } }),
+    });
+
+    expect(getByLabelText('Car loan icon').props.name).toBe('car.fill');
+  });
+
+  it("shows the user's own icon over a loan's kind glyph", async () => {
+    const { getByLabelText } = await renderCard({
+      holding: holding({
+        name: 'Car loan',
+        type: 'loan',
+        icon: 'star',
+        metadata: { kind: 'car_loan' },
+      }),
+    });
+
+    expect(getByLabelText('Car loan icon').props.name).toBe('star');
+  });
+
   it("shows the user's own icon over the category glyph", async () => {
     const { getByLabelText } = await renderCard({
       holding: holding({

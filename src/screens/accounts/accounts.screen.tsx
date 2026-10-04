@@ -27,6 +27,7 @@ import LoadingState from '@kiko/design-system/components/loading-state';
 import { writeThenReplan } from '@kiko/reminders/use-reminder-scheduler';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
+import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
@@ -210,6 +211,10 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const scrollOffset = useScrollOffset(scrollableRef);
   useScrollToTopOnTabPress(scrollableRef, scrollOffset);
 
+  // One guard for all three grids: a card keeps its own key, so only the card a
+  // hold lifted skips its page when the finger lets go.
+  const { onDragStart, onActiveItemDropped, openUnlessLifted } = useGridLiftGuard();
+
   // One card of the main grid. The implicit property and debt accounts never
   // render here: their holdings are the cards of their own sections below.
   const renderAccountCard = (item: (typeof activeAccounts)[number]) => {
@@ -234,9 +239,9 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
         >
           <Pressable
             accessibilityRole="button"
-            onPress={() =>
-              navigation.navigate('AccountDetail', { accountId: item.id, name: item.name })
-            }
+            onPress={openUnlessLifted(item.id, () =>
+              navigation.navigate('AccountDetail', { accountId: item.id, name: item.name }),
+            )}
             style={styles.row}
           >
             <Box direction="row" gap={3} style={styles.rowLead}>
@@ -265,7 +270,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // a grid with one card per open holding of that implicit account. A drag
   // persists that account's open holdings only (`holdingsRepo.reorder`),
   // the account-detail contract. The grid is gated on the HOLDINGS query's
-  // fresh read, since it persists the holdings on screen.
+  // fresh read, since it persists the holdings on screen. It stays on with a
+  // lone card, which lifts and drops back, so every card lifts on a hold.
   const renderHoldingSection = ({
     account,
     sectionHoldings,
@@ -297,7 +303,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
         <Box testID={gridTestID}>
           <Sortable.Grid
             data={sectionHoldings}
-            sortEnabled={holdingsFresh && sectionHoldings.length > 1}
+            sortEnabled={holdingsFresh}
             activeItemScale={1.03}
             columns={1}
             overDrag="vertical"
@@ -318,12 +324,14 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                   baseCurrency={baseCurrency}
                   rateTable={rateTable}
                   priceBook={priceBook}
-                  onOpen={() =>
-                    navigation.navigate('HoldingDetail', { holdingId: item.id, name: item.name })
-                  }
+                  onOpen={openUnlessLifted(item.id, () =>
+                    navigation.navigate('HoldingDetail', { holdingId: item.id, name: item.name }),
+                  )}
                 />
               </CardContextMenu>
             )}
+            onDragStart={onDragStart}
+            onActiveItemDropped={onActiveItemDropped}
             onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
               onGridDragEnd({ fromIndex, toIndex, indexToKey }, holdingsRepo.reorder)
             }
@@ -386,8 +394,9 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                   // A drag persists the WHOLE account order from the rows on screen, so it
                   // never starts from the cached (possibly one-read-old) order — only
                   // once the accounts query's own fresh read has applied
-                  // (kiko-architecture).
-                  sortEnabled={accountsFresh && mainAccounts.length > 1}
+                  // (kiko-architecture). A lone card stays enabled: it lifts on a hold and
+                  // drops back.
+                  sortEnabled={accountsFresh}
                   // A subtle lift on touch-and-hold: the library default (1.1) pops the
                   // card up too much, so scale it just barely (see the account-detail
                   // grid, which uses the same value).
@@ -402,6 +411,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                   autoScrollActivationOffset={75}
                   keyExtractor={(account) => account.id}
                   renderItem={({ item }) => renderAccountCard(item)}
+                  onDragStart={onDragStart}
+                  onActiveItemDropped={onActiveItemDropped}
                   onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
                     onGridDragEnd({ fromIndex, toIndex, indexToKey }, (ids) =>
                       accountsRepo.reorder([

@@ -1319,7 +1319,7 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('bar-chart-bar-card')).toBeTruthy();
     expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
 
-    await pressFilter(getByTestId, ACCOUNT_FILTER, 'Cash');
+    await pressFilter(getByTestId, ACCOUNT_FILTER, CASH.id);
 
     expect(getByTestId('bar-chart-bar-cash')).toBeTruthy();
     expect(queryByTestId('bar-chart-bar-card')).toBeNull();
@@ -1327,9 +1327,192 @@ describe('StatisticsScreen', () => {
     expect(queryByTestId('pie-chart-arc-b')).toBeNull();
   });
 
+  // The filter keys on the account id, never the name: two accounts may share a
+  // name (a renamed implicit account, two banks), and a name may be "All".
+  describe('the account filter keys on the account id', () => {
+    const SAME_NAME_A: Account = { ...CASH, name: 'Loans' };
+    const SAME_NAME_B: Account = { ...BANK, name: 'Loans' };
+    const seedSameName = (): void =>
+      setLiveData({
+        accounts: [SAME_NAME_A, SAME_NAME_B],
+        holdings: [UAH_HOLDING, USD_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: TRANSACTIONS,
+        history: HISTORY,
+      });
+
+    it('lists two accounts with the same name as two separate options', async () => {
+      seedSameName();
+      const { getByTestId } = await renderScreen();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(ACCOUNT_FILTER));
+      });
+
+      expect(getByTestId(`${ACCOUNT_FILTER}-option-a`)).toBeTruthy();
+      expect(getByTestId(`${ACCOUNT_FILTER}-option-b`)).toBeTruthy();
+    });
+
+    it('selecting one of two same-named accounts narrows the charts to it and checks only its option', async () => {
+      seedSameName();
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(ACCOUNT_FILTER));
+      });
+      await act(async () => {
+        await fireEvent.press(getByTestId(`${ACCOUNT_FILTER}-option-b`));
+      });
+
+      expect(getByTestId(`${ACCOUNT_FILTER}-option-b`).props.accessibilityState?.checked).toBe(
+        true,
+      );
+      expect(getByTestId(`${ACCOUNT_FILTER}-option-a`).props.accessibilityState?.checked).toBe(
+        false,
+      );
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(`${ACCOUNT_FILTER}-backdrop`));
+      });
+
+      expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
+      expect(queryByTestId('pie-chart-arc-a')).toBeNull();
+    });
+
+    it('keeps a selection when its account is renamed', async () => {
+      const { getByTestId, queryByTestId, rerender } = await renderScreen();
+
+      await pressFilter(getByTestId, ACCOUNT_FILTER, BANK.id);
+      setLiveData({
+        accounts: [CASH, { ...BANK, name: 'Family assets' }],
+        holdings: [UAH_HOLDING, USD_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: TRANSACTIONS,
+        history: HISTORY,
+      });
+      await act(async () => {
+        await rerender(<StatisticsScreen />);
+      });
+
+      expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
+      expect(queryByTestId('pie-chart-arc-a')).toBeNull();
+    });
+
+    // A selected account that is archived or deleted leaves no checked row to
+    // clear, so its stale id must neither filter nor count.
+    describe('a selected account that is no longer among the options', () => {
+      const SAVINGS: Account = { id: 'c', name: 'Savings', kind: 'cash', color: null };
+      const SAVINGS_HOLDING: Holding = { ...UAH_HOLDING, id: 'h-savings', accountId: 'c' };
+      const archiveCash = async (
+        rerender: Awaited<ReturnType<typeof render>>['rerender'],
+        otherAccounts: Account[] = [BANK],
+        otherHoldings: Holding[] = [USD_HOLDING],
+      ): Promise<void> => {
+        setLiveData({
+          accounts: [{ ...CASH, archivedAt: 123 }, ...otherAccounts],
+          holdings: [UAH_HOLDING, ...otherHoldings],
+          rates: [USD_UAH_RATE],
+          transactions: TRANSACTIONS,
+          history: HISTORY,
+        });
+        await act(async () => {
+          rerender(<StatisticsScreen />);
+        });
+      };
+
+      it('filters nothing and shows no count once the only selected account is archived', async () => {
+        const { getByTestId, getByText, queryByText, queryByTestId, rerender } =
+          await renderScreen();
+
+        await pressFilter(getByTestId, ACCOUNT_FILTER, CASH.id);
+        expect(queryByTestId('pie-chart-arc-b')).toBeNull();
+        expect(getByText('Accounts · 1')).toBeTruthy();
+
+        await archiveCash(rerender);
+
+        expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
+        expect(getByTestId('bar-chart-bar-card')).toBeTruthy();
+        expect(getByText('Accounts')).toBeTruthy();
+        expect(queryByText(/^Accounts · /)).toBeNull();
+      });
+
+      // Deleting is the in-app path to this state: nothing in the app archives.
+      it('filters nothing and shows no count once the only selected account is deleted', async () => {
+        const { getByTestId, getByText, queryByText, queryByTestId, rerender } =
+          await renderScreen();
+
+        await pressFilter(getByTestId, ACCOUNT_FILTER, CASH.id);
+        expect(queryByTestId('pie-chart-arc-b')).toBeNull();
+        expect(getByText('Accounts · 1')).toBeTruthy();
+
+        setLiveData({
+          accounts: [BANK],
+          holdings: [USD_HOLDING],
+          rates: [USD_UAH_RATE],
+          transactions: TRANSACTIONS.filter((row) => row.holdingId !== UAH_HOLDING.id),
+          history: HISTORY,
+        });
+        await act(async () => {
+          rerender(<StatisticsScreen />);
+        });
+
+        expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
+        expect(getByText('Accounts')).toBeTruthy();
+        expect(queryByText(/^Accounts · /)).toBeNull();
+      });
+
+      it('keeps filtering by a second selected account that is still among the options', async () => {
+        setLiveData({
+          accounts: [CASH, BANK, SAVINGS],
+          holdings: [UAH_HOLDING, USD_HOLDING, SAVINGS_HOLDING],
+          rates: [USD_UAH_RATE],
+          transactions: TRANSACTIONS,
+          history: HISTORY,
+        });
+        const { getByTestId, getByText, queryByTestId, rerender } = await renderScreen();
+
+        await act(async () => {
+          await fireEvent.press(getByTestId(ACCOUNT_FILTER));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId(`${ACCOUNT_FILTER}-option-a`));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId(`${ACCOUNT_FILTER}-option-b`));
+        });
+        await act(async () => {
+          await fireEvent.press(getByTestId(`${ACCOUNT_FILTER}-backdrop`));
+        });
+        expect(getByText('Accounts · 2')).toBeTruthy();
+
+        await archiveCash(rerender, [BANK, SAVINGS], [USD_HOLDING, SAVINGS_HOLDING]);
+
+        expect(getByText('Accounts · 1')).toBeTruthy();
+        expect(getByTestId('pie-chart-arc-b')).toBeTruthy();
+        expect(queryByTestId('pie-chart-arc-c')).toBeNull();
+      });
+    });
+
+    it('filters an account named "All" as one account, not as the clear-all option', async () => {
+      setLiveData({
+        accounts: [{ ...CASH, name: FILTER_ALL }, BANK],
+        holdings: [UAH_HOLDING, USD_HOLDING],
+        rates: [USD_UAH_RATE],
+        transactions: TRANSACTIONS,
+        history: HISTORY,
+      });
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      await pressFilter(getByTestId, ACCOUNT_FILTER, CASH.id);
+
+      expect(getByTestId('pie-chart-arc-a')).toBeTruthy();
+      expect(queryByTestId('pie-chart-arc-b')).toBeNull();
+    });
+  });
+
   // An implicit account is stored under an English sentinel: its filter option
   // and the contribution chart SHOW its localized kind, while the filter keys on
-  // the stored name, which does not change with the language.
+  // the account id, which does not change with the language.
   describe('an implicit account under Ukrainian', () => {
     const PROPERTIES: Account = {
       id: 'p',
@@ -1373,7 +1556,7 @@ describe('StatisticsScreen', () => {
       });
     });
 
-    it('lists each implicit account in the account filter under its localized name, keyed on the stored one', async () => {
+    it('lists each implicit account in the account filter under its localized name, keyed on its id', async () => {
       const { getByTestId } = await renderScreen();
 
       await act(async () => {
@@ -1381,10 +1564,10 @@ describe('StatisticsScreen', () => {
       });
 
       expect(
-        within(getByTestId(`${ACCOUNT_FILTER}-option-Properties`)).getByText('Майно'),
+        within(getByTestId(`${ACCOUNT_FILTER}-option-${PROPERTIES.id}`)).getByText('Майно'),
       ).toBeTruthy();
       expect(
-        within(getByTestId(`${ACCOUNT_FILTER}-option-Loans`)).getByText('Кредити'),
+        within(getByTestId(`${ACCOUNT_FILTER}-option-${LOANS.id}`)).getByText('Кредити'),
       ).toBeTruthy();
     });
 
@@ -1396,7 +1579,7 @@ describe('StatisticsScreen', () => {
       });
       await act(async () => {
         await fireEvent.press(
-          within(getByTestId(`${ACCOUNT_FILTER}-option-Properties`)).getByText('Майно'),
+          within(getByTestId(`${ACCOUNT_FILTER}-option-${PROPERTIES.id}`)).getByText('Майно'),
         );
       });
       await act(async () => {
@@ -1411,7 +1594,7 @@ describe('StatisticsScreen', () => {
       await i18n.changeLanguage('en');
       const { getByTestId, queryByTestId } = await renderScreen();
 
-      await pressFilter(getByTestId, ACCOUNT_FILTER, 'Properties');
+      await pressFilter(getByTestId, ACCOUNT_FILTER, PROPERTIES.id);
       await act(async () => {
         await i18n.changeLanguage('uk');
       });
@@ -1444,8 +1627,11 @@ describe('StatisticsScreen', () => {
       await fireEvent.press(getByTestId(ACCOUNT_FILTER));
     });
 
-    const kindGlyph = optionGlyph(getByTestId(`${ACCOUNT_FILTER}-option-Cash`), 'banknote');
-    const storedGlyph = optionGlyph(getByTestId(`${ACCOUNT_FILTER}-option-Bank`), 'creditcard');
+    const kindGlyph = optionGlyph(getByTestId(`${ACCOUNT_FILTER}-option-${CASH.id}`), 'banknote');
+    const storedGlyph = optionGlyph(
+      getByTestId(`${ACCOUNT_FILTER}-option-${BANK.id}`),
+      'creditcard',
+    );
 
     expect(kindGlyph?.props.tintColor).toBe(darkTheme.colors.entityColors.khaki);
     expect(storedGlyph?.props.tintColor).toBe(darkTheme.colors.entityColors.violet);
@@ -1744,7 +1930,7 @@ describe('StatisticsScreen', () => {
 
     const { getByTestId, getByText, queryByTestId } = await renderScreen();
 
-    await pressFilter(getByTestId, ACCOUNT_FILTER, 'Cash');
+    await pressFilter(getByTestId, ACCOUNT_FILTER, CASH.id);
 
     expect(queryByTestId('category-pie-arc-transfers')).toBeNull();
     expect(getByText('400.00 ₴')).toBeTruthy();

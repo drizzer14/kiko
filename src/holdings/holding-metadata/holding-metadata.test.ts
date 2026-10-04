@@ -6,6 +6,7 @@ import {
   asTermDepositMeta,
   binanceHistoryCursorOf,
   loanKinds,
+  loanKindOf,
   loanSchedules,
   metalForms,
   metalUnits,
@@ -466,6 +467,23 @@ describe('propertyCategoryOf', () => {
   it('falls back to other for a non-record metadata value', () => {
     expect(propertyCategoryOf(null)).toBe('other');
     expect(propertyCategoryOf(undefined)).toBe('other');
+  });
+});
+
+describe('loanKindOf', () => {
+  it('reads a valid kind off the metadata, whatever else the blob holds', () => {
+    expect(loanKindOf({ kind: 'car_loan' })).toBe('car_loan');
+    expect(loanKindOf({ kind: 'personal', principalMinorUnits: 'garbled' })).toBe('personal');
+  });
+
+  it('has no kind for an unrecognized or missing one', () => {
+    expect(loanKindOf({ kind: 'nonsense' })).toBeUndefined();
+    expect(loanKindOf({ principalMinorUnits: 1 })).toBeUndefined();
+  });
+
+  it('has no kind for a non-record metadata value', () => {
+    expect(loanKindOf(null)).toBeUndefined();
+    expect(loanKindOf('garbled')).toBeUndefined();
   });
 });
 

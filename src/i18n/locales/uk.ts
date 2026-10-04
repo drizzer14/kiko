@@ -316,9 +316,6 @@ export const uk: typeof en = {
         mortgage: 'Іпотека',
         personal: 'Позика в особи',
       },
-      loanKindLabel: 'Вид кредиту',
-      loanKindPlaceholder: 'Оберіть вид кредиту',
-      loanKindSheetTitle: 'Вид кредиту',
       loanLenderIban: 'IBAN кредитора',
       loanLenderIbanPlaceholder: 'UA123456789012345678901234567',
       loanLenderName: 'Кредитор',
@@ -647,6 +644,7 @@ export const uk: typeof en = {
     ofWhole: 'з {{whole}}',
   },
   holdingDetail: {
+    accountLabel: 'Рахунок: {{name}}',
     addLot: 'Додати лот',
     addTransaction: 'Додати транзакцію',
     capitalization: 'Капіталізація',

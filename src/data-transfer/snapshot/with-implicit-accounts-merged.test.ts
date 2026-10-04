@@ -1,9 +1,10 @@
 // src/data-transfer/snapshot/with-implicit-accounts-merged.test.ts
 //
-// The pure mirror of migration 0050 on plain row arrays. The migration's own
-// test (`drizzle/migrations/0050-implicit-property-debt-accounts.test.ts`)
+// The pure mirror of migration 0050's merge on plain row arrays. The migration's
+// own test (`drizzle/migrations/0050-implicit-property-debt-accounts.test.ts`)
 // holds the same data cases against the real SQL; the two-path test next to
-// this file proves both agree on one database.
+// this file proves both agree on one database, except that a restore keeps the
+// identity a user gave a lone implicit account (the migration resets it).
 import maybe, { foldMap } from 'fnts/maybe';
 import type { AccountRow, ReminderRow } from '@kiko/db';
 import { IMPLICIT_ACCOUNT_STORED_NAME } from '@kiko/holdings/implicit-account';
@@ -231,23 +232,11 @@ describe('withImplicitAccountsMerged', () => {
     expect(result.syncState).toBe(rows.syncState);
   });
 
-  it('returns every array as given when each live implicit account already carries the sentinel name and no icon or color', () => {
+  it('returns every array as given when no kind has more than one live account, whatever name, icon and color the user gave them', () => {
     const rows = rowsOf({
       accounts: [
-        account({
-          id: 'only-property',
-          kind: 'property',
-          name: IMPLICIT_ACCOUNT_STORED_NAME.property,
-          icon: null,
-          color: null,
-        }),
-        account({
-          id: 'only-debt',
-          kind: 'debt',
-          name: IMPLICIT_ACCOUNT_STORED_NAME.debt,
-          icon: null,
-          color: null,
-        }),
+        account({ id: 'only-property', kind: 'property', name: 'My flat' }),
+        account({ id: 'only-debt', kind: 'debt', name: 'Mortgage' }),
         account({ id: 'archived-debt', kind: 'debt', archivedAt: 5 }),
       ],
       holdings: [holding({ id: 'flat', accountId: 'only-property', sortOrder: 4 })],
@@ -263,7 +252,7 @@ describe('withImplicitAccountsMerged', () => {
     expect(result.syncState).toBe(rows.syncState);
   });
 
-  it('leaves the holdings, reminders and dismissals of a lone account of each kind in place, and gives it the sentinel name with no icon or color', () => {
+  it('leaves a lone account of each kind exactly as it is: holdings, reminders, dismissals, and the name, icon and color the user chose', () => {
     const rows = rowsOf({
       accounts: [
         account({ id: 'only-property', kind: 'property', name: 'My flat' }),
@@ -289,15 +278,29 @@ describe('withImplicitAccountsMerged', () => {
     expect(result.holdings).toBe(rows.holdings);
     expect(result.reminders).toBe(rows.reminders);
     expect(result.settings).toBe(rows.settings);
+    expect(result.accounts).toBe(rows.accounts);
     expect(result.accounts).toEqual([
-      {
-        ...rows.accounts[0],
-        name: IMPLICIT_ACCOUNT_STORED_NAME.property,
-        icon: null,
-        color: null,
-      },
-      { ...rows.accounts[1], name: IMPLICIT_ACCOUNT_STORED_NAME.debt, icon: null, color: null },
+      expect.objectContaining({ name: 'My flat', icon: 'custom-glyph', color: '#112233' }),
+      expect.objectContaining({ name: 'Mortgage', icon: 'custom-glyph', color: '#112233' }),
     ]);
+  });
+
+  it('keeps a user-given name of the kind that does NOT merge while the other kind merges', () => {
+    const rows = rowsOf({
+      accounts: [
+        account({ id: 'only-debt', kind: 'debt', name: 'Mortgage' }),
+        account({ id: 'property-old', kind: 'property', createdAt: 1 }),
+        account({ id: 'property-new', kind: 'property', createdAt: 2 }),
+      ],
+    });
+    const result = withImplicitAccountsMerged(rows);
+
+    expect(result.accounts.find((row) => row.id === 'only-debt')).toBe(rows.accounts[0]);
+    expect(result.accounts.find((row) => row.id === 'property-old')).toMatchObject({
+      name: IMPLICIT_ACCOUNT_STORED_NAME.property,
+      icon: null,
+      color: null,
+    });
   });
 
   describe('merging several live accounts of one kind into the oldest', () => {
@@ -596,11 +599,7 @@ describe('withImplicitAccountsMerged', () => {
       const result = withImplicitAccountsMerged(rows);
 
       expect(accountIdsOf(result)).toEqual(['archived-debt', 'live-debt']);
-      expect(result.accounts.find((row) => row.id === 'live-debt')).toMatchObject({
-        name: 'Loans',
-        icon: null,
-        color: null,
-      });
+      expect(result.accounts.find((row) => row.id === 'live-debt')).toBe(rows.accounts[1]);
       expect(result.accounts.find((row) => row.id === 'archived-debt')).toBe(rows.accounts[0]);
     });
   });

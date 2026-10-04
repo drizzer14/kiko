@@ -274,6 +274,15 @@ The established patterns grouped under this heading:
   `categoryOptions` and its twin, `trend-filter-field.component.tsx`'s
   `manualRows`, which has no display data for a hidden key and falls
   back to the bare slug as its label).
+- A filter prunes a selected value only when it NO LONGER EXISTS. An
+  account archived or deleted while selected leaves no checked row to
+  clear it (an archived account leaves every total), so the Home and
+  Statistics account filters pass the stored Set through
+  `visibleSelection` (`src/design-system/visible-selection`) and filter,
+  count ("Label · N") and render checked rows from the result; an empty
+  result is "All". The stored Set is derived from, never rewritten. A
+  value that only fell out of scope (a category outside the date range)
+  is still unioned back, never pruned (the rule above).
 - **SettingsRow** (`src/screens/settings/settings-row/`): `onPress`
   makes the row a `Pressable` (with a chevron). `trailing` pins an
   inline control to the label's line. The two can be combined
@@ -332,7 +341,7 @@ The established patterns grouped under this heading:
   native-stack 7.18.9 sends it with no index, so react-native-screens
   inserts it at the trailing edge. A native item takes no `testID`; a
   test reads the item list from `setOptions` and calls its `onPress`.
-  Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (Edit).
+  Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (for a holding of the Property or Loans account, that account's own glyph from `accountKindSymbol`, which opens `AccountForm` for edit, then Edit; any other holding shows Edit only).
   The pre-write guard enforces both bans: Semgrep
   `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
   other than `undefined` (a `StyleSheet.create` style and a destructuring
@@ -920,7 +929,8 @@ new component can land between reviews of this skill:
   `property` account's Type-as-category field (`PropertyTypeField`,
   replacing the generic holding-type picker for that one account
   kind — see `kiko-domain`'s "`property_item`/`metal` create-form
-  sections"), `LoanSection`'s kind field (6 and
+  sections"), the `debt` account's Type-as-loan-kind field
+  (`LoanKindField`, with one `loanKindSymbol` glyph per kind; 6 and
   4 long option names, too wide for a `ChipRow`), the Bond form's
   coupon-frequency picker (shared by both `BondIsinSection`'s ISIN-mode
   unmapped-frequency picker and `ManualBondFields`'s own frequency
@@ -930,7 +940,28 @@ new component can land between reviews of this skill:
   for it directly. `SelectField`'s optional `onSelectClosed(option)` runs
   once after the sheet a pick closed has finished closing (the
   `onClosed` contract above): wire a screen navigation to it, never to
-  `onSelect` (`AccountKindField` forwards it). `AccountKindField` and
+  `onSelect` (`AccountKindField` forwards it). `SelectField`'s optional
+  `closesWithoutAnimation(option)` names the picks whose sheet closes with
+  `BottomSheet`'s `animationType="none"` (`'fade' | 'slide' | 'none'`,
+  default `'fade'`), so `onSelectClosed` follows the pick at once instead of
+  after the cross-dissolve (its length is inferred, unmeasured): only for a
+  pick that LEAVES the screen, where the fade is just a wait (the account
+  form's Property and Debt, and the holding form's Bank, Cash, Crypto,
+  Metals and Broker; the holding form's other implicit kind stays in that
+  form and keeps the fade). It is opt-in per call site; every other pick and
+  every other sheet keeps the fade. It works because RN's iOS Modal host
+  re-reads `animationType` on every props commit and uses it for the dismiss
+  (`RCTModalHostViewComponentView.mm` `updateProps` sets
+  `_shouldAnimatePresentation`, then `ensurePresentedOnlyIfNeeded` dismisses
+  with it), so `SelectField` sets `'none'` in the SAME render that hides the
+  sheet and clears it on the next open (`AccountKindField` forwards the prop,
+  the owning screen decides which kinds). Jest renders a hidden Modal as
+  nothing; assert the close animation with `spyOnModalAnimation(testID)`
+  (`src/test-support/modal-animation-spy.ts`), which reads the TRANSITION
+  render (the first render of the latest run in that state), never the last
+  render or the mount render. It assumes one mounted Modal per testID; restore
+  it in afterEach. Read a row's SF Symbols in a test with `glyphNamesWithin`
+  (`src/test-support/glyph-names-within.ts`). `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`

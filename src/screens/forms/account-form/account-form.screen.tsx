@@ -1,3 +1,8 @@
+import {
+  accountDisplayName,
+  implicitAccountStoredName,
+  isImplicitAccountKind,
+} from '@kiko/holdings/implicit-account';
 import type { TFunction } from 'i18next';
 import { Money } from '@kiko/currency/money';
 import {
@@ -31,7 +36,6 @@ import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
-import { isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
@@ -172,6 +176,23 @@ const INITIAL_VALUE_ERROR_KEY = {
   negative: 'forms.account.initialValueNegativeError',
 } as const;
 
+// The glyph an unset icon shows: an implicit account's own kind glyph (its
+// stored icon is NULL until the user picks one, and the lists show the kind's
+// glyph for it), else the neutral placeholder.
+const fallbackIconFor = (kind: Kind): string =>
+  isImplicitAccountKind(kind) ? accountKindSymbol[kind] : FALLBACK_ICON;
+
+// The name an edit writes: an implicit account whose name is still its default
+// stays the sentinel (see `implicitAccountStoredName`), any other is as typed.
+const storedName = (kind: Kind, trimmedName: string, t: TFunction): string =>
+  isImplicitAccountKind(kind) ? implicitAccountStoredName(kind, trimmedName, t) : trimmedName;
+
+// What the kind field shows: the Property or Loan just picked, else the form's
+// own kind. At module scope to keep this branch out of AccountFormScreen's own
+// cognitive complexity score, which already sits at Biome's cap.
+const shownKind = (kind: Kind, pickedImplicitKind: Kind | undefined): Kind =>
+  pickedImplicitKind ?? kind;
+
 const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) => {
   // An `accountId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing account, saving through the update path
@@ -185,6 +206,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   const [name, setName] = useState(seed.name);
   const [kind, setKind] = useState<Kind>(seed.kind);
+  // The Property or Loan the user just picked, shown on the kind field until
+  // the swap replaces this screen (see `handleSelectKind`).
+  const [pickedImplicitKind, setPickedImplicitKind] = useState<Kind | undefined>(undefined);
   const [currency, setCurrency] = useState<Currency>('UAH');
   const [initialValue, setInitialValue] = useState('');
   // A create form seeds the icon with the initially-selected kind's default
@@ -442,7 +466,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       return;
     }
     hydrated.current = true;
-    setName(editingAccount.name);
+    setName(accountDisplayName(editingAccount, t));
     setKind(isSupportedKind(editingAccount.kind) ? editingAccount.kind : INITIAL_KIND);
     setIcon(editingAccount.icon);
     setColor(editingAccount.color);
@@ -453,7 +477,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // entry, mirroring `isSupportedKind` above.
     setBankId(isBankId(editingAccount.bankId) ? editingAccount.bankId : null);
     setBrokerId(isBrokerId(editingAccount.bankId) ? editingAccount.bankId : null);
-  }, [isEdit, editingAccount]);
+  }, [isEdit, editingAccount, t]);
 
   // The stack sets the static "Add Account" title; in edit mode override it with
   // "Edit Account" so the header reads correctly for the update flow.
@@ -523,7 +547,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         // live-connected account's sync stays untouched no matter what bank
         // identity is picked here.
         await accountsRepo.update(editId, {
-          name: trimmedName,
+          name: storedName(kind, trimmedName, t),
           color,
           bankId: savedCatalogId(catalogId, storedCatalogId),
         });
@@ -586,8 +610,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // in create mode — the kind chip is disabled in edit mode below.
   const handleSelectKind = (nextKind: Kind): void => {
     // Property and Loan leave this form (see `swapToHoldingForm`), so there is
-    // no kind to switch to here.
+    // no kind to switch to here. Only the kind field shows the pick, at once:
+    // the sheet is still closing, and left on the old kind the form looks
+    // frozen. `kind` itself stays, so the fields, icon and color the swap is
+    // about to remove do not jump away first.
     if (isImplicitAccountKind(nextKind)) {
+      setPickedImplicitKind(nextKind);
+
       return;
     }
 
@@ -645,7 +674,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           <HoldingIdentityField
             icons={KIKO_ENTITIES_ICONS}
             icon={icon}
-            fallbackIcon={FALLBACK_ICON}
+            fallbackIcon={fallbackIconFor(kind)}
             iconColor={effectiveColor}
             name={name}
             onChangeName={setName}
@@ -670,9 +699,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             inserted the row): switching kind afterwards would make Save create a
             SECOND account and orphan the started row. */}
         <AccountKindField
-          selected={kind}
+          selected={shownKind(kind, pickedImplicitKind)}
           onSelect={handleSelectKind}
           onSelectClosed={swapToHoldingForm}
+          closesWithoutAnimation={isImplicitAccountKind}
           disabled={isEdit || accountRowStarted}
         />
 

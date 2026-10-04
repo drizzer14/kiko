@@ -84,9 +84,9 @@ const nextSortOrder = async (
   return candidate;
 };
 
-// The stored name is the fixed English sentinel; the display name comes from
-// i18n by kind (`accountDisplayName`). No icon or color, so the kind defaults
-// show (kiko-domain "The three levels").
+// The stored name is the fixed English sentinel until the user renames the
+// account; `accountDisplayName` shows the localized kind name for it. No icon
+// or color, so the kind defaults show (kiko-domain "The three levels").
 const insertImplicitAccount = async (
   databaseTransaction: typeof database,
   kind: ImplicitAccountKind,

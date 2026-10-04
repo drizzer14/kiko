@@ -118,14 +118,22 @@ implemented, and callers must skip it rather than assume every id resolves.
   `accounts_implicit_kind` (migration `0050`, declared in `src/db/schema.ts`).
   The unit is `src/holdings/implicit-account/`: `isImplicitAccountKind`,
   `isImplicitAccount` (kind + live), and `accountDisplayName(account, t)`.
-  **A screen shows an implicit account's name through `accountDisplayName`
-  (i18n `accounts.implicitName.{property,debt}` by kind), never through the
-  stored `name`**: the stored `name` is only the fixed English sentinel
-  `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`), written by `0050`
-  and by every implicit create, and no code reads it back to detect an
-  implicit account (the kind decides). Their `icon` and `color` are NULL so
-  the kind defaults show. An ARCHIVED property/debt account is a plain account
-  outside the index, the merge, and `accountDisplayName`. **Create a property
+  **A screen shows an implicit account's name through `accountDisplayName`,
+  never through the raw stored `name`**: the stored `name` is the fixed English
+  sentinel `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`) while the
+  account is unrenamed (written by `0050` and by every implicit create), and
+  `accountDisplayName` then shows the localized
+  `accounts.implicitName.{property,debt}`; once the user renames the account
+  (the account icon in a Property/Loan holding's header opens `AccountForm`
+  for edit) the typed name is stored and shown as it is. The account form
+  stores the sentinel back when the name is the localized default left
+  unchanged (`implicitAccountStoredName`). The kind decides whether an account
+  is implicit, never its name. A new account's `icon` and `color` are NULL so
+  the kind defaults show; the user can set both. An ARCHIVED property/debt
+  account is a plain account outside the index, the merge, and
+  `accountDisplayName`. A `.kiko` restore keeps a lone implicit account's
+  name, icon and color and resets them to the defaults only on the kept
+  account of a merge of 2+ (see kiko-architecture). **Create a property
   or loan holding only through `accountsRepo.createImplicitHolding(kind, input)`**:
   one `write()` that finds the live account of the kind (a SQL lookup with
   `LIMIT 1`), inserts it when none exists (sentinel name, NULL icon/color,
@@ -369,7 +377,7 @@ summary here.
 property or loan is never created as an account. In the account form's
 CREATE mode, picking Property or Debt calls
 `navigation.replace('HoldingForm', { implicitKind, draft })`
-(`swapToHoldingForm`, run from `AccountKindField`'s `onSelectClosed` after the sheet has closed; `handleSelectKind` returns early for implicit kinds; `account-form.screen.tsx`), where `draft` is the
+(`swapToHoldingForm`, run from `AccountKindField`'s `onSelectClosed` after the sheet has closed; `handleSelectKind` does not switch `kind` for an implicit kind, it only stores `pickedImplicitKind` so the kind field shows the pick in the tap's own frame while the fields, icon and color stay put; the form passes `closesWithoutAnimation={isImplicitAccountKind}`, so that sheet closes with no fade and `onSelectClosed` (hence the `replace`) follows at once, while every other kind keeps the fade; `account-form.screen.tsx`), where `draft` is the
 `FormDraft` (`{ name, icon, color }`, `src/navigation/types/`) typed so
 far: `icon` is the user's own pick only (the form's `iconIsDirty` flag,
 reset by every kind switch), null otherwise, so the holding form keeps
@@ -399,7 +407,12 @@ Metals, or Broker there calls `navigation.replace('AccountForm', {
 initialKind, draft })`, which seeds the account form once (a carried icon
 counts as a pick); picking the other implicit kind calls
 `navigation.setParams({ implicitKind })`, and the type effect re-snaps
-the form in place. Both `replace` calls run from the field's
+the form in place. A pick that leaves for the account form is shown on the
+kind field in the tap's own frame (`leavingKind` state, the same
+picked-kind pattern as the account form's `pickedImplicitKind`) and its
+sheet closes with no fade (`closesWithoutAnimation={isLeavingKind}`, so
+`onSelectClosed` and the `replace` follow at once); the other implicit kind
+keeps the fade. Both `replace` calls run from the field's
 `onSelectClosed` (`SelectField`'s optional prop: runs once, with the
 pick, after the sheet has FINISHED closing, via `BottomSheet`'s
 `onClosed`), never on the pick itself: replacing mid-close would unmount
@@ -613,7 +626,11 @@ garbled metadata still gets the Other glyph), else `holdingTypeSymbol`
 (the holding card, the holding-detail header, the holding- and
 transaction-form holding pickers, the statement-import target options).
 The holding form's untouched icon chip follows the picked category live,
-and `PropertyTypeField` shows the same glyphs on its rows. The only
+and `PropertyTypeField` shows the same glyphs on its rows. A `loan` follows
+its KIND the same way (`loanKindSymbol`: mortgage `house.circle.fill`, car
+loan `car.fill`, consumer loan `cart.fill`, personal `person.fill` — the
+mortgage is not `house.fill`, the Properties account's glyph), falling back
+to `holdingTypeSymbol.loan` when the kind is missing or invalid. The only
 remaining `holdingTypeSymbol[...]` reader is `defaultHoldingSymbol`
 itself; the generic `HoldingTypeField` takes the whole record as its
 `icons`. A past
@@ -1932,8 +1949,28 @@ kind and its sole `loan` type. Glyphs differ: the `debt` kind keeps
 needs a 0032-style migration), while the `loan` type is
 `arrow.down.backward.circle.fill` (iOS 14), the mirror of a loan given's
 `arrow.up.forward.circle.fill` — a saved loan holding stores a null icon,
-so the new glyph needs no migration. There is no "Add loan" footer
+so the new glyph needs no migration. That type glyph is now only the
+fallback for a loan with no valid kind: a loan's default glyph follows its
+kind (below). There is no "Add loan" footer
 button any more (kiko-design-system's footer mapping).
+
+A `debt` account's Type field IS its loan-kind picker (`LoanKindField`,
+`src/screens/forms/holding-form/loan/loan-kind-field/`, testID
+`loan-kind-field`): `loan` is that account kind's only holding type, so
+`HoldingFormScreen`'s `typeSlotFor` renders this `SelectField` wrapper —
+over `loanKinds` in the fixed order Mortgage/Car loan/Consumer loan/From a
+person, one SF Symbol per kind (`loanKindSymbol`, `entity-symbols.ts`) — in
+the generic `HoldingTypeField`'s slot. The stored holding type stays `loan`;
+the pick writes `LoanMeta.kind` (`useLoanFields`' `kind`/`setKind`), and
+`LoanSection` carries no kind field. Same "Type" label/sheet-title/placeholder
+keys as the property field; editable in create and edit mode, never
+disabled. A loan card's default glyph
+follows its kind: `defaultHoldingSymbol` reads it leniently (`loanKindOf`),
+and a loan with a missing/invalid kind shows the loan type's own glyph
+(`holdingTypeSymbol.loan`); the form's untouched icon chip follows the
+picked kind until the user picks an icon. A stored icon is never changed: a
+loan saved with a NULL icon (what an untouched create writes) now follows its
+kind on every card, a loan with a stored icon keeps it.
 
 `LoanMeta` (`src/holdings/holding-metadata/holding-metadata.ts`):
 `kind` (`'mortgage' | 'car_loan' | 'consumer_loan' | 'personal'` —

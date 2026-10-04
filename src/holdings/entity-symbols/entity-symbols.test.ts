@@ -1,10 +1,11 @@
 import type { AccountRow } from '@kiko/db';
 
-import { propertyCategories } from '../holding-metadata';
+import { loanKinds, propertyCategories } from '../holding-metadata';
 import { type HoldingType, holdingTypes, holdingTypesForAccountKind } from '../holding-type';
 
 import {
   accountKindSymbol,
+  loanKindSymbol,
   holdingTypeSymbol,
   genericEntitySymbol,
   defaultHoldingSymbol,
@@ -86,7 +87,33 @@ describe('propertyCategorySymbol', () => {
   });
 });
 
+describe('loanKindSymbol', () => {
+  it('assigns mortgage house.circle.fill, car_loan car.fill, consumer_loan cart.fill, personal person.fill', () => {
+    expect(loanKindSymbol).toEqual({
+      mortgage: 'house.circle.fill',
+      car_loan: 'car.fill',
+      consumer_loan: 'cart.fill',
+      personal: 'person.fill',
+    });
+  });
+
+  it("keeps the mortgage off the Properties account's own house.fill glyph", () => {
+    expect(loanKindSymbol.mortgage).not.toBe(accountKindSymbol.property);
+  });
+});
+
 describe('defaultHoldingSymbol', () => {
+  it.each(loanKinds)("gives a loan its kind's glyph (%s)", (kind) => {
+    expect(defaultHoldingSymbol({ type: 'loan', metadata: { kind } })).toBe(loanKindSymbol[kind]);
+  });
+
+  it("gives a loan with a missing or invalid kind the loan type's glyph", () => {
+    expect(defaultHoldingSymbol({ type: 'loan', metadata: { kind: 'nonsense' } })).toBe(
+      holdingTypeSymbol.loan,
+    );
+    expect(defaultHoldingSymbol({ type: 'loan', metadata: null })).toBe(holdingTypeSymbol.loan);
+  });
+
   it("gives a property_item its category's glyph", () => {
     expect(
       defaultHoldingSymbol({ type: 'property_item', metadata: { category: 'vehicle', lots: [] } }),

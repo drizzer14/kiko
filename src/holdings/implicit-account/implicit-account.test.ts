@@ -5,6 +5,7 @@ import {
   accountDisplayName,
   IMPLICIT_ACCOUNT_STORED_NAME,
   type ImplicitAccountKind,
+  implicitAccountStoredName,
   isImplicitAccount,
   isImplicitAccountKind,
 } from '.';
@@ -72,16 +73,48 @@ describe('accountDisplayName', () => {
     await i18n.changeLanguage('en');
   });
 
-  it('names a live property account by its kind, whatever its stored name', () => {
+  it('names a live property account holding the sentinel by its localized kind name', () => {
     expect(
-      accountDisplayName({ kind: 'property', name: 'Flat', archivedAt: null }, translate),
+      accountDisplayName({ kind: 'property', name: 'Properties', archivedAt: null }, translate),
     ).toBe('Properties');
   });
 
-  it('names a live debt account by its kind, whatever its stored name', () => {
+  it('names a live debt account holding the sentinel by its localized kind name', () => {
+    expect(accountDisplayName({ kind: 'debt', name: 'Loans', archivedAt: null }, translate)).toBe(
+      'Loans',
+    );
+  });
+
+  it('returns the name a user gave a live property account', () => {
     expect(
-      accountDisplayName({ kind: 'debt', name: 'Mortgage', archivedAt: null }, translate),
+      accountDisplayName({ kind: 'property', name: 'Family assets', archivedAt: null }, translate),
+    ).toBe('Family assets');
+  });
+
+  it('returns the name a user gave a live debt account', () => {
+    expect(
+      accountDisplayName({ kind: 'debt', name: 'Bank debts', archivedAt: null }, translate),
+    ).toBe('Bank debts');
+  });
+
+  it("returns the OTHER kind's sentinel as the typed name it is", () => {
+    expect(
+      accountDisplayName({ kind: 'property', name: 'Loans', archivedAt: null }, translate),
     ).toBe('Loans');
+    expect(
+      accountDisplayName({ kind: 'debt', name: 'Properties', archivedAt: null }, translate),
+    ).toBe('Properties');
+  });
+
+  it('names a live implicit account with a blank stored name by its localized kind name', async () => {
+    await i18n.changeLanguage('uk');
+
+    expect(accountDisplayName({ kind: 'property', name: '', archivedAt: null }, translate)).toBe(
+      'Майно',
+    );
+    expect(accountDisplayName({ kind: 'debt', name: '   ', archivedAt: null }, translate)).toBe(
+      'Кредити',
+    );
   });
 
   it('returns the stored name of an archived property account', () => {
@@ -104,14 +137,53 @@ describe('accountDisplayName', () => {
     }
   });
 
-  it('translates the live names under uk', async () => {
+  it('translates the sentinel under uk but returns a user-given name as typed', async () => {
     await i18n.changeLanguage('uk');
 
     expect(
-      accountDisplayName({ kind: 'property', name: 'Flat', archivedAt: null }, translate),
+      accountDisplayName({ kind: 'property', name: 'Properties', archivedAt: null }, translate),
     ).toBe('Майно');
+    expect(accountDisplayName({ kind: 'debt', name: 'Loans', archivedAt: null }, translate)).toBe(
+      'Кредити',
+    );
     expect(
-      accountDisplayName({ kind: 'debt', name: 'Mortgage', archivedAt: null }, translate),
-    ).toBe('Кредити');
+      accountDisplayName({ kind: 'property', name: 'Family assets', archivedAt: null }, translate),
+    ).toBe('Family assets');
+  });
+});
+
+describe('implicitAccountStoredName', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
+  it('stores the sentinel for the sentinel typed back', () => {
+    expect(implicitAccountStoredName('property', 'Properties', translate)).toBe('Properties');
+    expect(implicitAccountStoredName('debt', 'Loans', translate)).toBe('Loans');
+  });
+
+  it('stores the sentinel for the localized default left unchanged, under uk too', async () => {
+    await i18n.changeLanguage('uk');
+
+    expect(implicitAccountStoredName('property', 'Майно', translate)).toBe('Properties');
+    expect(implicitAccountStoredName('debt', 'Кредити', translate)).toBe('Loans');
+  });
+
+  it('stores another name as typed, trimmed', () => {
+    expect(implicitAccountStoredName('property', '  Family assets ', translate)).toBe(
+      'Family assets',
+    );
+    expect(implicitAccountStoredName('debt', 'Bank debts', translate)).toBe('Bank debts');
+  });
+
+  it("stores the OTHER kind's sentinel as the name typed", () => {
+    expect(implicitAccountStoredName('property', 'Loans', translate)).toBe('Loans');
+    expect(implicitAccountStoredName('debt', 'Properties', translate)).toBe('Properties');
+  });
+
+  it("stores the OTHER kind's localized default as the name typed", async () => {
+    await i18n.changeLanguage('uk');
+
+    expect(implicitAccountStoredName('property', 'Кредити', translate)).toBe('Кредити');
   });
 });

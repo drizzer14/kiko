@@ -566,6 +566,16 @@ export type LoanKind = (typeof loanKinds)[number];
 const isLoanKind = (value: unknown): value is LoanKind =>
   typeof value === 'string' && (loanKinds as readonly string[]).includes(value);
 
+/**
+ * A loan's kind, read LENIENTLY off its metadata: a missing or unrecognized
+ * kind is `undefined` rather than the whole blob being invalid the way
+ * `asLoanMeta` treats it. Unlike a property's category there is no "other"
+ * kind to fall back to, so the caller picks its own fallback (the loan
+ * card's glyph falls back to the loan type's own).
+ */
+export const loanKindOf = (metadata: unknown): LoanKind | undefined =>
+  isRecord(metadata) && isLoanKind(metadata.kind) ? metadata.kind : undefined;
+
 // `annuity`/`differentiated` compute the outstanding balance at read time from
 // the schedule math (`src/holdings/loan-schedule/`); `none` is an informal
 // debt whose outstanding is a manual series, the same `holding:<id>`

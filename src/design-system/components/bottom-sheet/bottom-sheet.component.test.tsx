@@ -111,6 +111,24 @@ describe('BottomSheet', () => {
     expect(onClosed).toHaveBeenCalledTimes(1);
   });
 
+  it('fades by default, and hands its Modal `none` when a caller asks for no animation', async () => {
+    const { getByTestId, rerender } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    expect(getByTestId(`${SHEET_TEST_ID}-modal`).props.animationType).toBe('fade');
+
+    await rerender(
+      <BottomSheet visible onDismiss={jest.fn()} animationType="none" testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    expect(getByTestId(`${SHEET_TEST_ID}-modal`).props.animationType).toBe('none');
+  });
+
   it('does not require onClosed — every other caller stays unaffected', async () => {
     const { getByText } = await render(
       <BottomSheet visible onDismiss={jest.fn()}>

@@ -13,6 +13,7 @@ import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
+import { dropCard, liftCard } from '@kiko/test-support/lift-grid-card';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -450,6 +451,42 @@ describe('AccountDetailScreen', () => {
     await fireEvent.press(getByText('Black card'));
     // The holding's name rides along so the detail screen's large title (and any
     // back button pushed from it) reads immediately, before its own live query.
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+      holdingId: 'h1',
+      name: 'Black card',
+    });
+  });
+
+  it('does not open the holding when a hold lifted its card and the finger ends in place', async () => {
+    const { getByTestId, getByText, navigation } = await renderScreen();
+
+    await liftCard(getByTestId('sortable-grid'), 'h1');
+    await fireEvent.press(getByText('Black card'));
+
+    expect(navigation.navigate).not.toHaveBeenCalledWith('HoldingDetail', expect.anything());
+  });
+
+  it('opens the holding on the next quick tap after a lifted release', async () => {
+    const { getByTestId, getByText, navigation } = await renderScreen();
+
+    await liftCard(getByTestId('sortable-grid'), 'h1');
+    await fireEvent.press(getByText('Black card'));
+    await fireEvent.press(getByText('Black card'));
+
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
+      holdingId: 'h1',
+      name: 'Black card',
+    });
+  });
+
+  it('opens the holding on a quick tap once the lifted card was dropped with no press', async () => {
+    const { getByTestId, getByText, navigation } = await renderScreen();
+
+    await liftCard(getByTestId('sortable-grid'), 'h1');
+    await dropCard(getByTestId('sortable-grid'), 'h1');
+    await fireEvent.press(getByText('Black card'));
+
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingDetail', {
       holdingId: 'h1',
       name: 'Black card',
@@ -1053,6 +1090,25 @@ describe('AccountDetailScreen', () => {
           { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 },
           { id: 'h2', name: 'Dollar jar', currency: 'USD', balanceMinorUnits: 5000 },
         ],
+        holdingsIsStale,
+      });
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('sortable-grid').props.sortEnabled).toBe(sortEnabled);
+    },
+  );
+
+  // A hold lifts the card; with one holding there is nothing to reorder, it
+  // lifts and drops back, so the lone card feels the same as one among many.
+  it.each([
+    [true, false],
+    [false, true],
+  ])(
+    'lets a lone holding lift on a hold only once the holdings are fresh (stale: %s)',
+    async (holdingsIsStale, sortEnabled) => {
+      setLiveData({
+        accounts: [account()],
+        holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
         holdingsIsStale,
       });
       const { getByTestId } = await renderScreen();

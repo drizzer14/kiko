@@ -10,6 +10,10 @@ import {
   type NavigationSpy,
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
+import {
+  type ModalAnimationSpy,
+  spyOnModalAnimation,
+} from '@kiko/test-support/modal-animation-spy';
 import { darkTheme } from '@kiko/design-system/theme';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -359,6 +363,16 @@ describe('AccountFormScreen', () => {
   });
 
   describe('picking an implicit kind swaps in the holding form', () => {
+    let kindSheetModal: ModalAnimationSpy;
+
+    beforeEach(() => {
+      kindSheetModal = spyOnModalAnimation('account-kind-field-sheet-modal');
+    });
+
+    afterEach(() => {
+      kindSheetModal.restore();
+    });
+
     it('replaces the screen with the property holding form, carrying the typed name', async () => {
       const { getByLabelText, getByTestId, navigation } = await renderForm();
 
@@ -389,6 +403,58 @@ describe('AccountFormScreen', () => {
       await act(async () => sheet.props.onDismiss());
 
       expect(navigation.replace).toHaveBeenCalledTimes(1);
+    });
+
+    // The sheet is still closing here, so the kind field is what tells the user
+    // the tap landed; left on the old kind the form looks frozen.
+    it.each([
+      ['property', 'Property'],
+      ['debt', 'Debt'],
+    ] as const)(
+      'shows %s on the kind field at once, before the sheet has finished closing',
+      async (kind, label) => {
+        const { getByTestId, navigation } = await renderForm();
+
+        await fireEvent.press(getByTestId('account-kind-field'));
+        await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
+
+        expect(getByTestId('account-kind-field')).toHaveTextContent(label);
+        expect(navigation.replace).not.toHaveBeenCalled();
+      },
+    );
+
+    // The fade is only a wait for a pick that leaves the form (the replace runs
+    // once the sheet is gone), so Property and Loan close with none; a pick that
+    // stays keeps it.
+    it.each([
+      ['property', 'none'],
+      ['debt', 'none'],
+      ['bank', 'fade'],
+      ['cash', 'fade'],
+      ['crypto', 'fade'],
+      ['metals', 'fade'],
+      ['broker', 'fade'],
+    ] as const)('closes the kind sheet for %s with animation "%s"', async (kind, animation) => {
+      const { getByTestId } = await renderForm();
+
+      await fireEvent.press(getByTestId('account-kind-field'));
+      await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
+
+      expect(kindSheetModal.lastHiddenAnimation()).toBe(animation);
+    });
+
+    // The swap removes the kind-specific fields anyway, so they stay put rather
+    // than jumping away for the frames before it.
+    it('keeps the fields of the kind it was on while the sheet closes', async () => {
+      const { getByTestId, queryByTestId } = await renderForm();
+
+      await selectKind(getByTestId, 'broker');
+      expect(queryByTestId('account-broker-type-field')).not.toBeNull();
+
+      await fireEvent.press(getByTestId('account-kind-field'));
+      await fireEvent.press(getByTestId('account-kind-field-option-property'));
+
+      expect(queryByTestId('account-broker-type-field')).not.toBeNull();
     });
 
     it('replaces the screen with the loan holding form when Debt is picked', async () => {
@@ -1496,6 +1562,160 @@ describe('AccountFormScreen edit mode', () => {
     });
     const patch = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
     expect('institution' in patch).toBe(false);
+  });
+});
+
+describe('AccountFormScreen edit mode — implicit Properties / Loans account', () => {
+  const implicitAccount = (overrides: Record<string, unknown> = {}) => ({
+    id: 'implicit-1',
+    name: 'Properties',
+    kind: 'property',
+    icon: null,
+    color: null,
+    bankId: null,
+    archivedAt: null,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAccounts = [implicitAccount()];
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('opens a Properties account holding the sentinel with the localized default name', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByDisplayValue } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByDisplayValue('Майно')).toBeTruthy();
+  });
+
+  it('opens a Loans account holding the sentinel with the localized default name', async () => {
+    mockAccounts = [implicitAccount({ id: 'implicit-2', name: 'Loans', kind: 'debt' })];
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByDisplayValue } = await renderForm({ accountId: 'implicit-2' });
+
+    expect(getByDisplayValue('Кредити')).toBeTruthy();
+  });
+
+  it('opens a renamed account with the name as typed, in any language', async () => {
+    mockAccounts = [implicitAccount({ name: 'Family assets' })];
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByDisplayValue } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByDisplayValue('Family assets')).toBeTruthy();
+  });
+
+  it('saves the sentinel when the localized default is left unchanged', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText, navigation } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.press(getByText('Зберегти'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-1', {
+      name: 'Properties',
+      color: null,
+      bankId: null,
+    });
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('saves the sentinel of a Loans account left unchanged in English', async () => {
+    mockAccounts = [implicitAccount({ id: 'implicit-2', name: 'Loans', kind: 'debt' })];
+
+    const { getByText } = await renderForm({ accountId: 'implicit-2' });
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-2', {
+      name: 'Loans',
+      color: null,
+      bankId: null,
+    });
+  });
+
+  it('saves a renamed account under the name typed, and the picked color', async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), '  Family assets ');
+    await fireEvent.press(getByLabelText('Color teal'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-1', {
+      name: 'Family assets',
+      color: entityColors.teal,
+      bankId: null,
+    });
+  });
+
+  it("saves the OTHER kind's sentinel typed as a name as the name typed", async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Loans');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-1', {
+      name: 'Loans',
+      color: null,
+      bankId: null,
+    });
+  });
+
+  it('does not save a blank name', async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), '   ');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("shows the kind's default glyph while the stored icon is NULL, and keeps it NULL on Save", async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByLabelText(`Icon ${accountKindSymbol.property}`)).toBeTruthy();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockSetIcon).toHaveBeenCalledWith('implicit-1', null);
+  });
+
+  it("shows a Loans account's default glyph while the stored icon is NULL", async () => {
+    mockAccounts = [implicitAccount({ id: 'implicit-2', name: 'Loans', kind: 'debt' })];
+    const { getByLabelText } = await renderForm({ accountId: 'implicit-2' });
+
+    expect(getByLabelText(`Icon ${accountKindSymbol.debt}`)).toBeTruthy();
+  });
+
+  it('shows the stored icon over the default', async () => {
+    mockAccounts = [implicitAccount({ icon: 'star.fill' })];
+    const { getByLabelText } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByLabelText('Icon star.fill')).toBeTruthy();
+  });
+
+  it('keeps the title and the read-only kind field', async () => {
+    const { getByTestId, navigation } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Edit Account' });
+    expect(isKindFieldDisabled(getByTestId)).toBe(true);
   });
 });
 

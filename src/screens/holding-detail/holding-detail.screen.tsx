@@ -71,6 +71,7 @@ import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon'
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
+import { accountDisplayName, isImplicitAccount } from '@kiko/holdings/implicit-account';
 import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/money-text';
 import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
@@ -749,6 +750,43 @@ const resolveLedgerReadyView = (
 const editableAccountId = (holding: HoldingRow | undefined): string | undefined =>
   foldMap(maybe(holding), (found) => (isHoldingType(found.type) ? found.accountId : undefined));
 
+// `accountKindSymbol`'s two implicit entries as literals: a native header item
+// types its SF Symbol name as the symbol catalogue's union, which the plain
+// `string` of `accountKindSymbol` does not satisfy.
+const accountBarGlyph = { property: 'house.fill', debt: 'minus.circle.fill' } as const;
+
+// The Property or Loans account's own glyph, left of the Edit pencil: it opens
+// that shared account for edit (name, icon, color). A holding of any other
+// account has no such button. Neither item shares its background, so the two
+// glyphs do not read as one control on iOS 26+ (as with the account page's bell
+// and Edit). Its label names the account as every other screen does: the name
+// the user gave it, else the localized default.
+const accountBarItems = (
+  account: Parameters<typeof accountDisplayName>[0] | undefined,
+  t: TFunction,
+  tintColor: string,
+  onPress: () => void,
+): ReturnType<typeof editBarItem>[] =>
+  foldMap(maybe(account), (found) => {
+    if (!isImplicitAccount(found)) {
+      return [];
+    }
+
+    const label = t('holdingDetail.accountLabel', { name: accountDisplayName(found, t) });
+
+    return [
+      {
+        type: 'button' as const,
+        label,
+        accessibilityLabel: label,
+        icon: { type: 'sfSymbol' as const, name: accountBarGlyph[found.kind] },
+        tintColor,
+        sharesBackground: false,
+        onPress,
+      },
+    ];
+  }) ?? [];
+
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
@@ -1091,6 +1129,9 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       title: holdingName,
       ...(holdingAccountId !== undefined && {
         unstable_headerRightItems: () => [
+          ...accountBarItems(account, t, theme.colors.textPrimary, () =>
+            navigation.navigate('AccountForm', { accountId: holdingAccountId }),
+          ),
           editBarItem({
             label: t('common.edit'),
             tintColor: theme.colors.textPrimary,
@@ -1110,6 +1151,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     holdingAccountId,
     holdingId,
     debtAccount,
+    account,
     t,
     theme.colors.textPrimary,
   ]);
