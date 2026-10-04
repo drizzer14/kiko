@@ -12,8 +12,8 @@ import FieldError from '@kiko/design-system/components/field-error';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
-import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-picker-modal';
 
 import { styles } from './add-category-row.styles';
 

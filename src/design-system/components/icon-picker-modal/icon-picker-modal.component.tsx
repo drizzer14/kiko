@@ -16,7 +16,7 @@ import type { IconPickerModalProps } from './icon-picker-modal.props';
 // A bottom-sheet modal presenting the caller-supplied icon pool in a scrollable
 // grid. The picker is POOL-DRIVEN: the caller passes `icons` (KIKO_ENTITIES_ICONS
 // for the account/holding IconEditor, KIKO_CATEGORIES_ICONS for the category
-// picker — see ./icon-pools), rather than the modal hardcoding a single pool.
+// picker — see ../icon-pools), rather than the modal hardcoding a single pool.
 // Editing an icon is deliberately a pick from a closed list rather than free
 // text: the app renders every icon through SymbolIcon/SFSymbolView, whose tint
 // path (see symbol.color.ts) only handles known-good names, so an arbitrary user

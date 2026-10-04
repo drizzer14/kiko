@@ -7,8 +7,9 @@ import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
+import { KIKO_CATEGORIES_ICONS, KIKO_ENTITIES_ICONS } from '../icon-pools';
+
 import IconPickerModal from '.';
-import { KIKO_CATEGORIES_ICONS, KIKO_ENTITIES_ICONS } from './icon-pools';
 
 type Overrides = Partial<ComponentProps<typeof IconPickerModal>>;
 

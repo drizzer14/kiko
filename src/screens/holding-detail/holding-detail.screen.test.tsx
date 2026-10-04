@@ -606,6 +606,110 @@ describe('HoldingDetailScreen', () => {
       },
     );
 
+    const implicitAccount = (kind: 'property' | 'debt', icon: string | null) => ({
+      id: 'acc-1',
+      kind,
+      name: kind === 'property' ? 'Properties' : 'Loans',
+      icon,
+      archivedAt: null,
+      institution: null,
+    });
+
+    it.each([
+      ['property', 'dollarsign.circle'],
+      ['debt', 'eurosign.circle'],
+    ] as const)("shows the %s account's stored icon, not its kind glyph", async (kind, icon) => {
+      seed(
+        { ...cardHolding, accountId: 'acc-1' },
+        [],
+        [],
+        [],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        implicitAccount(kind, icon),
+      );
+
+      await renderScreen();
+
+      expect(headerItems()[0]).toMatchObject({ icon: { type: 'sfSymbol', name: icon } });
+    });
+
+    it.each(['property', 'debt'] as const)(
+      'shows the kind glyph of a %s account with no stored icon',
+      async (kind) => {
+        seed(
+          { ...cardHolding, accountId: 'acc-1' },
+          [],
+          [],
+          [],
+          [],
+          [{ baseCurrency: 'UAH' }],
+          implicitAccount(kind, null),
+        );
+
+        await renderScreen();
+
+        expect(headerItems()[0]).toMatchObject({
+          icon: { type: 'sfSymbol', name: accountKindSymbol[kind] },
+        });
+      },
+    );
+
+    // A restored .kiko can store a name no SF Symbol has; the native bar item
+    // would then draw no image at all.
+    it('shows the kind glyph when the stored icon is outside the symbol catalogue', async () => {
+      seed(
+        { ...cardHolding, accountId: 'acc-1' },
+        [],
+        [],
+        [],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        implicitAccount('property', 'not.a.symbol'),
+      );
+
+      await renderScreen();
+
+      expect(headerItems()[0]).toMatchObject({
+        icon: { type: 'sfSymbol', name: accountKindSymbol.property },
+      });
+    });
+
+    it('shows the new icon once the user picks another one and returns', async () => {
+      seed(
+        { ...cardHolding, accountId: 'acc-1' },
+        [],
+        [],
+        [],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        implicitAccount('debt', null),
+      );
+
+      const { rerender } = await renderScreen();
+
+      expect(headerItems()[0]).toMatchObject({ icon: { name: accountKindSymbol.debt } });
+
+      (navigation.setOptions as jest.Mock).mockClear();
+      seed(
+        { ...cardHolding, accountId: 'acc-1' },
+        [],
+        [],
+        [],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        implicitAccount('debt', 'eurosign.circle'),
+      );
+      await rerender(
+        <HoldingDetailScreen
+          navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+          route={route}
+        />,
+      );
+
+      expect(headerItems()[0]).toMatchObject({ icon: { name: 'eurosign.circle' } });
+    });
+
     it("names the button by the account's own name once the user renamed it", async () => {
       seed({ ...cardHolding, accountId: 'acc-1' }, [], [], [], [], [{ baseCurrency: 'UAH' }], {
         id: 'acc-1',

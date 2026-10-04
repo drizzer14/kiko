@@ -610,7 +610,12 @@ An account row's displayed icon + color come from one helper,
 or `accountKindSymbol[kind]`, and the color through
 `resolveEntityColor` with `defaultAccountColor[kind]`. Every screen
 that shows a stored account row's icon or color calls it; never rebuild the
-`icon ?? accountKindSymbol[kind]` pair in a screen. There are two
+`icon ?? accountKindSymbol[kind]` pair in a screen. The one reader that
+cannot take its plain `string` is the Property/Loans button in the
+holding-detail header: a native header item types its symbol name as the
+catalogue union, so it calls `accountHeaderSymbol`
+(`src/holdings/account-header-symbol/`), which wraps `accountIdentity` and
+narrows (a stored icon outside the known set falls back to the kind glyph). There are two
 exceptions: the account form edits a draft, not a stored row; and the
 Charts contribution builder
 (`src/statistics/account-contribution/account-contribution.ts`) calls

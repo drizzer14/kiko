@@ -10,10 +10,11 @@
 // filtered or remapped to force pool membership.
 //
 // Both lists are copied VERBATIM from the curated "Kiko Entities" and "Kiko
-// Categories" SF Symbols collections. Lives beside the modal — the pools'
-// primary consumer — so they have one home; the screen call sites import the
-// matching pool and thread it through the shared identity field → IconEditor
-// → IconPickerModal.
+// Categories" SF Symbols collections. A unit of its own, apart from the
+// modal, so domain code that only needs the names (the header symbol guard)
+// does not load the modal component and its styles; the screen call sites
+// import the matching pool and thread it through the shared identity field →
+// IconEditor → IconPickerModal.
 
 // Kiko Entities pool (62) — the account/holding IconEditor pool, opened
 // from the account form and the holding form. Does NOT include the per-KIND
