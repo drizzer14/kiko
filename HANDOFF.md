@@ -2,7 +2,27 @@
 
 
 
-## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-03 21:55) — READ THIS FIRST
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-04 04:00) — READ THIS FIRST
+Coordinator: clear-conversation-history. Orchestrator implicit-accounts-30 (terminal term_ffb68015-1e84-49d4-b5be-c2c065118c68, worktree ~/orca/workspaces/pff-ios/implicit-accounts) is idle after TRACK DONE; it reports to clear-conversation-history. Gauge watcher armed on that terminal. Morning list: memory/refs/morning-list-2026-10-04.md.
+
+### State (2026-10-04 04:00)
+| Thing | Value |
+|---|---|
+| main | 09a7a8f1 + this handoff commit. WAITS for the user's device OK of next, then `git -C <main> merge --ff-only <next>` + `claude plugin update kiko@kiko-marketplace` + /reload-plugins (plugin 0.3.0: kiko:estimator). User chose to WAIT (2026-10-04). |
+| next | 604339e1 = implicit-accounts 3665d3bd + mutation-gate (change-set score: total >= 75, file >= 60; b5ceb93a) + drift fix 4fa39449 + device-feedback fix round 83974517 (lift on hold on all grids, no tap after lift, no-fade leaving pick, loan kinds with icons, implicit account edit/rename by option 1, account filters by id, stale filter prune). make verify PASS (9268 tests). All fix-round mutation windows PASS (79.44, 82.86, 83.39, 81.24). |
+| iPhone | 3665d3bd (migrations 0049+0050 applied). Next install = 604339e1 (no new migration) AFTER the user reviews strings/icons/overnight defaults. |
+| deep-gate | detached 83974517, idle |
+| App Store | 1.0.0 build 25 "Waiting for Review". No version bumps. |
+
+### Morning, in order
+1. User review: NEW holdingDetail.accountLabel "Account: {{name}}"/"Рахунок: {{name}}"; REMOVED forms.holding.loanKindLabel/loanKindPlaceholder/loanKindSheetTitle; loan-kind icons house.circle.fill/car.fill/cart.fill/person.fill; 7 overnight defaults; open item: index on transactions.loan_holding_id (coordinator: wait); 4 guard-rule proposals (top: fail on an edited shipped migration). Full TRACK DONE: implicit-accounts worktree .superpowers/sdd/implicit-property-loan-accounts/track-done.md (23 device checks).
+2. Device install of 604339e1 (kiko:ops, UDID 00008130-0018712A1E32001C, Release-AdHoc, env -u FORCE_COLOR), then the 23 device checks.
+3. After the user's OK: main ff, plugin update + reload, close implicit-accounts-30, tag + remove the implicit-accounts worktree.
+
+### Lessons this run (in memory)
+FORCE_COLOR=3 in background sessions breaks node -p stamps (run make verify as env -u FORCE_COLOR); read a terminal's status-line name before arming/moving the gauge watcher (a peer's ORCA_TERMINAL_HANDLE can be inherited and wrong); never edit a shipped migration, comments included; a skill caveat "until X lands" needs its retire condition.
+
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-03 21:55) — superseded by 2026-10-04 above
 Previous coordinator: pff-ios-9b (cleared on user request after the retrospect). FIRST ACTIONS of the new coordinator:
 1. SendMessage your name to implicit-accounts-a5 (orchestrator, terminal term_4c35e90a-1333-4daf-9b38-f34b74e25212, worktree ~/orca/workspaces/pff-ios/implicit-accounts) and the PM pff-ios-89; they report to "pff-ios-9b".
 2. Re-arm the gauge watcher: `bash memory/refs/gaugewatch.sh term_4c35e90a-1333-4daf-9b38-f34b74e25212` (Bash run_in_background); on "HANDOVER" ask for its handoff file. Brief template: memory/refs/brief-implicit-accounts.md.
