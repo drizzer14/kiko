@@ -245,13 +245,6 @@ an entry (date + value) the moment the user approves a new visual.
   `accountKindSymbol` glyph in its resolved color, never an empty icon
   slot. The "All" row lines up under the glyph column:
   `filter-menu` reserves the icon slot when any option has an icon.
-- **A filter's selection is the stored Set minus values not among the
-  current options** (2026-10-04). An account archived or deleted while
-  selected leaves no checked row to clear it, so Home and Statistics pass
-  the stored Set through `visibleSelection`
-  (`src/design-system/visible-selection`) and filter, count ("Label · N")
-  and render checked rows from the result; an empty result is "All". The
-  stored Set is derived from, never rewritten.
 
 ## UX patterns
 
@@ -281,6 +274,15 @@ The established patterns grouped under this heading:
   `categoryOptions` and its twin, `trend-filter-field.component.tsx`'s
   `manualRows`, which has no display data for a hidden key and falls
   back to the bare slug as its label).
+- A filter prunes a selected value only when it NO LONGER EXISTS. An
+  account archived or deleted while selected leaves no checked row to
+  clear it (an archived account leaves every total), so the Home and
+  Statistics account filters pass the stored Set through
+  `visibleSelection` (`src/design-system/visible-selection`) and filter,
+  count ("Label · N") and render checked rows from the result; an empty
+  result is "All". The stored Set is derived from, never rewritten. A
+  value that only fell out of scope (a category outside the date range)
+  is still unioned back, never pruned (the rule above).
 - **SettingsRow** (`src/screens/settings/settings-row/`): `onPress`
   makes the row a `Pressable` (with a chevron). `trailing` pins an
   inline control to the label's line. The two can be combined
@@ -339,7 +341,7 @@ The established patterns grouped under this heading:
   native-stack 7.18.9 sends it with no index, so react-native-screens
   inserts it at the trailing edge. A native item takes no `testID`; a
   test reads the item list from `setOptions` and calls its `onPress`.
-  Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (Edit).
+  Consumers: `AccountDetail` (bell, then Edit), `HoldingDetail` (for a holding of the Property or Loans account, that account's own glyph from `accountKindSymbol`, which opens `AccountForm` for edit, then Edit; any other holding shows Edit only).
   The pre-write guard enforces both bans: Semgrep
   `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
   other than `undefined` (a `StyleSheet.create` style and a destructuring
@@ -947,7 +949,11 @@ new component can land between reviews of this skill:
   form's Property and Debt, and the holding form's Bank, Cash, Crypto,
   Metals and Broker; the holding form's other implicit kind stays in that
   form and keeps the fade). It is opt-in per call site; every other pick and every other sheet
-  keeps the fade. It works because RN's iOS Modal host re-reads
+  keeps the fade. Jest renders a hidden Modal as nothing; assert the close animation with
+  `spyOnModalAnimation(testID)` (`src/test-support/modal-animation-spy.ts`), which reads the
+  TRANSITION render (the first render of the latest run in that state), never the last render
+  or the mount render. It assumes one mounted Modal per testID; restore it in afterEach. Read a
+  row's SF Symbols in a test with `glyphNamesWithin` (`src/test-support/glyph-names-within.ts`). It works because RN's iOS Modal host re-reads
   `animationType` on every props commit and uses it for the dismiss
   (`RCTModalHostViewComponentView.mm` `updateProps` sets
   `_shouldAnimatePresentation`, then `ensurePresentedOnlyIfNeeded` dismisses
