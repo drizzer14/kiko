@@ -4,7 +4,6 @@ import { SFSymbolView } from 'react-native-nitro-sfsymbols';
 
 import type { SymbolProps } from './symbol.props';
 import { toSFSymbolTintColor } from './symbol.color';
-import { currentOsMajor, effectiveFallbackName, resolveSymbolName } from './symbol.availability';
 
 // Named SymbolIcon, not Symbol, to avoid shadowing the global `Symbol`
 // constructor (lint/suspicious/noShadowRestrictedNames). Callers must import
@@ -12,7 +11,6 @@ import { currentOsMajor, effectiveFallbackName, resolveSymbolName } from './symb
 // e.g. `import SymbolIcon from '.../design-system/components/symbol'`.
 const SymbolIcon: FC<SymbolProps> = ({
   name,
-  fallbackName,
   size,
   tone = 'textSecondary',
   color,
@@ -26,18 +24,13 @@ const SymbolIcon: FC<SymbolProps> = ({
   // type context.
   const resolvedSize = size ?? theme.iconSizes.body;
 
-  // Two layers of iOS-availability guard (symbol.availability.ts): the resolved
-  // NAME deterministically swaps a known iOS-26 symbol for its iOS-15.1-safe
-  // fallback below iOS 26 (some newer symbols render blank rather than nil, so
-  // the native net alone is not trusted for the known set), while the native
-  // `fallbackName` is the runtime net for any other unresolved symbol.
-  const resolvedName = resolveSymbolName(name, fallbackName, currentOsMajor());
-  const resolvedFallback = effectiveFallbackName(name, fallbackName);
-
   return (
     <SFSymbolView
-      name={resolvedName}
-      fallbackName={resolvedFallback}
+      name={name}
+      // Always the symbol's own name, a stable string: the native Nitro prop
+      // requires a String, and a persistent instance whose prop became undefined
+      // on an update would hand it null and crash Release.
+      fallbackName={name}
       size={resolvedSize}
       // See symbol.color.ts: SFSymbolView's tintColor only accepts hex,
       // while theme.colors.textSecondary is an rgba() string. Passed

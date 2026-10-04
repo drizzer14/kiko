@@ -10,7 +10,6 @@ import {
   genericEntitySymbol,
   defaultHoldingSymbol,
   propertyCategorySymbol,
-  genericEntitySymbolFallback,
 } from './entity-symbols';
 
 type AccountKind = AccountRow['kind'];
@@ -146,7 +145,7 @@ describe('defaultHoldingSymbol', () => {
 describe('genericEntitySymbol', () => {
   it('maps each generic entity reference to its decided glyph', () => {
     expect(genericEntitySymbol.account).toBe('tray');
-    expect(genericEntitySymbol.holding).toBe('text.pad.header');
+    expect(genericEntitySymbol.holding).toBe('list.bullet.rectangle');
     expect(genericEntitySymbol.transaction).toBe('arrow.up.arrow.down');
     expect(genericEntitySymbol.category).toBe('tag');
   });
@@ -156,12 +155,5 @@ describe('genericEntitySymbol', () => {
       expect(symbol.length).toBeGreaterThan(0);
       expect(symbol).toMatch(SF_SYMBOL);
     }
-  });
-
-  it('supplies the iOS-15.1-safe fallback for the iOS-26 holding glyph', () => {
-    // `text.pad.header` is an iOS-26 symbol; a consumer renders it through
-    // SymbolIcon's fallback seam. The fallback is exported alongside so the
-    // consumer can pass it explicitly if it renders the glyph outside SymbolIcon.
-    expect(genericEntitySymbolFallback.holding).toBe('list.bullet.rectangle');
   });
 });

@@ -48,7 +48,7 @@ absent** — this skill states the shape and non-enum facts only:
   from the broker catalog in `src/brokers/broker-catalog.ts`
   (`BrokerId`), picked in the account form via `BrokerTypeField`
   (`src/screens/forms/broker-type-field/`); required on create
-  (`brokerRequiredError`), not forced on edit.
+  (`brokerRequiredError`); on edit it is shown disabled and never written.
 
   **`accounts.bankId` always holds the catalog id for the account's
   own kind**: a bank-catalog id for a `bank` account, a broker-catalog
@@ -63,19 +63,36 @@ absent** — this skill states the shape and non-enum facts only:
   `src/bank-sync/bank-catalog/bank-catalog.ts`; i18n key
   `forms.account.otherBank` — cite the symbol and key, not the label): a
   STORED id that replaced the old NULL (migration 0049 and its restore
-  mirror `withBankAccountsOtherBank`). It is the target for the generic
+  mirror `withBankAccountsBankIdBackfilled`; migration 0051 then moved a
+  bank account connected to Monobank, `institution = 'monobank'`, from
+  `other` to `monobank`, and the same restore function does it for an older
+  file). It is the target for the generic
   column-mapping import and states no capability (not connectable, no
-  format, no metals). A NEW bank or broker account must pick (Save
+  format, no metals): `isConnectableBank('other')` is false, so AccountDetail
+  shows Other bank no Connect and no "Add a bank" (manual import only), and
+  the picker row no live-sync glyph. An account already connected keeps its
+  Sync / Disconnect section whatever its bank (`showsBankSync` in
+  `account-detail.screen.tsx`), as any connected account stored as
+  Other bank must (0051 corrects a Monobank one; the guard stays for any
+  other provider's connection). A NEW bank or broker account must pick (Save
   blocked: `bankRequiredError`/`brokerRequiredError`, `missingCatalogPick`
-  in `account-form.screen.tsx`); edit never forces, and an untouched
-  picker on edit writes the stored id back (`savedCatalogId`), including
-  an id the picker cannot show. Use `isSpecificBankId` where code means a
+  in `account-form.screen.tsx`). **An account's kind, bank and broker are
+  set on create only**: the edit form shows the kind field
+  (`AccountKindField`), the bank field (`BankTypeField`) and the broker
+  field (`BrokerTypeField`) DISABLED (the `disabled` state of the shared
+  `FieldTrigger`, so VoiceOver reads each as dimmed; no
+  caption explains it), and an edit Save writes only the name, color and icon
+  — never `kind`, `bankId` or `institution`. A wrong kind or bank therefore
+  has no edit path; delete and recreate the account. A wrongly picked bank
+  stays (user decision 2026-10-05): the bank drives only the import parser
+  pre-select, the saved-mapping key and the metals/trademark hints, never an
+  amount. The same rule makes
+  `other` with `institution = 'monobank'` a pre-0051 leftover that the 0051
+  migration and its restore mirror correct exactly. Use `isSpecificBankId` where code means a
   real bank and `isBankId` where `other` is valid too. `accounts.bankId`
-  can still be NULL on a legacy broker row or an unforced edit; the
+  can still be NULL on a legacy broker row; the
   picker's `onSelect` takes a `BankId`, never null. The live-sync Connect field (Monobank) stays
-  create-only; editing `bankId` on an already-connected account never
-  writes `institution`, so its sync is untouched regardless of which
-  identity is picked. Backed by the catalog at
+  create-only. Backed by the catalog at
   `src/bank-sync/bank-catalog/` — read that file for the current bank
   set (`BankId`/`bankCatalog`) rather than trusting a count or list
   copied here; it grows over time (P3 added PUMB, Oschadbank,
@@ -117,7 +134,10 @@ implemented, and callers must skip it rather than assume every id resolves.
   `debt` account** (`archivedAt` NULL), enforced by the partial unique index
   `accounts_implicit_kind` (migration `0050`, declared in `src/db/schema.ts`).
   The unit is `src/holdings/implicit-account/`: `isImplicitAccountKind`,
-  `isImplicitAccount` (kind + live), and `accountDisplayName(account, t)`.
+  `isImplicitAccount` (kind + live), `accountDisplayName(account, t)`, and
+  `accountsForFilter(accounts, holdings)` (the Home and Statistics account
+  filter options: live accounts, minus an implicit one with no holding at all
+  — a transaction always hangs off a holding, so none is left either).
   **A screen shows an implicit account's name through `accountDisplayName`,
   never through the raw stored `name`**: the stored `name` is the fixed English
   sentinel `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`) while the
@@ -130,21 +150,22 @@ implemented, and callers must skip it rather than assume every id resolves.
   Property and Debts section headings show that display name beside the
   account's compact squircle icon tile (`ImplicitAccountHeading`,
   `src/screens/accounts/implicit-account-heading/`, testIDs
-  `accounts-property-heading` / `accounts-debts-heading`; the tile is a trial,
-  drop it by deleting the `EntityIconTile` element); the whole heading row is
+  `accounts-property-heading` / `accounts-debts-heading`); the whole heading row is
   one button with a chevron that opens `AccountDetail { accountId, name:
-  accountDisplayName(account, t), kind }` (`kind` is the hint that keeps the
-  bell off the page's first render) (`accounts-property-open` /
-  `accounts-debts-open`; see kiko-design-system's "Section heading disclosure
-  row"). **An implicit account's `AccountDetail` takes no NEW reminders**:
+  accountDisplayName(account, t), kind }`. `kind` is the hint that keeps the
+  bell off the page's first render. The row's testIDs are
+  `accounts-property-open` / `accounts-debts-open`; see kiko-design-system's
+  "Section heading disclosure row". **An implicit account's `AccountDetail`
+  takes no NEW reminders**:
   its title is `accountDisplayName`, it has no Reminders bell (Edit only) and
   never shows the reminder offer (the screen asks `useReminderOffer` for no
   trigger on a live implicit account), while import statement and bank/crypto
   sync stay hidden by their own kind gates and Add holding opens
   `HoldingForm { accountId }` (`holdingTypesForAccountKind` limits it to
   `property_item` / `loan`). Settings > Reminders' account page lists only the
-  reminders SAVED on a live implicit account (no create row). `eligibleReminderKinds` is NOT narrowed for the
-  implicit kinds: it also decides which saved reminders are scheduled
+  reminders SAVED on a live implicit account (no create row).
+  `eligibleReminderKinds` is NOT narrowed for the implicit kinds: it also
+  decides which saved reminders are scheduled
   (`isSchedulable`) and listed as active in Settings > Reminders, so a merged
   reminder keeps firing and stays manageable there. The account form
   stores the sentinel back when the name is the localized default left
@@ -669,10 +690,11 @@ deduplicated with the defaults first, so a user who picked a custom icon can
 pick the entity's own glyph back. The defaults are read from the maps, never
 copied, and it lives in `holdings` because the design system must not import
 the maps; the screen passes the pool to `HoldingIdentityField`. A new default
-glyph must be an SF Symbol of iOS 15.1 or older. `entity-icon-pool.test.ts`
-catches only a glyph with an `IOS26_SYMBOL_FALLBACKS` entry (an iOS 26 symbol);
-an iOS 16-25 symbol (such as `receipt`, iOS 18) passes it, so check the
-availability by hand. The category pool already holds every category default.
+glyph must be an SF Symbol that exists on the iOS 18.2 deployment target
+(`receipt`, iOS 18.2, is the newest in use); there is no per-symbol fallback.
+`__tests__/symbol-deployment-target.test.tsx` fails a default that is newer
+(see kiko-design-system's "SF Symbol availability"). The category pool already
+holds every category default.
 
 ## The `Money` value object
 

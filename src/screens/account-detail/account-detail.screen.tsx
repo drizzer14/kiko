@@ -27,7 +27,6 @@ import { sumByCurrency } from '@kiko/rates/currency-totals';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import type { ReminderKind } from '@kiko/reminders/schedule';
-import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -49,6 +48,7 @@ import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown
 import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
+import { editBarItem, REMINDERS_BELL_SYMBOL } from '@kiko/design-system/edit-bar-item';
 import { isConnectableBank, statementFormatIdForBank } from '@kiko/bank-sync/bank-catalog';
 import { useCloseHoldingAction } from '@kiko/design-system/components/close-holding-sheet';
 
@@ -74,6 +74,18 @@ const showsRemindersBell = (
   foldMap(maybe(account), (found) => !isImplicitAccount(found)) ??
   foldMap(maybe(kindHint), (kind) => !isImplicitAccountKind(kind)) ??
   false;
+
+// A bank account shows the connect/sync section when its bank can connect, or
+// when it is ALREADY connected whatever its bank — so a legacy Monobank
+// connection stored as Other bank (migration 0049) can still Sync and
+// Disconnect.
+const showsBankSync = (
+  account: Pick<AccountRow, 'kind' | 'bankId' | 'institution'> | undefined,
+): boolean =>
+  foldMap(
+    maybe(account),
+    (found) => found.kind === 'bank' && (isConnectableBank(found.bankId) || isSyncedAccount(found)),
+  ) ?? false;
 
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
   const { accountId, name: initialName, kind: kindHint, reminderOffer, intent } = route.params;
@@ -201,7 +213,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                 type: 'button' as const,
                 label: t('reminders.rowLabel'),
                 accessibilityLabel: t('reminders.rowLabel'),
-                icon: { type: 'sfSymbol' as const, name: 'bell' as const },
+                icon: { type: 'sfSymbol' as const, name: REMINDERS_BELL_SYMBOL },
                 tintColor: theme.colors.textPrimary,
                 sharesBackground: false,
                 onPress: () => navigation.navigate('AccountReminders', { accountId }),
@@ -241,7 +253,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
 
   const { onDragStart, onActiveItemDropped, openUnlessLifted } = useGridLiftGuard();
 
-  const isBankAccount = account?.kind === 'bank';
   // A connected bank sync already writes every row of the account; a statement
   // of the same rows would land a second time under the import source.
   const canImportStatement = account?.kind === 'bank' && !isSyncedAccount(account);
@@ -255,8 +266,9 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // import-only bank (e.g. PrivatBank) must show NO
   // sync/connect section, only the Import-statement footer button below. An
   // account with no bank picked yet (or one from before this feature)
-  // defaults to connectable rather than guessing it is import-only.
-  const showActionButton = isBankAccount && isConnectableBank(account?.bankId);
+  // defaults to connectable rather than guessing it is import-only; Other
+  // bank is manual import only and never connectable.
+  const showActionButton = showsBankSync(account);
 
   // The document-picker statement-import entry point,
   // same style as the create-form's `connectMonobank`

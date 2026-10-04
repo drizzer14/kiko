@@ -7,6 +7,11 @@ type EditBarItemOptions = {
   onPress: () => void;
 };
 
+// The Reminders bell the AccountDetail header draws beside the Edit pencil;
+// one constant so the SF Symbol guard reads the symbol the screen draws.
+// `as const` keeps the literal type the native header item's icon name needs.
+export const REMINDERS_BELL_SYMBOL = 'bell' as const;
+
 // A native bar item, not a React view in a `custom` item, so UIKit sizes the
 // pencil, its glass capsule, and its 44pt target exactly like the bell beside
 // it. UIKit draws only the image in the bar when a bar item has both an image

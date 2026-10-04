@@ -13,6 +13,9 @@ export type BankTypeFieldProps = {
   // edit form passes neither, since an account saved without a bank is never
   // forced to pick one on edit.
   required?: boolean;
+  // Read-only: shows the stored bank and opens no sheet. The edit form sets it,
+  // because an account's bank is chosen on create only.
+  disabled?: boolean;
   error?: string;
   testID?: string;
 };

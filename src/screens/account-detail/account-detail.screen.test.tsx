@@ -400,8 +400,7 @@ describe('AccountDetailScreen', () => {
     mockButtonProps.length = 0;
     await renderScreen();
 
-    // Sync-now takes the iOS-26 rotate glyph (central availability map supplies
-    // the iOS-15.1-safe fallback for free); Disconnect takes the open-lock glyph.
+    // Sync-now takes the iOS-18 rotate glyph; Disconnect takes the open-lock glyph.
     const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
     expect(syncEntry?.icon).toBe('arrow.trianglehead.2.clockwise.rotate.90');
@@ -690,12 +689,26 @@ describe('AccountDetailScreen', () => {
       hidden: ['Connect Monobank'],
     },
     {
-      // "Other bank" is the stored id a bank account with no listed bank
-      // carries (migration 0049), and it gates exactly as no bank at all.
-      description: 'a bank account stored as Other bank, not yet connected to Monobank',
+      // "Other bank" is manual import only: it shows no connect affordance at
+      // all, not even the "Add a bank" trigger.
+      description: 'a bank account stored as Other bank, not connected',
       account: account({ kind: 'bank', bankId: 'other', institution: null }),
-      visible: ['Add a bank'],
-      hidden: ['Connect Monobank', 'Sync'],
+      visible: [],
+      hidden: ['Connect Monobank', 'Sync', 'Add a bank'],
+    },
+    {
+      // A legacy Monobank connection made before the bank picker carries the
+      // `other` id migration 0049 wrote; it must keep its Sync and Disconnect.
+      description: 'a bank account stored as Other bank that is still connected to Monobank',
+      account: account({ kind: 'bank', bankId: 'other', institution: 'monobank' }),
+      visible: ['Sync', 'Disconnect'],
+      hidden: ['Connect Monobank', 'Add a bank'],
+    },
+    {
+      description: 'a bank account whose picked bank is import-only but is still connected',
+      account: account({ kind: 'bank', bankId: 'privatbank', institution: 'monobank' }),
+      visible: ['Sync', 'Disconnect'],
+      hidden: ['Connect Monobank', 'Add a bank'],
     },
     {
       description: 'a cash account',
@@ -1731,7 +1744,7 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
 
     const addHoldingButton = mockButtonProps.find((props) => props.children === 'Add holding');
 
-    expect(addHoldingButton?.icon).toBe('text.pad.header');
+    expect(addHoldingButton?.icon).toBe('list.bullet.rectangle');
   });
 
   it('renders Import statement full-width, stacked above Add holding (not sharing a row)', async () => {

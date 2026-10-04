@@ -1180,8 +1180,7 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
 
     // Exchange and Split appear together off a cash source; open the type sheet
     // so their option rows mount, then their glyphs render via the mocked
-    // SFSymbolView. Split's `arrow.trianglehead.branch` is an iOS-26 symbol
-    // carried through the shared SymbolIcon fallback seam.
+    // SFSymbolView.
     await fireEvent.press(utils.getByLabelText('Type'));
     const tree = JSON.stringify(utils.toJSON());
     expect(tree).toContain('arrow.left.arrow.right');
@@ -3829,13 +3828,11 @@ describe('TransactionFormScreen — Split-change mode', () => {
   it('switches from Split to another type without throwing (crash regression)', async () => {
     // The reported crash's actual root cause: the transaction-type select
     // trigger renders ONE persistent `<SymbolIcon>` whose `fallbackName` prop
-    // toggled from a string (Split's mapped fallback) to `undefined` on
-    // leaving Split — an UPDATE, not a fresh mount, which Fabric serializes
-    // as native `null`, and the native SFSymbolView binding throws on `null`
-    // (see symbol.availability.ts's `effectiveFallbackName` doc comment).
-    // Jest cannot reproduce that native host-function throw itself (the real
-    // regression coverage for the invariant that caused it lives in
-    // symbol.availability.test.ts), so this asserts the RTL-level contract
+    // toggled from a string to `undefined` on leaving Split: an UPDATE, not a
+    // fresh mount, which Fabric serializes as native `null`, and the native
+    // SFSymbolView binding throws on `null`. Jest cannot reproduce that native
+    // host-function throw itself (symbol.component.test.tsx pins that the prop
+    // stays a string across a rename), so this asserts the RTL-level contract
     // instead: the flow completes without throwing, the split-only UI
     // unmounts, and the new mode is applied.
     const utils = await renderAddFromHolding('payer');

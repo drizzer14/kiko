@@ -59,7 +59,7 @@ describe('HoldingCard', () => {
     });
 
     expect(getByText('Black card')).toBeTruthy();
-    expect(getByLabelText('Black card icon').props.name).toBe('text.pad.header');
+    expect(getByLabelText('Black card icon').props.name).toBe('list.bullet.rectangle');
   });
 
   // A long name must wrap, not run past the card edge and push the value out of

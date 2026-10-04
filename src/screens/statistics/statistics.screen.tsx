@@ -66,7 +66,6 @@ import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
-import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { transactionSpan } from '@kiko/transactions/transaction-span';
@@ -83,6 +82,7 @@ import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor'
 import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-now';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 import { internalTransferTransactionIds } from '@kiko/statistics/internal-transfers';
+import { accountDisplayName, accountsForFilter } from '@kiko/holdings/implicit-account';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 
@@ -344,11 +344,14 @@ const StatisticsScreen: FC = () => {
   const filtered = useMemo(() => {
     const visibleAccounts = accounts.filter((account) => account.archivedAt == null);
     // The stored selection can name an account archived or deleted since, with no
-    // checked row left to clear it: only a still-visible id filters and counts,
-    // and an empty result is "All".
+    // checked row left to clear it, so it is pruned against the filter's OPTIONS
+    // and an empty result is "All". The options leave out an implicit account
+    // with no holding left: it holds nothing, so "All" totals are unchanged,
+    // while `visibleAccounts` and everything computed from it stay as they were.
+    const optionAccounts = accountsForFilter(accounts, holdings);
     const visibleSelectedAccounts = visibleSelection(
       selectedAccounts,
-      visibleAccounts.map((account) => account.id),
+      optionAccounts.map((account) => account.id),
     );
     const filteredAccounts = visibleAccounts.filter((account) => {
       return visibleSelectedAccounts.size === 0 || visibleSelectedAccounts.has(account.id);
@@ -360,7 +363,7 @@ const StatisticsScreen: FC = () => {
     const visibleHoldings = netWorthHoldings.filter((holding) => holding.closedAt == null);
 
     return {
-      visibleAccounts,
+      optionAccounts,
       visibleSelectedAccounts,
       filteredAccounts,
       visibleHoldings,
@@ -1156,13 +1159,14 @@ const StatisticsScreen: FC = () => {
     [categorySlices, baseCurrency],
   );
 
-  // One option per visible account, each carrying the account's own identity
+  // One option per visible account (an implicit account with no holding left
+  // excepted, see `accountsForFilter`), each carrying the account's own identity
   // icon + color for the menu row; matching keys on `option.value` (the account
   // id, compared to `account.id` in the `filtered` memo above, so a selection
   // survives a rename and a language switch, and same-named accounts stay
   // separate options); the `label` is the display name, which an implicit
   // account localizes.
-  const accountOptions: FilterOption[] = filtered.visibleAccounts.map((account) => ({
+  const accountOptions: FilterOption[] = filtered.optionAccounts.map((account) => ({
     value: account.id,
     label: accountDisplayName(account, t),
     ...accountIdentity(account),

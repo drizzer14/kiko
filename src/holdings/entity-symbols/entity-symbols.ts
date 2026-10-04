@@ -30,7 +30,7 @@ type AccountKind = AccountRow['kind'];
 // here. The crypto ACCOUNT default is persisted at create time, so its change
 // to `bitcoinsign.circle` ships alongside migration 0032_icon_crypto_account,
 // which refines un-customized existing rows. `cube.fill` (SF Symbols 1, safe
-// on the iOS 15.1 deployment target) is the pick for `metals` — icon choice was
+// on the iOS 18.2 deployment target) is the pick for `metals` — icon choice was
 // unspecified for it, as with `house.fill` for `property`. `minus.circle.fill`
 // (SF Symbols 1) is the pick for `debt`, "an amount owed". Its sole holding
 // type, `loan`, has its own glyph below; the account default is persisted at
@@ -116,22 +116,13 @@ export const defaultHoldingSymbol = (holding: Pick<HoldingRow, 'type' | 'metadat
 // The GENERIC entity glyphs — TYPE-agnostic references used for headings, empty
 // states, and section labels, NOT a per-entity user-chosen icon and NOT the
 // per-kind/type defaults above. They MUST NOT override an icon the user chose.
-// `holding` uses `text.pad.header`, an iOS-26 symbol: SymbolIcon renders its
-// `list.bullet.rectangle` fallback centrally on an older device (see
-// symbol.availability.ts). Each also leads its entity's footer "Add …" button,
-// so the add action and the entity it creates read as the same thing.
+// `holding` uses `list.bullet.rectangle`, an iOS-14 symbol: the iOS-26 text-pad
+// glyph is above the iOS 18.2 deployment target. Each also leads its entity's
+// footer "Add …" button, so the add action and the entity it creates read as
+// the same thing.
 export const genericEntitySymbol = {
   account: 'tray',
-  holding: 'text.pad.header',
+  holding: 'list.bullet.rectangle',
   transaction: 'arrow.up.arrow.down',
   category: 'tag',
 } as const;
-
-// The iOS-15.1-safe fallback for any generic glyph that is an iOS-26 symbol,
-// exported alongside so a consumer rendering the glyph OUTSIDE SymbolIcon can
-// pass it explicitly. Only `holding` needs one today.
-export const genericEntitySymbolFallback: Partial<
-  Record<keyof typeof genericEntitySymbol, string>
-> = {
-  holding: 'list.bullet.rectangle',
-};

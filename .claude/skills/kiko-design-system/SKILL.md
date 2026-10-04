@@ -282,8 +282,14 @@ The established patterns grouped under this heading:
   Statistics account filters pass the stored Set through
   `visibleSelection` (`src/design-system/visible-selection`) and filter,
   count ("Label · N") and render checked rows from the result; an empty
-  result is "All". The stored Set is derived from, never rewritten. A
-  value that only fell out of scope (a category outside the date range)
+  result is "All". The stored Set is derived from, never rewritten. The
+  options themselves come from `accountsForFilter`
+  (`src/holdings/implicit-account/`): every live account, except a live
+  implicit account with no holding at all (its last holding deleted, which
+  also deleted its transactions); one with only a closed holding stays
+  listed, because that history still counts. No total reads it
+  directly; a stored selection of a left-out account is pruned to All (that
+  account holds nothing). A value that only fell out of scope (a category outside the date range)
   is still unioned back, never pruned (the rule above).
 - **SettingsRow** (`src/screens/settings/settings-row/`): `onPress`
   makes the row a `Pressable` (with a chevron). `trailing` pins an
@@ -634,11 +640,11 @@ new component can land between reviews of this skill:
   Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
-  "Update outstanding" add no entity, so they stay text-only. An
-  iOS-26 generic glyph has its fallback in `genericEntitySymbolFallback`
-  (`entity-symbols.ts`) and SymbolIcon's central map
-  (`symbol.availability.ts`); read them there. A new footer
-  "Add …" action takes its entity's glyph the same way.
+  "Update outstanding" add no entity, so they stay text-only. A
+  generic glyph must exist on the iOS 18.2 deployment target (the holding
+  glyph is `list.bullet.rectangle`, not the iOS-26 `text.pad.header`); see
+  "SF Symbol availability" below. A new footer "Add …" action takes its
+  entity's glyph the same way.
 
   **Sizes — `regular` / `compact` / `small`** (read `button.props.d.ts`'s
   `ButtonSize` for the exact current set). `regular` is the 50pt tall
@@ -970,16 +976,19 @@ new component can land between reviews of this skill:
   is the one remaining hand-rolled implementation, kept apart because it
   carries extra behavior `SelectField` doesn't generalize (an
   always-last "Other bank" row (`OTHER_BANK_ID`) that shows no capability
-  caption and carries one manual-import glyph (`doc.badge.plus`, the account
-  screen's Import statement glyph, testID `bank-type-option-other-manual-import-icon`)
-  instead of the connect, statement-format and column-mapping icons the named
-  banks show (its VoiceOver label reads the no-parser banks' description,
-  `bankColumnMappingOnly`), the Guideline-5.6 "not a bank" disclaimer as a
+  caption and carries one column-mapping glyph (`increase.indent`, the same
+  `COLUMN_MAPPING_SYMBOL` constant every named bank's column-mapping icon uses,
+  testID `bank-type-option-other-column-mapping-icon`) instead of the connect
+  and statement-format icons the named banks show (its VoiceOver label reads
+  the no-parser banks' description, `bankColumnMappingOnly`), the Guideline-5.6 "not a bank" disclaimer as a
   caption under the trigger (`forms.account.bankDisclaimer`, the same place and
   `caption`/`textSecondary` style as `BrokerTypeField`'s `brokerDisclaimer`,
   shown whatever is picked, "Other bank" included: it names no bank; the sheet
-  carries no second caption), and dual capability icons) — retrofitting it onto `SelectField` is a separate,
-  larger task. `sheetTitle` is REQUIRED and distinct from `label` — a
+  carries no second caption), and dual capability icons) — retrofitting it onto
+  `SelectField` is a separate, larger task. `BankTypeField` also takes
+  `disabled` (`FieldTrigger`'s shared dimmed, inert state, as `SelectField`
+  does; the edit form sets it, with no hint caption, and the disclaimer stays
+  because the field still names a bank). `sheetTitle` is REQUIRED and distinct from `label` — a
   field label (sentence case) and a sheet title (Title Case) are two
   different UI roles per `kiko-translator`'s casing-by-role rule, so the
   sheet header can never just reuse the label verbatim. The same REQUIRED
@@ -1111,9 +1120,8 @@ new component can land between reviews of this skill:
   tile sits left of the `heading` name, both centered, and carries no
   `accessibilityLabel` because the name beside it already reads it, and
   the Accounts screen's Property / Debts section headings
-  (`ImplicitAccountHeading`, the same compact tile and layout, a TRIAL
-  the user judges on device: "add their squircle icons too, let's see how
-  it looks").
+  (`ImplicitAccountHeading`: tile + name + total + chevron, the same
+  compact tile and layout; a Property / Debts heading always uses it).
   Tile size: 36pt (`spacing(9)`) by default; `compact` draws it one
   spacing step smaller, 32pt (`spacing(8)`), with the glyph unchanged.
   **Locked (2026-09-30, user request "Slightly decrease reminder's
@@ -1513,8 +1521,9 @@ catalog's own `statementFormatId` field, so a column-mapping-only bank
 (no dedicated parser) does not show it, even though it still offers
 import (through the generic column-mapping screen, which
 `increase.indent` names); `increase.indent` means "column-mapping import
-is available" — shown on every SPECIFIC bank row (a dedicated parser or not); the
-`other` row renders no capability icons or captions; `arrow.trianglehead.2.clockwise.rotate.90`
+is available" — shown on every bank row (a dedicated parser or not), the `other`
+row included, from one `COLUMN_MAPPING_SYMBOL` constant; the `other` row shows
+no connect or statement-format icon and no caption; `arrow.trianglehead.2.clockwise.rotate.90`
 means "this bank supports a live sync connection" — gated on the
 catalog's own `connectable` field. Derive a capability icon's gate from
 catalog DATA (a field on the entry), never a hard-coded id list — a
@@ -1607,6 +1616,42 @@ a fully invisible glyph, easy to mistake for a layout bug. Convert any
 already does this for both its `tone` and its explicit `color` prop;
 a caller building a raw `SFSymbolView` outside `SymbolIcon` must do
 the same conversion itself.
+
+## SF Symbol availability
+
+The deployment target is iOS 18.2, and `SFSymbolView` draws a symbol the
+running OS does not know as a BLANK glyph, not an error. So every symbol
+the app can draw MUST exist on iOS 18.2: there is no per-symbol fallback
+map and `SymbolIcon` passes the name straight to the native view. A symbol
+newer than 18.2 (for example the iOS-26 `text.pad.header`, which the generic
+holding glyph used to be) is replaced by an older one that reads the same
+(`list.bullet.rectangle`), not shimmed at runtime. `receipt` (iOS 18.2) is
+the newest symbol in use. `SymbolIcon` has no `fallbackName` prop: it
+hands the native view `fallbackName={name}`, always a string (a `null`
+`fallbackName` crashes Release; `symbol.component.test.tsx` pins it). A
+native header or tab-bar item has no `fallbackName` prop; the same rule
+covers it.
+
+The deployment target lives in three build places that must agree: the six
+`IPHONEOS_DEPLOYMENT_TARGET` lines of `ios/Kiko.xcodeproj/project.pbxproj`,
+`platform :ios` in `ios/Podfile`, and the Podfile's `post_install` pod floor
+(`Gem::Version.new(...)`).
+`__tests__/test-support/deployment-target.test.ts` reads those files as text
+(`__tests__/test-support/deployment-target.ts`) and fails when any of them
+differs from the ONE constant `DEPLOYMENT_TARGET`
+(`__tests__/test-support/sf-symbol-catalogue.ts`). That check lives there, not
+in the guard, because it reads `ios/`, which Stryker's sandbox does not copy,
+and the guard imports `src/` modules so Stryker would run it there.
+`__tests__/symbol-deployment-target.test.tsx` is the guard. It reads the
+`sf-symbols-typescript` catalogue as text (the `@name SF Symbols N.M` and
+`iOS vX.Y+` JSDoc, plus the `| 'name'` lines) and fails when a symbol the
+app can draw is unknown to it or newer than the target. It collects the
+entity maps, both icon pools and the pools the forms open, the Edit bar
+item and the Reminders bell, the tab bar, and every quoted literal in
+`src/` that equals a catalogue name (a name built at runtime is out of its
+reach). Raising the target again is one edit to `DEPLOYMENT_TARGET` plus the
+build files, then `pod install`; lowering it needs every symbol re-checked
+by the same guard.
 
 ## GlassSurface `isLiquidGlassSupported` branch
 

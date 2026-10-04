@@ -4,7 +4,9 @@
 // restore with the same bank ids as a live device's own migration 0049
 // upgrade. Path 1 runs the real migration SQL on a real engine; path 2 reads
 // an identically seeded pre-0049 database the way that older build's export
-// did, then restores it through `restoreDataSnapshot`.
+// did, then restores it through `restoreDataSnapshot`. Migration 0051 (a
+// connected Monobank account stored as `other` names `monobank`) is held to
+// the same two-path proof.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
@@ -33,6 +35,11 @@ const MIGRATION_0049_SQL = readFileSync(
   'utf8',
 );
 
+const MIGRATION_0051_SQL = readFileSync(
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0051_monobank_accounts_bank_id.sql'),
+  'utf8',
+);
+
 const emptySnapshot: DataSnapshot = {
   accounts: [],
   holdings: [],
@@ -53,10 +60,11 @@ const insertAccount = (
   id: string,
   kind: string,
   bankId: string | null,
+  institution: string | null = null,
 ): void => {
   target
-    .prepare('INSERT INTO accounts (id, name, kind, bank_id) VALUES (?, ?, ?, ?)')
-    .run(id, id, kind, bankId);
+    .prepare('INSERT INTO accounts (id, name, kind, bank_id, institution) VALUES (?, ?, ?, ?, ?)')
+    .run(id, id, kind, bankId, institution);
 };
 
 // Every case migration 0049's own test pins: a bank with no bank, a bank that
@@ -91,6 +99,17 @@ const snapshotOf = async (source: DatabaseSync): Promise<DataSnapshot> => ({
     .select()
     .from(accounts)
     .orderBy(asc(accounts.id)),
+});
+
+// A file exported before migration 0033 carries no `bankId` key at all.
+const withoutBankIdKey = (snapshot: DataSnapshot): DataSnapshot => ({
+  ...snapshot,
+  accounts: snapshot.accounts.map(
+    (account) =>
+      Object.fromEntries(
+        Object.entries(account).filter(([key]) => key !== 'bankId'),
+      ) as DataSnapshot['accounts'][number],
+  ),
 });
 
 const freshDatabase = (): DatabaseSync => {
@@ -134,22 +153,72 @@ describe('restoring a .kiko file exported before Other bank was a stored bank id
   });
 });
 
+// Migration 0051's cases: a Monobank connection (`institution` monobank) that
+// 0049 stored as `other` (or that a pre-0049 file still carries as NULL) names
+// Monobank; a disconnected account and every other bank or kind do not change.
+const seedMonobankAccounts = (target: DatabaseSync): void => {
+  insertAccount(target, 'connected-null', 'bank', null, 'monobank');
+  insertAccount(target, 'connected-other', 'bank', 'other', 'monobank');
+  insertAccount(target, 'connected-monobank', 'bank', 'monobank', 'monobank');
+  insertAccount(target, 'connected-privat', 'bank', 'privatbank', 'monobank');
+  insertAccount(target, 'disconnected-null', 'bank', null);
+  insertAccount(target, 'disconnected-other', 'bank', 'other');
+  insertAccount(target, 'connected-broker', 'broker', null, 'monobank');
+  insertAccount(target, 'connected-cash', 'cash', null, 'monobank');
+};
+
+describe('restoring a .kiko file whose Monobank accounts are stored as no bank or Other bank', () => {
+  it('gives a connected Monobank account its monobank bank id exactly as the live migration 0049 then 0051 upgrade does', async () => {
+    const live = new DatabaseSync(':memory:');
+
+    applyMigrationsThrough(live, '0048_add_lots_recosted');
+    seedMonobankAccounts(live);
+    live.exec(MIGRATION_0049_SQL.split('--> statement-breakpoint').join('\n'));
+    live.exec(MIGRATION_0051_SQL.split('--> statement-breakpoint').join('\n'));
+
+    const exported = new DatabaseSync(':memory:');
+
+    applyMigrationsThrough(exported, '0048_add_lots_recosted');
+    seedMonobankAccounts(exported);
+    const snapshot = await snapshotOf(exported);
+
+    mockDatabase = freshDatabase();
+    await restoreDataSnapshot(snapshot);
+
+    expect(bankIds(live)).toEqual({
+      'connected-broker': null,
+      'connected-cash': null,
+      'connected-monobank': 'monobank',
+      'connected-null': 'monobank',
+      'connected-other': 'monobank',
+      'connected-privat': 'privatbank',
+      'disconnected-null': 'other',
+      'disconnected-other': 'other',
+    });
+    expect(bankIds(mockDatabase)).toEqual(bankIds(live));
+  });
+
+  it('gives a connected Monobank account in a file that carries no bankId key at all the monobank bank id', async () => {
+    const exported = freshDatabase();
+
+    insertAccount(exported, 'connected', 'bank', null, 'monobank');
+    insertAccount(exported, 'disconnected', 'bank', null);
+    const snapshot = withoutBankIdKey(await snapshotOf(exported));
+
+    mockDatabase = freshDatabase();
+    await restoreDataSnapshot(snapshot);
+
+    expect(bankIds(mockDatabase)).toEqual({ connected: 'monobank', disconnected: 'other' });
+  });
+});
+
 describe('restoring a .kiko file exported before accounts.bank_id existed (migration 0033)', () => {
   it('gives a bank account that carries no bankId key at all the other bank id, and leaves other kinds unset', async () => {
     const exported = freshDatabase();
 
     insertAccount(exported, 'free-bank', 'bank', null);
     insertAccount(exported, 'cash', 'cash', null);
-    const withBankId = await snapshotOf(exported);
-    const snapshot: DataSnapshot = {
-      ...withBankId,
-      accounts: withBankId.accounts.map(
-        (account) =>
-          Object.fromEntries(
-            Object.entries(account).filter(([key]) => key !== 'bankId'),
-          ) as DataSnapshot['accounts'][number],
-      ),
-    };
+    const snapshot = withoutBankIdKey(await snapshotOf(exported));
 
     expect(snapshot.accounts.every((account) => !('bankId' in account))).toBe(true);
 

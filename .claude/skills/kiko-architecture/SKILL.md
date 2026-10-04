@@ -247,9 +247,19 @@ project-level pointer to this section.
   data-only migration, mirrored on restore.** `0049` is hand-authored SQL
   with no snapshot: it sets `bank_id = 'other'` on `kind = 'bank'` rows
   with NULL and never touches a bank account naming a bank (a removed one
-  too). The mirror is `withBankAccountsOtherBank` in
-  `src/data-transfer/snapshot/restore-snapshot.ts`; tests
-  `drizzle/migrations/0049-bank-accounts-other-bank.test.ts` and
+  too). `0051_monobank_accounts_bank_id` corrects it: one atomic, idempotent
+  UPDATE sets `bank_id = 'monobank'` where `kind = 'bank'`, `institution =
+  'monobank'` (the provider id the sync writes; Disconnect clears it) and
+  `bank_id = 'other'`, because 0049 ignored `institution` and left a
+  connected Monobank account as Other bank (no step order to protect, so no
+  crash-safe ordering is needed). The mirror for both is
+  `withBankAccountsBankIdBackfilled` in
+  `src/data-transfer/snapshot/restore-snapshot.ts` (NULL or absent `bankId`
+  becomes `other`, then `other` on a Monobank-connected account becomes
+  `monobank`; it runs before `withImplicitAccountsMerged`, which never reads
+  `bankId`); tests
+  `drizzle/migrations/0049-bank-accounts-other-bank.test.ts`,
+  `drizzle/migrations/0051-monobank-accounts-bank-id.test.ts` and
   `src/data-transfer/snapshot/restore-bank-other.two-path.test.ts`.
 - **A uniqueness rule a merge must satisfy first is data merge, then
   partial unique index, in ONE migration.** `0050_implicit_property_debt_accounts`
@@ -1934,8 +1944,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   name, icon and color, before a user could rename one), a restore keeps a
   lone account's name, icon and color, and resets them (sentinel name, NULL
   icon and color) only on the KEPT account of a merge, so one custom name or
-  glyph never stands for several former accounts. It runs right after `withBankAccountsOtherBank`, the order a
-  live device runs 0044, 0049, 0050, and its output feeds every later
+  glyph never stands for several former accounts. It runs right after `withBankAccountsBankIdBackfilled` (a live device
+  runs 0044, 0049, 0050, 0051; the bank id rule never reads what the merge
+  writes), and its output feeds every later
   step. It compares ids with `<` and `>`, never `localeCompare`, because
   that matches SQLite's BINARY collation for ASCII and UUID ids, and a
   `created_at` tie must pick the same kept account on both paths. The
@@ -1980,7 +1991,7 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   migration fails it until the version is bumped or the count is recorded
   with the reason no bump is needed: a column riding inside an existing row
   and derived on restore needs none, and neither does an idempotent data
-  rewrite that the restore mirror re-applies to an older file (0049, 0050).
+  rewrite that the restore mirror re-applies to an older file (0049, 0050, 0051).
 
 ## Reminders (local notifications)
 

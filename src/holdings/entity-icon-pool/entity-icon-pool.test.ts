@@ -1,4 +1,3 @@
-import { IOS26_SYMBOL_FALLBACKS } from '@kiko/design-system/components/symbol';
 import { KIKO_ENTITIES_ICONS } from '@kiko/design-system/components/icon-pools';
 
 import {
@@ -50,9 +49,5 @@ describe.each([
     for (const icon of shared) {
       expect(pool.indexOf(icon)).toBe(defaults.indexOf(icon));
     }
-  });
-
-  it('offers no iOS 26 symbol, which the iOS 15.1 deployment target renders blank', () => {
-    expect(pool.filter((icon) => icon in IOS26_SYMBOL_FALLBACKS)).toEqual([]);
   });
 });

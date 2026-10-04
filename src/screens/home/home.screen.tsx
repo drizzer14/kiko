@@ -25,7 +25,6 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
@@ -40,6 +39,7 @@ import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
 import { type CompositeScreenProps, useIsFocused } from '@react-navigation/native';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
+import { accountDisplayName, accountsForFilter } from '@kiko/holdings/implicit-account';
 import { type FC, type ReactElement, useCallback, useMemo, useRef, useState } from 'react';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '@kiko/rates/net-worth-view';
@@ -348,7 +348,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // (earliest–latest transaction) stays independent of the selectable range.
 
   // Every active (non-archived) account, so a newly-added account with no
-  // transactions yet still appears in the Accounts filter. Sourced from the
+  // transactions yet still appears in the Accounts filter, except an implicit
+  // account with no holding left (`accountsForFilter`). Sourced from the
   // accounts live query rather than from the transactions, which would omit it.
   // Each option carries the account's own identity icon + color for the
   // menu row; transaction matching keys off `option.value` (the account ID,
@@ -359,14 +360,12 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // option's `label` is the display name.
   const accountOptions = useMemo(
     () =>
-      accounts
-        .filter((account) => account.archivedAt == null)
-        .map((account) => ({
-          value: account.id,
-          label: accountDisplayName(account, t),
-          ...accountIdentity(account),
-        })),
-    [accounts, t],
+      accountsForFilter(accounts, holdings).map((account) => ({
+        value: account.id,
+        label: accountDisplayName(account, t),
+        ...accountIdentity(account),
+      })),
+    [accounts, holdings, t],
   );
   // The stored selection can name an account that was archived or deleted since,
   // with no checked row left to clear it, so only the ids still among the options

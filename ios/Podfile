@@ -5,7 +5,7 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, "15.1"
+platform :ios, "18.2"
 
 # Build React Native core from source instead of the prebuilt React.xcframework.
 # The prebuilt facade exposes core headers only as <React/...>, but
@@ -40,10 +40,10 @@ target 'Kiko' do
     )
 
     # Floor every pod's iOS deployment target to the app's own
-    # IPHONEOS_DEPLOYMENT_TARGET (15.1). Xcode 27 requires pods at iOS
+    # IPHONEOS_DEPLOYMENT_TARGET (18.2). Xcode 27 requires pods at iOS
     # 15.0 or higher, and a pod above the app min could reference symbols
-    # missing on iOS 15.1-15.x. Raise only pods below the floor.
-    app_ios_deployment_target = Gem::Version.new('15.1')
+    # missing on iOS 18.2-18.x. Raise only pods below the floor.
+    app_ios_deployment_target = Gem::Version.new('18.2')
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |pod_config|
         current = pod_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']

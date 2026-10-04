@@ -26,10 +26,10 @@ import { eq } from 'drizzle-orm';
 import { maxOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { SETTINGS_ID } from '@kiko/settings';
-import { OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import { isFiat, type Currency } from '@kiko/currency/currency';
 import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
+import { type BankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { isBalanceSetShapedRow } from '@kiko/transactions/balance-set-row';
 import { planImportTimeRezone } from '@kiko/statement-import/rezone-import-times';
 
@@ -267,19 +267,41 @@ const withLoanInterestReseeded = (snapshotCategories: CategoryRow[]): CategoryRo
   ];
 };
 
+const MONOBANK_BANK_ID = 'monobank' satisfies BankId;
+
 /**
- * Migration 0049's rule, applied to a `.kiko` restore: a `bank` account that
- * names no bank takes the bank id `other`. `??` rather than a `=== null` test, because an export from before
- * `accounts.bank_id` existed (migration 0033) carries no `bankId` key at all,
- * and the migration gives that column's NULL the same value. Only a `bank`
- * account is touched — a broker with no pick, and every other kind, keep their
+ * Migrations 0049 then 0051, applied to a `.kiko` restore in the order a live
+ * device runs them, as one rule over the `bank` accounts only. 0049: an account
+ * that names no bank takes the bank id `other`. `??` rather than a `=== null`
+ * test, because an export from before `accounts.bank_id` existed (migration
+ * 0033) carries no `bankId` key at all, and the migration gives that column's
+ * NULL the same value. 0051: an account connected to Monobank (`institution`
+ * `monobank`) whose id is `other` — what 0049 left it, or what a post-0049
+ * export carries — takes `monobank`, so a NULL id on such an account lands on
+ * `monobank` directly. A broker with no pick and every other kind keep their
  * NULL, and an account that names a bank (listed or since removed) is never
- * rewritten, so a post-0049 export restores as exported.
+ * rewritten. An account's bank is set on create only (the edit form shows it
+ * disabled and never writes it) and Other bank is not connectable, so `other`
+ * with institution `monobank` cannot arise after 0051: it is only a pre-0051
+ * leftover, this rule is exact for it, and a post-0051 export restores as
+ * exported.
  */
-const withBankAccountsOtherBank = (snapshotAccounts: AccountRow[]): AccountRow[] =>
-  snapshotAccounts.map((account) =>
-    account.kind === 'bank' ? { ...account, bankId: account.bankId ?? OTHER_BANK_ID } : account,
-  );
+const withBankAccountsBankIdBackfilled = (snapshotAccounts: AccountRow[]): AccountRow[] =>
+  snapshotAccounts.map((account) => {
+    if (account.kind !== 'bank') {
+      return account;
+    }
+
+    const bankId = account.bankId ?? OTHER_BANK_ID;
+
+    return {
+      ...account,
+      bankId:
+        bankId === OTHER_BANK_ID && account.institution === MONOBANK_BANK_ID
+          ? MONOBANK_BANK_ID
+          : bankId,
+    };
+  });
 
 /**
  * Migration 0041's flag and its launch-time rewrite (`upgradeStoredDedupKeys`)
@@ -680,8 +702,12 @@ export const restoreDataSnapshot = (
       withCryptoCashHoldingsMoved(snapshot.accounts, snapshot.holdings);
     // Independent of the move above (it adds only crypto accounts) — a
     // different column, a different migration.
-    const accountsAfterBankOtherBank = withBankAccountsOtherBank(accountsAfterCryptoCashMove);
-    // After the two above, the order a live device runs 0044, 0049, then 0050.
+    const accountsAfterBankIdBackfill = withBankAccountsBankIdBackfilled(
+      accountsAfterCryptoCashMove,
+    );
+    // After the two above. A live device runs 0044, 0049, 0050, then 0051; the
+    // bank id rule (0049 and 0051) reads and writes only a bank account's
+    // `bankId`, which the merge below (0050) never touches, so it may run first.
     // It changes only the accounts, each merged holding's account and position,
     // the reminders, the sync state and the dismissal map. The steps below
     // neither read nor rewrite those fields, so they take its holdings and
@@ -693,7 +719,7 @@ export const restoreDataSnapshot = (
       settings: settingsAfterImplicitMerge,
       syncState: syncStateToInsert,
     } = withImplicitAccountsMerged({
-      accounts: accountsAfterBankOtherBank,
+      accounts: accountsAfterBankIdBackfill,
       holdings: holdingsAfterCryptoCashMove,
       reminders: snapshot.reminders ?? [],
       settings: snapshot.settings,

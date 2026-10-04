@@ -35,9 +35,10 @@ export type BankId = (typeof bankIds)[number];
 
 /** `other` covers any bank not listed, the same as the broker catalog's own
  * `other`, and is the LAST entry. It is a STORED id (migration 0049 gave
- * every bank account that had none this one), so every reader treats it
- * exactly as the NULL it replaced: no bank format, no live connection, no
- * metals, and no saved column mapping keyed on it. */
+ * every bank account that had none this one). It reads as no bank for the
+ * statement format, metals and the saved column mapping, exactly as the NULL
+ * it replaced. Only `isConnectableBank` treats it differently: `other` is
+ * import-only (no Connect), while an unset id stays connectable. */
 export const OTHER_BANK_ID = 'other' satisfies BankId;
 
 type BankCatalogEntryBase = {
@@ -175,13 +176,14 @@ export const statementFormatIdForBank = (
 ): StatementFormatId | undefined => specificBankEntry(bankId)?.statementFormatId;
 
 /** Resolves a stored `accounts.bankId` to whether it is CONNECTABLE: `true`
- * for an unset, `other`, or unrecognized value (the account has not declared a
+ * for an unset or unrecognized value (the account has not declared a
  * bank, or predates this feature — the
  * connect affordance stays available rather than guessing it is import-only)
- * and for Monobank; `false` for a known import-only bank (PrivatBank etc.),
- * which must show NO sync/connect affordance — only its statement import. */
+ * and for Monobank; `false` for `other` (Other bank is manual import only)
+ * and for a known import-only bank (PrivatBank etc.), which must show NO
+ * sync/connect affordance — only its statement import. */
 export const isConnectableBank = (bankId: string | null | undefined): boolean =>
-  specificBankEntry(bankId)?.connectable ?? true;
+  bankId !== OTHER_BANK_ID && (specificBankEntry(bankId)?.connectable ?? true);
 
 /** Resolves a stored `accounts.bankId` to whether that bank sells precious
  * metals (the `metal` holding allow-list): `false` for an unset, `other`, or
