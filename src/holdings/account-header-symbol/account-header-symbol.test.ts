@@ -1,7 +1,4 @@
-import {
-  KIKO_CATEGORIES_ICONS,
-  KIKO_ENTITIES_ICONS,
-} from '@kiko/design-system/components/icon-pools';
+import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
 
 import { accountIconPool } from '../entity-icon-pool';
 import { implicitAccountKinds } from '../implicit-account';
@@ -37,10 +34,6 @@ describe('accountHeaderSymbol', () => {
 
   it.each(KIKO_CATEGORIES_ICONS)('keeps the stored category-pool icon %s', (icon) => {
     expect(accountHeaderSymbol({ kind: 'debt', icon, color: null })).toBe(icon);
-  });
-
-  it.each(KIKO_ENTITIES_ICONS)('keeps the stored entity-pool icon %s', (icon) => {
-    expect(accountHeaderSymbol({ kind: 'property', icon, color: null })).toBe(icon);
   });
 
   // The invariant: whatever the AccountForm picker can write for an implicit

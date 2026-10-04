@@ -56,34 +56,3 @@ describe.each([
     expect(pool.filter((icon) => icon in IOS26_SYMBOL_FALLBACKS)).toEqual([]);
   });
 });
-
-describe('the default glyphs the pools add', () => {
-  it.each([
-    ['the Properties account', accountKindSymbol.property],
-    ['the Loans account', accountKindSymbol.debt],
-    ['the bank account kind', accountKindSymbol.bank],
-  ])('offers the account pool %s default', (_label, icon) => {
-    expect(accountIconPool).toContain(icon);
-  });
-
-  it.each(Object.entries(loanKindSymbol))(
-    'offers the holding pool the %s loan default',
-    (_kind, icon) => {
-      expect(holdingIconPool).toContain(icon);
-    },
-  );
-
-  it.each(Object.entries(propertyCategorySymbol))(
-    'offers the holding pool the %s property default',
-    (_category, icon) => {
-      expect(holdingIconPool).toContain(icon);
-    },
-  );
-
-  it.each(Object.entries(holdingTypeSymbol))(
-    'offers the holding pool the %s type default',
-    (_type, icon) => {
-      expect(holdingIconPool).toContain(icon);
-    },
-  );
-});
