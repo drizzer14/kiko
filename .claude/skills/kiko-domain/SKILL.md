@@ -2640,7 +2640,12 @@ never an exchange source or destination — see
    A new type also needs a `forms.holding.namePlaceholders.<key>` en/uk key
    and an entry in `holding-form.screen.tsx`'s
    `namePlaceholders: Record<HoldingType, string>` (a missing entry is a
-   compile error).
+   compile error). Also add the type's arm to
+   `holdingTypeName` (`src/holdings/holding-type-label/`), the shared
+   display-name source for the statistics bar chart and `HoldingCard`.
+   `holding-form.screen.tsx`'s `typeLabels` is still a second copy of the
+   same map (a known duplication, codebase review G2) until it is built
+   from `holdingTypeName`, so a new type needs both sites.
    The user reviews new/changed translation keys before any deploy that
    ships them (see `kiko-translator`).
 5. Add an entry to `holdingDetailSpecs`
@@ -2666,8 +2671,9 @@ never an exchange source or destination — see
    value, not on `type`, so it never needs a new arm — tsc lists every
    remaining site the new type still needs. The enum/tuple step (1) and the
    account-kind mapping caveat within it are the only steps it cannot
-   catch for you. Two more sites tsc does NOT flag: the statistics bar
-   chart's type-label `match` (`src/screens/statistics/bar-chart/bar-chart.component.tsx`)
-   — add its `.with('<type>', ...)` arm; and `fiatOnlyHoldingTypes`
+   catch for you. One more site tsc does NOT flag: `isFiatOnlyHoldingType`
    (`src/holdings/holding-currency/holding-currency.ts`) — add the type
-   when it must never hold a cryptocurrency.
+   when it must never hold a cryptocurrency. The type's display name lives
+   in `holdingTypeName` (`src/holdings/holding-type-label/holding-type-label.ts`),
+   an exhaustive `match` that tsc flags, so a new type needs its arm there;
+   the statistics bar chart and `HoldingCard` both read it.
