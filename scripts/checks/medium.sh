@@ -36,13 +36,16 @@ done < <(
 # inputs are the surfaces its assertions (pinned credential hosts, Release ATS
 # hardening, the localized home-screen name, the required-reason API entry)
 # exist to guard, so a session that edited only one of those must not be silent
-# either.
+# either. Every file under drizzle/migrations/ is an input too: a shipped
+# migration's .sql, snapshot or journal is guarded by shipped-migrations.sh, and
+# the pre-write guard never sees a .sql edit, so a session that touched only
+# one must not be silent.
 harness_changed=()
 while IFS= read -r f; do
   [ -n "$f" ] && harness_changed+=("$f")
 done < <(
   printf '%s\n' "$touched" \
-    | grep -E '^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj|ios/Kiko/[a-z]+\.lproj/InfoPlist\.strings|ios/Kiko/PrivacyInfo\.xcprivacy)$'
+    | grep -E '^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj|ios/Kiko/[a-z]+\.lproj/InfoPlist\.strings|ios/Kiko/PrivacyInfo\.xcprivacy|drizzle/migrations/.*)$'
 )
 
 # The guard replay also checks commits made in this worktree, so a turn that
@@ -86,7 +89,12 @@ fi
 # the session changed, whatever wrote it (guard-replay.js computes its own
 # set), with the Stop-tier deadline.
 "$DIR/guard-replay.sh" --stop-tier "$hookStarted" || exit 2
-# Only HEAD moved (a commit, no file change): the replay was the one check due.
+# Compares the working tree with the shipped baseline, so it also catches a
+# commit that edited a shipped migration; it runs before the early exit below
+# for the same reason the replay does.
+"$DIR/shipped-migrations.sh" || exit 2
+# Only HEAD moved (a commit, no file change): the replay and the shipped-migrations
+# check were the checks due.
 if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ]; then
   exit 0
 fi

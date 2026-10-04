@@ -1835,6 +1835,58 @@ session that edits only that file never triggers the new check on
 adding a new triggering path; extend it, don't bypass the early-exit
 guard itself (a session that changed nothing must stay silent).
 
+## Shipped migrations are never edited — check:shipped-migrations
+
+User rule: a migration that already shipped is never edited, not even a
+comment. The runner (`src/db/run-migrations.ts`) is count-based and never
+re-runs an applied migration, so an edit never reaches a device that
+applied it. New behavior goes in a new migration. Adding a migration
+stays allowed.
+
+`scripts/checks/shipped-migrations.sh` (+ `shipped-migrations.js`,
+dependency-free like every checker; knip-ignored) is
+`npm run check:shipped-migrations`, in `check:all` right after
+`check:guard-replay`. It has no override and no exemption list.
+
+- **Baseline ("shipped").** For each LOCAL branch of main and next that
+  resolves, the base is `git merge-base HEAD <branch>`. The protected set
+  is the union of the files under `drizzle/migrations/` at those bases.
+  Each base is compared with the WORKING TREE, so an uncommitted edit, a
+  committed edit on the branch, and a Bash-written edit are all caught.
+  A missing main fails closed. A missing next uses main alone.
+- **Per-file rules.** A snapshot, a `.sql`, and any other file type that
+  existed at a base: byte-identical; deleted or renamed fails (a rename
+  is reported with the new path when the bytes match an added file).
+  `meta/_journal.json`: both sides parsed as JSON (a parse error fails
+  closed), every top-level key but `entries` deep-equal, and the new
+  `entries` starts with the base entries, each deep-equal, in order;
+  appended entries pass, and a pure reformat passes. `migrations.js`:
+  the base lines stay an in-order subsequence of the new lines
+  (insertion only; drizzle-kit regenerates it by insertion). A
+  `*.test.ts` under `drizzle/migrations/` is never protected. A file
+  absent at every base (added on this branch) is free.
+- **Failure block.** Each line names the file, what changed (modified,
+  deleted, renamed, journal entry N changed or removed, migrations.js
+  line removed or changed), the base sha, and the restore command
+  `git show <sha>:<path> > <path>`. Never restore with
+  checkout, restore, stash or clean.
+- **Dedup.** The fingerprint is the base shas, the name and blob hash of
+  every file under `drizzle/migrations/`, and the checker script. A hash
+  failure leaves the fingerprint empty, so the check runs.
+- **Wiring.** `scripts/checks/medium.sh` runs the wrapper right after
+  the guard replay and BEFORE its "only HEAD moved" early exit, so a turn
+  that only committed a migration edit is checked. Its harness-input
+  regex includes `drizzle/migrations/`, so a session that touched only a
+  `.sql` file is not silent. No pre-write guard rule: the guard covers
+  `.ts`/`.tsx`, and the Stop tier catches a `.sql` edit in the same turn.
+  No guard-replay change: the check diffs the base with the working tree.
+- **Known limits.** On next itself the next base is HEAD, so only the
+  main base protects: an edit committed directly on next to a migration
+  that is not yet on main is not caught after the commit. The check reads
+  local branches only. Tests live in
+  `__tests__/shipped-migrations.test.ts` (a throwaway git repo with a
+  copy of the wrapper).
+
 ## Plist assertions
 
 `scripts/checks/plist.sh` holds Info.plist invariants as a list of

@@ -19,6 +19,7 @@
     "scripts/checks/specifier-scanner.js",
     "scripts/checks/pre-write-guard.js",
     "scripts/checks/guard-replay.js",
+    "scripts/checks/shipped-migrations.js",
     "scripts/checks/deps-ranges.js",
     "scripts/checks/mutation-score.js"
   ],
