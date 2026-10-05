@@ -672,6 +672,27 @@ function parsePluralCountCheckerOutput(stdout) {
   return findings;
 }
 
+// comment-line-width.js's output is one `<path>:<line>: <columns> columns: <comment text>` line
+// per violation — see its own `runCli`. The comment text is the trimmed comment on that line and
+// the whole of `matchedText`: it holds no line number, so moving a long comment is not a new
+// finding, while rewording it is. The column count rides in `detailText` for the human.
+const COMMENT_LINE_WIDTH_VIOLATION_LINE = /:(\d+): (\d+) columns: (.*)$/;
+
+function parseCommentLineWidthCheckerOutput(stdout) {
+  const findings = [];
+  for (const line of stdout.split('\n')) {
+    const match = COMMENT_LINE_WIDTH_VIOLATION_LINE.exec(line);
+    if (match) {
+      findings.push({
+        line: Number(match[1]),
+        matchedText: match[3],
+        detailText: `${match[2]} columns: ${match[3]}`,
+      });
+    }
+  }
+  return findings;
+}
+
 // Finds the 1-based line of the `export` declaration that introduces
 // `name` — tried, in order, against every shape
 // one-component-per-file.ts's own `classifySlice` recognizes an EXPORTED
@@ -841,6 +862,15 @@ const NODE_RULES = [
     projectCheck: '__tests__/plural-count.test.ts',
     run: (filePath) =>
       runSpawnedNodeChecker('plural-count.js', filePath, parsePluralCountCheckerOutput),
+  },
+  {
+    ruleId: 'kiko-comment-line-width',
+    extensions: ['.ts', '.tsx'],
+    fix: 'Wrap the comment at 100 columns.',
+    skill: 'kiko-code-style › Wrap comments at 100 columns',
+    projectCheck: 'check:comment-line-width',
+    run: (filePath) =>
+      runSpawnedNodeChecker('comment-line-width.js', filePath, parseCommentLineWidthCheckerOutput),
   },
 ];
 

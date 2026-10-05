@@ -1,6 +1,7 @@
 import { SFSymbolView } from 'react-native-nitro-sfsymbols';
 
-// A string-returning resolver, declared so the fixture imports nothing; Semgrep matches the JSX either way.
+// A string-returning resolver, declared so the fixture imports nothing; Semgrep matches the JSX
+// either way.
 declare const resolveFallback: (name: string, fallbackName: string | undefined) => string;
 
 // Semgrep fixture (NEGATIVE): a string literal, the symbol's own name (what

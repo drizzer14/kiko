@@ -1855,6 +1855,85 @@ describe('runNodeChecks (plural-key-needs-count)', () => {
   });
 });
 
+// The REAL comment-line-width.js checker against the mirrored tree — only Semgrep is stubbed
+// clean, the same convention as the plural-count block above. The new-findings-only diff keys on
+// the comment text, so a long comment that is already there never blocks an unrelated edit.
+describe('runNodeChecks (comment-line-width)', () => {
+  const longComment = `// ${'word '.repeat(25)}end`;
+  const existingSource = `${longComment}\nexport const value = 1;\n`;
+
+  function runCommentProbe(
+    existingContent: string | undefined,
+    toolName: 'Write' | 'Edit',
+    input: Record<string, string>,
+  ): SpawnSyncReturns<string> {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    const targetFile = join(project, 'src', 'probe', 'notes.ts');
+
+    if (existingContent !== undefined) {
+      mkdirSync(join(project, 'src', 'probe'), { recursive: true });
+      writeFileSync(targetFile, existingContent);
+    }
+
+    return runGuard(
+      payloadFor(toolName, { file_path: targetFile, ...input }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+  }
+
+  it('denies a new comment line over 100 columns (kiko-comment-line-width)', () => {
+    const result = runCommentProbe(undefined, 'Write', { content: existingSource });
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-comment-line-width');
+    expect(reason).toContain('Wrap the comment at 100 columns.');
+    expect(reason).toContain(`${longComment.length} columns: ${longComment}`);
+    expect(reason).toContain('check:comment-line-width');
+  });
+
+  it('allows an unrelated edit, and a new line above, in a file that already has one', () => {
+    const result = runCommentProbe(existingSource, 'Edit', {
+      old_string: 'export const value = 1;',
+      new_string: "import { other } from './other';\n\nexport const value = other;",
+    });
+
+    expect(result.stdout).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it('denies rewording an existing long comment without wrapping it', () => {
+    const result = runCommentProbe(existingSource, 'Edit', {
+      old_string: 'word end',
+      new_string: 'term end',
+    });
+
+    expect(result.status).toBe(2);
+  });
+
+  it('allows the wrapped form of the same comment', () => {
+    const result = runCommentProbe(existingSource, 'Write', {
+      content: '// word word word word word word word word word word word word\n// word end\n',
+    });
+
+    expect(result.status).toBe(0);
+  });
+
+  it('allows a comment that is one long URL', () => {
+    const result = runCommentProbe(undefined, 'Write', {
+      content: `// https://example.com/${'p'.repeat(100)}\nexport const value = 1;\n`,
+    });
+
+    expect(result.status).toBe(0);
+  });
+});
+
 // The override protocol: a rule-id-specific comment naming the rule and
 // carrying OVERRIDE(<reason>) — `nosemgrep: <id> OVERRIDE(reason) why` for
 // Semgrep rules, `kiko-override: <id> OVERRIDE(reason) why` for Node-checked

@@ -347,6 +347,12 @@ because it can compare against the actual pinned set.
 |---|---|---|---|
 | `check:shipped-migrations` | USER RULE: a migration that already shipped is never edited, comments included (the 0050 `.sql` comment edits had to be reverted by hand). Semgrep cannot read a `.sql` file or compare a file with its base, and the pre-write guard covers `.ts`/`.tsx` only | Shell check (`scripts/checks/shipped-migrations.sh` + `.js`, medium tier before the replay and the HEAD-moved early exit, and `check:shipped-migrations` in `check:all`) | A modified, deleted, or renamed shipped file under `drizzle/migrations/` fails; a new migration passes; no override and no exemption list. Proven by `__tests__/shipped-migrations.test.ts`. The per-file rules, the baseline and the known limits live in kiko-linter's "Shipped migrations are never edited". |
 
+### Enforced — comment line width
+
+| Rule id | Finding | Enforce via | Notes |
+|---|---|---|---|
+| `kiko-comment-line-width` | USER RULE: a comment line over 100 columns (`biome.json` `formatter.lineWidth`). Biome cannot wrap a comment, so the overflow is the author's to wrap (kiko-code-style "Wrap comments at 100 columns") | Node (`scripts/checks/comment-line-width.js`, a pre-write guard `NODE_RULES` row); project-wide: `npm run check:comment-line-width` (`scripts/checks/comment-line-width.sh`), not in `check:all` until the sweep of the existing long comments is approved and landed | Real comment spans only, found with `specifier-scanner.js`'s `commentSpans` (a string, template, or regex literal holding `//` or `/*` never counts). Columns are Unicode code points (Biome counts a wide East Asian character or emoji as two; the check never reports a line Biome would not). Exempt only a comment with no wrap point (one long URL); the exact test is in the checker header. `matchedText` is the trimmed comment text, so a moved comment is not new and a reworded one is. Proven by `__tests__/comment-line-width.test.ts` and the `comment-line-width` case in `__tests__/pre-write-guard.test.ts`. |
+
 ### Rule index — rules shipped before the inventory invariant
 
 `__tests__/rule-inventory.test.ts` fails when a Semgrep rule id in `rules/*.yml` has no row whose first cell is that exact id. These rules shipped before that test, so each gets its row here.

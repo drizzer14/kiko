@@ -1396,7 +1396,8 @@ for the current set.
 - `check:security` honors only Semgrep's own `nosemgrep`.
 - The project-wide Node checkers (`check:import-order`,
   `check:full-word-identifiers`, `check:screen-imports`,
-  `check:feature-imports`, `check:blank-line-separation`) have NO inline override. A
+  `check:feature-imports`, `check:blank-line-separation`,
+  `check:comment-line-width`) have NO inline override. A
   `kiko-override:` gets a write past the guard, and `check:all` still
   fails on that line. A Node-rule exception needs a checker-level
   exemption (like `EXEMPTIONS` in `full-word-identifiers.js`), which is
@@ -1440,7 +1441,23 @@ a pre-existing finding points at. A Semgrep deny names
   (`CONTAINERS`, `TEST_ONLY`, `AMBIENT_LOOSE`, …) lives in the checker;
   read it there. No `--write`.
 - `specifier-scanner.js` is the shared import-specifier scanner. A new
-  checker that reads import specifiers reuses it.
+  checker that reads import specifiers reuses it. Its `commentSpans`
+  returns the real comment spans (offsets) that `blankNoise` passes over,
+  so a checker that reads comments needs no scanner of its own.
+- `comment-line-width.js` (`kiko-comment-line-width`) enforces
+  kiko-code-style's "Wrap comments at 100 columns": a physical line over
+  100 columns that holds real comment text fails, unless the comment
+  cannot be wrapped (one long URL). The checker header and the skill
+  section define the exemption exactly. `matchedText` is the trimmed
+  comment text, so a moved long comment is not new and a reworded one is.
+  `comment-line-width.sh` has a per-file mode and a project-wide mode
+  (`npm run check:comment-line-width`) over the `.ts`/`.tsx` roots of
+  `full-word-identifiers.sh` except `rules/fixtures/`. The project-wide
+  gate is not in `check:all` yet, because the tree still holds long
+  comments and the sweep needs the user's approval; the guard row blocks
+  only new ones. Retire this sentence when `package.json`'s `check:all`
+  names `check:comment-line-width`. No `--write`. Tests:
+  `__tests__/comment-line-width.test.ts`.
 - `plural-count.js` (`kiko-plural-key-needs-count`) enforces kiko-translator's
   "A plural key is always called with `count`". It has no `.sh` wrapper
   and no `check:*` gate: its project-wide check is the Jest invariant
