@@ -250,7 +250,7 @@ describe('deleting a leg of a manual Exchange', () => {
     expect(stateOf()).toEqual(before);
   });
 
-  it('leaves a destination balance alone when the leg is dated before a bank row anchored that holding', async () => {
+  it('brings a destination balance back when the leg is dated before a bank row anchored that holding', async () => {
     insertRow({
       id: 'sync-row',
       holdingId: 'usd',
@@ -268,7 +268,7 @@ describe('deleting a leg of a manual Exchange', () => {
     expect(balancesOf().usd).toBe(100);
   });
 
-  it('deletes a manual leg that sits on a synced holding, judged by that leg own source', async () => {
+  it('deletes a manual leg that sits on a synced holding and takes it back in full', async () => {
     insertHolding('synced-usd', 'card', 'USD', 100, {
       accountId: 'synced',
       metadata: { monobankId: 'card-usd' },
@@ -619,32 +619,20 @@ describe('deleting a leg of a Convert', () => {
       });
     };
 
-    it('names the holding whose balance the delete leaves as it is', async () => {
-      await convertImportedRow();
-
-      expect(await transactionsRepo.removePlan(idOfRowOn('usd'))).toEqual({
-        split: false,
-        exchange: { kind: 'deleted', names: ['Cash'] },
-        keptBalanceNames: ['Cash'],
-      });
-    });
-
-    it('deletes the imported leg without moving the balance', async () => {
+    it('takes both legs back in full, each in its own currency', async () => {
       await convertImportedRow();
       await transactionsRepo.remove(idOfRowOn('usd'));
 
       expect(rowIds()).toEqual([]);
-      expect(balancesOf()).toMatchObject({ cash: -40_000, usd: 0 });
+      expect(balancesOf()).toMatchObject({ cash: 0, usd: 0 });
     });
 
-    it('names no balance when the imported leg is after the boundary', async () => {
+    it('does the same from the imported leg', async () => {
       await convertImportedRow();
-      run('UPDATE holdings SET balance_set_at = ? WHERE id = ?', MOVED - 1_000, 'cash');
+      await transactionsRepo.remove('imported');
 
-      expect(await transactionsRepo.removePlan(idOfRowOn('usd'))).toEqual({
-        split: false,
-        exchange: { kind: 'deleted', names: ['Cash'] },
-      });
+      expect(rowIds()).toEqual([]);
+      expect(balancesOf()).toMatchObject({ cash: 0, usd: 0 });
     });
   });
 
@@ -748,7 +736,7 @@ describe('deleting a row of a split payment', () => {
     expect(rowIds()).toEqual(['bank-member']);
   });
 
-  it('judges a member on a synced holding by the same boundary rule as any other', async () => {
+  it('takes back a member on a synced holding in full, as any other', async () => {
     insertRow({
       id: 'bank-sync-row',
       holdingId: 'bank',
@@ -990,6 +978,115 @@ describe('deleting a part of a split payment whose return was converted', () => 
 
       expect(rowIds()).toEqual(['bank-leg']);
     });
+  });
+});
+
+// Each part of a movement takes its full amount back from its own holding,
+// however old the part is against that holding's balance anchor. The rows are
+// stored as they were, so only the delete moves a balance here.
+describe('deleting a movement whose parts are dated before their holdings’ anchors', () => {
+  const anchor = (holdingId: string): void => {
+    run('UPDATE holdings SET balance_set_at = ? WHERE id = ?', MOVED + 1_000, holdingId);
+  };
+
+  const pair = (ids: string[]): void => {
+    for (const id of ids) {
+      run("UPDATE transactions SET exchange_pair_id = 'pair' WHERE id = ?", id);
+    }
+  };
+
+  it('takes both legs of an exchange back in full, each in its own currency', async () => {
+    insertRow({
+      id: 'out',
+      holdingId: 'uah',
+      amountMinorUnits: -40_000,
+      exchangeCounterpartHoldingId: 'usd',
+    });
+    insertRow({
+      id: 'in',
+      holdingId: 'usd',
+      amountMinorUnits: 1_000,
+      exchangeCounterpartHoldingId: 'uah',
+    });
+    insertRow({
+      id: 'bank-row',
+      holdingId: 'usd',
+      amountMinorUnits: 100,
+      time: MOVED + 1_000,
+      source: 'monobank',
+    });
+    pair(['out', 'in']);
+    anchor('uah');
+    setBalance('uah', 60_000);
+    setBalance('usd', 1_100);
+
+    await transactionsRepo.remove('out');
+
+    expect(rowIds()).toEqual(['bank-row']);
+    expect(balancesOf()).toMatchObject({ uah: 100_000, usd: 100 });
+  });
+
+  it('takes every member of a split back in full', async () => {
+    const group = 'group';
+
+    insertRow({ id: 'payment', holdingId: 'uah', amountMinorUnits: -50_000, changeGroupId: group });
+    insertRow({ id: 'return', holdingId: 'cash', amountMinorUnits: 10_000, changeGroupId: group });
+    anchor('uah');
+    anchor('cash');
+    setBalance('uah', 50_000);
+    setBalance('cash', 10_000);
+
+    await transactionsRepo.remove('return');
+
+    expect(rowIds()).toEqual([]);
+    expect(balancesOf()).toMatchObject({ uah: 100_000, cash: 0 });
+  });
+
+  it('takes a deposit source leg back in full and removes its contribution', async () => {
+    run(
+      "UPDATE holdings SET metadata = json_set(metadata, '$.contributions', json(?)) WHERE id = 'deposit'",
+      JSON.stringify([
+        ...DEPOSIT_METADATA.contributions,
+        { amountMinorUnits: 40_000, date: MOVED },
+      ]),
+    );
+    insertRow({
+      id: 'leg',
+      holdingId: 'uah',
+      amountMinorUnits: -40_000,
+      exchangeCounterpartHoldingId: 'deposit',
+    });
+    anchor('uah');
+    setBalance('uah', 60_000);
+
+    await transactionsRepo.remove('leg');
+
+    expect(balancesOf().uah).toBe(100_000);
+    expect(contributionsOf('deposit')).toEqual(DEPOSIT_METADATA.contributions);
+  });
+
+  it('takes a partner back in full when the holding of the other leg is deleted', async () => {
+    insertRow({
+      id: 'out',
+      holdingId: 'uah',
+      amountMinorUnits: -40_000,
+      exchangeCounterpartHoldingId: 'usd',
+    });
+    insertRow({
+      id: 'in',
+      holdingId: 'usd',
+      amountMinorUnits: 1_000,
+      exchangeCounterpartHoldingId: 'uah',
+    });
+    pair(['out', 'in']);
+    anchor('usd');
+    setBalance('uah', 60_000);
+    setBalance('usd', 1_000);
+
+    await transactionsRepo.removeHolding('uah');
+
+    expect(rowIds()).toEqual([]);
+    expect(balancesOf().usd).toBe(0);
   });
 });
 

@@ -1,7 +1,7 @@
-// A statement import's balance and the delete of one of its rows share one
-// rule, the holding's balance boundary. The preview must show the number the
-// import then stores, and a delete must undo exactly what the import counted;
-// a stored balance is SQL over the ledger, so only a real engine shows either.
+// The preview must show the number the import then stores, and deleting one of
+// an import's rows takes its full amount back, whatever its date against the
+// holding's balance boundary; a stored balance is SQL over the ledger, so only
+// a real engine shows either.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
@@ -317,32 +317,32 @@ describe('deleting an import row after a closing balance set the balance', () =>
     expect(balanceSetAt()).toBe(CLOSING_AT);
   });
 
-  it('keeps the balance and the anchor when the newest row, at the closing time, goes', async () => {
+  it('takes the amount back and keeps the anchor when the newest row, at the closing time, goes', async () => {
     await transactionsRepo.remove(idOf('third'));
 
     expect(storedRowCount()).toBe(2);
-    expect(balanceOf()).toBe(85_000);
+    expect(balanceOf()).toBe(-15_000);
     expect(balanceSetAt()).toBe(CLOSING_AT);
   });
 
-  it('keeps the balance when a row before the closing time goes', async () => {
+  it('takes the amount back when a row before the closing time goes', async () => {
     await transactionsRepo.remove(idOf('second'));
 
     expect(storedRowCount()).toBe(2);
-    expect(balanceOf()).toBe(85_000);
+    expect(balanceOf()).toBe(90_000);
   });
 
-  it('keeps the balance and the anchor when every row goes', async () => {
+  it('ends on the statement opening balance and keeps the anchor when every row goes', async () => {
     for (const { externalId } of threeRows) {
       await transactionsRepo.remove(idOf(externalId));
     }
 
     expect(storedRowCount()).toBe(0);
-    expect(balanceOf()).toBe(85_000);
+    expect(balanceOf()).toBe(0);
     expect(balanceSetAt()).toBe(CLOSING_AT);
   });
 
-  it('keeps the balance a later manual entry moved when an import row goes', async () => {
+  it('takes the amount back from a balance a later manual entry moved when an import row goes', async () => {
     await transactionsRepo.recordManual({
       holdingId: 'card',
       amountMinorUnits: -5_000,
@@ -353,7 +353,7 @@ describe('deleting an import row after a closing balance set the balance', () =>
 
     await transactionsRepo.remove(idOf('first'));
 
-    expect(balanceOf()).toBe(80_000);
+    expect(balanceOf()).toBe(90_000);
   });
 
   it('still gives the money back when the later manual entry is the row deleted', async () => {
@@ -369,13 +369,25 @@ describe('deleting an import row after a closing balance set the balance', () =>
     expect(balanceOf()).toBe(85_000);
   });
 
-  it('puts a deleted row back when the same statement is imported again', async () => {
+  it('puts a deleted row back with its amount when the same statement is imported again', async () => {
     await transactionsRepo.remove(idOf('second'));
 
+    expect(balanceOf()).toBe(90_000);
     expect(await importRows({ rows: threeRows, closingBalance: CLOSING })).toBe(1);
 
     expect(storedRowCount()).toBe(3);
     expect(balanceOf()).toBe(85_000);
+  });
+
+  it('lets a newer statement closing balance absorb a delete, and leaves the row gone', async () => {
+    await transactionsRepo.remove(idOf('second'));
+    await importRows({
+      rows: [{ externalId: 'newer', amountMinorUnits: -1_000, time: CLOSING_AT + 2 * DAY_MS }],
+      closingBalance: closing(70_000, CLOSING_AT + 3 * DAY_MS),
+    });
+
+    expect(storedRowCount()).toBe(3);
+    expect(balanceOf()).toBe(70_000);
   });
 
   it('does nothing when the same id is deleted twice', async () => {
@@ -385,7 +397,7 @@ describe('deleting an import row after a closing balance set the balance', () =>
     await transactionsRepo.remove(secondId);
 
     expect(storedRowCount()).toBe(2);
-    expect(balanceOf()).toBe(85_000);
+    expect(balanceOf()).toBe(90_000);
   });
 
   it('leaves the name rules alone when a categorised row goes', async () => {
@@ -401,7 +413,7 @@ describe('deleting an import row after a closing balance set the balance', () =>
 });
 
 describe('deleting the only row of an import with a closing balance', () => {
-  it('leaves the balance at the bank figure', async () => {
+  it('ends on the statement opening balance and keeps the anchor', async () => {
     await importRows({
       rows: [{ externalId: 'only', amountMinorUnits: -10_000, time: CLOSING_AT }],
       closingBalance: closing(90_000, CLOSING_AT),
@@ -409,7 +421,7 @@ describe('deleting the only row of an import with a closing balance', () => {
     await transactionsRepo.remove(idOf('only'));
 
     expect(storedRowCount()).toBe(0);
-    expect(balanceOf()).toBe(90_000);
+    expect(balanceOf()).toBe(100_000);
     expect(balanceSetAt()).toBe(CLOSING_AT);
   });
 });
@@ -457,10 +469,20 @@ describe('deleting an import row against a balance set by hand', () => {
     expect(balanceOf()).toBe(100_000);
   });
 
-  it('keeps the balance when a row before the hand set goes', async () => {
+  it('takes the amount back when a row before the hand set goes', async () => {
     await transactionsRepo.remove(idOf('before-1'));
 
-    expect(balanceOf()).toBe(97_000);
+    expect(balanceOf()).toBe(107_000);
+  });
+
+  // A file with no closing balance counts a row before the hand set as history,
+  // so importing it again brings the row back without its amount.
+  it('brings a deleted row before the hand set back as history, its amount not counted', async () => {
+    await transactionsRepo.remove(idOf('before-1'));
+    await importRows(aroundHandSet([afterHandSet]));
+
+    expect(storedRowCount()).toBe(3);
+    expect(balanceOf()).toBe(107_000);
   });
 });
 
@@ -470,13 +492,13 @@ describe('deleting an import row beside a synced row', () => {
     insertStoredRow('mono-newest', 'monobank', -2_000, NEWEST_SYNC_AT);
   });
 
-  it('keeps the balance for a duplicate dated before the newest synced row', async () => {
+  it('takes the amount back for a duplicate dated before the newest synced row', async () => {
     insertStoredRow('duplicate', 'import', -2_000, NEWEST_SYNC_AT - 30_000);
 
     await transactionsRepo.remove('duplicate');
 
     expect(storedRowCount()).toBe(1);
-    expect(balanceOf()).toBe(50_000);
+    expect(balanceOf()).toBe(52_000);
   });
 
   it('gives the money back for a statement row dated after the newest synced row', async () => {
