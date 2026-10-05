@@ -167,6 +167,15 @@ const idOfRowOn = (holdingId: string): string =>
       .get(holdingId) as { id: string }
   ).id;
 
+// What a delete takes with the row and what it leaves, without the balance lines
+// that `the balance changes a delete states` reads.
+const linkageOf = async (transactionId: string) => {
+  const { balanceChanges: _balanceChanges, ...linkage } =
+    await transactionsRepo.removePlan(transactionId);
+
+  return linkage;
+};
+
 const exchangeUahToUsd = (): Promise<void> =>
   transactionsRepo.recordExchange({
     sourceHoldingId: 'uah',
@@ -226,11 +235,11 @@ describe('deleting a leg of a manual Exchange', () => {
   it('names the other holding in the plan, from either leg', async () => {
     await exchangeUahToUsd();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+    expect(await linkageOf(idOfRowOn('uah'))).toEqual({
       split: false,
       exchange: { kind: 'deleted', names: ['Dollar card'] },
     });
-    expect(await transactionsRepo.removePlan(idOfRowOn('usd'))).toEqual({
+    expect(await linkageOf(idOfRowOn('usd'))).toEqual({
       split: false,
       exchange: { kind: 'deleted', names: ['Hryvnia card'] },
     });
@@ -336,7 +345,7 @@ describe('deleting the source leg of an Exchange into a term deposit', () => {
   it('says in the plan which deposit loses its contribution', async () => {
     await exchangeIntoDeposit();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+    expect(await linkageOf(idOfRowOn('uah'))).toEqual({
       split: false,
       deposit: { name: 'Deposit', matched: true },
     });
@@ -351,7 +360,7 @@ describe('deleting the source leg of an Exchange into a term deposit', () => {
 
     setContributions(edited);
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+    expect(await linkageOf(idOfRowOn('uah'))).toEqual({
       split: false,
       deposit: { name: 'Deposit', matched: false },
     });
@@ -373,7 +382,7 @@ describe('deleting the source leg of an Exchange into a term deposit', () => {
 
     setContributions(duplicated);
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+    expect(await linkageOf(idOfRowOn('uah'))).toEqual({
       split: false,
       deposit: { name: 'Deposit', matched: false },
     });
@@ -396,7 +405,7 @@ describe('deleting the source leg of an Exchange into a term deposit', () => {
       exchangeCounterpartHoldingId: 'deposit',
     });
 
-    expect(await transactionsRepo.removePlan('deposit-source')).toEqual({
+    expect(await linkageOf('deposit-source')).toEqual({
       split: false,
       deposit: { name: 'Deposit', matched: false },
     });
@@ -411,7 +420,7 @@ describe('deleting the source leg of an Exchange into a term deposit', () => {
     await exchangeIntoDeposit();
     run("UPDATE holdings SET metadata = '{}' WHERE id = 'deposit'");
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+    expect(await linkageOf(idOfRowOn('uah'))).toEqual({
       split: false,
       deposit: { name: 'Deposit', matched: false },
     });
@@ -469,7 +478,7 @@ describe('deleting the source leg of an Exchange into a term deposit', () => {
     it('says in the plan of the new leg that the deposit loses its contribution', async () => {
       await convertSourceLeg();
 
-      expect(await transactionsRepo.removePlan(idOfRowOn('usd'))).toEqual({
+      expect(await linkageOf(idOfRowOn('usd'))).toEqual({
         split: false,
         exchange: { kind: 'deleted', names: ['Hryvnia card'] },
         deposit: { name: 'Deposit', matched: true },
@@ -536,7 +545,7 @@ describe('deleting a leg of a Convert', () => {
 
     expect(rowOf('original')?.pairId).toBe(rowOf(newLeg)?.pairId);
     expect(rowOf('original')?.marker).toBeNull();
-    expect(await transactionsRepo.removePlan(newLeg)).toEqual({
+    expect(await linkageOf(newLeg)).toEqual({
       split: false,
       exchange: { kind: 'syncedKept', names: ['Monobank card'] },
     });
@@ -570,7 +579,7 @@ describe('deleting a leg of a Convert', () => {
     });
     const newestLeg = idOfRowOn('second');
 
-    expect(await transactionsRepo.removePlan(newestLeg)).toEqual({
+    expect(await linkageOf(newestLeg)).toEqual({
       split: false,
       exchange: { kind: 'deleted', names: ['Dollar card'], keptNames: ['Monobank card'] },
     });
@@ -713,7 +722,7 @@ describe('deleting a row of a split payment', () => {
   it('says in the plan that the whole split goes', async () => {
     await splitPayment();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('cash'))).toEqual({ split: true });
+    expect(await linkageOf(idOfRowOn('cash'))).toEqual({ split: true });
   });
 
   it('keeps a member that is not manual and deletes the rest', async () => {
@@ -797,7 +806,7 @@ describe('deleting a part of a split payment that was converted', () => {
   it('names the split and the converted payment’s leg in the plan of a return', async () => {
     await splitThenConvertPayment();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('cash'))).toEqual({
+    expect(await linkageOf(idOfRowOn('cash'))).toEqual({
       split: true,
       splitExchanges: [{ kind: 'deleted', names: ['Dollar card'] }],
     });
@@ -807,7 +816,14 @@ describe('deleting a part of a split payment that was converted', () => {
     await splitThenConvertPayment();
 
     expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('cash')), i18n.t)).toBe(
-      'This also deletes every other part of this split payment. This also deletes the conversion made from this split payment, in Dollar card.',
+      [
+        'This also deletes every other part of this split payment.',
+        'This also deletes the conversion made from this split payment, in Dollar card.',
+        'This changes the balance of Cash by -100.00 ₴.',
+        'This changes the balance of Dollar card by -$10.00.',
+        'This changes the balance of Hryvnia card by +500.00 ₴.',
+        'This changes the balance of Second card by -50.00 ₴.',
+      ].join(' '),
     );
   });
 
@@ -821,7 +837,7 @@ describe('deleting a part of a split payment that was converted', () => {
   it('names the split and both exchange legs in the plan of the payment', async () => {
     await splitThenConvertPayment();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+    expect(await linkageOf(idOfRowOn('uah'))).toEqual({
       split: true,
       exchange: { kind: 'deleted', names: ['Dollar card'] },
     });
@@ -830,7 +846,7 @@ describe('deleting a part of a split payment that was converted', () => {
   it('names the split and the payment in the plan of the converted leg', async () => {
     await splitThenConvertPayment();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('usd'))).toEqual({
+    expect(await linkageOf(idOfRowOn('usd'))).toEqual({
       split: true,
       exchange: { kind: 'deleted', names: ['Hryvnia card'] },
     });
@@ -944,7 +960,7 @@ describe('deleting a part of a split payment whose return was converted', () => 
   it('names the split and the conversion of the return in the plan of the payment', async () => {
     await splitThenConvertReturn();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+    expect(await linkageOf(idOfRowOn('uah'))).toEqual({
       split: true,
       splitExchanges: [{ kind: 'deleted', names: ['Dollar card'] }],
     });
@@ -953,7 +969,7 @@ describe('deleting a part of a split payment whose return was converted', () => 
   it('names the conversion, never the other part of an exchange, in the plan of a return that was not converted', async () => {
     await splitThenConvertReturn();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('second'))).toEqual({
+    expect(await linkageOf(idOfRowOn('second'))).toEqual({
       split: true,
       splitExchanges: [{ kind: 'deleted', names: ['Dollar card'] }],
     });
@@ -962,7 +978,7 @@ describe('deleting a part of a split payment whose return was converted', () => 
   it('names the other leg, not the split, in the plan of the converted return', async () => {
     await splitThenConvertReturn();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('cash'))).toEqual({
+    expect(await linkageOf(idOfRowOn('cash'))).toEqual({
       split: true,
       exchange: { kind: 'deleted', names: ['Dollar card'] },
     });
@@ -972,7 +988,14 @@ describe('deleting a part of a split payment whose return was converted', () => 
     await splitThenConvertReturn();
 
     expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('uah')), i18n.t)).toBe(
-      'This also deletes every other part of this split payment. This also deletes the conversion made from this split payment, in Dollar card.',
+      [
+        'This also deletes every other part of this split payment.',
+        'This also deletes the conversion made from this split payment, in Dollar card.',
+        'This changes the balance of Cash by -100.00 ₴.',
+        'This changes the balance of Dollar card by +$10.00.',
+        'This changes the balance of Hryvnia card by +500.00 ₴.',
+        'This changes the balance of Second card by -50.00 ₴.',
+      ].join(' '),
     );
   });
 
@@ -980,7 +1003,14 @@ describe('deleting a part of a split payment whose return was converted', () => 
     await splitThenConvertReturn();
 
     expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('cash')), i18n.t)).toBe(
-      'This also deletes the other part of this exchange, in Dollar card. This also deletes every other part of this split payment.',
+      [
+        'This also deletes the other part of this exchange, in Dollar card.',
+        'This also deletes every other part of this split payment.',
+        'This changes the balance of Cash by -100.00 ₴.',
+        'This changes the balance of Dollar card by +$10.00.',
+        'This changes the balance of Hryvnia card by +500.00 ₴.',
+        'This changes the balance of Second card by -50.00 ₴.',
+      ].join(' '),
     );
   });
 
@@ -995,7 +1025,7 @@ describe('deleting a part of a split payment whose return was converted', () => 
     it('says the leg stays in the plan, and deletes every user-owned part', async () => {
       await bankOwnLeg();
 
-      expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+      expect(await linkageOf(idOfRowOn('uah'))).toEqual({
         split: true,
         splitExchanges: [{ kind: 'syncedKept', names: ['Dollar card'] }],
       });
@@ -1008,11 +1038,25 @@ describe('deleting a part of a split payment whose return was converted', () => 
     it('never says only one part goes next to the split, from the payment or the converted return', async () => {
       await bankOwnLeg();
 
+      const balanceLines = [
+        'This changes the balance of Cash by -100.00 ₴.',
+        'This changes the balance of Hryvnia card by +500.00 ₴.',
+        'This changes the balance of Second card by -50.00 ₴.',
+      ];
+
       expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('uah')), i18n.t)).toBe(
-        'This also deletes every other part of this split payment. The conversion in Dollar card came from your bank and stays.',
+        [
+          'This also deletes every other part of this split payment.',
+          'The conversion in Dollar card came from your bank and stays.',
+          ...balanceLines,
+        ].join(' '),
       );
       expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('cash')), i18n.t)).toBe(
-        'The conversion in Dollar card came from your bank and stays. This also deletes every other part of this split payment.',
+        [
+          'The conversion in Dollar card came from your bank and stays.',
+          'This also deletes every other part of this split payment.',
+          ...balanceLines,
+        ].join(' '),
       );
     });
   });
@@ -1037,7 +1081,7 @@ describe('deleting a part of a split payment whose return was converted', () => 
     it('names the holding to check in the plan of the payment, and deletes the split only', async () => {
       legacyReturn('usd');
 
-      expect(await transactionsRepo.removePlan('legacy-payment')).toEqual({
+      expect(await linkageOf('legacy-payment')).toEqual({
         split: true,
         splitExchanges: [{ kind: 'missing', name: 'Dollar card' }],
       });
@@ -1050,7 +1094,7 @@ describe('deleting a part of a split payment whose return was converted', () => 
     it('names no holding when the marker holding is gone', async () => {
       legacyReturn('deleted-holding');
 
-      expect(await transactionsRepo.removePlan('legacy-payment')).toEqual({
+      expect(await linkageOf('legacy-payment')).toEqual({
         split: true,
         splitExchanges: [{ kind: 'missing' }],
       });
@@ -1059,7 +1103,7 @@ describe('deleting a part of a split payment whose return was converted', () => 
     it('does not name a deposit marker, whose leg has no partner row by design', async () => {
       legacyReturn('deposit');
 
-      expect(await transactionsRepo.removePlan('legacy-payment')).toEqual({
+      expect(await linkageOf('legacy-payment')).toEqual({
         split: true,
         deposit: { name: 'Deposit', matched: false },
       });
@@ -1176,6 +1220,96 @@ describe('deleting a movement whose parts are dated before their holdings’ anc
   });
 });
 
+// The confirm states what the delete does to each balance: the sum of the full
+// amounts it takes back, per holding, in that holding's currency.
+describe('the balance changes a delete states', () => {
+  const balanceChangesOf = async (transactionId: string) =>
+    (await transactionsRepo.removePlan(transactionId)).balanceChanges;
+
+  it('states the amount a plain row gives back to its own holding', async () => {
+    await transactionsRepo.recordManual({
+      holdingId: 'uah',
+      amountMinorUnits: -1_000,
+      time: MOVED,
+      category: 'groceries',
+    });
+    const plan = await transactionsRepo.removePlan(idOfRowOn('uah'));
+
+    expect(plan.balanceChanges).toEqual([
+      { name: 'Hryvnia card', currency: 'UAH', minorUnits: 1_000 },
+    ]);
+    expect(removeNotice(plan, i18n.t)).toBe(
+      'This changes the balance of Hryvnia card by +10.00 ₴.',
+    );
+  });
+
+  it('states each leg of an exchange in its own currency, by holding name', async () => {
+    await exchangeUahToUsd();
+
+    const expected = [
+      { name: 'Dollar card', currency: 'USD', minorUnits: -1_000 },
+      { name: 'Hryvnia card', currency: 'UAH', minorUnits: 40_000 },
+    ];
+
+    expect(await balanceChangesOf(idOfRowOn('uah'))).toEqual(expected);
+    expect(await balanceChangesOf(idOfRowOn('usd'))).toEqual(expected);
+  });
+
+  it('states every holding of a split, whatever the date of its row', async () => {
+    await transactionsRepo.recordManualWithReturns({
+      payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
+      returns: [
+        { holdingId: 'cash', amountMinorUnits: 10_000 },
+        { holdingId: 'second', amountMinorUnits: 5_000 },
+      ],
+    });
+
+    expect(await balanceChangesOf(idOfRowOn('cash'))).toEqual([
+      { name: 'Cash', currency: 'UAH', minorUnits: -10_000 },
+      { name: 'Hryvnia card', currency: 'UAH', minorUnits: 50_000 },
+      { name: 'Second card', currency: 'UAH', minorUnits: -5_000 },
+    ]);
+  });
+
+  it('states no line for a holding whose parts net to nothing', async () => {
+    insertRow({ id: 'out', holdingId: 'uah', amountMinorUnits: -1_000 });
+    insertRow({ id: 'in', holdingId: 'uah', amountMinorUnits: 1_000 });
+    run("UPDATE transactions SET exchange_pair_id = 'pair'");
+
+    expect(await balanceChangesOf('out')).toBeUndefined();
+  });
+
+  it('states no line for a bank-owned part that stays', async () => {
+    insertRow({ id: 'original', holdingId: 'bank', amountMinorUnits: -40_000, source: 'monobank' });
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'usd',
+      counterpartType: 'card',
+      amountMinorUnits: 1_000,
+      existingTransactionId: 'original',
+      existingHoldingId: 'bank',
+      time: MOVED,
+    });
+
+    expect(await balanceChangesOf(idOfRowOn('usd'))).toEqual([
+      { name: 'Dollar card', currency: 'USD', minorUnits: -1_000 },
+    ]);
+  });
+
+  it('states a row dated before its holding’s anchor the same way', async () => {
+    insertRow({ id: 'old', holdingId: 'uah', amountMinorUnits: -1_000 });
+    run('UPDATE holdings SET balance_set_at = ? WHERE id = ?', MOVED + 1_000, 'uah');
+
+    expect(await balanceChangesOf('old')).toEqual([
+      { name: 'Hryvnia card', currency: 'UAH', minorUnits: 1_000 },
+    ]);
+  });
+
+  it('states nothing for a row that is not there', async () => {
+    expect(await balanceChangesOf('missing')).toBeUndefined();
+  });
+});
+
 describe('deleting a row that is no part of a movement', () => {
   it('deletes only that row, with no plan', async () => {
     await transactionsRepo.recordManual({
@@ -1187,7 +1321,7 @@ describe('deleting a row that is no part of a movement', () => {
     insertRow({ id: 'other', holdingId: 'cash', amountMinorUnits: 300 });
     const plain = idOfRowOn('uah');
 
-    expect(await transactionsRepo.removePlan(plain)).toEqual({ split: false });
+    expect(await linkageOf(plain)).toEqual({ split: false });
 
     await transactionsRepo.remove(plain);
 
@@ -1198,7 +1332,7 @@ describe('deleting a row that is no part of a movement', () => {
   it('deletes nothing and reports no plan for a missing id', async () => {
     await transactionsRepo.remove('missing');
 
-    expect(await transactionsRepo.removePlan('missing')).toEqual({ split: false });
+    expect(await linkageOf('missing')).toEqual({ split: false });
   });
 });
 
@@ -1284,7 +1418,7 @@ describe('a legacy leg written before the pair id existed', () => {
       setBalance('usd', 1_000);
     });
 
-    expect(await transactionsRepo.removePlan('legacy-leg')).toEqual({
+    expect(await linkageOf('legacy-leg')).toEqual({
       split: false,
       exchange: { kind: 'syncedKept', names: ['Monobank card'] },
     });
@@ -1314,7 +1448,7 @@ describe('a legacy leg written before the pair id existed', () => {
       setBalance('usd', 1_000);
     });
 
-    expect(await transactionsRepo.removePlan('redated-out')).toEqual({
+    expect(await linkageOf('redated-out')).toEqual({
       split: false,
       exchange: { kind: 'missing', name: 'Dollar card' },
     });
@@ -1336,7 +1470,7 @@ describe('a legacy leg written before the pair id existed', () => {
       setBalance('uah', 60_000);
     });
 
-    expect(await transactionsRepo.removePlan('dangling')).toEqual({
+    expect(await linkageOf('dangling')).toEqual({
       split: false,
       exchange: { kind: 'missing', name: undefined },
     });

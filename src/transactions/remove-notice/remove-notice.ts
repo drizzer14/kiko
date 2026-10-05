@@ -1,7 +1,15 @@
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import { formatMoney } from '@kiko/currency/format';
+import { activeLocale } from '@kiko/i18n/active-locale';
+import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+
+/** How far a delete moves one holding's balance: the sum of the full amounts it
+ * takes back, in the holding's own currency (negative when it lowers it). */
+export type BalanceChange = { name: string; currency: Currency; minorUnits: number };
 
 export type ExchangeRemoval =
   // The other legs are the user's rows and go with this one; `names` are the
@@ -31,6 +39,8 @@ export type RemovePlan = {
   // is no member of, whose names and fate the confirm speaks of as the split's.
   splitExchanges?: ExchangeRemoval[];
   deposit?: DepositRemoval;
+  // The holdings whose balance the delete changes, by name; absent when none.
+  balanceChanges?: BalanceChange[];
 };
 
 // The names of a list, each in the language's own quotes and joined with a
@@ -89,6 +99,26 @@ const depositSentence = ({ name, matched }: DepositRemoval, t: TFunction): strin
     name,
   });
 
+// The shared money formatter writes a minus for a loss and no sign for a gain,
+// which "by 400.00" would not tell from a loss, so a gain gets its plus.
+const signedAmountOf = ({ currency, minorUnits }: BalanceChange): string => {
+  const amount = formatMoney(Money.of(currency, minorUnits), activeLocale());
+
+  return minorUnits > 0 ? `+${amount}` : amount;
+};
+
+// One sentence per holding. The name stays raw: the sentence's own template
+// quotes a single name where the language does.
+const balanceChangeSentences = (changes: BalanceChange[], t: TFunction): string | undefined =>
+  joinNoticeSentences(
+    ...changes.map((change) =>
+      t('transactions.deleteLinked.balanceChange', {
+        name: change.name,
+        amount: signedAmountOf(change),
+      }),
+    ),
+  );
+
 /** The sentences that exist, one space apart, or `undefined` when none does. */
 export const joinNoticeSentences = (...sentences: (string | undefined)[]): string | undefined => {
   const present = sentences.filter((sentence): sentence is string => sentence !== undefined);
@@ -115,6 +145,9 @@ export type RemoveHoldingsPlan = {
   unlinked: string[];
   // A leg with no partner whose marker holding is gone, so none is named.
   unlinkedPlain: boolean;
+  // How far the delete moves the balance of each other holding it takes a row
+  // from; absent when none.
+  balanceChanges?: BalanceChange[];
 };
 
 type NamesKey =
@@ -157,6 +190,7 @@ export const removeHoldingsNotice = (plan: RemoveHoldingsPlan, t: TFunction): st
     namesSentence('holdings.deleteLinked.contributionsKept', plan.keptContributions, t),
     namesSentence('holdings.deleteLinked.syncedKept', plan.keptSynced, t),
     unlinkedSentence(plan, t),
+    balanceChangeSentences(plan.balanceChanges ?? [], t),
   );
 
 /**
@@ -183,4 +217,5 @@ export const removeNotice = (plan: RemovePlan, t: TFunction): string | undefined
       ...(plan.splitExchanges ?? []).map((exchange) => splitExchangeSentences(exchange, t)),
     ),
     foldMap(maybe(plan.deposit), (deposit) => depositSentence(deposit, t)),
+    balanceChangeSentences(plan.balanceChanges ?? [], t),
   );

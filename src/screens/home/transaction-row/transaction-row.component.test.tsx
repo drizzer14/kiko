@@ -204,7 +204,22 @@ describe('TransactionRow', () => {
       expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-1');
     });
 
-    it('keeps the confirm bare for a row that stands alone', async () => {
+    it('states the balance the delete changes under the confirm title, even for a row that stands alone', async () => {
+      jest.mocked(transactionsRepo.removePlan).mockResolvedValue({
+        split: false,
+        balanceChanges: [{ name: 'Card', currency: 'UAH', minorUnits: 5_000 }],
+      });
+      const { getByTestId, getByText } = await renderRow(baseItem);
+
+      await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(getByText('This changes the balance of Card by +50.00 ₴.')).toBeTruthy();
+    });
+
+    it('keeps the confirm bare for a row whose plan says nothing', async () => {
       const { getByTestId, queryByText } = await renderRow(baseItem);
 
       await holdCard();

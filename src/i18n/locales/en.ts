@@ -948,6 +948,9 @@ export const en = {
       splitExchangeUnlinked:
         'A conversion made from this split payment could not be found in {{name}}. Check {{name}}.',
       splitExchangeUnlinkedPlain: 'A conversion made from this split payment could not be found.',
+      // One sentence per holding whose balance the delete changes; `amount` is
+      // signed, in that holding's currency.
+      balanceChange: 'This changes the balance of {{name}} by {{amount}}.',
     },
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',

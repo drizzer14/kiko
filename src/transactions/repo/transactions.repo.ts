@@ -48,6 +48,7 @@ import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser'
 import { isSyncedAccount, isSyncedHolding, isDeletableTransaction } from '@kiko/holdings/deletable';
 
 import type {
+  BalanceChange,
   DepositRemoval,
   ExchangeRemoval,
   RemoveHoldingsPlan,
@@ -286,7 +287,7 @@ const markExistingLegTransaction = async (
     .where(eq(transactions.id, existingTransactionId));
 };
 
-type NamedHolding = Pick<HoldingRow, 'id' | 'name' | 'type'>;
+type NamedHolding = Pick<HoldingRow, 'id' | 'name' | 'type' | 'currency'>;
 
 const holdingIdsOf = (rows: TransactionRow[]): string[] => [
   ...new Set(
@@ -306,7 +307,12 @@ const readNamedHoldingsDatabaseTransaction = async (
   }
 
   const rows = await databaseTransaction
-    .select({ id: holdings.id, name: holdings.name, type: holdings.type })
+    .select({
+      id: holdings.id,
+      name: holdings.name,
+      type: holdings.type,
+      currency: holdings.currency,
+    })
     .from(holdings)
     .where(inArray(holdings.id, holdingIds));
 
@@ -433,6 +439,35 @@ const uniqueHoldingNamesOf = (
     ),
   ),
 ];
+
+// How far deleting `rows` moves each holding's balance, by holding name: the sum
+// of their full amounts taken back, in the holding's own currency. A holding
+// whose parts net to nothing has no entry, and none at all gives `undefined`.
+const balanceChangesOf = (
+  rows: TransactionRow[],
+  holdingsById: Map<string, NamedHolding>,
+): BalanceChange[] | undefined => {
+  const netByHoldingId = new Map<string, number>();
+
+  for (const row of rows) {
+    netByHoldingId.set(
+      row.holdingId,
+      (netByHoldingId.get(row.holdingId) ?? 0) - row.amountMinorUnits,
+    );
+  }
+
+  const changes = [...netByHoldingId]
+    .flatMap(([holdingId, minorUnits]) => {
+      const holding = holdingsById.get(holdingId);
+
+      return holding === undefined || minorUnits === 0
+        ? []
+        : [{ name: holding.name, currency: holding.currency, minorUnits }];
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  return changes.length > 0 ? changes : undefined;
+};
 
 // The pair rows of the exchange `row` is itself a part of (its own pair id): the
 // confirm names them as the other parts of that exchange.
@@ -578,6 +613,7 @@ const planRemoveDatabaseTransaction = async (
     exchange: exchangeRemovalOf(row, linked, holdingsById),
     splitExchanges: splitExchangesOf(row, linked, holdingsById),
     deposit: await depositRemovalOf(databaseTransaction, removed, holdingsById),
+    balanceChanges: balanceChangesOf(removed, holdingsById),
   };
 };
 
@@ -838,6 +874,7 @@ const planLinkedRowsDatabaseTransaction = async (
     keptSynced: sortedHoldingNamesOf(kept, holdingsById),
     unlinked: unlinked.names,
     unlinkedPlain: unlinked.plain,
+    balanceChanges: balanceChangesOf(removed, holdingsById),
   };
 };
 

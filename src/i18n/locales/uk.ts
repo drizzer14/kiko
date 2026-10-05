@@ -794,6 +794,7 @@ export const uk: typeof en = {
       splitExchangeUnlinked:
         'Обмін із цього розділеного платежу в «{{name}}» не знайдено. Перевірте «{{name}}».',
       splitExchangeUnlinkedPlain: 'Обмін із цього розділеного платежу не знайдено.',
+      balanceChange: 'Баланс «{{name}}» зміниться на {{amount}}.',
     },
     exchangeFrom: 'Обмін з {{name}}',
     exchangeTo: 'Обмін на {{name}}',

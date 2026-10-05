@@ -220,6 +220,97 @@ describe('removeNotice', () => {
     });
   });
 
+  describe('the balance a delete changes', () => {
+    it('states a gain with a plus sign, in the currency of the holding', () => {
+      expect(
+        removeNotice(
+          {
+            split: false,
+            balanceChanges: [{ name: 'Hryvnia card', currency: 'UAH', minorUnits: 40_000 }],
+          },
+          i18n.t,
+        ),
+      ).toBe('This changes the balance of Hryvnia card by +400.00 ₴.');
+    });
+
+    it('states a loss with a minus sign', () => {
+      expect(
+        removeNotice(
+          {
+            split: false,
+            balanceChanges: [{ name: 'Dollar card', currency: 'USD', minorUnits: -1_000 }],
+          },
+          i18n.t,
+        ),
+      ).toBe('This changes the balance of Dollar card by -$10.00.');
+    });
+
+    it('has one line per holding, after every other sentence', () => {
+      expect(
+        removeNotice(
+          {
+            split: true,
+            exchange: { kind: 'deleted', names: ['Dollar card'] },
+            balanceChanges: [
+              { name: 'Dollar card', currency: 'USD', minorUnits: -1_000 },
+              { name: 'Hryvnia card', currency: 'UAH', minorUnits: 40_000 },
+            ],
+          },
+          i18n.t,
+        ),
+      ).toBe(
+        [
+          'This also deletes the other part of this exchange, in Dollar card.',
+          'This also deletes every other part of this split payment.',
+          'This changes the balance of Dollar card by -$10.00.',
+          'This changes the balance of Hryvnia card by +400.00 ₴.',
+        ].join(' '),
+      );
+    });
+
+    it('says nothing for an empty list', () => {
+      expect(removeNotice({ split: false, balanceChanges: [] }, i18n.t)).toBeUndefined();
+    });
+
+    it('reads in Ukrainian, the holding name quoted by the sentence and the amount grouped by the locale', async () => {
+      await i18n.changeLanguage('uk');
+
+      expect(
+        removeNotice(
+          {
+            split: false,
+            balanceChanges: [
+              { name: 'Картка', currency: 'UAH', minorUnits: 123_456 },
+              { name: 'Долар', currency: 'USD', minorUnits: -1_000 },
+            ],
+          },
+          i18n.t,
+        ),
+      ).toBe(
+        ['Баланс «Картка» зміниться на +1 234,56 ₴.', 'Баланс «Долар» зміниться на -$10,00.'].join(
+          ' ',
+        ),
+      );
+    });
+
+    it('is the only text of a holdings delete that changes another holding', () => {
+      expect(
+        removeHoldingsNotice(
+          {
+            deletedRows: { count: 0, names: [] },
+            reversedContributions: [],
+            keptContributions: [],
+            keptSynced: [],
+            unlinked: [],
+            unlinkedPlain: false,
+            balanceChanges: [{ name: 'Dollar card', currency: 'USD', minorUnits: -1_000 }],
+          },
+          i18n.t,
+        ),
+      ).toBe('This changes the balance of Dollar card by -$10.00.');
+    });
+  });
+
   it('reads in the active language', async () => {
     await i18n.changeLanguage('uk');
 

@@ -45,6 +45,15 @@ const NOTHING_ELSE: RemoveHoldingsPlan = {
   unlinkedPlain: false,
 };
 
+// What a holdings delete takes and leaves, without the balance lines that `the
+// balance changes a holdings delete states` read.
+const linkageOf = async (holdingIds: string[]): Promise<RemoveHoldingsPlan> => {
+  const { balanceChanges: _balanceChanges, ...linkage } =
+    await transactionsRepo.removeHoldingsPlan(holdingIds);
+
+  return linkage;
+};
+
 const planWith = (part: Partial<RemoveHoldingsPlan>): RemoveHoldingsPlan => ({
   ...NOTHING_ELSE,
   ...part,
@@ -110,9 +119,37 @@ describe('deleting a holding that holds a leg of an Exchange', () => {
   it('names the holding the other leg sits on', async () => {
     await exchangeUahToUsd();
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah'])).toEqual(
+    expect(await linkageOf(['uah'])).toEqual(
       planWith({ deletedRows: { count: 1, names: ['Dollar card'] } }),
     );
+  });
+
+  it('states the balance change of the other holding only, in its own currency', async () => {
+    await exchangeUahToUsd();
+
+    expect((await transactionsRepo.removeHoldingsPlan(['uah'])).balanceChanges).toEqual([
+      { name: 'Dollar card', currency: 'USD', minorUnits: -1_000 },
+    ]);
+    expect((await transactionsRepo.removeHoldingsPlan(['usd'])).balanceChanges).toEqual([
+      { name: 'Hryvnia card', currency: 'UAH', minorUnits: 40_000 },
+    ]);
+  });
+
+  it('states one line for each other holding a split takes from', async () => {
+    await splitPayment();
+
+    expect((await transactionsRepo.removeHoldingsPlan(['uah'])).balanceChanges).toEqual([
+      { name: 'Cash', currency: 'UAH', minorUnits: -10_000 },
+      { name: 'Second card', currency: 'UAH', minorUnits: -5_000 },
+    ]);
+  });
+
+  it('states no balance change when both legs are deleted', async () => {
+    await exchangeUahToUsd();
+
+    expect(
+      (await transactionsRepo.removeHoldingsPlan(['uah', 'usd'])).balanceChanges,
+    ).toBeUndefined();
   });
 
   it('deletes the leg of a destination holding the same way', async () => {
@@ -129,7 +166,7 @@ describe('deleting a holding that holds a leg of an Exchange', () => {
 
     await exchangeUahToUsd();
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah', 'usd'])).toEqual(NOTHING_ELSE);
+    expect(await linkageOf(['uah', 'usd'])).toEqual(NOTHING_ELSE);
 
     await transactionsRepo.removeHolding('uah');
     await transactionsRepo.removeHolding('usd');
@@ -174,7 +211,7 @@ describe('deleting a holding that holds a leg of a Convert', () => {
     });
     setBalance('usd', 1_000);
 
-    expect(await transactionsRepo.removeHoldingsPlan(['detached'])).toEqual(
+    expect(await linkageOf(['detached'])).toEqual(
       planWith({ deletedRows: { count: 1, names: ['Dollar card'] } }),
     );
 
@@ -202,9 +239,7 @@ describe('deleting a holding that holds a leg of a Convert', () => {
     });
     setBalance('usd', 1_000);
 
-    expect(await transactionsRepo.removeHoldingsPlan(['usd'])).toEqual(
-      planWith({ keptSynced: ['Monobank card'] }),
-    );
+    expect(await linkageOf(['usd'])).toEqual(planWith({ keptSynced: ['Monobank card'] }));
 
     await transactionsRepo.removeHolding('usd');
 
@@ -223,9 +258,7 @@ describe('deleting a holding that holds a leg no partner can be found for', () =
     });
     setBalance('usd', 1_000);
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah'])).toEqual(
-      planWith({ unlinked: ['Dollar card'] }),
-    );
+    expect(await linkageOf(['uah'])).toEqual(planWith({ unlinked: ['Dollar card'] }));
 
     await transactionsRepo.removeHolding('uah');
 
@@ -240,9 +273,7 @@ describe('deleting a holding that holds a leg no partner can be found for', () =
       exchangeCounterpartHoldingId: 'long-gone',
     });
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah'])).toEqual(
-      planWith({ unlinkedPlain: true }),
-    );
+    expect(await linkageOf(['uah'])).toEqual(planWith({ unlinkedPlain: true }));
   });
 
   it('names nothing when the holding the leg points at is deleted with it', async () => {
@@ -253,7 +284,7 @@ describe('deleting a holding that holds a leg no partner can be found for', () =
       exchangeCounterpartHoldingId: 'usd',
     });
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah', 'usd'])).toEqual(NOTHING_ELSE);
+    expect(await linkageOf(['uah', 'usd'])).toEqual(NOTHING_ELSE);
   });
 
   it('treats a pair id that no other row carries as a leg with no partner', async () => {
@@ -265,9 +296,7 @@ describe('deleting a holding that holds a leg no partner can be found for', () =
       exchangePairId: 'pair',
     });
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah'])).toEqual(
-      planWith({ unlinked: ['Dollar card'] }),
-    );
+    expect(await linkageOf(['uah'])).toEqual(planWith({ unlinked: ['Dollar card'] }));
   });
 });
 
@@ -277,7 +306,7 @@ describe('deleting a holding that holds a row of a split payment', () => {
 
     await splitPayment();
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah'])).toEqual(
+    expect(await linkageOf(['uah'])).toEqual(
       planWith({ deletedRows: { count: 2, names: ['Cash', 'Second card'] } }),
     );
 
@@ -291,7 +320,7 @@ describe('deleting a holding that holds a row of a split payment', () => {
 
     await splitPayment();
 
-    expect(await transactionsRepo.removeHoldingsPlan(['cash'])).toEqual(
+    expect(await linkageOf(['cash'])).toEqual(
       planWith({ deletedRows: { count: 2, names: ['Hryvnia card', 'Second card'] } }),
     );
 
@@ -325,9 +354,7 @@ describe('deleting a holding that funded a term deposit', () => {
 
     await exchangeUahIntoDeposit();
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah'])).toEqual(
-      planWith({ reversedContributions: ['Deposit'] }),
-    );
+    expect(await linkageOf(['uah'])).toEqual(planWith({ reversedContributions: ['Deposit'] }));
 
     await transactionsRepo.removeHolding('uah');
 
@@ -355,9 +382,7 @@ describe('deleting a holding that funded a term deposit', () => {
     await exchangeUahIntoDeposit();
     setContributions(contributions);
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah'])).toEqual(
-      planWith({ keptContributions: ['Deposit'] }),
-    );
+    expect(await linkageOf(['uah'])).toEqual(planWith({ keptContributions: ['Deposit'] }));
 
     await transactionsRepo.removeHolding('uah');
 
@@ -386,7 +411,7 @@ describe('deleting a holding that a leg elsewhere only names as its marker', () 
     });
     setBalance('uah', 60_000);
 
-    expect(await transactionsRepo.removeHoldingsPlan(['usd'])).toEqual(NOTHING_ELSE);
+    expect(await linkageOf(['usd'])).toEqual(NOTHING_ELSE);
 
     await transactionsRepo.removeHolding('usd');
 
@@ -397,7 +422,7 @@ describe('deleting a holding that a leg elsewhere only names as its marker', () 
   it('plans nothing for the legs that paid into a deposit deleted with their own holding', async () => {
     await exchangeUahIntoDeposit();
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah', 'deposit'])).toEqual(NOTHING_ELSE);
+    expect(await linkageOf(['uah', 'deposit'])).toEqual(NOTHING_ELSE);
   });
 });
 
@@ -407,7 +432,7 @@ describe('deleting a term deposit that was funded by an exchange', () => {
 
     await exchangeUahIntoDeposit();
 
-    expect(await transactionsRepo.removeHoldingsPlan(['deposit'])).toEqual(
+    expect(await linkageOf(['deposit'])).toEqual(
       planWith({ deletedRows: { count: 1, names: ['Hryvnia card'] } }),
     );
 
@@ -427,7 +452,7 @@ describe('deleting a term deposit that was funded by an exchange', () => {
       exchangePairId: 'pair',
     });
 
-    expect(await transactionsRepo.removeHoldingsPlan(['deposit'])).toEqual(NOTHING_ELSE);
+    expect(await linkageOf(['deposit'])).toEqual(NOTHING_ELSE);
 
     await transactionsRepo.removeHolding('deposit');
 
@@ -448,7 +473,7 @@ describe('deleting a holding that loans link to', () => {
   it('keeps the payment of a deleted loan and clears its link', async () => {
     linkPaymentToLoan();
 
-    expect(await transactionsRepo.removeHoldingsPlan(['loan'])).toEqual(NOTHING_ELSE);
+    expect(await linkageOf(['loan'])).toEqual(NOTHING_ELSE);
 
     await transactionsRepo.removeHolding('loan');
 
@@ -480,7 +505,7 @@ describe('deleting a holding that holds no ledger', () => {
       "INSERT INTO price_points (instrument, day, price, currency, source) VALUES ('holding:property', 1, '5000', 'UAH', 'manual')",
     );
 
-    expect(await transactionsRepo.removeHoldingsPlan(['property'])).toEqual(NOTHING_ELSE);
+    expect(await linkageOf(['property'])).toEqual(NOTHING_ELSE);
 
     await transactionsRepo.removeHolding('property');
 
@@ -497,7 +522,7 @@ describe('deleting a holding that holds no ledger', () => {
     });
     const before = stateOf();
 
-    expect(await transactionsRepo.removeHoldingsPlan(['detached'])).toEqual(NOTHING_ELSE);
+    expect(await linkageOf(['detached'])).toEqual(NOTHING_ELSE);
 
     await transactionsRepo.removeHolding('detached');
 
@@ -527,7 +552,7 @@ describe('deleting a holding that mixes every kind of link', () => {
     });
     setBalance('extra', 7);
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah'])).toEqual(
+    expect(await linkageOf(['uah'])).toEqual(
       planWith({
         deletedRows: { count: 3, names: ['Cash', 'Dollar card', 'Second card'] },
         reversedContributions: ['Deposit'],
@@ -597,7 +622,7 @@ describe('a delete that cannot finish', () => {
   it('never deletes a row the bank owns by the time the delete runs, whatever the plan read', async () => {
     await exchangeUahToUsd();
 
-    expect(await transactionsRepo.removeHoldingsPlan(['uah'])).toEqual(
+    expect(await linkageOf(['uah'])).toEqual(
       planWith({ deletedRows: { count: 1, names: ['Dollar card'] } }),
     );
 
