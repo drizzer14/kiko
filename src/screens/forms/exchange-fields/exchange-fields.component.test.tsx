@@ -104,6 +104,27 @@ describe('ExchangeFields', () => {
     expect(getByTestId('Date calendar').props.maxDate).toBe('2026-10-05');
   });
 
+  it('shows the catalogue placeholder in each amount field', async () => {
+    const { getByLabelText } = await setup();
+
+    expect(getByLabelText('Value out').props.placeholder).toBe(
+      i18n.t('forms.transaction.valueOutPlaceholder'),
+    );
+    expect(getByLabelText('Value in').props.placeholder).toBe(
+      i18n.t('forms.transaction.valueInPlaceholder'),
+    );
+  });
+
+  it('titles the destination sheet from the catalogue', async () => {
+    const { getByLabelText, getAllByText } = await setup();
+    const title = i18n.t('forms.transaction.toSheetTitle');
+    const before = getAllByText(title, { includeHiddenElements: true }).length;
+
+    await fireEvent.press(getByLabelText('To'));
+
+    expect(getAllByText(title).length).toBe(before + 1);
+  });
+
   it('applies valueInError to the Value in field', async () => {
     const { getByLabelText, getByText } = await setup({
       valueInError: 'Enter a Value in greater than 0.',

@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
@@ -51,6 +51,20 @@ describe('ConvertExchangeFields', () => {
 
     expect(getByText('Value Out')).toBeTruthy();
     expect(getByDisplayValue('1,000.00')).toBeTruthy();
+  });
+
+  it('keeps the fixed leg read-only', async () => {
+    const { getByDisplayValue } = await render(<ConvertExchangeFields {...baseProps} />);
+
+    expect(getByDisplayValue('1,000.00').props.editable).toBe(false);
+  });
+
+  it('shows the catalogue placeholder in the counterpart amount field', async () => {
+    const { getByLabelText } = await render(<ConvertExchangeFields {...baseProps} />);
+
+    expect(getByLabelText('Value In').props.placeholder).toBe(
+      i18n.t('forms.transaction.convertAmountPlaceholder'),
+    );
   });
 
   it('shows the fixed and counterpart legs each their own currency glyph', async () => {
