@@ -805,7 +805,7 @@ describe('transactionsRepo.addManyDedup upsert', () => {
   // and failed a whole statement-import file past ~2980 rows (or a Monobank
   // sync past ~2731) once a migration widened `transactions` to 18 columns —
   // the same `SQLITE_MAX_VARIABLE_NUMBER` ceiling `restoreDataSnapshot` hit
-  // too. `insertDedupRowsDatabaseTransaction` now chunks
+  // too. `upsertDedupRowsDatabaseTransaction` now chunks
   // through the SAME `chunkForTable` helper, sized off the table's own
   // (`getTableColumns`) column count — independent of how many keys any one
   // row actually carries, so this holds regardless of row shape.

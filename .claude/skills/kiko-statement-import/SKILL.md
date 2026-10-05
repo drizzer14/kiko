@@ -180,7 +180,7 @@ Rows an earlier build already imported over synced ones stay, and so do
 the ones a later import writes where the sync cannot match them (below); no
 migration removes them.
 
-**The sync adopts its import twin after a reconnect (TX-C1).** The reverse
+**The sync adopts its import twin after a reconnect.** The reverse
 direction of `dropRowsHeldBySync`: a statement imported over a disconnect
 writes `import` rows, and the reconnect sync fetches the same purchases under
 keys no import row holds. `transactionsRepo.addManyDedup` (the sync's insert
@@ -195,7 +195,10 @@ missing one is filled from the sync) and every structural column, including a
 loan link and an exchange pair with its marker. The adopted input is not
 inserted and not counted, no `holdings` row is written (the sync overwrites the
 stored balance from the bank), and the row is bank-owned from then on, so the
-ledger keeps one row per purchase and no balance moves. A manual twin is not
+ledger keeps one row per purchase and no balance moves. The marker stays only
+while its partner lives: a delete that keeps the adopted row (the manual leg
+deleted, or its holding) clears the marker in the same write, so the purchase
+counts as spending again (`kiko-domain`, "A bank-owned partner is kept"). A manual twin is not
 adopted: the user deletes that duplicate. A later import of the same file finds
 the adopted row as a synced row and holds its rows.
 RESIDUAL, left doubled: the adoption sees only the stored time, so an import

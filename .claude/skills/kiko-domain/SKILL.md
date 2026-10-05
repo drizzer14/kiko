@@ -980,9 +980,16 @@ Rules:
   `readMovementRowsDatabaseTransaction` reads rows sharing a group or pair id
   until a pass finds nothing new; following either id one hop leaves a part
   behind and creates or loses money. The plan and the delete use the same set.
-- **A bank-owned (synced) partner is skipped**, never deleted or mutated
+- **A bank-owned (synced) partner is kept**, never deleted
   (`isDeletableTransaction`); a Convert gives a synced existing row only the pair
-  id, which is how the delete knows its partner is the bank's.
+  id, which is how the delete knows its partner is the bank's. A bank-owned row
+  can still carry a marker: a marked import row the reconnect sync adopted
+  (`adoptImportTwinsDatabaseTransaction`). The delete that keeps it clears its
+  `exchangeCounterpartHoldingId` in the same write (`removeRowsDatabaseTransaction`'s
+  `kept`, for a leg delete and the holding/account cascade alike; a deposit source
+  leg whose deposit is deleted included), keeps its pair id, and moves no balance:
+  a marker left naming a gone leg would keep a real purchase out of spending
+  (`exchangeExcludedTransactionIds`) for good. The confirm text does not change.
 - **A re-Convert keeps the deposit marker.** `markExistingLegTransaction` sets
   the counterpart marker only when the row has none, so a deposit source leg
   keeps the marker that takes its contribution out.
@@ -2444,7 +2451,7 @@ entirely when a re-fetched row is unchanged; the loan-link columns are
 excluded from that comparison too, since they are never in `set` either.
 A settled-amount re-fetch of an already-linked payment
 therefore keeps its link untouched. Its underlying insert
-(`insertDedupRowsDatabaseTransaction`) is chunked through `chunkForTable` (below) — a whole
+(`upsertDedupRowsDatabaseTransaction`) is chunked through `chunkForTable` (below) — a whole
 statement-import file or Monobank sync above a few thousand rows failed
 `SQLITE_MAX_VARIABLE_NUMBER` before this.
 
@@ -2478,7 +2485,7 @@ from 15 to 18 columns, so
 the OLD fixed 2000-rows-per-chunk constant bound 2000 x 18 = 36000
 parameters — over SQLite's 32766-bound-parameter ceiling — and a `.kiko`
 backup with >= 1821 transactions failed to restore. `chunkForTable`
-(`src/db/chunk-for-table.ts`, shared with `insertDedupRowsDatabaseTransaction` above) derives
+(`src/db/chunk-for-table.ts`, shared with `upsertDedupRowsDatabaseTransaction` above) derives
 the row count per chunk from the TARGET table's own column count
 (`getTableColumns`, floor-divided into a safety margin under the ceiling)
 instead of a fixed row constant, so a future column added to any of these
@@ -2655,7 +2662,7 @@ Deleting a holding also deletes the movements its rows were one part of (the
 other legs of an Exchange or Convert, the rest of a split, the legs that paid
 into a deleted deposit), each taking its full amount back from its own
 holding (the deleted holding's own rows need no reversal: the holding goes). A
-bank-owned partner is skipped, never deleted. `transactionsRepo.removeHolding` runs `cascadeLinkedRowsDatabaseTransaction`
+bank-owned partner is kept, never deleted, and loses its exchange marker. `transactionsRepo.removeHolding` runs `cascadeLinkedRowsDatabaseTransaction`
 and then `removeHoldingDatabaseTransaction` in one transaction;
 `accountsRepo.remove` runs the same cascade for every holding of the account
 (closed ones included). The cascade's plan is

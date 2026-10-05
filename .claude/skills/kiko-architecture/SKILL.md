@@ -821,11 +821,11 @@ Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and the
 shared `upsertDedupRowsDatabaseTransaction`
 (`src/transactions/repo/transactions.repo.ts`, called by both
 `transactionsRepo.addManyDedup` and, through
-`insertDedupRowsDatabaseTransaction`, `importRows`) — the latter also
-chunks its two per-row `inArray(...)` selects (the category-override
-rule lookup and the existing-external-id lookup) directly at a safe
-item-count margin, since a one-column `inArray` list has no table to
-derive a column count from.
+`insertDedupRowsDatabaseTransaction`, `importRows`) — two shared helpers
+also chunk a per-row `inArray(...)` select directly at a safe item-count
+margin (the category-override rule lookup in `withCategoryOverrides`, the
+existing-key lookup in `partitionNewRows`), since a one-column `inArray`
+list has no table to derive a column count from.
 
 `rateHistoryRepo.upsertMany` and the restore-snapshot import path
 have their own, older, pre-existing chunking — don't assume they use

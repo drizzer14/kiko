@@ -9,7 +9,7 @@ import { type Table, getTableColumns } from 'drizzle-orm';
 // columns to `transactions` (15 -> 18) and pushed `restoreDataSnapshot`'s
 // old 2000-row chunk from 30000 params (safe) to 36000 (over the limit) — a
 // `.kiko` backup with >= 1821 transactions failed to restore, and
-// `insertDedupRowsDatabaseTransaction`'s single unchunked insert failed the same way past
+// `upsertDedupRowsDatabaseTransaction`'s single unchunked insert failed the same way past
 // ~2980 rows for a statement import and ~2731 for a Monobank sync. Deriving
 // the chunk size from EACH table's own
 // column count, every time, means a future column can never silently
@@ -19,9 +19,9 @@ const SAFE_BOUND_PARAMETER_LIMIT = 32000;
 /** Splits `rows` into fixed-size chunks, preserving order. The one generic
  * list-chunking primitive in the codebase — `chunkForTable` derives its
  * per-table chunk SIZE from column count and calls this to do the actual
- * slicing; `insertDedupRowsDatabaseTransaction`'s `IN_CLAUSE_CHUNK_SIZE` (`transactions.repo.ts`)
- * reuses it directly for its scalar `IN (...)` lookups, which have no
- * column count to derive a size from. */
+ * slicing; `IN_CLAUSE_CHUNK_SIZE` (`transactions.repo.ts`: the key lookup behind
+ * `partitionNewRows` and `withCategoryOverrides`) reuses it directly for its
+ * scalar `IN (...)` lookups, which have no column count to derive a size from. */
 export const chunkRows = <T>(rows: T[], size: number): T[][] => {
   const parts: T[][] = [];
 
@@ -37,7 +37,7 @@ export const chunkRows = <T>(rows: T[], size: number): T[][] => {
  * the table's OWN column count rather than a fixed row count — see the
  * doc comment above `SAFE_BOUND_PARAMETER_LIMIT`. Shared by
  * `restoreDataSnapshot` (`data-transfer/snapshot/restore-snapshot.ts`),
- * `insertDedupRowsDatabaseTransaction` (`transactions/repo/transactions.repo.ts`), and
+ * `upsertDedupRowsDatabaseTransaction` (`transactions/repo/transactions.repo.ts`), and
  * `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) — three insert
  * paths whose row count is caller-controlled (a `.kiko` restore, a
  * Monobank sync or user-picked statement file, a live rate-history

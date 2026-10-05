@@ -1,5 +1,5 @@
 // Builds the ACTUAL SQL/params Drizzle generates for
-// `insertDedupRowsDatabaseTransaction`'s upsert — never a hand-transcribed
+// `upsertDedupRowsDatabaseTransaction`'s upsert — never a hand-transcribed
 // copy of it — via a `drizzle-orm/sqlite-proxy` instance whose remote
 // callback is never invoked (`.toSQL()` only compiles the query, it never
 // executes it), reusing that function's own exported
@@ -32,7 +32,7 @@ type Row = {
   externalId: string | null;
 };
 
-// The exact statement `insertDedupRowsDatabaseTransaction` builds for one
+// The exact statement `upsertDedupRowsDatabaseTransaction` builds for one
 // upsert row (target + set + setWhere) — mirrors it precisely, since it
 // reuses that function's own `bankOwnedTransactionSet`/
 // `bankOwnedTransactionSetWhere` rather than restating the column list.
