@@ -98,7 +98,8 @@ interface SyncHoldingsRepo {
 
 /**
  * The `transactionsRepo` methods the sync calls directly. `addManyDedup` resolves
- * the number of rows actually INSERTED — a refreshed row is not one.
+ * the number of rows actually INSERTED — a refreshed row is not one, and neither
+ * is a statement-import row it adopted in place.
  * `holdingIdsWithHoldQuery` yields the DISTINCT holding ids that still carry an
  * outstanding Monobank hold (a pending authorization); such a card is fetched
  * even when its balance is unchanged, since a same-amount hold→settled refresh

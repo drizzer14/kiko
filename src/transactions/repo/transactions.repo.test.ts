@@ -1006,7 +1006,8 @@ describe('transactionsRepo.addManyDedup chunking', () => {
     const inserted = await transactionsRepo.addManyDedup(rows);
 
     const existingSelects = statements.filter(
-      (statement) => statement.sql.startsWith('select') && statement.sql.includes('"transactions"'),
+      (statement) =>
+        statement.sql.startsWith('select') && statement.sql.includes('"external_id" in'),
     );
     expect(existingSelects.length).toBeGreaterThan(1);
     // Every chunk's statement also re-binds the (single-value) `sources`

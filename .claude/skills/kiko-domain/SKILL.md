@@ -338,7 +338,10 @@ without its amount (accepted). The delete confirm states each holding's change
 (`transactions.deleteLinked.balanceChange`, see "Deleting a movement takes its
 other parts"). A sync write is outside the rule: the Monobank balance is the
 bank's own figure on every sync, and a sync REOPEN of a closed card writes no
-row and moves no balance.
+row and moves no balance. So is a sync ADOPTING its statement-import twin after
+a reconnect (`addManyDedup`): it turns the import row into the sync's row in
+place, writes no `holdings` row and moves no balance, and the ledger keeps one
+row per purchase.
 
 *Open, user decision pending:* a back-dated MANUAL row dated on or before a
 closing balance's as-of moves the balance when written (Q7). Importing a statement

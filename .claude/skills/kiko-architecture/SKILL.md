@@ -818,9 +818,10 @@ row-count chunk; the safe size depends on the table's column count,
 which only `chunkForTable` knows.
 
 Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and the
-shared `insertDedupRowsDatabaseTransaction`
+shared `upsertDedupRowsDatabaseTransaction`
 (`src/transactions/repo/transactions.repo.ts`, called by both
-`transactionsRepo.addManyDedup` and `importRows`) — the latter also
+`transactionsRepo.addManyDedup` and, through
+`insertDedupRowsDatabaseTransaction`, `importRows`) — the latter also
 chunks its two per-row `inArray(...)` selects (the category-override
 rule lookup and the existing-external-id lookup) directly at a safe
 item-count margin, since a one-column `inArray` list has no table to
@@ -889,6 +890,13 @@ The sync pipeline is deliberately functional, not OOP — see
    `addManyDedup` (`src/transactions/`). Two
    things about that upsert are load-bearing, both verified there
    rather than restated as a column list here:
+   - A NEW external id first **adopts** a stored statement-import twin
+     (same holding and signed amount, within ±60 s): `addManyDedup` only,
+     never `importRows`, in the same `write(...)`. The import row becomes
+     the sync's own in place (one UPDATE by its id) and the input is not
+     inserted or counted. No `holdings` row is written. The rule and its
+     residual live in `pairSyncInputsWithImportRows`'s header
+     (`src/transactions/sync-adoption/`) and in kiko-statement-import.
    - Re-syncing an existing external id **refreshes** the row's
      bank-owned columns (the settled amount and `hold` among them)
      and **never** its `category` or `comment` — the category may be

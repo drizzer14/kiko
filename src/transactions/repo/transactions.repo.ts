@@ -56,6 +56,7 @@ import type {
 } from '../remove-notice';
 import { normalizeTransactionName } from '../normalize-name';
 import { balanceBoundaryOf, movesBalance } from '../balance-boundary';
+import { SYNC_MATCH_WINDOW_MILLISECONDS, pairSyncInputsWithImportRows } from '../sync-adoption';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
@@ -1053,10 +1054,6 @@ const dropRowsStoredUnderAlias = async (
   };
 };
 
-/** How far apart a bank statement and the bank's own sync can date one
- * transaction: the two stamp the same purchase seconds apart. */
-const SYNC_MATCH_WINDOW_MILLISECONDS = 60_000;
-
 const MINUTE_CLOCK_LAST_SECOND_MILLISECONDS = 59_000;
 
 type SyncedRow = { time: number; amountMinorUnits: number };
@@ -1244,28 +1241,15 @@ export const postClosingRowsWhere = (holdingId: string, asOfMilliseconds: number
     eq(transactions.setsBalance, false),
   );
 
-/**
- * Apply name->category override rules and upsert a batch of imported rows on
- * the `(source, external_id)` unique index — the shared core `addManyDedup`
- * and `importRows` (statement import's balance-write path, below) both run
- * inside their own `write(...)` transaction. Returns the rows that were
- * genuinely NEW — a refreshed (already-imported) row is excluded; a caller
- * that only needs the count uses `.length`.
- */
-const insertDedupRowsDatabaseTransaction = async (
+// Apply name→category override rules at insert time. Normalize each
+// incoming description in JS (never SQL) and look the rules up by exact
+// equality on the already-normalized key. Chunked over `keys` (a large
+// import can carry tens of thousands of distinct descriptions) — see
+// `IN_CLAUSE_CHUNK_SIZE` above.
+const withCategoryOverrides = async (
   databaseTransaction: typeof database,
-  inputs: NewTransaction[],
+  batch: NewTransaction[],
 ): Promise<NewTransaction[]> => {
-  if (inputs.length === 0) {
-    return [];
-  }
-
-  const batch = dedupByConflictKey(inputs);
-  // Apply name→category override rules at insert time. Normalize each
-  // incoming description in JS (never SQL) and look the rules up by exact
-  // equality on the already-normalized key. Chunked over `keys` (a large
-  // import can carry tens of thousands of distinct descriptions) — see
-  // `IN_CLAUSE_CHUNK_SIZE` above.
   const keys = Array.from(
     new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
   ).filter((key) => key !== '');
@@ -1280,12 +1264,119 @@ const insertDedupRowsDatabaseTransaction = async (
     );
   }
   const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
-  const withOverrides = batch.map((input) => {
+
+  return batch.map((input) => {
     const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
 
     return override ? { ...input, category: override } : input;
   });
-  const newRows = await partitionNewRows(databaseTransaction, batch);
+};
+
+/** A stored statement-import row a sync input can adopt. */
+type ImportTwin = Pick<
+  TransactionRow,
+  'id' | 'holdingId' | 'amountMinorUnits' | 'time' | 'externalId' | 'category' | 'comment'
+>;
+
+/** Every `import` row on the inputs' holdings dated within the match window of the span of
+ * their times, read inside the caller's own transaction. */
+const readImportTwinsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  inputs: NewTransaction[],
+): Promise<ImportTwin[]> => {
+  const times = inputs.map((input) => input.time);
+
+  return databaseTransaction
+    .select({
+      id: transactions.id,
+      holdingId: transactions.holdingId,
+      amountMinorUnits: transactions.amountMinorUnits,
+      time: transactions.time,
+      externalId: transactions.externalId,
+      category: transactions.category,
+      comment: transactions.comment,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.source, 'import'),
+        inArray(
+          transactions.holdingId,
+          Array.from(new Set(inputs.map((input) => input.holdingId))),
+        ),
+        gte(transactions.time, minOf(times) - SYNC_MATCH_WINDOW_MILLISECONDS),
+        lte(transactions.time, maxOf(times) + SYNC_MATCH_WINDOW_MILLISECONDS),
+      ),
+    );
+};
+
+// The bank's values go onto the import row through the same column list the
+// upsert refreshes, so a bank-owned column added there is adopted here too.
+// `category` and `comment` are user and file state: the import row's own value
+// stays, and only a column it never had is filled from the sync.
+const adoptedValuesOf = (twin: ImportTwin, input: NewTransaction) => ({
+  ...Object.fromEntries(
+    BANK_OWNED_TRANSACTION_COLUMNS.map(({ key }) => [
+      key,
+      input[key] ?? (key === 'description' ? '' : null),
+    ]),
+  ),
+  source: input.source,
+  externalId: input.externalId,
+  category: twin.category ?? input.category,
+  comment: twin.comment ?? input.comment,
+});
+
+/**
+ * Turn the statement-import twin of each of these NEW sync inputs into the
+ * sync's own row, in place, and return the inputs it adopted so the insert skips
+ * them. The rule
+ * (which import row a sync input adopts, the residual it leaves) is
+ * `pairSyncInputsWithImportRows`'s. One UPDATE by the import row's id: every
+ * structural column (`id`, `holding_id`, the loan link, the exchange pair and
+ * its marker, `change_group_id`, `sets_balance`, `created_at`) stays, and no
+ * `holdings` row is written. The sync overwrites the stored balance from the
+ * bank's own figure, and an adoption adds no amount anywhere, so the ledger keeps
+ * one row per purchase without moving any balance. Runs only on the sync insert
+ * path: a statement import never adopts.
+ */
+const adoptImportTwinsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  newRows: NewTransaction[],
+): Promise<Set<NewTransaction>> => {
+  if (newRows.length === 0) {
+    return new Set();
+  }
+
+  const { adoptions } = pairSyncInputsWithImportRows(
+    newRows,
+    await readImportTwinsDatabaseTransaction(databaseTransaction, newRows),
+  );
+  const withOverrides = await withCategoryOverrides(
+    databaseTransaction,
+    adoptions.map(({ input }) => input),
+  );
+
+  for (const [index, { candidate }] of adoptions.entries()) {
+    await databaseTransaction
+      .update(transactions)
+      .set(adoptedValuesOf(candidate, withOverrides[index]))
+      .where(eq(transactions.id, candidate.id));
+  }
+
+  return new Set(adoptions.map(({ input }) => input));
+};
+
+/**
+ * Apply name->category override rules and upsert a batch already folded onto
+ * one row per conflict key (`dedupByConflictKey`) on the `(source, external_id)`
+ * unique index.
+ */
+const upsertDedupRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  batch: NewTransaction[],
+): Promise<void> => {
+  const withOverrides = await withCategoryOverrides(databaseTransaction, batch);
   // Upsert on the `(source, external_id)` unique index: a re-fetched
   // Monobank item is REFRESHED, not dropped. A `hold: true` authorization
   // imports at its PROVISIONAL amount and re-syncs at the settled one, which
@@ -1323,6 +1414,28 @@ const insertDedupRowsDatabaseTransaction = async (
         setWhere: bankOwnedTransactionSetWhere,
       });
   }
+};
+
+/**
+ * Upsert a batch of imported rows on the `(source, external_id)` unique index —
+ * the shared core `importRows` (statement import's balance-write path, below)
+ * runs inside its own `write(...)` transaction, and `addManyDedup` shares
+ * `upsertDedupRowsDatabaseTransaction` with it. Returns the rows that were
+ * genuinely NEW — a refreshed (already-imported) row is excluded; a caller
+ * that only needs the count uses `.length`.
+ */
+const insertDedupRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  inputs: NewTransaction[],
+): Promise<NewTransaction[]> => {
+  if (inputs.length === 0) {
+    return [];
+  }
+
+  const batch = dedupByConflictKey(inputs);
+  const newRows = await partitionNewRows(databaseTransaction, batch);
+
+  await upsertDedupRowsDatabaseTransaction(databaseTransaction, batch);
 
   return newRows;
 };
@@ -2286,15 +2399,25 @@ export const transactionsRepo = {
         .where(and(eq(transactions.id, transactionId), eq(transactions.loanLinkSource, 'auto'))),
     ),
   /**
-   * Upsert a batch of imported rows on the `(source, external_id)` unique index
+   * Upsert a batch of synced rows on the `(source, external_id)` unique index
    * and return how many of them were genuinely NEW — the number the sync reports
-   * to the user as "imported".
+   * to the user as "imported". A new input first adopts its statement-import twin
+   * (`adoptImportTwinsDatabaseTransaction`): that row becomes the sync's own in
+   * place and is not inserted, so it is not counted, like a refresh.
    */
   addManyDedup: (inputs: NewTransaction[]) =>
-    write(
-      async (databaseTransaction) =>
-        (await insertDedupRowsDatabaseTransaction(databaseTransaction, inputs)).length,
-    ),
+    write(async (databaseTransaction) => {
+      const batch = dedupByConflictKey(inputs);
+      const newRows = await partitionNewRows(databaseTransaction, batch);
+      const adopted = await adoptImportTwinsDatabaseTransaction(databaseTransaction, newRows);
+
+      await upsertDedupRowsDatabaseTransaction(
+        databaseTransaction,
+        batch.filter((input) => !adopted.has(input)),
+      );
+
+      return newRows.length - adopted.size;
+    }),
   /**
    * Statement import's ONE write: upsert the parsed rows (the same
    * `(source, external_id)` dedup as `addManyDedup`) AND move the target

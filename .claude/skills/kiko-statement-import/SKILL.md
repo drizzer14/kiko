@@ -176,8 +176,36 @@ whose clock is coarser than a second carries `ParsedTransaction.timeReading`:
   same purchase more precisely, claim first. Two equal date-only rows on
   one day against one synced row drop only one. A day after the newest
   synced row has no synced row of its own, so its rows always go in.
-Rows an earlier build already imported over synced ones stay; no
+Rows an earlier build already imported over synced ones stay, and so do
+the ones a later import writes where the sync cannot match them (below); no
 migration removes them.
+
+**The sync adopts its import twin after a reconnect (TX-C1).** The reverse
+direction of `dropRowsHeldBySync`: a statement imported over a disconnect
+writes `import` rows, and the reconnect sync fetches the same purchases under
+keys no import row holds. `transactionsRepo.addManyDedup` (the sync's insert
+path, never `importRows`) lets each NEW input (a key not stored yet)
+adopt a stored `import` row of the same holding and signed amount dated within
+±60 s of the input's time (inclusive), one to one, earliest unclaimed row in
+reach first, inputs claiming in (time, external id) order
+(`pairSyncInputsWithImportRows`, `src/transactions/sync-adoption/`). One
+UPDATE by the import row's id writes the bank-owned columns, `source` and
+`external_id` onto it: the row keeps its id, its category and comment (a
+missing one is filled from the sync) and every structural column, including a
+loan link and an exchange pair with its marker. The adopted input is not
+inserted and not counted, no `holdings` row is written (the sync overwrites the
+stored balance from the bank), and the row is bank-owned from then on, so the
+ledger keeps one row per purchase and no balance moves. A manual twin is not
+adopted: the user deletes that duplicate. A later import of the same file finds
+the adopted row as a synced row and holds its rows.
+RESIDUAL, left doubled: the adoption sees only the stored time, so an import
+row from a date-only file (stored at local noon), a minute-clock row whose bank
+stamp is more than 60 s past its floored minute, and a legacy row stored at
+Kyiv noon for a time near midnight are never adopted; a pending file amount
+against a settled tip is not equal either. The user deletes the import
+duplicate, which takes its amount back until the next sync overwrites the
+balance. OPEN ITEM, not built: a clock-reach column on import rows (and a
+migration) would let the adoption mirror `clockRangeOf` for those.
 
 ## Dedup
 
