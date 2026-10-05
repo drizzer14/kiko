@@ -20,7 +20,7 @@ const DEPOSIT_METADATA = {
   compounding: 'monthly',
 };
 
-const NAMES: Record<string, string> = {
+export const NAMES: Record<string, string> = {
   uah: 'Hryvnia card',
   usd: 'Dollar card',
   cash: 'Cash',

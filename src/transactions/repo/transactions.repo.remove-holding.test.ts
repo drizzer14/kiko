@@ -14,8 +14,13 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { DatabaseSync } from 'node:sqlite';
+import {
+  MOVED,
+  NAMES,
+  OPENED,
+  deleteCascadeFixture,
+} from '@kiko/test-support/delete-cascade-fixture';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
-import { MOVED, OPENED, deleteCascadeFixture } from '@kiko/test-support/delete-cascade-fixture';
 
 import type { RemoveHoldingsPlan } from '../remove-notice';
 
@@ -573,14 +578,6 @@ describe('deleting a holding that mixes every kind of link', () => {
 // The statement and the write are two reads of the ledger, so only a delete that
 // moves each remaining balance by exactly what the plan said proves they agree.
 describe('the balance changes a holdings delete states are the ones it writes', () => {
-  const NAMES: Record<string, string> = {
-    uah: 'Hryvnia card',
-    usd: 'Dollar card',
-    cash: 'Cash',
-    second: 'Second card',
-    deposit: 'Deposit',
-  };
-
   const movedByDeleting = async (
     holdingIds: string[],
   ): Promise<{ planned: Record<string, number>; written: Record<string, number> }> => {

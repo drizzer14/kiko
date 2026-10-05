@@ -25,7 +25,7 @@ jest.mock('@kiko/crypto-sync/binance', () => ({
 import { DatabaseSync } from 'node:sqlite';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
-import { MOVED, deleteCascadeFixture } from '@kiko/test-support/delete-cascade-fixture';
+import { MOVED, NAMES, deleteCascadeFixture } from '@kiko/test-support/delete-cascade-fixture';
 
 import { accountsRepo } from './accounts.repo';
 
@@ -201,18 +201,40 @@ describe('deleting an account whose holdings hold the legs of a movement', () =>
 // The confirm states each balance change before the delete; the write must move
 // each remaining balance by exactly that.
 describe('the balance changes an account delete states are the ones it writes', () => {
-  it('agrees for an exchange whose other leg sits in another account', async () => {
-    keepOnly('uah');
-    await exchangeUahToUsd();
-    const plan = await transactionsRepo.removeHoldingsPlan(['uah']);
+  // Every remaining holding is compared, so one the plan does not list must not move.
+  const movedByDeleting = async (
+    holdingIds: string[],
+  ): Promise<{ planned: Record<string, number>; written: Record<string, number> }> => {
+    const plan = await transactionsRepo.removeHoldingsPlan(holdingIds);
     const before = balancesOf();
 
     await accountsRepo.remove('account');
 
-    expect(plan.balanceChanges).toEqual([
-      { name: 'Dollar card', currency: 'USD', minorUnits: -1_000 },
-    ]);
-    expect(balancesOf().usd - before.usd).toBe(-1_000);
+    const after = balancesOf();
+
+    return {
+      planned: Object.fromEntries(
+        (plan.balanceChanges ?? []).map((change) => [change.name, change.minorUnits]),
+      ),
+      written: Object.fromEntries(
+        Object.keys(after)
+          .filter((holdingId) => after[holdingId] !== before[holdingId])
+          .map((holdingId) => [
+            NAMES[holdingId] ?? holdingId,
+            after[holdingId] - before[holdingId],
+          ]),
+      ),
+    };
+  };
+
+  it('agrees for an exchange whose other leg sits in another account', async () => {
+    keepOnly('uah');
+    await exchangeUahToUsd();
+
+    const { planned, written } = await movedByDeleting(['uah']);
+
+    expect(planned).toEqual({ 'Dollar card': -1_000 });
+    expect(written).toEqual(planned);
   });
 
   it('agrees for a split whose returns sit in other accounts', async () => {
@@ -224,17 +246,11 @@ describe('the balance changes an account delete states are the ones it writes', 
         { holdingId: 'second', amountMinorUnits: 5_000 },
       ],
     });
-    const plan = await transactionsRepo.removeHoldingsPlan(['uah']);
-    const before = balancesOf();
 
-    await accountsRepo.remove('account');
+    const { planned, written } = await movedByDeleting(['uah']);
 
-    expect(plan.balanceChanges).toEqual([
-      { name: 'Cash', currency: 'UAH', minorUnits: -10_000 },
-      { name: 'Second card', currency: 'UAH', minorUnits: -5_000 },
-    ]);
-    expect(balancesOf().cash - before.cash).toBe(-10_000);
-    expect(balancesOf().second - before.second).toBe(-5_000);
+    expect(planned).toEqual({ Cash: -10_000, 'Second card': -5_000 });
+    expect(written).toEqual(planned);
   });
 });
 

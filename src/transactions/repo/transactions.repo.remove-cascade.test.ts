@@ -1111,7 +1111,10 @@ describe('deleting a part of a split payment whose return was converted', () => 
   });
 
   describe('when the payment and the return are both legacy legs of a conversion', () => {
-    const legacyConversion = (markerHoldingId: string): void => {
+    const legacyConversion = (
+      markerHoldingId: string,
+      returnMarkerHoldingId: string = markerHoldingId,
+    ): void => {
       insertRow({
         id: 'legacy-payment',
         holdingId: 'uah',
@@ -1124,7 +1127,7 @@ describe('deleting a part of a split payment whose return was converted', () => 
         holdingId: 'cash',
         amountMinorUnits: 10_000,
         changeGroupId: 'legacy-group',
-        exchangeCounterpartHoldingId: markerHoldingId,
+        exchangeCounterpartHoldingId: returnMarkerHoldingId,
       });
     };
 
@@ -1143,6 +1146,26 @@ describe('deleting a part of a split payment whose return was converted', () => 
       expect(await linkageOf('legacy-payment')).toEqual({
         split: true,
         exchange: { kind: 'missing' },
+      });
+    });
+
+    it('keeps the plain sentence for a member whose marker holding is gone, beside a named own one', async () => {
+      legacyConversion('usd', 'deleted-holding');
+
+      expect(await linkageOf('legacy-payment')).toEqual({
+        split: true,
+        exchange: { kind: 'missing', name: 'Dollar card' },
+        splitExchanges: [{ kind: 'missing' }],
+      });
+    });
+
+    it('keeps the named sentence for a member’s holding, beside a plain own one', async () => {
+      legacyConversion('deleted-holding', 'usd');
+
+      expect(await linkageOf('legacy-payment')).toEqual({
+        split: true,
+        exchange: { kind: 'missing' },
+        splitExchanges: [{ kind: 'missing', name: 'Dollar card' }],
       });
     });
   });

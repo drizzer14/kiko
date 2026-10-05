@@ -334,9 +334,9 @@ without its amount (accepted). The delete confirm states each holding's change
 (`transactions.deleteLinked.balanceChange`, see "Deleting a movement takes its
 other parts").
 
-*Open, user decision pending:* a back-dated MANUAL row dated before a closing
-balance's as-of moves the balance when written (Q7). Re-importing a statement
-with that closing re-applies the closing outright (`asOf >= boundary`), which
+*Open, user decision pending:* a back-dated MANUAL row dated on or before a
+closing balance's as-of moves the balance when written (Q7). Importing a statement
+with that closing applies the closing outright (`asOf >= boundary`), which
 counts only rows dated after its as-of, so the row's amount drops out of the
 balance while the row stays; a later delete of that row subtracts it again. No
 behaviour is changed for this until the user rules (`importRows` doc comment).

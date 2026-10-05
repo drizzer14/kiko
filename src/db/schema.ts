@@ -101,13 +101,13 @@ export const holdings = sqliteTable('holdings', {
   // statement of exactly which writes set it.
   balanceSetAt: integer('balance_set_at'),
   // The `transactions.setsBalance` row whose set IS this balance. Written by an
-  // opening balance, a balance edit and a closing import (which clears it), and
-  // read by nothing since 2026-10-06: every row's edit and delete moves the
-  // balance by its amount, so no write needs to find the setting row. Kept
-  // because dropping the column needs a migration: an open item. NULL when a
-  // closing-balance import set it (no row is written at its as-of) or the
-  // balance was never hand-set. No foreign key: a deleted row's id is never
-  // reused, so a stale id matches nothing.
+  // opening balance, a balance edit, a closing import (which clears it) and the
+  // snapshot restore (which backfills it for an older snapshot), and carried by
+  // the snapshot export. Unread: every row's edit and delete moves the balance
+  // by its amount, so no write needs to find the setting row. Dropping it needs
+  // a migration (open item). NULL when a closing-balance import set it (no row
+  // is written at its as-of) or the balance was never hand-set. No foreign key:
+  // a deleted row's id is never reused, so a stale id matches nothing.
   balanceSetRowId: text('balance_set_row_id'),
   metadata: text('metadata', { mode: 'json' }),
   sortOrder: integer('sort_order').notNull().default(0),

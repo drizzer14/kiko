@@ -2416,7 +2416,7 @@ export const transactionsRepo = {
    * inserted, not counted. One synced row stands for one statement row. Rows a pre-fix build
    * already imported over synced ones stay; no migration removes them.
    *
-   * OPEN, user decision pending: a back-dated MANUAL row dated before a closing
+   * OPEN, user decision pending: a back-dated MANUAL row dated on or before a closing
    * balance's as-of moves the balance when written (every write counts). Importing
    * a statement with that closing balance applies the closing outright
    * (`asOfSeconds * 1000 >= boundary`), which counts only rows dated after its
