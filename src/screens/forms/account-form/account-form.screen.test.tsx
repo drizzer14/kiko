@@ -162,8 +162,9 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
 });
 // The bank create form now offers the SAME explicit-Connect pattern as crypto,
 // through MonobankConnectField. It owns its own token input, live validation, and
-// status (covered by its own test); here it collapses to one pressable that fires
-// the screen's `connectMonobank` closure with a token, so what is under test is
+// status (covered by its own test); here it renders one pressable that fires the
+// screen's `connectMonobank` closure with a token, plus a stateful token TextInput
+// (testID `monobank-token-input`) that loses its value on unmount, so what is under test is
 // the create screen's wiring (create-first, no duplicate, secret via the closure).
 jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
   const { useState } = require('react');

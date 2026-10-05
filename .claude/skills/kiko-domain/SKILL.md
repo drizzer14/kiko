@@ -83,7 +83,12 @@ absent** — this skill states the shape and non-enum facts only:
   `FieldTrigger`, so VoiceOver reads each as dimmed; no
   caption explains it), and an edit Save writes only the name, color and icon
   — never `kind`, `bankId` or `institution`. A wrong kind or bank therefore
-  has no edit path; delete and recreate the account. A wrongly picked bank
+  has no edit path; delete and recreate the account. In CREATE mode the
+  kind and bank pickers lock too once a Connect starts the account row
+  (`isPickLocked = isEdit || accountRowStarted`); a rejected insert unlocks
+  them. Re-picking the already-selected kind is a no-op (the bank/broker
+  pick, custom icon and typed token stay); a switch to a different kind
+  resets them. A wrongly picked bank
   stays (user decision 2026-10-05): the bank drives only the import parser
   pre-select, the saved-mapping key and the metals/trademark hints, never an
   amount. The same rule makes
@@ -422,7 +427,7 @@ CREATE mode, picking Property or Debt calls
 (`swapToHoldingForm`, run from `AccountKindField`'s `onSelectClosed` after the sheet has closed; `handleSelectKind` does not switch `kind` for an implicit kind, it only stores `pickedImplicitKind` so the kind field shows the pick in the tap's own frame while the fields, icon and color stay put; the form passes `closesWithoutAnimation={isImplicitAccountKind}`, so that sheet closes with no fade and `onSelectClosed` (hence the `replace`) follows at once, while every other kind keeps the fade; `account-form.screen.tsx`), where `draft` is the
 `FormDraft` (`{ name, icon, color }`, `src/navigation/types/`) typed so
 far: `icon` is the user's own pick only (the form's `iconIsDirty` flag,
-reset by every kind switch), null otherwise, so the holding form keeps
+reset by every switch to a different kind), null otherwise, so the holding form keeps
 following its own type default; `color` is null until picked. The
 `HoldingForm` route is `({ accountId } | { implicitKind, draft? }) & {
 holdingId?, debtAccount?, returnTo? }`, resolved by
