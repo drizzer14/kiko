@@ -197,8 +197,8 @@ describe('buildTypeBreakdown', () => {
   // A negative holding must never NET against a positive one of the same
   // type — it must be dropped entirely, same as the account pie's own
   // per-holding rule. A card in debit sharing a type with a positive card
-  // used to reduce the bar's total instead of being excluded from it, so
-  // the same amount was silently subtracted here AND listed again under
+  // must be excluded from the bar's total, not reduce it — otherwise the
+  // same amount would be silently subtracted here AND listed again under
   // "Debts" elsewhere on Statistics.
   it('never nets a negative holding against a positive one of the same type', () => {
     const holdings = [

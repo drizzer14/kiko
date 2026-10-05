@@ -256,16 +256,15 @@ describe('guardedBreakdown', () => {
   });
 });
 
-// Regression coverage for the manual-only-user bug: `useAutoSync` used to skip
-// `refreshRates` whenever the sync fan-out had no jobs, so a user with no
-// connected Monobank/crypto account never got a live cross-rate cached. That
-// left `canConvert` permanently false for every non-base-currency holding,
-// which silently dropped it from BOTH `guardedNetWorth` and `guardedBreakdown`
-// — the actual user-visible symptom, reproduced here at the aggregation level
-// rather than through the hook. `use-auto-sync.test.ts` already covers the fix
-// at the sync-fan-out level; these lock in the currency-guard behavior itself,
-// in BOTH base-currency directions, so the guard is proven symmetric rather
-// than only verified for one hardcoded base.
+// A manual-only user (no connected Monobank/crypto account) must still get a
+// live cross-rate cached; without one `canConvert` is false for every
+// non-base-currency holding, which silently drops it from BOTH
+// `guardedNetWorth` and `guardedBreakdown` — the user-visible symptom, pinned
+// here at the aggregation level rather than through the hook.
+// `use-auto-sync.test.ts` covers the rate refresh at the sync-fan-out level;
+// these lock in the currency-guard behavior itself, in BOTH base-currency
+// directions, so the guard is proven symmetric rather than only verified for
+// one hardcoded base.
 describe('guardedNetWorth / guardedBreakdown — base-currency flip regression', () => {
   it('drops a UAH holding from the USD-base total and breakdown when no UAH:USD rate is cached (base-currency flip)', () => {
     const holdings = [
@@ -284,8 +283,7 @@ describe('guardedNetWorth / guardedBreakdown — base-currency flip regression',
 
   it('includes a UAH holding in the USD-base total and breakdown once UAH:USD is cached (base-currency flip)', () => {
     const holdings = [cash('USD', 10_000), cash('UAH', 100_000)];
-    // uahPer(USD) = 40 -> rateBetween(UAH, USD) = 1 / 40 = 0.025, the same
-    // ratio the old direct `'UAH:USD': 0.025` cross-key fixture encoded.
+    // uahPer(USD) = 40 -> rateBetween(UAH, USD) = 1 / 40 = 0.025.
     const rates = { USD: 40 };
 
     const total = guardedNetWorth(holdings, 'USD', rates, NOW);

@@ -32,7 +32,7 @@ type InternalTransferTransaction = {
 
 // One CREDIT candidate, indexed by its position in the original `transactions`
 // array (so "first still-unmatched" below means earliest ORIGINAL position,
-// exactly as the array-order scan it replaces) and sorted by `time` within its
+// exactly as a plain array-order scan would) and sorted by `time` within its
 // (currency, amount) bucket, so a debit only ever has to look at the handful
 // of credits actually within `TRANSFER_MATCH_WINDOW_MS` of it. Holds a
 // REFERENCE to its own input row (never a copy of `time`/`holdingId`) so the

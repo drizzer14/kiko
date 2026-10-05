@@ -121,7 +121,7 @@ const accumulateSpend = (input: {
     buckets,
   } = input;
   // The real range bounds, NOT `buckets[0]`/`buckets[buckets.length - 1]`:
-  // `buckets` (period-START instants only) no longer closes on `range.to`
+  // `buckets` (period-START instants only) does not close on `range.to`
   // itself, so deriving the upper bound from it would wrongly exclude a
   // transaction dated after the last period's own start.
   const rangeFrom = range.from;

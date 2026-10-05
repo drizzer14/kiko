@@ -86,7 +86,7 @@ describe('periodStartBucketTimes', () => {
 
 describe('DST correctness (Europe/Kyiv, autumn fall-back)', () => {
   // Kyiv's 2026 fall-back (last Sunday of October) falls inside this
-  // 31-day, one-bucket-per-day span — a fixed-DAY_MS step used to land an
+  // 31-day, one-bucket-per-day span — a fixed-DAY_MS step would land an
   // hour early (23:00 the previous calendar day) for every bucket after it,
   // which could duplicate a calendar day or add an extra 32nd bucket.
   it('periodStartBucketTimes never duplicates a calendar day and every bucket sits at local midnight', () => {

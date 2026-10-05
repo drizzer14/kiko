@@ -540,14 +540,13 @@ describe('buildCategoryTrend — spring-forward DST (Europe/Kyiv, 2025-03-30)', 
   });
 });
 
-// category-trend.ts used to fold a category key with a bare
-// `category?.toLowerCase() || defaultKey` — unlike the donut
-// (`buildCategoryBreakdown`), which folds an UNRESOLVABLE slug (one no longer
-// in the category display map, e.g. a deleted seeded category sync keeps
-// re-writing) into the default too, via `resolveCategoryKey`. The trend kept
-// the stale slug as its own bucket, so a deleted category showed as two
-// separate "Other"-titled lines (same color, different key) instead of
-// folding into one.
+// category-trend.ts folds a category key through `resolveCategoryKey`, like
+// the donut (`buildCategoryBreakdown`): an UNRESOLVABLE slug (one absent from
+// the category display map, e.g. a deleted seeded category sync keeps
+// re-writing) folds into the default. A bare
+// `category?.toLowerCase() || defaultKey` would keep the stale slug as its own
+// bucket, so a deleted category would show as two separate "Other"-titled
+// lines (same color, different key) instead of folding into one.
 describe('buildCategoryTrend / buildCategoryMeasures — category-key fold parity with the donut', () => {
   // 'dining' is not in DISPLAY — an unresolvable slug, the same shape a
   // deleted seeded category leaves behind once sync keeps writing it.

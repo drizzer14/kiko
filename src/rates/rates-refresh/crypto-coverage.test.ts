@@ -5,8 +5,8 @@ import { composeRateTable } from '../monobank-feed-test-helper';
 import { canConvert, guardedBreakdown, guardedNetWorth } from '../net-worth-view';
 
 // Every crypto MUST reach every base leg by a live cross-rate, or a holding in it
-// silently drops from the net-worth total everywhere except the chart — the
-// build-6 regression class. USDT is priced uniformly via CoinGecko (no 1:1 peg).
+// silently drops from the net-worth total everywhere except the chart. USDT is
+// priced uniformly via CoinGecko (no 1:1 peg).
 const CRYPTO: Currency[] = ['BTC', 'ETH', 'USDT'];
 const CRYPTO_USD: Record<string, number> = { BTC: 65_000, ETH: 3_200, USDT: 1.0007 };
 const NOW = Date.UTC(2026, 0, 1);

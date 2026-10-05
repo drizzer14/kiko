@@ -160,8 +160,8 @@ describe('refreshRates', () => {
   // anchor, and fabricating one (e.g. assuming USD:UAH = 1) would silently
   // store a false exchange rate. "the pairs the surviving anchors support"
   // is correctly zero pairs here, exactly like the both-fail case above —
-  // the previously stored (stale) rates are left untouched rather than
-  // being overwritten with an invented one.
+  // the already-stored (stale) rates are left untouched rather than being
+  // overwritten with an invented one.
   it('composes no pairs when only the BTC provider survives (no USD anchor)', async () => {
     const { deps, captured } = makeDeps({
       fetchFiatRates: () => Promise.reject(new Error('offline')),
@@ -172,10 +172,10 @@ describe('refreshRates', () => {
     expect(captured).toHaveLength(0);
   });
 
-  // Locks in the build-6 failure class: a pickable currency with no rate path
-  // silently drops out of every net-worth sum (`canConvert`,
-  // `src/rates/net-worth-view`). GBP and CHF are the two fiat codes this track
-  // added; this feeds a real Monobank-shaped response including both through
+  // Locks in that a pickable currency with no rate path silently drops out of
+  // every net-worth sum (`canConvert`, `src/rates/net-worth-view`). GBP and CHF
+  // are two of the pickable fiat codes; this feeds a real Monobank-shaped
+  // response including both through
   // the REAL `refreshRates` composition and proves the stored table actually
   // supports converting them, not just that some row got written.
   it('composes a convertible rate path for GBP and CHF (no silent net-worth drop)', async () => {
