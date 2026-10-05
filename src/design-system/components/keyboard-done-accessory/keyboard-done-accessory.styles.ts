@@ -78,8 +78,8 @@ export const styles = StyleSheet.create((theme) => ({
     bottom: 0,
   },
   // The Done label: white (`textPrimary` — pure white on this dark theme, see
-  // its own doc in `theme.ts`), replacing the earlier blue `accent` tone now
-  // that Done is a neutral glass pill rather than a tinted link-style action.
+  // its own doc in `theme.ts`), not the blue `accent` tone, because Done is a
+  // neutral glass pill rather than a tinted link-style action.
   // `textPrimary`, not `onAccent`: this pill carries no filled accent/
   // destructive background (`onAccent` is reserved for text on THAT kind of
   // fill, per `kiko-design-system`'s "The `onAccent` rule") — it is a neutral

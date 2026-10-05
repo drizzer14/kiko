@@ -74,9 +74,9 @@ const GRABBER_REGION_MIN_HEIGHT = 44;
 // inline `<Text variant="heading">` title goes through the `header` prop
 // (see `kiko-design-system`'s "BottomSheet header"), so this single step —
 // applied to `grabberRegion.paddingBottom` below — is the one spacing between
-// the title and the body. It gives the title clear breathing room now that it
-// consistently anchors the header band above every sheet's content, matching
-// `SHEET_PADDING_STEP`'s own weight rather than reading as a smaller,
+// the title and the body. It gives the title clear breathing room, since the
+// title consistently anchors the header band above every sheet's content,
+// matching `SHEET_PADDING_STEP`'s own weight rather than reading as a smaller,
 // secondary gap.
 const TITLE_TO_BODY_GAP_STEP = 4;
 

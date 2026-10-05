@@ -32,10 +32,9 @@ const startOfToday = (): number => {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 };
 
-// A dedicated screen for adding a deposit top-up, replacing the old inline
-// collapsible form on the holding-detail screen. It uses the same shared inputs
-// as the other forms — a grouped-amount TextField and the calendar DateField —
-// and persists through the exact same repo call the inline form used.
+// A dedicated screen for adding a deposit top-up. It uses the same shared
+// inputs as the other forms — a grouped-amount TextField and the calendar
+// DateField — and persists through `holdingsRepo.appendDepositContribution`.
 const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, navigation }) => {
   const { holdingId } = route.params;
   // `holdingsRepo` exposes no single-row lookup, so the holding's own currency

@@ -183,17 +183,16 @@ export const darkTheme = {
     // translucent black as the scrim's own tint (layered under the glass
     // material) and as the non-liquid-glass fallback's dim.
     //
-    // Lowered from 0.55 to 0.4 when the sheet's own background moved to
-    // GlassSurface's `material` (live-blur) variant: the sheet's glass now
-    // samples the LIVE content behind it, which is this same scrim — a
-    // full-bleed sibling painted behind the whole overlay, sheet included
-    // (see `bottom-sheet.styles.ts`'s `backdrop`/`overlay`). At 0.55 the
-    // sheet's live sample was of an already-heavily-dimmed backdrop, so the
-    // "real blur" read as a near-solid dark panel again, defeating the
-    // fix. 0.4 still keeps a clear dim for the exposed area above the sheet
-    // (this token has exactly one consumer, BottomSheet's scrim — see
-    // `bottom-sheet.component.tsx`/`bottom-sheet.styles.ts` — so this change
-    // cannot affect any other surface).
+    // 0.4, not heavier: the sheet's own background is GlassSurface's
+    // `material` (live-blur) variant, so its glass samples the LIVE content
+    // behind it, which is this same scrim — a full-bleed sibling painted
+    // behind the whole overlay, sheet included (see `bottom-sheet.styles.ts`'s
+    // `backdrop`/`overlay`). At 0.55 the sheet's live sample would be of an
+    // already-heavily-dimmed backdrop, so the "real blur" would read as a
+    // near-solid dark panel. 0.4 still keeps a clear dim for the exposed area
+    // above the sheet (this token has exactly one consumer, BottomSheet's
+    // scrim — see `bottom-sheet.component.tsx`/`bottom-sheet.styles.ts` — so
+    // changing it cannot affect any other surface).
     scrim: 'rgba(0,0,0,0.4)',
     entityColors: entityColorsDark,
     chartSeries: chartSeriesDark,

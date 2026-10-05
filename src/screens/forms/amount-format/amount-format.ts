@@ -22,9 +22,9 @@ export const groupAmount = (input: string): string => {
 
   // A value that is not a plain decimal number — an exponent ("5e-7"), a stray
   // letter, anything from a paste — is REFUSED rather than reduced to its
-  // digits. The old `replace(/\D/g, '')` turned "5e-7" into "57", a fabricated
-  // amount seven orders of magnitude off, which Save then persisted. An empty
-  // string leaves the field blank, which the save guards already reject.
+  // digits, which would turn "5e-7" into "57", a fabricated amount seven
+  // orders of magnitude off. An empty string leaves the field blank, which
+  // the save guards already reject.
   if (/[^\d\s,.-]/.test(compact)) {
     return '';
   }
@@ -62,10 +62,10 @@ export const groupAmount = (input: string): string => {
  * (the caller pipes this through `groupAmount`).
  *
  * WHY NOT `String(minorUnits / factor)`: below 1e-6 JavaScript switches to
- * exponential notation, and `groupAmount`'s no-separator branch strips every
- * non-digit — so 50 satoshis would hydrate as `5e-7` and render as `57`,
- * which Save would store as 57 BTC (5,700,000,000 sat) and apply as a
- * balance delta. `toFixed(scale)` never emits an exponent.
+ * exponential notation, and `groupAmount` refuses any value with a letter
+ * (`5e-7`) by returning '' — so a valid 50-satoshi holding would hydrate
+ * into a blank field and fail to open for edit. `toFixed(scale)` never emits
+ * an exponent.
  */
 export const majorAmountText = (currency: Currency, minorUnits: number): string => {
   const scale = currencyScale[currency];

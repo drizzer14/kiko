@@ -312,7 +312,7 @@ describe('GlassSurface', () => {
 
   // The real Liquid Glass branch (isLiquidGlassSupported === true), which Jest
   // otherwise never reaches because the module is mocked to the non-glass
-  // fallback. These assertions encode the device-only stability fix: the card
+  // fallback. These assertions pin the device-only stability contract: the card
   // background would otherwise be ~90% a LIVE glass sample of whatever sits
   // behind the card, so its lightness would drift on every
   // scroll/reorder/navigation and it would flash on drag pickup. The fix
@@ -554,18 +554,18 @@ describe('GlassSurface', () => {
       expect(getByTestId('bloom-glass-base').props.effect).toBe('clear');
     });
 
-    // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12, follow-up fix
-    // confirmed 2026-09-12): a `bloom` surface on the real glass path has no
-    // backdrop under a `'clear'`-effect `LiquidGlassView`, which samples its
-    // backdrop exactly once, at native layout. `GlassSurface` compensates by
-    // polling the surface's REAL on-screen position (`measureInWindow`, which
-    // includes a `Sortable.Grid` item's live Reanimated transform, unlike
-    // `onLayout`) every frame until two consecutive reads agree, then
-    // remounting exactly once (`needsResample`/`remountToken`, decision math
-    // in `glass-surface.resample.ts`). A fixed 2-frame delay (the original
-    // fix) raced this transform and lost for any card whose transform had not
-    // yet landed by frame 2 — only cards near the top of the grid happened to
-    // settle that fast. These tests drive `measureInWindow` (mocked on the
+    // FIRST-PAINT RE-SAMPLE (device-only): a `bloom` surface on the real glass
+    // path has no backdrop under a `'clear'`-effect `LiquidGlassView`, which
+    // samples its backdrop exactly once, at native layout. `GlassSurface`
+    // compensates by polling the surface's REAL on-screen position
+    // (`measureInWindow`, which includes a `Sortable.Grid` item's live
+    // Reanimated transform, unlike `onLayout`) every frame until two
+    // consecutive reads agree, then remounting exactly once
+    // (`needsResample`/`remountToken`, decision math in
+    // `glass-surface.resample.ts`). A fixed 2-frame delay would race this
+    // transform and lose for any card whose transform has not yet landed by
+    // frame 2 — only cards near the top of the grid settle that fast. These
+    // tests drive `measureInWindow` (mocked on the
     // shared `View` prototype — see `probeViewPrototype` above) through a
     // scripted sequence of on-screen reads to prove the loop actually keeps
     // polling past frame 2 rather than assuming a fixed duration.
@@ -580,11 +580,11 @@ describe('GlassSurface', () => {
         measureInWindowSpy.mockRestore();
       });
 
-      // The minimum-latency case (a top-of-grid card, or the fixed-2-frame
-      // path): the position already matches on the very next
-      // read, so the loop settles — and remounts — after exactly two reads,
-      // never fewer (a single read has nothing to compare against) and never
-      // more.
+      // The minimum-latency case (a top-of-grid card, the case a fixed 2-frame
+      // delay would also get right): the position already matches on the very
+      // next read, so the loop settles — and remounts — after exactly two
+      // reads, never fewer (a single read has nothing to compare against) and
+      // never more.
       it('remounts once two consecutive reads agree, for a card whose position is already settled', async () => {
         const rafSpy = jest
           .spyOn(globalThis, 'requestAnimationFrame')

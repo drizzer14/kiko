@@ -300,8 +300,8 @@ const depositHolding = {
 };
 
 // A deposit whose earliest contribution is dated ~now with a long term, so its
-// schedule tabulates period rows that all close in the future — the case that
-// must not render a "· projected" suffix.
+// schedule tabulates period rows that all close in the future, so every
+// period row is projected.
 const futureDepositHolding = {
   id: 'h-1',
   name: 'Future deposit',

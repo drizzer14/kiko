@@ -122,8 +122,8 @@ const CategoryListRow: FC<{
     setSyncedTitle(category.title);
     setTitle(category.title);
   }
-  // Whether the themed delete confirm (`ConfirmSheet`) is up, replacing the old
-  // native `ActionSheetIOS`; a scrim/back dismiss behaves like Cancel.
+  // Whether the themed delete confirm (`ConfirmSheet`) is up; a scrim/back
+  // dismiss behaves like Cancel.
   const [deletePending, setDeletePending] = useState(false);
   const displayTitle = isEditing ? title : resolveDefaultCategoryTitle(category.key, title);
   // The committed name as the user sees it (translated for an un-renamed
@@ -167,8 +167,8 @@ const CategoryListRow: FC<{
   // Delete moves this category's transactions (and any name→category overrides)
   // onto the default category, so it confirms first via the shared, themed
   // `ConfirmSheet` — the same destructive confirm the deletable grid cards use,
-  // replacing the old native `ActionSheetIOS`. Only its destructive confirm
-  // removes the category; Cancel and a scrim/back dismiss delete nothing.
+  // not a native `ActionSheetIOS`. Only its destructive confirm removes the
+  // category; Cancel and a scrim/back dismiss delete nothing.
   const openDeleteConfirm = (): void => {
     setDeletePending(true);
   };
@@ -329,9 +329,8 @@ const CategoryListRow: FC<{
 
       {/* The category delete confirmation — the same shared themed
           `ConfirmSheet` the grid-card long-press delete uses (title
-          `Delete "<name>"`, a bare destructive `Delete`, no body), replacing
-          the old native `ActionSheetIOS`. A scrim/back dismiss behaves like
-          Cancel. */}
+          `Delete "<name>"`, a bare destructive `Delete`, no body), not a
+          native `ActionSheetIOS`. A scrim/back dismiss behaves like Cancel. */}
       <ConfirmSheet
         visible={deletePending}
         title={t('common.deleteNamed', { name: displayName })}

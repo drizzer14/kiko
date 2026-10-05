@@ -1166,8 +1166,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
           + Transactions heading ride along in `ListHeaderComponent`; nesting an
           eager list inside a scrolling Screen would break virtualization and
           warn about a nested VirtualizedList. The `spacing(2)` row gap matches
-          the old `<Box gap={2}>` — it lands between the header and the first row
-          and between rows alike. */}
+          the rhythm a `<Box gap={2}>` would give — it lands between the header
+          and the first row and between rows alike. */}
       <FlatList
         testID="ledger-list"
         // Kept mounted while `!isReady` (never unmounted for a separate

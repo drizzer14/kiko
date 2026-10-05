@@ -3997,8 +3997,8 @@ describe('HoldingFormScreen edit mode', () => {
 
   it('hydrates a dust BTC balance at full scale, not exponential notation', async () => {
     // Below 100 satoshis, `String(toMajor(...))` emits exponential notation
-    // ("5e-7"), which the grouping formatter would strip down to its digits
-    // ("57") — a 50-satoshi holding would render, and save, as 57 BTC.
+    // ("5e-7"), which the grouping formatter refuses (blank) — a valid
+    // 50-satoshi holding would open with an empty Balance field.
     const { getByLabelText } = await renderEdit({
       id: 'h-btc',
       name: 'Wallet',

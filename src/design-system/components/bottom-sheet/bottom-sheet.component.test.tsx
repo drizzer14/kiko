@@ -449,8 +449,8 @@ describe('BottomSheet', () => {
   // transparent root, which never resizes for the keyboard. The real fix
   // lifts the CARD itself, driven by RN core `Keyboard` events (not
   // reanimated's own `useAnimatedKeyboard`, whose native observer crashes
-  // under this app's iOS UIScene lifecycle — see `bottom-sheet.component.tsx`'s
-  // CRASH fix comment): the live height feeds both the card's own
+  // under this app's iOS UIScene lifecycle — see the `keyboardHeight` comment
+  // in `bottom-sheet.component.tsx`): the live height feeds both the card's own
   // `translateY` (so it rises clear of the keyboard) and a shrunk ratio cap
   // (`resolveKeyboardAwareMaxHeight`, unit-tested on its own in
   // `bottom-sheet.keyboard.test.ts`), so a shrinking search-result list still
@@ -535,19 +535,17 @@ describe('BottomSheet', () => {
       // floating "Done" pill strip) sitting above the real keys — lifting by
       // the FULL keyboard height would land the sheet's bottom edge at the
       // TOP of that strip instead of the top of the keys, leaving the strip's
-      // transparent container over the dark modal scrim (the black-band bug,
-      // builds 17/18). See `resolveKeyboardLift`.
+      // transparent container over the dark modal scrim (a black band). See
+      // `resolveKeyboardLift`.
       expect(sheetStyle.transform).toEqual([{ translateY: -expectedLift }]);
       expect(sheetStyle.maxHeight).toBe((WINDOW_HEIGHT - expectedLift) * MAX_HEIGHT_RATIO);
     });
 
-    // VISUAL fix (build 19): build 18 dropped the bottom safe-area inset,
-    // leaving only the base padding step — the wrong direction. The sheet's
-    // bottom edge now lands at the BOTTOM of the accessory strip
+    // The sheet's bottom edge lands at the BOTTOM of the accessory strip
     // (`resolveKeyboardLift`), so the strip's own height sits BEHIND the
     // sheet's last content row. Padding set to the FULL accessory height
-    // (first pass) still read wrong on device: every sheet's content ALSO
-    // carries its own fixed `CONTENT_BOTTOM_PADDING_STEP` buffer (the SAME
+    // would still read wrong: every sheet's content ALSO carries its own
+    // fixed `CONTENT_BOTTOM_PADDING_STEP` buffer (the SAME
     // `SHEET_PADDING_STEP` token as `SHEET_BASE_PADDING` here) beneath its
     // last row, which stacks UNDER this outer padding — subtracting it here
     // cancels that stack so the two together total exactly the (effective)
