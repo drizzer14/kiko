@@ -4,14 +4,14 @@
  for the full rule) and backfill it for holdings that already have a
  hand-set balance in their ledger.
 
- Going forward, `balance_set_at` is written directly by the code paths that
- set (not move) a balance: `holdingsRepo.create` and
- `accountsRepo.createCashAccount` (a non-zero typed opening balance),
- `holdingsRepo.updateWithBalanceDelta` (a non-zero balance edit), and
- `transactionsRepo.importRows`'s own closing-balance write. None of those
- stamped it before this migration, so a pre-migration holding's hand-set
- balance has no direct signal — only a `source = 'manual'` transaction row
- that HAPPENS to carry the same shape those opening/edit paths write (`description ''`, `category` NULL, no
+ Going forward, `balance_set_at` is written directly by the three code paths
+ that set (not move) a balance: `holdingsRepo.create` (a non-zero typed
+ opening balance), `holdingsRepo.updateWithBalanceDelta` (a non-zero balance
+ edit), and `transactionsRepo.importRows`'s own closing-balance write. None
+ of those existed before this migration, so a pre-migration holding's
+ hand-set balance has no direct signal — only a `source = 'manual'`
+ transaction row that HAPPENS to carry the same shape `holdingsRepo.create`/
+ `updateWithBalanceDelta` write (`description ''`, `category` NULL, no
  exchange-leg marker, no change-return marker). This is a HEURISTIC for
  backfilling PRE-migration data only: a coincidentally-shaped manual row
  (unlikely, since `recordManual`/exchange legs/change returns each carry a

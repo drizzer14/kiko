@@ -29,6 +29,7 @@ below).
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` (+ `feature-imports.js`) | an import that crosses a feature without its barrel (`kiko-feature-imports`, B2) fails; so do the `--tree` layout findings over `src/` (loose file at a container root, unit without `index.ts`, undeclared container, a barrel that re-exports test code or another feature, a feature-level value-import cycle) | project-wide (`check:all`) + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation (`kiko-blank-line-separation`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` (+ `.js` planner/runner) — the unchanged pre-write guard (`pre-write-guard.sh`), run once per `.ts`/`.tsx` file the session changed, with BEFORE = the file at HEAD, or at the parent of the earliest session commit (one that no worktree's passed-replay mark ref `refs/kiko/guard-replay/<worktree id>` reaches and that is newer than the floor ref `refs/kiko/guard-replay-floor` or has a session commit as a parent; through a merge commit, a file the merge kept from one parent takes that parent's baseline, and a file it left different from every parent is checked against both parents' baselines (see `guard-replay.js`'s header)), and AFTER = the working-tree file | any finding the change ADDED fails, naming file, rule, and line (a Bash/python write or its commit bypassed the pre-write guard); a pre-existing finding does not; a replay or guard that could not run fails too (fail closed), and so does the Stop tier's deadline (at most 150 s) | medium (Stop/SubagentStop) + project-wide (`check:all`, no deadline) |
+| `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` (+ `.js`) | a shipped migration file that is modified, deleted, or renamed fails; a new migration passes; no override and no exemption list. The per-file rules, the baseline, and the known limits live in kiko-linter's "Shipped migrations are never edited" | medium (Stop/SubagentStop, before the replay and the HEAD-moved early exit) + project-wide (`check:all`) |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) + `scripts/checks/mutation-score.js` | a passing run is scored on the CHANGE SET only: `mutation-score.js` reads the `json` reporter's output (`reports/mutation/mutation.json`) for the files THIS run mutated and fails when the change-set total is below 75, any graded file is below 60, or the report's own recorded scope (`config.mutate`) differs from the changed-file list (the report is not this run's); a file with no mutants is n/a, not a failure. A changed file Stryker cannot resolve (its `did not result in any files` warning) fails too. Stryker's own break threshold (60, over the whole accumulated report) stays as a whole-report floor. `src/db/schema.ts` is excluded from both the total and the floor — see `docs/harness/documented-exceptions.md`. More than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap; `mutation.sh --list` (`make mutable`) prints the files it would mutate and their count, then exits (2 above the cap) without Stryker, and any other argument exits 2 | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
@@ -38,7 +39,7 @@ Composite scripts:
 - `npm run check:all` — the fast + medium tier checks, in order:
   lint, dup, knip, deps, security, rules, plist, secrets, overrides,
   import-order, full-word-identifiers, screen-imports, feature-imports,
-  blank-line-separation, guard-replay, typecheck.
+  blank-line-separation, guard-replay, shipped-migrations, typecheck.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. It is not wired to any hook because it is slow; it is a
   manual checkpoint. **Mutation testing runs per SMALL change set only,
@@ -79,8 +80,8 @@ project-wide) runs on `Stop` and `SubagentStop`, and stays silent
 only when the session changed neither a source file nor a harness
 input and HEAD has not moved since this worktree's last passed guard
 replay (read the harness-input regex in `scripts/checks/medium.sh`: rule
-files, fixtures, check wrappers, the Info.plist, and the Xcode
-project). A session that edited
+files, fixtures, check wrappers, the Info.plist, the Xcode
+project, and every file under `drizzle/migrations/`). A session that edited
 only a rule, a fixture, or the plist is the one most likely to have
 broken a rule (or unpinned a credential-bearing host), so it must not
 be the one that runs nothing. The medium tier also replays the
@@ -91,7 +92,11 @@ commits no worktree's passed replay reached (its mark ref under
 moved (a turn that only committed). It stops at a deadline of at most
 150 s (less when the hook's 300 s are partly spent) and then fails, telling the
 agent to run `npm run check:guard-replay` by hand; see kiko-linter's
-"Pre-write guard replay on the Stop tier".
+"Pre-write guard replay on the Stop tier". Right before the replay, and
+before that early exit, the medium tier runs
+`scripts/checks/shipped-migrations.sh`, so a turn that only committed an
+edit to a shipped migration is still checked, and a failure leaves the
+replay's mark ref unmoved so every later Stop fails again.
 `tsc --noEmit` is project-wide by
 nature — a type error surfaces in the file that CONSUMES a changed
 type, not only in the file that was edited — so it never takes a

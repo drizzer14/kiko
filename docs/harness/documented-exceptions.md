@@ -262,6 +262,13 @@ verified usage, not dead weight:
   The same test also loads its one export, `stopTierDeadlineSeconds`,
   with a `require` of a computed path (`REPLAY_ENGINE`), which Knip
   does not resolve, so the entry is still needed.
+- **`knip.json` `ignore`**: `scripts/checks/shipped-migrations.js` — the
+  same shape as `guard-replay.js` above. `scripts/checks/shipped-migrations.sh`
+  (`check:shipped-migrations`, also run by the medium tier) reaches it only
+  via a `node` invocation, never a static `import`/`require`, so Knip reports
+  it as unused. Exercised by `__tests__/shipped-migrations.test.ts`, which
+  runs a copy of the wrapper and the checker as subprocesses in a throwaway
+  git repository, not an import.
 - **`knip.json` `ignore`**: `scripts/checks/specifier-scanner.js` — the
   shared specifier scanner. Its only importers are `feature-imports.js`
   and `screen-imports.js` (a static `require`), and both are themselves
