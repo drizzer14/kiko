@@ -45,3 +45,10 @@ export const urlNote = 'see https://example.test // previously';
  * never re-reads a row it already wrote.
  */
 export const purposeBlock = true;
+
+// 7. A comment that holds no watched word never lets the rule read the code after it: a
+// string with the word on the same line as a closed block comment, or on the line below a
+// line comment, stays silent.
+export const wordStringAfterBlock = /* a plain note */ 'it no longer exists';
+// A plain note.
+export const wordStringBelowLine = 'previously stored';

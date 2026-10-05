@@ -439,3 +439,18 @@ export const capitalPerTheBriefBlock = true;
  * the retry budget moved in T14.
  */
 export const idOnLaterBlockLine = true;
+
+/**
+ * A second id in the same block comment is reported too, at its own line:
+// EXPECT-FINDING
+ * the retry budget moved in T14,
+// EXPECT-FINDING
+ * and its window in T15.
+ */
+export const secondIdInBlock = true;
+
+// A second id on the same line is reported too (one pin covers the line, since a pin
+// names a line, not a member).
+// EXPECT-FINDING
+// The retry budget moved in T14 and its window in T15, see Bug 9.
+export const secondIdOnLine = true;

@@ -237,6 +237,24 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     '',
   ].join('\n');
 
+  function editHistoryBaseline(from: string, to: string): SpawnSyncReturns<string> {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-history-edit-'));
+    try {
+      const targetDirectory = join(project, 'src', 'probe');
+      mkdirSync(targetDirectory, { recursive: true });
+      const targetFile = join(targetDirectory, 'history-edit.ts');
+      writeFileSync(targetFile, historyBaseline);
+      const payload = JSON.stringify({
+        tool_name: 'Edit',
+        tool_input: { file_path: targetFile, old_string: from, new_string: to },
+      });
+
+      return runGuard(payload, project);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  }
+
   it.each([
     ['allows editing text before the word in a block comment', 'Opening line', 'First line', 0],
     ['allows editing text after the word in a block comment', 'Closing line', 'Last line', 0],
@@ -256,24 +274,47 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
       '// Bug 10 is fixed.\nexport const line = 2;',
       2,
     ],
+    [
+      'denies a second word added to a block comment that already holds one',
+      'Closing line of the note.',
+      'Previously it rendered twice.',
+      2,
+    ],
+    [
+      'denies a second word added to a line comment that already holds one',
+      'see Bug 9.',
+      'see Bug 9; previously it pushed two.',
+      2,
+    ],
+    [
+      'denies the same word added a second time to a comment that already holds it',
+      'Closing line of the note.',
+      'It is no longer here either.',
+      2,
+    ],
+    [
+      'denies a second id added to a block comment that already holds one',
+      'Closing line of the note.',
+      'Closing note, see T14.',
+      2,
+    ],
+    ['denies a second id on a flagged line', 'see Bug 9.', 'see Bug 9 and T14.', 2],
   ])('%s', (_name, from, to, status) => {
-    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-history-edit-'));
-    try {
-      const targetDirectory = join(project, 'src', 'probe');
-      mkdirSync(targetDirectory, { recursive: true });
-      const targetFile = join(targetDirectory, 'history-edit.ts');
-      writeFileSync(targetFile, historyBaseline);
-      const payload = JSON.stringify({
-        tool_name: 'Edit',
-        tool_input: { file_path: targetFile, old_string: from, new_string: to },
-      });
+    expect(editHistoryBaseline(from, to).status).toBe(status);
+  });
 
-      const result = runGuard(payload, project);
+  // The key is the word alone, so the deny cannot tell which of several equal words is the new
+  // one (the occurrence rank counts in file order); it names every line that holds the word.
+  it('names every line that holds the word when the edit adds it above an existing one', () => {
+    const result = editHistoryBaseline(
+      'export const block = 1;',
+      'export const block = 1;\n// It no longer ships.',
+    );
 
-      expect(result.status).toBe(status);
-    } finally {
-      rmSync(project, { recursive: true, force: true });
-    }
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('rule kiko-no-history-word-comment at src/probe/history-edit.ts,');
+    expect(reason).toContain('one of lines 3, 7, 9 is new');
   });
 
   // kiko-worklet-directive-required excludes every test file: Jest mocks

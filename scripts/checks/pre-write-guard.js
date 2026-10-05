@@ -15,7 +15,7 @@
 // scanning it would only waste the one process this hook is allowed);
 // `runNodeChecks` runs the hand-rolled checkers Semgrep cannot express (the
 // `NODE_RULES` rows) on AFTER first, and on BEFORE only the rules that found
-// something in AFTER; `findingKeys`/`newFindings` diff the finding sets —
+// something in AFTER; `findingGroups`/`newFindings` diff the finding sets —
 // Semgrep's and the Node checkers' combined — so only a finding the edit
 // ADDS ever blocks the write, never one already on disk. A file on disk
 // with git conflict markers never parses, so `conflictSides` rebuilds the
@@ -882,7 +882,7 @@ const NODE_RULES = [
 // the baselines only when AFTER has findings, since a clean AFTER cannot
 // add a finding. The rules start together (each only reads the same
 // mirrored file) and settle through allSettledOrThrowFirst; findings stay
-// in NODE_RULES order, not completion order, so `findingKeys`' occurrence
+// in NODE_RULES order, not completion order, so `findingGroups`' file-order
 // numbering is stable.
 async function runNodeChecks(temporaryRoot, relativePath, tree, ruleIds) {
   const filePath = path.join(temporaryRoot, tree, relativePath);
@@ -933,29 +933,25 @@ async function runBaselineNodeChecks(temporaryRoot, relativePath, trees, afterNo
 // Collapses every whitespace run in `text` to a single space and trims the
 // ends, so a whitespace-only reformat of an existing violation (for example
 // `switch (x)  {` becoming `switch (x) {`) never reads as a new one — see
-// `findingKeys`.
+// `findingGroups`.
 function normalizeText(text) {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-// Keys every finding on (rule id, normalized matched text, occurrence), per
-// the design spec's "New-findings-only comparison" section: line number is
-// deliberately excluded, so an edit earlier in the file that shifts every
-// later line never turns an untouched violation into a "new" one, and
-// `occurrence` — the finding's 1-based rank among findings sharing the same
-// rule+text pair, in file order — is what still lets two textually
-// identical violations of the same rule match pairwise by position instead
-// of collapsing into a single key.
-function findingKeys(findings) {
-  const occurrenceCounts = new Map();
-  const keyedFindings = new Map();
+// Groups findings on (rule id, normalized matched text), per the design
+// spec's "New-findings-only comparison" section: line number is deliberately
+// excluded, so an edit earlier in the file that shifts every later line never
+// turns an untouched violation into a "new" one, and the group's SIZE — how
+// many findings share the rule+text pair — is what still lets two textually
+// identical violations of the same rule count separately instead of
+// collapsing into one. Each group lists its findings in file order.
+function findingGroups(findings) {
+  const groups = new Map();
   for (const finding of findings) {
-    const baseKey = `${finding.ruleId}\u0000${normalizeText(finding.matchedText)}`;
-    const occurrence = (occurrenceCounts.get(baseKey) || 0) + 1;
-    occurrenceCounts.set(baseKey, occurrence);
-    keyedFindings.set(`${baseKey}\u0000${occurrence}`, finding);
+    const key = `${finding.ruleId}\u0000${normalizeText(finding.matchedText)}`;
+    groups.set(key, [...(groups.get(key) || []), finding]);
   }
-  return keyedFindings;
+  return groups;
 }
 
 // The override protocol (design spec's "Override protocol" section): a
@@ -1007,26 +1003,44 @@ function nonJustifiedFindings(findings, sourceText) {
     .filter((finding) => finding.overrideState !== 'justified');
 }
 
-// A finding the proposed edit ADDS: present in the AFTER key set, absent
-// from every baseline's. A pre-existing violation is never reported here —
-// it stays visible to the finding's projectCheck, which this hook does not
-// affect. A conflicted file has two baselines, one per side; a key found in
-// either is pre-existing, and since the occurrence rank is part of the key,
-// a repeated violation is allowed up to the larger of the two sides' counts.
-// The one exception is a BARE override: a bare comment naming nosemgrep or
-// kiko-override never suppresses anything, so an edit that adds one over an
-// EXISTING finding must still deny — the finding itself need not be new for
-// the added bare comment to be the reason to block.
+// A finding the proposed edit ADDS: a rule+text group holding more findings
+// in AFTER than in every baseline. A pre-existing violation is never reported
+// here — it stays visible to the finding's projectCheck, which this hook does
+// not affect. A conflicted file has two baselines, one per side; a repeated
+// violation is allowed up to the larger of the two sides' counts. The groups
+// count findings, not lines, so when the group already existed the edit cannot
+// say WHICH line is the added one (an equal finding added above an old one
+// ranks first in file order): such a finding carries `sharedLines`, every
+// AFTER line of its group, and the deny names them all. A group with no
+// baseline finding is all new and each finding is named on its own line.
+// The one exception to "new only" is a BARE override: a bare comment naming
+// the rule with no OVERRIDE(...) never suppresses anything, so an edit that
+// adds one over an EXISTING finding must still deny — the finding itself need
+// not be new for the added bare comment to be the reason to block.
 function newFindings(baselineFindingSets, afterFindings) {
-  const baselineKeys = new Set(
-    baselineFindingSets.flatMap((findings) => [...findingKeys(findings).keys()]),
-  );
-  const afterKeys = findingKeys(afterFindings);
-  const added = [];
-  for (const [key, finding] of afterKeys) {
-    if (!baselineKeys.has(key) || finding.overrideState === 'bare') added.push(finding);
+  const baselineCounts = new Map();
+  for (const findings of baselineFindingSets) {
+    for (const [key, group] of findingGroups(findings)) {
+      baselineCounts.set(key, Math.max(baselineCounts.get(key) || 0, group.length));
+    }
   }
-  return added;
+  const added = new Map();
+  for (const [key, group] of findingGroups(afterFindings)) {
+    const baselineCount = baselineCounts.get(key) || 0;
+    const addedCount = group.length - baselineCount;
+    if (addedCount <= 0) continue;
+    const newOnes = group.slice(baselineCount);
+    if (baselineCount === 0) {
+      for (const finding of newOnes) added.set(finding, finding);
+      continue;
+    }
+    // One block per group: every added finding would name the same lines.
+    const sharedLines = [...new Set(group.map((finding) => finding.line))];
+    added.set(newOnes[0], { ...newOnes[0], sharedLines, addedCount });
+  }
+  return afterFindings
+    .filter((finding) => added.has(finding) || finding.overrideState === 'bare')
+    .map((finding) => added.get(finding) || finding);
 }
 
 // A rebuilt side of the new content that fails to parse while the same
@@ -1063,9 +1077,12 @@ function addedFindingsFor(afterTrees, semgrepFindings, nodeFindingsByTree, basel
         afterTree.text,
       );
 
+      const afterLine = (line) => afterTree.lineNumbers?.[line - 1] ?? line;
+
       return newFindings(baselineFindingSets, treeFindings).map((finding) => ({
         ...finding,
-        line: afterTree.lineNumbers?.[finding.line - 1] ?? finding.line,
+        line: afterLine(finding.line),
+        ...(finding.sharedLines && { sharedLines: finding.sharedLines.map(afterLine) }),
       }));
     })
     .filter((finding) => {
@@ -1076,6 +1093,17 @@ function addedFindingsFor(afterTrees, semgrepFindings, nodeFindingsByTree, basel
       reportedKeys.add(key);
       return true;
     });
+}
+
+// Where a finding is: its own line, or, when equal findings already existed
+// and the edit cannot tell which one it added, every line that holds one.
+function describeLocation(relativePath, finding) {
+  if (!finding.sharedLines) return `${relativePath}:${finding.line}`;
+
+  const lineList = finding.sharedLines.join(', ');
+  return finding.addedCount === 1
+    ? `${relativePath}, one of lines ${lineList} is new; reword the one you added`
+    : `${relativePath}, ${finding.addedCount} of lines ${lineList} are new; reword the ones you added`;
 }
 
 // One finding's contribution to the deny reason, in the same five-part
@@ -1092,7 +1120,7 @@ function buildFindingBlock(relativePath, finding) {
       ? `this rule has no override; see ${finding.skill}`
       : `suppress this without a justified override; see ${finding.skill}`;
   const lines = [
-    `WHAT FAILED:    rule ${finding.ruleId} at ${relativePath}:${finding.line}`,
+    `WHAT FAILED:    rule ${finding.ruleId} at ${describeLocation(relativePath, finding)}`,
     `DETAILS:        matched text: ${JSON.stringify(displayText)}`,
     `WHY IT MATTERS: this is a NEW violation the edit would add; a pre-existing one is left for ${finding.projectCheck} to catch`,
     `HOW TO FIX:     ${finding.fix}`,
@@ -1109,7 +1137,8 @@ function buildFindingBlock(relativePath, finding) {
 // The full PreToolUse deny reason for every new finding the proposed edit
 // would add, in AFTER-file order.
 function denyReason(relativePath, findings) {
-  const header = `pre-write guard: ${relativePath} would add ${findings.length} new violation(s)`;
+  const addedCount = findings.reduce((total, finding) => total + (finding.addedCount || 1), 0);
+  const header = `pre-write guard: ${relativePath} would add ${addedCount} new violation(s)`;
   return [header, ...findings.map((finding) => buildFindingBlock(relativePath, finding))].join(
     '\n\n',
   );

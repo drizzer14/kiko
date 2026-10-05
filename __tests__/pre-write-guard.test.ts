@@ -872,8 +872,99 @@ describe('Semgrep pass + new-findings-only diff', () => {
 
     expect(result.status).toBe(2);
     const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
-    expect(reason).toContain('example.ts:3');
-    expect(reason).not.toContain('example.ts:1');
+    expect(reason).toContain('src/example.ts, one of lines 1, 3 is new');
+    expect(reason).toContain('would add 1 new violation(s)');
+  });
+
+  // The occurrence rank counts in file order, so an equal finding added ABOVE an existing one
+  // ranks first and the existing one becomes the "new" one: the deny names every line that
+  // shares the key, so the agent cannot reword the wrong one and keep the count.
+  it('names every line sharing the key when a second finding with the same text is added', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    const beforeContent = 'switch (x) {\n};\n';
+    const afterContent = beforeContent.repeat(3);
+    writeFileSync(targetFile, beforeContent);
+    const needle = 'switch (x) {';
+    const afterResult = (line: number, copy: number) =>
+      rawResult({
+        checkId: 'rules.kiko-no-switch',
+        path: 'after/src/example.ts',
+        line,
+        offsetStart: copy * beforeContent.length,
+        offsetEnd: copy * beforeContent.length + needle.length,
+        fix: 'use ts-pattern match(...).exhaustive()',
+        skill: 'kiko-code-style › No switch',
+      });
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: afterContent }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_BEFORE: JSON.stringify([
+          rawResult({
+            checkId: 'rules.kiko-no-switch',
+            path: 'before/src/example.ts',
+            line: 1,
+            offsetStart: 0,
+            offsetEnd: needle.length,
+            fix: 'use ts-pattern match(...).exhaustive()',
+            skill: 'kiko-code-style › No switch',
+          }),
+        ]),
+        STUB_RESULTS_AFTER: JSON.stringify([
+          afterResult(1, 0),
+          afterResult(3, 1),
+          afterResult(5, 2),
+        ]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('src/example.ts, 2 of lines 1, 3, 5 are new');
+    expect(reason).toContain('would add 2 new violation(s)');
+  });
+
+  it('names each line on its own when every finding with the same text is new', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeFindingsStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    const copy = 'switch (x) {\n};\n';
+    const needle = 'switch (x) {';
+    const afterResult = (line: number, copyIndex: number) =>
+      rawResult({
+        checkId: 'rules.kiko-no-switch',
+        path: 'after/src/example.ts',
+        line,
+        offsetStart: copyIndex * copy.length,
+        offsetEnd: copyIndex * copy.length + needle.length,
+        fix: 'use ts-pattern match(...).exhaustive()',
+        skill: 'kiko-code-style › No switch',
+      });
+
+    const result = runGuard(
+      payloadFor('Write', { file_path: targetFile, content: copy.repeat(2) }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+        STUB_RESULTS_AFTER: JSON.stringify([afterResult(1, 0), afterResult(3, 1)]),
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('src/example.ts:1');
+    expect(reason).toContain('src/example.ts:3');
+    expect(reason).not.toContain('one of lines');
   });
 
   it('treats a whitespace-only reformat of a finding as pre-existing', () => {
@@ -1402,6 +1493,33 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
     const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
     expect(reason).toContain('kiko-full-word-identifiers');
     expect(reason).toContain('msg');
+  });
+
+  it('names every line sharing a Node-rule finding when an equal one is added above it', () => {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+    mkdirSync(join(project, 'src'), { recursive: true });
+    const targetFile = join(project, 'src', 'example.ts');
+    writeFileSync(targetFile, "export const msg = 'hi';\n");
+
+    const result = runGuard(
+      payloadFor('Write', {
+        file_path: targetFile,
+        content: "export const first = { msg: 1 };\nexport const msg = 'hi';\n",
+      }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain(
+      'rule kiko-full-word-identifiers at src/example.ts, one of lines 1, 2',
+    );
   });
 
   it('honors full-word-identifiers EXEMPTIONS by path suffix', () => {

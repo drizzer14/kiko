@@ -363,7 +363,7 @@ because it can compare against the actual pinned set.
 
 | Rule id | Finding | Enforce via | Notes |
 |---|---|---|---|
-| `kiko-no-history-word-comment` | USER RULE: a comment narrates a change (`it replaces`, `no longer`, `used to`, `previously`) instead of stating how the code works today (kiko-code-style "Comments: WHY only, never history") | Semgrep (TS, **WARNING**), the id rule's comment-only anchoring and `paths.exclude` scope. The pre-write guard keys a finding on the word alone: only a new or changed word is new, editing other text of the same comment is not | The tree holds 233 findings in 136 files (2026-10-05), so `check:security` surfaces them without failing. **Promotion condition:** flip to ERROR when `check:security` reports 0 findings for this rule id, after the sweep. See kiko-linter's "`kiko-no-history-word-comment`" section. |
+| `kiko-no-history-word-comment` | USER RULE: a comment narrates a change (`it replaces`, `no longer`, `used to`, `previously`) instead of stating how the code works today (kiko-code-style "Comments: WHY only, never history") | Semgrep (TS, **WARNING**), the id rule's comment-only anchoring and `paths.exclude` scope. The pre-write guard keys a finding on the word alone: only a new or changed word is new, editing other text of the same comment is not | The tree holds 237 findings in 136 files (2026-10-05; every word of a comment is reported, a `\G` continuation in the arm opener), so `check:security` surfaces them without failing. **Promotion condition:** flip to ERROR when `check:security` reports 0 findings for this rule id, after the sweep. See kiko-linter's "`kiko-no-history-word-comment`" section. |
 
 ### Rule index — rules shipped before the inventory invariant
 

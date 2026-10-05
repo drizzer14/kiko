@@ -90,3 +90,18 @@ export const onlyUsedToPurpose = true;
 // EXPECT-FINDING
 // used to resume the page after a failed run.
 export const splitUsedToPurpose = true;
+
+/**
+ * A second word in the same block comment is reported too, at its own line:
+// EXPECT-FINDING
+ * the old picker no longer ships,
+// EXPECT-FINDING
+ * and it previously rendered twice.
+ */
+export const secondWordInBlock = true;
+
+// A second word on the same line is reported too (one pin covers the line, since a pin
+// names a line, not a member).
+// EXPECT-FINDING
+// The sheet no longer pushes a duplicate and previously pushed two.
+export const secondWordOnLine = true;

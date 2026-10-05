@@ -158,3 +158,10 @@ export const digitRangeNearMiss = true;
 // first. A lower-case "minor 3" is a size: a minor 3% drift is within noise.
 // A lower-case "requirement I" is a pronoun: the requirement I mentioned.
 export const caseSensitiveProseNearMiss = true;
+
+// 24. A comment that holds no id never lets the rule read the code after it: a
+// string with an id shape on the same line as a closed block comment, or on the line below a
+// line comment, stays silent.
+export const idStringAfterBlock = /* a plain note */ 'T14';
+// A plain note.
+export const idStringBelowLine = 'T14';

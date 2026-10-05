@@ -1125,21 +1125,40 @@ index, `settle-limited.test.ts`), `Minor\s\d+` ("a minor 3% drift"), and
 found three real hits in `src`, each reworded in the same change. Fixture
 pair: the case pins at the end of `.bad.ts` and item 23 in `.good.ts`.
 
-**What a finding is (both history rules).** Each arm reports only the
-watched id or word: a PCRE `\K` right before the member drops everything
-before it from the match, and the block arm's closing `*/` is a lookahead
-after the member, so the matched text is the member alone. The pre-write
-guard keys a finding on (rule, matched text, occurrence), so an Edit of
-other text in a comment that already holds a finding adds nothing; only a
-new or changed id or word is new. A block comment is reported at the line
-of its watched id, not at its `/*` line, so an `EXPECT-FINDING` pin for a
-later line of a block comment sits inside the comment. Both arms still
-read `//` and `/*` by line-start text, so two limits stand (0 hits in
-`src` today). A `/*` inside a `//` comment (`// the glob src/*.ts`) opens
-a fake block arm that runs to the next `*/`: any watched word between
-reads as a finding, in code or a string too, now reported at the word
-(before: at the `/*` line). A later line of a multi-line template
-literal that starts with `//` reads as a line comment. Reword either.
+**What a finding is (both history rules).** Each arm reports every
+watched id or word of a comment, one finding per member: a PCRE `\K` right
+before the member drops everything before it from the match, and the block
+arm's closing `*/` is a lookahead after the member, so the matched text is
+the member alone. The opener of each arm is an alternation, the line-start
+walk to the `//` or `/*` OR `(?!\A)\G`, which resumes at the end of the
+previous match, so a second member of the same comment is found too. The
+continuation cannot leave the comment: the line arm's lead-in `[^\n]*?`
+stops at the line end, and the block arm's `(?:(?!\*/)[\s\S])*?` stops at
+a `*/`. A `\G` match never opens a comment either, so `/* ok */ const t =
+"no longer"` reports nothing. The pre-write guard keys a finding on (rule,
+matched text) and counts the findings of one key, so an Edit of other text
+in a comment that already holds a finding adds nothing; a new or changed id
+or word, or a second one in the same comment, is new. A block comment is
+reported at the line of its watched id, not at its `/*` line, so an
+`EXPECT-FINDING` pin for a later line of a block comment sits inside the
+comment, and so must a `// nosemgrep: <id> OVERRIDE(...)` for it: on the
+line above the member or on the member's own line, both inside the comment
+(the `/*` line no longer counts). No override of either rule exists in
+`src` today. Two members on one line cannot be pinned apart: one pin per
+line. When the key already existed, the deny cannot tell which of several
+equal findings the edit added (the count ranks in file order, so a word
+added above an old one ranks first), so it names every line that holds the
+key: `one of lines 3, 7, 9 is new; reword the one you added` (this holds for
+every Semgrep and Node rule, the shared code in `pre-write-guard.js`).
+Both arms still read `//` and `/*` by line-start text, so three limits
+stand (0 id hits and 0 word hits are hidden by them in `src` today). A
+`/*` inside a `//` comment (`// the glob src/*.ts`) opens a fake block arm
+that runs to the next `*/`: any watched word between reads as a finding, in
+code or a string too, reported at the word. A later line of a multi-line
+template literal that starts with `//` reads as a line comment. The line
+walk is greedy, so it opens at the LAST `//` of the line: a member before a
+later `//` of the same comment (`// no longer here // see the note`) is not
+found. Reword any of these.
 
 ## `kiko-no-history-word-comment`
 
@@ -1152,8 +1171,10 @@ works today and why, never how it worked before. The members are the
 (`rules/semgrep-prewrite.yml`); the fixture pair shows each shape.
 
 **A separate rule id, severity WARNING (Class B).** Severity is per rule,
-so the words could not ride on the ERROR id rule. The tree held 233
-findings in 136 files on 2026-10-05, so it lands as WARNING:
+so the words could not ride on the ERROR id rule. The tree held 237
+findings in 136 files on 2026-10-05 (it reports every word of a comment, so
+4 second words in a comment that already held one came into view), so it
+lands as WARNING:
 `check:security` surfaces them without failing, and the pre-write guard
 already denies a NEW finding of any severity. **Promotion condition:**
 flip to ERROR when `check:security` reports 0 findings for this rule id,
