@@ -203,12 +203,19 @@ tests and skills too, not only application code.
 
 No history in a comment: no task id (`T28`), no review-round id (`I1`),
 no spec section number (`spec 6.2`), no plan citation (`per the plan`),
-and no "changed because …" narrative (the full set is the
-`kiko-no-history-id-comment` rule's regex in `rules/semgrep-prewrite.yml`). That belongs in the commit message that
+and no "changed because …" narrative (the full set is the regexes of
+`kiko-no-history-id-comment` and `kiko-no-history-word-comment` in
+`rules/semgrep-prewrite.yml`). That belongs in the commit message that
 made the change, or in the skill section that owns the rule — never
 in a comment left behind in the code. Mechanized in `src/**` by the
 `kiko-no-history-id-comment` Semgrep rule (ERROR) — see the
 kiko-linter skill's own section on it for the rule's design.
+
+The "changed because …" narrative words are mechanized too, by the
+`kiko-no-history-word-comment` Semgrep rule (WARNING until its sweep
+lands): `it replaces`, `no longer`, `used to`, and `previously`. Write
+how the code works today and why ("matches the holding", "a card absent
+from the snapshot"), never what it did before.
 
 Documented exception: the data-provenance date comment in
 `src/rates/fiat-rate-seed/fiat-rate-seed.ts` stays — it records WHEN

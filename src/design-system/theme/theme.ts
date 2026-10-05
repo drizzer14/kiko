@@ -107,8 +107,8 @@ export const darkTheme = {
     // needs no hue of its own, only a darkening step, and pure black composites
     // predictably regardless of what the glass is sampling. 0.38 stays below
     // `scrim`'s 0.4 (a near-opaque modal dim is not the goal here) and well
-    // above the failed 0.20-alpha backdrop-only delta. On-device review of the
-    // initial 0.30 asked for "a bit darker" — a small step, not a big jump —
+    // above the failed 0.20-alpha backdrop-only delta. A bare 0.30 read too light
+    // on device and needed only "a bit darker" — a small step, not a big jump —
     // so this is a modest +0.08 bump from that value, still chosen to read as
     // a clear, deliberate step down in lightness from `transparent` on device
     // while keeping the card glassy and see-through. See `GlassSurface`'s

@@ -11,11 +11,11 @@ import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
 // bound ("earliest loan start minus the window's own before-margin") from
 // the SAME constant this module's own date-window check uses, rather than
 // a second, driftable literal.
-// Spec 5.4 rule 2: "3 days before to 7 days after the due date".
+// A payment matches from 3 days before to 7 days after the due date.
 export const WINDOW_BEFORE_DAYS = 3;
 const WINDOW_AFTER_DAYS = 7;
 
-// Spec 5.4 rule 3's fixed keyword list (Ukrainian + English), checked
+// A fixed keyword list (Ukrainian + English), checked
 // case-insensitively against the transaction's own description. The
 // lender's own name is a SEPARATE, per-loan signal (not a literal here) —
 // see `hasThirdSignal` below.

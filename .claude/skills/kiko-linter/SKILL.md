@@ -677,6 +677,13 @@ reasoning.
   the enclosing statement, so an `EXPECT-FINDING` pin cannot land there
   (`kiko-no-hand-built-selectable-row`'s fixture cannot pin at all).
 
+- A PCRE `\K` inside a `pattern-regex` works on Semgrep 1.175 (probe scanned
+  by path, `paths.scanned` read, 2026-10-05): the reported `start` is the
+  offset right after the `\K`, `end` is the match end, and a lookahead after
+  the member keeps the rest of a comment out of the span. `buildFinding`
+  slices `[start.offset, end.offset)`, so the guard's matched text is the
+  member alone. The reported line is the member's line.
+
 ## Semgrep facts verified on 2026-09-28 (the Round A guard rules)
 
 1. `pattern-not: import type { $X } from 'm'` also matches the VALUE
@@ -1107,6 +1114,124 @@ a..f digits", "cafe..beef", "1234567.89", and a digit-only span such as
 silent. The sweep found 1 hit, in `reminder-row.component.tsx`,
 reworded. Fixture pair: the three commit-range pins at the end of
 `.bad.ts`, and item 22 plus the digit-range pin after it in `.good.ts`.
+
+**Case forms (2026-10-05).** A member that names a plain word takes both
+its lower-case and its capitalized form, because a real comment opens a
+sentence with it ("(review Bug 8)" drew no finding while the member read
+`bug`). Three members stay capital-only, because the lower-case form is
+ordinary prose: `Task\s\d+` (a pool test's "task 0 settles last" is a task
+index, `settle-limited.test.ts`), `Minor\s\d+` ("a minor 3% drift"), and
+`Requirement\s[A-Z]` ("the requirement I mentioned"). Widening the case
+found three real hits in `src`, each reworded in the same change. Fixture
+pair: the case pins at the end of `.bad.ts` and item 23 in `.good.ts`.
+
+**What a finding is (both history rules).** Each arm reports every
+watched id or word of a comment, one finding per member: a PCRE `\K` right
+before the member drops everything before it from the match, and the block
+arm's closing `*/` is a lookahead after the member, so the matched text is
+the member alone. The opener of each arm is an alternation, the line-start
+walk to the `//` or `/*` OR `(?!\A)\G`, which resumes at the end of the
+previous match, so a second member of the same comment is found too. The
+continuation cannot leave the comment: the line arm's lead-in `[^\n]*?`
+stops at the line end, and the block arm's `(?:(?!\*/)[\s\S])*?` stops at
+a `*/`. A `\G` match never opens a comment either, so `/* ok */ const t =
+"no longer"` reports nothing. The pre-write guard keys a finding on (rule,
+matched text) and counts the findings of one key, so an Edit of other text
+in a comment that already holds a finding adds nothing; a new or changed id
+or word, or a second one in the same comment, is new. A block comment is
+reported at the line of its watched id, not at its `/*` line, so an
+`EXPECT-FINDING` pin for a later line of a block comment sits inside the
+comment, and so must a `// nosemgrep: <id> OVERRIDE(...)` for it: on the
+line above the member or on the member's own line, both inside the comment
+(the `/*` line no longer counts). No override of either rule exists in
+`src` today. Two members on one line cannot be pinned apart: one pin per
+line. When the key already existed, the deny cannot tell which of several
+equal findings the edit added (the count ranks in file order, so a word
+added above an old one ranks first), so it names every line that holds the
+key: `one of lines 3, 7, 9 is new; reword the one you added` (this holds for
+every Semgrep and Node rule, the shared code in `pre-write-guard.js`).
+Both arms still read `//` and `/*` by line-start text, so three limits
+stand (0 id hits and 0 word hits are hidden by them in `src` today). A
+`/*` inside a `//` comment (`// the glob src/*.ts`) opens a fake block arm
+that runs to the next `*/`: any watched word between reads as a finding, in
+code or a string too, reported at the word. A later line of a multi-line
+template literal that starts with `//` reads as a line comment. The line
+walk is greedy, so it opens at the LAST `//` of the line: a member before a
+later `//` of the same comment (`// no longer here // see the note`) is not
+found. Reword any of these.
+
+## `kiko-no-history-word-comment`
+
+The change-narrative half of kiko-code-style's "Comments: WHY only, never
+history". `kiko-no-history-id-comment` catches an id or a citation; this
+rule catches the words a comment uses to narrate a change: `it replaces`,
+`no longer`, `used to`, and `previously`. A comment states how the code
+works today and why, never how it worked before. The members are the
+`pattern-regex` alternation in `kiko-no-history-word-comment`
+(`rules/semgrep-prewrite.yml`); the fixture pair shows each shape.
+
+**A separate rule id, severity WARNING (Class B).** Severity is per rule,
+so the words could not ride on the ERROR id rule. The tree held 237
+findings in 136 files on 2026-10-05 (it reports every word of a comment, so
+4 second words in a comment that already held one came into view), so it
+lands as WARNING:
+`check:security` surfaces them without failing, and the pre-write guard
+already denies a NEW finding of any severity. **Promotion condition:**
+flip to ERROR when `check:security` reports 0 findings for this rule id,
+after the sweep (never when a grep is empty). The sweep is the user's
+call; do not run it as part of an unrelated task.
+
+The anchoring is the id rule's: the same string-skip
+`^(?:…)*` walk, `(?<!:)//` for the line arm, the block arm that never
+crosses `*/`, the same `\K` match shape (see "What a finding is" in the
+id rule's section: only a new or changed word is a new finding, not an edit
+of other text in its comment), and the same `paths.exclude` scope (`__tests__/**`,
+`e2e/**`, `scripts/**`, `harness/**`, `App.tsx`, `drizzle.config.ts`;
+`__mocks__/**` and co-located test files stay in scope).
+
+**Measured false-positive classes.** Every word was counted over `src`
+(`semgrep --metrics off --quiet --config rules/semgrep-prewrite.yml src
+--json`, `paths.scanned` read first), and a hand read classified each hit:
+
+- `used to`: the purpose sense ("a key used to match the holding") reads
+  like the habit sense ("this used to render a spinner"). Two classes
+  were clean and are narrowed: a passive lead-in
+  (`is`/`are`/`was`/`were`/`be`/`been`/`being`/`get`/`gets`/`got used to`, a
+  fixed-width lookbehind in the regex) or `is`/`are`/`was`/`were never used
+  to`, and a capitalized `Used to`, which opens a purpose fragment ("Used to
+  price the buckets."). They were 8 of the first 106 hits (5 capitalized, 2
+  `is never`, 1 `is`), and every one was purpose. A bare `never used to`
+  stays a finding: "The sheet never used to flicker" is history. The member
+  keeps a lowercase `used to` only. A noun-then-participle purpose sentence
+  ("the key used to match") has no regex separator from "the wrapper used to
+  own", so about 10 purpose hits remain among the 98 (a comma or em dash
+  before `used to` held 6 purpose and 2 history hits, too mixed to narrow).
+  The lookbehind sees only the word right before the phrase, so "is only
+  used to resume" and an `is` at the end of one comment line with `used to`
+  opening the next also read as history: known limits, pinned as findings
+  in `.bad.ts`. Reword such a comment to name the purpose ("matches the
+  holding") instead of "used to".
+- `no longer`: the runtime-state sense ("a kind the app no longer knows",
+  "a card the snapshot no longer returns", "once it no longer
+  corresponds") is common: about 40 of the 98 hits. No regex separates it
+  from "the sync no longer writes it", so the member is not narrowed. A
+  runtime-state sentence gets reworded to name the state ("a kind outside
+  the current list", "a card absent from the snapshot").
+- `previously`: a data-state sense ("a previously-linked row", "previously
+  rejected", "previously stored rates") held 14 of the 34 hits. A hyphenated
+  `previously-<participle>` was 8 of 11 data-state, but it also held 2
+  true history hits, so it is not narrowed either.
+- `it replaces`: 2 of the 6 hits were a behavior description ("while
+  locked it replaces the whole app with a prompt"); the other 4 named the
+  old code ("the scan it replaces"). Not narrowed.
+
+Narrowing a member needs its own measured false-positive class and a
+fixture pin on each side (an excluded shape in `.good.ts`, a caught
+shape with `// EXPECT-FINDING` in `.bad.ts`); a sweep cap or a long hit
+list is never a reason. Any other good fixture that carries a watched
+word in a comment fails `check:rules` ("must draw zero findings from
+every rule"): `kiko-no-undefined-nitro-prop.good.tsx` had to reword one
+"it replaces" comment when this rule landed.
 
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 

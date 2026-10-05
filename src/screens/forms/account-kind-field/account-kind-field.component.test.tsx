@@ -1,10 +1,7 @@
 import { StyleSheet } from 'react-native';
-import {
-  type ModalAnimationSpy,
-  spyOnModalAnimation,
-} from '@kiko/test-support/modal-animation-spy';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
@@ -85,15 +82,7 @@ describe('AccountKindField', () => {
   });
 
   describe('closesWithoutAnimation', () => {
-    let modal: ModalAnimationSpy;
-
-    beforeEach(() => {
-      modal = spyOnModalAnimation('account-kind-field-sheet-modal');
-    });
-
-    afterEach(() => {
-      modal.restore();
-    });
+    const modal = spyOnModalAnimationPerTest('account-kind-field-sheet-modal');
 
     it('closes the sheet with no animation for a kind the screen names, and fades for the rest', async () => {
       const { getByTestId } = await setup({

@@ -2,7 +2,7 @@ import { Modal } from 'react-native';
 import { type FC, useEffect, useState } from 'react';
 import { render } from '@testing-library/react-native';
 
-import { type ModalAnimationSpy, spyOnModalAnimation } from './modal-animation-spy';
+import { type ModalAnimationSpy, spyOnModalAnimationPerTest } from './modal-animation-spy';
 
 type ProbeProps = {
   visible: boolean;
@@ -28,15 +28,15 @@ const Probe: FC<ProbeProps> = ({ visible, animationType, setsAnimationLate = fal
   );
 };
 
-describe('spyOnModalAnimation', () => {
-  let spy: ModalAnimationSpy;
+// Read by the describe after the one that registers it, to see an accessor outliving its test.
+let spyOfFirstDescribe: ModalAnimationSpy;
 
-  beforeEach(() => {
-    spy = spyOnModalAnimation('probe-modal');
-  });
+describe('spyOnModalAnimationPerTest', () => {
+  const spy = spyOnModalAnimationPerTest('probe-modal');
+  spyOfFirstDescribe = spy;
 
-  afterEach(() => {
-    spy.restore();
+  it('spies on the Modal render while the test runs', () => {
+    expect(jest.isMockFunction(Modal)).toBe(true);
   });
 
   it('reads the animation of the render that hid the Modal', async () => {
@@ -107,5 +107,21 @@ describe('spyOnModalAnimation', () => {
 
     expect(spy.lastHiddenAnimation()).toBeUndefined();
     expect(spy.lastShownAnimation()).toBeUndefined();
+  });
+});
+
+// Jest runs a file's tests in definition order, so this describe runs after the one above: it
+// proves the helper restored the Modal, so a test that comes later sees the real one. The
+// project's `clearMocks` only clears call history and never restores a spy. The proof needs that
+// in-file order: under --randomize it would pass vacuously.
+describe('a describe after the one that registered the helper', () => {
+  it('sees the real Modal, not the spy', () => {
+    expect(jest.isMockFunction(Modal)).toBe(false);
+  });
+
+  it('refuses to read the spy of a test that has finished', () => {
+    expect(() => spyOfFirstDescribe.lastHiddenAnimation()).toThrow(
+      'only readable while a test runs',
+    );
   });
 });

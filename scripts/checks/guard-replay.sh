@@ -142,6 +142,6 @@ print_block \
   "A change this session made bypassed the pre-write guard (for example a Bash or python write, or a commit of one), and the replayed guard denies it: the change added a violation, or the guard could not check the file (fail closed)." \
   "$output" \
   "The pre-write guard sees only Edit/Write/MultiEdit. This replay runs the same guard on every changed file against its content before the session changed it, so only a violation the change added fails; a pre-existing one does not." \
-  "Fix each named violation with Edit/Write/MultiEdit, so the guard checks the fix, or add a justified override comment. Re-run: npm run check:guard-replay" \
+  "Fix each named violation with Edit/Write/MultiEdit, so the guard checks the fix, or, where the rule allows one, add a justified override comment. Re-run: npm run check:guard-replay" \
   "Do not rewrite the file with Bash or python to get past this, and do not delete the replay's state. Fix the code."
 exit 2

@@ -12,10 +12,6 @@ import {
 } from '@kiko/holdings/entity-symbols';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
-import {
-  type ModalAnimationSpy,
-  spyOnModalAnimation,
-} from '@kiko/test-support/modal-animation-spy';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -27,6 +23,7 @@ import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
+import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -4879,15 +4876,7 @@ describe('HoldingFormScreen implicit create', () => {
   });
 
   describe('switching the kind', () => {
-    let kindSheetModal: ModalAnimationSpy;
-
-    beforeEach(() => {
-      kindSheetModal = spyOnModalAnimation('account-kind-field-sheet-modal');
-    });
-
-    afterEach(() => {
-      kindSheetModal.restore();
-    });
+    const kindSheetModal = spyOnModalAnimationPerTest('account-kind-field-sheet-modal');
 
     // The sheet is still closing here, so the kind field is what tells the user
     // the tap landed; left on the old kind the form looks frozen.
