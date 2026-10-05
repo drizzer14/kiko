@@ -168,7 +168,9 @@ checkout --detach <sha>`; it keeps `node_modules`, Pods, and the build
 cache — never prune it), never from a worktree with work in progress.
 Installing over a database created by a NEWER branch is a downgrade:
 do a clean reinstall instead. After the checkout path changes, the
-first build is clean (`rm ios/build`, `pod install`).
+first build is clean (`rm ios/build`, `pod install`). Also after any
+IPHONEOS_DEPLOYMENT_TARGET or Podfile platform change (2026-10-05:
+15.1 -> 18.2): run `make pods`, then a CLEAN build.
 
 ## Device verification checklist
 
@@ -198,3 +200,13 @@ copies it into the device-test request it sends the user.
 - **Network rule.** Any TLS, certificate-pinning, rate-limit, or
   migration-behavior change is device-verified BEFORE archiving, not
   after — Jest cannot see real network/device behavior.
+
+## Load rule
+
+Run `make verify` / `check:all` / full jest only when the 5-minute load
+average (`sysctl -n vm.loadavg`) is below 10 (wait with a background
+until-loop); at most ONE jest-heavy agent per track; Semgrep or jest
+timeouts at high load are environment, not code: re-run at low load,
+never raise a timeout. See memory `check-security-timeout-under-load`.
+
+Background Claude sessions export FORCE_COLOR=3; run checks as `env -u FORCE_COLOR <command>`.

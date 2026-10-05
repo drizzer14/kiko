@@ -5,7 +5,7 @@ description: Use when giving the user a duration or ETA for any dispatched work 
 
 Quote measured history, never an agent's own guess. The source of truth is
 the duration log at
-`/Users/drizzer14/Developer/Projects/pff-ios/memory/refs/duration-log.md`.
+`memory/refs/duration-log.md` in the main checkout.
 
 Rules:
 - Every dispatch states an estimate AND its source (which row(s) of the

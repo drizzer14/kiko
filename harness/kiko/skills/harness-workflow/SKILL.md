@@ -409,3 +409,17 @@ When a fix brief is about to restate the same rule a second time,
 write the rule into its owning skill instead — a brief that repeats a
 rule already stated once is a sign the rule belongs in the skill, not
 in another one-off brief.
+
+## Load rule
+
+Run `make verify` / `check:all` / full jest only when the 5-minute load
+average (`sysctl -n vm.loadavg`) is below 10 (wait with a background
+until-loop); at most ONE jest-heavy agent per track; Semgrep or jest
+timeouts at high load are environment, not code: re-run at low load,
+never raise a timeout. See memory `check-security-timeout-under-load`.
+
+## Long briefs live in a file
+
+A long orchestrator brief lives in `memory/refs/brief-<task>.md` in the
+main checkout (untracked); the terminal message only names that path;
+never paste a long brief or backticks into `orca terminal send`.

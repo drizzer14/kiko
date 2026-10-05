@@ -58,13 +58,24 @@ uploads to the App Store on the user's behalf.
 
 ## Part B — App Store prep, then hand off
 
-6. `kiko:ops` archives the Release / KikoDistribution configuration.
+Precondition gotcha: in the MAIN checkout, `npm run check:secrets`
+(gitleaks over the working tree) can flag Podfile.lock checksums inside
+a copied review diff in the untracked `memory/refs/` folder (a false
+positive; worktrees pass). Run the release `check:all` in a clean
+worktree at the release commit (as done for v1.1.0: next worktree at
+1c7c8731), or move the copied diff; never allowlist it silently.
+
+6. `kiko:ops` archives the `Release` configuration (signed with the
+   KikoDistribution provisioning profile and the distribution
+   certificate). Only Debug and Release configurations exist;
+   Release-AdHoc is the device-test configuration only.
 7. Verify the archive invariants:
    - `UIDeviceFamily` is `[1]` (iPhone only).
    - The distribution signing identity is used.
    - App Group `group.com.dmytro-vasylkivskyi.kiko` is present and the
      old `group.com.dmytro.pff` is absent.
    - `get-task-allow = false`.
+   - The embedded provisioning profile is KikoDistribution.
 8. Hand off. The skill stops here. The user uploads the archive and
    the screenshots through the Xcode Organizer. State plainly that
    this skill does not upload to the App Store.
