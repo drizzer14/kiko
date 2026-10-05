@@ -202,25 +202,6 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.map((point) => point.amount)).toEqual([100, 200]);
   });
 
-  it('resolves the rate for an intraday bucket instant to that UTC day’s row', () => {
-    // History `day` is UTC-midnight; a bucket instant partway through the day must
-    // still resolve to that day's rate rather than sliding to an adjacent day.
-    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })];
-    const historyRows = [uahUsd(D0, '0.025'), uahUsd(D1, '0.05')];
-
-    const series = buildNetWorthSeries({
-      holdings,
-      transactionsByHolding: new Map(),
-      historyRows,
-      baseCurrency: 'USD',
-      range: { from: D0 + 13 * HOUR, to: D1 + 13 * HOUR },
-    });
-
-    // Both buckets sit 13h into their UTC day and pick up that day's rate:
-    // day 0 -> 4000 * 0.025 = $100, day 1 -> 4000 * 0.05 = $200.
-    expect(series.points.map((point) => point.amount)).toEqual([100, 200]);
-  });
-
   describe('a bucket reads the stored row of its LOCAL calendar day', () => {
     // USD 100 held against a UAH base, so the amount is the day's USD:UAH rate
     // x 100. History `day` is the UTC-midnight stand-in for a calendar date
@@ -271,8 +252,7 @@ describe('buildNetWorthSeries', () => {
       'at %s local, today’s midnight bucket takes the live rate like any current-day bucket',
       (_label, now) => {
         // End-of-local-day rule: every bucket whose local day is today is a
-        // current-day bucket, so it reads the live table at any time of day —
-        // not only after 03:00 Kyiv, when its UTC day first differs from today's.
+        // current-day bucket, so it reads the live table at any time of day.
         const series = buildNetWorthSeries({
           holdings: usdHundred,
           transactionsByHolding: new Map(),
