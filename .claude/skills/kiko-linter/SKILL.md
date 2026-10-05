@@ -1141,9 +1141,11 @@ in a comment that already holds a finding adds nothing; a new or changed id
 or word, or a second one in the same comment, is new. A block comment is
 reported at the line of its watched id, not at its `/*` line, so an
 `EXPECT-FINDING` pin for a later line of a block comment sits inside the
-comment, and so must a `// nosemgrep: <id> OVERRIDE(...)` for it: on the
-line above the member or on the member's own line, both inside the comment
-(the `/*` line no longer counts). No override of either rule exists in
+comment, and so must a `// nosemgrep: <id> OVERRIDE(...)` for it: only the
+member's own line or the line above it counts, because
+`pre-write-guard.js` checks the finding's line and the line above. A
+`/* nosemgrep: <id> OVERRIDE(...)` on the `/*` line still counts when the
+member sits on the next line. No override of either rule exists in
 `src` today. Two members on one line cannot be pinned apart: one pin per
 line. When the key already existed, the deny cannot tell which of several
 equal findings the edit added (the count ranks in file order, so a word
