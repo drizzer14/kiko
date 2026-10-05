@@ -151,6 +151,23 @@ const DENIED_INTERPRETERS: string[] = [
   `node -e "require('fs').writeFileSync(process.argv[1], 'x')" src/x.ts`,
   `node -e 'require("fs").writeFileSync(\`src/\${name}.ts\`, "x")'`,
   "node <<'EOF'\nrequire('fs').writeFileSync('src/x.ts', 'x')\nEOF",
+  "node - <<'EOF'\nrequire('fs').writeFileSync('src/x.ts', 'x')\nEOF",
+  `node -e "require('fs').writeFileSync(process.cwd() + '/src/x.ts', 'x')"`,
+  `python3 - <<'EOF'\nopen('${WORKTREE}/__tests__/x.test.ts', 'w').write('x')\nEOF`,
+  `python3 - <<"EOF"\nopen('src/x.ts', 'w').write('x')\nEOF`,
+  "python3 - <<\\EOF\nopen('src/x.ts', 'w').write('x')\nEOF",
+  "python3 - <<-'EOF'\n\topen('src/x.ts', 'w').write('x')\n\tEOF",
+  "python3 - <<EOF\nopen('src/x.ts', 'w').write('x')\nEOF",
+  "python3 - <<'EOF' | tail -n 5\nopen('src/x.ts', 'w').write('x')\nEOF",
+  "cd src && python3 - <<'EOF'\nopen('x.ts', 'w').write('x')\nEOF",
+  "python3 - <<'EOF'\nfrom pathlib import Path\nPath('src/x.ts').open('w').write('x')\nEOF",
+  "python3 - <<'EOF'\nfrom pathlib import Path\nPath('src/x.ts').open(mode='w').write('x')\nEOF",
+  "python3 - <<'EOF'\nfrom pathlib import Path\nfor name in ['src/x.ts']:\n    Path(name).write_text('x')\nEOF",
+  "python3 - <<'EOF'\nfiles = ['src/x.ts']\nfor name in files:\n    open(os.path.join(root, name), 'w')\nEOF",
+  "python3 - <<'EOF'\nroot = '/tmp'\nopen(f'{root}/src/x.ts', 'w').write('x')\nEOF",
+  `python3 -c "open('{}/__tests__/x.test.ts'.format(root), 'w')"`,
+  `python3 -c "import os; open(os.path.join(root, 'src', name), 'w')"`,
+  `python3 -c "root = '/tmp'; open(root + '/src/x.ts', 'w')"`,
 ];
 
 const DENIED_NESTED: string[] = [
@@ -257,6 +274,15 @@ const ALLOWED: string[] = [
   `python3 -c "import sys; open(sys.argv[1] + '.bak', 'w').write(open('src/a.ts').read())" /tmp/x`,
   `node -e "fs.writeFileSync(out, 'x')" src/a.ts`,
   'python3 scripts/tool.py src/a.ts',
+  "python3 - <<'EOF'\nprint(open('src/x.ts').read())\nEOF",
+  `python3 - <<'EOF'\nopen('${SCRATCH}/out.txt', 'w').write(open('src/x.ts').read())\nEOF`,
+  "python3 - <<'EOF'\nopen('/tmp/out.txt', 'w').write('x')\nEOF",
+  "python3 - <<'EOF'\nfrom pathlib import Path\nPath('/tmp/out.txt').write_text(Path('src/x.ts').read_text())\nEOF",
+  "python3 - <<'EOF'\nfrom pathlib import Path\nfor name in ['/tmp/a.txt']:\n    Path(name).write_text('x')\nEOF",
+  "python3 - <<'EOF'\nfrom pathlib import Path\nwith Path('src/x.ts').open('r') as source:\n    print(source.read())\nEOF",
+  "python3 - <<'EOF'\nroot = '/tmp'\nopen(f'{root}/out.txt', 'w').write('x')\nEOF",
+  "node - <<'EOF'\nrequire('fs').writeFileSync('/tmp/x.txt', require('fs').readFileSync('src/x.ts'))\nEOF",
+  "node - <<'EOF'\nconsole.log(require('fs').readFileSync('src/x.ts', 'utf8'))\nEOF",
   "cat > /tmp/notes.md <<'EOF'\necho x > src/x.ts\nsed -i 's/a/b/' src/x.ts\nEOF",
   'git commit -m "$(cat <<\'EOF\'\nfix: stop > src/x redirects\nEOF\n)"',
   'npx jest __tests__/x.test.ts > /tmp/out.txt 2>&1',
@@ -284,6 +310,15 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
     expect(decideInMain(command)).toBe('allow');
   });
 
+  // Known limit: perl and ruby code is not read (guard-replay is the backstop).
+  it.each([
+    `perl -e 'open(F, ">src/x.ts")'`,
+    `ruby -e "File.write('src/x.ts', 'x')"`,
+    "perl - <<'EOF'\nopen(F, '>', 'src/x.ts');\nEOF",
+  ])('does not read interpreter code it has no reader for: %s', (command) => {
+    expect(decideInMain(command)).toBe('allow');
+  });
+
   it('reads a relative tree path as a write into it when the payload names no cwd', () => {
     expect(decide('echo x > src/x.ts')).toBe('shellWrite');
     expect(decide('echo x > /tmp/x.ts')).toBe('allow');
@@ -303,6 +338,10 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
       `(may write ${MAIN}/src/a.ts)`,
     ],
     [`python3 -c "from pathlib import Path; Path('src/x.ts').write_text('x')"`, '(may write'],
+    [
+      "python3 - <<'EOF'\nfor name in ['src/x.ts']:\n    Path(name).write_text('x')\nEOF",
+      `(may write ${MAIN}/src/x.ts)`,
+    ],
   ])('names the file in DETAILS: %s', (command, detail) => {
     expect(detailOf(command)).toContain(detail);
   });
@@ -353,6 +392,21 @@ describe('scripts/checks/kill-guard.sh shell-write deny (hook entry)', () => {
       expect(result.stdout.trim()).toBe('');
     },
   );
+
+  it('denies a python write fed by a stdin heredoc and allows one that only reads', () => {
+    const written = run(
+      payloadIn(
+        REPOSITORY_ROOT,
+        "python3 - <<'PY'\nopen('__tests__/x.test.ts', 'w').write('x')\nPY",
+      ),
+    );
+    const read = run(
+      payloadIn(REPOSITORY_ROOT, "python3 - <<'PY'\nprint(open('__tests__/x.test.ts').read())\nPY"),
+    );
+
+    expect(JSON.parse(written.stdout.trim()).hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(read.stdout.trim()).toBe('');
+  });
 
   it('ignores a projectRoot option in its payload', () => {
     const result = run(payloadIn(MAIN, 'echo x > src/x.ts', { projectRoot: MAIN }));

@@ -204,8 +204,12 @@ copies it into the device-test request it sends the user.
 ## Load rule
 
 Run `make verify` / `check:all` / full jest only when the 5-minute load
-average (`sysctl -n vm.loadavg`) is below 10 (wait with a background
-until-loop); at most ONE jest-heavy agent per track; Semgrep or jest
+average (`sysctl -n vm.loadavg`) is below 10: wait first with
+`bash scripts/wait-load.sh 10` (run it in the background and wait on its
+exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an
+optional second argument, passes first, 3 when it cannot read the load,
+64 for a bad argument; it prints one start line and nothing else, and
+never uses `pgrep`); at most ONE jest-heavy agent per track; Semgrep or jest
 timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
 

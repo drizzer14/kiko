@@ -197,17 +197,32 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
   `__tests__/`, or `rules/` (`WRITE_GUARDED_TREES`) — a writing redirect,
   an in-place `sed`/`perl`, `tee`, a `cp`/`mv` (also `gcp`/`gmv`) whose
-  destination lands in a tree, a python/node one-liner write call,
+  destination lands in a tree, a python/node write call (a
+  `-c`/`-e` one-liner, or a script the interpreter reads from a heredoc
+  or here-string on its stdin: `python3 - <<'PY'`, `node <<'JS'`, with a
+  quoted delimiter; an unquoted one is also judged, and denies as a
+  write when it writes),
   or an in-place edit behind `xargs` (any file), or a `cp`/`mv` behind
   `xargs` whose destination the input may be — at the top level or in
   the nested text the other denies reach, except a heredoc body no shell
   or interpreter reads (text: a commit message, a notes file). Read
-  `commandWrite`, `writtenFiles`, `isWritingRedirect`, and
+  `commandWrite`, `writtenFiles`, `isWritingRedirect`,
+  `interpreterProgramOf`, `writeCallTargets`, and
   `writeCallCandidates` in `kill-guard.js` for the closed sets; a write
   call with a literal target "writes" it, one with a variable or
-  expression target "may write" (a bare variable: any literal in the
-  code; an expression: its own literals, plus argv when it reads
-  `sys.argv`/`process.argv`). A `cp`/`mv` writes `DIR/<source name>`
+  expression target "may write" (a bare variable, or an expression with
+  no string literal of its own such as `Path(name)` or
+  `os.path.join(root, name)`: any literal in the code; any other
+  expression: its own literals, each also without its leading `/`
+  (`root + '/src/x.ts'`), the joined literals, and `<folder>/_` for a
+  literal that is itself a tree folder (`os.path.join(root, 'src',
+  name)`), plus argv when it reads `sys.argv`/`process.argv`). The
+  write calls are python/node `open`/`openSync` with a writing mode,
+  `writeFile`/`writeFileSync`/`appendFile`/`appendFileSync`/
+  `createWriteStream`, pathlib's `.write_text`/`.write_bytes`/`.open('w')`
+  (the path is its receiver). A `{` in a path
+  (a python f-string field, a `.format` placeholder, a brace group)
+  makes it unresolved, like `$`. A `cp`/`mv` writes `DIR/<source name>`
   for `-t DIR`, and for three or more operands or a destination ending
   in `/`; `-T` writes the destination itself; with exactly two operands
   both the destination and `destination/<source name>` count, since the
@@ -308,11 +323,20 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     then a relative path (`cd $VAR/src && echo x > y.ts`; plain
     `cd $VAR && echo x > src/…` IS denied); `eval` of a built string;
     base64 or otherwise encoded code; a path built at run time in the
-    interpreter beyond joined literals (`Path('src') / 'x'`,
-    `'src/' + name`); a script file that writes (`python3 tool.py`,
+    interpreter from pieces that never spell a tree folder
+    (`Path(root) / ('s' + 'rc') / name`, `'%s/src/x' % root`: a `%`
+    placeholder is not read as unresolved, so it passes unless the
+    literal resolves into a tree from the working folder); a script
+    file that writes (`python3 tool.py`,
     `node x.js`, `bash x.sh`); text piped into a shell or interpreter
-    (`cat <<'EOF' | bash`, `echo … | python3`); `perl -e` code (its
-    `open(… ">" …)` is not checked); any `find … -exec`/`-execdir`
+    (`cat <<'EOF' | bash`, `cat <<'PY' | python3 -`, `echo … | python3`),
+    and an interpreter's `-c` string built by a command substitution
+    (`python3 -c "$(cat <<'PY' … PY)"`: its code is the span, not read);
+    ruby and perl code of any form (`-e`, a stdin heredoc, `ruby -i`;
+    the interpreter has no reader here, and the option forms —
+    `perl -C7 -e`, `ruby -W:no-deprecated -e`, several `-e` — are too
+    many to chase; guard-replay is the backstop); any
+    `find … -exec`/`-execdir`
     command, an in-place edit or a `cp`/`mv` alike
     (`find src -exec sed -i … {} +`, `find /tmp -exec cp {} src/ \;`,
     `find … -exec mv {} rules/ +`, `find … -exec sh -c 'sed -i …
@@ -320,9 +344,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     the input); a `cp`/`mv` whose destination is a variable (the
     variable-path rule above); other writers and tools — `dd of=`,
     `install`, `rsync`, `ditto`, `ln`, `truncate`, `touch`, `patch`, `awk`'s own
-    `print >`, `ruby -i`/`-e`, `ex`/`vim -c`, a `npx`/`uv run` wrapper
-    around python or node, and a python/node write API outside the
-    listed calls (`shutil`, `os.open`, `fs.writeSync` on an fd,
+    `print >`, `ex`/`vim -c`, a `npx`/`uv run` wrapper
+    around python or node, and a python/node write API outside
+    the listed calls (`shutil`, `os.open`, `fs.writeSync` on an fd,
     `fs.cpSync`); a symlink into a tree.
   - Shell-write deny, deny-leaning (over-denied): any in-place edit or
     `tee` behind `xargs`, whatever the files; a `cp`/`mv` behind `xargs`
@@ -331,9 +355,14 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     destination holds the placeholder; a `$VAR`/glob path that
     names a folder `src`, `__tests__`, or `rules` anywhere
     (`> "$TMPDIR/src/x"`); a relative tree path when the payload has no
-    `cwd`; an interpreter one-liner that writes through a BARE variable
-    while any string literal in it names a tree file (it may only read
-    that file; DETAILS says "may write"); `sed -i` run GNU-style on
+    `cwd`; an interpreter one-liner or stdin script that writes through a
+    BARE variable, or through an expression with no string literal of
+    its own (`Path(name)`), while any string literal in it names a tree
+    file (it may only read that file; DETAILS says "may write"); a
+    write target that holds a literal named exactly like a tree folder
+    (`os.path.join('/tmp', 'src')`); a `{` anywhere in a path (`echo x >
+    /tmp/{a,b}/src/y` names a tree folder with an unresolved part);
+    `sed -i` run GNU-style on
     macOS (`sed -i 's/a/b/' f`, which BSD sed rejects).
   - bash 3.2 only (zsh fails): a command after a heredoc inside
     `<(`/`$(` whose body holds an unbalanced paren, and
@@ -2233,6 +2262,60 @@ a later Stop.
   with a copy of the wrapper; the other medium wrappers are stubs that
   exit 2 with a marker, and `guard-replay.sh` is a stub that records the
   mark ref through `_lib.sh`'s `harness_replay_ref`).
+
+## Closure tables — check:closure
+
+A round's closure list is one row per finding id, never a task title's
+range: a range or a task-title row hides an id that no commit touched.
+`scripts/checks/closure-table.js` (with the
+`closure-table.sh` wrapper, `npm run check:closure -- <table.md>`, run
+by hand at a round's end; NOT part of `check:all`, because it checks a
+document, not the tree) fails when a closure table does not hold up.
+The table's columns, in this order under this header row (case is
+ignored), are defined in the script's own header:
+
+`Id | Status | Fix sha | Pinning test file:line | Fails on pre-fix source`
+
+- **Id** is ONE id: letter-only words joined by hyphens, then a tail
+  that ends in a number and at most one lowercase letter (`CS1`,
+  `STAT-N4`, `SEC-C1`, `TX-C6a`, `12`). A range
+  (`STAT-N1..N5`, `N1-N5`), a list (`A, B`, `A/B`), a word, and an empty
+  cell fail; an id in two rows fails and names the first line.
+- **Status** is `OPEN`, `CLOSED`, or `CLOSED-UNPROVEN`. `CLOSED` and
+  `CLOSED-UNPROVEN` need a fix sha and a pinning test; `CLOSED` also
+  needs a last cell that starts with `yes` (how the test was shown to
+  fail on the pre-fix source). A test not shown to fail is
+  `CLOSED-UNPROVEN`, never `CLOSED`.
+- **Fix sha** (any row that fills it) must resolve to a commit and be an
+  ancestor of HEAD (`git merge-base --is-ancestor`); 7 to 40 hex digits.
+- **Pinning test** (any row that fills it) is `path:line`: a file in the
+  working tree, inside the repository, with at least that many lines.
+- An `OPEN` row may leave the sha, test, and last cells empty (or `-`).
+  A file with no table under that header fails, so a missing table never
+  reads as a pass.
+
+Exit 0 clean, 1 findings (one line each: `<table>:<line>: <problem>`),
+2 when it could not run; the wrapper turns 1 and 2 into the structured
+block. It has no content-dedup fingerprint: it reads a caller-chosen
+file and the answer depends on HEAD, so every run checks. It is
+dependency-free (`node:*` only). Tests, against a throwaway
+git repository with good and bad tables built in the test:
+`__tests__/closure-table.test.ts`.
+
+## The check:all list is pinned
+
+`__tests__/check-all-lists.test.ts` fails when `package.json`'s
+`check:all`, the list in CLAUDE.md's "`npm run check:all` — the fast +
+medium tier checks, in order" bullet, and the hooks disagree. The list
+must be the same, in the same order, in the first two; each entry has a
+CLAUDE.md checks table row and a wrapper that exists; and each entry
+runs in the fast tier (`fast.sh`), the medium tier (`medium.sh`), or at
+write time (it is the `projectCheck` of a `NODE_RULES` row in
+`pre-write-guard.js`). Every wrapper `fast.sh` or `medium.sh` runs must
+be a `check:all` entry. The expected mapping is read from those files,
+never hard-coded, so a new check added to one place and missed in
+another fails here. `check:closure`, `check:mutation`, and `check:deep`
+are outside `check:all` by design.
 
 ## Plist assertions
 

@@ -93,6 +93,10 @@ scratch*.png
 .claude/worktrees/
 .superpowers/
 
+# Local orchestrator notes (briefs, the duration log). Ignored so a `git add -A` can never commit
+# them: .gitleaks.toml allowlists memory/refs/ on the strength of that.
+/memory/
+
 # Live coordinator status board — a local, constantly-churning view watched in a split terminal.
 # Intentionally untracked so its frequent updates never dirty the tree or block an integration.
 BOARD.md

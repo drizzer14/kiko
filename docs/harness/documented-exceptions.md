@@ -117,7 +117,21 @@ verified usage, not dead weight:
   occurrences); a public documentation example, not a secret, that
   trips `generic-api-key` only on the `metadataKey: '...'` line.
   Allowlisting the exact value is narrower than a path allowlist and
-  keeps real-secret scanning of every tracked file intact.
+  keeps real-secret scanning of every tracked file intact. Also the
+  path `(^|/)memory/refs/.*` — the main checkout's untracked
+  `memory/refs/` folder of local orchestrator notes (briefs, the
+  duration log, pasted review diffs). `gitleaks detect --no-git` scans
+  the filesystem, so it reads that folder, and a pasted review diff
+  trips `generic-api-key` on a Swift identifier ending in `Key` (the
+  one finding there today, verified against the main checkout:
+  `memory/refs/reminders-superpowers/sdd/2026-09-28-reminders/review-2bc3f9e5..bd51af35.diff`).
+  It cannot hide a committed secret: `/memory/` is in `.gitignore`, so
+  a `git add -A` never stages it and nothing under it can reach git
+  history, the threat this check guards against; `git ls-files memory`
+  also prints nothing. The path is narrowed to a `memory/refs/` folder,
+  not every folder named `memory`. Re-verify with
+  `git check-ignore memory/refs/x` (exit 0) and `git ls-files memory`
+  (empty) before relying on it.
 - **`.jscpd.json` `ignore`**: `**/drizzle/migrations/meta/*_snapshot.json`
   — drizzle-kit's schema snapshots are tool-generated and *cumulative*:
   each `NNNN_snapshot.json` embeds the entire prior schema plus that
@@ -269,6 +283,13 @@ verified usage, not dead weight:
   it as unused. Exercised by `__tests__/shipped-migrations.test.ts`, which
   runs a copy of the wrapper and the checker as subprocesses in a throwaway
   git repository, not an import.
+- **`knip.json` `ignore`**: `scripts/checks/closure-table.js` — the same
+  shape as `shipped-migrations.js` above. `scripts/checks/closure-table.sh`
+  (`check:closure`, run by hand on a closure table, not part of `check:all`)
+  reaches it only via a `node` invocation, never a static `import`/`require`,
+  so Knip reports it as unused. Exercised by `__tests__/closure-table.test.ts`,
+  which runs the script as a subprocess in a throwaway git repository, not an
+  import.
 - **`knip.json` `ignore`**: `scripts/checks/comment-only-changes.js` — the
   same shape as `shipped-migrations.js` above. `scripts/checks/mutation.sh`
   reaches it only via a `node` invocation, never a static `import`/`require`,

@@ -30,7 +30,8 @@
 // And it denies a shell write into `src/`, `__tests__/`, or `rules/` at the
 // root of any worktree of this repository — `sed -i`, `perl -i`, a `>`/`>>`
 // (or `>|`, `&>`, `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner
-// (or one fed by a heredoc) that opens a file for writing, and `xargs`
+// (or one fed by a heredoc or here-string on its stdin)
+// that opens a file for writing, and `xargs`
 // running an in-place edit — because the pre-write guard sees only
 // Edit/Write/MultiEdit, so such a write lands unchecked. A heredoc body that
 // no shell or interpreter runs is text, never checked for writes.
@@ -1017,8 +1018,10 @@ function leavesMainCheckoutSafe(git) {
 const HOME_PREFIX = /^(?:~|\$HOME|\$\{HOME\})(?=\/|$)/;
 
 // A path that needs the shell to expand anything else (`~user`, `$X`, a
-// glob, a `$(...)`) cannot be pinned down from the text.
-const UNRESOLVED_PATH = /^~|[$`*?[]|__SUBSHELL__/;
+// glob, a brace group, a `$(...)`) cannot be pinned down from the text. A
+// brace also stands for a python f-string field or `.format` placeholder
+// (`f'{root}/__tests__/x.ts'`) in an interpreter's code.
+const UNRESOLVED_PATH = /^~|[$`*?[{]|__SUBSHELL__/;
 
 // The normalized absolute path `target` names from `directory`, or null when
 // the text alone cannot tell.
@@ -1431,8 +1434,10 @@ const WRITE_CALL =
 const OPEN_CALL = /^open(?:Sync)?$/;
 // A mode string that opens for writing: `'w'`, `'a'`, `'x'`, `'r+'`, `'wb'`.
 const WRITING_MODE = /(['"])[rbt]*[wax+][rbtwax+]*\1/;
-// pathlib's `.write_text(`/`.write_bytes(` names its file in the receiver.
+// pathlib's `.write_text(`/`.write_bytes(` names its file in the receiver, and
+// so does its `.open('w')` (or `mode='w'`).
 const PATHLIB_WRITE = /\.write_(?:text|bytes)\s*\(/g;
+const PATHLIB_OPEN = /\.open\s*\(\s*(?:mode\s*=\s*)?(['"])[rbt]*[wax+][rbtwax+]*\1/g;
 // A string literal, with python's r/b/f/u prefixes, or a JS template.
 const STRING_LITERAL = /(?:\b[rRbBuUfF]{1,2})?(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
 const WHOLE_STRING_LITERAL = /^\s*(?:[rRbBuUfF]{1,2})?(['"`])((?:\\.|(?!\1)[^\\])*)\1\s*$/s;
@@ -1484,6 +1489,9 @@ function writeCallTargets(code) {
   for (const match of code.matchAll(PATHLIB_WRITE)) {
     targets.push(statementBefore(code, match.index));
   }
+  for (const match of code.matchAll(PATHLIB_OPEN)) {
+    targets.push(statementBefore(code, match.index));
+  }
 
   return targets;
 }
@@ -1494,11 +1502,13 @@ const BARE_NAME = /^\s*[A-Za-z_$][\w$]*\s*$/;
 const ARGV_READ = /\b(?:sys|process)\.argv\b/;
 
 // The paths the write calls in `program` may write. A string-literal target
-// writes that path (`certain`). A bare variable may hold any string literal
-// in the code; an expression may build its path from its own literals,
-// alone or joined by `/` (`os.path.join('src', 'x.ts')`), and, when it
-// reads `sys.argv`/`process.argv`, from the words after the code
-// (`possible`). The code's literals are read once, however many calls.
+// writes that path (`certain`). A bare variable, or an expression with no
+// string literal and no argv read (`Path(name)`, `os.path.join(root, name)`),
+// may hold any string literal in the code; any other expression may build
+// its path from its own literals, alone or joined by `/`
+// (`os.path.join('src', 'x.ts')`), and, when it reads `sys.argv`/
+// `process.argv`, from the words after the code (`possible`). The code's
+// literals are read once, however many calls.
 function writeCallCandidates({ code, argv }) {
   const certain = new Set();
   const possible = new Set();
@@ -1506,7 +1516,7 @@ function writeCallCandidates({ code, argv }) {
   for (const target of writeCallTargets(code)) {
     const literal = WHOLE_STRING_LITERAL.exec(target);
     if (literal !== null) certain.add(literal[2]);
-    else if (BARE_NAME.test(target)) throughVariable = true;
+    else if (BARE_NAME.test(target) || isLiteralFree(target)) throughVariable = true;
     else for (const candidate of expressionPaths(target, argv)) possible.add(candidate);
   }
   if (throughVariable) for (const literal of literalsOf(code)) possible.add(literal);
@@ -1514,10 +1524,23 @@ function writeCallCandidates({ code, argv }) {
   return { certain, possible };
 }
 
+const isLiteralFree = (expression) =>
+  literalsOf(expression).length === 0 && !ARGV_READ.test(expression);
+
+// A literal after a variable (`root + '/__tests__/x.ts'`) starts with the
+// slash that joins them, so it also counts without it. A candidate that is
+// a tree folder itself (`os.path.join(root, 'src', name)`) names a file in
+// it: the rest of the path is a variable.
 function expressionPaths(expression, argv) {
   const own = literalsOf(expression);
+  const joined = own.map((literal) => literal.replace(/^\/+/, ''));
+  const candidates = [...own, ...joined, own.join('/')];
+  const insideTree = candidates
+    .map((candidate) => candidate.replace(/\/+$/, ''))
+    .filter((candidate) => WRITE_GUARDED_TREES.has(candidate.split('/').pop().toLowerCase()))
+    .map((candidate) => `${candidate}/_`);
 
-  return [...own, own.join('/'), ...(ARGV_READ.test(expression) ? argv : [])];
+  return [...candidates, ...insideTree, ...(ARGV_READ.test(expression) ? argv : [])];
 }
 
 function interpreterWrite(program, directories, rules) {

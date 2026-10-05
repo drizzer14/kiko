@@ -24,6 +24,7 @@
     "check:comment-line-width": "bash scripts/checks/comment-line-width.sh",
     "check:guard-replay": "bash scripts/checks/guard-replay.sh",
     "check:shipped-migrations": "bash scripts/checks/shipped-migrations.sh",
+    "check:closure": "bash scripts/checks/closure-table.sh",
     "check:all": "npm run check:lint && npm run check:dup && npm run check:knip && npm run check:deps && npm run check:security && npm run check:rules && npm run check:plist && npm run check:secrets && npm run check:overrides && npm run check:import-order && npm run check:full-word-identifiers && npm run check:screen-imports && npm run check:feature-imports && npm run check:blank-line-separation && npm run check:comment-line-width && npm run check:shipped-migrations && npm run check:guard-replay && npm run check:typecheck",
     "check:deep": "npm run check:mutation && bash scripts/checks/osv.sh",
     "start": "react-native start",

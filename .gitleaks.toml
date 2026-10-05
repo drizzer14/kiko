@@ -16,6 +16,12 @@ paths = [
   # main.jsbundle contains minified identifiers (e.g. obj2Keys.length,
   # _usePropsWithDefaults2) that trip generic-api-key. Never committed.
   '''ios/build/.*''',
+  # Local orchestrator notes (briefs, review diffs, the duration log) in
+  # the main checkout's memory/refs/. Gitignored (/memory/), so no secret
+  # in it can reach git history; its pasted review diffs trip
+  # generic-api-key on Swift `...Key` identifiers. Only that subtree is
+  # allowlisted, not every folder named memory.
+  '''(^|/)memory/refs/.*''',
 ]
 regexes = [
   # The canonical BIP-173 example bech32 address, used as test data

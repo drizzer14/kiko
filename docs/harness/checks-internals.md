@@ -141,8 +141,11 @@ takes about 2.3 s for 1 changed file, 4.1 to 5.1 s for 5 files, and
 start). A dedup skip takes about 0.3 s. At about 0.5 s per file, the
 150 s deadline covers roughly 300 files.
 
-## `osv-scanner` is never deduped
+## Checks that are never deduped
 
 `osv-scanner` is deliberately excluded from the dedup scheme: its
 result depends on the external vulnerability database, which changes
 even when the lockfile does not.
+
+`check:closure` is also never deduped: it reads a caller-chosen file and
+its answer depends on HEAD.
