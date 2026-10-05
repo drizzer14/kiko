@@ -907,6 +907,22 @@ export const en = {
     // holding's balance boundary: deleting it moves no balance.
     deleteImportedKeepsBalance:
       "The balance will stay at the bank's figure. Edit the holding to change it.",
+    // The delete confirm's body for a transaction that is one part of a
+    // movement. No plurals: the holding names are the only variable, joined by
+    // the caller (Hermes has no `Intl.ListFormat`).
+    deleteLinked: {
+      exchange: 'This also deletes the other part of this exchange, in {{name}}.',
+      exchangeSyncedKept:
+        'The other part, in {{name}}, came from your bank and stays. Only this part is deleted.',
+      exchangeUnlinked:
+        'The other part of this exchange, in {{name}}, could not be found. Only this part is deleted, so check {{name}}.',
+      exchangeUnlinkedPlain:
+        'The other part of this exchange could not be found. Only this part is deleted.',
+      deposit: 'This also removes its contribution to {{name}}.',
+      depositKept:
+        'Its contribution to {{name}} could not be matched and stays. Edit {{name}} to remove it.',
+      split: 'This also deletes the payment and every change return linked to it.',
+    },
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',
   },

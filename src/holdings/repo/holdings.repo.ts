@@ -26,6 +26,7 @@ import {
   asPropertyMeta,
   asTermDepositMeta,
   type PropertyMeta,
+  type TermDepositMeta,
   type OwnershipInput,
   type DepositContribution,
   type ExchangeMetadataField,
@@ -205,6 +206,28 @@ const upsertByMetadataKey = async (
     .values({ id: id(), ...rest, metadata: merged, sortOrder });
 };
 
+// Rewrites a deposit's metadata from the parsed `meta` with a new contribution
+// list, the clean shape every contribution write stores.
+const writeDepositContributionsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  meta: TermDepositMeta,
+  contributions: DepositContribution[],
+): Promise<void> => {
+  await databaseTransaction
+    .update(holdings)
+    .set({
+      metadata: {
+        contributions,
+        annualRatePct: meta.annualRatePct,
+        termMonths: meta.termMonths,
+        recapitalization: meta.recapitalization,
+        compounding: meta.compounding,
+      },
+    })
+    .where(eq(holdings.id, holdingId));
+};
+
 // Append one contribution to a term deposit and rewrite its metadata, operating
 // on an EXISTING transaction handle so a caller (e.g. `recordExchange`) can run
 // it inside a larger single transaction. `appendDepositContribution` wraps this
@@ -239,18 +262,82 @@ export const appendDepositContributionDatabaseTransaction = async (
     (a, b) => a.date - b.date,
   );
 
-  await databaseTransaction
-    .update(holdings)
-    .set({
-      metadata: {
-        contributions,
-        annualRatePct: meta.annualRatePct,
-        termMonths: meta.termMonths,
-        recapitalization: meta.recapitalization,
-        compounding: meta.compounding,
-      },
-    })
+  await writeDepositContributionsDatabaseTransaction(
+    databaseTransaction,
+    holdingId,
+    meta,
+    contributions,
+  );
+};
+
+// The ONE contribution an exchange wrote for a leg dated `date`: a contribution
+// has no id, and its amount is in the deposit's currency while the leg's is in
+// the source's, so the date is all a leg and its contribution share. No index
+// when zero or several contributions carry that date (a hand edit moved it, or
+// two exchanges landed on the same instant), and none when it is the last one
+// left: an empty list is not valid deposit metadata (`asTermDepositMeta`).
+const matchedContributionIndex = (contributions: DepositContribution[], date: number): number => {
+  const matches = contributions.flatMap((contribution, index) =>
+    contribution.date === date ? [index] : [],
+  );
+
+  return matches.length === 1 && contributions.length > 1 ? (matches[0] ?? -1) : -1;
+};
+
+// Whether the leg dated `date` would take its contribution to `holdingId` with
+// it, for the delete plan. False for anything unreadable: nothing is removed
+// then, and the plan says so.
+export const depositContributionMatchedDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  date: number,
+): Promise<boolean> => {
+  const rows = await databaseTransaction
+    .select({ metadata: holdings.metadata })
+    .from(holdings)
     .where(eq(holdings.id, holdingId));
+  const meta = asTermDepositMeta(rows.at(0)?.metadata);
+
+  return meta !== null && matchedContributionIndex(meta.contributions, date) !== -1;
+};
+
+// Remove the contribution `matchedContributionIndex` finds, on an EXISTING
+// transaction handle, so deleting a leg and its contribution commit together or
+// not at all. Reports whether a contribution was removed. Throws on a
+// non-deposit or invalid metadata, as the append does, so a delete never
+// half-applies on a deposit it cannot rewrite.
+export const removeDepositContributionDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  date: number,
+): Promise<boolean> => {
+  const rows = await databaseTransaction.select().from(holdings).where(eq(holdings.id, holdingId));
+  const row = rows.at(0);
+
+  if (row?.type !== 'term_deposit') {
+    throw new Error('removeDepositContribution: not a term deposit');
+  }
+
+  const meta = asTermDepositMeta(row.metadata);
+
+  if (meta === null) {
+    throw new Error('removeDepositContribution: invalid deposit metadata');
+  }
+
+  const index = matchedContributionIndex(meta.contributions, date);
+
+  if (index === -1) {
+    return false;
+  }
+
+  await writeDepositContributionsDatabaseTransaction(
+    databaseTransaction,
+    holdingId,
+    meta,
+    meta.contributions.filter((_, position) => position !== index),
+  );
+
+  return true;
 };
 
 // Clears `loanHoldingId`/`loanLinkSource` on every transaction row that

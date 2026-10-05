@@ -468,10 +468,12 @@ describe('transactionsRepo', () => {
 });
 
 // Build a fake transaction handle for `remove`. `select(...).from(...).where(...)`
-// resolves queued rows in call order (first the transaction row, then the holding
-// row); each `delete(table)` records the table it targeted (so a test can prove
-// the transaction row was deleted) and each `update(holdings).set(values)` captures
-// the reversed balance written back.
+// resolves queued rows in call order (first the transaction row, then the
+// holdings the delete names, none here, then the holding row the balance move
+// reads; transactions.repo.remove-cascade.test.ts drives the linked rows on a
+// real engine); each `delete(table)` records the table it targeted (so a test can
+// prove the transaction row was deleted) and each `update(holdings).set(values)`
+// captures the reversed balance written back.
 const makeRemoveDatabaseTransaction = (options: {
   databaseTransaction: Record<string, unknown> | null;
   holding: Record<string, unknown> | null;
@@ -481,6 +483,7 @@ const makeRemoveDatabaseTransaction = (options: {
 } => {
   const selectQueue: unknown[][] = [
     options.databaseTransaction ? [options.databaseTransaction] : [],
+    [],
     options.holding ? [options.holding] : [],
   ];
   const captured: { deletedFrom: unknown[]; holdingSet?: Record<string, unknown> } = {
@@ -1846,8 +1849,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       // the counterpart's own holding, read by the synced guard
       [{ accountId: 'acc-dst', metadata: null }],
       [{ institution: null }], // the counterpart's own account, read by the synced guard
+      [{ source: 'manual', exchangePairId: null }], // the existing row, read INSIDE the transaction
       [unanchoredBalance(2_000)], // the new leg's balance read
-      [{ source: 'manual' }], // the existing row, read INSIDE the transaction
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -1863,17 +1866,17 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 
     expect(updates).toContainEqual({
       table: transactions,
-      values: { exchangeCounterpartHoldingId: 'dst-1' },
+      values: { exchangeCounterpartHoldingId: 'dst-1', exchangePairId: expect.any(String) },
     });
   });
 
-  it('never marks a SYNCED existing row (the bank owns it)', async () => {
+  it('never marks a SYNCED existing row (the bank owns it), and gives it only the pair id', async () => {
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
       // the counterpart's own holding, read by the synced guard
       [{ accountId: 'acc-dst', metadata: null }],
       [{ institution: null }], // the counterpart's own account, read by the synced guard
+      [{ source: 'monobank', exchangePairId: null }],
       [unanchoredBalance(2_000)],
-      [{ source: 'monobank' }],
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -1887,10 +1890,38 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       time: 123,
     });
 
-    // Only the new leg's holding balance moved; the `transactions` table was
-    // never written. A synced bank debit converted to another currency stays in
-    // the spending pie — the documented residual (see schema.ts).
-    expect(updates.every((update) => update.table !== transactions)).toBe(true);
+    // The only write to `transactions` is the pair id: no marker, so a synced
+    // bank debit converted to another currency stays in the spending pie — the
+    // documented residual (see schema.ts).
+    expect(updates.filter((update) => update.table === transactions)).toEqual([
+      { table: transactions, values: { exchangePairId: expect.any(String) } },
+    ]);
+  });
+
+  it('gives the new leg and the existing row the pair id the existing row already carries', async () => {
+    const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
+      [{ accountId: 'acc-dst', metadata: null }],
+      [{ institution: null }],
+      [{ source: 'manual', exchangePairId: 'pair-7' }],
+      [unanchoredBalance(2_000)],
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'dst-1',
+      counterpartType: 'cash',
+      amountMinorUnits: 7_000,
+      existingTransactionId: 'existing-tx-1',
+      existingHoldingId: 'existing-1',
+      time: 123,
+    });
+
+    expect(inserts).toEqual([expect.objectContaining({ exchangePairId: 'pair-7' })]);
+    expect(updates).toContainEqual({
+      table: transactions,
+      values: { exchangeCounterpartHoldingId: 'dst-1', exchangePairId: 'pair-7' },
+    });
   });
 
   it('records a term_deposit destination as a contribution (metadata rewrite, no new ledger row)', async () => {
@@ -1901,6 +1932,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       // the counterpart's own holding, read by the synced guard
       [{ accountId: 'acc-dep', metadata: null }],
       [{ institution: null }], // the counterpart's own account, read by the synced guard
+      [{ source: 'manual', exchangePairId: null }], // the existing row
       [{ type: 'term_deposit', metadata: depositMeta }],
     ]);
     mockDatabaseTransaction = databaseTransaction;

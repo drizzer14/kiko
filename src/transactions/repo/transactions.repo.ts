@@ -28,6 +28,11 @@ import {
   ne,
   sql,
 } from 'drizzle-orm';
+import {
+  appendDepositContributionDatabaseTransaction,
+  depositContributionMatchedDatabaseTransaction,
+  removeDepositContributionDatabaseTransaction,
+} from '@kiko/holdings/repo';
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { maxOf, minOf } from '@kiko/numbers';
@@ -37,7 +42,6 @@ import type { DepositContribution } from '@kiko/holdings/holding-metadata';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
-import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
 import { isSyncedAccount, isSyncedHolding, isDeletableTransaction } from '@kiko/holdings/deletable';
 
 import {
@@ -46,6 +50,7 @@ import {
   redatesPossibleBalanceSetRowPastBoundary,
 } from '../balance-boundary';
 import { normalizeTransactionName } from '../normalize-name';
+import type { DepositRemoval, ExchangeRemoval, RemovePlan } from '../remove-notice';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
@@ -59,7 +64,11 @@ type ManualTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' |
   Partial<
     Pick<
       TransactionRow,
-      'description' | 'category' | 'exchangeCounterpartHoldingId' | 'changeGroupId'
+      | 'description'
+      | 'category'
+      | 'exchangeCounterpartHoldingId'
+      | 'exchangePairId'
+      | 'changeGroupId'
     >
   >;
 
@@ -244,6 +253,7 @@ const recordManualTransaction = async (
     description,
     category,
     exchangeCounterpartHoldingId,
+    exchangePairId,
     changeGroupId,
   }: ManualTransaction,
 ): Promise<void> => {
@@ -266,6 +276,7 @@ const recordManualTransaction = async (
     description: description ?? '',
     category: category ?? null,
     exchangeCounterpartHoldingId: exchangeCounterpartHoldingId ?? null,
+    exchangePairId: exchangePairId ?? null,
     changeGroupId: changeGroupId ?? null,
     source: 'manual',
   });
@@ -284,28 +295,227 @@ const recordManualTransaction = async (
 // The existing row is half of one money movement, so leaving it unmarked would
 // keep the original expense in the spending pie — exactly the leak the marker
 // exists to close, and one no other rule can catch across two currencies.
-// `source` is read INSIDE the transaction, never from a render snapshot: a
-// bank-owned (synced) row is never mutated by this app and stays unmarked (see
-// the residual documented on `transactions.exchangeCounterpartHoldingId` in
-// `db/schema.ts`).
+// `existing` is read INSIDE the transaction, never from a render snapshot. A
+// bank-owned (synced) row is never marked, because this app never mutates it
+// beyond the pair id (see the residual documented on
+// `transactions.exchangeCounterpartHoldingId` in `db/schema.ts`); it still gets
+// the pair id, which is what tells the delete its partner is the bank's.
 const markExistingLegTransaction = async (
   databaseTransaction: typeof database,
+  existing: Pick<TransactionRow, 'source'> | undefined,
   { existingTransactionId, counterpartHoldingId }: ExchangeCounterpartInput,
+  exchangePairId: string,
 ): Promise<void> => {
-  const existingRows = await databaseTransaction
-    .select({ source: transactions.source })
-    .from(transactions)
-    .where(eq(transactions.id, existingTransactionId))
-    .limit(1);
-
-  if (existingRows.at(0)?.source !== 'manual') {
+  if (existing === undefined) {
     return;
   }
 
   await databaseTransaction
     .update(transactions)
-    .set({ exchangeCounterpartHoldingId: counterpartHoldingId })
+    .set({
+      exchangePairId,
+      ...(isDeletableTransaction(existing)
+        ? { exchangeCounterpartHoldingId: counterpartHoldingId }
+        : {}),
+    })
     .where(eq(transactions.id, existingTransactionId));
+};
+
+type NamedHolding = Pick<HoldingRow, 'id' | 'name' | 'type'>;
+
+const holdingIdsOf = (rows: TransactionRow[]): string[] => [
+  ...new Set(
+    rows.flatMap((row) => [
+      row.holdingId,
+      ...(foldMap(maybe(row.exchangeCounterpartHoldingId), (markerId) => [markerId]) ?? []),
+    ]),
+  ),
+];
+
+const readNamedHoldingsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingIds: string[],
+): Promise<Map<string, NamedHolding>> => {
+  if (holdingIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await databaseTransaction
+    .select({ id: holdings.id, name: holdings.name, type: holdings.type })
+    .from(holdings)
+    .where(inArray(holdings.id, holdingIds));
+
+  return new Map(rows.map((holding) => [holding.id, holding]));
+};
+
+const markerHoldingOf = (
+  row: Pick<TransactionRow, 'exchangeCounterpartHoldingId'>,
+  holdingsById: Map<string, NamedHolding>,
+): NamedHolding | undefined =>
+  foldMap(maybe(row.exchangeCounterpartHoldingId), (holdingId) => holdingsById.get(holdingId));
+
+// The rows that share `column` = `value` with the row under delete, `[]` when it
+// has no such value.
+const readSharingRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  row: TransactionRow,
+  column: typeof transactions.changeGroupId | typeof transactions.exchangePairId,
+  value: string | null,
+): Promise<TransactionRow[]> =>
+  (await foldMap(maybe(value), (shared) =>
+    databaseTransaction
+      .select()
+      .from(transactions)
+      .where(and(eq(column, shared), ne(transactions.id, row.id))),
+  )) ?? [];
+
+// What a delete does to the other rows of a movement: a row the user owns
+// (manual or imported) goes with it, a bank-owned row is never deleted or
+// mutated — "skipped" — and a sync running in between cannot change that,
+// because the rows are read inside the delete's own transaction.
+type LinkedRows = {
+  split: { removed: TransactionRow[]; kept: TransactionRow[] };
+  pair: { removed: TransactionRow[]; kept: TransactionRow[] };
+};
+
+const byOwnership = (rows: TransactionRow[]): LinkedRows['split'] => ({
+  removed: rows.filter(isDeletableTransaction),
+  kept: rows.filter((row) => !isDeletableTransaction(row)),
+});
+
+const readLinkedRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  row: TransactionRow,
+): Promise<LinkedRows> => ({
+  split: byOwnership(
+    await readSharingRowsDatabaseTransaction(
+      databaseTransaction,
+      row,
+      transactions.changeGroupId,
+      row.changeGroupId,
+    ),
+  ),
+  pair: byOwnership(
+    await readSharingRowsDatabaseTransaction(
+      databaseTransaction,
+      row,
+      transactions.exchangePairId,
+      row.exchangePairId,
+    ),
+  ),
+});
+
+// A row removed with `row` once, even if it shared both a group and a pair id.
+const rowsToRemoveWith = (row: TransactionRow, linked: LinkedRows): TransactionRow[] => [
+  ...new Map(
+    [row, ...linked.pair.removed, ...linked.split.removed].map((removed) => [removed.id, removed]),
+  ).values(),
+];
+
+const uniqueHoldingNamesOf = (
+  rows: TransactionRow[],
+  holdingsById: Map<string, NamedHolding>,
+): string[] => [
+  ...new Set(
+    rows.flatMap(
+      (row) => foldMap(maybe(holdingsById.get(row.holdingId)), (holding) => [holding.name]) ?? [],
+    ),
+  ),
+];
+
+const exchangeRemovalOf = (
+  row: TransactionRow,
+  linked: LinkedRows,
+  holdingsById: Map<string, NamedHolding>,
+): ExchangeRemoval | undefined => {
+  if (linked.pair.removed.length > 0) {
+    return { kind: 'deleted', names: uniqueHoldingNamesOf(linked.pair.removed, holdingsById) };
+  }
+
+  if (linked.pair.kept.length > 0) {
+    return { kind: 'syncedKept', names: uniqueHoldingNamesOf(linked.pair.kept, holdingsById) };
+  }
+
+  const marker = markerHoldingOf(row, holdingsById);
+
+  // A deposit source leg has no partner row by design: its plan is the deposit's.
+  if (row.exchangeCounterpartHoldingId === null || marker?.type === 'term_deposit') {
+    return undefined;
+  }
+
+  return { kind: 'missing', ...foldMap(maybe(marker), ({ name }) => ({ name })) };
+};
+
+const depositRemovalOf = async (
+  databaseTransaction: typeof database,
+  rows: TransactionRow[],
+  holdingsById: Map<string, NamedHolding>,
+): Promise<DepositRemoval | undefined> => {
+  for (const row of rows) {
+    const deposit = markerHoldingOf(row, holdingsById);
+
+    if (deposit?.type === 'term_deposit') {
+      return {
+        name: deposit.name,
+        matched: await depositContributionMatchedDatabaseTransaction(
+          databaseTransaction,
+          deposit.id,
+          row.time,
+        ),
+      };
+    }
+  }
+
+  return undefined;
+};
+
+// What deleting `row` takes with it, for the confirm text. The delete reads the
+// same rows again inside its own transaction, so this only has to be right when
+// nothing changes in between, and is never what decides.
+const planRemoveDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  row: TransactionRow,
+): Promise<RemovePlan> => {
+  const linked = await readLinkedRowsDatabaseTransaction(databaseTransaction, row);
+  const removed = rowsToRemoveWith(row, linked);
+  const holdingsById = await readNamedHoldingsDatabaseTransaction(
+    databaseTransaction,
+    holdingIdsOf([...removed, ...linked.pair.kept]),
+  );
+
+  return {
+    split: linked.split.removed.length > 0,
+    exchange: exchangeRemovalOf(row, linked, holdingsById),
+    deposit: await depositRemovalOf(databaseTransaction, removed, holdingsById),
+  };
+};
+
+// Delete rows and give each balance back by its OWN holding's boundary
+// (`removeBalanceDelta`), then take a deposit's contribution out with the leg
+// that paid it. Everything runs on the caller's transaction, so a throw (a
+// deposit whose metadata cannot be rewritten) rolls the rows and balances back
+// too.
+const removeRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  rows: TransactionRow[],
+): Promise<void> => {
+  const holdingsById = await readNamedHoldingsDatabaseTransaction(
+    databaseTransaction,
+    holdingIdsOf(rows),
+  );
+
+  for (const row of rows) {
+    await databaseTransaction.delete(transactions).where(eq(transactions.id, row.id));
+    await moveBalanceDatabaseTransaction(databaseTransaction, row.holdingId, (boundary) =>
+      removeBalanceDelta(row, boundary),
+    );
+
+    const marker = markerHoldingOf(row, holdingsById);
+
+    if (marker?.type === 'term_deposit') {
+      await removeDepositContributionDatabaseTransaction(databaseTransaction, marker.id, row.time);
+    }
+  }
 };
 
 /**
@@ -1232,6 +1442,10 @@ export const transactionsRepo = {
         throw new Error('recordExchange: destination equals source');
       }
 
+      // A deposit destination has no row to share it with: its leg is a
+      // contribution in the deposit's metadata, found again by the leg's date.
+      const exchangePairId = id();
+
       await recordManualTransaction(databaseTransaction, {
         holdingId: input.sourceHoldingId,
         amountMinorUnits: -input.valueOutMinorUnits,
@@ -1242,6 +1456,7 @@ export const transactionsRepo = {
         // `Exchange to <name>` string was English forever and went stale on a
         // rename.
         exchangeCounterpartHoldingId: input.destinationHoldingId,
+        exchangePairId,
       });
 
       await match(exchangeReceivePath(input.destinationType))
@@ -1251,6 +1466,7 @@ export const transactionsRepo = {
             amountMinorUnits: input.valueInMinorUnits,
             time: input.time,
             exchangeCounterpartHoldingId: input.sourceHoldingId,
+            exchangePairId,
           }),
         )
         .with('contribution', () => {
@@ -1333,6 +1549,17 @@ export const transactionsRepo = {
         );
       }
 
+      const existingRows = await databaseTransaction
+        .select({ source: transactions.source, exchangePairId: transactions.exchangePairId })
+        .from(transactions)
+        .where(eq(transactions.id, input.existingTransactionId))
+        .limit(1);
+      const existing = existingRows.at(0);
+      // An existing row that already belongs to a movement hands its id on, so
+      // converting a leg again puts the new leg in the same group and one
+      // delete takes the whole group.
+      const exchangePairId = existing?.exchangePairId ?? id();
+
       await match(input.direction)
         .with('record-source', () =>
           recordManualTransaction(databaseTransaction, {
@@ -1340,6 +1567,7 @@ export const transactionsRepo = {
             amountMinorUnits: -input.amountMinorUnits,
             time: input.time,
             exchangeCounterpartHoldingId: input.existingHoldingId,
+            exchangePairId,
           }),
         )
         .with('record-destination', () =>
@@ -1350,6 +1578,7 @@ export const transactionsRepo = {
                 amountMinorUnits: input.amountMinorUnits,
                 time: input.time,
                 exchangeCounterpartHoldingId: input.existingHoldingId,
+                exchangePairId,
               }),
             )
             .with('contribution', () => {
@@ -1373,7 +1602,7 @@ export const transactionsRepo = {
         )
         .exhaustive();
 
-      await markExistingLegTransaction(databaseTransaction, input);
+      await markExistingLegTransaction(databaseTransaction, existing, input, exchangePairId);
     }),
   /**
    * Record a manual payment and N linked change-returns as N+1 INDEPENDENT
@@ -1477,6 +1706,15 @@ export const transactionsRepo = {
    * balance set where it is. A synced (monobank) transaction is owned by the
    * sync and is refused with a typed error; a missing id is a no-op rather than
    * an error.
+   *
+   * A row that is one part of a movement takes the rest with it, each reversed
+   * the same way on its own holding: every other row of an Exchange or Convert
+   * that shares its `exchangePairId` and every other row of a split
+   * (`changeGroupId`), and, for a leg that paid a term deposit, the one
+   * contribution dated at the leg's time (`removeDepositContributionDatabaseTransaction`).
+   * A bank-owned partner is skipped: it is never deleted or touched. The linked
+   * rows are read here, inside the delete, so a sync that ran after
+   * `removePlan` read them cannot change what is deleted.
    */
   remove: (transactionId: string) =>
     write(async (databaseTransaction) => {
@@ -1493,11 +1731,28 @@ export const transactionsRepo = {
       if (!isDeletableTransaction(row)) {
         throw new Error('transactionsRepo.remove: cannot delete a synced transaction');
       }
-      await databaseTransaction.delete(transactions).where(eq(transactions.id, transactionId));
-      await moveBalanceDatabaseTransaction(databaseTransaction, row.holdingId, (boundary) =>
-        removeBalanceDelta(row, boundary),
+
+      await removeRowsDatabaseTransaction(
+        databaseTransaction,
+        rowsToRemoveWith(row, await readLinkedRowsDatabaseTransaction(databaseTransaction, row)),
       );
     }),
+  /**
+   * What `remove` would take with the row, for the delete confirm's text: a plain
+   * plan (nothing linked) for a row that stands alone or does not exist.
+   */
+  removePlan: async (transactionId: string): Promise<RemovePlan> => {
+    const rows = await database
+      .select()
+      .from(transactions)
+      .where(eq(transactions.id, transactionId));
+
+    return (
+      foldMap(maybe(rows.at(0)), (row) => planRemoveDatabaseTransaction(database, row)) ?? {
+        split: false,
+      }
+    );
+  },
   /**
    * Override the category of ONE transaction, by id, inside a single op-sqlite
    * transaction. This is the "just for this one" path: it rewrites only the
