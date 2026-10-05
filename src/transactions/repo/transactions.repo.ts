@@ -486,28 +486,51 @@ const uniqueHoldingNamesOf = (
   ),
 ];
 
+// The payment of a split is its row below zero; its returns are above.
+const isSplitPayment = (row: TransactionRow): boolean =>
+  row.changeGroupId !== null && row.amountMinorUnits < 0;
+
+// The pair rows a delete of `row` names. A row with a pair id of its own is a
+// member of that exchange and names all of it. A row with none reaches pairs
+// only through its split: a split member is named by the split sentence, not as
+// an exchange leg, and the payment's own conversion is part of the payment, which
+// that sentence covers too. So what is left to name is the legs outside the split
+// of a pair that a return carries.
+const namedPairOf = (row: TransactionRow, linked: LinkedRows): LinkedRows['pair'] => {
+  if (row.exchangePairId !== null) {
+    return linked.pair;
+  }
+
+  const splitMembers = [...linked.split.removed, ...linked.split.kept];
+  const memberIds = splitMembers.map((member) => member.id);
+  const paymentPairIds = presentIdsOf(
+    splitMembers.filter(isSplitPayment).map((payment) => payment.exchangePairId),
+  );
+  const outsideSplit = (rows: TransactionRow[]): TransactionRow[] =>
+    rows.filter(
+      (part) => !memberIds.includes(part.id) && !isOneOf(paymentPairIds, part.exchangePairId),
+    );
+
+  return { removed: outsideSplit(linked.pair.removed), kept: outsideSplit(linked.pair.kept) };
+};
+
 const exchangeRemovalOf = (
   row: TransactionRow,
   linked: LinkedRows,
   holdingsById: Map<string, NamedHolding>,
 ): ExchangeRemoval | undefined => {
-  // A row with no pair id of its own (a return of a split payment whose payment
-  // was converted) reaches the exchange legs only through the split, which its
-  // own sentence already covers: it is no member of the exchange to name.
-  const isMember = row.exchangePairId !== null;
+  const pair = namedPairOf(row, linked);
 
-  if (isMember && linked.pair.removed.length > 0) {
+  if (pair.removed.length > 0) {
     return {
       kind: 'deleted',
-      names: uniqueHoldingNamesOf(linked.pair.removed, holdingsById),
-      ...(linked.pair.kept.length > 0
-        ? { keptNames: uniqueHoldingNamesOf(linked.pair.kept, holdingsById) }
-        : {}),
+      names: uniqueHoldingNamesOf(pair.removed, holdingsById),
+      ...(pair.kept.length > 0 ? { keptNames: uniqueHoldingNamesOf(pair.kept, holdingsById) } : {}),
     };
   }
 
-  if (isMember && linked.pair.kept.length > 0) {
-    return { kind: 'syncedKept', names: uniqueHoldingNamesOf(linked.pair.kept, holdingsById) };
+  if (pair.kept.length > 0) {
+    return { kind: 'syncedKept', names: uniqueHoldingNamesOf(pair.kept, holdingsById) };
   }
 
   const marker = markerHoldingOf(row, holdingsById);

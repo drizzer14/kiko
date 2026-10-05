@@ -14,8 +14,10 @@ jest.mock('@kiko/db/client', () => {
 
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { i18n } from '@kiko/i18n/init';
 import { DatabaseSync } from 'node:sqlite';
 import maybe, { foldMap } from 'fnts/maybe';
+import { removeNotice } from '@kiko/transactions/remove-notice';
 import { applyAllMigrations, applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
 
 import { transactionsRepo } from './transactions.repo';
@@ -895,6 +897,99 @@ describe('deleting a part of a split payment that was converted', () => {
         expect(balancesOf()).toMatchObject({ uah: 100_000, cash: 0, usd: 0 });
       },
     );
+  });
+});
+
+// The converted part here is a RETURN, so its exchange is not the payment's own
+// conversion: a delete that takes the return takes that exchange's other leg too,
+// and the confirm has to name it even from a row with no pair id of its own.
+describe('deleting a part of a split payment whose return was converted', () => {
+  const splitThenConvertReturn = async (): Promise<void> => {
+    await transactionsRepo.recordManualWithReturns({
+      payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
+      returns: [
+        { holdingId: 'cash', amountMinorUnits: 10_000 },
+        { holdingId: 'second', amountMinorUnits: 5_000 },
+      ],
+    });
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-source',
+      counterpartHoldingId: 'usd',
+      counterpartType: 'card',
+      amountMinorUnits: 1_000,
+      existingTransactionId: idOfRowOn('cash'),
+      existingHoldingId: 'cash',
+      time: MOVED,
+    });
+  };
+
+  it.each(['uah', 'cash', 'second', 'usd'])(
+    'deletes the payment, the returns and the converted leg from the row on %s',
+    async (holdingId) => {
+      const before = stateOf();
+
+      await splitThenConvertReturn();
+      await transactionsRepo.remove(idOfRowOn(holdingId));
+
+      expect(stateOf()).toEqual(before);
+    },
+  );
+
+  it('names the split and the exchange leg in the plan of the payment', async () => {
+    await splitThenConvertReturn();
+
+    expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+      split: true,
+      exchange: { kind: 'deleted', names: ['Dollar card'] },
+    });
+  });
+
+  it('names the exchange leg in the plan of a return that was not converted', async () => {
+    await splitThenConvertReturn();
+
+    expect(await transactionsRepo.removePlan(idOfRowOn('second'))).toEqual({
+      split: true,
+      exchange: { kind: 'deleted', names: ['Dollar card'] },
+    });
+  });
+
+  it('names the other leg, not the split, in the plan of the converted return', async () => {
+    await splitThenConvertReturn();
+
+    expect(await transactionsRepo.removePlan(idOfRowOn('cash'))).toEqual({
+      split: true,
+      exchange: { kind: 'deleted', names: ['Dollar card'] },
+    });
+  });
+
+  it('reads both sentences in the confirm of the payment', async () => {
+    await splitThenConvertReturn();
+
+    expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('uah')), i18n.t)).toBe(
+      'This also deletes the other part of this exchange, in Dollar card. This also deletes every other part of this split payment.',
+    );
+  });
+
+  describe('when the exchange leg is the bank’s', () => {
+    const bankOwnLeg = async (): Promise<void> => {
+      await splitThenConvertReturn();
+      run(
+        "UPDATE transactions SET id = 'bank-leg', source = 'monobank', external_id = 'bank-leg' WHERE holding_id = 'usd'",
+      );
+    };
+
+    it('says the leg stays in the plan, and deletes every user-owned part', async () => {
+      await bankOwnLeg();
+
+      expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+        split: true,
+        exchange: { kind: 'syncedKept', names: ['Dollar card'] },
+      });
+
+      await transactionsRepo.remove(idOfRowOn('uah'));
+
+      expect(rowIds()).toEqual(['bank-leg']);
+    });
   });
 });
 

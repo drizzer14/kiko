@@ -144,7 +144,7 @@ describe('removeNotice', () => {
       removeNotice({ split: false, exchange: { kind: 'deleted', names: ['Долар'] } }, i18n.t),
     ).toBe('Також буде видалено другу частину цього обміну, у «Долар».');
     expect(removeNotice({ split: true }, i18n.t)).toBe(
-      'Також буде видалено платіж і всі пов’язані з ним повернення решти.',
+      'Також буде видалено всі інші частини цього розділеного платежу.',
     );
     expect(
       removeNotice({ split: false, deposit: { name: 'Депозит', matched: true } }, i18n.t),
