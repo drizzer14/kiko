@@ -269,6 +269,23 @@ verified usage, not dead weight:
   it as unused. Exercised by `__tests__/shipped-migrations.test.ts`, which
   runs a copy of the wrapper and the checker as subprocesses in a throwaway
   git repository, not an import.
+- **`knip.json` `ignore`**: `scripts/checks/comment-only-changes.js` — the
+  same shape as `shipped-migrations.js` above. `scripts/checks/mutation.sh`
+  reaches it only via a `node` invocation, never a static `import`/`require`,
+  so Knip reports it as unused. Exercised by
+  `__tests__/comment-only-changes.test.ts` (the script, in a throwaway git
+  repository) and `__tests__/mutation-comment-only.test.ts` (the wrapper),
+  both as subprocesses, not an import.
+- **`scripts/checks/comment-only-changes.js` requires `typescript`** — the
+  one checker in `scripts/checks/` that is not dependency-free (see
+  kiko-linter's "Node checkers"). The rule exists because the guard-replay
+  scratch checkout has no `node_modules`, so a checker that requires an npm
+  package fails closed on every replayed file. This script never runs there:
+  `mutation.sh` is manual, not hook-wired, and starts it only in a full
+  worktree, where Stryker itself already needs `node_modules`; the pre-write
+  guard and `guard-replay.js` never call it. A failed require is not an error
+  either: it keeps every file, so the mutation run mutates what it would
+  have without the filter. `typescript` is a pinned devDependency.
 - **`knip.json` `ignore`**: `scripts/checks/comment-line-width.js` — the
   same shape as `blank-line-separation.js` above.
   `scripts/checks/comment-line-width.sh` reaches it only via a `node`

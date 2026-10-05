@@ -397,6 +397,47 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   throwaway git repo, the real script, an arg-capturing stub) in
   `__tests__/mutation-stream.test.ts`.
 
+  `mutation.sh` also leaves out a changed file whose diff against the
+  merge-base touches ONLY comments or whitespace (a comment-only edit of one
+  screen once cost a 178-minute run). `scripts/checks/comment-only-changes.js`
+  decides it, exactly, from the TypeScript compiler's own parse: it reads
+  `git show <merge-base>:<path>` and `git show HEAD:<path>` (the gate diffs
+  merge-base..HEAD, never the working tree), parses both with
+  `ts.createSourceFile`, and compares the two parse TREES (kind and nesting,
+  plus each leaf's exact source text; JSDoc nodes ignored). Comments and
+  whitespace are trivia, so they drop out; a space inside a string, template,
+  regular expression, JSX text or JSX attribute, a respelled number (`1000`
+  vs `1e3`), a changed quote, an added semicolon, trailing comma or
+  parenthesis, and a line break that moves a statement boundary (`return`
+  then a new line) all change the tree, so they keep the file. A token-only
+  walk or a regex cannot say that. The script prints a path only when it
+  PROVED the file comment-only; it FAILS CLOSED, so each of these keeps the
+  file (it is mutated): a non-`.ts`/`.tsx` file, a file absent at the base
+  (new or renamed) or at HEAD, identical content, a parse diagnostic on
+  either side, a failing `git show`, `typescript` that cannot be required
+  (`KIKO_TYPESCRIPT_MODULE` points the require at another path; it exists so
+  a test can reach the worktree's copy, or a missing one), any exception, and
+  a script that crashes or prints a path the wrapper did not pass. One
+  EXCEPTION to "comments only": a file whose base or HEAD text contains
+  `Stryker` (a `disable`/`restore` directive changes the mutant set, and its
+  reach depends on the neighbouring lines) or `@jsx` (`@jsxImportSource`,
+  `@jsxRuntime`, `@jsxFrag`, `@jsx`: they change how the file compiles) is
+  kept whatever else changed. A `@ts-` directive changes type errors only,
+  never runtime or the mutant set (`stryker.conf.json` has no typescript
+  checker), so it needs no entry. ONE LIST: `mutation.sh` filters `changed`
+  once, right after `mutable_source_files`, so `--mutate`, the scorer, the
+  fingerprint, the cap and `--list` all read the same list (the scorer's
+  `config.mutate` scope check keeps passing). `--list` prints each skipped
+  file as `skipped (comment-only): <path>` and its count line counts only
+  the mutated files; with every file skipped it ends `nothing to mutate`, and
+  a run exits 0 like an empty change set. The call has no pipe into an
+  early-exit consumer, and the file arguments are built only for a non-empty
+  list (an empty array is an unbound variable in bash 3.2). Unlike every
+  other checker this script requires an npm package; the "Node checkers"
+  section below says why that is safe. Tests:
+  `__tests__/comment-only-changes.test.ts` (the parse cases, one spawn) and
+  `__tests__/mutation-comment-only.test.ts` (the wrapper, against the stub).
+
   `mutation.sh` also CAPS the run: after the file selection and excludes
   above, it counts the files it would mutate and, above
   `MUTATION_FILE_CAP` (30, a plain assignment in the script), prints the
@@ -1141,9 +1182,11 @@ in a comment that already holds a finding adds nothing; a new or changed id
 or word, or a second one in the same comment, is new. A block comment is
 reported at the line of its watched id, not at its `/*` line, so an
 `EXPECT-FINDING` pin for a later line of a block comment sits inside the
-comment, and so must a `// nosemgrep: <id> OVERRIDE(...)` for it: on the
-line above the member or on the member's own line, both inside the comment
-(the `/*` line no longer counts). No override of either rule exists in
+comment, and so must a `// nosemgrep: <id> OVERRIDE(...)` for it: only the
+member's own line or the line above it counts, because
+`pre-write-guard.js` checks the finding's line and the line above. A
+`/* nosemgrep: <id> OVERRIDE(...)` on the `/*` line still counts when the
+member sits on the next line. No override of either rule exists in
 `src` today. Two members on one line cannot be pinned apart: one pin per
 line. When the key already existed, the deny cannot tell which of several
 equal findings the edit added (the count ranks in file order, so a word
@@ -1603,7 +1646,16 @@ a pre-existing finding points at. A Semgrep deny names
   API: the guard-replay scratch checkout has no `node_modules`, so a
   checker that requires an npm package fails closed on every replayed
   file. Every checker in `scripts/checks/` stays dependency-free for the
-  same reason. No `--write`.
+  same reason, with one exception (the next bullet). No `--write`.
+- `comment-only-changes.js` is the one exception to "dependency-free": it
+  requires `typescript` (a pinned devDependency) to decide, from the
+  compiler's own parse, which changed files `mutation.sh` may leave out as
+  comment/whitespace-only (the mutation paragraphs above state the rule).
+  That is safe because it runs only inside `mutation.sh`, in a full worktree
+  where Stryker itself needs `node_modules`, never in the pre-write guard,
+  the hooks, or the guard-replay scratch checkout, and because a failed
+  require keeps every file (fail closed). It is not a `NODE_RULES` row and
+  has no `.sh` wrapper, `check:*` gate, or `--write`; `knip.json` ignores it.
 
 A Jest invariant, `__tests__/cited-paths.test.ts`, fails when a skill,
 agent or harness doc cites a repo path in an inline code span that does

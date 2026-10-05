@@ -1,9 +1,10 @@
 import {
+  rmSync,
   chmodSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  copyFileSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs';
@@ -17,6 +18,12 @@ import { execFileSync, spawnSync } from 'node:child_process';
 const SCRIPT = join(__dirname, '../../scripts/checks/mutation.sh');
 const LIB = join(__dirname, '../../scripts/checks/_lib.sh');
 const SCORE_SCRIPT = join(__dirname, '../../scripts/checks/mutation-score.js');
+const COMMENT_ONLY_SCRIPT = join(__dirname, '../../scripts/checks/comment-only-changes.js');
+
+// The throwaway repository has no node_modules, so the comment-only script
+// cannot find `typescript` there and keeps every file. A test that needs the
+// real parse points the script at the worktree's own copy through this seam.
+export const REAL_TYPESCRIPT = join(__dirname, '../../node_modules/typescript');
 
 // Bash lines that print one JSON entry per file of the comma list in
 // `$mutate_argument`, comma-separated. Bash 3.2-safe: IFS field-splitting, no
@@ -116,16 +123,18 @@ export const copyMutationScripts = (root: string): string => {
   copyFileSync(SCRIPT, script);
   copyFileSync(LIB, join(root, 'scripts/checks/_lib.sh'));
   copyFileSync(SCORE_SCRIPT, join(root, 'scripts/checks/mutation-score.js'));
+  copyFileSync(COMMENT_ONLY_SCRIPT, join(root, 'scripts/checks/comment-only-changes.js'));
 
   return script;
 };
 
-// `main` holds one source file; HEAD is a `feature` branch off it that commits
-// `featureFiles` (relative path to body). An empty `featureFiles` leaves
-// `feature` equal to `main`.
+// `main` holds one source file plus `baseFiles`; HEAD is a `feature` branch off
+// it that commits `featureFiles` (relative path to body, `null` deletes the
+// file). An empty `featureFiles` leaves `feature` equal to `main`.
 export const buildMutationRepository = (
   root: string,
-  featureFiles: Record<string, string>,
+  featureFiles: Record<string, string | null>,
+  baseFiles: Record<string, string> = {},
 ): { root: string; script: string } => {
   mkdirSync(root, { recursive: true });
   runGit(root, 'init', '-q', '-b', 'main');
@@ -133,13 +142,22 @@ export const buildMutationRepository = (
   runGit(root, 'config', 'user.name', 'Test');
   const script = copyMutationScripts(root);
   writeFile(root, 'src/keep.ts', 'export const kept = 1;\n');
+
+  for (const [relativePath, body] of Object.entries(baseFiles)) {
+    writeFile(root, relativePath, body);
+  }
+
   commitAll(root, 'base');
   runGit(root, 'checkout', '-q', '-b', 'feature');
   const entries = Object.entries(featureFiles);
 
   if (entries.length > 0) {
     for (const [relativePath, body] of entries) {
-      writeFile(root, relativePath, body);
+      if (body === null) {
+        rmSync(join(root, relativePath));
+      } else {
+        writeFile(root, relativePath, body);
+      }
     }
 
     commitAll(root, 'feature change');
