@@ -78,9 +78,9 @@ function canBeWrapped(standalone) {
 
 // The line the comment would stand on alone, and the end of the part of the line it is answerable
 // for. A JSX `{/* */}` keeps its braces in both: they belong to the comment and cannot be moved
-// off it. Biome writes that container with no space inside the braces, so a brace set apart from
-// the comment by a space (`function f() { /* */ }`) is a block's own, never counted. A trailing
-// comment moves to its own line at the line's indentation.
+// off it. A brace set apart from the comment by a space (`{ /* */ }`) is skipped because Biome
+// tightens it to `{/*…*/}`, which ends at the same column. A trailing comment moves to its own
+// line at the line's indentation.
 function measureComment(trimmed, commentStart, commentEnd) {
   const indentation = trimmed.slice(0, trimmed.length - trimmed.trimStart().length);
   const comment = trimmed.slice(commentStart, commentEnd);

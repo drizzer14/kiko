@@ -28,7 +28,7 @@ const runProbe = (body: string): SpawnSyncReturns<string> => {
 
   return spawnSync(
     process.execPath,
-    [JEST, '--roots', directory, '--testPathPattern', 'probe.test.tsx'],
+    [JEST, '--roots', directory, '--testPathPattern', 'probe.test.tsx', '--no-watchman', '--ci'],
     { encoding: 'utf8', cwd: ROOT, env: { ...process.env, FORCE_COLOR: '0' } },
   );
 };

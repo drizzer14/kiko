@@ -870,8 +870,7 @@ const NODE_RULES = [
     fix: 'Wrap the comment at 100 columns.',
     skill: 'kiko-code-style › Wrap comments at 100 columns',
     projectCheck: 'check:comment-line-width',
-    // The rule has no inline override at all, so a long comment is always wrapped, here and in
-    // the project-wide check:comment-line-width.
+    // A long comment can always be wrapped, so an override would only wave a defect through.
     overridable: false,
     run: (filePath) =>
       runSpawnedNodeChecker('comment-line-width.js', filePath, parseCommentLineWidthCheckerOutput),

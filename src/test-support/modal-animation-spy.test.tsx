@@ -112,7 +112,8 @@ describe('spyOnModalAnimationPerTest', () => {
 
 // Jest runs a file's tests in definition order, so this describe runs after the one above: it
 // proves the helper restored the Modal, so a test that comes later sees the real one. The
-// project's `clearMocks` only clears call history and never restores a spy.
+// project's `clearMocks` only clears call history and never restores a spy. The proof needs that
+// in-file order: under --randomize it would pass vacuously.
 describe('a describe after the one that registered the helper', () => {
   it('sees the real Modal, not the spy', () => {
     expect(jest.isMockFunction(Modal)).toBe(false);
