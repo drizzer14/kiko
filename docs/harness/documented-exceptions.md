@@ -293,9 +293,8 @@ verified usage, not dead weight:
   it has no per-file mode), and `scripts/checks/pre-write-guard.js`
   reaches it only via `runSpawnedNodeChecker`'s own `spawnSync` (the
   `kiko-comment-line-width` `NODE_RULES` row) — never a static
-  `import`/`require`. The project-wide mode is not in `check:all` yet: the
-  tree still holds comment lines over 100 columns and the sweep needs the
-  user's approval. The checker has no allowlist and no inline override (its
+  `import`/`require`. The project-wide mode is part of `check:all`. The
+  checker has no allowlist and no inline override (its
   `NODE_RULES` row sets `overridable: false`, so the guard ignores an
   override comment for it); its only exemption is structural (a comment with no wrap point, one long
   URL), defined in its header and in kiko-code-style's "Wrap comments at 100

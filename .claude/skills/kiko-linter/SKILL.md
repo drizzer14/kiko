@@ -1612,12 +1612,9 @@ a pre-existing finding points at. A Semgrep deny names
   The row sets `overridable: false`: no override comment passes it.
   `comment-line-width.sh` is project-wide only
   (`npm run check:comment-line-width`) over the `.ts`/`.tsx` roots of
-  `full-word-identifiers.sh` except `rules/fixtures/`. The project-wide
-  gate is not in `check:all` yet, because the tree still holds long
-  comments and the sweep needs the user's approval; the guard row blocks
-  only new ones. Retire this sentence when `package.json`'s `check:all`
-  names `check:comment-line-width`. No `--write`. Tests:
-  `__tests__/comment-line-width.test.ts`.
+  `full-word-identifiers.sh` except `rules/fixtures/`, and is part of
+  `check:all` (the tree holds no comment line over 100 columns). No
+  `--write`. Tests: `__tests__/comment-line-width.test.ts`.
 - `plural-count.js` (`kiko-plural-key-needs-count`) enforces kiko-translator's
   "A plural key is always called with `count`". It has no `.sh` wrapper
   and no `check:*` gate: its project-wide check is the Jest invariant
