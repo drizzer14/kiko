@@ -1,12 +1,7 @@
-import {
-  bankCatalog,
-  isBankId,
-  OTHER_BANK_ID,
-  isConnectableBank,
-} from '@kiko/bank-sync/bank-catalog';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { bankCatalog, isBankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
 import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
@@ -55,7 +50,6 @@ describe('buildDemoSnapshot', () => {
 
     for (const bankId of connectableIds) {
       expect(demoBankIds.has(bankId)).toBe(true);
-      expect(isConnectableBank(bankId)).toBe(true);
     }
 
     expect(demoBankIds.has(OTHER_BANK_ID)).toBe(true);

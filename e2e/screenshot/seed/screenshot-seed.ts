@@ -600,7 +600,6 @@ const buildAccounts = (): SeedAccount[] => [
   {
     name: 'Wise',
     kind: 'bank',
-    bankId: 'other',
     color: entityColorsDark.indigo,
     holdings: [
       {
