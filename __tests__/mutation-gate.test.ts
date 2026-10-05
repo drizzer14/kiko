@@ -149,7 +149,7 @@ describe('scripts/checks/mutation.sh change-set gate', () => {
         '#!/usr/bin/env bash',
         'echo \'WARN ProjectReader Glob pattern "src/changed.ts" did not result in any files.\'',
         // 2000 lines of 79 bytes is about 158 KB, well past the 64 KB pipe buffer, with the
-        // warning on the first line: the case a `printf | grep -q` under pipefail got wrong.
+        // warning on the first line: a match on an early line of a large log must still be found.
         'for line in $(seq 1 2000); do',
         '  printf "%s\\n" "INFO Instrumenter padding line ................................................ $line"',
         'done',

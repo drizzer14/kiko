@@ -261,16 +261,20 @@ fi
 # stryker.conf.json's ignorePatterns, or holds a glob special character), yet
 # the report's recorded scope still lists it, so the scorer would grade that
 # file "n/a (no mutants)" and pass. The warning is the only signal, so it fails.
-if grep -q 'did not result in any files' <<<"$out"; then
-  print_block \
-    "Stryker (mutation testing)" \
-    "Stryker could not resolve a changed file passed to --mutate (\"did not result in any files\")." \
-    "$out" \
-    "A file Stryker never mutated would be graded n/a and the gate would pass without any mutant run on it." \
-    "Find the Glob pattern named in the output above: a path under stryker.conf.json's ignorePatterns, or one with a glob special character (such as brackets, parentheses, or braces), is not mutable. Exclude that file from the change set (add it to mutable_source_files in mutation.sh when it needs no mutation) or rename it, then re-run: npm run check:mutation" \
-    "Do not treat the n/a score as a pass, and do not remove an ignorePatterns entry just to make the file resolve."
-  exit 2
-fi
+# A case match, not a here-string: bash 3.2 writes a here-string to a temp file, and when /tmp
+# cannot be written grep never runs, so this check would read as no match and pass.
+case "$out" in
+  *'did not result in any files'*)
+    print_block \
+      "Stryker (mutation testing)" \
+      "Stryker could not resolve a changed file passed to --mutate (\"did not result in any files\")." \
+      "$out" \
+      "A file Stryker never mutated would be graded n/a and the gate would pass without any mutant run on it." \
+      "Find the Glob pattern named in the output above: a path under stryker.conf.json's ignorePatterns, or one with a glob special character (such as brackets, parentheses, or braces), is not mutable. Exclude that file from the change set (add it to mutable_source_files in mutation.sh when it needs no mutation) or rename it, then re-run: npm run check:mutation" \
+      "Do not treat the n/a score as a pass, and do not remove an ignorePatterns entry just to make the file resolve."
+    exit 2
+    ;;
+esac
 
 # A completed run (code 0 or 1) took real wall-clock time; record it in
 # history (feeds the next run's ETA) regardless of which gate below ends up

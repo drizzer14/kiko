@@ -380,16 +380,8 @@ rules:
         - "*.test.tsx"
     patterns:
       - pattern: $X.balanceMinorUnits
-  # A shell rule, so it lives here and not in semgrep-prewrite.yml: the pre-write guard reads
-  # only .ts/.tsx, and check:security (the whole tree) is where a .sh file is scanned. It does
-  # not test for `set -o pipefail`: every script under scripts/ and harness/ sets it (or is
-  # sourced by one that does), and without pipefail the pipeline would simply be correct.
-  # It is a regex over the raw text in the `generic` language, not a bash AST pattern: the
-  # bash parser cannot read a one-line `case ... in a|b) ;; esac` (scripts/checks/plist.sh has
-  # one) and then skips the whole file silently, even for a regex rule, while `generic` never
-  # parses. The regex reads `| grep|egrep|fgrep`, then any arguments (a quoted argument may
-  # hold a `|`), then a -q/-m/--quiet/--silent/--max-count flag, or `| head`, with the pipe
-  # optionally continued on the next line. A comment that spells out such a pipe is flagged too.
+  # Scans .sh, which the pre-write guard never reads. Why `generic`, the pipefail scope, and the
+  # limits: kiko-linter > Never pipe into grep -q or head under pipefail.
   - id: kiko-no-early-exit-pipe-consumer
     languages: [generic]
     paths:
@@ -405,4 +397,4 @@ rules:
     metadata:
       fix: "grep -q 'x' <<<\"$value\"  (or case \"$value\" in *x*) ...)"
       skill: "kiko-linter › Never pipe into grep -q or head under pipefail"
-    pattern-regex: '\|[ \t]*(?:\\?\n[ \t]*)?(?:(?:e|f)?grep(?:(?:[ \t]+(?:''[^'']*''|"[^"]*"|[^\s|;&)<>''"]+))*?[ \t]+(?:-[a-zA-Z]*[qm][a-zA-Z0-9]*|--quiet|--silent|--max-count)(?=[\s=;&|)<>]|$))|head\b)'
+    pattern-regex: '(?<!\|)\|(?!\|)[ \t]*(?:\\?\n[ \t]*)?(?:(?:e|f)?grep(?:(?:[ \t]+(?:''[^'']*''|"[^"]*"|[^\s|;&)<>''"]+))*?[ \t]+(?:-[a-zA-Z]*[qm][a-zA-Z0-9]*|--quiet|--silent|--max-count)(?=[\s=;&|)<>]|$))|head\b)'

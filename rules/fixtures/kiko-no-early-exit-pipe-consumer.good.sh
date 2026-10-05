@@ -13,6 +13,10 @@ case "$out" in
   *'did not result in any files'*) : ;;
 esac
 
+# The second `|` of an `||` is not a pipe.
+if grep -qF x a.txt || grep -qF x b.txt; then :; fi
+v=$(cat a) || head -1 b.txt
+
 # A file argument has no producer.
 if grep -q 'pattern' file.txt; then :; fi
 

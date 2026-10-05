@@ -130,7 +130,8 @@ describe('scripts/deploy-device.sh launch', () => {
 
 describe('scripts/deploy-device.sh build output', () => {
   it('reads BUILD SUCCEEDED on an early line of a build log far larger than a pipe buffer', () => {
-    // An echo piped into grep -q under pipefail reads this as no match, so the deploy aborted.
+    // The success marker sits on the first line of a log over the pipe buffer: a consumer that
+    // stops reading at the first match must not turn that match into a failure.
     const largeLog = [
       '#!/bin/bash',
       'echo "** BUILD SUCCEEDED **"',

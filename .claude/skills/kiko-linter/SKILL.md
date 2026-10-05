@@ -1865,7 +1865,7 @@ guard itself (a session that changed nothing must stay silent).
 ## Never pipe into grep -q or head under pipefail
 
 Every script under `scripts/` and `harness/` runs with `set -o pipefail` (or is sourced by one
-that does). Under it, `printf '%s\n' "$out" | grep -q PATTERN` is a race: `grep -q` exits at the
+that does), except `scripts/checks/kill-guard.sh`, which sets neither. Under it, `printf '%s\n' "$out" | grep -q PATTERN` is a race: `grep -q` exits at the
 first match, `printf` then dies of SIGPIPE (exit 141), and pipefail makes the whole pipeline
 non-zero, so a MATCH reads as "no match". It is deterministic, not just flaky, when `$out` is
 larger than the 64 KB pipe buffer and the match is on an early line: the pipeline failed 300 of
@@ -1894,8 +1894,21 @@ and the fast tier runs on `.ts`/`.tsx`/`.js`, so a violation in a `.sh` file sur
 tier's `check:rules` proves the rule against its fixtures, not the scripts. It is a regex in `languages: [generic]`, not a bash
 AST pattern, because the bash parser cannot read a one-line `case ... in a|b) ;; esac` (`plist.sh`
 has one) and then skips the whole file silently. A comment that spells out such a pipe is flagged
-too, so reword it. A consumer that stops early in another way (`sed -n '1{p;q}'`, an `awk`
-`exit`, a `read`) is not covered; avoid those too.
+too, and so is `head` inside a string (for example `print_block` text), so reword it. A consumer
+that stops early in another way (`sed -n '1{p;q}'`, an `awk` `exit`, a `read`) is not covered;
+avoid those too.
+
+Known limits (the regex does not see these, so avoid them by hand): a `grep` reached through a
+path or a prefix (`| /usr/bin/grep -q`, `| LC_ALL=C grep -q`, `| command grep -q`); a `-q` flag
+on a continuation line after `grep \`; `| grep -l` (it also stops at the first match); a blank
+line or a comment between the `|` and `grep`; and `rg -q`. The `||` operator is not a pipe and is
+not flagged.
+
+A here-string is not free of risk everywhere: bash 3.2 writes it to a temp file, and when `/tmp`
+cannot be written `grep` never runs, so its `if` reads false. That fails open for a check whose
+match is the failure signal, so `mutation.sh` uses a `case "$out" in *'...'*)` match for the
+"did not result in any files" check (no temp file, no pipe). The other here-string sites fail
+closed (a lost match aborts the script) or run only in a deploy.
 
 Prove a fix with a test that feeds the script a value over 64 KB with the match on the FIRST line:
 `__tests__/mutation-gate.test.ts`, `__tests__/plist-credential-detect.test.ts`,
