@@ -972,6 +972,16 @@ export const en = {
     // same result text `ImportOutcome` already rendered inline — its "Done"
     // button (`common.done`) navigates back to the account screen.
     importResultTitle: 'Import Complete',
+    // What the import would leave the chosen holding's balance at, shown in the
+    // preview once a holding is picked (`previewImportBalance`). A status line,
+    // so no final ".". `balanceWillBeSet` is a closing balance that applies;
+    // `balanceWillBeSetWithLater` adds the bank figure when the holding's own
+    // later entries make the result differ from it.
+    balanceWillBeSet: 'Balance will be set to {{amount}}',
+    balanceWillBeSetWithLater:
+      'Balance will be set to {{amount}} (bank balance {{bankAmount}} on {{date}}, plus your later entries)',
+    balanceWillChange: 'Balance will change from {{from}} to {{to}}',
+    balanceStays: 'Balance stays at {{amount}}',
     // A row a format's parse could not resolve (e.g. a PrivatBank currency
     // word its abbreviation map doesn't cover yet) — excluded
     // from the import, but surfaced honestly rather than silently dropped

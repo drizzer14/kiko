@@ -4,6 +4,16 @@ import { i18n } from '@kiko/i18n/init';
 
 import MappingResult from './mapping-result.component';
 
+const resolvedStats = {
+  displayName: 'x',
+  transactionCount: 4,
+  currency: 'UAH' as const,
+  dateSpan: '01.01.2024 – 02.01.2024',
+  maskedCardHints: [],
+  unresolvedRowCount: 0,
+  detectedCurrencies: ['UAH' as const],
+};
+
 describe('MappingResult', () => {
   it('shows the incomplete hint when a required field is still unmapped', async () => {
     const { getByText, queryByTestId } = await render(
@@ -73,42 +83,62 @@ describe('MappingResult', () => {
     expect(incomplete.getAllByText(i18n.t('columnMapping.result'))).toHaveLength(1);
 
     const complete = await render(
-      <MappingResult
-        stats={{
-          displayName: 'x',
-          transactionCount: 4,
-          currency: 'UAH',
-          dateSpan: '01.01.2024 – 02.01.2024',
-          maskedCardHints: [],
-          unresolvedRowCount: 0,
-          detectedCurrencies: ['UAH'],
-        }}
-        rowErrors={[]}
-        mappingIncomplete={false}
-      />,
+      <MappingResult stats={resolvedStats} rowErrors={[]} mappingIncomplete={false} />,
     );
     expect(complete.getAllByText(i18n.t('columnMapping.result'))).toHaveLength(1);
   });
 
   it('shows the transaction count and date span once stats resolve', async () => {
     const { getByTestId, queryByText } = await render(
-      <MappingResult
-        stats={{
-          displayName: 'x',
-          transactionCount: 4,
-          currency: 'UAH',
-          dateSpan: '01.01.2024 – 02.01.2024',
-          maskedCardHints: [],
-          unresolvedRowCount: 0,
-          detectedCurrencies: ['UAH'],
-        }}
-        rowErrors={[]}
-        mappingIncomplete={false}
-      />,
+      <MappingResult stats={resolvedStats} rowErrors={[]} mappingIncomplete={false} />,
     );
 
     expect(getByTestId('column-mapping-transaction-count')).toHaveTextContent('4');
     expect(queryByText(i18n.t('columnMapping.incomplete'))).toBeNull();
+  });
+
+  describe('the balance line', () => {
+    const balancePreview = {
+      kind: 'stays' as const,
+      currency: 'UAH' as const,
+      minorUnits: 100_000,
+    };
+
+    it('shows what the balance will be once a holding is picked and the rows resolve', async () => {
+      const { getByTestId } = await render(
+        <MappingResult
+          stats={resolvedStats}
+          rowErrors={[]}
+          mappingIncomplete={false}
+          balancePreview={balancePreview}
+        />,
+      );
+
+      expect(getByTestId('column-mapping-balance-preview')).toHaveTextContent(
+        'Balance stays at 1,000.00 ₴',
+      );
+    });
+
+    it('shows no balance line before there is a preview', async () => {
+      const { queryByTestId } = await render(
+        <MappingResult stats={resolvedStats} rowErrors={[]} mappingIncomplete={false} />,
+      );
+
+      expect(queryByTestId('column-mapping-balance-preview')).toBeNull();
+    });
+
+    it('shows no balance line when no row resolved, whatever the preview says', async () => {
+      const { queryByTestId } = await render(
+        <MappingResult
+          stats={{ ...resolvedStats, transactionCount: 0 }}
+          rowErrors={[]}
+          mappingIncomplete={false}
+          balancePreview={balancePreview}
+        />,
+      );
+
+      expect(queryByTestId('column-mapping-balance-preview')).toBeNull();
+    });
   });
 
   it('renders the first 20 row errors, then a count of the rest', async () => {

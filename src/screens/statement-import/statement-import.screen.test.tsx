@@ -109,6 +109,13 @@ jest.mock('@kiko/statement-import/import-statement', () => ({
   importStatement: (...args: unknown[]) => mockImportStatement(...args),
 }));
 
+// The balance preview read has its own tests; this file only proves what the
+// screen hands it and what it shows of the answer.
+const mockUseImportBalancePreview = jest.fn().mockReturnValue(undefined);
+jest.mock('@kiko/statement-import/use-import-balance-preview', () => ({
+  useImportBalancePreview: (...args: unknown[]) => mockUseImportBalancePreview(...args),
+}));
+
 // A multi-card PrivatBank export can span MULTIPLE distinct masked cards —
 // the preview must surface EACH row's own hint. No real fixture file covers
 // this multi-card shape, so this test drives the screen against a hand-built
@@ -1566,5 +1573,67 @@ describe('StatementImportScreen — Import press', () => {
 
     expect(view.navigation.goBack).toHaveBeenCalledTimes(1);
     expect(view.navigation.popTo).not.toHaveBeenCalled();
+  });
+});
+
+describe('StatementImportScreen — the balance preview', () => {
+  const balancePreview = { kind: 'stays', currency: 'UAH', minorUnits: 100_000 };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseImportBalancePreview.mockReturnValue(undefined);
+    setLiveData({});
+    mockReadFile.mockResolvedValue(fixtureBase64);
+  });
+
+  const renderPreview = async (): Promise<Awaited<ReturnType<typeof renderScreen>>> => {
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    return view;
+  };
+
+  const callsWithHolding = (holdingId: string | undefined) =>
+    mockUseImportBalancePreview.mock.calls.filter(
+      ([statement, picked]) => statement !== undefined && picked === holdingId,
+    );
+
+  it('has no holding to ask about, and shows no line, until one is picked', async () => {
+    const view = await renderPreview();
+
+    expect(callsWithHolding(undefined).length).toBeGreaterThan(0);
+    expect(callsWithHolding('h1')).toHaveLength(0);
+    expect(view.queryByTestId('statement-import-balance-preview')).toBeNull();
+  });
+
+  it('asks for the balance of the parsed statement in the picked holding', async () => {
+    const view = await renderPreview();
+
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+
+    const [statement, holdingId] = mockUseImportBalancePreview.mock.calls.at(-1) ?? [];
+
+    expect(holdingId).toBe('h1');
+    expect(statement.formatId).toBe('monobank-csv');
+    expect(statement.transactions).toHaveLength(4);
+  });
+
+  it('shows the answer under the summary once there is one', async () => {
+    mockUseImportBalancePreview.mockReturnValue(balancePreview);
+
+    const view = await renderPreview();
+
+    expect(view.getByTestId('statement-import-balance-preview')).toHaveTextContent(
+      'Balance stays at 1,000.00 ₴',
+    );
+  });
+
+  it('hands the hook one statement across re-renders that change nothing it depends on', async () => {
+    const view = await renderPreview();
+
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    expect(new Set(callsWithHolding('h1').map(([statement]) => statement)).size).toBe(1);
   });
 });

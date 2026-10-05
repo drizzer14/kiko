@@ -795,6 +795,11 @@ export const uk: typeof en = {
     importErrorMessage: 'Спробуйте ще раз.',
     importedCount: 'Імпортовано {{imported}} з {{total}}',
     importResultTitle: 'Імпорт завершено',
+    balanceWillBeSet: 'Баланс буде встановлено: {{amount}}',
+    balanceWillBeSetWithLater:
+      'Баланс буде встановлено: {{amount}} (баланс банку {{bankAmount}} на {{date}} разом із вашими пізнішими записами)',
+    balanceWillChange: 'Баланс зміниться з {{from}} на {{to}}',
+    balanceStays: 'Баланс залишиться: {{amount}}',
     // i18next's uk plural rule: _one (1 рядок), _few (2-4 рядки), _many (0,
     // 5-20 рядків), _other (fractional, unreachable here).
     unresolvedRowsSkipped_one: '{{count}} рядок пропущено: нерозпізнана валюта',

@@ -66,6 +66,13 @@ jest.mock('@kiko/statement-import/import-statement', () => ({
   importParsedStatement: (...args: unknown[]) => mockImportParsedStatement(...args),
 }));
 
+// The balance preview read has its own tests; this file only proves what the
+// screen hands it and what it shows of the answer.
+const mockUseImportBalancePreview = jest.fn().mockReturnValue(undefined);
+jest.mock('@kiko/statement-import/use-import-balance-preview', () => ({
+  useImportBalancePreview: (...args: unknown[]) => mockUseImportBalancePreview(...args),
+}));
+
 const mockSaveStatementMapping = jest.fn();
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
@@ -1891,5 +1898,78 @@ describe('ColumnMappingScreen — import outcomes', () => {
 
     expect(view.navigation.goBack).toHaveBeenCalledTimes(1);
     expect(view.navigation.popTo).not.toHaveBeenCalled();
+  });
+});
+
+describe('ColumnMappingScreen — the balance preview', () => {
+  const balancePreview = { kind: 'stays', currency: 'UAH', minorUnits: 100_000 };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseImportBalancePreview.mockReturnValue(undefined);
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+  });
+
+  // The hook's calls once a holding is picked, as [statement, holdingId] pairs.
+  const callsWithHolding = (holdingId: string | undefined) =>
+    mockUseImportBalancePreview.mock.calls.filter(
+      ([statement, picked]) => statement !== undefined && picked === holdingId,
+    );
+
+  it('asks for the balance of the mapped statement in the picked holding', async () => {
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumnsAndSelectHolding(view);
+
+    const [statement, holdingId] = mockUseImportBalancePreview.mock.calls.at(-1) ?? [];
+
+    expect(holdingId).toBe('h1');
+    expect(statement.transactions).toHaveLength(4);
+    expect(statement.formatId).toBe('column-mapping');
+  });
+
+  it('has no holding to ask about until one is picked', async () => {
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumns(view);
+
+    expect(callsWithHolding(undefined).length).toBeGreaterThan(0);
+    expect(mockUseImportBalancePreview.mock.calls.at(-1)?.[1]).toBeUndefined();
+  });
+
+  it('shows the answer in the result block, and no line without one', async () => {
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumnsAndSelectHolding(view);
+
+    expect(view.queryByTestId('column-mapping-balance-preview')).toBeNull();
+
+    mockUseImportBalancePreview.mockReturnValue(balancePreview);
+    await pickOption(view, 'description-column', 2);
+
+    expect(view.getByTestId('column-mapping-balance-preview')).toHaveTextContent(
+      'Balance stays at 1,000.00 ₴',
+    );
+  });
+
+  it('hands the hook one statement while nothing the statement depends on changes', async () => {
+    mockDefaultImportSuccess();
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumnsAndSelectHolding(view);
+    await pressImport(view);
+    await waitFor(() => expect(mockImportParsedStatement).toHaveBeenCalledTimes(1));
+
+    expect(new Set(callsWithHolding('h1').map(([statement]) => statement)).size).toBe(1);
+  });
+
+  it('hands the hook a new statement when a mapped column changes', async () => {
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumnsAndSelectHolding(view);
+    await pickOption(view, 'description-column', 2);
+
+    expect(new Set(callsWithHolding('h1').map(([statement]) => statement)).size).toBe(2);
   });
 });

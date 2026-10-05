@@ -49,11 +49,12 @@ import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { supportedFormatNames } from '@kiko/statement-import/registry';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { type FC, type RefObject, useEffect, useRef, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ImportResultSheet from '@kiko/design-system/components/import-result-sheet';
+import { type FC, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { previewStats, type PreviewStats } from '@kiko/statement-import/preview-stats';
 import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
+import { useImportBalancePreview } from '@kiko/statement-import/use-import-balance-preview';
 import type { SpreadsheetCellValue, StatementFormatInput } from '@kiko/statement-import/parser';
 import { importParsedStatement, type ImportResult } from '@kiko/statement-import/import-statement';
 
@@ -120,6 +121,18 @@ const tableInputFor = (
   return loadState.isXlsx
     ? { text: '', fileName: loadState.fileName, sheetRows: loadState.sheetRows }
     : { text: decodeStatementText(loadState.base64, encoding), fileName: loadState.fileName };
+};
+
+const tableRowsFor = (
+  loadState: LoadState,
+  encoding: Encoding,
+  delimiterOverride: TableDelimiter | undefined,
+): ReturnType<typeof readTableRows> => {
+  const tableInput = tableInputFor(loadState, encoding);
+
+  return tableInput
+    ? readTableRows(tableInput, delimiterOverride)
+    : { rows: [], delimiter: undefined };
 };
 
 const buildAmount = (fields: MappingFormFields): ColumnMapping['amount'] | undefined => {
@@ -660,10 +673,13 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     };
   }, [filePath, ownsFile]);
 
-  const tableInput = tableInputFor(loadState, encoding);
-  const { rows, delimiter: detectedDelimiter } = tableInput
-    ? readTableRows(tableInput, delimiterOverride)
-    : { rows: [] as TableCell[][], delimiter: undefined };
+  // Memoized, with the mapping and its result below, so the balance preview
+  // keeps one statement until something it depends on changes: a new statement
+  // is a new request.
+  const { rows, delimiter: detectedDelimiter } = useMemo(
+    () => tableRowsFor(loadState, encoding, delimiterOverride),
+    [loadState, encoding, delimiterOverride],
+  );
   const effectiveDelimiter = delimiterOverride ?? detectedDelimiter;
 
   // Runs exactly once, the first time `rows` resolves AND the account and
@@ -718,26 +734,52 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const headerRow = foldMap(maybe(headerRowIndex), (index) => rows[index] ?? []) ?? [];
   const columnOptions = columnOptionsFor(headerRow);
 
-  const mapping = buildColumnMapping({
-    headerRowIndex,
-    delimiter: effectiveDelimiter,
-    encoding,
-    decimalSeparator,
-    dateColumn,
-    dateFormat,
-    timeZone,
-    amountMode,
-    amountColumn,
-    debitColumn,
-    creditColumn,
-    descriptionColumn,
-    currencyMode,
-    currencyColumn,
-    fixedCurrency,
-    counterpartyColumn,
-    balanceColumn,
-  });
-  const applyResult = mapping ? applyMappingSafely(rows, mapping) : undefined;
+  const mapping = useMemo(
+    () =>
+      buildColumnMapping({
+        headerRowIndex,
+        delimiter: effectiveDelimiter,
+        encoding,
+        decimalSeparator,
+        dateColumn,
+        dateFormat,
+        timeZone,
+        amountMode,
+        amountColumn,
+        debitColumn,
+        creditColumn,
+        descriptionColumn,
+        currencyMode,
+        currencyColumn,
+        fixedCurrency,
+        counterpartyColumn,
+        balanceColumn,
+      }),
+    [
+      headerRowIndex,
+      effectiveDelimiter,
+      encoding,
+      decimalSeparator,
+      dateColumn,
+      dateFormat,
+      timeZone,
+      amountMode,
+      amountColumn,
+      debitColumn,
+      creditColumn,
+      descriptionColumn,
+      currencyMode,
+      currencyColumn,
+      fixedCurrency,
+      counterpartyColumn,
+      balanceColumn,
+    ],
+  );
+  const applyResult = useMemo(
+    () => foldMap(maybe(mapping), (mapped) => applyMappingSafely(rows, mapped)),
+    [rows, mapping],
+  );
+  const balancePreview = useImportBalancePreview(applyResult?.statement, selectedHoldingId);
   const stats: PreviewStats | undefined = applyResult
     ? previewStats(applyResult.statement, t('columnMapping.title'))
     : undefined;
@@ -954,6 +996,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
             stats={stats}
             rowErrors={applyResult?.rowErrors ?? []}
             mappingIncomplete={mappingIncomplete}
+            balancePreview={balancePreview}
             holdingOptions={holdingOptions}
             holdingOptionsLoading={holdingOptionsLoading}
             accountId={accountId}

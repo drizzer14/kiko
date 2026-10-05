@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import SummaryTable from '@kiko/design-system/components/summary-table';
+import ImportBalanceLine from '@kiko/design-system/components/import-balance-line';
 import ExampleTransaction from '@kiko/design-system/components/example-transaction';
 import TargetHoldingField from '@kiko/design-system/components/target-holding-field';
 
@@ -20,6 +21,7 @@ import type { StatementPreviewBlockProps } from './statement-preview-block.props
 // screen's own cognitive-complexity budget.
 const StatementPreviewBlock: FC<StatementPreviewBlockProps> = ({
   stats,
+  balancePreview,
   holdingOptions,
   holdingOptionsLoading,
   accountId,
@@ -65,6 +67,10 @@ const StatementPreviewBlock: FC<StatementPreviewBlockProps> = ({
           },
         ]}
       />
+
+      {balancePreview && (
+        <ImportBalanceLine preview={balancePreview} testID="statement-import-balance-preview" />
+      )}
 
       {stats.firstTransaction && (
         <ExampleTransaction

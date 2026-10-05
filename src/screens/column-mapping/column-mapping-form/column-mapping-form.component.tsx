@@ -95,6 +95,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
   stats,
   rowErrors,
   mappingIncomplete,
+  balancePreview,
   holdingOptions,
   holdingOptionsLoading,
   accountId,
@@ -323,6 +324,7 @@ const ColumnMappingForm: FC<ColumnMappingFormProps> = ({
           holdingName={holdingOptions.find((holding) => holding.id === selectedHoldingId)?.name}
           noRowsResolvedError={validation.noRowsResolvedError}
           mappingIncomplete={mappingIncomplete}
+          balancePreview={balancePreview}
         />
       </View>
 

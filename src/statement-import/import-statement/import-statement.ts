@@ -1,8 +1,8 @@
 import { settingsRepo } from '@kiko/settings';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { Currency } from '@kiko/currency/currency';
-import { transactionsRepo } from '@kiko/transactions/repo';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { transactionsRepo, type ImportBalancePreview } from '@kiko/transactions/repo';
 
 import {
   StatementParseError,
@@ -30,6 +30,93 @@ export type ImportResult = {
    * names WHICH currencies were skipped, not just how many rows — empty
    * when `skippedWrongCurrency` is 0. */
   skippedWrongCurrencyCodes: Currency[];
+};
+
+const holdingCurrencyOf = async (holdingId: string): Promise<Currency> => {
+  const holdingRows = await holdingsRepo.byIdQuery(holdingId);
+  const holding = holdingRows.at(0);
+
+  if (!holding) {
+    throw new Error(`Target holding not found: ${holdingId}`);
+  }
+
+  return holding.currency;
+};
+
+/**
+ * The rows `transactionsRepo.importRows` takes for one parsed statement and one
+ * target holding, and what was left out. Shared by the import and by the balance
+ * preview, so the two hand the repository exactly the same batch.
+ */
+const prepareImportRows = (
+  parsed: ParsedStatement,
+  holdingId: string,
+  holdingCurrency: Currency,
+) => {
+  // One pass over `parsed.transactions`, not two opposite `.filter()` calls —
+  // every row lands in exactly one of the two arrays below.
+  const matchingTransactions: ParsedTransaction[] = [];
+  const skippedTransactions: ParsedTransaction[] = [];
+
+  for (const transaction of parsed.transactions) {
+    (transaction.currency === holdingCurrency ? matchingTransactions : skippedTransactions).push(
+      transaction,
+    );
+  }
+
+  // dedup-key -> occurrence count so far. Keyed on the SAME (holding, time,
+  // amount, normalized-description) tuple `computeDedupKey` folds on —
+  // `computeDedupKey(holdingId, transaction, 0)` returns exactly that
+  // un-suffixed base string. Keying on `JSON.stringify(transaction)` instead
+  // (the whole row, including mcc/counterIban/comment) would count two rows
+  // that `computeDedupKey` treats as the SAME equivalence class as distinct
+  // occurrences of DIFFERENT ones, so both would get occurrenceIndex 0 and
+  // collide onto the same synthesized externalId.
+  const seenKeys = new Map<string, number>();
+  // An older build read every file as Kyiv time, so a row read in any other
+  // zone cannot match a noon key it wrote.
+  const readInKyivTime = (parsed.sourceTimeZone ?? 'kyiv') === 'kyiv';
+  const rows = matchingTransactions.map((transaction) => {
+    const raw = transaction.externalId ?? computeDedupKey(holdingId, transaction, 0);
+    const occurrenceIndex = seenKeys.get(raw) ?? 0;
+    seenKeys.set(raw, occurrenceIndex + 1);
+
+    return {
+      ...mapParsedTransaction(transaction, holdingId, occurrenceIndex),
+      aliasExternalId: readInKyivTime
+        ? noonAliasDedupKey(holdingId, transaction, occurrenceIndex)
+        : undefined,
+      timeReading: transaction.timeReading,
+    };
+  });
+
+  return {
+    rows,
+    skippedWrongCurrency: skippedTransactions.length,
+    skippedWrongCurrencyCodes: Array.from(
+      new Set(skippedTransactions.map((transaction) => transaction.currency)),
+    ).sort(),
+  };
+};
+
+/**
+ * What importing `parsed` into the holding would leave its balance at, read
+ * without writing anything: no rewrite of stored rows, no import, no loan
+ * matcher. It hands `transactionsRepo.previewImportBalance` the batch
+ * `importParsedStatement` would hand `importRows`, so the number shown before
+ * importing is the number the import stores.
+ */
+export const previewParsedStatementBalance = async (
+  parsed: ParsedStatement,
+  holdingId: string,
+): Promise<ImportBalancePreview> => {
+  const { rows } = prepareImportRows(parsed, holdingId, await holdingCurrencyOf(holdingId));
+
+  return transactionsRepo.previewImportBalance({
+    holdingId,
+    rows,
+    closingBalance: parsed.closingBalance,
+  });
 };
 
 /**
@@ -77,54 +164,12 @@ export const importParsedStatement = async (
     throw new Error('statement-import/rezone-pending');
   }
 
-  const holdingRows = await holdingsRepo.byIdQuery(holdingId);
-  const holding = holdingRows.at(0);
-
-  if (!holding) {
-    throw new Error(`Target holding not found: ${holdingId}`);
-  }
-
-  // One pass over `parsed.transactions`, not two opposite `.filter()` calls —
-  // every row lands in exactly one of the two arrays below.
-  const matchingTransactions: ParsedTransaction[] = [];
-  const skippedTransactions: ParsedTransaction[] = [];
-
-  for (const transaction of parsed.transactions) {
-    (transaction.currency === holding.currency ? matchingTransactions : skippedTransactions).push(
-      transaction,
-    );
-  }
-
-  const skippedWrongCurrency = skippedTransactions.length;
-  const skippedWrongCurrencyCodes = Array.from(
-    new Set(skippedTransactions.map((transaction) => transaction.currency)),
-  ).sort();
-
-  // dedup-key -> occurrence count so far. Keyed on the SAME (holding, time,
-  // amount, normalized-description) tuple `computeDedupKey` folds on —
-  // `computeDedupKey(holdingId, transaction, 0)` returns exactly that
-  // un-suffixed base string. Keying on `JSON.stringify(transaction)` instead
-  // (the whole row, including mcc/counterIban/comment) would count two rows
-  // that `computeDedupKey` treats as the SAME equivalence class as distinct
-  // occurrences of DIFFERENT ones, so both would get occurrenceIndex 0 and
-  // collide onto the same synthesized externalId.
-  const seenKeys = new Map<string, number>();
-  // An older build read every file as Kyiv time, so a row read in any other
-  // zone cannot match a noon key it wrote.
-  const readInKyivTime = (parsed.sourceTimeZone ?? 'kyiv') === 'kyiv';
-  const rows = matchingTransactions.map((transaction) => {
-    const raw = transaction.externalId ?? computeDedupKey(holdingId, transaction, 0);
-    const occurrenceIndex = seenKeys.get(raw) ?? 0;
-    seenKeys.set(raw, occurrenceIndex + 1);
-
-    return {
-      ...mapParsedTransaction(transaction, holdingId, occurrenceIndex),
-      aliasExternalId: readInKyivTime
-        ? noonAliasDedupKey(holdingId, transaction, occurrenceIndex)
-        : undefined,
-      timeReading: transaction.timeReading,
-    };
-  });
+  const holdingCurrency = await holdingCurrencyOf(holdingId);
+  const { rows, skippedWrongCurrency, skippedWrongCurrencyCodes } = prepareImportRows(
+    parsed,
+    holdingId,
+    holdingCurrency,
+  );
   const imported = await transactionsRepo.importRows({
     holdingId,
     rows,
