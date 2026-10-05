@@ -89,7 +89,7 @@ export FORCE_BUNDLING=1
 echo "Building Kiko app..."
 BUILD_OUTPUT=$( (xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration "$CONFIGURATION" -sdk "$SDK" -derivedDataPath "$DERIVED_DATA" 2>&1) || echo "BUILD_FAILED" )
 
-if echo "$BUILD_OUTPUT" | grep -q "BUILD FAILED"; then
+if grep -q "BUILD FAILED" <<<"$BUILD_OUTPUT"; then
   echo "Initial build failed. Running pod install and retrying..."
   cd "$REPO_ROOT/ios"
   pod install > /dev/null 2>&1
@@ -98,14 +98,14 @@ if echo "$BUILD_OUTPUT" | grep -q "BUILD FAILED"; then
   # Retry build
   BUILD_OUTPUT=$( (xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration "$CONFIGURATION" -sdk "$SDK" -derivedDataPath "$DERIVED_DATA" 2>&1) || echo "BUILD_FAILED" )
   
-  if echo "$BUILD_OUTPUT" | grep -q "BUILD FAILED"; then
+  if grep -q "BUILD FAILED" <<<"$BUILD_OUTPUT"; then
     echo "Build failed even after pod install:"
     echo "$BUILD_OUTPUT" | tail -20
     exit 1
   fi
 fi
 
-if ! echo "$BUILD_OUTPUT" | grep -q "BUILD SUCCEEDED"; then
+if ! grep -q "BUILD SUCCEEDED" <<<"$BUILD_OUTPUT"; then
   echo "Build did not report success:"
   echo "$BUILD_OUTPUT" | tail -20
   exit 1
@@ -140,7 +140,7 @@ fi
 # Install app
 echo "Installing app to device..."
 INSTALL_OUTPUT=$(xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" 2>&1)
-INSTALL_UUID=$(echo "$INSTALL_OUTPUT" | grep "databaseUUID:" | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' | head -1 || true)
+INSTALL_UUID=$(echo "$INSTALL_OUTPUT" | grep "databaseUUID:" | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' | sed -n '1p' || true)
 
 if [[ -z "$INSTALL_UUID" ]]; then
   echo "Install failed:"
@@ -162,7 +162,7 @@ launch_app() {
 
 LAUNCH_OUTPUT=$(launch_app)
 
-if ! echo "$LAUNCH_OUTPUT" | grep -q "Launched application"; then
+if ! grep -q "Launched application" <<<"$LAUNCH_OUTPUT"; then
   echo "First launch attempt did not report success:"
   echo "$LAUNCH_OUTPUT"
   echo "Launch retry…"
@@ -170,7 +170,7 @@ if ! echo "$LAUNCH_OUTPUT" | grep -q "Launched application"; then
   LAUNCH_OUTPUT=$(launch_app)
 fi
 
-if echo "$LAUNCH_OUTPUT" | grep -q "Launched application"; then
+if grep -q "Launched application" <<<"$LAUNCH_OUTPUT"; then
   echo "✓ App launched"
 else
   echo "Launch may have failed:"

@@ -380,3 +380,29 @@ rules:
         - "*.test.tsx"
     patterns:
       - pattern: $X.balanceMinorUnits
+  # A shell rule, so it lives here and not in semgrep-prewrite.yml: the pre-write guard reads
+  # only .ts/.tsx, and check:security (the whole tree) is where a .sh file is scanned. It does
+  # not test for `set -o pipefail`: every script under scripts/ and harness/ sets it (or is
+  # sourced by one that does), and without pipefail the pipeline would simply be correct.
+  # It is a regex over the raw text in the `generic` language, not a bash AST pattern: the
+  # bash parser cannot read a one-line `case ... in a|b) ;; esac` (scripts/checks/plist.sh has
+  # one) and then skips the whole file silently, even for a regex rule, while `generic` never
+  # parses. The regex reads `| grep|egrep|fgrep`, then any arguments (a quoted argument may
+  # hold a `|`), then a -q/-m/--quiet/--silent/--max-count flag, or `| head`, with the pipe
+  # optionally continued on the next line. A comment that spells out such a pipe is flagged too.
+  - id: kiko-no-early-exit-pipe-consumer
+    languages: [generic]
+    paths:
+      include:
+        - "*.sh"
+    severity: ERROR
+    message: >
+      A pipeline ends in `grep -q`, `grep -m N`, or `head`, which exit at the first match. Under
+      `set -o pipefail` the producer then dies of SIGPIPE (141) and the whole pipeline reads as
+      failed, so a MATCH reads as no match, and always so when the producer's output is larger
+      than the 64 KB pipe buffer. Read the match from a here-string (`grep -q 'x' <<<"$value"`),
+      a `case "$value" in *x*)`, or a file argument, and take a first line with `sed -n '1p'`.
+    metadata:
+      fix: "grep -q 'x' <<<\"$value\"  (or case \"$value\" in *x*) ...)"
+      skill: "kiko-linter › Never pipe into grep -q or head under pipefail"
+    pattern-regex: '\|[ \t]*(?:\\?\n[ \t]*)?(?:(?:e|f)?grep(?:(?:[ \t]+(?:''[^'']*''|"[^"]*"|[^\s|;&)<>''"]+))*?[ \t]+(?:-[a-zA-Z]*[qm][a-zA-Z0-9]*|--quiet|--silent|--max-count)(?=[\s=;&|)<>]|$))|head\b)'

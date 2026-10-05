@@ -1852,6 +1852,45 @@ session that edits only that file never triggers the new check on
 adding a new triggering path; extend it, don't bypass the early-exit
 guard itself (a session that changed nothing must stay silent).
 
+## Never pipe into grep -q or head under pipefail
+
+Every script under `scripts/` and `harness/` runs with `set -o pipefail` (or is sourced by one
+that does). Under it, `printf '%s\n' "$out" | grep -q PATTERN` is a race: `grep -q` exits at the
+first match, `printf` then dies of SIGPIPE (exit 141), and pipefail makes the whole pipeline
+non-zero, so a MATCH reads as "no match". It is deterministic, not just flaky, when `$out` is
+larger than the 64 KB pipe buffer and the match is on an early line: the pipeline failed 300 of
+300 runs. The same holds for `grep -m N` / `--max-count` and for `| head` (any consumer that stops
+reading before its producer finishes), and for a non-`printf` producer (`git diff | grep -q`).
+It fails open when the match is the failure signal (`mutation.sh`'s "did not result in any files"
+was skipped on a large Stryker log) and fails closed on a correct input when it is the success
+signal (`plist.sh`'s Resources-phase check, `deploy-device.sh`'s `BUILD SUCCEEDED`).
+
+Use a form with no producer to kill. All of these work under macOS `/bin/bash` 3.2:
+
+- A here-string: `grep -qF 'literal' <<<"$value"` (keep `-F`/`-x`/regex exactly as before).
+- A `case "$value" in *'literal'*) ... ;; esac`.
+- A file argument (`grep -q 'x' "$file"`), or capture a command's output into a variable first
+  (`changed="$(git diff --name-only HEAD)"`), then match it with a here-string.
+- A first line: `sed -n '1p'` (it reads to the end of its input), never `head -1`.
+
+A pipe into a `grep` that reads to the end of its input (`| grep -E x`, `| grep -c x`,
+`| grep -v x`) is not a race.
+
+The guard is the Semgrep rule `kiko-no-early-exit-pipe-consumer` in `rules/semgrep-mobile.yml`
+(fixture pair `rules/fixtures/kiko-no-early-exit-pipe-consumer.{bad,good}.sh`). It runs at
+`check:security` and `check:rules`, NOT at write time: the pre-write guard reads only `.ts`/`.tsx`,
+and the fast tier runs on `.ts`/`.tsx`/`.js`, so a violation in a `.sh` file surfaces only when
+`check:security` runs over the tree (`check:all`, or `bash scripts/checks/security.sh "$PWD/scripts"`). The Stop
+tier's `check:rules` proves the rule against its fixtures, not the scripts. It is a regex in `languages: [generic]`, not a bash
+AST pattern, because the bash parser cannot read a one-line `case ... in a|b) ;; esac` (`plist.sh`
+has one) and then skips the whole file silently. A comment that spells out such a pipe is flagged
+too, so reword it. A consumer that stops early in another way (`sed -n '1{p;q}'`, an `awk`
+`exit`, a `read`) is not covered; avoid those too.
+
+Prove a fix with a test that feeds the script a value over 64 KB with the match on the FIRST line:
+`__tests__/mutation-gate.test.ts`, `__tests__/plist-credential-detect.test.ts`,
+`__tests__/lint-fixtures-scope.test.ts`, and `__tests__/deploy-device.test.ts` each carry one.
+
 ## Shipped migrations are never edited — check:shipped-migrations
 
 User rule: a migration that already shipped is never edited, not even a
