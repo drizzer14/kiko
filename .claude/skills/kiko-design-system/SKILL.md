@@ -1100,11 +1100,9 @@ new component can land between reviews of this skill:
   whose source is `import` is deletable but passes NO `onDuplicate` and no other
   action (`isSyncedTransaction` is every non-manual source), so its hold opens
   the delete confirm directly; only a manual row is duplicable. The imported
-  row's balance sentence is decided by `importDeleteKeepsBalance` from the
-  holding's boundary: Home reads every boundary ONCE
-  (`transactionsRepo.balanceBoundariesQuery`, one live query at screen level)
-  and hands `TransactionRow` a `boundaryByHoldingId` map, never a per-row query;
-  the holding-detail ledger reads its own single holding's boundary.
+  row's confirm needs no boundary read: every delete takes the row's full
+  amount back, and the confirm's `removeNotice` states each holding's balance
+  change (`transactions.deleteLinked.balanceChange`).
 - **ImportBalanceLine** (`src/design-system/components/import-balance-line/`)
   — the one line on the statement-import and column-mapping previews that says
   what the target holding's balance will be, from an `ImportBalancePreview`

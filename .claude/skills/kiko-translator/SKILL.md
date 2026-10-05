@@ -398,7 +398,11 @@ sentence names a LIST of holdings, the caller joins the names with a comma
 «Долар», «Готівка», and `en` leaves the names bare. The sentence's own
 template holds a bare `{{names}}`, never «{{names}}», which would wrap the whole
 joined list in one pair of quotes. A sentence that names ONE holding keeps the
-quotes in its own template (`«{{name}}»`).
+quotes in its own template (`«{{name}}»`). The `transactions.deleteLinked.splitExchange*` and
+`balanceChange` sentences are such sentences: one per holding, the raw name
+passed in. `balanceChange`'s `{{amount}}` is the shared `formatMoney` text in the
+holding's own currency with a `+` put in front of a gain (`formatMoney` writes
+only the minus), never a hand-formatted number.
 
 ## Review new/changed keys before a shipping deploy
 

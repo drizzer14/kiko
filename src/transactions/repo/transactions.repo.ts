@@ -1230,8 +1230,8 @@ export const bankOwnedTransactionSetWhere = sql.join(
 // scope and the STRICT `gt` boundary (a row exactly AT `asOfMilliseconds`
 // belongs to the closing balance itself, not after it) — rather than a
 // hand-transcribed copy of it. A row that set a balance never counts: its
-// amount is part of a balance that was set, and a re-date past the as-of must
-// not move the balance (`removeBalanceDelta`).
+// amount is part of the balance a hand edit or an opening set, which a closing
+// balance replaces outright, so a row re-dated past the as-of would count twice.
 export const postClosingRowsWhere = (holdingId: string, asOfMilliseconds: number) =>
   and(
     eq(transactions.holdingId, holdingId),

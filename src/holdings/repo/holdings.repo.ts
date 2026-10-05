@@ -742,8 +742,9 @@ export const holdingsRepo = {
    * own doc comment is the full statement of why — and points
    * `holdings.balanceSetRowId` at the new row, which carries
    * `transactions.setsBalance`: this edit is now the holding's current set.
-   * An older set's row keeps its mark, so its re-date or delete never moves
-   * the balance either.
+   * An older set's row keeps its mark, which only keeps a closing import from
+   * counting it twice (`postClosingRowsWhere`): its edit and its delete move the
+   * balance by its amount, like any row's.
    */
   updateWithBalanceDelta: (
     holdingId: string,

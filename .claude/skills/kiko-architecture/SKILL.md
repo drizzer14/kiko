@@ -229,7 +229,7 @@ project-level pointer to this section.
 - **A column whose backfill SQL can derive adds it and backfills it in ONE
   migration, mirrored on restore.** `0047_add_sets_balance` adds
   `transactions.sets_balance` (the stored balance-set mark, kiko-domain's
-  "The manual boundary rule") and `holdings.balance_set_row_id` (the
+  "A balance-set row is a STORED mark") and `holdings.balance_set_row_id` (the
   current set's row) and, in the same transaction, points each holding at
   its smallest-id row shaped like a balance-set row and dated at
   `holdings.balance_set_at`, then marks that row (its doc comment is the

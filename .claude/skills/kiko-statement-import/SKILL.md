@@ -92,7 +92,7 @@ routes use, not statement import).
 `readImportPlanDatabaseTransaction` and `resolveImportBalance` with `importRows`
 so the preview equals the stored result (pinned by a parity test on real
 SQLite). `previewParsedStatementBalance` throws
-(`statement-import/preview-pending`) until BOTH one-shot rewrites have settled
+(the "preview-pending" error) until BOTH one-shot rewrites have settled
 (`settings.dedupKeysUpgraded` and `settings.importTimesRezoned`): the preview
 does not run `upgradeStoredDedupKeys` / `rezoneImportTimes`, so before they
 settle its dedup could differ from the import's. The hook logs the failure
@@ -102,13 +102,23 @@ statement that keeps its identity between renders, since a new one is a new
 request, and the newest request wins. Never add a second copy of the balance
 rule for the preview.
 
+**An imported row can be deleted, and its amount goes with it.** `transactionsRepo.remove`
+takes the row's full amount back from its holding whatever its date against the
+boundary (user rule 2026-10-05, "Every transaction updates its balance" in
+kiko-domain): the balance moves only, `balanceSetAt` stays, and no bank figure
+is stored, so deleting every row of an import ends on the statement's opening
+balance. Re-importing the same file brings a deleted row back (no tombstone;
+accepted): with a closing balance its amount returns with it, and a no-closing
+file's row dated before the boundary returns as history without its amount.
+`dropRowsHeldBySync` still stops a TX-C1 duplicate of a bank row from returning
+once the account is disconnected, and a connected account refuses the import.
+
 **A synced account refuses the import.** `importRows`
 (`src/transactions/repo/transactions.repo.ts`) throws an Error with the
 message statement-import/synced-account, before it writes anything, for any
 holding of an account `isSyncedAccount` owns (a hand-added holding there
 included): the sync already writes those rows under its own `source`, so
-an `import` copy would be a second one, and an import row cannot be
-deleted. Account detail hides "Import statement" there with no caption;
+an `import` copy would be a second one. Account detail hides "Import statement" there with no caption;
 the guard covers a stale route. The target-holding picker
 (`useTargetHoldingOptions`) applies the same `isSyncedAccount` test, so it
 never offers a holding the guard refuses; it also drops closed and
