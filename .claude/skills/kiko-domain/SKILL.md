@@ -899,11 +899,15 @@ deleted — `holdingsRepo.remove`/`accountsRepo.remove` already clear
 the marker transactionally the moment that happens) is NOT
 excluded, so it counts as ordinary spending under its own category,
 exactly like an unlinked row. The same module's
-`loanInterestEntries({ transactions, loanHoldings })` derives one
-synthetic entry per excluded row — id `loan-interest:<txId>`,
-category the seeded `loan_interest` key
+`loanInterestEntries({ transactions, loanHoldings })` derives up to
+TWO synthetic entries per excluded row, both from `loanPaymentSplitsMinor`:
+`loan-interest:<txId>` — category the seeded `loan_interest` key
 (`drizzle/migrations/0039_seed_loan_interest_category.sql`), amount
-the NEGATIVE interest portion only (never the principal) — mapping
+the NEGATIVE interest portion only (never the principal) — and
+`loan-excess:<txId>`, the within-tolerance fee (|p| − S_k when
+S_k < |p| ≤ S_k + T_k, T_k = max(1 %, 1.00 in the loan currency)),
+under the payment row's own category (null folds to the default). Each
+maps
 the payment to the installment whose due date is nearest to its own
 local day and capping at the payment's own amount; an installment paid
 in parts counts its interest once, on the earliest parts
@@ -2099,6 +2103,14 @@ decimal-string rule.
   book, instant)` — `LoanAnchor`, `{ dayKey, valueMinorUnits,
   fromCorrection }` — shared with the loan ledger below, so both anchor
   on the exact same correction.
+- `withinInstallmentTolerance(installmentPayment, paymentAbs, currency)` —
+  whether a payment is within the larger of ±1 % or ±1.00 of an
+  installment's scheduled payment; shared by the matcher and the ledger.
+- `loanPaymentSplitsMinor(meta, payments, currency, plan?)` →
+  `{ interestMinorUnits, excessMinorUnits }[]`, one per payment: the
+  interest share plus the within-tolerance fee above the scheduled
+  payment (a prepayment above the tolerance, a partial payment, and a
+  `none` loan have no excess).
 - `loanInterestPerPaymentMinor(meta, payments, plan?)` → one interest
   amount per payment, in the given order ("interest-only spending" — the
   derived-entry wiring itself is the "Spending-exclusion pipeline" section
@@ -2146,7 +2158,7 @@ together.
   edit). No counted payment: exactly `loanOutstandingMinorAt` (pinned —
   a loan with no linked payment values as it always did). Otherwise:
   the anchor minus the principal part (`|amount|` minus its
-  `loanInterestPerPaymentMinor` share) of each counted payment dated strictly
+  `loanInterestPerPaymentMinor` share minus its within-tolerance excess) of each counted payment dated strictly
   after the anchor's day, clamped at 0; 0 before the start day. The
   anchor (`ledgerAnchorAt`) is the latest correction on or before the
   instant (`loanAnchorAt`); with none, an `annuity`/`differentiated`
@@ -2168,14 +2180,15 @@ together.
   `none` loan (no schedule), or a first link on or before the start day,
   keeps the principal at the start day. A payment on or before a
   correction's day is already inside that correction. The ledger (the `LoanPlan` plus
-  every paying-down payment with its day key and interest part) is built
+  every paying-down payment with its day key, interest part and excess) is built
   once per `PriceBook` and cached in a `WeakMap` keyed by the book, then
   by loan id + currency + the schedule terms (the loan form reads one
   book with the old AND the new terms, so the terms must be in the key).
 - `loanLedgerSummary(meta, loan, book, now)` — the detail's breakdown:
   `principalMinorUnits`, `paidSoFarMinorUnits` (Σ `|amount|`),
   `interestPaidMinorUnits` (Σ `loanInterestPerPaymentMinor`; 0 for
-  `none`), `principalRepaidMinorUnits` (paid − interest), and
+  `none`), `principalRepaidMinorUnits` (Σ principal parts; fees are left out, and
+  `paidSoFarMinorUnits` stays the bank total, so the rows are not an equation), and
   `outstandingMinorUnits` (the function above at `now`).
 
 Known limit: with linked payments and no correction, the outstanding
@@ -2439,7 +2452,10 @@ sequential filter, so an ambiguity check never depends on which one runs
 first):
 
 1. **Amount**: within the LARGER of ±1% or ±1.00 (the loan's own currency)
-   of the scheduled installment's own payment.
+   of the scheduled installment's own payment (`withinInstallmentTolerance`,
+   `src/holdings/loan-schedule/`). The ledger books the part above the
+   scheduled payment as a fee, not principal; the cap is decided by amount
+   alone, for an auto or a manual link.
 2. **Date**: the transaction's local day is 3 days before to 7 days after
    the installment's own `dueDate` — both bounds inclusive.
 3. **A third signal**, at least one of: the transaction's `holdingId`

@@ -1661,6 +1661,13 @@ than restated here:
   match-by-key) and simply re-walks from the floor. Connecting a DIFFERENT
   Binance account afterward walks its own history from the floor instead
   of inheriting a stale, forward watermark.
+- **A BTC wallet re-sync fetches every OPEN holding's stored address.**
+  `bitcoinWalletProvider` (`src/crypto-sync/btc-wallet/`) syncs the Connect
+  address first, then each open holding's stored address (a closed holding's
+  address is never sent to the explorer), one request at a time, all-or-nothing:
+  the first failure throws and the orchestrator upserts nothing. A wallet
+  whose stored addresses are all closed re-syncs nothing (an empty result,
+  not an error); only a wallet that never stored an address throws.
 - **The lagging-history caption.** `isBinanceHistoryBehind` /
   `historyCursorOf` (`screens/account-detail/crypto-sync-section/binance-history-status.ts`)
   derive purely from the account's own `holdings` (already a screen prop —

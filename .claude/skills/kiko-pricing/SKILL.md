@@ -98,13 +98,16 @@ earliest-fallback shape.
 `buildNetWorthSeries` (`net-worth-series.ts`) layers a THIRD, weaker
 fallback under both of these: the bundled static `FIAT_RATE_SEED_TABLE`
 (`fiat-rate-seed.ts`, covering all 107 fiat currencies). Precedence,
-weakest first: `{ ...FIAT_RATE_SEED_TABLE, ...earliestRateTable(...),
-...rateTableAt(...) }`, so a real historical row always wins over the
-earliest-known row, which always wins over the flat seed — a fiat
-currency the backfill has never fetched history for at all (it only
-fetches the currencies actually used — see "History backfill" below)
-still prices every past bucket at the seed's flat rate instead of
-dropping the holding out entirely. Each bucket keys its rate lookup by
+weakest first: `{ ...FIAT_RATE_SEED_TABLE, ...liveRateTable,
+...earliestRateTable(...), ...rateTableAt(...) }`, then the live table on
+top for today's buckets. A real historical row wins over the
+earliest-known row, which wins over the live rate, which wins over the
+seed. A currency with NO history row at all (crypto, or a fiat NBU does not
+quote or the backfill has not reached) is valued flat at the live rate in
+every past bucket (no right-edge step), so its past buckets move with the
+live rate; the seed matters only when live lacks the currency (or no live
+table is passed). A currency missing from both drops from every bucket,
+today's included (matching the headline). Each bucket keys its rate lookup by
 the bucket's LOCAL calendar day (`dayKeyOf`, the same UTC-midnight-stand-in
 key shape as `currency_rate_history.day`), never by `toUtcMidnight` of the
 bucket instant; every bucket whose local day is today (or later) reads the
@@ -159,8 +162,8 @@ A fiat currency NBU does not quote at all (NBU covers about 40 of the
 107 supported currencies) answers with a fulfilled, EMPTY range —
 never a rejection — so it is recorded in `knownEmptyCurrenciesThisRun`
 like any other never-backfilled currency the provider answered empty
-for, and `buildNetWorthSeries`' bundled `FIAT_RATE_SEED_TABLE` (below)
-backs its value at a flat rate instead of ever dropping the holding.
+for, and `buildNetWorthSeries` backs its value flat at the live rate (the seed
+underneath when live lacks it).
 
 The Statistics screen drives an incremental, non-blocking backfill of
 `currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`):
