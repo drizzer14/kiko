@@ -136,6 +136,23 @@ describe('scripts/checks/comment-line-width.js', () => {
     );
   });
 
+  // Only a JSX expression container `{/* */}` keeps its braces in the measure. A block's own
+  // braces hold the comment loosely, so a comment that ends within the limit passes whatever
+  // follows it.
+  describe('a block that holds a comment is not a JSX expression container', () => {
+    const head = 'function f() { ';
+    const blockWithCommentEndingAt = (column: number): string =>
+      `${head}${lineOfWidth('/* ', column - head.length - 3)} */ }\n`;
+
+    it.each([
+      [LIMIT - 1, 0],
+      [LIMIT, 0],
+      [LIMIT + 1, 1],
+    ])('a comment ending at column %i: %i finding(s)', (column, count) => {
+      expect(findingLines(runChecker(blockWithCommentEndingAt(column)))).toHaveLength(count);
+    });
+  });
+
   it('keys the text on the comments only when one line holds two of them', () => {
     const note = `/* ${'word '.repeat(10)}*/`;
     const code = (name: string): string => `const first = 1; ${note} const ${name} = 2; ${note}`;
