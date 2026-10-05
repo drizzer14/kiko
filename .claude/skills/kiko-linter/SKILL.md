@@ -896,9 +896,10 @@ The one-exported-component-per-`.tsx` check is a Jest invariant plus a
 pre-write guard Node rule, not Semgrep — see "One exported component per
 `.tsx` — a Jest invariant and a guard rule" below. The import-length-sort check is a hand-rolled
 shell+JS checker/fixer at the fast tier — see "Import length-sort — a
-hand-rolled checker (and fixer)" below. The comment-history check is
-`kiko-no-history-id-comment` (Semgrep ERROR, `rules/semgrep-prewrite.yml`)
-— see "`kiko-no-history-id-comment`" below.
+hand-rolled checker (and fixer)" below. The comment checks are three Semgrep
+rules in `rules/semgrep-prewrite.yml` — `kiko-no-history-id-comment`,
+`kiko-no-history-word-comment`, `kiko-no-task-id-comment` — see each rule's
+section below; each rule's own `severity:` field is the source for its tier.
 
 ## `kiko-no-history-id-comment`
 
@@ -1307,7 +1308,11 @@ first, and a shape that hit prose was dropped or narrowed:
   finding id (`SEC-C1`, `REF-C14`, `TX-C6a`, `STAT-N4`) from `UTF-8`,
   `SHA-256`, `ISO-8601`, `AES-256`, `BCP-47`, `CLDR-14795`, `UTC-9`, `NOW-2d`,
   and `WCAG-AA`. The digit-only `SEC-12` family stays with
-  `kiko-no-history-id-comment`.
+  `kiko-no-history-id-comment`. The history rule's single-letter members
+  (`C`, `N`, `M`, `T`, `R`, `D`, and the others in its list) also match
+  after the hyphen in `SEC-C1` and inside `(M1)`, so for those letters both
+  rules fire (ERROR and WARNING); this rule's letter-prefixed shape adds
+  cover only for second letters the history rule lacks (`SEC-A1`, `TX-B6a`).
 - A parenthesized letter and one digit, `(A1)`/`(P3)`: `(S3)` and `(H1)` are
   excluded by a lookahead (a cloud name and a heading level). A single letter
   in parentheses (`(B)`, `uahPer(A)`) and a spreadsheet range (`A1:J1`) stay
