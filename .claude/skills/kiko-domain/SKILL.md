@@ -203,7 +203,11 @@ implemented, and callers must skip it rather than assume every id resolves.
   `src/design-system/components/close-holding-sheet/`, whose barrel exports
   only `useCloseHoldingAction`); it keeps its lots, prices, and ledger.
   A synced holding gets no `closeAction` (`closeActionFor` returns
-  undefined); every manual holding gets one, and there is no reopen. A
+  undefined); every manual holding gets one, and the user has no reopen.
+  A Monobank card or jar the SYNC closed (Monobank stopped returning it)
+  carries `metadata.syncClosedFromMs` and reopens when it returns, importing
+  its gap from that mark; a holding the user closed by hand never does
+  (kiko-architecture "Sync-closed holdings reopen"). A
   loan is never called a holding there: `closeHoldingCopy(type)` picks
   the `accountDetail.closeLoan*` keys (menu label, confirm title,
   message, error title) for a type whose descriptor `side` is `'debt'`
@@ -332,7 +336,9 @@ same file brings a deleted row back; with a closing balance its amount returns
 with it, and with none a row dated before the boundary returns as history
 without its amount (accepted). The delete confirm states each holding's change
 (`transactions.deleteLinked.balanceChange`, see "Deleting a movement takes its
-other parts").
+other parts"). A sync write is outside the rule: the Monobank balance is the
+bank's own figure on every sync, and a sync REOPEN of a closed card writes no
+row and moves no balance.
 
 *Open, user decision pending:* a back-dated MANUAL row dated on or before a
 closing balance's as-of moves the balance when written (Q7). Importing a statement

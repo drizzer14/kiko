@@ -1073,12 +1073,58 @@ LATE in client-info order dropped a real transaction:
   route through the shared `fromCursorSeconds` (its null-cursor fallback
   to `DEFAULT_LOOKBACK_SECONDS` is unchanged), so a full fetch still
   widens to `lastFullSyncAt` for every card exactly as before.
+- **A reopened card reaches back to its mark** (`fromSecondsForCard` takes the
+  POST-upsert holding too). When the holding carries `statementFromMs`, the
+  from-window is `min(normal, floor(statementFromMs / 1000))`, never
+  narrower than the normal one, and `isBalanceDiffSkip` returns false for it
+  (otherwise an unchanged-balance card would be skipped and the key would
+  linger). See "Sync-closed holdings reopen" below.
 
 This fix carries NO data backfill: marking the just-changed card
 synced-through-its-new-balance (a backfill) would SKIP its unimported
 transaction. The recovery re-fetch (a NULL marker fetches every card
 once) is the deliberate one-time cost that recovers stranded cards —
 read `runSyncInner` end to end rather than trusting a restated shape.
+
+### Sync-closed holdings reopen
+
+Rule: a Monobank card or jar the SYNC closed reopens when Monobank returns
+it; one the USER closed never does. Two `holdings.metadata` keys, one role
+each (no migration; `holding-metadata.ts` owns the constants and readers
+`syncClosedFromOf` / `statementFromOf`):
+
+- `syncClosedFromMs` — written by `holdingsRepo.closeManyBySync(ids, fromMs)`
+  in the SAME update as `closedAt`, only by the Monobank reconcile
+  (`reconcileClosedHoldings`, a clean FULL fetch with a non-empty snapshot).
+  `fromMs` is the `lastFullSyncAt` the closing run READ before it graduated it
+  (null falls back to one default lookback below `now`), and the mark keeps
+  the earlier of it and a pending `statementFromMs`. A row that is already
+  closed is skipped, so the first mark is kept. The user's Close sheet calls
+  `closeMany`, which writes no mark: that is the whole "user-closed stays
+  closed" rule.
+- `statementFromMs` — the from-cursor of a reopened CARD's next statement fetch.
+  `upsertByMetadataKey`'s update branch reopens a row only when `closedAt` is
+  set AND `syncClosedFromMs` is a number: it clears `closedAt`, drops the mark
+  (an upsert carries only the carried keys) and, for `type === 'card'`, writes
+  `statementFromMs = the mark`. A jar reopens with no cursor. A reopen moves no
+  balance (the upsert writes the bank's own, as on every run). Binance and
+  wallet rows never carry the mark, so they never reopen.
+  `fetchCardWithProgress` calls `holdingsRepo.clearStatementFrom` AFTER
+  `setSyncedBalance`, so a failed or interrupted fetch keeps the key (carried
+  across upserts) and the next run force-fetches again; a crash between the two
+  re-fetches the wide window, which is idempotent.
+
+Why a window is needed: while the card was absent no run fetched its
+statements, and the closing run already moved the normal cursor past the gap.
+The cost is `ceil((now - mark) / 31 d)` requests behind the 60 s gate, once per
+reopen; the progress weight follows through `estimateWindows`.
+
+Known limit (A1, device-checked, no repair built): a holding the sync closed
+BEFORE the mark existed has no mark, looks exactly like a user close, and stays
+closed. A blanket mark could reopen a holding the user closed by hand while
+disconnected. A disconnect keeps the mark and the `sync_state` cursors, so a
+sync-closed card still reopens after a reconnect; a backup round-trips both keys
+whole (`restore-sync-reopen.test.ts`).
 
 ### Robust graduation: `failedSyncMonobankIds`
 
@@ -1594,12 +1640,15 @@ than restated here:
   Binance arm always runs balance-then-history in the same invocation, so
   this bites on literally every subsequent sync). The upsert now reads the
   stored row's metadata inside the same write and carries over any
-  `walkOwnedMetadataKeys` entry (today only the history cursor):
+  `carriedMetadataKeys` entry (the walk-owned keys, today only the history
+  cursor, plus a reopened Monobank card's `statementFromMs`):
   `withWalkOwnedMetadataCarried` ALWAYS overwrites the target's own key
   with the stored value when the stored row has it, regardless of
   whether the caller's object also set that key; every other key is still
-  fully replaced exactly as before. This is a no-op for Monobank/wallet
-  holdings, which never carry a walk-owned key.
+  fully replaced exactly as before. The two lists differ on purpose:
+  `withWalkOwnedMetadataResetToFloor` (the Binance disconnect) resets
+  `walkOwnedMetadataKeys` only and never touches `statementFromMs`. A
+  wallet holding never carries either kind of key.
 - **Per-window commit order, crash-safe.** The walk goes oldest -> newest.
   A window's rows commit (`transactionsRepo.addManyDedup`) BEFORE its
   watermark advances (`setBinanceHistoryCursor`) — two SEPARATE writes, not
