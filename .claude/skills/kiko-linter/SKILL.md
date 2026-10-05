@@ -2317,6 +2317,22 @@ never hard-coded, so a new check added to one place and missed in
 another fails here. `check:closure`, `check:mutation`, and `check:deep`
 are outside `check:all` by design.
 
+## Harness-test fixtures never read as an import of src
+
+`__tests__/harness-tests-do-not-depend-on-src.test.ts` asks jest's own
+`--findRelatedTests` which `__tests__` files it relates to a source file
+and fails unless they equal its `GENUINE_SRC_TESTS` list (documented in
+`docs/harness/documented-exceptions.md`). A harness-test fixture builds a
+`@kiko/...` or src path specifier at runtime, for example
+`['@kiko', 'dates'].join('/')`, so jest's dependency extractor does not
+relate the test to src. The extractor is a regex over the raw text, so it
+reads a fixture string like a real import, and Stryker's
+`--findRelatedTests` then runs a Semgrep-spawning harness test for every
+mutated file under it, past the dry-run timeout. It reads `import`/`export`
+`from`, `require(`, dynamic `import(`, `jest.requireActual`, and
+`jest.requireMock`; `jest.mock`, `doMock`, and `unmock` literals are not
+read, so they stay as they are.
+
 ## Plist assertions
 
 `scripts/checks/plist.sh` holds Info.plist invariants as a list of

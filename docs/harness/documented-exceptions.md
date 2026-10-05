@@ -533,12 +533,31 @@ verified usage, not dead weight:
   jest-runner defaults `enableFindRelatedTests: true`, so only tests
   transitively importing a mutated source file run, and neither test imports
   app source — neither runs under Stryker, so the missing `ios/` in the
-  sandbox never breaks them.
+  sandbox never breaks them. A fixture string that jest's text scan reads as an
+  import would silently break that premise;
+  `__tests__/harness-tests-do-not-depend-on-src.test.ts` holds it (see the
+  `GENUINE_SRC_TESTS` bullet below).
   Final confirmation of any missing-file mistake comes from the FIRST real
   mutation run after integration: Stryker runs the covering test suite once
   before mutating, so a wrongly-excluded read fails FAST with a clear
   ENOENT rather than silently corrupting the score — that fail-fast is the
   accepted safety net.
+- **`GENUINE_SRC_TESTS` in `__tests__/harness-tests-do-not-depend-on-src.test.ts`**:
+  the harness tests that may be related to a source file by jest's own
+  `--findRelatedTests`; every other file under `__tests__/` must not be, so a
+  Semgrep-spawning harness test never joins a Stryker run or its dry run. The
+  test asserts the related set EQUALS this list, so a stale entry fails too.
+  Two entries, each a real import of app source:
+  `__tests__/App.test.tsx` renders the real root component (`import App from
+  '../App'`), imports `@kiko/reminders/native` and
+  `@kiko/navigation/navigation-ref`, and mocks and requires the actual
+  `@kiko/accounts/accounts.repo`; and
+  `__tests__/symbol-deployment-target.test.tsx` renders
+  `@kiko/navigation/root-navigator` and imports `@kiko/holdings/entity-symbols`,
+  `@kiko/holdings/entity-icon-pool`, `@kiko/design-system/components/icon-pools`,
+  `@kiko/design-system/edit-bar-item`, and `@kiko/navigation/dark-theme`.
+  Neither spawns Semgrep. A new entry needs the same: a real import of src
+  logic, never a fixture string (build that specifier at runtime instead).
 - **`jest.config.js` `testPathIgnorePatterns`**:
   `<rootDir>/__tests__/test-support/(?!.*\.test\.[jt]sx?$)` (beside Jest's
   own `/node_modules/` default). Jest's default `testMatch` runs every file

@@ -11,19 +11,23 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSyn
 // from what Stryker will do.
 const ROOT = join(__dirname, '..');
 const JEST_BIN = require.resolve('jest/bin/jest');
-const ALIAS_MAPPER = { '^@kiko/(.*)$': '<rootDir>/src/$1' };
+const JEST_CONFIG = require('../jest.config.js');
 
 // These two render the real app and so import src logic on purpose. Add a file here only when
-// it genuinely imports src; never for a fixture string.
+// it genuinely imports src; never for a fixture string. Each entry is listed in
+// docs/harness/documented-exceptions.md with the import that justifies it.
 const GENUINE_SRC_TESTS = ['__tests__/App.test.tsx', '__tests__/symbol-deployment-target.test.tsx'];
 
 const isSourceFile = (path: string): boolean =>
   /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path) && !/\.d\.ts$/.test(path);
 
-const listSourceFiles = (rootDirectory: string): string[] =>
-  readdirSync(join(rootDirectory, 'src'), { recursive: true, encoding: 'utf8' })
+// App.tsx sits outside src/ and Stryker mutates it like any other source file.
+const listSourceFiles = (rootDirectory: string): string[] => [
+  join(rootDirectory, 'App.tsx'),
+  ...readdirSync(join(rootDirectory, 'src'), { recursive: true, encoding: 'utf8' })
     .filter(isSourceFile)
-    .map((path) => join(rootDirectory, 'src', path));
+    .map((path) => join(rootDirectory, 'src', path)),
+];
 
 const harnessTestsRelatedTo = (
   rootDirectory: string,
@@ -55,14 +59,11 @@ const harnessTestsRelatedTo = (
 };
 
 describe('harness tests that are not related to src', () => {
-  it('no __tests__ file is related to a src file unless it genuinely imports src', () => {
-    const related = harnessTestsRelatedTo(
-      ROOT,
-      { ...require('../jest.config.js') },
-      listSourceFiles(ROOT),
-    );
+  // Equality, not a subset: a stale allowlist entry or a scan that listed nothing fails too.
+  it('only the allowlisted __tests__ files are related to a source file', () => {
+    const related = harnessTestsRelatedTo(ROOT, JEST_CONFIG, listSourceFiles(ROOT));
 
-    expect(related.filter((path) => !GENUINE_SRC_TESTS.includes(path))).toEqual([]);
+    expect([...related].sort()).toEqual([...GENUINE_SRC_TESTS].sort());
   });
 
   describe('the check itself, on a throwaway project', () => {
@@ -91,9 +92,15 @@ describe('harness tests that are not related to src', () => {
       write('src/dates/format.ts', 'export const format = 1;\n');
       write('src/dates/index.ts', "export * from './format';\n");
 
-      return harnessTestsRelatedTo(project, { moduleNameMapper: ALIAS_MAPPER }, [
-        join(project, 'src/dates/format.ts'),
-      ]);
+      // The haste-map cache lives inside the project, so rmSync removes it with the project.
+      return harnessTestsRelatedTo(
+        project,
+        {
+          moduleNameMapper: JEST_CONFIG.moduleNameMapper,
+          cacheDirectory: join(project, '.cache'),
+        },
+        [join(project, 'src/dates/format.ts')],
+      );
     };
 
     it('lists a test whose fixture string reads as an import of a src barrel', () => {
