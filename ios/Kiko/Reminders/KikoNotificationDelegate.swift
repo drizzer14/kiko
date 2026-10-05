@@ -111,8 +111,7 @@ final class KikoNotificationDelegate: NSObject, UNUserNotificationCenterDelegate
   // only a Gregorian day gives the identifier of the regular request this
   // snooze replaces.
   static func tomorrow(atTimeOf notification: UNNotification, now: Date = Date()) -> DateComponents? {
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone.current
+    let calendar = Calendar.gregorian
     let scheduledTime = (notification.request.trigger as? UNCalendarNotificationTrigger)?.dateComponents
     let deliveredTime = calendar.dateComponents([.hour, .minute], from: notification.date)
 
@@ -126,6 +125,13 @@ final class KikoNotificationDelegate: NSObject, UNUserNotificationCenterDelegate
 
     let day = calendar.dateComponents([.year, .month, .day], from: tomorrow)
 
-    return DateComponents(year: day.year, month: day.month, day: day.day, hour: hour, minute: minute)
+    return DateComponents(
+      calendar: calendar,
+      year: day.year,
+      month: day.month,
+      day: day.day,
+      hour: hour,
+      minute: minute
+    )
   }
 }

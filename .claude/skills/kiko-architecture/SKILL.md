@@ -2228,9 +2228,15 @@ what a change must keep.
   (`ios/Kiko/Reminders/KikoNotificationDelegate.swift`,
   `requestsReplacedBySnooze`) rebuilds the first two to remove the regular
   request at the snooze minute and the paused notice, and `tomorrow`
-  builds its day on `Calendar(identifier: .gregorian)` (time zone =
-  current), never `Calendar.current`, so its stamp equals `fireStamp`
-  under any device calendar. Change the format on both sides together.
+  builds its day on `Calendar.gregorian` (`KikoRemindersCenter.swift`:
+  `Calendar(identifier: .gregorian)`, time zone = autoupdatingCurrent),
+  never `Calendar.current`, so its stamp equals `fireStamp` under any
+  device calendar. Both trigger builders (`floatingDateComponents` and
+  `tomorrow`) also set `calendar: .gregorian` on their `DateComponents`
+  (no time zone, so the time stays floating): the trigger reads the
+  components in the device calendar otherwise, and a Buddhist or Japanese
+  device fires centuries off. `__tests__/reminders-gregorian-calendar.test.ts`
+  pins it. Change the format on both sides together.
   `replaceRequests` also removes every DELIVERED notification in the
   `kiko.reminder` category (a regular reminder or a snooze) whose
   reminder has no planned request and no kept snooze
