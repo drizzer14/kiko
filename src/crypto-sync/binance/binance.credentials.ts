@@ -6,8 +6,7 @@ import { bifoldr, eitherSync } from 'fnts/either';
  * Binance key pair per device under this service. The multi-account plan
  * (2026-09-11) moves the pair to a PER-ACCOUNT item (`serviceFor` below); this
  * global item is now transitional — it is what `migrate-binance-credential.ts`
- * reads and clears once the pair is bound to its connected account, and what the
- * old-app import restores into for that migration to pick up.
+ * reads and clears once the pair is bound to its connected account.
  */
 export const BINANCE_CREDENTIALS_SERVICE = 'kiko.binance.credentials';
 
@@ -39,7 +38,7 @@ const isCredentials = (value: unknown): value is BinanceCredentials =>
  * is never written to SQLite, holding metadata, or a log. Only the `service`
  * differs between the global item and each per-account item; the hardening is
  * identical, so it is derived here from ONE place and reused verbatim by every
- * writer (the per-account save, the global save, and the credential migration).
+ * writer (the per-account save and the credential migration).
  */
 export const hardenedFor = (service: string): Keychain.SetOptions => ({
   service,
@@ -76,21 +75,6 @@ export const saveCredentials = async (
     hardenedFor(serviceFor(accountId)),
   );
   hasRepairedAccessPolicy = true;
-};
-
-/**
- * Write the TRANSITIONAL GLOBAL credentials item. Used ONLY by the old-app
- * import, which restores the retired app's single pair before any account row
- * exists to key it by; the boot migration (`migrateBinanceCredentialToPerAccount`)
- * then binds it to the connected account. Ordinary in-app saves use the
- * per-account `saveCredentials`.
- */
-export const saveGlobalCredentials = async (credentials: BinanceCredentials): Promise<void> => {
-  await Keychain.setGenericPassword(
-    'binance',
-    JSON.stringify(credentials),
-    hardenedFor(BINANCE_CREDENTIALS_SERVICE),
-  );
 };
 
 /**

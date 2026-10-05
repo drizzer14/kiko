@@ -6,7 +6,6 @@ import {
   MONOBANK_TOKEN_SERVICE,
   migrateLegacyToken,
   readToken,
-  saveGlobalToken,
   saveToken,
   serviceFor,
 } from './token';
@@ -123,19 +122,6 @@ describe('per-account token hardening', () => {
   });
 });
 
-describe('saveGlobalToken', () => {
-  it('writes the transitional GLOBAL item with the hardened options (for the old-app import)', async () => {
-    await saveGlobalToken('imported-token');
-
-    expect(Keychain.setGenericPassword).toHaveBeenCalledWith('monobank', 'imported-token', {
-      service: MONOBANK_TOKEN_SERVICE,
-      accessible: 'AccessibleWhenUnlockedThisDeviceOnly',
-    });
-    const [, , options] = (Keychain.setGenericPassword as jest.Mock).mock.calls.at(-1) ?? [];
-    expect(options).not.toHaveProperty('accessControl');
-  });
-});
-
 describe('migrateLegacyToken', () => {
   it('copies a legacy token to the global service and clears the legacy service', async () => {
     await Keychain.setGenericPassword('monobank', 'legacy-token', { service: LEGACY_SERVICE });
@@ -149,7 +135,9 @@ describe('migrateLegacyToken', () => {
   });
 
   it('does nothing and preserves the legacy value when the global service already has a token', async () => {
-    await saveGlobalToken('global-token');
+    await Keychain.setGenericPassword('monobank', 'global-token', {
+      service: MONOBANK_TOKEN_SERVICE,
+    });
     await Keychain.setGenericPassword('monobank', 'stale-legacy', { service: LEGACY_SERVICE });
 
     await migrateLegacyToken();

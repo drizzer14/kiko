@@ -3,7 +3,6 @@ import {
   clearCredentials,
   readCredentials,
   saveCredentials,
-  saveGlobalCredentials,
   serviceFor,
 } from './binance.credentials';
 
@@ -155,19 +154,6 @@ describe('per-account binance credentials', () => {
     await clearCredentials(ACCOUNT_A);
 
     expect(await readCredentials(ACCOUNT_A)).toBeUndefined();
-  });
-});
-
-describe('saveGlobalCredentials', () => {
-  it('writes the transitional GLOBAL item with the hardened options (for the old-app import)', async () => {
-    await saveGlobalCredentials(fixture);
-
-    expect(mockSet).toHaveBeenCalledWith('binance', JSON.stringify(fixture), {
-      service: BINANCE_CREDENTIALS_SERVICE,
-      accessible: 'AccessibleWhenUnlockedThisDeviceOnly',
-    });
-    const [, , options] = mockSet.mock.calls.at(-1) ?? [];
-    expect(options).not.toHaveProperty('accessControl');
   });
 });
 

@@ -5,8 +5,7 @@ import * as Keychain from 'react-native-keychain';
  * Monobank token per device under this service. The multi-account plan
  * (2026-09-11) moves the secret to a PER-ACCOUNT item (`serviceFor` below);
  * this global item is now transitional — it is what `migrate-credential.ts`
- * reads and clears once the token is bound to its connected account, and what
- * the old-app import restores into for that migration to pick up.
+ * reads and clears once the token is bound to its connected account.
  */
 export const MONOBANK_TOKEN_SERVICE = 'kiko.monobank.token';
 
@@ -33,8 +32,8 @@ const LEGACY_SERVICE = 'pff.monobank.token';
  * (`useAutoSync` -> `readToken`). The app-wide biometric gate is `LockGate`
  * (`src/auth`), not the Keychain item. Only the `service` differs between the
  * global item and each per-account item; the hardening is identical, so it is
- * derived here from ONE place and reused verbatim by every writer (the global
- * functions, the legacy migration, and the per-account credential migration).
+ * derived here from ONE place and reused verbatim by every writer (the
+ * per-account save, the legacy migration, and the per-account credential migration).
  */
 export const hardenedFor = (service: string): Keychain.SetOptions => ({
   service,
@@ -66,16 +65,6 @@ export const readToken = async (accountId: string): Promise<string | undefined> 
 
 export const clearToken = async (accountId: string): Promise<void> => {
   await Keychain.resetGenericPassword({ service: serviceFor(accountId) });
-};
-
-/**
- * Write the TRANSITIONAL GLOBAL token item. Used ONLY by the old-app import,
- * which restores the retired app's single token before any account row exists to
- * key it by; the boot migration (`migrateSingleTokenToPerAccount`) then binds it
- * to the connected account. Ordinary in-app saves use the per-account `saveToken`.
- */
-export const saveGlobalToken = async (token: string): Promise<void> => {
-  await Keychain.setGenericPassword('monobank', token, HARDENED);
 };
 
 /**
