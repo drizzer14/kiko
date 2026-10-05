@@ -56,6 +56,10 @@ const databaseBefore0050 = (): DatabaseSync => {
   const target = new DatabaseSync(':memory:');
 
   applyMigrationsThrough(target, '0049_bank_accounts_other_bank');
+  // The snapshot reader selects every column the schema has today, so this
+  // database carries the one added since (null on every row, as no row here is
+  // an exchange leg).
+  target.exec('ALTER TABLE transactions ADD exchange_pair_id text;');
   target.exec('PRAGMA foreign_keys = ON;');
 
   return target;

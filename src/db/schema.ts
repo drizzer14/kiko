@@ -154,8 +154,9 @@ export const transactions = sqliteTable(
     // lets the display layer resolve the CURRENT name at render time through
     // `t`, so no English sentence is ever persisted and a rename follows.
     // DOCUMENTED RESIDUAL: a Convert marks its EXISTING row only when that row
-    // is manual — a bank-owned (monobank) row is never mutated by this app, so
-    // a synced debit converted into another currency still counts as spending.
+    // is manual or imported (`isDeletableTransaction`) — a bank-owned (monobank)
+    // row is never mutated by this app beyond `exchangePairId`, so a synced
+    // debit converted into another currency still counts as spending.
     exchangeCounterpartHoldingId: text('exchange_counterpart_holding_id'),
     // Split-change grouping: a shared id across ONE manual payment row and the
     // N return rows that distribute its change into OTHER holdings, all written
@@ -167,6 +168,19 @@ export const transactions = sqliteTable(
     // not a reserved `category` value, for the same reason the exchange marker
     // is: the category picker rewrites `category` and would destroy it.
     changeGroupId: text('change_group_id'),
+    // The id the legs of ONE Exchange or Convert share, so deleting a leg finds
+    // the others (`transactionsRepo.remove`). The role is stored, never derived
+    // from the shape of a row: `recordExchange` writes it on both legs (on the
+    // source leg alone when the destination is a term deposit, whose
+    // contribution is metadata, not a row), and `recordExchangeCounterpart`
+    // writes it on the new leg and on the EXISTING row, reusing the id that row
+    // already carries so a repeated Convert joins the same group. A synced
+    // (bank-owned) existing row gets this id and nothing else, so the delete
+    // knows its partner is the bank's and keeps it; `addManyDedup`'s upsert
+    // never touches the column, like `loanHoldingId` and `category`. Null on a
+    // row that is no leg, and on a legacy leg migration 0052 could not prove a
+    // partner for.
+    exchangePairId: text('exchange_pair_id'),
     // The loan holding this payment counts against — null for an ordinary
     // transaction. A loan holding writes no ledger rows of its own
     // (`isLedgerlessHoldingType`), so every payment lives on the LINKED
@@ -237,6 +251,8 @@ export const transactions = sqliteTable(
     // Every `where(eq(transactions.holdingId, …))` (holding detail, per-card
     // sync cursor) hit a full table scan without this.
     holdingIdIndex: index('transactions_holding_id').on(table.holdingId),
+    // The cascade delete looks the other legs up by this id.
+    exchangePairIdIndex: index('transactions_exchange_pair_id').on(table.exchangePairId),
     // Every `orderBy(desc(transactions.time))` (the ledger lists) did a full
     // sort without this.
     timeIndex: index('transactions_time').on(table.time),

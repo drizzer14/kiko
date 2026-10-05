@@ -161,7 +161,7 @@ const readPreMarkerSnapshot = async (source: DatabaseSync): Promise<DataSnapshot
     .from(holdings)
     .orderBy(asc(holdings.id));
   const preMarkerTransactions = await sourceDrizzle
-    .select(columnsWithout(getTableColumns(transactions), 'setsBalance'))
+    .select(columnsWithout(getTableColumns(transactions), 'setsBalance', 'exchangePairId'))
     .from(transactions)
     .orderBy(asc(transactions.id));
 

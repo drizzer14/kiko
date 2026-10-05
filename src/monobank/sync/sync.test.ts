@@ -307,6 +307,8 @@ const makeInMemoryDeps = (
         // A synced row is never part of a split-change group — that marker is
         // written only by the manual `recordManualWithReturns` path.
         changeGroupId: null,
+        // No Exchange or Convert has paired a freshly synced row yet.
+        exchangePairId: null,
         // A synced row has no loan-payment link yet — the matcher and
         // `transactionsRepo.setLoanPayment` are the only writers of these.
         loanHoldingId: null,

@@ -108,7 +108,12 @@ describe('the export version against the migration journal', () => {
     // bank it lists or none (neither changes what a file carries), and this
     // build's restore applies the same rule to an older file, so it needed no
     // bump either.
-    migrationCount: 52,
+    // Through 0052_add_exchange_pair_id, a column riding inside an existing row,
+    // derived on restore: an older build restoring a file that carries it drops
+    // the key, and its own database derives the pairs when it later upgrades to
+    // 0052. This build's restore applies the 0052 rule to an older file, so it
+    // needed no bump.
+    migrationCount: 53,
   };
 
   it('has a version decision for every migration', () => {
