@@ -221,6 +221,74 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.map((point) => point.amount)).toEqual([100, 200]);
   });
 
+  describe('a bucket reads the stored row of its LOCAL calendar day', () => {
+    // USD 100 held against a UAH base, so the amount is the day's USD:UAH rate
+    // x 100. History `day` is the UTC-midnight stand-in for a calendar date
+    // (an NBU `exchangedate`), the same key shape `dayKeyOf` returns.
+    const usdHundred = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })];
+    const septemberDay = (day: number): number => Date.UTC(2026, 8, day);
+    const usdRow = (day: number, rate: string): HistoryRow => ({
+      base: 'USD',
+      quote: 'UAH',
+      day: septemberDay(day),
+      rate,
+    });
+    const historyRows = [usdRow(1, '30'), usdRow(2, '31'), usdRow(3, '32')];
+
+    it('reads day D’s row for the bucket at local midnight D, never D-1’s', () => {
+      // Kyiv local midnight of Sep 2 is Sep 1 21:00Z; a UTC-day key would floor
+      // it to Sep 1 and read the previous day's rate.
+      const series = buildNetWorthSeries({
+        holdings: usdHundred,
+        transactionsByHolding: new Map(),
+        historyRows,
+        baseCurrency: 'UAH',
+        range: { from: new Date(2026, 8, 1).getTime(), to: new Date(2026, 8, 3).getTime() },
+      });
+
+      expect(series.points.map((point) => point.amount)).toEqual([3000, 3100, 3200]);
+    });
+
+    it('keeps an afternoon bucket on its own day’s row', () => {
+      const series = buildNetWorthSeries({
+        holdings: usdHundred,
+        transactionsByHolding: new Map(),
+        historyRows,
+        baseCurrency: 'UAH',
+        range: {
+          from: new Date(2026, 8, 1, 15).getTime(),
+          to: new Date(2026, 8, 3, 15).getTime(),
+        },
+      });
+
+      expect(series.points.map((point) => point.amount)).toEqual([3000, 3100, 3200]);
+    });
+
+    it.each([
+      ['00:30', new Date(2026, 8, 3, 0, 30).getTime()],
+      ['09:00', new Date(2026, 8, 3, 9).getTime()],
+    ])(
+      'at %s local, today’s midnight bucket takes the live rate like any current-day bucket',
+      (_label, now) => {
+        // End-of-local-day rule: every bucket whose local day is today is a
+        // current-day bucket, so it reads the live table at any time of day —
+        // not only after 03:00 Kyiv, when its UTC day first differs from today's.
+        const series = buildNetWorthSeries({
+          holdings: usdHundred,
+          transactionsByHolding: new Map(),
+          historyRows,
+          baseCurrency: 'UAH',
+          range: { from: new Date(2026, 8, 2).getTime(), to: now },
+          liveRateTable: { USD: 99 },
+          today: now,
+        });
+
+        // Sep 2 midnight: its own stored row (31); Sep 3 midnight and now: live (99).
+        expect(series.points.map((point) => point.amount)).toEqual([3100, 9900, 9900]);
+      },
+    );
+  });
+
   it('stays flat across a same-day card->bond move (the bond turns on for the whole day)', () => {
     // A card->bond move is asset-neutral: the card debit and the bond purchase
     // are two facts co-dated on the same day D. The bond value must turn on for
