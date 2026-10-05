@@ -91,10 +91,15 @@ and immediately if a sync starts failing with a TLS error.
 6. Adding a new host that sends a credential (a header, or the `api_token`
    query parameter) means adding it here AND to
    `NSPinnedDomains`. `npm run check:plist` fails the build if you forget.
-   A client that sends the key as the `api_token` query parameter must also
-   send the `Cache-Control: no-store` request header, so NSURLCache never
-   writes the key-bearing URL to `Cache.db`; `npm run check:plist` fails
-   without it.
+   A client that sends the credential as the `api_token` query parameter or
+   in a header (`X-Token`, `X-MBX-APIKEY`) must also send the
+   `Cache-Control: no-store` request header, so NSURLCache never writes the
+   key-bearing URL or request to `Cache.db`; `npm run check:plist` fails
+   without it. Every Monobank request (the public `/bank/currency` one
+   included) and every Binance request sends it. Builds up to 26 stored the
+   Monobank `X-Token` in `Cache.db` before it did, so
+   `AppDelegate.purgeStoredURLCacheOnce` clears the shared URL cache once
+   per install, at launch (a `UserDefaults` once-key).
 
 ## Fixed since the 2026-09-06 audit
 

@@ -71,7 +71,11 @@ const toRateEntry = (entry: MonobankCurrencyRate): RateEntry[] => {
  * map into our fiat set (derived from currency.ts's `fiatCurrencyOptions`).
  */
 export const fetchFiatRates = async (fetchImpl: typeof fetch = fetch): Promise<RateEntry[]> => {
-  const response = await fetchImpl(CURRENCY_ENDPOINT);
+  // Tokenless, but every request to this host is uncacheable so no Monobank
+  // response is written to NSURLCache's Cache.db.
+  const response = await fetchImpl(CURRENCY_ENDPOINT, {
+    headers: { 'Cache-Control': 'no-store' },
+  });
 
   if (!response.ok) {
     throw new Error(`Monobank currency request failed: ${response.status}`);

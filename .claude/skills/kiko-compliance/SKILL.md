@@ -124,11 +124,14 @@ SQLCipher database key in `src/db/keys/db-key.ts`, the Binance credentials in
 service name and `accessible` policy, `WHEN_UNLOCKED_THIS_DEVICE_ONLY` at
 the time of writing).
 
-A key that travels in a request URL (an `api_token` query parameter; no
-client sends one today) is a disk leak path through NSURLCache (`Cache.db`
-stores the response under its URL). Always send the request header
-`Cache-Control: no-store` on every such request; `npm run check:plist`
-fails a client without it. Verified on macOS CFNetwork: a per-request
+A credential that travels in a request URL (an `api_token` query parameter;
+no client sends one today) or a request header (`X-Token`, `X-MBX-APIKEY`)
+is a disk leak path through NSURLCache (`Cache.db` stores the response under
+its URL, together with the request object and its headers). Always send the
+request header `Cache-Control: no-store` on every such request (every
+Monobank and Binance request does); `npm run check:plist` fails a
+credential client without it. `AppDelegate.purgeStoredURLCacheOnce` cleared
+the rows builds before that stored. Verified on macOS CFNetwork: a per-request
 `cachePolicy` does NOT prevent the store, and React Native fetch's
 `cache: 'no-store'` only appends a `_=` cache-buster (a new cached URL per
 call). Never log the request URL, and give every error a fixed message (a

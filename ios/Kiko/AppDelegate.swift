@@ -27,6 +27,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     self.launchOptions = launchOptions
 
     excludeDatabaseFilesFromBackup()
+    purgeStoredURLCacheOnce()
 
     // Before launch finishes, or a tap that cold-launches the app and a
     // background notification action are lost.
@@ -58,6 +59,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         try? url.setResourceValues(values)
       }
     }
+  }
+
+  // MARK: - Privacy: purge the URL cache once
+
+  private static let urlCachePurgedKey = "kiko.urlCachePurged"
+
+  /// Builds before the `Cache-Control: no-store` request header shipped let
+  /// NSURLCache write every Monobank request, X-Token header included, to
+  /// Library/Caches/<bundle>/Cache.db; `no-store` stops new rows but never
+  /// removes the stored ones. This drops them once per install. The once-key
+  /// lives in UserDefaults, not the database: the cache is device-local, so a
+  /// restored backup must not skip the purge on a device that still holds old
+  /// rows. The key is written only AFTER the purge returned, so a launch killed
+  /// mid-purge runs it again on the next one. It runs here, before JS starts,
+  /// so no request races it.
+  func purgeStoredURLCacheOnce() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: Self.urlCachePurgedKey) else { return }
+    URLCache.shared.removeAllCachedResponses()
+    defaults.set(true, forKey: Self.urlCachePurgedKey)
   }
 }
 

@@ -112,7 +112,9 @@ const requestOnce = async (
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetchImpl(`${base}${path}`, {
-      headers: { 'X-Token': token },
+      // NSURLCache would otherwise store this request object, X-Token
+      // included, in Library/Caches/<bundle>/Cache.db.
+      headers: { 'X-Token': token, 'Cache-Control': 'no-store' },
       signal: controller.signal,
     });
   } catch (error) {

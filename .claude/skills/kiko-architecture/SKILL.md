@@ -2378,6 +2378,14 @@ logic use the `UIWindowSceneDelegate` equivalents (`sceneWillResignActive`,
 `ios27-crash-uiscene-lifecycle-gap` and `scene-lifecycle-appdelegate-window-crash`
 in memory for the crash history this fixed.
 
+- **The stored URL cache is purged once, in `AppDelegate`.**
+  `purgeStoredURLCacheOnce()` (called from
+  `application(_:didFinishLaunchingWithOptions:)`) calls
+  `URLCache.shared.removeAllCachedResponses()` behind a `UserDefaults`
+  once-key that it writes only AFTER the purge, so an interrupted launch
+  retries. The key is device-local on purpose (not a `settings` column:
+  a restored backup must not skip the purge). Pinned by code shape in
+  `__tests__/url-cache-purge.test.ts`.
 - **The notification delegate is set in `AppDelegate`.**
   `UNUserNotificationCenter.current().delegate = KikoNotificationDelegate.shared`
   must stay in `application(_:didFinishLaunchingWithOptions:)`, before
