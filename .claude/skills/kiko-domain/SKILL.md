@@ -334,6 +334,13 @@ without its amount (accepted). The delete confirm states each holding's change
 (`transactions.deleteLinked.balanceChange`, see "Deleting a movement takes its
 other parts").
 
+*Open, user decision pending:* a back-dated MANUAL row dated before a closing
+balance's as-of moves the balance when written (Q7). Re-importing a statement
+with that closing re-applies the closing outright (`asOf >= boundary`), which
+counts only rows dated after its as-of, so the row's amount drops out of the
+balance while the row stays; a later delete of that row subtracts it again. No
+behaviour is changed for this until the user rules (`importRows` doc comment).
+
 **A manual write refuses a ledgerless holding.** `recordManualTransaction`
 (`transactions.repo.ts`) reads the holding first and, before any write,
 throws an Error with the message transactions/ledgerless-holding when its
@@ -980,14 +987,16 @@ Rules:
   plan names: the exchange parts that go (`names`), a bank-owned part of the same
   pair that stays (`keptNames`, `exchangeAlsoKept`) or a pair whose every other
   part is the bank's (`syncedKept`), the split, the deposit contribution, and
-  and each holding's balance change (`balanceChanges`, one
+  each holding's balance change (`balanceChanges`, one
   `transactions.deleteLinked.balanceChange` line per holding, signed in the
   holding's currency by `formatMoney`; no line for a holding whose parts net to
-  nothing or for a bank-owned part that stays). A row with no pair id of its own
-  reaches a pair only through its split: `viaSplitPairOf` (`transactions.repo.ts`)
+  nothing or for a bank-owned part that stays). A pair the row is no member of
+  (the row has no pair id, or its own is a different one) is reached only
+  through its split: `viaSplitPairOf` (`transactions.repo.ts`)
   names it as `splitExchanges`, with the ruled `splitExchange*` sentences (one per
   holding, a leg the bank owns or none can be found for included), never as "the
-  other part of this exchange"; with a split, the exchange sentences that say
+  other part of this exchange"; a "could not be found" holding the row's own
+  `exchange` sentence already names is not named again there; with a split, the exchange sentences that say
   "only this part is deleted" take the same split wording. A holding or account
   delete lists the OTHER holdings' changes only (`RemoveHoldingsPlan.balanceChanges`).
 - **A confirm opened twice shows the latest plan.** The `CardContextMenu`
