@@ -160,8 +160,7 @@ describe('TransactionRow', () => {
       source: 'import',
       time: IMPORT_TIME,
     };
-    const KEEPS_BALANCE_MESSAGE =
-      "The balance will stay at the bank's figure. Edit the holding to change it.";
+    const KEEPS_BALANCE_MESSAGE = 'The balance will stay as it is. Edit the holding to change it.';
 
     const holdRow = async (
       item: HomeTransactionRow,
@@ -227,7 +226,7 @@ describe('TransactionRow', () => {
   });
 
   describe('a row that is one part of a movement', () => {
-    const SPLIT_NOTICE = 'This also deletes the payment and every change return linked to it.';
+    const SPLIT_NOTICE = 'This also deletes every other part of this split payment.';
 
     it("reads its own row's plan and shows what else the delete takes under the confirm title", async () => {
       jest.mocked(transactionsRepo.removePlan).mockResolvedValue({
@@ -275,9 +274,7 @@ describe('TransactionRow', () => {
       await holdCard();
 
       expect(
-        getByText(
-          `The balance will stay at the bank's figure. Edit the holding to change it. ${SPLIT_NOTICE}`,
-        ),
+        getByText(`The balance will stay as it is. Edit the holding to change it. ${SPLIT_NOTICE}`),
       ).toBeTruthy();
     });
 

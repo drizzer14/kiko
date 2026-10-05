@@ -51,6 +51,9 @@ export const en = {
     changeIcon: 'Change icon',
     changeIconLabel: 'Change {{label}}',
     iconLabel: 'Icon {{name}}',
+    // One name of a comma-joined list, in the language's own quotes (Hermes has
+    // no `Intl.ListFormat`, so the caller joins the names).
+    listedName: '{{name}}',
     noDataForRange: 'No data for this range',
     // A segment's position within its SegmentedControl group, e.g.
     // "1 of 2" — folded into each segment's accessibilityHint, since
@@ -924,8 +927,7 @@ export const en = {
     defaultDescriptionIncomePlain: 'Income',
     // The delete confirm's body for an imported row dated at or before the
     // holding's balance boundary: deleting it moves no balance.
-    deleteImportedKeepsBalance:
-      "The balance will stay at the bank's figure. Edit the holding to change it.",
+    deleteImportedKeepsBalance: 'The balance will stay as it is. Edit the holding to change it.',
     // The delete confirm's body for a transaction that is one part of a
     // movement. No plurals: the holding names are the only variable, joined by
     // the caller (Hermes has no `Intl.ListFormat`).
@@ -940,7 +942,12 @@ export const en = {
       deposit: 'This also removes its contribution to {{name}}.',
       depositKept:
         'Its contribution to {{name}} could not be matched and stays. Edit {{name}} to remove it.',
-      split: 'This also deletes the payment and every change return linked to it.',
+      split: 'This also deletes every other part of this split payment.',
+      // A bank-owned part of the exchange: the user's other parts go, this one
+      // never does.
+      exchangeAlsoKept: "{{name}} stays: it is the bank's record and cannot be deleted.",
+      // The holdings whose balance a deleted imported part leaves as it is.
+      balanceStays: 'The balance of {{names}} will stay as it is.',
     },
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',

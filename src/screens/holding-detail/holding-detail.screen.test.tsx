@@ -1446,7 +1446,7 @@ describe('HoldingDetailScreen', () => {
 
     expect(
       getByText(
-        "The balance will stay at the bank's figure. Edit the holding to change it. This also deletes the payment and every change return linked to it.",
+        'The balance will stay as it is. Edit the holding to change it. This also deletes every other part of this split payment.',
       ),
     ).toBeTruthy();
   });
@@ -1498,8 +1498,7 @@ describe('HoldingDetailScreen', () => {
   });
 
   describe('an imported transaction row', () => {
-    const KEEPS_BALANCE_MESSAGE =
-      "The balance will stay at the bank's figure. Edit the holding to change it.";
+    const KEEPS_BALANCE_MESSAGE = 'The balance will stay as it is. Edit the holding to change it.';
     const IMPORT_TIME = 5_000;
     const importedRow = {
       id: 'txn-import',

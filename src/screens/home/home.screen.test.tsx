@@ -1836,7 +1836,7 @@ describe('HomeScreen', () => {
 
       await holdCard();
 
-      expect(getByText(/The balance will stay at the bank's figure/)).toBeTruthy();
+      expect(getByText(/The balance will stay as it is/)).toBeTruthy();
     });
 
     it("says nothing of the balance for a row dated after its holding's boundary", async () => {

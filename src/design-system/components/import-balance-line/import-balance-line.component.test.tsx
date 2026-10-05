@@ -95,4 +95,36 @@ describe('ImportBalanceLine', () => {
 
     expect(getByTestId('balance-line')).toHaveTextContent(/^Баланс зміниться з .+ на .+$/);
   });
+
+  it('reads the later entries in Ukrainian', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByTestId } = await renderLine({
+      kind: 'set',
+      currency: 'UAH',
+      minorUnits: 85_000,
+      bankMinorUnits: 90_000,
+      asOfSeconds: AS_OF_SECONDS,
+    });
+
+    expect(getByTestId('balance-line')).toHaveTextContent(
+      /^Баланс буде встановлено: .+ \(баланс у банку .+ на .+, плюс ваші пізніші записи\)$/,
+    );
+  });
+
+  it('reads the unchanged balance in Ukrainian', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByTestId } = await renderLine({
+      kind: 'stays',
+      currency: 'UAH',
+      minorUnits: 100_000,
+    });
+
+    expect(getByTestId('balance-line')).toHaveTextContent(/^Баланс не зміниться: .+$/);
+  });
 });

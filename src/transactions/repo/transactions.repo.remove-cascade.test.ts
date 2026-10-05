@@ -601,6 +601,51 @@ describe('deleting a leg of a Convert', () => {
     expect(balancesOf()).toMatchObject({ cash: 0, usd: 0 });
   });
 
+  describe('when the imported leg it marked is history before its holding’s balance boundary', () => {
+    const convertImportedRow = async (): Promise<void> => {
+      insertRow({ id: 'imported', holdingId: 'cash', amountMinorUnits: -40_000, source: 'import' });
+      setBalance('cash', -40_000);
+      run('UPDATE holdings SET balance_set_at = ? WHERE id = ?', MOVED + 1_000, 'cash');
+      await transactionsRepo.recordExchangeCounterpart({
+        direction: 'record-destination',
+        counterpartHoldingId: 'usd',
+        counterpartType: 'card',
+        amountMinorUnits: 1_000,
+        existingTransactionId: 'imported',
+        existingHoldingId: 'cash',
+        time: MOVED,
+      });
+    };
+
+    it('names the holding whose balance the delete leaves as it is', async () => {
+      await convertImportedRow();
+
+      expect(await transactionsRepo.removePlan(idOfRowOn('usd'))).toEqual({
+        split: false,
+        exchange: { kind: 'deleted', names: ['Cash'] },
+        keptBalanceNames: ['Cash'],
+      });
+    });
+
+    it('deletes the imported leg without moving the balance', async () => {
+      await convertImportedRow();
+      await transactionsRepo.remove(idOfRowOn('usd'));
+
+      expect(rowIds()).toEqual([]);
+      expect(balancesOf()).toMatchObject({ cash: -40_000, usd: 0 });
+    });
+
+    it('names no balance when the imported leg is after the boundary', async () => {
+      await convertImportedRow();
+      run('UPDATE holdings SET balance_set_at = ? WHERE id = ?', MOVED - 1_000, 'cash');
+
+      expect(await transactionsRepo.removePlan(idOfRowOn('usd'))).toEqual({
+        split: false,
+        exchange: { kind: 'deleted', names: ['Cash'] },
+      });
+    });
+  });
+
   it('refuses to delete the bank row itself and changes nothing', async () => {
     insertRow({ id: 'original', holdingId: 'bank', amountMinorUnits: -40_000, source: 'monobank' });
     await transactionsRepo.recordExchangeCounterpart({
@@ -728,8 +773,6 @@ describe('deleting a row of a split payment', () => {
 // leaves the converted payment's other leg (or the returns) behind, and a part
 // of a movement left behind is money created or lost.
 describe('deleting a part of a split payment that was converted', () => {
-  const NAMES_IN_PLAN = ['Hryvnia card', 'Dollar card'];
-
   const splitThenConvertPayment = async (): Promise<void> => {
     await transactionsRepo.recordManualWithReturns({
       payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
@@ -761,12 +804,18 @@ describe('deleting a part of a split payment that was converted', () => {
     },
   );
 
-  it('names the split and both exchange legs in the plan of a return', async () => {
+  it('names only the split in the plan of a return, which is no member of the exchange', async () => {
     await splitThenConvertPayment();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('cash'))).toEqual({
+    expect(await transactionsRepo.removePlan(idOfRowOn('cash'))).toEqual({ split: true });
+  });
+
+  it('names the split and both exchange legs in the plan of the payment', async () => {
+    await splitThenConvertPayment();
+
+    expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
       split: true,
-      exchange: { kind: 'deleted', names: expect.arrayContaining(NAMES_IN_PLAN) },
+      exchange: { kind: 'deleted', names: ['Dollar card'] },
     });
   });
 

@@ -27,15 +27,26 @@ export type RemovePlan = {
   split: boolean;
   exchange?: ExchangeRemoval;
   deposit?: DepositRemoval;
+  // Holdings whose balance stays as it is although an imported part on them is
+  // deleted: that part is history at or before the holding's boundary.
+  keptBalanceNames?: string[];
 };
+
+// The names of a list, each in the language's own quotes and joined with a
+// comma: never `Intl.ListFormat`, which Hermes may lack.
+const listedNames = (names: string[], t: TFunction): string =>
+  names.map((name) => t('common.listedName', { name })).join(', ');
 
 const exchangeSentence = (exchange: ExchangeRemoval, t: TFunction): string =>
   match(exchange)
-    .with({ kind: 'deleted' }, ({ names }) =>
-      t('transactions.deleteLinked.exchange', { name: names.join(', ') }),
+    .with({ kind: 'deleted' }, ({ names, keptNames = [] }) =>
+      [
+        t('transactions.deleteLinked.exchange', { name: listedNames(names, t) }),
+        ...keptNames.map((name) => t('transactions.deleteLinked.exchangeAlsoKept', { name })),
+      ].join(' '),
     )
     .with({ kind: 'syncedKept' }, ({ names }) =>
-      t('transactions.deleteLinked.exchangeSyncedKept', { name: names.join(', ') }),
+      t('transactions.deleteLinked.exchangeSyncedKept', { name: listedNames(names, t) }),
     )
     .with({ kind: 'missing' }, ({ name }) =>
       name === undefined
@@ -81,10 +92,11 @@ type NamesKey =
   | 'holdings.deleteLinked.contributions'
   | 'holdings.deleteLinked.contributionsKept'
   | 'holdings.deleteLinked.syncedKept'
-  | 'holdings.deleteLinked.unlinked';
+  | 'holdings.deleteLinked.unlinked'
+  | 'transactions.deleteLinked.balanceStays';
 
 const namesSentence = (key: NamesKey, names: string[], t: TFunction): string | undefined =>
-  names.length === 0 ? undefined : t(key, { names: names.join(', ') });
+  names.length === 0 ? undefined : t(key, { names: listedNames(names, t) });
 
 const unlinkedSentence = (
   { unlinked, unlinkedPlain }: RemoveHoldingsPlan,
@@ -111,7 +123,7 @@ export const removeHoldingsNotice = (plan: RemoveHoldingsPlan, t: TFunction): st
       ? undefined
       : t('holdings.deleteLinked.rows', {
           count: plan.deletedRows.count,
-          names: plan.deletedRows.names.join(', '),
+          names: listedNames(plan.deletedRows.names, t),
         }),
     namesSentence('holdings.deleteLinked.contributions', plan.reversedContributions, t),
     namesSentence('holdings.deleteLinked.contributionsKept', plan.keptContributions, t),
@@ -140,4 +152,5 @@ export const removeNotice = (plan: RemovePlan, t: TFunction): string | undefined
     foldMap(maybe(plan.exchange), (exchange) => exchangeSentence(exchange, t)),
     plan.split ? t('transactions.deleteLinked.split') : undefined,
     foldMap(maybe(plan.deposit), (deposit) => depositSentence(deposit, t)),
+    namesSentence('transactions.deleteLinked.balanceStays', plan.keptBalanceNames ?? [], t),
   );

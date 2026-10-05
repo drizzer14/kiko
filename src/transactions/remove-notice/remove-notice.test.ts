@@ -61,10 +61,54 @@ describe('removeNotice', () => {
     );
   });
 
-  it('says a split deletes the payment and every return', () => {
+  it('says a split deletes every other part of it', () => {
     expect(removeNotice({ split: true }, i18n.t)).toBe(
-      'This also deletes the payment and every change return linked to it.',
+      'This also deletes every other part of this split payment.',
     );
+  });
+
+  it('says each bank-owned part of the exchange stays, one sentence per holding', () => {
+    expect(
+      removeNotice(
+        {
+          split: false,
+          exchange: {
+            kind: 'deleted',
+            names: ['Dollar card'],
+            keptNames: ['Monobank card', 'Cash'],
+          },
+        },
+        i18n.t,
+      ),
+    ).toBe(
+      [
+        'This also deletes the other part of this exchange, in Dollar card.',
+        "Monobank card stays: it is the bank's record and cannot be deleted.",
+        "Cash stays: it is the bank's record and cannot be deleted.",
+      ].join(' '),
+    );
+  });
+
+  it('says the balance of a holding stays when the imported part on it is deleted', () => {
+    expect(
+      removeNotice(
+        {
+          split: false,
+          exchange: { kind: 'deleted', names: ['Cash'] },
+          keptBalanceNames: ['Cash', 'Second card'],
+        },
+        i18n.t,
+      ),
+    ).toBe(
+      [
+        'This also deletes the other part of this exchange, in Cash.',
+        'The balance of Cash, Second card will stay as it is.',
+      ].join(' '),
+    );
+  });
+
+  it('says nothing about a balance when no imported part keeps one', () => {
+    expect(removeNotice({ split: false, keptBalanceNames: [] }, i18n.t)).toBeUndefined();
   });
 
   it('says a matched deposit contribution is removed, and an unmatched one stays', () => {
@@ -104,7 +148,59 @@ describe('removeNotice', () => {
     );
     expect(
       removeNotice({ split: false, deposit: { name: 'Депозит', matched: true } }, i18n.t),
-    ).toBe('Також буде видалено його внесок у «Депозит».');
+    ).toBe('Також буде видалено її внесок у «Депозит».');
+    expect(
+      removeNotice({ split: false, deposit: { name: 'Депозит', matched: false } }, i18n.t),
+    ).toBe(
+      'Її внесок у «Депозит» не вдалося знайти, тож він залишиться. Щоб його прибрати, відредагуйте «Депозит».',
+    );
+  });
+
+  it('quotes each holding name of a list on its own in Ukrainian', async () => {
+    await i18n.changeLanguage('uk');
+
+    expect(
+      removeNotice(
+        {
+          split: false,
+          exchange: { kind: 'deleted', names: ['Долар', 'Готівка'] },
+          keptBalanceNames: ['Готівка', 'Друга'],
+        },
+        i18n.t,
+      ),
+    ).toBe(
+      [
+        'Також буде видалено другу частину цього обміну, у «Долар», «Готівка».',
+        'Баланс «Готівка», «Друга» не зміниться.',
+      ].join(' '),
+    );
+    expect(
+      removeNotice(
+        { split: false, exchange: { kind: 'syncedKept', names: ['Картка', 'Готівка'] } },
+        i18n.t,
+      ),
+    ).toBe(
+      'Друга частина, у «Картка», «Готівка», надійшла з банку й залишиться. Буде видалено лише цю частину.',
+    );
+  });
+
+  it('says in Ukrainian that a bank-owned part stays', async () => {
+    await i18n.changeLanguage('uk');
+
+    expect(
+      removeNotice(
+        {
+          split: false,
+          exchange: { kind: 'deleted', names: ['Долар'], keptNames: ['Картка'] },
+        },
+        i18n.t,
+      ),
+    ).toBe(
+      [
+        'Також буде видалено другу частину цього обміну, у «Долар».',
+        '«Картка» залишиться: це запис банку, його не можна видалити.',
+      ].join(' '),
+    );
   });
 });
 
@@ -210,6 +306,17 @@ describe('removeHoldingsNotice', () => {
     expect(
       removeHoldingsNotice({ ...NOTHING_ELSE, deletedRows: { count, names: ['Долар'] } }, i18n.t),
     ).toBe(expected);
+  });
+
+  it('quotes each holding name of a list on its own in Ukrainian', async () => {
+    await i18n.changeLanguage('uk');
+
+    expect(
+      removeHoldingsNotice(
+        { ...NOTHING_ELSE, deletedRows: { count: 2, names: ['Долар', 'Готівка'] } },
+        i18n.t,
+      ),
+    ).toBe('Також буде видалено 2 пов’язані транзакції в «Долар», «Готівка».');
   });
 
   it('reads the other parts in Ukrainian', async () => {

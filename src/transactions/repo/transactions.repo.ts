@@ -56,6 +56,7 @@ import type {
 import {
   balanceBoundaryOf,
   movesBalance,
+  importDeleteKeepsBalance,
   redatesPossibleBalanceSetRowPastBoundary,
 } from '../balance-boundary';
 import { normalizeTransactionName } from '../normalize-name';
@@ -490,7 +491,12 @@ const exchangeRemovalOf = (
   linked: LinkedRows,
   holdingsById: Map<string, NamedHolding>,
 ): ExchangeRemoval | undefined => {
-  if (linked.pair.removed.length > 0) {
+  // A row with no pair id of its own (a return of a split payment whose payment
+  // was converted) reaches the exchange legs only through the split, which its
+  // own sentence already covers: it is no member of the exchange to name.
+  const isMember = row.exchangePairId !== null;
+
+  if (isMember && linked.pair.removed.length > 0) {
     return {
       kind: 'deleted',
       names: uniqueHoldingNamesOf(linked.pair.removed, holdingsById),
@@ -500,7 +506,7 @@ const exchangeRemovalOf = (
     };
   }
 
-  if (linked.pair.kept.length > 0) {
+  if (isMember && linked.pair.kept.length > 0) {
     return { kind: 'syncedKept', names: uniqueHoldingNamesOf(linked.pair.kept, holdingsById) };
   }
 
@@ -537,6 +543,28 @@ const depositRemovalOf = async (
   return undefined;
 };
 
+// The holdings whose balance a deleted imported part leaves as it is, because
+// that part is history at or before its holding's boundary, by name.
+const keptBalanceNamesDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  parts: TransactionRow[],
+): Promise<string[]> => {
+  const names = new Set<string>();
+
+  for (const part of parts) {
+    const anchored = await readAnchoredHoldingDatabaseTransaction(
+      databaseTransaction,
+      part.holdingId,
+    );
+
+    if (anchored !== undefined && importDeleteKeepsBalance(part, anchored.boundary)) {
+      names.add(anchored.holding.name);
+    }
+  }
+
+  return [...names].sort();
+};
+
 // What deleting `row` takes with it, for the confirm text. The delete reads the
 // same rows again inside its own transaction, so this only has to be right when
 // nothing changes in between, and is never what decides.
@@ -550,11 +578,16 @@ const planRemoveDatabaseTransaction = async (
     databaseTransaction,
     holdingIdsOf([...removed, ...linked.pair.kept]),
   );
+  const keptBalanceNames = await keptBalanceNamesDatabaseTransaction(
+    databaseTransaction,
+    removed.filter((part) => part.id !== row.id),
+  );
 
   return {
     split: linked.split.removed.length > 0,
     exchange: exchangeRemovalOf(row, linked, holdingsById),
     deposit: await depositRemovalOf(databaseTransaction, removed, holdingsById),
+    ...(keptBalanceNames.length > 0 ? { keptBalanceNames } : {}),
   };
 };
 
