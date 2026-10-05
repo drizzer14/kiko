@@ -22,11 +22,13 @@ import { activeHoldings } from '@kiko/rates/active-holdings';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import { isImportedTransaction } from '@kiko/holdings/deletable';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { balanceBoundaryOf } from '@kiko/transactions/balance-boundary';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
@@ -224,6 +226,17 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     true,
     liveOptions,
   );
+  // Every holding's balance boundary, read ONCE for the whole list: an imported
+  // row's delete confirm says whether the balance stays, and a query per row
+  // would queue one read per imported row on op-sqlite's single worker. Not
+  // part of the readiness gate — a confirm opened before it lands just omits
+  // that sentence.
+  const { data: boundaryRows } = useLiveQuery(
+    transactionsRepo.balanceBoundariesQuery(),
+    ['holdings', 'transactions'],
+    transactions.some(isImportedTransaction),
+    liveOptions,
+  );
   // The net-worth headline (it would otherwise read 0 while still loading)
   // and the empty-transactions text must never render while any of this
   // screen's own queries is still on its first load (kiko-architecture's
@@ -326,6 +339,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const holdingNameById = useMemo(
     () => new Map(holdings.map((holding) => [holding.id, holding.name])),
     [holdings],
+  );
+
+  const boundaryByHoldingId = useMemo(
+    () =>
+      new Map(
+        boundaryRows.map(({ holdingId, ...sources }) => [holdingId, balanceBoundaryOf(sources)]),
+      ),
+    [boundaryRows],
   );
 
   const active = activeHoldings(holdings, accounts);
@@ -536,6 +557,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           categoryByKey={categoryByKey}
           defaultCategoryKey={defaultCategoryKey}
           holdingNameById={holdingNameById}
+          boundaryByHoldingId={boundaryByHoldingId}
           categoryKeyForRow={categoryKeyForRow}
           onPress={handleRowPress}
           onDuplicate={handleRowDuplicate}
@@ -546,6 +568,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       categoryByKey,
       defaultCategoryKey,
       holdingNameById,
+      boundaryByHoldingId,
       categoryKeyForRow,
       handleRowPress,
       handleRowDuplicate,

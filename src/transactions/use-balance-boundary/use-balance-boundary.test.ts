@@ -25,7 +25,7 @@ describe('useBalanceBoundary', () => {
 
     const { result } = await renderHook(() => useBalanceBoundary('card', true));
 
-    expect(result.current).toEqual({ boundary: 900, isLoading: false });
+    expect(result.current).toBe(900);
   });
 
   it('reads no boundary for a holding that has neither', async () => {
@@ -36,7 +36,7 @@ describe('useBalanceBoundary', () => {
 
     const { result } = await renderHook(() => useBalanceBoundary('card', true));
 
-    expect(result.current.boundary).toBeNull();
+    expect(result.current).toBeNull();
   });
 
   it('reads no boundary before the holding row has loaded', async () => {
@@ -44,7 +44,7 @@ describe('useBalanceBoundary', () => {
 
     const { result } = await renderHook(() => useBalanceBoundary('card', true));
 
-    expect(result.current).toEqual({ boundary: null, isLoading: true });
+    expect(result.current).toBeNull();
   });
 
   it('subscribes to the holding it was given, on the holdings and transactions tables', async () => {

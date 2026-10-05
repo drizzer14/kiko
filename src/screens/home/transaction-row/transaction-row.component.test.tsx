@@ -26,13 +26,7 @@ jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
     remove: jest.fn(),
     removePlan: jest.fn(),
-    balanceBoundaryQuery: (holdingId: string) => ({ __kind: 'boundary', holdingId }),
   },
-}));
-
-const mockUseLiveQuery = jest.fn();
-jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -57,13 +51,19 @@ const baseItem: HomeTransactionRow = {
   loanHoldingId: null,
 };
 
-const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = jest.fn()) =>
+const renderRow = (
+  item: HomeTransactionRow,
+  onPress = jest.fn(),
+  onDuplicate = jest.fn(),
+  boundaryByHoldingId: ReadonlyMap<string, number | null> = new Map(),
+) =>
   render(
     <TransactionRow
       item={item}
       categoryByKey={new Map()}
       defaultCategoryKey="other"
       holdingNameById={new Map()}
+      boundaryByHoldingId={boundaryByHoldingId}
       categoryKeyForRow={(raw) => raw ?? 'other'}
       onPress={onPress}
       onDuplicate={onDuplicate}
@@ -74,7 +74,6 @@ const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = 
 describe('TransactionRow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseLiveQuery.mockReturnValue({ data: [], isLoading: false });
     jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: false });
   });
 
@@ -164,23 +163,22 @@ describe('TransactionRow', () => {
     const KEEPS_BALANCE_MESSAGE =
       "The balance will stay at the bank's figure. Edit the holding to change it.";
 
-    const holdRow = async (item: HomeTransactionRow, onDuplicate = jest.fn()) => {
-      const screen = await renderRow(item, jest.fn(), onDuplicate);
+    const holdRow = async (
+      item: HomeTransactionRow,
+      boundaryByHoldingId: ReadonlyMap<string, number | null> = new Map(),
+      onDuplicate = jest.fn(),
+    ) => {
+      const screen = await renderRow(item, jest.fn(), onDuplicate, boundaryByHoldingId);
 
       await holdCard();
 
       return screen;
     };
 
-    const boundaryAt = (balanceSetAt: number) => ({
-      data: [{ balanceSetAt, newestSyncTime: null }],
-      isLoading: false,
-    });
+    const boundaryAt = (boundary: number | null) => new Map([['h-1', boundary]]);
 
     it('opens the delete confirm straight away on a hold and deletes through transactionsRepo.remove', async () => {
-      mockUseLiveQuery.mockReturnValue(boundaryAt(IMPORT_TIME - 1));
-
-      const { getByTestId, getByText } = await holdRow(importedItem);
+      const { getByTestId, getByText } = await holdRow(importedItem, boundaryAt(IMPORT_TIME - 1));
 
       expect(getByText('Delete "Coffee"')).toBeTruthy();
 
@@ -191,44 +189,40 @@ describe('TransactionRow', () => {
 
     it('offers no Duplicate, so the hold goes straight to the confirm', async () => {
       const onDuplicate = jest.fn();
-      const { queryByTestId } = await holdRow(importedItem, onDuplicate);
+      const { queryByTestId } = await holdRow(importedItem, new Map(), onDuplicate);
 
       expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
       expect(onDuplicate).not.toHaveBeenCalled();
     });
 
     it('says the balance stays when the row is dated at the boundary', async () => {
-      mockUseLiveQuery.mockReturnValue(boundaryAt(IMPORT_TIME));
-
-      const { getByText } = await holdRow(importedItem);
+      const { getByText } = await holdRow(importedItem, boundaryAt(IMPORT_TIME));
 
       expect(getByText(KEEPS_BALANCE_MESSAGE)).toBeTruthy();
     });
 
     it('says the balance stays when the row is dated before the boundary', async () => {
-      mockUseLiveQuery.mockReturnValue(boundaryAt(IMPORT_TIME + 5));
-
-      const { getByText } = await holdRow(importedItem);
+      const { getByText } = await holdRow(importedItem, boundaryAt(IMPORT_TIME + 5));
 
       expect(getByText(KEEPS_BALANCE_MESSAGE)).toBeTruthy();
     });
 
     it('adds no message when the row is dated after the boundary, because deleting it gives the money back', async () => {
-      mockUseLiveQuery.mockReturnValue(boundaryAt(IMPORT_TIME - 1));
-
-      const { queryByText } = await holdRow(importedItem);
+      const { queryByText } = await holdRow(importedItem, boundaryAt(IMPORT_TIME - 1));
 
       expect(queryByText(KEEPS_BALANCE_MESSAGE)).toBeNull();
     });
 
-    it('reads the boundary of its own holding', async () => {
-      await renderRow(importedItem);
+    it("judges the row against its own holding's boundary, not another holding's", async () => {
+      const { queryByText } = await holdRow(importedItem, new Map([['h-2', IMPORT_TIME + 5]]));
 
-      expect(mockUseLiveQuery).toHaveBeenCalledWith(
-        { __kind: 'boundary', holdingId: 'h-1' },
-        ['holdings', 'transactions'],
-        true,
-      );
+      expect(queryByText(KEEPS_BALANCE_MESSAGE)).toBeNull();
+    });
+
+    it('adds no message while its holding has no boundary', async () => {
+      const { queryByText } = await holdRow(importedItem, boundaryAt(null));
+
+      expect(queryByText(KEEPS_BALANCE_MESSAGE)).toBeNull();
     });
   });
 
@@ -270,12 +264,13 @@ describe('TransactionRow', () => {
     });
 
     it('puts the keeps-the-balance sentence before the notice on an imported row', async () => {
-      mockUseLiveQuery.mockReturnValue({
-        data: [{ balanceSetAt: 5_000, newestSyncTime: null }],
-        isLoading: false,
-      });
       jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: true });
-      const { getByText } = await renderRow({ ...baseItem, source: 'import', time: 1_000 });
+      const { getByText } = await renderRow(
+        { ...baseItem, source: 'import', time: 1_000 },
+        jest.fn(),
+        jest.fn(),
+        new Map([['h-1', 5_000]]),
+      );
 
       await holdCard();
 
@@ -297,10 +292,20 @@ describe('TransactionRow', () => {
     });
   });
 
-  it('reads no boundary for a manual row and adds no delete message', async () => {
-    const { queryByText } = await renderRow(baseItem);
+  it('adds no keeps-the-balance message to a manual row, whatever its holding boundary', async () => {
+    const { getByTestId, getByText, queryByText } = await renderRow(
+      { ...baseItem, time: 1_000 },
+      jest.fn(),
+      jest.fn(),
+      new Map([['h-1', 5_000]]),
+    );
 
-    expect(mockUseLiveQuery).toHaveBeenCalledWith(expect.anything(), expect.anything(), false);
+    await holdCard();
+    await act(async () => {
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+    });
+
+    expect(getByText('Delete "Coffee"')).toBeTruthy();
     expect(queryByText(/stay at the bank/)).toBeNull();
   });
 

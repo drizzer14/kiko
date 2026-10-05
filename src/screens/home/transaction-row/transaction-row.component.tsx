@@ -8,7 +8,6 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { resolveCategoryDisplay } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { isTimeExemptHoldingType } from '@kiko/holdings/holding-descriptor';
-import { useBalanceBoundary } from '@kiko/transactions/use-balance-boundary';
 import TransactionCard from '@kiko/design-system/components/transaction-card';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
@@ -24,6 +23,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
   categoryByKey,
   defaultCategoryKey,
   holdingNameById,
+  boundaryByHoldingId,
   categoryKeyForRow,
   onPress,
   onDuplicate,
@@ -31,10 +31,10 @@ const TransactionRow: FC<TransactionRowProps> = ({
   const { t } = useTranslation();
   const clock = useTimeClock();
   const isSynced = isSyncedTransaction(item);
-  // Only an imported row's confirm needs the boundary, so every other row runs
-  // no query.
-  const { boundary } = useBalanceBoundary(item.holdingId, item.source === 'import');
-  const keepsBalanceMessage = importDeleteKeepsBalance(item, boundary)
+  const keepsBalanceMessage = importDeleteKeepsBalance(
+    item,
+    boundaryByHoldingId.get(item.holdingId) ?? null,
+  )
     ? t('transactions.deleteImportedKeepsBalance')
     : undefined;
   // Read when the delete is requested, so it names what is stored now: a row

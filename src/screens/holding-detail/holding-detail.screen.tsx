@@ -1,7 +1,8 @@
 import {
-  isDeletableTransaction,
   isSyncedHolding,
   isSyncedTransaction,
+  isImportedTransaction,
+  isDeletableTransaction,
 } from '@kiko/holdings/deletable';
 import { match } from 'ts-pattern';
 import {
@@ -772,9 +773,6 @@ const resolveLedgerReadyView = (
 const editableAccountId = (holding: HoldingRow | undefined): string | undefined =>
   foldMap(maybe(holding), (found) => (isHoldingType(found.type) ? found.accountId : undefined));
 
-const isImportedTransaction = (row: Pick<TransactionRow, 'source'>): boolean =>
-  row.source === 'import';
-
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
@@ -796,10 +794,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   );
   // Only a holding with an imported row reads its boundary: that row's delete
   // confirm says whether the balance stays.
-  const { boundary: balanceBoundary } = useBalanceBoundary(
-    holdingId,
-    transactions.some(isImportedTransaction),
-  );
+  const balanceBoundary = useBalanceBoundary(holdingId, transactions.some(isImportedTransaction));
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],

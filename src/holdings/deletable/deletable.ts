@@ -23,13 +23,17 @@ export type SyncedInstitution = (typeof syncedInstitutions)[number];
 export const isSyncedTransaction = (row: Pick<TransactionRow, 'source'>): boolean =>
   row.source !== 'manual';
 
+/** A row the user imported from a statement file. */
+export const isImportedTransaction = (row: Pick<TransactionRow, 'source'>): boolean =>
+  row.source === 'import';
+
 /**
  * A row the user may delete: one they typed, or one they imported from a
  * statement file. A sync owns its own rows, so deleting one would only bring it
  * back on the next fetch.
  */
 export const isDeletableTransaction = (row: Pick<TransactionRow, 'source'>): boolean =>
-  row.source === 'manual' || row.source === 'import';
+  row.source === 'manual' || isImportedTransaction(row);
 
 export const isSyncedAccount = (row: Pick<AccountRow, 'institution'>): boolean => {
   return (

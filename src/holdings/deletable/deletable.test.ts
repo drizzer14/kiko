@@ -2,8 +2,17 @@ import {
   isSyncedAccount,
   isSyncedHolding,
   isSyncedTransaction,
+  isImportedTransaction,
   isDeletableTransaction,
 } from './deletable';
+
+describe('isImportedTransaction', () => {
+  it('names a row a statement file wrote and no other', () => {
+    expect(isImportedTransaction({ source: 'import' })).toBe(true);
+    expect(isImportedTransaction({ source: 'manual' })).toBe(false);
+    expect(isImportedTransaction({ source: 'monobank' })).toBe(false);
+  });
+});
 
 describe('isDeletableTransaction', () => {
   it('offers delete for a row the user wrote and a row the user imported', () => {

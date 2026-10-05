@@ -656,6 +656,38 @@ describe('balanceBoundaryQuery', () => {
   });
 });
 
+describe('balanceBoundariesQuery', () => {
+  it('reads every holding its own two sources, the same as the one-holding read', async () => {
+    run(
+      "INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units) VALUES ('wallet', 'account', 'Wallet', 'card', 'UAH', 0)",
+    );
+    run("UPDATE holdings SET balance_set_at = ? WHERE id = 'card'", SEPTEMBER_15);
+    run(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id) VALUES ('synced', 'wallet', -500, ?, 'monobank', 'bank-id')",
+      SEPTEMBER_20,
+    );
+    run(
+      "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id) VALUES ('imported', 'wallet', -500, ?, 'import', 'file-id')",
+      SEPTEMBER_30,
+    );
+
+    const rows = await transactionsRepo.balanceBoundariesQuery();
+
+    expect(rows).toHaveLength(2);
+    expect(rows).toContainEqual({
+      holdingId: 'card',
+      balanceSetAt: SEPTEMBER_15,
+      newestSyncTime: null,
+    });
+    // An imported or manual row is no boundary of its own; only a sync's row is.
+    expect(rows).toContainEqual({
+      holdingId: 'wallet',
+      balanceSetAt: null,
+      newestSyncTime: SEPTEMBER_20,
+    });
+  });
+});
+
 // Before migration 0047 a superseded balance-set row carried no mark, so it
 // cannot be told apart from an uncategorised row an older build wrote.
 describe('an unmarked balance-set-shaped row before the boundary', () => {

@@ -1,4 +1,5 @@
 import type { TransactionRow } from '@kiko/db';
+import { isImportedTransaction } from '@kiko/holdings/deletable';
 
 import { isBalanceSetShapedRow } from '../balance-set-row';
 
@@ -36,7 +37,7 @@ export const movesBalance = (time: number, boundary: number | null): boolean =>
 export const importDeleteKeepsBalance = (
   row: Pick<TransactionRow, 'source' | 'time'>,
   boundary: number | null,
-): boolean => row.source === 'import' && !movesBalance(row.time, boundary);
+): boolean => isImportedTransaction(row) && !movesBalance(row.time, boundary);
 
 type PossibleBalanceSetRow = Pick<TransactionRow, 'setsBalance'> &
   Parameters<typeof isBalanceSetShapedRow>[0];
