@@ -76,7 +76,7 @@ export const mimeWildcard = '*/*';
 
 // 11d. The task briefing covered every account before go-live. The
 // narrowed task/parity-brief family's own trailing `\b` fails the same way
-// an ordinary "-ing" continuation always does — see item 5's
+// an ordinary "-ing" continuation always does — see example 5's
 // `computeD1Delta` for the same word-boundary trick.
 
 // 12. The narrowed task/parity-brief family must not match this ordinary

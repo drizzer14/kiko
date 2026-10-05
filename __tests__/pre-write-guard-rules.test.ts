@@ -40,6 +40,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-full-table-select-in-write',
   'kiko-no-history-id-comment',
   'kiko-no-history-word-comment',
+  'kiko-no-task-id-comment',
   'kiko-no-raw-color-literal',
   'kiko-glass-surface-nav-layer-only',
   'kiko-no-placeholder-equal-to-label',

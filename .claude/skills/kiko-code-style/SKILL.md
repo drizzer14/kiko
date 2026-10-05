@@ -217,6 +217,11 @@ lands): `it replaces`, `no longer`, `used to`, and `previously`. Write
 how the code works today and why ("matches the holding", "a card absent
 from the snapshot"), never what it did before.
 
+A comment names no task, step, finding, or spec id (`item 6`, `DEVICE BUG`,
+`Bug A2`, `Feature 1`, `SEC-C1`, `(A1)`): it states the reason itself. The
+`kiko-no-task-id-comment` Semgrep rule (WARNING until its sweep lands)
+mechanizes the shapes listed in its kiko-linter section.
+
 Documented exception: the data-provenance date comment in
 `src/rates/fiat-rate-seed/fiat-rate-seed.ts` stays — it records WHEN
 the seed values were captured, which the code cannot show on its own,

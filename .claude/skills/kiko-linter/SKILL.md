@@ -1263,6 +1263,67 @@ word in a comment fails `check:rules` ("must draw zero findings from
 every rule"): `kiko-no-undefined-nitro-prop.good.tsx` had to reword one
 "it replaces" comment when this rule landed.
 
+## `kiko-no-task-id-comment`
+
+The id half of kiko-code-style's "Comments: WHY only, never history" that
+`kiko-no-history-id-comment`'s fixed list cannot reach: a task, item,
+bug, or finding id of the multi-round process left in a `src/**` comment
+(`DEVICE BUG fix`, `Bug A2`, `Feature 1`, `Global Constraint 2`, `item 6`,
+`Part A`, `Track A`, `Invariant #15`, `finding S4`, `ponytail L43`, a
+letter-prefixed finding id such as `SEC-C1`/`TX-C6a`, and a parenthesized
+plan id such as `(A1)`/`(P3)`). The members are the two `pattern-regex`
+alternations in `kiko-no-task-id-comment` (`rules/semgrep-prewrite.yml`);
+the fixture pair shows each shape.
+
+**A separate rule id, severity WARNING (Class B).** Severity is per rule, and
+files that other work still owns held findings of this shape when it landed.
+`check:security` surfaces them without failing; the pre-write guard denies a
+NEW one. **Promotion condition:** flip to ERROR when
+`check:security` reports 0 findings for this rule id (never when a grep is
+empty). Count them with `semgrep --metrics off --quiet --config
+rules/semgrep-prewrite.yml src --json`, filtered to this rule id.
+
+The anchoring is the two history rules': the same string-skip `^(?:…)*` walk,
+`(?<!:)//` for the line arm, the block arm that never crosses `*/`, the `\K`
+match shape, and the same `paths.exclude` scope. The pair is flat
+(`rules/fixtures/kiko-no-task-id-comment.{bad,good}.ts`): the rule has no
+`paths.include`.
+
+**Precision over recall.** Every shape below was counted over `src` comments
+first, and a shape that hit prose was dropped or narrowed:
+
+- Kept whole: `DEVICE BUG` (a labelled device-review bug note, about 30
+  hits), `Feature \d+`, `Global Constraint \d+`, `Invariant|CRITICAL|MAJOR|MINOR
+  #\d+`, `ponytail L\d+`, `[Ff]inding [A-Z]\d+`. None read as plain prose.
+- `[Bb]ug|BUG` plus a capital letter and optional digits (`BUG A fix 1`,
+  `Bug B1`, `bug A2`): the letter class skips `I`, so "the bug I traced" is
+  prose, and the lowercase `Bug A` article reading is a known tiny risk.
+  `THE POSITION-SCALING BUG` and a bare "bug" name no id and stay silent.
+- `[Ii]tem \d+`: all 25 hits were ids, but "an item 3 levels down" would read
+  as one too (a known limit, pinned as a finding in `.bad.ts`).
+- `Part|Track` plus a capital letter (not `I`): `Part B`, `Track A`. A
+  lowercase "part of" or "a track of" stays silent.
+- `[A-Z]{2,5}-[A-Z]\d{1,3}[a-z]?`: the LETTER after the hyphen separates a
+  finding id (`SEC-C1`, `REF-C14`, `TX-C6a`, `STAT-N4`) from `UTF-8`,
+  `SHA-256`, `ISO-8601`, `AES-256`, `BCP-47`, `CLDR-14795`, `UTC-9`, `NOW-2d`,
+  and `WCAG-AA`. The digit-only `SEC-12` family stays with
+  `kiko-no-history-id-comment`.
+- A parenthesized letter and one digit, `(A1)`/`(P3)`: `(S3)` and `(H1)` are
+  excluded by a lookahead (a cloud name and a heading level). A single letter
+  in parentheses (`(B)`, `uahPer(A)`) and a spreadsheet range (`A1:J1`) stay
+  silent; a spreadsheet cell written `(A1)` is a known limit, so write
+  "cell A1".
+- Left OUT, because the hits were domain words: `Step N` (an algorithm
+  documented step by step), `Phase A/B` (the rezone phases), `Rule B`/`Rule N`
+  (the matcher's own rules), `task 0` (a test's own tasks), and a bare
+  letter and digit (`A1's`, `P1:`, which collide with cells, regex classes,
+  and chip names).
+
+Any other good fixture that carries one of these shapes in a comment fails
+`check:rules` ("must draw zero findings from every rule");
+`kiko-no-history-id-comment.good.ts` had to reword one `item 5's` when this
+rule landed.
+
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 
 The pre-write guard also runs it in-process as the Node rule

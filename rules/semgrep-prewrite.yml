@@ -325,6 +325,41 @@ rules:
       - pattern-either:
           - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously)\b'
           - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously)\b(?=(?:(?!\*/)[\s\S])*?\*/)'
+  # The task/spec/finding-id half of kiko-code-style's "Comments: WHY only,
+  # never history" that `kiko-no-history-id-comment`'s fixed list does not
+  # reach: `DEVICE BUG`, `Bug A2`, `Feature 1`, `Global Constraint 2`,
+  # `item 6`, `Part A`, `Track A`, `Invariant #15`, `finding S4`, a
+  # `ponytail L43` line ref, a letter-prefixed finding id (`SEC-C1`), and a
+  # parenthesized plan id (`(A1)`). Same anchoring, scope, and `\K` match shape
+  # as the two history rules. The anchoring and false-positive tuning live in
+  # kiko-linter's "`kiko-no-task-id-comment`" section. WARNING until the tree
+  # holds 0 findings for this id: flip to ERROR when check:security reports 0
+  # for it, after the sweep.
+  - id: kiko-no-task-id-comment
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      A comment cites a task, item, step, bug, or finding id ("DEVICE BUG",
+      "Bug A2", "Feature 1", "item 6", "Part A", "SEC-C1", "(A1)").
+      kiko-code-style's "Comments: WHY only, never history": that belongs in
+      the commit message that made the change, never left behind in a comment.
+      Drop the id, state the reason itself, and keep the WHY; if nothing but
+      the id remains, delete the comment.
+    metadata:
+      fix: "Drop the id and state the reason itself; if nothing but the id remains, delete the comment."
+      skill: "kiko-code-style › Comments: WHY only, never history"
+    paths:
+      exclude:
+        - "__tests__/**"
+        - "e2e/**"
+        - "scripts/**"
+        - "harness/**"
+        - "App.tsx"
+        - "drizzle.config.ts"
+    patterns:
+      - pattern-either:
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:\b(?:DEVICE\sBUG|(?:[Bb]ug|BUG)\s[A-HJ-Z]\d{0,2}|Feature\s\d+|Global\sConstraint\s\d+|[Ii]tem\s\d+|(?:Part|Track)\s[A-HJ-Z]|(?:Invariant|CRITICAL|MAJOR|MINOR)\s#\d+|[Ff]inding\s[A-Z]\d+|ponytail\sL\d+|[A-Z]{2,5}-[A-Z]\d{1,3}[a-z]?)\b|\((?![SH]\d\))[A-Z]\d\))'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:\b(?:DEVICE\sBUG|(?:[Bb]ug|BUG)\s[A-HJ-Z]\d{0,2}|Feature\s\d+|Global\sConstraint\s\d+|[Ii]tem\s\d+|(?:Part|Track)\s[A-HJ-Z]|(?:Invariant|CRITICAL|MAJOR|MINOR)\s#\d+|[Ff]inding\s[A-Z]\d+|ponytail\sL\d+|[A-Z]{2,5}-[A-Z]\d{1,3}[a-z]?)\b|\((?![SH]\d\))[A-Z]\d\))(?=(?:(?!\*/)[\s\S])*?\*/)'
   # kiko-design-system's "Token categories" — a component reads a color TOKEN
   # (theme.colors.*/palette.ts), never a raw hex/rgba() string literal. The
   # pattern anchors on the AST shape of a quoted string literal itself
