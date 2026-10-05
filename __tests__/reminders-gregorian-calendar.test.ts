@@ -96,17 +96,29 @@ describe('ios/Kiko/Reminders trigger components are floating, in the device cale
     expect(body).toContain('TimeZone.autoupdatingCurrent');
   });
 
-  it('converts a Gregorian-built date to device-calendar components, era included', () => {
+  it('converts only the day of a Gregorian-built date, era included', () => {
     const body = floatingBody();
     const gregorianDate = body.indexOf('Calendar.gregorian');
     const dateBuilt = body.indexOf('.date(from:');
     const conversion = body.indexOf(
-      'Calendar.current.dateComponents([.era, .year, .month, .day, .hour, .minute], from:',
+      'Calendar.current.dateComponents([.era, .year, .month, .day], from:',
     );
 
     expect(gregorianDate).toBeGreaterThanOrEqual(0);
     expect(dateBuilt).toBeGreaterThan(gregorianDate);
     expect(conversion).toBeGreaterThan(dateBuilt);
+  });
+
+  // The day converts at noon and the hour and minute pass through, because a
+  // DST gap (a 03:30 that does not exist) would otherwise be shifted to 04:30
+  // by the lenient Date build, away from the stamp JS gave the request.
+  it('converts the day at noon and passes the planned hour and minute through unchanged', () => {
+    const body = floatingBody();
+
+    expect(body).toMatch(/hour:\s*12\b/);
+    expect(body).toMatch(/\.hour = hour\b/);
+    expect(body).toMatch(/\.minute = minute\b/);
+    expect(body).not.toContain('.hour, .minute]');
   });
 
   it('sets no calendar and no time zone on any components, so a reminder stays floating', () => {

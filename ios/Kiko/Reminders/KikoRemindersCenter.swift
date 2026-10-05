@@ -341,25 +341,24 @@ struct LocalDateTime: Decodable {
   // the trigger is archived to the notification daemon with it, so the
   // reminder would stop floating. JS plans Gregorian dates and the trigger
   // reads plain components in the device calendar (Buddhist, Japanese,
-  // Islamic), so the Gregorian date is converted to that calendar's own
-  // components, era included, and only those fields are handed over.
+  // Islamic), so the Gregorian DAY is converted to that calendar's own
+  // components, era included. The conversion runs at noon and the planned hour
+  // and minute pass through: a Date built at a wall-clock time that does not
+  // exist (a DST gap) is shifted by the hour, and the shifted hour would no
+  // longer match the stamp JS gave the request. Every calendar's day starts at
+  // midnight, so the day alone needs converting.
   var floatingDateComponents: DateComponents {
-    let gregorian = DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)
+    let gregorianNoon = DateComponents(year: year, month: month, day: day, hour: 12)
 
-    guard let date = Calendar.gregorian.date(from: gregorian) else {
-      return gregorian
+    guard let date = Calendar.gregorian.date(from: gregorianNoon) else {
+      return DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)
     }
 
-    let local = Calendar.current.dateComponents([.era, .year, .month, .day, .hour, .minute], from: date)
+    var local = Calendar.current.dateComponents([.era, .year, .month, .day], from: date)
+    local.hour = hour
+    local.minute = minute
 
-    return DateComponents(
-      era: local.era,
-      year: local.year,
-      month: local.month,
-      day: local.day,
-      hour: local.hour,
-      minute: local.minute
-    )
+    return local
   }
 }
 

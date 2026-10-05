@@ -2234,9 +2234,11 @@ what a change must keep.
   device calendar; it returns that Gregorian `LocalDateTime`, and
   `requestsReplacedBySnooze` reads it. Every `UNCalendarNotificationTrigger`
   takes `.floatingDateComponents` (`KikoRemindersCenter.swift`): the
-  Gregorian Y/M/D/h/m built into a Date, converted with
-  `Calendar.current.dateComponents([.era, .year, ...`, and handed over with
-  NO `calendar:` and NO `timeZone:`. The trigger reads components in the
+  Gregorian DAY built into a noon Date and converted with
+  `Calendar.current.dateComponents([.era, .year, .month, .day]`; the planned
+  hour and minute pass through unchanged (a DST gap would shift a Date
+  built at 03:30 to 04:30, away from the JS stamp). The components go over
+  with NO `calendar:` and NO `timeZone:`. The trigger reads components in the
   device calendar, so a Buddhist or Japanese device needs that conversion;
   a `Calendar` on the components is banned, since it always carries a zone,
   the trigger is archived with it, and the reminder would stop floating
