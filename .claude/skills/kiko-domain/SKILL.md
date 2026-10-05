@@ -330,7 +330,7 @@ the boundary is history the anchor already counts.
 throws an Error with the message transactions/ledgerless-holding when its
 type is `isLedgerlessHoldingType`. The whole split or exchange write rolls
 back. It covers `recordManual`, `recordManualWithReturns`, the plain legs of
-`recordExchange`, and `convert`. A term_deposit exchange DESTINATION still
+`recordExchange`, and `recordExchangeCounterpart` (Convert-mode). A term_deposit exchange DESTINATION still
 works: its receive path `contribution` writes metadata, not a row. The
 transaction form's split change-return picker offers only
 `isTransactionEligibleType` holdings, the same gate as the primary picker.
