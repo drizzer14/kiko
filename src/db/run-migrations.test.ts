@@ -305,7 +305,7 @@ describe('runMigrations — non-monotonic journal self-heal', () => {
     await runMigrations();
 
     expect(mockDatabaseTransaction).toHaveBeenCalledTimes(9);
-    // The tail schema (the previously-skipped migrations) is built.
+    // The tail migrations' schema (`category_overrides`, `categories.color`) is built.
     expect(mockTransactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('CREATE TABLE `category_overrides`'),
     );

@@ -33,8 +33,8 @@ export const isSyncedAccount = (row: Pick<AccountRow, 'institution'>): boolean =
  * The account gate is load-bearing. `accountsRepo.disconnect` deliberately
  * KEEPS the sync key (`monobankId` / `walletAddress` / `binanceAsset`) on the
  * holding so a later reconnect re-adopts the same row instead of inserting a
- * duplicate that double-counts the balance. The key alone therefore no longer
- * means "synced" — only the key plus a live `institution` does.
+ * duplicate that double-counts the balance. The key alone therefore does not
+ * mean "synced" — only the key plus a live `institution` does.
  */
 export const isSyncedHolding = (
   holding: Pick<HoldingRow, 'metadata'>,

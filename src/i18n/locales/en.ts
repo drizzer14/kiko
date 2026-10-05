@@ -228,8 +228,7 @@ export const en = {
       // The generic date/time field's own "nothing picked yet" copy — every
       // DateField/TimeField call site passes one of these two explicitly
       // (never its own `label` repeated as the unset-value text), including
-      // the holding form's date fields, which used to carry a near-
-      // duplicate copy of this same pair under `forms.holding`.
+      // the holding form's date fields.
       selectDatePlaceholder: 'Select a date',
       selectTimePlaceholder: 'Select a time',
       time: 'Time',
@@ -1025,9 +1024,8 @@ export const en = {
   columnMapping: {
     title: 'Map Columns',
     rawPreview: 'Tap the Row with the Column Names',
-    // Section headings: every group on this screen shows its own heading
-    // now that the screen no longer duplicates the native stack header's
-    // own title.
+    // Section headings: every group on this screen shows its own heading;
+    // the screen does not repeat the native stack header's own title.
     sectionFileFormat: 'File Format',
     sectionDates: 'Dates',
     sectionAmount: 'Amount Columns',
@@ -1055,10 +1053,9 @@ export const en = {
     descriptionColumn: 'Description',
     currencyColumn: 'Currency column',
     fixedCurrency: 'Currency for all rows',
-    // No longer suffixed "(optional)" — the field's own
-    // FieldTrigger/FieldLabel carries no `required` marker, which now reads
-    // as the one "this field is optional" signal, matching
-    // every other optional field in the app.
+    // Not suffixed "(optional)" — the field's own FieldTrigger/FieldLabel
+    // carries no `required` marker, which reads as the one "this field is
+    // optional" signal, matching every other optional field in the app.
     counterpartyColumn: 'Counterparty',
     // Optional, like counterpartyColumn.
     balanceColumn: 'Balance',

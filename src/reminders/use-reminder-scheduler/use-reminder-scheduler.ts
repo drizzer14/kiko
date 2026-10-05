@@ -27,7 +27,7 @@ export const warnOnFailure = async (task: () => Promise<void>): Promise<void> =>
 // Never rejects: a native or database failure must not crash the app. The
 // drain is the one reader of the native response queue, so the taps it took
 // are routed from here, whatever triggered it, and even when the plan fails:
-// the queue no longer holds them. A failed drain plans nothing, because the
+// the drain empties the queue. A failed drain plans nothing, because the
 // plan's ignored count must see the taps first.
 const replan = async (): Promise<void> => {
   const drained = await either<unknown, NotificationResponse[]>(drainReminderResponses);

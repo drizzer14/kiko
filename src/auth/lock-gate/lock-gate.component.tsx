@@ -33,8 +33,8 @@ const unlockLabel = (result: AuthResult | undefined, t: TFunction): string =>
 
 /**
  * Mounted inside `MigrationsGate` (settings must be readable) and around the
- * navigator: while locked it replaces the whole app with a full-screen prompt
- * and runs the biometric/passcode sheet on mount and on every retry tap.
+ * navigator: while locked it renders a full-screen prompt in place of the whole
+ * app and runs the biometric/passcode sheet on mount and on every retry tap.
  * `Screen` is not used here on purpose — it reads the bottom tab bar height,
  * which only exists inside the tab navigator this gate wraps.
  */

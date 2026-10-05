@@ -12,8 +12,7 @@
  * Call this INSIDE the test file's own
  * `jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockScrollToEnd))`
  * — `jest.mock` itself must stay a literal call in the test file for Jest's
- * hoisting to see it; this helper only factors out the shared factory body
- * that three screen tests used to copy-paste verbatim.
+ * hoisting to see it; this helper only factors out the shared factory body.
  *
  * `getScrollToEnd` MUST stay a thunk, not the mock passed by value: the
  * factory above runs at `jest.mock` registration time, which is BEFORE the

@@ -9,7 +9,7 @@ import { holdingDescriptorOrUndefined } from '../holding-descriptor';
 // mapping is updated.
 //
 // Every predicate below runs over ALL stored holdings (the transaction form's
-// pickers), and a stored `type` can be one this build no longer knows (a
+// pickers), and a stored `type` can be one this build does not know (a
 // removed type restored from an old export). Such a type is never an Exchange
 // leg, so each falls back to "not eligible" instead of throwing.
 export type ExchangeReceivePath = 'plain' | 'contribution' | 'excluded';

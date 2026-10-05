@@ -76,8 +76,8 @@ const pricedBreakdown = (
 /**
  * Builds a PriceBook-valued descriptor (`property_item`, `metal`) so its
  * `breakdown` is tied to its own `priced` spec BY CONSTRUCTION — a per-type
- * file can no longer pass a `priced` spec that its `breakdown` reads a
- * different one from.
+ * file cannot pass a `priced` spec that its `breakdown` reads a different one
+ * from.
  */
 export const pricedDescriptor = (
   spec: PricedSpec,

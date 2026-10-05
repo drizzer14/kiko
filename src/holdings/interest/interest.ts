@@ -265,7 +265,7 @@ type DepositAccrual = {
 // The full deposit ledger, computed step by step against a real bank statement.
 // `accruals` spans the whole life (past and projected); `currentValueMinor` and
 // the capitalized totals are as of `now` (the in-progress, not-yet-capitalized
-// accrual is excluded from the value — that is the fix for the old overvaluation).
+// accrual is excluded from the value).
 type DepositLedger = {
   accruals: DepositAccrual[];
   principalMinor: number;
@@ -379,14 +379,15 @@ export const depositLedger = (
 // We surface the CUMULATIVE simple interest earned to date: each contribution
 // accrues actual/365 from the day AFTER it lands to `end` (now, capped at the
 // single maturity anchored to the earliest contribution). Future-dated
-// contributions are excluded. No per-period reset — a matured or
-// multi-contribution deposit no longer collapses to zero.
+// contributions are excluded. No per-period reset, so a matured or
+// multi-contribution deposit never collapses to zero.
 //
 // The day-after start (`dayAfter(c.date)`, not `c.date`) matches the
 // statement-validated recap-ON engine (`depositLedger`), where every capital
 // tranche earns from `dayAfter` its landing: a deposit opened on the 11th earns
-// from the 12th. Accruing from the contribution date itself counted one extra
-// day, so recap-OFF and recap-ON disagreed on the first-period accrual.
+// from the 12th. Accruing from the contribution date itself would count one
+// extra day, so recap-OFF and recap-ON would disagree on the first-period
+// accrual.
 export const depositAccruedMajor = (
   contributions: ContributionMajor[],
   annualRatePct: number,

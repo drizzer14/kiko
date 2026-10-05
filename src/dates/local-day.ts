@@ -1,9 +1,5 @@
 /**
  * Local midnight of the calendar day `time` falls on.
- *
- * Three near-identical copies of this used to live in `dates/default-range.ts`,
- * `statistics.screen.tsx` and `home.screen.tsx` — which is how the DST bug in
- * `endOfLocalDay` below came to be duplicated across two screens.
  */
 export const startOfLocalDay = (time: number): number => {
   const date = new Date(time);

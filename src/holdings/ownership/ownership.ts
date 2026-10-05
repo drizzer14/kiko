@@ -189,7 +189,7 @@ const canonicalOwnership = (changes: readonly OwnershipChange[]): OwnershipChang
 const withoutDay = (changes: readonly OwnershipChange[], day: number): OwnershipChange[] =>
   changes.filter((existing) => existing.day !== day);
 
-/** Records `change`: it replaces a change on the same day; the list stays canonical. */
+/** Records `change`, overwriting any change on the same day; the list stays canonical. */
 export const withOwnershipChange = (
   changes: readonly OwnershipChange[],
   change: OwnershipChange,

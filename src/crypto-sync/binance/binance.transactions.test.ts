@@ -643,7 +643,7 @@ describe('resumable, budgeted walk', () => {
       callCount += 1;
 
       // The LAST call the budget can afford starts a window whose first page
-      // is FULL — it needs a 2nd page, a call the budget no longer allows.
+      // is FULL — it needs a 2nd page, a call the budget does not allow.
       if (callCount === WITHDRAW_CALLS_PER_RUN_FALLBACK) {
         return withdrawPage(fullPage);
       }

@@ -24,11 +24,11 @@ const requireConnection = (): DB => {
  * calls `rawDatabase.execute`/`transaction`, `write` calls `transaction`.
  *
  * WHY A PROXY: the SQLCipher key lives in the Keychain, whose API is async, so
- * the connection can no longer be opened at module load. Every property access
- * on this handle forwards to the live connection once `initDatabase()` has
- * opened it, which keeps every existing `rawDatabase.<method>(...)` call site
- * (and every test mock of this module) unchanged. Before init it throws a clear
- * error instead of an opaque `undefined is not a function`.
+ * the connection cannot be opened at module load. Every property access on
+ * this handle forwards to the live connection once `initDatabase()` has opened
+ * it, so a caller (or a test mock of this module) uses a plain
+ * `rawDatabase.<method>(...)`. Before init it throws a clear error instead of
+ * an opaque `undefined is not a function`.
  */
 export const rawDatabase: DB = new Proxy({} as DB, {
   get: (_target, property) => {

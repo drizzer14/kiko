@@ -50,10 +50,10 @@ export const settingsRepo = {
         .set({ baseCurrency: currency })
         .where(eq(settings.id, SETTINGS_ID)),
     ),
-  // The Monobank sync cursor setters (`setLastSyncAt`, `setLastSyncDisplayAt`,
-  // `setLastFullSyncAt`, `setFailedSyncMonobankIds`) were REMOVED here: the
-  // cursor is now per-connection in `sync_state` (see `syncStateRepo`), so the
-  // sync no longer writes these `settings` columns. The columns themselves are
+  // There are no Monobank sync cursor setters (`lastSyncAt`, `lastSyncDisplayAt`,
+  // `lastFullSyncAt`, `failedSyncMonobankIds`) here: the cursor is
+  // per-connection in `sync_state` (see `syncStateRepo`), so the sync does not
+  // write these `settings` columns. The columns themselves are
   // retained-but-dead (migrations here are additive-only — see their comments in
   // `db/schema.ts`), backfilled once into `sync_state` by migration 0028.
   setLockEnabled: (enabled: boolean) =>

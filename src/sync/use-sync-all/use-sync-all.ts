@@ -15,15 +15,16 @@ type UseSyncAll = {
  * of the accounts whose job rejected (empty on full success). Only the sync
  * FAN-OUT is gated on having jobs; the refresh is decoupled from it so a
  * manual-only account list (no Monobank/crypto connected) still gets
- * cross-rates cached — mirroring `useAutoSync`'s identical fix. Running it
+ * cross-rates cached — mirroring `useAutoSync`'s identical decoupling. Running it
  * unconditionally is safe: `refreshMarketData` is self-throttled (its own
  * `refreshRates` step) and hits only PUBLIC, tokenless endpoints.
  *
  * `refreshMarketData` never rejects (it logs its own failure and returns a
  * Left/Right), so the single-flight lock in `runSyncAllOnce` below still
- * releases only once this whole call settles — the concurrent-refresh and
- * orphan-promise guards it replaces (running rates and metals under ONE
- * `Promise.allSettled` rather than sequentially) now live there, not here.
+ * releases only once this whole call settles. The concurrent-refresh and
+ * orphan-promise guards (running rates and metals under ONE
+ * `Promise.allSettled` rather than sequentially) live in `refreshMarketData`,
+ * not here.
  */
 const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
   // One refresh for the whole fan-out (not per account), mirroring the single

@@ -87,12 +87,12 @@ export const categoriesRepo = {
         throw new Error('categoriesRepo.delete: cannot delete the default category');
       }
 
-      // Match case-insensitively: rows synced before `categoryForMcc` returned
-      // slugs carry a capitalized value ('Groceries'), and neither
-      // `transactions.category` nor `category_overrides.category` is COLLATE
-      // NOCASE — a plain `eq(category, 'groceries')` reassigned zero of them
-      // and left them orphaned on a category row that no longer exists,
-      // breaking this function's own never-orphan contract. Migration 0014
+      // Match case-insensitively: a row synced by an older build can carry a
+      // capitalized value ('Groceries'), and neither `transactions.category`
+      // nor `category_overrides.category` is COLLATE NOCASE — a plain
+      // `eq(category, 'groceries')` would reassign zero of them and leave them
+      // orphaned on a deleted category row, breaking this function's own
+      // never-orphan contract. Migration 0014
       // lowercases every existing value, so this predicate is belt-and-braces
       // for any row written by an older build that has not re-synced yet.
       const lowercaseKey = key.toLowerCase();

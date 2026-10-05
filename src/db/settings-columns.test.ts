@@ -83,10 +83,10 @@ const SELF_PATH = __filename;
 const SRC_ROOT = join(__dirname, '..');
 
 // Reads the column names off the live table object, not schema.ts's own
-// text: Stryker's instrumented copy of schema.ts no longer contains the
+// text: Stryker's instrumented copy of schema.ts does not contain the
 // literal `export const settings = sqliteTable('settings', {` a text split
-// once matched against, so a live table read is the only form immune to
-// that rewrite.
+// would need to match against, so a live table read is the only form immune
+// to that rewrite.
 const settingsColumns = (): string[] => Object.keys(getTableColumns(settings));
 
 const sourceFiles = (directory: string): string[] => {

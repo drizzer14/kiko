@@ -13,8 +13,8 @@ import either, { bifold, isLeft, left, right, type Either } from 'fnts/either';
  * Which step a failed refresh belongs to. `'auto-sync'` is not one of this
  * module's OWN steps — `useAutoSync` reuses this same logging function for
  * its own outer catch-all (reading accounts/sync-state/credentials), so a
- * background failure it used to silently drop is logged too, tagged
- * distinctly from a `'rates'`/`'metals'` failure this module already logged.
+ * background failure there is logged too, tagged distinctly from a
+ * `'rates'`/`'metals'` failure this module already logged.
  */
 type RefreshStep = 'rates' | 'metals' | 'auto-sync';
 
@@ -27,7 +27,7 @@ type RefreshFailure = { step: RefreshStep; reason: unknown };
 type RefreshMarketDataOptions = {
   /** Read `ratesRepo.latestFetchedAt()` and pass it through as `refreshRates`'s
    * own throttle cursor. `false` runs unthrottled (fire-and-forget call
-   * sites, unchanged from before this refactor). */
+   * sites). */
   throttled: boolean;
   /** Also run `refreshMetalPrices` alongside `refreshRates`, under the same
    * `Promise.allSettled`. `false` never calls it at all. */

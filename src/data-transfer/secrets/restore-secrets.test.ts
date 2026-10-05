@@ -69,7 +69,7 @@ describe('restoreExportSecrets', () => {
   });
 
   it('ignores the removed share prices key an older export still carries, restoring the rest', async () => {
-    // The cast models the legacy JSON shape: `ExportSecrets` no longer has the field.
+    // The cast models the legacy JSON shape: `ExportSecrets` has no such field.
     const olderSecrets = {
       monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
       binanceCredentials: [],

@@ -7,7 +7,7 @@ import { type NavigationProp, type ParamListBase, StackActions } from '@react-na
  * A native stack keeps its pushed screens across tab switches, so returning to
  * a tab would otherwise restore the last-pushed detail instead of the tab
  * root. A screen `blur` fires both on an in-stack push and on a tab switch, so
- * the reset is gated on the parent tab no longer being focused: `getParent()`
+ * the reset is gated on the parent tab not being focused: `getParent()`
  * resolves to the tab route hosting the stack, and its `isFocused()` is only
  * `false` once another tab is active. In-stack navigation is left untouched.
  * The reset is additionally gated on `getState().index > 0` — the stack must

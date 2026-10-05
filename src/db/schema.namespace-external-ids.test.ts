@@ -5,7 +5,7 @@ const migrationsDir = join(__dirname, '../../drizzle/migrations');
 
 // The multi-account plan namespaces every SYNCED transaction's
 // `external_id` by its holding's account id (`${accountId}:${sourceId}`), so the
-// GLOBAL `(source, external_id)` unique index can no longer collide across two
+// GLOBAL `(source, external_id)` unique index cannot collide across two
 // connections of the same provider (two Binance accounts each emit a
 // `deposit:<id>` with a per-account — NOT globally unique — record id). Migration
 // 0029 rewrites the existing rows to that form. Data-only (no snapshot), same

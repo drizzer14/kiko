@@ -326,11 +326,11 @@ export const settings = sqliteTable('settings', {
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),
-  // SUPERSEDED (retained): the global DISPLAY "last synced" timestamp. Moved to
-  // per-connection `syncState.lastSyncDisplayAt` so each account keeps its own;
-  // migration 0028 backfills it. The sync no longer writes it and account-detail
-  // now reads `syncState`. Retained (additive-only migrations). The description
-  // below still documents the live semantics, which now hold on `syncState`.
+  // SUPERSEDED (retained): the global DISPLAY "last synced" timestamp. Each
+  // account keeps its own on per-connection `syncState.lastSyncDisplayAt`;
+  // migration 0028 backfills it. The sync does not write this column and
+  // account-detail reads `syncState`. Retained (additive-only migrations). The
+  // description below documents the live semantics, which hold on `syncState`.
   // The DISPLAY "last synced" timestamp (epoch ms), updated on EVERY sync run
   // that reached Monobank with at least one card succeeding — including a
   // PARTIAL failure, where some cards imported but one threw. Decoupled from
@@ -343,11 +343,11 @@ export const settings = sqliteTable('settings', {
   // NULLABLE: rows that existed before this column read null, and the display
   // falls back to `lastSyncAt`.
   lastSyncDisplayAt: integer('last_sync_display_at'),
-  // SUPERSEDED (retained): the global last-FULL-fetch marker. Moved to
-  // per-connection `syncState.lastFullSyncAt` so each account keeps its own;
-  // migration 0028 backfills it. The sync no longer writes it. Retained
-  // (additive-only migrations). The description below documents the live
-  // semantics, which now hold on `syncState`.
+  // SUPERSEDED (retained): the global last-FULL-fetch marker. Each account keeps
+  // its own on per-connection `syncState.lastFullSyncAt`; migration 0028
+  // backfills it. The sync does not write this column. Retained (additive-only
+  // migrations). The description below documents the live semantics, which hold
+  // on `syncState`.
   // The epoch-ms timestamp of the last FULL statement fetch (every card
   // fetched regardless of balance) — OR, on a first-ever full fetch that
   // FAILED, that attempt's own from-cursor instead (`resolveFullSyncAtToPersist`
@@ -381,11 +381,11 @@ export const settings = sqliteTable('settings', {
   // contribution). Written by settingsRepo.setTrendFilter (Save persists; there
   // is no clear-to-null path from the UI, but the setter accepts null).
   trendFilter: text('trend_filter', { mode: 'json' }).$type<TrendFilter>(),
-  // SUPERSEDED (retained): the global force-retry set. Moved to per-connection
-  // `syncState.failedSyncMonobankIds` so each account keeps its own; migration
-  // 0028 backfills it. The sync no longer writes it. Retained (additive-only
-  // migrations). The description below documents the live semantics, which now
-  // hold on `syncState`.
+  // SUPERSEDED (retained): the global force-retry set. Each account keeps its
+  // own on per-connection `syncState.failedSyncMonobankIds`; migration 0028
+  // backfills it. The sync does not write this column. Retained (additive-only
+  // migrations). The description below documents the live semantics, which hold
+  // on `syncState`.
   // The Monobank account ids whose statement fetch FAILED on the last sync run.
   // The next run force-fetches only these (regardless of balance) so one flaky
   // card does not strand the whole account in daily full-fetch mode: without
@@ -461,7 +461,7 @@ export type SettingsRow = typeof settings.$inferSelect;
  * `failed_sync_monobank_ids`): those columns modelled ONE Monobank connection, so
  * a second connected Monobank account would have shared and corrupted the one
  * cursor. Each connected Monobank account now owns its own row here, keyed by its
- * `accounts.id`. The old `settings` columns are retained-but-dead — pinned as
+ * `accounts.id`. The superseded `settings` columns are retained-but-dead — pinned as
  * reader-less in `src/db/settings-columns.test.ts`, same additive-only class
  * as `appearance` / `lockGraceSeconds`. Each column mirrors the
  * identically-named `settings` one; read the comments on those columns above

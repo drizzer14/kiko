@@ -44,7 +44,7 @@ const bondBreakdown = (holding: ValuableHolding, now: number): HoldingValueBreak
     return { gross: zero, principalOrCost: zero, interest: zero, tax: zero, net: zero };
   }
   // On or after the maturity day the nominal is redeemed (returned as the
-  // redemption ledger entry), so the bond holding itself no longer carries value.
+  // redemption ledger entry), so the bond holding itself carries no value.
   if (valuationDay >= startOfLocalDay(meta.maturityDate)) {
     return { gross: zero, principalOrCost: costMoney, interest: zero, tax: zero, net: zero };
   }
