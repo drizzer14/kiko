@@ -84,6 +84,24 @@ and `importRows`'s own doc comment, for the exact balance rule —
 `addManyDedup` is a DIFFERENT, still-live upsert-only path the sync
 routes use, not statement import).
 
+**The preview of the balance runs the import's own reads.** Both screens
+(statement-import and column-mapping) show an `ImportBalanceLine` from
+`useImportBalancePreview` (`src/statement-import/use-import-balance-preview/`)
+-> `previewParsedStatementBalance` (`import-statement.ts`) ->
+`transactionsRepo.previewImportBalance`, which shares
+`readImportPlanDatabaseTransaction` and `resolveImportBalance` with `importRows`
+so the preview equals the stored result (pinned by a parity test on real
+SQLite). `previewParsedStatementBalance` throws
+(`statement-import/preview-pending`) until BOTH one-shot rewrites have settled
+(`settings.dedupKeysUpgraded` and `settings.importTimesRezoned`): the preview
+does not run `upgradeStoredDedupKeys` / `rezoneImportTimes`, so before they
+settle its dedup could differ from the import's. The hook logs the failure
+(tag only, through `logFailure`) and shows no line; a refusal of the import
+itself (a synced or ledgerless holding) also shows none. The hook needs a
+statement that keeps its identity between renders, since a new one is a new
+request, and the newest request wins. Never add a second copy of the balance
+rule for the preview.
+
 **A synced account refuses the import.** `importRows`
 (`src/transactions/repo/transactions.repo.ts`) throws an Error with the
 message statement-import/synced-account, before it writes anything, for any

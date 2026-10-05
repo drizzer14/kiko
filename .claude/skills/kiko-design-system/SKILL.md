@@ -1091,6 +1091,27 @@ new component can land between reviews of this skill:
   deleted only from its page's `CardContextMenu`, so nothing under
   `src/screens/forms/` imports `ConfirmSheet`
   (`kiko-no-confirm-sheet-in-form`, `rules/semgrep-prewrite.yml`).
+  `deleteMessage` is an optional async function (`() => Promise<string |
+  undefined>`, never a plain string): the menu awaits it when the hold asks for
+  the confirm, so the text names what is stored now. A read that fails opens the
+  title-only confirm, since the delete never depends on the text. The newest
+  request wins (`latestRequest`): a read that settles after a newer request is
+  dropped and neither overwrites the text nor opens a confirm. A transaction row
+  whose source is `import` is deletable but passes NO `onDuplicate` and no other
+  action (`isSyncedTransaction` is every non-manual source), so its hold opens
+  the delete confirm directly; only a manual row is duplicable. The imported
+  row's balance sentence is decided by `importDeleteKeepsBalance` from the
+  holding's boundary: Home reads every boundary ONCE
+  (`transactionsRepo.balanceBoundariesQuery`, one live query at screen level)
+  and hands `TransactionRow` a `boundaryByHoldingId` map, never a per-row query;
+  the holding-detail ledger reads its own single holding's boundary.
+- **ImportBalanceLine** (`src/design-system/components/import-balance-line/`)
+  — the one line on the statement-import and column-mapping previews that says
+  what the target holding's balance will be, from an `ImportBalancePreview`
+  (see `kiko-domain`, "The import screens preview the balance"). Amounts go
+  through `formatMoney` in the holding's own currency; its sentences are the
+  `statementImport.balance*` keys. Render it only when the preview exists: no
+  preview means no line.
 - **HoldingCard** (`src/design-system/components/holding-card/`) — one
   holding as a wide row card, shared so a screen never imports another
   screen's card (`kiko-no-cross-screen-import`): the entity icon tile and

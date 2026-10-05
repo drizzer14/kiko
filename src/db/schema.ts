@@ -174,7 +174,9 @@ export const transactions = sqliteTable(
     // source leg alone when the destination is a term deposit, whose
     // contribution is metadata, not a row), and `recordExchangeCounterpart`
     // writes it on the new leg and on the EXISTING row, reusing the id that row
-    // already carries so a repeated Convert joins the same group. A synced
+    // already carries so a repeated Convert joins the same group. The existing
+    // row gets the pair id always, plus the counterpart marker only when it is
+    // manual or imported and carries none. A synced
     // (bank-owned) existing row gets this id and nothing else, so the delete
     // knows its partner is the bank's and keeps it; `addManyDedup`'s upsert
     // never touches the column, like `loanHoldingId` and `category`. Null on a

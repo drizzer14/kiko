@@ -1845,6 +1845,14 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `transactions`/`holdings` rows, so they need no `EXPORT_VERSION` change:
   an older build ignores the keys (Drizzle inserts only its own schema's
   columns), and this build derives them for an older file.
+- **`transactions.exchangePairId` (migration 0052) follows the same two-path
+  rule.** The migration pairs a leg with a row only where the stored data proves
+  it, 1:1 (read `drizzle/migrations/0052_add_exchange_pair_id.sql` for the full
+  rule), with an `UPDATE ... FROM` over a derived table. A `.kiko` file whose
+  rows carry no `exchangePairId` key gets the same ids from
+  `withLegacyExchangePairsDerived` (`snapshot/restore-snapshot.ts`); a row that
+  carries the key restores it as exported, a null included. Never change one
+  path's rule without the other.
 - **A data-only cleanup migration follows the SAME two-path rule.**
   Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
   pre-existing stray create-time artifact (a term_deposit/bond holding whose
@@ -1992,6 +2000,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   with the reason no bump is needed: a column riding inside an existing row
   and derived on restore needs none, and neither does an idempotent data
   rewrite that the restore mirror re-applies to an older file (0049, 0050, 0051).
+  The decision per migration is recorded in `VERSION_DECISIONS` in
+  `src/data-transfer/crypto/envelope.test.ts`, which is where to read it (0052's
+  `exchangePairId` is the first kind: a column riding inside a row).
 
 ## Reminders (local notifications)
 
@@ -2315,7 +2326,14 @@ what a change must keep.
   `intent: 'importStatement'`, `AccountDetail` waits for its loading gate,
   clears the param, then opens the file picker once, on a bank account
   only.
-- **Account delete.** `accountsRepo.remove` deletes the account's
+- **Account delete.** `accountsRepo.remove` first runs
+  `cascadeLinkedRowsDatabaseTransaction` (`transactions.repo.ts`) over ALL the
+  account's holdings, closed ones included, so the other legs of an Exchange,
+  Convert or split and a deposit's contributions on OTHER accounts' holdings go
+  with it, in the same transaction. The confirm text for it is
+  `removeHoldingsNoticeOf(holdingIds, t)` (`transactions/remove-notice/`, which
+  composes `transactionsRepo.removeHoldingsPlan` and `removeHoldingsNotice`),
+  whose sentences are the `holdings.deleteLinked.*` keys. It also deletes the account's
   `reminders` rows in the same transaction, before the account row (NO
   ACTION FK), next to the `sync_state` delete. The Accounts screen runs
   it through `writeThenReplan`, so the deleted reminders' pending

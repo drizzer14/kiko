@@ -323,7 +323,14 @@ Every balance writer reads that boundary through one function,
 `readAnchoredHoldingDatabaseTransaction` (`transactions.repo.ts`), which
 `importRows` shares, and which combines the two sources with
 `balanceBoundaryOf` (`src/transactions/balance-boundary/`). A row AT or before
-the boundary is history the anchor already counts.
+the boundary is history the anchor already counts. A delete that takes other
+parts of a movement with it reverses each part by ITS OWN holding's boundary,
+never the deleted row's (see "Deleting a movement takes its other parts"). An
+IMPORTED row at or before its boundary leaves the balance as it is when it is
+deleted (`importDeleteKeepsBalance`, `balance-boundary.ts`), even when every row
+of one import goes; the confirm says so (`home.deleteImportedKeepsBalance`, and
+`transactions.deleteLinked.balanceStays` for an imported part reached through a
+movement).
 
 **A manual write refuses a ledgerless holding.** `recordManualTransaction`
 (`transactions.repo.ts`) reads the holding first and, before any write,
@@ -434,6 +441,23 @@ an account `isSyncedAccount` owns, a hand-added one included), the ±60 s
 bank's synced rows, and why no migration
 repairs pre-fix data — read it there rather than trusting a restated
 summary here.
+
+**The import screens preview the balance before the import runs.**
+`transactionsRepo.previewImportBalance` runs the SAME reads
+(`readImportPlanDatabaseTransaction`, refusals included), the same new-row
+partition and the same `resolveImportBalance` as `importRows`, but writes
+nothing, so the figure shown is the figure the import then stores (parity, pinned
+against real SQLite). `previewParsedStatementBalance`
+(`src/statement-import/import-statement/`) wraps it for a parsed statement and
+THROWS (`statement-import/preview-pending`) until BOTH one-shot rewrites have
+settled (`settings.dedupKeysUpgraded` and `settings.importTimesRezoned`), because
+the preview does not run the rewrites the import runs first and its keys and
+times could differ; the hook `useImportBalancePreview` logs the refusal and
+shows no line. The result is `ImportBalancePreview` (`kind: 'set' | 'change' |
+'stays'`, read the type in `transactions.repo.ts`); `ImportBalanceLine`
+(`kiko-design-system`) renders it on both import screens. Rule: the preview
+reads through `readImportPlanDatabaseTransaction`, never a copy of the balance
+rule.
 
 ## `property_item` / `metal` create-form sections
 
@@ -895,7 +919,7 @@ exports `loanPaymentExcludedTransactionIds(transactions, loanHoldings)`, which
 drops a row from the pie/trend the same way every other exclusion
 rule does, IF AND ONLY IF its `transactions.loanHoldingId` marker
 points at a holding present in `loanHoldings` — a dangling link (its loan holding was
-deleted — `holdingsRepo.remove`/`accountsRepo.remove` already clear
+deleted — `transactionsRepo.removeHolding`/`accountsRepo.remove` already clear
 the marker transactionally the moment that happens) is NOT
 excluded, so it counts as ordinary spending under its own category,
 exactly like an unlinked row. The same module's
@@ -924,7 +948,11 @@ comment records why it is a column rather than a reserved `category`
 value or a shared `externalId`) and `src/transactions/`
 (`recordExchange` / `recordExchangeCounterpart`, which write it on both
 legs inside the one transaction; an exchange into a term deposit writes
-the marker on its single debit leg). Three consequences hold together:
+the marker on its single debit leg). The legs of one Exchange or Convert also
+share `transactions.exchangePairId`, written beside the marker, which is what a
+delete follows to the other legs (the existing row of a Convert gets the pair id
+always, and the marker only when it is manual or imported and carries none; see
+"Deleting a movement takes its other parts"). Three consequences hold together:
 
 - The marker is what the spending view excludes on, in the
   exchange-exclusion module (`src/statistics/`): no other rule can see these
@@ -960,6 +988,52 @@ the marker on its single debit leg). Three consequences hold together:
   counterpart's own holding+account INSIDE the transaction and throws
   rather than trust a caller-supplied flag, since the write is reachable
   directly, not only through the picker.
+
+## Deleting a movement takes its other parts
+
+A transaction can be one part of a movement: the legs of an Exchange or Convert
+(`transactions.exchangePairId`, the shared pair id), the rows of a split payment
+(`changeGroupId`), and the leg that paid a term deposit (its contribution is
+metadata, tied to the leg by the leg's marker and date). Deleting any part takes
+the others with it, each reversed by its own holding's boundary, in ONE
+transaction: `transactionsRepo.remove` (read its doc comment for the exact rule).
+Rules:
+
+- **The closure is followed to a fixpoint.** A Convert is allowed on a split row,
+  so a split group and a pair id can each lead to a row carrying the other.
+  `readMovementRowsDatabaseTransaction` reads rows sharing a group or pair id
+  until a pass finds nothing new; following either id one hop leaves a part
+  behind and creates or loses money. The plan and the delete use the same set.
+- **A bank-owned (synced) partner is skipped**, never deleted or mutated
+  (`isDeletableTransaction`); a Convert gives a synced existing row only the pair
+  id, which is how the delete knows its partner is the bank's.
+- **A re-Convert keeps the deposit marker.** `markExistingLegTransaction` sets
+  the counterpart marker only when the row has none, so a deposit source leg
+  keeps the marker that takes its contribution out.
+- **An unreadable deposit is not an error.** `removeDepositContributionDatabaseTransaction`
+  returns false when the metadata cannot be read or no single contribution
+  matches: the leg deletes and the deposit stays, as the confirm said
+  (`depositKept`).
+- **The confirm text is a plan read before the delete**
+  (`transactionsRepo.removePlan` -> `removeNotice`, `src/transactions/remove-notice/`);
+  the delete re-reads inside its own transaction and the plan never decides. The
+  plan names: the exchange parts that go (`names`), a bank-owned part of the same
+  pair that stays (`keptNames`, `exchangeAlsoKept`) or a pair whose every other
+  part is the bank's (`syncedKept`), the split, the deposit contribution, and
+  the holdings whose balance stays because an imported part at or before the
+  boundary is deleted (`keptBalanceNames`, `balanceStays`). A row with no pair id
+  of its own reaches a pair only through its split: `namedPairOf`
+  (`transactions.repo.ts`) names it. The wording of a pair reached that way is
+  PENDING a user copy ruling; do not treat the current sentences for it as final.
+- **A confirm opened twice shows the latest plan.** The `CardContextMenu`
+  `deleteMessage` is async and a superseded result is dropped (see
+  `kiko-design-system`).
+- **Holdings and accounts follow the same ids.** Deleting a holding or an account
+  also deletes the movements its rows were part of: see "A holding is deleted
+  only after its cascade". Its plan is `transactionsRepo.removeHoldingsPlan`,
+  rendered by `removeHoldingsNotice` / `removeHoldingsNoticeOf`.
+- **Legacy pairs are backfilled only where provable.** Migration 0052 pairs a leg
+  1:1 or leaves it null; a null pair id deletes that one row only.
 
 ## App lock / security settings
 
@@ -2391,14 +2465,15 @@ therefore keeps its link untouched. Its underlying insert
 statement-import file or Monobank sync above a few thousand rows failed
 `SQLITE_MAX_VARIABLE_NUMBER` before this.
 
-`holdingsRepo.clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, holdingIds)` (exported, not
-private to `remove`) clears `loanHoldingId`/`loanLinkSource` on every OTHER
+`clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, holdingIds)`
+(a module export of `src/holdings/repo/holdings.repo.ts`, not private to the
+holding delete) clears `loanHoldingId`/`loanLinkSource` on every OTHER
 holding's transaction that still points at one of `holdingIds`, in the SAME
 `write()` transaction as the delete itself (`UPDATE transactions SET
 loan_holding_id = NULL, loan_link_source = NULL WHERE loan_holding_id IN
 (...)`) — a no-op for every non-loan holding, since nothing ever points a
-`loanHoldingId` at one. Both delete paths call it: `holdingsRepo.remove`
-(one holding) AND `accountsRepo.remove` (every holding a deleted DEBT
+`loanHoldingId` at one. Both delete paths call it: `removeHoldingDatabaseTransaction` (one holding,
+reached through `transactionsRepo.removeHolding`) AND `accountsRepo.remove` (every holding a deleted DEBT
 account owned, since a loan lives on a manual `debt` account) — a loan
 deleted either way never leaves a dangling link behind. A dangling link is
 never left to rot: once cleared, the payment counts as normal spending
@@ -2598,7 +2673,11 @@ other legs of an Exchange or Convert, the rest of a split, the legs that paid
 into a deleted deposit), each balance given back by its own holding's
 boundary. `transactionsRepo.removeHolding` runs `cascadeLinkedRowsDatabaseTransaction`
 and then `removeHoldingDatabaseTransaction` in one transaction;
-`accountsRepo.remove` runs the same cascade for every holding of the account.
+`accountsRepo.remove` runs the same cascade for every holding of the account
+(closed ones included). The cascade's plan is
+`transactionsRepo.removeHoldingsPlan`; its text is `removeHoldingsNoticeOf`
+(`holdings.deleteLinked.*` keys). A deleted deposit also takes the legs that paid
+into it; a partner on a holding that is deleted too is never counted twice.
 `removeHoldingDatabaseTransaction` alone deletes the holding and its own rows
 but leaves the other legs behind, so the money of a movement exists on one side
 only. Only `transactions.repo.ts` and `holdings.repo.ts` (its owner) call it
