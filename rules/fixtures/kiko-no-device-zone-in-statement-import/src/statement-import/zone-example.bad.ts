@@ -1,7 +1,7 @@
 // Semgrep fixture (POSITIVE): every way a statement-import read can pick up
 // the device's own zone. `kiko-no-device-zone-in-statement-import` MUST report
 // a finding on each pinned line below. Never "fix" this file.
-import { endOfLocalDay, parseLocalDate, startOfLocalDay } from '@kiko/dates';
+import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 
 export const fixtureBadLocalHour = (milliseconds: number): number =>
   // EXPECT-FINDING
@@ -78,10 +78,6 @@ export const fixtureBadTimeString = (date: Date): string =>
 export const fixtureBadDateTimeFormat = (): Intl.DateTimeFormat =>
   // EXPECT-FINDING
   new Intl.DateTimeFormat('uk-UA', { hour: '2-digit' });
-
-export const fixtureBadLocalDate = (text: string): number =>
-  // EXPECT-FINDING
-  parseLocalDate(text);
 
 export const fixtureBadDayStart = (milliseconds: number): number =>
   // EXPECT-FINDING

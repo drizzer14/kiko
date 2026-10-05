@@ -42,7 +42,7 @@ const alignScale = (a: SignedDecimal, b: SignedDecimal): [bigint, bigint, number
 // Only a trimmed, dot-or-comma, unsigned, non-exponent decimal string passes —
 // e.g. a user-typed price/quantity/purity field. "1e5" and "-1.5" are
 // rejected on purpose: exponent form and a sign are both handled elsewhere
-// (decimalFromJsonNumber, addDecimal/subDecimal), never through this
+// (decimalFromJsonNumber, addDecimal), never through this
 // user-input gate.
 const PLAIN_DECIMAL_PATTERN = /^\d+(\.\d+)?$/;
 
@@ -64,13 +64,6 @@ export const addDecimal = (a: string, b: string): string => {
   const [scaledA, scaledB, scale] = alignScale(parseSignedDecimal(a), parseSignedDecimal(b));
 
   return formatSignedDecimal(scaledA + scaledB, scale);
-};
-
-/** Subtracts two decimal strings exactly, at the wider operand's scale. Signed result allowed. */
-export const subDecimal = (a: string, b: string): string => {
-  const [scaledA, scaledB, scale] = alignScale(parseSignedDecimal(a), parseSignedDecimal(b));
-
-  return formatSignedDecimal(scaledA - scaledB, scale);
 };
 
 /** Compares two decimal strings exactly, regardless of their stored scale. */

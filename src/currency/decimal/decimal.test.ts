@@ -1,6 +1,5 @@
 import {
   addDecimal,
-  subDecimal,
   trimDecimal,
   shiftDecimal,
   scaleMinorUnits,
@@ -39,17 +38,9 @@ describe('normalizeDecimal', () => {
   });
 });
 
-describe('addDecimal / subDecimal', () => {
+describe('addDecimal', () => {
   it('adds two decimals at the wider operand scale', () => {
     expect(addDecimal('1.5', '2.25')).toBe('3.75');
-  });
-
-  it('subtracts to a negative (signed) result', () => {
-    expect(subDecimal('1', '2')).toBe('-1');
-  });
-
-  it('subtracts to an exact zero without a stray sign', () => {
-    expect(subDecimal('5.00', '5')).toBe('0.00');
   });
 });
 

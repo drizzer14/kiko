@@ -1,16 +1,14 @@
 import {
   INCOME_TAX_RATE_PCT,
-  INTEREST_TAX_RATE_PCT,
   MILITARY_LEVY_RATE_PCT,
   splitInterestTaxMinor,
   taxOnInterestMinor,
 } from './tax';
 
 describe('tax', () => {
-  it('models 18% income + 5% military = 23% combined', () => {
+  it('models 18% income + 5% military', () => {
     expect(INCOME_TAX_RATE_PCT).toBe(18);
     expect(MILITARY_LEVY_RATE_PCT).toBe(5);
-    expect(INTEREST_TAX_RATE_PCT).toBe(23);
   });
 
   it('splits the withholding into two separately-rounded levies', () => {

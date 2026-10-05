@@ -6,9 +6,6 @@
 // the one source of truth for the rates and the split.
 export const INCOME_TAX_RATE_PCT = 18;
 export const MILITARY_LEVY_RATE_PCT = 5;
-// The combined headline rate, kept for callers that only need the total (e.g. a
-// government bond is 0%, a corporate bond/deposit is this).
-export const INTEREST_TAX_RATE_PCT = INCOME_TAX_RATE_PCT + MILITARY_LEVY_RATE_PCT;
 
 type InterestTax = {
   incomeMinor: number;

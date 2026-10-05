@@ -1179,7 +1179,7 @@ rules:
       `toLocale*` call with no `timeZone`, a
       `toString`/`toDateString`/`toTimeString` call, a `Date` turned into
       text by `String(...)`, a template literal, or `+`, an
-      `Intl.DateTimeFormat` with no `timeZone`, `parseLocalDate`, or
+      `Intl.DateTimeFormat` with no `timeZone`, or
       `startOfLocalDay`/`endOfLocalDay` reads the device zone.
     metadata:
       fix: "Read wall-clock digits with kyivWallClockToUtcMilliseconds/zoneWallClockToUtcMilliseconds, an instant's wall clock with zoneWallClockOf, and stored digits with utcDigitsOf (@kiko/dates), never a local Date getter, Date.parse, a locale render, or a device-local day helper."
@@ -1222,7 +1222,6 @@ rules:
               - pattern: Intl.DateTimeFormat(...)
           - pattern-not: "new Intl.DateTimeFormat($LOCALE, {..., timeZone: $ZONE, ...})"
           - pattern-not: "Intl.DateTimeFormat($LOCALE, {..., timeZone: $ZONE, ...})"
-      - pattern: parseLocalDate(...)
       - pattern: startOfLocalDay(...)
       - pattern: endOfLocalDay(...)
   # kiko-code-style's "JSX spread: no `{}` fallback": TypeScript merges a JSX
@@ -1480,7 +1479,6 @@ rules:
             - pattern: Date.parse(...)
             - pattern: startOfLocalDay(...)
             - pattern: endOfLocalDay(...)
-            - pattern: parseLocalDate(...)
   # kiko-code-style's "Tests read a module, never a source file's text":
   # Stryker rewrites every mutable `.ts`/`.tsx` source in its sandbox, so a
   # test that reads that source's TEXT sees instrumented code and its parse

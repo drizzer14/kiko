@@ -1318,7 +1318,7 @@ Under `src/statistics/**` (tests excluded), never build a Date per row
 inside a per-bucket iteration. The Semgrep rule
 `kiko-no-per-bucket-date-in-statistics` (`rules/semgrep-prewrite.yml`,
 ERROR) fires on `new Date(...)`, `Date.parse(...)`, `startOfLocalDay`,
-`endOfLocalDay`, or `parseLocalDate` inside an array-method callback
+or `endOfLocalDay` inside an array-method callback
 (`filter`/`map`/`flatMap`/`reduce`/`reduceRight`/`forEach`/`some`/
 `every`/`find*`/`sort`/`toSorted`) that itself sits inside a `for` or
 `while` loop, or inside another array callback (expression or block body):
