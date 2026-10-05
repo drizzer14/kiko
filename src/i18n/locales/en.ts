@@ -941,6 +941,13 @@ export const en = {
       // A bank-owned part of the exchange: the user's other parts go, this one
       // never does.
       exchangeAlsoKept: "{{name}} stays: it is the bank's record and cannot be deleted.",
+      // A conversion reached through a part of a split payment: one sentence per
+      // holding, and never "only this part", since the whole split goes.
+      splitExchange: 'This also deletes the conversion made from this split payment, in {{name}}.',
+      splitExchangeSyncedKept: 'The conversion in {{name}} came from your bank and stays.',
+      splitExchangeUnlinked:
+        'A conversion made from this split payment could not be found in {{name}}. Check {{name}}.',
+      splitExchangeUnlinkedPlain: 'A conversion made from this split payment could not be found.',
     },
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',

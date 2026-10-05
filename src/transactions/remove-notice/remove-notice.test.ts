@@ -8,6 +8,7 @@ jest.mock('@kiko/transactions/repo', () => ({
 import { i18n } from '@kiko/i18n/init';
 
 import {
+  type ExchangeRemoval,
   type RemoveHoldingsPlan,
   joinNoticeSentences,
   removeHoldingsNotice,
@@ -113,6 +114,110 @@ describe('removeNotice', () => {
     ).toBe(
       'This also deletes the other part of this exchange, in Dollar card. This also removes its contribution to Deposit.',
     );
+  });
+
+  describe('a conversion made from a split payment', () => {
+    const EVERY_PART = 'This also deletes every other part of this split payment.';
+
+    it('names each holding whose conversion goes, one sentence per holding, after the split', () => {
+      expect(
+        removeNotice(
+          {
+            split: true,
+            splitExchanges: [{ kind: 'deleted', names: ['Dollar card', 'Cash'] }],
+          },
+          i18n.t,
+        ),
+      ).toBe(
+        [
+          EVERY_PART,
+          'This also deletes the conversion made from this split payment, in Dollar card.',
+          'This also deletes the conversion made from this split payment, in Cash.',
+        ].join(' '),
+      );
+    });
+
+    it('says a bank-owned conversion stays, with no claim that only one part goes', () => {
+      expect(
+        removeNotice(
+          { split: true, splitExchanges: [{ kind: 'syncedKept', names: ['Monobank card'] }] },
+          i18n.t,
+        ),
+      ).toBe(
+        [EVERY_PART, 'The conversion in Monobank card came from your bank and stays.'].join(' '),
+      );
+    });
+
+    it('asks the user to check the holding when a conversion cannot be found', () => {
+      expect(
+        removeNotice(
+          { split: true, splitExchanges: [{ kind: 'missing', name: 'Dollar card' }] },
+          i18n.t,
+        ),
+      ).toBe(
+        [
+          EVERY_PART,
+          'A conversion made from this split payment could not be found in Dollar card. Check Dollar card.',
+        ].join(' '),
+      );
+    });
+
+    it('says a conversion could not be found, with no holding to name', () => {
+      expect(removeNotice({ split: true, splitExchanges: [{ kind: 'missing' }] }, i18n.t)).toBe(
+        [EVERY_PART, 'A conversion made from this split payment could not be found.'].join(' '),
+      );
+    });
+
+    const cases: [string, ExchangeRemoval, string][] = [
+      [
+        'a bank-owned other part',
+        { kind: 'syncedKept', names: ['Monobank card'] },
+        'The conversion in Monobank card came from your bank and stays.',
+      ],
+      [
+        'an other part that cannot be found',
+        { kind: 'missing', name: 'Dollar card' },
+        'A conversion made from this split payment could not be found in Dollar card. Check Dollar card.',
+      ],
+      [
+        'an other part that cannot be found, with no holding',
+        { kind: 'missing' },
+        'A conversion made from this split payment could not be found.',
+      ],
+    ];
+
+    it.each(cases)(
+      'speaks of the split, not of one part, for the exchange of the row when %s',
+      (_name, exchange, sentence) => {
+        expect(removeNotice({ split: true, exchange }, i18n.t)).toBe(`${sentence} ${EVERY_PART}`);
+      },
+    );
+
+    it('reads in Ukrainian, each name quoted by the sentence itself', async () => {
+      await i18n.changeLanguage('uk');
+
+      expect(
+        removeNotice(
+          {
+            split: false,
+            splitExchanges: [
+              { kind: 'deleted', names: ['Долар'] },
+              { kind: 'syncedKept', names: ['Картка'] },
+              { kind: 'missing', name: 'Готівка' },
+              { kind: 'missing' },
+            ],
+          },
+          i18n.t,
+        ),
+      ).toBe(
+        [
+          'Також буде видалено обмін, зроблений із цього розділеного платежу, у «Долар».',
+          'Обмін у «Картка» надійшов з банку й залишиться.',
+          'Обмін із цього розділеного платежу в «Готівка» не знайдено. Перевірте «Готівка».',
+          'Обмін із цього розділеного платежу не знайдено.',
+        ].join(' '),
+      );
+    });
   });
 
   it('reads in the active language', async () => {

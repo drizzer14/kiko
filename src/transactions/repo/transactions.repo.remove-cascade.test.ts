@@ -794,10 +794,28 @@ describe('deleting a part of a split payment that was converted', () => {
     },
   );
 
-  it('names only the split in the plan of a return, which is no member of the exchange', async () => {
+  it('names the split and the converted payment’s leg in the plan of a return', async () => {
     await splitThenConvertPayment();
 
-    expect(await transactionsRepo.removePlan(idOfRowOn('cash'))).toEqual({ split: true });
+    expect(await transactionsRepo.removePlan(idOfRowOn('cash'))).toEqual({
+      split: true,
+      splitExchanges: [{ kind: 'deleted', names: ['Dollar card'] }],
+    });
+  });
+
+  it('reads the converted payment’s leg as a conversion of the split in the confirm of a return', async () => {
+    await splitThenConvertPayment();
+
+    expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('cash')), i18n.t)).toBe(
+      'This also deletes every other part of this split payment. This also deletes the conversion made from this split payment, in Dollar card.',
+    );
+  });
+
+  it('deletes the same rows from a return as before: the split and the converted leg', async () => {
+    await splitThenConvertPayment();
+    await transactionsRepo.remove(idOfRowOn('cash'));
+
+    expect(rowIds()).toEqual([]);
   });
 
   it('names the split and both exchange legs in the plan of the payment', async () => {
@@ -923,21 +941,21 @@ describe('deleting a part of a split payment whose return was converted', () => 
     },
   );
 
-  it('names the split and the exchange leg in the plan of the payment', async () => {
+  it('names the split and the conversion of the return in the plan of the payment', async () => {
     await splitThenConvertReturn();
 
     expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
       split: true,
-      exchange: { kind: 'deleted', names: ['Dollar card'] },
+      splitExchanges: [{ kind: 'deleted', names: ['Dollar card'] }],
     });
   });
 
-  it('names the exchange leg in the plan of a return that was not converted', async () => {
+  it('names the conversion, never the other part of an exchange, in the plan of a return that was not converted', async () => {
     await splitThenConvertReturn();
 
     expect(await transactionsRepo.removePlan(idOfRowOn('second'))).toEqual({
       split: true,
-      exchange: { kind: 'deleted', names: ['Dollar card'] },
+      splitExchanges: [{ kind: 'deleted', names: ['Dollar card'] }],
     });
   });
 
@@ -950,10 +968,18 @@ describe('deleting a part of a split payment whose return was converted', () => 
     });
   });
 
-  it('reads both sentences in the confirm of the payment', async () => {
+  it('reads the split and its conversion in the confirm of the payment', async () => {
     await splitThenConvertReturn();
 
     expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('uah')), i18n.t)).toBe(
+      'This also deletes every other part of this split payment. This also deletes the conversion made from this split payment, in Dollar card.',
+    );
+  });
+
+  it('reads the other part of the exchange and the split in the confirm of the converted return', async () => {
+    await splitThenConvertReturn();
+
+    expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('cash')), i18n.t)).toBe(
       'This also deletes the other part of this exchange, in Dollar card. This also deletes every other part of this split payment.',
     );
   });
@@ -971,12 +997,72 @@ describe('deleting a part of a split payment whose return was converted', () => 
 
       expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
         split: true,
-        exchange: { kind: 'syncedKept', names: ['Dollar card'] },
+        splitExchanges: [{ kind: 'syncedKept', names: ['Dollar card'] }],
       });
 
       await transactionsRepo.remove(idOfRowOn('uah'));
 
       expect(rowIds()).toEqual(['bank-leg']);
+    });
+
+    it('never says only one part goes next to the split, from the payment or the converted return', async () => {
+      await bankOwnLeg();
+
+      expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('uah')), i18n.t)).toBe(
+        'This also deletes every other part of this split payment. The conversion in Dollar card came from your bank and stays.',
+      );
+      expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('cash')), i18n.t)).toBe(
+        'The conversion in Dollar card came from your bank and stays. This also deletes every other part of this split payment.',
+      );
+    });
+  });
+
+  describe('when a return carries a marker no pair row answers', () => {
+    const legacyReturn = (markerHoldingId: string): void => {
+      insertRow({
+        id: 'legacy-payment',
+        holdingId: 'uah',
+        amountMinorUnits: -50_000,
+        changeGroupId: 'legacy-group',
+      });
+      insertRow({
+        id: 'legacy-return',
+        holdingId: 'cash',
+        amountMinorUnits: 10_000,
+        changeGroupId: 'legacy-group',
+        exchangeCounterpartHoldingId: markerHoldingId,
+      });
+    };
+
+    it('names the holding to check in the plan of the payment, and deletes the split only', async () => {
+      legacyReturn('usd');
+
+      expect(await transactionsRepo.removePlan('legacy-payment')).toEqual({
+        split: true,
+        splitExchanges: [{ kind: 'missing', name: 'Dollar card' }],
+      });
+
+      await transactionsRepo.remove('legacy-payment');
+
+      expect(rowIds()).toEqual([]);
+    });
+
+    it('names no holding when the marker holding is gone', async () => {
+      legacyReturn('deleted-holding');
+
+      expect(await transactionsRepo.removePlan('legacy-payment')).toEqual({
+        split: true,
+        splitExchanges: [{ kind: 'missing' }],
+      });
+    });
+
+    it('does not name a deposit marker, whose leg has no partner row by design', async () => {
+      legacyReturn('deposit');
+
+      expect(await transactionsRepo.removePlan('legacy-payment')).toEqual({
+        split: true,
+        deposit: { name: 'Deposit', matched: false },
+      });
     });
   });
 });

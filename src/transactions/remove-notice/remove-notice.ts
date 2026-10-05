@@ -25,7 +25,11 @@ export type DepositRemoval = {
 export type RemovePlan = {
   // Every other row of the split group goes with this one.
   split: boolean;
+  // The exchange the row is itself a part of (it carries the exchange's pair id).
   exchange?: ExchangeRemoval;
+  // Conversions reached only through another part of the split: a pair the row
+  // is no member of, whose names and fate the confirm speaks of as the split's.
+  splitExchanges?: ExchangeRemoval[];
   deposit?: DepositRemoval;
 };
 
@@ -34,7 +38,29 @@ export type RemovePlan = {
 const listedNames = (names: string[], t: TFunction): string =>
   names.map((name) => t('common.listedName', { name })).join(', ');
 
-const exchangeSentence = (exchange: ExchangeRemoval, t: TFunction): string =>
+// The conversion sentences of a split: one per holding, the name quoted by the
+// sentence itself, and none says that only one part is deleted.
+const splitExchangeSentences = (exchange: ExchangeRemoval, t: TFunction): string =>
+  match(exchange)
+    .with({ kind: 'deleted' }, ({ names }) =>
+      names.map((name) => t('transactions.deleteLinked.splitExchange', { name })).join(' '),
+    )
+    .with({ kind: 'syncedKept' }, ({ names }) =>
+      names
+        .map((name) => t('transactions.deleteLinked.splitExchangeSyncedKept', { name }))
+        .join(' '),
+    )
+    .with({ kind: 'missing' }, ({ name }) =>
+      name === undefined
+        ? t('transactions.deleteLinked.splitExchangeUnlinkedPlain')
+        : t('transactions.deleteLinked.splitExchangeUnlinked', { name }),
+    )
+    .exhaustive();
+
+// A bank-owned or missing other part says "only this part is deleted" in the
+// exchange sentences, which a split delete contradicts: with a split they take
+// the split's own wording.
+const exchangeSentence = (exchange: ExchangeRemoval, isSplit: boolean, t: TFunction): string =>
   match(exchange)
     .with({ kind: 'deleted' }, ({ names, keptNames = [] }) =>
       [
@@ -43,13 +69,19 @@ const exchangeSentence = (exchange: ExchangeRemoval, t: TFunction): string =>
       ].join(' '),
     )
     .with({ kind: 'syncedKept' }, ({ names }) =>
-      t('transactions.deleteLinked.exchangeSyncedKept', { name: listedNames(names, t) }),
+      isSplit
+        ? splitExchangeSentences(exchange, t)
+        : t('transactions.deleteLinked.exchangeSyncedKept', { name: listedNames(names, t) }),
     )
-    .with({ kind: 'missing' }, ({ name }) =>
-      name === undefined
+    .with({ kind: 'missing' }, ({ name }) => {
+      if (isSplit) {
+        return splitExchangeSentences(exchange, t);
+      }
+
+      return name === undefined
         ? t('transactions.deleteLinked.exchangeUnlinkedPlain')
-        : t('transactions.deleteLinked.exchangeUnlinked', { name }),
-    )
+        : t('transactions.deleteLinked.exchangeUnlinked', { name });
+    })
     .exhaustive();
 
 const depositSentence = ({ name, matched }: DepositRemoval, t: TFunction): string =>
@@ -145,7 +177,10 @@ export const removeHoldingsNoticeOf = async (
  */
 export const removeNotice = (plan: RemovePlan, t: TFunction): string | undefined =>
   joinNoticeSentences(
-    foldMap(maybe(plan.exchange), (exchange) => exchangeSentence(exchange, t)),
+    foldMap(maybe(plan.exchange), (exchange) => exchangeSentence(exchange, plan.split, t)),
     plan.split ? t('transactions.deleteLinked.split') : undefined,
+    joinNoticeSentences(
+      ...(plan.splitExchanges ?? []).map((exchange) => splitExchangeSentences(exchange, t)),
+    ),
     foldMap(maybe(plan.deposit), (deposit) => depositSentence(deposit, t)),
   );

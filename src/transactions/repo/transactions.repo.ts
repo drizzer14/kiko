@@ -434,32 +434,31 @@ const uniqueHoldingNamesOf = (
   ),
 ];
 
-// The payment of a split is its row below zero; its returns are above.
-const isSplitPayment = (row: TransactionRow): boolean =>
-  row.changeGroupId !== null && row.amountMinorUnits < 0;
-
-// The pair rows a delete of `row` names. A row with a pair id of its own is a
-// member of that exchange and names all of it. A row with none reaches pairs
-// only through its split: a split member is named by the split sentence, not as
-// an exchange leg, and the payment's own conversion is part of the payment, which
-// that sentence covers too. So what is left to name is the legs outside the split
-// of a pair that a return carries.
-const namedPairOf = (row: TransactionRow, linked: LinkedRows): LinkedRows['pair'] => {
-  if (row.exchangePairId !== null) {
-    return linked.pair;
-  }
-
-  const splitMembers = [...linked.split.removed, ...linked.split.kept];
-  const memberIds = splitMembers.map((member) => member.id);
-  const paymentPairIds = presentIdsOf(
-    splitMembers.filter(isSplitPayment).map((payment) => payment.exchangePairId),
-  );
-  const outsideSplit = (rows: TransactionRow[]): TransactionRow[] =>
+// The pair rows of the exchange `row` is itself a part of (its own pair id): the
+// confirm names them as the other parts of that exchange.
+const ownPairOf = (row: TransactionRow, linked: LinkedRows): LinkedRows['pair'] => {
+  const ofOwnPair = (rows: TransactionRow[]): TransactionRow[] =>
     rows.filter(
-      (part) => !memberIds.includes(part.id) && !isOneOf(paymentPairIds, part.exchangePairId),
+      (part) => row.exchangePairId !== null && part.exchangePairId === row.exchangePairId,
     );
 
-  return { removed: outsideSplit(linked.pair.removed), kept: outsideSplit(linked.pair.kept) };
+  return { removed: ofOwnPair(linked.pair.removed), kept: ofOwnPair(linked.pair.kept) };
+};
+
+// The pair rows a delete reaches only through the split: a pair the row is no
+// member of. A member of the split is named by the split sentence, not as a leg
+// of a conversion, so what is left to name is the legs outside the split, of the
+// payment's own conversion as much as of a return's.
+const viaSplitPairOf = (row: TransactionRow, linked: LinkedRows): LinkedRows['pair'] => {
+  const memberIds = [...linked.split.removed, ...linked.split.kept].map((member) => member.id);
+  const reachedViaSplit = (rows: TransactionRow[]): TransactionRow[] =>
+    rows.filter(
+      (part) =>
+        !memberIds.includes(part.id) &&
+        (row.exchangePairId === null || part.exchangePairId !== row.exchangePairId),
+    );
+
+  return { removed: reachedViaSplit(linked.pair.removed), kept: reachedViaSplit(linked.pair.kept) };
 };
 
 const exchangeRemovalOf = (
@@ -467,7 +466,7 @@ const exchangeRemovalOf = (
   linked: LinkedRows,
   holdingsById: Map<string, NamedHolding>,
 ): ExchangeRemoval | undefined => {
-  const pair = namedPairOf(row, linked);
+  const pair = ownPairOf(row, linked);
 
   if (pair.removed.length > 0) {
     return {
@@ -489,6 +488,52 @@ const exchangeRemovalOf = (
   }
 
   return { kind: 'missing', ...foldMap(maybe(marker), ({ name }) => ({ name })) };
+};
+
+// What the delete does to the conversions it reaches only through the split: the
+// pairs outside it that go or stay, and a member's exchange marker that no pair
+// row answers (a legacy leg), named by the holding it points at. A deposit leg
+// has no partner row by design, so its marker is no finding.
+const splitExchangesOf = (
+  row: TransactionRow,
+  linked: LinkedRows,
+  holdingsById: Map<string, NamedHolding>,
+): ExchangeRemoval[] | undefined => {
+  const pair = viaSplitPairOf(row, linked);
+  const movement = [
+    row,
+    ...linked.pair.removed,
+    ...linked.pair.kept,
+    ...linked.split.removed,
+    ...linked.split.kept,
+  ];
+  const unanswered = linked.split.removed
+    .filter(
+      (member) =>
+        member.id !== row.id &&
+        member.exchangeCounterpartHoldingId !== null &&
+        !hasPartnerRow(member, movement),
+    )
+    .map((member) => markerHoldingOf(member, holdingsById));
+  const unansweredNames = [
+    ...new Set(
+      unanswered.flatMap((marker) =>
+        marker === undefined || marker.type === 'term_deposit' ? [] : [marker.name],
+      ),
+    ),
+  ];
+  const exchanges: ExchangeRemoval[] = [
+    ...(pair.removed.length > 0
+      ? [{ kind: 'deleted' as const, names: uniqueHoldingNamesOf(pair.removed, holdingsById) }]
+      : []),
+    ...(pair.kept.length > 0
+      ? [{ kind: 'syncedKept' as const, names: uniqueHoldingNamesOf(pair.kept, holdingsById) }]
+      : []),
+    ...unansweredNames.map((name) => ({ kind: 'missing' as const, name })),
+    ...(unanswered.some((marker) => marker === undefined) ? [{ kind: 'missing' as const }] : []),
+  ];
+
+  return exchanges.length > 0 ? exchanges : undefined;
 };
 
 const depositRemovalOf = async (
@@ -531,6 +576,7 @@ const planRemoveDatabaseTransaction = async (
   return {
     split: linked.split.removed.length > 0,
     exchange: exchangeRemovalOf(row, linked, holdingsById),
+    splitExchanges: splitExchangesOf(row, linked, holdingsById),
     deposit: await depositRemovalOf(databaseTransaction, removed, holdingsById),
   };
 };
