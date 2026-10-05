@@ -21,6 +21,7 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { activeHoldings } from '@kiko/rates/active-holdings';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
+import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
@@ -30,14 +31,15 @@ import LoadingState from '@kiko/design-system/components/loading-state';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { toggleFilterValue } from '@kiko/design-system/toggle-filter-value';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type DaySection, groupByDay } from '@kiko/transactions/group-by-day';
-import { defaultDateRange, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import type { FilterOption } from '@kiko/design-system/components/filter-menu';
 import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
 import { type CompositeScreenProps, useIsFocused } from '@react-navigation/native';
+import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
 import { accountDisplayName, accountsForFilter } from '@kiko/holdings/implicit-account';
 import { type FC, type ReactElement, useCallback, useMemo, useRef, useState } from 'react';
@@ -48,8 +50,8 @@ import { styles } from './home.styles';
 import TransactionRow from './transaction-row';
 import SyncProgressBar from './sync-progress-bar';
 import AddTransactionFab from './add-transaction-fab';
+import TransactionFilterBar from './transaction-filter-bar';
 import { useRefreshControlSignal } from './use-refresh-control-signal';
-import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
 import type { HomeTransactionRow } from './transaction-row/transaction-row.props';
 
 // Home lives in its own tab; some of its future navigation targets belong to
@@ -127,19 +129,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // the range's bounds, so this block sits above the reads.
   const now = Date.now();
 
-  // `customRange` holds an explicit user pick; `null` means "show the default
-  // (last-30-days) range". The default is derived FRESH from `now` on every
-  // render instead of being frozen once in a `useState` initializer — this
-  // tab stays mounted after it is left, so a range seeded only at mount (or
-  // at the last Clear) silently stopped including "today" once a calendar day
-  // had passed. A user pick still stays exactly as given, even one side left
-  // null (open-ended) via the date-range field.
-  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null } | null>(
-    null,
-  );
-  const defaultRange = defaultDateRange(now);
-  const dateFrom = customRange !== null ? customRange.from : defaultRange.from;
-  const dateTo = customRange !== null ? customRange.to : defaultRange.to;
+  const { dateFrom, dateTo, applyDateRange, clearDateRange } = useDateRangeSelection(now);
   // Computed every render (cheap — two Date constructions, not the filter
   // below), but its VALUES are what the ledger read and `filteredTransactions`
   // key on: `bounds.from`/`bounds.to` are day-aligned numbers
@@ -278,40 +268,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // Each dimension holds a set of selected values; an empty set means "all".
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
-
-  const clearDateRange = (): void => {
-    setCustomRange(null);
-  };
-
-  // The date-range modal commits both bounds at once on Apply; either may be
-  // null when that side of the range is left open-ended.
-  const applyDateRange = (from: Date | null, to: Date | null): void => {
-    setCustomRange({ from, to });
-  };
-
-  // The `FILTER_ALL` chip clears the dimension; any other value toggles in/out.
-  // A fresh Set keeps the state update immutable.
-  const toggleFilter =
-    (setSelected: (updater: (previous: Set<string>) => Set<string>) => void) =>
-    (value: string): void => {
-      if (value === FILTER_ALL) {
-        setSelected(() => new Set());
-
-        return;
-      }
-
-      setSelected((previous) => {
-        const next = new Set(previous);
-
-        if (next.has(value)) {
-          next.delete(value);
-        } else {
-          next.add(value);
-        }
-
-        return next;
-      });
-    };
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   // The configurable catch-all category: a null/empty transaction category folds
@@ -659,8 +615,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
               categories={categoryOptions}
               selectedAccount={visibleSelectedAccounts}
               selectedCategory={selectedCategories}
-              onToggleAccount={toggleFilter(setSelectedAccounts)}
-              onToggleCategory={toggleFilter(setSelectedCategories)}
+              onToggleAccount={(value) => setSelectedAccounts(toggleFilterValue(value))}
+              onToggleCategory={(value) => setSelectedCategories(toggleFilterValue(value))}
               dateFrom={dateFrom}
               dateTo={dateTo}
               minDate={new Date(spanStart)}

@@ -42,10 +42,6 @@ import {
   buildDebtTotal,
 } from '@kiko/statistics/account-contribution';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import FilterMenu, {
-  FILTER_ALL,
-  type FilterOption,
-} from '@kiko/design-system/components/filter-menu';
 import either, { bifold, isLeft } from 'fnts/either';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
@@ -61,6 +57,7 @@ import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import { bucketDaysForSpan } from '@kiko/statistics/buckets';
+import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { localMidnightOfDayKey } from '@kiko/prices/price-book';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import MoneyText from '@kiko/design-system/components/money-text';
@@ -76,14 +73,16 @@ import SummaryTable from '@kiko/design-system/components/summary-table';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
+import { toggleFilterValue } from '@kiko/design-system/toggle-filter-value';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
-import { defaultDateRange, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
 import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-now';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 import { internalTransferTransactionIds } from '@kiko/statistics/internal-transfers';
+import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { accountDisplayName, accountsForFilter } from '@kiko/holdings/implicit-account';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
+import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 
 import BarChart from './bar-chart';
@@ -104,31 +103,6 @@ const toPieSlice = (slice: CategorySlice): AccountSlice => ({
   share: slice.share,
   color: slice.color,
 });
-
-// A FilterMenu toggle for either dimension (accounts, categories): the
-// `FILTER_ALL` row clears the dimension; any other value toggles in/out. A fresh
-// Set keeps the state update immutable.
-const toggleFilter =
-  (setSelected: (updater: (previous: Set<string>) => Set<string>) => void) =>
-  (value: string): void => {
-    if (value === FILTER_ALL) {
-      setSelected(() => new Set());
-
-      return;
-    }
-
-    setSelected((previous) => {
-      const next = new Set(previous);
-
-      if (next.has(value)) {
-        next.delete(value);
-      } else {
-        next.add(value);
-      }
-
-      return next;
-    });
-  };
 
 // Group the whole ledger by holding id so the net-worth series can reconstruct
 // each holding's running balance over time. Keyed by holding, not account,
@@ -274,27 +248,7 @@ const StatisticsScreen: FC = () => {
   // memoization — only a re-focus advances it.
   const now = useFocusRefreshedNow();
 
-  // `customRange` holds an explicit user pick; `null` means "show the default
-  // (last-30-days) range". The default is derived FRESH from `now` on every
-  // render instead of being frozen once in a `useState` initializer — a tab
-  // stays mounted after it is left, so a range seeded only at mount (or at the
-  // last Clear) silently stopped including "today" from the next calendar day
-  // onward. A user pick still stays exactly as given, even one side left null
-  // (open-ended) via the date-range field.
-  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null } | null>(
-    null,
-  );
-  const defaultRange = defaultDateRange(now);
-  const dateFrom = customRange !== null ? customRange.from : defaultRange.from;
-  const dateTo = customRange !== null ? customRange.to : defaultRange.to;
-
-  const applyDateRange = (from: Date | null, to: Date | null): void => {
-    setCustomRange({ from, to });
-  };
-
-  const clearDateRange = (): void => {
-    setCustomRange(null);
-  };
+  const { dateFrom, dateTo, applyDateRange, clearDateRange } = useDateRangeSelection(now);
 
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   // The configurable catch-all: a null/empty category folds into this category's
@@ -1197,7 +1151,7 @@ const StatisticsScreen: FC = () => {
             testID="statistics-account-filter"
             options={accountOptions}
             selected={filtered.visibleSelectedAccounts}
-            onToggle={toggleFilter(setSelectedAccounts)}
+            onToggle={(value) => setSelectedAccounts(toggleFilterValue(value))}
             triggerIcon="tray"
           />
 
@@ -1275,7 +1229,7 @@ const StatisticsScreen: FC = () => {
                 testID="statistics-category-filter"
                 options={categoryOptions}
                 selected={selectedCategories}
-                onToggle={toggleFilter(setSelectedCategories)}
+                onToggle={(value) => setSelectedCategories(toggleFilterValue(value))}
                 triggerIcon={genericEntitySymbol.category}
               />
             </Box>
