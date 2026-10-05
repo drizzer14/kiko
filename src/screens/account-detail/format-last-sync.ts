@@ -8,10 +8,10 @@ import { syncedAtOf } from '@kiko/holdings/holding-metadata';
  * The account's last-sync label. `t` is threaded in (rather than read off the
  * i18next singleton) so this stays a pure render-time helper that re-resolves
  * against the active language on every call — the same shape
- * `defaultTransactionDescription` and `derivedEntries` use. It previously
- * returned a bare English `'Never'` that was then interpolated into the
- * TRANSLATED `accountDetail.lastSync` key, so a Ukrainian user read
- * "Остання синхронізація: Never".
+ * `defaultTransactionDescription` and `derivedEntries` use. The `Never`
+ * fallback is translated here because the result is interpolated into the
+ * TRANSLATED `accountDetail.lastSync` key; a bare English `'Never'` would
+ * read "Остання синхронізація: Never" to a Ukrainian user.
  */
 export const formatLastSyncAt = (
   lastSyncAt: number | null,

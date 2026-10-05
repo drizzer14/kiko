@@ -64,7 +64,7 @@ describe('AddTransactionFab', () => {
   it('paints its background with the shared translucent GlassSurface, not a flat accent fill', async () => {
     // The FAB's circular background must be the design system's shared
     // GlassSurface (neutral `transparent` variant), never a hand-rolled glass
-    // effect or the old flat accent circle. `GlassSurface` renders a layer
+    // effect or a flat accent circle. `GlassSurface` renders a layer
     // testID'd `${testID}-base` under jest's non-glass fallback (see its own
     // test file) — its presence is proof the real component tree renders,
     // not just a plain colored View standing in for it.
@@ -78,8 +78,8 @@ describe('AddTransactionFab', () => {
     const fab = getByLabelText('Add transaction');
     const flattened = StyleSheet.flatten(fab.props.style);
 
-    // The flat accent circle is gone: the touch target itself must no longer
-    // paint the solid accent color now that the visible background is glass.
+    // The visible background is glass, so the touch target itself must not
+    // paint the solid accent color.
     expect(flattened.backgroundColor).not.toBe(darkTheme.colors.accent);
   });
 

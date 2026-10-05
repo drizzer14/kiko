@@ -56,8 +56,8 @@ import type { HomeTransactionRow } from './transaction-row/transaction-row.props
 
 // Home lives in its own tab; some of its future navigation targets belong to
 // the Accounts tab's stack. Composing the Home stack props with the tab props
-// keeps that cross-tab navigation type-safe even though this screen no longer
-// issues those navigate() calls itself.
+// keeps that cross-tab navigation type-safe even though this screen issues
+// none of those navigate() calls itself.
 type HomeScreenProps = CompositeScreenProps<
   NativeStackScreenProps<HomeStackParamList, 'Home'>,
   NativeBottomTabScreenProps<TabParamList, 'HomeTab'>
@@ -356,7 +356,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [categoryByKey, defaultCategoryKey],
   );
   // One option per distinct resolved key, first-seen-wins (the same
-  // distinctness the old `Set` gave), each carrying the category's resolved
+  // distinctness a `Set` gives), each carrying the category's resolved
   // icon, effective color, and localized label for the menu row. Matching
   // keys on `option.value` (the stable key, compared to
   // `categoryKeyForRow(row.category)` below); the row renders `option.label`.

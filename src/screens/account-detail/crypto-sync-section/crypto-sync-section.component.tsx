@@ -49,12 +49,12 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
   const { isSyncing, error, sync } = useCryptoSync();
   // Multi-connection: each crypto account connects independently, so
   // there is no "connected elsewhere" gate — another account holding this source
-  // no longer blocks connecting it here.
+  // does not block connecting it here.
   const connectedProvider = isBalanceProviderId(account.institution)
     ? account.institution
     : undefined;
-  // Whether the themed Disconnect confirm (`ConfirmSheet`) is up, replacing the
-  // old native `Alert.alert`; a scrim/back dismiss behaves like Cancel.
+  // Whether the themed Disconnect confirm (`ConfirmSheet`) is up; a scrim/back
+  // dismiss behaves like Cancel.
   const [disconnectPending, setDisconnectPending] = useState(false);
 
   // A synced account sends no reminder, and a disconnected one sends them
@@ -160,8 +160,8 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
         )}
 
         {/* The crypto provider Disconnect confirmation — the same shared themed
-            `ConfirmSheet` the grid-card long-press delete uses, replacing the old
-            native `Alert.alert`. A scrim/back dismiss behaves like Cancel. */}
+            `ConfirmSheet` the grid-card long-press delete uses. A scrim/back
+            dismiss behaves like Cancel. */}
         <ConfirmSheet
           visible={disconnectPending}
           title={t('accountDetail.disconnectProvider', {

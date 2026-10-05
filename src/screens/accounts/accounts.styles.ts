@@ -55,10 +55,10 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // The footer's "Add account" button spans the full footer width (not
   // `alignSelf: 'flex-start'`) so it reads as the row's dominant action and
-  // keeps a comfortable, easy-to-hit tap target. Tab-bar clearance is no longer
+  // keeps a comfortable, easy-to-hit tap target. Tab-bar clearance is not
   // applied here — the shared Screen footer lifts every footer clear of the
-  // floating glass tab bar universally, so adding it here again would
-  // double-pad the footer.
+  // floating glass tab bar universally, so adding it here would double-pad
+  // the footer.
   addAccountButton: {
     width: '100%',
   },

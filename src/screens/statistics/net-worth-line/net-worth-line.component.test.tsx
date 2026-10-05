@@ -28,9 +28,9 @@ const polylineYs = (raw: string): number[] =>
 // The stroke splits into one <Polyline> per sign-contiguous segment
 // (testID `net-worth-line-polyline-<key>`) instead of a single polyline —
 // this flattens every segment's points into one Y array, the same shape
-// `polylineYs` used to return from the old single polyline, so the
-// gradient-anchoring math below (which only cares about the SET of plotted
-// Y's, not which segment carried which) is unchanged.
+// `polylineYs` returns for one polyline, so the gradient-anchoring math below
+// (which only cares about the SET of plotted Y's, not which segment carried
+// which) reads it as one array.
 const allSegmentYs = (segments: { props: Record<string, unknown> }[]): number[] =>
   segments.flatMap((segment) => polylineYs(String(segment.props.points)));
 
@@ -200,16 +200,16 @@ describe('buildLineSegments', () => {
 });
 
 describe('buildTicks', () => {
-  // The bottom Y-axis tick is the domain minimum. It now represents the net
+  // The bottom Y-axis tick is the domain minimum. It represents the net
   // worth's OWN minimum value (the lowest plotted amount, including the start
   // reference so the dashed baseline stays on-screen), floored to a nearby round
-  // number — NOT the old symmetric `startReference - halfRange`, which sat far
-  // below the data and made the line hug the top of the plot.
+  // number — NOT a symmetric `startReference - halfRange`, which would sit far
+  // below the data and make the line hug the top of the plot.
 
   it('floors the minimum to the reference value when the whole series sits above it', async () => {
     // All amounts are above the start reference, so the reference IS the minimum.
-    // The old symmetric domain put the bottom at 150000 - 8000 = 142000; the new
-    // one floors the true minimum (150000) to a nearby round number.
+    // A symmetric domain would put the bottom at 150000 - 8000 = 142000; the
+    // true minimum (150000) is floored to a nearby round number instead.
     const ticks = buildTicks(
       [
         { t: 0, amount: 150_000 },
@@ -255,8 +255,8 @@ describe('buildTicks', () => {
     );
 
     const bottom = ticks[ticks.length - 1].value;
-    // The old symmetric domain would have floored to 340000 (110000 below the
-    // data); the new one stays within one nice step of the minimum.
+    // A symmetric domain would floor to 340000 (110000 below the data); the
+    // bottom stays within one nice step of the minimum.
     expect(bottom).toBe(440_000);
     expect(min - bottom).toBeLessThanOrEqual(20_000);
   });
@@ -588,8 +588,7 @@ describe('NetWorthLine', () => {
 
   // Crossing data at the component level: net worth starts ABOVE the start
   // reference (250 > 200), dips BELOW it (150 < 200), then returns above (250) —
-  // so both the green and the red area are non-empty. This is the exact shape
-  // whose red region failed to render on device under the old ClipPath approach.
+  // so both the green and the red area are non-empty.
   const crossingPoints: NetWorthPoint[] = [
     { t: 0, amount: 250 },
     { t: 1, amount: 150 },
@@ -716,7 +715,7 @@ describe('NetWorthLine', () => {
     expect(Number(negGrad.props.y1)).toBeCloseTo(referenceY);
     expect(Number(negGrad.props.y2)).toBeCloseTo(redBottomY);
 
-    // NOT the old whole-plot extents (PADDING_Y at the top, baselineY at the
+    // NOT the whole-plot extents (PADDING_Y at the top, baselineY at the
     // bottom) — the ramp is compressed into the filled sliver.
     expect(Number(posGrad.props.y1)).not.toBeCloseTo(12);
     expect(Number(negGrad.props.y2)).not.toBeCloseTo(baselineY);
@@ -725,7 +724,7 @@ describe('NetWorthLine', () => {
   it('keeps a SHALLOW dip readable: the red opaque stop lands at redBottomY, not the plot bottom', async () => {
     const height = 200;
     // Starts above, dips only SLIGHTLY below the reference (199 vs 200), returns
-    // above. Under the old whole-plot ramp this dip sat where red opacity ~ 0.
+    // above. Under a whole-plot ramp this dip would sit where red opacity ~ 0.
     const shallow: NetWorthPoint[] = [
       { t: 0, amount: 250 },
       { t: 1, amount: 199 },
@@ -795,9 +794,8 @@ describe('NetWorthLine', () => {
     expect(segments[2].props.stroke).toBe(darkTheme.colors.positive);
     expect(segments[0].props.fill).toBe('none');
 
-    // Every segment keeps the SAME stroke width the single polyline used to
-    // (LINE_STROKE_WIDTH is not exported; consistency across segments is
-    // the observable contract for "preserve the current stroke width").
+    // Every segment carries the SAME stroke width (LINE_STROKE_WIDTH is not
+    // exported; consistency across segments is the observable contract).
     const widths = new Set(segments.map((segment) => segment.props.strokeWidth));
     expect(widths.size).toBe(1);
 
@@ -936,12 +934,11 @@ describe('NetWorthLine', () => {
     return numberStyleOf(getByTestId('net-worth-line-loading').props.style, 'height');
   };
 
-  // Regression: the loading placeholder used to be a short spinner box that
-  // grew ~135px once the loaded chart replaced it, jumping the Charts screen's
-  // content height above the viewport mid-render and interrupting the OS's
-  // native scroll-to-top (tapping the active tab). The placeholder must now
-  // reserve the SAME total height the loaded chart occupies for a given plot
-  // height, so no post-mount height change ever occurs.
+  // The loading placeholder must reserve the SAME total height the loaded
+  // chart occupies for a given plot height, so no post-mount height change
+  // ever occurs: a shorter placeholder would jump the Charts screen's content
+  // height above the viewport mid-render and interrupt the OS's native
+  // scroll-to-top (tapping the active tab).
   it('reserves the same total height in the loading state as the loaded chart', async () => {
     const height = 200;
     const loadingHeight = await loadingHeightAt(height);

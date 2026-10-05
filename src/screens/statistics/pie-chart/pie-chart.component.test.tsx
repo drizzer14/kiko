@@ -224,7 +224,7 @@ describe('PieChart', () => {
     // The amount still renders inside the center-total wrapper...
     expect(getByTestId('pie-chart-center-total')).toBeTruthy();
     expect(getByText(/\$1,000\.00/)).toBeTruthy();
-    // ...but the "Total" caption that used to sit beneath it is gone.
+    // ...but no "Total" caption sits beneath it.
     expect(queryByText('Total')).toBeNull();
   });
 

@@ -50,7 +50,7 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
 // the same real-context requirement as the hook above; stand it in the same
 // way statistics.screen.test.tsx does — a `Date.now()` taken once at mount
 // and held STABLE across re-renders (no focus event fires in a standalone
-// screen render), so a re-render test can prove the screen no longer reads
+// screen render), so a re-render test can prove the screen does not read
 // its own fresh `Date.now()` per render.
 jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
   const { useState } = jest.requireActual('react');
@@ -371,7 +371,7 @@ describe('AccountsScreen', () => {
     const footerStyle = StyleSheet.flatten(getByTestId('screen-footer').props.style);
     const buttonBoxStyle = StyleSheet.flatten(getByTestId('add-account-footer').props.style);
 
-    // Clearance now lives on the Screen footer: its breathing-room gap now
+    // Clearance lives on the Screen footer: its breathing-room gap
     // MATCHES the footer button's own top margin (spacing(4) = 16) so the button
     // sits symmetrically, plus the mocked tab-bar height (the safe-area mock
     // reports a 0 bottom inset).
@@ -705,7 +705,7 @@ describe('AccountsScreen', () => {
     // The color lives on the icon tile only (see the tests above) — the card
     // itself is the shared solid content-layer `Card`: a flat `surface` fill
     // applied directly to its own node (no separate base/wash sub-layer the
-    // way `GlassSurface` used to render, and no colored wash at all).
+    // way `GlassSurface` renders, and no colored wash at all).
     const flat = StyleSheet.flatten(getByTestId('account-card').props.style);
     expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
   });
@@ -1044,10 +1044,10 @@ describe('AccountsScreen', () => {
       expect(mockAccountReorder).toHaveBeenCalledWith(['c', 'a', 'p', 'd']);
     });
 
-    // `debtsTotal` used to depend on a bare `Date.now()` read fresh on every
-    // function-component render, not the mounted screen's own stable `now`
-    // — so it recomputed (and could drift) on every re-render, not just on
-    // focus. A re-render with the real clock jumped forward (past another
+    // `debtsTotal` must depend on the mounted screen's own stable `now`, not a
+    // bare `Date.now()` read fresh on every function-component render —
+    // otherwise it would recompute (and could drift) on every re-render, not
+    // just on focus. A re-render with the real clock jumped forward (past another
     // installment boundary, so the loan's outstanding balance WOULD differ
     // if `now` had advanced) must still show the SAME total.
     it('keeps the Debts total stable across a re-render that is not a focus event', async () => {

@@ -74,14 +74,13 @@ const draftToFilter = (draft: Draft): TrendFilter =>
     .exhaustive();
 
 // A grouped-list section header: the body type step in the PRIMARY (white)
-// tone — the iOS grouped-form header treatment, pulled up from the dim grey
-// (`textSecondary`) it used before so it reads as a clear white sub-heading
-// above its section's controls rather than a weak, washed-out label. `body`
-// (not the former `caption`) keeps the label ABOVE its ChipRow value in
-// the type scale — the value pills below now render at `caption` via
-// `labelVariant`, so the hierarchy reads `heading` (sheet title) > `body`
-// (this label) > `caption` (the value) rather than the inverted
-// label-smaller-than-value it used to be. Title case, per the design
+// tone — the iOS grouped-form header treatment, not the dim grey
+// (`textSecondary`), so it reads as a clear white sub-heading above its
+// section's controls rather than a weak, washed-out label. `body` (not
+// `caption`) keeps the label ABOVE its ChipRow value in the type scale — the
+// value pills below render at `caption` via `labelVariant`, so the hierarchy
+// reads `heading` (sheet title) > `body` (this label) > `caption` (the
+// value), never a label smaller than its value. Title case, per the design
 // system's heading rule.
 const SectionHeader: FC<{ children: string }> = ({ children }) => (
   <Box style={styles.label}>
@@ -269,11 +268,11 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
       >
         {/* Each section is a white `body`-step sub-heading directly ABOVE its
             value control — no frosted `GlassSurface` card behind the values
-            any more (design review: the gray-filled card read as a
-            competing surface under a sheet that is already glass). The
-            values sit straight on the sheet, the iOS grouped-form look, and
-            drop to the `caption` step via `ChipRow`'s `labelVariant` so
-            they stay visually subordinate to their now-larger label. */}
+            (a gray-filled card would read as a competing surface under a
+            sheet that is already glass). The values sit straight on the
+            sheet, the iOS grouped-form look, and drop to the `caption` step
+            via `ChipRow`'s `labelVariant` so they stay visually subordinate
+            to their larger label. */}
         <Box gap={2} testID={`${testID}-group-selection`}>
           <SectionHeader>{t('statistics.trendFilter.selection')}</SectionHeader>
 

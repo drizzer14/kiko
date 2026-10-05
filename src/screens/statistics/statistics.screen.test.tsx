@@ -595,9 +595,9 @@ const renderOrder = (root: Awaited<ReturnType<typeof render>>): JSONNode[] => {
 type QueryNode = ReturnType<Awaited<ReturnType<typeof render>>['getByTestId']>;
 
 // The SFSymbolView glyph carrying `name` inside a given SelectableRow option
-// row — the filter option's icon no longer carries an accessibilityLabel (it
-// renders through the shared SelectableRow), so it is read off the host node
-// carrying that symbol name, scoped to the row from getByTestId.
+// row — the filter option's icon carries no accessibilityLabel (it renders
+// through the shared SelectableRow), so it is read off the host node carrying
+// that symbol name, scoped to the row from getByTestId.
 const optionGlyph = (row: QueryNode, name: string): QueryNode | undefined =>
   row.queryAll((node) => node.props.name === name).at(0);
 
@@ -1980,7 +1980,7 @@ describe('StatisticsScreen', () => {
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
   });
 
-  // A sync closes a jar or card the bank no longer lists; its past rows are
+  // A sync closes a jar or card absent from the bank's list; its past rows are
   // still real history, so both the transfer matcher and the spending charts
   // must keep reading them.
   describe('a closed holding', () => {
@@ -2468,10 +2468,10 @@ describe('StatisticsScreen', () => {
     expect(getByText(`${formatDate(range.from)} – ${formatDate(range.to)}`)).toBeTruthy();
   });
 
-  // The default range used to be seeded once in a `useState` initializer, so
-  // a tab that stayed mounted overnight kept showing yesterday's window and
-  // silently dropped today's activity. The default must instead be derived
-  // fresh from `now` (which itself refreshes on focus) on every render.
+  // The default range is derived fresh from `now` (which itself refreshes on
+  // focus) on every render, not seeded once in a `useState` initializer: a tab
+  // that stays mounted overnight would otherwise keep showing yesterday's
+  // window and silently drop today's activity.
   it("advances the default range's end to include a transaction from the day after mount, once refocused", async () => {
     mockNow = now;
 

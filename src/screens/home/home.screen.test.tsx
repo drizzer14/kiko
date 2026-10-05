@@ -52,9 +52,9 @@ jest.mock('@kiko/design-system/components/text', () => ({
 // tab-bar height MINUS the bottom safe-area inset, mirroring
 // `screen.component.test.tsx:16-31`'s constants and rationale: a ZERO inset
 // (the global mocks' default — see `jest/setup.js` and
-// `__mocks__/react-native-bottom-tabs.tsx`) makes the pre-fix "add the full
-// bar height" formula indistinguishable from the correct one, which is
-// exactly how the double-counting regression shipped unnoticed.
+// `__mocks__/react-native-bottom-tabs.tsx`) makes an "add the full bar
+// height" formula indistinguishable from the correct one, so a double-counting
+// bug would go unnoticed.
 const MOCK_TAB_BAR_HEIGHT = 80;
 jest.mock('react-native-bottom-tabs', () => ({
   useBottomTabBarHeight: () => MOCK_TAB_BAR_HEIGHT,
@@ -442,10 +442,10 @@ describe('HomeScreen', () => {
   it('renders the transaction card with the shared solid surface token, regardless of Liquid Glass support', async () => {
     // The row is the shared solid content-layer `Card` — a flat `surface`
     // fill with a defined border (see `Card`'s own doc comment for why
-    // content no longer routes through `GlassSurface`/Liquid Glass at all).
-    // Unlike the old `GlassSurface translucentStrong bloom` combination, its
-    // rendered tree is identical whether or not the device supports Liquid
-    // Glass, so this asserts across BOTH `isLiquidGlassSupported` states.
+    // content does not route through `GlassSurface`/Liquid Glass at all).
+    // Its rendered tree is therefore identical whether or not the device
+    // supports Liquid Glass, so this asserts across BOTH
+    // `isLiquidGlassSupported` states.
     const { getByTestId: getByTestIdFallback } = await renderHome();
     const fallbackFill = StyleSheet.flatten(getByTestIdFallback('transaction-row').props.style);
     expect(fallbackFill.backgroundColor).toBe(darkTheme.colors.surface);
@@ -1544,10 +1544,10 @@ describe('HomeScreen', () => {
     expect(queryByText('TooOld')).toBeNull();
   });
 
-  // The default range used to be seeded once in a `useState` initializer, so
-  // a tab that stayed mounted overnight kept showing yesterday's window and
-  // silently dropped today's activity. The default must instead be derived
-  // fresh from `now` on every render, matching the Statistics screen's own fix.
+  // The default range is derived fresh from `now` on every render, not seeded
+  // once in a `useState` initializer: a tab that stays mounted overnight would
+  // otherwise keep showing yesterday's window and silently drop today's
+  // activity. The Statistics screen derives its default the same way.
   it("advances the default range's end to include a transaction from the day after mount, once re-rendered", async () => {
     const base = Date.now();
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(base);
@@ -1807,9 +1807,9 @@ describe('HomeScreen', () => {
 
     const listPadding = getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
 
-    // The regression this guards: Home used to pass the FULL tab-bar height
-    // as its own clearance on top of the bottom inset Screen's SafeAreaView
-    // already reserves (see `home.screen.tsx`), leaving 130pt of dead space
+    // This guards against Home passing the FULL tab-bar height as its own
+    // clearance on top of the bottom inset Screen's SafeAreaView already
+    // reserves (see `home.screen.tsx`), which would leave 130pt of dead space
     // under the last row instead of the 96pt every other screen has.
     expect(listPadding).toBe(resolveBottomClearance(MOCK_TAB_BAR_HEIGHT, MOCK_BOTTOM_INSET));
 
@@ -1861,7 +1861,7 @@ describe('HomeScreen', () => {
   it('does not spin the pull control for an auto-sync-on-open (decoupled from isSyncing)', async () => {
     // An auto-sync-on-open lights the global sync signal but there is NO pull:
     // the native spinner must stay idle (the progress bar shows the auto-sync),
-    // proving the spinner no longer mirrors `isSyncing`.
+    // proving the spinner does not mirror `isSyncing`.
     mockUseSyncStatus.mockReturnValue(true);
     mockRefreshing.mockReturnValue(false);
     const { getByTestId } = await renderHome();

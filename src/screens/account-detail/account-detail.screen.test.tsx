@@ -252,9 +252,8 @@ const setLiveData = (data: {
   holdingsIsStale?: boolean;
 }): void => {
   const accounts = data.accounts ?? [];
-  // A per-table result map, keyed the same way the old if-chain branched —
-  // a lookup instead of a chain keeps this well under the cognitive-
-  // complexity budget (kiko-code-style).
+  // A per-table result map: a lookup instead of an if-chain keeps this well
+  // under the cognitive-complexity budget (kiko-code-style).
   const resultByTable: Record<string, LiveResult> = {
     // A real holding row always carries a `type`; default it here so a
     // fixture that only cares about name/currency/balance still yields a
@@ -789,9 +788,9 @@ describe('AccountDetailScreen', () => {
   });
 
   it('lets a bank account connect independently, with no single-connection gate or hint', async () => {
-    // The single-connection gate is gone: a bank account shows Connect on its
-    // own — the screen no longer queries whether another account already holds a
-    // Monobank connection — and no "connected elsewhere" hint is ever rendered.
+    // A bank account shows Connect on its own — the screen does not query
+    // whether another account already holds a Monobank connection — and no
+    // "connected elsewhere" hint is ever rendered.
     setLiveData({
       accounts: [account({ id: 'a', kind: 'bank', institution: null })],
       holdings: [],
@@ -1228,9 +1227,8 @@ describe('AccountDetailScreen', () => {
       holdings: [],
     });
     const { queryByLabelText } = await renderScreen();
-    // Identity editing moved to the dedicated edit form: the header no longer
-    // offers the icon-picker toggle, the editable name field, or the color
-    // swatch row it used to.
+    // Identity editing lives in the dedicated edit form: the header offers no
+    // icon-picker toggle, editable name field, or color swatch row.
     expect(queryByLabelText('Change Icon')).toBeNull();
     expect(queryByLabelText('Ukrsibbank Card name')).toBeNull();
     expect(queryByLabelText('Color violet')).toBeNull();
@@ -1661,8 +1659,8 @@ describe('AccountDetailScreen — loading gate', () => {
 
     expect(getByTestId('account-detail-loading')).toBeTruthy();
     expect(queryByTestId('account-detail-content')).toBeNull();
-    // 0.00 ₴ is what the real (buggy) empty-while-loading render used to show
-    // for the not-yet-loaded balance — it must never appear during loading.
+    // 0.00 ₴ is what an empty-while-loading render would show for the
+    // not-yet-loaded balance — it must never appear during loading.
     expect(queryByText(/0\.00/)).toBeNull();
     // The SAME Screen mode as the ready branch (`scroll`) — the first scroll
     // view iOS walks to drive the native large-title collapse must exist
