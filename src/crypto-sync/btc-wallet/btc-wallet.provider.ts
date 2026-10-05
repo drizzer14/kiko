@@ -1,6 +1,5 @@
 import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
 import { walletAddressOf } from '@kiko/holdings/holding-metadata';
 
 import type { BalanceProvider, ProviderBalance } from '../provider';
@@ -31,13 +30,14 @@ const WALLET_HOLDING_NAME = 'BTC Wallet';
 // third party on every sync. The upsert never reopens a row, so a connect-time address that
 // belongs to a closed holding refreshes that hidden row and nothing more.
 const addressesToSync = (connectAddress: string | undefined, holdings: HoldingRow[]): string[] => {
-  const storedAddresses = holdings
-    .filter(({ closedAt }) => closedAt === null)
-    .map(({ metadata }) => walletAddressOf(metadata))
-    .filter((address): address is string => address !== undefined);
-  const connectAddresses = foldMap(maybe(connectAddress), (address) => [address]) ?? [];
+  const addresses = [
+    connectAddress,
+    ...holdings
+      .filter(({ closedAt }) => closedAt === null)
+      .map(({ metadata }) => walletAddressOf(metadata)),
+  ].filter((address): address is string => address !== undefined);
 
-  return [...new Set([...connectAddresses, ...storedAddresses].map((address) => address.trim()))];
+  return [...new Set(addresses.map((address) => address.trim()))];
 };
 
 export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
@@ -47,6 +47,13 @@ export const bitcoinWalletProvider: BalanceProvider<BitcoinWalletDeps> = {
     const addresses = addressesToSync(deps.address, target.holdings);
 
     if (addresses.length === 0) {
+      // A wallet whose every stored address was closed has nothing left to track: the
+      // orchestrator writes nothing for an empty result, so only a wallet that never stored
+      // an address is an error.
+      if (target.holdings.some(({ metadata }) => walletAddressOf(metadata) !== undefined)) {
+        return [];
+      }
+
       throw new Error(i18n.t('accountDetail.noWalletAddressStored'));
     }
 

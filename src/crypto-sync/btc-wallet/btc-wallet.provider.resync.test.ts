@@ -107,6 +107,21 @@ describe('a wallet account that reconnected under a second address', () => {
     ]);
   });
 
+  // The closed holding is the only one that stores an address, so a re-sync has
+  // nothing to track and must finish quietly, not fail with "no address stored".
+  it('re-syncs nothing when its only stored address was closed and reconnected', async () => {
+    await syncWallet(explorer({ [FIRST_ADDRESS]: 100_000 }), FIRST_ADDRESS);
+    await accountsRepo.disconnect('wallet-account');
+    mockDatabase.prepare('UPDATE holdings SET closed_at = 1700000000000').run();
+    await syncWallet(explorer({ [FIRST_ADDRESS]: 100_000 }), FIRST_ADDRESS);
+
+    const resync = explorer({ [FIRST_ADDRESS]: 777_000 });
+
+    await expect(syncWallet(resync)).resolves.toEqual({ syncedHoldings: 0 });
+    expect(resync.requested).toEqual([]);
+    expect(storedBalances()).toEqual([{ address: FIRST_ADDRESS, balance: 100_000, closed: true }]);
+  });
+
   it('writes nothing when one of the addresses fails to fetch', async () => {
     await syncWallet(explorer({ [FIRST_ADDRESS]: 100_000 }), FIRST_ADDRESS);
     await accountsRepo.disconnect('wallet-account');

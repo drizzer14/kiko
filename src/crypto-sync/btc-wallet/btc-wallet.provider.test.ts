@@ -266,7 +266,7 @@ describe('bitcoinWalletProvider', () => {
     expect(deps.fetchAddressBalance).not.toHaveBeenCalled();
   });
 
-  it('throws before fetching when the only stored address belongs to a closed holding', async () => {
+  it('returns nothing and fetches nothing when the only stored address belongs to a closed holding', async () => {
     const deps = makeDeps();
 
     await expect(
@@ -274,7 +274,7 @@ describe('bitcoinWalletProvider', () => {
         deps,
         target([holdingWith({ walletAddress: ADDRESS }, 1_700_000_000_000)]),
       ),
-    ).rejects.toThrow(/connect a wallet/i);
+    ).resolves.toEqual([]);
     expect(deps.fetchAddressBalance).not.toHaveBeenCalled();
   });
 
