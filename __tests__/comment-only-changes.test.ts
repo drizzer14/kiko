@@ -3,14 +3,15 @@ import { join } from 'node:path';
 import { mkdtempSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
-import { buildMutationRepository } from './test-support/mutation-repository';
+import { REAL_NODE_MODULES, buildMutationRepository } from './test-support/mutation-repository';
 
 // scripts/checks/comment-only-changes.js decides, from the TypeScript compiler's own
 // parse, which changed files differ from the base ONLY in comments or whitespace, so the
 // mutation gate leaves them out. It prints a path only when it PROVED the file comment-only:
-// every doubt keeps the file. These spawn the real script in a throwaway git repository,
-// one spawn for the whole table, because loading the compiler dominates the cost.
-const SCRIPT = join(__dirname, '../scripts/checks/comment-only-changes.js');
+// every doubt keeps the file. These spawn the script's copy in a throwaway git repository
+// (it has no node_modules, so NODE_PATH reaches the worktree's typescript), one spawn for
+// the whole table, because loading the compiler dominates the cost.
+const SCRIPT = 'scripts/checks/comment-only-changes.js';
 
 type Change = { base: string; head: string | null; skipped: boolean };
 
@@ -159,6 +160,12 @@ const CHANGES: Record<string, Change> = {
     head: 'export const A = () => (\n  <b>\n    a\n  </b>\n);\n',
     skipped: false,
   },
+  // React keeps the first text and drops the second; nothing but the JSX text differs.
+  'src/jsx-text-whitespace-only.tsx': {
+    base: 'export const A = () => <a> </a>;\n',
+    head: 'export const A = () => <a>\n</a>;\n',
+    skipped: false,
+  },
   'src/jsx-attribute-string.tsx': {
     base: 'export const A = () => <b a="x y" />;\n',
     head: 'export const A = () => <b a="x  y" />;\n',
@@ -205,6 +212,12 @@ const CHANGES: Record<string, Change> = {
     head: '// broken\nexport const a = ;\n',
     skipped: false,
   },
+  // Two unparsable sides would compare equal as null, so the proof needs both to parse.
+  'src/neither-side-parses.ts': {
+    base: '// the old wording\nexport const a = ;\n',
+    head: '// the new wording\nexport const a = ;\n',
+    skipped: false,
+  },
   'src/new-file.ts': { base: '', head: '// only a comment\n', skipped: false },
   'src/deleted-file.ts': { base: 'export const a = 1;\n', head: null, skipped: false },
   'src/identical.ts': {
@@ -237,9 +250,9 @@ const run = (
   scriptArguments: string[],
   environment: Record<string, string> = {},
 ): ScriptRun => {
-  const result = spawnSync('node', [SCRIPT, ...scriptArguments], {
+  const result = spawnSync('node', [join(root, SCRIPT), ...scriptArguments], {
     cwd: root,
-    env: { ...process.env, ...environment },
+    env: { ...process.env, NODE_PATH: REAL_NODE_MODULES, ...environment },
     encoding: 'utf8',
   });
 
@@ -281,9 +294,11 @@ describe('scripts/checks/comment-only-changes.js', () => {
   });
 
   it('prints nothing when typescript cannot be loaded', () => {
-    const result = run(root, ['main', ...paths], { KIKO_TYPESCRIPT_MODULE: '/nonexistent/ts' });
+    // The throwaway repository has no node_modules; an empty NODE_PATH adds none.
+    const result = run(root, ['main', ...paths], { NODE_PATH: '' });
 
     expect(result.stdout).toBe('');
+    expect(result.code).toBe(0);
   });
 
   it('prints nothing when the base does not resolve', () => {

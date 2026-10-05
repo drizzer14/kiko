@@ -76,7 +76,8 @@ change set with 0 mutable files gets no mutation run: `mutation.sh`
 exits 0 on 0 files without starting Stryker. A changed file whose diff
 is only comments or whitespace is left out of that count by the script
 itself (it prints `skipped (comment-only): <path>`); a `Stryker` or JSX
-pragma comment, or any doubt, keeps the file.
+pragma comment, a colocated test changed by more than comments, or any
+doubt, keeps the file.
 
 ## Merging into main
 

@@ -22,8 +22,8 @@ const COMMENT_ONLY_SCRIPT = join(__dirname, '../../scripts/checks/comment-only-c
 
 // The throwaway repository has no node_modules, so the comment-only script
 // cannot find `typescript` there and keeps every file. A test that needs the
-// real parse points the script at the worktree's own copy through this seam.
-export const REAL_TYPESCRIPT = join(__dirname, '../../node_modules/typescript');
+// real parse sets NODE_PATH to this directory.
+export const REAL_NODE_MODULES = join(__dirname, '../../node_modules');
 
 // Bash lines that print one JSON entry per file of the comma list in
 // `$mutate_argument`, comma-separated. Bash 3.2-safe: IFS field-splitting, no

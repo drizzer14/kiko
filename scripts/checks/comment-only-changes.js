@@ -41,9 +41,11 @@
 // ignore */` or `/*#__PURE__*/` comment changes coverage or minification only, not what Stryker
 // mutates.
 //
-// KIKO_TYPESCRIPT_MODULE points the require at another path. It exists so a test can reach the
-// worktree's typescript from a throwaway repository, and prove that a missing one keeps every
-// file; production leaves it unset.
+// mutation.sh also passes the changed test files that sit beside a candidate (foo.test.ts,
+// foo.<anything>.test.ts(x)) and keeps the candidate when one of them is not printed here: a
+// test weakened together with a comment edit must still be mutated, while a comment-only test
+// edit cannot weaken a test. A test file absent at the base or at HEAD (new or deleted) or
+// unparsable is never printed, so it counts as a real change.
 //
 // Unlike every other checker in this directory it requires an npm package (typescript). That is
 // safe because it runs only inside mutation.sh, in a full worktree where Stryker itself needs
@@ -62,7 +64,7 @@ const MAX_FILE_BYTES = 64 * 1024 * 1024;
 
 const loadTypescript = () => {
   try {
-    return require(process.env.KIKO_TYPESCRIPT_MODULE || 'typescript');
+    return require('typescript');
   } catch {
     return null;
   }
@@ -105,27 +107,23 @@ const structureOf = (typescript, filePath, text, scriptKindName) => {
 };
 
 const isCommentOnlyChange = (typescript, revision, filePath) => {
-  const scriptKindName = SOURCE_EXTENSIONS.get(path.extname(filePath));
-
-  if (scriptKindName === undefined) return false;
-
-  const baseText = readAt(revision, filePath);
-  const headText = readAt('HEAD', filePath);
-
-  if (baseText === headText) return false;
-  if (SEMANTIC_COMMENT_PATTERN.test(baseText) || SEMANTIC_COMMENT_PATTERN.test(headText)) {
-    return false;
-  }
-
-  const baseStructure = structureOf(typescript, filePath, baseText, scriptKindName);
-  const headStructure = structureOf(typescript, filePath, headText, scriptKindName);
-
-  return baseStructure !== null && baseStructure === headStructure;
-};
-
-const provedCommentOnly = (typescript, revision, filePath) => {
   try {
-    return isCommentOnlyChange(typescript, revision, filePath);
+    const scriptKindName = SOURCE_EXTENSIONS.get(path.extname(filePath));
+
+    if (scriptKindName === undefined) return false;
+
+    const baseText = readAt(revision, filePath);
+    const headText = readAt('HEAD', filePath);
+
+    if (baseText === headText) return false;
+    if (SEMANTIC_COMMENT_PATTERN.test(baseText) || SEMANTIC_COMMENT_PATTERN.test(headText)) {
+      return false;
+    }
+
+    const baseStructure = structureOf(typescript, filePath, baseText, scriptKindName);
+    const headStructure = structureOf(typescript, filePath, headText, scriptKindName);
+
+    return baseStructure !== null && baseStructure === headStructure;
   } catch {
     return false;
   }
@@ -141,7 +139,9 @@ if (!revision) {
 const typescript = loadTypescript();
 
 if (typescript !== null) {
-  const skipped = filePaths.filter((filePath) => provedCommentOnly(typescript, revision, filePath));
+  const skipped = filePaths.filter((filePath) =>
+    isCommentOnlyChange(typescript, revision, filePath),
+  );
 
   if (skipped.length > 0) process.stdout.write(`${skipped.join('\n')}\n`);
 }

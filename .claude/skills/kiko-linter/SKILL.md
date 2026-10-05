@@ -400,41 +400,23 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `mutation.sh` also leaves out a changed file whose diff against the
   merge-base touches ONLY comments or whitespace (a comment-only edit of one
   screen once cost a 178-minute run). `scripts/checks/comment-only-changes.js`
-  decides it, exactly, from the TypeScript compiler's own parse: it reads
-  `git show <merge-base>:<path>` and `git show HEAD:<path>` (the gate diffs
-  merge-base..HEAD, never the working tree), parses both with
-  `ts.createSourceFile`, and compares the two parse TREES (kind and nesting,
-  plus each leaf's exact source text; JSDoc nodes ignored). Comments and
-  whitespace are trivia, so they drop out; a space inside a string, template,
-  regular expression, JSX text or JSX attribute, a respelled number (`1000`
-  vs `1e3`), a changed quote, an added semicolon, trailing comma or
-  parenthesis, and a line break that moves a statement boundary (`return`
-  then a new line) all change the tree, so they keep the file. A token-only
-  walk or a regex cannot say that. The script prints a path only when it
-  PROVED the file comment-only; it FAILS CLOSED, so each of these keeps the
-  file (it is mutated): a non-`.ts`/`.tsx` file, a file absent at the base
-  (new or renamed) or at HEAD, identical content, a parse diagnostic on
-  either side, a failing `git show`, `typescript` that cannot be required
-  (`KIKO_TYPESCRIPT_MODULE` points the require at another path; it exists so
-  a test can reach the worktree's copy, or a missing one), any exception, and
-  a script that crashes or prints a path the wrapper did not pass. One
-  EXCEPTION to "comments only": a file whose base or HEAD text contains
-  `Stryker` (a `disable`/`restore` directive changes the mutant set, and its
-  reach depends on the neighbouring lines) or `@jsx` (`@jsxImportSource`,
-  `@jsxRuntime`, `@jsxFrag`, `@jsx`: they change how the file compiles) is
-  kept whatever else changed. A `@ts-` directive changes type errors only,
-  never runtime or the mutant set (`stryker.conf.json` has no typescript
-  checker), so it needs no entry. ONE LIST: `mutation.sh` filters `changed`
-  once, right after `mutable_source_files`, so `--mutate`, the scorer, the
-  fingerprint, the cap and `--list` all read the same list (the scorer's
-  `config.mutate` scope check keeps passing). `--list` prints each skipped
-  file as `skipped (comment-only): <path>` and its count line counts only
-  the mutated files; with every file skipped it ends `nothing to mutate`, and
-  a run exits 0 like an empty change set. The call has no pipe into an
-  early-exit consumer, and the file arguments are built only for a non-empty
-  list (an empty array is an unbound variable in bash 3.2). Unlike every
-  other checker this script requires an npm package; the "Node checkers"
-  section below says why that is safe. Tests:
+  decides it exactly, from the TypeScript compiler's own parse trees of the
+  base and HEAD text; its header states how the two are compared and what each
+  verdict means. ONE LIST: `mutation.sh` filters `changed` once, right after
+  `mutable_source_files`, so `--mutate`, the scorer, the fingerprint, the cap
+  and `--list` all read the same list (`--list` prints each skipped file as
+  `skipped (comment-only): <path>`; its count line counts only the mutated
+  files). FAIL CLOSED: the script prints a path only when it PROVED the file
+  comment-only; a non-`.ts`/`.tsx` file, a new, renamed or deleted one, a
+  parse diagnostic, a failing `git show`, `typescript` that cannot be
+  required, any exception, and a script that crashes all keep the file. A file
+  whose base or HEAD text contains `Stryker` (a `disable`/`restore` directive
+  changes the mutant set) or `@jsx` (a pragma changes how the file compiles)
+  is kept whatever else changed. A comment-only source file is also kept, and
+  `--list` says `kept (colocated test changed): <path>`, when a changed test
+  file beside it (same folder: `foo.test.ts(x)` or `foo.<anything>.test.ts(x)`
+  for `foo.ts(x)`) is not itself comment-only: a test weakened together with a
+  comment edit must still be mutated. Tests:
   `__tests__/comment-only-changes.test.ts` (the parse cases, one spawn) and
   `__tests__/mutation-comment-only.test.ts` (the wrapper, against the stub).
 
