@@ -2800,8 +2800,8 @@ describe('StatisticsScreen — localization', () => {
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(queryByTestId('category-pie-arc-transport')).toBeNull();
 
-    // The option itself now renders the Ukrainian catalog label, still keyed
-    // on the same stable `groceries` value and still checked.
+    // The option itself renders the Ukrainian catalog label, keyed on the
+    // stable `groceries` value and checked.
     await act(async () => {
       await fireEvent.press(getByTestId(CATEGORY_FILTER));
     });

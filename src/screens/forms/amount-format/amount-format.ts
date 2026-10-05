@@ -64,7 +64,7 @@ export const groupAmount = (input: string): string => {
  * WHY NOT `String(minorUnits / factor)`: below 1e-6 JavaScript switches to
  * exponential notation, and `groupAmount` refuses any value with a letter
  * (`5e-7`) by returning '' — so a valid 50-satoshi holding would open with a
- * blank amount field, which Save rejects until the user re-types it.
+ * blank Balance field, and Save would write that blank as a zero balance.
  * `toFixed(scale)` never emits an exponent.
  */
 export const majorAmountText = (currency: Currency, minorUnits: number): string => {

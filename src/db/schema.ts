@@ -92,8 +92,7 @@ export const holdings = sqliteTable('holdings', {
   // re-imports the card. NULL for a never-synced-through holding: every
   // non-Monobank holding, and a Monobank card upgraded before this column
   // existed — its first post-upgrade sync fetches it once (NULL never matches a
-  // balance, so the skip cannot fire), which also RECOVERS any card the old bug
-  // had stranded, and then sets the marker.
+  // balance, so the skip cannot fire), and then sets the marker.
   syncedBalanceMinorUnits: integer('synced_balance_minor_units'),
   // The instant (ms) this holding's balance was last SET, not moved — the
   // statement-import boundary. `transactionsRepo.importRows`'s own doc
@@ -369,7 +368,7 @@ export const settings = sqliteTable('settings', {
   // DEAD (retained): the previous spending-trend selection — a JSON array of
   // stable `categories.key` slugs. Superseded by `trendFilter` below, into which
   // migration 0025 copies any non-null value as `{ mode: 'manual', keys }`.
-  // Nothing in `src/` reads or writes it any more; deliberately NOT dropped
+  // Nothing in `src/` reads or writes it; deliberately NOT dropped
   // (migrations here are additive-only — same class as `appearance` /
   // `lockGraceSeconds`). Enforced reader-less by settings-columns.test.ts.
   trendCategoryKeys: text('trend_category_keys', { mode: 'json' }).$type<string[]>(),
@@ -456,11 +455,11 @@ export const settings = sqliteTable('settings', {
 export type SettingsRow = typeof settings.$inferSelect;
 
 /**
- * Per-connection Monobank sync cursor. This DE-GLOBALIZES the former single-row
- * `settings` cursor (`last_sync_at`, `last_full_sync_at`, `last_sync_display_at`,
- * `failed_sync_monobank_ids`): those columns modelled ONE Monobank connection, so
- * a second connected Monobank account would have shared and corrupted the one
- * cursor. Each connected Monobank account now owns its own row here, keyed by its
+ * Per-connection Monobank sync cursor. The `settings` cursor columns
+ * (`last_sync_at`, `last_full_sync_at`, `last_sync_display_at`,
+ * `failed_sync_monobank_ids`) model ONE Monobank connection, so a second
+ * connected Monobank account would share and corrupt the one cursor. Each
+ * connected Monobank account owns its own row here instead, keyed by its
  * `accounts.id`. The superseded `settings` columns are retained-but-dead — pinned as
  * reader-less in `src/db/settings-columns.test.ts`, same additive-only class
  * as `appearance` / `lockGraceSeconds`. Each column mirrors the

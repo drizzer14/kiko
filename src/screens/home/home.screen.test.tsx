@@ -606,7 +606,7 @@ describe('HomeScreen', () => {
     // The unconvertible holding is dropped from the converted headline total...
     expect(getAllByText(/0\.00 ₴/).length).toBeGreaterThan(0);
     // ...and from the breakdown beneath it too, so the rows always sum to the
-    // headline. There is no "Rates unavailable" fallback anymore.
+    // headline. There is no "Rates unavailable" fallback.
     expect(queryByText('BTC')).toBeNull();
     expect(queryByText(/rates unavailable/i)).toBeNull();
   });
@@ -2183,8 +2183,8 @@ describe('HomeScreen — localization', () => {
     expect(getByText('Milk')).toBeTruthy();
     expect(queryByText('Bus')).toBeNull();
 
-    // The option itself now renders the Ukrainian catalog label, still keyed
-    // on the same stable `groceries` value and still checked.
+    // The option itself renders the Ukrainian catalog label, keyed on the
+    // stable `groceries` value and checked.
     await act(async () => {
       await fireEvent.press(getByTestId('category-filter-menu'));
     });

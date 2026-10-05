@@ -175,9 +175,9 @@ describe('refreshRates', () => {
   // Locks in that a pickable currency with no rate path silently drops out of
   // every net-worth sum (`canConvert`, `src/rates/net-worth-view`). GBP and CHF
   // are two of the pickable fiat codes; this feeds a real Monobank-shaped
-  // response including both through
-  // the REAL `refreshRates` composition and proves the stored table actually
-  // supports converting them, not just that some row got written.
+  // response including both through the REAL `refreshRates` composition and
+  // proves the stored table actually supports converting them, not just that
+  // some row got written.
   it('composes a convertible rate path for GBP and CHF (no silent net-worth drop)', async () => {
     const gbpChfFiat: RateEntry[] = [
       { base: 'USD', quote: 'UAH', rate: 41, source: 'monobank' },

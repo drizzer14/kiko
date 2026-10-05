@@ -44,7 +44,7 @@ export type ProviderBalance = {
   /**
    * One-time transition rename. When set, the upsert rewrites an EXISTING
    * matched holding's name to `name` ONLY IF its current name still equals this
-   * exact string (the default name). A user-edited name never matches, so it is
+   * exact string. A user-edited name never matches, so it is
    * preserved. Binance's Spot balance sets this to the pre-split default
    * ('Binance BTC') so a legacy aggregated holding is relabeled to 'Binance
    * Spot' on the first post-split sync; every other provider omits it.

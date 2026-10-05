@@ -481,7 +481,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   }, [navigation]);
 
   // A stable `renderItem` identity is what lets the SectionList row bail-out
-  // engage: the row body now lives in the memoized `TransactionRow` component,
+  // engage: the row body lives in the memoized `TransactionRow` component,
   // so an unchanged row skips re-rendering when the screen re-renders (e.g. a
   // reactive fire during a sync) as long as its props are unchanged.
   const renderTransaction = useCallback(

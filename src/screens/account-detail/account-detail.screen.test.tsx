@@ -231,7 +231,7 @@ type LiveResult = { data: unknown[]; isLoading?: boolean; isFresh?: boolean };
  * account-by-id query subscribes to `['accounts']`, so the table name alone
  * can't tell it apart from a future account query) and otherwise on the
  * subscribed table. `settings` defaults to a UAH base. The Monobank "last sync"
- * line now reads the PER-CONNECTION `sync_state` cursor, seeded via `syncState`.
+ * line reads the PER-CONNECTION `sync_state` cursor, seeded via `syncState`.
  */
 const setLiveData = (data: {
   accounts?: Account[];
@@ -564,7 +564,7 @@ describe('AccountDetailScreen', () => {
     });
     const { getByLabelText } = await renderScreen();
 
-    // The account icon now sits beside the Balance amount (the nav title shows the
+    // The account icon sits beside the Balance amount (the nav title shows the
     // NAME only), tinted its stored violet — a bank shows the columns-fill glyph.
     expect(getByLabelText('Icon building.columns.fill').props.tintColor).toBe(
       darkTheme.colors.entityColors.violet,
@@ -691,7 +691,7 @@ describe('AccountDetailScreen', () => {
     {
       description: 'a bank account not yet connected to Monobank',
       account: account({ kind: 'bank', institution: null }),
-      // Disconnected now shows the "Add a bank" picker trigger, not the
+      // Disconnected shows the "Add a bank" picker trigger, not the
       // Monobank field directly — see the picker-flow tests below.
       visible: ['Add a bank'],
       hidden: ['Connect Monobank', 'Sync'],
@@ -1203,8 +1203,8 @@ describe('AccountDetailScreen', () => {
   it('renders the context menu on a holding whose account was disconnected', async () => {
     setLiveData({
       // A disconnect clears the institution but KEEPS the holding's monobankId,
-      // so a later reconnect re-adopts the row. Nothing syncs the balance
-      // anymore, so the card is deletable again and offers its menu.
+      // so a later reconnect re-adopts the row. Nothing syncs the balance, so
+      // the card is deletable and offers its menu.
       accounts: [account({ institution: null })],
       holdings: [
         {
@@ -1320,11 +1320,11 @@ describe('AccountDetailScreen', () => {
     expect(queryByText('Disconnect')).toBeNull();
   });
 
-  // Guideline 5.6 remediation: PrivatBank, bunq, and Starling bank-CONNECT
-  // were removed entirely — Monobank is the sole shipped native provider, so
-  // the picker sheet lists exactly one row and no cross-provider routing
-  // remains to exercise (that coverage now lives in
-  // `bank-sync-section.component.test.tsx` and `add-bank-sheet.component.test.tsx`).
+  // PrivatBank, bunq, and Starling have no bank-CONNECT (Guideline 5.6) —
+  // Monobank is the sole shipped native provider, so the picker sheet lists
+  // exactly one row and there is no cross-provider routing to exercise here
+  // (see `bank-sync-section.component.test.tsx` and
+  // `add-bank-sheet.component.test.tsx`).
   it('opens the add-a-bank picker sheet for a disconnected bank account, listing the shipped native provider', async () => {
     setLiveData({
       accounts: [account({ kind: 'bank', institution: null })],
