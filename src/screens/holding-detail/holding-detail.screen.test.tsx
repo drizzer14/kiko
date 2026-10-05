@@ -231,6 +231,7 @@ jest.mock('@kiko/transactions/repo', () => ({
       toSQL: () => ({ sql: 'balance-boundary', params: [holdingId] }),
     }),
     remove: jest.fn(),
+    removePlan: jest.fn(),
   },
 }));
 
@@ -431,6 +432,7 @@ describe('HoldingDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockBoundaryRows = [];
+    jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: false });
   });
 
   // The user placed the manual-entry offer on the account page only.
@@ -1396,6 +1398,57 @@ describe('HoldingDetailScreen', () => {
     expect(getByText('Delete "Coffee"')).toBeTruthy();
     await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-9');
+  });
+
+  it('shows what else deleting a row takes under the confirm title, read from that row plan', async () => {
+    jest.mocked(transactionsRepo.removePlan).mockResolvedValue({
+      split: false,
+      exchange: { kind: 'deleted', names: ['Dollar card'] },
+    });
+    seed(cardHolding, [
+      { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getByTestId, getByText } = await renderScreen();
+
+    await holdCard();
+    await act(async () => {
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+    });
+
+    expect(transactionsRepo.removePlan).toHaveBeenCalledWith('txn-9');
+    expect(getByText('Delete "Coffee"')).toBeTruthy();
+    expect(
+      getByText('This also deletes the other part of this exchange, in Dollar card.'),
+    ).toBeTruthy();
+
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+    expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-9');
+  });
+
+  it('puts the keeps-the-balance sentence before the notice on an imported row', async () => {
+    mockBoundaryRows = [{ balanceSetAt: 5_000, newestSyncTime: null }];
+    jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: true });
+    seed(cardHolding, [
+      {
+        id: 'txn-import',
+        amountMinorUnits: -5000,
+        time: 5_000,
+        description: 'Coffee',
+        source: 'import',
+      },
+    ]);
+
+    const { getByText } = await renderScreen();
+
+    await holdCard();
+
+    expect(
+      getByText(
+        "The balance will stay at the bank's figure. Edit the holding to change it. This also deletes the payment and every change return linked to it.",
+      ),
+    ).toBeTruthy();
   });
 
   it('duplicates a manual transaction row to a pre-filled create form', async () => {

@@ -25,6 +25,7 @@ import type { HomeTransactionRow } from './transaction-row.props';
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
     remove: jest.fn(),
+    removePlan: jest.fn(),
     balanceBoundaryQuery: (holdingId: string) => ({ __kind: 'boundary', holdingId }),
   },
 }));
@@ -74,6 +75,7 @@ describe('TransactionRow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseLiveQuery.mockReturnValue({ data: [], isLoading: false });
+    jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: false });
   });
 
   it('shows the loan-link marker when the row carries a loan link', async () => {
@@ -227,6 +229,71 @@ describe('TransactionRow', () => {
         ['holdings', 'transactions'],
         true,
       );
+    });
+  });
+
+  describe('a row that is one part of a movement', () => {
+    const SPLIT_NOTICE = 'This also deletes the payment and every change return linked to it.';
+
+    it("reads its own row's plan and shows what else the delete takes under the confirm title", async () => {
+      jest.mocked(transactionsRepo.removePlan).mockResolvedValue({
+        split: false,
+        exchange: { kind: 'deleted', names: ['Dollar card'] },
+      });
+      const { getByTestId, getByText } = await renderRow(baseItem);
+
+      await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(transactionsRepo.removePlan).toHaveBeenCalledWith('txn-1');
+      expect(getByText('Delete "Coffee"')).toBeTruthy();
+      expect(
+        getByText('This also deletes the other part of this exchange, in Dollar card.'),
+      ).toBeTruthy();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-1');
+    });
+
+    it('keeps the confirm bare for a row that stands alone', async () => {
+      const { getByTestId, queryByText } = await renderRow(baseItem);
+
+      await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(queryByText(/This also/)).toBeNull();
+    });
+
+    it('puts the keeps-the-balance sentence before the notice on an imported row', async () => {
+      mockUseLiveQuery.mockReturnValue({
+        data: [{ balanceSetAt: 5_000, newestSyncTime: null }],
+        isLoading: false,
+      });
+      jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: true });
+      const { getByText } = await renderRow({ ...baseItem, source: 'import', time: 1_000 });
+
+      await holdCard();
+
+      expect(
+        getByText(
+          `The balance will stay at the bank's figure. Edit the holding to change it. ${SPLIT_NOTICE}`,
+        ),
+      ).toBeTruthy();
+    });
+
+    it('opens a bare confirm when the plan cannot be read', async () => {
+      jest.mocked(transactionsRepo.removePlan).mockRejectedValue(new Error('read failed'));
+      const { getByTestId, getByText } = await renderRow({ ...baseItem, source: 'import' });
+
+      await holdCard();
+
+      expect(getByText('Delete "Coffee"')).toBeTruthy();
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
     });
   });
 

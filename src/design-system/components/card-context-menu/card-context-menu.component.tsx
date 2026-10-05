@@ -1,4 +1,5 @@
 import { View } from 'react-native';
+import either, { bifoldr } from 'fnts/either';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 import { trigger } from 'react-native-haptic-feedback';
@@ -114,8 +115,11 @@ const CardContextMenu: FC<{
   closeAction?: { label: string; onPress: () => void };
   // An optional body message under the delete confirm's title, for a delete
   // whose effect the user would not guess from the title alone. Omitted, the
-  // confirm stays title-only.
-  deleteMessage?: string;
+  // confirm stays title-only. A function reads the text when the delete is
+  // requested (the confirm opens once it settles, so the user never sees the
+  // sheet change under their finger), for a message that depends on what is
+  // stored right now; a rejection or `undefined` opens the title-only confirm.
+  deleteMessage?: string | (() => Promise<string | undefined>);
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -140,6 +144,8 @@ const CardContextMenu: FC<{
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [confirmVisible, setConfirmVisible] = useState(false);
+  // The text a `deleteMessage` function resolved to for the confirm now open.
+  const [resolvedMessage, setResolvedMessage] = useState<string | undefined>(undefined);
   // The action list's visibility, separate from the delete confirm's: a hold
   // opens THIS when a duplicate, edit, or close action exists, and choosing
   // Delete from it hands off to the confirm sheet below.
@@ -163,6 +169,19 @@ const CardContextMenu: FC<{
   if (!deletable && !hasActionList) {
     return <>{children}</>;
   }
+
+  // A message that must be read first holds the sheet back until it settles; a
+  // string, or none, opens the sheet at once, as it always has. A read that fails
+  // opens the title-only confirm: the delete itself never depends on the text.
+  const openConfirm = async (): Promise<void> => {
+    const readMessage = deleteMessage;
+
+    if (typeof readMessage === 'function') {
+      setResolvedMessage(bifoldr(await either(async () => readMessage())));
+    }
+
+    setConfirmVisible(true);
+  };
 
   // A hold offers the action-list CHOICE only when a duplicate, edit, or close action exists;
   // otherwise it keeps the original behavior and opens the delete confirm
@@ -189,7 +208,8 @@ const CardContextMenu: FC<{
         return;
       }
 
-      setConfirmVisible(true);
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
+      openConfirm();
     })
     .onFinalize(() => {
       if (liftOnHold) {
@@ -227,7 +247,8 @@ const CardContextMenu: FC<{
   // delete-only path uses: close the list, open the confirm.
   const chooseDelete = (): void => {
     setActionsVisible(false);
-    setConfirmVisible(true);
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
+    openConfirm();
   };
 
   // Close first, THEN delete: `onDelete` typically removes this card from its
@@ -291,7 +312,7 @@ const CardContextMenu: FC<{
       <ConfirmSheet
         visible={confirmVisible}
         title={t('common.deleteNamed', { name })}
-        message={deleteMessage}
+        message={typeof deleteMessage === 'function' ? resolvedMessage : deleteMessage}
         confirmLabel={t('common.delete')}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}

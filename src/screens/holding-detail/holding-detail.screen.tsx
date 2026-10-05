@@ -75,6 +75,7 @@ import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { importDeleteKeepsBalance } from '@kiko/transactions/balance-boundary';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
+import { joinNoticeSentences, removeNotice } from '@kiko/transactions/remove-notice';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
 import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/money-text';
@@ -534,10 +535,15 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
         <CardContextMenu
           name={description}
           deletable={isDeletableTransaction(transactionRow.transaction)}
-          deleteMessage={
-            importDeleteKeepsBalance(transactionRow.transaction, balanceBoundary)
-              ? t('transactions.deleteImportedKeepsBalance')
-              : undefined
+          // Read when the delete is requested, so it names what is stored now: a
+          // row that is one part of a movement takes the rest with it.
+          deleteMessage={async () =>
+            joinNoticeSentences(
+              importDeleteKeepsBalance(transactionRow.transaction, balanceBoundary)
+                ? t('transactions.deleteImportedKeepsBalance')
+                : undefined,
+              removeNotice(await transactionsRepo.removePlan(transactionRow.transaction.id), t),
+            )
           }
           onDelete={() => transactionsRepo.remove(transactionRow.transaction.id)}
           // A synced or imported row is not duplicable — pass no handler so its
