@@ -2443,7 +2443,7 @@ describe('runSync stale-holding reconciliation', () => {
     expect(holdingsStore.find((holding) => holding.id === 'stale-1')?.closedAt).not.toBeNull();
   });
 
-  it('marks the close with the lastFullSyncAt the closing run READ, not the one it graduated (matrix row 1)', async () => {
+  it('marks the close with the lastFullSyncAt the closing run READ, not the one it graduated', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps, holdingsStore, syncStateRow } = makeInMemoryDeps(noStatements, [connected]);
     // A full fetch is due (older than the interval), so the run closes AND graduates
@@ -2461,7 +2461,7 @@ describe('runSync stale-holding reconciliation', () => {
     ).toBe(previousFullSyncAt);
   });
 
-  it('keeps the first mark of a holding that stays absent across full fetches (matrix row 20)', async () => {
+  it('keeps the first mark of a holding that stays absent across full fetches', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps, holdingsStore, syncStateRow } = makeInMemoryDeps(noStatements, [connected]);
     const firstMark = deps.now() - 40 * DAY_MS;
@@ -2479,7 +2479,7 @@ describe('runSync stale-holding reconciliation', () => {
     ).toBe(firstMark);
   });
 
-  it('closes nothing on an incremental run, so no mark is written (matrix row 2)', async () => {
+  it('closes nothing on an incremental run, so no mark is written', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const { deps, holdingsStore, syncStateRow } = makeInMemoryDeps(noStatements, [connected]);
     syncStateRow.lastSyncAt = deps.now() - 60_000;
@@ -2594,7 +2594,7 @@ describe('runSync reopen of a sync-closed holding', () => {
     return { ...made, target, fetchStatement };
   };
 
-  it('reopens a returned sync-closed card and force-fetches it from its mark even when its balance is unchanged (rows 3 and 5)', async () => {
+  it('reopens a returned sync-closed card and force-fetches it from its mark even when its balance is unchanged', async () => {
     const { deps, target, fetchStatement, holdingsStore } = await setUpIncrementalRun(idA, {
       closedAt: 5,
       syncClosedFromMs: ninetyDaysAgo,
@@ -2658,7 +2658,7 @@ describe('runSync reopen of a sync-closed holding', () => {
     ).toBeNull();
   });
 
-  it('keeps statementFromMs and force-fetches again next run when the card fetch fails (row 4)', async () => {
+  it('keeps statementFromMs and force-fetches again next run when the card fetch fails', async () => {
     const { deps, target, holdingsStore, fetchStatement } = await setUpIncrementalRun(idA, {
       closedAt: 5,
       syncClosedFromMs: ninetyDaysAgo,
@@ -2695,7 +2695,7 @@ describe('runSync reopen of a sync-closed holding', () => {
     );
   });
 
-  it('leaves a user-closed card closed and skips it on an unchanged balance (rows 9 and 15)', async () => {
+  it('leaves a user-closed card closed and skips it on an unchanged balance', async () => {
     const { deps, target, holdingsStore, fetchStatement } = await setUpIncrementalRun(idA, {
       closedAt: 5,
     });
@@ -2707,7 +2707,7 @@ describe('runSync reopen of a sync-closed holding', () => {
     expect(deps.holdingsRepo.clearStatementFrom).not.toHaveBeenCalled();
   });
 
-  it('reopens a returned sync-closed jar without fetching any statement for it (row 7)', async () => {
+  it('reopens a returned sync-closed jar without fetching any statement for it', async () => {
     const { deps, target, holdingsStore, fetchStatement } = await setUpIncrementalRun(jarId, {
       closedAt: 5,
       syncClosedFromMs: ninetyDaysAgo,

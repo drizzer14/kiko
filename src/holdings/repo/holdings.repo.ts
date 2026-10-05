@@ -186,9 +186,8 @@ const upsertManualPricePoint = (
 // closing run graduated the normal cursor past the gap. It moves no balance;
 // the balance written here is the bank's own, as on every upsert.
 //
-// Known limit: a holding the sync closed BEFORE the mark existed has no mark,
-// looks exactly like a user close, and stays closed; no repair is built
-// (confirmed on a device: every live card and jar had a holding).
+// The known limit (a holding closed before the mark existed stays closed) is
+// stated on `reconcileClosedHoldings` in the Monobank sync.
 const upsertByMetadataKey = async (
   databaseTransaction: typeof database,
   { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
@@ -965,10 +964,9 @@ export const holdingsRepo = {
    * Close a set of holdings (stamp `closedAt` with the current time) in ONE
    * transaction, so a bulk close commits all-or-nothing and fires the reactive
    * `holdings` callback once rather than once per row (kiko-architecture: one
-   * transaction for a bulk write). The Monobank sync's stale-holding
-   * reconciliation calls this for a card/jar the snapshot no longer returns, so
-   * a closed card stops counting toward net worth (kiko-domain). An empty set is
-   * a no-op.
+   * transaction for a bulk write). The user's Close sheet calls this, so a
+   * closed holding stops counting toward net worth (kiko-domain); the Monobank
+   * sync closes through `closeManyBySync` instead. An empty set is a no-op.
    */
   closeMany: (holdingIds: string[]) =>
     write(async (databaseTransaction) => {

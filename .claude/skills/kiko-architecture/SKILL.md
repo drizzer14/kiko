@@ -1127,7 +1127,7 @@ statements, and the closing run already moved the normal cursor past the gap.
 The cost is `ceil((now - mark) / 31 d)` requests behind the 60 s gate, once per
 reopen; the progress weight follows through `estimateWindows`.
 
-Known limit (A1, device-checked, no repair built): a holding the sync closed
+Known limit (device-checked, no repair built): a holding the sync closed
 BEFORE the mark existed has no mark, looks exactly like a user close, and stays
 closed. A blanket mark could reopen a holding the user closed by hand while
 disconnected. A disconnect keeps the mark and the `sync_state` cursors, so a

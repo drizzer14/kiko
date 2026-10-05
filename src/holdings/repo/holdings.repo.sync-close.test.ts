@@ -97,7 +97,7 @@ describe('holdingsRepo.closeManyBySync', () => {
     });
   });
 
-  it('keeps the earlier of the close instant and a pending statementFromMs (matrix row 6)', async () => {
+  it('keeps the earlier of the close instant and a pending statementFromMs', async () => {
     const { seed, rowOf } = openTestDatabase();
     seed({ id: 'h-1', key: 'card-1', extraMetadata: { statementFromMs: 400 } });
     seed({ id: 'h-2', key: 'card-2', extraMetadata: { statementFromMs: 9_000 } });
@@ -174,7 +174,7 @@ describe('holdingsRepo.clearStatementFrom', () => {
 });
 
 describe('the reopen of a sync-closed holding in upsertMonobankMany', () => {
-  it('reopens a sync-closed card: closedAt cleared, mark dropped, statementFromMs = the mark (row 3)', async () => {
+  it('reopens a sync-closed card: closedAt cleared, mark dropped, statementFromMs = the mark', async () => {
     const { seed, rowOf } = openTestDatabase();
     seed({ id: 'h-1', key: 'card-1', closedAt: 77, extraMetadata: { syncClosedFromMs: 300 } });
 
@@ -187,7 +187,7 @@ describe('the reopen of a sync-closed holding in upsertMonobankMany', () => {
     expect(row.metadata).toEqual({ monobankId: 'card-1', syncedAt: 2_000, statementFromMs: 300 });
   });
 
-  it('reopens a sync-closed jar without a statement cursor (row 7)', async () => {
+  it('reopens a sync-closed jar without a statement cursor', async () => {
     const { seed, rowOf } = openTestDatabase();
     seed({
       id: 'h-jar',
@@ -205,7 +205,7 @@ describe('the reopen of a sync-closed holding in upsertMonobankMany', () => {
     expect(row.metadata).toEqual({ monobankId: 'jar-1', syncedAt: 2_000 });
   });
 
-  it('keeps a user-closed holding closed (rows 9 and 11): no mark, even with a leftover cursor', async () => {
+  it('keeps a user-closed holding closed: no mark, even with a leftover cursor', async () => {
     const { seed, rowOf } = openTestDatabase();
     seed({ id: 'h-user', key: 'card-1', closedAt: 77 });
     seed({
@@ -232,7 +232,7 @@ describe('the reopen of a sync-closed holding in upsertMonobankMany', () => {
     });
   });
 
-  it('is a no-op the second time the same snapshot syncs (row 21)', async () => {
+  it('is a no-op the second time the same snapshot syncs', async () => {
     const { seed, rowOf } = openTestDatabase();
     seed({ id: 'h-1', key: 'card-1', closedAt: 77, extraMetadata: { syncClosedFromMs: 300 } });
 
@@ -245,7 +245,7 @@ describe('the reopen of a sync-closed holding in upsertMonobankMany', () => {
     expect(row.metadata).toEqual({ monobankId: 'card-1', syncedAt: 2_000, statementFromMs: 300 });
   });
 
-  it('carries a pending statementFromMs across an upsert of an open card (row 4)', async () => {
+  it('carries a pending statementFromMs across an upsert of an open card', async () => {
     const { seed, rowOf } = openTestDatabase();
     seed({ id: 'h-1', key: 'card-1', extraMetadata: { statementFromMs: 400 } });
 
@@ -258,7 +258,7 @@ describe('the reopen of a sync-closed holding in upsertMonobankMany', () => {
     });
   });
 
-  it('never reopens a closed wallet holding (row 22)', async () => {
+  it('never reopens a closed wallet holding', async () => {
     const { seed, rowOf } = openTestDatabase();
     seed({
       id: 'h-wallet',

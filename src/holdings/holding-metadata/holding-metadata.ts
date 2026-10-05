@@ -204,35 +204,23 @@ export const STATEMENT_FROM_FIELD = 'statementFromMs';
  */
 const carriedMetadataKeys = [...walkOwnedMetadataKeys, STATEMENT_FROM_FIELD] as const;
 
-export const binanceHistoryCursorOf = (metadata: unknown): number | null => {
-  if (!isRecord(metadata)) {
-    return null;
-  }
+const numberFieldOf =
+  (field: string) =>
+  (metadata: unknown): number | null => {
+    if (!isRecord(metadata)) {
+      return null;
+    }
 
-  const cursor = metadata[BINANCE_HISTORY_CURSOR_FIELD];
+    const value = metadata[field];
 
-  return isNumber(cursor) ? cursor : null;
-};
+    return isNumber(value) ? value : null;
+  };
 
-export const syncClosedFromOf = (metadata: unknown): number | null => {
-  if (!isRecord(metadata)) {
-    return null;
-  }
+export const binanceHistoryCursorOf = numberFieldOf(BINANCE_HISTORY_CURSOR_FIELD);
 
-  const syncClosedFrom = metadata[SYNC_CLOSED_FROM_FIELD];
+export const syncClosedFromOf = numberFieldOf(SYNC_CLOSED_FROM_FIELD);
 
-  return isNumber(syncClosedFrom) ? syncClosedFrom : null;
-};
-
-export const statementFromOf = (metadata: unknown): number | null => {
-  if (!isRecord(metadata)) {
-    return null;
-  }
-
-  const statementFrom = metadata[STATEMENT_FROM_FIELD];
-
-  return isNumber(statementFrom) ? statementFrom : null;
-};
+export const statementFromOf = numberFieldOf(STATEMENT_FROM_FIELD);
 
 /**
  * Copies any `carriedMetadataKeys` present on `storedMetadata` onto

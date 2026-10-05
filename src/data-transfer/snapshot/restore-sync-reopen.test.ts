@@ -135,7 +135,7 @@ describe('restoring a backup of a Monobank card the sync closed or reopened', ()
     jest.restoreAllMocks();
   });
 
-  it('keeps the sync-close mark whole, so the next sync reopens the card and imports from it (row 16)', async () => {
+  it('keeps the sync-close mark whole, so the next sync reopens the card and imports from it', async () => {
     seedCard(5, { syncClosedFromMs: MARK_MS });
     await restoredFromBackup();
 
@@ -150,7 +150,7 @@ describe('restoring a backup of a Monobank card the sync closed or reopened', ()
     expect(gapRowCount()).toBe(1);
   });
 
-  it('keeps a pending statement cursor whole, so the next sync imports the gap and clears it (row 17)', async () => {
+  it('keeps a pending statement cursor whole, so the next sync imports the gap and clears it', async () => {
     seedCard(null, { statementFromMs: MARK_MS });
     await restoredFromBackup();
 

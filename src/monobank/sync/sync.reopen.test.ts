@@ -133,7 +133,7 @@ describe('a Monobank card the sync closed, then sees again', () => {
     ).toHaveLength(0);
   });
 
-  it('keeps the mark across a disconnect and reopens on the first sync after reconnecting (row 12)', async () => {
+  it('keeps the mark across a disconnect and reopens on the first sync after reconnecting', async () => {
     const world = freshWorld();
 
     await closeTheCard(world);
@@ -148,7 +148,7 @@ describe('a Monobank card the sync closed, then sees again', () => {
     expect(gapRowCount()).toBe(1);
   });
 
-  it('keeps the first mark while the card stays absent across several full fetches (row 20)', async () => {
+  it('keeps the first mark while the card stays absent across several full fetches', async () => {
     const world = freshWorld();
 
     await closeTheCard(world);
@@ -158,7 +158,7 @@ describe('a Monobank card the sync closed, then sees again', () => {
     expect(cardMetadata().syncClosedFromMs).toBe(FIRST_RUN_MS);
   });
 
-  it('leaves a card the user closed while disconnected closed on reconnect (row 9)', async () => {
+  it('leaves a card the user closed while disconnected closed on reconnect', async () => {
     const world = freshWorld();
 
     await world.sync(FIRST_RUN_MS);
