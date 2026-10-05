@@ -217,6 +217,12 @@ lands): `it replaces`, `no longer`, `used to`, and `previously`. Write
 how the code works today and why ("matches the holding", "a card absent
 from the snapshot"), never what it did before.
 
+When you reword a history comment into the present tense, re-derive its
+reason from the current code; never only swap the verb ("was" to
+"would", "no longer" to "does not"), because the old reason can
+describe behavior the code does not have. When you delete or rename a
+label inside a comment, grep for pointers to it ("see X's ... comment").
+
 A comment names no task, step, finding, or spec id (`item 6`, `DEVICE BUG`,
 `Bug A2`, `Feature 1`, `SEC-C1`, `(A1)`): it states the reason itself. The
 `kiko-no-task-id-comment` Semgrep rule (WARNING until its sweep lands)
