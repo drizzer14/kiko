@@ -1,3 +1,5 @@
+import { currencyOptions, isFiat } from '@kiko/currency/currency';
+
 import { currencyFromCode } from './currency-code';
 
 describe('currency-code', () => {
@@ -21,5 +23,15 @@ describe('currency-code', () => {
   it('maps the additional Monobank fiats', () => {
     expect(currencyFromCode(392)).toBe('JPY');
     expect(currencyFromCode(985)).toBe('PLN');
+  });
+
+  it('has an ISO numeric code for every fiat currency', () => {
+    const codedCurrencies = new Set(
+      Array.from({ length: 1000 }, (_unused, code) => currencyFromCode(code)),
+    );
+
+    for (const currency of currencyOptions.filter(isFiat)) {
+      expect(codedCurrencies.has(currency)).toBe(true);
+    }
   });
 });

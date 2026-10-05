@@ -3,7 +3,18 @@ import { currencyFromCode } from '@kiko/monobank/currency-code';
 
 const ISO_NUMERIC_CODE_COUNT = 1000;
 
-const ISO_NUMERIC_CODES = Array.from({ length: ISO_NUMERIC_CODE_COUNT }, (_unused, code) => code);
+const isCodedCurrency = (
+  entry: readonly [Currency | undefined, number],
+): entry is [Currency, number] => entry[0] !== undefined;
+
+// Built once at module load: a Monobank feed asks for every fiat, and a scan of all
+// three-digit codes per call made each feed build take hundreds of milliseconds.
+const CODE_BY_CURRENCY = new Map<Currency, number>(
+  Array.from(
+    { length: ISO_NUMERIC_CODE_COUNT },
+    (_unused, code): [Currency | undefined, number] => [currencyFromCode(code), code],
+  ).filter(isCodedCurrency),
+);
 
 /**
  * The ISO 4217 numeric code of `currency`, found by asking `currencyFromCode` for every
@@ -11,4 +22,4 @@ const ISO_NUMERIC_CODES = Array.from({ length: ISO_NUMERIC_CODE_COUNT }, (_unuse
  * one table (`currencyFromCode`) instead of a second one for the reverse direction.
  */
 export const codeFromCurrency = (currency: Currency): number | undefined =>
-  ISO_NUMERIC_CODES.find((code) => currencyFromCode(code) === currency);
+  CODE_BY_CURRENCY.get(currency);
