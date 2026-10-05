@@ -293,6 +293,24 @@ describe('runBalanceSync', () => {
     expect(holdingsStore).toHaveLength(0);
   });
 
+  it('keeps every stored balance and calls no upsert when a later fetch fails', async () => {
+    const { provider } = makeProvider();
+    const { deps, holdingsStore } = makeInMemoryDeps([
+      cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
+    ]);
+    deps.targetAccountId = 'acc-1';
+    await runBalanceSync(provider, { balances: [walletBalance(10)] }, deps);
+    const upsertHoldings = jest.fn(deps.upsertHoldings);
+    deps.upsertHoldings = upsertHoldings;
+
+    await expect(
+      runBalanceSync(provider, { balances: new Error('Block explorer request failed: 429') }, deps),
+    ).rejects.toThrow('Block explorer request failed: 429');
+
+    expect(upsertHoldings).not.toHaveBeenCalled();
+    expect(holdingsStore.map((holding) => holding.balanceMinorUnits)).toEqual([10]);
+  });
+
   it('never calls upsertHoldings when the provider returns no balance (no empty write transaction)', async () => {
     const { provider } = makeProvider();
     const { deps } = makeInMemoryDeps([cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' })]);
