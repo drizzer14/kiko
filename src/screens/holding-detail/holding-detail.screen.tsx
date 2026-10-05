@@ -339,8 +339,8 @@ const convertedBaseValue = (
 // `secondary` prop): the converted-to-base line — a module-scope component
 // (mirroring `LedgerRowItem` below) so the conditional JSX does not count
 // against the screen component's own cognitive-complexity budget. Renders
-// nothing (null) without a converted value, the same as the screen
-// previously passing `secondary={undefined}`.
+// nothing (null) without a converted value, the same as passing
+// `secondary={undefined}`.
 const ValueHeaderSecondary: FC<{
   convertedToBase: Money | null;
 }> = ({ convertedToBase }) => {
@@ -744,7 +744,7 @@ const resolveLedgerReadyView = (
   };
 };
 
-// A row of a type this build no longer has (an imported dev-build holding)
+// A row of a type outside this build's list (an imported dev-build holding)
 // offers no Edit: the form dispatches on a descriptor that type does not have.
 const editableAccountId = (holding: HoldingRow | undefined): string | undefined =>
   foldMap(maybe(holding), (found) => (isHoldingType(found.type) ? found.accountId : undefined));
@@ -991,9 +991,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
 
   // The per-row read context, threaded into each ledger row so the row
   // component stays at module scope. `holdingName` is always a string (the
-  // route param seeds it), so the old `?? ''` fallback is no longer needed.
-  // Built here (rather than after `listHeader`, where this used to sit) so
-  // the Linked-payments section below can read it too.
+  // route param seeds it), so no `?? ''` fallback is needed. Built before
+  // `listHeader` so the Linked-payments section below can read it too.
   const rowContext: LedgerRowContext = {
     currency,
     showTime,
@@ -1026,10 +1025,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             // The main (base) currency restatement of the Value sits directly
             // UNDER the holding-currency amount, inside the shared header's tight
             // column — the same grouping the holding card uses (converted line
-            // hugging the value) and consistent across every holding type. It
-            // used to render as a disconnected caption at the BOTTOM of the whole
-            // summary block, which on a deposit/bond floated below the whole
-            // breakdown, detached from the value it converts.
+            // hugging the value) and consistent across every holding type, so it
+            // never floats as a disconnected caption at the BOTTOM of the whole
+            // summary block, below a deposit/bond breakdown and detached from
+            // the value it converts.
             secondary={<ValueHeaderSecondary convertedToBase={convertedToBase} />}
           />
           {spec?.breakdown && (
@@ -1222,18 +1221,17 @@ const styles = StyleSheet.create((theme) => ({
   // The scroll content. Under `bleedTop` the FlatList is a DIRECT child of
   // Screen's SafeAreaView (no `content` wrapper — that is what lets iOS track it
   // for the large-title collapse), so this content container owns ALL of the
-  // padding the wrapper used to provide:
+  // screen's padding:
   //  - top: `spacing(4)` below the collapsed large title (matching
   //    account-detail's scroll content), living here so the FlatList itself
   //    still reaches the top edge for iOS's automatic large-title inset;
-  //  - horizontal: `spacing(4)`, the screen's side gutter the wrapper used to
-  //    apply;
+  //  - horizontal: `spacing(4)`, the screen's side gutter;
   //  - bottom: a `spacing(4)` gap plus the caller's `bottomClearance` — 0 when a
   //    footer owns the floating tab-bar clearance, else `resolveBottomClearance`
   //    so the last row clears the bar exactly once (see the screen component).
   // The `spacing(2)` gap sits between every child — the header block and the
-  // first row, and each row and the next — reproducing the old `<Box gap={2}>`
-  // that wrapped the Transactions heading and its rows.
+  // first row, and each row and the next — the same rhythm a `<Box gap={2}>`
+  // around the Transactions heading and its rows would give.
   listContent: (bottomClearance: number) => ({
     paddingTop: theme.spacing(4),
     paddingHorizontal: theme.spacing(4),

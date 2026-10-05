@@ -273,7 +273,7 @@ const cardHolding = {
 
 // A holding migration 0044 (or its restore mirror) moved a cash exchange
 // leg's counterpart onto — it keeps rendering its existing leg label even
-// though it can no longer be picked as a new Exchange's source.
+// though it cannot be picked as a new Exchange's source.
 const cryptoAssetHolding = {
   id: 'h-1',
   name: 'Cold wallet',
@@ -301,7 +301,7 @@ const depositHolding = {
 
 // A deposit whose earliest contribution is dated ~now with a long term, so its
 // schedule tabulates period rows that all close in the future — the case that
-// used to render a "· projected" suffix.
+// must not render a "· projected" suffix.
 const futureDepositHolding = {
   id: 'h-1',
   name: 'Future deposit',
@@ -452,7 +452,7 @@ describe('HoldingDetailScreen', () => {
 
     // The transaction ledger is a virtualized FlatList that owns the screen's
     // scrolling (so a synced card's thousands of rows never all mount at once) —
-    // the screen is no longer a plain scroll view.
+    // the screen is not a plain scroll view.
     expect(getByTestId('ledger-list')).toBeTruthy();
     // The name is the plain string `title` — the native large title — with NO
     // `headerTitle` render function and NO `headerLargeTitle` toggle (the icon
@@ -503,9 +503,8 @@ describe('HoldingDetailScreen', () => {
     const { getByTestId } = await renderScreen();
 
     // With no Screen `content` wrapper around it, the FlatList owns the screen's
-    // side gutter and top gap itself, in its own content container (the wrapper
-    // used to supply these). Both are the base `spacing(4)` = 16 step, so the
-    // rows sit inset from the edges exactly as before the collapse fix.
+    // side gutter and top gap itself, in its own content container. Both are
+    // the base `spacing(4)` = 16 step, so the rows sit inset from the edges.
     const listContentStyle = StyleSheet.flatten(
       getByTestId('ledger-list').props.contentContainerStyle,
     );
@@ -518,8 +517,8 @@ describe('HoldingDetailScreen', () => {
 
     const { queryByLabelText } = await renderScreen();
 
-    // Identity editing moved to the dedicated edit form: the header no longer
-    // offers the icon-picker toggle, the editable name field, or the color row.
+    // Identity editing lives in the dedicated edit form: the header offers no
+    // icon-picker toggle, editable name field, or color row.
     expect(queryByLabelText('Change Icon')).toBeNull();
     expect(queryByLabelText('Everyday card name')).toBeNull();
     expect(queryByLabelText('Color violet')).toBeNull();
@@ -1298,10 +1297,10 @@ describe('HoldingDetailScreen', () => {
 
   // 'dining' is not in the categories table (a deleted seeded category sync
   // keeps re-writing) — `resolveCategoryDisplay` already folds it onto the
-  // DEFAULT category's title/icon, but the icon's COLOR used to be resolved
-  // from the RAW unfolded slug instead of that same folded key, so an
-  // uncolored default category showed a DIFFERENT hash color than every
-  // other row correctly folded onto it.
+  // DEFAULT category's title/icon, and the icon's COLOR must resolve from that
+  // same folded key, not the RAW unfolded slug — otherwise an uncolored
+  // default category would show a DIFFERENT hash color than every other row
+  // folded onto it.
   it('resolves the ledger-row icon color through the same folded key as its title/icon, not the raw unresolvable slug', async () => {
     seed(
       cardHolding,
@@ -1627,7 +1626,7 @@ describe('HoldingDetailScreen', () => {
 
     // The summary breakdown at the top of the screen colors interest green and
     // tax red by KIND, matching the ledger rows — not the sign-only balance
-    // coloring that used to leave these positive magnitudes white.
+    // coloring that would leave these positive magnitudes white.
     expect(amountForLabel(getByText('Interest earned')).props.testID).toBe('money-tone-positive');
     expect(amountForLabel(getByText('Tax withheld')).props.testID).toBe('money-tone-negative');
   });
@@ -1713,7 +1712,7 @@ describe('HoldingDetailScreen', () => {
   });
 
   // A property_item (ledgerless, no derived lifecycle entries) with no real
-  // transactions used to leave a bare "Transactions" heading with nothing
+  // transactions must not leave a bare "Transactions" heading with nothing
   // below it — the same ListEmptyComponent pattern `home.screen.tsx` uses.
   it('shows the empty-transactions state for a property_item with no real transactions', async () => {
     seed(propertyHolding);
