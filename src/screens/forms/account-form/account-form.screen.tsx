@@ -263,12 +263,14 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // (see below) so a retry re-attempts and Save never silently no-ops.
   const accountCreate = useRef<Promise<string> | null>(null);
   // A render-visible mirror of "the row has been (or is being) inserted", used
-  // only to DISABLE the kind switch once a source is connected — switching kind
-  // afterwards would route Save down a branch that creates a SECOND account and
-  // orphans the started row. It is state (not just the ref) because the disable
-  // must re-render; it follows the ref, reset to false on a failed create so the
-  // switch re-enables when no row actually exists.
+  // only to DISABLE the kind switch and the bank picker once a source is
+  // connected — switching kind afterwards would route Save down a branch that
+  // creates a SECOND account and orphans the started row, and re-picking the bank
+  // would make the connect-first Save overwrite the connected row's bank id. It is
+  // state (not just the ref) because the disable must re-render; it follows the
+  // ref, reset to false on a failed create so both re-enable when no row exists.
   const [accountRowStarted, setAccountRowStarted] = useState(false);
+  const isPickLocked = isEdit || accountRowStarted;
   // ONE shared attempted-submit flag for every validated field on this form
   // (kiko-code-style's form validation model), set true by a blocked Connect
   // OR a blocked Save — never a per-field flag: each field's own error below
@@ -606,6 +608,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       return;
     }
 
+    // The sheet lists the selected kind too: re-picking it must not wipe the
+    // bank/broker pick, a hand-picked icon, or a token typed into the connect
+    // field the pick mounts.
+    if (nextKind === kind) {
+      return;
+    }
+
     setKind(nextKind);
     setIcon(accountKindSymbol[nextKind]);
     setIconIsDirty(false);
@@ -683,13 +692,14 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             so it is read-only in edit mode — shown, but not switchable. It also
             locks once a bank/crypto source has been connected (which already
             inserted the row): switching kind afterwards would make Save create a
-            SECOND account and orphan the started row. */}
+            SECOND account and orphan the started row. The bank picker below locks
+            the same way. */}
         <AccountKindField
           selected={shownKind(kind, pickedImplicitKind)}
           onSelect={handleSelectKind}
           onSelectClosed={swapToHoldingForm}
           closesWithoutAnimation={isImplicitAccountKind}
-          disabled={isEdit || accountRowStarted}
+          disabled={isPickLocked}
         />
 
         {/* In create AND edit mode, like the bank picker; edit shows it disabled,
@@ -769,7 +779,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
                 selected={bankId}
                 onSelect={setBankId}
                 required={!isEdit}
-                disabled={isEdit}
+                disabled={isPickLocked}
                 error={catalogPickError}
                 testID="account-bank-type-field"
               />
