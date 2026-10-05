@@ -335,7 +335,10 @@ const runNbuLeg = (
 /** A crypto leg that requested nothing: no entries, no failed coin. */
 const NO_CRYPTO_HISTORY: CryptoHistory = { entries: [], failedCurrencies: [] };
 
-/** The CoinGecko leg, gated on a non-empty held set — no entries without ever calling `loadCrypto`. */
+/**
+ * The CoinGecko leg, gated on a non-empty held set — no entries without ever calling
+ * `loadCrypto`.
+ */
 const runCryptoLeg = (
   cryptoCurrencies: CryptoCurrency[],
   loadCrypto: (days: number, currencies: CryptoCurrency[]) => Promise<CryptoHistory>,

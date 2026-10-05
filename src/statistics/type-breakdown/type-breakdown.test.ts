@@ -20,9 +20,12 @@ const rates: RateTable = { USD: 40 };
 describe('buildTypeBreakdown', () => {
   it('sums each type across accounts and currencies, converted to base', () => {
     const holdings = [
-      holding({ type: 'card', currency: 'USD', balanceMinorUnits: 10_000 }), // $100.00
-      holding({ type: 'card', currency: 'UAH', balanceMinorUnits: 400_000 }), // 4000.00 UAH -> $100.00
-      holding({ type: 'cash', currency: 'UAH', balanceMinorUnits: 40_000 }), // 400.00 UAH -> $10.00
+      // $100.00
+      holding({ type: 'card', currency: 'USD', balanceMinorUnits: 10_000 }),
+      // 4000.00 UAH -> $100.00
+      holding({ type: 'card', currency: 'UAH', balanceMinorUnits: 400_000 }),
+      // 400.00 UAH -> $10.00
+      holding({ type: 'cash', currency: 'UAH', balanceMinorUnits: 40_000 }),
     ];
 
     const result = buildTypeBreakdown({

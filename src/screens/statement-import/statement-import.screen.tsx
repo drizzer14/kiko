@@ -353,7 +353,8 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   useEffect(() => {
     return () => {
       if (!autoReplacedRef.current) {
-        // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) deleteLocalStatementCopy swallows a failed unlink, and an unmount cleanup cannot await
+        // deleteLocalStatementCopy swallows a failed unlink, and an unmount cleanup cannot await.
+        // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
         deleteLocalStatementCopy(filePath);
       }
     };

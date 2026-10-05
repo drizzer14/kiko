@@ -61,7 +61,9 @@ describe('useBalanceFields', () => {
         id: 'h-1',
         currency: 'UAH',
         balanceMinorUnits: 25_000_00,
-        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) `seed` only reads the fields above; a full HoldingRow literal would be pure noise here, mirroring the sibling seed-function tests.
+        // `seed` only reads the fields above; a full HoldingRow literal would be pure noise here,
+        // mirroring the sibling seed-function tests.
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture)
       } as any);
     });
 

@@ -17,13 +17,20 @@ const makeFetch = (body: unknown, ok = true): typeof fetch =>
   (async () => ({ ok, json: async () => body, status: ok ? 200 : 429 })) as unknown as typeof fetch;
 
 const fixture: MonoRate[] = [
-  { currencyCodeA: 840, currencyCodeB: 980, date: 1, rateBuy: 39, rateSell: 41 }, // USD:UAH -> buy 39
-  { currencyCodeA: 978, currencyCodeB: 980, date: 1, rateCross: 43 }, // EUR:UAH cross 43
-  { currencyCodeA: 826, currencyCodeB: 980, date: 1, rateCross: 52 }, // GBP:UAH cross 52
-  { currencyCodeA: 756, currencyCodeB: 980, date: 1, rateCross: 46 }, // CHF:UAH cross 46
-  { currencyCodeA: 840, currencyCodeB: 978, date: 1, rateSell: 0.93 }, // USD:EUR sell-only
-  { currencyCodeA: 643, currencyCodeB: 980, date: 1, rateBuy: 0.27, rateSell: 0.28 }, // RUB:UAH -> dropped (outside the supported set)
-  { currencyCodeA: 985, currencyCodeB: 980, date: 1 }, // PLN: in the set, but no rate at all -> dropped
+  // USD:UAH -> buy 39
+  { currencyCodeA: 840, currencyCodeB: 980, date: 1, rateBuy: 39, rateSell: 41 },
+  // EUR:UAH cross 43
+  { currencyCodeA: 978, currencyCodeB: 980, date: 1, rateCross: 43 },
+  // GBP:UAH cross 52
+  { currencyCodeA: 826, currencyCodeB: 980, date: 1, rateCross: 52 },
+  // CHF:UAH cross 46
+  { currencyCodeA: 756, currencyCodeB: 980, date: 1, rateCross: 46 },
+  // USD:EUR sell-only
+  { currencyCodeA: 840, currencyCodeB: 978, date: 1, rateSell: 0.93 },
+  // RUB:UAH -> dropped (outside the supported set)
+  { currencyCodeA: 643, currencyCodeB: 980, date: 1, rateBuy: 0.27, rateSell: 0.28 },
+  // PLN: in the set, but no rate at all -> dropped
+  { currencyCodeA: 985, currencyCodeB: 980, date: 1 },
 ];
 
 // A holding of a foreign currency is a bank ASSET: monobank values it at its

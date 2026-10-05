@@ -1670,8 +1670,8 @@ export const transactionsRepo = {
    * A SYNC-source row is matched instead (`dropRowsHeldBySync`): a statement
    * row with the holding's synced row's amount, dated within 60 seconds of
    * it (a date-only row: on the same local day), is that synced row — not
-   * inserted, not counted. One synced row stands for one statement row. Rows a pre-fix build already imported over synced
-   * ones stay; no migration removes them.
+   * inserted, not counted. One synced row stands for one statement row. Rows a pre-fix build
+   * already imported over synced ones stay; no migration removes them.
    *
    * An account a bank sync owns (`isSyncedAccount`) refuses the import
    * outright, before anything is written, whichever of its holdings is the

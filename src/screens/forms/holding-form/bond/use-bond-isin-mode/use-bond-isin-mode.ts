@@ -223,7 +223,8 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
       return;
     }
     refreshTriggered.current = true;
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures every rejection as a Left
+    // either() captures every rejection as a Left.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     either(() => refreshBondRegisterIfStale());
   }, [type]);
 
@@ -262,7 +263,9 @@ export const useBondIsinMode = (params: UseBondIsinModeParams): UseBondIsinModeR
   // The ISIN an edit was saved with, while the form still holds that bond's
   // stored terms; null on create and once another match filled the terms.
   const [storedIsin, setStoredIsin] = useState<string | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(apply once per matched ISIN while in ISIN mode) the ref inside the effect body is what makes re-application idempotent, not the dependency array — see the doc comment above.
+  // Applies once per matched ISIN while in ISIN mode: the ref inside the effect body is what makes
+  // re-application idempotent, not the dependency array — see the doc comment above.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(apply once per matched ISIN)
   useEffect(() => {
     if (bondMode !== 'isin' || registerTerms === null) {
       return;

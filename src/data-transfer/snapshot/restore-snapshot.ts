@@ -485,7 +485,10 @@ const deriveStarRowsFromInverse = <T extends NormalizableRateRow>(
   }
 };
 
-/** Step 2 (mutates `starByBase`): derive X:UAH from X:Y * Y:UAH, for a legacy X whose only row is a cross pair. */
+/**
+ * Step 2 (mutates `starByBase`): derive X:UAH from X:Y * Y:UAH, for a legacy X whose only row is
+ * a cross pair.
+ */
 const deriveStarRowsFromCrossPivot = <T extends NormalizableRateRow>(
   bucket: T[],
   starByBase: Map<Currency, T>,

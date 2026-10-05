@@ -239,7 +239,7 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
 
     // A new or re-dated lot can fall before the stored prices, so its history
     // is asked for now, not at the next pull or cold launch.
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
     refreshMarketData({ throttled: false, metals: true });
     navigation.goBack();
   };

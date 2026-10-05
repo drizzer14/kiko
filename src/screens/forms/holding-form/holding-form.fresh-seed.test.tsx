@@ -24,7 +24,9 @@ const mockTables: { holdings: Row[]; accounts: Row[] } = { holdings: [], account
 
 const mockQuery = (sql: string, params: unknown[], read: () => unknown[]) => ({
   toSQL: () => ({ sql, params }),
-  // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) a Drizzle query builder is itself awaitable — the hook awaits `query` for its rows, so this double must expose `then`.
+  // A Drizzle query builder is itself awaitable — the hook awaits `query` for its rows, so this
+  // double must expose `then`.
+  // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double)
   then<TResult1 = unknown[], TResult2 = never>(
     onfulfilled?: ((value: unknown[]) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,

@@ -17,7 +17,10 @@ const gbpRows: NbuRow[] = [
   { exchangedate: '02.09.2026', r030: 826, cc: 'GBP', rate: 51.5357, units: 1 },
 ];
 
-/** A fake clock/sleep pair, so a multi-currency fetch never waits out the real request-gate interval. */
+/**
+ * A fake clock/sleep pair, so a multi-currency fetch never waits out the real request-gate
+ * interval.
+ */
 const fakeSleepDeps = (): { now: () => number; sleep: (milliseconds: number) => Promise<void> } => {
   let elapsed = 0;
 

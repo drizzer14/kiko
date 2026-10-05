@@ -145,8 +145,10 @@ if ! merge_base="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null)" || [ -z 
     "Do not start Stryker directly to skip the cap."
   exit 2
 fi
+# Both git diffs below set core.quotePath=false: by default git prints a path with non-ASCII
+# bytes as a quoted, escaped string, which would miss every test-name pattern and filter.
 # An unreadable file list must never count as "nothing to mutate".
-if ! diff_names="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
+if ! diff_names="$(git -C "$ROOT" -c core.quotePath=false diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
   print_block \
     "Stryker (mutation testing)" \
     "Could not list the files changed since the merge-base with $base." \
@@ -166,27 +168,73 @@ changed="$(printf '%s\n' "$diff_names" | mutable_source_files)"
 # a script that fails, prints nothing and the file stays. Its output is matched back against
 # $changed, so a stray line cannot drop a file that was not a candidate. The arguments are
 # built only for a non-empty list: an empty array is an unbound variable in bash 3.2.
+#
+# A comment-only source file is still KEPT when a changed test file beside it (same folder:
+# foo.test.ts(x) or foo.<anything>.test.ts(x) for foo.ts(x)) is not itself comment-only: a test
+# weakened together with a comment edit must still be mutated. A comment-only test edit cannot
+# weaken a test. The test files come from their own diff (--no-renames, deletions included), and
+# a deleted, new, or unparsable one is never printed by the script, so it counts as a real change.
+# If that diff fails, nothing is skipped.
+newline=$'\n'
 skipped_report=""
+kept_report=""
+
+# Prints the changed test files of $test_names that sit beside the source file $1.
+colocated_tests() {
+  local stem="${1%.*}" test_name
+  while IFS= read -r test_name; do
+    case "$test_name" in
+      "$stem".test.ts | "$stem".test.tsx) printf '%s\n' "$test_name" ;;
+      "$stem".*.test.ts | "$stem".*.test.tsx)
+        case "${test_name#"$stem"}" in
+          */*) ;;
+          *) printf '%s\n' "$test_name" ;;
+        esac
+        ;;
+    esac
+  done < <(printf '%s\n' "$test_names")
+}
+
+# True when $1 is a line of $comment_only, the script's proved-comment-only list.
+proved_comment_only() {
+  case "$newline$comment_only$newline" in
+    *"$newline$1$newline"*) return 0 ;;
+  esac
+  return 1
+}
+
 if [ -n "$changed" ]; then
-  candidate_arguments=()
-  while IFS= read -r candidate; do
-    [ -n "$candidate" ] && candidate_arguments+=("$candidate")
-  done < <(printf '%s\n' "$changed")
+  comment_only=""
+  if test_names="$(git -C "$ROOT" -c core.quotePath=false diff --name-only --no-renames "$merge_base" HEAD -- '*.test.ts' '*.test.tsx' 2>/dev/null)"; then
+    candidate_arguments=()
+    while IFS= read -r candidate; do
+      [ -n "$candidate" ] || continue
+      candidate_arguments+=("$candidate")
+      while IFS= read -r test_name; do
+        [ -n "$test_name" ] && candidate_arguments+=("$test_name")
+      done < <(colocated_tests "$candidate")
+    done < <(printf '%s\n' "$changed")
 
-  comment_only="$(node "$DIR/comment-only-changes.js" "$merge_base" "${candidate_arguments[@]}" 2>/dev/null)" || comment_only=""
+    comment_only="$(node "$DIR/comment-only-changes.js" "$merge_base" "${candidate_arguments[@]}" 2>/dev/null)" || comment_only=""
+  fi
 
-  newline=$'\n'
   kept=""
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
-    case "$newline$comment_only$newline" in
-      *"$newline$candidate$newline"*)
-        skipped_report="${skipped_report}skipped (comment-only): ${candidate}${newline}"
-        ;;
-      *)
-        kept="${kept:+$kept$newline}$candidate"
-        ;;
-    esac
+    test_changed=0
+    while IFS= read -r test_name; do
+      [ -n "$test_name" ] || continue
+      proved_comment_only "$test_name" || test_changed=1
+    done < <(colocated_tests "$candidate")
+
+    if ! proved_comment_only "$candidate"; then
+      kept="${kept:+$kept$newline}$candidate"
+    elif [ "$test_changed" -eq 1 ]; then
+      kept="${kept:+$kept$newline}$candidate"
+      kept_report="${kept_report}kept (colocated test changed): ${candidate}${newline}"
+    else
+      skipped_report="${skipped_report}skipped (comment-only): ${candidate}${newline}"
+    fi
   done < <(printf '%s\n' "$changed")
   changed="$kept"
 fi
@@ -194,10 +242,10 @@ fi
 file_count="$(printf '%s\n' "$changed" | grep -c . || true)"
 if [ "$list" -eq 1 ]; then
   [ -n "$changed" ] && printf '%s\n' "$changed"
-  printf '%s' "$skipped_report"
+  printf '%s%s' "$skipped_report" "$kept_report"
   printf 'mutable files: %s (cap %s)\n' "$file_count" "$MUTATION_FILE_CAP"
 else
-  printf '%s' "$skipped_report"
+  printf '%s%s' "$skipped_report" "$kept_report"
 fi
 if [ -z "$changed" ]; then
   # Nothing to mutate: the branch changed no mutable source file, or only comment/whitespace in

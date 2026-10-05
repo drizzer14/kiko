@@ -308,7 +308,8 @@ const StatisticsScreen: FC = () => {
   // stays enabled while holdings are still on their first load, so the two
   // reads run in parallel instead of price_points waiting on holdings. Only a
   // loan reads the linked-payments half of the book.
-  // nosemgrep: kiko-no-whole-price-points-read OVERRIDE(history valuation) the net-worth line values every past day, so it reads every stored close
+  // The net-worth line values every past day, so it reads every stored close.
+  // nosemgrep: kiko-no-whole-price-points-read OVERRIDE(history valuation)
   const { book: priceBook, isLoading: priceBookLoading } = usePriceBook(
     holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
     liveOptions,
@@ -554,7 +555,8 @@ const StatisticsScreen: FC = () => {
     // lagging currency against `lastBackfilledDayByCurrency` — a check this
     // screen cannot replicate without `openCurrencies`'s own async read.
     setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDayRef.current });
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures every rejection as a Left, and the .then handler only sets state
+    // either() captures every rejection as a Left, and the .then handler only sets state.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     either<unknown, BackfillStatus>(() =>
       runBackfill({
         earliestDay: spanStart,
@@ -696,7 +698,12 @@ const StatisticsScreen: FC = () => {
   // in its holding's currency — so join each transaction to its (account-scoped,
   // open) holding for the currency, dropping any whose holding is filtered out.
   // The category display map is built here so a rename flows straight through.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(language-dependent resolver) buildCategoryDisplayMap resolves each un-renamed default category's title through resolveDefaultCategoryTitle, which reads the active language off the global i18next singleton (see category-display.ts) rather than off anything in this closure — the callback body never references `i18n.language` directly, but the memo must still invalidate on it, or a live language switch would keep serving the stale, previously-built titles.
+  // buildCategoryDisplayMap resolves each un-renamed default category's title through
+  // resolveDefaultCategoryTitle, which reads the active language off the global i18next singleton
+  // (see category-display.ts) rather than off anything in this closure — the callback body never
+  // references `i18n.language` directly, but the memo must still invalidate on it, or a live
+  // language switch would keep serving the stale titles built for the earlier language.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(language-dependent resolver)
   const categoryByKey = useMemo(
     () => buildCategoryDisplayMap(categories),
     [categories, i18n.language],

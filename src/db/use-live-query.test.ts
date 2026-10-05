@@ -35,7 +35,9 @@ type Reject = (reason: unknown) => void;
 // re-run) and decides how that one read settles.
 const queryDouble = (params: unknown[], settle: (resolve: Resolve, reject: Reject) => void) => ({
   toSQL: () => ({ sql: 'SELECT * FROM accounts WHERE id = ?', params }),
-  // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double) this doubles as a Drizzle query builder, which is itself awaitable — the hook's contract requires `query` to be a thenable, so this test double must expose `then`.
+  // This doubles as a Drizzle query builder, which is itself awaitable — the hook's contract
+  // requires `query` to be a thenable, so this test double must expose `then`.
+  // biome-ignore lint/suspicious/noThenProperty: OVERRIDE(intentional thenable double)
   then<TResult1 = unknown[], TResult2 = never>(
     onfulfilled?: ((value: unknown[]) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,

@@ -17,7 +17,10 @@ type BinanceCredentialsFieldProps = {
   // Keychain item, so the Save write is keyed by this id — a second Binance
   // account stores and reads its own credentials.
   accountId: string;
-  /** Runs the Binance Connect sync once the pair is verified and stored; resolves whether it succeeded. */
+  /**
+   * Runs the Binance Connect sync once the pair is verified and stored; resolves whether it
+   * succeeded.
+   */
   onConnect: () => Promise<boolean>;
 };
 
@@ -67,7 +70,8 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
     }
 
     setStatus({ kind: 'checking' });
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) every step catches into a status, and onConnect (the shared sync action) never rejects
+    // Every step catches into a status, and onConnect (the shared sync action) never rejects.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     (async () => {
       try {
         await fetchAccount(apiKey, secret);

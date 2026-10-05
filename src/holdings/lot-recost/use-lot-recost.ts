@@ -10,7 +10,8 @@ import { recostStoredLots } from './lot-recost';
  */
 export const useLotRecost = (): void => {
   useEffect(() => {
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) recostStoredLots logs every failure and never rejects
+    // recostStoredLots logs every failure and never rejects.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     recostStoredLots();
   }, []);
 };

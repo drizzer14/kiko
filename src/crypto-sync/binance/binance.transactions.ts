@@ -85,7 +85,10 @@ export const WITHDRAW_CALLS_PER_RUN_FALLBACK = 9;
 /** The SAPI weight one withdraw-history call costs, per Binance's own documented weight table. */
 export const WITHDRAW_UID_WEIGHT = 18_000;
 
-/** Binance's own per-minute UID weight ceiling — what `X-SAPI-USED-UID-WEIGHT-1M` is measured against. */
+/**
+ * Binance's own per-minute UID weight ceiling — what `X-SAPI-USED-UID-WEIGHT-1M` is measured
+ * against.
+ */
 export const UID_WEIGHT_BUDGET_1M = 180_000;
 
 /**

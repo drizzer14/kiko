@@ -48,7 +48,8 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
 
   useEffect(() => {
     let alive = true;
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) isSensorAvailable never rejects; a failure resolves as `unavailable`
+    // isSensorAvailable never rejects; a failure resolves as `unavailable`.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     isSensorAvailable().then((status) => {
       if (alive) {
         setSensorStatus(status);

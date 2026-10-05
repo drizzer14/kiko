@@ -13,7 +13,9 @@ cd "$ROOT"
 # (Portable form of `mapfile -t`: the macOS system bash is 3.2 and has no
 # mapfile/readarray builtin.)
 touched="$(
-  { git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u
+  { git -c core.quotePath=false diff --name-only HEAD
+    git -c core.quotePath=false ls-files --others --exclude-standard
+  } | sort -u
 )"
 
 # App source drives the changed-file-scoped checks (jscpd, override-guard).

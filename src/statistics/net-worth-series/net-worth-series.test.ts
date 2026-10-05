@@ -163,7 +163,8 @@ describe('buildNetWorthSeries', () => {
     // The UAH holding's only rate row starts on day 1. Without carrying the
     // earliest rate backward, the day 0 bucket would omit UAH entirely and
     // understate the start; instead day 0 is priced at day 1's (earliest) rate.
-    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })]; // 4000 UAH
+    // 4000 UAH
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })];
     const historyRows = [uahUsd(D1, '0.05')];
 
     const series = buildNetWorthSeries({
@@ -184,7 +185,8 @@ describe('buildNetWorthSeries', () => {
     // The line's historical rate for today (NBU official) differs from the app's
     // live monobank BUY rate used by the headline/bar/pie. To reconcile, the most
     // recent bucket is valued at the live table so its “now” point matches them.
-    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })]; // 4000 UAH
+    // 4000 UAH
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })];
     const historyRows = [uahUsd(D0, '0.025'), uahUsd(D1, '0.025')];
 
     const series = buildNetWorthSeries({
@@ -391,8 +393,9 @@ describe('buildNetWorthSeries', () => {
     // major-unit amount, an un-scaled timestamp).
     //
     // This test instead builds a plain `MonobankStatementItem` — the exact wire
-    // shape `GET /personal/statement/...` returns (`src/monobank/monobank-types/monobank.types.d.ts`)
-    // — and threads it through the REAL, exported `mapStatementItem` from
+    // shape `GET /personal/statement/...` returns
+    // (`src/monobank/monobank-types/monobank.types.d.ts`) — and threads it through the REAL,
+    // exported `mapStatementItem` from
     // `src/monobank/sync.ts` (the same function `mapFetched`/`importAccount` call
     // in production) to produce the funding debit, rather than typing
     // `amountMinorUnits` by hand. That exercises the real sign/unit convention
@@ -479,7 +482,8 @@ describe('buildNetWorthSeries', () => {
     // bucket (where the unrelated debit lands) is NOT inflated by a bond value.
     const purchaseDate = D1 + 18 * HOUR; // typed mid-day timestamp on day 1
 
-    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 }); // $200, untouched
+    // $200, untouched
+    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 });
     // Card started with $400 and was debited $400 on day 0 (unrelated spend), balance 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
     const bond = bondFor({
@@ -536,7 +540,8 @@ describe('buildNetWorthSeries', () => {
       transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0, to: D0 + 2 * DAY_MS }, // buckets at day 0, day 1 (=dayD), day 2 — all midnight
+      // buckets at day 0, day 1 (=dayD), day 2 — all midnight
+      range: { from: D0, to: D0 + 2 * DAY_MS },
     });
 
     // Day-D midnight bucket (bond bought at cost, card debited the same price) must
@@ -635,7 +640,8 @@ describe('buildNetWorthSeries', () => {
     // never showing its cost.
     const purchaseDate = D1 + 18 * HOUR; // mid-day timestamp on day 1
 
-    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 }); // $200, untouched
+    // $200, untouched
+    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 });
     const bond = bondFor({
       id: 'bond',
       currency: 'USD',
@@ -750,7 +756,8 @@ describe('buildNetWorthSeries', () => {
   // holding needs no cross-rate conversion (`canConvert` returns true whenever
   // `currency === base`), so it must still produce points with zero history rows.
   it('produces points for a base-currency-only (UAH) user with no history rows', () => {
-    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })]; // 4000.00 UAH
+    // 4000.00 UAH
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })];
 
     const series: NetWorthSeries = buildNetWorthSeries({
       holdings,
@@ -765,7 +772,8 @@ describe('buildNetWorthSeries', () => {
   });
 
   it('produces points for a base-currency-only (USD) user with no history rows', () => {
-    const holdings = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })]; // $100.00
+    // $100.00
+    const holdings = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })];
 
     const series: NetWorthSeries = buildNetWorthSeries({
       holdings,
@@ -836,7 +844,8 @@ describe('buildNetWorthSeries', () => {
     });
 
     it('prefers a real stored GBP history row over the bundled seed value', () => {
-      const holdings = [holding({ id: 'gbp', currency: 'GBP', balanceMinorUnits: 100_00 })]; // 100.00 GBP
+      // 100.00 GBP
+      const holdings = [holding({ id: 'gbp', currency: 'GBP', balanceMinorUnits: 100_00 })];
       const historyRows: HistoryRow[] = [{ base: 'GBP', quote: 'UAH', day: D0, rate: '999' }];
 
       const series = buildNetWorthSeries({

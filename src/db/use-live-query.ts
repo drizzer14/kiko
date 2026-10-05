@@ -117,7 +117,9 @@ export function useLiveQuery<T>(
   );
   const [data, setData] = useState<T[]>(cachedOnMount ?? []);
   const [error, setError] = useState<Error | undefined>();
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) keyed on tablesKey (a stable serialized primitive), not the `tables` array reference itself — see the identical rationale on the effect below.
+  // Keyed on tablesKey (a stable serialized primitive), not the `tables` array reference itself —
+  // see the identical rationale on the effect below.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription)
   const fireOn = useMemo(() => tables.map((table) => ({ table })), [tablesKey]);
   // Generation counter: `runQuery` runs on mount and again on every
   // reactive fire as independent, un-cancelled async calls. If two
@@ -156,7 +158,8 @@ export function useLiveQuery<T>(
 
     if (!paused && dirtyRef.current) {
       dirtyRef.current = false;
-      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runQuery folds a rejected read into a Left and never rejects
+      // runQuery folds a rejected read into a Left and never rejects.
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
       runQueryRef.current?.();
     }
   }, [paused]);
@@ -173,7 +176,12 @@ export function useLiveQuery<T>(
   const isLoading = enabled && appliedKey.current !== currentKey;
   const isFresh = !enabled || freshKey.current === currentKey;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription) sql/params/tables/query are re-derived every render from stable serialized primitives (paramsKey/tablesKey) and a fireOn memoized on tablesKey; depending on their object/array *references* instead would re-subscribe on every render whenever a caller passes an inline literal (e.g. `useLiveQuery(q, ['accounts'])` in JSX) and — because the native callback can fire synchronously — infinite-loop.
+  // sql/params/tables/query are re-derived every render from stable serialized primitives
+  // (paramsKey/tablesKey) and a fireOn memoized on tablesKey; depending on their object/array
+  // *references* instead would re-subscribe on every render whenever a caller passes an inline
+  // literal (e.g. `useLiveQuery(q, ['accounts'])` in JSX) and — because the native callback can
+  // fire synchronously — infinite-loop.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription)
   useEffect(() => {
     if (!enabled) {
       // A disabled query forgets what it read: the rows can be a day or one
@@ -271,7 +279,8 @@ export function useLiveQuery<T>(
 
     runQueryRef.current = runQuery;
 
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runQuery folds a rejected read into a Left and never rejects
+    // runQuery folds a rejected read into a Left and never rejects.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     runQuery();
 
     const subscription = first(
@@ -288,7 +297,8 @@ export function useLiveQuery<T>(
               return;
             }
 
-            // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runQuery folds a rejected read into a Left and never rejects
+            // runQuery folds a rejected read into a Left and never rejects.
+            // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
             runQuery();
           },
         }),

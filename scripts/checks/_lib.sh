@@ -331,7 +331,7 @@ harness_code_fingerprint() {
   {
     git -C "$root" rev-parse HEAD 2>/dev/null
     git -C "$root" diff HEAD -- '*.ts' '*.tsx' '*.js' 2>/dev/null
-    git -C "$root" ls-files --others --exclude-standard -- '*.ts' '*.tsx' '*.js' 2>/dev/null \
+    git -C "$root" -c core.quotePath=false ls-files --others --exclude-standard -- '*.ts' '*.tsx' '*.js' 2>/dev/null \
       | grep -vE '^(ios/|node_modules/)' \
       | while IFS= read -r u; do
           printf '%s\n' "$u"

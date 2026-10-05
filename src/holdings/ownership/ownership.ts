@@ -93,7 +93,10 @@ export const asOwnershipChanges = (value: unknown): OwnershipChange[] | null => 
   return ascending ? parsed : null;
 };
 
-/** A typed percent (`"50"`, `"33,33"`) as a share; null outside `0 < p <= 100` or past 2 decimals. */
+/**
+ * A typed percent (`"50"`, `"33,33"`) as a share; null outside `0 < p <= 100` or past 2
+ * decimals.
+ */
 export const parsePercentShare = (input: string): OwnershipShare | null => {
   const normalized = normalizeDecimal(input);
 
@@ -161,7 +164,10 @@ export const ownershipChangeAt = (
   return atOrBefore.at(-1);
 };
 
-/** The share owned on `instant`'s local day; before the first change, and with none, the whole asset. */
+/**
+ * The share owned on `instant`'s local day; before the first change, and with none, the whole
+ * asset.
+ */
 export const ownershipAt = (changes: readonly OwnershipChange[], instant: number): OwnershipShare =>
   foldMap(maybe(ownershipChangeAt(changes, instant)), shareOf) ?? WHOLE_SHARE;
 
@@ -227,7 +233,10 @@ const ownershipByCategory: Record<PropertyCategory, boolean> = {
 export const ownershipApplies = (category: PropertyCategory): boolean =>
   ownershipByCategory[category];
 
-/** The share as a percent with up to two decimals, rounded half away from zero: `"33.33"`, `"50"`. */
+/**
+ * The share as a percent with up to two decimals, rounded half away from zero: `"33.33"`,
+ * `"50"`.
+ */
 export const sharePercentText = (share: OwnershipShare): string => {
   const hundredths = scaleMinorUnits(
     WHOLE_IN_HUNDREDTHS_OF_PERCENT,

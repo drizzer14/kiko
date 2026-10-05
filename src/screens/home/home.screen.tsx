@@ -250,7 +250,11 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const hasBeenReady = useRef(false);
   hasBeenReady.current ||= isReady;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `buildCategoryDisplayMap` resolves each default category's title through i18n (`resolveDefaultCategoryTitle`) INTERNALLY, so `i18n.language` is a real dependency Biome cannot see — without it a live language switch leaves the resolved titles in the previous language.
+  // `buildCategoryDisplayMap` resolves each default category's title through i18n
+  // (`resolveDefaultCategoryTitle`) INTERNALLY, so `i18n.language` is a real dependency Biome
+  // cannot see — without it a live language switch leaves the resolved titles in the previous
+  // language.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label)
   const categoryByKey = useMemo(
     () => buildCategoryDisplayMap(categories),
     [categories, i18n.language],
@@ -400,7 +404,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // icon, effective color, and localized label for the menu row. Matching
   // keys on `option.value` (the stable key, compared to
   // `categoryKeyForRow(row.category)` below); the row renders `option.label`.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `resolveCategoryDisplay` resolves a default category's title through i18n INTERNALLY (not via a captured variable Biome can see), so `i18n.language` is a real dependency — without it a live language switch leaves the option labels in the previous language.
+  // `resolveCategoryDisplay` resolves a default category's title through i18n INTERNALLY (not via
+  // a captured variable Biome can see), so `i18n.language` is a real dependency — without it a
+  // live language switch leaves the option labels in the previous language.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label)
   const categoryOptions = useMemo(() => {
     const byKey = new Map<string, FilterOption>();
 

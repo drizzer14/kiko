@@ -15,6 +15,8 @@ const codeOf = (error: unknown): string | number | undefined => {
 export const logFailure = (tag: string, error: unknown): void => {
   const name = error instanceof Error ? error.name : typeof error;
 
-  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) the one console sink for a swallowed failure; it logs only the error's name and code, never its message, cause, or params
+  // The one console sink for a swallowed failure; it logs only the error's name and code, never its
+  // message, cause, or params.
+  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) the one console sink for failures
   console.warn(tag, { name, code: codeOf(error) });
 };

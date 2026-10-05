@@ -33,7 +33,10 @@ export type EditContext = {
   book: PriceBook;
 };
 
-/** One holding type's form behaviour; the screen reads it through Record<HoldingType, HoldingTypeForm>. */
+/**
+ * One holding type's form behaviour; the screen reads it through Record<HoldingType,
+ * HoldingTypeForm>.
+ */
 export type HoldingTypeForm = {
   /** Edit-mode hydration; a no-op for unparsable metadata. Must be a stable callback. */
   seed: (holding: HoldingRow) => void;
