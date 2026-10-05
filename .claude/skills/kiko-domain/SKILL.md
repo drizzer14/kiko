@@ -325,6 +325,16 @@ Every balance writer reads that boundary through one function,
 `balanceBoundaryOf` (`src/transactions/balance-boundary/`). A row AT or before
 the boundary is history the anchor already counts.
 
+**A manual write refuses a ledgerless holding.** `recordManualTransaction`
+(`transactions.repo.ts`) reads the holding first and, before any write,
+throws an Error with the message transactions/ledgerless-holding when its
+type is `isLedgerlessHoldingType`. The whole split or exchange write rolls
+back. It covers `recordManual`, `recordManualWithReturns`, the plain legs of
+`recordExchange`, and `convert`. A term_deposit exchange DESTINATION still
+works: its receive path `contribution` writes metadata, not a row. The
+transaction form's split change-return picker offers only
+`isTransactionEligibleType` holdings, the same gate as the primary picker.
+
 **A balance-set row is a STORED mark, not a date.** Every row whose amount
 set the balance (an opening balance, a cash opening, a hand edit) carries
 `transactions.setsBalance` (migration 0047) for good: its amount is part
