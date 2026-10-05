@@ -11,7 +11,7 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
-import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 
@@ -2116,6 +2116,48 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockCryptoSync).not.toHaveBeenCalled();
     expect(isKindFieldDisabled(getByTestId)).toBe(false);
     expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
+  });
+
+  it('scrolls the same mounted name field into view with the live scroll geometry on a blocked Connect and a blocked Save', async () => {
+    (useHeaderInset as jest.Mock).mockReturnValue(96);
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await selectKind(getByTestId, 'crypto');
+    await fireEvent(getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByLabelText('wallet-field'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    const [connectScrollable, connectFieldRef, connectGeometry, connectOnSettled] =
+      scrollToFieldMock.mock.calls[0];
+    expect(connectScrollable).toEqual({ current: null });
+    expect(connectFieldRef.current).not.toBeNull();
+    expect(connectGeometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+    expect(connectOnSettled).toEqual(expect.any(Function));
+
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    const [, saveFieldRef, saveGeometry, saveOnSettled] = scrollToFieldMock.mock.calls[0];
+    expect(saveFieldRef).toBe(connectFieldRef);
+    expect(saveGeometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+    expect(saveOnSettled).toEqual(expect.any(Function));
+  });
+
+  it('scrolls the bank picker, which has no keyboard, without a focus follow-up once the name is filled', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Main');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    const [, catalogFieldRef, , onSettled] = scrollToFieldMock.mock.calls[0];
+    expect(catalogFieldRef.current).not.toBeNull();
+    expect(onSettled).toBeUndefined();
   });
 
   it('does not create a crypto account when the Binance field Connect is tapped with an empty name', async () => {

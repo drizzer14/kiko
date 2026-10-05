@@ -4,7 +4,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
-import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import ContributionFormScreen from './contribution-form.screen';
@@ -237,6 +237,22 @@ describe('ContributionFormScreen', () => {
     await fireEvent.press(utils.getByText('Save contribution'));
 
     expect(scrollToField).toHaveBeenCalled();
+  });
+
+  it('scrolls the mounted amount field into view with the live scroll geometry', async () => {
+    (useHeaderInset as jest.Mock).mockReturnValue(96);
+    const utils = await renderScreen();
+
+    await fireEvent(utils.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
+    await fireEvent.press(utils.getByText('Save contribution'));
+
+    expect(scrollToField).toHaveBeenCalledTimes(1);
+    const [scrollableRef, fieldRef, geometry, onSettled] = (scrollToField as jest.Mock).mock
+      .calls[0];
+    expect(scrollableRef).toEqual({ current: null });
+    expect(fieldRef.current).not.toBeNull();
+    expect(geometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+    expect(onSettled).toEqual(expect.any(Function));
   });
 
   it('surfaces an alert and does not navigate when the append fails', async () => {

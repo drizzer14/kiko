@@ -3,6 +3,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import OwnershipChangeFormScreen from './ownership-change-form.screen';
@@ -20,6 +21,7 @@ jest.mock('@kiko/holdings/repo', () => ({
     editOwnershipChange: jest.fn(),
   },
 }));
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const firstDay = Date.UTC(2024, 0, 1);
 const changeDay = Date.UTC(2025, 5, 1);
@@ -145,5 +147,30 @@ describe('OwnershipChangeFormScreen', () => {
     expect(screen.getByText('Enter a share above 0 and up to 100%.')).toBeTruthy();
     expect(holdingsRepo.editOwnershipChange).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('scrolls the mounted share field into view with the live scroll geometry on a blocked Save', async () => {
+    (useHeaderInset as jest.Mock).mockReturnValue(96);
+    const screen = await renderScreen();
+
+    await fireEvent(screen.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
+    await fireEvent.changeText(screen.getByLabelText('Share'), '5');
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(scrollToField).toHaveBeenCalledTimes(1);
+    const [scrollableRef, fieldRef, geometry, onSettled] = (scrollToField as jest.Mock).mock
+      .calls[0];
+    expect(scrollableRef).toEqual({ current: null });
+    expect(fieldRef.current).not.toBeNull();
+    expect(geometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+    expect(onSettled).toEqual(expect.any(Function));
+  });
+
+  it('does not scroll when the share is valid', async () => {
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByText('Save'));
+
+    expect(scrollToField).not.toHaveBeenCalled();
   });
 });

@@ -5,7 +5,7 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { remindersRepo } from '@kiko/reminders/repo';
 import { remindersNative } from '@kiko/reminders/native';
-import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { localDayOf, type ReminderSchedule, weekdayOf } from '@kiko/reminders/schedule';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -276,6 +276,38 @@ describe('ReminderFormScreen — create', () => {
     expect(screen.getByText('Enter a number of days from 2 to 365.')).toBeTruthy();
     expect(remindersRepo.create).not.toHaveBeenCalled();
     expect(scrollToField).toHaveBeenCalledTimes(1);
+  });
+
+  it('scrolls each blocked field, with the live scroll geometry, to a different mounted target', async () => {
+    (useHeaderInset as jest.Mock).mockReturnValue(96);
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const screen = await renderCreate();
+
+    await fireEvent(screen.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
+    await fireEvent.press(screen.getByText('Weekly'));
+    const [preselectedDay] = selectedDayNames(screen);
+
+    await fireEvent.press(screen.getByText(preselectedDay));
+    await save(screen);
+
+    const [scrollableRef, weekdaysFieldRef, weekdaysGeometry, weekdaysOnSettled] =
+      scrollToFieldMock.mock.calls[0];
+    expect(scrollableRef).toEqual({ current: null });
+    expect(weekdaysFieldRef.current).not.toBeNull();
+    expect(weekdaysGeometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+    expect(weekdaysOnSettled).toBeUndefined();
+
+    await fireEvent.press(screen.getByText('Every N days'));
+    await fireEvent.changeText(screen.getByLabelText('Repeat every'), '1');
+    scrollToFieldMock.mockClear();
+    await save(screen);
+
+    const [, intervalFieldRef, intervalGeometry, intervalOnSettled] =
+      scrollToFieldMock.mock.calls[0];
+    expect(intervalFieldRef.current).not.toBeNull();
+    expect(intervalFieldRef).not.toBe(weekdaysFieldRef);
+    expect(intervalGeometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+    expect(intervalOnSettled).toEqual(expect.any(Function));
   });
 
   it('re-plans the reminders after the write', async () => {

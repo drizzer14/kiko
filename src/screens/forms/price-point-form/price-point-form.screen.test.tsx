@@ -4,6 +4,7 @@ import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { pricePointsRepo } from '@kiko/prices/price-points-repo';
+import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import PricePointFormScreen from './price-point-form.screen';
@@ -23,6 +24,7 @@ jest.mock('@kiko/holdings/repo', () => ({
 jest.mock('@kiko/prices/price-points-repo', () => ({
   pricePointsRepo: { upsertMany: jest.fn() },
 }));
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const navigation = navigationSpy();
 const route = asRouteProp<PricePointFormProps['route']>('PricePointForm', { holdingId: 'h-1' });
@@ -128,6 +130,31 @@ describe('PricePointFormScreen', () => {
     expect(utils.getByText('Value must be greater than 0.')).toBeTruthy();
     expect(pricePointsRepo.upsertMany).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('scrolls the mounted value field into view with the live scroll geometry on a blocked Save', async () => {
+    (useHeaderInset as jest.Mock).mockReturnValue(96);
+    const utils = await renderScreen();
+
+    await fireEvent(utils.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
+    await fireEvent.press(utils.getByText('Save value'));
+
+    expect(scrollToField).toHaveBeenCalledTimes(1);
+    const [scrollableRef, fieldRef, geometry, onSettled] = (scrollToField as jest.Mock).mock
+      .calls[0];
+    expect(scrollableRef).toEqual({ current: null });
+    expect(fieldRef.current).not.toBeNull();
+    expect(geometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+    expect(onSettled).toEqual(expect.any(Function));
+  });
+
+  it('does not scroll when the value is valid', async () => {
+    const utils = await renderScreen();
+
+    await fireEvent.changeText(utils.getByLabelText('Value'), '100');
+    await fireEvent.press(utils.getByText('Save value'));
+
+    expect(scrollToField).not.toHaveBeenCalled();
   });
 
   // A loan's correction targets its own manual outstanding series

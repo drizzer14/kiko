@@ -7,6 +7,7 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { SaleExceedsHoldingError } from '@kiko/holdings/lots';
+import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import LotFormScreen from './lot-form.screen';
@@ -29,6 +30,7 @@ const mockRefreshMarketData = jest.fn();
 jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: (...args: unknown[]) => mockRefreshMarketData(...args),
 }));
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const changeLotsMock = holdingsRepo.changeLots as jest.Mock;
 
@@ -184,6 +186,49 @@ describe('LotFormScreen', () => {
 
     expect(utils.getByText('Enter a quantity greater than 0.')).toBeTruthy();
     expect(changeLotsMock).not.toHaveBeenCalled();
+  });
+
+  it('scrolls the mounted quantity field into view with the live scroll geometry on a blocked Save', async () => {
+    (useHeaderInset as jest.Mock).mockReturnValue(96);
+    const utils = await renderScreen();
+
+    await fireEvent(utils.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
+    await fireEvent.press(utils.getByText('Save lot'));
+
+    expect(scrollToField).toHaveBeenCalledTimes(1);
+    const [scrollableRef, fieldRef, geometry, onSettled] = (scrollToField as jest.Mock).mock
+      .calls[0];
+    expect(scrollableRef).toEqual({ current: null });
+    expect(fieldRef.current).not.toBeNull();
+    expect(geometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+    expect(onSettled).toEqual(expect.any(Function));
+  });
+
+  it('scrolls to the cost field, a different target than the quantity, once only the cost is invalid', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const utils = await renderScreen();
+
+    await fireEvent.press(utils.getByText('Save lot'));
+    const [, quantityFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    await fireEvent.changeText(utils.getByLabelText('Quantity'), '5');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(utils.getByText('Save lot'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    const [, costFieldRef] = scrollToFieldMock.mock.calls[0];
+    expect(costFieldRef.current).not.toBeNull();
+    expect(costFieldRef).not.toBe(quantityFieldRef);
+  });
+
+  it('does not scroll when the lot is valid', async () => {
+    const utils = await renderScreen();
+
+    await fireEvent.changeText(utils.getByLabelText('Quantity'), '5');
+    await fireEvent.changeText(utils.getByLabelText('Total cost'), '100');
+    await fireEvent.press(utils.getByText('Save lot'));
+
+    expect(scrollToField).not.toHaveBeenCalled();
   });
 
   // The repo works out the sell's cost from the lots stored before it.

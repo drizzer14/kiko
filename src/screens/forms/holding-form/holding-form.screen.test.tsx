@@ -18,11 +18,11 @@ import { darkTheme } from '@kiko/design-system/theme';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
-import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
+import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -4799,6 +4799,23 @@ describe('HoldingFormScreen implicit create', () => {
       expect(createImplicitHoldingMock).not.toHaveBeenCalled();
       expect(scrollToField).toHaveBeenCalled();
       expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('scrolls the mounted name field into view with the live scroll geometry on a nameless Save', async () => {
+      (useHeaderInset as jest.Mock).mockReturnValue(96);
+      const screen = await renderImplicit({ implicitKind: 'property' });
+
+      await fireEvent(screen.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
+      (scrollToField as jest.Mock).mockClear();
+      await fireEvent.press(screen.getByText('Save'));
+
+      expect(scrollToField).toHaveBeenCalledTimes(1);
+      const [scrollableRef, fieldRef, geometry, onSettled] = (scrollToField as jest.Mock).mock
+        .calls[0];
+      expect(scrollableRef).toEqual({ current: null });
+      expect(fieldRef.current).not.toBeNull();
+      expect(geometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+      expect(onSettled).toEqual(expect.any(Function));
     });
 
     it('keeps the form open and says so when the write fails', async () => {
