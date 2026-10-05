@@ -1431,18 +1431,22 @@ production function — and never `performance.now()`/`Date.now()` deltas.
 
 #### The "no custom range = derive the default from now" pattern
 
-Both Statistics and Home hold their active date range as `customRange`
+The hook `useDateRangeSelection(now)`
+(`src/design-system/use-date-range-selection/use-date-range-selection.ts`)
+owns the active date range for both Statistics and Home and returns
+`{ dateFrom, dateTo, applyDateRange, clearDateRange }`. It keeps the user's
+pick as a private `customRange`
 (`{ from: Date | null; to: Date | null } | null` — `null` means "show the
-default range"), never as `dateFrom`/`dateTo` state seeded once at mount.
-The DEFAULT range is derived fresh from `now` on every render
-(`defaultDateRange(now)`), not stored — `dateFrom`/`dateTo` are plain
-`const`s computed each render from `customRange ?? defaultDateRange(now)`,
-never `useState`. A range seeded once (the previous shape) froze at
-whatever `now` was at mount, so a tab left mounted overnight (both tabs
-stay mounted — kiko-architecture) silently stopped including "today" once
-a calendar day passed. `applyDateRange`/`clearDateRange` only ever write
-`customRange` (`clearDateRange` resets it to `null`, back to the default —
-never to a frozen "30 days as of Clear" snapshot). Statistics' own `now`
+default range"). The DEFAULT range comes from `defaultDateRange(now)` on
+every render and is never stored: `dateFrom`/`dateTo` are plain `const`s
+computed each render from `customRange ?? defaultDateRange(now)`, never
+`useState`. A range stored once at mount would freeze at that `now`, so a
+tab left mounted past midnight (both tabs stay mounted — kiko-architecture)
+would stop including "today". `applyDateRange`/`clearDateRange` only write
+`customRange`; `clearDateRange` resets it to `null`, back to the default,
+never to a frozen "30 days as of Clear" snapshot. A screen must not hold
+its own `dateFrom`/`dateTo` state: call the hook with its own `now`.
+Statistics' own `now`
 already refreshes on focus (`useFocusRefreshedNow`); Home's `now` is a
 plain `Date.now()` read fresh every render. Deriving `dateFrom`/`dateTo`
 this way still needs care downstream: a memo that depends on them should
