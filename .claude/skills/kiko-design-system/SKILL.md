@@ -964,11 +964,14 @@ new component can land between reviews of this skill:
   with it), so `SelectField` sets `'none'` in the SAME render that hides the
   sheet and clears it on the next open (`AccountKindField` forwards the prop,
   the owning screen decides which kinds). Jest renders a hidden Modal as
-  nothing; assert the close animation with `spyOnModalAnimation(testID)`
+  nothing; assert the close animation with `spyOnModalAnimationPerTest(testID)`
   (`src/test-support/modal-animation-spy.ts`), which reads the TRANSITION
   render (the first render of the latest run in that state), never the last
-  render or the mount render. It assumes one mounted Modal per testID; restore
-  it in afterEach. Read a row's SF Symbols in a test with `glyphNamesWithin`
+  render or the mount render. It assumes one mounted Modal per testID. Call it
+  at describe or file level, never inside a test or a hook (Jest rejects a
+  hook defined there): it registers its own beforeEach spy and afterEach
+  restore, so a caller has nothing to restore and cannot leak the spy into a
+  later test. Read a row's SF Symbols in a test with `glyphNamesWithin`
   (`src/test-support/glyph-names-within.ts`). `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`

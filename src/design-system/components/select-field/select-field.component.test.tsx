@@ -1,8 +1,5 @@
-import {
-  type ModalAnimationSpy,
-  spyOnModalAnimation,
-} from '@kiko/test-support/modal-animation-spy';
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 
 import '@kiko/design-system/unistyles';
 import SelectField from '.';
@@ -43,15 +40,7 @@ const finishClosing = async (sheet: { props: Record<string, unknown> }): Promise
 };
 
 describe('SelectField', () => {
-  let modal: ModalAnimationSpy;
-
-  beforeEach(() => {
-    modal = spyOnModalAnimation('kind-field-sheet-modal');
-  });
-
-  afterEach(() => {
-    modal.restore();
-  });
+  const modal = spyOnModalAnimationPerTest('kind-field-sheet-modal');
 
   it("shows the selected option's label in the trigger", async () => {
     const { getByTestId } = await setup();

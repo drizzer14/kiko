@@ -10,12 +10,9 @@ import {
   type NavigationSpy,
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
-import {
-  type ModalAnimationSpy,
-  spyOnModalAnimation,
-} from '@kiko/test-support/modal-animation-spy';
 import { darkTheme } from '@kiko/design-system/theme';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 
 import AccountFormScreen from './account-form.screen';
@@ -374,15 +371,7 @@ describe('AccountFormScreen', () => {
   });
 
   describe('picking an implicit kind swaps in the holding form', () => {
-    let kindSheetModal: ModalAnimationSpy;
-
-    beforeEach(() => {
-      kindSheetModal = spyOnModalAnimation('account-kind-field-sheet-modal');
-    });
-
-    afterEach(() => {
-      kindSheetModal.restore();
-    });
+    const kindSheetModal = spyOnModalAnimationPerTest('account-kind-field-sheet-modal');
 
     it('replaces the screen with the property holding form, carrying the typed name', async () => {
       const { getByLabelText, getByTestId, navigation } = await renderForm();
