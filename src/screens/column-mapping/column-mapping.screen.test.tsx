@@ -123,7 +123,7 @@ jest.mock('@kiko/design-system/components/target-holding-sheet', () => {
 });
 
 type Account = { id: string; name: string; kind: string; bankId?: string | null };
-type Holding = { id: string; name: string; accountId: string; currency: string };
+type Holding = { id: string; name: string; accountId: string; currency: string; type?: string };
 type StatementMappings = Record<string, unknown>;
 
 const setLiveData = (data: {
@@ -493,6 +493,90 @@ describe('ColumnMappingScreen', () => {
     await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
 
     expect(within(view.getByTestId('target-holding-field')).getByText('Savings jar')).toBeTruthy();
+  });
+
+  // The created-holding return channel hands back whatever type the user
+  // picked in the holding form, but the picker lists only a holding that keeps
+  // a ledger: a ledgerless id must read as "not selected", never as a target.
+  it('treats a returned ledgerless holding as not selected, so Import asks for a holding', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [
+        monobankHolding,
+        {
+          id: 'deposit',
+          name: 'New deposit',
+          accountId: 'a',
+          currency: 'UAH',
+          type: 'term_deposit',
+        },
+      ],
+    });
+
+    const view = await renderMonobankScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      holdingId: 'deposit',
+    });
+    await mapMonobankColumns(view);
+
+    expect(within(view.getByTestId('target-holding-field')).queryByText('New deposit')).toBeNull();
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    expect(view.getByText(i18n.t('statementImport.chooseHoldingError'))).toBeTruthy();
+    expect(mockImportParsedStatement).not.toHaveBeenCalled();
+  });
+
+  // The option list is a live query that can trail the navigation back, so a
+  // valid new card must stay selected once its row arrives (clearing a pick
+  // the options do not list YET would drop it).
+  it('selects a returned holding that only reaches the option list after the route param', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    mockDefaultImportSuccess();
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+
+    const view = await renderMonobankScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      holdingId: 'h2',
+    });
+
+    expect(within(view.getByTestId('target-holding-field')).queryByText('New savings')).toBeNull();
+
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [
+        monobankHolding,
+        { id: 'h2', name: 'New savings', accountId: 'a', currency: 'UAH' },
+      ],
+    });
+    await act(async () => {
+      view.rerender(
+        <ColumnMappingScreen
+          route={asRouteProp<ColumnMappingProps['route']>('ColumnMapping', {
+            filePath: '/mock/statement.csv',
+            accountId: 'a',
+            holdingId: 'h2',
+          })}
+          navigation={asNavigationProp<ColumnMappingProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    await waitFor(() =>
+      expect(
+        within(view.getByTestId('target-holding-field')).getByText('New savings'),
+      ).toBeTruthy(),
+    );
+
+    await mapMonobankColumns(view);
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() =>
+      expect(mockImportParsedStatement).toHaveBeenCalledWith(expect.anything(), 'h2'),
+    );
   });
 
   // The holding field carries the same required marker every

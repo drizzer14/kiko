@@ -135,7 +135,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const { filePath, accountId, expectedFormatId, holdingId } = route.params;
   const { t } = useTranslation();
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
-  const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
+  const [pickedHoldingId, setPickedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
   // Decoupled from `importResult` itself — see
@@ -155,6 +155,14 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const contentHeightRef = useRef(0);
   const { options: holdingOptions, isLoading: holdingOptionsLoading } =
     useTargetHoldingOptions(accountId);
+  // Derived at render, never cleared in the `holdingId` effect below: the
+  // options are a live query that can trail the `popTo` carrying a NEW holding's
+  // id, so clearing a pick the list does not hold yet would drop a valid card.
+  // A pick the list never holds (a ledgerless holding the form created) reads
+  // as not selected, as the field already shows it.
+  const selectedHoldingId = holdingOptions.some((option) => option.id === pickedHoldingId)
+    ? pickedHoldingId
+    : undefined;
 
   // The auto-replace check: an account's own `bankId` and its saved
   // column-mapping entries.
@@ -182,7 +190,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   // real-router proof). This effect selects it the moment it arrives.
   useEffect(() => {
     if (holdingId !== undefined) {
-      setSelectedHoldingId(holdingId);
+      setPickedHoldingId(holdingId);
     }
   }, [holdingId]);
 
@@ -517,7 +525,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
             holdingOptionsLoading={holdingOptionsLoading}
             accountId={accountId}
             selectedHoldingId={selectedHoldingId}
-            onSelectHolding={setSelectedHoldingId}
+            onSelectHolding={setPickedHoldingId}
             onCreateNewHolding={handleCreateNewHolding}
             targetHoldingError={
               attemptedImport && selectedHoldingId === undefined

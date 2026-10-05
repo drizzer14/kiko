@@ -34,6 +34,7 @@ import { maxOf, minOf } from '@kiko/numbers';
 import type { Currency } from '@kiko/currency/currency';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
 import type { DepositContribution } from '@kiko/holdings/holding-metadata';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
@@ -246,6 +247,16 @@ const recordManualTransaction = async (
     changeGroupId,
   }: ManualTransaction,
 ): Promise<void> => {
+  // Read BEFORE the insert so a ledgerless target is refused before anything is
+  // written: its value derives from its metadata, so a row here would change
+  // nothing the user sees. The throw also rolls back the rest of the caller's
+  // transaction (a split's payment row, an exchange's source leg).
+  const anchored = await readAnchoredHoldingDatabaseTransaction(databaseTransaction, holdingId);
+
+  if (anchored !== undefined && isLedgerlessHoldingType(anchored.holding.type)) {
+    throw new Error('transactions/ledgerless-holding');
+  }
+
   await databaseTransaction.insert(transactions).values({
     id: id(),
     holdingId,
@@ -258,9 +269,13 @@ const recordManualTransaction = async (
     source: 'manual',
   });
 
-  await moveBalanceDatabaseTransaction(databaseTransaction, holdingId, (boundary) =>
-    balanceShareOf(amountMinorUnits, time, boundary),
-  );
+  if (anchored !== undefined) {
+    await writeBalanceDeltaDatabaseTransaction(
+      databaseTransaction,
+      anchored.holding,
+      balanceShareOf(amountMinorUnits, time, anchored.boundary),
+    );
+  }
 };
 
 // Mark the EXISTING row of a Convert as the other leg of the same movement, on
@@ -1713,6 +1728,12 @@ export const transactionsRepo = {
 
       if (account !== undefined && isSyncedAccount(account)) {
         throw new Error('statement-import/synced-account');
+      }
+
+      // Same refusal as `recordManualTransaction`'s: the import screen's
+      // "Create new holding" can still hand back a ledgerless one.
+      if (isLedgerlessHoldingType(holding.type)) {
+        throw new Error('statement-import/ledgerless-holding');
       }
 
       // Also read BEFORE the new rows are upserted — an EXISTING row (any

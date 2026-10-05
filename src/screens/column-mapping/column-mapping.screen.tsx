@@ -538,7 +538,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const [balanceColumn, setBalanceColumn] = useState<number | undefined>(undefined);
   const [savedApplied, setSavedApplied] = useState(false);
 
-  const [selectedHoldingId, setSelectedHoldingId] = useState<string | undefined>(undefined);
+  const [pickedHoldingId, setPickedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
   // Decoupled from `importResult` itself — see
@@ -580,6 +580,14 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const savedMappings = settingsRows.at(0)?.statementMappings;
   const { options: holdingOptions, isLoading: holdingOptionsLoading } =
     useTargetHoldingOptions(accountId);
+  // Derived at render, never cleared in the `holdingId` effect below: the
+  // options are a live query that can trail the `popTo` carrying a NEW holding's
+  // id, so clearing a pick the list does not hold yet would drop a valid card.
+  // A pick the list never holds (a ledgerless holding the form created) reads
+  // as not selected, as the field already shows it.
+  const selectedHoldingId = holdingOptions.some((option) => option.id === pickedHoldingId)
+    ? pickedHoldingId
+    : undefined;
 
   // `holdingId` covers BOTH the preview's prefill and
   // the "Add new" holding return channel, via
@@ -589,7 +597,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   // `holdingId` changes later (the create-and-return case).
   useEffect(() => {
     if (holdingId !== undefined) {
-      setSelectedHoldingId(holdingId);
+      setPickedHoldingId(holdingId);
     }
   }, [holdingId]);
 
@@ -949,7 +957,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
             holdingOptionsLoading={holdingOptionsLoading}
             accountId={accountId}
             selectedHoldingId={selectedHoldingId}
-            onSelectHolding={setSelectedHoldingId}
+            onSelectHolding={setPickedHoldingId}
             onCreateNewHolding={() =>
               navigation.navigate('HoldingForm', {
                 accountId,

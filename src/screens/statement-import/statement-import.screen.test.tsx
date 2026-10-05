@@ -242,6 +242,7 @@ const renderScreen = async (params: {
   filePath: string;
   accountId: string;
   expectedFormatId?: string;
+  holdingId?: string;
 }) => {
   const navigation = navigationSpy();
   const route = asRouteProp<StatementImportProps['route']>('StatementImport', params);
@@ -266,7 +267,7 @@ const renderScreen = async (params: {
 // before; a test that cares about the cold-start ordering passes one or
 // both explicitly.
 const setLiveData = (data: {
-  holdings?: { id: string; name: string; accountId: string; accountName: string }[];
+  holdings?: { id: string; name: string; accountId: string; accountName: string; type?: string }[];
   account?: { id: string; name?: string; bankId?: string | null };
   statementMappings?: Record<string, unknown> | null;
   accountIsLoading?: boolean;
@@ -539,6 +540,94 @@ describe('StatementImportScreen', () => {
         within(view.getByTestId('target-holding-field')).getByText('New savings'),
       ).toBeTruthy(),
     );
+  });
+
+  // The created-holding return channel hands back whatever type the user
+  // picked in the holding form, but the picker lists only a holding that keeps
+  // a ledger: a ledgerless id must read as "not selected", never as a target.
+  it('treats a returned ledgerless holding as not selected, so Import asks for a holding', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({
+      holdings: [
+        { id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' },
+        {
+          id: 'deposit',
+          name: 'New deposit',
+          accountId: 'a',
+          accountName: 'Monobank',
+          type: 'term_deposit',
+        },
+      ],
+    });
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      holdingId: 'deposit',
+    });
+
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+    expect(within(view.getByTestId('target-holding-field')).queryByText('New deposit')).toBeNull();
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    expect(view.getByText(i18n.t('statementImport.chooseHoldingError'))).toBeTruthy();
+    expect(mockImportStatement).not.toHaveBeenCalled();
+  });
+
+  // The option list is a live query that can trail the navigation back, so a
+  // valid new card must stay selected once its row arrives (clearing a pick
+  // the options do not list YET would drop it).
+  it('selects a returned holding that only reaches the option list after the route param', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    mockImportStatement.mockResolvedValue({
+      formatId: 'monobank-csv',
+      imported: 4,
+      total: 4,
+      skippedWrongCurrency: 0,
+      skippedWrongCurrencyCodes: [],
+    });
+    setLiveData({
+      holdings: [{ id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' }],
+    });
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      holdingId: 'h2',
+    });
+
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+    expect(within(view.getByTestId('target-holding-field')).queryByText('New savings')).toBeNull();
+
+    setLiveData({
+      holdings: [
+        { id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' },
+        { id: 'h2', name: 'New savings', accountId: 'a', accountName: 'Monobank' },
+      ],
+    });
+    await act(async () => {
+      view.rerender(
+        <StatementImportScreen
+          route={asRouteProp<StatementImportProps['route']>('StatementImport', {
+            filePath: '/mock/statement.csv',
+            accountId: 'a',
+            holdingId: 'h2',
+          })}
+          navigation={asNavigationProp<StatementImportProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    await waitFor(() =>
+      expect(
+        within(view.getByTestId('target-holding-field')).getByText('New savings'),
+      ).toBeTruthy(),
+    );
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() => expect(mockImportStatement).toHaveBeenCalledWith(expect.anything(), 'h2'));
   });
 
   it('surfaces each row’s distinct masked-card hint in a multi-card PrivatBank preview', async () => {

@@ -4,9 +4,11 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { holdingTypes } from '@kiko/holdings/holding-type';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
@@ -3709,6 +3711,44 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(utils.getByText('Alice')).toBeTruthy();
     // ...but a synced/syncable holding never appears (its balance is sync-owned).
     expect(utils.queryByText('Synced Wallet')).toBeNull();
+  });
+
+  // A ledgerless holding is valued from its metadata, so a return row on it
+  // would vanish from net worth: the picker never offers one, whatever its
+  // account and currency (review Bug 8).
+  it('never offers a ledgerless holding type in the return picker', async () => {
+    const ledgerlessTypes = holdingTypes.filter((type) => isLedgerlessHoldingType(type));
+
+    setLiveData(
+      [
+        ...SPLIT_HOLDINGS,
+        ...ledgerlessTypes.map(
+          (type): Holding => ({
+            id: `ledgerless-${type}`,
+            currency: 'UAH',
+            balanceMinorUnits: 0,
+            type,
+            name: `Ledgerless ${type}`,
+            accountId: 'acc',
+          }),
+        ),
+      ],
+      undefined,
+      CATEGORIES,
+      SPLIT_ACCOUNTS,
+    );
+
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+
+    expect(utils.getByText('Alice')).toBeTruthy();
+    expect(utils.getByText('Bob')).toBeTruthy();
+    expect(ledgerlessTypes).toHaveLength(5);
+
+    for (const type of ledgerlessTypes) {
+      expect(utils.queryByText(`Ledgerless ${type}`)).toBeNull();
+    }
   });
 
   it('renders the return-row delete control with a text label and removes the row (item 3)', async () => {
