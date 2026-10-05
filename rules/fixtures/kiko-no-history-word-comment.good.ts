@@ -13,8 +13,8 @@ export const urlNote = 'see https://example.test // previously';
 
 // 3. The purpose sense (a value, key, or helper that exists TO do something,
 // as in the lines below). A passive lead-in (is, are, was, were, be, been, being, get,
-// gets, got) or a "never" lead-in is not the habit-in-the-past sense, so none
-// of these opens a match.
+// gets, got) or a copula-then-"never" lead-in (is/are/was/were never) is not the
+// habit-in-the-past sense, so none of these opens a match.
 // A key is used to match the holding.
 // The ids are used to build the lookup map.
 // The seed was used to derive the rows.
@@ -25,6 +25,9 @@ export const urlNote = 'see https://example.test // previously';
 // A value that gets used to seed the form is not either.
 // A value that got used to seed the form is not either.
 // The raw string is never used to route a row.
+// The ids are never used to build the lookup map.
+// The seed was never used to derive the rows.
+// The rows were never used to drive every case below.
 
 // 4. A capitalized "Used to" opens a purpose fragment ("Used to price the
 // buckets."), never a habit in the past, so it stays silent.

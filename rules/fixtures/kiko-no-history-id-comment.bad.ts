@@ -431,3 +431,11 @@ export const capitalSpecBlock = true;
 // EXPECT-FINDING
 /* Per the brief, this cache never evicts a warm entry early. */
 export const capitalPerTheBriefBlock = true;
+
+/**
+ * An id on a later line of a block comment is reported at that line, so the
+ * pin sits inside the comment:
+// EXPECT-FINDING
+ * the retry budget moved in T14.
+ */
+export const idOnLaterBlockLine = true;

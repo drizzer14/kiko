@@ -677,6 +677,13 @@ reasoning.
   the enclosing statement, so an `EXPECT-FINDING` pin cannot land there
   (`kiko-no-hand-built-selectable-row`'s fixture cannot pin at all).
 
+- A PCRE `\K` inside a `pattern-regex` works on Semgrep 1.175 (probe scanned
+  by path, `paths.scanned` read, 2026-10-05): the reported `start` is the
+  offset right after the `\K`, `end` is the match end, and a lookahead after
+  the member keeps the rest of a comment out of the span. `buildFinding`
+  slices `[start.offset, end.offset)`, so the guard's matched text is the
+  member alone. The reported line is the member's line.
+
 ## Semgrep facts verified on 2026-09-28 (the Round A guard rules)
 
 1. `pattern-not: import type { $X } from 'm'` also matches the VALUE
@@ -1110,24 +1117,29 @@ reworded. Fixture pair: the three commit-range pins at the end of
 
 **Case forms (2026-10-05).** A member that names a plain word takes both
 its lower-case and its capitalized form, because a real comment opens a
-sentence with it: `[Bb]ug\s\d+` ("(review Bug 8)" drew no finding while the
-member read `bug`), `[Ss]pec`, `[Aa]udit`, `[Rr]eview\s[Ff]ocus`,
-`[Ff]ix\sround`, `[Rr]ound-N`, `[Dd]evice[- ]feedback`, `[Oo]n-device\sreview`,
-`[Cc]ontroller\s[Rr]uling`, the task/parity brief and `per the brief`/`the
-brief's` members, the `later`/`follow-up`/`previous`/`next` `commit` member,
-every plan member (`per the plan`, `the plan's`, `plan doc`, `by the plan`,
-`in this plan`, `this plan also`, `for this plan`, `this plan's`), `on this
-branch`, `this task's`, `review, <date>`, and the user-request member. A
-member is NOT widened where the other case is ordinary prose, each measured
-or documented: `Task\s\d+` stays capital (a pool test's "task 0 settles
-last" is a task index, `settle-limited.test.ts`), `Minor\s\d+` stays capital
-("a minor 3% drift"), `Requirement\s[A-Z]` stays capital ("the requirement I
-mentioned"), and the id letters, `USER-DECISION`, the hyphenated report
-family, and `Option\s[A-Z]` stay as documented above. Widening the case
-found three real hits in `src`, each reworded in the same change:
-`Spec 5.4 rule 2`/`rule 3` in `payment-matcher.ts` and `On-device review`
-in `theme.ts`. Fixture pair: the case pins at the end of `.bad.ts` and item
-23 in `.good.ts`.
+sentence with it ("(review Bug 8)" drew no finding while the member read
+`bug`). Three members stay capital-only, because the lower-case form is
+ordinary prose: `Task\s\d+` (a pool test's "task 0 settles last" is a task
+index, `settle-limited.test.ts`), `Minor\s\d+` ("a minor 3% drift"), and
+`Requirement\s[A-Z]` ("the requirement I mentioned"). Widening the case
+found three real hits in `src`, each reworded in the same change. Fixture
+pair: the case pins at the end of `.bad.ts` and item 23 in `.good.ts`.
+
+**What a finding is (both history rules).** Each arm reports only the
+watched id or word: a PCRE `\K` right before the member drops everything
+before it from the match, and the block arm's closing `*/` is a lookahead
+after the member, so the matched text is the member alone. The pre-write
+guard keys a finding on (rule, matched text, occurrence), so an Edit of
+other text in a comment that already holds a finding adds nothing; only a
+new or changed id or word is new. A block comment is reported at the line
+of its watched id, not at its `/*` line, so an `EXPECT-FINDING` pin for a
+later line of a block comment sits inside the comment. Both arms still
+read `//` and `/*` by line-start text, so two limits stand (0 hits in
+`src` today). A `/*` inside a `//` comment (`// the glob src/*.ts`) opens
+a fake block arm that runs to the next `*/`: any watched word between
+reads as a finding, in code or a string too, now reported at the word
+(before: at the `/*` line). A later line of a multi-line template
+literal that starts with `//` reads as a line comment. Reword either.
 
 ## `kiko-no-history-word-comment`
 
@@ -1140,17 +1152,19 @@ works today and why, never how it worked before. The members are the
 (`rules/semgrep-prewrite.yml`); the fixture pair shows each shape.
 
 **A separate rule id, severity WARNING (Class B).** Severity is per rule,
-so the words could not ride on the ERROR id rule. The tree held 232
-findings in 135 files on 2026-10-05, so it lands as WARNING:
+so the words could not ride on the ERROR id rule. The tree held 233
+findings in 136 files on 2026-10-05, so it lands as WARNING:
 `check:security` surfaces them without failing, and the pre-write guard
 already denies a NEW finding of any severity. **Promotion condition:**
 flip to ERROR when `check:security` reports 0 findings for this rule id,
 after the sweep (never when a grep is empty). The sweep is the user's
 call; do not run it as part of an unrelated task.
 
-The anchoring is the id rule's, unchanged: the same string-skip
+The anchoring is the id rule's: the same string-skip
 `^(?:…)*` walk, `(?<!:)//` for the line arm, the block arm that never
-crosses `*/`, and the same `paths.exclude` scope (`__tests__/**`,
+crosses `*/`, the same `\K` match shape (see "What a finding is" in the
+id rule's section: only a new or changed word is a new finding, not an edit
+of other text in its comment), and the same `paths.exclude` scope (`__tests__/**`,
 `e2e/**`, `scripts/**`, `harness/**`, `App.tsx`, `drizzle.config.ts`;
 `__mocks__/**` and co-located test files stay in scope).
 
@@ -1160,17 +1174,22 @@ crosses `*/`, and the same `paths.exclude` scope (`__tests__/**`,
 
 - `used to`: the purpose sense ("a key used to match the holding") reads
   like the habit sense ("this used to render a spinner"). Two classes
-  were clean and are narrowed: a passive or `never` lead-in
-  (`is`/`are`/`was`/`were`/`be`/`been`/`being`/`get`/`gets`/`got`/`never
-  used to`, a fixed-width lookbehind in the regex) and a capitalized
-  `Used to`, which opens a purpose fragment ("Used to price the buckets.").
-  They were 8 of the first 106 hits (5 capitalized, 2 `never`, 1 `is`), and
-  every one was purpose. The member keeps a lowercase `used to` only. A
-  noun-then-participle purpose sentence ("the key used to match") has no
-  regex separator from "the wrapper used to own", so about 10 purpose hits
-  remain among the 98 (a comma or em dash before `used to` held 6 purpose
-  and 2 history hits, too mixed to narrow). Reword such a comment to name
-  the purpose ("matches the holding") instead of "used to".
+  were clean and are narrowed: a passive lead-in
+  (`is`/`are`/`was`/`were`/`be`/`been`/`being`/`get`/`gets`/`got used to`, a
+  fixed-width lookbehind in the regex) or `is`/`are`/`was`/`were never used
+  to`, and a capitalized `Used to`, which opens a purpose fragment ("Used to
+  price the buckets."). They were 8 of the first 106 hits (5 capitalized, 2
+  `is never`, 1 `is`), and every one was purpose. A bare `never used to`
+  stays a finding: "The sheet never used to flicker" is history. The member
+  keeps a lowercase `used to` only. A noun-then-participle purpose sentence
+  ("the key used to match") has no regex separator from "the wrapper used to
+  own", so about 10 purpose hits remain among the 98 (a comma or em dash
+  before `used to` held 6 purpose and 2 history hits, too mixed to narrow).
+  The lookbehind sees only the word right before the phrase, so "is only
+  used to resume" and an `is` at the end of one comment line with `used to`
+  opening the next also read as history: known limits, pinned as findings
+  in `.bad.ts`. Reword such a comment to name the purpose ("matches the
+  holding") instead of "used to".
 - `no longer`: the runtime-state sense ("a kind the app no longer knows",
   "a card the snapshot no longer returns", "once it no longer
   corresponds") is common: about 40 of the 98 hits. No regex separates it

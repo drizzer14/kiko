@@ -66,10 +66,27 @@ export const itReplacesCapital = true;
 /* The helper it replaces ran once per row. */
 export const itReplacesBlock = true;
 
-// EXPECT-FINDING
 /**
  * A multi-line block comment that opens plainly and only names the history
- * word on a later line, so the block arm has to walk past the first line:
+ * word on a later line, so the block arm has to walk past the first line. The
+ * finding is reported at the word itself, so the pin sits inside the comment:
+// EXPECT-FINDING
  * the old picker no longer ships.
  */
 export const noLongerLaterBlockLine = true;
+
+// EXPECT-FINDING
+// The sheet never used to flicker before the redesign.
+export const neverUsedToHistory = true;
+
+// Known limits, pinned as findings: the lookbehind sees only the word right before the phrase,
+// so a purpose sentence with another word in between, or a line break after the verb, still
+// reads as history. Reword such a comment to name the purpose.
+// EXPECT-FINDING
+// A cursor is only used to resume the page after a failed run.
+export const onlyUsedToPurpose = true;
+
+// The cursor is
+// EXPECT-FINDING
+// used to resume the page after a failed run.
+export const splitUsedToPurpose = true;

@@ -222,6 +222,60 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     }
   });
 
+  // A history rule's finding is keyed on the watched word or id alone, so editing the other text
+  // of a comment that already holds one adds nothing, while a new or changed one is denied.
+  const historyBaseline = [
+    '/**',
+    ' * Opening line of the note.',
+    ' * The picker no longer ships here, see Bug 8 for the rest.',
+    ' * Closing line of the note.',
+    ' */',
+    'export const block = 1;',
+    '',
+    '// The sheet no longer pushes a duplicate instance, see Bug 9.',
+    'export const line = 2;',
+    '',
+  ].join('\n');
+
+  it.each([
+    ['allows editing text before the word in a block comment', 'Opening line', 'First line', 0],
+    ['allows editing text after the word in a block comment', 'Closing line', 'Last line', 0],
+    ['allows editing text around the word on its line', 'ships here, see', 'ships there, see', 0],
+    ['allows editing text before the word in a line comment', 'sheet no', 'page no', 0],
+    ['allows editing text after the word in a line comment', 'duplicate instance', 'second one', 0],
+    [
+      'denies a new word in a new comment',
+      'export const line = 2;',
+      '// It no longer ships.\nexport const line = 2;',
+      2,
+    ],
+    ['denies a changed word in a comment', 'no longer ships', 'previously shipped', 2],
+    [
+      'denies a new id in a new comment',
+      'export const line = 2;',
+      '// Bug 10 is fixed.\nexport const line = 2;',
+      2,
+    ],
+  ])('%s', (_name, from, to, status) => {
+    const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-history-edit-'));
+    try {
+      const targetDirectory = join(project, 'src', 'probe');
+      mkdirSync(targetDirectory, { recursive: true });
+      const targetFile = join(targetDirectory, 'history-edit.ts');
+      writeFileSync(targetFile, historyBaseline);
+      const payload = JSON.stringify({
+        tool_name: 'Edit',
+        tool_input: { file_path: targetFile, old_string: from, new_string: to },
+      });
+
+      const result = runGuard(payload, project);
+
+      expect(result.status).toBe(status);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   // kiko-worklet-directive-required excludes every test file: Jest mocks
   // reanimated, so the Release-only SIGABRT it guards against cannot happen
   // there, and its statement-sequence patterns are slow enough on a large
