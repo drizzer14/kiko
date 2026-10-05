@@ -113,7 +113,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
 
-  // DEVICE BUG fix (root cause): a hosting Screen's
+  // A hosting Screen's
   // `automaticallyAdjustKeyboardInsets` misfires a scroll/inset adjustment
   // on its OWN background ScrollView when this sheet's search field gets
   // focus, even though that ScrollView does not contain the responder — and
@@ -143,11 +143,11 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   });
 
   const handleSelect = (code: Currency): void => {
-    // DEVICE BUG fix: the search TextField above is the app's only
-    // focusable input inside a sheet — nothing ever dismissed the keyboard
-    // on selection, so it stayed up (and the background form stayed
+    // The search TextField above is the app's only
+    // focusable input inside a sheet — without a dismiss on selection the
+    // keyboard stays up (and the background form stays
     // scrolled, per Screen's automaticallyAdjustKeyboardInsets) even after
-    // the sheet closed.
+    // the sheet closes.
     Keyboard.dismiss();
     onSelect(code);
     updateOpen(false);
@@ -224,7 +224,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
           initialNumToRender={15}
           windowSize={5}
           showsVerticalScrollIndicator={false}
-          // DEVICE BUG fix: the search TextField above keeps the keyboard up
+          // The search TextField above keeps the keyboard up
           // while this list is on screen, and a FlatList's default
           // `keyboardShouldPersistTaps` ("never") swallows the FIRST tap on a
           // row as a keyboard-dismiss instead of delivering it to the row's

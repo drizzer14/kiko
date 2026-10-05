@@ -191,7 +191,7 @@ describe('binanceProvider — Spot holding', () => {
   });
 
   it('surfaces a Spot 429/418 as the localized binanceRequestFailed message, not the raw rate-limit text', async () => {
-    // A distinct account id: this 429 sets the SHARED cooldown (item 3), which
+    // A distinct account id: this 429 sets the SHARED cooldown, which
     // must not leak into a later test that reuses `emptyTarget`'s account id.
     const target: SyncTarget = { accountId: 'acc-spot-429', holdings: [] };
     const deps = makeDeps([]);

@@ -9,7 +9,7 @@ import { KEPT_FROM_LIVE_ON_RESTORE } from './kept-from-live-on-restore';
 
 /**
  * A removed feature can leave a live-but-unread schema column behind
- * (`settings.lockGraceSeconds` did — security finding S4). This test walks the
+ * (`settings.lockGraceSeconds` did). This test walks the
  * `settings` table's TypeScript column properties and asserts every one of them
  * is mentioned somewhere in `src/` outside `schema.ts` (the declaration site)
  * and this file itself (see `SELF_PATH` below).

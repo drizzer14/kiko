@@ -248,7 +248,7 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Add account')).toBeNull();
   });
 
-  // DEVICE BUG fix (root cause): the currency sheet's search field lives
+  // The currency sheet's search field lives
   // inside a Modal above this Screen's background ScrollView, which
   // otherwise misfires `automaticallyAdjustKeyboardInsets` for a responder
   // it does not contain. `CurrencyField`'s `onOpenChange` must gate that
@@ -1746,7 +1746,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
   it('connect creates the bank row once, saves the token to the Keychain, and syncs it', async () => {
     // The field's own Connect (mocked to fire with a token) drives the screen's
     // connectMonobank closure: create the row FIRST, store the secret keyed by
-    // that pre-generated id, then start the first sync (Global Constraint 2 order).
+    // that pre-generated id, then start the first sync, in that order.
     mockMonobankSync.mockResolvedValue(true);
     const view = await renderForm();
 

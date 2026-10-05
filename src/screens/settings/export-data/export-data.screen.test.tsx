@@ -285,10 +285,9 @@ describe('ExportDataScreen', () => {
     expect(mockShare).toHaveBeenCalledWith({ url: 'file:///tmp/x.kiko' });
   });
 
-  // DEVICE BUG: the primary Export button previously rendered as scroll
-  // CONTENT, which pushed it below the fold on a real device — matches the
-  // fix already made to the Settings screen's own footer and to
-  // ImportDataScreen's primary button.
+  // The primary Export button must not render as scroll
+  // CONTENT, which pushes it below the fold on a real device — matching
+  // the Settings screen's own footer and ImportDataScreen's primary button.
   it('pins the Export button to the screen footer slot, not the scrolling content', async () => {
     const { getByTestId } = await renderScreen();
 

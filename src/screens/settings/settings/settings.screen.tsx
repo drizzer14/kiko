@@ -59,7 +59,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   // The live `contentOffset.y`, so the hook can skip a redundant scroll.
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
-  // DEVICE BUG fix (root cause, same as the account/holding forms — see
+  // Same root cause as the account/holding forms (see
   // `holding-form.screen.tsx`'s own comment): while the base-currency sheet's
   // search field can be focused, this screen's background ScrollView must
   // NOT react to the keyboard's frame change — it does not contain that

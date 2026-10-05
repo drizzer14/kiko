@@ -376,7 +376,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     needsPriceBook(editingHolding?.type ?? type),
   );
   const [currency, setCurrency] = useState<Currency>('UAH');
-  // DEVICE BUG fix (root cause): while the currency sheet's search field can be
+  // While the currency sheet's search field can be
   // focused, this screen's background ScrollView must NOT react to the
   // keyboard's frame change — it does not contain that responder, but
   // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless (see

@@ -39,7 +39,7 @@ const MAX_HEIGHT_RATIO = 0.66;
 
 // A device with a home indicator reports a non-zero bottom safe-area inset. The
 // sheet renders inside a Modal (outside any SafeAreaView), so it must add that
-// inset to its own bottom padding — this is the drift/A2 regression the shared
+// inset to its own bottom padding — this is the drift regression the shared
 // primitive exists to prevent. Override the package's zero-inset global mock
 // with a concrete inset so the padding assertion actually proves the inset is
 // added (a zero inset would make "added" and "dropped" indistinguishable).
@@ -149,8 +149,9 @@ describe('BottomSheet', () => {
     const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
 
     // The sheet's bottom padding is the base step PLUS the home-indicator inset,
-    // never one without the other (dropping the inset is bug A2; the base step
-    // is what the four sheets previously drifted on, 4 vs 6 vs missing).
+    // never one without the other (dropping the inset puts the content under the
+    // home indicator; the base step is what the four sheets drifted on, 4 vs 6 vs
+    // missing).
     expect(sheetStyle.paddingBottom).toBe(SHEET_BASE_PADDING + MOCK_BOTTOM_INSET);
     expect(sheetStyle.paddingHorizontal).toBe(SHEET_BASE_PADDING);
 
@@ -443,8 +444,8 @@ describe('BottomSheet', () => {
     });
   });
 
-  // DEVICE BUG fix: a `KeyboardAvoidingView` wrapping the sheet's OWN body
-  // (attempt B) had ZERO effect on device — a KAV repositions its subtree
+  // A `KeyboardAvoidingView` wrapping the sheet's OWN body has ZERO effect on
+  // device — a KAV repositions its subtree
   // within its PARENT's layout, but this sheet's parent is the Modal's own
   // transparent root, which never resizes for the keyboard. The real fix
   // lifts the CARD itself, driven by RN core `Keyboard` events (not

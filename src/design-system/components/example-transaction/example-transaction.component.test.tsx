@@ -129,7 +129,7 @@ describe('ExampleTransaction', () => {
     expect(props.title.endsWith(':')).toBe(false);
   });
 
-  // Item 5: dividers bracket the card above and below.
+  // Dividers bracket the card above and below.
   it('renders a Divider above and below the card', async () => {
     const { getAllByTestId } = await render(<ExampleTransaction transaction={transaction} />);
 

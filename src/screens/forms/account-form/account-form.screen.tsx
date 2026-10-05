@@ -274,7 +274,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // first show, so a fresh create form shows no error before the user has
   // tried to submit.
   const [attemptedSave, setAttemptedSave] = useState(false);
-  // DEVICE BUG fix (root cause): while the currency sheet's search field can
+  // While the currency sheet's search field can
   // be focused, this screen's background ScrollView must NOT react to the
   // keyboard's frame change — it does not contain that responder, but
   // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless
@@ -362,7 +362,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   // The bank field creates the row FIRST (connect-first), then stores the validated
   // token to the Keychain keyed by the pre-generated id, then runs the first
-  // Monobank sync against it (the write-only-secret order — Global Constraint 2).
+  // Monobank sync against it (the write-only-secret order).
   // Any failure BEFORE the sync returns false so the field shows its "could not
   // connect" status rather than an unhandled rejection; the ensureAccount reset
   // above lets the next Connect retry. The token goes ONLY to the Keychain —

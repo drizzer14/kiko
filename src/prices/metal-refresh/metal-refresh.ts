@@ -50,7 +50,7 @@ export type MetalRefreshDeps = {
 };
 
 /**
- * DESIGN CHOICE (deferred item 5): per-app-run, IN-MEMORY floor of the
+ * DESIGN CHOICE: per-app-run, IN-MEMORY floor of the
  * earliest-lot backward range NBU already answered empty, per metal — not a
  * new table/migration. A lot dated before NBU's own metal data starts makes
  * `[earliestLotDay, firstStoredDay - DAY_MS)` a fixed span that can never

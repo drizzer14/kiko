@@ -57,7 +57,7 @@ describe('EntityIconTile', () => {
     expect(getByLabelText('Checking icon').props.tintColor).toBe(darkTheme.colors.onAccent);
   });
 
-  // DEVICE BUG: a fixed white glyph fails WCAG AA on a
+  // A fixed white glyph fails WCAG AA on a
   // light entity swatch (e.g. `white`, `yellow` — see `isLightEntityColor`'s
   // doc comment in `entity-tint.ts`). The glyph must switch to the dark
   // `theme.colors.background` token instead of staying white on a tile this

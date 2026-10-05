@@ -2,8 +2,8 @@
 //
 // Shared by every `en`/`uk` catalog test (`en.casing-by-role.test.ts`,
 // `uk.casing.test.ts`, `en.uk.parity.test.ts`, `uk.catalog-rules.test.ts`) —
-// one tree-flattener instead of four near-identical copies (CASE fix round
-// 1/5, ponytail L43/L25). Walks a nested catalog object into dotted leaf
+// one tree-flattener instead of four near-identical copies. Walks a nested
+// catalog object into dotted leaf
 // paths (`{ path: 'calendar.month.january', value: 'January' }`) at RUNTIME,
 // not the source text, so a violation buried behind an interpolation or a
 // computed value is caught the same as a plain literal.

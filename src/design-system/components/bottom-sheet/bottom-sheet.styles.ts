@@ -8,7 +8,7 @@ import { StyleSheet } from 'react-native-unistyles';
 // parity with its own top and sides. The icon picker's old spacing(6) was the
 // lone outlier and its extra room was never needed (its grid carries its own
 // internal gaps); the filter menu used spacing(4) but dropped the safe-area
-// inset entirely (bug A2) — this one owner adds `insets.bottom` for every sheet
+// inset entirely — this one owner adds `insets.bottom` for every sheet
 // so neither drift can recur.
 // Exported so the component can resolve the SAME base step for its own
 // keyboard-aware `paddingBottom` override (`resolveKeyboardAwareBottomPadding`
@@ -16,7 +16,7 @@ import { StyleSheet } from 'react-native-unistyles';
 export const SHEET_PADDING_STEP = 4;
 
 // An EXTRA buffer kept at the very end of a sheet's own content, on top of
-// `sheet`'s own bottom padding below. Bug A: the Home filter menu (short,
+// `sheet`'s own bottom padding below. The Home filter menu (short,
 // never-scrolled content) read roomier at the bottom than every other sheet,
 // because `sheet`'s own bottom padding is applied to the OUTER card, not the
 // content — a short sheet's content simply falls short of the card's full
@@ -36,7 +36,7 @@ export const SHEET_PADDING_STEP = 4;
 // padding rather than `sheet`'s own.
 const CONTENT_BOTTOM_PADDING_STEP = SHEET_PADDING_STEP;
 
-// DEVICE BUG fix: Liquid Glass draws a native specular rim at the edge of
+// Liquid Glass draws a native specular rim at the edge of
 // whatever bounds it is given — a `UIGlassEffect` property this app does not
 // control, not a border/inset anywhere in this file. At the scrim's original
 // full-screen size that rim landed exactly on the screen edge and read as a
@@ -54,8 +54,8 @@ const BACKDROP_RIM_OVERSCAN = 32;
 
 // The grabber region's floor: the iOS HIG 44pt minimum touch target
 // (`kiko-design-system`'s "Touch targets" HIG axis), the same floor
-// `button.styles.ts`'s `COMPACT_MIN_HEIGHT` restores for a Button. DEVICE BUG
-// fix: a header-less sheet's region used to be only ~21pt tall (paddingTop 4 +
+// `button.styles.ts`'s `COMPACT_MIN_HEIGHT` restores for a Button. A header-less
+// sheet's region is only ~21pt tall without it (paddingTop 4 +
 // the 5pt pill + paddingBottom 12, no header sibling to fill it out), well
 // under the floor, with no `hitSlop` to compensate. `minHeight` grows the
 // region's OWN claimed bounds rather than the Pan's hit-test area past them,
@@ -234,7 +234,7 @@ export const styles = StyleSheet.create((theme) => ({
   // The grabber centers itself via its own `alignSelf` below rather than this
   // region's `alignItems`, so the header stays full-width/left-aligned (the
   // region's default `stretch`) instead of being centered with the pill.
-  // DEVICE BUG fix: `minHeight` (see `GRABBER_REGION_MIN_HEIGHT` above) floors
+  // `minHeight` (see `GRABBER_REGION_MIN_HEIGHT` above) floors
   // this region at the 44pt HIG touch-target minimum — the padding+pill alone
   // still falls short of it for a headerless sheet even at the larger padding
   // steps above. A header-bearing sheet already clears 44pt on its own
@@ -246,7 +246,7 @@ export const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing(3),
   },
   // The grabber pill itself: the standard iOS ~36x5pt rounded handle.
-  // DEVICE BUG fix (live review): `theme.colors.border` (#38383A, the hairline
+  // `theme.colors.border` (#38383A, the hairline
   // separator gray) read almost invisible against the sheet's own dark glass
   // background — both are near-black, so the drag affordance nearly
   // disappeared instead of reading clearly. `textSecondary` (the iOS
@@ -272,7 +272,7 @@ export const styles = StyleSheet.create((theme) => ({
   // path's equivalent). A `ScrollView`'s OWN `style` never lays out its
   // children (only `contentContainerStyle` does), so the gap cannot live on
   // `scrollBody` above. `paddingBottom` is the extra comfortable-bottom-space
-  // buffer (bug A, see `CONTENT_BOTTOM_PADDING_STEP` above) — living in the
+  // buffer (see `CONTENT_BOTTOM_PADDING_STEP` above) — living in the
   // content container itself means it is still visible even once the
   // ScrollView is scrolled all the way to its end, unlike padding on `sheet`
   // (which only ever shows beneath content short enough to never need to
@@ -293,7 +293,7 @@ export const styles = StyleSheet.create((theme) => ({
   // closes that gap in the ONE shared wrapper instead of relying on every
   // opted-out sheet getting its own inner ScrollView's sizing exactly right.
   // `paddingBottom` gives it the SAME comfortable bottom buffer as
-  // `scrollContent` above (bug A) — directly beneath whichever child renders
+  // `scrollContent` above — directly beneath whichever child renders
   // last: a pinned actions row (date-range-field), or the sheet's own inner
   // ScrollView's frame (category-field, icon-picker-modal).
   box: {

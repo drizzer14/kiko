@@ -100,8 +100,8 @@ describe('SettingsScreen', () => {
     expect(queryByText('Settings')).toBeNull();
   });
 
-  // DEVICE BUG: CurrencyField's own trigger no longer
-  // shows the ISO code at all (see `currency-field.component.tsx`'s
+  // CurrencyField's own trigger does not
+  // show the ISO code at all (see `currency-field.component.tsx`'s
   // `triggerValue`) — it shows the localized NAME only, matching the option
   // rows. This used to match the bare "UAH" substring inside the old
   // "UAH — Ukrainian Hryvnia" trigger value; assert the localized name
@@ -310,8 +310,8 @@ describe('SettingsScreen', () => {
     expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 
-  // DEVICE BUG fix (root cause, same as the account/holding forms —
-  // `holding-form.screen.test.tsx`'s own test of this name): the currency
+  // Same root cause as the account/holding forms (`holding-form.screen.test.tsx`'s own
+  // test of this name): the currency
   // sheet's search field lives inside a Modal above this Screen's background
   // ScrollView, which otherwise misfires `automaticallyAdjustKeyboardInsets`
   // for a responder it does not contain. This screen's base-currency
@@ -421,9 +421,9 @@ describe('SettingsScreen — footer', () => {
     expect(mockOpenURL).toHaveBeenCalledWith('https://drizzer14.github.io/kiko/en.html');
   });
 
-  // DEVICE BUG: the footer previously rendered as scroll CONTENT (a `flex: 1`
-  // spacer plus `Screen`'s `fillHeight`), which pushed it below the fold on a
-  // real device — the user had to scroll to see it. It must instead render
+  // The footer must not render as scroll CONTENT (a `flex: 1`
+  // spacer plus `Screen`'s `fillHeight`), which pushes it below the fold on a
+  // real device — the user would have to scroll to see it. It must instead render
   // through `Screen`'s pinned `footer` slot, the same mechanism
   // `account-detail.screen.tsx` uses for its Add-holding button, so it always
   // stays visible just above the tab bar with no scrolling.

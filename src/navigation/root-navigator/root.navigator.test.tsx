@@ -44,7 +44,7 @@ describe('RootNavigator', () => {
     expect((await findByTestId('tab-icon-SettingsTab')).props.sfSymbol).toBe('gear');
   });
 
-  // Bug B1: the native UITabBar rebuilds its styling on every tab's
+  // The native UITabBar rebuilds its styling on every tab's
   // `onAppear` (see react-native-bottom-tabs `TabAppearModifier`). With no
   // `tabBarStyle`, that rebuild calls `configureWithDefaultBackground()`,
   // whose material re-resolves against the ambient interface style. The app

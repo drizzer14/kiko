@@ -167,7 +167,7 @@ describe('GlassSurface', () => {
     expect(queryByTestId('transparent-fallback-backdrop')).toBeNull();
   });
 
-  // `material` (item 2, BottomSheet's own live-blur variant) must ALSO stay
+  // `material` (BottomSheet's own live-blur variant) must ALSO stay
   // translucent on the non-glass fallback — a device without Liquid Glass
   // has no live-sample material to fall back to, so without this branch the
   // sheet would render as a solid opaque panel there instead of see-through.
@@ -482,7 +482,7 @@ describe('GlassSurface', () => {
       expect(queryByTestId('no-backdrop-glass-backdrop')).toBeNull();
     });
 
-    // `material` (BottomSheet's own variant — item 2): a REAL translucent
+    // `material` (BottomSheet's own variant): a REAL translucent
     // blur, so the glass path renders NO backdrop at all — byte-for-byte the
     // same "live sample" tree a plain, tint-less surface already renders
     // (unlike `transparent`, which pins a translucent backdrop under the

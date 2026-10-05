@@ -124,7 +124,7 @@ export const entityIconTileGradient = (colorHex: string): [top: string, bottom: 
   darkenHex(colorHex, ICON_TILE_DARKEN_PERCENT),
 ];
 
-// DEVICE BUG: `EntityIconTile` used to paint its SF
+// `EntityIconTile` must not paint its SF
 // Symbol glyph with a fixed white `onAccent` tint on every tile, regardless of
 // how bright the tile's own gradient reads. Several palette swatches
 // (`white`, `yellow`, `khaki`, `mint`, `teal` — see `palette.ts`) are

@@ -21,7 +21,7 @@ import type { EntityIconTileProps } from './entity-icon-tile.props';
 // sites keep their surrounding card BACKGROUND neutral (a plain `transparent`
 // frosted surface) rather than painting it with an entity-color wash.
 //
-// DEVICE BUG: the tile is a plain squircle of the gradient fill and the glyph,
+// The tile is a plain squircle of the gradient fill and the glyph,
 // with nothing drawn around the edge. A two-ring hairline edge (a white outer
 // ring plus a darker inset ring) meant to imitate a native app-icon edge
 // separator does not read as intended on device, and a white specular "glass"
@@ -52,7 +52,7 @@ const EntityIconTile: FC<EntityIconTileProps> = ({
 
   const [topStop, bottomStop] = entityIconTileGradient(color);
   const tileSize = iconTileSize(theme, compact);
-  // DEVICE BUG: a fixed white `onAccent` glyph fails
+  // A fixed white `onAccent` glyph fails
   // WCAG AA contrast on the palette's lighter swatches (`white`, `yellow`,
   // `khaki`, `mint`, `teal` — see `isLightEntityColor`'s own doc comment in
   // `entity-tint.ts`), reading as a near-invisible icon, so the glyph tint

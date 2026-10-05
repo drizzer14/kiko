@@ -396,7 +396,7 @@ describe('categories seed migration', () => {
     // applied a create-only categories migration (its create timestamp already
     // recorded) receives the seed only if the seed is a distinct, later journal
     // entry — otherwise the seed never runs and every transaction resolves to
-    // the neutral fallback. This is exactly bug B4.
+    // the neutral fallback.
     const create = createMigration();
     const seed = seedMigration();
 

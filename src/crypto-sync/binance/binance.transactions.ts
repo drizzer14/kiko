@@ -207,7 +207,7 @@ const depositRow = (
     externalId: `${accountId}:deposit:${key}`,
     // The stable, non-localized asset ticker, NOT a t(...) call. A blank
     // description normalizes to '' so the category-apply sheet is skipped for a
-    // crypto row (item 12); a stable ticker gives the name rule something to
+    // crypto row; a stable ticker gives the name rule something to
     // match, so the sheet appears with parity to a Monobank merchant row. It
     // must stay non-localized — a localized label would change under a language
     // switch and break name matching.
@@ -245,7 +245,7 @@ const withdrawalRow = (
     source: 'binance',
     externalId: `${accountId}:withdraw:${key}`,
     // See depositRow: the stable, non-localized asset ticker so the row groups
-    // under the category-apply sheet (item 12).
+    // under the category-apply sheet.
     description: BINANCE_ASSET,
   };
 };

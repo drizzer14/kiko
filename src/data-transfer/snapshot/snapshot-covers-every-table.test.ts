@@ -1,6 +1,6 @@
 // src/data-transfer/snapshot/snapshot-covers-every-table.test.ts
 //
-// Invariant #15 (backup completeness): every Drizzle table exported from
+// Backup completeness: every Drizzle table exported from
 // `db/schema.ts` must be represented in the backup snapshot that
 // `readDataSnapshot`/`restoreDataSnapshot` round-trip. Both sides are derived
 // at RUNTIME, not hand-copied lists — the schema side by asking Drizzle's own

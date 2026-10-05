@@ -40,7 +40,7 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
     },
     now: () => 1000,
     // A no-op, instant sleep by default so a test that doesn't care about the
-    // retry backoff (Part B) never actually waits on the real timers the
+    // retry backoff never actually waits on the real timers the
     // production default (`setTimeout`) would use.
     sleep: async () => {},
     ...overrides,
@@ -257,7 +257,7 @@ describe('refreshRates', () => {
   });
 });
 
-// Part B: a failed live fetch retries with a small bounded backoff before
+// A failed live fetch retries with a small bounded backoff before
 // giving up, so a transient network blip or a single 429 doesn't leave live
 // rates stuck behind the (approximate) fiat seed fallback for the whole
 // 5-minute throttle window.

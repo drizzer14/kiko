@@ -25,7 +25,7 @@ const Tabs = createNativeBottomTabNavigator<TabParamList>();
  * the scheme deterministic while keeping the active theme's accent color as
  * the active tint.
  *
- * `tabBarStyle.backgroundColor` pins the bar's *background* (Bug B1). The
+ * `tabBarStyle.backgroundColor` pins the bar's *background*. The
  * library rebuilds the UITabBar styling on every tab's `onAppear`
  * (react-native-bottom-tabs `TabAppearModifier` → `configureStandardAppearance`).
  * With no `tabBarStyle` that rebuild calls `configureWithDefaultBackground()`,
@@ -49,7 +49,7 @@ const RootNavigator: FC = () => {
       // spread (TabView.tsx:477), so the native view received `undefined` and
       // `configureWithDefaultBackground()` re-resolved the bar's glass against
       // the ambient userInterfaceStyle on every tab's `onAppear` — the bar
-      // flipped light/dark between pages (bug B1). The app is dark-only and pins
+      // flipped light/dark between pages. The app is dark-only and pins
       // `UIUserInterfaceStyle = Dark` in Info.plist, so the ambient native style
       // is always dark. This concrete backgroundColor still pins the exact token.
       tabBarStyle={{ backgroundColor: theme.colors.background }}

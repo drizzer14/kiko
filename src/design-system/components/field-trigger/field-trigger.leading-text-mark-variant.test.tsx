@@ -25,11 +25,11 @@ jest.mock('@kiko/design-system/components/text', () => {
   return { __esModule: true, default: MockText };
 });
 
-// DEVICE BUG: the leading text mark (e.g.
-// CurrencyField's trigger currency symbol) used to be sized to
-// `theme.iconSizes.body` (an ICON size) via an inline `fontSize` override, so
-// it read visibly larger than the value text beside it — the same device bug
-// SelectableRow's own leading mark was fixed for (see
+// The leading text mark (e.g.
+// CurrencyField's trigger currency symbol) must not be sized to
+// `theme.iconSizes.body` (an ICON size) via an inline `fontSize` override, or
+// it reads visibly larger than the value text beside it — the same mismatch
+// SelectableRow's own leading mark avoids (see
 // `selectable-row.styles.ts`'s `leadingTextMark` doc comment). The mark must
 // inherit `theme.typography.body`'s size straight from the SAME
 // `variant="body"` prop the value itself uses, never an icon-sized override.

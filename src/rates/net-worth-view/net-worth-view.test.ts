@@ -33,7 +33,7 @@ describe('buildRateTable', () => {
   // Parse/drop behavior for the LIVE rows themselves is unit-tested in full
   // isolation (exact `toEqual` on the whole object) by
   // `rateTableFromRows` in `conversion.test.ts` — `buildRateTable` now also
-  // merges the bundled fiat seed underneath every live row (Part A), so an
+  // merges the bundled fiat seed underneath every live row, so an
   // exact whole-object `toEqual` here would break on the seed's own many
   // entries. These cases instead target only the keys the passed rows touch.
   it('parses the string rate column into a numeric RateTable', () => {
@@ -67,7 +67,7 @@ describe('buildRateTable', () => {
     expect(table.EUR).toBeGreaterThan(0);
   });
 
-  // Part A — the bundled fiat rate seed is a FALLBACK LAYER: with an EMPTY
+  // The bundled fiat rate seed is a FALLBACK LAYER: with an EMPTY
   // `currency_rates` table (a fresh install, before any live sync ever
   // succeeded), a supported fiat currency must still convert, rather than
   // silently dropping out of net worth until the first live fetch lands.
@@ -317,7 +317,7 @@ describe('guardedNetWorth / guardedBreakdown — base-currency flip regression',
   });
 });
 
-// Part A end-to-end proof: the root-cause bug was that `currency_rates` is
+// End-to-end proof: the root-cause bug was that `currency_rates` is
 // EMPTY until the first live Monobank fetch succeeds, so `refreshRates` never
 // writes a row on a fresh, offline install and a non-UAH holding silently
 // dropped out of net worth (`canConvert`) with no live rate ever cached. The

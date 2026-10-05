@@ -86,7 +86,7 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  * (`pointerEvents="none"`) child of the `Pressable` that owns the tap/testID/
  * a11y, not the pressable target itself.
  *
- * DEVICE BUG fix: Liquid Glass draws a native specular rim at the edge of
+ * Liquid Glass draws a native specular rim at the edge of
  * whatever bounds it is given (a `UIGlassEffect` property, not a border/inset
  * this app draws), which at this scrim's original full-screen size landed
  * exactly on the screen edge and read as a sharp 1px hairline around the
@@ -165,8 +165,8 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // dismiss threshold (a fraction of it). Seeded to the resolved cap so the
   // very first drag — before onLayout has fired — still has a sane threshold.
   const sheetHeight = useSharedValue(resolvedMaxHeight);
-  // DEVICE BUG fix: a `KeyboardAvoidingView` around the sheet's OWN body
-  // (attempt B) does nothing for a Modal-anchored sheet like this one — a KAV
+  // A `KeyboardAvoidingView` around the sheet's OWN body does nothing for a
+  // Modal-anchored sheet like this one — a KAV
   // repositions its own subtree within its PARENT's layout, but this sheet's
   // parent is the Modal's own transparent root, which never resizes for the
   // keyboard, so the KAV had zero effect on device. What actually needs to

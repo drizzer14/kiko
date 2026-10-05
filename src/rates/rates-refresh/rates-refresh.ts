@@ -89,7 +89,7 @@ export type RefreshDeps = {
   presentCurrencies?: () => Promise<Currency[]>;
 };
 
-// Part B: a small, bounded backoff for a FAILED live fetch — two retries, so a
+// A small, bounded backoff for a FAILED live fetch — two retries, so a
 // transient network blip or a single 429 doesn't leave live rates stuck
 // behind the (approximate) fiat seed fallback for the whole 5-minute
 // throttle window above. Bounded on purpose: this never hammers the
@@ -366,7 +366,7 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   // (`ios/Kiko/Info.plist`'s `NSPinnedDomains`) and stays the PREFERRED fiat
   // source (its bank-BUY-rate choice, `monobank-rates.ts`). NBU (`bank.gov.ua`,
   // deliberately UNPINNED) is the live fallback, reached for only once
-  // Monobank's own bounded retry (Part B, `withRetry`) is exhausted — a
+  // Monobank's own bounded retry (`withRetry`) is exhausted — a
   // SEQUENTIAL fallback, not a second concurrent provider: only ONE source's
   // rows are ever composed and stored per run. `fiatAnswer` tracks which one
   // answered so the composed rows are labeled with accurate provenance

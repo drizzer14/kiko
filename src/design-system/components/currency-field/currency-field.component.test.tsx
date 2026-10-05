@@ -110,10 +110,9 @@ describe('CurrencyField', () => {
     expect(utils.getByTestId('currency-option-AED')).toBeTruthy();
   });
 
-  // DEVICE BUG: the search TextField inside the sheet leaves the keyboard up
-  // (and the background form scrolled) after a currency is picked, because
-  // neither `handleSelect` nor the sheet's dismiss ever called
-  // `Keyboard.dismiss()`.
+  // The search TextField inside the sheet leaves the keyboard up (and the
+  // background form scrolled) after a currency is picked unless `handleSelect`
+  // or the sheet's dismiss calls `Keyboard.dismiss()`.
   it('dismisses the keyboard when a currency is selected', async () => {
     const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
     const utils = await renderCurrencyField();
@@ -126,8 +125,8 @@ describe('CurrencyField', () => {
     dismissSpy.mockRestore();
   });
 
-  // DEVICE BUG: with the keyboard up (the search field focused), the FIRST
-  // tap on a currency row only dismissed the keyboard — the list's default
+  // With the keyboard up (the search field focused), the FIRST
+  // tap on a currency row would only dismiss the keyboard — the list's default
   // `keyboardShouldPersistTaps` ("never") swallows that first tap as a
   // keyboard-dismiss instead of delivering it to the row's `onPress`, so a
   // SECOND tap was needed to actually select. "handled" (the same fix
@@ -157,7 +156,7 @@ describe('CurrencyField', () => {
     dismissSpy.mockRestore();
   });
 
-  // DEVICE BUG (root cause, see debugger findings): a hosting Screen's
+  // A hosting Screen's
   // `automaticallyAdjustKeyboardInsets` misfires on the sheet's search field
   // focus even though it does not contain that responder. `onOpenChange`
   // lets the host gate that prop off for exactly the window the sheet is
@@ -285,8 +284,8 @@ describe('CurrencyField', () => {
     expect(utils.getByTestId('currency-option-USD')).toBeTruthy();
   });
 
-  // DEVICE BUG: the trigger's own displayed value used
-  // to read "CODE — Name" (e.g. "USD — US Dollar"), duplicating the ISO code
+  // The trigger's own displayed value must not read "CODE — Name" (e.g.
+  // "USD — US Dollar"): that duplicates the ISO code
   // that already sits in the trigger's separate `leadingText` mark. The
   // trigger must mirror the option rows exactly: the localized NAME only.
   it('does not show the ISO code in the trigger value, only the localized name', async () => {

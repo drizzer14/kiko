@@ -418,7 +418,7 @@ describe('HoldingFormScreen term deposit', () => {
     expect(codes.slice(0, 4)).toEqual(['BTC', 'ETH', 'USDT', 'UAH']);
   });
 
-  // DEVICE BUG fix (root cause): the currency sheet's search field lives
+  // The currency sheet's search field lives
   // inside a Modal above this Screen's background ScrollView, which
   // otherwise misfires `automaticallyAdjustKeyboardInsets` for a responder
   // it does not contain. `CurrencyField`'s `onOpenChange` must gate that

@@ -1,5 +1,5 @@
 // Money-path guard (build-6 regression class): a split-change transaction must
-// not distort net worth or the spending pie, and Feature 1's convert prefill
+// not distort net worth or the spending pie, and the convert prefill
 // must seed the right counterpart amount without ever mutating the bank row.
 // Modeled on rates-refresh/crypto-coverage.test.ts: drive the real logic
 // through fast seams, no simulator.

@@ -310,7 +310,7 @@ describe('syncBinanceTransactions', () => {
   });
 
   it('a same-account reconnect after a disconnect (watermark reset to the floor) walks from the floor, even with an old latest set', async () => {
-    // Mirrors what a disconnect now leaves behind (item 1: the watermark is
+    // Mirrors what a disconnect leaves behind (the watermark is
     // RESET to `HISTORY_FLOOR_MS`, not stripped) — a stale `latest` from
     // before the disconnect must not pull the walk forward past the floor.
     const fetchDepositHistory = emptyDepositFetch();

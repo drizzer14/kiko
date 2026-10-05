@@ -22,7 +22,7 @@ type ConvertibleHolding = Pick<
  * even fully offline, on a fresh install whose `currency_rates` table is
  * still empty (`refreshRates` writes nothing until a live Monobank fetch
  * succeeds — see `rates-refresh.ts`). Crypto has no seed entry, so an
- * unrated crypto holding is still excluded exactly as before (Part C: this
+ * unrated crypto holding is still excluded exactly as before (this
  * is the one remaining silent-drop case, and it's intentional — crypto
  * pricing stays a separate, live-only path).
  */
@@ -43,7 +43,7 @@ export const buildRateTable = (
  * `guardedNetWorth` convert the holding to 0 while `guardedBreakdown` kept
  * showing it at full own-currency value.
  *
- * Part C: since `buildRateTable`'s fiat seed fallback (above) now covers
+ * Since `buildRateTable`'s fiat seed fallback (above) now covers
  * every supported FIAT currency, this silent exclusion in practice fires
  * only for a currency with neither a live rate NOR a seed entry — today that
  * is exactly the crypto set (BTC/ETH/USDT), which has no seed by design and

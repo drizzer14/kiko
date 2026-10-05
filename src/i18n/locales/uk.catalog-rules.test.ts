@@ -1,6 +1,6 @@
 // src/i18n/locales/uk.catalog-rules.test.ts
 //
-// Invariant #17 (uk catalogue rules), walked at RUNTIME over the nested `uk`
+// The uk catalogue rules, walked at RUNTIME over the nested `uk`
 // object (not the source text), so a violation buried in a template literal
 // or a computed value is caught the same as a plain string:
 //

@@ -9,7 +9,7 @@ import type { StatementFormatId } from '@kiko/statement-import/parser';
  * Guideline 5.6 remediation); THIS tuple additionally covers every
  * statement-import-only bank, whether or not `statement-import` ships a
  * dedicated parser for it (see `BankCatalogEntry.statementFormatId` below —
- * P3's PUMB/Oschadbank/Raiffeisen/Ukrgasbank have none, and import through
+ * PUMB/Oschadbank/Raiffeisen/Ukrgasbank have none, and import through
  * the generic column-mapping screen instead). `connectable` is a plain,
  * always-visible data field on a fully-rendered static array — never a
  * build/runtime visibility gate — so every row always renders; only the
@@ -49,7 +49,7 @@ type BankCatalogEntryBase = {
   displayName?: string;
   /** The `statement-import` format this bank's account scopes import
    * recognition to (see `statementFormatIdForBank` below) — `undefined` for
-   * a bank with no dedicated parser (P3's PUMB/Oschadbank/Raiffeisen/
+   * a bank with no dedicated parser (PUMB/Oschadbank/Raiffeisen/
    * Ukrgasbank), which falls through to the generic column-mapping import
    * (`BankTypeField`'s `bankColumnMappingOnly` caption names this honestly). */
   statementFormatId?: StatementFormatId;
@@ -70,7 +70,7 @@ type SpecificBankCatalogEntry = BankCatalogEntryBase & {
    * visibility gate (Guideline 5.6): every row always renders regardless of
    * this value, and only the CREATABLE holding-type set differs
    * (`creatableHoldingTypesForAccount`, `src/holdings/holding-type/`).
-   * PrivatBank, PUMB, Oschadbank, and Ukrgasbank (P3); Monobank and
+   * PrivatBank, PUMB, Oschadbank, and Ukrgasbank; Monobank and
    * Raiffeisen stay `false` (no such product). */
   sellsMetals: boolean;
 };

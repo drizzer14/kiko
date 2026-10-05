@@ -14,8 +14,8 @@ export const styles = StyleSheet.create((theme) => ({
   // `TextField` used to always reserve a fixed-height error slot below the
   // input (whether
   // or not an error was showing), so this screen originally left NO gap of
-  // its own here to avoid doubling up with that reserved slot. Track A's
-  // reflow change (`text-field.component.tsx`) removed that reserved slot
+  // its own here to avoid doubling up with that reserved slot. The reflow
+  // change (`text-field.component.tsx`) removed that reserved slot
   // entirely — a valid field with no `error` now renders nothing below the
   // input at all — so this screen must supply its OWN spacing again, the same
   // way every other gap on this screen already does. This field passes no
