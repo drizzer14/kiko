@@ -32,13 +32,9 @@ export const KEYBOARD_ACCESSORY_HEIGHT =
   DONE_PILL_MIN_SIZE + 2 * darkTheme.spacing(ACCESSORY_VERTICAL_PADDING_STEP);
 
 export const styles = StyleSheet.create((theme) => ({
-  // The InputAccessoryView host. REDESIGN (2026-09-14): this used to be a
-  // full-width, flush toolbar bar with its own solid fill, top hairline, and
-  // bottom-rounded corners tucked against the keyboard's own curve (see git
-  // history — commits ed4cceb/5aa3fda/0faaab3 — for that bar's now-removed
-  // layering). It is now fully TRANSPARENT — no fill, no border, no corner
-  // geometry of its own — and exists only to position the compact Done pill
-  // below: full width so the pill can right-align within it
+  // The InputAccessoryView host. It is fully TRANSPARENT — no fill, no
+  // border, no corner geometry of its own — and exists only to position the
+  // compact Done pill below: full width so the pill can right-align within it
   // (`alignItems: 'flex-end'`), with `paddingBottom` holding the pill clear of
   // the keyboard's own top edge (the floating gap) and `paddingHorizontal`
   // matching the app's standard edge inset so the pill lines up with content
@@ -66,9 +62,9 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // The live Liquid Glass fill: an absolutely-positioned sibling painted
   // BEHIND the Done label, sized to match `doneButton`'s own rendered bounds
-  // exactly (no extension past any edge — unlike the old bar, this pill has
-  // no keyboard-curve mismatch to route around, since it floats clear of the
-  // keyboard entirely). `GlassSurface`'s `material` variant is the same
+  // exactly (no extension past any edge — this pill has no keyboard-curve
+  // mismatch to route around, since it floats clear of the keyboard
+  // entirely). `GlassSurface`'s `material` variant is the same
   // live-blur variant `BottomSheet` uses for its own card background (no
   // color-pinning backdrop, so it samples the real content behind the pill on
   // the glass path; a translucent, never-opaque fallback fill elsewhere).

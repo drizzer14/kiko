@@ -8,11 +8,9 @@ import { trigger } from 'react-native-haptic-feedback';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-// Real i18n init (side effect), same as App.tsx. Previously reached only by
-// accident through GlassSurface -> screenshot-mode -> i18n before the 5.6
-// screenshot-subsystem strip removed that import chain; now imported directly
-// so the sheet's `t('common.cancel')`/`t('common.delete')` resolve under test
-// the same way they do at runtime.
+// Real i18n init (side effect), same as App.tsx, so the sheet's
+// `t('common.cancel')`/`t('common.delete')` resolve under test the same way
+// they do at runtime.
 import '@kiko/i18n/init';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 

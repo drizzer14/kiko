@@ -39,26 +39,23 @@ const IconPickerModal: FC<IconPickerModalProps> = ({
   const { t } = useTranslation();
 
   return (
-    // No `animationType` override: this used to pass `"slide"`, which drove
-    // BottomSheet's own `Modal` — the SAME native transition presents both the
-    // dismiss-scrim blur and the sheet card, they are not independently
-    // animatable — so the backdrop blur visibly slid in/out with the sheet
-    // instead of fading like every other sheet in the app (every other
-    // `BottomSheet` call site relies on the shared default). Device/on-review
-    // feedback: the blur should fade, matching the rest of the app, so this
-    // sheet now falls back to `BottomSheet`'s own default (`'fade'`) rather
-    // than carrying a one-off override with no stated reason to diverge.
+    // No `animationType` override: a `"slide"` would drive BottomSheet's own
+    // `Modal` — the SAME native transition presents both the dismiss-scrim
+    // blur and the sheet card, they are not independently animatable — so the
+    // backdrop blur would visibly slide in/out with the sheet instead of
+    // fading like every other sheet in the app (every other `BottomSheet`
+    // call site relies on the shared default). This sheet falls back to
+    // `BottomSheet`'s own default (`'fade'`) rather than carrying a one-off
+    // override with no stated reason to diverge.
     //
     // `scrollable={false}`: the Remove/Cancel footer below must stay pinned at
     // the body end regardless of scroll position — BottomSheet's shared
     // ScrollView would otherwise sweep it into the same scrollable
     // region as the grid above it, along with nesting a second same-axis
     // ScrollView around this component's own. The title renders through the
-    // shared `header` prop instead (see below); the actions used to sit in a
-    // top-right row beside it (this sheet's former outlier footer pattern —
-    // see `explore-bottomsheet.md`'s action-button inventory) and now render
-    // through the shared `SheetFooter` at the body end instead, the same
-    // placement every other choice sheet uses.
+    // shared `header` prop instead (see below), and the actions render
+    // through the shared `SheetFooter` at the body end, the same placement
+    // every other choice sheet uses.
     <BottomSheet
       visible={visible}
       onDismiss={onDismiss}

@@ -11,14 +11,13 @@ import { styles } from './transaction-card.styles';
 import type { TransactionCardProps } from './transaction-card.props';
 
 /**
- * The shared transaction card body: the presentational
- * `Card` content Home's `TransactionRow` used to own inline — category icon,
- * title, amount, optional footer captions — extracted so any OTHER preview
- * of "what a transaction looks like" (the statement-import/column-mapping
- * `ExampleTransaction`) renders through the SAME card, not a rebuilt one.
- * `TransactionRow` keeps its own `CardContextMenu`/`Pressable` wrapping and
- * passes this every prop it used to render inline, so Home's own markup is
- * unchanged.
+ * The shared transaction card body: the presentational `Card` content —
+ * category icon, title, amount, optional footer captions — shared so any
+ * OTHER preview of "what a transaction looks like" (the
+ * statement-import/column-mapping `ExampleTransaction`) renders through the
+ * SAME card, not a rebuilt one. Home's `TransactionRow` owns its own
+ * `CardContextMenu`/`Pressable` wrapping and passes this every prop it
+ * renders.
  */
 const TransactionCard: FC<TransactionCardProps> = ({
   title,

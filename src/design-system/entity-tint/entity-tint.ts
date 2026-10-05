@@ -55,14 +55,14 @@ const FALLBACK_ENTITY_COLOR = entityColorsDark.gray;
 //    `defaultHoldingColor` are typed `Record<Kind, string>`, which is only a
 //    COMPILE-time guarantee. SQLite enforces no CHECK constraint on the
 //    `kind`/`type` text column (Drizzle's `{ enum: [...] }` is TypeScript-only
-//    annotation), so a row written under a kind or type the app no longer
-//    knows still resolves its kind default lookup to `undefined` at runtime,
+//    annotation), so a row written under a kind or type outside the current
+//    list still resolves its kind default lookup to `undefined` at runtime,
 //    with no compiler in the way.
 //
-// Either gap, combined with a null/never-set stored color, used to reach
+// Either gap, combined with a null/never-set stored color, would reach
 // `entityIconTileGradient`/`isLightEntityColor` with an unparsable value and
 // throw mid-render — how "a card sometimes has no background at all"
-// actually manifested: not a silently blank tint, but the one throwing
+// manifests: not a silently blank tint, but the one throwing
 // card's whole row (its `EntityIconTile`) failing to render. This resolves
 // BOTH gaps and falls back one more level to `FALLBACK_ENTITY_COLOR` so an
 // entity's tile always has a valid color to resolve.

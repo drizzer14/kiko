@@ -17,33 +17,30 @@ import type { ClipboardTextFieldProps } from './clipboard-text-field.props';
 // paste-icon-only ghost `Button` convention (see `kiko-design-system`) rather
 // than four near-identical hand-rolled copies.
 //
-// ROOT CAUSE of two earlier failed centering attempts (bottom-anchoring, then
-// centering on the WHOLE row): both treated `TextField`'s own caption label as
-// part of the row's cross-axis box, so any `alignItems`/`alignSelf` on the row
-// centered or bottom-anchored the button against (label + gap + input)
-// together, not the 44pt input box alone — landing the icon visibly off the
-// input's true center. The fix removes the ambiguity structurally instead of
-// nudging a numeric offset (the same magic-number fragility that broke the
-// first two attempts): the caption now renders through `FieldLabel` ABOVE this
-// row, in its OWN `Box gap={1}` — the exact 4pt gap `TextField` used to apply
-// internally between its own label and input, so the label-to-input spacing
-// is visually unchanged. `TextField` itself renders with NO `label` prop, so
-// it is now a bare 44pt input box and nothing else. The row below the caption
-// is then just [`TextField` (`flex: 1`), the paste button's wrapper `Box`],
-// `alignItems: 'center'` (`styles.inputRow`) — both children are now
+// The caption renders through `FieldLabel` ABOVE the row, in its OWN
+// `Box gap={1}` (the 4pt gap `TextField` applies between its own label and
+// input), and `TextField` itself renders with NO `label` prop. If `TextField`
+// owned the caption, it would be part of the row's cross-axis box, so any
+// `alignItems`/`alignSelf` on the row would center or bottom-anchor the
+// button against (label + gap + input) together, not the 44pt input box alone
+// — landing the icon visibly off the input's true center. Splitting the
+// caption out removes that ambiguity structurally instead of nudging a
+// numeric offset (a magic-number fragility). The row below the caption is
+// just [`TextField` (`flex: 1`), the paste button's wrapper `Box`],
+// `alignItems: 'center'` (`styles.inputRow`) — both children are
 // fixed-height boxes with no label inside either, so Yoga centers the
 // button's own box exactly on the input's box, with no coordinate to get
-// wrong. The wrapper `Box` (`styles.pasteButtonWrapper`) still exists: without
-// it, `Button`'s own `size="small"` sets `alignSelf: 'flex-start'`
+// wrong. The wrapper `Box` (`styles.pasteButtonWrapper`) is still required:
+// without it, `Button`'s own `size="small"` sets `alignSelf: 'flex-start'`
 // (button.styles.ts), which would win over the row's `alignItems: 'center'`
 // in Yoga and pin the button to the row's cross-axis start instead.
 //
 // `TextField`'s own `accessibilityLabel` prop defaults to its `label` prop
-// (text-field.component.tsx) — since this field is no longer given a `label`
-// at all, that default would resolve to `undefined` if left unset, silently
-// dropping the accessible name VoiceOver reads for the input. `accessibilityLabel={label}`
-// below is therefore required, not optional, to preserve the exact
-// pre-existing accessible name now that the caption moved out of `TextField`.
+// (text-field.component.tsx) — since this field is not given a `label` at
+// all, that default would resolve to `undefined` if left unset, silently
+// dropping the accessible name VoiceOver reads for the input.
+// `accessibilityLabel={label}` below is therefore required, not optional,
+// because the caption lives outside `TextField`.
 const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
   label,
   value,

@@ -86,8 +86,8 @@ describe('GlassSurface', () => {
   // foreign inline style appended to the PARENT's own style array, so it
   // paints on the very first render the same way `children` always has — no
   // Unistyles-managed style member or ShadowNode-reconciliation gap to route
-  // around (the old first-paint-transparent bug an inline style on the
-  // parent node used to hit).
+  // around (an inline style on the parent node would paint transparent on
+  // first render).
   it('renders the wash as a flat backgroundColor on first render when a tint is set', async () => {
     const tint = 'rgba(230, 62, 52, 0.1)';
     const { getByTestId } = await render(
@@ -113,7 +113,7 @@ describe('GlassSurface', () => {
   // The border must land on the very first render for the same reason as the
   // tint: it flows through a Unistyles-managed style member, so its width/color
   // are written to the native ShadowNode on the first frame rather than only
-  // after a re-render, which used to leave the border intermittently missing.
+  // after a re-render, which would leave the border intermittently missing.
   it('draws the hairline separator border on first render when bordered', async () => {
     const { getByTestId } = await render(
       <GlassSurface testID="bordered-surface" bordered>
@@ -313,11 +313,12 @@ describe('GlassSurface', () => {
   // The real Liquid Glass branch (isLiquidGlassSupported === true), which Jest
   // otherwise never reaches because the module is mocked to the non-glass
   // fallback. These assertions encode the device-only stability fix: the card
-  // background used to be ~90% a LIVE glass sample of whatever sat behind the
-  // card, so its lightness drifted on every scroll/reorder/navigation and it
-  // flashed on drag pickup. The fix composites the entity tint INTO the
-  // material natively (`tintColor`), pins what the glass samples to a constant
-  // opaque `backdrop`, and disables the frost-in animation on remount.
+  // background would otherwise be ~90% a LIVE glass sample of whatever sits
+  // behind the card, so its lightness would drift on every
+  // scroll/reorder/navigation and it would flash on drag pickup. The fix
+  // composites the entity tint INTO the material natively (`tintColor`), pins
+  // what the glass samples to a constant opaque `backdrop`, and disables the
+  // frost-in animation on remount.
   describe('on liquid-glass-capable iOS', () => {
     const tint = 'rgba(255, 69, 58, 0.1)';
 
@@ -579,8 +580,8 @@ describe('GlassSurface', () => {
         measureInWindowSpy.mockRestore();
       });
 
-      // The minimum-latency case (a top-of-grid card, or the previously-safe
-      // fixed-2-frame path): the position already matches on the very next
+      // The minimum-latency case (a top-of-grid card, or the fixed-2-frame
+      // path): the position already matches on the very next
       // read, so the loop settles — and remounts — after exactly two reads,
       // never fewer (a single read has nothing to compare against) and never
       // more.

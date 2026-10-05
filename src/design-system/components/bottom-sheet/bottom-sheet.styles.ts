@@ -71,14 +71,13 @@ const GRABBER_REGION_MIN_HEIGHT = 44;
 
 // The ONE token controlling the gap between the grabber/title band and the
 // first row of a sheet's body, for every sheet in the app. Every sheet's own
-// inline `<Text variant="heading">` title now migrates into the `header` prop
+// inline `<Text variant="heading">` title goes through the `header` prop
 // (see `kiko-design-system`'s "BottomSheet header"), so this single step —
-// applied to `grabberRegion.paddingBottom` below — is what used to be the
-// generic `gap` prop's per-child spacing applied ad hoc to a title. A full
-// step more than the previous bare `theme.spacing(3)` magic number gives the
-// title clearer breathing room now that it consistently anchors the header
-// band above every sheet's content, matching `SHEET_PADDING_STEP`'s own
-// weight rather than reading as a smaller, secondary gap.
+// applied to `grabberRegion.paddingBottom` below — is the one spacing between
+// the title and the body. It gives the title clear breathing room now that it
+// consistently anchors the header band above every sheet's content, matching
+// `SHEET_PADDING_STEP`'s own weight rather than reading as a smaller,
+// secondary gap.
 const TITLE_TO_BODY_GAP_STEP = 4;
 
 export const styles = StyleSheet.create((theme) => ({
@@ -221,10 +220,10 @@ export const styles = StyleSheet.create((theme) => ({
   // sheet's own ScrollView). Extending the header into this same region is what
   // makes a drag ANYWHERE across the header — not only on the small pill — drive
   // the dismiss. `paddingTop` is the sheet card's OWN top inset
-  // (`SHEET_PADDING_STEP`) — it used to sit on `sheet` above, OUTSIDE the
-  // GestureDetector, which left a dead, non-draggable strip between the card's
-  // rounded top edge and the grabber; moving it here instead means the entire
-  // band from the card's top edge down through the pill and (now-migrated)
+  // (`SHEET_PADDING_STEP`) — it sits here, not on `sheet` above, because on
+  // `sheet` it would be OUTSIDE the GestureDetector and leave a dead,
+  // non-draggable strip between the card's rounded top edge and the grabber;
+  // here the entire band from the card's top edge down through the pill and
   // title is draggable. `paddingBottom` (`TITLE_TO_BODY_GAP_STEP`) is the ONE
   // token separating the region from the first content row — every sheet's
   // title now renders through `header`, so this single step controls
@@ -255,8 +254,8 @@ export const styles = StyleSheet.create((theme) => ({
   // finding) is the same lighter gray `ChipRow`'s unselected label already
   // uses for a legible-but-subordinate tone, so the pill now reads as a clear
   // affordance without competing with the sheet's primary content.
-  // `alignSelf: 'center'` keeps it centered now that its region no longer
-  // sets `alignItems: 'center'` (so an optional header sibling can stay
+  // `alignSelf: 'center'` keeps it centered because its region does not set
+  // `alignItems: 'center'` (so an optional header sibling can stay
   // left-aligned).
   grabber: {
     alignSelf: 'center',

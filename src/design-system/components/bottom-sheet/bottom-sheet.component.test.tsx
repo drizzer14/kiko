@@ -155,14 +155,14 @@ describe('BottomSheet', () => {
     expect(sheetStyle.paddingBottom).toBe(SHEET_BASE_PADDING + MOCK_BOTTOM_INSET);
     expect(sheetStyle.paddingHorizontal).toBe(SHEET_BASE_PADDING);
 
-    // The sheet card's own top inset no longer lives here: it moved INTO the
-    // draggable grabber region below (see the "extends the drag region up to
-    // the card's top edge" test), so the card itself carries none.
+    // The sheet card's own top inset lives INSIDE the draggable grabber region
+    // below (see the "extends the drag region up to the card's top edge" test),
+    // so the card itself carries none.
     expect(sheetStyle.paddingTop).toBeUndefined();
 
-    // The base step that used to sit on the card now sits on the grabber
-    // region instead, so the whole band from the card's rounded top edge down
-    // through the pill is inside the one draggable hit area.
+    // The base step sits on the grabber region, so the whole band from the
+    // card's rounded top edge down through the pill is inside the one
+    // draggable hit area.
     const grabberStyle = StyleSheet.flatten(getByTestId(`${SHEET_TEST_ID}-grabber`).props.style);
     expect(grabberStyle.paddingTop).toBe(SHEET_BASE_PADDING);
   });
@@ -333,9 +333,8 @@ describe('BottomSheet', () => {
   });
 
   // A call site's own `maxHeight` can never loosen the cap past 66%, even if
-  // it explicitly requests more — this is the "reconcile to the 66% ceiling"
-  // requirement: the icon picker and category-field sheets used to request
-  // 80%/70% before this cap existed, both looser than 66%.
+  // it explicitly requests more — the "reconcile to the 66% ceiling"
+  // requirement, so a sheet asking for a looser 80% or 70% still gets 66%.
   it('clamps a call-site maxHeight looser than the 66% cap down to 66%', async () => {
     const looserCap = WINDOW_HEIGHT * 0.9;
     const { getByTestId } = await render(

@@ -21,12 +21,11 @@ type FieldRef = RefObject<FieldInstance | null> | { current: FieldInstance | nul
 // viewport: React Navigation's own current header height, which ALREADY
 // includes the safe-area top inset — do not add a screen's own
 // `useSafeAreaInsets().top` on top of it, that would double-count it. Unlike
-// the fixed `COMPACT_HEADER_HEIGHT` assumption this replaced, this tracks a
-// COLLAPSING large-title header's true current height (see
-// accounts.stack.tsx / home.stack.tsx's `headerLargeTitle: true`), so a
-// near-top field no longer lands under a header band whose height was
-// assumed smaller than the large title's real (still expanded, or partially
-// so) height.
+// a fixed compact-header assumption, this tracks a COLLAPSING large-title
+// header's true current height (see accounts.stack.tsx / home.stack.tsx's
+// `headerLargeTitle: true`), so a near-top field never lands under a header
+// band whose height was assumed smaller than the large title's real (still
+// expanded, or partially so) height.
 //
 // Reads `HeaderHeightContext` directly rather than
 // `@react-navigation/elements`'s own `useHeaderHeight()` wrapper, which
@@ -123,7 +122,7 @@ export const resolveFieldScrollTarget = (
   // needs to reach iOS verbatim, but the same disabled clamp means an
   // over-large target is never pulled back either. A raw
   // `fieldTop - headerInset` target that sits past the content's own true
-  // bottom rest (`contentHeight - viewportHeight`) used to scroll straight
+  // bottom rest (`contentHeight - viewportHeight`) would scroll straight
   // past the last field into a void of empty background, with nothing (not
   // even the field) actually landing in view. `Math.max(..., lowerBound)`
   // keeps a form shorter than its own viewport (`contentHeight <

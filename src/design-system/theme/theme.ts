@@ -63,16 +63,14 @@ export const darkTheme = {
     // `#111112` (rgb 17,17,18) — DARKENED from the original `#1C1C1E`
     // (secondarySystemBackground) on live-review feedback: the solid content
     // `Card` fill (see `card.styles.ts`) read too bright at `#1C1C1E`. This is
-    // not an arbitrary darker pick — it is the EXACT tone the old translucent
-    // glass system already composited to: `surfaceTranslucent` below
-    // (`rgba(28,28,30,0.60)`, the `#1C1C1E` hue) over the true-black
-    // `background` blends to ~rgb(17,17,18). So the flat `Card` fill now
-    // reads identically to how a frosted `GlassSurface` card used to look on
-    // this same screen, restoring the pre-migration tone rather than
-    // inventing a new one. `surfaceTranslucent`/`surfaceTranslucentStrong`
-    // keep their own `#1C1C1E`-hue rgba literals below UNCHANGED — they are
-    // no longer tied to this token's value (see each one's own doc comment)
-    // — so this change cannot silently drift them.
+    // not an arbitrary darker pick — it is the EXACT tone a translucent glass
+    // card composites to: `surfaceTranslucent` below (`rgba(28,28,30,0.60)`,
+    // the `#1C1C1E` hue) over the true-black `background` blends to
+    // ~rgb(17,17,18). So the flat `Card` fill reads identically to a frosted
+    // `GlassSurface` card on the same screen. `surfaceTranslucent`/
+    // `surfaceTranslucentStrong` keep their own `#1C1C1E`-hue rgba literals
+    // below — they are not tied to this token's value (see each one's own doc
+    // comment) — so a change to this token cannot silently drift them.
     surface: '#111112',
     // The `#1C1C1E` hue at 60% alpha — the see-through frosted-panel fill for
     // a `transparent` GlassSurface (see its `transparent` prop). It is used

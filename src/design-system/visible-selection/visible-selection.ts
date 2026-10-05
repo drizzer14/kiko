@@ -1,4 +1,4 @@
-// A FilterMenu's stored selection can name a value that no longer exists (a
+// A FilterMenu's stored selection can name a value that is gone (a
 // deleted or archived account), and no checked row is left to clear it. The
 // selection that filters and counts is the stored one minus those values; an
 // empty result means "all". A value that only fell out of scope still exists:

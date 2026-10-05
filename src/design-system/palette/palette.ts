@@ -3,8 +3,7 @@
 // key) so an existing default mapping never dangles.
 //
 // Dark set: Apple dark-mode system-color values. The `blue`/`green` hexes are
-// inlined literals (previously aliased to the theme `accent`/`positive`), now
-// decoupled because `accent`/`positive` are theme tokens.
+// inlined literals, decoupled from the theme `accent`/`positive` tokens.
 export const entityColorsDark = {
   white: '#FFFFFF',
   khaki: '#BDB76B',

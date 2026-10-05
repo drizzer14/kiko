@@ -28,8 +28,8 @@ describe('Switch', () => {
     expect(getByLabelText('Reminder on').props.value).toBe(true);
   });
 
-  // A long label ("Follow system setting") previously overflowed past the
-  // toggle instead of wrapping, because RN's `flexShrink` defaults to 0. Jest
+  // A long label ("Follow system setting") would overflow past the toggle
+  // instead of wrapping, because RN's `flexShrink` defaults to 0. Jest
   // cannot lay out pixels, so this pins the style contract: a `flexShrink: 1`
   // label box, and a row that centers the toggle on the label.
   it('lets a long label shrink to wrap, and centers the toggle on it', async () => {

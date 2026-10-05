@@ -13,8 +13,8 @@ const styleLayers = (style: unknown): Record<string, unknown>[] =>
   );
 
 // Walk up from a node to the nearest ancestor whose flattened style satisfies
-// `predicate` — used to find the cell (the code+amount row) and the table row
-// that holds the two columns.
+// `predicate` — finds the cell (the code+amount row) and the table row that
+// holds the two columns.
 const ancestorWith = (
   node: RenderedElement,
   predicate: (layer: Record<string, unknown>) => boolean,

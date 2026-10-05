@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-/** The Modal transition used to present the sheet. */
+/** The Modal transition that presents the sheet. */
 type BottomSheetAnimation = 'fade' | 'slide' | 'none';
 
 export type BottomSheetProps = {
@@ -63,8 +63,8 @@ export type BottomSheetProps = {
    * Whether the sheet wraps `children` in its own scrolling container so
    * content taller than the 66% cap scrolls instead of being clipped.
    * Defaults to `true` — the shared fix for every plain sheet (filter-menu,
-   * date-field, the transaction-form category-override confirm) that used to
-   * render no scroll container at all and simply got clipped at the cap.
+   * date-field, the transaction-form category-override confirm), which has no
+   * scroll container of its own and would otherwise be clipped at the cap.
    *
    * Set to `false` only when the sheet needs a pinned header/footer/actions
    * row that must stay OUTSIDE the scrollable region, or needs direct control

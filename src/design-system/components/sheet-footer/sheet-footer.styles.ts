@@ -1,9 +1,8 @@
 import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create({
-  // The shared action-row layout every choice sheet's footer now renders
-  // through (previously duplicated as each screen's own `actions` style —
-  // trend-filter-field.styles.ts and date-range-field.styles.ts). Buttons stay
+  // The shared action-row layout every choice sheet's footer renders
+  // through, so no screen carries its own `actions` style. Buttons stay
   // packed to the trailing (body-end) edge in DOM order — secondary/destructive
   // first, primary last — matching the button-hierarchy spec's "secondary
   // left, primary right" rule. `alignItems: 'center'` keeps two differently

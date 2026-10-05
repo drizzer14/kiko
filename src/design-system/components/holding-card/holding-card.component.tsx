@@ -35,13 +35,12 @@ import { styles } from './holding-card.styles';
 // smaller converted base-currency value beneath its own-currency value, so the
 // user reads both figures; the account card already shows the base currency.
 //
-// This card used to carry a `settled`/`transitionEnd` remount workaround for a
-// `GlassSurface` (Liquid Glass) one-shot-layout bug on this pushed route: the
-// native glass locked its tint on the transient mid-slide frame. Now that this
-// is the shared solid `Card` (a plain `View` fill, no native glass material at
-// all — see `Card`'s own doc comment for why content no longer routes through
-// Liquid Glass), that class of bug cannot recur here, so the workaround is
-// gone with it.
+// No `settled`/`transitionEnd` remount workaround is needed: that guards a
+// `GlassSurface` (Liquid Glass) one-shot-layout bug on a pushed route, where
+// the native glass locks its tint on the transient mid-slide frame. This is
+// the shared solid `Card` (a plain `View` fill, no native glass material at
+// all — see `Card`'s own doc comment for why content does not route through
+// Liquid Glass), so that class of bug cannot occur here.
 const HoldingCard: FC<{
   holding: HoldingRow;
   now: number;

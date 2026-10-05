@@ -186,7 +186,7 @@ describe('resolveFieldScrollTarget', () => {
 
   // THE OVERSHOOT BUG: `Screen`'s ScrollView sets `scrollToOverflowEnabled`,
   // which lets a programmatic scroll reach an arbitrary target with no native
-  // clamp — including one past the content's own real bottom, which used to
+  // clamp — including one past the content's own real bottom, which would
   // park the view in an empty void with nothing (not even the field) on
   // screen.
   it('clamps an over-large target to the content’s own true bottom rest, never past the real content extent', () => {

@@ -94,7 +94,7 @@ const isActiveVariant = (flag: boolean, tint: string | undefined): boolean =>
 //      below);
 //   4. `children`, on top of the wash.
 //
-// STABILITY — why the tint no longer drifts. A `LiquidGlassView` with
+// STABILITY — why the tint does not drift. A `LiquidGlassView` with
 // `effect="regular"` samples whatever sits behind it, so on device the card's
 // visible background was ~90% a LIVE glass sample of the screen behind the
 // card and only ~10% fixed wash. Every scroll, reorder, or navigation changed

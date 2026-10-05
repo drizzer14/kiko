@@ -317,8 +317,8 @@ describe('HoldingCard', () => {
 
     // The color lives on the icon tile only (see the tests above) — the card
     // itself is the shared solid content-layer `Card`: a flat `surface` fill,
-    // applied directly to its own node (no separate base/wash sub-layer the
-    // way `GlassSurface` used to render, and no colored wash at all).
+    // applied directly to its own node (no separate base/wash sub-layer like
+    // `GlassSurface`'s, and no colored wash at all).
     const flat = StyleSheet.flatten(getByTestId('holding-card').props.style);
     expect(flat.backgroundColor).toBe(darkTheme.colors.surface);
   });

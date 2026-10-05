@@ -159,9 +159,8 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   // The trigger's value mirrors the option rows exactly: the currency NAME
   // only, no ISO code — `SelectableRow`'s own row shows `currencyName(t,
   // code)` as its `label` with the mark carried separately via
-  // `leadingText`, never a "CODE — Name" compound string. This used to read
-  // `"${selected} — ${currencyName(t, selected)}"`, which duplicated the
-  // ISO code redundantly (the same mark/code pairing already sits in
+  // `leadingText`, never a "CODE — Name" compound string, which would
+  // duplicate the ISO code (the same mark/code pairing already sits in
   // `leadingText` below).
   const triggerValue =
     selected === undefined ? t('forms.fields.selectCurrency') : currencyName(t, selected);
