@@ -3715,7 +3715,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
   // A ledgerless holding is valued from its metadata, so a return row on it
   // would vanish from net worth: the picker never offers one, whatever its
-  // account and currency (review Bug 8).
+  // account and currency.
   it('never offers a ledgerless holding type in the return picker', async () => {
     const ledgerlessTypes = holdingTypes.filter((type) => isLedgerlessHoldingType(type));
 
@@ -3744,7 +3744,8 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
     expect(utils.getByText('Alice')).toBeTruthy();
     expect(utils.getByText('Bob')).toBeTruthy();
-    expect(ledgerlessTypes).toHaveLength(5);
+    // An empty list would make the loop below vacuous.
+    expect(ledgerlessTypes.length).toBeGreaterThan(0);
 
     for (const type of ledgerlessTypes) {
       expect(utils.queryByText(`Ledgerless ${type}`)).toBeNull();

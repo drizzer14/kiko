@@ -225,8 +225,8 @@ const moveBalanceDatabaseTransaction = async (
 };
 
 // Insert a manual transaction and adjust its holding's balance on an EXISTING
-// transaction handle (see `moveBalanceDatabaseTransaction` for which rows move
-// it). `recordManual` wraps this in its own `write(...)`; `recordExchange`
+// transaction handle (`balanceShareOf` decides whether the row moves the
+// balance). `recordManual` wraps this in its own `write(...)`; `recordExchange`
 // calls it directly for the source leg and for a plain destination leg,
 // keeping both legs in one transaction.
 //
@@ -248,8 +248,9 @@ const recordManualTransaction = async (
   }: ManualTransaction,
 ): Promise<void> => {
   // Read BEFORE the insert so a ledgerless target is refused before anything is
-  // written: its value derives from its metadata, so a row here would change
-  // nothing the user sees. The throw also rolls back the rest of the caller's
+  // written: its value derives from its metadata, so a row here would show in
+  // the Home list and the category breakdown yet never reach net worth. The
+  // throw also rolls back the rest of the caller's
   // transaction (a split's payment row, an exchange's source leg).
   const anchored = await readAnchoredHoldingDatabaseTransaction(databaseTransaction, holdingId);
 
@@ -1070,7 +1071,7 @@ export const transactionsRepo = {
    * Record a manual transaction and adjust its holding's balance in ONE
    * op-sqlite transaction, so the ledger and the balance can never desync
    * on a partial failure. A row dated before THE BOUNDARY (`importRows`)
-   * is history and leaves the balance as it is (`moveBalanceDatabaseTransaction`).
+   * is history and leaves the balance as it is (`movesBalance`).
    */
   recordManual: (input: ManualTransaction) =>
     write((databaseTransaction) => recordManualTransaction(databaseTransaction, input)),

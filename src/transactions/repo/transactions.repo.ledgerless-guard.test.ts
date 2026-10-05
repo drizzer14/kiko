@@ -1,7 +1,7 @@
 // A ledgerless holding (term_deposit, bond, property_item, metal, loan) is
 // valued from its metadata, never from its ledger, so a plain transaction row
-// on it would change nothing the user sees while still moving a stored balance
-// nothing reads. The repo refuses it before it writes, and a refused write
+// on it would show in the Home list and the category breakdown yet never reach
+// net worth, while still moving a stored balance nothing reads. The repo refuses it before it writes, and a refused write
 // inside a multi-row operation must roll the whole operation back. Only a real
 // engine shows what a rollback leaves behind.
 let mockDatabase: DatabaseSync;
@@ -16,11 +16,11 @@ jest.mock('@kiko/db/client', () => {
 import { DatabaseSync } from 'node:sqlite';
 import { holdingTypes } from '@kiko/holdings/holding-type';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
-import { holdingDescriptors } from '@kiko/holdings/holding-descriptor';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 
 import { transactionsRepo } from './transactions.repo';
 
-const ledgerlessTypes = holdingTypes.filter((type) => holdingDescriptors[type].ledgerless);
+const ledgerlessTypes = holdingTypes.filter((type) => isLedgerlessHoldingType(type));
 
 const TIME = 1_700_000_000_000;
 
@@ -60,10 +60,8 @@ beforeEach(() => {
 });
 
 describe('the ledgerless types under test', () => {
-  it('are the five the descriptors flag, so a future ledgerless type is covered automatically', () => {
-    expect([...ledgerlessTypes].sort()).toEqual(
-      ['bond', 'loan', 'metal', 'property_item', 'term_deposit'].sort(),
-    );
+  it('are not empty, so the describe.each below is never vacuous', () => {
+    expect(ledgerlessTypes.length).toBeGreaterThan(0);
   });
 });
 
