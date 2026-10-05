@@ -34,6 +34,7 @@ import { maxOf, minOf } from '@kiko/numbers';
 import type { Currency } from '@kiko/currency/currency';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
 import type { DepositContribution } from '@kiko/holdings/holding-metadata';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
 import { appendDepositContributionDatabaseTransaction } from '@kiko/holdings/repo';
@@ -224,8 +225,8 @@ const moveBalanceDatabaseTransaction = async (
 };
 
 // Insert a manual transaction and adjust its holding's balance on an EXISTING
-// transaction handle (see `moveBalanceDatabaseTransaction` for which rows move
-// it). `recordManual` wraps this in its own `write(...)`; `recordExchange`
+// transaction handle (`balanceShareOf` decides whether the row moves the
+// balance). `recordManual` wraps this in its own `write(...)`; `recordExchange`
 // calls it directly for the source leg and for a plain destination leg,
 // keeping both legs in one transaction.
 //
@@ -246,6 +247,17 @@ const recordManualTransaction = async (
     changeGroupId,
   }: ManualTransaction,
 ): Promise<void> => {
+  // Read BEFORE the insert so a ledgerless target is refused before anything is
+  // written: its value derives from its metadata, so a row here would show in
+  // the Home list and the category breakdown yet never reach net worth. The
+  // throw also rolls back the rest of the caller's
+  // transaction (a split's payment row, an exchange's source leg).
+  const anchored = await readAnchoredHoldingDatabaseTransaction(databaseTransaction, holdingId);
+
+  if (anchored !== undefined && isLedgerlessHoldingType(anchored.holding.type)) {
+    throw new Error('transactions/ledgerless-holding');
+  }
+
   await databaseTransaction.insert(transactions).values({
     id: id(),
     holdingId,
@@ -258,9 +270,13 @@ const recordManualTransaction = async (
     source: 'manual',
   });
 
-  await moveBalanceDatabaseTransaction(databaseTransaction, holdingId, (boundary) =>
-    balanceShareOf(amountMinorUnits, time, boundary),
-  );
+  if (anchored !== undefined) {
+    await writeBalanceDeltaDatabaseTransaction(
+      databaseTransaction,
+      anchored.holding,
+      balanceShareOf(amountMinorUnits, time, anchored.boundary),
+    );
+  }
 };
 
 // Mark the EXISTING row of a Convert as the other leg of the same movement, on
@@ -1055,7 +1071,7 @@ export const transactionsRepo = {
    * Record a manual transaction and adjust its holding's balance in ONE
    * op-sqlite transaction, so the ledger and the balance can never desync
    * on a partial failure. A row dated before THE BOUNDARY (`importRows`)
-   * is history and leaves the balance as it is (`moveBalanceDatabaseTransaction`).
+   * is history and leaves the balance as it is (`movesBalance`).
    */
   recordManual: (input: ManualTransaction) =>
     write((databaseTransaction) => recordManualTransaction(databaseTransaction, input)),
@@ -1713,6 +1729,12 @@ export const transactionsRepo = {
 
       if (account !== undefined && isSyncedAccount(account)) {
         throw new Error('statement-import/synced-account');
+      }
+
+      // Same refusal as `recordManualTransaction`'s: the import screen's
+      // "Create new holding" can still hand back a ledgerless one.
+      if (isLedgerlessHoldingType(holding.type)) {
+        throw new Error('statement-import/ledgerless-holding');
       }
 
       // Also read BEFORE the new rows are upserted — an EXISTING row (any

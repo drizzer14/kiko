@@ -666,8 +666,9 @@ const syncedHoldingIds = (
 // holding IS an allowed return target (item 2): the net stays an expense and
 // the balance nets on the payer with no double-count, so nothing is excluded by
 // id here (`undefined` keeps `buildExchangeOptions` from dropping the payer).
-// The eligible-TYPE gate is open (`() => true`) — a change return can land on
-// any holding type.
+// The eligible-TYPE gate is the primary picker's (`isTransactionEligibleType`):
+// a change return is a plain ledger row, which a ledgerless holding never
+// carries, so it would vanish from net worth.
 const buildReturnOptions = (
   holdings: readonly HoldingRow[],
   accountNameById: ReadonlyMap<string, string>,
@@ -683,7 +684,7 @@ const buildReturnOptions = (
     accountNameById,
     accountOrderById,
     undefined,
-    () => true,
+    isTransactionEligibleType,
   ).filter(
     (option) =>
       option.currency === payerCurrency &&

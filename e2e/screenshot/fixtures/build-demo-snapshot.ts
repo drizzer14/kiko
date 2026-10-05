@@ -147,9 +147,9 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
       kind: account.kind,
       institution: null,
       // Migration 0049, the create form's required pick, the edit form's
-      // keep-as-stored, and restore leave no bank account without a bank id;
-      // the demo names none of the real ones.
-      bankId: account.kind === 'bank' ? OTHER_BANK_ID : null,
+      // keep-as-stored, and restore leave no bank account without a bank id.
+      // The demo names the real ones so Monobank's page shows Connect.
+      bankId: account.kind === 'bank' ? (account.bankId ?? OTHER_BANK_ID) : null,
       icon: null,
       color: account.color,
       sortOrder: accountIndex,

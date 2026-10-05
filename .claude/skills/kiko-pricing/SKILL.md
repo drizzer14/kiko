@@ -104,7 +104,11 @@ earliest-known row, which always wins over the flat seed — a fiat
 currency the backfill has never fetched history for at all (it only
 fetches the currencies actually used — see "History backfill" below)
 still prices every past bucket at the seed's flat rate instead of
-dropping the holding out entirely.
+dropping the holding out entirely. Each bucket keys its rate lookup by
+the bucket's LOCAL calendar day (`dayKeyOf`, the same UTC-midnight-stand-in
+key shape as `currency_rate_history.day`), never by `toUtcMidnight` of the
+bucket instant; every bucket whose local day is today (or later) reads the
+LIVE rate table, at any time of day.
 
 A legacy stored cross/inverse row (any row with `quote !== 'UAH'` or
 `base === 'UAH'`) is removed both at upgrade and at restore: migration

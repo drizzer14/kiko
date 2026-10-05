@@ -18,6 +18,7 @@ import type {
   TermDepositMeta,
 } from '@kiko/holdings/holding-metadata';
 import type { Currency } from '@kiko/currency/currency';
+import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import { entityColorsDark } from '@kiko/design-system/palette';
 import type { AccountRow, BondRegisterRow, HoldingRow } from '@kiko/db';
@@ -115,6 +116,9 @@ type SeedAccount = {
   name: string;
   kind: AccountRow['kind'];
   color: string;
+  // A bank account only; a bank id the account form's required pick would
+  // store. Absent reads as `other`.
+  bankId?: BankId;
   holdings: SeedHolding[];
   reminders?: SeedReminder[];
 };
@@ -465,6 +469,8 @@ const buildAccounts = (): SeedAccount[] => [
   {
     name: 'Монобанк',
     kind: 'bank',
+    // The one connectable bank: its page shows Connect, the reviewer's way in.
+    bankId: 'monobank',
     color: entityColorsDark.blue,
     holdings: [
       {
@@ -559,6 +565,7 @@ const buildAccounts = (): SeedAccount[] => [
   {
     name: 'ПриватБанк',
     kind: 'bank',
+    bankId: 'privatbank',
     color: entityColorsDark.teal,
     reminders: [
       {

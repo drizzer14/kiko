@@ -57,7 +57,10 @@ fails unless every `accounts.kind`, every `holdings.type`, and every
 for its kind, with a valid schedule — read the test for the exact checks), and `build-demo-snapshot.test.ts` fails unless every holding
 with no ledger of its own (the set `isLedgerlessHoldingType` in
 `src/holdings/holding-descriptor/holding-descriptors.ts` defines — read it
-there) values to non-zero through the app's own valuation. A diff that adds an account
+there) values to non-zero through the app's own valuation, the demo holds at
+least one bank account per connectable catalog bank (derived from `bankCatalog`,
+not a count) plus one Other bank, and every demo account keeps `institution`
+null (no auto-sync starts on a demo account). A diff that adds an account
 kind or a holding type must add it to the dataset and regenerate both
 `.kiko` files (`KIKO_REGEN_DEMO=1 npx jest
 e2e/screenshot/fixtures/generate-demo-kiko.test.ts`), or any change to

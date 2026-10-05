@@ -2,12 +2,11 @@ import { Money, toMajor } from '@kiko/currency/money';
 import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
-import { toUtcMidnight } from '@kiko/rates/history-entry';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { FIAT_RATE_SEED_TABLE } from '@kiko/rates/fiat-rate-seed';
-import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 import { asBondMeta, type BondMeta } from '@kiko/holdings/holding-metadata';
 import { earliestRateTable, rateTableAt } from '@kiko/rates/rate-history-repo';
+import { dayKeyOf, EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
 
 import {
   createHoldingValuer,
@@ -81,9 +80,11 @@ const bondRecognitionsFor = (
  * its real historical value.
  *
  * The rate table for a bucket is resolved so the line reconciles end-to-end:
- * - lookups are normalized to the bucket's UTC day (`toUtcMidnight`), since
- *   history `day` is UTC-midnight — without this a positive-UTC-offset locale
- *   would read the previous day's rate;
+ * - lookups are keyed by the bucket's LOCAL calendar day (`dayKeyOf`): history
+ *   `day` is the UTC-midnight stand-in for a calendar date, the same shape
+ *   `dayKeyOf` returns, so the two compare as plain day keys. A bucket is the
+ *   END of its local day (the valuer reads it so), and a UTC-day floor would
+ *   send every Kyiv bucket at 00:00-03:00 local to the PREVIOUS day's row;
  * - the nearest row AT OR BEFORE that day is used (`rateTableAt`, carrying
  *   weekends/holidays forward), backstopped by each pair's EARLIEST stored row
  *   (`earliestRateTable`) so buckets before a pair's first history day still
@@ -189,10 +190,10 @@ export const buildNetWorthSeries = (input: {
   }
 
   const earliest = earliestRateTable(historyRows);
-  const todayKey = toUtcMidnight(today ?? Date.now());
+  const todayKey = dayKeyOf(today ?? Date.now());
 
   const tableAt = (t: number): RateTable => {
-    const dayKey = toUtcMidnight(t);
+    const dayKey = dayKeyOf(t);
     // Precedence, weakest first: the bundled static seed (covers every fiat
     // currency, so one with no history row yet never drops a holding out of
     // a past bucket), then each pair's earliest stored row (backfills before
@@ -203,7 +204,8 @@ export const buildNetWorthSeries = (input: {
       ...earliest,
       ...rateTableAt(historyRows, dayKey),
     };
-    // The current (and any future) bucket reconciles with the live app rates.
+    // Every bucket on today's local day (or later) reconciles with the live app
+    // rates, whatever the time of day.
     return liveRateTable !== undefined && dayKey >= todayKey
       ? { ...historical, ...liveRateTable }
       : historical;
