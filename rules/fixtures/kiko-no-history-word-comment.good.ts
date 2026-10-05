@@ -1,0 +1,44 @@
+// Semgrep fixture (NEGATIVE): every shape below carries a word the rule
+// watches, but never in a comment's change-narrative sense — or never in a
+// comment at all. `kiko-no-history-word-comment` must draw ZERO findings from
+// this file.
+
+// 1. The words inside a STRING literal (not a comment): the rule reads
+// comment text only, so none of these is in scope.
+export const strings = ['it no longer exists', 'previously stored', 'it replaces the row'];
+
+// 2. A `//` inside a STRING literal, not a real line comment: the line arm's
+// same-line-string skip must not open a match on it.
+export const urlNote = 'see https://example.test // previously';
+
+// 3. The purpose sense (a value, key, or helper that exists TO do something,
+// as in the lines below). A passive lead-in (is, are, was, were, be, been, being, get,
+// gets, got) or a "never" lead-in is not the habit-in-the-past sense, so none
+// of these opens a match.
+// A key is used to match the holding.
+// The ids are used to build the lookup map.
+// The seed was used to derive the rows.
+// The rows were used to drive every case below.
+// A helper can be used to scope the query.
+// A helper has been used to scope the query.
+// A flag being used to gate the path is not a habit.
+// A value that gets used to seed the form is not either.
+// A value that got used to seed the form is not either.
+// The raw string is never used to route a row.
+
+// 4. A capitalized "Used to" opens a purpose fragment ("Used to price the
+// buckets."), never a habit in the past, so it stays silent.
+// Used to scope a held-holding query to crypto currencies only.
+
+// 5. A word that merely CONTAINS a watched one, with no boundary on one
+// side: a reused to-do list, an unused to-do list, and a used today counter.
+// A reused to-do list stays as it is.
+// An unused to-do list stays as it is.
+// A used today counter stays as it is.
+
+// 6. A multi-line block comment holding only the excluded purpose shape:
+/**
+ * The cursor is used to resume the page after a failed run, so the retry
+ * never re-reads a row it already wrote.
+ */
+export const purposeBlock = true;

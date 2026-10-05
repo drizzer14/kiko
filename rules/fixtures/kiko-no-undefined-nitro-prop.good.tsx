@@ -21,7 +21,7 @@ export const guardedFallback = (name: string, fallbackName: string | undefined) 
   return <SFSymbolView name={name} fallbackName={resolvedFallback} />;
 };
 
-// A local re-declared under the SAME name as the prop it replaces, still
+// A local re-declared under the SAME name as the prop it shadows, still
 // routed through `resolveFallback` first — the bare pass-through arm
 // must not flag this local just because its own name is the literal
 // identifier `fallbackName`; it is not a raw, unguarded pass-through. The

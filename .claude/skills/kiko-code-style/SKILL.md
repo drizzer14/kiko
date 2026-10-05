@@ -210,6 +210,12 @@ in a comment left behind in the code. Mechanized in `src/**` by the
 `kiko-no-history-id-comment` Semgrep rule (ERROR) — see the
 kiko-linter skill's own section on it for the rule's design.
 
+The "changed because …" narrative words are mechanized too, by the
+`kiko-no-history-word-comment` Semgrep rule (WARNING until its sweep
+lands): `it replaces`, `no longer`, `used to`, and `previously`. Write
+how the code works today and why ("matches the holding", "a card absent
+from the snapshot"), never what it did before.
+
 Documented exception: the data-provenance date comment in
 `src/rates/fiat-rate-seed/fiat-rate-seed.ts` stays — it records WHEN
 the seed values were captured, which the code cannot show on its own,

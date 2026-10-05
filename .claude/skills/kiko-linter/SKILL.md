@@ -1108,6 +1108,70 @@ silent. The sweep found 1 hit, in `reminder-row.component.tsx`,
 reworded. Fixture pair: the three commit-range pins at the end of
 `.bad.ts`, and item 22 plus the digit-range pin after it in `.good.ts`.
 
+## `kiko-no-history-word-comment`
+
+The change-narrative half of kiko-code-style's "Comments: WHY only, never
+history". `kiko-no-history-id-comment` catches an id or a citation; this
+rule catches the words a comment uses to narrate a change: `it replaces`,
+`no longer`, `used to`, and `previously`. A comment states how the code
+works today and why, never how it worked before. The members are the
+`pattern-regex` alternation in `kiko-no-history-word-comment`
+(`rules/semgrep-prewrite.yml`); the fixture pair shows each shape.
+
+**A separate rule id, severity WARNING (Class B).** Severity is per rule,
+so the words could not ride on the ERROR id rule. The tree held 232
+findings in 135 files on 2026-10-05, so it lands as WARNING:
+`check:security` surfaces them without failing, and the pre-write guard
+already denies a NEW finding of any severity. **Promotion condition:**
+flip to ERROR when `check:security` reports 0 findings for this rule id,
+after the sweep (never when a grep is empty). The sweep is the user's
+call; do not run it as part of an unrelated task.
+
+The anchoring is the id rule's, unchanged: the same string-skip
+`^(?:…)*` walk, `(?<!:)//` for the line arm, the block arm that never
+crosses `*/`, and the same `paths.exclude` scope (`__tests__/**`,
+`e2e/**`, `scripts/**`, `harness/**`, `App.tsx`, `drizzle.config.ts`;
+`__mocks__/**` and co-located test files stay in scope).
+
+**Measured false-positive classes.** Every word was counted over `src`
+(`semgrep --metrics off --quiet --config rules/semgrep-prewrite.yml src
+--json`, `paths.scanned` read first), and a hand read classified each hit:
+
+- `used to`: the purpose sense ("a key used to match the holding") reads
+  like the habit sense ("this used to render a spinner"). Two classes
+  were clean and are narrowed: a passive or `never` lead-in
+  (`is`/`are`/`was`/`were`/`be`/`been`/`being`/`get`/`gets`/`got`/`never
+  used to`, a fixed-width lookbehind in the regex) and a capitalized
+  `Used to`, which opens a purpose fragment ("Used to price the buckets.").
+  They were 8 of the first 106 hits (5 capitalized, 2 `never`, 1 `is`), and
+  every one was purpose. The member keeps a lowercase `used to` only. A
+  noun-then-participle purpose sentence ("the key used to match") has no
+  regex separator from "the wrapper used to own", so about 10 purpose hits
+  remain among the 98 (a comma or em dash before `used to` held 6 purpose
+  and 2 history hits, too mixed to narrow). Reword such a comment to name
+  the purpose ("matches the holding") instead of "used to".
+- `no longer`: the runtime-state sense ("a kind the app no longer knows",
+  "a card the snapshot no longer returns", "once it no longer
+  corresponds") is common: about 40 of the 98 hits. No regex separates it
+  from "the sync no longer writes it", so the member is not narrowed. A
+  runtime-state sentence gets reworded to name the state ("a kind outside
+  the current list", "a card absent from the snapshot").
+- `previously`: a data-state sense ("a previously-linked row", "previously
+  rejected", "previously stored rates") held 14 of the 34 hits. A hyphenated
+  `previously-<participle>` was 8 of 11 data-state, but it also held 2
+  true history hits, so it is not narrowed either.
+- `it replaces`: 2 of the 6 hits were a behavior description ("while
+  locked it replaces the whole app with a prompt"); the other 4 named the
+  old code ("the scan it replaces"). Not narrowed.
+
+Narrowing a member needs its own measured false-positive class and a
+fixture pin on each side (an excluded shape in `.good.ts`, a caught
+shape with `// EXPECT-FINDING` in `.bad.ts`); a sweep cap or a long hit
+list is never a reason. Any other good fixture that carries a watched
+word in a comment fails `check:rules` ("must draw zero findings from
+every rule"): `kiko-no-undefined-nitro-prop.good.tsx` had to reword one
+"it replaces" comment when this rule landed.
+
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 
 The pre-write guard also runs it in-process as the Node rule
