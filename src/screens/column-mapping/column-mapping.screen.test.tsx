@@ -5,6 +5,8 @@ import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { supportedFormatNames } from '@kiko/statement-import/registry';
 import { headerFingerprint } from '@kiko/statement-import/column-mapping';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -50,6 +52,14 @@ jest.mock('react-native-fs', () => ({
   unlink: (...args: unknown[]) => mockUnlink(...args),
   CachesDirectoryPath: '/mock/caches',
 }));
+
+const mockReadSheetRowsSafely = jest.fn();
+jest.mock('@kiko/statement-import/read-statement-file', () => ({
+  ...jest.requireActual('@kiko/statement-import/read-statement-file'),
+  readSheetRowsSafely: (...args: unknown[]) => mockReadSheetRowsSafely(...args),
+}));
+
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const mockImportParsedStatement = jest.fn();
 jest.mock('@kiko/statement-import/import-statement', () => ({
@@ -123,7 +133,7 @@ jest.mock('@kiko/design-system/components/target-holding-sheet', () => {
 });
 
 type Account = { id: string; name: string; kind: string; bankId?: string | null };
-type Holding = { id: string; name: string; accountId: string; currency: string };
+type Holding = { id: string; name: string; accountId: string; currency: string; type?: string };
 type StatementMappings = Record<string, unknown>;
 
 const setLiveData = (data: {
@@ -140,7 +150,7 @@ const setLiveData = (data: {
       return { data: [{ baseCurrency: 'UAH', statementMappings: data.statementMappings ?? null }] };
     }
 
-    return { data: data.accounts ?? [] };
+    return { data: tables[0] === 'accounts' ? (data.accounts ?? []) : [] };
   });
 };
 
@@ -493,6 +503,90 @@ describe('ColumnMappingScreen', () => {
     await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
 
     expect(within(view.getByTestId('target-holding-field')).getByText('Savings jar')).toBeTruthy();
+  });
+
+  // The created-holding return channel hands back whatever type the user
+  // picked in the holding form, but the picker lists only a holding that keeps
+  // a ledger: a ledgerless id must read as "not selected", never as a target.
+  it('treats a returned ledgerless holding as not selected, so Import asks for a holding', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [
+        monobankHolding,
+        {
+          id: 'deposit',
+          name: 'New deposit',
+          accountId: 'a',
+          currency: 'UAH',
+          type: 'term_deposit',
+        },
+      ],
+    });
+
+    const view = await renderMonobankScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      holdingId: 'deposit',
+    });
+    await mapMonobankColumns(view);
+
+    expect(within(view.getByTestId('target-holding-field')).queryByText('New deposit')).toBeNull();
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    expect(view.getByText(i18n.t('statementImport.chooseHoldingError'))).toBeTruthy();
+    expect(mockImportParsedStatement).not.toHaveBeenCalled();
+  });
+
+  // The option list is a live query that can trail the navigation back, so a
+  // valid new card must stay selected once its row arrives (clearing a pick
+  // the options do not list YET would drop it).
+  it('selects a returned holding that only reaches the option list after the route param', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    mockDefaultImportSuccess();
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+
+    const view = await renderMonobankScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      holdingId: 'h2',
+    });
+
+    expect(within(view.getByTestId('target-holding-field')).queryByText('New savings')).toBeNull();
+
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [
+        monobankHolding,
+        { id: 'h2', name: 'New savings', accountId: 'a', currency: 'UAH' },
+      ],
+    });
+    await act(async () => {
+      view.rerender(
+        <ColumnMappingScreen
+          route={asRouteProp<ColumnMappingProps['route']>('ColumnMapping', {
+            filePath: '/mock/statement.csv',
+            accountId: 'a',
+            holdingId: 'h2',
+          })}
+          navigation={asNavigationProp<ColumnMappingProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    await waitFor(() =>
+      expect(
+        within(view.getByTestId('target-holding-field')).getByText('New savings'),
+      ).toBeTruthy(),
+    );
+
+    await mapMonobankColumns(view);
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() =>
+      expect(mockImportParsedStatement).toHaveBeenCalledWith(expect.anything(), 'h2'),
+    );
   });
 
   // The holding field carries the same required marker every
@@ -1134,5 +1228,668 @@ describe('ColumnMappingScreen — local copy cleanup', () => {
     });
 
     await waitFor(() => expect(second.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+  });
+});
+
+type ScreenView = Awaited<ReturnType<typeof renderScreen>>;
+
+const pickOption = async (
+  view: ScreenView,
+  field: string,
+  option: string | number,
+): Promise<void> => {
+  await fireEvent.press(view.getByTestId(`column-mapping-${field}`));
+  await fireEvent.press(view.getByTestId(`column-mapping-${field}-option-${option}`));
+};
+
+const pressImport = async (view: ScreenView): Promise<void> => {
+  await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+};
+
+const switchAmountModeToDebitCredit = async (view: ScreenView): Promise<void> => {
+  await fireEvent.press(
+    within(view.getByTestId('column-mapping-amount-mode')).getByText(
+      i18n.t('columnMapping.amountModeDebitCredit'),
+    ),
+  );
+};
+
+const switchCurrencyModeToColumn = async (view: ScreenView): Promise<void> => {
+  await fireEvent.press(
+    within(view.getByTestId('column-mapping-currency-mode')).getByText(
+      i18n.t('columnMapping.currencyColumn'),
+    ),
+  );
+};
+
+const fieldErrorTexts = {
+  date: i18n.t('columnMapping.dateColumnError'),
+  dateFormat: i18n.t('columnMapping.dateFormatError'),
+  amount: i18n.t('columnMapping.amountColumnError'),
+  debit: i18n.t('columnMapping.debitColumnError'),
+  credit: i18n.t('columnMapping.creditColumnError'),
+  currency: i18n.t('columnMapping.currencyColumnError'),
+  description: i18n.t('columnMapping.descriptionColumnError'),
+  noRows: i18n.t('columnMapping.noRowsResolvedError'),
+  holding: i18n.t('statementImport.chooseHoldingError'),
+};
+
+describe('ColumnMappingScreen — load states', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+  });
+
+  it('reads the file as base64 and shows only the reading message, no form and no Import button, while it loads', async () => {
+    mockReadFile.mockReturnValue(new Promise(() => {}));
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    expect(mockReadFile).toHaveBeenCalledWith('/mock/statement.csv', 'base64');
+    expect(view.getByText(i18n.t('statementImport.reading'))).toBeTruthy();
+    expect(view.queryByText(i18n.t('columnMapping.rawPreview'))).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.importButton'))).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.unrecognizedFormat'))).toBeNull();
+    expect(view.queryByText(i18n.t('columnMapping.xlsNotSupported'))).toBeNull();
+  });
+
+  it('shows the unreadable message with the supported formats, and no form or Import button, when the file cannot be read', async () => {
+    mockReadFile.mockRejectedValue(new Error('gone'));
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+
+    await waitFor(() =>
+      expect(
+        view.getByText(
+          i18n.t('statementImport.unrecognizedFormat', { formats: supportedFormatNames }),
+        ),
+      ).toBeTruthy(),
+    );
+    expect(view.queryByText(i18n.t('statementImport.reading'))).toBeNull();
+    expect(view.queryByText(i18n.t('columnMapping.rawPreview'))).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.importButton'))).toBeNull();
+  });
+
+  it('shows the .xls-not-supported message, and nothing else, for a legacy .xls file', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderScreen({ filePath: '/mock/old-statement.xls', accountId: 'a' });
+
+    await waitFor(() =>
+      expect(view.getByText(i18n.t('columnMapping.xlsNotSupported'))).toBeTruthy(),
+    );
+    expect(view.queryByText(i18n.t('statementImport.reading'))).toBeNull();
+    expect(view.queryByText(i18n.t('columnMapping.rawPreview'))).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.importButton'))).toBeNull();
+    expect(mockReadSheetRowsSafely).not.toHaveBeenCalled();
+  });
+
+  it('maps and previews the pre-parsed rows of an .xlsx file instead of decoding text', async () => {
+    mockReadFile.mockResolvedValue('c3ByZWFkc2hlZXQ=');
+    mockReadSheetRowsSafely.mockResolvedValue([
+      ['Date', 'Narrative', 'Amount'],
+      ['01.01.2024', 'Coffee', 10],
+    ]);
+
+    const view = await renderScreen({ filePath: '/mock/statement.xlsx', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
+    expect(mockReadSheetRowsSafely).toHaveBeenCalledWith('c3ByZWFkc2hlZXQ=');
+    expect(view.queryByTestId('column-mapping-encoding')).toBeNull();
+
+    await pickOption(view, 'date-column', 0);
+    await pickOption(view, 'date-format', 'DD.MM.YYYY');
+    await pickOption(view, 'description-column', 1);
+    await pickOption(view, 'amount-column', 2);
+
+    await waitFor(() =>
+      expect(view.getByTestId('column-mapping-transaction-count')).toHaveTextContent('1'),
+    );
+  });
+
+  it('does not start reading a spreadsheet when the screen is gone before the file arrived', async () => {
+    let resolveFile: (base64: string) => void = () => {};
+    mockReadFile.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveFile = resolve;
+      }),
+    );
+
+    const view = await renderScreen({ filePath: '/mock/statement.xlsx', accountId: 'a' });
+    await act(async () => {
+      view.unmount();
+    });
+    await act(async () => {
+      resolveFile('c3ByZWFkc2hlZXQ=');
+    });
+
+    expect(mockReadSheetRowsSafely).not.toHaveBeenCalled();
+  });
+
+  it('starts clean once ready: no saved-mapping caption, no result sheet, no row errors', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderMonobankScreen();
+
+    expect(view.queryByText(i18n.t('columnMapping.savedApplied'))).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.importResultTitle'))).toBeNull();
+    expect(view.queryByTestId('column-mapping-row-errors')).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.reading'))).toBeNull();
+  });
+
+  it('offers no column to pick for a file with no rows at all', async () => {
+    mockReadFile.mockResolvedValue('');
+
+    const view = await renderMonobankScreen();
+    await fireEvent.press(view.getByTestId('column-mapping-date-column'));
+
+    expect(view.queryByTestId('column-mapping-date-column-option-0')).toBeNull();
+  });
+
+  it('labels a blank header cell by its position, whitespace included', async () => {
+    mockReadFile.mockResolvedValue(
+      Buffer.from('Date, ,,Amount\n01.01.2024,Coffee,x,10\n', 'utf-8').toString('base64'),
+    );
+
+    const view = await renderMonobankScreen();
+    await fireEvent.press(view.getByTestId('raw-preview-toggle'));
+    await fireEvent.press(view.getByTestId('raw-preview-row-0'));
+    await fireEvent.press(view.getByTestId('column-mapping-date-column'));
+
+    expect(
+      within(view.getByTestId('column-mapping-date-column-option-0')).getByText('Date'),
+    ).toBeTruthy();
+    expect(
+      within(view.getByTestId('column-mapping-date-column-option-1')).getByText('#2'),
+    ).toBeTruthy();
+    expect(
+      within(view.getByTestId('column-mapping-date-column-option-2')).getByText('#3'),
+    ).toBeTruthy();
+  });
+
+  it('falls back to UAH as the fixed currency when the account has no holding yet', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({ accounts: [monobankAccount], holdings: [] });
+
+    const view = await renderMonobankScreen();
+
+    expect(
+      within(view.getByTestId('column-mapping-fixed-currency')).getByText('Ukrainian Hryvnia'),
+    ).toBeTruthy();
+  });
+
+  it('keeps the delimiter the user picked instead of the detected one', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderMonobankScreen();
+    const delimiter = within(view.getByTestId('column-mapping-delimiter'));
+
+    expect(delimiter.getByRole('button', { name: ',', selected: true })).toBeTruthy();
+
+    await fireEvent.press(delimiter.getByText(';'));
+
+    expect(delimiter.getByRole('button', { name: ';', selected: true })).toBeTruthy();
+    expect(delimiter.queryByRole('button', { name: ',', selected: true })).toBeNull();
+  });
+
+  it('keeps the header row the user tapped when other inputs re-render the preview', async () => {
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+
+    const view = await renderMonobankScreen();
+    await fireEvent.press(view.getByTestId('raw-preview-row-1'));
+    await fireEvent.press(
+      within(view.getByTestId('column-mapping-decimal-separator')).getByText(','),
+    );
+    await fireEvent.press(view.getByTestId('column-mapping-date-column'));
+
+    const firstDataRowDate = monobankFixtureText.split('\n')[1].split(',')[0];
+    expect(
+      within(view.getByTestId('column-mapping-date-column-option-0')).getByText(firstDataRowDate),
+    ).toBeTruthy();
+  });
+});
+
+describe('ColumnMappingScreen — saved mapping prefill details', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+  });
+
+  it('pre-fills a saved debit/credit amount and a saved currency column', async () => {
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [monobankHolding],
+      statementMappings: {
+        'bank:monobank': {
+          ...savedMonobankMapping(),
+          amount: { mode: 'debitCredit', debitColumn: 3, creditColumn: 4 },
+          currency: { mode: 'column', column: 5 },
+        },
+      },
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.savedApplied'))).toBeTruthy());
+
+    expect(
+      within(view.getByTestId('column-mapping-debit-column')).getByText(monobankHeaderRow[3]),
+    ).toBeTruthy();
+    expect(
+      within(view.getByTestId('column-mapping-credit-column')).getByText(monobankHeaderRow[4]),
+    ).toBeTruthy();
+    expect(view.queryByTestId('column-mapping-amount-column')).toBeNull();
+    expect(
+      within(view.getByTestId('column-mapping-currency-column')).getByText(monobankHeaderRow[5]),
+    ).toBeTruthy();
+    expect(view.queryByTestId('column-mapping-fixed-currency')).toBeNull();
+  });
+
+  it('pre-fills a saved single amount column', async () => {
+    setLiveData({
+      accounts: [monobankAccount],
+      holdings: [monobankHolding],
+      statementMappings: { 'bank:monobank': savedMonobankMapping() },
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(i18n.t('columnMapping.savedApplied'))).toBeTruthy());
+
+    expect(
+      within(view.getByTestId('column-mapping-amount-column')).getByText(monobankHeaderRow[3]),
+    ).toBeTruthy();
+    expect(view.queryByTestId('column-mapping-debit-column')).toBeNull();
+  });
+
+  // Only one of the two queries still loading must hold the one-shot pre-fill
+  // back, not just both of them.
+  it.each([['accounts'], ['settings']])(
+    'waits for the %s query alone before pre-filling the saved mapping',
+    async (slowTable) => {
+      let loaded = false;
+      mockUseLiveQuery.mockImplementation((_query: { __kind?: string }, tables: string[]) => {
+        if (tables[0] === 'holdings') {
+          return { data: [monobankHolding], isLoading: false };
+        }
+
+        const isSlow = tables[0] === slowTable && !loaded;
+
+        if (tables[0] === 'settings') {
+          return {
+            data: [
+              {
+                baseCurrency: 'UAH',
+                statementMappings: { 'bank:monobank': savedMonobankMapping() },
+              },
+            ],
+            isLoading: isSlow,
+          };
+        }
+
+        return { data: tables[0] === 'accounts' ? [monobankAccount] : [], isLoading: isSlow };
+      });
+
+      const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+      await waitFor(() => expect(view.getByText(i18n.t('columnMapping.rawPreview'))).toBeTruthy());
+
+      loaded = true;
+      await view.rerender(
+        <ColumnMappingScreen
+          route={asRouteProp<ColumnMappingProps['route']>('ColumnMapping', {
+            filePath: '/mock/statement.csv',
+            accountId: 'a',
+          })}
+          navigation={asNavigationProp<ColumnMappingProps['navigation']>(view.navigation)}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(view.getByText(i18n.t('columnMapping.savedApplied'))).toBeTruthy(),
+      );
+    },
+  );
+});
+
+describe('ColumnMappingScreen — mapping completeness', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+  });
+
+  const incompleteHint = (view: ScreenView) => view.queryByText(i18n.t('columnMapping.incomplete'));
+
+  it.each([
+    ['date column', 'date-column', 0],
+    ['date format', 'date-format', 'DD.MM.YYYY HH:MM:SS'],
+    ['description column', 'description-column', 1],
+    ['amount column', 'amount-column', 3],
+  ] as const)('stays incomplete while only the %s is unmapped', async (_name, omitted, _option) => {
+    const view = await renderMonobankScreen();
+    const steps = [
+      ['date-column', 0],
+      ['date-format', 'DD.MM.YYYY HH:MM:SS'],
+      ['description-column', 1],
+      ['amount-column', 3],
+    ] as const;
+
+    for (const [field, option] of steps) {
+      if (field !== omitted) {
+        await pickOption(view, field, option);
+      }
+    }
+
+    expect(incompleteHint(view)).toBeTruthy();
+  });
+
+  it('is complete only once both the debit and the credit column are mapped', async () => {
+    const view = await renderMonobankScreen();
+    await mapDateFormatAndDescription(view);
+    await switchAmountModeToDebitCredit(view);
+
+    await pickOption(view, 'debit-column', 3);
+    expect(incompleteHint(view)).toBeTruthy();
+
+    await pickOption(view, 'credit-column', 4);
+    expect(incompleteHint(view)).toBeNull();
+  });
+
+  it('is incomplete with only the credit column mapped', async () => {
+    const view = await renderMonobankScreen();
+    await mapDateFormatAndDescription(view);
+    await switchAmountModeToDebitCredit(view);
+
+    await pickOption(view, 'credit-column', 4);
+
+    expect(incompleteHint(view)).toBeTruthy();
+  });
+
+  it('is incomplete in currency-column mode until a currency column is picked', async () => {
+    const view = await renderMonobankScreen();
+    await mapMonobankColumns(view);
+    await switchCurrencyModeToColumn(view);
+
+    expect(incompleteHint(view)).toBeTruthy();
+
+    await pickOption(view, 'currency-column', 5);
+
+    expect(incompleteHint(view)).toBeNull();
+  });
+});
+
+describe('ColumnMappingScreen — validation on Import press', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+  });
+
+  it('shows no error before the first press, then every required field error and nothing else', async () => {
+    const view = await renderMonobankScreen();
+
+    expect(view.queryByText(fieldErrorTexts.date)).toBeNull();
+    expect(view.queryByText(fieldErrorTexts.holding)).toBeNull();
+
+    await pressImport(view);
+
+    expect(view.getByText(fieldErrorTexts.date)).toBeTruthy();
+    expect(view.getByText(fieldErrorTexts.dateFormat)).toBeTruthy();
+    expect(view.getByText(fieldErrorTexts.amount)).toBeTruthy();
+    expect(view.getByText(fieldErrorTexts.description)).toBeTruthy();
+    expect(view.getByText(fieldErrorTexts.holding)).toBeTruthy();
+    expect(view.queryByText(fieldErrorTexts.debit)).toBeNull();
+    expect(view.queryByText(fieldErrorTexts.credit)).toBeNull();
+    expect(view.queryByText(fieldErrorTexts.currency)).toBeNull();
+    expect(view.queryByText(fieldErrorTexts.noRows)).toBeNull();
+    expect(mockImportParsedStatement).not.toHaveBeenCalled();
+  });
+
+  it('flags only the missing holding once every column is mapped and rows resolve', async () => {
+    const view = await renderMonobankScreen();
+    await mapMonobankColumns(view);
+    await waitFor(() =>
+      expect(view.getByTestId('column-mapping-transaction-count')).toHaveTextContent('4'),
+    );
+
+    await pressImport(view);
+
+    expect(view.getByText(fieldErrorTexts.holding)).toBeTruthy();
+    expect(view.queryByText(fieldErrorTexts.date)).toBeNull();
+    expect(view.queryByText(fieldErrorTexts.dateFormat)).toBeNull();
+    expect(view.queryByText(fieldErrorTexts.amount)).toBeNull();
+    expect(view.queryByText(fieldErrorTexts.description)).toBeNull();
+    expect(view.queryByText(fieldErrorTexts.noRows)).toBeNull();
+    expect(mockImportParsedStatement).not.toHaveBeenCalled();
+  });
+
+  it('flags the debit and credit columns, not the single amount column, in debit/credit mode', async () => {
+    const view = await renderMonobankScreen();
+    await switchAmountModeToDebitCredit(view);
+
+    await pressImport(view);
+
+    expect(view.getByText(fieldErrorTexts.debit)).toBeTruthy();
+    expect(view.getByText(fieldErrorTexts.credit)).toBeTruthy();
+    expect(view.queryByText(fieldErrorTexts.amount)).toBeNull();
+
+    await pickOption(view, 'debit-column', 3);
+
+    expect(view.queryByText(fieldErrorTexts.debit)).toBeNull();
+    expect(view.getByText(fieldErrorTexts.credit)).toBeTruthy();
+
+    await pickOption(view, 'credit-column', 4);
+
+    expect(view.queryByText(fieldErrorTexts.credit)).toBeNull();
+  });
+
+  it('flags a missing currency column only in currency-column mode', async () => {
+    const view = await renderMonobankScreen();
+    await switchCurrencyModeToColumn(view);
+
+    await pressImport(view);
+
+    expect(view.getByText(fieldErrorTexts.currency)).toBeTruthy();
+
+    await pickOption(view, 'currency-column', 5);
+
+    expect(view.queryByText(fieldErrorTexts.currency)).toBeNull();
+  });
+
+  it('does not blame the currency column when a mapped column resolves its currencies', async () => {
+    const view = await renderMonobankScreen();
+    await mapMonobankColumns(view);
+    await switchCurrencyModeToColumn(view);
+    await pickOption(view, 'currency-column', 5);
+
+    await pressImport(view);
+
+    expect(view.queryByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeNull();
+    expect(view.queryByText(fieldErrorTexts.currency)).toBeNull();
+    expect(view.getByText(fieldErrorTexts.holding)).toBeTruthy();
+  });
+
+  it('blames the no-rows result, not a currency column, when the data rows are blank cells', async () => {
+    mockReadFile.mockResolvedValue(
+      Buffer.from('Date,Description,Amount,Currency\n , , , \n , , , \n', 'utf-8').toString(
+        'base64',
+      ),
+    );
+    const view = await renderMonobankScreen();
+    await mapDateFormatDescriptionAndAmount(view, {
+      dateFormatId: 'DD.MM.YYYY',
+      amountColumn: 2,
+    });
+    await switchCurrencyModeToColumn(view);
+    await pickOption(view, 'currency-column', 3);
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+
+    await pressImport(view);
+
+    expect(view.getByText(fieldErrorTexts.noRows)).toBeTruthy();
+    expect(view.queryByText(i18n.t('columnMapping.currencyColumnUnresolvedError'))).toBeNull();
+  });
+});
+
+describe('ColumnMappingScreen — scroll to the first invalid field', () => {
+  const scrollToFieldMock = scrollToField as jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+  });
+
+  // The field-ref wrapper's own first child is the field (or field group)
+  // that carries the scroll target's identity.
+  const pressAndReadTarget = async (view: ScreenView): Promise<string | undefined> => {
+    scrollToFieldMock.mockClear();
+    await pressImport(view);
+
+    const [, targetRef] = scrollToFieldMock.mock.calls[0];
+    const child = targetRef.current.props.children;
+
+    return child.props.testID ?? (child.props.noRowsResolvedError ? 'result' : undefined);
+  };
+
+  it('walks the form top to bottom as each blocking field gets fixed', async () => {
+    const view = await renderMonobankScreen();
+
+    expect(await pressAndReadTarget(view)).toBe('column-mapping-date-column');
+
+    await pickOption(view, 'date-column', 0);
+    expect(await pressAndReadTarget(view)).toBe('column-mapping-date-format');
+
+    await pickOption(view, 'date-format', 'DD.MM.YYYY HH:MM:SS');
+    expect(await pressAndReadTarget(view)).toBe('column-mapping-amount-mode');
+
+    await pickOption(view, 'amount-column', 3);
+    await switchCurrencyModeToColumn(view);
+    expect(await pressAndReadTarget(view)).toBe('column-mapping-currency-mode');
+
+    await pickOption(view, 'currency-column', 5);
+    expect(await pressAndReadTarget(view)).toBe('column-mapping-description-column');
+
+    await pickOption(view, 'description-column', 1);
+    expect(await pressAndReadTarget(view)).toBe('target-holding-field');
+  });
+
+  it('targets the amount group while the credit column is missing, and moves on once it is mapped', async () => {
+    const view = await renderMonobankScreen();
+    await mapDateFormatAndDescription(view);
+    await switchAmountModeToDebitCredit(view);
+
+    await pickOption(view, 'debit-column', 3);
+    expect(await pressAndReadTarget(view)).toBe('column-mapping-amount-mode');
+
+    await pickOption(view, 'credit-column', 4);
+    expect(await pressAndReadTarget(view)).not.toBe('column-mapping-amount-mode');
+  });
+
+  it('targets the amount group while only the debit column is missing', async () => {
+    const view = await renderMonobankScreen();
+    await mapDateFormatAndDescription(view);
+    await switchAmountModeToDebitCredit(view);
+
+    await pickOption(view, 'credit-column', 4);
+
+    expect(await pressAndReadTarget(view)).toBe('column-mapping-amount-mode');
+  });
+
+  it('targets the result block when no row resolves, before the holding field', async () => {
+    const view = await renderMonobankScreen();
+    await mapDateFormatDescriptionAndAmount(view, { dateFormatId: 'YYYY-MM-DD', amountColumn: 3 });
+
+    expect(await pressAndReadTarget(view)).toBe('result');
+  });
+
+  it('hands the scroll the live content height', async () => {
+    const view = await renderMonobankScreen();
+    await fireEvent(view.getByTestId('screen-scroll-view'), 'contentSizeChange', 320, 1234);
+
+    scrollToFieldMock.mockClear();
+    await pressImport(view);
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    expect(scrollToFieldMock.mock.calls[0][2]).toEqual(
+      expect.objectContaining({ contentHeight: 1234 }),
+    );
+  });
+
+  it('does not scroll when the press imports', async () => {
+    mockDefaultImportSuccess();
+    const view = await renderMonobankScreen();
+    await mapMonobankColumnsAndSelectHolding(view);
+
+    await pressImport(view);
+
+    await waitFor(() => expect(mockImportParsedStatement).toHaveBeenCalledTimes(1));
+    expect(scrollToFieldMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('ColumnMappingScreen — import outcomes', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+  });
+
+  it('alerts with the translated failure and shows no result when the import throws', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockImportParsedStatement.mockRejectedValue(new Error('disk full'));
+    const view = await renderMonobankScreen();
+    await mapMonobankColumnsAndSelectHolding(view);
+
+    await pressImport(view);
+
+    await waitFor(() =>
+      expect(alert).toHaveBeenCalledWith(
+        i18n.t('statementImport.importErrorTitle'),
+        i18n.t('statementImport.importErrorMessage'),
+      ),
+    );
+    expect(view.queryByText(i18n.t('statementImport.importResultTitle'))).toBeNull();
+    expect(mockSaveStatementMapping).not.toHaveBeenCalled();
+
+    // The press is released again, so the user can retry.
+    mockDefaultImportSuccess();
+    await pressImport(view);
+
+    await waitFor(() =>
+      expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
+    );
+  });
+
+  it('saves the mapping with the fingerprint of the chosen header row', async () => {
+    await importMappedMonobankStatement();
+
+    await waitFor(() => expect(mockSaveStatementMapping).toHaveBeenCalledTimes(1));
+    expect(mockSaveStatementMapping.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        fingerprint: headerFingerprint(monobankHeaderRow),
+        savedAt: expect.any(Number),
+      }),
+    );
+  });
+
+  it('keys the saved mapping by header fingerprint, and goes back, for a screen with no account', async () => {
+    setLiveData({ accounts: [], holdings: [monobankHolding] });
+    mockDefaultImportSuccess();
+    const view = await renderMonobankScreen();
+    await mapMonobankColumnsAndSelectHolding(view);
+
+    await pressImport(view);
+
+    await waitFor(() => expect(mockSaveStatementMapping).toHaveBeenCalledTimes(1));
+    expect(mockSaveStatementMapping.mock.calls[0][0]).toBe(
+      `header:${headerFingerprint(monobankHeaderRow)}`,
+    );
+
+    await waitFor(() =>
+      expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
+    );
+    await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
+
+    expect(view.navigation.goBack).toHaveBeenCalledTimes(1);
+    expect(view.navigation.popTo).not.toHaveBeenCalled();
   });
 });

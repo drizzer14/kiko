@@ -1,12 +1,18 @@
 import path from 'node:path';
+import { Alert } from 'react-native';
 import { readFileSync } from 'node:fs';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import type {
+  ParsedStatement,
+  StatementFormat,
+  StatementFormatInput,
+} from '@kiko/statement-import/parser';
+import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { supportedFormatNames } from '@kiko/statement-import/registry';
 import { headerFingerprint } from '@kiko/statement-import/column-mapping';
-import type { ParsedStatement, StatementFormat } from '@kiko/statement-import/parser';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import StatementImportScreen from './statement-import.screen';
@@ -89,6 +95,14 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     getQuery: () => ({ __kind: 'settings', toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
+
+const mockReadSheetRowsSafely = jest.fn();
+jest.mock('@kiko/statement-import/read-statement-file', () => ({
+  ...jest.requireActual('@kiko/statement-import/read-statement-file'),
+  readSheetRowsSafely: (...args: unknown[]) => mockReadSheetRowsSafely(...args),
+}));
+
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const mockImportStatement = jest.fn();
 jest.mock('@kiko/statement-import/import-statement', () => ({
@@ -177,14 +191,19 @@ const sensebankFormatStub: StatementFormat = {
 // second decode attempt (cp1251) rather than giving up after the first
 // (UTF-8) attempt finds no match.
 const sensebankDetectFormatCalls: string[] = [];
+// The whole input the mocked `detectFormat` was handed for the multi-card
+// sentinel — proves which text/spreadsheet rows the screen built from the file.
+const multiCardDetectedInputs: StatementFormatInput[] = [];
 
 jest.mock('@kiko/statement-import/registry', () => {
   const actual = jest.requireActual('@kiko/statement-import/registry');
 
   return {
     ...actual,
-    detectFormat: (input: { text: string; fileName: string }) => {
+    detectFormat: (input: StatementFormatInput) => {
       if (input.fileName === MULTI_CARD_FILE_NAME) {
+        multiCardDetectedInputs.push(input);
+
         return multiCardFormatStub;
       }
 
@@ -242,9 +261,13 @@ const renderScreen = async (params: {
   filePath: string;
   accountId: string;
   expectedFormatId?: string;
+  holdingId?: string;
+  isFocused?: boolean;
 }) => {
+  const { isFocused, ...routeParams } = params;
   const navigation = navigationSpy();
-  const route = asRouteProp<StatementImportProps['route']>('StatementImport', params);
+  navigation.isFocused.mockReturnValue(isFocused ?? true);
+  const route = asRouteProp<StatementImportProps['route']>('StatementImport', routeParams);
   const view = await render(
     <StatementImportScreen
       route={route}
@@ -266,18 +289,30 @@ const renderScreen = async (params: {
 // before; a test that cares about the cold-start ordering passes one or
 // both explicitly.
 const setLiveData = (data: {
-  holdings?: { id: string; name: string; accountId: string; accountName: string }[];
+  holdings?: { id: string; name: string; accountId: string; accountName: string; type?: string }[];
   account?: { id: string; name?: string; bankId?: string | null };
   statementMappings?: Record<string, unknown> | null;
   accountIsLoading?: boolean;
   settingsIsLoading?: boolean;
+  noSettingsRow?: boolean;
 }): void => {
   const holdings = data.holdings ?? [
     { id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' },
   ];
 
-  mockUseLiveQuery.mockImplementation((query: { __kind?: string }) => {
+  // A query the screen subscribes to under the wrong table list would never
+  // refresh on the real database, so a mismatch here throws instead of
+  // answering.
+  const expectTables = (tables: string[], expected: string): void => {
+    if (tables[0] !== expected) {
+      throw new Error(`unexpected live-query tables ${JSON.stringify(tables)}`);
+    }
+  };
+
+  mockUseLiveQuery.mockImplementation((query: { __kind?: string }, tables: string[]) => {
     if (query.__kind === 'account-by-id') {
+      expectTables(tables, 'accounts');
+
       return {
         data: data.account ? [data.account] : [],
         isLoading: data.accountIsLoading ?? false,
@@ -285,8 +320,10 @@ const setLiveData = (data: {
     }
 
     if (query.__kind === 'settings') {
+      expectTables(tables, 'settings');
+
       return {
-        data: [{ statementMappings: data.statementMappings ?? null }],
+        data: data.noSettingsRow ? [] : [{ statementMappings: data.statementMappings ?? null }],
         isLoading: data.settingsIsLoading ?? false,
       };
     }
@@ -539,6 +576,94 @@ describe('StatementImportScreen', () => {
         within(view.getByTestId('target-holding-field')).getByText('New savings'),
       ).toBeTruthy(),
     );
+  });
+
+  // The created-holding return channel hands back whatever type the user
+  // picked in the holding form, but the picker lists only a holding that keeps
+  // a ledger: a ledgerless id must read as "not selected", never as a target.
+  it('treats a returned ledgerless holding as not selected, so Import asks for a holding', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({
+      holdings: [
+        { id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' },
+        {
+          id: 'deposit',
+          name: 'New deposit',
+          accountId: 'a',
+          accountName: 'Monobank',
+          type: 'term_deposit',
+        },
+      ],
+    });
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      holdingId: 'deposit',
+    });
+
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+    expect(within(view.getByTestId('target-holding-field')).queryByText('New deposit')).toBeNull();
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    expect(view.getByText(i18n.t('statementImport.chooseHoldingError'))).toBeTruthy();
+    expect(mockImportStatement).not.toHaveBeenCalled();
+  });
+
+  // The option list is a live query that can trail the navigation back, so a
+  // valid new card must stay selected once its row arrives (clearing a pick
+  // the options do not list YET would drop it).
+  it('selects a returned holding that only reaches the option list after the route param', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    mockImportStatement.mockResolvedValue({
+      formatId: 'monobank-csv',
+      imported: 4,
+      total: 4,
+      skippedWrongCurrency: 0,
+      skippedWrongCurrencyCodes: [],
+    });
+    setLiveData({
+      holdings: [{ id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' }],
+    });
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      holdingId: 'h2',
+    });
+
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+    expect(within(view.getByTestId('target-holding-field')).queryByText('New savings')).toBeNull();
+
+    setLiveData({
+      holdings: [
+        { id: 'h1', name: 'Black card', accountId: 'a', accountName: 'Monobank' },
+        { id: 'h2', name: 'New savings', accountId: 'a', accountName: 'Monobank' },
+      ],
+    });
+    await act(async () => {
+      view.rerender(
+        <StatementImportScreen
+          route={asRouteProp<StatementImportProps['route']>('StatementImport', {
+            filePath: '/mock/statement.csv',
+            accountId: 'a',
+            holdingId: 'h2',
+          })}
+          navigation={asNavigationProp<StatementImportProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    await waitFor(() =>
+      expect(
+        within(view.getByTestId('target-holding-field')).getByText('New savings'),
+      ).toBeTruthy(),
+    );
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() => expect(mockImportStatement).toHaveBeenCalledWith(expect.anything(), 'h2'));
   });
 
   it('surfaces each row’s distinct masked-card hint in a multi-card PrivatBank preview', async () => {
@@ -1112,5 +1237,334 @@ describe('StatementImportScreen — local copy cleanup', () => {
     view.unmount();
 
     expect(mockUnlink).not.toHaveBeenCalled();
+  });
+
+  // The cleanup deletes after an await, so the assertion has to wait for the
+  // unmount to settle before "never deleted" means anything.
+  it('does NOT delete the local copy after auto-replacing, once the unmount has settled', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({
+      account: { id: 'a', bankId: 'sensebank' },
+      statementMappings: savedSensebankMappingForFixture,
+    });
+
+    const view = await renderScreen({
+      filePath: '/mock/caches/statement-123.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+
+    await waitFor(() => expect(view.navigation.replace).toHaveBeenCalled());
+
+    await act(async () => {
+      view.unmount();
+    });
+
+    expect(mockUnlink).not.toHaveBeenCalled();
+  });
+});
+
+const savedSensebankMappingForFixture = {
+  'bank:sensebank': {
+    headerRowIndex: 0,
+    decimalSeparator: '.',
+    dateColumn: 0,
+    dateFormat: 'DD.MM.YYYY HH:MM:SS',
+    amount: { mode: 'single', column: 3 },
+    descriptionColumn: 1,
+    currency: { mode: 'fixed', currency: 'UAH' },
+    fingerprint: headerFingerprint(fixtureHeaderRow),
+    savedAt: 1_700_000_000_000,
+  },
+};
+
+const unrecognizedFormatMessage = (): string =>
+  i18n.t('statementImport.unrecognizedFormat', { formats: supportedFormatNames });
+
+describe('StatementImportScreen — what shows in each load state', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    multiCardDetectedInputs.length = 0;
+    setLiveData({});
+  });
+
+  it('shows only the reading message, with no footer, while the file loads, even with an expected bank', async () => {
+    mockReadFile.mockReturnValue(new Promise(() => {}));
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+
+    expect(mockReadFile).toHaveBeenCalledWith('/mock/statement.csv', 'base64');
+    expect(view.getByText(i18n.t('statementImport.reading'))).toBeTruthy();
+    expect(view.queryByText(unrecognizedFormatMessage())).toBeNull();
+    expect(
+      view.queryByText(i18n.t('statementImport.bankMismatch', { bank: 'Sensebank (CSV)' })),
+    ).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.importButton'))).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.mapColumnsManually'))).toBeNull();
+    expect(view.queryByTestId('screen-footer')).toBeNull();
+  });
+
+  it('shows a clean recognized preview: no reading, unrecognized or mismatch message, no error before a press', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'monobank-csv',
+    });
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    expect(view.queryByText(i18n.t('statementImport.reading'))).toBeNull();
+    expect(view.queryByText(unrecognizedFormatMessage())).toBeNull();
+    expect(
+      view.queryByText(i18n.t('statementImport.bankMismatch', { bank: 'Monobank (CSV)' })),
+    ).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.chooseHoldingError'))).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.importResultTitle'))).toBeNull();
+    expect(view.getByText(i18n.t('statementImport.importButton'))).toBeTruthy();
+  });
+
+  it('shows no reading message and no Import button once the read has failed', async () => {
+    mockReadFile.mockRejectedValue(new Error('ENOENT'));
+
+    const view = await renderScreen({ filePath: '/mock/missing.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(unrecognizedFormatMessage())).toBeTruthy());
+
+    expect(view.queryByText(i18n.t('statementImport.reading'))).toBeNull();
+    expect(view.queryByText(i18n.t('statementImport.importButton'))).toBeNull();
+  });
+
+  it('offers only "Map columns manually", not Import, for a file no format recognizes', async () => {
+    mockReadFile.mockResolvedValue(unrelatedBase64);
+
+    const view = await renderScreen({ filePath: '/mock/other.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText(unrecognizedFormatMessage())).toBeTruthy());
+
+    expect(view.queryByText(i18n.t('statementImport.reading'))).toBeNull();
+    expect(view.getByText(i18n.t('statementImport.mapColumnsManually'))).toBeTruthy();
+    expect(view.queryByText(i18n.t('statementImport.importButton'))).toBeNull();
+  });
+
+  it('still renders the unrecognized state when the settings row has not been created yet', async () => {
+    mockReadFile.mockResolvedValue(unrelatedBase64);
+    setLiveData({ noSettingsRow: true });
+
+    const view = await renderScreen({ filePath: '/mock/other.csv', accountId: 'a' });
+
+    await waitFor(() => expect(view.getByText(unrecognizedFormatMessage())).toBeTruthy());
+  });
+
+  it('hands a spreadsheet’s pre-parsed rows, not decoded text, to format detection', async () => {
+    mockReadFile.mockResolvedValue('c3ByZWFkc2hlZXQ=');
+    const sheetRows = [
+      ['Date', 'Amount'],
+      ['01.01.2024', 10],
+    ];
+    mockReadSheetRowsSafely.mockResolvedValue(sheetRows);
+
+    const view = await renderScreen({
+      filePath: `/mock/${MULTI_CARD_FILE_NAME}`,
+      accountId: 'a',
+    });
+    await waitFor(() => expect(view.getByText('PrivatBank (XLSX)')).toBeTruthy());
+
+    expect(mockReadSheetRowsSafely).toHaveBeenCalledWith('c3ByZWFkc2hlZXQ=');
+    const handed = multiCardDetectedInputs.at(-1);
+    expect(handed?.text).toBe('');
+    expect(handed?.sheetRows).toEqual(sheetRows);
+    expect(handed?.fileName).toBe(MULTI_CARD_FILE_NAME);
+  });
+
+  it('does not start reading a spreadsheet when the screen is gone before the file arrived', async () => {
+    let resolveFile: (base64: string) => void = () => {};
+    mockReadFile.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveFile = resolve;
+      }),
+    );
+
+    const view = await renderScreen({
+      filePath: `/mock/${MULTI_CARD_FILE_NAME}`,
+      accountId: 'a',
+    });
+    await act(async () => {
+      view.unmount();
+    });
+    await act(async () => {
+      resolveFile('c3ByZWFkc2hlZXQ=');
+    });
+
+    expect(mockReadSheetRowsSafely).not.toHaveBeenCalled();
+  });
+});
+
+describe('StatementImportScreen — auto-replace guards', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData({});
+  });
+
+  it('does not replace the route when the screen is not the focused one', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({
+      account: { id: 'a', bankId: 'sensebank' },
+      statementMappings: savedSensebankMappingForFixture,
+    });
+
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+      isFocused: false,
+    });
+
+    await waitFor(() =>
+      expect(
+        view.getByText(i18n.t('statementImport.bankMismatch', { bank: 'Sensebank (CSV)' })),
+      ).toBeTruthy(),
+    );
+    expect(view.navigation.isFocused).toHaveBeenCalled();
+    expect(view.navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it('never replaces the route for a file a dedicated format recognizes, saved mapping or not', async () => {
+    mockReadFile.mockResolvedValue(fixtureBase64);
+    setLiveData({
+      account: { id: 'a', bankId: 'monobank' },
+      statementMappings: {
+        'bank:monobank': {
+          ...savedSensebankMappingForFixture['bank:sensebank'],
+        },
+      },
+    });
+
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    expect(view.navigation.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe('StatementImportScreen — Import press', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData({});
+    mockReadFile.mockResolvedValue(fixtureBase64);
+  });
+
+  const importResult = {
+    formatId: 'monobank-csv',
+    imported: 3,
+    total: 4,
+    skippedWrongCurrency: 0,
+    skippedWrongCurrencyCodes: [],
+  };
+
+  const renderPreview = async (): Promise<Awaited<ReturnType<typeof renderScreen>>> => {
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    return view;
+  };
+
+  const importButton = (view: Awaited<ReturnType<typeof renderScreen>>) =>
+    view.getByRole('button', { name: i18n.t('statementImport.importButton') });
+
+  it('flags the missing holding on the first press, scrolls to its field, and clears the flag once one is picked', async () => {
+    const view = await renderPreview();
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    expect(view.getByText(i18n.t('statementImport.chooseHoldingError'))).toBeTruthy();
+    expect(mockImportStatement).not.toHaveBeenCalled();
+    expect(scrollToField).toHaveBeenCalledTimes(1);
+    const [, targetRef] = (scrollToField as jest.Mock).mock.calls[0];
+    expect(targetRef.current.props.children.props.testID).toBe('target-holding-field');
+
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+
+    expect(view.queryByText(i18n.t('statementImport.chooseHoldingError'))).toBeNull();
+  });
+
+  it('hands the scroll the live content height', async () => {
+    const view = await renderPreview();
+    await fireEvent(view.getByTestId('screen-scroll-view'), 'contentSizeChange', 320, 1234);
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    expect((scrollToField as jest.Mock).mock.calls[0][2]).toEqual(
+      expect.objectContaining({ contentHeight: 1234 }),
+    );
+  });
+
+  it('disables Import while the import runs, and releases it once the result arrives', async () => {
+    let finishImport: (result: typeof importResult) => void = () => {};
+    mockImportStatement.mockReturnValue(
+      new Promise<typeof importResult>((resolve) => {
+        finishImport = resolve;
+      }),
+    );
+    const view = await renderPreview();
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+
+    // Not awaited: the press only settles once the (pending) import does.
+    const firstPress = fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() => expect(importButton(view)).toBeDisabled());
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+    expect(mockImportStatement).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finishImport(importResult);
+    });
+    await firstPress;
+
+    expect(importButton(view)).not.toBeDisabled();
+    expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy();
+  });
+
+  it('alerts with the translated failure, shows no result, and lets the user retry when the import throws', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockImportStatement.mockRejectedValueOnce(new Error('disk full'));
+    const view = await renderPreview();
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() =>
+      expect(alert).toHaveBeenCalledWith(
+        i18n.t('statementImport.importErrorTitle'),
+        i18n.t('statementImport.importErrorMessage'),
+      ),
+    );
+    expect(view.queryByText(i18n.t('statementImport.importResultTitle'))).toBeNull();
+    expect(importButton(view)).not.toBeDisabled();
+
+    mockImportStatement.mockResolvedValue(importResult);
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+
+    await waitFor(() =>
+      expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
+    );
+    expect(mockImportStatement).toHaveBeenCalledTimes(2);
+  });
+
+  it('goes back, instead of popping to the account, when the account row is not loaded', async () => {
+    mockImportStatement.mockResolvedValue(importResult);
+    const view = await renderPreview();
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+    await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
+    await waitFor(() =>
+      expect(view.getByText(i18n.t('statementImport.importResultTitle'))).toBeTruthy(),
+    );
+
+    await fireEvent(view.getByTestId('import-result-sheet-modal'), 'dismiss');
+
+    expect(view.navigation.goBack).toHaveBeenCalledTimes(1);
+    expect(view.navigation.popTo).not.toHaveBeenCalled();
   });
 });

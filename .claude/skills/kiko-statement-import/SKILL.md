@@ -96,6 +96,15 @@ the guard covers a stale route. The target-holding picker
 never offers a holding the guard refuses; it also drops closed and
 ledgerless holdings.
 
+**A ledgerless holding refuses the import.** Right after its anchored and
+synced-account checks, `importRows` throws an Error with the message
+statement-import/ledgerless-holding for a holding of an
+`isLedgerlessHoldingType` type (a stale route can still name one). The
+statement-import and column-mapping screens derive the effective target at
+render: they keep `pickedHoldingId`, and `selectedHoldingId` is the picked id
+only when it is in the live options. The `[holdingId]` effect never clears
+it, because the live options can lag the `popTo`.
+
 **A disconnected bank's synced rows count as present.** A disconnected
 account is manual again and imports, but its holdings keep their synced
 (`monobank`, ...) rows. `importRows` drops every statement row with a
