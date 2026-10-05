@@ -2231,11 +2231,16 @@ what a change must keep.
   builds its day on `Calendar.gregorian` (`KikoRemindersCenter.swift`:
   `Calendar(identifier: .gregorian)`, time zone = autoupdatingCurrent),
   never `Calendar.current`, so its stamp equals `fireStamp` under any
-  device calendar. Both trigger builders (`floatingDateComponents` and
-  `tomorrow`) also set `calendar: .gregorian` on their `DateComponents`
-  (no time zone, so the time stays floating): the trigger reads the
-  components in the device calendar otherwise, and a Buddhist or Japanese
-  device fires centuries off. `__tests__/reminders-gregorian-calendar.test.ts`
+  device calendar; it returns that Gregorian `LocalDateTime`, and
+  `requestsReplacedBySnooze` reads it. Every `UNCalendarNotificationTrigger`
+  takes `.floatingDateComponents` (`KikoRemindersCenter.swift`): the
+  Gregorian Y/M/D/h/m built into a Date, converted with
+  `Calendar.current.dateComponents([.era, .year, ...`, and handed over with
+  NO `calendar:` and NO `timeZone:`. The trigger reads components in the
+  device calendar, so a Buddhist or Japanese device needs that conversion;
+  a `Calendar` on the components is banned, since it always carries a zone,
+  the trigger is archived with it, and the reminder would stop floating
+  with the device zone. `__tests__/reminders-gregorian-calendar.test.ts`
   pins it. Change the format on both sides together.
   `replaceRequests` also removes every DELIVERED notification in the
   `kiko.reminder` category (a regular reminder or a snooze) whose

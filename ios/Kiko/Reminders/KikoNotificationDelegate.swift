@@ -64,7 +64,7 @@ final class KikoNotificationDelegate: NSObject, UNUserNotificationCenterDelegate
     let request = UNNotificationRequest(
       identifier: KikoRemindersCenter.snoozeIdentifierPrefix + reminderId,
       content: content,
-      trigger: UNCalendarNotificationTrigger(dateMatching: fireAt, repeats: false)
+      trigger: UNCalendarNotificationTrigger(dateMatching: fireAt.floatingDateComponents, repeats: false)
     )
 
     // iOS can run this action with no JS at all (the app killed, or the
@@ -84,33 +84,28 @@ final class KikoNotificationDelegate: NSObject, UNUserNotificationCenterDelegate
   // The identifiers JS gives the regular request at a minute and the paused
   // notice (`plan-reminder.ts`): the reminder id, then the local fire minute as
   // yyyyMMddHHmm, or "paused".
-  static func requestsReplacedBySnooze(of reminderId: String, at fireAt: DateComponents) -> [String] {
+  static func requestsReplacedBySnooze(of reminderId: String, at fireAt: LocalDateTime) -> [String] {
     let prefix = KikoRemindersCenter.reminderIdentifierPrefix + reminderId + "."
-    let pausedNotice = prefix + "paused"
+    let fireStamp = String(
+      format: "%ld%02ld%02ld%02ld%02ld",
+      fireAt.year,
+      fireAt.month,
+      fireAt.day,
+      fireAt.hour,
+      fireAt.minute
+    )
 
-    guard
-      let year = fireAt.year,
-      let month = fireAt.month,
-      let day = fireAt.day,
-      let hour = fireAt.hour,
-      let minute = fireAt.minute
-    else {
-      return [pausedNotice]
-    }
-
-    let fireStamp = String(format: "%ld%02ld%02ld%02ld%02ld", year, month, day, hour, minute)
-
-    return [prefix + fireStamp, pausedNotice]
+    return [prefix + fireStamp, prefix + "paused"]
   }
 
   // The scheduled trigger's own hour and minute are preferred over the
   // delivery time, which can drift from the chosen time (a DST gap, a delayed
-  // delivery). Built from local calendar days, with no time zone, the same
-  // floating form as every reminder. Gregorian whatever calendar the user
-  // picked (Buddhist, Japanese): JS plans every request on Gregorian dates, so
-  // only a Gregorian day gives the identifier of the regular request this
-  // snooze replaces.
-  static func tomorrow(atTimeOf notification: UNNotification, now: Date = Date()) -> DateComponents? {
+  // delivery). Built from local calendar days. Gregorian whatever calendar the
+  // user picked (Buddhist, Japanese): JS plans every request on Gregorian
+  // dates, so only a Gregorian day gives the identifier of the regular request
+  // this snooze replaces. The trigger gets the same floating device-calendar
+  // components as every reminder, from `floatingDateComponents`.
+  static func tomorrow(atTimeOf notification: UNNotification, now: Date = Date()) -> LocalDateTime? {
     let calendar = Calendar.gregorian
     let scheduledTime = (notification.request.trigger as? UNCalendarNotificationTrigger)?.dateComponents
     let deliveredTime = calendar.dateComponents([.hour, .minute], from: notification.date)
@@ -125,13 +120,10 @@ final class KikoNotificationDelegate: NSObject, UNUserNotificationCenterDelegate
 
     let day = calendar.dateComponents([.year, .month, .day], from: tomorrow)
 
-    return DateComponents(
-      calendar: calendar,
-      year: day.year,
-      month: day.month,
-      day: day.day,
-      hour: hour,
-      minute: minute
-    )
+    guard let year = day.year, let month = day.month, let dayOfMonth = day.day else {
+      return nil
+    }
+
+    return LocalDateTime(year: year, month: month, day: dayOfMonth, hour: hour, minute: minute)
   }
 }

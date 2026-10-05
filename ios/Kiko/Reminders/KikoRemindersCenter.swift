@@ -335,19 +335,30 @@ struct LocalDateTime: Decodable {
   let hour: Int
   let minute: Int
 
-  // No time zone: the trigger matches the device's local wall-clock time, so
-  // the reminder still fires at the chosen time after the user changes zone.
-  // The Gregorian calendar travels with the components: JS plans Gregorian
-  // dates, and without it the trigger reads them in the device calendar
-  // (Buddhist, Japanese, Islamic), centuries off or on no real day.
+  // No calendar and no time zone: the trigger matches the device's local
+  // wall-clock time, so the reminder still fires at the chosen time after the
+  // user changes zone. A Calendar on the components would carry a zone, and
+  // the trigger is archived to the notification daemon with it, so the
+  // reminder would stop floating. JS plans Gregorian dates and the trigger
+  // reads plain components in the device calendar (Buddhist, Japanese,
+  // Islamic), so the Gregorian date is converted to that calendar's own
+  // components, era included, and only those fields are handed over.
   var floatingDateComponents: DateComponents {
-    DateComponents(
-      calendar: .gregorian,
-      year: year,
-      month: month,
-      day: day,
-      hour: hour,
-      minute: minute
+    let gregorian = DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)
+
+    guard let date = Calendar.gregorian.date(from: gregorian) else {
+      return gregorian
+    }
+
+    let local = Calendar.current.dateComponents([.era, .year, .month, .day, .hour, .minute], from: date)
+
+    return DateComponents(
+      era: local.era,
+      year: local.year,
+      month: local.month,
+      day: local.day,
+      hour: local.hour,
+      minute: local.minute
     )
   }
 }
