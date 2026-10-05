@@ -261,7 +261,7 @@ fi
 # stryker.conf.json's ignorePatterns, or holds a glob special character), yet
 # the report's recorded scope still lists it, so the scorer would grade that
 # file "n/a (no mutants)" and pass. The warning is the only signal, so it fails.
-if printf '%s\n' "$out" | grep -q 'did not result in any files'; then
+if grep -q 'did not result in any files' <<<"$out"; then
   print_block \
     "Stryker (mutation testing)" \
     "Stryker could not resolve a changed file passed to --mutate (\"did not result in any files\")." \
