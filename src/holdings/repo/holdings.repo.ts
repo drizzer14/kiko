@@ -31,6 +31,10 @@ import {
   type DepositContribution,
   type ExchangeMetadataField,
   type SyncedMetadataField,
+  statementFromOf,
+  syncClosedFromOf,
+  STATEMENT_FROM_FIELD,
+  SYNC_CLOSED_FROM_FIELD,
   withWalkOwnedMetadataCarried,
   BINANCE_HISTORY_CURSOR_FIELD,
   withWalkOwnedMetadataResetToFloor,
@@ -166,10 +170,25 @@ const upsertManualPricePoint = (
 //
 // The update branch also reads the row's OWN stored metadata (not just
 // `id`/`name`) so `withWalkOwnedMetadataCarried` can carry a walk-owned key
-// (currently only the Binance history cursor) over the caller's `merged`
-// object — a routine balance sync's `metadata: { syncedAt }` would otherwise
-// wipe it every run, since `merged` is built from the CALLER-supplied
-// `metadata` alone, never the stored row.
+// (the Binance history cursor, a reopened card's `statementFromMs`) over the
+// caller's `merged` object — a routine balance sync's `metadata: { syncedAt }`
+// would otherwise wipe it every run, since `merged` is built from the
+// CALLER-supplied `metadata` alone, never the stored row.
+//
+// The update branch also REOPENS a holding the sync closed (the Monobank
+// reconcile's `closeManyBySync`), and only that one: a row is reopened when it
+// is closed AND carries `syncClosedFromMs`, which the user's own close never
+// writes, so a user-closed holding stays closed and a Binance or wallet row
+// (no mark, ever) never reopens. The reopen clears `closedAt`, drops the mark
+// (an upsert carries only the walk-owned keys, so the mark is not carried), and
+// hands a CARD the mark as `statementFromMs`, the from-cursor of its next
+// statement fetch: while it was absent no run fetched its statements, and the
+// closing run graduated the normal cursor past the gap. It moves no balance;
+// the balance written here is the bank's own, as on every upsert.
+//
+// Known limit: a holding the sync closed BEFORE the mark existed has no mark,
+// looks exactly like a user close, and stays closed; no repair is built
+// (confirmed on a device: every live card and jar had a holding).
 const upsertByMetadataKey = async (
   databaseTransaction: typeof database,
   { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
@@ -177,7 +196,13 @@ const upsertByMetadataKey = async (
   const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
   const keyMatch = sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
   const existing = await databaseTransaction
-    .select({ id: holdings.id, name: holdings.name, metadata: holdings.metadata })
+    .select({
+      id: holdings.id,
+      name: holdings.name,
+      type: holdings.type,
+      closedAt: holdings.closedAt,
+      metadata: holdings.metadata,
+    })
     .from(holdings)
     .where(and(eq(holdings.accountId, rest.accountId), keyMatch))
     .limit(1);
@@ -188,12 +213,19 @@ const upsertByMetadataKey = async (
     // one-time transition rename: rewrite it only when the stored name still
     // equals the exact old default `renameFromDefault` names.
     const rename = renameFromDefault !== undefined && current.name === renameFromDefault;
+    const syncClosedFrom = syncClosedFromOf(current.metadata);
+    const reopenFrom = current.closedAt !== null && syncClosedFrom !== null ? syncClosedFrom : null;
+    const carried = withWalkOwnedMetadataCarried(merged, current.metadata);
     await databaseTransaction
       .update(holdings)
       .set({
         balanceMinorUnits: rest.balanceMinorUnits ?? 0,
-        metadata: withWalkOwnedMetadataCarried(merged, current.metadata),
+        metadata:
+          reopenFrom !== null && current.type === 'card'
+            ? { ...carried, [STATEMENT_FROM_FIELD]: reopenFrom }
+            : carried,
         ...(rename ? { name: rest.name } : {}),
+        ...(reopenFrom === null ? {} : { closedAt: null }),
       })
       .where(eq(holdings.id, current.id));
 
@@ -948,6 +980,44 @@ export const holdingsRepo = {
         .set({ closedAt: sql`(unixepoch() * 1000)` })
         .where(inArray(holdings.id, holdingIds));
     }),
+  /**
+   * The Monobank sync's own close, distinct from `closeMany` (the user's
+   * Close sheet, which stays mark-free): stamps `closedAt` AND
+   * `syncClosedFromMs` in ONE update per row, so a close never exists without
+   * its mark. `fromMs` is the instant up to which every present card was
+   * certainly imported (`lastFullSyncAt` of the closing run); the mark keeps
+   * the earlier of it and a still-pending `statementFromMs`, so a card that
+   * vanishes again before its gap imported loses none of the earlier gap. A
+   * row that is already closed is left alone: the first mark is kept and a
+   * user-closed row never gains one. An empty set is a no-op.
+   */
+  closeManyBySync: (holdingIds: string[], fromMs: number) =>
+    write(async (databaseTransaction) => {
+      if (holdingIds.length === 0) {
+        return;
+      }
+
+      const rows = await databaseTransaction
+        .select({ id: holdings.id, metadata: holdings.metadata })
+        .from(holdings)
+        .where(and(inArray(holdings.id, holdingIds), isNull(holdings.closedAt)));
+
+      for (const row of rows) {
+        await databaseTransaction
+          .update(holdings)
+          .set({
+            closedAt: sql`(unixepoch() * 1000)`,
+            metadata: {
+              ...(isRecord(row.metadata) ? row.metadata : {}),
+              [SYNC_CLOSED_FROM_FIELD]: Math.min(
+                fromMs,
+                statementFromOf(row.metadata) ?? Number.POSITIVE_INFINITY,
+              ),
+            },
+          })
+          .where(eq(holdings.id, row.id));
+      }
+    }),
   upsertMonobank: ({ monobankId, ...rest }: MonobankHolding) =>
     write((databaseTransaction) =>
       upsertByMetadataKey(databaseTransaction, {
@@ -1072,6 +1142,36 @@ export const holdingsRepo = {
         .update(holdings)
         .set({ syncedBalanceMinorUnits: balance.minorUnits })
         .where(syncedBalanceUpdateWhere(holdingId, balance.minorUnits));
+    }),
+  /**
+   * Drop a reopened card's `statementFromMs` once its widened statement import
+   * committed. Writes only when the key is present, so the run after the
+   * clear (and every card that never reopened) fires no reactive `holdings`
+   * callback. The sync calls it AFTER `setSyncedBalance`: a crash in between
+   * re-fetches the wide window, which is idempotent (`(source, external_id)`
+   * upsert).
+   */
+  clearStatementFrom: (holdingId: string) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ metadata: holdings.metadata })
+        .from(holdings)
+        .where(eq(holdings.id, holdingId))
+        .limit(1);
+      const stored = rows.at(0)?.metadata;
+
+      if (!isRecord(stored) || !(STATEMENT_FROM_FIELD in stored)) {
+        return;
+      }
+
+      await databaseTransaction
+        .update(holdings)
+        .set({
+          metadata: Object.fromEntries(
+            Object.entries(stored).filter(([key]) => key !== STATEMENT_FROM_FIELD),
+          ),
+        })
+        .where(eq(holdings.id, holdingId));
     }),
   /**
    * Balance-provider counterpart of `upsertMonobank`: one live balance snapshot

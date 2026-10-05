@@ -1,10 +1,12 @@
 import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
 import { i18n } from '@kiko/i18n/init';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { syncStateRepo } from '@kiko/sync-state';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { statementFromOf } from '@kiko/holdings/holding-metadata';
 import { holdingsRepo, type MonobankHolding } from '@kiko/holdings/repo';
 import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '@kiko/db';
 
@@ -76,16 +78,22 @@ interface SyncAccountsRepo {
  *   interrupted run leaves it behind and the next run re-imports the card. The
  *   balance-diff skip compares against THIS marker, not `holdings.balanceMinorUnits`
  *   (the display balance `upsertMonobankMany` overwrites up front every run).
- * - `closeMany` stamps `closedAt` on a set of holdings in ONE transaction. The
- *   sync calls it ONLY on a COMPLETE, clean full-fetch run to reconcile away a
- *   holding Monobank no longer returns (a closed card, a deleted jar); never on a
+ * - `closeManyBySync` stamps `closedAt` AND the sync-close mark
+ *   (`syncClosedFromMs`) on a set of holdings in ONE transaction. The sync calls
+ *   it ONLY on a COMPLETE, clean full-fetch run to reconcile away a holding
+ *   Monobank no longer returns (a closed card, a deleted jar); never on a
  *   partial/failed/empty response — see the guarded close block in `runSyncInner`.
+ *   It is not the user's `closeMany`, which writes no mark, so a user-closed
+ *   holding never reopens (see `reconcileClosedHoldings`).
+ * - `clearStatementFrom` drops a reopened card's `statementFromMs` once its
+ *   widened statement import committed, right after `setSyncedBalance`.
  */
 interface SyncHoldingsRepo {
   listByAccountQuery: (accountId: string) => PromiseLike<HoldingRow[]>;
   upsertMonobankMany: (holdings: MonobankHolding[]) => Promise<unknown>;
   setSyncedBalance: (holdingId: string, balance: Money) => Promise<unknown>;
-  closeMany: (holdingIds: string[]) => Promise<unknown>;
+  closeManyBySync: (holdingIds: string[], fromMs: number) => Promise<unknown>;
+  clearStatementFrom: (holdingId: string) => Promise<unknown>;
 }
 
 /**
@@ -616,7 +624,9 @@ const resolveFullSyncAtToPersist = (
  *
  * A held card is always fetched because a same-amount hold→settled refresh does
  * not move the balance; a force-retry card is always fetched so a transient
- * failure cannot strand it once its balance settles unchanged.
+ * failure cannot strand it once its balance settles unchanged. So is a card the
+ * sync just reopened (its post-upsert holding carries `statementFromMs`): its
+ * gap is still unimported, and a skip would leave the key lingering.
  */
 const isBalanceDiffSkip = (
   account: MonobankAccount,
@@ -632,7 +642,7 @@ const isBalanceDiffSkip = (
     return false;
   }
 
-  if (context.failedSet.has(account.id)) {
+  if (context.failedSet.has(account.id) || statementFromOf(holding.metadata) !== null) {
     return false;
   }
   const priorSynced = context.priorHoldingByMonobankId.get(account.id)?.syncedBalanceMinorUnits;
@@ -796,10 +806,17 @@ const fromCursorSeconds = (
  * fetch widens the same way. A normally-in-sync card (marker == balance) keeps
  * the narrow incremental cursor. Shares the null-cursor fallback in
  * `fromCursorSeconds`.
+ *
+ * A card the sync just reopened carries `statementFromMs` on its POST-upsert
+ * `holding`: the window reaches back to it when that is earlier than the
+ * normal cursor, because no run fetched the card while it was absent and the
+ * closing run already moved the normal cursor past that gap. It never narrows
+ * a window that is already wider.
  */
 const fromSecondsForCard = (
   account: MonobankAccount,
   prior: HoldingRow | undefined,
+  holding: HoldingRow,
   context: {
     isFullFetch: boolean;
     lastSyncAt: number | null;
@@ -809,12 +826,17 @@ const fromSecondsForCard = (
 ): number => {
   const priorSynced = prior?.syncedBalanceMinorUnits;
   const markerBehind = priorSynced == null || priorSynced !== account.balance;
-
-  return fromCursorSeconds(
+  const normal = fromCursorSeconds(
     context.isFullFetch || markerBehind,
     context.lastSyncAt,
     context.lastFullSyncAt,
     context.toSeconds,
+  );
+
+  return (
+    foldMap(maybe(statementFromOf(holding.metadata)), (statementFromMs) =>
+      Math.min(normal, Math.floor(statementFromMs / 1000)),
+    ) ?? normal
   );
 };
 
@@ -916,6 +938,13 @@ const fetchCardWithProgress = async (
     card.holding.id,
     Money.of(card.holding.currency, card.account.balance),
   );
+
+  // Only after the marker: a crash between the two re-fetches the wide window,
+  // which is idempotent. Skipped for a card that carries no cursor, so a plain
+  // run opens no extra write per card.
+  if (statementFromOf(card.holding.metadata) !== null) {
+    await deps.holdingsRepo.clearStatementFrom(card.holding.id);
+  }
   // Reconcile the card's work to its full up-front estimate (a card that paged
   // fewer windows than estimated still reaches its share), then complete the
   // holding for the label.
@@ -926,6 +955,9 @@ const fetchCardWithProgress = async (
 
   return imported;
 };
+
+const closeMarkFromMs = (lastFullSyncAt: number | null, toSeconds: number): number =>
+  lastFullSyncAt ?? (toSeconds - DEFAULT_LOOKBACK_SECONDS) * 1000;
 
 /**
  * On a COMPLETE, clean full fetch, close every Monobank holding under `accountId`
@@ -948,6 +980,21 @@ const fetchCardWithProgress = async (
  * unrepresentable-currency one that `upsertAllHoldings` skipped but is still
  * present, so a skipped card is never mistaken for a removed one. A holding with
  * no `monobankId` (a manual holding under a mixed account) is never closed.
+ *
+ * The close is MARKED (`closeManyBySync`): `markFromMs` is the `lastFullSyncAt`
+ * this run READ before it graduated it, the last instant up to which every
+ * present card was certainly imported (a run with no such instant falls back to
+ * one default lookback below `now`). When the holding returns, the upsert
+ * (`upsertByMetadataKey`) reopens exactly the rows that carry the mark, and the
+ * card's first statement fetch reaches back to it (`fromSecondsForCard`): the
+ * closing run moved the normal cursor past the gap, and no run fetched the
+ * absent card. A holding the USER closed carries no mark and never reopens, and
+ * a row that is already closed is skipped here, so the first mark is kept.
+ *
+ * Known limit: a holding this sync closed BEFORE the mark existed is
+ * indistinguishable from a user close and stays closed. No repair is built: a
+ * device check found every live card and jar already has its holding, and a
+ * blanket mark could reopen a holding the user closed by hand while disconnected.
  */
 const reconcileClosedHoldings = async (
   deps: SyncDeps,
@@ -956,6 +1003,7 @@ const reconcileClosedHoldings = async (
   jars: MonobankJar[] | undefined,
   isFullFetch: boolean,
   failuresCount: number,
+  markFromMs: number,
 ): Promise<void> => {
   if (!(isFullFetch && failuresCount === 0 && accounts.length + (jars?.length ?? 0) > 0)) {
     return;
@@ -979,7 +1027,7 @@ const reconcileClosedHoldings = async (
     .map((holding) => holding.id);
 
   if (staleIds.length > 0) {
-    await deps.holdingsRepo.closeMany(staleIds);
+    await deps.holdingsRepo.closeManyBySync(staleIds, markFromMs);
   }
 };
 
@@ -1187,12 +1235,12 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // keeps the narrow `lastSyncAt` cursor — see `fromSecondsForCard`) fixes its
   // statement-window count (`estimateWindows`), which is the card's WORK weight.
   const toFetchPlan = toFetch.map(({ account, holding }) => {
-    const fromSeconds = fromSecondsForCard(account, priorHoldingByMonobankId.get(account.id), {
-      isFullFetch,
-      lastSyncAt,
-      lastFullSyncAt,
-      toSeconds,
-    });
+    const fromSeconds = fromSecondsForCard(
+      account,
+      priorHoldingByMonobankId.get(account.id),
+      holding,
+      { isFullFetch, lastSyncAt, lastFullSyncAt, toSeconds },
+    );
 
     return { account, holding, fromSeconds, windows: estimateWindows(fromSeconds, toSeconds) };
   });
@@ -1331,7 +1379,15 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // Reconcile away holdings the snapshot no longer returns (a closed card, a
   // deleted jar), but ONLY on a complete, clean full fetch — see
   // `reconcileClosedHoldings` for the load-bearing guard.
-  await reconcileClosedHoldings(deps, accountId, accounts, jars, isFullFetch, failures.length);
+  await reconcileClosedHoldings(
+    deps,
+    accountId,
+    accounts,
+    jars,
+    isFullFetch,
+    failures.length,
+    closeMarkFromMs(lastFullSyncAt, toSeconds),
+  );
 
   // The cursor is the ceiling this run actually QUERIED, not the clock at loop
   // end. `deps.now()` here left every transaction between `toSeconds` and the
