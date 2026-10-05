@@ -225,19 +225,11 @@ jest.mock('@kiko/transactions/repo', () => ({
     loanLedgerPaymentsQuery: () => ({
       toSQL: () => ({ sql: 'loan-ledger-payments', params: [] }),
     }),
-    // Its own `sql` marker for the same reason as `listLinkedToLoanQuery`: it
-    // shares the `holdings`/`transactions` reactive keys with other reads.
-    balanceBoundaryQuery: (holdingId: string) => ({
-      toSQL: () => ({ sql: 'balance-boundary', params: [holdingId] }),
-    }),
     remove: jest.fn(),
     removePlan: jest.fn(),
   },
 }));
 
-// The rows `balanceBoundaryQuery` resolves to: at most one `{ balanceSetAt,
-// newestSyncTime }` row, as on device.
-let mockBoundaryRows: unknown[] = [];
 jest.mock('@kiko/bonds/bond-register-repo', () => ({
   bondRegisterRepo: {
     findByIsinQuery: (isin: string) => ({ toSQL: () => ({ sql: '', params: [isin] }) }),
@@ -409,10 +401,6 @@ const seed = (
 
     const sql = (query as { toSQL: () => { sql: string } }).toSQL().sql;
 
-    if (sql === 'balance-boundary') {
-      return { data: mockBoundaryRows, isLoading: false };
-    }
-
     return sql === 'linked-loan-payments' || sql === 'loan-ledger-payments'
       ? linkedLoanPaymentsResult
       : (resultByTable[keys[0]] ?? resultByTable.transactions);
@@ -431,7 +419,6 @@ const renderScreen = () =>
 describe('HoldingDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockBoundaryRows = [];
     jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: false });
   });
 
@@ -1427,30 +1414,6 @@ describe('HoldingDetailScreen', () => {
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-9');
   });
 
-  it('puts the keeps-the-balance sentence before the notice on an imported row', async () => {
-    mockBoundaryRows = [{ balanceSetAt: 5_000, newestSyncTime: null }];
-    jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: true });
-    seed(cardHolding, [
-      {
-        id: 'txn-import',
-        amountMinorUnits: -5000,
-        time: 5_000,
-        description: 'Coffee',
-        source: 'import',
-      },
-    ]);
-
-    const { getByText } = await renderScreen();
-
-    await holdCard();
-
-    expect(
-      getByText(
-        'The balance will stay as it is. Edit the holding to change it. This also deletes every other part of this split payment.',
-      ),
-    ).toBeTruthy();
-  });
-
   it('duplicates a manual transaction row to a pre-filled create form', async () => {
     seed(cardHolding, [
       { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
@@ -1498,12 +1461,10 @@ describe('HoldingDetailScreen', () => {
   });
 
   describe('an imported transaction row', () => {
-    const KEEPS_BALANCE_MESSAGE = 'The balance will stay as it is. Edit the holding to change it.';
-    const IMPORT_TIME = 5_000;
     const importedRow = {
       id: 'txn-import',
       amountMinorUnits: -5000,
-      time: IMPORT_TIME,
+      time: 5_000,
       description: 'Coffee',
       source: 'import',
     };
@@ -1529,50 +1490,6 @@ describe('HoldingDetailScreen', () => {
       await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
       expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-import');
-    });
-
-    it('says the balance stays when the row is dated at or before the holding boundary', async () => {
-      mockBoundaryRows = [{ balanceSetAt: IMPORT_TIME, newestSyncTime: null }];
-      seed(cardHolding, [importedRow]);
-
-      const { getByText } = await holdRow();
-
-      expect(getByText(KEEPS_BALANCE_MESSAGE)).toBeTruthy();
-    });
-
-    it('adds no message when the row is dated after the holding boundary', async () => {
-      mockBoundaryRows = [{ balanceSetAt: IMPORT_TIME - 1, newestSyncTime: null }];
-      seed(cardHolding, [importedRow]);
-
-      const { queryByText } = await holdRow();
-
-      expect(queryByText(KEEPS_BALANCE_MESSAGE)).toBeNull();
-    });
-
-    it('reads the boundary of the holding being shown', async () => {
-      seed(cardHolding, [importedRow]);
-
-      await renderScreen();
-
-      expect(mockUseLiveQuery).toHaveBeenCalledWith(
-        expect.objectContaining({ toSQL: expect.any(Function) }),
-        ['holdings', 'transactions'],
-        true,
-      );
-    });
-
-    it('reads no boundary while no row is imported', async () => {
-      seed(cardHolding, [
-        { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
-      ]);
-
-      await renderScreen();
-
-      expect(mockUseLiveQuery).toHaveBeenCalledWith(
-        expect.objectContaining({ toSQL: expect.any(Function) }),
-        ['holdings', 'transactions'],
-        false,
-      );
     });
   });
 

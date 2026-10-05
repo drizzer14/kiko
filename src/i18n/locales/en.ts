@@ -570,8 +570,6 @@ export const en = {
       split: 'Split',
       splitInvalidError: 'Add at least one valid return, and keep the returns below the payment.',
       syncedNotice: 'This was synced, so only the category and loan link can be changed.',
-      timeAfterBalanceSetError:
-        'This transaction was saved without a description or category, so it may be an earlier balance change. Pick a date and time no later than {{dateTime}}.',
       title: 'Transaction',
       to: 'To',
       toSheetTitle: 'To',
@@ -925,9 +923,6 @@ export const en = {
     // empty name never interpolates into a dangling "{{name}} expense".
     defaultDescriptionExpensePlain: 'Expense',
     defaultDescriptionIncomePlain: 'Income',
-    // The delete confirm's body for an imported row dated at or before the
-    // holding's balance boundary: deleting it moves no balance.
-    deleteImportedKeepsBalance: 'The balance will stay as it is. Edit the holding to change it.',
     // The delete confirm's body for a transaction that is one part of a
     // movement. No plurals: the holding names are the only variable, joined by
     // the caller (Hermes has no `Intl.ListFormat`).
@@ -946,8 +941,6 @@ export const en = {
       // A bank-owned part of the exchange: the user's other parts go, this one
       // never does.
       exchangeAlsoKept: "{{name}} stays: it is the bank's record and cannot be deleted.",
-      // The holdings whose balance a deleted imported part leaves as it is.
-      balanceStays: 'The balance of {{names}} will stay as it is.',
     },
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',

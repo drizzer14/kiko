@@ -5,14 +5,13 @@ import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { removeNotice } from '@kiko/transactions/remove-notice';
 import { resolveCategoryDisplay } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { isTimeExemptHoldingType } from '@kiko/holdings/holding-descriptor';
 import TransactionCard from '@kiko/design-system/components/transaction-card';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
-import { importDeleteKeepsBalance } from '@kiko/transactions/balance-boundary';
-import { joinNoticeSentences, removeNotice } from '@kiko/transactions/remove-notice';
 import { isDeletableTransaction, isSyncedTransaction } from '@kiko/holdings/deletable';
 
 import { styles } from './transaction-row.styles';
@@ -23,7 +22,6 @@ const TransactionRow: FC<TransactionRowProps> = ({
   categoryByKey,
   defaultCategoryKey,
   holdingNameById,
-  boundaryByHoldingId,
   categoryKeyForRow,
   onPress,
   onDuplicate,
@@ -31,19 +29,10 @@ const TransactionRow: FC<TransactionRowProps> = ({
   const { t } = useTranslation();
   const clock = useTimeClock();
   const isSynced = isSyncedTransaction(item);
-  const keepsBalanceMessage = importDeleteKeepsBalance(
-    item,
-    boundaryByHoldingId.get(item.holdingId) ?? null,
-  )
-    ? t('transactions.deleteImportedKeepsBalance')
-    : undefined;
   // Read when the delete is requested, so it names what is stored now: a row
   // that is one part of a movement takes the rest with it.
   const deleteMessage = async (): Promise<string | undefined> =>
-    joinNoticeSentences(
-      keepsBalanceMessage,
-      removeNotice(await transactionsRepo.removePlan(item.id), t),
-    );
+    removeNotice(await transactionsRepo.removePlan(item.id), t);
 
   const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);
   const description = transactionRowDescription({

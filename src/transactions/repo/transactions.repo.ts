@@ -134,11 +134,6 @@ const newestSyncTimeOfHolding = sql<number | null>`(
   SELECT max(${transactions.time}) FROM ${transactions} WHERE ${syncSourceRowsOf(holdings.id)}
 )`;
 
-const boundarySources = {
-  balanceSetAt: holdings.balanceSetAt,
-  newestSyncTime: newestSyncTimeOfHolding,
-};
-
 /**
  * A holding with THE BOUNDARY (`importRows`) — the one read the import judges
  * its rows against. Read inside the caller's transaction, never from a render
@@ -1437,9 +1432,6 @@ const contextRowsQuery = () =>
   database
     .select({
       id: transactions.id,
-      // An imported row reads its own holding's balance boundary to tell
-      // whether deleting it moves the balance (`CardContextMenu`'s confirm).
-      holdingId: transactions.holdingId,
       amountMinorUnits: transactions.amountMinorUnits,
       currency: holdings.currency,
       time: transactions.time,
@@ -1685,15 +1677,6 @@ export const transactionsRepo = {
       .where(eq(transactions.source, 'manual'))
       .orderBy(desc(transactions.time))
       .limit(1),
-  /** One holding's two sources of THE BOUNDARY (`importRows`), at most one
-   * row. A reader combines them with `balanceBoundaryOf`
-   * (`transactions/balance-boundary`), the same as every balance writer. */
-  balanceBoundaryQuery: (holdingId: string) =>
-    database.select(boundarySources).from(holdings).where(eq(holdings.id, holdingId)).limit(1),
-  /** Every holding's two sources of THE BOUNDARY, for a list that judges rows
-   * of many holdings with one read instead of one live query per row. */
-  balanceBoundariesQuery: () =>
-    database.select({ holdingId: holdings.id, ...boundarySources }).from(holdings),
   add: (input: NewTransaction) =>
     write((databaseTransaction) =>
       databaseTransaction.insert(transactions).values({ id: id(), ...input }),

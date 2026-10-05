@@ -1,8 +1,3 @@
-import type { TransactionRow } from '@kiko/db';
-import { isImportedTransaction } from '@kiko/holdings/deletable';
-
-import { isBalanceSetShapedRow } from '../balance-set-row';
-
 type BoundarySources = { balanceSetAt: number | null; newestSyncTime: number | null };
 
 /** THE BOUNDARY (`importRows`): the later of `holdings.balanceSetAt` and the
@@ -23,39 +18,10 @@ export const balanceBoundaryOf = ({
   return Math.max(balanceSetAt, newestSyncTime);
 };
 
-/** Whether a row dated `time` moves the stored balance. A row dated at or before
- * the boundary is history: the balance set at the boundary already counts it,
- * the same as `postClosingRowsWhere`'s strict `gt`. A row that set a balance
- * is judged by its stored mark instead (`editBalanceDelta`,
- * `removeBalanceDelta`), wherever its date has moved. */
+/** Whether a statement row dated `time` moves the stored balance. A row dated at
+ * or before the boundary is history: the balance set at the boundary already
+ * counts it, the same as `postClosingRowsWhere`'s strict `gt`. Only an import
+ * judges its rows this way; a manual write, edit and delete move the balance by
+ * the row's full amount whatever its date. */
 export const movesBalance = (time: number, boundary: number | null): boolean =>
   boundary === null || time > boundary;
-
-/** Whether deleting an imported row leaves the balance as it is, because the
- * row is history at or before the boundary: the confirm says so, since the
- * bank's figure then stays even when every row of the import goes. */
-export const importDeleteKeepsBalance = (
-  row: Pick<TransactionRow, 'source' | 'time'>,
-  boundary: number | null,
-): boolean => isImportedTransaction(row) && !movesBalance(row.time, boundary);
-
-type PossibleBalanceSetRow = Pick<TransactionRow, 'setsBalance'> &
-  Parameters<typeof isBalanceSetShapedRow>[0];
-
-/** Whether `row` may be a balance-set row the stored mark does not show. Before
- * migration 0047 a row carried no mark, so an older set's row that a newer set
- * superseded looks exactly like an uncategorised row an older build wrote. A
- * marked row is judged by its mark, and a row with a description or a category
- * was never a balance-set row. */
-export const isPossibleBalanceSetRow = (row: PossibleBalanceSetRow): boolean =>
-  !row.setsBalance && isBalanceSetShapedRow(row);
-
-/** Whether moving `row` to `time` takes a possible balance-set row
- * (`isPossibleBalanceSetRow`) from the history side of the boundary to after
- * it, which would add an amount the balance already holds. */
-export const redatesPossibleBalanceSetRowPastBoundary = (
-  row: Pick<TransactionRow, 'time'> & PossibleBalanceSetRow,
-  time: number,
-  boundary: number | null,
-): boolean =>
-  isPossibleBalanceSetRow(row) && !movesBalance(row.time, boundary) && movesBalance(time, boundary);

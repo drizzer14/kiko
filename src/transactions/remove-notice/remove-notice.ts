@@ -27,9 +27,6 @@ export type RemovePlan = {
   split: boolean;
   exchange?: ExchangeRemoval;
   deposit?: DepositRemoval;
-  // Holdings whose balance stays as it is although an imported part on them is
-  // deleted: that part is history at or before the holding's boundary.
-  keptBalanceNames?: string[];
 };
 
 // The names of a list, each in the language's own quotes and joined with a
@@ -92,8 +89,7 @@ type NamesKey =
   | 'holdings.deleteLinked.contributions'
   | 'holdings.deleteLinked.contributionsKept'
   | 'holdings.deleteLinked.syncedKept'
-  | 'holdings.deleteLinked.unlinked'
-  | 'transactions.deleteLinked.balanceStays';
+  | 'holdings.deleteLinked.unlinked';
 
 const namesSentence = (key: NamesKey, names: string[], t: TFunction): string | undefined =>
   names.length === 0 ? undefined : t(key, { names: listedNames(names, t) });
@@ -152,5 +148,4 @@ export const removeNotice = (plan: RemovePlan, t: TFunction): string | undefined
     foldMap(maybe(plan.exchange), (exchange) => exchangeSentence(exchange, t)),
     plan.split ? t('transactions.deleteLinked.split') : undefined,
     foldMap(maybe(plan.deposit), (deposit) => depositSentence(deposit, t)),
-    namesSentence('transactions.deleteLinked.balanceStays', plan.keptBalanceNames ?? [], t),
   );

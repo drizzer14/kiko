@@ -89,28 +89,6 @@ describe('removeNotice', () => {
     );
   });
 
-  it('says the balance of a holding stays when the imported part on it is deleted', () => {
-    expect(
-      removeNotice(
-        {
-          split: false,
-          exchange: { kind: 'deleted', names: ['Cash'] },
-          keptBalanceNames: ['Cash', 'Second card'],
-        },
-        i18n.t,
-      ),
-    ).toBe(
-      [
-        'This also deletes the other part of this exchange, in Cash.',
-        'The balance of Cash, Second card will stay as it is.',
-      ].join(' '),
-    );
-  });
-
-  it('says nothing about a balance when no imported part keeps one', () => {
-    expect(removeNotice({ split: false, keptBalanceNames: [] }, i18n.t)).toBeUndefined();
-  });
-
   it('says a matched deposit contribution is removed, and an unmatched one stays', () => {
     expect(
       removeNotice({ split: false, deposit: { name: 'Deposit', matched: true } }, i18n.t),
@@ -164,16 +142,10 @@ describe('removeNotice', () => {
         {
           split: false,
           exchange: { kind: 'deleted', names: ['Долар', 'Готівка'] },
-          keptBalanceNames: ['Готівка', 'Друга'],
         },
         i18n.t,
       ),
-    ).toBe(
-      [
-        'Також буде видалено другу частину цього обміну, у «Долар», «Готівка».',
-        'Баланс «Готівка», «Друга» не зміниться.',
-      ].join(' '),
-    );
+    ).toBe('Також буде видалено другу частину цього обміну, у «Долар», «Готівка».');
     expect(
       removeNotice(
         { split: false, exchange: { kind: 'syncedKept', names: ['Картка', 'Готівка'] } },

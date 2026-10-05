@@ -26,14 +26,12 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
-import { holdCard } from '@kiko/test-support/hold-card';
 import { metalInstrument } from '@kiko/prices/instrument';
 import { formatDate, defaultDateRange } from '@kiko/dates';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '@kiko/test-support/mock-text-tone';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
-import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 import { resolveBottomClearance } from '@kiko/design-system/components/screen';
@@ -151,8 +149,6 @@ jest.mock('@kiko/transactions/repo', () => ({
     contextSpanQuery: () => ({ kind: 'span', toSQL: () => ({ sql: '', params: [] }) }),
     contextCategoriesQuery: () => ({ kind: 'categories', toSQL: () => ({ sql: '', params: [] }) }),
     loanLedgerPaymentsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
-    // Every holding's balance boundary, read once for the imported rows' delete confirm.
-    balanceBoundariesQuery: () => ({ kind: 'boundaries', toSQL: () => ({ sql: '', params: [] }) }),
     // A row's delete confirm reads what else the delete takes.
     removePlan: async () => ({ split: false }),
   },
@@ -267,8 +263,6 @@ type LiveData = {
   categories?: Category[];
   // What the price book's `price_points` read answers.
   pricePoints?: PricePoint[];
-  // What the every-holding balance boundary read answers.
-  boundaries?: { holdingId: string; balanceSetAt: number | null; newestSyncTime: number | null }[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
   // key defaults to `false` (an already-resolved query), so every existing
   // call site above keeps behaving exactly as before.
@@ -315,16 +309,11 @@ const liveAnswersFor = (
     categories: data.categoryRows ?? categoryRows,
   };
 
-  // The boundary read shares the `holdings` key with the holdings read; unless
-  // a test anchors a holding, it answers none.
-  const answerFor = (query: { kind?: string }, tables: string[]): unknown[] | undefined =>
-    query.kind === 'boundaries' ? (data.boundaries ?? []) : byTable[tables[0]];
-
   return (query, tables) => ({
     data:
       tables[0] === 'transactions' && tables.length === 3 && query.kind !== undefined
         ? ledgerAnswers[query.kind]
-        : (answerFor(query, tables) ?? []),
+        : (byTable[tables[0]] ?? []),
     isLoading:
       query.kind === 'rows' && data.windowLoading !== undefined
         ? data.windowLoading(query.bounds ?? [])
@@ -1759,106 +1748,6 @@ describe('HomeScreen', () => {
     expect(
       mockUseLiveQuery.mock.calls.slice(6, 9).map((call) => (call[0] as { kind: string }).kind),
     ).toEqual(['rows', 'span', 'categories']);
-  });
-
-  describe('the balance boundary an imported row reads for its delete confirm', () => {
-    const importedRows = (count: number): Transaction[] =>
-      Array.from({ length: count }, (_, index) =>
-        transaction({
-          id: `imported-${index}`,
-          holdingId: `holding-${index}`,
-          source: 'import',
-          description: `Imported ${index}`,
-        }),
-      );
-
-    // A deletable row's hold gesture needs a gesture root above it.
-    const renderHomeInGestureRoot = (): ReturnType<typeof render> =>
-      render(
-        <HomeScreen
-          navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
-          route={asRouteProp<HomeProps['route']>('Home')}
-        />,
-        { wrapper: GestureRootWrapper },
-      );
-
-    const boundaryReadsFor = async (rows: Transaction[]) => {
-      mockUseLiveQuery.mockClear();
-      seed({ transactions: rows });
-      await renderHomeInGestureRoot();
-
-      return mockUseLiveQuery.mock.calls.filter((call) =>
-        ['boundary', 'boundaries'].includes((call[0] as { kind?: string }).kind ?? ''),
-      );
-    };
-
-    it('subscribes ONE read however many imported rows the list shows', async () => {
-      const forOneRow = await boundaryReadsFor(importedRows(1));
-      const forFiveRows = await boundaryReadsFor(importedRows(5));
-
-      expect(forOneRow.length).toBeGreaterThan(0);
-      expect(forFiveRows).toHaveLength(forOneRow.length);
-      expect(new Set(forFiveRows.map((call) => (call[0] as { kind: string }).kind))).toEqual(
-        new Set(['boundaries']),
-      );
-    });
-
-    it('reads nothing while no listed row is imported', async () => {
-      const reads = await boundaryReadsFor([transaction({ source: 'manual' })]);
-
-      expect(reads.length).toBeGreaterThan(0);
-      expect(reads.every((call) => call[2] === false)).toBe(true);
-    });
-
-    it('reads on the holdings and transactions tables, kept in step with the screen', async () => {
-      const reads = await boundaryReadsFor(importedRows(2));
-
-      expect(reads[0]?.[1]).toEqual(['holdings', 'transactions']);
-      expect(reads[0]?.[2]).toBe(true);
-      expect(reads[0]?.[3]).toEqual({ cached: true, paused: false });
-    });
-
-    it("tells an imported row's delete confirm the balance stays when its holding is anchored at or after the row", async () => {
-      const importedAt = Date.now() - 1_000;
-
-      seed({
-        transactions: [
-          transaction({
-            holdingId: 'h-uah',
-            source: 'import',
-            description: 'Imported',
-            time: importedAt,
-          }),
-        ],
-        boundaries: [{ holdingId: 'h-uah', balanceSetAt: importedAt, newestSyncTime: null }],
-      });
-      const { getByText } = await renderHomeInGestureRoot();
-
-      await holdCard();
-
-      expect(getByText(/The balance will stay as it is/)).toBeTruthy();
-    });
-
-    it("says nothing of the balance for a row dated after its holding's boundary", async () => {
-      const importedAt = Date.now() - 1_000;
-
-      seed({
-        transactions: [
-          transaction({
-            holdingId: 'h-uah',
-            source: 'import',
-            description: 'Imported',
-            time: importedAt,
-          }),
-        ],
-        boundaries: [{ holdingId: 'h-uah', balanceSetAt: importedAt - 1, newestSyncTime: null }],
-      });
-      const { queryByText } = await renderHomeInGestureRoot();
-
-      await holdCard();
-
-      expect(queryByText(/The balance will stay/)).toBeNull();
-    });
   });
 
   // kiko-architecture: no request or query for data the user does not have —

@@ -297,16 +297,6 @@ describe('previewing an import the import itself would refuse', () => {
   });
 });
 
-describe('the ledger rows Home lists', () => {
-  it('carry the id of the holding each belongs to', async () => {
-    insertStoredRow('listed', 'import', -1_000, CLOSING_AT);
-
-    const rows = await transactionsRepo.listWithContextBetweenQuery(undefined, undefined);
-
-    expect(rows.map((row) => row.holdingId)).toEqual(['card']);
-  });
-});
-
 describe('deleting an import row after a closing balance set the balance', () => {
   beforeEach(async () => {
     await importRows({ rows: threeRows, closingBalance: CLOSING });

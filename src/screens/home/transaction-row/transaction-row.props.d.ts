@@ -14,9 +14,6 @@ export type TransactionRowProps = {
   categoryByKey: ReadonlyMap<string, CategoryDisplay>;
   defaultCategoryKey: string;
   holdingNameById: ReadonlyMap<string, string>;
-  // Each holding's balance boundary, read once by the screen; an imported
-  // row's delete confirm judges its date against its own holding's.
-  boundaryByHoldingId: ReadonlyMap<string, number | null>;
   categoryKeyForRow: (raw: string | null) => string;
   onPress: (transactionId: string) => void;
   // Open the create form pre-filled from this row. Passed for MANUAL rows

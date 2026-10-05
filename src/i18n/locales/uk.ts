@@ -502,8 +502,6 @@ export const uk: typeof en = {
         'Додайте принаймні одне коректне повернення, і нехай сума повернень буде меншою за платіж.',
       syncedNotice:
         'Цю транзакцію синхронізовано, тому можна змінити лише категорію та зв’язок із кредитом.',
-      timeAfterBalanceSetError:
-        'Цю транзакцію збережено без опису й категорії, тож вона може бути давнішою зміною балансу. Оберіть дату й час не пізніше {{dateTime}}.',
       title: 'Транзакція',
       to: 'Куди',
       toSheetTitle: 'Куди',
@@ -777,7 +775,6 @@ export const uk: typeof en = {
     defaultDescriptionIncome: 'Надходження: {{name}}',
     defaultDescriptionExpensePlain: 'Витрата',
     defaultDescriptionIncomePlain: 'Надходження',
-    deleteImportedKeepsBalance: 'Баланс не зміниться. Щоб змінити його, відредагуйте актив.',
     deleteLinked: {
       exchange: 'Також буде видалено другу частину цього обміну, у {{name}}.',
       exchangeSyncedKept:
@@ -791,7 +788,6 @@ export const uk: typeof en = {
         'Її внесок у «{{name}}» не вдалося знайти, тож він залишиться. Щоб його прибрати, відредагуйте «{{name}}».',
       split: 'Також буде видалено всі інші частини цього розділеного платежу.',
       exchangeAlsoKept: '«{{name}}» залишиться: це запис банку, його не можна видалити.',
-      balanceStays: 'Баланс {{names}} не зміниться.',
     },
     exchangeFrom: 'Обмін з {{name}}',
     exchangeTo: 'Обмін на {{name}}',
