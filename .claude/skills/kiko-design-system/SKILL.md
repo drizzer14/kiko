@@ -788,8 +788,8 @@ new component can land between reviews of this skill:
   sheet takes the live-sample `material` variant instead — read
   `glass-surface.props.d.ts`'s `material` doc for the exact distinction
   and the constant-token doc comment on `theme.colors.scrim` in
-  `theme.ts` (lowered 0.55 -> 0.4 alongside this change, since the sheet's
-  glass now samples that same scrim). It is rendered as an
+  `theme.ts` (kept at 0.4, not heavier, because the sheet's glass samples
+  that same scrim). It is rendered as an
   absolutely-positioned first child of the sheet card
   (`bottom-sheet.styles.ts`'s `glassFill`), painted BEHIND the grabber
   and body that follow it in JSX. Since this is the ONE shared
