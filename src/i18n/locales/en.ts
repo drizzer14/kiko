@@ -753,9 +753,10 @@ export const en = {
     interest: 'Interest',
     interestAccrual: 'Interest accrual',
     interestEarned: 'Interest earned',
-    // The loan detail breakdown's rows (`loanLedgerSummary`): the interest
-    // and principal parts of the linked payments, their total, and the
-    // outstanding every other screen shows for the loan.
+    // The loan detail breakdown's rows (`loanLedgerSummary`): what the linked
+    // payments paid in total (fees included), its interest part, its principal
+    // part (fees left out), and the outstanding every other screen shows for
+    // the loan.
     interestPaid: 'Interest paid',
     // The loan detail screen's own "Linked payments" section heading: the
     // transactions the auto-link matcher (or a manual pick) linked to this

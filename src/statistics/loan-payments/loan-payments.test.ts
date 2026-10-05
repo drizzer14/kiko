@@ -1,4 +1,5 @@
 import { DAY_MS } from '@kiko/dates';
+import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 
 import {
@@ -319,6 +320,30 @@ describe('loanInterestEntries', () => {
     expect(
       loanInterestEntries({ transactions: [crossCurrency], loanHoldings: [scheduledLoan] }),
     ).toEqual([]);
+  });
+
+  // The spending window may hold only some of a loan's payments; the excess
+  // is stateless per payment, so a lone later installment still counts its own
+  // full interest and its own fee.
+  it('counts the interest and the excess of a lone later installment payment with a fee', () => {
+    const yearMeta: LoanMeta = { ...scheduledMeta, termMonths: 12 };
+    const [, , third] = loanInstallments(yearMeta);
+    const lone: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-lone',
+      time: third.dueDate,
+      amountMinorUnits: -(third.paymentMinorUnits + 300),
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [lone],
+      loanHoldings: [{ ...scheduledLoan, metadata: yearMeta }],
+    });
+
+    expect(entries.map((entry) => [entry.id, entry.amountMinorUnits])).toEqual([
+      ['loan-interest:tx-lone', -third.interestMinorUnits],
+      ['loan-excess:tx-lone', -300],
+    ]);
   });
 
   it('measures the excess of each payment of a loan against its own installment', () => {

@@ -100,7 +100,7 @@ const bondRecognitionsFor = (
  *   so the line's rightmost "now" point matches the headline / bar / pie, which
  *   use the same live (monobank BUY) rates rather than the day's NBU official one.
  *
- * Known limits, unchanged: a currency missing from history AND the live table
+ * Known limits: a currency missing from history AND the live table
  * (a failed all-or-nothing crypto fetch, or a closed crypto holding with no
  * stored rate) drops out of every bucket, today's included, so the line agrees
  * with the headline; a past bucket of a currency with no history moves when its

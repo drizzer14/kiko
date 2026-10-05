@@ -463,6 +463,23 @@ describe('a within-tolerance over-payment', () => {
     });
   });
 
+  // The last installment absorbs the rounding, so its payment differs from the
+  // regular one; the fee above it is still excess, never principal.
+  it('pays a loan off to exactly 0 when the last installment is paid with the fee', () => {
+    const last = installments[installments.length - 1];
+    const book = bookWith([
+      ...installments.slice(0, -1).map((_, index) => onSchedule(index)),
+      { time: last.dueDate, amountMinorUnits: -(last.paymentMinorUnits + FEE) },
+    ]);
+
+    expect(last.paymentMinorUnits).not.toBe(installments[0].paymentMinorUnits);
+    expect(loanLedgerOutstandingMinorAt(annuityMeta, LOAN, book, last.dueDate)).toBe(0);
+    // The outstanding clamps at 0, so the unclamped principal repaid shows the fee stayed out.
+    expect(loanLedgerSummary(annuityMeta, LOAN, book, last.dueDate).principalRepaidMinorUnits).toBe(
+      annuityMeta.principalMinorUnits,
+    );
+  });
+
   it('ignores a within-tolerance payment in another currency', () => {
     const book = bookWith([{ ...withFee(0), currency: 'USD' }]);
 

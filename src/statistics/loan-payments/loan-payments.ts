@@ -89,6 +89,8 @@ export const loanPaymentExcludedTransactionIds = (
  * under the payment row's OWN category, so spending adds up to the card's debit
  * less the principal, to the minor unit.
  *
+ * This paragraph describes the INTEREST entry; the excess entry above uses the
+ * id `loan-excess:<txId>` and the payment row's own category instead.
  * Shaped as `TrendTransaction` (a superset of `BreakdownTransaction`) so the
  * SAME entries feed both `buildCategoryBreakdown` and the category trend
  * (statistics.screen.tsx): the id is `loan-interest:<txId>` (never collides
@@ -139,7 +141,7 @@ const NO_SPLIT: LoanPaymentSplit = { interestMinorUnits: 0, excessMinorUnits: 0 
 
 const syntheticEntry = (
   transaction: LoanPaymentTransaction,
-  idPrefix: string,
+  idPrefix: 'loan-interest' | 'loan-excess',
   category: LoanPaymentTransaction['category'],
   expenseMinorUnits: number,
 ): TrendTransaction => ({

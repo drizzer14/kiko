@@ -241,10 +241,10 @@ const sharedPropertyBreakdownRows = (
 };
 
 // A loan's breakdown: its principal and what its linked payments paid, split
-// into interest and principal (`loanLedgerSummary`), ending on the SAME
-// outstanding the Value header shows. Every amount is a positive magnitude,
-// so no row carries a tone. Unparsable metadata shows no rows, the same way
-// the descriptor values such a loan at 0.
+// into interest and principal (`loanLedgerSummary`; a within-tolerance fee is
+// in neither), ending on the SAME outstanding the Value header shows. Every
+// amount is a positive magnitude, so no row carries a tone. Unparsable
+// metadata shows no rows, the same way the descriptor values such a loan at 0.
 const loanBreakdownRows = (
   holding: HoldingRow,
   book: PriceBook,
