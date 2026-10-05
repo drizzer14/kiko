@@ -124,6 +124,38 @@ describe('scripts/checks/lint.sh', () => {
     expect(result.stderr).toContain('noExplicitAny');
   });
 
+  // A printf piped into grep -q under pipefail reads a match as no match once the output is
+  // larger than a pipe buffer and the match sits on an early line. The stub Biome stands in
+  // for a run whose output is that large.
+  it('still reads an out-of-scope target as out of scope when the Biome output is far larger than a pipe buffer', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'kiko-lint-large-output-')));
+    mkdirSync(join(root, 'scripts/checks'), { recursive: true });
+    mkdirSync(join(root, 'node_modules/.bin'), { recursive: true });
+    mkdirSync(join(root, 'rules/fixtures'), { recursive: true });
+    copyFileSync(SCRIPT, join(root, 'scripts/checks/lint.sh'));
+    copyFileSync(
+      join(REPOSITORY_ROOT, 'scripts/checks/_lib.sh'),
+      join(root, 'scripts/checks/_lib.sh'),
+    );
+    writeFileSync(
+      join(root, 'node_modules/.bin/biome'),
+      [
+        '#!/usr/bin/env bash',
+        'echo "No files were processed in the specified paths."',
+        'for line in $(seq 1 2000); do',
+        '  printf "%s\\n" "padding line .................................................... $line"',
+        'done',
+        'exit 1',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    writeFileSync(join(root, 'rules/fixtures/kiko-probe.bad.ts'), UNFORMATTED);
+
+    const result = runLint(join(root, 'rules/fixtures/kiko-probe.bad.ts'), root);
+
+    expect([result.status, result.stderr]).toEqual([0, '']);
+  });
+
   // biome.json sets vcs.useIgnoreFile: true, so Biome itself reports "No
   // files were processed…" for ANY real file .gitignore covers — not only
   // the biome.json files.includes exclusions above. lint.sh's hand-copied

@@ -141,6 +141,31 @@ describe('scripts/checks/mutation.sh change-set gate', () => {
     expect(result.stdout).not.toContain('CHANGE SET TOTAL');
   });
 
+  it('still exits 2 on the unresolved-glob warning when the log is far larger than a pipe buffer', () => {
+    const { temporaryDirectory } = freshProject();
+    const bin = writeStrykerStub(
+      temporaryDirectory,
+      [
+        '#!/usr/bin/env bash',
+        'echo \'WARN ProjectReader Glob pattern "src/changed.ts" did not result in any files.\'',
+        // 2000 lines of 79 bytes is about 158 KB, well past the 64 KB pipe buffer, with the
+        // warning on the first line: a match on an early line of a large log must still be found.
+        'for line in $(seq 1 2000); do',
+        '  printf "%s\\n" "INFO Instrumenter padding line ................................................ $line"',
+        'done',
+        'mkdir -p reports/mutation',
+        `printf '%s' '${reportOf(['Killed', 'Killed', 'Killed', 'Killed'])}' > ${REPORT_PATH}`,
+        'exit 0',
+      ].join('\n'),
+    );
+
+    const result = runWithStub(bin, temporaryDirectory, join(temporaryDirectory, 'calls'));
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('Stryker could not resolve a changed file');
+    expect(result.stdout).not.toContain('CHANGE SET TOTAL');
+  });
+
   it('never reads a stale report left by an earlier run', () => {
     const { temporaryDirectory, root } = freshProject();
     writeFile(root, REPORT_PATH, reportOf(['Killed', 'Killed', 'Killed', 'Killed']));

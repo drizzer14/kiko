@@ -238,10 +238,14 @@ function findFileViolations(root, file, holders, working, addedFiles) {
 
   const workingBuffer = fs.readFileSync(path.join(root, file));
 
+  const reported = new Set();
+
+  // Two deciding bases both hold what an earlier base held, so they report the
+  // same change twice; the first base's line carries the hint.
   return decisive.flatMap((base) =>
-    compareContent(file, base.buffer, workingBuffer).map((change) =>
-      formatViolation(file, base.sha, change),
-    ),
+    compareContent(file, base.buffer, workingBuffer)
+      .filter(({ change }) => !reported.has(change) && reported.add(change))
+      .map((change) => formatViolation(file, base.sha, change)),
   );
 }
 

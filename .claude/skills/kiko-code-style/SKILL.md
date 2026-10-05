@@ -105,6 +105,47 @@ literal with many interpolations; it reads better than a long run of
 `${...}${...}${...}${...}`. A simple one- or two-part interpolation
 with separators (`` `${base}:${quote}` ``) stays a template literal.
 
+### Wrap comments at 100 columns
+
+Biome cannot wrap a comment, so a long one stays long until its author
+wraps it. The pre-write guard (`kiko-comment-line-width`) denies a new
+physical line over 100 columns that holds comment text: a `//` comment,
+any line of a `/* */` or `/** */` block, a JSX `{/* */}` comment, or a
+trailing comment after code. Break the comment at a space and continue on
+the next line at the same indentation, or move a trailing comment above
+its code. A long code line with no comment is Biome's, not this rule's.
+
+- Columns are Unicode code points of the line without its trailing
+  whitespace, so a Cyrillic letter is one column, as Biome counts it.
+  Biome counts a wide East Asian character or an emoji as two; the check
+  counts one.
+- Only a real comment counts. A string, template, or regex literal that
+  holds `//` or `/*` is not a comment.
+- Exempt only a comment that cannot be wrapped. Take it alone on its own
+  line (a trailing comment moved to its line, at the line's indentation).
+  Drop its opener (`//`, `/*`, `/**`, a leading `*`) and a closing `*/`;
+  what remains are its words, split on whitespace. A wrap point exists
+  when there are at least two words and the first word ends at column 100
+  or earlier. The line is exempt when the comment alone is over 100
+  columns and has no wrap point: one long URL after the opener.
+  `// see https://...` still fails, because the words before the URL wrap;
+  after the wrap, `// https://...` is exempt. A JSX `{/* */}` comment is
+  measured with its braces, both for the 100 columns and for the exemption.
+- A short trailing comment on a long code line that Biome has not yet
+  formatted is denied: the guard measures the line as written, before
+  Biome wraps the code. Run the formatter first, or move the comment
+  above its code.
+- A tool directive (`// biome-ignore`, `// nosemgrep`, `// kiko-override`)
+  must stay on the line directly above its code, so it cannot continue on
+  a second line (Biome reports a suppression followed by another comment
+  line as unused). Put the prose in a plain comment above the directive and
+  keep the directive's own justification short enough to fit in 100
+  columns.
+- There is no inline override: the guard ignores a `nosemgrep` or
+  `kiko-override` comment that names `kiko-comment-line-width`, and the
+  finding still denies. `scripts/checks/comment-line-width.js` holds the
+  exact test.
+
 ## Linting rules that shape how you write code
 
 From `biome.json`'s `linter.rules`:

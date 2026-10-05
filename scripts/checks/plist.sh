@@ -59,7 +59,7 @@ while IFS= read -r file; do
   fi
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    raw_value="$(grep -E "^${name}=" "$ROOT/.env" | head -1 | cut -d= -f2-)"
+    raw_value="$(grep -E "^${name}=" "$ROOT/.env" | sed -n '1p' | cut -d= -f2-)"
     # Strip surrounding whitespace and quotes before the scheme test: `.env`
     # accepts `NAME="https://host"` and a trailing space, and either would make
     # the test below skip a real credential-bearing endpoint.
@@ -67,7 +67,7 @@ while IFS= read -r file; do
       -e 's/^"(.*)"$/\1/' -e "s/^'(.*)'\$/\1/")"
     case "$value" in http://*|https://*) ;; *) continue ;; esac
     host="$(printf '%s' "$value" | sed -E 's#^[a-z]+://##; s#[/?].*$##')"
-    if ! printf '%s\n' "$pinned" | grep -Fxq "$host"; then
+    if ! grep -Fxq "$host" <<<"$pinned"; then
       add_problem "$host (from $name, used by ${file#"$ROOT"/}) sends a credential (header or 'api_token' query parameter) but is not under NSPinnedDomains in ios/Kiko/Info.plist"
     fi
   done <<EOF
@@ -168,7 +168,7 @@ done
 # The PBXBuildFile line also reads "InfoPlist.strings in Resources", so only an
 # entry inside the Resources build phase section proves the build copies it.
 resources_phase="$(awk '/Begin PBXResourcesBuildPhase section/,/End PBXResourcesBuildPhase section/' "$project_file" 2>/dev/null)"
-if ! printf '%s\n' "$resources_phase" | grep -qF '/* InfoPlist.strings in Resources */'; then
+if ! grep -qF '/* InfoPlist.strings in Resources */' <<<"$resources_phase"; then
   add_problem "InfoPlist.strings is not in the Kiko target's Resources build phase in ios/Kiko.xcodeproj/project.pbxproj"
 fi
 

@@ -241,6 +241,20 @@ describe('scripts/checks/plist.sh credential detection', () => {
     expect(result.stderr).toBe('');
   });
 
+  it('finds a pinned host that sorts first in a pinned-domain list far larger than a pipe buffer', () => {
+    // 4000 hosts of about 21 bytes each is past the 64 KB pipe buffer; the fillers start with
+    // "z" so the real host is listed before them and grep -x stops reading early.
+    const fillers = Object.fromEntries(
+      Array.from({ length: 4000 }, (_, index) => [`zz-${index}.example.com`, TWO_PINS]),
+    );
+    const result = runPlistCheck(
+      buildRoot({ [QUOTES_HOST]: TWO_PINS, ...fillers }, QUERY_TOKEN_CLIENT),
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+  });
+
   it('fails (exit 2) when the formatter unquoted the api_token object key', () => {
     const result = runPlistCheck(buildRoot({}, UNQUOTED_KEY_TOKEN_CLIENT));
 
@@ -326,6 +340,18 @@ describe('scripts/checks/plist.sh localized home-screen name', () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('en.lproj/InfoPlist.strings');
+  });
+
+  it('passes when the Resources build phase is far larger than a pipe buffer and lists the table first', () => {
+    const padding = Array.from({ length: 3000 }, (_, index) => `Padding-${index}.png`);
+    const result = runPlistCheck(
+      buildRoot({}, NO_CREDENTIAL_CLIENT, {
+        [PROJECT_PATH]: projectFile(['en', 'uk'], ['InfoPlist.strings', ...padding]),
+      }),
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
   });
 
   it('fails (exit 2) when the tables are a build file but not in the Resources build phase', () => {

@@ -380,3 +380,21 @@ rules:
         - "*.test.tsx"
     patterns:
       - pattern: $X.balanceMinorUnits
+  # Scans .sh, which the pre-write guard never reads. Why `generic`, the pipefail scope, and the
+  # limits: kiko-linter > Never pipe into grep -q or head under pipefail.
+  - id: kiko-no-early-exit-pipe-consumer
+    languages: [generic]
+    paths:
+      include:
+        - "*.sh"
+    severity: ERROR
+    message: >
+      A pipeline ends in `grep -q`, `grep -m N`, or `head`, which exit at the first match. Under
+      `set -o pipefail` the producer then dies of SIGPIPE (141) and the whole pipeline reads as
+      failed, so a MATCH reads as no match, and always so when the producer's output is larger
+      than the 64 KB pipe buffer. Read the match from a here-string (`grep -q 'x' <<<"$value"`),
+      a `case "$value" in *x*)`, or a file argument, and take a first line with `sed -n '1p'`.
+    metadata:
+      fix: "grep -q 'x' <<<\"$value\"  (or case \"$value\" in *x*) ...)"
+      skill: "kiko-linter › Never pipe into grep -q or head under pipefail"
+    pattern-regex: '(?<!\|)\|(?!\|)[ \t]*(?:\\?\n[ \t]*)?(?:(?:e|f)?grep(?:(?:[ \t]+(?:''[^'']*''|"[^"]*"|[^\s|;&)<>''"]+))*?[ \t]+(?:-[a-zA-Z]*[qm][a-zA-Z0-9]*|--quiet|--silent|--max-count)(?=[\s=;&|)<>]|$))|head\b)'

@@ -46,7 +46,7 @@ if [ "$code" -ne 0 ]; then
   # "out of scope" when the target is a real file under one of biome.json's
   # excluded roots; anything else (a typo'd or missing path) is a genuine
   # failure, same as security.sh's own excluded-root check.
-  if printf '%s' "$out" | grep -q 'No files were processed in the specified paths\.'; then
+  if grep -q 'No files were processed in the specified paths\.' <<<"$out"; then
     if [ -f "$TARGET" ]; then
       case "$TARGET" in
         "$ROOT/ios/"* | ios/* | "$ROOT/vendor/"* | vendor/* | "$ROOT/coverage/"* | coverage/* \

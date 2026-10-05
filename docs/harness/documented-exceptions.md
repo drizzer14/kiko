@@ -269,12 +269,29 @@ verified usage, not dead weight:
   it as unused. Exercised by `__tests__/shipped-migrations.test.ts`, which
   runs a copy of the wrapper and the checker as subprocesses in a throwaway
   git repository, not an import.
+- **`knip.json` `ignore`**: `scripts/checks/comment-line-width.js` — the
+  same shape as `blank-line-separation.js` above.
+  `scripts/checks/comment-line-width.sh` reaches it only via a `node`
+  invocation (its project-wide mode, `npm run check:comment-line-width`;
+  it has no per-file mode), and `scripts/checks/pre-write-guard.js`
+  reaches it only via `runSpawnedNodeChecker`'s own `spawnSync` (the
+  `kiko-comment-line-width` `NODE_RULES` row) — never a static
+  `import`/`require`. The project-wide mode is not in `check:all` yet: the
+  tree still holds comment lines over 100 columns and the sweep needs the
+  user's approval. The checker has no allowlist and no inline override (its
+  `NODE_RULES` row sets `overridable: false`, so the guard ignores an
+  override comment for it); its only exemption is structural (a comment with no wrap point, one long
+  URL), defined in its header and in kiko-code-style's "Wrap comments at 100
+  columns". Exercised by `__tests__/comment-line-width.test.ts`, which
+  spawns the checker and the wrapper as subprocesses, and by
+  `__tests__/pre-write-guard.test.ts`'s `comment-line-width` case.
 - **`knip.json` `ignore`**: `scripts/checks/specifier-scanner.js` — the
-  shared specifier scanner. Its only importers are `feature-imports.js`
-  and `screen-imports.js` (a static `require`), and both are themselves
+  shared specifier scanner. Its only importers are the checkers
+  `feature-imports.js`, `screen-imports.js`, `plural-count.js`, and
+  `comment-line-width.js` (a static `require`), and all four are themselves
   in `ignore` above, so Knip never walks into it and reports it as an
-  unused file. It is reached exactly as far as those two checkers are,
-  and exercised through their tests.
+  unused file. It is reached exactly as far as those checkers are, and
+  exercised through their tests.
 - **`knip.json` `ignore`**: `scripts/checks/deps-ranges.js` — the same
   shape as `guard-replay.js`/`import-order.js` above.
   `scripts/checks/deps.sh` (part of `check:deps`) reaches it only via a

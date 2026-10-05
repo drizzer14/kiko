@@ -1392,11 +1392,19 @@ for the current set.
   `check:overrides` fails any `biome-ignore`, `nosemgrep`,
   `kiko-override:`, or `Stryker disable` comment without `OVERRIDE(`.
 - The pre-write guard accepts either spelling for any rule id (its
-  `OVERRIDE_COMMENT_PATTERN` in `pre-write-guard.js`).
+  `OVERRIDE_COMMENT_PATTERN` in `pre-write-guard.js`), except a rule
+  whose `NODE_RULES` row sets `overridable: false`. Such a rule has no
+  override at all: the guard never reads an override comment for it, the
+  finding still denies, and its deny text does not mention an override.
+  `kiko-comment-line-width` is the one such row today; guard-replay runs
+  the unchanged guard, so it inherits the same refusal.
 - `check:security` honors only Semgrep's own `nosemgrep`.
-- The project-wide Node checkers (`check:import-order`,
+- `check:comment-line-width` and its guard rule have no override of any
+  kind (see the `overridable: false` bullet above).
+- The other project-wide Node checkers (`check:import-order`,
   `check:full-word-identifiers`, `check:screen-imports`,
-  `check:feature-imports`, `check:blank-line-separation`) have NO inline override. A
+  `check:feature-imports`, `check:blank-line-separation`) have NO inline
+  override either. A
   `kiko-override:` gets a write past the guard, and `check:all` still
   fails on that line. A Node-rule exception needs a checker-level
   exemption (like `EXEMPTIONS` in `full-word-identifiers.js`), which is
@@ -1440,7 +1448,26 @@ a pre-existing finding points at. A Semgrep deny names
   (`CONTAINERS`, `TEST_ONLY`, `AMBIENT_LOOSE`, …) lives in the checker;
   read it there. No `--write`.
 - `specifier-scanner.js` is the shared import-specifier scanner. A new
-  checker that reads import specifiers reuses it.
+  checker that reads import specifiers reuses it. Its `commentSpans`
+  returns the real comment spans (offsets) that `blankNoise` passes over,
+  so a checker that reads comments needs no scanner of its own.
+- `comment-line-width.js` (`kiko-comment-line-width`) enforces
+  kiko-code-style's "Wrap comments at 100 columns": a physical line over
+  100 columns that holds real comment text fails, unless the comment
+  cannot be wrapped (one long URL). The checker header and the skill
+  section define the exemption exactly. `matchedText` is the trimmed
+  comment text of the line (the comments only, joined with a space when a
+  line holds two, never the code between them), so a moved long comment
+  or a renamed identifier beside it is not new and a reworded comment is.
+  The row sets `overridable: false`: no override comment passes it.
+  `comment-line-width.sh` is project-wide only
+  (`npm run check:comment-line-width`) over the `.ts`/`.tsx` roots of
+  `full-word-identifiers.sh` except `rules/fixtures/`. The project-wide
+  gate is not in `check:all` yet, because the tree still holds long
+  comments and the sweep needs the user's approval; the guard row blocks
+  only new ones. Retire this sentence when `package.json`'s `check:all`
+  names `check:comment-line-width`. No `--write`. Tests:
+  `__tests__/comment-line-width.test.ts`.
 - `plural-count.js` (`kiko-plural-key-needs-count`) enforces kiko-translator's
   "A plural key is always called with `count`". It has no `.sh` wrapper
   and no `check:*` gate: its project-wide check is the Jest invariant
@@ -1835,6 +1862,58 @@ session that edits only that file never triggers the new check on
 adding a new triggering path; extend it, don't bypass the early-exit
 guard itself (a session that changed nothing must stay silent).
 
+## Never pipe into grep -q or head under pipefail
+
+Every script under `scripts/` and `harness/` runs with `set -o pipefail` (or is sourced by one
+that does), except `scripts/checks/kill-guard.sh`, which sets neither. Under it, `printf '%s\n' "$out" | grep -q PATTERN` is a race: `grep -q` exits at the
+first match, `printf` then dies of SIGPIPE (exit 141), and pipefail makes the whole pipeline
+non-zero, so a MATCH reads as "no match". It is deterministic, not just flaky, when `$out` is
+larger than the 64 KB pipe buffer and the match is on an early line: the pipeline failed 300 of
+300 runs. The same holds for `grep -m N` / `--max-count` and for `| head` (any consumer that stops
+reading before its producer finishes), and for a non-`printf` producer (`git diff | grep -q`).
+It fails open when the match is the failure signal (`mutation.sh`'s "did not result in any files"
+was skipped on a large Stryker log) and fails closed on a correct input when it is the success
+signal (`plist.sh`'s Resources-phase check, `deploy-device.sh`'s `BUILD SUCCEEDED`).
+
+Use a form with no producer to kill. All of these work under macOS `/bin/bash` 3.2:
+
+- A here-string: `grep -qF 'literal' <<<"$value"` (keep `-F`/`-x`/regex exactly as before).
+- A `case "$value" in *'literal'*) ... ;; esac`.
+- A file argument (`grep -q 'x' "$file"`), or capture a command's output into a variable first
+  (`changed="$(git diff --name-only HEAD)"`), then match it with a here-string.
+- A first line: `sed -n '1p'` (it reads to the end of its input), never `head -1`.
+
+A pipe into a `grep` that reads to the end of its input (`| grep -E x`, `| grep -c x`,
+`| grep -v x`) is not a race.
+
+The guard is the Semgrep rule `kiko-no-early-exit-pipe-consumer` in `rules/semgrep-mobile.yml`
+(fixture pair `rules/fixtures/kiko-no-early-exit-pipe-consumer.{bad,good}.sh`). It runs at
+`check:security` and `check:rules`, NOT at write time: the pre-write guard reads only `.ts`/`.tsx`,
+and the fast tier runs on `.ts`/`.tsx`/`.js`, so a violation in a `.sh` file surfaces only when
+`check:security` runs over the tree (`check:all`, or `bash scripts/checks/security.sh "$PWD/scripts"`). The Stop
+tier's `check:rules` proves the rule against its fixtures, not the scripts. It is a regex in `languages: [generic]`, not a bash
+AST pattern, because the bash parser cannot read a one-line `case ... in a|b) ;; esac` (`plist.sh`
+has one) and then skips the whole file silently. A comment that spells out such a pipe is flagged
+too, and so is `head` inside a string (for example `print_block` text), so reword it. A consumer
+that stops early in another way (`sed -n '1{p;q}'`, an `awk` `exit`, a `read`) is not covered;
+avoid those too.
+
+Known limits (the regex does not see these, so avoid them by hand): a `grep` reached through a
+path or a prefix (`| /usr/bin/grep -q`, `| LC_ALL=C grep -q`, `| command grep -q`); a `-q` flag
+on a continuation line after `grep \`; `| grep -l` (it also stops at the first match); a blank
+line or a comment between the `|` and `grep`; and `rg -q`. The `||` operator is not a pipe and is
+not flagged.
+
+A here-string is not free of risk everywhere: bash 3.2 writes it to a temp file, and when `/tmp`
+cannot be written `grep` never runs, so its `if` reads false. That fails open for a check whose
+match is the failure signal, so `mutation.sh` uses a `case "$out" in *'...'*)` match for the
+"did not result in any files" check (no temp file, no pipe). The other here-string sites fail
+closed (a lost match aborts the script) or run only in a deploy.
+
+Prove a fix with a test that feeds the script a value over 64 KB with the match on the FIRST line:
+`__tests__/mutation-gate.test.ts`, `__tests__/plist-credential-detect.test.ts`,
+`__tests__/lint-fixtures-scope.test.ts`, and `__tests__/deploy-device.test.ts` each carry one.
+
 ## Shipped migrations are never edited — check:shipped-migrations
 
 User rule: a migration that already shipped is never edited, not even a
@@ -1845,8 +1924,13 @@ stays allowed.
 
 `scripts/checks/shipped-migrations.sh` (+ `shipped-migrations.js`,
 dependency-free like every checker; knip-ignored) is
-`npm run check:shipped-migrations`, in `check:all` right after
-`check:guard-replay`. It has no override and no exemption list.
+`npm run check:shipped-migrations`, in `check:all` right BEFORE
+`check:guard-replay`, the same order as `medium.sh`. It has no override and
+no exemption list. A standalone `npm run check:guard-replay` also moves the
+mark ref to HEAD, and a clean tree at the mark makes the next Stop exit
+early, so after one a committed migration edit shows again only at
+`check:all` / `make verify` (the order above keeps it first there), not at
+a later Stop.
 
 - **Baseline ("shipped").** For each LOCAL branch of main and next that
   resolves, the base is `git merge-base HEAD <branch>`. The protected set
@@ -1911,7 +1995,13 @@ dependency-free like every checker; knip-ignored) is
   inserted `migrations.js` line can still change what a shipped entry
   means: a duplicate key such as `m0036: m0052,`, or a block comment
   wrapped around shipped lines. The check proves only that no base line
-  was removed or changed. (3) The check reads local branches only. Tests
+  was removed or changed. (3) The check reads local branches only. (4)
+  When next does not extend main for `meta/_journal.json` or
+  `migrations.js` (next changed an entry or line main shipped), main alone
+  decides, so the entries and lines next appended stay unprotected until
+  next is fixed; the Stop tier on next catches the main-entry change
+  itself. When two bases both decide a file and report the same change,
+  the line is printed once, with the first base's hint. Tests
   live in `__tests__/shipped-migrations.test.ts` (a throwaway git repo
   with a copy of the wrapper; the other medium wrappers are stubs that
   exit 2 with a marker, and `guard-replay.sh` is a stub that records the

@@ -130,17 +130,21 @@ const followsString = (resultSoFar, stringEnd) => {
   return end === stringEnd;
 };
 
-const consumeNoiseSpan = (source, cursor, resultSoFar, stringEnd) => {
+const consumeNoiseSpan = (source, cursor, resultSoFar, stringEnd, onComment) => {
   const two = source.slice(cursor, cursor + 2);
 
   if (two === '//') {
     const stop = lineCommentEnd(source, cursor);
+
+    onComment?.(cursor, stop);
 
     return { kind: 'comment', text: blankSpan(source, cursor, stop), end: stop };
   }
 
   if (two === '/*') {
     const stop = blockCommentEnd(source, cursor);
+
+    onComment?.(cursor, stop);
 
     return { kind: 'comment', text: blankSpan(source, cursor, stop), end: stop };
   }
@@ -156,7 +160,7 @@ const consumeNoiseSpan = (source, cursor, resultSoFar, stringEnd) => {
   }
 
   if (character === '`') {
-    const template = templateLiteralSpan(source, cursor);
+    const template = templateLiteralSpan(source, cursor, onComment);
 
     return { kind: 'string', text: template.text, end: template.end };
   }
@@ -174,14 +178,14 @@ const consumeNoiseSpan = (source, cursor, resultSoFar, stringEnd) => {
   return null;
 };
 
-const substitutionSpan = (source, at) => {
+const substitutionSpan = (source, at, onComment) => {
   let result = '';
   let cursor = at;
   let depth = 0;
   let stringEnd = null;
 
   while (cursor < source.length) {
-    const span = consumeNoiseSpan(source, cursor, result, stringEnd);
+    const span = consumeNoiseSpan(source, cursor, result, stringEnd, onComment);
 
     if (span) {
       result += span.text;
@@ -208,7 +212,7 @@ const substitutionSpan = (source, at) => {
   return { text: result, end: source.length };
 };
 
-const templateLiteralSpan = (source, at) => {
+const templateLiteralSpan = (source, at, onComment) => {
   let result = '`';
   let cursor = at + 1;
 
@@ -226,7 +230,7 @@ const templateLiteralSpan = (source, at) => {
     }
 
     if (character === '$' && source[cursor + 1] === '{') {
-      const substitution = substitutionSpan(source, cursor + 2);
+      const substitution = substitutionSpan(source, cursor + 2, onComment);
       result += `\${${substitution.text}`;
       cursor = substitution.end;
       continue;
@@ -239,13 +243,17 @@ const templateLiteralSpan = (source, at) => {
   return { text: result, end: source.length };
 };
 
-const blankNoise = (source) => {
+// `onComment(start, end)`, when given, is called with the offsets of every real
+// comment the blanking passes over, including one inside a template-literal
+// substitution; a string, template or regex literal that only holds comment-looking
+// text never reaches it.
+const blankNoise = (source, onComment) => {
   let result = '';
   let cursor = 0;
   let stringEnd = null;
 
   while (cursor < source.length) {
-    const span = consumeNoiseSpan(source, cursor, result, stringEnd);
+    const span = consumeNoiseSpan(source, cursor, result, stringEnd, onComment);
 
     if (span) {
       result += span.text;
@@ -343,4 +351,13 @@ function findSpecifiers(source, patterns = DEFAULT_PATTERNS) {
     }));
 }
 
-module.exports = { DEFAULT_PATTERNS, blankNoise, findSpecifiers, lineNumberAt };
+// Every real comment in the source as { start, end } offsets, in file order.
+function commentSpans(source) {
+  const spans = [];
+
+  blankNoise(source, (start, end) => spans.push({ start, end }));
+
+  return spans;
+}
+
+module.exports = { DEFAULT_PATTERNS, blankNoise, commentSpans, findSpecifiers, lineNumberAt };

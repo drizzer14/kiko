@@ -524,6 +524,26 @@ describe('the earliest base that has a file decides', () => {
   });
 });
 
+describe('a change both bases decide', () => {
+  it('is reported once, with the first base hint, while a next-only change keeps the next base', () => {
+    freshRepository('newer');
+    const mainSha = git(root, 'rev-parse', 'main').trim().slice(0, 12);
+    const nextSha = git(root, 'rev-parse', 'next').trim().slice(0, 12);
+    writeFile(
+      root,
+      JOURNAL,
+      journalOf([{ ...FIRST_ENTRY, when: 7 }, SECOND_ENTRY, { ...THIRD_ENTRY, when: 8 }]),
+    );
+
+    const run = check();
+
+    expectFailureNaming(run, 'journal entry 0 changed', 'journal entry 2 changed');
+    expect(run.stderr.split('journal entry 0 changed').length - 1).toBe(1);
+    expect(run.stderr).toMatch(new RegExp(`journal entry 0 changed[^\\n]*base ${mainSha}`));
+    expect(run.stderr).toMatch(new RegExp(`journal entry 2 changed[^\\n]*base ${nextSha}`));
+  });
+});
+
 describe('the failure hint for the journal and the runner map', () => {
   it('keeps the appended entries: it names the entry to restore, not the whole file', () => {
     freshRepository();

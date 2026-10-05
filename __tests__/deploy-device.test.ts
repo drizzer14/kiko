@@ -128,6 +128,26 @@ describe('scripts/deploy-device.sh launch', () => {
   });
 });
 
+describe('scripts/deploy-device.sh build output', () => {
+  it('reads BUILD SUCCEEDED on an early line of a build log far larger than a pipe buffer', () => {
+    // The success marker sits on the first line of a log over the pipe buffer: a consumer that
+    // stops reading at the first match must not turn that match into a failure.
+    const largeLog = [
+      '#!/bin/bash',
+      'echo "** BUILD SUCCEEDED **"',
+      'for line in $(seq 1 2000); do',
+      '  printf "%s\\n" "CompileC padding line ........................................... $line"',
+      'done',
+    ].join('\n');
+    writeFileSync(join(root, 'stub-bin', 'xcodebuild'), `${largeLog}\n`, { mode: 0o755 });
+
+    const result = deploy('ok');
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('Build did not report success');
+  });
+});
+
 describe('scripts/deploy-device.sh bundle check', () => {
   it('skips the check when EXPECT_BUNDLE_STRING is unset', () => {
     const result = deploy('ok');
