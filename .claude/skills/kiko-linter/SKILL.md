@@ -1392,12 +1392,19 @@ for the current set.
   `check:overrides` fails any `biome-ignore`, `nosemgrep`,
   `kiko-override:`, or `Stryker disable` comment without `OVERRIDE(`.
 - The pre-write guard accepts either spelling for any rule id (its
-  `OVERRIDE_COMMENT_PATTERN` in `pre-write-guard.js`).
+  `OVERRIDE_COMMENT_PATTERN` in `pre-write-guard.js`), except a rule
+  whose `NODE_RULES` row sets `overridable: false`. Such a rule has no
+  override at all: the guard never reads an override comment for it, the
+  finding still denies, and its deny text does not mention an override.
+  `kiko-comment-line-width` is the one such row today; guard-replay runs
+  the unchanged guard, so it inherits the same refusal.
 - `check:security` honors only Semgrep's own `nosemgrep`.
-- The project-wide Node checkers (`check:import-order`,
+- `check:comment-line-width` and its guard rule have no override of any
+  kind (see the `overridable: false` bullet above).
+- The other project-wide Node checkers (`check:import-order`,
   `check:full-word-identifiers`, `check:screen-imports`,
-  `check:feature-imports`, `check:blank-line-separation`,
-  `check:comment-line-width`) have NO inline override. A
+  `check:feature-imports`, `check:blank-line-separation`) have NO inline
+  override either. A
   `kiko-override:` gets a write past the guard, and `check:all` still
   fails on that line. A Node-rule exception needs a checker-level
   exemption (like `EXEMPTIONS` in `full-word-identifiers.js`), which is
@@ -1449,8 +1456,11 @@ a pre-existing finding points at. A Semgrep deny names
   100 columns that holds real comment text fails, unless the comment
   cannot be wrapped (one long URL). The checker header and the skill
   section define the exemption exactly. `matchedText` is the trimmed
-  comment text, so a moved long comment is not new and a reworded one is.
-  `comment-line-width.sh` has a per-file mode and a project-wide mode
+  comment text of the line (the comments only, joined with a space when a
+  line holds two, never the code between them), so a moved long comment
+  or a renamed identifier beside it is not new and a reworded comment is.
+  The row sets `overridable: false`: no override comment passes it.
+  `comment-line-width.sh` is project-wide only
   (`npm run check:comment-line-width`) over the `.ts`/`.tsx` roots of
   `full-word-identifiers.sh` except `rules/fixtures/`. The project-wide
   gate is not in `check:all` yet, because the tree still holds long

@@ -25,11 +25,15 @@
 // first word ends at column 100 or earlier: a break after it keeps the line within 100. The line
 // is exempt only when the comment alone is over 100 columns AND it has no wrap point, as one long
 // URL does. `// see https://...` still fails, since the words before the URL can wrap; after the
-// wrap, `// https://...` is exempt. There is no inline override and no allowlist.
+// wrap, `// https://...` is exempt. A JSX `{/* */}` comment is measured with its braces in both
+// the overflow and the standalone measure, since the braces cannot be moved off it. There is no
+// inline override and no allowlist.
 //
-// Output: one `<path>:<line>: <columns> columns: <comment text>` line per finding, the comment
-// text trimmed and without any line number so the pre-write guard can tell a moved line from a
-// new one. Exit 0: clean. Exit 1: findings on stdout. Exit 2: a file could not be read.
+// Output: one `<path>:<line>: <columns> columns: <comment text>` line per finding. The comment
+// text is each comment on the line, trimmed, joined with a single space: it holds no line number
+// and none of the code between two comments, so the pre-write guard can tell a moved line or a
+// renamed identifier from a reworded comment. Exit 0: clean. Exit 1: findings on stdout. Exit 2:
+// a file could not be read.
 //
 // The checker is dependency-free (node:* only): the guard-replay scratch checkout has no
 // node_modules.
@@ -39,65 +43,12 @@ const fs = require('node:fs');
 const { commentSpans } = require('./specifier-scanner');
 
 const LINE_WIDTH = 100;
-const OPENER_PATTERN = /^(?:\/\/+|\/\*+|\*+)/;
-const CLOSER_PATTERN = /\*\/$/;
+const OPENER_PATTERN = /^\{?(?:\/\/+|\/\*+|\*+)/;
+const CLOSER_PATTERN = /\*\/\}?$/;
 
 const columnsOf = (text) => [...text].length;
 
-function lineStartsOf(source) {
-  const starts = [0];
-
-  for (
-    let cursor = source.indexOf('\n');
-    cursor !== -1;
-    cursor = source.indexOf('\n', cursor + 1)
-  ) {
-    starts.push(cursor + 1);
-  }
-
-  return starts;
-}
-
-function lineIndexAt(lineStarts, offset) {
-  let low = 0;
-  let high = lineStarts.length - 1;
-
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-
-    if (lineStarts[middle] <= offset) {
-      low = middle;
-    } else {
-      high = middle - 1;
-    }
-  }
-
-  return low;
-}
-
-// The part of each line a comment covers, as UTF-16 offsets within that line.
-function segmentsByLine(source, spans) {
-  const lineStarts = lineStartsOf(source);
-  const segments = new Map();
-
-  for (const span of spans) {
-    const lastOffset = Math.max(span.start, span.end - 1);
-    const lastLine = lineIndexAt(lineStarts, lastOffset);
-
-    for (let line = lineIndexAt(lineStarts, span.start); line <= lastLine; line += 1) {
-      const lineStart = lineStarts[line];
-      const found = segments.get(line) ?? [];
-
-      found.push({
-        start: Math.max(span.start, lineStart) - lineStart,
-        end: span.end - lineStart,
-      });
-      segments.set(line, found);
-    }
-  }
-
-  return { lineStarts, segments };
-}
+const lastOffsetOf = (span) => Math.max(span.start, span.end - 1);
 
 function wordsOf(text) {
   const words = [...text.matchAll(/\S+/g)].map((match) => ({
@@ -125,13 +76,28 @@ function canBeWrapped(standalone) {
   return words.length >= 2 && columnsOf(standalone.slice(0, words[0].end)) <= LINE_WIDTH;
 }
 
-// The end of the part of the line a comment is answerable for: the comment, plus the `}` that
-// closes a JSX `{/* */}`, since that brace belongs to the comment and cannot be moved off it.
-function overflowEndOf(trimmed, commentStart, commentEnd) {
+// The line the comment would stand on alone, and the end of the part of the line it is answerable
+// for. A JSX `{/* */}` keeps its braces in both: they belong to the comment and cannot be moved
+// off it. A trailing comment moves to its own line at the line's indentation.
+function measureComment(trimmed, commentStart, commentEnd) {
+  const indentation = trimmed.slice(0, trimmed.length - trimmed.trimStart().length);
+  const comment = trimmed.slice(commentStart, commentEnd);
   const opensJsxBrace = trimmed.slice(0, commentStart).trimEnd().endsWith('{');
   const closesJsxBrace = trimmed.slice(commentEnd).trimStart().startsWith('}');
 
-  return opensJsxBrace && closesJsxBrace ? trimmed.indexOf('}', commentEnd) + 1 : commentEnd;
+  if (opensJsxBrace && closesJsxBrace) {
+    return {
+      overflowEnd: trimmed.indexOf('}', commentEnd) + 1,
+      standalone: `${indentation}{${comment}}`,
+    };
+  }
+
+  const hasCodeBefore = trimmed.slice(0, commentStart).trim() !== '';
+
+  return {
+    overflowEnd: commentEnd,
+    standalone: hasCodeBefore ? `${indentation}${comment}` : trimmed.slice(0, commentEnd),
+  };
 }
 
 function checkLine(line, lineSegments) {
@@ -141,46 +107,65 @@ function checkLine(line, lineSegments) {
     Math.max(...lineSegments.map((segment) => segment.end)),
     trimmed.length,
   );
+  const { overflowEnd, standalone } = measureComment(trimmed, commentStart, commentEnd);
 
-  if (columnsOf(trimmed.slice(0, overflowEndOf(trimmed, commentStart, commentEnd))) <= LINE_WIDTH) {
+  if (columnsOf(trimmed.slice(0, overflowEnd)) <= LINE_WIDTH) {
     return undefined;
   }
-
-  const hasCodeBefore = trimmed.slice(0, commentStart).trim() !== '';
-  const indentation = trimmed.slice(0, trimmed.length - trimmed.trimStart().length);
-  const standalone = hasCodeBefore
-    ? `${indentation}${trimmed.slice(commentStart, commentEnd)}`
-    : trimmed.slice(0, commentEnd);
 
   if (columnsOf(standalone) > LINE_WIDTH && !canBeWrapped(standalone)) {
     return undefined;
   }
 
-  return { columns: columnsOf(trimmed), text: trimmed.slice(commentStart, commentEnd).trim() };
+  const text = lineSegments
+    .map((segment) => trimmed.slice(segment.start, segment.end).trim())
+    .join(' ');
+
+  return { columns: columnsOf(trimmed), text };
 }
 
-// Every line over the limit whose comment can be wrapped, as { line, columns, text }.
+// Every line over the limit whose comment can be wrapped, as { line, columns, text }. The spans
+// arrive in file order and never overlap, so one sweep over the lines with a running offset pairs
+// each line with the comments that touch it.
 function findViolations(source) {
   const spans = commentSpans(source);
-
-  if (spans.length === 0) {
-    return [];
-  }
-
-  const { lineStarts, segments } = segmentsByLine(source, spans);
   const violations = [];
+  let firstSpan = 0;
+  let lineStart = 0;
 
-  for (const [lineIndex, lineSegments] of segments) {
-    const lineEnd = lineStarts[lineIndex + 1] ?? source.length + 1;
-    const line = source.slice(lineStarts[lineIndex], lineEnd - 1);
-    const found = line.length > LINE_WIDTH ? checkLine(line, lineSegments) : undefined;
+  for (const [lineIndex, line] of source.split('\n').entries()) {
+    const nextLineStart = lineStart + line.length + 1;
+
+    while (firstSpan < spans.length && lastOffsetOf(spans[firstSpan]) < lineStart) {
+      firstSpan += 1;
+    }
+
+    const lineSegments = [];
+
+    for (
+      let index = firstSpan;
+      index < spans.length && spans[index].start < nextLineStart;
+      index += 1
+    ) {
+      lineSegments.push({
+        start: Math.max(spans[index].start, lineStart) - lineStart,
+        end: spans[index].end - lineStart,
+      });
+    }
+
+    const found =
+      lineSegments.length > 0 && line.length > LINE_WIDTH
+        ? checkLine(line, lineSegments)
+        : undefined;
 
     if (found !== undefined) {
       violations.push({ line: lineIndex + 1, ...found });
     }
+
+    lineStart = nextLineStart;
   }
 
-  return violations.sort((left, right) => left.line - right.line);
+  return violations;
 }
 
 function runCli() {

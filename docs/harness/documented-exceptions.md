@@ -272,14 +272,15 @@ verified usage, not dead weight:
 - **`knip.json` `ignore`**: `scripts/checks/comment-line-width.js` — the
   same shape as `blank-line-separation.js` above.
   `scripts/checks/comment-line-width.sh` reaches it only via a `node`
-  invocation (both its per-file mode and its project-wide mode, also
-  `npm run check:comment-line-width`), and `scripts/checks/pre-write-guard.js`
+  invocation (its project-wide mode, `npm run check:comment-line-width`;
+  it has no per-file mode), and `scripts/checks/pre-write-guard.js`
   reaches it only via `runSpawnedNodeChecker`'s own `spawnSync` (the
   `kiko-comment-line-width` `NODE_RULES` row) — never a static
   `import`/`require`. The project-wide mode is not in `check:all` yet: the
   tree still holds comment lines over 100 columns and the sweep needs the
-  user's approval. The checker has no allowlist and no inline override; its
-  only exemption is structural (a comment with no wrap point, one long
+  user's approval. The checker has no allowlist and no inline override (its
+  `NODE_RULES` row sets `overridable: false`, so the guard ignores an
+  override comment for it); its only exemption is structural (a comment with no wrap point, one long
   URL), defined in its header and in kiko-code-style's "Wrap comments at 100
   columns". Exercised by `__tests__/comment-line-width.test.ts`, which
   spawns the checker and the wrapper as subprocesses, and by

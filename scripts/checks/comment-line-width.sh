@@ -4,7 +4,6 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
-TARGET="${1:-}"
 
 fail() {
   # $1 details
@@ -18,38 +17,15 @@ fail() {
   exit 2
 }
 
-# Per-file mode (one file argument), the same shape as blank-line-separation.sh's. fast.sh does
-# not call it and the pre-write guard spawns comment-line-width.js itself, so only the tests
-# exercise this branch. A non-.ts/.tsx target, or no file at all, is silently out of scope.
-if [ -n "$TARGET" ]; then
-  if [ ! -f "$TARGET" ]; then
-    exit 0
-  fi
-
-  case "$TARGET" in
-    *.ts | *.tsx) : ;;
-    *) exit 0 ;;
-  esac
-
-  dkey="comment-line-width:$(printf '%s' "$TARGET" | harness_hash)"
-  fp="$( { shasum "$TARGET" 2>/dev/null
-          shasum "$DIR/comment-line-width.js" 2>/dev/null; } | harness_hash )"
-  if harness_unchanged "$ROOT" "$dkey" "$fp"; then
-    exit 0
-  fi
-
-  out="$(node "$DIR/comment-line-width.js" "$TARGET" 2>&1)" || fail "$out"
-  harness_mark_pass "$ROOT" "$dkey" "$fp"
-  exit 0
-fi
-
-# Project-wide mode (npm run check:comment-line-width): every .ts/.tsx under the roots
+# Project-wide only (npm run check:comment-line-width): every .ts/.tsx under the roots
 # full-word-identifiers.sh scans for TypeScript (src/, __tests__/, scripts/, jest/, __mocks__/,
 # e2e/, plus App.tsx and drizzle.config.ts), except rules/fixtures/, which the pre-write guard
-# never reads either. COMMENT_LINE_WIDTH_SOURCE_ROOT overrides the whole scanned-roots list with
+# never reads either. The pre-write guard spawns comment-line-width.js itself, so there is no
+# per-file mode. COMMENT_LINE_WIDTH_SOURCE_ROOT overrides the whole scanned-roots list with
 # one directory, used only by __tests__/comment-line-width.test.ts to point this mode at a
 # disposable temp tree; dedup is skipped in that case, since the code fingerprint below reads
-# the real repo's git state, not the temp tree's content.
+# the real repo's git state, not the temp tree's content. The fingerprint covers every .js
+# change, so an edit to comment-line-width.js or specifier-scanner.js re-runs the check.
 if [ -n "${COMMENT_LINE_WIDTH_SOURCE_ROOT:-}" ]; then
   roots=("$COMMENT_LINE_WIDTH_SOURCE_ROOT")
 else

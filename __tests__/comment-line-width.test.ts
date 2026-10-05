@@ -109,6 +109,46 @@ describe('scripts/checks/comment-line-width.js', () => {
     expect(lines[0]).toContain(`:3: ${LIMIT + 1 + overhang} columns: /* `);
   });
 
+  describe('a JSX comment is measured with its braces, flagged and exempted alike', () => {
+    const jsxLine = (comment: string): string =>
+      `export const view = (\n  <View>\n    {${comment}}\n  </View>\n);\n`;
+
+    it.each([
+      [LIMIT, 0],
+      [LIMIT + 1, 1],
+      [LIMIT + 2, 1],
+      [LIMIT + 3, 1],
+    ])('flags words that wrap at %i columns: %i finding(s)', (width, count) => {
+      const comment = `${lineOfWidth('/* ', width - 9)} */`;
+
+      expect(findingLines(runChecker(jsxLine(comment), 'src/probe.tsx'))).toHaveLength(count);
+    });
+
+    it.each([LIMIT, LIMIT + 1, LIMIT + 2, LIMIT + 3])(
+      'passes one URL with nothing to wrap at %i columns',
+      (width) => {
+        const comment = `/* ${urlOfWidth(width - 12)} */`;
+        const source = jsxLine(comment);
+
+        expect(source.split('\n')[2]).toHaveLength(width);
+        expect(runChecker(source, 'src/probe.tsx')).toMatchObject({ status: 0, stdout: '' });
+      },
+    );
+  });
+
+  it('keys the text on the comments only when one line holds two of them', () => {
+    const note = `/* ${'word '.repeat(10)}*/`;
+    const code = (name: string): string => `const first = 1; ${note} const ${name} = 2; ${note}`;
+
+    const lines = [code('other'), code('renamedOther')].map((source) =>
+      findingLines(runChecker(`${source}\n`)),
+    );
+
+    expect(lines[0]).toHaveLength(1);
+    expect(lines[0][0].endsWith(`columns: ${note} ${note}`)).toBe(true);
+    expect(lines[1][0].endsWith(`columns: ${note} ${note}`)).toBe(true);
+  });
+
   it('flags a trailing comment whose own line is over, naming the comment text only', () => {
     const comment = lineOfWidth('// ', 40);
     const code = `export const total = compute(${'a'.repeat(40)}, 2);`;
@@ -250,8 +290,8 @@ describe('scripts/checks/comment-line-width.js', () => {
 describe('scripts/checks/comment-line-width.sh', () => {
   const longComment = lineOfWidth('// ', LIMIT + 1);
 
-  const runWrapper = (...argumentsList: string[]): SpawnSyncReturns<string> =>
-    spawnSync('bash', [SCRIPT, ...argumentsList], {
+  const runWrapper = (): SpawnSyncReturns<string> =>
+    spawnSync('bash', [SCRIPT], {
       encoding: 'utf8',
       env: { ...process.env, COMMENT_LINE_WIDTH_SOURCE_ROOT: directory },
     });
@@ -274,15 +314,9 @@ describe('scripts/checks/comment-line-width.sh', () => {
     expect(result.stderr).toContain('Wrap');
   });
 
-  it('checks one file in per-file mode', () => {
-    const dirty = writeProbe('src/dirty.ts', `${longComment}\n`);
+  it('leaves a file that is not .ts or .tsx out of scope', () => {
+    writeProbe('notes.md', `${longComment}\n`);
 
-    expect(runWrapper(dirty).status).toBe(2);
-    expect(runWrapper(writeProbe('src/clean.ts', 'export const value = 1;\n')).status).toBe(0);
-  });
-
-  it('leaves a file that is not .ts or .tsx, and a missing file, out of scope', () => {
-    expect(runWrapper(writeProbe('notes.md', `${longComment}\n`)).status).toBe(0);
-    expect(runWrapper(join(directory, 'missing.ts')).status).toBe(0);
+    expect(runWrapper()).toMatchObject({ status: 0, stdout: '', stderr: '' });
   });
 });

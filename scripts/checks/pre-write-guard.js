@@ -673,9 +673,10 @@ function parsePluralCountCheckerOutput(stdout) {
 }
 
 // comment-line-width.js's output is one `<path>:<line>: <columns> columns: <comment text>` line
-// per violation — see its own `runCli`. The comment text is the trimmed comment on that line and
-// the whole of `matchedText`: it holds no line number, so moving a long comment is not a new
-// finding, while rewording it is. The column count rides in `detailText` for the human.
+// per violation — see its own `runCli`. The comment text is the trimmed comment(s) on that line
+// and the whole of `matchedText`: it holds no line number and no code, so moving a long comment
+// or renaming code beside it is not a new finding, while rewording it is. The column count rides
+// in `detailText` for the human.
 const COMMENT_LINE_WIDTH_VIOLATION_LINE = /:(\d+): (\d+) columns: (.*)$/;
 
 function parseCommentLineWidthCheckerOutput(stdout) {
@@ -869,6 +870,9 @@ const NODE_RULES = [
     fix: 'Wrap the comment at 100 columns.',
     skill: 'kiko-code-style › Wrap comments at 100 columns',
     projectCheck: 'check:comment-line-width',
+    // No override comment can stand in for wrapping a comment: neither the project-wide check
+    // nor guard-replay would catch an override that waved a long comment through.
+    overridable: false,
     run: (filePath) =>
       runSpawnedNodeChecker('comment-line-width.js', filePath, parseCommentLineWidthCheckerOutput),
   },
@@ -905,6 +909,7 @@ async function runNodeChecks(temporaryRoot, relativePath, tree, ruleIds) {
         fix: rule.fix,
         skill: rule.skill,
         projectCheck: rule.projectCheck,
+        overridable: rule.overridable !== false,
       });
     }
   });
@@ -986,14 +991,19 @@ function overrideState(sourceLines, line, ruleId) {
 // baseline finding turn that finding "new" again (it is dropped from the
 // AFTER set only when it is STILL justified there). A 'bare' override is
 // left in place — it never suppresses anything — so `buildFindingBlock` can
-// still name it when the finding it decorates ends up in the diff.
+// still name it when the finding it decorates ends up in the diff. A finding
+// of a rule whose NODE_RULES row says `overridable: false` is never read for
+// an override comment at all: its state is always 'none'.
 function nonJustifiedFindings(findings, sourceText) {
   const sourceLines = sourceText.split('\n');
 
   return findings
     .map((finding) => ({
       ...finding,
-      overrideState: overrideState(sourceLines, finding.line, finding.ruleId),
+      overrideState:
+        finding.overridable === false
+          ? 'none'
+          : overrideState(sourceLines, finding.line, finding.ruleId),
     }))
     .filter((finding) => finding.overrideState !== 'justified');
 }
@@ -1078,12 +1088,16 @@ function addedFindingsFor(afterTrees, semgrepFindings, nodeFindingsByTree, basel
 // text a human reads here; `matchedText` itself stays the diff key.
 function buildFindingBlock(relativePath, finding) {
   const displayText = finding.detailText ?? finding.matchedText;
+  const doNot =
+    finding.overridable === false
+      ? `this rule has no override; see ${finding.skill}`
+      : `suppress this without a justified override; see ${finding.skill}`;
   const lines = [
     `WHAT FAILED:    rule ${finding.ruleId} at ${relativePath}:${finding.line}`,
     `DETAILS:        matched text: ${JSON.stringify(displayText)}`,
     `WHY IT MATTERS: this is a NEW violation the edit would add; a pre-existing one is left for ${finding.projectCheck} to catch`,
     `HOW TO FIX:     ${finding.fix}`,
-    `DO NOT:         suppress this without a justified override; see ${finding.skill}`,
+    `DO NOT:         ${doNot}`,
   ];
   if (finding.overrideState === 'bare') {
     lines.push(

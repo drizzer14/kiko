@@ -1932,6 +1932,63 @@ describe('runNodeChecks (comment-line-width)', () => {
 
     expect(result.status).toBe(0);
   });
+
+  describe('an override comment never suppresses it', () => {
+    it.each([
+      ['kiko-override', 'OVERRIDE(long url context) the sentence cannot be shortened'],
+      ['nosemgrep', 'OVERRIDE(long url context) the sentence cannot be shortened'],
+      ['kiko-override', 'no justification'],
+    ])('denies a long comment under a %s comment: %s', (spelling, justification) => {
+      const result = runCommentProbe(undefined, 'Write', {
+        content: `// ${spelling}: kiko-comment-line-width ${justification}\n${existingSource}`,
+      });
+
+      expect(result.status).toBe(2);
+      const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+      expect(reason).toContain('kiko-comment-line-width');
+      expect(reason).not.toContain('OVERRIDE:');
+    });
+
+    it('denies the same comment with the override on its own line', () => {
+      const result = runCommentProbe(undefined, 'Write', {
+        content: `${longComment} // kiko-override: kiko-comment-line-width OVERRIDE(why) reason\n`,
+      });
+
+      expect(result.status).toBe(2);
+    });
+
+    it('does not suggest an override in the deny text', () => {
+      const result = runCommentProbe(undefined, 'Write', { content: existingSource });
+      const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+
+      expect(reason).toContain('has no override');
+      expect(reason).not.toContain('without a justified override');
+    });
+  });
+
+  describe('a line holding two comments', () => {
+    const note = `/* ${'word '.repeat(10)}*/`;
+    const twoComments = (name: string, secondNote = note): string =>
+      `const first = 1; ${note} const ${name} = 2; ${secondNote}\n`;
+
+    it('allows renaming the code between them', () => {
+      const result = runCommentProbe(twoComments('other'), 'Edit', {
+        old_string: 'const other = 2;',
+        new_string: 'const renamedOther = 2;',
+      });
+
+      expect(result.stdout).toBe('');
+      expect(result.status).toBe(0);
+    });
+
+    it('denies rewording one of the comments', () => {
+      const result = runCommentProbe(twoComments('other'), 'Write', {
+        content: twoComments('other', note.replace('word', 'term')),
+      });
+
+      expect(result.status).toBe(2);
+    });
+  });
 });
 
 // The override protocol: a rule-id-specific comment naming the rule and

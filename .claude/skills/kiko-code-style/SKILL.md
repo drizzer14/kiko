@@ -129,15 +129,22 @@ its code. A long code line with no comment is Biome's, not this rule's.
   or earlier. The line is exempt when the comment alone is over 100
   columns and has no wrap point: one long URL after the opener.
   `// see https://...` still fails, because the words before the URL wrap;
-  after the wrap, `// https://...` is exempt.
+  after the wrap, `// https://...` is exempt. A JSX `{/* */}` comment is
+  measured with its braces, both for the 100 columns and for the exemption.
+- A short trailing comment on a long code line that Biome has not yet
+  formatted is denied: the guard measures the line as written, before
+  Biome wraps the code. Run the formatter first, or move the comment
+  above its code.
 - A tool directive (`// biome-ignore`, `// nosemgrep`, `// kiko-override`)
   must stay on the line directly above its code, so it cannot continue on
   a second line (Biome reports a suppression followed by another comment
   line as unused). Put the prose in a plain comment above the directive and
   keep the directive's own justification short enough to fit in 100
   columns.
-- There is no inline override. `scripts/checks/comment-line-width.js`
-  holds the exact test.
+- There is no inline override: the guard ignores a `nosemgrep` or
+  `kiko-override` comment that names `kiko-comment-line-width`, and the
+  finding still denies. `scripts/checks/comment-line-width.js` holds the
+  exact test.
 
 ## Linting rules that shape how you write code
 
