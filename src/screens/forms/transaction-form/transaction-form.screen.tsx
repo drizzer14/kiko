@@ -112,7 +112,14 @@ type Sign = 'income' | 'expense';
 // deposit contribution rows), never persisted.
 type ChangeReturnRow = { id: number; holdingId: string | null; amount: string };
 
-// The synced-row explanatory notice, or nothing on a manual/add row. Kept
+// The notice text for a read-only row: a statement-imported row names its file,
+// every other non-manual row (a sync's) says it was synced.
+const readOnlyNoticeKey = (
+  source: TransactionRow['source'] | undefined,
+): 'forms.transaction.importedNotice' | 'forms.transaction.syncedNotice' =>
+  source === 'import' ? 'forms.transaction.importedNotice' : 'forms.transaction.syncedNotice';
+
+// The read-only row's explanatory notice, or nothing on a manual/add row. Kept
 // module-level (returns `ReactElement | null`) for the same cognitive-
 // complexity-budget reason as `resolvePendingCategory` below: it moves this
 // branch into the helper's own scope, out of the screen's returned JSX. The
@@ -1664,15 +1671,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     exchange: t('forms.transaction.exchange'),
     split: t('forms.transaction.split'),
   };
-  // The header's three candidate titles, and the synced-row notice — resolved
-  // once per render and handed to the module-level helpers above so they stay
-  // translation-agnostic.
+  // The header's three candidate titles — resolved once per render and handed
+  // to the module-level helper above so it stays translation-agnostic.
   const titleLabels = {
     readOnly: t('forms.transaction.title'),
     editing: t('forms.transaction.editTitle'),
     adding: t('forms.transaction.addTitle'),
   };
-  const syncedNotice = t('forms.transaction.syncedNotice');
   const buildApplyCategoryMessage = (category: string, name: string): string =>
     t('forms.transaction.applyCategoryMessage', { category, name });
   // `holdingsRepo` exposes no single-row lookup, so the holding's own currency
@@ -1823,6 +1828,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // persisted through the single-row `setCategory` in `save` (a synced row's
   // description is often blank, so no propagation sheet opens for it).
   const isReadOnly = existing !== undefined && existing.source !== 'manual';
+  const readOnlyNotice = t(readOnlyNoticeKey(existing?.source));
   // `editingId` is known synchronously from the route params, so the header
   // reads "Edit Transaction" immediately instead of flashing "Add Transaction"
   // until the row loads. Read-only still keys off the loaded `source`.
@@ -2682,7 +2688,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         }
       >
         <Box gap={4} testID="transaction-form">
-          {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, syncedNotice)}
+          {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, readOnlyNotice)}
 
           {/* B: the primary-leg holding picker, shown ONLY when no holding was
             fixed by navigation (the global-add entry). It drives the shared

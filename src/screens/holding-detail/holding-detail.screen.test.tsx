@@ -11,6 +11,7 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { formatMoney } from '@kiko/currency/format';
 import { darkTheme } from '@kiko/design-system/theme';
+import { holdCard } from '@kiko/test-support/hold-card';
 import { formatDate, startOfLocalDay } from '@kiko/dates';
 import {
   EDIT_ACTION_TEST_ID,
@@ -224,9 +225,18 @@ jest.mock('@kiko/transactions/repo', () => ({
     loanLedgerPaymentsQuery: () => ({
       toSQL: () => ({ sql: 'loan-ledger-payments', params: [] }),
     }),
+    // Its own `sql` marker for the same reason as `listLinkedToLoanQuery`: it
+    // shares the `holdings`/`transactions` reactive keys with other reads.
+    balanceBoundaryQuery: (holdingId: string) => ({
+      toSQL: () => ({ sql: 'balance-boundary', params: [holdingId] }),
+    }),
     remove: jest.fn(),
   },
 }));
+
+// The rows `balanceBoundaryQuery` resolves to: at most one `{ balanceSetAt,
+// newestSyncTime }` row, as on device.
+let mockBoundaryRows: unknown[] = [];
 jest.mock('@kiko/bonds/bond-register-repo', () => ({
   bondRegisterRepo: {
     findByIsinQuery: (isin: string) => ({ toSQL: () => ({ sql: '', params: [isin] }) }),
@@ -398,6 +408,10 @@ const seed = (
 
     const sql = (query as { toSQL: () => { sql: string } }).toSQL().sql;
 
+    if (sql === 'balance-boundary') {
+      return { data: mockBoundaryRows, isLoading: false };
+    }
+
     return sql === 'linked-loan-payments' || sql === 'loan-ledger-payments'
       ? linkedLoanPaymentsResult
       : (resultByTable[keys[0]] ?? resultByTable.transactions);
@@ -416,6 +430,7 @@ const renderScreen = () =>
 describe('HoldingDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockBoundaryRows = [];
   });
 
   // The user placed the manual-entry offer on the account page only.
@@ -1427,6 +1442,86 @@ describe('HoldingDetailScreen', () => {
     // A synced (Monobank) row is not deletable, so CardContextMenu renders it
     // bare — no card-context-menu wrapper and no hold gesture to intercept it.
     expect(queryByTestId('card-context-menu')).toBeNull();
+  });
+
+  describe('an imported transaction row', () => {
+    const KEEPS_BALANCE_MESSAGE =
+      "The balance will stay at the bank's figure. Edit the holding to change it.";
+    const IMPORT_TIME = 5_000;
+    const importedRow = {
+      id: 'txn-import',
+      amountMinorUnits: -5000,
+      time: IMPORT_TIME,
+      description: 'Coffee',
+      source: 'import',
+    };
+
+    const holdRow = async () => {
+      const screen = await renderScreen();
+
+      await holdCard();
+
+      return screen;
+    };
+
+    it('opens the delete confirm straight away on a hold, and deletes through transactionsRepo.remove', async () => {
+      seed(cardHolding, [importedRow]);
+
+      const { getByTestId, getByText, queryByTestId } = await holdRow();
+
+      // An imported row is deletable but not duplicable, so there is no
+      // Duplicate/Delete choice: the hold raises the confirm itself.
+      expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+      expect(getByText('Delete "Coffee"')).toBeTruthy();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-import');
+    });
+
+    it('says the balance stays when the row is dated at or before the holding boundary', async () => {
+      mockBoundaryRows = [{ balanceSetAt: IMPORT_TIME, newestSyncTime: null }];
+      seed(cardHolding, [importedRow]);
+
+      const { getByText } = await holdRow();
+
+      expect(getByText(KEEPS_BALANCE_MESSAGE)).toBeTruthy();
+    });
+
+    it('adds no message when the row is dated after the holding boundary', async () => {
+      mockBoundaryRows = [{ balanceSetAt: IMPORT_TIME - 1, newestSyncTime: null }];
+      seed(cardHolding, [importedRow]);
+
+      const { queryByText } = await holdRow();
+
+      expect(queryByText(KEEPS_BALANCE_MESSAGE)).toBeNull();
+    });
+
+    it('reads the boundary of the holding being shown', async () => {
+      seed(cardHolding, [importedRow]);
+
+      await renderScreen();
+
+      expect(mockUseLiveQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ toSQL: expect.any(Function) }),
+        ['holdings', 'transactions'],
+        true,
+      );
+    });
+
+    it('reads no boundary while no row is imported', async () => {
+      seed(cardHolding, [
+        { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
+      ]);
+
+      await renderScreen();
+
+      expect(mockUseLiveQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ toSQL: expect.any(Function) }),
+        ['holdings', 'transactions'],
+        false,
+      );
+    });
   });
 
   it('renders the derived lifecycle rows (opening, accrual, taxes) marked Computed', async () => {

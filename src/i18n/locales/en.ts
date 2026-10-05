@@ -539,6 +539,8 @@ export const en = {
       fromSheetTitle: 'From',
       holding: 'Holding',
       holdingSheetTitle: 'Holding',
+      importedNotice:
+        'This was imported from a statement, so only the category and loan link can be changed.',
       income: 'Income',
       // The auto-suggested loan-payment link's own caption, shown above its
       // Undo action — a caption, so it carries the final "." (see
@@ -901,6 +903,10 @@ export const en = {
     // empty name never interpolates into a dangling "{{name}} expense".
     defaultDescriptionExpensePlain: 'Expense',
     defaultDescriptionIncomePlain: 'Income',
+    // The delete confirm's body for an imported row dated at or before the
+    // holding's balance boundary: deleting it moves no balance.
+    deleteImportedKeepsBalance:
+      "The balance will stay at the bank's figure. Edit the holding to change it.",
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',
   },

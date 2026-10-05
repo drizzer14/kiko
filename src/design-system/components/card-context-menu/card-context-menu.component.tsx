@@ -64,7 +64,8 @@ const HOLD_LIFT_DURATION_MS = 300;
  *   `HOLD_MAX_DISTANCE`) plays a medium-impact haptic. On a delete-only card
  *   it raises the shared, themed `ConfirmSheet` (a `BottomSheet`, NOT a
  *   native `ActionSheetIOS`) straight away, titled `Delete "<name>"` with a
- *   bare destructive `Delete` confirm and no body. A card with another action
+ *   bare destructive `Delete` confirm and no body, unless the card passes a
+ *   `deleteMessage`. A card with another action
  *   opens the action list instead, whose Delete (only when deletable) hands
  *   off to that same confirm. Only the confirm routes to `onDelete`; Cancel
  *   and a scrim/back dismiss delete nothing. The named title keeps an
@@ -111,6 +112,10 @@ const CardContextMenu: FC<{
   // consumer owns its label and its confirm, since what closing means, and
   // what the entity is called, is the entity's own.
   closeAction?: { label: string; onPress: () => void };
+  // An optional body message under the delete confirm's title, for a delete
+  // whose effect the user would not guess from the title alone. Omitted, the
+  // confirm stays title-only.
+  deleteMessage?: string;
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -128,6 +133,7 @@ const CardContextMenu: FC<{
   onDuplicate,
   onEdit,
   closeAction,
+  deleteMessage,
   liftOnHold = false,
   children,
 }) => {
@@ -285,6 +291,7 @@ const CardContextMenu: FC<{
       <ConfirmSheet
         visible={confirmVisible}
         title={t('common.deleteNamed', { name })}
+        message={deleteMessage}
         confirmLabel={t('common.delete')}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}

@@ -145,6 +145,8 @@ jest.mock('@kiko/transactions/repo', () => ({
     contextSpanQuery: () => ({ kind: 'span', toSQL: () => ({ sql: '', params: [] }) }),
     contextCategoriesQuery: () => ({ kind: 'categories', toSQL: () => ({ sql: '', params: [] }) }),
     loanLedgerPaymentsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    // An imported row reads its holding's balance boundary for its delete confirm.
+    balanceBoundaryQuery: () => ({ kind: 'boundary', toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 jest.mock('@kiko/categories/repo', () => ({
@@ -301,11 +303,16 @@ const liveAnswersFor = (
     categories: data.categoryRows ?? categoryRows,
   };
 
+  // An imported row's own boundary read shares the `holdings` key; no row here
+  // is anchored, so it answers none.
+  const answerFor = (query: { kind?: string }, tables: string[]): unknown[] | undefined =>
+    query.kind === 'boundary' ? [] : byTable[tables[0]];
+
   return (query, tables) => ({
     data:
       tables[0] === 'transactions' && tables.length === 3 && query.kind !== undefined
         ? ledgerAnswers[query.kind]
-        : (byTable[tables[0]] ?? []),
+        : (answerFor(query, tables) ?? []),
     isLoading:
       query.kind === 'rows' && data.windowLoading !== undefined
         ? data.windowLoading(query.bounds ?? [])

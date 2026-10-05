@@ -10,6 +10,7 @@ import '@kiko/design-system/unistyles';
 // Initialize i18next so the row's and CardContextMenu's `t()` labels resolve
 // to the real catalogue instead of the raw key.
 import '@kiko/i18n/init';
+import { holdCard } from '@kiko/test-support/hold-card';
 import {
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
@@ -22,13 +23,22 @@ import TransactionRow from './transaction-row.component';
 import type { HomeTransactionRow } from './transaction-row.props';
 
 jest.mock('@kiko/transactions/repo', () => ({
-  transactionsRepo: { remove: jest.fn() },
+  transactionsRepo: {
+    remove: jest.fn(),
+    balanceBoundaryQuery: (holdingId: string) => ({ __kind: 'boundary', holdingId }),
+  },
+}));
+
+const mockUseLiveQuery = jest.fn();
+jest.mock('@kiko/db/use-live-query', () => ({
+  useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 
 import { transactionsRepo } from '@kiko/transactions/repo';
 
 const baseItem: HomeTransactionRow = {
   id: 'txn-1',
+  holdingId: 'h-1',
   amountMinorUnits: -5000,
   currency: 'UAH',
   time: Date.now(),
@@ -63,6 +73,7 @@ const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = 
 describe('TransactionRow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseLiveQuery.mockReturnValue({ data: [], isLoading: false });
   });
 
   it('shows the loan-link marker when the row carries a loan link', async () => {
@@ -138,6 +149,92 @@ describe('TransactionRow', () => {
     expect(queryByTestId('card-context-menu')).toBeNull();
     expect(() => getByGestureTestId(HOLD_GESTURE_TEST_ID)).toThrow();
     expect(onDuplicate).not.toHaveBeenCalled();
+  });
+
+  describe('an imported row', () => {
+    const IMPORT_TIME = 1_000;
+    const importedItem: HomeTransactionRow = {
+      ...baseItem,
+      id: 'txn-import',
+      source: 'import',
+      time: IMPORT_TIME,
+    };
+    const KEEPS_BALANCE_MESSAGE =
+      "The balance will stay at the bank's figure. Edit the holding to change it.";
+
+    const holdRow = async (item: HomeTransactionRow, onDuplicate = jest.fn()) => {
+      const screen = await renderRow(item, jest.fn(), onDuplicate);
+
+      await holdCard();
+
+      return screen;
+    };
+
+    const boundaryAt = (balanceSetAt: number) => ({
+      data: [{ balanceSetAt, newestSyncTime: null }],
+      isLoading: false,
+    });
+
+    it('opens the delete confirm straight away on a hold and deletes through transactionsRepo.remove', async () => {
+      mockUseLiveQuery.mockReturnValue(boundaryAt(IMPORT_TIME - 1));
+
+      const { getByTestId, getByText } = await holdRow(importedItem);
+
+      expect(getByText('Delete "Coffee"')).toBeTruthy();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-import');
+    });
+
+    it('offers no Duplicate, so the hold goes straight to the confirm', async () => {
+      const onDuplicate = jest.fn();
+      const { queryByTestId } = await holdRow(importedItem, onDuplicate);
+
+      expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+      expect(onDuplicate).not.toHaveBeenCalled();
+    });
+
+    it('says the balance stays when the row is dated at the boundary', async () => {
+      mockUseLiveQuery.mockReturnValue(boundaryAt(IMPORT_TIME));
+
+      const { getByText } = await holdRow(importedItem);
+
+      expect(getByText(KEEPS_BALANCE_MESSAGE)).toBeTruthy();
+    });
+
+    it('says the balance stays when the row is dated before the boundary', async () => {
+      mockUseLiveQuery.mockReturnValue(boundaryAt(IMPORT_TIME + 5));
+
+      const { getByText } = await holdRow(importedItem);
+
+      expect(getByText(KEEPS_BALANCE_MESSAGE)).toBeTruthy();
+    });
+
+    it('adds no message when the row is dated after the boundary, because deleting it gives the money back', async () => {
+      mockUseLiveQuery.mockReturnValue(boundaryAt(IMPORT_TIME - 1));
+
+      const { queryByText } = await holdRow(importedItem);
+
+      expect(queryByText(KEEPS_BALANCE_MESSAGE)).toBeNull();
+    });
+
+    it('reads the boundary of its own holding', async () => {
+      await renderRow(importedItem);
+
+      expect(mockUseLiveQuery).toHaveBeenCalledWith(
+        { __kind: 'boundary', holdingId: 'h-1' },
+        ['holdings', 'transactions'],
+        true,
+      );
+    });
+  });
+
+  it('reads no boundary for a manual row and adds no delete message', async () => {
+    const { queryByText } = await renderRow(baseItem);
+
+    expect(mockUseLiveQuery).toHaveBeenCalledWith(expect.anything(), expect.anything(), false);
+    expect(queryByText(/stay at the bank/)).toBeNull();
   });
 
   it('renders a synced row bare — no context-menu wrapper and no hold gesture', async () => {

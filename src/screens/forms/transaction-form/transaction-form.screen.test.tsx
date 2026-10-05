@@ -161,7 +161,7 @@ type Transaction = {
   amountMinorUnits: number;
   time: number;
   description: string;
-  source: 'manual' | 'monobank' | 'binance';
+  source: 'manual' | 'monobank' | 'binance' | 'import';
   category?: string | null;
   comment?: string | null;
   loanHoldingId?: string | null;
@@ -1819,6 +1819,64 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
     const { queryByText } = await renderEdit('txn-9');
 
     expect(queryByText('Comment')).toBeNull();
+  });
+});
+
+describe('TransactionFormScreen — read-only mode (imported statement row)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-9',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Statement latte',
+      source: 'import',
+    });
+  });
+
+  it('sets the same read-only header title a synced row gets', async () => {
+    await renderEdit('txn-9');
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Transaction' });
+  });
+
+  it('says the row was imported from a statement, not that it was synced', async () => {
+    const { getByText, queryByText } = await renderEdit('txn-9');
+
+    expect(
+      getByText(
+        'This was imported from a statement, so only the category and loan link can be changed.',
+      ),
+    ).toBeTruthy();
+    expect(queryByText(/was synced/i)).toBeNull();
+  });
+
+  it('keeps the amount and description locked and offers no Save', async () => {
+    const { getByLabelText, queryByText } = await renderEdit('txn-9');
+
+    expect(getByLabelText('Amount').props.editable).toBe(false);
+    expect(getByLabelText('Description').props.editable).toBe(false);
+    expect(queryByText('Save')).toBeNull();
+  });
+});
+
+describe('TransactionFormScreen — an editable manual row', () => {
+  it('shows neither the synced nor the imported notice', async () => {
+    jest.clearAllMocks();
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-9',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Typed latte',
+      source: 'manual',
+    });
+
+    const { queryByText } = await renderEdit('txn-9');
+
+    expect(queryByText(/was synced/i)).toBeNull();
+    expect(queryByText(/was imported from a statement/i)).toBeNull();
   });
 });
 

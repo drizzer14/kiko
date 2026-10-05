@@ -1,12 +1,7 @@
-import {
-  createGestureController,
-  fireGestureHandler,
-  getByGestureTestId,
-} from 'react-native-gesture-handler/jest-utils';
-import { State } from 'react-native-gesture-handler';
 import { trigger } from 'react-native-haptic-feedback';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { createGestureController } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
 // Real i18n init (side effect), same as App.tsx. Previously reached only by
 // accident through GlassSurface -> screenshot-mode -> i18n before the 5.6
@@ -14,6 +9,7 @@ import '@kiko/design-system/unistyles';
 // so the sheet's `t('common.cancel')`/`t('common.delete')` resolve under test
 // the same way they do at runtime.
 import '@kiko/i18n/init';
+import { holdCard } from '@kiko/test-support/hold-card';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 
 import CardContextMenu, {
@@ -41,13 +37,7 @@ describe('CardContextMenu', () => {
 
     // A hold that reaches ACTIVE (stayed still past the min duration, under the
     // max distance) triggers the confirm; movement would have failed the gesture.
-    await act(async () => {
-      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
-        { state: State.BEGAN },
-        { state: State.ACTIVE },
-        { state: State.END },
-      ]);
-    });
+    await holdCard();
 
     // The hold plays the medium-impact haptic and raises the themed confirm
     // sheet titled `Delete "<name>"` — not a native ActionSheetIOS — and
@@ -59,6 +49,39 @@ describe('CardContextMenu', () => {
     await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
     expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the deleteMessage under the delete confirm title when one is given', async () => {
+    const { getByText } = await render(
+      <CardContextMenu
+        name="Black card"
+        deletable
+        onDelete={jest.fn()}
+        deleteMessage="This stays at the bank figure."
+      >
+        <Text>card</Text>
+      </CardContextMenu>,
+      { wrapper: GestureRootWrapper },
+    );
+
+    await holdCard();
+
+    expect(getByText('Delete "Black card"')).toBeTruthy();
+    expect(getByText('This stays at the bank figure.')).toBeTruthy();
+  });
+
+  it('keeps the delete confirm title-only when no deleteMessage is given', async () => {
+    const { getByText, queryByText } = await render(
+      <CardContextMenu name="Black card" deletable onDelete={jest.fn()}>
+        <Text>card</Text>
+      </CardContextMenu>,
+      { wrapper: GestureRootWrapper },
+    );
+
+    await holdCard();
+
+    expect(getByText('Delete "Black card"')).toBeTruthy();
+    expect(queryByText('This stays at the bank figure.')).toBeNull();
   });
 
   it('leaves a plain tap to the child card and never opens the confirm', async () => {
@@ -89,13 +112,7 @@ describe('CardContextMenu', () => {
       { wrapper: GestureRootWrapper },
     );
 
-    await act(async () => {
-      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
-        { state: State.BEGAN },
-        { state: State.ACTIVE },
-        { state: State.END },
-      ]);
-    });
+    await holdCard();
 
     // A hold now opens a CHOICE (Duplicate + Delete), not the delete confirm
     // directly — the named delete confirm is not shown yet.
@@ -120,13 +137,7 @@ describe('CardContextMenu', () => {
       { wrapper: GestureRootWrapper },
     );
 
-    await act(async () => {
-      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
-        { state: State.BEGAN },
-        { state: State.ACTIVE },
-        { state: State.END },
-      ]);
-    });
+    await holdCard();
 
     // Choosing Delete from the action list opens the SAME named confirm sheet
     // the delete-only path uses; only its destructive confirm routes to onDelete.
@@ -153,13 +164,7 @@ describe('CardContextMenu', () => {
       { wrapper: GestureRootWrapper },
     );
 
-    await act(async () => {
-      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
-        { state: State.BEGAN },
-        { state: State.ACTIVE },
-        { state: State.END },
-      ]);
-    });
+    await holdCard();
 
     expect(getByTestId(EDIT_ACTION_TEST_ID)).toHaveTextContent('Edit');
     expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
@@ -190,13 +195,7 @@ describe('CardContextMenu', () => {
       { wrapper: GestureRootWrapper },
     );
 
-    await act(async () => {
-      fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
-        { state: State.BEGAN },
-        { state: State.ACTIVE },
-        { state: State.END },
-      ]);
-    });
+    await holdCard();
 
     expect(getByTestId(CLOSE_ACTION_TEST_ID)).toHaveTextContent('Close holding');
     expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();

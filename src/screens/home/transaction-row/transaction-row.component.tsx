@@ -5,13 +5,15 @@ import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { isSyncedTransaction } from '@kiko/holdings/deletable';
 import { resolveCategoryDisplay } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { isTimeExemptHoldingType } from '@kiko/holdings/holding-descriptor';
+import { useBalanceBoundary } from '@kiko/transactions/use-balance-boundary';
 import TransactionCard from '@kiko/design-system/components/transaction-card';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
+import { importDeleteKeepsBalance } from '@kiko/transactions/balance-boundary';
+import { isDeletableTransaction, isSyncedTransaction } from '@kiko/holdings/deletable';
 
 import { styles } from './transaction-row.styles';
 import type { TransactionRowProps } from './transaction-row.props';
@@ -28,6 +30,12 @@ const TransactionRow: FC<TransactionRowProps> = ({
   const { t } = useTranslation();
   const clock = useTimeClock();
   const isSynced = isSyncedTransaction(item);
+  // Only an imported row's confirm needs the boundary, so every other row runs
+  // no query.
+  const { boundary } = useBalanceBoundary(item.holdingId, item.source === 'import');
+  const deleteMessage = importDeleteKeepsBalance(item, boundary)
+    ? t('transactions.deleteImportedKeepsBalance')
+    : undefined;
 
   const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);
   const description = transactionRowDescription({
@@ -49,11 +57,12 @@ const TransactionRow: FC<TransactionRowProps> = ({
   // this component keeps only the tap/hold wrapping below.
   //
   // The row wraps in the shared `CardContextMenu` (touch-and-hold to delete),
-  // mirroring the holding-detail ledger: a manual row is deletable and routes
-  // its confirm through `transactionsRepo.remove`, which already guards a
-  // synced row (throws) and reverses the balance in one transaction; a synced
-  // (Monobank/crypto) row is not deletable, so `CardContextMenu` renders it
-  // bare — no gesture at all.
+  // mirroring the holding-detail ledger: a manual or imported row is deletable
+  // and routes its confirm through `transactionsRepo.remove`, which already
+  // guards a synced row (throws) and reverses the balance in one transaction;
+  // a synced (Monobank/crypto) row is not deletable, so `CardContextMenu`
+  // renders it bare — no gesture at all. An imported row is not duplicable
+  // either, so its hold opens the delete confirm directly.
   //
   // This is a PLAIN list row (no `react-native-sortables` grid), unlike the
   // account/holding cards, so it gets no free scale-up lift from a grid's own
@@ -64,7 +73,8 @@ const TransactionRow: FC<TransactionRowProps> = ({
   return (
     <CardContextMenu
       name={description}
-      deletable={!isSynced}
+      deletable={isDeletableTransaction(item)}
+      deleteMessage={deleteMessage}
       onDelete={() => transactionsRepo.remove(item.id)}
       // A synced row is not duplicable — pass no handler so its long-press keeps
       // offering nothing (it already renders bare). A manual row's Duplicate

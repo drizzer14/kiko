@@ -1,3 +1,8 @@
+import {
+  isDeletableTransaction,
+  isSyncedHolding,
+  isSyncedTransaction,
+} from '@kiko/holdings/deletable';
 import { match } from 'ts-pattern';
 import {
   defaultHoldingSymbol,
@@ -62,11 +67,12 @@ import SummaryTable from '@kiko/design-system/components/summary-table';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { useBalanceBoundary } from '@kiko/transactions/use-balance-boundary';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { asLots, changedLots, hasNegativeHolding } from '@kiko/holdings/lots';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
-import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
+import { importDeleteKeepsBalance } from '@kiko/transactions/balance-boundary';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
@@ -392,6 +398,9 @@ type LedgerRowContext = {
   defaultCategoryKey: string;
   holdingName: string;
   holdingNameById: Map<string, string>;
+  // The holding's balance boundary, which tells an imported row's delete
+  // confirm whether deleting it leaves the balance alone.
+  balanceBoundary: number | null;
   onPressTransaction: (transactionId: string) => void;
   // Duplicate this ledger row into a pre-filled create form. Passed for
   // manual rows only (a synced row is not duplicable), stateless via the
@@ -433,6 +442,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     defaultCategoryKey,
     holdingName,
     holdingNameById,
+    balanceBoundary,
     onPressTransaction,
     onDuplicateTransaction,
     lotActions,
@@ -517,15 +527,22 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       // `CardContextMenu`) with a single destructive Delete action — the
       // same long-press pattern the account/holding cards use. A synced
       // (Monobank) row is not deletable (its state is owned by the sync),
-      // so `CardContextMenu` renders it with no gesture at all.
+      // so `CardContextMenu` renders it with no gesture at all. An imported
+      // row is deletable but not duplicable, so its hold opens the delete
+      // confirm directly.
       return (
         <CardContextMenu
           name={description}
-          deletable={!isSyncedTransaction(transactionRow.transaction)}
+          deletable={isDeletableTransaction(transactionRow.transaction)}
+          deleteMessage={
+            importDeleteKeepsBalance(transactionRow.transaction, balanceBoundary)
+              ? t('transactions.deleteImportedKeepsBalance')
+              : undefined
+          }
           onDelete={() => transactionsRepo.remove(transactionRow.transaction.id)}
-          // A synced row is not duplicable — pass no handler so its long-press keeps
-          // offering nothing (it already renders bare). A manual row's Duplicate
-          // opens the create form pre-filled from this row.
+          // A synced or imported row is not duplicable — pass no handler so its
+          // long-press keeps offering nothing more than Delete. A manual row's
+          // Duplicate opens the create form pre-filled from this row.
           onDuplicate={
             isSyncedTransaction(transactionRow.transaction)
               ? undefined
@@ -749,6 +766,9 @@ const resolveLedgerReadyView = (
 const editableAccountId = (holding: HoldingRow | undefined): string | undefined =>
   foldMap(maybe(holding), (found) => (isHoldingType(found.type) ? found.accountId : undefined));
 
+const isImportedTransaction = (row: Pick<TransactionRow, 'source'>): boolean =>
+  row.source === 'import';
+
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
@@ -767,6 +787,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     ['transactions'],
     true,
     { cached: true },
+  );
+  // Only a holding with an imported row reads its boundary: that row's delete
+  // confirm says whether the balance stays.
+  const { boundary: balanceBoundary } = useBalanceBoundary(
+    holdingId,
+    transactions.some(isImportedTransaction),
   );
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
@@ -1001,6 +1027,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     defaultCategoryKey,
     holdingName,
     holdingNameById,
+    balanceBoundary,
     onPressTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { transactionId }),
     onDuplicateTransaction: (transactionId) =>

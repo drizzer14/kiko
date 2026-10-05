@@ -478,6 +478,8 @@ export const uk: typeof en = {
       fromSheetTitle: 'Звідки',
       holding: 'Актив',
       holdingSheetTitle: 'Актив',
+      importedNotice:
+        'Цю транзакцію імпортовано з виписки, тому можна змінити лише категорію та зв’язок із кредитом.',
       income: 'Дохід',
       loanLinkedAuto: 'Пов’язано автоматично.',
       loanLinkUndo: 'Відмінити',
@@ -759,6 +761,8 @@ export const uk: typeof en = {
     defaultDescriptionIncome: 'Надходження: {{name}}',
     defaultDescriptionExpensePlain: 'Витрата',
     defaultDescriptionIncomePlain: 'Надходження',
+    deleteImportedKeepsBalance:
+      'Баланс залишиться таким, як у банку. Щоб змінити його, відредагуйте актив.',
     exchangeFrom: 'Обмін з {{name}}',
     exchangeTo: 'Обмін на {{name}}',
   },
