@@ -389,14 +389,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // chip shows the selected type's default glyph (`defaultHoldingSymbol`, a
   // property's own category glyph) and switching type or category re-derives
   // it, so an untouched icon follows the selection. Once the user picks (icon
-  // !== null, "dirty"), that choice overrides the default and type changes no
-  // longer move it.
+  // !== null, "dirty"), that choice overrides the default and type changes
+  // leave it in place.
   const [icon, setIcon] = useState<string | null>(draft.icon);
   // The color mirrors the icon's dirty pattern: null until the user taps a
   // swatch ("not dirty"). While null, the effective color follows the selected
   // type's default (defaultHoldingColor[type]), so the ColorPicker highlights
   // that swatch and switching type moves it. Once picked (color !== null,
-  // "dirty"), the choice sticks and type changes no longer move it.
+  // "dirty"), the choice sticks and type changes leave it in place.
   const [color, setColor] = useState<string | null>(draft.color);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the type default —
   // because `color` here is seeded straight from a stored row
@@ -406,7 +406,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   // Keep the selected type valid for what the form currently OFFERS. The account
   // loads asynchronously, so once its option set is known, a default (or
-  // previously selected) type outside that set snaps to the first offered type —
+  // already-selected) type outside that set snaps to the first offered type —
   // which also re-derives the non-dirty icon to match. `typeOptions` is the
   // creatable subset in create mode (so a bank create snaps `card` -> the first
   // creatable type, `term_deposit`) and the full set in edit mode (so a seeded

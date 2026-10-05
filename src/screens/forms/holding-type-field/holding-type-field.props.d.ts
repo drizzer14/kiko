@@ -15,7 +15,7 @@ export type HoldingTypeFieldProps = {
   // each sheet row's leading icon) — the screen passes `holdingTypeSymbol`
   // straight through.
   icons: Record<HoldingType, string>;
-  // Read-only once a holding's type can no longer change (edit mode — the
+  // Read-only once a holding's type is fixed (edit mode — the
   // domain forbids re-shaping an existing holding) — mirrors
   // AccountKindField's own `disabled` contract.
   disabled: boolean;

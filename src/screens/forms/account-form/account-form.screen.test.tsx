@@ -26,7 +26,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 // Finds which theme entity-color swatch (if any) the ColorPicker currently
 // marks selected, by its accessibility label, and resolves it back to a hex.
 // `undefined` means no swatch matches the form's current effective color —
-// the failure mode a stored '' or an unmapped kind/type used to produce.
+// the failure mode a stored '' or an unmapped kind/type would produce.
 const selectedSwatchHex = (
   getByLabelText: Awaited<ReturnType<typeof render>>['getByLabelText'],
 ): string | undefined => {
@@ -63,9 +63,8 @@ const pickOtherBank = async (
 };
 
 // The AccountKindField trigger's own `disabled` accessibility state — the
-// read-only-kind assertions used to read the ChipRow chip's parent
-// `accessibilityState.disabled`; the field now carries it directly on its
-// testID'd Pressable.
+// field carries it directly on its testID'd Pressable, which the read-only-kind
+// assertions read.
 const isKindFieldDisabled = (
   getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
 ): boolean => Boolean(getByTestId('account-kind-field').props.accessibilityState.disabled);
@@ -1287,7 +1286,7 @@ describe('AccountFormScreen edit mode', () => {
 
   it('resolves a since-removed account kind to a real swatch, not blank', async () => {
     // The schema enum is TS-only with no CHECK constraint, so a row under a
-    // kind the app no longer knows can still exist.
+    // kind outside the current list can still exist.
     mockAccounts = [{ id: 'acc-1', name: 'X', kind: 'retired_kind', icon: null, color: null }];
     const { getByLabelText } = await renderForm({ accountId: 'acc-1' });
 

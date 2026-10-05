@@ -14,11 +14,11 @@ import type { PropertyFormBlockProps } from './property-form-block.props';
 
 // The `type === 'property_item'` details block as its own leaf component,
 // keeping its own cognitive-complexity budget separate from the screen's.
-// The category select that used to render here moved to the Type slot
-// (`PropertyTypeField`, on `HoldingFormScreen`). The Cost field is
-// CREATE-only; the ownership share shows on create AND edit, for every
-// category but a loan given — so an edited loan given has nothing to show,
-// and the whole block (including its own "Details" heading) renders nothing.
+// The category select lives in the Type slot (`PropertyTypeField`, on
+// `HoldingFormScreen`), not here. The Cost field is CREATE-only; the
+// ownership share shows on create AND edit, for every category but a loan
+// given — so an edited loan given has nothing to show, and the whole block
+// (including its own "Details" heading) renders nothing.
 const PropertyFormBlock: FC<PropertyFormBlockProps> = ({ fields, attemptedSave, isEdit }) => {
   const { t } = useTranslation();
   const { fieldErrors, refs, ownership } = fields;

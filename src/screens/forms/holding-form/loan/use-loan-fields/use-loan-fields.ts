@@ -255,19 +255,18 @@ const installmentsChanged = (oldMeta: LoanMeta, newMeta: LoanMeta): boolean => {
 };
 
 /**
- * Whether a loan EDIT changed anything a previously-computed AUTO link's own
+ * Whether a loan EDIT changed anything an already-computed AUTO link's own
  * rules 1/2/3 were proven against — either the amortization schedule rules
  * 1/2 (amount, date) read (`installmentsChanged` above), or one of rule 3's
  * own "paid from"/lender signals (`paymentHoldingId`, `lenderIban`,
  * `lenderName`), still checked here even though rule 3 itself is never
  * re-verified once an installment is marked taken (see
  * `installmentIsTaken`'s own doc comment) — a changed signal means a FUTURE
- * re-run would no longer even consider it a match. `lenderIban` is compared
+ * re-run would not even consider it a match. `lenderIban` is compared
  * normalized (whitespace-stripped, uppercased) so a cosmetic-only edit (or a
  * loan saved before that normalization existed) never trips this. A stale
  * AUTO link left in place under the new terms would otherwise count as
- * "taken" forever, even once it no longer corresponds to any real
- * installment.
+ * "taken" forever, even when it corresponds to no real installment.
  */
 export const loanEditInvalidatesAutoLinks = (oldMeta: LoanMeta, newMeta: LoanMeta): boolean =>
   installmentsChanged(oldMeta, newMeta) ||

@@ -40,7 +40,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 // Finds which theme entity-color swatch (if any) the ColorPicker currently
 // marks selected, by its accessibility label, and resolves it back to a hex.
 // `undefined` means no swatch matches the form's current effective color —
-// the failure mode a stored '' used to produce.
+// the failure mode a stored '' would produce.
 const selectedSwatchHex = (
   getByLabelText: Awaited<ReturnType<typeof render>>['getByLabelText'],
 ): string | undefined => {
@@ -558,10 +558,10 @@ describe('HoldingFormScreen term deposit', () => {
   });
 
   // Every scroll-on-add-row trigger, not only "Додати внесок" (add
-  // contribution) itself, must route
-  // through the SAME occlusion-aware `scrollToField` helper the Save-invalid
-  // path already uses — never an unconditional `scrollToEnd`, which used to
-  // scroll even when the newly added row was already fully visible.
+  // contribution) itself, must route through the SAME occlusion-aware
+  // `scrollToField` helper the Save-invalid path uses — never an
+  // unconditional `scrollToEnd`, which scrolls even when the newly added row
+  // is already fully visible.
   it('scrolls to the newly added contribution through the occlusion-aware scrollToField helper, not an unconditional scrollToEnd', async () => {
     const scrollToFieldMock = scrollToField as jest.Mock;
     const rafSpy = jest
@@ -1767,10 +1767,10 @@ describe('HoldingFormScreen save validation', () => {
     expect(screen.queryByText('Enter a face value greater than 0.')).toBeNull();
   });
 
-  // A Manual-mode bond missing its maturity date used to fail Save with no
-  // visible reason at all (`isBondValid` blocked it, but neither
-  // `bondReasonKey` nor the scroll target knew why) — the purchase date has
-  // the identical gap in the code, but is untestable through this screen:
+  // A Manual-mode bond missing its maturity date must name the reason on the
+  // field, not fail Save silently (`isBondValid` blocks it, so `bondReasonKey`
+  // and the scroll target must know why) — the purchase date has the
+  // identical gap in the code, but is untestable through this screen:
   // `useBondIsinMode`'s own effect defaults it to today the instant the bond
   // section opens, in EITHER mode, before a test can ever observe it null.
   it('shows the maturity-date reason directly on that field, for a Manual-mode bond missing its maturity date', async () => {
@@ -3199,7 +3199,7 @@ describe('HoldingFormScreen loan', () => {
       }),
       { kind: 'none' },
       // The principal changed, so this edit clears the loan's own auto
-      // links (they may no longer match the new schedule).
+      // links (they may not match the new schedule).
       true,
     );
     expect(updateLoanMock.mock.calls[0][1]).not.toHaveProperty('balanceMinorUnits');
@@ -3664,8 +3664,8 @@ describe('HoldingFormScreen icon follows type until dirty', () => {
 
     expect(screen.getByLabelText('Icon giftcard')).toBeTruthy();
 
-    // Once picked, the icon is dirty: switching type no longer moves it off the
-    // user's choice.
+    // Once picked, the icon is dirty: switching type leaves it on the user's
+    // choice.
     await selectHoldingType(screen, 'bond');
 
     expect(screen.getByLabelText('Icon giftcard')).toBeTruthy();
@@ -3875,8 +3875,8 @@ describe('HoldingFormScreen color follows type until dirty', () => {
 
     expect(screen.getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
 
-    // Once picked, the color is dirty: switching type no longer moves it off the
-    // user's choice onto the bond default (green).
+    // Once picked, the color is dirty: switching type leaves it on the user's
+    // choice, not the bond default (green).
     await selectHoldingType(screen, 'bond');
 
     expect(screen.getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
@@ -3997,8 +3997,8 @@ describe('HoldingFormScreen edit mode', () => {
 
   it('hydrates a dust BTC balance at full scale, not exponential notation', async () => {
     // Below 100 satoshis, `String(toMajor(...))` emits exponential notation
-    // ("5e-7"), which the grouping formatter used to strip down to its digits
-    // ("57") — a 50-satoshi holding rendered, and would save, as 57 BTC.
+    // ("5e-7"), which the grouping formatter would strip down to its digits
+    // ("57") — a 50-satoshi holding would render, and save, as 57 BTC.
     const { getByLabelText } = await renderEdit({
       id: 'h-btc',
       name: 'Wallet',
@@ -4017,7 +4017,7 @@ describe('HoldingFormScreen edit mode', () => {
 
     // A synced card's type is dropped from the CREATE options, but edit mode uses
     // the full set — so the type field still shows Card (read-only) rather than
-    // crashing on a type that is no longer manually creatable.
+    // crashing on a type that is not manually creatable.
     expect(getByTestId('holding-type-field').props.accessibilityState.disabled).toBe(true);
     await fireEvent.press(getByTestId('holding-type-field'));
     expect(queryByTestId('holding-type-field-option-bond')).toBeNull();

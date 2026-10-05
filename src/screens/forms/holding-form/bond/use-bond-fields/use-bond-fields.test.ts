@@ -569,7 +569,7 @@ describe('useBondFields ISIN-mode edit of an ISIN the register does not list', (
   });
 
   // The kind is a Manual-only chip: an ISIN-mode save would store a kind the
-  // reopened bond no longer shows.
+  // reopened bond does not show.
   it('blocks the stored ISIN in ISIN mode once Manual changed its bond kind', async () => {
     const { result } = await renderBondFields(true);
 

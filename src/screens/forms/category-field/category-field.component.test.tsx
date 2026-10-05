@@ -161,8 +161,8 @@ describe('CategoryField', () => {
 
     await fireEvent.press(utils.getByLabelText('Category'));
 
-    // Every row's glyph reads in its own category color — including the icons
-    // that used to render with a flat textSecondary/textPrimary tone.
+    // Every row's glyph reads in its own category color, never a flat
+    // textSecondary/textPrimary tone.
     expect(glyphTint(utils, 'cart')).toBe('#112233');
     expect(glyphTint(utils, 'fork.knife')).toBe('#445566');
   });

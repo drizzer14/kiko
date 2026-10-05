@@ -143,8 +143,8 @@ describe('HoldingFormScreen contribution button variants', () => {
     // this is what pulls the Add button up close to the list.
     expect(StyleSheet.flatten(group.props.style).gap).toBe(TIGHT_GROUP_GAP);
 
-    // The Add button lives INSIDE that tight group (hugging the list), no longer
-    // a direct sibling sitting the full section gap below the last contribution.
+    // The Add button lives INSIDE that tight group (hugging the list), not a
+    // direct sibling sitting the full section gap below the last contribution.
     expect(within(group).getByText('Add contribution')).toBeTruthy();
   });
 

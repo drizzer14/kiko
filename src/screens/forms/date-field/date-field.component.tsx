@@ -104,10 +104,7 @@ const DateField: FC<DateFieldProps> = ({
       </Pressable>
 
       {/* REFLOW, not reserve (the reflow error model; see `FieldError`): no
-        error node while valid — uniform
-        with every other field type, fixing the DATE field's own
-        inconsistency (it used to show a message with no outline while
-        TextField showed an outline; now neither shows an outline). */}
+        error node while valid — uniform with every other field type. */}
       {hasError && <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />}
 
       <BottomSheet

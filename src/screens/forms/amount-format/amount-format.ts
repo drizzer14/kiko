@@ -62,9 +62,9 @@ export const groupAmount = (input: string): string => {
  * (the caller pipes this through `groupAmount`).
  *
  * WHY NOT `String(minorUnits / factor)`: below 1e-6 JavaScript switches to
- * exponential notation, and `groupAmount`'s no-separator branch used to strip
- * every non-digit — so 50 satoshis hydrated as `5e-7` and rendered as `57`,
- * which Save then stored as 57 BTC (5,700,000,000 sat) and applied as a
+ * exponential notation, and `groupAmount`'s no-separator branch strips every
+ * non-digit — so 50 satoshis would hydrate as `5e-7` and render as `57`,
+ * which Save would store as 57 BTC (5,700,000,000 sat) and apply as a
  * balance delta. `toFixed(scale)` never emits an exponent.
  */
 export const majorAmountText = (currency: Currency, minorUnits: number): string => {

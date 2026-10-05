@@ -78,9 +78,9 @@ const createSeed = (initialKind: Kind | undefined, draft: FormDraft | undefined)
   };
 };
 
-// A stored `kind` can still hold a value that is no longer part of the CURRENT
-// schema enum — the schema's `enum` is TS-only (no DB CHECK constraint), so a
-// row under a kind the app no longer knows can persist. Guards the edit-mode
+// A stored `kind` can hold a value outside the CURRENT schema enum — the
+// schema's `enum` is TS-only (no DB CHECK constraint), so a row under a kind
+// outside the current list can persist. Guards the edit-mode
 // hydration below against that case so an unrecognized stored kind never
 // assigns outside `Kind`'s own type (and the symbol/color lookups below never
 // silently miss).
@@ -293,8 +293,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const nameInputRef = useRef<TextInputInstance>(null);
   // The cash-only initial-value field's own wrapper + inner TextInput refs —
   // the SAME pair the name field above carries, so a blocked Save on it scrolls
-  // and focuses exactly like a blocked name does (it used to have no scroll
-  // target at all).
+  // and focuses exactly like a blocked name does.
   const initialValueFieldRef = useRef<FieldInstance>(null);
   const initialValueInputRef = useRef<TextInputInstance>(null);
   // The bank or broker picker's wrapper — one ref, since only one of the two

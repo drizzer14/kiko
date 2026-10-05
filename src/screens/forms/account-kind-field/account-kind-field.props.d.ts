@@ -15,7 +15,7 @@ export type AccountKindFieldProps = {
   // fade and `onSelectClosed` follows at once (`SelectField`'s contract). The
   // screen that owns the swap decides which; omitted = the fade for all.
   closesWithoutAnimation?: (kind: AccountKind) => boolean;
-  // Read-only once an account's kind can no longer change: in edit mode (the
+  // Read-only once an account's kind is fixed: in edit mode (the
   // domain forbids re-shaping an existing account) and once a bank/crypto
   // source has already inserted the row (switching kind afterwards would
   // orphan it).

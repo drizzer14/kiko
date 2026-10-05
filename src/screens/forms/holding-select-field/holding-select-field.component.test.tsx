@@ -67,8 +67,8 @@ describe('HoldingSelectField', () => {
     // `marginLeft: 'auto'`. That is a LAYOUT style, so it lives on the Box
     // WRAPPING the caption rather than on the Text itself — `TextProps['style']`
     // admits only typography keys. Pinned here so a refactor cannot flatten that
-    // wrapper away (or move the style back onto Text, where it no longer
-    // typechecks) and silently lose the alignment.
+    // wrapper away (or move the style onto Text, where it does not
+    // typecheck) and silently lose the alignment.
     const wrapper = ancestorWithStyle(getByText('Personal'), 'marginLeft');
 
     expect(StyleSheet.flatten(wrapper.props.style).marginLeft).toBe('auto');
