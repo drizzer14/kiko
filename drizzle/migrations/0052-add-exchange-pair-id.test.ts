@@ -278,7 +278,7 @@ describe('migration 0052: the stored exchange pair id', () => {
     expect(Object.values(pairIds(database))).toEqual([null, null, null]);
   });
 
-  it('leaves a split group out of every pair, whatever its marker', () => {
+  it('does not pair two members of one split group with each other, whatever their marker', () => {
     const database = databaseThrough0051();
 
     insertTransaction(database, {
@@ -299,6 +299,31 @@ describe('migration 0052: the stored exchange pair id', () => {
     applyMigration(database);
 
     expect(Object.values(pairIds(database))).toEqual([null, null]);
+  });
+
+  it('pairs a leg that has no split group with the marked split payment it was converted from', () => {
+    const database = databaseThrough0051();
+
+    insertTransaction(database, {
+      id: 'split-payment',
+      holdingId: 'uah',
+      amountMinorUnits: -40_000,
+      exchangeCounterpartHoldingId: 'usd',
+      changeGroupId: 'group',
+    });
+    insertTransaction(database, {
+      id: 'converted-leg',
+      holdingId: 'usd',
+      amountMinorUnits: 1_000,
+      exchangeCounterpartHoldingId: 'uah',
+    });
+
+    applyMigration(database);
+
+    expect(pairIds(database)).toEqual({
+      'split-payment': 'converted-leg',
+      'converted-leg': 'converted-leg',
+    });
   });
 
   it('leaves two legs that name one bank row unpaired, since neither is provably its other half', () => {

@@ -4,8 +4,9 @@ import maybe, { foldMap } from 'fnts/maybe';
 
 export type ExchangeRemoval =
   // The other legs are the user's rows and go with this one; `names` are the
-  // holdings they sit on.
-  | { kind: 'deleted'; names: string[] }
+  // holdings they sit on. `keptNames` are the holdings of a bank-owned leg of
+  // the same pair that stays, present only when there is one.
+  | { kind: 'deleted'; names: string[]; keptNames?: string[] }
   // The other leg is the bank's row and stays; `names` are the holdings it sits on.
   | { kind: 'syncedKept'; names: string[] }
   // The row names an exchange partner that cannot be proven: `name` is the

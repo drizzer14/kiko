@@ -26,6 +26,7 @@ import {
   lt,
   lte,
   ne,
+  or,
   sql,
 } from 'drizzle-orm';
 import {
@@ -304,10 +305,13 @@ const recordManualTransaction = async (
 // bank-owned (synced) row is never marked, because this app never mutates it
 // beyond the pair id (see the residual documented on
 // `transactions.exchangeCounterpartHoldingId` in `db/schema.ts`); it still gets
-// the pair id, which is what tells the delete its partner is the bank's.
+// the pair id, which is what tells the delete its partner is the bank's. A row
+// that already carries a marker keeps it: the marker of a deposit source leg is
+// what takes the deposit's contribution out with the leg, and a second Convert
+// of that leg must not point it somewhere else.
 const markExistingLegTransaction = async (
   databaseTransaction: typeof database,
-  existing: Pick<TransactionRow, 'source'> | undefined,
+  existing: Pick<TransactionRow, 'source' | 'exchangeCounterpartHoldingId'> | undefined,
   { existingTransactionId, counterpartHoldingId }: ExchangeCounterpartInput,
   exchangePairId: string,
 ): Promise<void> => {
@@ -319,7 +323,7 @@ const markExistingLegTransaction = async (
     .update(transactions)
     .set({
       exchangePairId,
-      ...(isDeletableTransaction(existing)
+      ...(isDeletableTransaction(existing) && existing.exchangeCounterpartHoldingId === null
         ? { exchangeCounterpartHoldingId: counterpartHoldingId }
         : {}),
     })
@@ -359,25 +363,71 @@ const markerHoldingOf = (
 ): NamedHolding | undefined =>
   foldMap(maybe(row.exchangeCounterpartHoldingId), (holdingId) => holdingsById.get(holdingId));
 
-// The rows that share `column` = `value` with the row under delete, `[]` when it
-// has no such value.
-const readSharingRowsDatabaseTransaction = async (
+const presentIdsOf = (values: (string | null)[]): string[] => [
+  ...new Set(values.flatMap((value) => foldMap(maybe(value), (present) => [present]) ?? [])),
+];
+
+// Every other row of the movement `row` is one part of. A Convert is allowed on
+// a split row, so a split group and a pair id each can lead to a row that
+// carries the other, and following either ONE hop leaves a part behind (the
+// converted payment's other leg, or the returns): money created or lost. So
+// each pass reads the rows that share a group or pair id not read before, and
+// the ids of those rows feed the next pass, until a pass finds no new row. Each
+// id is read once, so it ends at the latest when every row has been reached.
+const readMovementRowsDatabaseTransaction = async (
   databaseTransaction: typeof database,
   row: TransactionRow,
-  column: typeof transactions.changeGroupId | typeof transactions.exchangePairId,
-  value: string | null,
-): Promise<TransactionRow[]> =>
-  (await foldMap(maybe(value), (shared) =>
-    databaseTransaction
+): Promise<TransactionRow[]> => {
+  const reached = new Map<string, TransactionRow>([[row.id, row]]);
+  const readGroupIds = new Set<string>();
+  const readPairIds = new Set<string>();
+  let frontier = [row];
+
+  while (frontier.length > 0) {
+    const groupIds = presentIdsOf(frontier.map((reachedRow) => reachedRow.changeGroupId)).filter(
+      (groupId) => !readGroupIds.has(groupId),
+    );
+    const pairIds = presentIdsOf(frontier.map((reachedRow) => reachedRow.exchangePairId)).filter(
+      (pairId) => !readPairIds.has(pairId),
+    );
+    const sharing = [
+      ...(groupIds.length > 0 ? [inArray(transactions.changeGroupId, groupIds)] : []),
+      ...(pairIds.length > 0 ? [inArray(transactions.exchangePairId, pairIds)] : []),
+    ];
+
+    if (sharing.length === 0) {
+      break;
+    }
+
+    for (const groupId of groupIds) {
+      readGroupIds.add(groupId);
+    }
+
+    for (const pairId of pairIds) {
+      readPairIds.add(pairId);
+    }
+
+    const found = await databaseTransaction
       .select()
       .from(transactions)
-      .where(and(eq(column, shared), ne(transactions.id, row.id))),
-  )) ?? [];
+      .where(or(...sharing));
+
+    frontier = found.filter((foundRow) => !reached.has(foundRow.id));
+
+    for (const foundRow of frontier) {
+      reached.set(foundRow.id, foundRow);
+    }
+  }
+
+  return [...reached.values()].filter((reachedRow) => reachedRow.id !== row.id);
+};
 
 // What a delete does to the other rows of a movement: a row the user owns
 // (manual or imported) goes with it, a bank-owned row is never deleted or
 // mutated — "skipped" — and a sync running in between cannot change that,
-// because the rows are read inside the delete's own transaction.
+// because the rows are read inside the delete's own transaction. `split` are
+// the rows in a split group of the movement, `pair` the rows in an Exchange or
+// Convert pair of it; one row can be in both.
 type LinkedRows = {
   split: { removed: TransactionRow[]; kept: TransactionRow[] };
   pair: { removed: TransactionRow[]; kept: TransactionRow[] };
@@ -388,27 +438,23 @@ const byOwnership = (rows: TransactionRow[]): LinkedRows['split'] => ({
   kept: rows.filter((row) => !isDeletableTransaction(row)),
 });
 
+const isOneOf = (ids: string[], value: string | null): boolean =>
+  value !== null && ids.includes(value);
+
 const readLinkedRowsDatabaseTransaction = async (
   databaseTransaction: typeof database,
   row: TransactionRow,
-): Promise<LinkedRows> => ({
-  split: byOwnership(
-    await readSharingRowsDatabaseTransaction(
-      databaseTransaction,
-      row,
-      transactions.changeGroupId,
-      row.changeGroupId,
-    ),
-  ),
-  pair: byOwnership(
-    await readSharingRowsDatabaseTransaction(
-      databaseTransaction,
-      row,
-      transactions.exchangePairId,
-      row.exchangePairId,
-    ),
-  ),
-});
+): Promise<LinkedRows> => {
+  const others = await readMovementRowsDatabaseTransaction(databaseTransaction, row);
+  const movement = [row, ...others];
+  const groupIds = presentIdsOf(movement.map((part) => part.changeGroupId));
+  const pairIds = presentIdsOf(movement.map((part) => part.exchangePairId));
+
+  return {
+    split: byOwnership(others.filter((other) => isOneOf(groupIds, other.changeGroupId))),
+    pair: byOwnership(others.filter((other) => isOneOf(pairIds, other.exchangePairId))),
+  };
+};
 
 // A row removed with `row` once, even if it shared both a group and a pair id.
 const rowsToRemoveWith = (row: TransactionRow, linked: LinkedRows): TransactionRow[] => [
@@ -434,7 +480,13 @@ const exchangeRemovalOf = (
   holdingsById: Map<string, NamedHolding>,
 ): ExchangeRemoval | undefined => {
   if (linked.pair.removed.length > 0) {
-    return { kind: 'deleted', names: uniqueHoldingNamesOf(linked.pair.removed, holdingsById) };
+    return {
+      kind: 'deleted',
+      names: uniqueHoldingNamesOf(linked.pair.removed, holdingsById),
+      ...(linked.pair.kept.length > 0
+        ? { keptNames: uniqueHoldingNamesOf(linked.pair.kept, holdingsById) }
+        : {}),
+    };
   }
 
   if (linked.pair.kept.length > 0) {
@@ -498,8 +550,7 @@ const planRemoveDatabaseTransaction = async (
 // Delete rows and give each balance back by its OWN holding's boundary
 // (`removeBalanceDelta`), then take a deposit's contribution out with the leg
 // that paid it. Everything runs on the caller's transaction, so a throw (a
-// deposit whose metadata cannot be rewritten) rolls the rows and balances back
-// too.
+// database error mid-delete) rolls the rows and balances back too.
 const removeRowsDatabaseTransaction = async (
   databaseTransaction: typeof database,
   rows: TransactionRow[],
@@ -1494,9 +1545,10 @@ export const transactionsRepo = {
   /**
    * Convert-mode (spec "Convert an existing transaction"): record the ONE
    * missing counterpart leg of an existing transaction in ONE op-sqlite
-   * transaction, and NEVER touch the existing row (which may be a synced,
-   * bank-owned row). The direction is chosen by the caller from the existing
-   * amount's sign:
+   * transaction; the existing row (which may be a synced, bank-owned row) gets
+   * only the pair id (plus the marker when it is manual or imported), never its
+   * amount, time or balance. The direction is chosen by the caller from the
+   * existing amount's sign:
    *   - 'record-destination' (existing was an EXPENSE): a POSITIVE receipt on
    *     the picked destination, dispatched by type exactly as `recordExchange`
    *     does — plain (+amount) for cash/card/crypto_asset, a deposit
@@ -1555,7 +1607,11 @@ export const transactionsRepo = {
       }
 
       const existingRows = await databaseTransaction
-        .select({ source: transactions.source, exchangePairId: transactions.exchangePairId })
+        .select({
+          source: transactions.source,
+          exchangePairId: transactions.exchangePairId,
+          exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+        })
         .from(transactions)
         .where(eq(transactions.id, input.existingTransactionId))
         .limit(1);
@@ -1715,11 +1771,13 @@ export const transactionsRepo = {
    * A row that is one part of a movement takes the rest with it, each reversed
    * the same way on its own holding: every other row of an Exchange or Convert
    * that shares its `exchangePairId` and every other row of a split
-   * (`changeGroupId`), and, for a leg that paid a term deposit, the one
-   * contribution dated at the leg's time (`removeDepositContributionDatabaseTransaction`).
-   * A bank-owned partner is skipped: it is never deleted or touched. The linked
-   * rows are read here, inside the delete, so a sync that ran after
-   * `removePlan` read them cannot change what is deleted.
+   * (`changeGroupId`), followed from each row found to every row it shares an
+   * id with (a Convert on a split row links the two), and, for a leg that paid a
+   * term deposit, the one contribution dated at the leg's time
+   * (`removeDepositContributionDatabaseTransaction`). A bank-owned partner is
+   * skipped: it is never deleted or touched. The linked rows are read here,
+   * inside the delete, so a sync that ran after `removePlan` read them cannot
+   * change what is deleted.
    */
   remove: (transactionId: string) =>
     write(async (databaseTransaction) => {

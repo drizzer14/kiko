@@ -57,7 +57,7 @@ describe('CardContextMenu', () => {
         name="Black card"
         deletable
         onDelete={jest.fn()}
-        deleteMessage="This stays at the bank figure."
+        deleteMessage={() => Promise.resolve('This stays at the bank figure.')}
       >
         <Text>card</Text>
       </CardContextMenu>,
@@ -162,6 +162,73 @@ describe('CardContextMenu', () => {
     expect(getByText('Second text.')).toBeTruthy();
     expect(queryByText('First text.')).toBeNull();
     expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
+  });
+
+  it('shows the text of the latest request when an earlier read settles after it', async () => {
+    const resolvers: ((message: string | undefined) => void)[] = [];
+    const { getByText, queryByText } = await render(
+      <CardContextMenu
+        name="Black card"
+        deletable
+        onDelete={jest.fn()}
+        deleteMessage={() =>
+          new Promise<string | undefined>((resolve) => {
+            resolvers.push(resolve);
+          })
+        }
+      >
+        <Text>card</Text>
+      </CardContextMenu>,
+      { wrapper: GestureRootWrapper },
+    );
+
+    await holdCard();
+    await holdCard();
+
+    expect(resolvers).toHaveLength(2);
+
+    await act(async () => {
+      resolvers[1]?.('Latest text.');
+    });
+    await act(async () => {
+      resolvers[0]?.('Superseded text.');
+    });
+
+    expect(getByText('Latest text.')).toBeTruthy();
+    expect(queryByText('Superseded text.')).toBeNull();
+  });
+
+  it('opens no confirm for a read that settles after a newer request, until that one settles', async () => {
+    const resolvers: ((message: string | undefined) => void)[] = [];
+    const { getByText, queryByText } = await render(
+      <CardContextMenu
+        name="Black card"
+        deletable
+        onDelete={jest.fn()}
+        deleteMessage={() =>
+          new Promise<string | undefined>((resolve) => {
+            resolvers.push(resolve);
+          })
+        }
+      >
+        <Text>card</Text>
+      </CardContextMenu>,
+      { wrapper: GestureRootWrapper },
+    );
+
+    await holdCard();
+    await holdCard();
+    await act(async () => {
+      resolvers[0]?.('Superseded text.');
+    });
+
+    expect(queryByText('Delete "Black card"')).toBeNull();
+
+    await act(async () => {
+      resolvers[1]?.('Latest text.');
+    });
+
+    expect(getByText('Latest text.')).toBeTruthy();
   });
 
   it('resolves a deleteMessage function for the action list Delete too, and shows its text', async () => {

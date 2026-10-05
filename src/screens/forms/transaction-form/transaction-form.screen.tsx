@@ -1094,7 +1094,8 @@ const resolveConvertView = (
   // Convert-mode eligibility uses the WIDER (cash/card) rule, unchanged from
   // the current create source rule — the create-only cash-source restriction
   // applies to CREATE only. Both manual and synced rows qualify; the action
-  // never mutates the existing row, so a synced row stays safe.
+  // gives the existing row only the pair id (plus the marker when it is manual
+  // or imported), so a synced row stays safe.
   const eligible =
     isEditing &&
     existing !== undefined &&
@@ -1458,7 +1459,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
 
 // Whether the footer's Save button renders: a manual row always, a synced row
 // only once its category has changed, and a converting row always (its Save
-// writes the counterpart leg, never the existing row). Kept module-level and
+// writes the counterpart leg and only the existing row's pair id). Kept module-level and
 // pure so the footer's boolean expression does not add its own operator count
 // to the screen component's cognitive-complexity budget.
 const showsSaveButton = (
@@ -1607,8 +1608,9 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         />
       )}
 
-      {/* Shown for BOTH a manual and a synced row — the action never mutates
-        the existing row, so a read-only synced row stays safe to convert.
+      {/* Shown for BOTH a manual and a synced row — the existing row gets only
+        the pair id (plus the marker when it is manual or imported), so a
+        read-only synced row stays safe to convert.
         Not gated by `!isReadOnly` for that reason. */}
       {props.convertEligible && (
         <Button
@@ -2480,7 +2482,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   // The convert save path: writes ONLY the missing counterpart leg via
-  // `recordExchangeCounterpart`, never touching the existing row. Extracted
+  // `recordExchangeCounterpart`; the existing row gets only the pair id (plus
+  // the marker when it is manual or imported). Extracted
   // out of `save` for the same cognitive-complexity-budget reason as
   // `saveExchange` above.
   const saveConvert = async (): Promise<void> => {

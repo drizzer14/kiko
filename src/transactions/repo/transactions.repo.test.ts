@@ -1849,7 +1849,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       // the counterpart's own holding, read by the synced guard
       [{ accountId: 'acc-dst', metadata: null }],
       [{ institution: null }], // the counterpart's own account, read by the synced guard
-      [{ source: 'manual', exchangePairId: null }], // the existing row, read INSIDE the transaction
+      // the existing row, read INSIDE the transaction
+      [{ source: 'manual', exchangePairId: null, exchangeCounterpartHoldingId: null }],
       [unanchoredBalance(2_000)], // the new leg's balance read
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1875,7 +1876,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       // the counterpart's own holding, read by the synced guard
       [{ accountId: 'acc-dst', metadata: null }],
       [{ institution: null }], // the counterpart's own account, read by the synced guard
-      [{ source: 'monobank', exchangePairId: null }],
+      [{ source: 'monobank', exchangePairId: null, exchangeCounterpartHoldingId: null }],
       [unanchoredBalance(2_000)],
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1902,7 +1903,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
       [{ accountId: 'acc-dst', metadata: null }],
       [{ institution: null }],
-      [{ source: 'manual', exchangePairId: 'pair-7' }],
+      [{ source: 'manual', exchangePairId: 'pair-7', exchangeCounterpartHoldingId: null }],
       [unanchoredBalance(2_000)],
     ]);
     mockDatabaseTransaction = databaseTransaction;
@@ -1922,6 +1923,30 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
       table: transactions,
       values: { exchangeCounterpartHoldingId: 'dst-1', exchangePairId: 'pair-7' },
     });
+  });
+
+  it('keeps the marker an existing row already carries and writes only the pair id', async () => {
+    const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
+      [{ accountId: 'acc-dst', metadata: null }],
+      [{ institution: null }],
+      [{ source: 'manual', exchangePairId: 'pair-7', exchangeCounterpartHoldingId: 'deposit-1' }],
+      [unanchoredBalance(2_000)],
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'dst-1',
+      counterpartType: 'cash',
+      amountMinorUnits: 7_000,
+      existingTransactionId: 'existing-tx-1',
+      existingHoldingId: 'existing-1',
+      time: 123,
+    });
+
+    expect(updates.filter((update) => update.table === transactions)).toEqual([
+      { table: transactions, values: { exchangePairId: 'pair-7' } },
+    ]);
   });
 
   it('records a term_deposit destination as a contribution (metadata rewrite, no new ledger row)', async () => {

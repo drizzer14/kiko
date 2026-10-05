@@ -3,7 +3,7 @@ import either, { bifoldr } from 'fnts/either';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 import { trigger } from 'react-native-haptic-feedback';
-import { type FC, type ReactNode, useState } from 'react';
+import { type FC, type ReactNode, useRef, useState } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -119,7 +119,7 @@ const CardContextMenu: FC<{
   // requested (the confirm opens once it settles, so the user never sees the
   // sheet change under their finger), for a message that depends on what is
   // stored right now; a rejection or `undefined` opens the title-only confirm.
-  deleteMessage?: string | (() => Promise<string | undefined>);
+  deleteMessage?: () => Promise<string | undefined>;
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -146,6 +146,9 @@ const CardContextMenu: FC<{
   const [confirmVisible, setConfirmVisible] = useState(false);
   // The text a `deleteMessage` function resolved to for the confirm now open.
   const [resolvedMessage, setResolvedMessage] = useState<string | undefined>(undefined);
+  // The newest request to open the confirm, so a read that settles after a newer
+  // request is dropped.
+  const latestRequest = useRef(0);
   // The action list's visibility, separate from the delete confirm's: a hold
   // opens THIS when a duplicate, edit, or close action exists, and choosing
   // Delete from it hands off to the confirm sheet below.
@@ -170,14 +173,23 @@ const CardContextMenu: FC<{
     return <>{children}</>;
   }
 
-  // A message that must be read first holds the sheet back until it settles; a
-  // string, or none, opens the sheet at once, as it always has. A read that fails
-  // opens the title-only confirm: the delete itself never depends on the text.
+  // A message that must be read first holds the sheet back until it settles; no
+  // message opens the sheet at once. A read that fails opens the title-only
+  // confirm: the delete itself never depends on the text. A request made while an
+  // earlier read is pending supersedes it, so the earlier read settling late
+  // neither overwrites the newer text nor opens a confirm of its own.
   const openConfirm = async (): Promise<void> => {
-    const readMessage = deleteMessage;
+    latestRequest.current += 1;
+    const request = latestRequest.current;
 
-    if (typeof readMessage === 'function') {
-      setResolvedMessage(bifoldr(await either(async () => readMessage())));
+    if (deleteMessage !== undefined) {
+      const message = bifoldr(await either(async () => deleteMessage()));
+
+      if (request !== latestRequest.current) {
+        return;
+      }
+
+      setResolvedMessage(message);
     }
 
     setConfirmVisible(true);
@@ -312,7 +324,7 @@ const CardContextMenu: FC<{
       <ConfirmSheet
         visible={confirmVisible}
         title={t('common.deleteNamed', { name })}
-        message={typeof deleteMessage === 'function' ? resolvedMessage : deleteMessage}
+        message={resolvedMessage}
         confirmLabel={t('common.delete')}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}

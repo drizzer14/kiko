@@ -303,9 +303,11 @@ export const depositContributionMatchedDatabaseTransaction = async (
 
 // Remove the contribution `matchedContributionIndex` finds, on an EXISTING
 // transaction handle, so deleting a leg and its contribution commit together or
-// not at all. Reports whether a contribution was removed. Throws on a
-// non-deposit or invalid metadata, as the append does, so a delete never
-// half-applies on a deposit it cannot rewrite.
+// not at all. Reports whether a contribution was removed: false when none is
+// matched or the metadata cannot be read, which leaves the deposit as it is, as
+// the delete's confirm says (`depositContributionMatchedDatabaseTransaction`).
+// Throws only on a holding that is not a deposit, which the caller's marker
+// check rules out.
 export const removeDepositContributionDatabaseTransaction = async (
   databaseTransaction: typeof database,
   holdingId: string,
@@ -321,7 +323,7 @@ export const removeDepositContributionDatabaseTransaction = async (
   const meta = asTermDepositMeta(row.metadata);
 
   if (meta === null) {
-    throw new Error('removeDepositContribution: invalid deposit metadata');
+    return false;
   }
 
   const index = matchedContributionIndex(meta.contributions, date);

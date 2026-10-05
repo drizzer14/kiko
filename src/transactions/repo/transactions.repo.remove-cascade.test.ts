@@ -405,14 +405,74 @@ describe('deleting the source leg of an Exchange into a term deposit', () => {
     expect(balancesOf().uah).toBe(100_000);
   });
 
-  it('rolls back the row and the balance when the deposit metadata cannot be read', async () => {
+  it('deletes the leg and leaves the deposit alone when its metadata cannot be read, as the confirm said', async () => {
     await exchangeIntoDeposit();
     run("UPDATE holdings SET metadata = '{}' WHERE id = 'deposit'");
-    const before = { balances: balancesOf(), rows: rowIds() };
 
-    await expect(transactionsRepo.remove(idOfRowOn('uah'))).rejects.toThrow();
+    expect(await transactionsRepo.removePlan(idOfRowOn('uah'))).toEqual({
+      split: false,
+      deposit: { name: 'Deposit', matched: false },
+    });
 
-    expect({ balances: balancesOf(), rows: rowIds() }).toEqual(before);
+    await transactionsRepo.remove(idOfRowOn('uah'));
+
+    expect(rowIds()).toEqual([]);
+    expect(balancesOf().uah).toBe(100_000);
+    expect(
+      (
+        mockDatabase.prepare("SELECT metadata FROM holdings WHERE id = 'deposit'").get() as {
+          metadata: string;
+        }
+      ).metadata,
+    ).toBe('{}');
+  });
+
+  describe('converted again to a destination of its own', () => {
+    const convertSourceLeg = async (): Promise<string> => {
+      await exchangeIntoDeposit();
+      const source = idOfRowOn('uah');
+
+      await transactionsRepo.recordExchangeCounterpart({
+        direction: 'record-destination',
+        counterpartHoldingId: 'usd',
+        counterpartType: 'card',
+        amountMinorUnits: 1_000,
+        existingTransactionId: source,
+        existingHoldingId: 'uah',
+        time: MOVED,
+      });
+
+      return source;
+    };
+
+    it('keeps the deposit marker on the source leg and gives the new leg the same pair id', async () => {
+      const source = await convertSourceLeg();
+
+      expect(rowOf(source)?.marker).toBe('deposit');
+      expect(rowOf(idOfRowOn('usd'))?.pairId).toBe(rowOf(source)?.pairId);
+    });
+
+    it.each(['uah', 'usd'])(
+      'deletes both legs and the contribution from the leg on %s',
+      async (holdingId) => {
+        const before = stateOf();
+
+        await convertSourceLeg();
+        await transactionsRepo.remove(idOfRowOn(holdingId));
+
+        expect(stateOf()).toEqual(before);
+      },
+    );
+
+    it('says in the plan of the new leg that the deposit loses its contribution', async () => {
+      await convertSourceLeg();
+
+      expect(await transactionsRepo.removePlan(idOfRowOn('usd'))).toEqual({
+        split: false,
+        exchange: { kind: 'deleted', names: ['Hryvnia card'] },
+        deposit: { name: 'Deposit', matched: true },
+      });
+    });
   });
 });
 
@@ -484,6 +544,39 @@ describe('deleting a leg of a Convert', () => {
     expect(rowIds()).toEqual(['original']);
     expect(rowOf('original')?.amount).toBe(-40_000);
     expect(balancesOf().usd).toBe(0);
+  });
+
+  it('names the legs that stay as well as the ones that go when a pair has a bank row and manual legs', async () => {
+    insertRow({ id: 'original', holdingId: 'bank', amountMinorUnits: -40_000, source: 'monobank' });
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'usd',
+      counterpartType: 'card',
+      amountMinorUnits: 1_000,
+      existingTransactionId: 'original',
+      existingHoldingId: 'bank',
+      time: MOVED,
+    });
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-source',
+      counterpartHoldingId: 'second',
+      counterpartType: 'card',
+      amountMinorUnits: 40_000,
+      existingTransactionId: idOfRowOn('usd'),
+      existingHoldingId: 'usd',
+      time: MOVED,
+    });
+    const newestLeg = idOfRowOn('second');
+
+    expect(await transactionsRepo.removePlan(newestLeg)).toEqual({
+      split: false,
+      exchange: { kind: 'deleted', names: ['Dollar card'], keptNames: ['Monobank card'] },
+    });
+
+    await transactionsRepo.remove(newestLeg);
+
+    expect(rowIds()).toEqual(['original']);
+    expect(balancesOf()).toMatchObject({ usd: 0, second: 0 });
   });
 
   it('marks an existing imported row as a leg and deletes it with the new leg', async () => {
@@ -627,6 +720,132 @@ describe('deleting a row of a split payment', () => {
 
     expect(stateOf()).toEqual(before);
     expect(balancesOf().bank).toBe(700);
+  });
+});
+
+// Convert is allowed on a split row, so one delete has to follow the split group
+// and the pair id for as long as either finds another row: reading them one hop
+// leaves the converted payment's other leg (or the returns) behind, and a part
+// of a movement left behind is money created or lost.
+describe('deleting a part of a split payment that was converted', () => {
+  const NAMES_IN_PLAN = ['Hryvnia card', 'Dollar card'];
+
+  const splitThenConvertPayment = async (): Promise<void> => {
+    await transactionsRepo.recordManualWithReturns({
+      payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
+      returns: [
+        { holdingId: 'cash', amountMinorUnits: 10_000 },
+        { holdingId: 'second', amountMinorUnits: 5_000 },
+      ],
+    });
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'usd',
+      counterpartType: 'card',
+      amountMinorUnits: 1_000,
+      existingTransactionId: idOfRowOn('uah'),
+      existingHoldingId: 'uah',
+      time: MOVED,
+    });
+  };
+
+  it.each(['uah', 'cash', 'second', 'usd'])(
+    'deletes the payment, the returns and the converted leg from the row on %s',
+    async (holdingId) => {
+      const before = stateOf();
+
+      await splitThenConvertPayment();
+      await transactionsRepo.remove(idOfRowOn(holdingId));
+
+      expect(stateOf()).toEqual(before);
+    },
+  );
+
+  it('names the split and both exchange legs in the plan of a return', async () => {
+    await splitThenConvertPayment();
+
+    expect(await transactionsRepo.removePlan(idOfRowOn('cash'))).toEqual({
+      split: true,
+      exchange: { kind: 'deleted', names: expect.arrayContaining(NAMES_IN_PLAN) },
+    });
+  });
+
+  it('names the split and the payment in the plan of the converted leg', async () => {
+    await splitThenConvertPayment();
+
+    expect(await transactionsRepo.removePlan(idOfRowOn('usd'))).toEqual({
+      split: true,
+      exchange: { kind: 'deleted', names: ['Hryvnia card'] },
+    });
+  });
+
+  it('keeps a bank-owned member of the group and deletes every user-owned part', async () => {
+    await splitThenConvertPayment();
+    const group = (
+      mockDatabase
+        .prepare("SELECT change_group_id AS id FROM transactions WHERE holding_id = 'uah'")
+        .get() as { id: string }
+    ).id;
+
+    insertRow({
+      id: 'bank-member',
+      holdingId: 'bank',
+      amountMinorUnits: 100,
+      source: 'monobank',
+      changeGroupId: group,
+    });
+    await transactionsRepo.remove(idOfRowOn('usd'));
+
+    expect(rowIds()).toEqual(['bank-member']);
+  });
+
+  describe('written by the backfill of a database that predates the pair id', () => {
+    const migratedSplitConvert = (): void => {
+      mockDatabase = new DatabaseSync(':memory:');
+      applyMigrationsThrough(mockDatabase, '0051_monobank_accounts_bank_id');
+      mockDatabase.exec('PRAGMA foreign_keys = ON');
+      seedFixture();
+      insertRow({
+        id: 'legacy-payment',
+        holdingId: 'uah',
+        amountMinorUnits: -50_000,
+        exchangeCounterpartHoldingId: 'usd',
+        changeGroupId: 'legacy-group',
+      });
+      insertRow({
+        id: 'legacy-return',
+        holdingId: 'cash',
+        amountMinorUnits: 10_000,
+        changeGroupId: 'legacy-group',
+      });
+      insertRow({
+        id: 'legacy-converted',
+        holdingId: 'usd',
+        amountMinorUnits: 1_000,
+        exchangeCounterpartHoldingId: 'uah',
+      });
+      setBalance('uah', 50_000);
+      setBalance('cash', 10_000);
+      setBalance('usd', 1_000);
+
+      for (const statement of MIGRATION_0052_SQL.split('--> statement-breakpoint')) {
+        mockDatabase.exec(statement);
+      }
+    };
+
+    it.each(['legacy-return', 'legacy-converted', 'legacy-payment'])(
+      'deletes the whole movement from %s',
+      async (rowId) => {
+        migratedSplitConvert();
+
+        expect(rowOf('legacy-converted')?.pairId).toBe(rowOf('legacy-payment')?.pairId);
+
+        await transactionsRepo.remove(rowId);
+
+        expect(rowIds()).toEqual([]);
+        expect(balancesOf()).toMatchObject({ uah: 100_000, cash: 0, usd: 0 });
+      },
+    );
   });
 });
 

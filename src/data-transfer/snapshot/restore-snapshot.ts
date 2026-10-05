@@ -258,7 +258,10 @@ const exchangeCandidatesOf = (snapshotTransactions: TransactionRow[]): ExchangeC
     );
 };
 
-const countBy = (candidates: ExchangeCandidate[], keyOf: (c: ExchangeCandidate) => string) => {
+const countBy = (
+  candidates: ExchangeCandidate[],
+  keyOf: (candidate: ExchangeCandidate) => string,
+) => {
   const counts = new Map<string, number>();
 
   for (const candidate of candidates) {
