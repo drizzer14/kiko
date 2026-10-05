@@ -2,7 +2,29 @@
 
 
 
-## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-04 04:00) — READ THIS FIRST
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-05 07:50) — READ THIS FIRST
+Coordinator: clear-conversation-history. Full night log + morning items: memory/refs/morning-list-2026-10-04.md (section "Night 2026-10-05" and below).
+
+### State (2026-10-05 07:50)
+| Thing | Value |
+|---|---|
+| main | 253dbe87 (handoff docs; app 09a7a8f1-era, plugin 0.2.7 live). WAITS for the user's device OK of next, then ff + `claude plugin update kiko@kiko-marketplace` + /reload-plugins (plugin 0.3.0, unreleased, adds kiko:estimator + harness-workflow edits). |
+| next | 15851635: implicit-accounts round (device fixes 1-8, min iOS 18.2, migrations 0050+0051, type fields create-only), Round C CS1-CS4, guard rules 1/5-5/5 + 6/6 (tag guard-rules-end 2cab4306). make verify PASS (9782). |
+| iPhone | 07fae7f1. NEXT INSTALL = next 15851635 (app code = 351e30f1/2c85d5cb): migration 0051 -> user .kiko export FIRST; Podfile changed (iOS 18.2) -> make pods in device-deploy before the build. |
+| Sessions | implicit-accounts-78 (term_9e99c907-14dc-4e65-9189-e2f005332d28) idle, waits for device results. round-c-d3 (term_02ee8eb6-52da-4099-9efd-bb391e8d586c, worktree round-c tip 0e53e212) idle, waits for the user's triage; FINDINGS/LEDGER/CLOSURE in round-c .superpowers/sdd/round-c/. guard-rules closed (worktree removal pending in Orca). |
+| deep-gate | detached a9c1d051 era, idle. |
+
+### Morning, in order
+1. .kiko export -> install next 15851635 (ops; make pods first) -> device checks of implicit fixes 4-8 + Round C CS1-CS4 + SEC-C3 cache check.
+2. Round C triage (FINDINGS.md "Important — morning triage"): TX-C2, TX-C3, SYNC-C1 (live jar call), SYNC-C2, SYNC-C3, STAT-C1, STAT-N4, HOLD-I1, ACC-C2, CS5/TX-C1 options 1/2/3; submission COMP-C1 (publish policy), COMP-C3 (Notes + kit), COMP-I1..I4; PERF-C1; REM-C1; refactor scheduling; loan_holding_id index.
+3. NAME the next version (no bump until named).
+4. Guard follow-ups: history-word sweep timing (236); unused biome-ignore use-live-query.ts ~162; MEMORY.md compaction (~20 KB of 24.4).
+5. After device OK: main ff, plugin update.
+
+### Lessons this night (in memory)
+Fast audit = coverage gaps; closure table one row per id (+ fail-without-fix proof column); touching a weak file needs kill tests; gate runs only at load < 10 with one jest-heavy agent per track; pipefail early-exit pipes were a fail-open gate (fixed + rule).
+
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-04 04:00) — superseded by 2026-10-05 above
 Coordinator: clear-conversation-history. Orchestrator implicit-accounts-30 (terminal term_ffb68015-1e84-49d4-b5be-c2c065118c68, worktree ~/orca/workspaces/pff-ios/implicit-accounts) is idle after TRACK DONE; it reports to clear-conversation-history. Gauge watcher armed on that terminal. Morning list: memory/refs/morning-list-2026-10-04.md.
 
 ### State (2026-10-04 04:00)
