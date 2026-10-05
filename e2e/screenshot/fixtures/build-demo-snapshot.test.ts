@@ -1,3 +1,9 @@
+import {
+  bankCatalog,
+  isBankId,
+  OTHER_BANK_ID,
+  isConnectableBank,
+} from '@kiko/bank-sync/bank-catalog';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
@@ -23,14 +29,42 @@ describe('buildDemoSnapshot', () => {
     );
   });
 
-  it('gives every bank account the bank id other, as a post-0049 device stores it, and no other kind a bank id', () => {
+  it('gives every bank account a catalog bank id, as a post-0049 device stores it, and no other kind a bank id', () => {
     const bankIdByKind = snapshot.accounts.map((account) => [account.kind, account.bankId]);
 
     expect(bankIdByKind.filter(([kind]) => kind === 'bank').length).toBeGreaterThan(0);
 
     for (const [kind, bankId] of bankIdByKind) {
-      expect(bankId).toBe(kind === 'bank' ? 'other' : null);
+      if (kind === 'bank') {
+        expect(isBankId(bankId)).toBe(true);
+      } else {
+        expect(bankId).toBeNull();
+      }
     }
+  });
+
+  // The App Store reviewer reaches Connect only on a connectable bank's page
+  // (Guideline 5.6), so the demo must hold one account per connectable bank.
+  it('holds at least one bank account per connectable catalog bank, and one Other bank', () => {
+    const demoBankIds = new Set(snapshot.accounts.map((account) => account.bankId));
+    const connectableIds = bankCatalog
+      .filter((entry) => entry.connectable)
+      .map((entry) => entry.id);
+
+    expect(connectableIds.length).toBeGreaterThan(0);
+
+    for (const bankId of connectableIds) {
+      expect(demoBankIds.has(bankId)).toBe(true);
+      expect(isConnectableBank(bankId)).toBe(true);
+    }
+
+    expect(demoBankIds.has(OTHER_BANK_ID)).toBe(true);
+  });
+
+  // `useAutoSync` keys on `account.institution` (`src/sync/use-auto-sync/
+  // use-auto-sync.ts`), so a null one means a demo bank id never starts a sync.
+  it('leaves every account unconnected: institution null, so no auto-sync starts on a demo account', () => {
+    expect(snapshot.accounts.every((account) => account.institution === null)).toBe(true);
   });
 
   it('gives every holding a balance equal to the sum of its own transactions', () => {
