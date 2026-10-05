@@ -51,7 +51,10 @@ export const openCurrencies = async (): Promise<OpenCurrencies> => {
   };
 };
 
-/** The history-backfill gate result: exactly the fiat/crypto currencies whose own NBU/CoinGecko range history is worth fetching. */
+/**
+ * The history-backfill gate result: exactly the fiat/crypto currencies whose own NBU/CoinGecko
+ * range history is worth fetching.
+ */
 export type HistoryCurrencies = { fiatCurrencies: Currency[]; cryptoCurrencies: CryptoCurrency[] };
 
 /**

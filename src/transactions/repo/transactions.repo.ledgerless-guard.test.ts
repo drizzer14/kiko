@@ -1,9 +1,9 @@
 // A ledgerless holding (term_deposit, bond, property_item, metal, loan) is
 // valued from its metadata, never from its ledger, so a plain transaction row
 // on it would show in the Home list and the category breakdown yet never reach
-// net worth, while still moving a stored balance nothing reads. The repo refuses it before it writes, and a refused write
-// inside a multi-row operation must roll the whole operation back. Only a real
-// engine shows what a rollback leaves behind.
+// net worth, while still moving a stored balance nothing reads. The repo refuses it before it
+// writes, and a refused write inside a multi-row operation must roll the whole operation back.
+// Only a real engine shows what a rollback leaves behind.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {

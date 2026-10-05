@@ -103,14 +103,16 @@ export const useNotificationPermission = (): NotificationPermission => {
   const status = useSyncExternalStore(subscribe, getSnapshot);
 
   useEffect(() => {
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refresh captures every rejection with either()
+    // refresh captures every rejection with either().
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     refresh();
   }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refresh captures every rejection with either()
+        // refresh captures every rejection with either().
+        // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
         refresh();
       }
     });

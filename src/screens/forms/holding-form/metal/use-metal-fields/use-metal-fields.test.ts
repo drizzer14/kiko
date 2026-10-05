@@ -73,7 +73,8 @@ describe('useMetalFields purity in fineness per mille', () => {
         id: 'h1',
         currency: 'UAH',
         metadata: { metal: 'XAU', form: 'bar', unit: 'oz', purity: '0.9990', lots: [] },
-        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) `seed` only reads `metadata`; a full HoldingRow literal would be noise.
+        // `seed` only reads `metadata`; a full HoldingRow literal would be noise.
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture)
       } as any);
     });
 

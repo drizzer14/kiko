@@ -192,7 +192,8 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   const disconnect = (): void => {
     setDisconnectPending(false);
     setSelectedProviderId(undefined);
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runDisconnect catches and alerts every failure itself
+    // runDisconnect catches and alerts every failure itself.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     runDisconnect();
   };
 
@@ -240,7 +241,8 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
               treatment, never blue). */}
           <SyncDisconnectActionsRow
             onSync={() => {
-              // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the shared sync action folds a failure into its error state and never rejects
+              // The shared sync action folds a failure into its error state and never rejects.
+              // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
               sync(account.id);
             }}
             isSyncing={isSyncing}

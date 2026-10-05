@@ -11,7 +11,7 @@ export type FieldLabelProps = {
   // error message, so a blocked field reads as invalid at a glance even before
   // the eye reaches its error line below — a uniform affordance across every
   // field type (the reflow error model: no per-field outline, see
-  // `FieldError`'s own doc comment). Defaults to false. Never the ONLY invalid signal on its own — it
-  // always accompanies a rendered `FieldError` message, never colour alone.
+  // `FieldError`'s own doc comment). Defaults to false. Never the ONLY invalid signal on its own —
+  // it always accompanies a rendered `FieldError` message, never colour alone.
   invalid?: boolean;
 };

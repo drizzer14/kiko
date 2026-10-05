@@ -332,8 +332,8 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
 // account-detail.screen.tsx), so it genuinely needs to be localized, not left
 // as a diagnostic-only string. This module has no React context of its own,
 // so it reads the i18next instance directly (the same pattern as
-// `src/design-system/grid-interaction/grid-interaction.ts`) rather than threading a `t` prop through
-// every sync call site. 'Monobank' itself is a brand name and is not
+// `src/design-system/grid-interaction/grid-interaction.ts`) rather than threading a `t` prop
+// through every sync call site. 'Monobank' itself is a brand name and is not
 // translated (matching every other Monobank-branded catalog entry).
 const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {
   const accounts = await deps.accountsRepo.listQuery();
@@ -387,7 +387,9 @@ const isUnrepresentableCurrency = (currencyCode: number, id: string): boolean =>
     return false;
   }
 
-  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) surface a sub-account Kiko cannot represent so a dev can tell whether one is a user's real sync blocker
+  // Surface a sub-account Kiko cannot represent so a dev can tell whether one is a user's real
+  // sync blocker.
+  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) unrepresentable sub-account
   console.warn('[monobank sync] skipping holding: unrepresentable currency', {
     currencyCode,
     id,
@@ -1251,7 +1253,9 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // one line per sync is negligible, and it must be visible from a real device
   // log. The two-arg form with a plain object does NOT log any secret (no token,
   // no statement contents), so it clears the secret-log rule.
-  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) one-line per-run sync summary (counts only, no secrets) so a dev can see whether the balance-diff skip is engaging on-device
+  // A one-line per-run sync summary (counts only, no secrets) so a dev can see whether the
+  // balance-diff skip is engaging on-device.
+  // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) one-line per-run sync summary
   console.warn('[monobank sync] done', {
     isFullFetch,
     cards: accounts.length,

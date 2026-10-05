@@ -53,7 +53,9 @@ describe('usePropertyFields seed', () => {
           category: 'vehicle',
           lots: [{ day: 1_000, quantityDelta: '1', costMinorUnits: 500_000 }],
         },
-        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) `seed` only reads `metadata`; a full HoldingRow literal would be pure noise here, mirroring the sibling seed-function tests.
+        // `seed` only reads `metadata`; a full HoldingRow literal would be pure noise here,
+        // mirroring the sibling seed-function tests.
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture)
       } as any);
     });
 
@@ -69,7 +71,9 @@ describe('usePropertyFields seed', () => {
           category: 'nonsense',
           lots: [{ day: 1_000, quantityDelta: '1', costMinorUnits: 500_000 }],
         },
-        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) `seed` only reads `metadata`; a full HoldingRow literal would be pure noise here, mirroring the sibling seed-function tests.
+        // `seed` only reads `metadata`; a full HoldingRow literal would be pure noise here,
+        // mirroring the sibling seed-function tests.
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture)
       } as any);
     });
 
@@ -90,7 +94,9 @@ describe('usePropertyFields seed', () => {
           ],
           ownershipInput: 'fraction',
         },
-        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) `seed` only reads `metadata`; a full HoldingRow literal would be pure noise here, mirroring the sibling seed-function tests.
+        // `seed` only reads `metadata`; a full HoldingRow literal would be pure noise here,
+        // mirroring the sibling seed-function tests.
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture)
       } as any);
     });
 
@@ -125,7 +131,9 @@ describe('usePropertyFields seed', () => {
     await act(async () => {
       result.current.seed({
         metadata: { lots: [] },
-        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) `seed` only reads `metadata`; a full HoldingRow literal would be pure noise here, mirroring the sibling seed-function tests.
+        // `seed` only reads `metadata`; a full HoldingRow literal would be pure noise here,
+        // mirroring the sibling seed-function tests.
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture)
       } as any);
     });
 

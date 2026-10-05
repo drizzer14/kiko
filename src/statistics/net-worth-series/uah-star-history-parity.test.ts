@@ -128,8 +128,10 @@ const holding = (over: Partial<SeriesHolding> & Pick<SeriesHolding, 'id'>): Seri
   ...over,
 });
 
-const uahCard = holding({ id: 'uah-card', currency: 'UAH', balanceMinorUnits: 400_000 }); // 4000.00 UAH
-const usdCard = holding({ id: 'usd-card', currency: 'USD', balanceMinorUnits: 10_000 }); // 100.00 USD
+// 4000.00 UAH
+const uahCard = holding({ id: 'uah-card', currency: 'UAH', balanceMinorUnits: 400_000 });
+// 100.00 USD
+const usdCard = holding({ id: 'usd-card', currency: 'USD', balanceMinorUnits: 10_000 });
 const btcWallet = holding({
   id: 'btc-wallet',
   currency: 'BTC',

@@ -31,7 +31,9 @@ const editingHoldingWith = (meta: LoanMeta): HoldingRow =>
     id: 'h-1',
     currency: 'UAH',
     metadata: meta,
-    // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) `saveEdit` only reads `metadata` off `editingHolding` (via `asLoanMeta`); a full HoldingRow literal would be pure noise here, mirroring this file's own `seed` fixtures above.
+    // `saveEdit` only reads `metadata` off `editingHolding` (via `asLoanMeta`); a full HoldingRow
+    // literal would be pure noise here, mirroring this file's own `seed` fixtures above.
+    // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture)
   }) as any;
 
 const baseArgs = () => ({
@@ -206,7 +208,9 @@ describe('useLoanFields', () => {
           annualRatePct: 9.5,
           termMonths: 24,
         },
-        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture) `seed` only reads the fields above; a full HoldingRow literal would be pure noise here, mirroring the sibling seed-function tests in holding-form.screen.test.tsx.
+        // `seed` only reads the fields above; a full HoldingRow literal would be pure noise here,
+        // mirroring the sibling seed-function tests in holding-form.screen.test.tsx.
+        // biome-ignore lint/suspicious/noExplicitAny: OVERRIDE(test fixture)
       } as any);
     });
 

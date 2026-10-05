@@ -58,7 +58,8 @@ const singleFlight = (task: () => Promise<void>): (() => void) => {
     }
 
     running = true;
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the only task is replan, which captures every rejection with either()
+    // The only task is replan, which captures every rejection with either().
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     task().then(() => {
       running = false;
 

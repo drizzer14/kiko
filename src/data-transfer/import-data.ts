@@ -191,7 +191,7 @@ export const importData = async (options: {
   // precondition — `importData` must resolve with its row-count summary
   // without sitting on the network; only fire the refresh after the write
   // commits.
-  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects
+  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
   refreshMarketData({ throttled: false, metals: true });
   // A bulk restore bypasses the sync/import/loan-edit call sites that
   // normally trigger the auto-link matcher — trigger it explicitly
@@ -199,7 +199,7 @@ export const importData = async (options: {
   // loan (its own doc comment), so this is a no-op for a restore with none;
   // fire-and-forget for the same "background nicety, not a precondition"
   // reason as `refreshMarketData` above.
-  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runLoanAutoLink never rejects; see the comment above
+  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
   runLoanAutoLink();
 
   return {

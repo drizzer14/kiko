@@ -50,7 +50,9 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
     }
 
     setStatus({ kind: 'checking' });
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the token check catches into a status, and every onConnect caller catches its own save and sync
+    // The token check catches into a status, and every onConnect caller catches its own save and
+    // sync.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     (async () => {
       let clientName: string;
       try {

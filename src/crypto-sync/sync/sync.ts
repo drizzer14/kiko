@@ -61,8 +61,8 @@ const defaultDeps: BalanceSyncDeps = {
 // error `<Text>`, so it genuinely needs `providerDisplayName`'s translated
 // name, not the raw `providerId`. This module has no React context of its
 // own, so it reads the i18next instance directly (the same pattern as
-// `src/design-system/grid-interaction/grid-interaction.ts`) rather than threading a `t` prop through
-// every sync call site.
+// `src/design-system/grid-interaction/grid-interaction.ts`) rather than threading a `t` prop
+// through every sync call site.
 const resolveTargetAccount = async (
   deps: BalanceSyncDeps,
   providerId: BalanceProviderId,

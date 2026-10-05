@@ -341,7 +341,9 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     navigation.setParams({ intent: undefined });
 
     if (canImportStatement) {
-      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) either() captures a failed copy, which then leaves the page as it was, the same as after the Import statement button
+      // either() captures a failed copy, which then leaves the page as it was, the same as after
+      // the Import statement button.
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
       either(pickAndOpenStatement);
     }
   }, [intent, isReady, canImportStatement, navigation, pickAndOpenStatement]);

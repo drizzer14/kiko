@@ -48,7 +48,7 @@ export const readDataSnapshot = async (): Promise<DataSnapshot> => ({
     .select()
     .from(categoryOverrides)
     .orderBy(asc(categoryOverrides.normalizedName)),
-  // nosemgrep: kiko-no-whole-price-points-read OVERRIDE(export) the backup file holds every stored price point
+  // nosemgrep: kiko-no-whole-price-points-read OVERRIDE(export) the backup holds every price point
   pricePoints: await database
     .select()
     .from(pricePoints)

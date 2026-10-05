@@ -133,7 +133,10 @@ const holding = (metadata: unknown): HoldingRow => ({
   createdAt: 0,
 });
 
-/** Seed the two connected-accounts live queries, keyed on the institution each one was built for. */
+/**
+ * Seed the two connected-accounts live queries, keyed on the institution each one was built
+ * for.
+ */
 const setConnected = (connected: { btc_wallet?: AccountRow[]; binance?: AccountRow[] }): void => {
   mockUseLiveQuery.mockImplementation((query: { __institution: 'btc_wallet' | 'binance' }) => ({
     data: connected[query.__institution] ?? [],

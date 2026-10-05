@@ -78,7 +78,8 @@ import { type HoldingFormTarget, holdingFormDraft, holdingFormTarget } from './h
 // `save`'s own cognitive-complexity budget.
 const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
   if (type === 'loan') {
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runLoanAutoLink catches every failure and never rejects
+    // runLoanAutoLink catches every failure and never rejects.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     runLoanAutoLink();
   }
 };
@@ -669,7 +670,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       // background nicety, not a save precondition — Save must not sit on
       // the network before navigating back; only fire the refresh after the
       // write commits.
-      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) refreshMarketData never rejects; see the comment above
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
       refreshMarketData({ throttled: false, metals: true });
       // A freshly created loan can already have past ledger history worth
       // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).

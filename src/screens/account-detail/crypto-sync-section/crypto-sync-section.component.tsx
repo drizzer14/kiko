@@ -96,7 +96,8 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
   const disconnect = (providerId: BalanceProviderId): void => {
     setDisconnectPending(false);
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) runDisconnect catches and alerts every failure itself
+    // runDisconnect catches and alerts every failure itself.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     runDisconnect(providerId);
   };
 
@@ -142,7 +143,8 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
               treatment, never blue). */}
           <SyncDisconnectActionsRow
             onSync={() => {
-              // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) the shared sync action folds a failure into its error state and never rejects
+              // The shared sync action folds a failure into its error state and never rejects.
+              // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
               sync(resyncRequest(connectedProvider, account.id));
             }}
             isSyncing={isSyncing}

@@ -27,7 +27,9 @@ export const FIAT_UAH_PRICE_SEED: Partial<Record<Currency, number>> = {
   GBP: 60.326,
   CHF: 54.8909,
   AED: 12.2541,
-  // biome-ignore lint/suspicious/noApproximativeNumericConstant: OVERRIDE(real snapshot data) Monobank's live AFN rateCross happened to equal 0.693 at capture time — coincidentally close to Math.LN2, not a mistyped constant.
+  // Monobank's live AFN rateCross happened to equal 0.693 at capture time — coincidentally close
+  // to Math.LN2, not a mistyped constant.
+  // biome-ignore lint/suspicious/noApproximativeNumericConstant: OVERRIDE(real snapshot data)
   AFN: 0.693,
   ALL: 0.5669,
   AMD: 0.1242,

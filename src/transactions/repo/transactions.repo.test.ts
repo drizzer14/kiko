@@ -1843,7 +1843,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     // original expense in the spending pie (nothing pairs it: the matched-pair
     // matcher requires one currency).
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
-      [{ accountId: 'acc-dst', metadata: null }], // the counterpart's own holding, read by the synced guard
+      // the counterpart's own holding, read by the synced guard
+      [{ accountId: 'acc-dst', metadata: null }],
       [{ institution: null }], // the counterpart's own account, read by the synced guard
       [unanchoredBalance(2_000)], // the new leg's balance read
       [{ source: 'manual' }], // the existing row, read INSIDE the transaction
@@ -1868,7 +1869,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 
   it('never marks a SYNCED existing row (the bank owns it)', async () => {
     const { databaseTransaction, updates } = makeExchangeDatabaseTransaction([
-      [{ accountId: 'acc-dst', metadata: null }], // the counterpart's own holding, read by the synced guard
+      // the counterpart's own holding, read by the synced guard
+      [{ accountId: 'acc-dst', metadata: null }],
       [{ institution: null }], // the counterpart's own account, read by the synced guard
       [unanchoredBalance(2_000)],
       [{ source: 'monobank' }],
@@ -1896,7 +1898,8 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
     // read (the only select call this path makes) returns the term_deposit
     // row `appendDepositContributionDatabaseTransaction` expects.
     const { databaseTransaction, inserts } = makeExchangeDatabaseTransaction([
-      [{ accountId: 'acc-dep', metadata: null }], // the counterpart's own holding, read by the synced guard
+      // the counterpart's own holding, read by the synced guard
+      [{ accountId: 'acc-dep', metadata: null }],
       [{ institution: null }], // the counterpart's own account, read by the synced guard
       [{ type: 'term_deposit', metadata: depositMeta }],
     ]);
@@ -2449,9 +2452,12 @@ describe('transactionsRepo.importRows', () => {
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [
-        { holdingId: 'hold-1', amountMinorUnits: -1_000, time: 1_000, source: 'import' }, // history: +0
-        { holdingId: 'hold-1', amountMinorUnits: -2_000, time: 5_000, source: 'import' }, // AT the boundary: history
-        { holdingId: 'hold-1', amountMinorUnits: -3_000, time: 6_000, source: 'import' }, // after: counts
+        // history: +0
+        { holdingId: 'hold-1', amountMinorUnits: -1_000, time: 1_000, source: 'import' },
+        // AT the boundary: history
+        { holdingId: 'hold-1', amountMinorUnits: -2_000, time: 5_000, source: 'import' },
+        // after: counts
+        { holdingId: 'hold-1', amountMinorUnits: -3_000, time: 6_000, source: 'import' },
       ],
     });
 
@@ -2471,8 +2477,10 @@ describe('transactionsRepo.importRows', () => {
     await transactionsRepo.importRows({
       holdingId: 'hold-1',
       rows: [
-        { holdingId: 'hold-1', amountMinorUnits: -500, time: 1_000, source: 'import' }, // at the as-of, not after
-        { holdingId: 'hold-1', amountMinorUnits: -300, time: 2_000, source: 'import' }, // after the as-of
+        // at the as-of, not after
+        { holdingId: 'hold-1', amountMinorUnits: -500, time: 1_000, source: 'import' },
+        // after the as-of
+        { holdingId: 'hold-1', amountMinorUnits: -300, time: 2_000, source: 'import' },
       ],
       closingBalance: { minorUnits: -5_000, currency: 'UAH', asOfSeconds: 1 },
     });
