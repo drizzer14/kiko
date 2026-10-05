@@ -416,7 +416,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `--list` says `kept (colocated test changed): <path>`, when a changed test
   file beside it (same folder: `foo.test.ts(x)` or `foo.<anything>.test.ts(x)`
   for `foo.ts(x)`) is not itself comment-only: a test weakened together with a
-  comment edit must still be mutated. Tests:
+  comment edit must still be mutated. "Colocated" means the SAME FOLDER only:
+  a test elsewhere (for example `__tests__/App.test.tsx` for `App.tsx`) or a
+  changed helper, mock, or fixture (`__mocks__/`, `test-support/`) does not
+  keep a comment-only source file. Both `git diff --name-only` calls run with
+  `-c core.quotePath=false`, so a non-ASCII test name matches. Tests:
   `__tests__/comment-only-changes.test.ts` (the parse cases, one spawn) and
   `__tests__/mutation-comment-only.test.ts` (the wrapper, against the stub).
 

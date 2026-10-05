@@ -205,6 +205,24 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
     });
   });
 
+  it('keeps a comment-only file whose colocated test has a non-ASCII name and a code change', () => {
+    const listed = runWithArgumentStub(
+      build(
+        { 'src/nonascii/foo.ts': COMMENTED, 'src/nonascii/foo.тест.test.ts': REAL_CHANGE },
+        { 'src/nonascii/foo.ts': BASE, 'src/nonascii/foo.тест.test.ts': BASE },
+      ),
+      WITH_TYPESCRIPT,
+      ['--list'],
+    );
+
+    expect(listed.code).toBe(0);
+    expect(listed.stdout.split('\n').filter(Boolean)).toEqual([
+      'src/nonascii/foo.ts',
+      'kept (colocated test changed): src/nonascii/foo.ts',
+      'mutable files: 1 (cap 30)',
+    ]);
+  });
+
   describe('a mixed change set: two comment-only files and one real change', () => {
     const files = {
       'src/commented-one.ts': COMMENTED,

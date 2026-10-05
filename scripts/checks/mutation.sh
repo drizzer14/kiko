@@ -145,8 +145,10 @@ if ! merge_base="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null)" || [ -z 
     "Do not start Stryker directly to skip the cap."
   exit 2
 fi
+# Both git diffs below set core.quotePath=false: by default git prints a path with non-ASCII
+# bytes as a quoted, escaped string, which would miss every test-name pattern and filter.
 # An unreadable file list must never count as "nothing to mutate".
-if ! diff_names="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
+if ! diff_names="$(git -C "$ROOT" -c core.quotePath=false diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
   print_block \
     "Stryker (mutation testing)" \
     "Could not list the files changed since the merge-base with $base." \
@@ -203,7 +205,7 @@ proved_comment_only() {
 
 if [ -n "$changed" ]; then
   comment_only=""
-  if test_names="$(git -C "$ROOT" diff --name-only --no-renames "$merge_base" HEAD -- '*.test.ts' '*.test.tsx' 2>/dev/null)"; then
+  if test_names="$(git -C "$ROOT" -c core.quotePath=false diff --name-only --no-renames "$merge_base" HEAD -- '*.test.ts' '*.test.tsx' 2>/dev/null)"; then
     candidate_arguments=()
     while IFS= read -r candidate; do
       [ -n "$candidate" ] || continue
