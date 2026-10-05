@@ -2,7 +2,40 @@
 
 
 
-## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-05 07:50) — READ THIS FIRST
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-05 13:00) — READ THIS FIRST
+Previous coordinator: clear-conversation-history (cleared on user request after the retrospect). FIRST ACTIONS of the new coordinator:
+1. SendMessage your name to implicit-accounts-78 and round-c-d3 (both idle; they report to "clear-conversation-history") and the PM pff-ios-89.
+2. No gauge watcher is needed while both orchestrators are idle; re-arm `bash memory/refs/gaugewatch.sh <terminal>` (run_in_background) when one starts work. Terminals: implicit-accounts-78 term_9e99c907-14dc-4e65-9189-e2f005332d28; round-c-d3 term_02ee8eb6-52da-4099-9efd-bb391e8d586c. READ a terminal's status line before arming (memory verify-watched-terminal-identity).
+3. Tell the user to run `! claude plugin update kiko@kiko-marketplace` then `/reload-plugins` in each session: main now carries plugin 0.3.0 (kiko:estimator + harness-workflow/ops/release/estimator skill edits).
+4. Continue the Round C TRIAGE walk-through with the user (parts 2-4 below), then brief round-c-d3 with all rulings.
+
+### State (2026-10-05 13:00)
+| Thing | Value |
+|---|---|
+| main = next | f2d16772 (v1.1.0 build 27 release commit 1c7c8731 + coordinator drift fix f2d16772). Everything of the night merged (implicit fixes 1-8, min iOS 18.2, migrations 0050+0051, type fields create-only, Round C CS1-CS4, guard rules 1/5-5/5 + 6/6, tag guard-rules-end). check:all PASS in the next worktree. |
+| iPhone | next 15851635 installed (user LGTM 2026-10-05; migration 0051 ran after a .kiko export). |
+| v1.1.0 build 27 | ARCHIVED: ~/Library/Developer/Xcode/Archives/2026-10-05/Kiko.xcarchive (Release config, KikoDistribution profile, Apple Distribution, min iOS 18.2, iPhone only, App Group ok, get-task-allow false, Xcode 27.0 27A266a). NOT uploaded: the USER uploads via the Organizer. It does NOT contain the triage-part-1 fixes; if the user wants them in the distributed version -> fix, bump to build 28, re-archive. Tag v1.1.0 + GitHub release ONLY after the App Store publishes (release skill). 1.0.0 build 25 still "Waiting for Review". |
+| Submission blockers | COMP-C1 live gh-pages privacy policy is the 12 Sep text (publish the 2 Oct md as html; user approves + pushes gh-pages); COMP-C3 reviewer Notes + kit stale (rewrite; demo .kiko now has real bank ids after CS3). |
+| round-c-d3 | idle; worktree round-c tip 0e53e212 (merged). FINDINGS/LEDGER/CLOSURE in round-c .superpowers/sdd/round-c/. CS5 (TX-C1) parked: options 1/2/3 (planner: 3 now + 1 later). |
+| implicit-accounts-78 | idle; track done; close it after the user has no more device items for it (tag + remove its worktree). |
+| deep-gate | idle; device-deploy at 1c7c8731. |
+| Main checkout gotcha | `check:all` in the MAIN checkout fails gitleaks on Podfile.lock checksums in an untracked copied diff under memory/refs/ (false positive; worktrees pass). Release skill documents it now. A real fix (exclude memory/ with a documented reason) is an open harness item. |
+
+### TRIAGE — user rulings so far (part 1, 2026-10-05) -> build in Round C
+- TX-C2 = cascade delete (exchange pair id = new column + migration; split by changeGroupId; deposit reverses the contribution; synced partner skipped) + warning AND a confirmation dialog.
+- TX-C3 = preview "balance will be set to X" + imported rows deletable with balance-boundary reversal + correct edit notice (not "synced").
+- STAT-N4 = cap the transaction form date at today.
+- HOLD-I1 = cap a within-tolerance matched payment's principal at the installment's scheduled principal.
+
+### TRIAGE — still to ask (parts 2-4; details + recommendations in round-c FINDINGS.md "Important — morning triage")
+2. SYNC-C1 (jar statements; needs ONE authenticated /personal/statement/<jarId> call via the user's hidden-prompt script, memory api-key-verification-via-user-script), SYNC-C2 (recommended: mark sync-closes, reopen only those), SYNC-C3 (recommended A: re-sync every stored address), STAT-C1 (A flat-at-live vs B empty state), ACC-C2 (allow bank edit while institution is NULL vs accept), CS5/TX-C1 options 1/2/3.
+3. Submission: COMP-C1 publish, COMP-C3 Notes + kit, COMP-I1 reviewer inputs (public BTC address, a UA ISIN, sample files), COMP-I2..I4 (App Privacy stays "Data Not Collected"; iOS 18.2 line in the release notes; export compliance "exempt").
+4. PERF-C1 (column-mapping useMemo, S), REM-C1 (Gregorian calendar on reminder triggers, S), refactor scheduling (recommended first: REF-C1, C3, C4, C10, C12, C14, C16), index on transactions.loan_holding_id (measured 4.2 ms vs 0.05 ms at 100k rows; migration), history-word sweep timing (236 WARNING lines), the unused biome-ignore at src/db/use-live-query.ts ~162, SEC-C3 cache check on device, later harness ideas (check:all list == package.json invariant; closure-table script; load-rule script; gitleaks memory/ exclusion).
+
+### Lessons this session (in memory; index compacted 21.1 -> 11.9 KB, archive/ holds the superseded files)
+retrospect-2026-10-05; force-color-breaks-node-p-stamps; verify-watched-terminal-identity; fast-audit-means-coverage-gaps; closure-table-one-row-per-id; touching-weak-file-needs-tests-first; load rule (skills harness-workflow + ops).
+
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-05 07:50) — superseded by 2026-10-05 13:00 above
 Coordinator: clear-conversation-history. Full night log + morning items: memory/refs/morning-list-2026-10-04.md (section "Night 2026-10-05" and below).
 
 ### State (2026-10-05 07:50)
