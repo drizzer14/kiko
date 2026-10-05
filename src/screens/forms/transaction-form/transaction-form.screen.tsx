@@ -57,7 +57,6 @@ import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import Divider from '@kiko/design-system/components/divider';
-import { type TimeClock, formatDateTime } from '@kiko/dates';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import CategoryField from '@kiko/screens/forms/category-field';
 import ExchangeFields from '@kiko/screens/forms/exchange-fields';
@@ -75,6 +74,7 @@ import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { type TimeClock, clampToToday, formatDateTime } from '@kiko/dates';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
@@ -1053,6 +1053,13 @@ const resolveHydration = (args: {
   return { kind: 'wait' };
 };
 
+// The time an edited row's Date and Time fields start on. A manual row stored
+// after today is pulled back to now, so Save never writes a day the Date
+// picker does not offer; the field shows the day that will be written. A
+// synced row's date is bank-owned and never written, so it shows as stored.
+const hydratedTime = (time: number, isReadOnly: boolean, now: number): number =>
+  isReadOnly ? time : clampToToday(time, now);
+
 // Convert-mode's derived view: eligibility, direction, the counterpart picker
 // options, the read-only fixed side's display value, and the direction-
 // dependent labels — bundled into one object so the component body spends a
@@ -1180,6 +1187,9 @@ type FieldGroupProps = {
   isReadOnly: boolean;
   time: number;
   onChangeTime: (timestamp: number) => void;
+  // The latest day the Date calendar offers: today, because a future-dated row
+  // makes Home and the Statistics line disagree until that day arrives.
+  maxDate: number;
   t: TFunction;
   // Per-field validation-failure messages and wrapper refs, threaded straight
   // into `ExchangeFields`/`ConvertExchangeFields`'s own props or onto
@@ -1230,6 +1240,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         counterpartSuffix={props.counterpartSuffix}
         time={props.time}
         onChangeTime={props.onChangeTime}
+        maxDate={props.maxDate}
         counterpartError={props.counterpartError}
         counterpartAmountError={props.counterpartAmountError}
         counterpartFieldRef={props.counterpartFieldRef}
@@ -1252,6 +1263,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         valueInSuffix={props.valueInSuffix}
         time={props.time}
         onChangeTime={props.onChangeTime}
+        maxDate={props.maxDate}
         valueOutError={props.valueOutError}
         destinationError={props.destinationError}
         valueInError={props.valueInError}
@@ -1304,6 +1316,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
           <DateTimeRow
             time={props.time}
             onChangeTime={props.onChangeTime}
+            maxDate={props.maxDate}
             disabled={props.isReadOnly}
             invalid={props.timeError !== undefined}
             dateTestID="transaction-date-field"
@@ -2017,7 +2030,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         // A null `time` keeps the field at NOW — the duplicate never copies the
         // source timestamp; the edit path carries the stored time.
         if (seedFieldsPlan.time !== null) {
-          setTime(seedFieldsPlan.time);
+          setTime(hydratedTime(seedFieldsPlan.time, isReadOnly, Date.now()));
         }
 
         setHydrated(true);
@@ -2036,6 +2049,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     currency,
     defaultPrimaryHoldingId,
     blankLabel,
+    isReadOnly,
   ]);
 
   // Feature 1: seed the counterpart (cash) amount from the latest cached rate at
@@ -2746,6 +2760,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             isReadOnly,
             time,
             onChangeTime: setTime,
+            maxDate: Date.now(),
             t,
             amountError: fieldError('amount'),
             amountInvalid: isSplitAmountInvalid(saveDisabledParams, attemptedSave),

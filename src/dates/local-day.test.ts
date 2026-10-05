@@ -1,4 +1,4 @@
-import { endOfLocalDay, startOfLocalDay } from './local-day';
+import { clampToToday, endOfLocalDay, startOfLocalDay } from './local-day';
 
 describe('startOfLocalDay', () => {
   it('returns local midnight of the calendar day `time` falls on', () => {
@@ -39,5 +39,39 @@ describe('endOfLocalDay across DST', () => {
     const midnight = new Date(2026, 5, 15).getTime();
 
     expect(endOfLocalDay(midnight) - midnight).toBe(24 * 60 * 60 * 1000 - 1);
+  });
+});
+
+describe('clampToToday', () => {
+  const now = new Date(2026, 9, 5, 10, 30).getTime();
+
+  it('keeps a past instant', () => {
+    const past = new Date(2026, 9, 1, 8, 0).getTime();
+
+    expect(clampToToday(past, now)).toBe(past);
+  });
+
+  it('keeps a later time of today, because only the day is capped', () => {
+    const laterToday = new Date(2026, 9, 5, 23, 59).getTime();
+
+    expect(clampToToday(laterToday, now)).toBe(laterToday);
+  });
+
+  it('keeps the very last millisecond of today', () => {
+    expect(clampToToday(endOfLocalDay(now), now)).toBe(endOfLocalDay(now));
+  });
+
+  it('pulls a time on a later day back to now', () => {
+    const tomorrow = new Date(2026, 9, 6, 0, 0).getTime();
+
+    expect(clampToToday(tomorrow, now)).toBe(now);
+  });
+
+  it('keeps the last millisecond of the 25-hour fall-back day', () => {
+    const fallBackNow = new Date(2026, 9, 25, 12, 0).getTime();
+    const nextMidnight = new Date(2026, 9, 26).getTime();
+
+    expect(clampToToday(nextMidnight - 1, fallBackNow)).toBe(nextMidnight - 1);
+    expect(clampToToday(nextMidnight, fallBackNow)).toBe(fallBackNow);
   });
 });

@@ -32,6 +32,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
   counterpartSuffix,
   time,
   onChangeTime,
+  maxDate,
   counterpartError,
   counterpartAmountError,
   counterpartFieldRef,
@@ -76,7 +77,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
         />
       </View>
 
-      <DateTimeRow time={time} onChangeTime={onChangeTime} />
+      <DateTimeRow time={time} onChangeTime={onChangeTime} maxDate={maxDate} />
     </>
   );
 };

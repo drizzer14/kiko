@@ -30,6 +30,8 @@ export type ConvertExchangeFieldsProps = {
   // The shared Date field (defaults to the existing transaction's time).
   time: number;
   onChangeTime: (timestamp: number) => void;
+  // The latest day the Date calendar offers (see DateField's `maxDate`).
+  maxDate?: number;
   // Per-field validation-failure messages, or `undefined` when valid — mirrors
   // TextField's own `error` contract (text-field.props.d.ts): each renders
   // directly under its own field and turns that field's label red, never in

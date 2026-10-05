@@ -125,6 +125,17 @@ describe('ConvertExchangeFields', () => {
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
   });
 
+  it('caps the Date calendar at the day of maxDate', async () => {
+    const maxDate = new Date(2026, 9, 5, 10, 30).getTime();
+    const { getByLabelText, getByTestId } = await render(
+      <ConvertExchangeFields {...baseProps} maxDate={maxDate} />,
+    );
+
+    await fireEvent.press(getByLabelText('Date'));
+
+    expect(getByTestId('Date calendar').props.maxDate).toBe('2026-10-05');
+  });
+
   it('applies counterpartAmountError to the counterpart amount field', async () => {
     const { getByLabelText, getByText } = await render(
       <ConvertExchangeFields

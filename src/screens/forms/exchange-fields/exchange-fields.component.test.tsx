@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { act, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -93,6 +93,15 @@ describe('ExchangeFields', () => {
     // error line.
     const errorGroup = getByText('Select a destination account.').parent?.parent;
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
+  });
+
+  it('caps the Date calendar at the day of maxDate', async () => {
+    const maxDate = new Date(2026, 9, 5, 10, 30).getTime();
+    const { getByLabelText, getByTestId } = await setup({ maxDate });
+
+    await fireEvent.press(getByLabelText('Date'));
+
+    expect(getByTestId('Date calendar').props.maxDate).toBe('2026-10-05');
   });
 
   it('applies valueInError to the Value in field', async () => {

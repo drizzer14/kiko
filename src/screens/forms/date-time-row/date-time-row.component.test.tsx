@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -69,6 +69,17 @@ describe('DateTimeRow', () => {
 
     expect(getByTestId('row-date-field')).toBeTruthy();
     expect(getByTestId('row-time-field')).toBeTruthy();
+  });
+
+  it('caps the Date calendar at the day of maxDate', async () => {
+    const maxDate = new Date(2026, 9, 5, 10, 30).getTime();
+    const { getByLabelText, getByTestId } = await render(
+      <DateTimeRow time={0} onChangeTime={noop} maxDate={maxDate} />,
+    );
+
+    await fireEvent.press(getByLabelText('Date'));
+
+    expect(getByTestId('Date calendar').props.maxDate).toBe('2026-10-05');
   });
 
   it('keeps both labels plain by default', async () => {

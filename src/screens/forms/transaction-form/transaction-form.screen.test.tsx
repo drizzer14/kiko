@@ -3,6 +3,7 @@ import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { formatDate } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdingTypes } from '@kiko/holdings/holding-type';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
@@ -467,13 +468,24 @@ describe('TransactionFormScreen — add mode', () => {
       .mockReturnValue(new Date(2025, 2, 15, 14, 30, 0).getTime());
     const utils = await renderAdd();
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
-    await pickDate(utils, 2025, 6, 1);
+    await pickDate(utils, 2025, 2, 1);
     await pickCategory(utils, 'Groceries');
     await fireEvent.press(utils.getByText('Save'));
 
     expect(mockRecordManual).toHaveBeenCalledWith(
-      expect.objectContaining({ time: new Date(2025, 5, 1, 14, 30, 0).getTime() }),
+      expect.objectContaining({ time: new Date(2025, 1, 1, 14, 30, 0).getTime() }),
     );
+    nowSpy.mockRestore();
+  });
+
+  it('caps the Date calendar at today, so the form cannot take a future day (STAT-N4)', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(new Date(2025, 2, 15, 14, 30, 0).getTime());
+    const utils = await renderAdd();
+    await fireEvent.press(utils.getByLabelText('Date'));
+
+    expect(utils.getByTestId('Date calendar').props.maxDate).toBe('2025-03-15');
     nowSpy.mockRestore();
   });
 
@@ -1296,6 +1308,45 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: 42 }));
   });
 
+  it('pulls a stored future date back to now, so Save never writes a day after today (STAT-N4)', async () => {
+    const now = new Date(2026, 9, 5, 14, 30, 0).getTime();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: new Date(2026, 9, 20, 9, 15, 0).getTime(),
+      description: 'Coffee',
+      source: 'manual',
+    });
+    const utils = await renderEdit('txn-1');
+
+    expect(utils.getByText(formatDate(now))).toBeTruthy();
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: now }));
+    nowSpy.mockRestore();
+  });
+
+  it('keeps a stored date of today unchanged', async () => {
+    const now = new Date(2026, 9, 5, 14, 30, 0).getTime();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
+    const laterToday = new Date(2026, 9, 5, 21, 0, 0).getTime();
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: laterToday,
+      description: 'Coffee',
+      source: 'manual',
+    });
+    const utils = await renderEdit('txn-1');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: laterToday }));
+    nowSpy.mockRestore();
+  });
+
   it('re-dates the transaction to a newly picked calendar day, keeping its time-of-day', async () => {
     // A stored row at 09:15 on 20 June 2024; re-picking only the day must move
     // the day and carry over the 09:15 time-of-day (so a later time pick is not
@@ -1735,6 +1786,24 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
     // The notice is source-neutral: it names no single provider, so it reads
     // correctly on a Monobank, Binance or wallet row alike.
     expect(getByText(/was synced/i)).toBeTruthy();
+  });
+
+  it('shows a synced row stored date as it is, even when it is after today', async () => {
+    const now = new Date(2026, 9, 5, 14, 30, 0).getTime();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
+    const future = new Date(2026, 9, 20, 9, 15, 0).getTime();
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+      id: 'txn-9',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: future,
+      description: 'Imported latte',
+      source: 'monobank',
+    });
+    const { getByText } = await renderEdit('txn-9');
+
+    expect(getByText(formatDate(future))).toBeTruthy();
+    nowSpy.mockRestore();
   });
 
   it('offers no Save action and never writes', async () => {
@@ -2581,6 +2650,21 @@ describe('TransactionFormScreen — Exchange mode', () => {
     expect(utils.queryByTestId('transaction-type-field-option-exchange')).toBeNull();
   });
 
+  it('caps the Exchange Date calendar at today (STAT-N4)', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(new Date(2025, 2, 15, 14, 30, 0).getTime());
+    const utils = await renderAddFromHolding('cash-1');
+
+    await fireEvent.press(utils.getByLabelText('Type'));
+    await fireEvent.press(utils.getByText('Exchange'));
+    await flushDeferredModeSelect();
+    await fireEvent.press(utils.getByLabelText('Date'));
+
+    expect(utils.getByTestId('Date calendar').props.maxDate).toBe('2025-03-15');
+    nowSpy.mockRestore();
+  });
+
   it('lists open, non-source cash holdings in the destination select', async () => {
     const { getByText, getByLabelText, queryByText } = await renderAddFromHolding('cash-1');
 
@@ -3104,6 +3188,19 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     // the taller 44pt `compact` — matching the other small inline actions.
     const convert = getByRole('button', { name: 'Exchange' });
     expect(StyleSheet.flatten(convert.props.style).minHeight).toBe(34);
+  });
+
+  it('caps the convert Date calendar at today (STAT-N4)', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(new Date(2025, 2, 15, 14, 30, 0).getTime());
+    const { getByText, getByLabelText, getByTestId } = await renderEdit('expense-manual');
+
+    await fireEvent.press(getByText('Exchange'));
+    await fireEvent.press(getByLabelText('Date'));
+
+    expect(getByTestId('Date calendar').props.maxDate).toBe('2025-03-15');
+    nowSpy.mockRestore();
   });
 
   it('does NOT show the action for a zero amount or a non-liquid holding', async () => {

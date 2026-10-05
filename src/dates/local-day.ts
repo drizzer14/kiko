@@ -27,3 +27,11 @@ export const endOfLocalDay = (time: number): number => {
 
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime() - 1;
 };
+
+/**
+ * `time`, unless it falls on a calendar day after the one `now` is on — then
+ * `now`. A later time of today is kept: only the DAY is capped, matching the
+ * date picker's own maximum.
+ */
+export const clampToToday = (time: number, now: number): number =>
+  time <= endOfLocalDay(now) ? time : now;

@@ -20,6 +20,7 @@ import type { DateTimeRowProps } from './date-time-row.props';
 const DateTimeRow: FC<DateTimeRowProps> = ({
   time,
   onChangeTime,
+  maxDate,
   disabled,
   invalid,
   dateTestID,
@@ -35,6 +36,7 @@ const DateTimeRow: FC<DateTimeRowProps> = ({
           sheetTitle={t('forms.fields.dateSheetTitle')}
           value={time}
           onChange={onChangeTime}
+          maxDate={maxDate}
           disabled={disabled}
           invalid={invalid}
           placeholder={t('forms.fields.selectDatePlaceholder')}
