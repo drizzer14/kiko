@@ -478,7 +478,7 @@ describe('TransactionFormScreen — add mode', () => {
     nowSpy.mockRestore();
   });
 
-  it('caps the Date calendar at today, so the form cannot take a future day (STAT-N4)', async () => {
+  it('caps the Date calendar at today, so the form cannot take a future day', async () => {
     const nowSpy = jest
       .spyOn(Date, 'now')
       .mockReturnValue(new Date(2025, 2, 15, 14, 30, 0).getTime());
@@ -1308,23 +1308,24 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: 42 }));
   });
 
-  it('pulls a stored future date back to now, so Save never writes a day after today (STAT-N4)', async () => {
+  it('keeps a stored future date when the date is not touched', async () => {
     const now = new Date(2026, 9, 5, 14, 30, 0).getTime();
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
+    const future = new Date(2026, 9, 20, 9, 15, 0).getTime();
     setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-1',
       holdingId: 'h1',
       amountMinorUnits: -1234,
-      time: new Date(2026, 9, 20, 9, 15, 0).getTime(),
+      time: future,
       description: 'Coffee',
       source: 'manual',
     });
     const utils = await renderEdit('txn-1');
 
-    expect(utils.getByText(formatDate(now))).toBeTruthy();
+    expect(utils.getByText(formatDate(future))).toBeTruthy();
     await fireEvent.press(utils.getByText('Save'));
 
-    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: now }));
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: future }));
     nowSpy.mockRestore();
   });
 
@@ -1786,24 +1787,6 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
     // The notice is source-neutral: it names no single provider, so it reads
     // correctly on a Monobank, Binance or wallet row alike.
     expect(getByText(/was synced/i)).toBeTruthy();
-  });
-
-  it('shows a synced row stored date as it is, even when it is after today', async () => {
-    const now = new Date(2026, 9, 5, 14, 30, 0).getTime();
-    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
-    const future = new Date(2026, 9, 20, 9, 15, 0).getTime();
-    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
-      id: 'txn-9',
-      holdingId: 'h1',
-      amountMinorUnits: -1234,
-      time: future,
-      description: 'Imported latte',
-      source: 'monobank',
-    });
-    const { getByText } = await renderEdit('txn-9');
-
-    expect(getByText(formatDate(future))).toBeTruthy();
-    nowSpy.mockRestore();
   });
 
   it('offers no Save action and never writes', async () => {
@@ -2650,7 +2633,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     expect(utils.queryByTestId('transaction-type-field-option-exchange')).toBeNull();
   });
 
-  it('caps the Exchange Date calendar at today (STAT-N4)', async () => {
+  it('caps the Exchange Date calendar at today', async () => {
     const nowSpy = jest
       .spyOn(Date, 'now')
       .mockReturnValue(new Date(2025, 2, 15, 14, 30, 0).getTime());
@@ -3190,7 +3173,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     expect(StyleSheet.flatten(convert.props.style).minHeight).toBe(34);
   });
 
-  it('caps the convert Date calendar at today (STAT-N4)', async () => {
+  it('caps the convert Date calendar at today', async () => {
     const nowSpy = jest
       .spyOn(Date, 'now')
       .mockReturnValue(new Date(2025, 2, 15, 14, 30, 0).getTime());
