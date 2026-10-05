@@ -88,7 +88,7 @@ the markdown's effective date and the hosts it names with the live
 page and with the hosts the code contacts:
 
 ```
-node scripts/privacy-site.js check
+npm run privacy:site -- check
 ```
 
 It fetches the two public pages (no key, one `fetch` each) and exits 1
@@ -96,7 +96,7 @@ with a `DRIFT` line per difference: effective date (md vs live), a host
 named on one side only, a host `src/` contacts that the md omits. Run
 it by hand at submission time; no `check:*` gate calls it (a gate must
 not touch the network). On drift, regenerate the pages
-(`node scripts/privacy-site.js build`, output in `docs/privacy-site/`),
+(`npm run privacy:site -- build`, output in `docs/privacy-site/`),
 have the user approve them, and hand the user the gh-pages publish
 commands; the release does not go to upload until `check` exits 0.
 Never edit the markdown without bumping its effective date; check the
