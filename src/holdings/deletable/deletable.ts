@@ -15,9 +15,21 @@ const syncedInstitutions = [...bankProviderIds, ...balanceProviderIds] as const;
 
 export type SyncedInstitution = (typeof syncedInstitutions)[number];
 
-/** `manual` is the only source a user writes; every other source is a sync's. */
+/**
+ * `manual` is the only source a user types; every other source is a sync's or a
+ * statement file's. A row of any of them is read-only in the form and cannot be
+ * duplicated; `isDeletableTransaction` below is the narrower delete gate.
+ */
 export const isSyncedTransaction = (row: Pick<TransactionRow, 'source'>): boolean =>
   row.source !== 'manual';
+
+/**
+ * A row the user may delete: one they typed, or one they imported from a
+ * statement file. A sync owns its own rows, so deleting one would only bring it
+ * back on the next fetch.
+ */
+export const isDeletableTransaction = (row: Pick<TransactionRow, 'source'>): boolean =>
+  row.source === 'manual' || row.source === 'import';
 
 export const isSyncedAccount = (row: Pick<AccountRow, 'institution'>): boolean => {
   return (

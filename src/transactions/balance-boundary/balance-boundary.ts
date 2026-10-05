@@ -30,6 +30,14 @@ export const balanceBoundaryOf = ({
 export const movesBalance = (time: number, boundary: number | null): boolean =>
   boundary === null || time > boundary;
 
+/** Whether deleting an imported row leaves the balance as it is, because the
+ * row is history at or before the boundary: the confirm says so, since the
+ * bank's figure then stays even when every row of the import goes. */
+export const importDeleteKeepsBalance = (
+  row: Pick<TransactionRow, 'source' | 'time'>,
+  boundary: number | null,
+): boolean => row.source === 'import' && !movesBalance(row.time, boundary);
+
 type PossibleBalanceSetRow = Pick<TransactionRow, 'setsBalance'> &
   Parameters<typeof isBalanceSetShapedRow>[0];
 

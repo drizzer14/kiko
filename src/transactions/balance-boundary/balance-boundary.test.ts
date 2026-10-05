@@ -2,6 +2,7 @@ import {
   movesBalance,
   balanceBoundaryOf,
   isPossibleBalanceSetRow,
+  importDeleteKeepsBalance,
   redatesPossibleBalanceSetRowPastBoundary,
 } from './balance-boundary';
 
@@ -38,6 +39,29 @@ describe('movesBalance', () => {
     expect(movesBalance(BOUNDARY - 1, BOUNDARY)).toBe(false);
     expect(movesBalance(BOUNDARY, BOUNDARY)).toBe(false);
     expect(movesBalance(BOUNDARY + 1, BOUNDARY)).toBe(true);
+  });
+});
+
+describe('importDeleteKeepsBalance', () => {
+  it.each([
+    ['before the boundary', BOUNDARY - 1],
+    ['exactly at the boundary', BOUNDARY],
+  ])('holds for an imported row dated %s', (_name, time) => {
+    expect(importDeleteKeepsBalance({ source: 'import', time }, BOUNDARY)).toBe(true);
+  });
+
+  it('does not hold for an imported row dated after the boundary, whose delete gives the money back', () => {
+    expect(importDeleteKeepsBalance({ source: 'import', time: BOUNDARY + 1 }, BOUNDARY)).toBe(
+      false,
+    );
+  });
+
+  it('does not hold while the holding has no boundary, so every row counts', () => {
+    expect(importDeleteKeepsBalance({ source: 'import', time: 0 }, null)).toBe(false);
+  });
+
+  it.each(['manual', 'monobank'] as const)('does not hold for a %s row', (source) => {
+    expect(importDeleteKeepsBalance({ source, time: BOUNDARY - 1 }, BOUNDARY)).toBe(false);
   });
 });
 
