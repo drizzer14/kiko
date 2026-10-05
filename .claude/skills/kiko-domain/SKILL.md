@@ -400,6 +400,13 @@ uses. It reads it only when the edited row can hit the rule (unmarked and
 balance-set-shaped), and disables Save while it loads, so a fast Save never
 reaches the repo's refusal instead of the field error.
 
+**The transaction form's Date calendar caps at today.** The form passes
+`maxDate` (see kiko-design-system, `DateField`) so a later day cannot be
+picked: a future-dated row makes Home and the Statistics line disagree until
+that day arrives. Only the day is capped, so a later time today is allowed.
+Hydration never clamps: a stored future-dated row keeps its stored date
+unless the user picks a new one.
+
 ## Statement import moves the target holding's balance too
 
 A file-based statement import (`transactionsRepo.importRows`,

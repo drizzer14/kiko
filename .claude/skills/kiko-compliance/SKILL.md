@@ -298,8 +298,9 @@ confirm the relevant check ran and stayed green:
 - `kiko-no-hidden-feature-flag-or-demo-import` (Semgrep, `check:security`) —
   the `SHOW_*`/`HIDE_*` flag and `e2e/` import pattern only.
 - `scripts/checks/plist.sh` (`check:plist`) — ATS pinning, arbitrary
-  loads, empty usage-description strings, (section 1b) an `api_token`
-  client without a `Cache-Control: no-store` request header, the localized
+  loads, empty usage-description strings, (section 1b) a credential
+  client (a credential header or the `api_token` parameter) without a
+  `Cache-Control: no-store` request header, the localized
   app-name tables (`ios/Kiko/<language>.lproj/InfoPlist.strings`) wired
   into the Kiko target's Resources build phase, and the DiskSpace
   required-reason API declared in `ios/Kiko/PrivacyInfo.xcprivacy` while

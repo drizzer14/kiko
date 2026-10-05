@@ -96,10 +96,13 @@ and immediately if a sync starts failing with a TLS error.
    `Cache-Control: no-store` request header, so NSURLCache never writes the
    key-bearing URL or request to `Cache.db`; `npm run check:plist` fails
    without it. Every Monobank request (the public `/bank/currency` one
-   included) and every Binance request sends it. Builds up to 26 stored the
-   Monobank `X-Token` in `Cache.db` before it did, so
+   included) and every Binance request sends it. Every build before the
+   fix (up to 27) stored the X-Token in `Cache.db`, so
    `AppDelegate.purgeStoredURLCacheOnce` clears the shared URL cache once
-   per install, at launch (a `UserDefaults` once-key).
+   per install, at launch (a `UserDefaults` once-key). Known limit:
+   `removeAllCachedResponses` removes rows and body files, but SQLite free
+   pages/WAL may keep bytes until overwritten; the complete remedy is token
+   rotation (done by the user 2026-10-05).
 
 ## Fixed since the 2026-09-06 audit
 

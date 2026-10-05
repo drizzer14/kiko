@@ -2383,8 +2383,9 @@ in memory for the crash history this fixed.
   `application(_:didFinishLaunchingWithOptions:)`) calls
   `URLCache.shared.removeAllCachedResponses()` behind a `UserDefaults`
   once-key that it writes only AFTER the purge, so an interrupted launch
-  retries. The key is device-local on purpose (not a `settings` column:
-  a restored backup must not skip the purge). Pinned by code shape in
+  retries. The key is in `UserDefaults`, not a `settings` column, because
+  Kiko's snapshot import restores the settings row: an imported export
+  must not mark the purge done on a device whose cache still holds rows. Pinned by code shape in
   `__tests__/url-cache-purge.test.ts`.
 - **The notification delegate is set in `AppDelegate`.**
   `UNUserNotificationCenter.current().delegate = KikoNotificationDelegate.shared`

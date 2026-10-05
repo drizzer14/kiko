@@ -2199,7 +2199,6 @@ Section 1b: a client that sends a credential (an `api_token` query
 parameter or a credential header such as `X-Token`; section 1's marker
 set) must also send a `Cache-Control: no-store` request header
 (NSURLCache stores the request URL and headers in its disk cache).
-It first covered only `api_token`, so the `X-Token` Monobank client
-slipped through until SEC-C3. A comment, an unused constant, or `no-cache` never
+A comment, an unused constant, or `no-cache` never
 satisfies it. Read section 1b of `scripts/checks/plist.sh` for the
 accepted header forms.
