@@ -1109,6 +1109,43 @@ describe('deleting a part of a split payment whose return was converted', () => 
       });
     });
   });
+
+  describe('when the payment and the return are both legacy legs of a conversion', () => {
+    const legacyConversion = (markerHoldingId: string): void => {
+      insertRow({
+        id: 'legacy-payment',
+        holdingId: 'uah',
+        amountMinorUnits: -50_000,
+        changeGroupId: 'legacy-group',
+        exchangeCounterpartHoldingId: markerHoldingId,
+      });
+      insertRow({
+        id: 'legacy-return',
+        holdingId: 'cash',
+        amountMinorUnits: 10_000,
+        changeGroupId: 'legacy-group',
+        exchangeCounterpartHoldingId: markerHoldingId,
+      });
+    };
+
+    it('says a holding could not be found once, in the payment’s own sentence', async () => {
+      legacyConversion('usd');
+
+      expect(await linkageOf('legacy-payment')).toEqual({
+        split: true,
+        exchange: { kind: 'missing', name: 'Dollar card' },
+      });
+    });
+
+    it('says it once when the marker holding is gone', async () => {
+      legacyConversion('deleted-holding');
+
+      expect(await linkageOf('legacy-payment')).toEqual({
+        split: true,
+        exchange: { kind: 'missing' },
+      });
+    });
+  });
 });
 
 // Each part of a movement takes its full amount back from its own holding,
@@ -1307,6 +1344,121 @@ describe('the balance changes a delete states', () => {
 
   it('states nothing for a row that is not there', async () => {
     expect(await balanceChangesOf('missing')).toBeUndefined();
+  });
+});
+
+// The statement and the write are two reads of the ledger, so only a delete that
+// moves each balance by exactly what the plan said proves they agree.
+describe('the balance changes a delete states are the ones it writes', () => {
+  const movedByDeleting = async (
+    transactionId: string,
+  ): Promise<{ planned: Record<string, number>; written: Record<string, number> }> => {
+    const plan = await transactionsRepo.removePlan(transactionId);
+    const before = balancesOf();
+
+    await transactionsRepo.remove(transactionId);
+
+    const after = balancesOf();
+
+    return {
+      planned: Object.fromEntries(
+        (plan.balanceChanges ?? []).map((change) => [change.name, change.minorUnits]),
+      ),
+      written: Object.fromEntries(
+        Object.keys(before)
+          .filter((holdingId) => after[holdingId] !== before[holdingId])
+          .map((holdingId) => [NAMES[holdingId], after[holdingId] - before[holdingId]]),
+      ),
+    };
+  };
+
+  it('agrees for a plain row', async () => {
+    await transactionsRepo.recordManual({
+      holdingId: 'uah',
+      amountMinorUnits: -1_000,
+      time: MOVED,
+      category: 'groceries',
+    });
+
+    const { planned, written } = await movedByDeleting(idOfRowOn('uah'));
+
+    expect(planned).toEqual({ 'Hryvnia card': 1_000 });
+    expect(written).toEqual(planned);
+  });
+
+  it.each(['uah', 'usd'])('agrees for an exchange deleted from its %s leg', async (leg) => {
+    await exchangeUahToUsd();
+
+    const { planned, written } = await movedByDeleting(idOfRowOn(leg));
+
+    expect(planned).toEqual({ 'Dollar card': -1_000, 'Hryvnia card': 40_000 });
+    expect(written).toEqual(planned);
+  });
+
+  it.each(['uah', 'cash', 'second'])(
+    'agrees for a split deleted from its %s part',
+    async (part) => {
+      await transactionsRepo.recordManualWithReturns({
+        payment: {
+          holdingId: 'uah',
+          amountMinorUnits: -50_000,
+          time: MOVED,
+          category: 'groceries',
+        },
+        returns: [
+          { holdingId: 'cash', amountMinorUnits: 10_000 },
+          { holdingId: 'second', amountMinorUnits: 5_000 },
+        ],
+      });
+
+      const { planned, written } = await movedByDeleting(idOfRowOn(part));
+
+      expect(planned).toEqual({ Cash: -10_000, 'Hryvnia card': 50_000, 'Second card': -5_000 });
+      expect(written).toEqual(planned);
+    },
+  );
+
+  it('agrees for an exchange into a deposit', async () => {
+    await transactionsRepo.recordExchange({
+      sourceHoldingId: 'uah',
+      valueOutMinorUnits: 40_000,
+      destinationHoldingId: 'deposit',
+      destinationType: 'term_deposit',
+      valueInMinorUnits: 40_000,
+      time: MOVED,
+    });
+
+    const { planned, written } = await movedByDeleting(idOfRowOn('uah'));
+
+    expect(written).toEqual(planned);
+  });
+
+  it('agrees when the other part is a bank row that stays', async () => {
+    insertRow({ id: 'original', holdingId: 'bank', amountMinorUnits: -40_000, source: 'monobank' });
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'usd',
+      counterpartType: 'card',
+      amountMinorUnits: 1_000,
+      existingTransactionId: 'original',
+      existingHoldingId: 'bank',
+      time: MOVED,
+    });
+
+    const { planned, written } = await movedByDeleting(idOfRowOn('usd'));
+
+    expect(planned).toEqual({ 'Dollar card': -1_000 });
+    expect(written).toEqual(planned);
+  });
+
+  it('agrees for a row dated before its holding’s anchor', async () => {
+    insertRow({ id: 'old', holdingId: 'uah', amountMinorUnits: -1_000 });
+    run('UPDATE holdings SET balance_set_at = ? WHERE id = ?', MOVED + 1_000, 'uah');
+
+    const { planned, written } = await movedByDeleting('old');
+
+    expect(planned).toEqual({ 'Hryvnia card': 1_000 });
+    expect(written).toEqual(planned);
   });
 });
 

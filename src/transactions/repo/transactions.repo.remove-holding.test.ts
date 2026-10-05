@@ -570,6 +570,80 @@ describe('deleting a holding that mixes every kind of link', () => {
   });
 });
 
+// The statement and the write are two reads of the ledger, so only a delete that
+// moves each remaining balance by exactly what the plan said proves they agree.
+describe('the balance changes a holdings delete states are the ones it writes', () => {
+  const NAMES: Record<string, string> = {
+    uah: 'Hryvnia card',
+    usd: 'Dollar card',
+    cash: 'Cash',
+    second: 'Second card',
+    deposit: 'Deposit',
+  };
+
+  const movedByDeleting = async (
+    holdingIds: string[],
+  ): Promise<{ planned: Record<string, number>; written: Record<string, number> }> => {
+    const plan = await transactionsRepo.removeHoldingsPlan(holdingIds);
+    const before = balancesOf();
+
+    for (const holdingId of holdingIds) {
+      await transactionsRepo.removeHolding(holdingId);
+    }
+
+    const after = balancesOf();
+
+    return {
+      planned: Object.fromEntries(
+        (plan.balanceChanges ?? []).map((change) => [change.name, change.minorUnits]),
+      ),
+      written: Object.fromEntries(
+        Object.keys(after)
+          .filter((holdingId) => after[holdingId] !== before[holdingId])
+          .map((holdingId) => [
+            NAMES[holdingId] ?? holdingId,
+            after[holdingId] - before[holdingId],
+          ]),
+      ),
+    };
+  };
+
+  it.each(['uah', 'usd'])('agrees for an exchange, deleted with its %s holding', async (leg) => {
+    await exchangeUahToUsd();
+
+    const { planned, written } = await movedByDeleting([leg]);
+
+    expect(planned).not.toEqual({});
+    expect(written).toEqual(planned);
+  });
+
+  it.each(['uah', 'cash'])('agrees for a split, deleted with its %s holding', async (leg) => {
+    await splitPayment();
+
+    const { planned, written } = await movedByDeleting([leg]);
+
+    expect(planned).not.toEqual({});
+    expect(written).toEqual(planned);
+  });
+
+  it('agrees for an exchange into a deposit, deleted with the paying holding', async () => {
+    await exchangeUahIntoDeposit();
+
+    const { planned, written } = await movedByDeleting(['uah']);
+
+    expect(written).toEqual(planned);
+  });
+
+  it('agrees for an exchange into a deposit, deleted with the deposit', async () => {
+    await exchangeUahIntoDeposit();
+
+    const { planned, written } = await movedByDeleting(['deposit']);
+
+    expect(planned).toEqual({ 'Hryvnia card': 40_000 });
+    expect(written).toEqual(planned);
+  });
+});
+
 describe('a delete that cannot finish', () => {
   it('refuses a live-synced holding and leaves the partners of its rows alone', async () => {
     insertRow({

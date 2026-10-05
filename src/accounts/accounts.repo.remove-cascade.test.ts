@@ -198,6 +198,46 @@ describe('deleting an account whose holdings hold the legs of a movement', () =>
   });
 });
 
+// The confirm states each balance change before the delete; the write must move
+// each remaining balance by exactly that.
+describe('the balance changes an account delete states are the ones it writes', () => {
+  it('agrees for an exchange whose other leg sits in another account', async () => {
+    keepOnly('uah');
+    await exchangeUahToUsd();
+    const plan = await transactionsRepo.removeHoldingsPlan(['uah']);
+    const before = balancesOf();
+
+    await accountsRepo.remove('account');
+
+    expect(plan.balanceChanges).toEqual([
+      { name: 'Dollar card', currency: 'USD', minorUnits: -1_000 },
+    ]);
+    expect(balancesOf().usd - before.usd).toBe(-1_000);
+  });
+
+  it('agrees for a split whose returns sit in other accounts', async () => {
+    keepOnly('uah');
+    await transactionsRepo.recordManualWithReturns({
+      payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
+      returns: [
+        { holdingId: 'cash', amountMinorUnits: 10_000 },
+        { holdingId: 'second', amountMinorUnits: 5_000 },
+      ],
+    });
+    const plan = await transactionsRepo.removeHoldingsPlan(['uah']);
+    const before = balancesOf();
+
+    await accountsRepo.remove('account');
+
+    expect(plan.balanceChanges).toEqual([
+      { name: 'Cash', currency: 'UAH', minorUnits: -10_000 },
+      { name: 'Second card', currency: 'UAH', minorUnits: -5_000 },
+    ]);
+    expect(balancesOf().cash - before.cash).toBe(-10_000);
+    expect(balancesOf().second - before.second).toBe(-5_000);
+  });
+});
+
 describe('an account delete that cannot finish', () => {
   it('rolls back every partner row, balance and contribution, and keeps the Keychain items', async () => {
     keepOnly('uah');

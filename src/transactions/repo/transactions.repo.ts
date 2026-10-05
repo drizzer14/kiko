@@ -542,6 +542,10 @@ const splitExchangesOf = (
     ...linked.split.removed,
     ...linked.split.kept,
   ];
+  const own = exchangeRemovalOf(row, linked, holdingsById);
+  // The row's own sentence already says this holding could not be found.
+  const reportedByOwn = (marker: NamedHolding | undefined): boolean =>
+    own?.kind === 'missing' && own.name === marker?.name;
   const unanswered = linked.split.removed
     .filter(
       (member) =>
@@ -549,7 +553,8 @@ const splitExchangesOf = (
         member.exchangeCounterpartHoldingId !== null &&
         !hasPartnerRow(member, movement),
     )
-    .map((member) => markerHoldingOf(member, holdingsById));
+    .map((member) => markerHoldingOf(member, holdingsById))
+    .filter((marker) => !reportedByOwn(marker));
   const unansweredNames = [
     ...new Set(
       unanswered.flatMap((marker) =>
@@ -739,7 +744,7 @@ const readLinksOfHoldingsDatabaseTransaction = async (
  * What deleting the holdings `holdingIds` must do to the rest of the ledger,
  * run on the caller's transaction BEFORE the holdings go (their rows are still
  * there to follow): delete the user's rows of the same movements on other
- * holdings, giving each balance back by that holding's own boundary, and take
+ * holdings, giving each row's full amount back to its holding, and take
  * out of a deposit the contribution a deleted holding's leg made. A bank-owned
  * row of a movement stays untouched. Every deposit among the holdings also
  * loses the legs that paid into it.
@@ -2410,6 +2415,13 @@ export const transactionsRepo = {
    * it (a date-only row: on the same local day), is that synced row — not
    * inserted, not counted. One synced row stands for one statement row. Rows a pre-fix build
    * already imported over synced ones stay; no migration removes them.
+   *
+   * OPEN, user decision pending: a back-dated MANUAL row dated before a closing
+   * balance's as-of moves the balance when written (every write counts). Importing
+   * a statement with that closing balance applies the closing outright
+   * (`asOfSeconds * 1000 >= boundary`), which counts only rows dated after its
+   * as-of, so the row's amount drops out of the balance while the row stays; a
+   * later delete of that row then takes its amount back a second time.
    *
    * An account a bank sync owns (`isSyncedAccount`) refuses the import
    * outright, before anything is written, whichever of its holdings is the

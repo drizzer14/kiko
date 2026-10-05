@@ -923,9 +923,10 @@ export const en = {
     // empty name never interpolates into a dangling "{{name}} expense".
     defaultDescriptionExpensePlain: 'Expense',
     defaultDescriptionIncomePlain: 'Income',
-    // The delete confirm's body for a transaction that is one part of a
-    // movement. No plurals: the holding names are the only variable, joined by
-    // the caller (Hermes has no `Intl.ListFormat`).
+    // The delete confirm's body: a sentence per other part of the movement the
+    // transaction belongs to, then `balanceChange`, which every delete carries.
+    // No plurals: the holding names are the only variable, joined by the caller
+    // (Hermes has no `Intl.ListFormat`).
     deleteLinked: {
       exchange: 'This also deletes the other part of this exchange, in {{name}}.',
       exchangeSyncedKept:

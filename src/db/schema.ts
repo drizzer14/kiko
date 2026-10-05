@@ -100,9 +100,11 @@ export const holdings = sqliteTable('holdings', {
   // comment (`transactions/repo/transactions.repo.ts`) is the ONE full
   // statement of exactly which writes set it.
   balanceSetAt: integer('balance_set_at'),
-  // The `transactions.setsBalance` row whose set IS this balance: an id, because
-  // a re-date leaves the row's time off `balanceSetAt`. No balance move reads it:
-  // every row's edit and delete moves the balance by its amount. NULL when a
+  // The `transactions.setsBalance` row whose set IS this balance. Written by an
+  // opening balance, a balance edit and a closing import (which clears it), and
+  // read by nothing since 2026-10-06: every row's edit and delete moves the
+  // balance by its amount, so no write needs to find the setting row. Kept
+  // because dropping the column needs a migration: an open item. NULL when a
   // closing-balance import set it (no row is written at its as-of) or the
   // balance was never hand-set. No foreign key: a deleted row's id is never
   // reused, so a stale id matches nothing.

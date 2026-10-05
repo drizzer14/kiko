@@ -204,10 +204,10 @@ export const removeHoldingsNoticeOf = async (
   removeHoldingsNotice(await transactionsRepo.removeHoldingsPlan(holdingIds), t);
 
 /**
- * The text the delete confirm shows under its title, for a transaction that is
- * one part of a movement; `undefined` for a row that stands alone, whose confirm
- * stays the bare one. Holding names are joined with a comma, never
- * `Intl.ListFormat`, which Hermes may lack.
+ * The text the delete confirm shows under its title: one sentence per part of
+ * the movement the row belongs to, then the balance each holding changes by. A
+ * row that stands alone gets only its balance line. Holding names are joined
+ * with a comma, never `Intl.ListFormat`, which Hermes may lack.
  */
 export const removeNotice = (plan: RemovePlan, t: TFunction): string | undefined =>
   joinNoticeSentences(
