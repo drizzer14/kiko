@@ -2195,8 +2195,11 @@ in ANY non-test `src/` file counts that file as a credential client, even
 a validator or mapper that only reads such a field by property. Run
 `npm run check:plist` after touching such a file.
 
-Section 1b: a client that sends an `api_token` must also send a
-`Cache-Control: no-store` request header (NSURLCache keys its disk
-cache by URL). A comment, an unused constant, or `no-cache` never
+Section 1b: a client that sends a credential (an `api_token` query
+parameter or a credential header such as `X-Token`; section 1's marker
+set) must also send a `Cache-Control: no-store` request header
+(NSURLCache stores the request URL and headers in its disk cache).
+It first covered only `api_token`, so the `X-Token` Monobank client
+slipped through until SEC-C3. A comment, an unused constant, or `no-cache` never
 satisfies it. Read section 1b of `scripts/checks/plist.sh` for the
 accepted header forms.

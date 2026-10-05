@@ -191,6 +191,34 @@ const HEADER_TOKEN_CLIENT = [
   '',
 ].join('\n');
 
+const NO_STORE_HEADER_TOKEN_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const fetchQuote = (token: string): Promise<Response> =>',
+  '  fetch(QUOTES_API_ENDPOINT + "/eod", {',
+  "    headers: { 'X-Token': token, 'Cache-Control': 'no-store' },",
+  '  });',
+  '',
+].join('\n');
+
+const CACHEABLE_API_KEY_HEADER_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const fetchQuote = (key: string): Promise<Response> =>',
+  "  fetch(QUOTES_API_ENDPOINT + '/eod', { headers: { 'X-MBX-APIKEY': key } });",
+  '',
+].join('\n');
+
+const NO_CACHE_HEADER_TOKEN_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const fetchQuote = (token: string): Promise<Response> =>',
+  "  fetch(QUOTES_API_ENDPOINT + '/eod', {",
+  "    headers: { 'X-Token': token, 'Cache-Control': 'no-cache' },",
+  '  });',
+  '',
+].join('\n');
+
 const UNQUOTED_KEY_TOKEN_CLIENT = [
   "import { QUOTES_API_ENDPOINT } from '@env';",
   '',
@@ -297,8 +325,38 @@ describe('scripts/checks/plist.sh credential detection', () => {
     expect(result.stderr).toBe('');
   });
 
-  it('does not require no-store from a client whose credential is a header, not a URL parameter', () => {
+  // NSURLCache stores the request object, headers included, in Cache.db, so a
+  // credential header is as exposed as a credential in the URL.
+  it("fails (exit 2) naming the file when a pinned 'X-Token' header client sends no Cache-Control: no-store", () => {
     const result = runPlistCheck(buildRoot({ [QUOTES_HOST]: TWO_PINS }, HEADER_TOKEN_CLIENT));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('src/quotes.client.ts');
+    expect(result.stderr).toContain('no-store');
+  });
+
+  it("fails (exit 2) when a pinned 'X-MBX-APIKEY' header client sends no Cache-Control: no-store", () => {
+    const result = runPlistCheck(
+      buildRoot({ [QUOTES_HOST]: TWO_PINS }, CACHEABLE_API_KEY_HEADER_CLIENT),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('src/quotes.client.ts');
+  });
+
+  it("fails (exit 2) when the 'X-Token' header client sends Cache-Control: no-cache, not no-store", () => {
+    const result = runPlistCheck(
+      buildRoot({ [QUOTES_HOST]: TWO_PINS }, NO_CACHE_HEADER_TOKEN_CLIENT),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('src/quotes.client.ts');
+  });
+
+  it("passes when the pinned 'X-Token' header client sends Cache-Control: no-store", () => {
+    const result = runPlistCheck(
+      buildRoot({ [QUOTES_HOST]: TWO_PINS }, NO_STORE_HEADER_TOKEN_CLIENT),
+    );
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
