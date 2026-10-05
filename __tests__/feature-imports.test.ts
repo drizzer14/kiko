@@ -37,6 +37,11 @@ function runAnalyzer(...parameters: string[]): SpawnSyncReturns<string> {
 // source text and cannot tell a fixture string from real code.
 const SCREENS = 'screens';
 
+// Joined from parts: jest reads a literal `jest.requireActual('@kiko/...')` inside a fixture
+// string as a dependency on src, which would pull this file into every Stryker run that mutates
+// a src file.
+const INNER_DB_FILE = ['@kiko', 'db', 'client'].join('/');
+
 describe('scripts/checks/feature-imports.js per-file findings', () => {
   it.each([
     [
@@ -157,8 +162,8 @@ describe('scripts/checks/feature-imports.js per-file findings', () => {
         "jest.mock('@kiko/db/client');",
         "jest.doMock('@kiko/db/client');",
         "jest.unmock('@kiko/db/client');",
-        "const actual = jest.requireActual('@kiko/db/client');",
-        "const mocked = jest.requireMock('@kiko/db/client');",
+        `const actual = jest.requireActual('${INNER_DB_FILE}');`,
+        `const mocked = jest.requireMock('${INNER_DB_FILE}');`,
         '',
       ].join('\n'),
     );

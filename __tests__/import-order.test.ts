@@ -11,6 +11,11 @@ import { rmSync, mkdirSync, mkdtempSync, copyFileSync, readFileSync, writeFileSy
 const SCRIPT = join(__dirname, '../scripts/checks/import-order.sh');
 const ANALYZER = join(__dirname, '../scripts/checks/import-order.js');
 
+// The alias is joined from parts: jest reads a literal alias import inside a fixture string as a
+// dependency on src, which would pull this file into every Stryker run that mutates a src file.
+const DESIGN_SYSTEM = ['@kiko', 'design-system'].join('/');
+const BOX_IMPORT = `import Box from '${DESIGN_SYSTEM}/components/box';\n`;
+
 let directory: string;
 
 beforeEach(() => {
@@ -126,7 +131,7 @@ describe('scripts/checks/import-order.sh', () => {
     const result = runCheck(
       "import { useTranslation } from 'react-i18next';\n" +
         '\n' +
-        "import Box from '@kiko/design-system/components/box';\n" +
+        BOX_IMPORT +
         '\n' +
         'export const Foo = 1;\n',
     );
@@ -138,7 +143,7 @@ describe('scripts/checks/import-order.sh', () => {
   it('passes a single merged external group holding both a package and a path-alias import', () => {
     const result = runCheck(
       "import { useTranslation } from 'react-i18next';\n" +
-        "import Box from '@kiko/design-system/components/box';\n" +
+        BOX_IMPORT +
         '\n' +
         'export const Foo = 1;\n',
     );
@@ -282,8 +287,8 @@ describe('scripts/checks/import-order.sh', () => {
     // runs the module, and useImportType forbids folding it into a value import.
     it('passes a bare side-effect import beside a type-only import of one module', () => {
       const result = runCheck(
-        "import '@kiko/design-system/unistyles';\n" +
-          "import type { AppThemes } from '@kiko/design-system/unistyles';\n" +
+        `import '${DESIGN_SYSTEM}/unistyles';\n` +
+          `import type { AppThemes } from '${DESIGN_SYSTEM}/unistyles';\n` +
           '\nexport const Foo = 1;\n',
       );
 
@@ -505,7 +510,7 @@ describe('scripts/checks/import-order.js --write', () => {
 
   it('merges two adjacent groups of the same kind and re-sorts them as one group', () => {
     const fixed = write(
-      "import Box from '@kiko/design-system/components/box';\n" +
+      BOX_IMPORT +
         '\n' +
         "import { useTranslation } from 'react-i18next';\n" +
         '\n' +
@@ -514,7 +519,7 @@ describe('scripts/checks/import-order.js --write', () => {
 
     expect(fixed).toBe(
       "import { useTranslation } from 'react-i18next';\n" +
-        "import Box from '@kiko/design-system/components/box';\n" +
+        BOX_IMPORT +
         '\n' +
         'export const Foo = 1;\n',
     );
@@ -525,7 +530,7 @@ describe('scripts/checks/import-order.js --write', () => {
       "import { useTranslation } from 'react-i18next';\n" +
       '\n' +
       '// explains this package specifically\n' +
-      "import Box from '@kiko/design-system/components/box';\n" +
+      BOX_IMPORT +
       '\n' +
       'export const Foo = 1;\n';
 
@@ -543,7 +548,7 @@ describe('scripts/checks/import-order.js --write', () => {
       "import { useTranslation } from 'react-i18next';\n" +
       '\n' +
       '// explains this package specifically\n' +
-      "import Box from '@kiko/design-system/components/box';\n" +
+      BOX_IMPORT +
       '\n' +
       'export const Foo = 1;\n';
     const file = join(directory, 'fixture.ts');
@@ -588,9 +593,9 @@ describe('scripts/checks/import-order.js --write', () => {
     const source =
       "import { useTranslation } from 'react-i18next';\n" +
       '\n' +
-      "import Box from '@kiko/design-system/components/box';\n" +
+      BOX_IMPORT +
       '// explains the second import specifically\n' +
-      "import { ButtonProps } from '@kiko/design-system/components/button';\n" +
+      `import { ButtonProps } from '${DESIGN_SYSTEM}/components/button';\n` +
       '\n' +
       'export const Foo = 1;\n';
     const file = join(directory, 'fixture.ts');

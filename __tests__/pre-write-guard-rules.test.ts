@@ -475,8 +475,11 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     '',
   ].join('\n');
 
+  // The specifier is joined in: jest reads a literal import here as a dependency on src, and
+  // that would pull this Semgrep-spawning file into every Stryker run that mutates a dates file.
+  const datesSpecifier = ['@kiko', 'dates'].join('/');
   const dayOffsetProbe = [
-    "import { DAY_MS } from '@kiko/dates';",
+    `import { DAY_MS } from '${datesSpecifier}';`,
     '',
     'export const tomorrow = (): number => Date.now() + DAY_MS;',
     '',
