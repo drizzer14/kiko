@@ -1200,9 +1200,10 @@ works today and why, never how it worked before. The members are the
 (`rules/semgrep-prewrite.yml`); the fixture pair shows each shape.
 
 **A separate rule id, severity WARNING (Class B).** Severity is per rule,
-so the words could not ride on the ERROR id rule. The tree held 237
-findings in 136 files on 2026-10-05 (it reports every word of a comment, so
-4 second words in a comment that already held one came into view), so it
+so the words could not ride on the ERROR id rule. Count the live findings with
+`semgrep --metrics off --quiet --config rules/semgrep-prewrite.yml src --json`,
+filtered to `kiko-no-history-word-comment` (it reports every word of a
+comment, so a comment holding two words counts twice). It
 lands as WARNING:
 `check:security` surfaces them without failing, and the pre-write guard
 already denies a NEW finding of any severity. **Promotion condition:**
