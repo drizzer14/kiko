@@ -22,9 +22,9 @@ type ConvertibleHolding = Pick<
  * even fully offline, on a fresh install whose `currency_rates` table is
  * still empty (`refreshRates` writes nothing until a live Monobank fetch
  * succeeds — see `rates-refresh.ts`). Crypto has no seed entry, so an
- * unrated crypto holding is still excluded exactly as before (this
- * is the one remaining silent-drop case, and it's intentional — crypto
- * pricing stays a separate, live-only path).
+ * unrated crypto holding is excluded from net worth (this is the one
+ * silent-drop case, and it's intentional — crypto pricing is a separate,
+ * live-only path).
  */
 export const buildRateTable = (
   rows: Pick<CurrencyRateRow, 'base' | 'quote' | 'rate'>[],

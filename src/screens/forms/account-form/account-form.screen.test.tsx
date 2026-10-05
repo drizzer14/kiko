@@ -248,11 +248,11 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Add account')).toBeNull();
   });
 
-  // The currency sheet's search field lives
-  // inside a Modal above this Screen's background ScrollView, which
-  // otherwise misfires `automaticallyAdjustKeyboardInsets` for a responder
-  // it does not contain. `CurrencyField`'s `onOpenChange` must gate that
-  // prop off for exactly the window the sheet is open.
+  // The currency sheet's search field lives inside a Modal above this
+  // Screen's background ScrollView, which otherwise misfires
+  // `automaticallyAdjustKeyboardInsets` for a responder it does not contain.
+  // `CurrencyField`'s `onOpenChange` must gate that prop off for exactly the
+  // window the sheet is open.
   it('suspends automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
     const { getByTestId } = await renderForm();
 
@@ -1746,7 +1746,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
   it('connect creates the bank row once, saves the token to the Keychain, and syncs it', async () => {
     // The field's own Connect (mocked to fire with a token) drives the screen's
     // connectMonobank closure: create the row FIRST, store the secret keyed by
-    // that pre-generated id, then start the first sync, in that order.
+    // that pre-generated id, then start the first sync (the write-only-secret
+    // order).
     mockMonobankSync.mockResolvedValue(true);
     const view = await renderForm();
 

@@ -113,14 +113,13 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
 
-  // A hosting Screen's
-  // `automaticallyAdjustKeyboardInsets` misfires a scroll/inset adjustment
-  // on its OWN background ScrollView when this sheet's search field gets
-  // focus, even though that ScrollView does not contain the responder — and
-  // it never self-corrects. `updateOpen` notifies `onOpenChange` at every
-  // open/close site (synchronously with the state update, so a caller can
-  // gate that prop off before the search field can be focused) instead of
-  // calling `setOpen` directly.
+  // A hosting Screen's `automaticallyAdjustKeyboardInsets` misfires a
+  // scroll/inset adjustment on its OWN background ScrollView when this
+  // sheet's search field gets focus, even though that ScrollView does not
+  // contain the responder — and it never self-corrects. `updateOpen`
+  // notifies `onOpenChange` at every open/close site (synchronously with the
+  // state update, so a caller can gate that prop off before the search field
+  // can be focused) instead of calling `setOpen` directly.
   const updateOpen = (next: boolean): void => {
     setOpen(next);
     onOpenChange?.(next);
@@ -143,11 +142,10 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
   });
 
   const handleSelect = (code: Currency): void => {
-    // The search TextField above is the app's only
-    // focusable input inside a sheet — without a dismiss on selection the
-    // keyboard stays up (and the background form stays
-    // scrolled, per Screen's automaticallyAdjustKeyboardInsets) even after
-    // the sheet closes.
+    // The search TextField above is the app's only focusable input inside a
+    // sheet — without a dismiss on selection the keyboard stays up (and the
+    // background form stays scrolled, per Screen's
+    // automaticallyAdjustKeyboardInsets) even after the sheet closes.
     Keyboard.dismiss();
     onSelect(code);
     updateOpen(false);

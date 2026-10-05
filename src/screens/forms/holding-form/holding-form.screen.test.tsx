@@ -418,11 +418,11 @@ describe('HoldingFormScreen term deposit', () => {
     expect(codes.slice(0, 4)).toEqual(['BTC', 'ETH', 'USDT', 'UAH']);
   });
 
-  // The currency sheet's search field lives
-  // inside a Modal above this Screen's background ScrollView, which
-  // otherwise misfires `automaticallyAdjustKeyboardInsets` for a responder
-  // it does not contain. `CurrencyField`'s `onOpenChange` must gate that
-  // prop off for exactly the window the sheet is open.
+  // The currency sheet's search field lives inside a Modal above this
+  // Screen's background ScrollView, which otherwise misfires
+  // `automaticallyAdjustKeyboardInsets` for a responder it does not contain.
+  // `CurrencyField`'s `onOpenChange` must gate that prop off for exactly the
+  // window the sheet is open.
   it('suspends automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
     const { getByTestId } = await renderScreen();
 

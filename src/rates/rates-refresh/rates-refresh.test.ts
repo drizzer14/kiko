@@ -261,7 +261,7 @@ describe('refreshRates', () => {
 // giving up, so a transient network blip or a single 429 doesn't leave live
 // rates stuck behind the (approximate) fiat seed fallback for the whole
 // 5-minute throttle window.
-describe('refreshRates — retry on a failed live fetch (Part B)', () => {
+describe('refreshRates — retry on a failed live fetch', () => {
   it('retries a failing fiat fetch and stores the rows once it succeeds', async () => {
     let callCount = 0;
     const sleepDelays: number[] = [];

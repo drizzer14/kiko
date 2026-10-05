@@ -317,14 +317,14 @@ describe('guardedNetWorth / guardedBreakdown — base-currency flip regression',
   });
 });
 
-// End-to-end proof: the root-cause bug was that `currency_rates` is
-// EMPTY until the first live Monobank fetch succeeds, so `refreshRates` never
-// writes a row on a fresh, offline install and a non-UAH holding silently
-// dropped out of net worth (`canConvert`) with no live rate ever cached. The
-// bundled fiat seed fixes this offline, before any sync — going through the
-// REAL `buildRateTable` (not a hand-built `rates` object) is what proves the
+// End-to-end proof: `currency_rates` is EMPTY until the first live Monobank
+// fetch succeeds, so `refreshRates` never writes a row on a fresh, offline
+// install, and without the bundled fiat seed a non-UAH holding would silently
+// drop out of net worth (`canConvert`) with no live rate ever cached. The seed
+// covers this offline, before any sync — going through the REAL
+// `buildRateTable` (not a hand-built `rates` object) is what proves the
 // fallback layer, not just the guard functions in isolation.
-describe('offline-first-run regression — empty currency_rates DB (Part A)', () => {
+describe('offline-first-run — empty currency_rates DB', () => {
   it('counts a USD holding in the headline total with a completely empty rates table', () => {
     const table = buildRateTable([]); // simulates an empty `currency_rates` table
     const holdings = [cash('USD', 10_000)];

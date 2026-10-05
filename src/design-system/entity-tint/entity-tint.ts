@@ -124,12 +124,12 @@ export const entityIconTileGradient = (colorHex: string): [top: string, bottom: 
   darkenHex(colorHex, ICON_TILE_DARKEN_PERCENT),
 ];
 
-// `EntityIconTile` must not paint its SF
-// Symbol glyph with a fixed white `onAccent` tint on every tile, regardless of
-// how bright the tile's own gradient reads. Several palette swatches
-// (`white`, `yellow`, `khaki`, `mint`, `teal` — see `palette.ts`) are
-// themselves light enough that a white glyph on top of them fails WCAG
-// contrast, reading as a near-invisible icon. `isLightEntityColor` below
+// `EntityIconTile` must not paint its SF Symbol glyph with a fixed white
+// `onAccent` tint on every tile, regardless of how bright the tile's own
+// gradient reads. Several palette swatches (`white`, `yellow`, `khaki`,
+// `mint`, `teal` — see `palette.ts`) are themselves light enough that a
+// white glyph on top of them fails WCAG contrast, reading as a
+// near-invisible icon. `isLightEntityColor` below
 // answers this with the REAL WCAG relative-luminance + contrast-ratio method
 // (https://www.w3.org/TR/WCAG21/#dfn-relative-luminance /
 // https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio), computed on the

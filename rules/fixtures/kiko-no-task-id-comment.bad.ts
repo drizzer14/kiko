@@ -67,6 +67,18 @@ export const invariantNumber = true;
 export const criticalNumber = true;
 
 // EXPECT-FINDING
+// The import keeps its own sort (MAJOR #2).
+export const majorNumber = true;
+
+// EXPECT-FINDING
+// The label keeps its own width (MINOR #3).
+export const minorNumber = true;
+
+// EXPECT-FINDING
+// This guards the leak that Finding X1 reported.
+export const findingCapital = true;
+
+// EXPECT-FINDING
 // This guards the leak the security finding S4 reported.
 export const findingLetterDigit = true;
 
@@ -75,15 +87,15 @@ export const findingLetterDigit = true;
 export const ponytailLine = true;
 
 // EXPECT-FINDING
-// The sheet height is clamped here (SEC-C1).
+// The sheet height is clamped here (SEC-A1).
 export const hyphenFindingSec = true;
 
 // EXPECT-FINDING
-// Rebuilds the table once per refresh, see REF-C14 for the reason.
+// Rebuilds the table once per refresh, see REF-B14 for the reason.
 export const hyphenFindingRef = true;
 
 // EXPECT-FINDING
-// The delete runs inside the same batch (TX-C6a).
+// The delete runs inside the same batch (TX-B6a).
 export const hyphenFindingLowercase = true;
 
 // EXPECT-FINDING

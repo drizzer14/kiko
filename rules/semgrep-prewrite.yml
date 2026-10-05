@@ -325,16 +325,9 @@ rules:
       - pattern-either:
           - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously)\b'
           - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously)\b(?=(?:(?!\*/)[\s\S])*?\*/)'
-  # The task/spec/finding-id half of kiko-code-style's "Comments: WHY only,
-  # never history" that `kiko-no-history-id-comment`'s fixed list does not
-  # reach: `DEVICE BUG`, `Bug A2`, `Feature 1`, `Global Constraint 2`,
-  # `item 6`, `Part A`, `Track A`, `Invariant #15`, `finding S4`, a
-  # `ponytail L43` line ref, a letter-prefixed finding id (`SEC-C1`), and a
-  # parenthesized plan id (`(A1)`). Same anchoring, scope, and `\K` match shape
-  # as the two history rules. The anchoring and false-positive tuning live in
-  # kiko-linter's "`kiko-no-task-id-comment`" section. WARNING until the tree
-  # holds 0 findings for this id: flip to ERROR when check:security reports 0
-  # for it, after the sweep.
+  # WARNING until the tree holds 0 findings for this id: flip to ERROR when
+  # check:security reports 0 for it, after the sweep. See kiko-linter's
+  # "kiko-no-task-id-comment" section.
   - id: kiko-no-task-id-comment
     languages: [typescript]
     severity: WARNING
