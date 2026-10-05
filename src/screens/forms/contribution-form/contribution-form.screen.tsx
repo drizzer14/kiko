@@ -1,10 +1,5 @@
 import { useLiveQuery } from '@kiko/db';
 import { Money } from '@kiko/currency/money';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { useTranslation } from 'react-i18next';
 import { type FC, useRef, useState } from 'react';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -13,15 +8,16 @@ import Box from '@kiko/design-system/components/box';
 import DateField from '@kiko/screens/forms/date-field';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import { View, type TextInputInstance } from 'react-native';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
@@ -54,24 +50,13 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
   const [date, setDate] = useState<number>(startOfToday);
   const [attemptedSave, setAttemptedSave] = useState(false);
 
-  // The scrollable content root and the amount field's own wrapper — passed
-  // to `scrollToField` so a blocked Save (an invalid amount) scrolls the
-  // field into view alongside its inline error. See scroll-to-field.ts. An
-  // `useAnimatedRef` (rather than a plain `useRef`) so `useScrollOffset`
-  // below can read the ScrollView's own live content offset.
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
+  // The amount field's own wrapper — a blocked Save (an invalid amount)
+  // scrolls it into view alongside its inline error. See scroll-to-field.ts.
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const amountFieldRef = useRef<FieldInstance>(null);
   // The amount field's own inner TextInput, so a blocked Save can focus it
   // imperatively once it has scrolled into view.
   const amountInputRef = useRef<TextInputInstance>(null);
-  const headerInset = useHeaderInset();
-  // The ScrollView's own total content height, captured off `Screen`'s
-  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
-  // can bound an over-large target against the real content extent — see
-  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
-  // read only imperatively at Save-press time, never needs to re-render.
-  const contentHeightRef = useRef(0);
 
   const save = async (): Promise<void> => {
     if (!holding) {
@@ -84,16 +69,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
 
     if (!(majorAmount > 0)) {
       setAttemptedSave(true);
-      scrollToField(
-        scrollableRef,
-        amountFieldRef,
-        {
-          currentOffset: scrollOffset.value,
-          headerInset,
-          contentHeight: contentHeightRef.current,
-        },
-        () => amountInputRef.current?.focus(),
-      );
+      scrollTo(amountFieldRef, () => amountInputRef.current?.focus());
 
       return;
     }
@@ -115,9 +91,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      onContentSizeChange={(_width, height) => {
-        contentHeightRef.current = height;
-      }}
+      onContentSizeChange={onContentSizeChange}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('forms.contribution.save')}

@@ -9,11 +9,6 @@ import { useLiveQuery } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { isRecord } from '@kiko/type-guards';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
@@ -21,6 +16,7 @@ import Box from '@kiko/design-system/components/box';
 import DateField from '@kiko/screens/forms/date-field';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import { View, type TextInputInstance } from 'react-native';
 import { asMetalMeta } from '@kiko/holdings/holding-metadata';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
@@ -30,14 +26,14 @@ import FieldLabel from '@kiko/design-system/components/field-label';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { metalUnitSuffix } from '@kiko/screens/forms/metal-unit-suffix';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { compareDecimal, normalizeDecimal } from '@kiko/currency/decimal';
 import { dayKeyOf, localMidnightOfDayKey } from '@kiko/prices/price-book';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
-import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 type LotFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'LotForm'>;
 
@@ -146,14 +142,11 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
   const [date, setDate] = useState<number>(startOfToday);
   const [attemptedSave, setAttemptedSave] = useState(false);
 
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const quantityFieldRef = useRef<FieldInstance>(null);
   const quantityInputRef = useRef<TextInputInstance>(null);
   const costFieldRef = useRef<FieldInstance>(null);
   const costInputRef = useRef<TextInputInstance>(null);
-  const headerInset = useHeaderInset();
-  const contentHeightRef = useRef(0);
 
   useLayoutEffect(() => {
     if (lotIndex !== undefined) {
@@ -204,24 +197,14 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
 
     if (change === null || overdrawn) {
       setAttemptedSave(true);
-      scrollToField(
-        scrollableRef,
-        quantityFieldRef,
-        { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
-        () => quantityInputRef.current?.focus(),
-      );
+      scrollTo(quantityFieldRef, () => quantityInputRef.current?.focus());
 
       return;
     }
 
     if (direction === 'buy' && !costValid) {
       setAttemptedSave(true);
-      scrollToField(
-        scrollableRef,
-        costFieldRef,
-        { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
-        () => costInputRef.current?.focus(),
-      );
+      scrollTo(costFieldRef, () => costInputRef.current?.focus());
 
       return;
     }
@@ -250,9 +233,7 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      onContentSizeChange={(_width, height) => {
-        contentHeightRef.current = height;
-      }}
+      onContentSizeChange={onContentSizeChange}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('forms.lot.save')}

@@ -1,9 +1,4 @@
 import { useLiveQuery } from '@kiko/db';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { useTranslation } from 'react-i18next';
 import {
   enteredShare,
@@ -11,6 +6,7 @@ import {
   type OwnershipEntry,
 } from '@kiko/screens/forms/property-ownership';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import type { TextInputInstance } from 'react-native';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { type FC, useEffect, useRef, useState } from 'react';
@@ -19,9 +15,9 @@ import OwnershipField from '@kiko/screens/forms/ownership-field';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { dayKeyOf, localMidnightOfDayKey } from '@kiko/prices/price-book';
-import type { ScrollViewInstance, TextInputInstance } from 'react-native';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { WHOLE_SHARE, type OwnershipShare } from '@kiko/holdings/ownership';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -48,12 +44,9 @@ const OwnershipChangeFormScreen: FC<OwnershipChangeFormScreenProps> = ({ route, 
   const [effectiveDate, setEffectiveDate] = useState(() => localMidnightOfDayKey(day));
   const [attemptedSave, setAttemptedSave] = useState(false);
 
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const fieldRef = useRef<FieldInstance>(null);
   const inputRef = useRef<TextInputInstance>(null);
-  const headerInset = useHeaderInset();
-  const contentHeightRef = useRef(0);
 
   // Seeded once: a later live-query emission must not clobber what the user typed.
   const hydrated = useRef(false);
@@ -79,12 +72,7 @@ const OwnershipChangeFormScreen: FC<OwnershipChangeFormScreenProps> = ({ route, 
 
     if (share === null) {
       setAttemptedSave(true);
-      scrollToField(
-        scrollableRef,
-        fieldRef,
-        { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
-        () => inputRef.current?.focus(),
-      );
+      scrollTo(fieldRef, () => inputRef.current?.focus());
 
       return;
     }
@@ -114,9 +102,7 @@ const OwnershipChangeFormScreen: FC<OwnershipChangeFormScreenProps> = ({ route, 
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      onContentSizeChange={(_width, height) => {
-        contentHeightRef.current = height;
-      }}
+      onContentSizeChange={onContentSizeChange}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('common.save')}

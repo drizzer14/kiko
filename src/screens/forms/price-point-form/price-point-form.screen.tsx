@@ -1,11 +1,6 @@
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
@@ -17,6 +12,7 @@ import { useLiveQuery, type HoldingRow } from '@kiko/db';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { holdingInstrument } from '@kiko/prices/instrument';
+import { View, type TextInputInstance } from 'react-native';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { pricePointsRepo } from '@kiko/prices/price-points-repo';
@@ -25,9 +21,9 @@ import TextField from '@kiko/design-system/components/text-field';
 import { type FC, useLayoutEffect, useRef, useState } from 'react';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
 
 type PricePointFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'PricePointForm'>;
@@ -124,12 +120,9 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
   const [attemptedSave, setAttemptedSave] = useState(false);
   const price = pricePointPriceOf(kind, value, currency);
 
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const valueFieldRef = useRef<FieldInstance>(null);
   const valueInputRef = useRef<TextInputInstance>(null);
-  const headerInset = useHeaderInset();
-  const contentHeightRef = useRef(0);
 
   // The stack sets the static "Update Value" title (accounts.stack.tsx); this
   // screen overrides it to read correctly for a debt once the holding loads
@@ -149,12 +142,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
 
     if (price === undefined) {
       setAttemptedSave(true);
-      scrollToField(
-        scrollableRef,
-        valueFieldRef,
-        { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
-        () => valueInputRef.current?.focus(),
-      );
+      scrollTo(valueFieldRef, () => valueInputRef.current?.focus());
 
       return;
     }
@@ -184,9 +172,7 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      onContentSizeChange={(_width, height) => {
-        contentHeightRef.current = height;
-      }}
+      onContentSizeChange={onContentSizeChange}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t(copy.save)}

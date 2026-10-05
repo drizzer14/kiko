@@ -12,11 +12,6 @@ import {
   isLedgerlessHoldingType,
 } from '@kiko/holdings/holding-descriptor';
 import maybe, { foldMap } from 'fnts/maybe';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -24,6 +19,7 @@ import Box from '@kiko/design-system/components/box';
 import type { Currency } from '@kiko/currency/currency';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import { type TextInputInstance, View } from 'react-native';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
@@ -38,18 +34,18 @@ import HoldingTypeField from '@kiko/screens/forms/holding-type-field';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
 import { isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
-import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
-import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import LoanFormBlock from './loan/loan-form-block';
 import LoanKindField from './loan/loan-kind-field';
@@ -421,33 +417,10 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     }
   }, [typeOptions, type]);
 
-  // The scroll-mode ScrollView's ref, so adding a contribution can bring the
-  // newly appended row into view. `useScrollOffset` reads its LIVE content
-  // offset, so a blocked Save's `scrollToField` call below knows whether the
-  // first-invalid field is already visible without re-measuring the scroll
-  // position itself.
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
-  const headerInset = useHeaderInset();
-  // The ScrollView's own total content height, captured off `Screen`'s
-  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
-  // can bound an over-large target against the real content extent — see
-  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
-  // read only imperatively at Save-press time, never needs to re-render.
-  const contentHeightRef = useRef(0);
-
-  // The one place this screen calls `scrollToField`, closing over the four
-  // geometry values above — every call site (a blocked Save, an added
-  // contribution) hands it just the target field and its optional focus
-  // follow-up, so the geometry can never drift between call sites.
-  const scrollTo = (ref: RefObject<FieldInstance | null>, focus?: () => void): void => {
-    scrollToField(
-      scrollableRef,
-      ref,
-      { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
-      focus,
-    );
-  };
+  // Every call site (a blocked Save, an added contribution) hands `scrollTo`
+  // just the target field and its optional focus follow-up, so the scroll
+  // geometry can never drift between call sites.
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
 
   // Per-field wrapper refs, one per validated field, passed to `scrollToField`
   // in `save`'s ordered first-invalid scroll below — each field's own inline
@@ -732,9 +705,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       scroll
       scrollableRef={scrollableRef}
       automaticallyAdjustKeyboardInsets={!isSearchSheetOpen}
-      onContentSizeChange={(_width, height) => {
-        contentHeightRef.current = height;
-      }}
+      onContentSizeChange={onContentSizeChange}
       footer={
         <Button onPress={onSave} disabled={isSubmitting || (isEdit && isPriceBookLoading)}>
           {t('common.save')}

@@ -16,11 +16,6 @@ import {
 import { match } from 'ts-pattern';
 import { useLiveQuery } from '@kiko/db';
 import type { TFunction } from 'i18next';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { useTranslation } from 'react-i18next';
 import { remindersRepo } from '@kiko/reminders/repo';
 import Box from '@kiko/design-system/components/box';
@@ -28,6 +23,7 @@ import Text from '@kiko/design-system/components/text';
 import TimeField from '@kiko/screens/forms/time-field';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import { View, type TextInputInstance } from 'react-native';
 import WeekdayField from '@kiko/screens/forms/weekday-field';
 import type { ReminderFormParams } from '@kiko/navigation/types';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -36,11 +32,11 @@ import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldLabel from '@kiko/design-system/components/field-label';
 import { useNotificationPreAlert } from '@kiko/reminders/permission';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import DayOfMonthGrid from '@kiko/design-system/components/day-of-month-grid';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
-import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import NotificationPreAlertSheet from '@kiko/design-system/components/notification-pre-alert-sheet';
 
 // Registered in both the Accounts and Settings stacks, so the props name only
@@ -113,13 +109,10 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
   );
   const [attemptedSave, setAttemptedSave] = useState(false);
 
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const weekdaysFieldRef = useRef<FieldInstance>(null);
   const intervalFieldRef = useRef<FieldInstance>(null);
   const intervalInputRef = useRef<TextInputInstance>(null);
-  const headerInset = useHeaderInset();
-  const contentHeightRef = useRef(0);
 
   const preAlert = useNotificationPreAlert(() => navigation.goBack());
 
@@ -153,14 +146,6 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
 
   const updateDraft = (patch: Partial<ReminderDraft>): void =>
     setDraft((current) => ({ ...current, ...patch }));
-
-  const scrollTo = (fieldRef: typeof weekdaysFieldRef, onSettled?: () => void): void =>
-    scrollToField(
-      scrollableRef,
-      fieldRef,
-      { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
-      onSettled,
-    );
 
   const save = async (): Promise<void> => {
     if (isEdit && !hydrated.current) {
@@ -248,9 +233,7 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
       <Screen
         scroll
         scrollableRef={scrollableRef}
-        onContentSizeChange={(_width, height) => {
-          contentHeightRef.current = height;
-        }}
+        onContentSizeChange={onContentSizeChange}
         footer={
           <Button onPress={onSave} disabled={isSubmitting}>
             {t('common.save')}

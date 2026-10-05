@@ -5,11 +5,6 @@ import {
 } from '@kiko/holdings/implicit-account';
 import type { TFunction } from 'i18next';
 import { Money } from '@kiko/currency/money';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { useSync } from '@kiko/sync/use-sync';
 import { accountsRepo } from '@kiko/accounts';
 import either, { isRight } from 'fnts/either';
@@ -23,6 +18,7 @@ import { type BrokerId, isBrokerId } from '@kiko/brokers';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import { View, type TextInputInstance } from 'react-native';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
 import Divider from '@kiko/design-system/components/divider';
 import { clearCredentials } from '@kiko/crypto-sync/binance';
@@ -37,12 +33,12 @@ import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import CurrencyField from '@kiko/design-system/components/currency-field';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
-import { View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-catalog';
@@ -285,16 +281,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // (see `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
   const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
 
-  // The scrollable content root and the name field's own wrapper — passed to
-  // `scrollToField` so a blocked Connect/Save (empty name) scrolls the field
-  // into view alongside its inline error, rather than leaving the reason
-  // rendered off-screen above the fold. See scroll-to-field.ts. An
-  // `useAnimatedRef` (rather than a plain `useRef`) so `useScrollOffset`
-  // below can read the ScrollView's own live content offset — the same
-  // pattern accounts.screen.tsx / statistics.screen.tsx already use for
-  // their own scroll-to-top hook.
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
+  // The name field's own wrapper — a blocked Connect/Save (empty name) scrolls
+  // it into view alongside its inline error, rather than leaving the reason
+  // rendered off-screen above the fold. See scroll-to-field.ts.
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const nameFieldRef = useRef<FieldInstance>(null);
   // The name field's own inner TextInput, so a blocked Connect/Save can
   // focus it imperatively once it has scrolled into view (see `onSettled`
@@ -311,13 +301,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // renders at a time. A picker has no keyboard, so a blocked Save only
   // scrolls it into view; the error under it is the cue.
   const catalogFieldRef = useRef<FieldInstance>(null);
-  const headerInset = useHeaderInset();
-  // The ScrollView's own total content height, captured off `Screen`'s
-  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
-  // can bound an over-large target against the real content extent — see
-  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
-  // read only imperatively at Save-press time, never needs to re-render.
-  const contentHeightRef = useRef(0);
 
   const ensureAccount = (): Promise<string> => {
     // Parity with the bank Save gate (`canSave = trimmedName !== ''`): a sync
@@ -331,12 +314,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // separately blocked on `!canSave`, so this also guards the programmatic path.
     if (!canSave) {
       setAttemptedSave(true);
-      scrollToField(
-        scrollableRef,
-        nameFieldRef,
-        { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
-        () => nameInputRef.current?.focus(),
-      );
+      scrollTo(nameFieldRef, () => nameInputRef.current?.focus());
 
       return Promise.reject(new Error('name-required'));
     }
@@ -517,12 +495,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
     if (firstInvalid !== undefined) {
       setAttemptedSave(true);
-      scrollToField(
-        scrollableRef,
-        firstInvalid.ref,
-        { currentOffset: scrollOffset.value, headerInset, contentHeight: contentHeightRef.current },
-        firstInvalid.focus,
-      );
+      scrollTo(firstInvalid.ref, firstInvalid.focus);
 
       return;
     }
@@ -651,9 +624,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       scroll
       scrollableRef={scrollableRef}
       automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
-      onContentSizeChange={(_width, height) => {
-        contentHeightRef.current = height;
-      }}
+      onContentSizeChange={onContentSizeChange}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('common.save')}
