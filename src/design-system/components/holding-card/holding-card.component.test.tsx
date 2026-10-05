@@ -4,8 +4,8 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
 import { DAY_MS } from '@kiko/dates';
+import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
@@ -136,6 +136,92 @@ describe('HoldingCard', () => {
 
       expect(getByText(/^3,000,000\.00 ₴$/)).toBeTruthy();
       expect(queryByTestId('holding-card-whole')).toBeNull();
+    });
+  });
+
+  // The type line under the title mirrors the account card's kind line: a
+  // `caption` `textSecondary` Text in the same column as the title. The label is
+  // the one the holding form's Type field shows.
+  describe('the type line', () => {
+    const lots = [{ day: NOW, quantityDelta: '1', costMinorUnits: 100_000 }];
+
+    it.each([
+      ['a card', holding({ name: 'Black card' }), 'Card', 'Картка'],
+      [
+        'a crypto asset',
+        holding({ name: 'Wallet', type: 'crypto_asset' }),
+        'Crypto asset',
+        'Криптоактив',
+      ],
+      ['a bond', holding({ name: 'OVDP', type: 'bond' }), 'Bond', 'Облігація'],
+      ['cash', holding({ name: 'Wallet', type: 'cash' }), 'Cash', 'Готівка'],
+      [
+        'a loan',
+        holding({ name: 'Flat loan', type: 'loan', metadata: { kind: 'mortgage' } }),
+        'Mortgage',
+        'Іпотека',
+      ],
+      [
+        'a property item',
+        holding({
+          name: 'Sedan',
+          type: 'property_item',
+          metadata: { category: 'vehicle', lots },
+        }),
+        'Vehicle',
+        'Транспорт',
+      ],
+      [
+        'a metal',
+        holding({
+          name: 'Bar',
+          type: 'metal',
+          metadata: { metal: 'XAG', form: 'bar', unit: 'g', purity: '0.999', lots },
+        }),
+        'Silver',
+        'Срібло',
+      ],
+    ])(
+      'names %s the way the form Type field does, in en and uk',
+      async (_name, row, english, ukrainian) => {
+        const { getByTestId, unmount } = await renderCard({ holding: row });
+
+        expect(getByTestId('holding-card-type')).toHaveTextContent(english);
+        await unmount();
+
+        await i18n.changeLanguage('uk');
+        try {
+          const { getByTestId: getByTestIdUk } = await renderCard({ holding: row });
+
+          expect(getByTestIdUk('holding-card-type')).toHaveTextContent(ukrainian);
+        } finally {
+          await i18n.changeLanguage('en');
+        }
+      },
+    );
+
+    it('sits in the title column, one gap below the title', async () => {
+      const { getByText } = await renderCard();
+      const column = StyleSheet.flatten(
+        ancestorWithStyle(getByText('Black card'), 'flex').props.style,
+      );
+
+      expect(column.flex).toBe(1);
+      expect(column.gap).toBe(darkTheme.spacing(1));
+    });
+
+    it('shows no line for a stored type this build has no descriptor for', async () => {
+      const { queryByTestId } = await renderCard({
+        holding: holding({ type: 'share' as unknown as HoldingRow['type'] }),
+      });
+
+      expect(queryByTestId('holding-card-type')).toBeNull();
+    });
+
+    it('reads the title, then the type, then the value for VoiceOver', async () => {
+      const { getByRole } = await renderCard();
+
+      expect(getByRole('button')).toHaveTextContent(/^Black cardCard.*1,000\.00 ₴$/);
     });
   });
 
