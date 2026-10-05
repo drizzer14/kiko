@@ -26,6 +26,7 @@ import {
   lt,
   lte,
   ne,
+  notInArray,
   or,
   sql,
 } from 'drizzle-orm';
@@ -33,6 +34,7 @@ import {
   appendDepositContributionDatabaseTransaction,
   depositContributionMatchedDatabaseTransaction,
   removeDepositContributionDatabaseTransaction,
+  removeHoldingDatabaseTransaction,
 } from '@kiko/holdings/repo';
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -45,13 +47,18 @@ import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
 import { isSyncedAccount, isSyncedHolding, isDeletableTransaction } from '@kiko/holdings/deletable';
 
+import type {
+  DepositRemoval,
+  ExchangeRemoval,
+  RemoveHoldingsPlan,
+  RemovePlan,
+} from '../remove-notice';
 import {
   balanceBoundaryOf,
   movesBalance,
   redatesPossibleBalanceSetRowPastBoundary,
 } from '../balance-boundary';
 import { normalizeTransactionName } from '../normalize-name';
-import type { DepositRemoval, ExchangeRemoval, RemovePlan } from '../remove-notice';
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
@@ -367,21 +374,23 @@ const presentIdsOf = (values: (string | null)[]): string[] => [
   ...new Set(values.flatMap((value) => foldMap(maybe(value), (present) => [present]) ?? [])),
 ];
 
-// Every other row of the movement `row` is one part of. A Convert is allowed on
-// a split row, so a split group and a pair id each can lead to a row that
-// carries the other, and following either ONE hop leaves a part behind (the
-// converted payment's other leg, or the returns): money created or lost. So
-// each pass reads the rows that share a group or pair id not read before, and
-// the ids of those rows feed the next pass, until a pass finds no new row. Each
-// id is read once, so it ends at the latest when every row has been reached.
+// Every row, other than `seeds` themselves, of the movements the `seeds` are
+// parts of (one row for a transaction delete, every row of the deleted holdings
+// for a holding delete). A Convert is allowed on a split row, so a split group
+// and a pair id each can lead to a row that carries the other, and following
+// either ONE hop leaves a part behind (the converted payment's other leg, or
+// the returns): money created or lost. So each pass reads the rows that share a
+// group or pair id not read before, and the ids of those rows feed the next
+// pass, until a pass finds no new row. Each id is read once, so it ends at the
+// latest when every row has been reached.
 const readMovementRowsDatabaseTransaction = async (
   databaseTransaction: typeof database,
-  row: TransactionRow,
+  seeds: TransactionRow[],
 ): Promise<TransactionRow[]> => {
-  const reached = new Map<string, TransactionRow>([[row.id, row]]);
+  const reached = new Map<string, TransactionRow>(seeds.map((seed) => [seed.id, seed]));
   const readGroupIds = new Set<string>();
   const readPairIds = new Set<string>();
-  let frontier = [row];
+  let frontier = seeds;
 
   while (frontier.length > 0) {
     const groupIds = presentIdsOf(frontier.map((reachedRow) => reachedRow.changeGroupId)).filter(
@@ -419,7 +428,9 @@ const readMovementRowsDatabaseTransaction = async (
     }
   }
 
-  return [...reached.values()].filter((reachedRow) => reachedRow.id !== row.id);
+  const seedIds = new Set(seeds.map((seed) => seed.id));
+
+  return [...reached.values()].filter((reachedRow) => !seedIds.has(reachedRow.id));
 };
 
 // What a delete does to the other rows of a movement: a row the user owns
@@ -445,7 +456,7 @@ const readLinkedRowsDatabaseTransaction = async (
   databaseTransaction: typeof database,
   row: TransactionRow,
 ): Promise<LinkedRows> => {
-  const others = await readMovementRowsDatabaseTransaction(databaseTransaction, row);
+  const others = await readMovementRowsDatabaseTransaction(databaseTransaction, [row]);
   const movement = [row, ...others];
   const groupIds = presentIdsOf(movement.map((part) => part.changeGroupId));
   const pairIds = presentIdsOf(movement.map((part) => part.exchangePairId));
@@ -547,6 +558,34 @@ const planRemoveDatabaseTransaction = async (
   };
 };
 
+// The term deposit `row` paid into, unless that deposit is being deleted too:
+// its contribution then goes with the deposit.
+const paidDepositOf = (
+  row: TransactionRow,
+  holdingsById: Map<string, NamedHolding>,
+  deletedHoldingIds: ReadonlySet<string>,
+): NamedHolding | undefined => {
+  const marker = markerHoldingOf(row, holdingsById);
+
+  return marker?.type === 'term_deposit' && !deletedHoldingIds.has(marker.id) ? marker : undefined;
+};
+
+// Take the contribution `row` made out of the deposit it paid into.
+const removeContributionOfRowDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  row: TransactionRow,
+  holdingsById: Map<string, NamedHolding>,
+  deletedHoldingIds: ReadonlySet<string>,
+): Promise<void> => {
+  const deposit = paidDepositOf(row, holdingsById, deletedHoldingIds);
+
+  if (deposit !== undefined) {
+    await removeDepositContributionDatabaseTransaction(databaseTransaction, deposit.id, row.time);
+  }
+};
+
+const NO_HOLDINGS: ReadonlySet<string> = new Set();
+
 // Delete rows and give each balance back by its OWN holding's boundary
 // (`removeBalanceDelta`), then take a deposit's contribution out with the leg
 // that paid it. Everything runs on the caller's transaction, so a throw (a
@@ -554,6 +593,7 @@ const planRemoveDatabaseTransaction = async (
 const removeRowsDatabaseTransaction = async (
   databaseTransaction: typeof database,
   rows: TransactionRow[],
+  deletedHoldingIds: ReadonlySet<string> = NO_HOLDINGS,
 ): Promise<void> => {
   const holdingsById = await readNamedHoldingsDatabaseTransaction(
     databaseTransaction,
@@ -565,13 +605,217 @@ const removeRowsDatabaseTransaction = async (
     await moveBalanceDatabaseTransaction(databaseTransaction, row.holdingId, (boundary) =>
       removeBalanceDelta(row, boundary),
     );
-
-    const marker = markerHoldingOf(row, holdingsById);
-
-    if (marker?.type === 'term_deposit') {
-      await removeDepositContributionDatabaseTransaction(databaseTransaction, marker.id, row.time);
-    }
+    await removeContributionOfRowDatabaseTransaction(
+      databaseTransaction,
+      row,
+      holdingsById,
+      deletedHoldingIds,
+    );
   }
+};
+
+// What deleting a set of holdings reaches in OTHER holdings. `own` are the rows
+// of the deleted holdings that link to anything (a pair id, a split group or an
+// exchange marker; a row with none leads nowhere). `removed` are the rows
+// elsewhere that belong to the same movements and are the user's, `kept` the
+// bank's, which are never deleted or touched. A deposit among the deleted
+// holdings also reaches the legs that paid into it, whose marker names it. A
+// partner on a deleted holding is in `own`, so it is never counted twice: it
+// goes with its holding, with no reversal.
+type HoldingsLinks = {
+  own: TransactionRow[];
+  removed: TransactionRow[];
+  kept: TransactionRow[];
+};
+
+const readLinksOfHoldingsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingIds: string[],
+): Promise<HoldingsLinks> => {
+  if (holdingIds.length === 0) {
+    return { own: [], removed: [], kept: [] };
+  }
+
+  const own = await databaseTransaction
+    .select()
+    .from(transactions)
+    .where(
+      and(
+        inArray(transactions.holdingId, holdingIds),
+        or(
+          isNotNull(transactions.exchangePairId),
+          isNotNull(transactions.changeGroupId),
+          isNotNull(transactions.exchangeCounterpartHoldingId),
+        ),
+      ),
+    );
+  const deposits = await databaseTransaction
+    .select({ id: holdings.id })
+    .from(holdings)
+    .where(and(inArray(holdings.id, holdingIds), eq(holdings.type, 'term_deposit')));
+  const inbound =
+    deposits.length === 0
+      ? []
+      : await databaseTransaction
+          .select()
+          .from(transactions)
+          .where(
+            and(
+              inArray(
+                transactions.exchangeCounterpartHoldingId,
+                deposits.map((deposit) => deposit.id),
+              ),
+              notInArray(transactions.holdingId, holdingIds),
+            ),
+          );
+  const reached = await readMovementRowsDatabaseTransaction(databaseTransaction, [
+    ...own,
+    ...inbound,
+  ]);
+
+  return { own, ...byOwnership([...inbound, ...reached]) };
+};
+
+/**
+ * What deleting the holdings `holdingIds` must do to the rest of the ledger,
+ * run on the caller's transaction BEFORE the holdings go (their rows are still
+ * there to follow): delete the user's rows of the same movements on other
+ * holdings, giving each balance back by that holding's own boundary, and take
+ * out of a deposit the contribution a deleted holding's leg made. A bank-owned
+ * row of a movement stays untouched. Every deposit among the holdings also
+ * loses the legs that paid into it.
+ */
+export const cascadeLinkedRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingIds: string[],
+): Promise<void> => {
+  const { own, removed } = await readLinksOfHoldingsDatabaseTransaction(
+    databaseTransaction,
+    holdingIds,
+  );
+  const deletedHoldingIds = new Set(holdingIds);
+  const holdingsById = await readNamedHoldingsDatabaseTransaction(
+    databaseTransaction,
+    holdingIdsOf(own),
+  );
+
+  await removeRowsDatabaseTransaction(databaseTransaction, removed, deletedHoldingIds);
+
+  for (const row of own) {
+    await removeContributionOfRowDatabaseTransaction(
+      databaseTransaction,
+      row,
+      holdingsById,
+      deletedHoldingIds,
+    );
+  }
+};
+
+const sortedHoldingNamesOf = (
+  rows: TransactionRow[],
+  holdingsById: Map<string, NamedHolding>,
+): string[] => uniqueHoldingNamesOf(rows, holdingsById).sort();
+
+const hasPartnerRow = (row: TransactionRow, linkedRows: TransactionRow[]): boolean =>
+  row.exchangePairId !== null &&
+  linkedRows.some((other) => other.id !== row.id && other.exchangePairId === row.exchangePairId);
+
+// The deposits whose contribution a deleted leg's delete takes out, and those
+// where it cannot be matched and stays, each by name.
+const contributionNamesDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  rows: TransactionRow[],
+  holdingsById: Map<string, NamedHolding>,
+  deletedHoldingIds: ReadonlySet<string>,
+): Promise<{ reversed: string[]; kept: string[] }> => {
+  const reversed = new Set<string>();
+  const kept = new Set<string>();
+
+  for (const row of rows) {
+    const deposit = paidDepositOf(row, holdingsById, deletedHoldingIds);
+
+    if (deposit === undefined) {
+      continue;
+    }
+
+    const matched = await depositContributionMatchedDatabaseTransaction(
+      databaseTransaction,
+      deposit.id,
+      row.time,
+    );
+
+    (matched ? reversed : kept).add(deposit.name);
+  }
+
+  return { reversed: [...reversed].sort(), kept: [...kept].sort() };
+};
+
+// The holdings the exchange legs of the deleted holdings point at without a
+// partner row to find, by name, and whether one of them points at a holding
+// that is gone (nothing to name). A marker that names a deleted holding, or a
+// deposit (its leg has no partner row by design), is no finding.
+const unlinkedLegsOf = (
+  own: TransactionRow[],
+  linkedRows: TransactionRow[],
+  holdingsById: Map<string, NamedHolding>,
+  deletedHoldingIds: ReadonlySet<string>,
+): { names: string[]; plain: boolean } => {
+  const markers = own.flatMap((row) =>
+    row.exchangeCounterpartHoldingId === null ||
+    deletedHoldingIds.has(row.exchangeCounterpartHoldingId) ||
+    hasPartnerRow(row, linkedRows)
+      ? []
+      : [holdingsById.get(row.exchangeCounterpartHoldingId)],
+  );
+
+  return {
+    names: [
+      ...new Set(
+        markers.flatMap((marker) =>
+          marker === undefined || marker.type === 'term_deposit' ? [] : [marker.name],
+        ),
+      ),
+    ].sort(),
+    plain: markers.some((marker) => marker === undefined),
+  };
+};
+
+/**
+ * What `cascadeLinkedRowsDatabaseTransaction` would do for `holdingIds`, for the
+ * delete confirm's text. The cascade reads the same rows again inside its own
+ * transaction, so this only has to be right when nothing changes in between, and
+ * is never what decides.
+ */
+const planLinkedRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingIds: string[],
+): Promise<RemoveHoldingsPlan> => {
+  const { own, removed, kept } = await readLinksOfHoldingsDatabaseTransaction(
+    databaseTransaction,
+    holdingIds,
+  );
+  const deletedHoldingIds = new Set(holdingIds);
+  const linkedRows = [...own, ...removed, ...kept];
+  const holdingsById = await readNamedHoldingsDatabaseTransaction(
+    databaseTransaction,
+    holdingIdsOf(linkedRows),
+  );
+  const contributions = await contributionNamesDatabaseTransaction(
+    databaseTransaction,
+    [...own, ...removed],
+    holdingsById,
+    deletedHoldingIds,
+  );
+  const unlinked = unlinkedLegsOf(own, linkedRows, holdingsById, deletedHoldingIds);
+
+  return {
+    deletedRows: { count: removed.length, names: sortedHoldingNamesOf(removed, holdingsById) },
+    reversedContributions: contributions.reversed,
+    keptContributions: contributions.kept,
+    keptSynced: sortedHoldingNamesOf(kept, holdingsById),
+    unlinked: unlinked.names,
+    unlinkedPlain: unlinked.plain,
+  };
 };
 
 /**
@@ -1817,6 +2061,25 @@ export const transactionsRepo = {
     );
   },
   /**
+   * Delete a manual holding with all of its transactions, and with them the
+   * movements those transactions are one part of: in one transaction, the
+   * cascade (`cascadeLinkedRowsDatabaseTransaction`), then the holding itself
+   * (`removeHoldingDatabaseTransaction`, which refuses a holding a live sync
+   * owns and rolls the cascade back with it). A missing id is a no-op.
+   */
+  removeHolding: (holdingId: string) =>
+    write(async (databaseTransaction) => {
+      await cascadeLinkedRowsDatabaseTransaction(databaseTransaction, [holdingId]);
+      await removeHoldingDatabaseTransaction(databaseTransaction, holdingId);
+    }),
+  /**
+   * What deleting these holdings (one holding, or every holding of an account)
+   * would take from OTHER holdings, for the delete confirm's text: nothing
+   * (`removeHoldingsNotice` gives no text) for holdings no movement links to.
+   */
+  removeHoldingsPlan: (holdingIds: string[]): Promise<RemoveHoldingsPlan> =>
+    planLinkedRowsDatabaseTransaction(database, holdingIds),
+  /**
    * Override the category of ONE transaction, by id, inside a single op-sqlite
    * transaction. This is the "just for this one" path: it rewrites only the
    * target row's `category` and touches nothing else — no balance, no other row.
@@ -1939,7 +2202,7 @@ export const transactionsRepo = {
    * still present — inside this SAME transaction, before any write: the
    * matcher computes its candidates from a snapshot read moments earlier, so
    * a loan holding can be deleted, closed, or (in principle) re-typed in the
-   * gap between that read and this write. `holdingsRepo.remove` clears every
+   * gap between that read and this write. `removeHolding` clears every
    * link that ALREADY points at a holding the instant it is deleted, but
    * cannot clear a link this call has not written yet, and neither a close
    * nor a re-type touches an existing link at all — only THIS re-check does.

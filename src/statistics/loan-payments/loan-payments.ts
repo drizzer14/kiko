@@ -38,7 +38,7 @@ export type LoanHolding = Pick<HoldingRow, 'id' | 'metadata' | 'currency'>;
  * A dangling `loanHoldingId` — or, the same defensive shape, one whose
  * loan holding exists but is in a
  * DIFFERENT currency than the payment — is NOT excluded here:
- * `holdingsRepo.remove`/`accountsRepo.remove` clear a dangling link
+ * `transactionsRepo.removeHolding`/`accountsRepo.remove` clear a dangling link
  * transactionally the moment its loan holding is deleted, and
  * `transactionsRepo.setLoanPayment` refuses a cross-currency link outright,
  * so both cases can only reach here from data written before either guard

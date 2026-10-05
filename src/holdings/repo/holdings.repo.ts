@@ -344,7 +344,7 @@ export const removeDepositContributionDatabaseTransaction = async (
 
 // Clears `loanHoldingId`/`loanLinkSource` on every transaction row that
 // still points at one of `holdingIds`. A shared Tx helper (not private to
-// `holdingsRepo.remove`) so `accountsRepo.remove` runs the SAME cascade for
+// `removeHoldingDatabaseTransaction`) so `accountsRepo.remove` runs the SAME cascade for
 // every holding a deleted debt account owned, in the SAME transaction as
 // the account delete — a loan holding removed either way never leaves a
 // dangling link on another holding's payment rows. A no-op when
@@ -361,6 +361,50 @@ export const clearLoanLinksForHoldingsDatabaseTransaction = async (
     .update(transactions)
     .set({ loanHoldingId: null, loanLinkSource: null })
     .where(inArray(transactions.loanHoldingId, holdingIds));
+};
+
+// Deletes a manual holding and all of its own transactions, on an EXISTING
+// transaction handle. `transactionsRepo.removeHolding` runs it after the cascade
+// to the transactions of OTHER holdings that are the other part of a movement,
+// in the same transaction; a holding is never deleted without that cascade.
+// Refuses a holding whose balance is owned by a LIVE sync, so a synced row is
+// left untouched. That ownership is read from the holding's ACCOUNT (its
+// `institution`, fetched inside the same transaction) as well as the holding's
+// own sync key — a disconnected account keeps its holdings' keys so a reconnect
+// re-adopts them, and those rows are deletable again.
+export const removeHoldingDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+): Promise<void> => {
+  const rows = await databaseTransaction.select().from(holdings).where(eq(holdings.id, holdingId));
+  const row = rows.at(0);
+
+  if (!row) {
+    return;
+  }
+  const accountRows = await databaseTransaction
+    .select({ institution: accounts.institution })
+    .from(accounts)
+    .where(eq(accounts.id, row.accountId));
+
+  if (isSyncedHolding(row, accountRows.at(0))) {
+    throw new Error('remove: cannot delete a synced holding');
+  }
+  await databaseTransaction.delete(transactions).where(eq(transactions.holdingId, holdingId));
+  // A loan holding is ledgerless, but OTHER holdings' payment rows can point
+  // back at it via `loanHoldingId`. Clear those links in the SAME transaction —
+  // never leaving a dangling id — so a linked payment reverts to counting as
+  // normal spending. A no-op for every non-loan holding, since nothing ever
+  // points a `loanHoldingId` at one.
+  await clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, [holdingId]);
+  // A priced holding (property_item) has no transactions, but it may have its
+  // own price series on `holding:<id>` — cleared here, inline on the handle
+  // (not through `pricePointsRepo.removeInstrument`, which would open its own
+  // transaction), so a deleted holding never leaves an orphaned series behind.
+  await databaseTransaction
+    .delete(pricePoints)
+    .where(eq(pricePoints.instrument, holdingInstrument(holdingId)));
+  await databaseTransaction.delete(holdings).where(eq(holdings.id, holdingId));
 };
 
 type OwnershipRewrite = (meta: PropertyMeta) => {
@@ -884,50 +928,6 @@ export const holdingsRepo = {
       changes: withoutOwnershipChange(meta.ownership ?? [], day),
       input: meta.ownershipInput ?? 'percent',
     })),
-  /**
-   * Deletes a manual holding and all of its transactions in one transaction.
-   * Refuses a holding whose balance is owned by a LIVE sync, so a synced row is
-   * left untouched. That ownership is read from the holding's ACCOUNT (its
-   * `institution`, fetched inside the same transaction) as well as the
-   * holding's own sync key — a disconnected account keeps its holdings' keys so
-   * a reconnect re-adopts them, and those rows are deletable again.
-   */
-  remove: (holdingId: string) =>
-    write(async (databaseTransaction) => {
-      const rows = await databaseTransaction
-        .select()
-        .from(holdings)
-        .where(eq(holdings.id, holdingId));
-      const row = rows.at(0);
-
-      if (!row) {
-        return;
-      }
-      const accountRows = await databaseTransaction
-        .select({ institution: accounts.institution })
-        .from(accounts)
-        .where(eq(accounts.id, row.accountId));
-
-      if (isSyncedHolding(row, accountRows.at(0))) {
-        throw new Error('remove: cannot delete a synced holding');
-      }
-      await databaseTransaction.delete(transactions).where(eq(transactions.holdingId, holdingId));
-      // A loan holding is ledgerless, but OTHER holdings' payment rows can
-      // point back at it via `loanHoldingId`. Clear those links in the SAME
-      // transaction — never leaving a dangling id — so a previously-linked
-      // payment reverts to counting as normal spending. A no-op for every
-      // non-loan holding, since nothing ever points a `loanHoldingId` at one.
-      await clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, [holdingId]);
-      // A priced holding (property_item) has no transactions, but it may
-      // have its own price series on `holding:<id>` — cleared here, inline on
-      // `tx` (not through `pricePointsRepo.removeInstrument`, which would open
-      // its own transaction), so a deleted holding never leaves an orphaned
-      // series behind.
-      await databaseTransaction
-        .delete(pricePoints)
-        .where(eq(pricePoints.instrument, holdingInstrument(holdingId)));
-      await databaseTransaction.delete(holdings).where(eq(holdings.id, holdingId));
-    }),
   /**
    * Close a set of holdings (stamp `closedAt` with the current time) in ONE
    * transaction, so a bulk close commits all-or-nothing and fires the reactive

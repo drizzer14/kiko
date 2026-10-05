@@ -179,7 +179,8 @@ export const transactions = sqliteTable(
     // knows its partner is the bank's and keeps it; `addManyDedup`'s upsert
     // never touches the column, like `loanHoldingId` and `category`. Null on a
     // row that is no leg, and on a legacy leg migration 0052 could not prove a
-    // partner for.
+    // partner for. Deleting a holding or an account follows the same ids to the
+    // legs on OTHER holdings (`transactionsRepo.removeHolding`).
     exchangePairId: text('exchange_pair_id'),
     // The loan holding this payment counts against — null for an ordinary
     // transaction. A loan holding writes no ledger rows of its own
@@ -191,7 +192,7 @@ export const transactions = sqliteTable(
     // user/matcher state, not bank data, so `addManyDedup`'s upsert never
     // refreshes it. Cleared (along with `loanLinkSource`) in the SAME
     // transaction a linked loan holding is deleted, whether directly
-    // (`holdingsRepo.remove`) or via its owning account
+    // (`transactionsRepo.removeHolding`) or via its owning account
     // (`accountsRepo.remove`) — a dangling id is never left to rot; a
     // cleared link counts as normal spending again.
     loanHoldingId: text('loan_holding_id'),
