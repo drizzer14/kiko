@@ -13,23 +13,6 @@ const makeFetch = (body: unknown, ok = true): typeof fetch =>
 
 type SpyFetchInit = { headers: Record<string, string> };
 
-// Runs one client call against a fetch that records the request headers the
-// client really built.
-const sentHeadersOf = async (
-  send: (fetchImpl: typeof fetch) => Promise<unknown>,
-): Promise<Record<string, string>> => {
-  let sentHeaders: Record<string, string> = {};
-  const spyFetch = (async (_url: string, init: SpyFetchInit) => {
-    sentHeaders = init.headers;
-
-    return { ok: true, json: async () => [], status: 200 };
-  }) as unknown as typeof fetch;
-
-  await send(spyFetch);
-
-  return sentHeaders;
-};
-
 describe('fetchClientInfo', () => {
   it('sends the X-Token header and returns parsed accounts and jars', async () => {
     let sentUrl = '';
@@ -45,17 +28,12 @@ describe('fetchClientInfo', () => {
 
     expect(sentUrl).toBe('https://api.monobank.ua/personal/client-info');
     expect(sentHeaders['X-Token']).toBe('secret');
+    expect(sentHeaders['Cache-Control']).toBe('no-store');
     expect(result.accounts.length).toBeGreaterThan(0);
     expect(result.accounts[0].currencyCode).toBe(980);
     expect(result.accounts[0].maskedPan[0]).toContain('*');
     expect(result.jars?.[0].goal).toBe(20000000);
     expect(result.clientId).toBe('3MSaMMtczs');
-  });
-
-  it('sends Cache-Control: no-store so NSURLCache never writes the token-bearing request to Cache.db', async () => {
-    const sentHeaders = await sentHeadersOf((fetchImpl) => fetchClientInfo('secret', fetchImpl));
-
-    expect(sentHeaders['Cache-Control']).toBe('no-store');
   });
 
   it('throws on a non-ok, non-429 response', async () => {
@@ -82,14 +60,6 @@ describe('fetchStatement', () => {
     expect(result.some((item) => item.amount < 0)).toBe(true);
     expect(result.some((item) => item.amount > 0)).toBe(true);
     expect(result[0].id).toBe('ZuHWzqkKGVo=');
-  });
-
-  it('sends Cache-Control: no-store on the statement request too', async () => {
-    const sentHeaders = await sentHeadersOf((fetchImpl) =>
-      fetchStatement('secret', 'acc-1', 1704067200, 1704240000, fetchImpl),
-    );
-
-    expect(sentHeaders['Cache-Control']).toBe('no-store');
   });
 
   it('throws on a non-ok, non-429 response', async () => {

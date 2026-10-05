@@ -69,12 +69,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   /// NSURLCache write every Monobank request, X-Token header included, to
   /// Library/Caches/<bundle>/Cache.db; `no-store` stops new rows but never
   /// removes the stored ones. This drops them once per install. The once-key
-  /// lives in UserDefaults, not the database: the cache is device-local, so a
-  /// restored backup must not skip the purge on a device that still holds old
-  /// rows. The key is written only AFTER the purge returned, so a launch killed
-  /// mid-purge runs it again on the next one. It runs here, before JS starts,
-  /// so no request races it.
-  func purgeStoredURLCacheOnce() {
+  /// lives in UserDefaults, not a settings column: Kiko's own snapshot import
+  /// restores the settings row, so an imported export would mark the purge done
+  /// on a device whose cache still holds old rows. The key is written only
+  /// AFTER the purge returned, so a launch killed mid-purge runs it again on
+  /// the next one. It runs here, before JS starts, so no request races it.
+  private func purgeStoredURLCacheOnce() {
     let defaults = UserDefaults.standard
     guard !defaults.bool(forKey: Self.urlCachePurgedKey) else { return }
     URLCache.shared.removeAllCachedResponses()

@@ -15,6 +15,10 @@ if ! plutil -lint "$PLIST" >/dev/null 2>&1; then
   add_problem "$PLIST is not a valid property list ($(plutil -lint "$PLIST" 2>&1))"
 fi
 
+# The credential-bearing clients, listed once so checks 1 and 1b always agree on
+# the marker set: a marker added here reaches both.
+credential_files="$(grep -rlE "'(X-Token|X-MBX-APIKEY|Authorization)'|'[Aa]pi[-_]?[Kk]ey'|(^|[^A-Za-z0-9_])api_token([^A-Za-z0-9_]|$)" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')"
+
 # --- 1. Every credential-bearing host must be pinned (H3) ---------------------
 # A client that sends a credential header (X-Token, X-MBX-APIKEY, Authorization,
 # or an api-key-ish header) or a credential query parameter (the bare word
@@ -74,7 +78,7 @@ while IFS= read -r file; do
 $env_names
 EOF
 done <<EOF
-$(grep -rlE "'(X-Token|X-MBX-APIKEY|Authorization)'|'[Aa]pi[-_]?[Kk]ey'|(^|[^A-Za-z0-9_])api_token([^A-Za-z0-9_]|$)" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')
+$credential_files
 EOF
 
 # Every pinned domain must carry at least two SPKI pins (reinforces Task 7/H3).
@@ -116,7 +120,7 @@ while IFS= read -r file; do
     add_problem "${file#"$ROOT"/} sends a credential (header or 'api_token' query parameter) but no 'Cache-Control: no-store' request header — NSURLCache stores the request URL and headers in Cache.db, so the credential is written to disk; send headers: { 'Cache-Control': 'no-store' } with every request"
   fi
 done <<EOF
-$(grep -rlE "'(X-Token|X-MBX-APIKEY|Authorization)'|'[Aa]pi[-_]?[Kk]ey'|(^|[^A-Za-z0-9_])api_token([^A-Za-z0-9_]|$)" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')
+$credential_files
 EOF
 
 # --- 2. Release ATS hardening (H6) -------------------------------------------

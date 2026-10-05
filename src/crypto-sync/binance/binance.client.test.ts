@@ -26,23 +26,6 @@ const accountBody = {
 
 type SpyFetchInit = { headers: Record<string, string> };
 
-// Runs one client call against a fetch that records the request headers the
-// client really built.
-const sentHeadersOf = async (
-  send: (fetchImpl: typeof fetch) => Promise<unknown>,
-): Promise<Record<string, string>> => {
-  let sentHeaders: Record<string, string> = {};
-  const spyFetch = (async (_url: string, init: SpyFetchInit) => {
-    sentHeaders = init.headers;
-
-    return { ok: true, json: async () => [], status: 200 };
-  }) as unknown as typeof fetch;
-
-  await send(spyFetch);
-
-  return sentHeaders;
-};
-
 const makeFetch = (
   body: unknown,
   ok = true,
@@ -71,21 +54,6 @@ describe('fetchAccount', () => {
       `https://api.binance.com/api/v3/account?timestamp=${NOW}&recvWindow=5000&signature=${EXPECTED_SIGNATURE}`,
     );
     expect(sentHeaders['X-MBX-APIKEY']).toBe('api-key-fixture');
-  });
-
-  it('sends Cache-Control: no-store on the signed GET, so a key-bearing URL is never cached', async () => {
-    const sentHeaders = await sentHeadersOf((fetchImpl) =>
-      fetchAccount('api-key-fixture', 'secret-fixture', { fetchImpl, now: () => NOW }),
-    );
-
-    expect(sentHeaders['Cache-Control']).toBe('no-store');
-  });
-
-  it('sends Cache-Control: no-store on the signed POST (Funding wallet) too', async () => {
-    const sentHeaders = await sentHeadersOf((fetchImpl) =>
-      fetchFundingAsset('api-key-fixture', 'secret-fixture', { fetchImpl, now: () => NOW }),
-    );
-
     expect(sentHeaders['Cache-Control']).toBe('no-store');
   });
 

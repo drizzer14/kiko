@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 
-// The one-time purge of the stored NSURLCache is Swift (SEC-C3), and Swift is
+// The one-time purge of the stored NSURLCache is Swift, and Swift is
 // not mutated, so "runs exactly once" is proven here by code shape alone: the
 // once-key is read and returned on before the purge, and written only after
 // the purge returned, so a launch killed mid-purge retries on the next one.
