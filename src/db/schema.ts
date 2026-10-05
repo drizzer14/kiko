@@ -82,17 +82,18 @@ export const holdings = sqliteTable('holdings', {
   // against, NOT `balanceMinorUnits`. `balanceMinorUnits` is the live display
   // balance, which `upsertHoldings` (src/monobank/sync.ts) overwrites from
   // /client-info at the START of every sync, BEFORE the per-card statement loop
-  // runs. Comparing the skip against that display balance was a data-loss bug: a
+  // runs. Comparing the skip against that display balance would lose data: a
   // run that committed a card's new balance up front and was then interrupted
-  // (app background/kill) before importing that card's statements left display
-  // balance == /client-info balance, so every later run skipped the card and its
-  // transactions never imported (until the 24h full fetch). This marker advances
-  // ONLY after a card's statements commit (see the per-card loop in
-  // `runSyncInner`), so an interrupted run leaves it behind and the next run
-  // re-imports the card. NULL for a never-synced-through holding: every
+  // (app background/kill) before importing that card's statements would leave
+  // display balance == /client-info balance, so every later run would skip the
+  // card and its transactions would never import (until the 24h full fetch).
+  // This marker advances ONLY after a card's statements commit (see the
+  // per-card loop in `runSyncInner`), so an interrupted run leaves it behind
+  // and the next run re-imports the card. NULL for a never-synced-through holding: every
   // non-Monobank holding, and a Monobank card upgraded before this column
   // existed — its first post-upgrade sync fetches it once (NULL never matches a
-  // balance, so the skip cannot fire), and then sets the marker.
+  // balance, so the skip cannot fire), which re-imports any card an interrupted
+  // run left skipped, and then sets the marker.
   syncedBalanceMinorUnits: integer('synced_balance_minor_units'),
   // The instant (ms) this holding's balance was last SET, not moved — the
   // statement-import boundary. `transactionsRepo.importRows`'s own doc
