@@ -810,6 +810,25 @@ export const en = {
     yieldToMaturity: 'Yield to maturity',
     yourShare: 'Your share',
   },
+  holdings: {
+    // The delete confirm's body for a holding, or an account's holdings, whose
+    // transactions are one part of a movement with another holding. Only `rows`
+    // takes a count; the other parts list holding names, joined by the caller
+    // (Hermes has no `Intl.ListFormat`).
+    deleteLinked: {
+      rows_one: 'This also deletes {{count}} linked transaction in {{names}}.',
+      rows_few: 'This also deletes {{count}} linked transactions in {{names}}.',
+      rows_many: 'This also deletes {{count}} linked transactions in {{names}}.',
+      rows_other: 'This also deletes {{count}} linked transactions in {{names}}.',
+      contributions: 'This also removes the contributions it made to {{names}}.',
+      contributionsKept:
+        'Some contributions to {{names}} could not be matched and stay. Edit the deposit to remove them.',
+      syncedKept: 'Linked transactions from your bank stay in {{names}}.',
+      unlinked:
+        'Some exchange parts in {{names}} could not be found and stay. Check them after deleting.',
+      unlinkedPlain: 'Some exchange parts could not be found and stay.',
+    },
+  },
   home: {
     // The floating "+" action's accessibility label (the global add-transaction
     // FAB pinned over the Home list).
