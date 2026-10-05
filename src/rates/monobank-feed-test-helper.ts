@@ -1,4 +1,4 @@
-import { codeFromCurrency } from '@kiko/monobank/currency-code';
+import { codeFromCurrency } from '@kiko/test-support/code-from-currency';
 import { type Currency, currencyOptions, isCurrency, isFiat } from '@kiko/currency/currency';
 
 import type { RateTable } from './conversion';
