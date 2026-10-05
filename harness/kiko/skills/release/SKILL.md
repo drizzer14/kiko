@@ -76,7 +76,8 @@ worktree at the release commit (as done for v1.1.0: next worktree at
      old `group.com.dmytro.pff` is absent.
    - `get-task-allow = false`.
    - The embedded provisioning profile is KikoDistribution.
-8. Hand off. The skill stops here. The user uploads the archive and
+8. Hand off. First run the Privacy policy check below; hand off only
+   when it exits 0. The skill stops here. The user uploads the archive and
    the screenshots through the Xcode Organizer. State plainly that
    this skill does not upload to the App Store.
 
@@ -93,7 +94,7 @@ npm run privacy:site -- check
 
 It fetches the two public pages (no key, one `fetch` each) and exits 1
 with a `DRIFT` line per difference: effective date (md vs live), a host
-named on one side only, a host `src/` contacts that the md omits. Run
+named on one side only, a host `.env.example`/`src/` names that the md omits. Run
 it by hand at submission time; no `check:*` gate calls it (a gate must
 not touch the network). On drift, regenerate the pages
 (`npm run privacy:site -- build`, output in `docs/privacy-site/`),

@@ -3,7 +3,7 @@
 // (the `check` mode touches the network, which no gate may do).
 //
 //   node scripts/privacy-site.js build [outDir]   docs/privacy-policy*.md -> index.html + en.html
-//   node scripts/privacy-site.js check [url]      md date + hosts vs the live page vs the hosts in src/
+//   node scripts/privacy-site.js check [url]      live page vs the build of the md; .env.example/src hosts vs the md
 //
 // Exit 0 = in sync, 1 = drift (the release must publish the page first), 2 = usage/fetch error.
 
@@ -25,7 +25,6 @@ const LIVE_URL = 'https://drizzer14.github.io/kiko';
 const NON_REQUEST_HOSTS = [
   'www.w3.org',
   'developer.apple.com',
-  'developers.binance.com',
   'app.binance.com',
   'raw.githubusercontent.com',
   'drizzer14.github.io',
@@ -162,13 +161,6 @@ function hostsIn(text) {
   );
 }
 
-function dateIn(text) {
-  const match = text.match(
-    /(?:Effective date|Дата набрання чинності):(?:\*\*|<\/strong>)\s*([^<\n]+)/,
-  );
-  return match ? match[1].trim() : null;
-}
-
 function codeHosts() {
   const found = new Set();
   const walk = (dir) => {
@@ -182,6 +174,11 @@ function codeHosts() {
     }
   };
   walk(path.join(ROOT, 'src'));
+  // Every request host comes from @env, whose values live in the committed .env.example.
+  for (const match of fs
+    .readFileSync(path.join(ROOT, '.env.example'), 'utf8')
+    .matchAll(/https:\/\/([a-z0-9.-]+)/g))
+    found.add(match[1]);
   return [...found].filter((host) => !NON_REQUEST_HOSTS.includes(host));
 }
 
@@ -196,25 +193,23 @@ async function fetchLive(url) {
 
 function drift(page, markdown, live, code) {
   const mdHosts = hostsIn(markdown);
-  const liveHosts = hostsIn(live);
   const tag = page.lang;
-  out(`${tag}: md date "${dateIn(markdown)}", live date "${dateIn(live)}"`);
   return [
-    ...(dateIn(markdown) === dateIn(live) ? [] : [`${tag}: effective date differs (md vs live)`]),
-    ...[...mdHosts]
-      .filter((host) => !liveHosts.has(host))
-      .map((host) => `${tag}: md names ${host}, live page does not`),
-    ...[...liveHosts]
-      .filter((host) => !mdHosts.has(host))
-      .map((host) => `${tag}: live page names ${host}, md does not`),
+    ...(convert(markdown, page) === live
+      ? []
+      : [`${tag}: live page differs from the build of the md`]),
     ...code
       .filter((host) => !mdHosts.has(host))
-      .map((host) => `${tag}: src/ contacts ${host}, md does not name it`),
+      .map((host) => `${tag}: .env.example/src/ names ${host}, md does not name it`),
   ];
 }
 
 async function check(url) {
   const code = codeHosts();
+  if (code.length === 0) {
+    fail('code-hosts leg found no hosts: the scan is dead');
+    process.exit(2);
+  }
   const problems = [];
 
   for (const page of PAGES) {
@@ -233,6 +228,7 @@ async function check(url) {
 
 const [mode, argument] = process.argv.slice(2);
 if (mode === 'build') build(path.resolve(argument || path.join(ROOT, 'docs/privacy-site')));
+else if (mode === 'hosts') out(codeHosts().join('\n'));
 else if (mode === 'check')
   check((argument || LIVE_URL).replace(/\/$/, '')).catch((failure) => {
     fail(failure.message);

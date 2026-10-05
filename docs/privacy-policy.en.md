@@ -2,7 +2,7 @@
 
 > 🇺🇦 [Українською](./privacy-policy.md) · 🇬🇧 English
 
-**Effective date:** 2 October 2026
+**Effective date:** 5 October 2026
 
 Kiko is a personal finance app developed by Dmytro Vasylkivskyi ("we", "us").
 This policy explains how Kiko handles your information.
@@ -63,7 +63,7 @@ service can see your device's IP address.
   Simple Earn) and your deposit and withdrawal history, using your read-only
   API key.
 - **Blockstream** (`blockstream.info`) — the public on-chain balance of a
-  Bitcoin address you add.
+  Bitcoin address you add. Kiko sends that address to Blockstream to look it up.
 - **CoinGecko** (`api.coingecko.com`) — the current price and the daily price
   history of each cryptocurrency you hold. Kiko sends only the names of those
   coins (for example `bitcoin`); no address, amount, or credential is sent.
