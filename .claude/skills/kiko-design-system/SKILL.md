@@ -1225,6 +1225,12 @@ new component can land between reviews of this skill:
   Every form composes this instead of hand-rolling its own error
   caption — see `kiko-code-style`'s "Form validation model" section for
   when to show it.
+- **Scroll to the first invalid field.** A form that scrolls to its
+  first invalid field on a blocked Save uses `useScrollToField()` from
+  `@kiko/design-system/use-scroll-to-field` (`{ scrollableRef,
+  onContentSizeChange, scrollTo(fieldRef, onSettled?) }`), so no screen
+  re-derives the header inset or the content height: two copies of that
+  geometry drift apart.
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
   the shared "labeled field that opens a picker sheet" trigger: a
   caption above a bordered row showing the current icon (or leading

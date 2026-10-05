@@ -5,10 +5,10 @@ import {
 } from '@kiko/design-system/scroll-to-field';
 import { useRef, type RefObject } from 'react';
 import type { ScrollViewInstance } from 'react-native';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import { useAnimatedRef, useScrollOffset, type AnimatedRef } from 'react-native-reanimated';
 
 type ScrollToFieldControls = {
-  scrollableRef: ReturnType<typeof useAnimatedRef<ScrollViewInstance>>;
+  scrollableRef: AnimatedRef<ScrollViewInstance>;
   onContentSizeChange: (contentWidth: number, contentHeight: number) => void;
   scrollTo: (fieldRef: RefObject<FieldInstance | null>, onSettled?: () => void) => void;
 };

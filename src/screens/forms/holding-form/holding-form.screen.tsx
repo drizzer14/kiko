@@ -422,7 +422,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // geometry can never drift between call sites.
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
 
-  // Per-field wrapper refs, one per validated field, passed to `scrollToField`
+  // Per-field wrapper refs, one per validated field, passed to `scrollTo`
   // in `save`'s ordered first-invalid scroll below — each field's own inline
   // error (a `TextField`/`HoldingIdentityField` `error` prop, or a relocated
   // `FieldError` for the two group/relational reasons) sits right beside it,
