@@ -41,7 +41,7 @@ import HomeScreen from './home.screen';
 
 type HomeProps = ComponentProps<typeof HomeScreen>;
 
-import { FILTER_ALL } from './transaction-filter-bar';
+import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 
 jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,

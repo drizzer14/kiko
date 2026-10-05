@@ -2,8 +2,9 @@ import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 
-import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar.component';
+import TransactionFilterBar from './transaction-filter-bar.component';
 
 type BarProps = {
   selectedAccount?: Set<string>;

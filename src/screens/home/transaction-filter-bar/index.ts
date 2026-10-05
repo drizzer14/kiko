@@ -1,1 +1,1 @@
-export { default, FILTER_ALL } from './transaction-filter-bar.component';
+export { default } from './transaction-filter-bar.component';
