@@ -261,6 +261,14 @@ project-level pointer to this section.
   `drizzle/migrations/0049-bank-accounts-other-bank.test.ts`,
   `drizzle/migrations/0051-monobank-accounts-bank-id.test.ts` and
   `src/data-transfer/snapshot/restore-bank-other.two-path.test.ts`.
+  **Wording note (the `0049` header comment is shipped and must not be
+  edited, so the correction lives here):** a bank account stored with
+  `bank_id = 'other'` ("Other bank") cannot be connected later, whether it
+  was never connected or is a pre-`0051` ex-Monobank account that was
+  disconnected before `0051` ran. The bank is chosen at create time and the
+  field is locked afterwards (`account-form.screen.tsx`); Connect exists
+  only for a provider bank. Any 0049 header wording that suggests an
+  Other-bank account can be connected afterwards is wrong.
 - **A uniqueness rule a merge must satisfy first is data merge, then
   partial unique index, in ONE migration.** `0050_implicit_property_debt_accounts`
   (its own header comment states the merge rule; for name/icon/color see
