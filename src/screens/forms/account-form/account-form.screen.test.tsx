@@ -162,12 +162,13 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
 });
 // The bank create form now offers the SAME explicit-Connect pattern as crypto,
 // through MonobankConnectField. It owns its own token input, live validation, and
-// status (covered by its own test); here it collapses to one pressable that fires
-// the screen's `connectMonobank` closure with a token, so what is under test is
+// status (covered by its own test); here it renders one pressable that fires the
+// screen's `connectMonobank` closure with a token, plus a stateful token TextInput
+// (testID `monobank-token-input`) that loses its value on unmount, so what is under test is
 // the create screen's wiring (create-first, no duplicate, secret via the closure).
 jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
   const { useState } = require('react');
-  const { Pressable, Text } = require('react-native');
+  const { Pressable, Text, TextInput } = require('react-native');
 
   return {
     __esModule: true,
@@ -178,17 +179,27 @@ jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
     // `true` or losing a rejection inside the try/catch).
     default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => {
       const [result, setResult] = useState('');
+      // Local state of the real field's token input: a remount loses it.
+      const [typedToken, setTypedToken] = useState('');
 
       return (
-        <Pressable
-          accessibilityLabel="monobank-field"
-          onPress={async () => {
-            setResult(String(await onConnect('tok-123')));
-          }}
-        >
-          <Text>monobank field</Text>
-          <Text testID="monobank-connect-result">{result}</Text>
-        </Pressable>
+        <>
+          <TextInput
+            testID="monobank-token-input"
+            value={typedToken}
+            onChangeText={setTypedToken}
+          />
+
+          <Pressable
+            accessibilityLabel="monobank-field"
+            onPress={async () => {
+              setResult(String(await onConnect('tok-123')));
+            }}
+          >
+            <Text>monobank field</Text>
+            <Text testID="monobank-connect-result">{result}</Text>
+          </Pressable>
+        </>
       );
     },
   };
@@ -1980,6 +1991,69 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
     await waitFor(() => expect(isKindFieldDisabled(view.getByTestId)).toBe(true));
+  });
+
+  it('connecting Monobank locks the bank picker, and Save still writes the connected bank', async () => {
+    // Re-picking the bank after the connect inserted the row would make Save
+    // write that pick over the connected Monobank row's bank id.
+    mockMonobankSync.mockResolvedValue(true);
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    await waitFor(() => expect(isKindFieldDisabled(view.getByTestId)).toBe(true));
+    const bankField = view.getByTestId('account-bank-type-field');
+
+    expect(bankField.props.accessibilityState.disabled).toBe(true);
+
+    await fireEvent.press(bankField);
+
+    expect(view.queryByTestId('bank-type-option-other')).toBeNull();
+    expect(bankField).toHaveTextContent('Monobank');
+
+    await fireEvent.press(view.getByText('Save'));
+
+    await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      createdId,
+      expect.objectContaining({ bankId: 'monobank' }),
+    );
+  });
+
+  it('keeps the bank pick, the custom icon and the typed token when the already-selected Bank kind is picked again', async () => {
+    const view = await renderForm();
+
+    await fireEvent.press(view.getByLabelText('Change Icon'));
+    await fireEvent.press(view.getByLabelText('Choose icon giftcard'));
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+    await fireEvent.changeText(view.getByTestId('monobank-token-input'), 'typed-token');
+
+    await selectKind(view.getByTestId, 'bank');
+
+    expect(view.getByTestId('account-bank-type-field')).toHaveTextContent('Monobank');
+    expect(view.getByLabelText('Icon giftcard')).toBeTruthy();
+    expect(view.getByTestId('monobank-token-input').props.value).toBe('typed-token');
+  });
+
+  it('keeps the broker pick and the custom icon when the already-selected Broker kind is picked again', async () => {
+    const view = await renderForm();
+
+    await selectKind(view.getByTestId, 'broker');
+    await fireEvent.press(view.getByLabelText('Change Icon'));
+    await fireEvent.press(view.getByLabelText('Choose icon giftcard'));
+    await fireEvent.press(view.getByTestId('account-broker-type-field'));
+    await fireEvent.press(view.getByTestId('account-broker-type-field-option-ibkr'));
+
+    await selectKind(view.getByTestId, 'broker');
+
+    expect(view.getByTestId('account-broker-type-field')).toHaveTextContent('Interactive Brokers');
+    expect(view.getByLabelText('Icon giftcard')).toBeTruthy();
   });
 
   it('shows the name-required reason only after a Connect is attempted with an empty name, on the bank form', async () => {
