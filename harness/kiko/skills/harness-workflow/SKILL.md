@@ -72,9 +72,11 @@ with their own bases. Count with the gate's own filter, never by hand:
 `KIKO_MUTATION_BASE=<base sha> make mutable` (it runs
 `mutation.sh --list`) prints the files and `mutable files: N (cap …)`,
 exits 2 above the cap, and never starts Stryker or takes its lock. A
-change set with 0 mutable files (or only comment changes) gets no
-mutation run: `mutation.sh` exits 0 on 0 files without starting
-Stryker.
+change set with 0 mutable files gets no mutation run: `mutation.sh`
+exits 0 on 0 files without starting Stryker. A changed file whose diff
+is only comments or whitespace is left out of that count by the script
+itself (it prints `skipped (comment-only): <path>`); a `Stryker` or JSX
+pragma comment, or any doubt, keeps the file.
 
 ## Merging into main
 

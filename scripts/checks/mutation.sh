@@ -16,7 +16,8 @@
 # `--list` prints the files this run would mutate and their count, then exits
 # (2 above the cap) without Stryker, so a change set is sized with the gate's
 # own filter instead of a hand count. It needs no Stryker binary and takes no
-# lock, since it never starts a run. Any other argument exits 2.
+# lock, since it never starts a run. Any other argument exits 2. A changed file whose diff is
+# only comments or whitespace is left out of the list (and printed as `skipped (comment-only)`).
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
@@ -156,13 +157,52 @@ if ! diff_names="$(git -C "$ROOT" diff --name-only --diff-filter=d "$merge_base"
   exit 2
 fi
 changed="$(printf '%s\n' "$diff_names" | mutable_source_files)"
+
+# A changed file whose diff against the merge-base touches only comments or whitespace has
+# no new mutant to find, so it leaves the list HERE, once: Stryker's --mutate, the scorer, the
+# fingerprint, the cap, and --list all read the same $changed (the scorer fails a report whose
+# recorded scope differs from its file list). comment-only-changes.js decides from the
+# TypeScript parse and prints a path only when it proved the file comment-only; any doubt, or
+# a script that fails, prints nothing and the file stays. Its output is matched back against
+# $changed, so a stray line cannot drop a file that was not a candidate. The arguments are
+# built only for a non-empty list: an empty array is an unbound variable in bash 3.2.
+skipped_report=""
+if [ -n "$changed" ]; then
+  candidate_arguments=()
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] && candidate_arguments+=("$candidate")
+  done < <(printf '%s\n' "$changed")
+
+  comment_only="$(node "$DIR/comment-only-changes.js" "$merge_base" "${candidate_arguments[@]}" 2>/dev/null)" || comment_only=""
+
+  newline=$'\n'
+  kept=""
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    case "$newline$comment_only$newline" in
+      *"$newline$candidate$newline"*)
+        skipped_report="${skipped_report}skipped (comment-only): ${candidate}${newline}"
+        ;;
+      *)
+        kept="${kept:+$kept$newline}$candidate"
+        ;;
+    esac
+  done < <(printf '%s\n' "$changed")
+  changed="$kept"
+fi
+
 file_count="$(printf '%s\n' "$changed" | grep -c . || true)"
 if [ "$list" -eq 1 ]; then
   [ -n "$changed" ] && printf '%s\n' "$changed"
+  printf '%s' "$skipped_report"
   printf 'mutable files: %s (cap %s)\n' "$file_count" "$MUTATION_FILE_CAP"
+else
+  printf '%s' "$skipped_report"
 fi
 if [ -z "$changed" ]; then
-  # This branch changed no mutable source file — nothing to mutate, pass.
+  # Nothing to mutate: the branch changed no mutable source file, or only comment/whitespace in
+  # the ones it changed. Pass.
+  [ -n "$skipped_report" ] && printf 'nothing to mutate: every changed source file is comment-only.\n'
   exit 0
 fi
 csv="$(printf '%s' "$changed" | tr '\n' ',')"

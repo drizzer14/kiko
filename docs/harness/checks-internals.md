@@ -51,7 +51,9 @@ After the lock, `mutation.sh` refuses (exit 2, structured block) a
 resolve, directly: a whole-project run is always above the cap. It then
 selects the files to mutate (the diff vs `KIKO_MUTATION_BASE`'s
 merge-base; a failed `git diff` is a refusal too, never "nothing to
-mutate"), applies its excludes, and counts them. Above
+mutate"), applies its excludes, drops the files whose diff is only
+comments or whitespace (`comment-only-changes.js`, fail-closed), and
+counts the rest. Above
 `MUTATION_FILE_CAP` (30) it exits 2 with the structured block before
 Stryker starts. Only then does the dedup skip run, and its fingerprint
 includes the scope (the merge-base sha and the selected file list), so
