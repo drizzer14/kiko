@@ -308,3 +308,126 @@ export const backupRangeBlock = true;
 // EXPECT-FINDING
 // A backup from 6c3190ee...28eb0967c0ffee can restore an import reminder.
 export const backupSymmetricRange = true;
+
+// A capitalized or lower-case form a real comment would use, for the members
+// that name a word: each pin below fires through its own case form.
+
+// EXPECT-FINDING
+// The clamp holds the lower bound (review Bug 8).
+export const capitalBug = true;
+
+// EXPECT-FINDING
+// Spec 6.2: a missing day falls back to the previous trading day.
+export const capitalSpec = true;
+
+// EXPECT-FINDING
+// Audit 12: the divergent copy of this helper lacked the metal branch.
+export const capitalAudit = true;
+
+// EXPECT-FINDING
+// Review focus 4: a sell delta larger than the held quantity is rejected.
+export const lowerReviewFocus = true;
+
+// EXPECT-FINDING
+// Fix round 2: the sheet reuses the existing instance.
+export const capitalFixRound = true;
+
+// EXPECT-FINDING
+// Round-3 item 2: the capability icons sit at the far right of the option.
+export const capitalRound = true;
+
+// EXPECT-FINDING
+// Device feedback: the label wraps onto two lines on a narrow device.
+export const capitalDeviceFeedback = true;
+
+// EXPECT-FINDING
+// On-device review of the first value asked for a darker scrim.
+export const capitalOnDeviceReview = true;
+
+// EXPECT-FINDING
+// Controller Ruling 2: an unresolved row is surfaced, never silently dropped.
+export const capitalControllerRuling = true;
+
+// EXPECT-FINDING
+// Task brief: do not change the shared row for one caller.
+export const capitalTaskBrief = true;
+
+// EXPECT-FINDING
+// Parity brief's own note: this table only ever grows.
+export const capitalParityBrief = true;
+
+// EXPECT-FINDING
+// Per the brief, this cache never evicts a warm entry early.
+export const capitalPerTheBrief = true;
+
+// EXPECT-FINDING
+// The brief's residual gap is what this member closes.
+export const capitalTheBriefs = true;
+
+// EXPECT-FINDING
+// Next commit drops the legacy column once nothing reads it.
+export const capitalNextCommit = true;
+
+// EXPECT-FINDING
+// Follow-up commit drops the legacy column once nothing reads it.
+export const capitalFollowUpCommit = true;
+
+// EXPECT-FINDING
+// Per the plan, the rows stay unsorted for this import.
+export const capitalPerThePlan = true;
+
+// EXPECT-FINDING
+// The plan's disposition keeps the rows unsorted.
+export const capitalThePlans = true;
+
+// EXPECT-FINDING
+// Plan doc exports stay stable: the picker reads them by name.
+export const capitalPlanDoc = true;
+
+// EXPECT-FINDING
+// By the plan, only one pool exists per kind.
+export const capitalByThePlan = true;
+
+// EXPECT-FINDING
+// In this plan only the checking account is imported.
+export const capitalInThisPlan = true;
+
+// EXPECT-FINDING
+// This plan also ships the picker sheet.
+export const capitalThisPlanAlso = true;
+
+// EXPECT-FINDING
+// On this branch the sort order changed.
+export const capitalOnThisBranch = true;
+
+// EXPECT-FINDING
+// This task's row order stays stable.
+export const capitalThisTasks = true;
+
+// EXPECT-FINDING
+// For this plan a narrow parser is enough.
+export const capitalForThisPlan = true;
+
+// EXPECT-FINDING
+// This plan's formats are the only ones parsed.
+export const capitalThisPlans = true;
+
+// EXPECT-FINDING
+// Review, 2026-09-14: the tile keeps a 12 pt corner.
+export const capitalReviewDate = true;
+
+// EXPECT-FINDING
+// User request 2026-09-30: the two rows draw the same chip.
+export const capitalUserRequest = true;
+
+// EXPECT-FINDING
+// User feedback 2026-09-30: a chevron after a switch keeps a gutter.
+export const capitalUserFeedback = true;
+
+// EXPECT-FINDING
+/* Spec 6.2 keeps the fee on its own line. */
+export const capitalSpecBlock = true;
+
+// EXPECT-FINDING
+/* Per the brief, this cache never evicts a warm entry early. */
+export const capitalPerTheBriefBlock = true;

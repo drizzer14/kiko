@@ -1108,6 +1108,27 @@ silent. The sweep found 1 hit, in `reminder-row.component.tsx`,
 reworded. Fixture pair: the three commit-range pins at the end of
 `.bad.ts`, and item 22 plus the digit-range pin after it in `.good.ts`.
 
+**Case forms (2026-10-05).** A member that names a plain word takes both
+its lower-case and its capitalized form, because a real comment opens a
+sentence with it: `[Bb]ug\s\d+` ("(review Bug 8)" drew no finding while the
+member read `bug`), `[Ss]pec`, `[Aa]udit`, `[Rr]eview\s[Ff]ocus`,
+`[Ff]ix\sround`, `[Rr]ound-N`, `[Dd]evice[- ]feedback`, `[Oo]n-device\sreview`,
+`[Cc]ontroller\s[Rr]uling`, the task/parity brief and `per the brief`/`the
+brief's` members, the `later`/`follow-up`/`previous`/`next` `commit` member,
+every plan member (`per the plan`, `the plan's`, `plan doc`, `by the plan`,
+`in this plan`, `this plan also`, `for this plan`, `this plan's`), `on this
+branch`, `this task's`, `review, <date>`, and the user-request member. A
+member is NOT widened where the other case is ordinary prose, each measured
+or documented: `Task\s\d+` stays capital (a pool test's "task 0 settles
+last" is a task index, `settle-limited.test.ts`), `Minor\s\d+` stays capital
+("a minor 3% drift"), `Requirement\s[A-Z]` stays capital ("the requirement I
+mentioned"), and the id letters, `USER-DECISION`, the hyphenated report
+family, and `Option\s[A-Z]` stay as documented above. Widening the case
+found three real hits in `src`, each reworded in the same change:
+`Spec 5.4 rule 2`/`rule 3` in `payment-matcher.ts` and `On-device review`
+in `theme.ts`. Fixture pair: the case pins at the end of `.bad.ts` and item
+23 in `.good.ts`.
+
 ## `kiko-no-history-word-comment`
 
 The change-narrative half of kiko-code-style's "Comments: WHY only, never

@@ -151,3 +151,10 @@ export const commitRangeNearMiss = true;
 // A git id holds a hex letter, so a span of two epoch-millisecond numbers
 // stays silent: the fixture clock spans 1700000000000..1700086400000.
 export const digitRangeNearMiss = true;
+
+// 23. The members that name a word take its capitalized form too, but three
+// stay case-sensitive on purpose, because the other case is ordinary prose.
+// A lower-case "task 0" is a pool's task index: task 0 settles last, task 1
+// first. A lower-case "minor 3" is a size: a minor 3% drift is within noise.
+// A lower-case "requirement I" is a pronoun: the requirement I mentioned.
+export const caseSensitiveProseNearMiss = true;
