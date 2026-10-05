@@ -23,17 +23,16 @@ const importRow = (id: string, time: number, amountMinorUnits = -5_000, holdingI
   externalId: id,
 });
 
+// Each adoption as [import row id, sync external id]; an input that adopts
+// nothing is absent.
 const pairs = (
   inputs: ReturnType<typeof syncInput>[],
   candidates: ReturnType<typeof importRow>[],
-) => {
-  const { adoptions, inserts } = pairSyncInputsWithImportRows(inputs, candidates);
-
-  return {
-    adopted: adoptions.map(({ candidate, input }) => [candidate.id, input.externalId]),
-    inserted: inserts.map((input) => input.externalId),
-  };
-};
+) =>
+  pairSyncInputsWithImportRows(inputs, candidates).map(({ candidate, input }) => [
+    candidate.id,
+    input.externalId,
+  ]);
 
 describe('pairSyncInputsWithImportRows', () => {
   it('uses the same 60 second window the statement import holds its rows by', () => {
@@ -46,13 +45,10 @@ describe('pairSyncInputsWithImportRows', () => {
         [syncInput('k1', T + 5 * SECOND), syncInput('k2', T + 40 * SECOND)],
         [importRow('i1', T), importRow('i2', T + 30 * SECOND)],
       ),
-    ).toEqual({
-      adopted: [
-        ['i1', 'k1'],
-        ['i2', 'k2'],
-      ],
-      inserted: [],
-    });
+    ).toEqual([
+      ['i1', 'k1'],
+      ['i2', 'k2'],
+    ]);
   });
 
   it('adopts only the earliest of two import rows for one sync input', () => {
@@ -61,20 +57,20 @@ describe('pairSyncInputsWithImportRows', () => {
         [syncInput('k1', T + 20 * SECOND)],
         [importRow('i2', T + 30 * SECOND), importRow('i1', T)],
       ),
-    ).toEqual({ adopted: [['i1', 'k1']], inserted: [] });
+    ).toEqual([['i1', 'k1']]);
   });
 
-  it('inserts the sync input an import row has already been given to', () => {
+  it('leaves out the sync input an import row has already been given to', () => {
     expect(
       pairs(
         [syncInput('k1', T + 5 * SECOND), syncInput('k2', T + 40 * SECOND)],
         [importRow('i1', T)],
       ),
-    ).toEqual({ adopted: [['i1', 'k1']], inserted: ['k2'] });
+    ).toEqual([['i1', 'k1']]);
   });
 
-  it('inserts a sync input with no import row of its amount near it', () => {
-    expect(pairs([syncInput('k1', T)], [])).toEqual({ adopted: [], inserted: ['k1'] });
+  it('adopts nothing for a sync input with no import row of its amount near it', () => {
+    expect(pairs([syncInput('k1', T)], [])).toEqual([]);
   });
 
   it.each([
@@ -83,23 +79,17 @@ describe('pairSyncInputsWithImportRows', () => {
     ['dated 60 seconds after is in reach', 60 * SECOND, true],
     ['dated 61 seconds after is out of reach', 61 * SECOND, false],
   ])('an import row %s', (_name, offset, adopted) => {
-    expect(pairs([syncInput('k1', T)], [importRow('i1', T + offset)]).adopted).toHaveLength(
+    expect(pairs([syncInput('k1', T)], [importRow('i1', T + offset)])).toHaveLength(
       adopted ? 1 : 0,
     );
   });
 
   it('never pairs rows of different holdings', () => {
-    expect(pairs([syncInput('k1', T)], [importRow('i1', T, -5_000, 'other')])).toEqual({
-      adopted: [],
-      inserted: ['k1'],
-    });
+    expect(pairs([syncInput('k1', T)], [importRow('i1', T, -5_000, 'other')])).toEqual([]);
   });
 
   it('never pairs a purchase with a refund of the same size', () => {
-    expect(pairs([syncInput('k1', T)], [importRow('i1', T, 5_000)])).toEqual({
-      adopted: [],
-      inserted: ['k1'],
-    });
+    expect(pairs([syncInput('k1', T)], [importRow('i1', T, 5_000)])).toEqual([]);
   });
 
   it('pairs a purchase and its reversal each with its own sign', () => {
@@ -108,13 +98,10 @@ describe('pairSyncInputsWithImportRows', () => {
         [syncInput('k1', T + SECOND), syncInput('k2', T + 12 * SECOND, 5_000)],
         [importRow('i2', T + 10 * SECOND, 5_000), importRow('i1', T)],
       ),
-    ).toEqual({
-      adopted: [
-        ['i1', 'k1'],
-        ['i2', 'k2'],
-      ],
-      inserted: [],
-    });
+    ).toEqual([
+      ['i1', 'k1'],
+      ['i2', 'k2'],
+    ]);
   });
 
   it('leaves an import row with no sync twin out of every adoption', () => {
@@ -134,13 +121,10 @@ describe('pairSyncInputsWithImportRows', () => {
           importRow('i4', T + 5 * hour, -9_900),
         ],
       ),
-    ).toEqual({
-      adopted: [
-        ['i1', 'k1'],
-        ['i2', 'k2'],
-      ],
-      inserted: ['k3'],
-    });
+    ).toEqual([
+      ['i1', 'k1'],
+      ['i2', 'k2'],
+    ]);
   });
 
   it('takes the earliest import row in reach, not the nearest', () => {
@@ -149,13 +133,10 @@ describe('pairSyncInputsWithImportRows', () => {
         [syncInput('k1', T), syncInput('k2', T + 25 * SECOND)],
         [importRow('i1', T - 10 * SECOND), importRow('i2', T + 10 * SECOND)],
       ),
-    ).toEqual({
-      adopted: [
-        ['i1', 'k1'],
-        ['i2', 'k2'],
-      ],
-      inserted: [],
-    });
+    ).toEqual([
+      ['i1', 'k1'],
+      ['i2', 'k2'],
+    ]);
   });
 
   it('pairs as many rows as any pairing can where the nearest pair would strand one', () => {
@@ -164,44 +145,28 @@ describe('pairSyncInputsWithImportRows', () => {
         [syncInput('k2', T + 130 * SECOND), syncInput('k1', T + 60 * SECOND)],
         [importRow('i2', T + 70 * SECOND), importRow('i1', T)],
       ),
-    ).toEqual({
-      adopted: [
-        ['i1', 'k1'],
-        ['i2', 'k2'],
-      ],
-      inserted: [],
-    });
+    ).toEqual([
+      ['i1', 'k1'],
+      ['i2', 'k2'],
+    ]);
   });
 
   it('breaks a tie between import rows at one instant by external id', () => {
     expect(
       pairs([syncInput('k1', T)], [importRow('statement-1␟1', T), importRow('statement-1', T)]),
-    ).toEqual({ adopted: [['statement-1', 'k1']], inserted: [] });
+    ).toEqual([['statement-1', 'k1']]);
   });
 
   it('claims sync inputs at one instant in external id order, whatever the fetch order', () => {
-    expect(pairs([syncInput('k2', T), syncInput('k1', T)], [importRow('i1', T)])).toEqual({
-      adopted: [['i1', 'k1']],
-      inserted: ['k2'],
-    });
+    expect(pairs([syncInput('k2', T), syncInput('k1', T)], [importRow('i1', T)])).toEqual([
+      ['i1', 'k1'],
+    ]);
   });
 
-  it('keeps the fetch order of the inputs it inserts', () => {
-    expect(
-      pairs(
-        [syncInput('k3', T + 200 * SECOND), syncInput('k1', T), syncInput('k2', T + 100 * SECOND)],
-        [],
-      ).inserted,
-    ).toEqual(['k3', 'k1', 'k2']);
-  });
-
-  it('inserts an input with no external id, which has no key to adopt under', () => {
+  it('adopts nothing for an input with no external id, which has no key to adopt under', () => {
     const { externalId: _externalId, ...keyless } = syncInput('k1', T);
 
-    expect(pairSyncInputsWithImportRows([keyless], [importRow('i1', T)])).toEqual({
-      adoptions: [],
-      inserts: [keyless],
-    });
+    expect(pairSyncInputsWithImportRows([keyless], [importRow('i1', T)])).toEqual([]);
   });
 
   it('does not reorder the arrays it is given', () => {

@@ -10,11 +10,6 @@ type ImportCandidate = PairableRow & { externalId: string | null };
 
 type Adoption<Input, Candidate> = { candidate: Candidate; input: Input };
 
-type SyncPairing<Input, Candidate> = {
-  adoptions: Adoption<Input, Candidate>[];
-  inserts: Input[];
-};
-
 const groupKeyOf = ({ holdingId, amountMinorUnits }: PairableRow): string =>
   JSON.stringify([holdingId, amountMinorUnits]);
 
@@ -61,8 +56,9 @@ const claimEarliestInReach = <Candidate extends ImportCandidate>(
 };
 
 /**
- * Which new sync inputs adopt a stored statement-import row, and which are
- * inserted as new rows.
+ * Which new sync inputs adopt a stored statement-import row: the adoptions,
+ * each an input and the import row it takes over. An input absent from them is
+ * inserted as a new row.
  *
  * A disconnected bank keeps its synced rows, but a statement imported over the
  * gap writes `import` rows, and the reconnect sync fetches the same purchases
@@ -97,7 +93,7 @@ export const pairSyncInputsWithImportRows = <
 >(
   inputs: Input[],
   candidates: Candidate[],
-): SyncPairing<Input, Candidate> => {
+): Adoption<Input, Candidate>[] => {
   const pools = poolsOf(candidates);
   const adopted = new Map<Input, Candidate>();
 
@@ -111,8 +107,5 @@ export const pairSyncInputsWithImportRows = <
     }
   }
 
-  return {
-    adoptions: Array.from(adopted, ([input, candidate]) => ({ candidate, input })),
-    inserts: inputs.filter((input) => !adopted.has(input)),
-  };
+  return Array.from(adopted, ([input, candidate]) => ({ candidate, input }));
 };

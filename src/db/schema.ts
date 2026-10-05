@@ -157,9 +157,15 @@ export const transactions = sqliteTable(
     // lets the display layer resolve the CURRENT name at render time through
     // `t`, so no English sentence is ever persisted and a rename follows.
     // DOCUMENTED RESIDUAL: a Convert marks its EXISTING row only when that row
-    // is manual or imported (`isDeletableTransaction`) — a bank-owned (monobank)
-    // row is never mutated by this app beyond `exchangePairId`, so a synced
-    // debit converted into another currency still counts as spending.
+    // is manual or imported (`isDeletableTransaction`) — a Convert never marks a
+    // bank-owned (monobank) row beyond `exchangePairId`, so a synced debit
+    // converted into another currency still counts as spending. A bank-owned row
+    // can still carry a marker while its manual partner lives: a marked import
+    // row the reconnect sync adopts (`adoptImportTwinsDatabaseTransaction`)
+    // keeps it. A delete that keeps such a row clears the marker in the SAME
+    // write (`removeRowsDatabaseTransaction`, for a leg delete and for a
+    // holding or account cascade alike), because the leg it names is gone and a
+    // marker left behind would keep a real purchase out of spending for good.
     exchangeCounterpartHoldingId: text('exchange_counterpart_holding_id'),
     // Split-change grouping: a shared id across ONE manual payment row and the
     // N return rows that distribute its change into OTHER holdings, all written
@@ -181,8 +187,9 @@ export const transactions = sqliteTable(
     // row gets the pair id always, plus the counterpart marker only when it is
     // manual or imported and carries none. A synced
     // (bank-owned) existing row gets this id and nothing else, so the delete
-    // knows its partner is the bank's and keeps it; `addManyDedup`'s upsert
-    // never touches the column, like `loanHoldingId` and `category`. Null on a
+    // knows its partner is the bank's and keeps it (the pair id stays on the kept
+    // row, only its marker is cleared); `addManyDedup`'s upsert never touches the
+    // column, like `loanHoldingId` and `category`. Null on a
     // row that is no leg, and on a legacy leg migration 0052 could not prove a
     // partner for. Deleting a holding or an account follows the same ids to the
     // legs on OTHER holdings (`transactionsRepo.removeHolding`).

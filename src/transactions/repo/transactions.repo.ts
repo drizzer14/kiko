@@ -260,10 +260,11 @@ const recordManualTransaction = async (
 // keep the original expense in the spending pie — exactly the leak the marker
 // exists to close, and one no other rule can catch across two currencies.
 // `existing` is read INSIDE the transaction, never from a render snapshot. A
-// bank-owned (synced) row is never marked, because this app never mutates it
-// beyond the pair id (see the residual documented on
-// `transactions.exchangeCounterpartHoldingId` in `db/schema.ts`); it still gets
-// the pair id, which is what tells the delete its partner is the bank's. A row
+// bank-owned (synced) row is never marked by a Convert (see the residual
+// documented on `transactions.exchangeCounterpartHoldingId` in `db/schema.ts`,
+// which also says how a bank-owned row can come to carry a marker anyway); it
+// still gets the pair id, which is what tells the delete its partner is the
+// bank's, and the delete then clears any marker that row carries. A row
 // that already carries a marker keeps it: the marker of a deposit source leg is
 // what takes the deposit's contribution out with the leg, and a second Convert
 // of that leg must not point it somewhere else.
@@ -390,8 +391,9 @@ const readMovementRowsDatabaseTransaction = async (
 };
 
 // What a delete does to the other rows of a movement: a row the user owns
-// (manual or imported) goes with it, a bank-owned row is never deleted or
-// mutated — "skipped" — and a sync running in between cannot change that,
+// (manual or imported) goes with it, a bank-owned row is never deleted — "kept",
+// and only its exchange marker is cleared — and a sync running in between cannot
+// change that,
 // because the rows are read inside the delete's own transaction. `split` are
 // the rows in a split group of the movement, `pair` the rows in an Exchange or
 // Convert pair of it; one row can be in both.
@@ -654,12 +656,17 @@ const NO_HOLDINGS: ReadonlySet<string> = new Set();
 // Delete rows and give each one's full amount back to its OWN holding, in that
 // holding's currency, whatever the row's date or source: every row updated the
 // balance when it was written, so none can stay in it once the row is gone.
-// Then take a deposit's contribution out with the leg that paid it. Everything
-// runs on the caller's transaction, so a throw (a database error mid-delete)
-// rolls the rows and balances back too.
+// Then take a deposit's contribution out with the leg that paid it. A bank-owned
+// row of the same movement (`kept`) stays, but the leg its marker names is gone
+// with these rows, so its marker is cleared in the same write: a marker left
+// behind would keep a real purchase out of spending for good. Its pair id
+// stays, and so does every bank-owned column. Everything runs on the caller's
+// transaction, so a throw (a database error mid-delete) rolls the rows and
+// balances back too.
 const removeRowsDatabaseTransaction = async (
   databaseTransaction: typeof database,
   rows: TransactionRow[],
+  kept: TransactionRow[],
   deletedHoldingIds: ReadonlySet<string> = NO_HOLDINGS,
 ): Promise<void> => {
   const holdingsById = await readNamedHoldingsDatabaseTransaction(
@@ -677,13 +684,21 @@ const removeRowsDatabaseTransaction = async (
       deletedHoldingIds,
     );
   }
+
+  for (const row of kept.filter((keptRow) => keptRow.exchangeCounterpartHoldingId !== null)) {
+    await databaseTransaction
+      .update(transactions)
+      .set({ exchangeCounterpartHoldingId: null })
+      .where(eq(transactions.id, row.id));
+  }
 };
 
 // What deleting a set of holdings reaches in OTHER holdings. `own` are the rows
 // of the deleted holdings that link to anything (a pair id, a split group or an
 // exchange marker; a row with none leads nowhere). `removed` are the rows
 // elsewhere that belong to the same movements and are the user's, `kept` the
-// bank's, which are never deleted or touched. A deposit among the deleted
+// bank's, which are never deleted (only their exchange marker is cleared). A
+// deposit among the deleted
 // holdings also reaches the legs that paid into it, whose marker names it. A
 // partner on a deleted holding is in `own`, so it is never counted twice: it
 // goes with its holding, with no reversal.
@@ -747,14 +762,14 @@ const readLinksOfHoldingsDatabaseTransaction = async (
  * there to follow): delete the user's rows of the same movements on other
  * holdings, giving each row's full amount back to its holding, and take
  * out of a deposit the contribution a deleted holding's leg made. A bank-owned
- * row of a movement stays untouched. Every deposit among the holdings also
- * loses the legs that paid into it.
+ * row of a movement stays, with its exchange marker cleared in the same write.
+ * Every deposit among the holdings also loses the legs that paid into it.
  */
 export const cascadeLinkedRowsDatabaseTransaction = async (
   databaseTransaction: typeof database,
   holdingIds: string[],
 ): Promise<void> => {
-  const { own, removed } = await readLinksOfHoldingsDatabaseTransaction(
+  const { own, removed, kept } = await readLinksOfHoldingsDatabaseTransaction(
     databaseTransaction,
     holdingIds,
   );
@@ -764,7 +779,7 @@ export const cascadeLinkedRowsDatabaseTransaction = async (
     holdingIdsOf(own),
   );
 
-  await removeRowsDatabaseTransaction(databaseTransaction, removed, deletedHoldingIds);
+  await removeRowsDatabaseTransaction(databaseTransaction, removed, kept, deletedHoldingIds);
 
   for (const row of own) {
     await removeContributionOfRowDatabaseTransaction(
@@ -983,9 +998,10 @@ const readStoredConflictKeys = async (
 /**
  * The subset of these rows the upsert will INSERT rather than refresh. Read
  * inside the caller's own transaction, so the result can never disagree with
- * the write it describes. `addManyDedup` uses only its `.length`; the
- * statement-import balance write (`importRows` below) additionally needs the
- * actual rows, to sum their `amountMinorUnits` — a refreshed (already
+ * the write it describes. `addManyDedup` counts them and hands the rows to the
+ * adoption (`adoptImportTwinsDatabaseTransaction`), which may take some over as
+ * the sync's own rows; the statement-import balance write (`importRows` below)
+ * needs the actual rows, to sum their `amountMinorUnits` — a refreshed (already
  * imported) row must contribute 0 to that sum, not just be excluded from the
  * count.
  */
@@ -1189,7 +1205,7 @@ const aliasedNetBeforeClosing = (aliased: AliasedRow[], asOfMilliseconds: number
     .filter(({ time, storedTime }) => storedTime > asOfMilliseconds && time <= asOfMilliseconds)
     .reduce((sum, row) => sum + row.amountMinorUnits, 0);
 
-// Every bank-owned column `insertDedupRowsDatabaseTransaction`'s upsert
+// Every bank-owned column `upsertDedupRowsDatabaseTransaction`'s upsert
 // refreshes on conflict — ONE list. `bankOwnedTransactionSet` (which column
 // to overwrite, and with what) and `bankOwnedTransactionSetWhere` (skip the
 // whole write when nothing here actually changed) are both derived from it,
@@ -1348,7 +1364,7 @@ const adoptImportTwinsDatabaseTransaction = async (
     return new Set();
   }
 
-  const { adoptions } = pairSyncInputsWithImportRows(
+  const adoptions = pairSyncInputsWithImportRows(
     newRows,
     await readImportTwinsDatabaseTransaction(databaseTransaction, newRows),
   );
@@ -2157,7 +2173,8 @@ export const transactionsRepo = {
    * id with (a Convert on a split row links the two), and, for a leg that paid a
    * term deposit, the one contribution dated at the leg's time
    * (`removeDepositContributionDatabaseTransaction`). A bank-owned partner is
-   * skipped: it is never deleted or touched. The linked rows are read here,
+   * kept, never deleted, with its exchange marker cleared in the same write (the
+   * leg it names is gone). The linked rows are read here,
    * inside the delete, so a sync that ran after `removePlan` read them cannot
    * change what is deleted.
    */
@@ -2177,10 +2194,12 @@ export const transactionsRepo = {
         throw new Error('transactionsRepo.remove: cannot delete a synced transaction');
       }
 
-      await removeRowsDatabaseTransaction(
-        databaseTransaction,
-        rowsToRemoveWith(row, await readLinkedRowsDatabaseTransaction(databaseTransaction, row)),
-      );
+      const linked = await readLinkedRowsDatabaseTransaction(databaseTransaction, row);
+
+      await removeRowsDatabaseTransaction(databaseTransaction, rowsToRemoveWith(row, linked), [
+        ...linked.pair.kept,
+        ...linked.split.kept,
+      ]);
     }),
   /**
    * What `remove` would take with the row, for the delete confirm's text: a plain
