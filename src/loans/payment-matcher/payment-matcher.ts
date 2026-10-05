@@ -1,11 +1,10 @@
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
-import { Money } from '@kiko/currency/money';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import type { Currency } from '@kiko/currency/currency';
-import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
+import { loanInstallments, withinInstallmentTolerance } from '@kiko/holdings/loan-schedule';
 
 // Exported so `use-loan-auto-link.ts` can derive its own SQL-level lower
 // bound ("earliest loan start minus the window's own before-margin") from
@@ -102,21 +101,6 @@ const isEligibleTransaction = (transaction: MatchableTransaction): boolean =>
   !transaction.loanLinkRejected &&
   transaction.exchangeCounterpartHoldingId === null;
 
-// Rule 1: within the LARGER of 1% or 1.00 (in the loan's own currency) of the
-// installment's own scheduled payment — a bank fee or rounding, not a
-// partial/early payment (which the user links manually instead).
-const withinAmountTolerance = (
-  installmentPaymentMinorUnits: number,
-  transactionAbsMinorUnits: number,
-  currency: Currency,
-): boolean => {
-  const percentTolerance = Math.round(installmentPaymentMinorUnits * 0.01);
-  const floorTolerance = Money.fromMajor(currency, 1).minorUnits;
-  const tolerance = Math.max(percentTolerance, floorTolerance);
-
-  return Math.abs(transactionAbsMinorUnits - installmentPaymentMinorUnits) <= tolerance;
-};
-
 // Rule 2: the transaction's own LOCAL day, 3 days before to 7 days after the
 // due date's local day — both bounds inclusive, the same "both bounds
 // inclusive" idiom `loanInterestPerPaymentMinor` already establishes.
@@ -191,7 +175,7 @@ const installmentIsTaken = (
   linkedPayments.some(
     (payment) =>
       payment.loanHoldingId === installment.loanHoldingId &&
-      withinAmountTolerance(
+      withinInstallmentTolerance(
         installment.paymentMinorUnits,
         Math.abs(payment.amountMinorUnits),
         installment.currency,
@@ -278,7 +262,7 @@ export const matchLoanPayments = (params: {
     for (const installment of installments) {
       if (
         transaction.currency === installment.currency &&
-        withinAmountTolerance(
+        withinInstallmentTolerance(
           installment.paymentMinorUnits,
           Math.abs(transaction.amountMinorUnits),
           installment.currency,

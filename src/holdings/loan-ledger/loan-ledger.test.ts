@@ -4,7 +4,7 @@ import { buildPriceBook, dayKeyOf, type PriceBook } from '@kiko/prices/price-boo
 
 import { addMonths } from '../interest';
 import type { LoanMeta } from '../holding-metadata';
-import { loanInstallments, loanOutstandingMinorAt } from '../loan-schedule';
+import { loanInstallments, loanOutstandingMinorAt, type LoanInstallment } from '../loan-schedule';
 
 import { loanLedgerOutstandingMinorAt, loanLedgerSummary } from './loan-ledger';
 
@@ -379,6 +379,95 @@ describe('loanLedgerSummary', () => {
     expect(summary.paidSoFarMinorUnits).toBe(installments[0].paymentMinorUnits);
     expect(summary.outstandingMinorUnits).toBe(
       annuityMeta.principalMinorUnits - installments[0].principalMinorUnits,
+    );
+  });
+});
+
+// A bank debit a little above the scheduled payment is a fee, not a part of
+// the principal: the loan drops by the scheduled principal only.
+describe('a within-tolerance over-payment', () => {
+  const FEE = 3_000;
+  const mortgageMeta: LoanMeta = {
+    kind: 'mortgage',
+    principalMinorUnits: 200_000_000,
+    startDate: local(2024, 0, 15),
+    annualRatePct: 15,
+    termMonths: 240,
+    schedule: 'annuity',
+  };
+  const schedule = loanInstallments(mortgageMeta);
+  const withFee = (index: number, extraMinorUnits = FEE): PaymentInput => ({
+    time: schedule[index].dueDate,
+    amountMinorUnits: -(schedule[index].paymentMinorUnits + extraMinorUnits),
+  });
+  const sixWithFee = [0, 1, 2, 3, 4, 5].map((index) => withFee(index));
+
+  it('keeps the ledger equal to the schedule after six payments of the scheduled amount plus the fee', () => {
+    const book = bookWith(sixWithFee);
+
+    expect(schedule[5].balanceMinorUnits).toBe(199_173_059);
+    expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, schedule[5].dueDate)).toBe(
+      schedule[5].balanceMinorUnits,
+    );
+  });
+
+  it('caps a manual link the same way, because the amount decides and not the link source', () => {
+    const book = bookWith([withFee(0)]);
+
+    expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, schedule[0].dueDate)).toBe(
+      schedule[0].balanceMinorUnits,
+    );
+  });
+
+  it('leaves an under-payment short by what was not paid', () => {
+    const book = bookWith([withFee(0, -FEE)]);
+
+    expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, schedule[0].dueDate)).toBe(
+      schedule[0].balanceMinorUnits + FEE,
+    );
+  });
+
+  it('still counts a prepayment above the tolerance as principal', () => {
+    const book = bookWith([withFee(0, 10_000_000)]);
+
+    expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, schedule[0].dueDate)).toBe(
+      schedule[0].balanceMinorUnits - 10_000_000,
+    );
+  });
+
+  it('caps only the payments after a correction, the ones on or before it are already inside it', () => {
+    const correctionDay = schedule[1].dueDate;
+    const book = bookWith(
+      [withFee(0), withFee(1), withFee(2)],
+      [{ day: correctionDay, price: '1900000.00' }],
+    );
+
+    expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, schedule[2].dueDate)).toBe(
+      190_000_000 - schedule[2].principalMinorUnits,
+    );
+  });
+
+  it('leaves the paid total as the bank total and the principal repaid without the fee', () => {
+    const book = bookWith(sixWithFee);
+    const summary = loanLedgerSummary(mortgageMeta, LOAN, book, schedule[5].dueDate);
+    const scheduled = schedule.slice(0, 6);
+    const sumOf = (pick: (row: LoanInstallment) => number): number =>
+      scheduled.reduce((sum, row) => sum + pick(row), 0);
+
+    expect(summary).toEqual({
+      principalMinorUnits: 200_000_000,
+      paidSoFarMinorUnits: sumOf((row) => row.paymentMinorUnits) + 6 * FEE,
+      interestPaidMinorUnits: sumOf((row) => row.interestMinorUnits),
+      principalRepaidMinorUnits: sumOf((row) => row.principalMinorUnits),
+      outstandingMinorUnits: schedule[5].balanceMinorUnits,
+    });
+  });
+
+  it('ignores a within-tolerance payment in another currency', () => {
+    const book = bookWith([{ ...withFee(0), currency: 'USD' }]);
+
+    expect(loanLedgerOutstandingMinorAt(mortgageMeta, LOAN, book, schedule[1].dueDate)).toBe(
+      loanOutstandingMinorAt(mortgageMeta, LOAN.id, book, schedule[1].dueDate),
     );
   });
 });

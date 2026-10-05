@@ -7,7 +7,9 @@ import type { LoanMeta } from '../holding-metadata';
 import {
   loanInstallments,
   loanOutstandingMinorAt,
+  loanPaymentSplitsMinor,
   loanInterestPerPaymentMinor,
+  withinInstallmentTolerance,
   type LoanInstallment,
 } from './loan-schedule';
 
@@ -373,5 +375,155 @@ describe('loanInterestPerPaymentMinor', () => {
       first.interestMinorUnits,
       second.interestMinorUnits,
     ]);
+  });
+});
+
+describe('withinInstallmentTolerance', () => {
+  it('links up to 1% of the installment either side, the bounds inclusive', () => {
+    expect(withinInstallmentTolerance(1_000_000, 1_010_000, 'UAH')).toBe(true);
+    expect(withinInstallmentTolerance(1_000_000, 1_010_001, 'UAH')).toBe(false);
+    expect(withinInstallmentTolerance(1_000_000, 990_000, 'UAH')).toBe(true);
+    expect(withinInstallmentTolerance(1_000_000, 989_999, 'UAH')).toBe(false);
+  });
+
+  it('lets the 1.00 floor of the loan currency beat 1% on a small installment', () => {
+    expect(withinInstallmentTolerance(5_000, 5_100, 'UAH')).toBe(true);
+    expect(withinInstallmentTolerance(5_000, 5_101, 'UAH')).toBe(false);
+  });
+
+  it('scales the floor by the currency decimals', () => {
+    expect(withinInstallmentTolerance(5_000_000, 105_000_000, 'BTC')).toBe(true);
+    expect(withinInstallmentTolerance(5_000_000, 105_000_001, 'BTC')).toBe(false);
+  });
+});
+
+const payAbove = (installment: LoanInstallment, extraMinorUnits: number, daysFromDue = 0) => ({
+  time: addDays(installment.dueDate, daysFromDue),
+  amountMinorUnits: -(installment.paymentMinorUnits + extraMinorUnits),
+});
+
+const splitsOf = (meta: LoanMeta, payments: Parameters<typeof loanPaymentSplitsMinor>[1]) =>
+  loanPaymentSplitsMinor(meta, payments, 'UAH');
+
+describe('loanPaymentSplitsMinor', () => {
+  const installments = loanInstallments(annuityMeta);
+  const [first] = installments;
+
+  it('an exact match carries no excess', () => {
+    expect(splitsOf(annuityMeta, [payAbove(first, 0)])).toEqual([
+      { interestMinorUnits: first.interestMinorUnits, excessMinorUnits: 0 },
+    ]);
+  });
+
+  it('an over-payment within tolerance books the difference as excess, the interest unchanged', () => {
+    expect(splitsOf(annuityMeta, [payAbove(first, 3_000)])).toEqual([
+      { interestMinorUnits: first.interestMinorUnits, excessMinorUnits: 3_000 },
+    ]);
+  });
+
+  it('an under-payment within tolerance carries no excess', () => {
+    expect(splitsOf(annuityMeta, [payAbove(first, -3_000)])).toEqual([
+      { interestMinorUnits: first.interestMinorUnits, excessMinorUnits: 0 },
+    ]);
+  });
+
+  it('a payment above the tolerance is a prepayment with no excess, one unit above it too', () => {
+    const tolerance = Math.round(first.paymentMinorUnits * 0.01);
+
+    expect(splitsOf(annuityMeta, [payAbove(first, tolerance)])[0].excessMinorUnits).toBe(tolerance);
+    expect(splitsOf(annuityMeta, [payAbove(first, tolerance + 1)])[0].excessMinorUnits).toBe(0);
+    expect(splitsOf(annuityMeta, [payAbove(first, 2_000_000)])[0].excessMinorUnits).toBe(0);
+  });
+
+  it('a partial payment carries no excess and never more interest than it paid', () => {
+    const partial = Math.floor(first.interestMinorUnits / 2);
+
+    expect(splitsOf(annuityMeta, [{ time: first.dueDate, amountMinorUnits: -partial }])).toEqual([
+      { interestMinorUnits: partial, excessMinorUnits: 0 },
+    ]);
+  });
+
+  it('a prepayment that took the interest leaves the regular payment its whole scheduled amount as principal', () => {
+    const prepayment = payAbove(first, 2_000_000, -2);
+    const regular = payAbove(first, 3_000);
+
+    expect(splitsOf(annuityMeta, [regular, prepayment])).toEqual([
+      { interestMinorUnits: 0, excessMinorUnits: 3_000 },
+      { interestMinorUnits: first.interestMinorUnits, excessMinorUnits: 0 },
+    ]);
+  });
+
+  it('gives every within-tolerance payment mapped to one installment its own excess', () => {
+    const earlier = payAbove(first, 3_000, -1);
+    const later = payAbove(first, 2_000, 1);
+
+    expect(splitsOf(annuityMeta, [earlier, later])).toEqual([
+      { interestMinorUnits: first.interestMinorUnits, excessMinorUnits: 3_000 },
+      { interestMinorUnits: 0, excessMinorUnits: 2_000 },
+    ]);
+  });
+
+  it('checks the last installment against its own scheduled payment', () => {
+    const last = installments[239];
+    const regular = { time: last.dueDate, amountMinorUnits: -first.paymentMinorUnits };
+
+    expect(first.paymentMinorUnits).toBeLessThan(last.paymentMinorUnits);
+    expect(splitsOf(annuityMeta, [payAbove(last, 3_000)])).toEqual([
+      { interestMinorUnits: last.interestMinorUnits, excessMinorUnits: 3_000 },
+    ]);
+    expect(splitsOf(annuityMeta, [regular])[0].excessMinorUnits).toBe(0);
+  });
+
+  it('counts no excess for a payment outside the schedule', () => {
+    const early = { time: addDays(annuityMeta.startDate, -1), amountMinorUnits: -1_323_303 };
+
+    expect(splitsOf(annuityMeta, [early])).toEqual([
+      { interestMinorUnits: 0, excessMinorUnits: 0 },
+    ]);
+  });
+
+  it('books the excess of a zero-rate loan the same way', () => {
+    const zeroRate: LoanMeta = { ...annuityMeta, annualRatePct: 0 };
+    const [zeroFirst] = loanInstallments(zeroRate);
+
+    expect(splitsOf(zeroRate, [payAbove(zeroFirst, 3_000)])).toEqual([
+      { interestMinorUnits: 0, excessMinorUnits: 3_000 },
+    ]);
+  });
+
+  it('measures a differentiated loan against each installment own scheduled payment', () => {
+    const scheduled = loanInstallments(differentiatedMeta);
+    const [early, late] = [scheduled[0], scheduled[99]];
+
+    expect(splitsOf(differentiatedMeta, [payAbove(late, 3_000)])[0].excessMinorUnits).toBe(3_000);
+    expect(
+      splitsOf(differentiatedMeta, [
+        { time: late.dueDate, amountMinorUnits: -early.paymentMinorUnits },
+      ])[0].excessMinorUnits,
+    ).toBe(0);
+  });
+
+  it('counts no interest and no excess for a none-schedule loan', () => {
+    expect(
+      splitsOf(noneMeta, [{ time: local(2020, 1, 15), amountMinorUnits: -1_000_000 }]),
+    ).toEqual([{ interestMinorUnits: 0, excessMinorUnits: 0 }]);
+  });
+
+  it('uses the 1.00 floor of the loan currency on a small installment', () => {
+    const small: LoanMeta = { ...annuityMeta, principalMinorUnits: 60_000, annualRatePct: 0 };
+    const [smallFirst] = loanInstallments(small);
+
+    expect(splitsOf(small, [payAbove(smallFirst, 100)])[0].excessMinorUnits).toBe(100);
+    expect(splitsOf(small, [payAbove(smallFirst, 101)])[0].excessMinorUnits).toBe(0);
+  });
+
+  it('keeps the result in the order the payments are given', () => {
+    const [, second] = installments;
+
+    expect(
+      splitsOf(annuityMeta, [payAbove(second, 3_000), payAbove(first, 1_000)]).map(
+        (split) => split.excessMinorUnits,
+      ),
+    ).toEqual([3_000, 1_000]);
   });
 });

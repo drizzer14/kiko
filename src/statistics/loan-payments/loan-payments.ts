@@ -1,8 +1,8 @@
-import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
+import type { HoldingRow, TransactionRow } from '@kiko/db';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
-import { loanInterestPerPaymentMinor } from '@kiko/holdings/loan-schedule';
+import { loanPaymentSplitsMinor, type LoanPaymentSplit } from '@kiko/holdings/loan-schedule';
 
 import type { TrendTransaction } from '../category-trend';
 
@@ -17,6 +17,7 @@ export type LoanPaymentTransaction = {
   time: number;
   amountMinorUnits: number;
   currency: Currency;
+  category: TransactionRow['category'];
 };
 
 /**
@@ -31,9 +32,9 @@ export type LoanHolding = Pick<HoldingRow, 'id' | 'metadata' | 'currency'>;
  * holding still exists AND is in the SAME currency as the payment
  * ("interest-only spending"): the caller drops these from the raw
  * spending pie/trend and replaces each one with its own `loanInterestEntries`
- * row (the interest portion only), so a linked loan payment's PRINCIPAL
- * never counts as spending and its INTEREST counts once, under its own
- * category.
+ * rows (the interest portion, plus the fee a within-tolerance over-payment
+ * carries), so a linked loan payment's PRINCIPAL never counts as spending and
+ * its INTEREST counts once, under its own category.
  *
  * A dangling `loanHoldingId` — or, the same defensive shape, one whose
  * loan holding exists but is in a
@@ -82,6 +83,12 @@ export const loanPaymentExcludedTransactionIds = (
  * never excluded above, so it already counts in full under its own
  * category.
  *
+ * A debit a little above its installment's scheduled payment (within the
+ * auto-link matcher's tolerance) carries a bank fee, not principal
+ * (`loanPaymentSplitsMinor`): the fee gets a SECOND entry, `loan-excess:<txId>`,
+ * under the payment row's OWN category, so spending adds up to the card's debit
+ * less the principal, to the minor unit.
+ *
  * Shaped as `TrendTransaction` (a superset of `BreakdownTransaction`) so the
  * SAME entries feed both `buildCategoryBreakdown` and the category trend
  * (statistics.screen.tsx): the id is `loan-interest:<txId>` (never collides
@@ -101,39 +108,60 @@ export const loanInterestEntries = (input: {
 }): TrendTransaction[] => {
   const { transactions, loanHoldings } = input;
   const holdingById = new Map(loanHoldings.map((holding) => [holding.id, holding] as const));
-  const interests = interestByTransactionId(transactions, holdingById);
+  const splits = splitsByTransactionId(transactions, holdingById);
 
   return transactions.flatMap((transaction) => {
-    const interest = interests.get(transaction.id) ?? 0;
+    const { interestMinorUnits, excessMinorUnits } = splits.get(transaction.id) ?? NO_SPLIT;
+    const entries: TrendTransaction[] = [];
 
-    if (interest <= 0) {
-      return [];
+    if (interestMinorUnits > 0) {
+      entries.push(
+        syntheticEntry(
+          transaction,
+          'loan-interest',
+          LOAN_INTEREST_CATEGORY_KEY,
+          interestMinorUnits,
+        ),
+      );
     }
 
-    return [
-      {
-        id: `loan-interest:${transaction.id}`,
-        category: LOAN_INTEREST_CATEGORY_KEY,
-        amountMinorUnits: -interest,
-        mcc: null,
-        counterIban: null,
-        description: '',
-        exchangeCounterpartHoldingId: null,
-        changeGroupId: null,
-        currency: transaction.currency,
-        time: transaction.time,
-      },
-    ];
+    if (excessMinorUnits > 0) {
+      entries.push(
+        syntheticEntry(transaction, 'loan-excess', transaction.category, excessMinorUnits),
+      );
+    }
+
+    return entries;
   });
 };
 
+const NO_SPLIT: LoanPaymentSplit = { interestMinorUnits: 0, excessMinorUnits: 0 };
+
+const syntheticEntry = (
+  transaction: LoanPaymentTransaction,
+  idPrefix: string,
+  category: LoanPaymentTransaction['category'],
+  expenseMinorUnits: number,
+): TrendTransaction => ({
+  id: `${idPrefix}:${transaction.id}`,
+  category,
+  amountMinorUnits: -expenseMinorUnits,
+  mcc: null,
+  counterIban: null,
+  description: '',
+  exchangeCounterpartHoldingId: null,
+  changeGroupId: null,
+  currency: transaction.currency,
+  time: transaction.time,
+});
+
 // An installment paid in parts counts its interest once across the parts, so
-// interest is allocated per loan over all of that loan's counted payments,
+// the split is allocated per loan over all of that loan's counted payments,
 // never one payment at a time.
-const interestByTransactionId = (
+const splitsByTransactionId = (
   transactions: readonly LoanPaymentTransaction[],
   holdingById: ReadonlyMap<string, LoanHolding>,
-): Map<string, number> => {
+): Map<string, LoanPaymentSplit> => {
   const paymentsByLoan = new Map<string, LoanPaymentTransaction[]>();
 
   for (const transaction of transactions) {
@@ -157,9 +185,10 @@ const interestByTransactionId = (
 
       return (
         foldMap(maybe(meta), (found) => {
-          const interests = loanInterestPerPaymentMinor(found, payments);
+          // Every payment of a loan has the loan's own currency (the filter above).
+          const splits = loanPaymentSplitsMinor(found, payments, payments[0].currency);
 
-          return payments.map((payment, index) => [payment.id, interests[index]] as const);
+          return payments.map((payment, index) => [payment.id, splits[index]] as const);
         }) ?? []
       );
     }),
