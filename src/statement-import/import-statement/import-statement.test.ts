@@ -58,9 +58,13 @@ jest.mock('@kiko/statement-import/rezone-import-times', () => ({
 }));
 
 let mockImportTimesRezoned = true;
+let mockDedupKeysUpgraded = true;
 jest.mock('@kiko/settings', () => ({
   settingsRepo: {
-    getQuery: () => Promise.resolve([{ importTimesRezoned: mockImportTimesRezoned }]),
+    getQuery: () =>
+      Promise.resolve([
+        { importTimesRezoned: mockImportTimesRezoned, dedupKeysUpgraded: mockDedupKeysUpgraded },
+      ]),
   },
 }));
 
@@ -121,6 +125,7 @@ beforeEach(() => {
   mockUpgradeStoredDedupKeys.mockClear().mockResolvedValue(undefined);
   mockRezoneImportTimes.mockClear().mockResolvedValue(undefined);
   mockImportTimesRezoned = true;
+  mockDedupKeysUpgraded = true;
 });
 
 // Regression fixture for the occurrence-index bug: two rows identical on
@@ -1173,10 +1178,26 @@ describe('previewParsedStatementBalance', () => {
     expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
   });
 
-  it('still previews while the import-time rezone flag is false', async () => {
+  // The preview writes nothing, so it cannot run the two rewrites the import
+  // runs first; it would otherwise judge rows against keys and times the import
+  // has not yet put into the form it stores. It refuses, so no balance line
+  // shows rather than one the import could contradict.
+  it('throws while the import-time rezone flag is false, asking the repository nothing', async () => {
     mockImportTimesRezoned = false;
 
-    await expect(previewParsedStatementBalance(parsed, 'holding-1')).resolves.toEqual(preview);
+    await expect(previewParsedStatementBalance(parsed, 'holding-1')).rejects.toThrow(
+      'statement-import/preview-pending',
+    );
+    expect(previewImportBalance).not.toHaveBeenCalled();
+  });
+
+  it('throws while the stored dedup keys are not yet upgraded, asking the repository nothing', async () => {
+    mockDedupKeysUpgraded = false;
+
+    await expect(previewParsedStatementBalance(parsed, 'holding-1')).rejects.toThrow(
+      'statement-import/preview-pending',
+    );
+    expect(previewImportBalance).not.toHaveBeenCalled();
   });
 
   it('throws when the target holding cannot be found, asking the repository nothing', async () => {

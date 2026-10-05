@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { logFailure } from '@kiko/diagnostics';
 import type { ImportBalancePreview } from '@kiko/transactions/repo';
 
 import type { ParsedStatement } from '../parser';
@@ -39,7 +40,12 @@ export const useImportBalancePreview = (
 
     previewParsedStatementBalance(statement, holdingId)
       .then(settle)
-      .catch(() => settle(undefined));
+      .catch((error: unknown) => {
+        // A refusal is expected (a synced holding, a rewrite not yet settled);
+        // the screen just shows no line, so the log is the only trace of why.
+        logFailure('[statement-import] balance preview failed', error);
+        settle(undefined);
+      });
 
     return () => {
       current = false;

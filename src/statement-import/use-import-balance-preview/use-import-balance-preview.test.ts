@@ -7,6 +7,11 @@ jest.mock('@kiko/statement-import/import-statement', () => ({
   previewParsedStatementBalance: (...args: unknown[]) => mockPreviewParsedStatementBalance(...args),
 }));
 
+const mockLogFailure = jest.fn();
+jest.mock('@kiko/diagnostics', () => ({
+  logFailure: (...args: unknown[]) => mockLogFailure(...args),
+}));
+
 import { useImportBalancePreview } from './use-import-balance-preview';
 
 const statementOf = (description: string): ParsedStatement => ({
@@ -87,6 +92,35 @@ describe('useImportBalancePreview', () => {
     await act(async () => {});
 
     expect(result.current).toBeUndefined();
+  });
+
+  it('logs a preview that cannot be read, with the failure it raised', async () => {
+    const statement = statementOf('a');
+    const failure = new Error('statement-import/preview-pending');
+
+    mockPreviewParsedStatementBalance.mockRejectedValue(failure);
+
+    await renderHook(() => useImportBalancePreview(statement, 'holding-1'));
+
+    await act(async () => {});
+
+    expect(mockLogFailure).toHaveBeenCalledTimes(1);
+    expect(mockLogFailure).toHaveBeenCalledWith(
+      '[statement-import] balance preview failed',
+      failure,
+    );
+  });
+
+  it('logs nothing when the preview is read', async () => {
+    const statement = statementOf('a');
+
+    mockPreviewParsedStatementBalance.mockResolvedValue(stays(500));
+
+    await renderHook(() => useImportBalancePreview(statement, 'holding-1'));
+
+    await act(async () => {});
+
+    expect(mockLogFailure).not.toHaveBeenCalled();
   });
 
   it('asks again for a new holding and never shows the old holding’s number meanwhile', async () => {

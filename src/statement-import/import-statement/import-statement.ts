@@ -104,12 +104,21 @@ const prepareImportRows = (
  * without writing anything: no rewrite of stored rows, no import, no loan
  * matcher. It hands `transactionsRepo.previewImportBalance` the batch
  * `importParsedStatement` would hand `importRows`, so the number shown before
- * importing is the number the import stores.
+ * importing is the number the import stores. The two rewrites the import runs
+ * first change the keys and times its rows are judged by, and the preview runs
+ * neither, so it throws until both have settled: the caller then shows no
+ * balance rather than one the import could contradict.
  */
 export const previewParsedStatementBalance = async (
   parsed: ParsedStatement,
   holdingId: string,
 ): Promise<ImportBalancePreview> => {
+  const settings = (await settingsRepo.getQuery()).at(0);
+
+  if (settings?.dedupKeysUpgraded !== true || settings.importTimesRezoned !== true) {
+    throw new Error('statement-import/preview-pending');
+  }
+
   const { rows } = prepareImportRows(parsed, holdingId, await holdingCurrencyOf(holdingId));
 
   return transactionsRepo.previewImportBalance({
