@@ -1,9 +1,17 @@
+const mockRemoveHoldingsPlan = jest.fn();
+jest.mock('@kiko/transactions/repo', () => ({
+  transactionsRepo: {
+    removeHoldingsPlan: (...args: unknown[]) => mockRemoveHoldingsPlan(...args),
+  },
+}));
+
 import { i18n } from '@kiko/i18n/init';
 
 import {
   type RemoveHoldingsPlan,
   joinNoticeSentences,
   removeHoldingsNotice,
+  removeHoldingsNoticeOf,
   removeNotice,
 } from './remove-notice';
 
@@ -229,6 +237,29 @@ describe('removeHoldingsNotice', () => {
     expect(removeHoldingsNotice({ ...NOTHING_ELSE, unlinkedPlain: true }, i18n.t)).toBe(
       'Деякі частини обмінів не знайдено, тож вони залишаться.',
     );
+  });
+});
+
+describe('removeHoldingsNoticeOf', () => {
+  it('reads the plan of the holdings and gives its text', async () => {
+    mockRemoveHoldingsPlan.mockResolvedValue({
+      ...NOTHING_ELSE,
+      deletedRows: { count: 1, names: ['Dollar card'] },
+    });
+
+    expect(await removeHoldingsNoticeOf(['uah', 'cash'], i18n.t)).toBe(
+      removeHoldingsNotice(
+        { ...NOTHING_ELSE, deletedRows: { count: 1, names: ['Dollar card'] } },
+        i18n.t,
+      ),
+    );
+    expect(mockRemoveHoldingsPlan).toHaveBeenCalledWith(['uah', 'cash']);
+  });
+
+  it('gives undefined when the plan takes nothing from other holdings', async () => {
+    mockRemoveHoldingsPlan.mockResolvedValue(NOTHING_ELSE);
+
+    expect(await removeHoldingsNoticeOf(['uah'], i18n.t)).toBeUndefined();
   });
 });
 

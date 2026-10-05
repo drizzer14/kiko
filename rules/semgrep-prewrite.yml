@@ -1827,3 +1827,29 @@ rules:
           - pattern: $DATABASE.query.pricePoints.$METHOD(...)
           - pattern-not: "$DATABASE.query.pricePoints.$METHOD({where: ..., ...})"
           - pattern-not: "$DATABASE.query.pricePoints.$METHOD({limit: ..., ...})"
+  # kiko-domain's "A holding is deleted only after its cascade". The bare name
+  # matches where it is used as an expression (a call); an import line and a
+  # comment never match. The two repo files are the owners: one defines the
+  # helper, the other runs it right after the cascade. Scope and known limits:
+  # this rule's row in docs/harness/review-to-biome-inventory.md; the excludes:
+  # docs/harness/documented-exceptions.md.
+  - id: kiko-holding-delete-needs-cascade
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `removeHoldingDatabaseTransaction` deletes the holding and its own rows
+      only. Without the cascade that runs first, the other legs of an Exchange,
+      Convert or split stay behind and their money exists on one side only, so
+      the delete creates money. Delete through `transactionsRepo.removeHolding`
+      (or `accountsRepo.remove` for an account) — see kiko-domain's "A holding
+      is deleted only after its cascade".
+    metadata:
+      fix: "Call `transactionsRepo.removeHolding(holdingId)`, which runs the cascade and then the holding delete in one transaction."
+      skill: "kiko-domain › A holding is deleted only after its cascade"
+    paths:
+      exclude:
+        - "src/transactions/repo/transactions.repo.ts"
+        - "src/holdings/repo/holdings.repo.ts"
+        - "*.test.ts"
+        - "*.test.tsx"
+    pattern: removeHoldingDatabaseTransaction

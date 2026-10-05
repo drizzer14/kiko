@@ -143,6 +143,18 @@ describe('deleting an account whose holdings hold the legs of a movement', () =>
     expect(accountExists('account')).toBe(false);
   });
 
+  it('deletes the legs that paid into a deposit once, with the account that holds both', async () => {
+    keepOnly('uah', 'deposit');
+    const before = stateOf();
+
+    await exchangeUahIntoDeposit();
+    await accountsRepo.remove('account');
+
+    expect(balancesOf()).toEqual(withoutHoldings(before, 'uah', 'deposit').balances);
+    expect(rowIds()).toEqual([]);
+    expect(accountExists('account')).toBe(false);
+  });
+
   it('keeps a bank row that pairs with a leg of the account', async () => {
     keepOnly('usd');
     insertRow({

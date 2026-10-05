@@ -37,7 +37,7 @@ import HoldingCard from '@kiko/design-system/components/holding-card';
 import { type AccountRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
-import { removeHoldingsNotice } from '@kiko/transactions/remove-notice';
+import { removeHoldingsNoticeOf } from '@kiko/transactions/remove-notice';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
@@ -461,9 +461,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                     // Read when the delete is requested, so it names what is stored
                     // now: a holding's rows can be one part of a movement with
                     // another holding, which the delete takes with it.
-                    deleteMessage={async () =>
-                      removeHoldingsNotice(await transactionsRepo.removeHoldingsPlan([item.id]), t)
-                    }
+                    deleteMessage={() => removeHoldingsNoticeOf([item.id], t)}
                     onDelete={() => transactionsRepo.removeHolding(item.id)}
                     closeAction={closeActionFor(item)}
                   >

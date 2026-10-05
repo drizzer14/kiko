@@ -1,6 +1,7 @@
 import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
+import { transactionsRepo } from '@kiko/transactions/repo';
 
 export type ExchangeRemoval =
   // The other legs are the user's rows and go with this one; `names` are the
@@ -117,6 +118,16 @@ export const removeHoldingsNotice = (plan: RemoveHoldingsPlan, t: TFunction): st
     namesSentence('holdings.deleteLinked.syncedKept', plan.keptSynced, t),
     unlinkedSentence(plan, t),
   );
+
+/**
+ * `removeHoldingsNotice` for the holdings `holdingIds`, reading their plan when
+ * the delete is requested so the text names what is stored now.
+ */
+export const removeHoldingsNoticeOf = async (
+  holdingIds: string[],
+  t: TFunction,
+): Promise<string | undefined> =>
+  removeHoldingsNotice(await transactionsRepo.removeHoldingsPlan(holdingIds), t);
 
 /**
  * The text the delete confirm shows under its title, for a transaction that is

@@ -2591,6 +2591,20 @@ loan's own linked payments is always small); tapping a row opens the
 transaction form, where None/Undo live. The section renders nothing at all
 once there are none — no placeholder heading over an empty list.
 
+## A holding is deleted only after its cascade
+
+Deleting a holding also deletes the movements its rows were one part of (the
+other legs of an Exchange or Convert, the rest of a split, the legs that paid
+into a deleted deposit), each balance given back by its own holding's
+boundary. `transactionsRepo.removeHolding` runs `cascadeLinkedRowsDatabaseTransaction`
+and then `removeHoldingDatabaseTransaction` in one transaction;
+`accountsRepo.remove` runs the same cascade for every holding of the account.
+`removeHoldingDatabaseTransaction` alone deletes the holding and its own rows
+but leaves the other legs behind, so the money of a movement exists on one side
+only. Only `transactions.repo.ts` and `holdings.repo.ts` (its owner) call it
+(`kiko-holding-delete-needs-cascade`, `rules/semgrep-prewrite.yml`): every other
+caller deletes through `transactionsRepo.removeHolding`.
+
 ## Adding a holding type
 
 Every per-type decision lives in one descriptor per layer, each keyed by

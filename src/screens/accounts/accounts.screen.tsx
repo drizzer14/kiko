@@ -31,8 +31,8 @@ import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import HoldingCard from '@kiko/design-system/components/holding-card';
 import LoadingState from '@kiko/design-system/components/loading-state';
-import { removeHoldingsNotice } from '@kiko/transactions/remove-notice';
 import { writeThenReplan } from '@kiko/reminders/use-reminder-scheduler';
+import { removeHoldingsNoticeOf } from '@kiko/transactions/remove-notice';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
@@ -126,11 +126,6 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     () => accounts.filter((account) => account.archivedAt == null),
     [accounts],
   );
-
-  // What deleting these holdings takes from OTHER holdings, as the confirm's
-  // text; read when the delete is requested, so it names what is stored now.
-  const deleteNoticeOf = async (holdingIds: string[]): Promise<string | undefined> =>
-    removeHoldingsNotice(await transactionsRepo.removeHoldingsPlan(holdingIds), t);
 
   // The live property and debt accounts are the implicit accounts: never a
   // card of their own: their section heading opens the account's own
@@ -243,10 +238,11 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
         // Every holding of the account goes, closed ones too, so the confirm
         // names what they take from other accounts.
         deleteMessage={() =>
-          deleteNoticeOf(
+          removeHoldingsNoticeOf(
             holdings
               .filter((holding) => holding.accountId === item.id)
               .map((holding) => holding.id),
+            t,
           )
         }
         // The delete takes the account's reminders with it; only a re-plan
@@ -375,7 +371,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               <CardContextMenu
                 name={item.name}
                 deletable={!isSyncedHolding(item, account)}
-                deleteMessage={() => deleteNoticeOf([item.id])}
+                deleteMessage={() => removeHoldingsNoticeOf([item.id], t)}
                 onDelete={() => transactionsRepo.removeHolding(item.id)}
                 closeAction={closeActionFor(item)}
               >

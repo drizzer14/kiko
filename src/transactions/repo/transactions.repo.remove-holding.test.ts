@@ -376,6 +376,31 @@ describe('deleting a holding that funded a term deposit', () => {
   });
 });
 
+describe('deleting a holding that a leg elsewhere only names as its marker', () => {
+  it('leaves a leg whose marker names a card, not a deposit, where it is', async () => {
+    insertRow({
+      id: 'legacy-leg',
+      holdingId: 'uah',
+      amountMinorUnits: -40_000,
+      exchangeCounterpartHoldingId: 'usd',
+    });
+    setBalance('uah', 60_000);
+
+    expect(await transactionsRepo.removeHoldingsPlan(['usd'])).toEqual(NOTHING_ELSE);
+
+    await transactionsRepo.removeHolding('usd');
+
+    expect(rowIds()).toEqual(['legacy-leg']);
+    expect(balancesOf().uah).toBe(60_000);
+  });
+
+  it('plans nothing for the legs that paid into a deposit deleted with their own holding', async () => {
+    await exchangeUahIntoDeposit();
+
+    expect(await transactionsRepo.removeHoldingsPlan(['uah', 'deposit'])).toEqual(NOTHING_ELSE);
+  });
+});
+
 describe('deleting a term deposit that was funded by an exchange', () => {
   it('deletes the source leg and gives the money back to its holding', async () => {
     const before = stateOf();
