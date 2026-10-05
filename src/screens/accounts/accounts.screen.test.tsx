@@ -17,6 +17,7 @@ import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import type { RemoveHoldingsPlan } from '@kiko/transactions/remove-notice';
 import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -26,6 +27,16 @@ type AccountsProps = ComponentProps<typeof AccountsScreen>;
 
 // 2024-01-01 (leap year) — anchor date for the recapitalizing-deposit case.
 const START = Date.UTC(2024, 0, 1);
+
+// A delete that no movement links to: the confirm stays bare.
+const NOTHING_LINKED: RemoveHoldingsPlan = {
+  deletedRows: { count: 0, names: [] },
+  reversedContributions: [],
+  keptContributions: [],
+  keptSynced: [],
+  unlinked: [],
+  unlinkedPlain: false,
+};
 
 // The screen reads the floating tab-bar height from `react-native-bottom-tabs`
 // to lift its footer clear of the bar. The real hook throws outside a native
@@ -68,6 +79,9 @@ const mockUseLiveQuery = jest.fn();
 const mockAccountRemove = jest.fn();
 const mockAccountReorder = jest.fn();
 const mockHoldingRemove = jest.fn();
+const mockRemoveHoldingsPlan = jest.fn(
+  async (..._args: unknown[]): Promise<RemoveHoldingsPlan> => NOTHING_LINKED,
+);
 const mockHoldingReorder = jest.fn();
 const mockHoldingCloseMany = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
 const mockSyncReminders = jest.fn().mockResolvedValue(undefined);
@@ -89,7 +103,6 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
-    remove: (...args: unknown[]) => mockHoldingRemove(...args),
     reorder: (...args: unknown[]) => mockHoldingReorder(...args),
     closeMany: (...args: unknown[]) => mockHoldingCloseMany(...args),
     balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
@@ -98,6 +111,17 @@ jest.mock('@kiko/holdings/repo', () => ({
     }),
   },
 }));
+jest.mock('@kiko/transactions/repo', () => {
+  const actual = jest.requireActual('@kiko/transactions/repo');
+
+  return {
+    transactionsRepo: {
+      ...actual.transactionsRepo,
+      removeHolding: (...args: unknown[]) => mockHoldingRemove(...args),
+      removeHoldingsPlan: (...args: unknown[]) => mockRemoveHoldingsPlan(...args),
+    },
+  };
+});
 jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
@@ -425,6 +449,69 @@ describe('AccountsScreen', () => {
     expect(getByText('Delete "Cash"')).toBeTruthy();
     await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
     expect(mockAccountRemove).toHaveBeenCalledWith('a');
+  });
+
+  describe('the delete confirm names what else the account delete takes', () => {
+    const LINKED_NOTICE = 'This also deletes 2 linked transactions in Dollar card.';
+    const holdAccountCard = async (): Promise<void> => {
+      await act(async () => {
+        fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+          { state: State.BEGAN },
+          { state: State.ACTIVE },
+          { state: State.END },
+        ]);
+      });
+    };
+
+    it('reads the plan of every holding of the account, closed ones included, and shows its text', async () => {
+      mockRemoveHoldingsPlan.mockResolvedValueOnce({
+        ...NOTHING_LINKED,
+        deletedRows: { count: 2, names: ['Dollar card'] },
+      });
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }],
+        holdings: [
+          { id: 'h1', accountId: 'a', currency: 'UAH', balanceMinorUnits: 100 },
+          { id: 'h2', accountId: 'a', currency: 'USD', balanceMinorUnits: 0, closedAt: 5 },
+          { id: 'h3', accountId: 'b', currency: 'UAH', balanceMinorUnits: 0 },
+        ],
+      });
+      const { getByTestId, getByText } = await renderAccounts();
+
+      await holdAccountCard();
+
+      expect(mockRemoveHoldingsPlan).toHaveBeenCalledWith(['h1', 'h2']);
+      expect(getByText('Delete "Cash"')).toBeTruthy();
+      expect(getByText(LINKED_NOTICE)).toBeTruthy();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(mockAccountRemove).toHaveBeenCalledWith('a');
+    });
+
+    it('keeps the confirm bare for an account nothing is linked to', async () => {
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }],
+        holdings: [{ id: 'h1', accountId: 'a', currency: 'UAH', balanceMinorUnits: 100 }],
+      });
+      const { getByText, queryByText } = await renderAccounts();
+
+      await holdAccountCard();
+
+      expect(getByText('Delete "Cash"')).toBeTruthy();
+      expect(queryByText(/This also/)).toBeNull();
+    });
+
+    it('opens a bare confirm when the plan cannot be read', async () => {
+      mockRemoveHoldingsPlan.mockRejectedValueOnce(new Error('read failed'));
+      setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
+      const { getByTestId, getByText } = await renderAccounts();
+
+      await holdAccountCard();
+
+      expect(getByText('Delete "Cash"')).toBeTruthy();
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
+    });
   });
 
   describe('deleting an account with reminders', () => {
@@ -970,6 +1057,23 @@ describe('AccountsScreen', () => {
 
         expect(mockHoldingRemove).toHaveBeenCalledWith('l1');
         expect(mockAccountRemove).not.toHaveBeenCalled();
+      });
+
+      it('shows what else deleting that holding takes under the confirm title', async () => {
+        mockRemoveHoldingsPlan.mockResolvedValueOnce({
+          ...NOTHING_LINKED,
+          keptSynced: ['Monobank card'],
+        });
+        setLiveData({ accounts: [debtAccount()], holdings: [loanHolding()] });
+        const { getByTestId, getByText } = await renderAccounts();
+
+        await holdCard();
+        await act(async () => {
+          await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+        });
+
+        expect(mockRemoveHoldingsPlan).toHaveBeenCalledWith(['l1']);
+        expect(getByText('Linked transactions from your bank stay in Monobank card.')).toBeTruthy();
       });
 
       // The Debts section owns its own close sheet: Close loan opens it, and
