@@ -164,11 +164,11 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   const { onPress: handleConfirmedImport, isSubmitting } = useSubmitOnce(runImport);
 
   const handleImportPress = (): void => {
-    // Pressing Import with no file and/or no key used to fail SILENTLY — an
-    // early `return` on a missing file skipped the key check entirely, so a
-    // combined "nothing picked, nothing pasted" press showed no error at
-    // all. Both are now validated independently on every press, each
-    // surfacing its own inline error.
+    // Pressing Import with no file and/or no key must not fail SILENTLY: an
+    // early `return` on a missing file would skip the key check entirely, so a
+    // combined "nothing picked, nothing pasted" press would show no error at
+    // all. Both are validated independently on every press, each surfacing
+    // its own inline error.
     const missingFile = fileUri === undefined;
     const missingKey = keyBase64.length < MIN_KEY_LENGTH;
 

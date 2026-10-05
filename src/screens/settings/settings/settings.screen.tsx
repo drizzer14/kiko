@@ -196,10 +196,10 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         {/* Import and Export share one card as a single "data transfer" group,
             near the top, below System and Reminders. Import first (the more
             common entry point — bringing existing data in) then Export.
-            Each row now carries its own explicit vertical padding
+            Each row carries its own explicit vertical padding
             (`dataTransferRowStyle`, matching the Card's own padding=3 the
             OTHER single-row cards get for free) with the Card's own padding
-            dropped to 0 — an outer `Box gap` no longer supplies the
+            at 0 — an outer `Box gap` does not supply the
             spacing, so each row reads as a normal native grouped-list row
             rather than a shorter, gap-squeezed one. The divider is
             LEADING-INSET (`dataTransferDividerStyle`'s `marginLeft`, aligned

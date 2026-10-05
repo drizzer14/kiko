@@ -326,10 +326,10 @@ describe('ExportDataScreen — copy-key feedback', () => {
     expect(getByText('Copy key')).toBeTruthy();
   });
 
-  // BLOCKING (review): a fresh Export mints a brand-new key, but the button
-  // previously kept showing "Copied" from the PRIOR key's copy — misleading,
-  // given the "save this key, it will not be shown again" warning, since the
-  // new key was never actually copied.
+  // A fresh Export mints a brand-new key, so the button must not keep showing
+  // "Copied" from the PRIOR key's copy — misleading, given the "save this
+  // key, it will not be shown again" warning, since the new key was never
+  // actually copied.
   it('reverts a stale "Copied" label to "Copy Key" when a new export produces a new key', async () => {
     mockExportData.mockResolvedValueOnce({ fileUri: '/tmp/a.kiko', keyBase64: 'keyA==' });
     const { getByTestId, findByTestId, getByText } = await renderScreen();

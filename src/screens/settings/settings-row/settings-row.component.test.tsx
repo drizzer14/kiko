@@ -25,9 +25,8 @@ describe('SettingsRow', () => {
     expect(queryByTestId('settings-row-chevron', { includeHiddenElements: true })).toBeNull();
   });
 
-  // The chevron previously fell back to SymbolIcon's default
-  // `iconSizes.body` (fontSize * 1.25), which renders LARGER than the row's
-  // own title. It must instead match the title's
+  // SymbolIcon's default `iconSizes.body` (fontSize * 1.25) renders LARGER
+  // than the row's own title, so the chevron must instead match the title's
   // fontSize (the label's `variant="body"` Text) exactly.
   it("sizes the trailing chevron to match the row title's own fontSize, not the larger default icon size", async () => {
     const { root } = await render(<SettingsRow label="Categories" onPress={jest.fn()} />);
@@ -102,7 +101,7 @@ describe('SettingsRow', () => {
   });
 
   // A long label ("Follow system setting"-length strings elsewhere in
-  // Settings) previously overflowed past the trailing chevron/control instead
+  // Settings) would overflow past the trailing chevron/control instead
   // of wrapping, because RN's `flexShrink` defaults to 0. This asserts the
   // STYLE CONTRACT that enables wrapping (not actual pixel wrapping, which
   // Jest cannot lay out): the label sits in a `flexShrink: 1` container, and

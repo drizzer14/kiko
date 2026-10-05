@@ -25,7 +25,7 @@ type AccountRemindersScreenProps = NativeStackScreenProps<
 >;
 
 // One row per reminder the account can have (an implicit account: only its
-// saved ones), plus any saved reminder the account no longer allows, so the
+// saved ones), plus any saved reminder the account does not allow, so the
 // user can still see and remove it. The permission notice shows only once
 // there is a reminder that could not be delivered.
 const AccountRemindersScreen: FC<AccountRemindersScreenProps> = ({ route, navigation }) => {

@@ -75,8 +75,8 @@ const styles = StyleSheet.create(() => ({
 // category's card shows a filled star marker in the header's trailing slot
 // (SF Symbol `star.fill`, tinted white via `textPrimary`) as a DISABLED
 // secondaryTonal Button at the `compact` size — the SAME control shape as the
-// "Set as default" star it replaces (it is the catch-all — it is already the
-// default), so the two stars line up. Both stars use `compact` (44pt visible
+// "Set as default" star every other card shows (this one is the catch-all —
+// it is already the default), so the two stars line up. Both stars use `compact` (44pt visible
 // height) so they align with the fixed 44pt name input beside them
 // (HoldingIdentityField's nameField), rather than the shorter 34pt `small`.
 // Every other card puts an icon-only "Set as default" affordance
@@ -364,14 +364,12 @@ const CATEGORY_DRAG_ACTIVATION_MS = 600;
 // render of `CategoriesScreen` — and this screen re-renders on every category
 // mutation anywhere in the list (a rename, an icon pick, a color pick, a
 // reorder, a delete — each writes the `categories` table, which re-fires this
-// screen's `useLiveQuery`). So editing ONE category's color used to force
+// screen's `useLiveQuery`). So editing ONE category's color would force
 // every OTHER unaffected card through a full node recompute too — a real cost
-// even now that each card is a plain solid `Card` (no Liquid Glass material to
-// resample; that was the ORIGINAL motivation here, back when this card was a
-// `GlassSurface` — see its own doc comment for the resample mechanism this
-// screen no longer has to worry about). Hoisting this extractor (it closes
-// over nothing) makes it referentially stable forever, the same fix class
-// `renderCategoryRow` below applies to `renderItem`.
+// even though each card is a plain solid `Card` (no Liquid Glass material to
+// resample). Hoisting this extractor (it closes over nothing) makes it
+// referentially stable forever, the same fix class `renderCategoryRow` below
+// applies to `renderItem`.
 const categoryKeyExtractor = (category: CategoryRow): string => category.key;
 
 // The Categories settings sub-screen: a live-queried vertical stack of every

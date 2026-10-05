@@ -35,7 +35,7 @@ describe('AppLockSetting', () => {
 
   // The App Lock card is the shared solid content-layer `Card`: a flat
   // `surface` fill applied directly to its own node (see `Card`'s own doc
-  // comment for why content no longer routes through `GlassSurface`/Liquid
+  // comment for why content does not route through `GlassSurface`/Liquid
   // Glass at all).
   it('fills the App Lock card with the shared solid surface token', async () => {
     const { getByTestId } = await renderSetting();

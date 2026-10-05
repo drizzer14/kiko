@@ -186,11 +186,9 @@ describe('CategoriesScreen', () => {
   // `react-native-sortables`' item store (`ItemsProvider`/`createItemsStore`)
   // treat the renderer itself as changed and recompute EVERY row's node, not
   // just the row whose data actually changed (see `categoryKeyExtractor`'s
-  // doc comment in `categories.screen.tsx` — this used to also risk a stale
-  // Liquid Glass resample back when this card was a `GlassSurface`, a concern
-  // the current solid `Card` no longer has, but the referential-stability fix
-  // itself remains worth keeping and asserting). This asserts the FIX
-  // (`categoryKeyExtractor` +
+  // doc comment in `categories.screen.tsx`; the current solid `Card` has no
+  // Liquid Glass resample to worry about, but the referential-stability fix
+  // is still worth asserting). This asserts the FIX (`categoryKeyExtractor` +
   // the memoized `renderCategoryRow`) directly: the exact function references
   // `Sortable.Grid` receives must survive a re-render triggered by an
   // unrelated category write — a live-query refire that hands back a brand
@@ -523,8 +521,8 @@ describe('CategoriesScreen', () => {
   it('renders a disabled Delete on the default category card for layout parity', async () => {
     const { getByLabelText } = await renderScreen();
 
-    // The default card now ALWAYS renders the Delete control (previously hidden),
-    // but disabled — the default can never be deleted, and the disabled state
+    // The default card ALWAYS renders the Delete control, but disabled — the
+    // default can never be deleted, and the disabled state
     // keeps the bottom row's layout identical across every card.
     expect(getByLabelText('Delete Other')).toBeDisabled();
   });
@@ -740,7 +738,7 @@ describe('CategoriesScreen', () => {
     // The regression this guards against: pre-filling the editable field with
     // the TRANSLATED title would make an unedited (no-op) end-of-editing look
     // like a rename to that translated string, permanently un-translating the
-    // row (its stored title would no longer match the English seed). Focusing
+    // row (its stored title would not match the English seed). Focusing
     // then blurring without typing anything must never call updateTitle.
     it('does not persist the translated label as a rename on an unedited (no-op) save', async () => {
       await act(async () => {

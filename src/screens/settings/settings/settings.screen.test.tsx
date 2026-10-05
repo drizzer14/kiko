@@ -103,9 +103,8 @@ describe('SettingsScreen', () => {
   // CurrencyField's own trigger does not
   // show the ISO code at all (see `currency-field.component.tsx`'s
   // `triggerValue`) — it shows the localized NAME only, matching the option
-  // rows. This used to match the bare "UAH" substring inside the old
-  // "UAH — Ukrainian Hryvnia" trigger value; assert the localized name
-  // instead, the same fix already made to CurrencyField's own tests.
+  // rows. So assert the localized name, not a bare "UAH" substring, the same
+  // way CurrencyField's own tests do.
   it('shows the current base currency', async () => {
     const { getByText } = await renderScreen();
     expect(getByText('Ukrainian Hryvnia')).toBeTruthy();
@@ -171,8 +170,8 @@ describe('SettingsScreen', () => {
     expect(getByTestId('settings-card-system')).toBeTruthy();
     expect(getByTestId('settings-row-system')).toBeTruthy();
 
-    // `Card` renders a single flat node per testID (no inner `-base` layer the
-    // way `GlassSurface` used to), but the filter is kept defensively so this
+    // `Card` renders a single flat node per testID (no inner `-base` layer
+    // like `GlassSurface`'s), but the filter stays defensively so this
     // assertion only ever compares top-level card order.
     const cardOrder = getAllByTestId(/^settings-card-/)
       .map((node) => node.props.testID as string)
@@ -241,7 +240,7 @@ describe('SettingsScreen', () => {
 
     // The card's own padding is 0 (each row carries its own
     // `paddingHorizontal`, see `dataTransferRowStyle`), so the row's padding
-    // alone is no longer the whole story: the divider must also cross the
+    // alone is not the whole story: the divider must also cross the
     // trailing whitespace inside the (resized) chevron's own render frame,
     // so it visually terminates at the ">" glyph's right edge rather than
     // the frame's.
