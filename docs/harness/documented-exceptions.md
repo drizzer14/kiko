@@ -212,9 +212,9 @@ verified usage, not dead weight:
   can see (it mechanizes kiko-code-style's "Blank lines before statement
   blocks" and "Blank line between adjacent JSX sibling nodes" rules, wired
   into the pre-write guard's `NODE_RULES` as `kiko-blank-line-separation`;
-  it is guard-mode only for now — not yet in `check:all`, so its
-  project-wide mode has no package.json script either), so Knip's
-  reachability graph reports it as unused. Exercised directly by
+  its project-wide mode is `npm run check:blank-line-separation`,
+  part of `check:all`; Knip cannot see the `node` call from the `.sh`
+  wrapper), so Knip's reachability graph reports it as unused. Exercised directly by
   `__tests__/blank-line-separation.test.ts`, which spawns
   `blank-line-separation.sh` (and so `blank-line-separation.js`) as a
   subprocess, and by a direct `node blank-line-separation.js [--write]`
@@ -231,9 +231,9 @@ verified usage, not dead weight:
   `require`, and never a package.json script Knip's static scan can see
   (it mechanizes the pre-write-guard design spec's rule 12, "no import from
   another screen's folder", wired into the pre-write guard's `NODE_RULES`
-  as `kiko-no-cross-screen-import`; it is guard-mode only for now — not yet
-  in `check:all`, so its project-wide mode has no package.json script
-  either), so Knip's reachability graph reports it as unused. Exercised
+  as `kiko-no-cross-screen-import`; its project-wide mode is
+  `npm run check:screen-imports`, part of `check:all`; Knip cannot see the
+  `node` call from the `.sh` wrapper), so Knip's reachability graph reports it as unused. Exercised
   directly by `__tests__/screen-imports.test.ts`, which spawns
   `screen-imports.sh` (and so `screen-imports.js`) as a subprocess, and by
   a direct `node screen-imports.js` invocation in the same test file, and
