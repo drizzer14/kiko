@@ -1587,4 +1587,152 @@ describe('buildNetWorthSeries', () => {
     expect(series.points.at(-1)?.amount).toBe(toMajor(home.minorUnits, 'USD'));
     expect(series.points.at(-1)?.amount).toBe(3_578.68);
   });
+
+  describe('the live rate backs a currency the stored history does not cover', () => {
+    const D3 = D0 + 3 * DAY_MS;
+    const D5 = D0 + 5 * DAY_MS;
+    const sixDays = { from: D0, to: D5 };
+    const uahThousand = holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 100_000 });
+    const tenthOfBitcoin = holding({ id: 'btc', currency: 'BTC', balanceMinorUnits: 10_000_000 });
+    // Present only to pass the no-history gate; no BTC, ETH or GBP row.
+    const unrelatedHistory = [uahUsd(D0, '0.025')];
+
+    it('values a crypto holding with no history flat at the live rate in every bucket', () => {
+      const series = buildNetWorthSeries({
+        holdings: [uahThousand, tenthOfBitcoin],
+        transactionsByHolding: new Map(),
+        historyRows: unrelatedHistory,
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { BTC: 2_500_000 },
+        today: D5,
+      });
+
+      // 1,000 UAH + 0.1 BTC * 2.5M, with no step at the right edge.
+      expect(series.points.map((point) => point.amount)).toEqual(Array(6).fill(251_000));
+      expect(series.startReference).toBe(251_000);
+    });
+
+    it('keeps a purchase made mid-window at 0 before it and at the live rate after it', () => {
+      const series = buildNetWorthSeries({
+        holdings: [tenthOfBitcoin],
+        transactionsByHolding: new Map([
+          ['btc', [{ time: D3 + HOUR, amountMinorUnits: 10_000_000 }]],
+        ]),
+        historyRows: unrelatedHistory,
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { BTC: 2_500_000 },
+        today: D5,
+      });
+
+      expect(series.points.map((point) => point.amount)).toEqual([
+        0, 0, 0, 250_000, 250_000, 250_000,
+      ]);
+    });
+
+    it('keeps the earliest and at-or-before rows ahead of live in past buckets', () => {
+      const bitcoinRow = (day: number, rate: string): HistoryRow => ({
+        base: 'BTC',
+        quote: 'UAH',
+        day,
+        rate,
+      });
+
+      const series = buildNetWorthSeries({
+        holdings: [tenthOfBitcoin],
+        transactionsByHolding: new Map(),
+        historyRows: [bitcoinRow(D1, '1000000'), bitcoinRow(D2, '2000000')],
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { BTC: 2_500_000 },
+        today: D5,
+      });
+
+      // Before the first row: flat at it. Then each row carries forward; only
+      // today reads live, so the step at today is the real price move.
+      expect(series.points.map((point) => point.amount)).toEqual([
+        100_000, 100_000, 200_000, 200_000, 200_000, 250_000,
+      ]);
+    });
+
+    it('layers per currency: a crypto with rows keeps them while one without takes live', () => {
+      const series = buildNetWorthSeries({
+        holdings: [
+          tenthOfBitcoin,
+          holding({ id: 'eth', currency: 'ETH', balanceMinorUnits: 100_000_000 }),
+        ],
+        transactionsByHolding: new Map(),
+        historyRows: [{ base: 'BTC', quote: 'UAH', day: D0, rate: '2000000' }],
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { BTC: 2_500_000, ETH: 100_000 },
+        today: D5,
+      });
+
+      // ETH (no rows) is flat at live; BTC steps only at today.
+      expect(series.points.map((point) => point.amount)).toEqual([
+        300_000, 300_000, 300_000, 300_000, 300_000, 350_000,
+      ]);
+    });
+
+    it('drops a crypto holding from every bucket when neither history nor live prices it', () => {
+      const series = buildNetWorthSeries({
+        holdings: [uahThousand, tenthOfBitcoin],
+        transactionsByHolding: new Map(),
+        historyRows: unrelatedHistory,
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { USD: 40 },
+        today: D5,
+      });
+
+      expect(series.points.map((point) => point.amount)).toEqual(Array(6).fill(1_000));
+    });
+
+    it('values a fiat currency with no history at the live rate, not the bundled seed, in past buckets', () => {
+      const series = buildNetWorthSeries({
+        holdings: [holding({ id: 'gbp', currency: 'GBP', balanceMinorUnits: 100_000 })],
+        transactionsByHolding: new Map(),
+        historyRows: unrelatedHistory,
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { GBP: 70 },
+        today: D5,
+      });
+
+      // 1,000 GBP * the live 70 in every bucket, past ones included.
+      expect(series.points.map((point) => point.amount)).toEqual(Array(6).fill(70_000));
+    });
+
+    it('keeps a fiat currency’s stored history ahead of live in past buckets', () => {
+      const series = buildNetWorthSeries({
+        holdings: [holding({ id: 'gbp', currency: 'GBP', balanceMinorUnits: 100_000 })],
+        transactionsByHolding: new Map(),
+        historyRows: [{ base: 'GBP', quote: 'UAH', day: D0, rate: '50' }],
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { GBP: 70 },
+        today: D5,
+      });
+
+      expect(series.points.map((point) => point.amount)).toEqual([
+        50_000, 50_000, 50_000, 50_000, 50_000, 70_000,
+      ]);
+    });
+
+    it('returns no points for a foreign holder with no history rows, however live is priced', () => {
+      const series = buildNetWorthSeries({
+        holdings: [tenthOfBitcoin],
+        transactionsByHolding: new Map(),
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { BTC: 2_500_000 },
+        today: D5,
+      });
+
+      expect(series).toEqual({ points: [], startReference: 0 });
+    });
+  });
 });
