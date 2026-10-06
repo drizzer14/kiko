@@ -1243,8 +1243,9 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
 
   it('hydrates a 50-satoshi BTC transaction to 0.0000005, not 57', async () => {
     // Below 100 satoshis, `String(minor / 1e8)` emits exponential notation
-    // ("5e-7"), which reducing to its digits would turn into "57" — a
-    // 50-satoshi transaction would render, and save, as 57 BTC.
+    // ("5e-7"), which the Amount field's grouping formatter, keeping only
+    // digits, would turn into "57" — a 50-satoshi transaction would render,
+    // and save, as 57 BTC.
     setLiveData([{ id: 'h-btc', currency: 'BTC', balanceMinorUnits: 0, type: 'crypto_asset' }], {
       id: 'tx-1',
       holdingId: 'h-btc',

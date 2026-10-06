@@ -24,11 +24,10 @@ import type { AccountsStackParamList } from '../types';
  * duplicate instead of reusing the existing one (this
  * file exercises production's own `.popTo(name, params, { merge: true })`
  * shape against the REAL `@react-navigation/routers` `StackRouter`, not a
- * `navigationSpy`, because — per the reviewer's own repro — "a spy cannot
- * see the router semantics": a spy only proves the CALL happened, never
- * whether the router pushed or popped.
+ * `navigationSpy`, because a spy cannot see the router semantics: a spy only
+ * proves the CALL happened, never whether the router pushed or popped.
  *
- * This suite proves the ROUTER-LEVEL property the fix depends on (a route
+ * This suite proves the ROUTER-LEVEL property `popTo` depends on (a route
  * already on the stack is REUSED, not duplicated, and that surviving
  * instance's own local React state is preserved) using a REAL
  * `NavigationContainer` + `createNativeStackNavigator` (no mock). Each

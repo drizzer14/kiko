@@ -61,7 +61,7 @@ describe('scripts/checks/import-order.sh', () => {
     // A trailing `// note` after the `;` would make endsStatement's
     // `/;\s*$/` anchor fail, so consumeStatement would never stop at this
     // import — it would keep reading forward looking for a later `;\s*$` line,
-    // which swallows the second import into the same "statement" and hides
+    // which would swallow the second import into the same "statement" and hide
     // the whole group from checking.
     const result = runCheck(
       "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'; // note\n" +
