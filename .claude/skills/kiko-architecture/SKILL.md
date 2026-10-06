@@ -2279,8 +2279,8 @@ what a change must keep.
   payment and its change returns, count once even a second apart in
   `created_at`. Wiring: `AccountDetail` passes `route.params.reminderOffer
   ?? 'manualActivity'`. `reminderOffer?: 'afterImport'` is set by the
-  `popTo` of BOTH import screens (`statement-import.screen.tsx`,
-  `column-mapping.screen.tsx`). A per-mount `offerDecided` latch, set
+  `popTo` in `useImportResultSheet`, shared by BOTH import screens
+  (`statement-import.screen.tsx`, `column-mapping.screen.tsx`). A per-mount `offerDecided` latch, set
   on accept and on a successful dismiss, makes the trigger `undefined`,
   so a visit shows at most ONE offer; a live implicit account (property or
   debt) always gets an `undefined` trigger, so it never shows one. Accept and dismiss both clear the

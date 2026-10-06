@@ -425,7 +425,9 @@ const plainFieldErrors = (params: SaveDisabledParams, t: TFunction): Transaction
 // selected.
 type ActiveMode = FormMode | 'converting';
 
-export const resolveActiveMode = (converting: boolean, mode: FormMode): ActiveMode =>
+// Module-level, not inline in the screen: the one extra ternary there pushes
+// the screen past Biome's cognitive-complexity ceiling.
+const resolveActiveMode = (converting: boolean, mode: FormMode): ActiveMode =>
   converting ? 'converting' : mode;
 
 type SpecialSaves = Record<'convert' | 'split' | 'exchange', () => Promise<void>>;
@@ -437,9 +439,9 @@ type ModeBehavior = {
   // which is both the Save-block gate AND the scroll-to-first-invalid target, so
   // the two can never disagree.
   fieldOrder: readonly SaveDisabledField[];
-  // Null for the income/expense path: `performSave` itself writes that one, after
-  // the category confirm the three special modes have no use for.
-  save: ((saves: SpecialSaves) => Promise<void>) | null;
+  // Null for the income/expense path: `performSave` writes that one itself, then
+  // raises the category confirm the three special modes have no use for.
+  save: keyof SpecialSaves | null;
 };
 
 const PLAIN_MODE_BEHAVIOR: ModeBehavior = {
@@ -448,25 +450,26 @@ const PLAIN_MODE_BEHAVIOR: ModeBehavior = {
   save: null,
 };
 
-// Every per-mode decision of the form in one place, keyed by the active mode so
-// adding a mode is a compile error until each of the three is supplied.
+// Each mode's field errors, scroll order and save path in one place, keyed by the
+// active mode so adding a mode is a compile error until each of the three is
+// supplied.
 const MODE_BEHAVIOR: Record<ActiveMode, ModeBehavior> = {
   income: PLAIN_MODE_BEHAVIOR,
   expense: PLAIN_MODE_BEHAVIOR,
   exchange: {
     fieldErrors: exchangeFieldErrors,
     fieldOrder: ['destinationHolding', 'valueOut', 'valueIn'],
-    save: (saves) => saves.exchange(),
+    save: 'exchange',
   },
   split: {
     fieldErrors: splitFieldErrors,
     fieldOrder: ['amount', 'selectedCategory', 'splitReturns'],
-    save: (saves) => saves.split(),
+    save: 'split',
   },
   converting: {
     fieldErrors: convertingFieldErrors,
     fieldOrder: ['counterpartHolding', 'counterpartAmount'],
-    save: (saves) => saves.convert(),
+    save: 'convert',
   },
 };
 
@@ -2440,7 +2443,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       return false;
     }
 
-    await saveSpecial({ convert: saveConvert, split: saveSplit, exchange: saveExchange });
+    const saves: SpecialSaves = {
+      convert: saveConvert,
+      split: saveSplit,
+      exchange: saveExchange,
+    };
+
+    await saves[saveSpecial]();
 
     return true;
   };
