@@ -1069,6 +1069,15 @@ LATE in client-info order dropped a real transaction:
   build, so it cannot discriminate there, whereas the stored display
   balance still moves. This changes only the ORDER; `isBalanceDiffSkip`
   still decides WHICH cards are fetched, unchanged, inside the loop.
+- **Jars are statement sources.** `runSyncInner` builds ONE queue
+  (`[...accounts, ...jars]`) that a jar and a card share through the same
+  order, skip, window, fetch, crash-safe marker and failed set, under the one
+  per-token 60 s request gate; a jar's rows land on its own holding. A jar's
+  from-window is a card's: it reaches back to `lastFullSyncAt` (one default
+  lookback on a first sync) and never earlier. There is no backfill: a jar
+  stored before jars had statements keeps its false net-worth drop on every
+  top-up day older than that window, a known limit by user ruling. The run's
+  `[monobank sync] done` diagnostic carries a `jars` count beside `cards`.
 - **Per-card from-window** (`fromSecondsForCard`, `src/monobank/`).
   The from-cursor is now computed PER CARD, not once for the whole run.
   A card whose marker is NULL or BEHIND its /client-info balance
@@ -1341,9 +1350,10 @@ Do NOT collapse them — each drives a different affordance:
      up-front statement-window count (`estimateWindows` = `ceil(span / 31d)`,
      the honest per-page granularity — the 1-req/60s statement fetch dominates
      the run), committed one unit per page then reconciled to the estimate on
-     card completion; a CHANGED Monobank jar and each crypto/exchange balance
-     fetch weigh ONE unit. A balance-diff-skipped card, an unchanged jar, and
-     every manual holding weigh NOTHING.
+     card completion; a Monobank JAR in `toFetch` weighs its window count the same way
+     (it is a statement source like a card); each crypto/exchange balance
+     fetch weighs ONE unit. A balance-diff-skipped card or jar and every manual
+     holding weigh NOTHING.
    - `completed` / `total` count HOLDINGS for the "N/M" label only (holdings
      doing work this run / holdings finished), DECOUPLED from the fill (the
      file-copy pattern: "1 / 2 holdings" can sit at a small fill while a heavy
@@ -1362,15 +1372,12 @@ Do NOT collapse them — each drives a different affordance:
    - a Monobank CARD in `toFetch` (NOT balance-diff-skipped, `selectCardsToFetch`)
      — weight = its statement-window count, committed per page in
      `fetchCardWithProgress` / `fetchAllStatements`'s `onPage` callback;
-   - a Monobank JAR whose /client-info balance MOVED since its prior stored
-     balance, or a new jar — weight 1, committed at the fast phase (jars have
-     no statements; an UNCHANGED jar has no crash-safe marker, so a moved
-     balance is its only "changed" signal, `runSyncInner`);
+   - a Monobank JAR in `toFetch` — the same weight and per-page commit as a
+     card, since a jar is a statement source in the same queue (`runSyncInner`);
    - every crypto/exchange holding a `runBalanceSync` upserts (Binance
      Spot/Funding/Earn, or a wallet) — a crypto sync has NO balance-diff skip,
      it always reads live balances, so each returned holding is one work unit.
-   ZERO work = every MANUAL holding, every balance-diff-skipped card, and every
-   unchanged jar.
+   ZERO work = every MANUAL holding and every balance-diff-skipped card or jar.
 3. `fastPhaseDone` (`isFastPhaseDone`/`setFastPhaseDone`/`subscribeFastPhase`)
    — a one-shot "balances have landed" signal. `runSyncInner` fires
    `setFastPhaseDone(true)` the instant `upsertAllHoldings` commits the

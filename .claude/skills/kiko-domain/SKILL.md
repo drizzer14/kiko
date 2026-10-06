@@ -994,8 +994,9 @@ Rules:
   anything else stays, because its leg stays: a deposit source leg Converted again
   keeps `deposit` while the dollar leg joins the pair, so deleting that dollar leg
   (or the dollar card) leaves the row excluded from spending, the deposit still
-  holding the contribution. A marker reached only through a split group names no
-  removed leg and stays too. The delete keeps the pair id and moves no balance: a
+  holding the contribution. On a leg delete, a marker reached only through a split group names no
+  removed leg and stays too; in a holding/account cascade a split-only kept row
+  whose marker names a deleted holding is cleared. The delete keeps the pair id and moves no balance: a
   marker left naming a gone leg would keep a real purchase out of spending
   (`exchangeExcludedTransactionIds`) for good, and one cleared while its leg stays
   would count the purchase twice. The confirm text does not change.

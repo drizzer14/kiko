@@ -110,7 +110,7 @@ is stored, so deleting every row of an import ends on the statement's opening
 balance. Re-importing the same file brings a deleted row back (no tombstone;
 accepted): with a closing balance its amount returns with it, and a no-closing
 file's row dated before the boundary returns as history without its amount.
-`dropRowsHeldBySync` still stops a TX-C1 duplicate of a bank row from returning
+`dropRowsHeldBySync` still stops a duplicate of a bank row from returning
 once the account is disconnected, and a connected account refuses the import.
 
 **A synced account refuses the import.** `importRows`

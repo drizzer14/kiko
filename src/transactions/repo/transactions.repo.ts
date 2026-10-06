@@ -720,9 +720,9 @@ const removeRowsDatabaseTransaction = async (
 // of the deleted holdings that link to anything (a pair id, a split group or an
 // exchange marker; a row with none leads nowhere). `removed` are the rows
 // elsewhere that belong to the same movements and are the user's, `kept` the
-// bank's, which are never deleted (a marker naming a deleted holding is cleared). A
-// deposit among the deleted
-// holdings also reaches the legs that paid into it, whose marker names it. A
+// bank's, which are never deleted (a kept row's marker is cleared when it names a
+// deleted holding or the holding of a removed row in the same pair). A deposit among
+// the deleted holdings also reaches the legs that paid into it, whose marker names it. A
 // partner on a deleted holding is in `own`, so it is never counted twice: it
 // goes with its holding, with no reversal.
 type HoldingsLinks = {
