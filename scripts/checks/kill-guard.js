@@ -36,6 +36,13 @@
 // Edit/Write/MultiEdit, so such a write lands unchecked. A heredoc body that
 // no shell or interpreter runs is text, never checked for writes.
 //
+// And it denies a `while` or `until` loop that scans the process table (`ps`,
+// `top`, `pstree`, or `pgrep -f`) for make verify, check:all, jest, stryker,
+// semgrep, or xcodebuild: the loop's own command line holds the pattern, so
+// the scan matches the loop itself and the wait never ends. A one-time scan
+// outside a loop, and a loop that scans nothing (a file, a pid,
+// scripts/wait-load.sh), stay allowed.
+//
 // Known limits: this guard stops ACCIDENTAL commands by cooperative agents.
 // It is a heuristic tokenizer, not a shell parser and not an adversarial
 // boundary: an exotic, obfuscated, or run-time-built form is a known limit,
@@ -111,12 +118,27 @@ function blockReason(reasonLines, detail) {
   return [what, `DETAILS:        ${detail}`, ...rest].join('\n');
 }
 
+const WAIT_LOOP_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a while or until loop that scans ps or pgrep for make verify, ' +
+    'check:all, jest, stryker, semgrep, or xcodebuild.',
+  "WHY IT MATTERS: the loop's own command line holds the pattern, so the scan matches the loop " +
+    'itself and the wait never ends; a [x] bracket in the pattern fails as soon as the same word ' +
+    'appears elsewhere in that command line.',
+  'HOW TO FIX:     for a load wait, run `bash scripts/wait-load.sh <load> <timeout>` chained with ' +
+    "&& before the heavy command; for a job you started, run it with the tool's own " +
+    'run_in_background and wait on its exit code. A one-time ps or pgrep outside a loop, a ' +
+    'pgrep without -f, and a loop on a file or on a pid you started (kill -0 <pid>) stay allowed.',
+  'DO NOT:         write a ps|grep or pgrep loop for these names, through a bracket trick, a ' +
+    'variable, or a script file, to get past this guard.',
+];
+
 const REASON_BY_KIND = {
   kill: () => KILL_REASON,
   stash: (finding) => blockReason(STASH_REASON_LINES, finding.detail),
   heredoc: (finding) => blockReason(HEREDOC_REASON_LINES, finding.detail),
   mainCheckout: (finding) => blockReason(MAIN_CHECKOUT_REASON_LINES, finding.detail),
   shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
+  waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
 };
 
 const reasonFor = (finding) => REASON_BY_KIND[finding.kind](finding);
@@ -1845,6 +1867,155 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, directories, rul
   return shellWriteFinding(segment, write);
 }
 
+// ---- wait loops that scan the process table ----
+
+// A `while` or `until` loop that lists processes for one of these jobs
+// matches its own command line (the pattern is in it), so the wait never ends.
+// The brackets of the `[j]est` trick are dropped first: the trick fails as soon
+// as the word appears anywhere else in the same command line.
+const WATCHED_JOB = /make\W+verify|check:all|jest|stryker|semgrep|xcodebuild/i;
+const BRACKETS_AND_BACKSLASHES = /[[\]\\]/g;
+
+const WAIT_LOOP_WORDS = new Set(['while', 'until']);
+// `for` and `select` open a loop that ends in `done` too, so they are counted
+// to keep each `done` paired with its opener; only a `while`/`until` is judged.
+const LOOP_WORDS = new Set([...WAIT_LOOP_WORDS, 'for', 'select', 'done']);
+const LOOP_WORD_SEARCH = /\b(?:while|until|for|select|done)\b/;
+
+const PROCESS_LISTERS = new Set(['ps', 'top', 'pstree']);
+const TEXT_FILTERS = new Set([
+  'grep',
+  'egrep',
+  'fgrep',
+  'rg',
+  'ag',
+  'ack',
+  'awk',
+  'gawk',
+  'sed',
+  'gsed',
+  '[',
+  '[[',
+  'test',
+]);
+// pgrep matches the full command line only with -f (any flag group holding it)
+// or --full; without it a name match cannot see the loop's own command line.
+const FULL_COMMAND_OPTION = /^-[A-Za-z]*f[A-Za-z]*$/;
+
+// The loop words that open the segment: lead-ins (`do`, `then`, a group
+// opener) may stand before them (`do until …`).
+function loopWordsOf(tokens) {
+  const found = [];
+  for (const token of tokens) {
+    const word = token.replace(GROUP_OPENERS, '');
+    if (LOOP_WORDS.has(word)) found.push(word);
+    else if (!isLeadIn(word)) break;
+  }
+
+  return found;
+}
+
+// A shell's `-c` string and `eval`'s joined arguments are command text.
+function scriptOf(base, tokens) {
+  if (base === 'eval') return tokens.slice(1).join(' ');
+  if (!SHELLS.has(base)) return undefined;
+  const flagIndex = tokens.findIndex((token, index) => index > 0 && SHELL_COMMAND_FLAG.test(token));
+
+  return flagIndex === -1 ? undefined : tokens[flagIndex + 1];
+}
+
+// Every command a segment runs, wrapper words stripped, and the commands of
+// the script text its shell or `eval` runs.
+function commandsOfTokens(tokens, depth) {
+  const command = unwrap(tokens).tokens;
+  if (command.length === 0) return [];
+  const script = scriptOf(basename(command[0]), command);
+
+  return script === undefined ? [command] : [command, ...scannedCommands(script, depth + 1)];
+}
+
+// Every command in a span's text, nested spans included.
+function scannedCommands(text, depth = 0) {
+  if (depth > 8) return [];
+  const { segments, nested } = scanLevel(text);
+
+  return [
+    ...segments.flatMap((segment) => commandsOfTokens(words(segment), depth)),
+    ...nested.flatMap((entry) => scannedCommands(entry.text, depth + 1)),
+  ];
+}
+
+// What one command adds to a loop's process scan: whether it lists processes,
+// and the first watched job its text names where it filters them.
+function scanTraits(command) {
+  const base = basename(command[0]);
+  const parameters = command.slice(1);
+  const matchesFullCommand =
+    base === 'pgrep' &&
+    parameters.some((word) => word === '--full' || FULL_COMMAND_OPTION.test(word));
+  const watched = WATCHED_JOB.exec(parameters.join(' ').replace(BRACKETS_AND_BACKSLASHES, ''));
+  const filters = matchesFullCommand || TEXT_FILTERS.has(base);
+
+  return {
+    lists: matchesFullCommand || PROCESS_LISTERS.has(base),
+    job: filters && watched !== null ? watched[0] : undefined,
+  };
+}
+
+// Tracks the `while`/`until` loops one line opens and closes, in the order
+// its segments come, so a scan counts only inside the outermost wait loop
+// that holds it. `open` holds one flag per open loop (true for while/until).
+const newWaitLoopWatch = () => ({ open: [], waiting: 0, lists: false, job: undefined });
+
+function closeLoop(watch) {
+  if (watch.open.pop() !== true) return;
+  watch.waiting--;
+  if (watch.waiting === 0) Object.assign(watch, { lists: false, job: undefined });
+}
+
+function openLoop(watch, word) {
+  const waits = WAIT_LOOP_WORDS.has(word);
+  watch.open.push(waits);
+  if (waits) watch.waiting++;
+}
+
+// Adds the commands of one segment (and of the spans in it) to the loop's scan.
+function addToScan(watch, segment, spans, tokens) {
+  const commands = [
+    ...commandsOfTokens(tokens, 0),
+    ...spans.flatMap((text) => scannedCommands(text, 1)),
+  ];
+  for (const command of commands) {
+    const traits = scanTraits(command);
+    watch.lists = watch.lists || traits.lists;
+    watch.job = watch.job ?? traits.job;
+  }
+  if (!watch.lists || watch.job === undefined) return null;
+
+  return {
+    kind: 'waitLoop',
+    detail: `${segment.trim()} (a wait loop scanning the process list for "${watch.job}")`,
+  };
+}
+
+// Feeds one segment of a line, with the text of its spans, to the watch.
+// Returns a `waitLoop` finding when a wait loop's scan names a watched job.
+function observeWaitLoops(watch, segment, spans) {
+  if (watch.waiting === 0 && !LOOP_WORD_SEARCH.test(segment)) return null;
+  const tokens = words(segment);
+  const loopWords = loopWordsOf(tokens);
+  for (const word of loopWords) {
+    if (word !== 'done') openLoop(watch, word);
+  }
+  // A `done` closes before its segment is scanned: what feeds the loop
+  // (`done < <(ps aux | grep jest)`) runs once, outside it.
+  for (const word of loopWords) {
+    if (word === 'done') closeLoop(watch);
+  }
+
+  return watch.waiting > 0 ? addToScan(watch, segment, spans, tokens) : null;
+}
+
 function firstFinding(lines, depth, checkHeredoc, rules) {
   for (const line of lines) {
     const finding = findDanger(line.text, depth + 1, checkHeredoc, line.directories, rules);
@@ -1899,6 +2070,7 @@ function findDanger(line, depth, checkHeredoc, directories, rules) {
   const bodiesAt = textsBySegment(bodies);
   const spansAt = textsBySegment(nested);
   const nextCommands = followingCommands(segments);
+  const waitLoops = newWaitLoopWatch();
   let before = '';
 
   for (const [index, segment] of segments.entries()) {
@@ -1906,14 +2078,15 @@ function findDanger(line, depth, checkHeredoc, directories, rules) {
     const here = location.directories;
     directoriesAt.push(here);
     const segmentScripts = [];
-    const finding = segmentFinding({
-      segment,
-      scripts: segmentScripts,
-      stdinBodies: bodiesAt(index),
-      spans: spansAt(index),
-      directories: here,
-      rules,
-    });
+    const finding =
+      segmentFinding({
+        segment,
+        scripts: segmentScripts,
+        stdinBodies: bodiesAt(index),
+        spans: spansAt(index),
+        directories: here,
+        rules,
+      }) ?? observeWaitLoops(waitLoops, segment, spansAt(index));
     if (finding !== null) return finding;
     scripts.push(...segmentScripts.map((text) => ({ text, directories: here })));
     const after = separators[index];
