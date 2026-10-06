@@ -136,4 +136,19 @@ describe("scripts/checks/deps.sh's npm ls --all failure block", () => {
     expect(stderr).toContain('rm node_modules/node_modules');
     expect(stderr).not.toContain('ELSPROBLEMS');
   });
+
+  // `rm` fails on a real folder, so that case names the reinstall instead.
+  it('names a real node_modules/node_modules folder and the reinstall, not an rm that fails', () => {
+    const root = buildFixtureRepository();
+    mkdirSync(join(root, 'node_modules/node_modules'));
+
+    const { code, stderr } = runDepsCheckWithFailingNpmLs(root);
+
+    expect(code).toBe(2);
+    expect(stderr).toContain('node_modules/node_modules is a folder');
+    expect(stderr).toContain('npm ci');
+    expect(stderr).not.toContain('rm node_modules/node_modules');
+    expect(stderr).toContain('Do not rm -r node_modules');
+    expect(stderr).not.toContain('ELSPROBLEMS');
+  });
 });
