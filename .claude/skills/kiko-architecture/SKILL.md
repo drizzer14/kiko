@@ -1150,7 +1150,10 @@ each (no migration; `holding-metadata.ts` owns the constants and readers
 Why a window is needed: while the card was absent no run fetched its
 statements, and the closing run already moved the normal cursor past the gap.
 The cost is `ceil((now - mark) / 31 d)` requests behind the 60 s gate, once per
-reopen; the progress weight follows through `estimateWindows`.
+reopen; the progress weight follows through `estimateWindows`. The window has no
+clamp: Monobank answers an old `from` (13 months back, probed 2026-10-06) with
+200, so the sync completes, but rows older than the bank's own history depth
+may be missing without an error.
 
 Known limit (device-checked, no repair built): a holding the sync closed
 BEFORE the mark existed has no mark, looks exactly like a user close, and stays
