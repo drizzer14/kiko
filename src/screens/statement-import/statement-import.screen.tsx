@@ -14,11 +14,6 @@ import {
   supportedFormatNames,
 } from '@kiko/statement-import/registry';
 import maybe, { foldMap } from 'fnts/maybe';
-import {
-  scrollToField,
-  useHeaderInset,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
@@ -32,19 +27,20 @@ import {
 } from '@kiko/statement-import/read-statement-file';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
-import type { ScrollViewInstance } from 'react-native';
 import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { previewStats } from '@kiko/statement-import/preview-stats';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { useRef, useMemo, useEffect, useState, type FC } from 'react';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { importStatement } from '@kiko/statement-import/import-statement';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ImportResultSheet from '@kiko/design-system/components/import-result-sheet';
+import { useImportResultSheet } from '@kiko/statement-import/use-import-result-sheet';
 import { readTableRows, findSavedMapping } from '@kiko/statement-import/column-mapping';
 import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
 import { useImportBalancePreview } from '@kiko/statement-import/use-import-balance-preview';
-import { importStatement, type ImportResult } from '@kiko/statement-import/import-statement';
 
 import StatementImportFooter from './statement-import-footer';
 import StatementPreviewBlock from './statement-preview-block';
@@ -140,22 +136,12 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   const [loadState, setLoadState] = useState<LoadState>({ kind: 'loading' });
   const [pickedHoldingId, setPickedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
-  // Decoupled from `importResult` itself — see
-  // `handleImportDone` below for why.
-  const [resultSheetVisible, setResultSheetVisible] = useState(false);
-  // Guards `handleSheetClosed` against running
-  // its navigation more than once — see that function's own comment.
-  const navigatedAwayRef = useRef(false);
   // Import is ALWAYS enabled — this flips true on the FIRST
   // Import press and stays true, the same "validate on press" contract every
   // other Kiko form uses (`kiko-code-style`'s "Form validation model").
   const [attemptedImport, setAttemptedImport] = useState(false);
   const targetHoldingFieldRef = useRef<FieldInstance>(null);
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
-  const headerInset = useHeaderInset();
-  const contentHeightRef = useRef(0);
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const { options: holdingOptions, isLoading: holdingOptionsLoading } =
     useTargetHoldingOptions(accountId);
   // Derived at render, never cleared in the `holdingId` effect below: the
@@ -174,6 +160,11 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     ['accounts'],
   );
   const bankId = accountRows.at(0)?.bankId;
+  const { sheetProps: importResultSheetProps, show: showImportResult } = useImportResultSheet({
+    navigation,
+    accountId,
+    accountName: accountRows.at(0)?.name,
+  });
   const { data: settingsRows, isLoading: settingsIsLoading } = useLiveQuery(
     settingsRepo.getQuery(),
     ['settings'],
@@ -393,11 +384,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
 
     if (!selectedHoldingId) {
       setAttemptedImport(true);
-      scrollToField(scrollableRef, targetHoldingFieldRef, {
-        currentOffset: scrollOffset.value,
-        headerInset,
-        contentHeight: contentHeightRef.current,
-      });
+      scrollTo(targetHoldingFieldRef);
 
       return;
     }
@@ -405,8 +392,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     setImporting(true);
 
     try {
-      setImportResult(await importStatement(input, selectedHoldingId));
-      setResultSheetVisible(true);
+      showImportResult(await importStatement(input, selectedHoldingId));
     } catch {
       // A translated Alert, never raw `error.message` rendered inline — see
       // `statementImport.importErrorTitle`'s own doc comment.
@@ -414,57 +400,6 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     } finally {
       setImporting(false);
     }
-  };
-
-  // Closes the successful-import modal. Does NOT navigate —
-  // see `handleSheetClosed` below: a native-stack pop
-  // must wait for the sheet to ACTUALLY finish closing, which `onDone` (a
-  // Done press or a scrim tap) cannot promise on its own — only `onClosed`
-  // (the sheet's real completion signal) can. `importResult` itself is
-  // NEVER cleared, so the sheet's last content stays
-  // correct for the whole close animation, independent of `visible`.
-  const handleImportDone = (): void => {
-    setResultSheetVisible(false);
-  };
-
-  // Runs once `ImportResultSheet`'s `onClosed`
-  // fires — `BottomSheet`'s pass-through of RN `Modal`'s own `onDismiss`,
-  // which only fires once the close ANIMATION has actually finished — never
-  // a guessed `setTimeout` delay, which is not tied to the real animation.
-  // `navigatedAwayRef`
-  // ignores a repeated call (a double Done tap, or `onClosed` somehow
-  // firing more than once) so this navigates at most ONCE.
-  //
-  // `navigation.popTo` — NOT `navigate`, which on React Navigation 7 pushes
-  // a DUPLICATE of an already-on-stack route instead of reusing it — see
-  // `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` for the
-  // real-router proof) — finds the existing `AccountDetail` instance
-  // already on the stack (this screen, and Map Columns before it, were both
-  // pushed FROM there) and pops back to it in place, regardless of how many
-  // screens deep this import happened. Falls back to a plain `goBack()`
-  // when the account row hasn't loaded yet (a fresh mount, before its
-  // `useLiveQuery` above resolves) — NEVER `popTo` in that branch, which
-  // would ADD an `AccountDetail` that was never on this stack.
-  const handleSheetClosed = (): void => {
-    if (navigatedAwayRef.current) {
-      return;
-    }
-
-    navigatedAwayRef.current = true;
-
-    const account = accountRows.at(0);
-
-    if (account) {
-      navigation.popTo(
-        'AccountDetail',
-        { accountId, name: account.name, reminderOffer: 'afterImport' },
-        { merge: true },
-      );
-
-      return;
-    }
-
-    navigation.goBack();
   };
 
   // The manual entry point into the generic column-mapping screen.
@@ -507,9 +442,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
       scroll
       footer={footer}
       scrollableRef={scrollableRef}
-      onContentSizeChange={(_width, height) => {
-        contentHeightRef.current = height;
-      }}
+      onContentSizeChange={onContentSizeChange}
     >
       <Box gap={4} testID="statement-import-content">
         {isLoadingFile && (
@@ -550,12 +483,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
         )}
       </Box>
 
-      <ImportResultSheet
-        visible={resultSheetVisible}
-        result={importResult}
-        onDone={handleImportDone}
-        onClosed={handleSheetClosed}
-      />
+      <ImportResultSheet {...importResultSheetProps} />
     </Screen>
   );
 };

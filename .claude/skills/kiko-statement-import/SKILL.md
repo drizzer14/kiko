@@ -541,11 +541,11 @@ pushes a COPY rather than reusing the existing instance.** Use
 `navigation.popTo(name, params, { merge: true })` instead whenever the
 target route may already be on the stack (e.g. returning to
 `AccountDetail` after column-mapping/statement-import finishes). See
-`statement-import.screen.tsx`'s `navigation.popTo` call site comment
-for the canonical explanation and the real-router proof
+`useImportResultSheet`'s doc comment
+(`src/statement-import/use-import-result-sheet/`) for the canonical
+explanation and the real-router proof
 (`src/navigation/root-navigator/statement-import-return.navigator.test.tsx`); the same
-rule is applied at `column-mapping.screen.tsx` and
-`holding-form.screen.tsx`. Jest's shallow navigation mocks cannot catch
+rule is applied at `holding-form.screen.tsx`. Jest's shallow navigation mocks cannot catch
 a `navigate`-vs-`popTo` regression — verify a fix here with a real
 navigator test (as in the return-navigator test above) or a device
 check, not a mocked-navigation unit test.
@@ -565,6 +565,19 @@ follow the same layout conventions as every other Kiko screen:
   when neither applies, since `Screen.footer` reserves clearance for
   ANY defined node); `column-mapping.screen.tsx` gates its own footer
   on `loadState.kind === 'ready'`.
+- **The "import finished" sheet is `useImportResultSheet`**
+  (`src/statement-import/use-import-result-sheet/`), shared by both
+  screens: `useImportResultSheet({ navigation, accountId, accountName })`
+  returns `{ sheetProps, show }`. A screen calls `show(await import…())`
+  after the import and spreads `sheetProps` onto `ImportResultSheet`.
+  The hook owns the visible flag, the never-cleared result, the
+  Done-closes-first rule, and the one `popTo('AccountDetail', …)` (or
+  `goBack()` while `accountName` is `undefined`, i.e. the account row has
+  not loaded) on `onClosed`, at most once. Each screen reads the account
+  name at render (`accountRows.at(0)?.name`, `account?.name`) and passes
+  it in: never re-derive the sheet state or the navigation in a screen.
+  The first-invalid-field scroll on a blocked Import is
+  `useScrollToField()` (kiko-design-system), not hand-rolled geometry.
 - **"Choose a holding" is a labeled SELECT FIELD, not a Button.**
   `src/design-system/components/target-holding-field/` wraps the
   existing `FieldTrigger` + `TargetHoldingSheet` pair (the same
