@@ -233,15 +233,20 @@ only through `depcheck` -> `@vue/compiler-sfc` (and that package's
 `@vue/compiler-core` and `postcss`), and `npm ls source-map-js --all
 --omit=dev` is empty. The fix is NOT yet installable: `1.2.2` was
 published 2026-09-30, inside the 7-day minimum age, so it becomes
-eligible on 2026-10-07. Tracked debt until then, not a suppressed
-finding. Re-run `bash scripts/checks/osv.sh` from 2026-10-07 and pin it
-with a top-level override (`"source-map-js": "1.2.2"`; the parents'
-`^1.2.x` ranges accept it) the moment it is eligible. Last checked
-2026-10-06.
+eligible on 2026-10-07 14:08Z (published 2026-09-30T14:08Z; an install
+before then is refused by `min-release-age=7`). Tracked debt until then,
+not a suppressed finding. Re-run `bash scripts/checks/osv.sh` from that
+time and pin it with a top-level override (`"source-map-js": "1.2.2"`;
+the parents' `^1.2.x` ranges accept it) the moment it is eligible. Last
+checked 2026-10-06.
 
 `check:deep` also flags `sprintf-js` 1.0.3, advisory GHSA-hp3w-g68c-fv3c
-(CVSS 6.9). No fixed version exists. It is dev-only: the one path is
-`depcheck` -> `js-yaml` 3.15.2 -> `argparse` 1.0.10 -> `sprintf-js`, and
+(CVSS 6.9). No fixed version exists. It is dev-only: both paths run
+through one `js-yaml` 3.15.2 -> `argparse` 1.0.10 -> `sprintf-js` chain,
+reached from two parents, `depcheck` (`^3.14.1`) and `babel-jest` ->
+`babel-plugin-istanbul` -> `@istanbuljs/load-nyc-config` (`^3.13.1`;
+`npm ls` shows this one as "deduped", `npm explain sprintf-js` shows
+both). Removing `depcheck` alone therefore does not clear the advisory.
 `npm ls sprintf-js --all --omit=dev` is empty, so it is never in the app
 bundle. Accepted as tracked debt (same class as the `braces` advisory
 above) — do not suppress it; re-check periodically with
