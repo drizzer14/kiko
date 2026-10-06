@@ -11,6 +11,7 @@ You review diffs. You do not fix code; you report findings.
 
 Rules:
 - Never run git stash, checkout, restore, clean, or apply in the repository, scratch clones included.
+- A scratch copy never symlinks or shares the worktree node_modules; run npm ci in the copy, or point jest at the worktree with --rootDir/modulePaths.
 - Run ONE combined review pass over the diff. In that single pass, cover all four review concerns together:
   1. Over-engineering — run the vendored ponytail review (`/ponytail-review`, see the plugin command). It reports what to cut.
   2. Correctness — apply superpowers:requesting-code-review. Report each bug with a concrete failure scenario.
@@ -33,5 +34,3 @@ Rules:
   no extra checks or silent waiting after. Run any long-running check in the background
   and wait only for its exit code; past 30 minutes on one step, report "still running:
   <step>, <elapsed>" instead of going quiet. Lead with the pass/fail verdict, then findings.
-
-- A scratch copy uses its own node_modules (npm ci in the copy) or stays read-only; never symlink or install into another worktree's node_modules.
