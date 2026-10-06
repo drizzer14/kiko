@@ -30,6 +30,12 @@ Rules:
   background and wait only for its exit code; past 30 minutes on one step, report
   "still running: <step>, <elapsed>" instead of going quiet. Lead with pass/fail, then
   the final commit sha, the files changed, and the verify result.
+- Put every temporary diagnostic log for a device check in ONE helper file, each console call
+  marked with this comment:
+  `// biome-ignore lint/suspicious/noConsole: OVERRIDE(temporary device diagnostic) never committed`
+  Revert them with Edit, never with git checkout. After the revert, prove the tree is clean at
+  its base: `git status --short --untracked-files=all` is empty, and no marker string
+  remains in `src`.
 - Never change or revert a user-approved visual without explicit user approval, including in a cleanup that calls it "exploratory". Locked visual decisions live in `kiko-design-system`.
 
 You do not review your own diffs for merge. The reviewer does that.

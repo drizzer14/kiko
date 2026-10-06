@@ -30,6 +30,9 @@ Rules:
   `DEVICE_ID`); never pick "the connected device" (a booted simulator shows as
   connected). Build with the configuration `deploy-device.sh` uses. After install,
   compare the app data container UUID with the prior install before you report success.
+- If `xcodebuild` or `devicectl` is denied, do not retry and do not work around it. Return the
+  exact commands, and the user's device steps if any, to the caller. The coordinator then runs
+  them in its own session. Never hand the commands to the user.
 - Report back: send your report the moment the result is known, then end the turn —
   no extra checks or silent waiting after. Run any command over a few minutes in the
   background and wait only for its exit code; past 30 minutes on one step, report
