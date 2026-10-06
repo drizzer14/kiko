@@ -84,6 +84,12 @@ untouched by the override now, and `npm ls --all` exits clean.
 `scripts/checks/deps.sh` runs `npm ls --all` on every pass, so a
 regression back to an unscoped override fails `check:deps` immediately.
 
+A `node_modules/node_modules` entry (a stray `ln -s` inside `node_modules`, or
+a broken nested folder) gets its own `check:deps` block before the dedup skip,
+because it loops the tree and makes `npm ls --all` report every package
+missing. A link: `rm node_modules/node_modules`. A real folder: `npm ci`.
+Never `rm -r node_modules`. Test: `__tests__/deps-npm-ls-failure.test.ts`.
+
 `bash scripts/checks/osv.sh` also flagged `fast-uri` 3.1.6
 (GHSA-58mr-gqgx-xq4g, GHSA-qw65-cvwx-89v3), a dev-only dependency
 pulled in by the overridden `ajv` (via `@stryker-mutator/core`).
