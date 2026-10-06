@@ -271,7 +271,11 @@ export const transactions = sqliteTable(
     // The cascade delete looks the other legs up by this id.
     exchangePairIdIndex: index('transactions_exchange_pair_id').on(table.exchangePairId),
     // The loan-linked payments lookup reads the rows that name a loan holding.
-    loanHoldingIdIndex: index('transactions_loan_holding_id').on(table.loanHoldingId),
+    // Partial, so the loan matcher's `loan_holding_id IS NULL` filter cannot pick
+    // it over `transactions_time`.
+    loanHoldingIdIndex: index('transactions_loan_holding_id')
+      .on(table.loanHoldingId)
+      .where(sql`${table.loanHoldingId} IS NOT NULL`),
     // Every `orderBy(desc(transactions.time))` (the ledger lists) did a full
     // sort without this.
     timeIndex: index('transactions_time').on(table.time),

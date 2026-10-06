@@ -2,10 +2,21 @@
 //
 // Runs the shipped SQL on a real `node:sqlite` engine seeded as a device's
 // database stood before it, so the index is proven against the real planner.
+// The repo's query builders only compile here (`.toSQL()`); the plan runs on the
+// real engine below, so the client needs no live connection.
+jest.mock('@kiko/db/client', () => {
+  const { toSqlOnlyDrizzle } = require('@kiko/test-support/real-sqlite');
+
+  return { database: toSqlOnlyDrizzle(), write: jest.fn() };
+});
+
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { transactions } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
-import { applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
+import { eq, isNotNull } from 'drizzle-orm';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { applyMigrationsThrough, toSqlOnlyDrizzle } from '@kiko/test-support/real-sqlite';
 
 const MIGRATION_SQL = readFileSync(join(__dirname, '0053_add_loan_holding_id_index.sql'), 'utf8');
 
@@ -96,20 +107,72 @@ describe('migration 0053: the index on the loan holding id', () => {
     expect(columns).toEqual(['loan_holding_id']);
   });
 
-  it('serves the loan-linked payments lookup from the index, not a table scan', () => {
+  it('is partial: only rows that name a loan holding are indexed', () => {
     const database = databaseThrough0052();
 
     applyMigration(database);
 
-    const plan = (
-      database
-        .prepare('EXPLAIN QUERY PLAN SELECT id FROM transactions WHERE loan_holding_id IN (?)')
-        .all('loan') as { detail: string }[]
-    )
-      .map((step) => step.detail)
-      .join(' ');
+    const { sql } = database
+      .prepare("SELECT sql FROM sqlite_master WHERE name = 'transactions_loan_holding_id'")
+      .get() as { sql: string };
 
-    expect(plan).toContain('USING INDEX transactions_loan_holding_id');
+    expect(sql).toContain('WHERE');
+    expect(sql).toContain('IS NOT NULL');
+  });
+
+  describe('the query plans', () => {
+    const planOf = (
+      database: DatabaseSync,
+      query: { toSQL: () => { sql: string; params: unknown[] } },
+    ): string => {
+      const { sql, params } = query.toSQL();
+
+      return (
+        database.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...(params as (string | number)[])) as {
+          detail: string;
+        }[]
+      )
+        .map((step) => step.detail)
+        .join(' ');
+    };
+
+    const migratedDatabase = (): DatabaseSync => {
+      const database = databaseThrough0052();
+
+      applyMigration(database);
+
+      return database;
+    };
+
+    const lookup = toSqlOnlyDrizzle().select({ id: transactions.id }).from(transactions);
+
+    it('keeps the loan matcher on its time window, not the partial index', () => {
+      const plan = planOf(
+        migratedDatabase(),
+        transactionsRepo.loanMatchCandidatesQuery({ minTime: PAID, currencies: ['UAH'] }),
+      );
+
+      expect(plan).toContain('USING INDEX transactions_time');
+      expect(plan).not.toContain('transactions_loan_holding_id');
+    });
+
+    it('serves the loan-linked payments lookup (IN) from the index', () => {
+      const plan = planOf(migratedDatabase(), transactionsRepo.loanLinkedPaymentsQuery(['loan']));
+
+      expect(plan).toContain('USING INDEX transactions_loan_holding_id');
+    });
+
+    it('serves an IS NOT NULL lookup from the index', () => {
+      const plan = planOf(migratedDatabase(), lookup.where(isNotNull(transactions.loanHoldingId)));
+
+      expect(plan).toContain('USING INDEX transactions_loan_holding_id');
+    });
+
+    it('serves an equality lookup from the index', () => {
+      const plan = planOf(migratedDatabase(), lookup.where(eq(transactions.loanHoldingId, 'loan')));
+
+      expect(plan).toContain('USING INDEX transactions_loan_holding_id');
+    });
   });
 
   it('changes no row: a linked and an unlinked payment read back as they were', () => {

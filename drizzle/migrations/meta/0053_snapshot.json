@@ -983,7 +983,8 @@
         "transactions_loan_holding_id": {
           "name": "transactions_loan_holding_id",
           "columns": ["loan_holding_id"],
-          "isUnique": false
+          "isUnique": false,
+          "where": "\"transactions\".\"loan_holding_id\" IS NOT NULL"
         },
         "transactions_time": {
           "name": "transactions_time",
