@@ -1939,7 +1939,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   deletes are unknowable, so there is no data step and no derived mirror. Its
   foreign key to `holdings` is NO ACTION, so the order carries it: a holding
   or account delete removes the keys first (`removeHoldingDatabaseTransaction`,
-  `accountsRepo.remove`), and a restore (`restoreDataSnapshot`) deletes the
+  `accountsRepo.remove`). A write that moves a holding's balance anchor (a
+  closing balance that applies, a hand-set balance, the bank figure of a sync)
+  clears all its keys in the same write
+  (`clearDeletedImportKeysDatabaseTransaction`): the sync clears but never
+  reads them, so it never revives a row. A restore (`restoreDataSnapshot`) deletes the
   table BEFORE `holdings` and inserts it AFTER them, skipping a key whose
   holding it did not insert, with `?? []` for a file without the key (the
   snapshot field is optional). The composite primary key is its only index.

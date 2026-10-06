@@ -123,7 +123,7 @@ boundary (user rule 2026-10-05, "Every transaction updates its balance" in
 kiko-domain): the balance moves only, `balanceSetAt` stays, and no bank figure
 is stored, so deleting every row of an import ends on the statement's opening
 balance. Re-importing the same file brings a deleted row back WITH its amount
-(user ruling 2026-10-06, "Fix now (c)"): a delete of a `source = 'import'` row
+(user ruling 2026-10-06): a delete of a `source = 'import'` row
 with an `externalId` keeps its stored key in `deleted_import_keys` (migration
 0054; primary key `holding_id, external_id`; `removeRowsDatabaseTransaction`
 writes it, so a cascaded partner counts too). An import counts a new row at its
@@ -133,9 +133,19 @@ target holding (`readRevivedKeysDatabaseTransaction`, read before
 balance still re-sets the bank's figure and ignores the keys for the number. A
 row the holding never had and dated on or before the boundary still counts 0,
 so a first import of past months never double-counts. The import deletes the
-matched keys of the rows it inserts (the preview deletes nothing). The sync
-never reads or writes the table, a holding or account delete clears its keys,
-and the key rewrites (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave it
+matched keys of the rows it inserts (the preview deletes nothing). **A key is
+for the current balance anchor only:** every write that moves a holding's
+anchor deletes ALL of its keys in that same write, because the new anchor
+already holds what the user deleted: a closing balance that applies
+(`importRows`, `balanceSetAt` written), a hand-set balance
+(`updateWithBalanceDelta` with a non-zero delta) and the bank figure of a sync
+(`upsertByMetadataKey`'s update branch), all through
+`clearDeletedImportKeysDatabaseTransaction` (`holdings.repo.ts`). Without it,
+closing 85,000, a delete of -5,000 (90,000), a newer closing 70,000 and the old
+statement again gives 65,000, not 70,000. A hand edit with no balance change
+and a closing balance that does not apply keep the keys. The sync clears the
+keys but never reads them and never revives a row. A holding or account delete
+clears its keys, and the key rewrites (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave it
 alone: a rewritten key misses and the row comes back at 0. A delete made before
 the table existed left no key. A `.kiko` restore carries the table
 (`deletedImportKeys`, optional key, no `EXPORT_VERSION` bump) and skips a key

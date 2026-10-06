@@ -27,7 +27,7 @@ import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { createHoldingValuer } from '@kiko/statistics/holding-value-at';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
-import { write, accounts, holdings, pricePoints, transactions } from '@kiko/db';
+import { write, accounts, deletedImportKeys, holdings, pricePoints, transactions } from '@kiko/db';
 
 import { holdingsRepo, type LoanPricePointOp } from './holdings.repo';
 
@@ -697,9 +697,11 @@ const makeUpsertDatabaseTransaction = (
   databaseTransaction: unknown;
   inserts: Record<string, unknown>[];
   updates: Record<string, unknown>[];
+  keyDeletes: boolean[];
 } => {
   const inserts: Record<string, unknown>[] = [];
   const updates: Record<string, unknown>[] = [];
+  const keyDeletes: boolean[] = [];
   const selectResults: unknown[][] = [matchRows, [{ value: maxSortOrder }]];
   const databaseTransaction = {
     select: () => ({
@@ -727,9 +729,16 @@ const makeUpsertDatabaseTransaction = (
         },
       }),
     }),
+    delete: (table: unknown) => ({
+      where: () => {
+        keyDeletes.push(table === deletedImportKeys);
+
+        return Promise.resolve();
+      },
+    }),
   };
 
-  return { databaseTransaction, inserts, updates };
+  return { databaseTransaction, inserts, updates, keyDeletes };
 };
 
 describe('holdingsRepo.upsertExchange', () => {
@@ -745,13 +754,15 @@ describe('holdingsRepo.upsertExchange', () => {
   };
 
   it('updates balance and metadata in place when a holding with the key exists', async () => {
-    const { databaseTransaction, inserts, updates } = makeUpsertDatabaseTransaction([
+    const { databaseTransaction, inserts, updates, keyDeletes } = makeUpsertDatabaseTransaction([
       { id: 'h-existing' },
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.upsertExchange(walletHolding);
 
+    // The balance written is the new anchor: the kept keys of deleted import rows go.
+    expect(keyDeletes).toEqual([true]);
     expect(inserts).toHaveLength(0);
     expect(updates).toEqual([
       {
@@ -765,11 +776,15 @@ describe('holdingsRepo.upsertExchange', () => {
   });
 
   it('inserts a crypto_asset holding with the key merged into metadata and a fresh sortOrder on a miss', async () => {
-    const { databaseTransaction, inserts, updates } = makeUpsertDatabaseTransaction([], 2);
+    const { databaseTransaction, inserts, updates, keyDeletes } = makeUpsertDatabaseTransaction(
+      [],
+      2,
+    );
     mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.upsertExchange(walletHolding);
 
+    expect(keyDeletes).toEqual([]);
     expect(updates).toHaveLength(0);
     expect(inserts).toHaveLength(1);
     expect(inserts[0]).toMatchObject({
@@ -889,6 +904,7 @@ describe('holdingsRepo.upsertExchangeMany', () => {
           },
         }),
       }),
+      delete: () => ({ where: () => Promise.resolve() }),
     };
     mockDatabaseTransaction = databaseTransaction;
 
@@ -911,13 +927,14 @@ describe('holdingsRepo.upsertMonobank (via the shared metadata-key helper)', () 
   };
 
   it('updates an existing card in place, merging monobankId into its metadata', async () => {
-    const { databaseTransaction, inserts, updates } = makeUpsertDatabaseTransaction([
+    const { databaseTransaction, inserts, updates, keyDeletes } = makeUpsertDatabaseTransaction([
       { id: 'h-card' },
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
     await holdingsRepo.upsertMonobank(cardHolding);
 
+    expect(keyDeletes).toEqual([true]);
     expect(inserts).toHaveLength(0);
     expect(updates).toEqual([
       {
@@ -1112,6 +1129,7 @@ const makeSharedDatabaseTransaction = (
         },
       }),
     }),
+    delete: () => ({ where: async () => undefined }),
   };
 };
 
@@ -1167,12 +1185,13 @@ type BalanceDeltaCapture = {
   holdingSet?: Record<string, unknown>;
   transactionSets: Record<string, unknown>[];
   inserts: Record<string, unknown>[];
+  keyDeletes: boolean[];
 };
 
 const makeBalanceDeltaDatabaseTransaction = (
   stored: Record<string, unknown> | null,
 ): { databaseTransaction: unknown; captured: BalanceDeltaCapture } => {
-  const captured: BalanceDeltaCapture = { transactionSets: [], inserts: [] };
+  const captured: BalanceDeltaCapture = { transactionSets: [], inserts: [], keyDeletes: [] };
   const databaseTransaction = {
     select: () => ({
       from: () => ({
@@ -1195,6 +1214,13 @@ const makeBalanceDeltaDatabaseTransaction = (
     insert: () => ({
       values: (values: Record<string, unknown>) => {
         captured.inserts.push(values);
+
+        return Promise.resolve();
+      },
+    }),
+    delete: (table: unknown) => ({
+      where: () => {
+        captured.keyDeletes.push(table === deletedImportKeys);
 
         return Promise.resolve();
       },
@@ -1276,6 +1302,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 500_00) }, 1);
 
     expect(captured.transactionSets).toEqual([]);
+    expect(captured.keyDeletes).toEqual([true]);
     expect(captured.inserts[0]).toMatchObject({ setsBalance: true });
     expect(captured.holdingSet).toMatchObject({ balanceSetRowId: captured.inserts[0]?.id });
   });
@@ -1322,6 +1349,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     await holdingsRepo.updateWithBalanceDelta('h-1', { name: 'Renamed' }, 1);
 
     expect(captured.inserts).toHaveLength(0);
+    expect(captured.keyDeletes).toEqual([]);
     expect(captured.holdingSet).toEqual({ name: 'Renamed' });
   });
 
@@ -1335,6 +1363,7 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 100_00) }, 1);
 
     expect(captured.inserts).toHaveLength(0);
+    expect(captured.keyDeletes).toEqual([]);
     expect(captured.transactionSets).toEqual([]);
     expect(captured.holdingSet).toEqual({ balanceMinorUnits: 100_00 });
   });

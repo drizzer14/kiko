@@ -337,7 +337,10 @@ same file brings a deleted row back with its amount: a deleted import row's
 stored key is kept per holding (`deleted_import_keys`, migration 0054), and a
 row matching one counts at full amount on the net-delta path whatever its date,
 while a row the holding never had and dated on or before the boundary still
-counts 0 (kiko-statement-import has the full rule). The delete confirm states each holding's change
+counts 0 (kiko-statement-import has the full rule). Every key of a holding goes in
+the same write that moves its balance anchor (a closing balance that applies, a
+hand-set balance with a non-zero delta, the bank figure of a sync): the sync
+clears the keys but never reads them and never revives a row. The delete confirm states each holding's change
 (`transactions.deleteLinked.balanceChange`, see "Deleting a movement takes its
 other parts"). A sync write is outside the rule: the Monobank balance is the
 bank's own figure on every sync, and a sync REOPEN of a closed card writes no

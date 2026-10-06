@@ -344,3 +344,112 @@ describe('a closing balance import over a manual row and a deleted statement row
     expect(keyCount()).toBe(0);
   });
 });
+
+// A balance anchor that moves (a closing balance that applies, a hand-set
+// balance, the bank's own figure from a sync) already holds what the user
+// deleted, so every key kept before it is dropped in the same write: an older
+// statement imported afterwards must not bring the deleted row back with its
+// amount on top of the new anchor.
+describe('a deleted statement row against a newer balance anchor', () => {
+  const keyCountOf = (holdingId: string): number =>
+    scalarOf(
+      'SELECT count(*) AS value FROM deleted_import_keys WHERE holding_id = ?',
+      holdingId,
+    ) as number;
+
+  beforeEach(async () => {
+    await recordManual(-1_000, SEPTEMBER_20);
+    await transactionsRepo.remove(idOfKey('k-50'));
+    run(
+      "INSERT INTO holdings (id, account_id, name, type, currency) VALUES ('other', 'account', 'Other', 'card', 'UAH')",
+    );
+    run("INSERT INTO deleted_import_keys (holding_id, external_id) VALUES ('other', 'k-50')");
+  });
+
+  it('forgets the key when a newer closing balance applies, and the old statement leaves it out', async () => {
+    await expect(importWithPreview([], closing(12_000, NOVEMBER_1))).resolves.toEqual({
+      previewed: 11_000,
+      stored: 11_000,
+    });
+
+    expect(keyCountOf('card')).toBe(0);
+
+    await expect(importWithPreview(statementRows(), statementClosing())).resolves.toEqual({
+      previewed: 11_000,
+      stored: 11_000,
+    });
+
+    expect(rowCountOf()).toBe(3);
+    expect(balanceSetAt()).toBe(NOVEMBER_1);
+  });
+
+  it('keeps the key of another holding when a closing balance applies', async () => {
+    await importWithPreview([], closing(12_000, NOVEMBER_1));
+
+    expect(keyCountOf('other')).toBe(1);
+  });
+
+  it('keeps the key when a closing balance does not apply and the row is not in the file', async () => {
+    await importWithPreview([], closing(9_500, Date.UTC(2026, 8, 1)));
+
+    expect(keyCountOf('card')).toBe(1);
+  });
+
+  it('forgets the key when a hand-set balance moves the balance, and the old statement leaves it out', async () => {
+    await holdingsRepo.updateWithBalanceDelta(
+      'card',
+      { balance: Money.of('UAH', 10_000) },
+      OCTOBER_7,
+    );
+
+    expect(keyCountOf('card')).toBe(0);
+    expect(keyCountOf('other')).toBe(1);
+
+    await expect(importWithPreview(statementRows(), statementClosing())).resolves.toEqual({
+      previewed: 10_000,
+      stored: 10_000,
+    });
+  });
+
+  it('keeps the key when a hand edit leaves the balance where it is', async () => {
+    await holdingsRepo.updateWithBalanceDelta(
+      'card',
+      { balance: Money.of('UAH', 9_050), name: 'Renamed' },
+      OCTOBER_7,
+    );
+
+    expect(keyCountOf('card')).toBe(1);
+  });
+
+  it('keeps the key when a hand edit leaves the balance alone', async () => {
+    await holdingsRepo.updateWithBalanceDelta('card', { name: 'Renamed' }, OCTOBER_7);
+
+    expect(keyCountOf('card')).toBe(1);
+  });
+
+  it('forgets the key when a sync writes the bank figure, and the old statement leaves it out', async () => {
+    run(`UPDATE holdings SET metadata = '{"monobankId":"m1"}' WHERE id = 'card'`);
+
+    await holdingsRepo.upsertMonobank({
+      accountId: 'account',
+      name: 'Card',
+      type: 'card',
+      currency: 'UAH',
+      balanceMinorUnits: 12_000,
+      monobankId: 'm1',
+    });
+    run(
+      `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id)
+       VALUES ('synced', 'card', -300, ?, 'monobank', 'bank-1')`,
+      NOVEMBER_1,
+    );
+
+    expect(keyCountOf('card')).toBe(0);
+    expect(keyCountOf('other')).toBe(1);
+
+    await expect(importWithPreview(statementRows(), statementClosing())).resolves.toEqual({
+      previewed: 12_000,
+      stored: 12_000,
+    });
+  });
+});

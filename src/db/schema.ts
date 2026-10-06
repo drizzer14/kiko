@@ -297,10 +297,14 @@ export type TransactionRow = typeof transactions.$inferSelect;
 // its balance boundary stays history and counts 0 (`importRows`). Written by
 // `removeRowsDatabaseTransaction` for a row with `source = 'import'` and an
 // `externalId`, deleted when the row is inserted again and with its holding
-// (`removeHoldingDatabaseTransaction`). The sync never reads or writes it, and
-// the key-rewrite passes (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave
-// it as it was, so a key they rewrote is a miss: the row comes back at 0, never
-// counted twice. No named index: the primary key's own index serves both reads.
+// (`removeHoldingDatabaseTransaction`). Every key of a holding is also deleted
+// in the write that moves the holding's balance anchor (a closing balance that
+// applies, a hand-set balance, the bank figure of a sync), because the new
+// anchor already holds what the user deleted. The sync clears the keys that way
+// but never reads them and never revives a row, and the key-rewrite passes
+// (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave them as they were, so a
+// key they rewrote is a miss: the row comes back at 0, never counted twice. No
+// named index: the primary key's own index serves both reads.
 export const deletedImportKeys = sqliteTable(
   'deleted_import_keys',
   {
@@ -308,6 +312,8 @@ export const deletedImportKeys = sqliteTable(
       .notNull()
       .references(() => holdings.id),
     externalId: text('external_id').notNull(),
+    // When the key was deleted: kept for the export audit and a future pruning of
+    // old keys; nothing reads it today.
     deletedAt: integer('deleted_at').notNull().default(sql`(unixepoch() * 1000)`),
   },
   (table) => ({

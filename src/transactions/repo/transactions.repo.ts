@@ -33,6 +33,7 @@ import {
 } from 'drizzle-orm';
 import {
   appendDepositContributionDatabaseTransaction,
+  clearDeletedImportKeysDatabaseTransaction,
   depositContributionMatchedDatabaseTransaction,
   removeDepositContributionDatabaseTransaction,
   removeHoldingDatabaseTransaction,
@@ -2755,10 +2756,19 @@ export const transactionsRepo = {
    * first import of past months never counts twice. A row matches a deleted key
    * by its `externalId` or its `aliasExternalId`, and the import deletes the
    * keys of the rows it inserts, in the same transaction (the preview deletes
-   * nothing). The sync neither reads nor writes the keys, and neither does a
-   * key rewrite (`upgradeStoredDedupKeys`, `rezoneImportTimes`): a key they
-   * rewrote misses, and the row then comes back at 0. A delete made before the
-   * table existed left no key, so such a row comes back at 0 as well.
+   * nothing). A key is also for the CURRENT anchor only: every write that moves
+   * the holding's balance anchor deletes ALL the holding's keys in that same
+   * write, because the new anchor already holds what the user deleted: a closing
+   * balance that applies here (`useClosingBalance`), a hand-set balance
+   * (`updateWithBalanceDelta`, non-zero delta) and the bank figure of a sync
+   * (`upsertByMetadataKey`). Without it a newer anchor plus an older statement
+   * imported afterwards counts the deleted row twice (closing 85,000; delete
+   * -5,000 gives 90,000; a newer closing 70,000; the old statement again would
+   * give 65,000, not 70,000). The sync clears the keys but never reads them and
+   * never revives a row, and neither does a key rewrite
+   * (`upgradeStoredDedupKeys`, `rezoneImportTimes`): a key they rewrote misses,
+   * and the row then comes back at 0. A delete made before the table existed
+   * left no key, so such a row comes back at 0 as well.
    *
    * NO MIGRATION was written for holdings a pre-fix build already wrote a
    * wrong (0 or under-counted) balance into: `1.0.0` is
@@ -2797,6 +2807,12 @@ export const transactionsRepo = {
           ({ externalId }) => foldMap(maybe(externalId), (key) => revivedKeys.get(key)) ?? [],
         ),
       );
+
+      // A closing balance that applies is the new anchor: it already holds what the
+      // user deleted, so every key of the holding goes, not only the revived ones.
+      if (balanceSetAt !== undefined) {
+        await clearDeletedImportKeysDatabaseTransaction(databaseTransaction, input.holdingId);
+      }
 
       if (nextBalance !== holding.balanceMinorUnits || balanceSetAt !== undefined) {
         await databaseTransaction
