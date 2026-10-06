@@ -262,8 +262,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   deadlocks with it). Rule: deny a Bash command with a `while` or `until`
   loop (condition or body, through its matching `done`) that both lists
   processes and names a watched job where it filters them. Lists
-  (`PROCESS_LISTERS`, `scanTraits`): `ps`, `top`, `pstree`, or `pgrep`
-  WITH `-f` (any flag group holding `f`) or `--full`. Names a job:
+  (`PROCESS_LISTERS`, `listsAllProcesses`, `scanTraits`): `top`,
+  `pstree`, `ps` (but a `ps` named by pid with `-p`, `--pid`, or `-q`
+  and no `-A`/`-e`/BSD `a`/`x` lists only those pids: a pid wait, not a
+  scan), or `pgrep` WITH `-f` (any flag group holding `f`) or
+  `--full`. Names a job:
   `make verify` (any non-word run between the two words), `check:all`,
   `jest`, `stryker`, `semgrep`, `xcodebuild` (`WATCHED_JOB`, case folded,
   after `[`, `]`, `\` are dropped so `[j]est` and `make[ ]verify` count)
@@ -276,8 +279,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   segments of one line are walked in order; a `while`/`until` (after
   lead-in words: `do`, `then`, a group opener) opens a wait loop, `for`
   and `select` open a loop that is only counted, `done` closes the last
-  open one, and the scan flags reset when the outermost wait loop
-  closes — so a one-time scan before or after a loop never counts. The
+  open one. The scan is judged only when the outermost wait loop's
+  `done` closes it (an unclosed `while` never runs, so a wrapped prose
+  line starting with `while` in a commit message never denies), and the
+  scan flags reset then — so a one-time scan before or after a loop,
+  or in another loop, never counts. The
   walk runs at every nesting level the other denies reach (a `-c`
   string, a span, a heredoc body, `eval`), once per segment (linear;
   `__tests__/kill-guard-wait-loops.test.ts` has the timing rows). Reason:
@@ -287,7 +293,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   code for a job the agent started. Allowed: a one-time `ps`/`pgrep`
   outside a loop; a loop that scans nothing (`until bash
   scripts/wait-load.sh …`, `until [ -f flag ]`, `while kill -0 <pid>`,
-  `while ps -p <pid>`, `while ! grep -q … log`); `pgrep` without `-f`
+  `while ps -p <pid>`, even with `grep -c jest log` in its body,
+  `while ! grep -q … log`); `pgrep` without `-f`
   (`pgrep -x xcodebuild`: a name match cannot see the loop's own
   command line); a bounded `for` loop (it ends). Rows:
   `__tests__/kill-guard-wait-loops.test.ts`. Where it is live: like the
@@ -415,12 +422,16 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     wrapper outside the `unwrap` sets (`time while …`); a job name
     outside the watched six (`check:deep`, `make gate`); a regex class
     that spells a name without its letters (`make[[:space:]]verify`).
-    Over-denied: a `ps`/`pgrep -f` anywhere in the loop and a filter
-    naming a watched job anywhere in it, even when they are unrelated
-    (`while read x; do ps -p $x; done` beside `grep -q jest f` in the
-    same outermost loop); prose in a heredoc body (a commit message) whose
-    lines read as a `while`/`until` loop plus a `ps`/`grep jest` line,
-    since a body is judged like the kill and stash denies judge it.
+    A stdin script (`while bash <<< "pgrep -f jest"; do sleep 1; done`,
+    a heredoc body into a shell inside the loop): `scriptOf` reads only
+    `-c` and `eval`.
+    Over-denied: a lister and a filter naming a watched job anywhere in
+    the same outermost loop, even when unrelated (`while ps aux | head
+    -1; do grep -q jest f; done`); prose in a heredoc body (a commit
+    message) that spells a complete `while`/`until` … `done` loop with a
+    scan in it. An UNCLOSED loop is never judged (a wrapped prose line
+    starting with `while`/`until` is not a loop), since a body is judged
+    like the kill and stash denies judge it.
   - bash 3.2 only (zsh fails): a command after a heredoc inside
     `<(`/`$(` whose body holds an unbalanced paren, and
     `echo $( (echo a)#c ); pkill x`, both run and are not denied.
