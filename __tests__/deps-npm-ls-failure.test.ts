@@ -1,7 +1,15 @@
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 
 // scripts/checks/deps.sh's npm-ls step must surface only the lines npm
 // itself marks as the problem (its stderr, plus any tree line tagged
@@ -98,5 +106,34 @@ describe("scripts/checks/deps.sh's npm ls --all failure block", () => {
     expect(stderr).toContain('missing: right-pad@^1.0.0');
     expect(stderr).not.toContain('FILLER-TREE-LINE-1');
     expect(stderr).not.toContain('FILLER-TREE-LINE-40');
+  });
+
+  // A `node_modules/node_modules` self-link (a stray `ln -s … node_modules` run
+  // inside an installed folder) makes npm report every package invalid; the
+  // check names the link and its fix before npm ls runs, so the failing stub
+  // npm here never gets to print its ELSPROBLEMS.
+  it('names a node_modules/node_modules self-link and its fix before npm ls runs', () => {
+    const root = buildFixtureRepository();
+    symlinkSync('.', join(root, 'node_modules/node_modules'));
+
+    const { code, stderr } = runDepsCheckWithFailingNpmLs(root);
+
+    expect(code).toBe(2);
+    expect(stderr).toContain('CHECK FAILED');
+    expect(stderr).toContain('node_modules/node_modules');
+    expect(stderr).toContain('rm node_modules/node_modules');
+    expect(stderr).toContain('rm -r node_modules');
+    expect(stderr).not.toContain('ELSPROBLEMS');
+  });
+
+  it('names a dangling node_modules/node_modules link too', () => {
+    const root = buildFixtureRepository();
+    symlinkSync('../gone', join(root, 'node_modules/node_modules'));
+
+    const { code, stderr } = runDepsCheckWithFailingNpmLs(root);
+
+    expect(code).toBe(2);
+    expect(stderr).toContain('rm node_modules/node_modules');
+    expect(stderr).not.toContain('ELSPROBLEMS');
   });
 });
