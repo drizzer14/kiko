@@ -185,7 +185,13 @@ const fixtures: Fixture[] = [
       rows: [{ externalId: 'newer', amountMinorUnits: -3_000, time: CLOSING_AT + 2 * DAY_MS }],
       closingBalance: closing(70_000, CLOSING_AT + 3 * DAY_MS),
     },
-    expected: setTo(70_000, CLOSING_AT + 3 * DAY_MS),
+    expected: { ...setTo(65_000, CLOSING_AT + 3 * DAY_MS), bankMinorUnits: 70_000 },
+  },
+  {
+    name: 'a closing balance with an earlier manual entry already in the ledger',
+    prepare: () => insertStoredRow('earlier', 'manual', -5_000, CLOSING_AT - 3 * DAY_MS),
+    input: { rows: threeRows, closingBalance: CLOSING },
+    expected: { ...setTo(80_000, CLOSING_AT), bankMinorUnits: 85_000 },
   },
   {
     name: 'a closing balance with a later entry already in the ledger',
@@ -465,14 +471,15 @@ describe('deleting an import row against a balance set by hand', () => {
     expect(balanceOf()).toBe(107_000);
   });
 
-  // A file with no closing balance counts a row before the hand set as history,
-  // so importing it again brings the row back without its amount.
-  it('brings a deleted row before the hand set back as history, its amount not counted', async () => {
+  // The delete took the amount back, so the row that comes back brings it again,
+  // though a file with no closing balance counts a row before the hand set as
+  // history when the holding never had it.
+  it('brings a deleted row before the hand set back with its amount', async () => {
     await transactionsRepo.remove(idOf('before-1'));
     await importRows(aroundHandSet([afterHandSet]));
 
     expect(storedRowCount()).toBe(3);
-    expect(balanceOf()).toBe(107_000);
+    expect(balanceOf()).toBe(97_000);
   });
 });
 

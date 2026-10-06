@@ -19,7 +19,7 @@ import { accountsRepo } from '@kiko/accounts';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import { kyivWallClockToUtcMilliseconds } from '@kiko/dates';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
-import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
+import { accounts, categoryOverrides, deletedImportKeys, holdings, transactions } from '@kiko/db';
 
 import { transactionsRepo } from './transactions.repo';
 
@@ -2192,9 +2192,17 @@ const makeImportRowsDatabaseTransaction = (
   options: ImportRowsTransactionOptions,
 ): {
   databaseTransaction: unknown;
-  captured: { holdingSet?: Record<string, unknown>; inserted?: unknown[] };
+  captured: {
+    holdingSet?: Record<string, unknown>;
+    inserted?: unknown[];
+    keyDeletes: boolean[];
+  };
 } => {
-  const captured: { holdingSet?: Record<string, unknown>; inserted?: unknown[] } = {};
+  const captured: {
+    holdingSet?: Record<string, unknown>;
+    inserted?: unknown[];
+    keyDeletes: boolean[];
+  } = { keyDeletes: [] };
   const resolveRows = (rows: unknown[]) =>
     Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
 
@@ -2218,6 +2226,13 @@ const makeImportRowsDatabaseTransaction = (
         }
 
         return { where: () => Promise.resolve() };
+      },
+    }),
+    delete: (table: unknown) => ({
+      where: () => {
+        captured.keyDeletes.push(table === deletedImportKeys);
+
+        return Promise.resolve();
       },
     }),
   };
@@ -2357,6 +2372,8 @@ describe('transactionsRepo.importRows', () => {
       balanceSetAt: 2_000,
       balanceSetRowId: null,
     });
+    // The applied closing balance is a new anchor, so it forgets every kept key.
+    expect(captured.keyDeletes).toEqual([true]);
   });
 
   it('ignores an OLDER closing balance and adds the net of new rows instead, when the rows themselves are AFTER the boundary', async () => {
@@ -2383,6 +2400,7 @@ describe('transactionsRepo.importRows', () => {
     });
 
     expect(captured.holdingSet).toEqual({ balanceMinorUnits: -6_000 });
+    expect(captured.keyDeletes).toEqual([]);
   });
 
   it('ignores a closing balance in the WRONG currency and adds the net of new rows instead', async () => {
@@ -2893,6 +2911,7 @@ const makeOrderedImportDatabaseTransaction = (options: OrderedImportTransactionO
         return { where: () => Promise.resolve() };
       },
     }),
+    delete: () => ({ where: () => Promise.resolve() }),
   };
 };
 

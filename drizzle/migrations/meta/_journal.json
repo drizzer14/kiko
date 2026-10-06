@@ -379,6 +379,13 @@
       "when": 1791249729128,
       "tag": "0053_add_loan_holding_id_index",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1791274093021,
+      "tag": "0054_add_deleted_import_keys",
+      "breakpoints": true
     }
   ]
 }

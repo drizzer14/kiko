@@ -32,7 +32,7 @@ describe('ImportBalanceLine', () => {
     expect(getByTestId('balance-line')).toHaveTextContent('Balance will be set to 850.00 ₴');
   });
 
-  it('adds the bank figure and its date when later entries make the result differ', async () => {
+  it('adds the bank figure and its date when entries not in the statement make the result differ', async () => {
     const { getByTestId } = await renderLine({
       kind: 'set',
       currency: 'UAH',
@@ -42,7 +42,7 @@ describe('ImportBalanceLine', () => {
     });
 
     expect(getByTestId('balance-line')).toHaveTextContent(
-      `Balance will be set to 850.00 ₴ (bank balance 900.00 ₴ on ${formatDate(AS_OF_SECONDS * 1000)}, plus your later entries)`,
+      `Balance will be set to 850.00 ₴ (bank balance 900.00 ₴ on ${formatDate(AS_OF_SECONDS * 1000)}, plus entries not in this statement)`,
     );
   });
 
@@ -96,7 +96,7 @@ describe('ImportBalanceLine', () => {
     expect(getByTestId('balance-line')).toHaveTextContent(/^Баланс зміниться з .+ на .+$/);
   });
 
-  it('reads the later entries in Ukrainian', async () => {
+  it('reads the entries not in the statement in Ukrainian', async () => {
     await act(async () => {
       await i18n.changeLanguage('uk');
     });
@@ -110,7 +110,7 @@ describe('ImportBalanceLine', () => {
     });
 
     expect(getByTestId('balance-line')).toHaveTextContent(
-      /^Баланс буде встановлено: .+ \(баланс у банку .+ на .+, плюс ваші пізніші записи\)$/,
+      /^Баланс буде встановлено: .+ \(баланс у банку .+ на .+, плюс записи, яких немає у виписці\)$/,
     );
   });
 

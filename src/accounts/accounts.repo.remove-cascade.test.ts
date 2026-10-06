@@ -350,3 +350,26 @@ describe('an account delete that cannot finish', () => {
     expect(stateOf()).toEqual(before);
   });
 });
+
+const keptKeyCount = (): number =>
+  (
+    mockDatabase.prepare('SELECT count(*) AS count FROM deleted_import_keys').get() as {
+      count: number;
+    }
+  ).count;
+
+describe('deleting an account whose holdings kept the keys of deleted import rows', () => {
+  it('removes the keys with the account', async () => {
+    insertRow({ id: 'uah-import', holdingId: 'uah', amountMinorUnits: -100, source: 'import' });
+    insertRow({ id: 'usd-import', holdingId: 'usd', amountMinorUnits: -100, source: 'import' });
+    await transactionsRepo.remove('uah-import');
+    await transactionsRepo.remove('usd-import');
+
+    expect(keptKeyCount()).toBe(2);
+
+    await accountsRepo.remove('account');
+
+    expect(keptKeyCount()).toBe(0);
+    expect(accountExists('account')).toBe(false);
+  });
+});

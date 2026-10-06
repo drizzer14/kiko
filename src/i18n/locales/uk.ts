@@ -830,7 +830,7 @@ export const uk: typeof en = {
     importResultTitle: 'Імпорт завершено',
     balanceWillBeSet: 'Баланс буде встановлено: {{amount}}',
     balanceWillBeSetWithLater:
-      'Баланс буде встановлено: {{amount}} (баланс у банку {{bankAmount}} на {{date}}, плюс ваші пізніші записи)',
+      'Баланс буде встановлено: {{amount}} (баланс у банку {{bankAmount}} на {{date}}, плюс записи, яких немає у виписці)',
     balanceWillChange: 'Баланс зміниться з {{from}} на {{to}}',
     balanceStays: 'Баланс не зміниться: {{amount}}',
     // i18next's uk plural rule: _one (1 рядок), _few (2-4 рядки), _many (0,

@@ -13,6 +13,7 @@ import {
   categoryOverrides,
   currencyRateHistory,
   currencyRates,
+  deletedImportKeys,
   holdings,
   pricePoints,
   reminders,
@@ -54,6 +55,8 @@ const tableNameOf = (table: unknown): string => {
   if (table === bondRegister) return 'bondRegister';
 
   if (table === reminders) return 'reminders';
+
+  if (table === deletedImportKeys) return 'deletedImportKeys';
   throw new Error('unknown table');
 };
 
@@ -136,6 +139,7 @@ describe('restoreDataSnapshot', () => {
     });
 
     expect(deletedTables).toEqual([
+      'deletedImportKeys',
       'transactions',
       'syncState',
       'reminders',
@@ -598,6 +602,7 @@ describe('restoreDataSnapshot', () => {
     });
 
     expect(deletedTables).toEqual([
+      'deletedImportKeys',
       'transactions',
       'syncState',
       'reminders',

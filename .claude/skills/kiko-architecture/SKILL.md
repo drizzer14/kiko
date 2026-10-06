@@ -1158,7 +1158,10 @@ each (no migration; `holding-metadata.ts` owns the constants and readers
 Why a window is needed: while the card was absent no run fetched its
 statements, and the closing run already moved the normal cursor past the gap.
 The cost is `ceil((now - mark) / 31 d)` requests behind the 60 s gate, once per
-reopen; the progress weight follows through `estimateWindows`.
+reopen; the progress weight follows through `estimateWindows`. The window has no
+clamp: Monobank answers an old `from` (13 months back, probed 2026-10-06) with
+200, so the sync completes, but rows older than the bank's own history depth
+may be missing without an error.
 
 Known limit (device-checked, no repair built): a holding the sync closed
 BEFORE the mark existed has no mark, looks exactly like a user close, and stays
@@ -1948,6 +1951,22 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `withLegacyExchangePairsDerived` (`snapshot/restore-snapshot.ts`); a row that
   carries the key restores it as exported, a null included. Never change one
   path's rule without the other.
+- **A new table with no backfill is the table, in order, on both paths.**
+  `0054_add_deleted_import_keys` (the stored key of every deleted import row,
+  per holding; kiko-statement-import has the rule) is additive only: past
+  deletes are unknowable, so there is no data step and no derived mirror. Its
+  foreign key to `holdings` is NO ACTION, so the order carries it: a holding
+  or account delete removes the keys first (`removeHoldingDatabaseTransaction`,
+  `accountsRepo.remove`). A write that moves a holding's balance anchor (a
+  closing balance that applies, a hand-set balance, the bank figure of a sync)
+  clears all its keys in the same write
+  (`clearDeletedImportKeysDatabaseTransaction`): the sync clears but never
+  reads them, so it never revives a row. A restore (`restoreDataSnapshot`) deletes the
+  table BEFORE `holdings` and inserts it AFTER them, skipping a key whose
+  holding it did not insert, with `?? []` for a file without the key (the
+  snapshot field is optional). The composite primary key is its only index.
+  Proven by `drizzle/migrations/0054-add-deleted-import-keys.test.ts` and
+  `src/data-transfer/snapshot/restore-deleted-import-keys.test.ts`.
 - **A data-only cleanup migration follows the SAME two-path rule.**
   Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
   pre-existing stray create-time artifact (a term_deposit/bond holding whose
@@ -2097,7 +2116,10 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   rewrite that the restore mirror re-applies to an older file (0049, 0050, 0051).
   The decision per migration is recorded in `VERSION_DECISIONS` in
   `src/data-transfer/crypto/envelope.test.ts`, which is where to read it (0052's
-  `exchangePairId` is the first kind: a column riding inside a row).
+  `exchangePairId` is the first kind: a column riding inside a row). A new
+  table the file carries as an OPTIONAL snapshot key (0054's
+  `deletedImportKeys`) needs none either: an older build drops the key and
+  keeps its old rule, and this build restores an older file with the table empty.
 
 ## Reminders (local notifications)
 
