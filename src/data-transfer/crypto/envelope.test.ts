@@ -113,7 +113,9 @@ describe('the export version against the migration journal', () => {
     // the key, and its own database derives the pairs when it later upgrades to
     // 0052. This build's restore applies the 0052 rule to an older file, so it
     // needed no bump.
-    migrationCount: 53,
+    // Through 0053_add_loan_holding_id_index, an index: it holds no data and
+    // changes nothing a file carries, so it needed no bump.
+    migrationCount: 54,
   };
 
   it('has a version decision for every migration', () => {

@@ -270,6 +270,8 @@ export const transactions = sqliteTable(
     holdingIdIndex: index('transactions_holding_id').on(table.holdingId),
     // The cascade delete looks the other legs up by this id.
     exchangePairIdIndex: index('transactions_exchange_pair_id').on(table.exchangePairId),
+    // The loan-linked payments lookup reads the rows that name a loan holding.
+    loanHoldingIdIndex: index('transactions_loan_holding_id').on(table.loanHoldingId),
     // Every `orderBy(desc(transactions.time))` (the ledger lists) did a full
     // sort without this.
     timeIndex: index('transactions_time').on(table.time),
