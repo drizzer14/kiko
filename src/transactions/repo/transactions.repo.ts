@@ -2,6 +2,7 @@ import {
   type Repository,
   accounts,
   categoryOverrides,
+  deletedImportKeys,
   type HoldingRow,
   holdings,
   type TransactionRow,
@@ -32,6 +33,7 @@ import {
 } from 'drizzle-orm';
 import {
   appendDepositContributionDatabaseTransaction,
+  clearDeletedImportKeysDatabaseTransaction,
   depositContributionMatchedDatabaseTransaction,
   removeDepositContributionDatabaseTransaction,
   removeHoldingDatabaseTransaction,
@@ -654,6 +656,30 @@ const removeContributionOfRowDatabaseTransaction = async (
 
 const NO_HOLDINGS: ReadonlySet<string> = new Set();
 
+// The stored key of each import row among `rows`, per holding: what a re-import
+// of the deleted row is recognised by (`readRevivedKeysDatabaseTransaction`).
+const deletedImportKeysOf = (rows: TransactionRow[]): { holdingId: string; externalId: string }[] =>
+  rows
+    .filter((row) => row.source === 'import')
+    .flatMap(
+      (row) =>
+        foldMap(maybe(row.externalId), (externalId) => [
+          { holdingId: row.holdingId, externalId },
+        ]) ?? [],
+    );
+
+// Keep the key of every deleted import row, so a re-import knows it was deleted
+// and not just never imported. Written once per holding and key (a row deleted
+// again after it came back writes the same key).
+const rememberDeletedImportKeysDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  rows: TransactionRow[],
+): Promise<void> => {
+  for (const part of chunkForTable(deletedImportKeys, deletedImportKeysOf(rows))) {
+    await databaseTransaction.insert(deletedImportKeys).values(part).onConflictDoNothing();
+  }
+};
+
 // Whether the leg the marker of the kept row `keptRow` names goes with this delete:
 // its holding is among the deleted ones, or a removed row of the same pair sat on
 // it. A marker that names anything else (a deposit a second Convert of the leg
@@ -707,6 +733,8 @@ const removeRowsDatabaseTransaction = async (
       deletedHoldingIds,
     );
   }
+
+  await rememberDeletedImportKeysDatabaseTransaction(databaseTransaction, rows);
 
   for (const row of kept.filter((keptRow) => markerLegIsGone(keptRow, rows, deletedHoldingIds))) {
     await databaseTransaction
@@ -1047,6 +1075,71 @@ const partitionNewRows = async (
  * how coarse its clock is. */
 type ImportRow = NewTransaction & { aliasExternalId?: string; timeReading?: TimeReading };
 
+const isKey = (key: string | null | undefined): key is string => Boolean(key);
+
+/** The deleted keys of this holding that rows of the batch come back under: for
+ * each row's `externalId`, the deleted keys it matches, its own and its
+ * `aliasExternalId` (a row stored under the older noon key was deleted under
+ * that key). Read before `dropRowsStoredUnderAlias` strips the alias, and
+ * before any row is upserted. A row that is not inserted (stored already, or
+ * held by a sync row) never clears its key. */
+const readRevivedKeysDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  rows: ImportRow[],
+): Promise<Map<string, string[]>> => {
+  const candidates = [
+    ...new Set(rows.flatMap(({ externalId, aliasExternalId }) => [externalId, aliasExternalId])),
+  ].filter(isKey);
+  const deleted = new Set<string>();
+
+  for (const keyChunk of chunkRows(candidates, IN_CLAUSE_CHUNK_SIZE)) {
+    const found = await databaseTransaction
+      .select({ externalId: deletedImportKeys.externalId })
+      .from(deletedImportKeys)
+      .where(
+        and(
+          eq(deletedImportKeys.holdingId, holdingId),
+          inArray(deletedImportKeys.externalId, keyChunk),
+        ),
+      );
+
+    for (const { externalId } of found) {
+      deleted.add(externalId);
+    }
+  }
+
+  const revived = new Map<string, string[]>();
+
+  for (const { externalId, aliasExternalId } of rows) {
+    const matched = [externalId, aliasExternalId].filter(isKey).filter((key) => deleted.has(key));
+
+    if (isKey(externalId) && matched.length > 0) {
+      revived.set(externalId, matched);
+    }
+  }
+
+  return revived;
+};
+
+/** Forget the keys of the rows an import just brought back. */
+const clearRevivedKeysDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  keys: string[],
+): Promise<void> => {
+  for (const keyChunk of chunkRows(keys, IN_CLAUSE_CHUNK_SIZE)) {
+    await databaseTransaction
+      .delete(deletedImportKeys)
+      .where(
+        and(
+          eq(deletedImportKeys.holdingId, holdingId),
+          inArray(deletedImportKeys.externalId, keyChunk),
+        ),
+      );
+  }
+};
+
 /** A row the ledger already holds under its alias: its real `time`, and the
  * time and amount the ledger stores it with. */
 type AliasedRow = { time: number; storedTime: number; amountMinorUnits: number };
@@ -1267,17 +1360,18 @@ export const bankOwnedTransactionSetWhere = sql.join(
   sql` OR `,
 );
 
-// The WHERE clause for `importRows`'s existing-rows-after-asOf read, exported
-// so a real-SQLite test can prove the exact predicate — both the `holdingId`
-// scope and the STRICT `gt` boundary (a row exactly AT `asOfMilliseconds`
-// belongs to the closing balance itself, not after it) — rather than a
-// hand-transcribed copy of it. A row that set a balance never counts: its
-// amount is part of the balance a hand edit or an opening set, which a closing
-// balance replaces outright, so a row re-dated past the as-of would count twice.
+// The WHERE clause for `importRows`'s existing-rows-on-top-of-the-closing read,
+// exported so a real-SQLite test can prove the exact predicate — the `holdingId`
+// scope and the STRICT `gt` boundary — rather than a hand-transcribed copy of
+// it. A row counts on top of a closing balance when it is dated after the as-of
+// (any source), or when it is MANUAL and dated on or before it: the bank figure
+// holds the bank's own rows, never a manual entry, so a closing never absorbs
+// one. A row that set a balance never counts: its amount is part of the balance
+// a hand edit or an opening set, which a closing balance replaces outright.
 export const postClosingRowsWhere = (holdingId: string, asOfMilliseconds: number) =>
   and(
     eq(transactions.holdingId, holdingId),
-    gt(transactions.time, asOfMilliseconds),
+    or(gt(transactions.time, asOfMilliseconds), eq(transactions.source, 'manual')),
     eq(transactions.setsBalance, false),
   );
 
@@ -1480,6 +1574,21 @@ const insertDedupRowsDatabaseTransaction = async (
   return newRows;
 };
 
+// What a row the import inserts adds to the balance on the net-delta path: all of
+// it for a row brought back after a delete, else its share by the boundary.
+const importShareOf = (
+  row: NewTransaction,
+  boundary: number | null,
+  revivedKeys: ReadonlyMap<string, string[]>,
+): number => {
+  const wasDeleted =
+    foldMap(maybe(row.externalId), (externalId) => revivedKeys.has(externalId)) ?? false;
+
+  return wasDeleted
+    ? row.amountMinorUnits
+    : balanceShareOf(row.amountMinorUnits, row.time, boundary);
+};
+
 type ImportBalanceDecision = {
   nextBalance: number;
   balanceSetAt?: number;
@@ -1492,21 +1601,31 @@ type ImportBalanceDecision = {
  * `balanceSetRowId` are present only when a closing balance actually applied
  * this call; the caller writes them to `holdings` alongside `nextBalance`.
  * `existingPostClosingNetMinorUnits` is the net of every row ALREADY in the
- * ledger (any source, never a row that set a balance) dated after the
- * closing balance's own as-of, read before this import inserted anything —
- * an already-imported holding's later rows must not be erased by an older
- * statement's own closing figure. */
+ * ledger that rides on top of the bank figure (never a row that set a
+ * balance): any row dated after the closing balance's own as-of, and every
+ * MANUAL row dated on or before it, read before this import inserted anything
+ * — an already-imported holding's later rows must not be erased by an older
+ * statement's own closing figure, and the bank figure never holds a manual
+ * entry, so a closing never absorbs one (`postClosingRowsWhere`).
+ *
+ * KNOWN LIMIT: a manual row that duplicates a bank row (the user logged a
+ * purchase by hand, and the statement they import holds it too) counts twice,
+ * once in the bank figure and once on top, until the user deletes the manual
+ * row; that delete lands the balance exactly on the bank figure.
+ *
+ * `revivedKeys` are the rows this import brings
+ * back after the user deleted them: the net-delta path counts one at its full
+ * amount whatever its date (its delete reversed it), where a row the holding
+ * never had counts only after the boundary. */
 const resolveImportBalance = (
   holding: Pick<HoldingRow, 'balanceMinorUnits' | 'currency'>,
   boundary: number | null,
   newRows: NewTransaction[],
   closingBalance: ClosingBalance | undefined,
   existingPostClosingNetMinorUnits: number,
+  revivedKeys: ReadonlyMap<string, string[]>,
 ): ImportBalanceDecision => {
-  const netDelta = newRows.reduce(
-    (sum, row) => sum + balanceShareOf(row.amountMinorUnits, row.time, boundary),
-    0,
-  );
+  const netDelta = newRows.reduce((sum, row) => sum + importShareOf(row, boundary, revivedKeys), 0);
   // `>=`, not `movesBalance`'s `>`: a closing balance is itself an anchor, so
   // one as of exactly the boundary re-asserts the bank's figure rather than
   // being history the earlier anchor already counted.
@@ -1541,12 +1660,15 @@ type ImportInput = {
  * what `previewImportBalance` reads to say what that write would do. `rows` is
  * the batch without the rows the ledger already holds under an alias or a
  * sync source; `existingPostClosingNetMinorUnits` is `resolveImportBalance`'s
- * last argument. */
+ * penultimate argument. `revivedKeys` maps the `externalId` of a row of the
+ * batch to the deleted keys it matches (`readRevivedKeysDatabaseTransaction`),
+ * `resolveImportBalance`'s last. */
 type ImportPlan = {
   holding: HoldingRow;
   boundary: number | null;
   rows: NewTransaction[];
   existingPostClosingNetMinorUnits: number;
+  revivedKeys: Map<string, string[]>;
 };
 
 /** The reads both `importRows` and `previewImportBalance` make, refusals
@@ -1590,15 +1712,23 @@ const readImportPlanDatabaseTransaction = async (
     throw new Error('statement-import/ledgerless-holding');
   }
 
-  // Also read BEFORE the new rows are upserted — an EXISTING row (any
-  // source, already in the ledger before this import ran) dated after a
-  // closing balance's own as-of must still count toward it; only the
-  // rows THIS import adds were counted before, so a re-import (or an
-  // out-of-order older statement) could erase a later row the ledger
-  // already knew about. The query below filters by holdingId, time, and
-  // the balance-set mark, with no source/dedup check, so a manual entry the user
-  // already logged for the same real-world transaction as an
-  // after-asOf statement row is counted here too — the same
+  // The alias is read here, while `dropRowsStoredUnderAlias` below has not yet
+  // stripped it: a row stored under its noon alias was deleted under that key.
+  const revivedKeys = await readRevivedKeysDatabaseTransaction(
+    databaseTransaction,
+    input.holdingId,
+    input.rows,
+  );
+
+  // Also read BEFORE the new rows are upserted — an EXISTING row already in
+  // the ledger before this import ran must still count on top of a closing
+  // balance: a row (any source) dated after its as-of, and a manual row dated
+  // on or before it; only the rows THIS import adds were counted before, so a
+  // re-import (or an out-of-order older statement) could erase a row the
+  // ledger already knew about. The query below filters by holdingId, time, the
+  // source of an on-or-before row, and the balance-set mark, with no dedup
+  // check, so a manual entry the user already logged for the same real-world
+  // transaction as a statement row is counted here too — the same
   // double-count risk the net-delta path already carries.
   const { rows: unaliasedRows, aliased } = await dropRowsStoredUnderAlias(
     databaseTransaction,
@@ -1607,7 +1737,7 @@ const readImportPlanDatabaseTransaction = async (
   const rows = await dropRowsHeldBySync(databaseTransaction, input.holdingId, unaliasedRows);
 
   if (input.closingBalance === undefined) {
-    return { holding, boundary, rows, existingPostClosingNetMinorUnits: 0 };
+    return { holding, boundary, rows, existingPostClosingNetMinorUnits: 0, revivedKeys };
   }
 
   const asOfMilliseconds = input.closingBalance.asOfSeconds * 1000;
@@ -1623,13 +1753,16 @@ const readImportPlanDatabaseTransaction = async (
     existingPostClosingNetMinorUnits:
       (existingPostClosingRows.at(0)?.net ?? 0) -
       aliasedNetBeforeClosing(aliased, asOfMilliseconds),
+    revivedKeys,
   };
 };
 
 /** What a statement import would leave a holding's balance at, for the preview
  * a user reads before importing. `set` is a closing balance that applies: the
  * balance becomes `minorUnits`, which is the bank figure plus the holding's own
- * later entries, so it differs from `bankMinorUnits` when there are any. A file
+ * entries the statement does not hold (every manual one dated on or before its
+ * date, and every row dated after it), so it differs from `bankMinorUnits` when
+ * there are any. A file
  * with no closing balance, or one that does not apply, either `change`s the
  * balance by its rows after the boundary or leaves it. */
 export type ImportBalancePreview = { currency: Currency } & (
@@ -2185,7 +2318,11 @@ export const transactionsRepo = {
    * whatever the row's source, its date against THE BOUNDARY (`importRows`), and
    * whether it set a balance. Only the balance moves: `balanceSetAt` stays, and
    * no bank figure is stored, so deleting every row of an import ends on the
-   * statement's opening balance. A synced (monobank) transaction is owned by the
+   * statement's opening balance. A deleted import row with a stored key also
+   * leaves that key for its holding (`deleted_import_keys`), so a re-import can
+   * tell it from a row the holding never had; every row
+   * `removeRowsDatabaseTransaction` deletes does the same, a cascaded partner
+   * included. A synced (monobank) transaction is owned by the
    * sync and is refused with a typed error; a missing id is a no-op rather than
    * an error.
    *
@@ -2523,8 +2660,9 @@ export const transactionsRepo = {
    * closing balance is written outright PLUS `postClosingNet`: the net of
    * every row dated STRICTLY AFTER the closing balance's own as-of, from
    * BOTH this import's own new rows AND every row (any source) ALREADY in
-   * the ledger before this import ran, read once before this import inserts
-   * anything. The rows already in the ledger matter for an out-of-order
+   * the ledger before this import ran, and of every MANUAL row ALREADY in
+   * the ledger dated on or before the as-of, read once before this import
+   * inserts anything. The rows already in the ledger matter for an out-of-order
    * statement, e.g. importing September's closing balance after an October
    * manual row already exists — without them, September's own closing
    * figure would silently overwrite October's already-recorded row. A
@@ -2544,9 +2682,9 @@ export const transactionsRepo = {
    * this statement's own rows are the WHOLE history) this is exact: nothing
    * is left unaccounted for.
    * For a holding with pre-existing history, `D` silently absorbs whatever
-   * happened before this statement's own coverage started — a prior manual
-   * entry error, an out-of-band transfer, or a real gap this particular
-   * statement predates — the resulting balance is correct as of
+   * happened before this statement's own coverage started — an out-of-band
+   * transfer, or a real gap this particular statement predates (never a
+   * manual row, which stays on top) — the resulting balance is correct as of
    * `asOfSeconds`, but the SIZE of `D` is never surfaced anywhere. A
    * history-only import (rows before the boundary, inserted at 0) leaves the
    * same kind of untracked adjustment one level down: `createHoldingValuer`
@@ -2574,8 +2712,8 @@ export const transactionsRepo = {
    * any other genuinely new row. Importing a statement that covers a
    * transaction the user already entered manually therefore double-counts
    * that amount in the net-delta path when both land on the current side of
-   * the boundary (the closing-balance path is unaffected, since it overwrites
-   * rather than adds).
+   * the boundary, and in the closing-balance path whatever the manual row's
+   * date (see the KNOWN LIMIT below).
    *
    * A SYNC-source row is matched instead (`dropRowsHeldBySync`): a statement
    * row with the holding's synced row's amount, dated within 60 seconds of
@@ -2583,12 +2721,19 @@ export const transactionsRepo = {
    * inserted, not counted. One synced row stands for one statement row. Rows a pre-fix build
    * already imported over synced ones stay; no migration removes them.
    *
-   * OPEN, user decision pending: a back-dated MANUAL row dated on or before a closing
-   * balance's as-of moves the balance when written (every write counts). Importing
-   * a statement with that closing balance applies the closing outright
-   * (`asOfSeconds * 1000 >= boundary`), which counts only rows dated after its
-   * as-of, so the row's amount drops out of the balance while the row stays; a
-   * later delete of that row then takes its amount back a second time.
+   * A closing balance never absorbs a manual row (user ruling): a back-dated
+   * MANUAL row dated on or before a closing balance's as-of moves the balance
+   * when written (every write counts), and importing a statement with that
+   * closing balance (`asOfSeconds * 1000 >= boundary`) keeps it on top of the
+   * bank figure, as it keeps a row of any source dated after the as-of. Example:
+   * closing 10,000 as of Oct 1 and a manual -1,000 dated Sep 20 give 9,000; the
+   * same statement again keeps 9,000, a newer closing keeps the row on top, and
+   * deleting the row gives 10,000. The rows that set a balance (an opening
+   * balance, a hand edit) never ride on top: the closing replaces what they set.
+   * KNOWN LIMIT: a manual row that duplicates a bank row of the statement counts
+   * twice, in the bank figure and on top of it, until the user deletes the
+   * manual row, which then lands the balance exactly on the bank figure; a first
+   * closing import over a holding the user logged by hand shows it.
    *
    * An account a bank sync owns (`isSyncedAccount`) refuses the import
    * outright, before anything is written, whichever of its holdings is the
@@ -2598,9 +2743,28 @@ export const transactionsRepo = {
    * import screens. A DISCONNECTED bank imports, and the synced-row match
    * above keeps the overlap single. An imported row can be deleted
    * (`remove`), which takes its full amount back from the balance whatever its
-   * date, and a deleted row returns when the same file is imported again, its
-   * amount with it when a closing balance applies: no record of a deleted key
-   * is kept.
+   * date and keeps its stored key for its holding (`deleted_import_keys`). A
+   * deleted row returns when the same file is imported again, its amount with
+   * it: a closing balance re-sets the bank's figure, and without one the row
+   * counts in full whatever its date, because its key was deleted. A row the
+   * holding never had, dated on or before the boundary, stays history (0), so a
+   * first import of past months never counts twice. A row matches a deleted key
+   * by its `externalId` or its `aliasExternalId`, and the import deletes the
+   * keys of the rows it inserts, in the same transaction (the preview deletes
+   * nothing). A key is also for the CURRENT anchor only: every write that moves
+   * the holding's balance anchor deletes ALL the holding's keys in that same
+   * write, because the new anchor already holds what the user deleted: a closing
+   * balance that applies here (`useClosingBalance`), a hand-set balance
+   * (`updateWithBalanceDelta`, non-zero delta) and the bank figure of a sync
+   * (`upsertByMetadataKey`). Without it a newer anchor plus an older statement
+   * imported afterwards counts the deleted row twice (closing 85,000; delete
+   * -5,000 gives 90,000; a newer closing 70,000; the old statement again would
+   * give 65,000, not 70,000). The sync clears the keys when it sets the balance
+   * but never reads them and never revives a row. The key rewrites
+   * (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave the keys as they were,
+   * so a key they rewrote misses, and the row then comes back at 0. A delete
+   * made before the table existed left no key, so such a row comes back at 0 as
+   * well.
    *
    * NO MIGRATION was written for holdings a pre-fix build already wrote a
    * wrong (0 or under-counted) balance into: `1.0.0` is
@@ -2620,7 +2784,7 @@ export const transactionsRepo = {
    */
   importRows: (input: ImportInput): Promise<number> =>
     write(async (databaseTransaction) => {
-      const { holding, boundary, rows, existingPostClosingNetMinorUnits } =
+      const { holding, boundary, rows, existingPostClosingNetMinorUnits, revivedKeys } =
         await readImportPlanDatabaseTransaction(databaseTransaction, input);
       const newRows = await insertDedupRowsDatabaseTransaction(databaseTransaction, rows);
       const { nextBalance, balanceSetAt, balanceSetRowId } = resolveImportBalance(
@@ -2629,7 +2793,22 @@ export const transactionsRepo = {
         newRows,
         input.closingBalance,
         existingPostClosingNetMinorUnits,
+        revivedKeys,
       );
+
+      await clearRevivedKeysDatabaseTransaction(
+        databaseTransaction,
+        input.holdingId,
+        newRows.flatMap(
+          ({ externalId }) => foldMap(maybe(externalId), (key) => revivedKeys.get(key)) ?? [],
+        ),
+      );
+
+      // A closing balance that applies is the new anchor: it already holds what the
+      // user deleted, so every key of the holding goes, not only the revived ones.
+      if (balanceSetAt !== undefined) {
+        await clearDeletedImportKeysDatabaseTransaction(databaseTransaction, input.holdingId);
+      }
 
       if (nextBalance !== holding.balanceMinorUnits || balanceSetAt !== undefined) {
         await databaseTransaction
@@ -2648,7 +2827,7 @@ export const transactionsRepo = {
    * before importing is the number the import then stores.
    */
   previewImportBalance: async (input: ImportInput): Promise<ImportBalancePreview> => {
-    const { holding, boundary, rows, existingPostClosingNetMinorUnits } =
+    const { holding, boundary, rows, existingPostClosingNetMinorUnits, revivedKeys } =
       await readImportPlanDatabaseTransaction(database, input);
     const newRows = await partitionNewRows(database, dedupByConflictKey(rows));
 
@@ -2660,6 +2839,7 @@ export const transactionsRepo = {
         newRows,
         input.closingBalance,
         existingPostClosingNetMinorUnits,
+        revivedKeys,
       ),
       input.closingBalance,
     );

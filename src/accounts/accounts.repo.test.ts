@@ -23,11 +23,18 @@ jest.mock('@kiko/crypto-sync/binance', () => ({
   clearCredentials: (accountId: string) => mockClearCredentials(accountId),
 }));
 
+import {
+  accounts,
+  deletedImportKeys,
+  holdings,
+  reminders,
+  syncState,
+  transactions,
+} from '@kiko/db';
 import { Money } from '@kiko/currency/money';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
-import { accounts, holdings, reminders, syncState, transactions } from '@kiko/db';
 import { inArrayClauseFromCondition } from '@kiko/db/in-array-clause-test-helper';
 
 import { accountsRepo } from './accounts.repo';
@@ -692,7 +699,9 @@ describe('accountsRepo.disconnect', () => {
 
     expect(removeCaptured.deletedFrom).toEqual([
       transactions,
+      deletedImportKeys,
       transactions,
+      deletedImportKeys,
       syncState,
       reminders,
       holdings,
@@ -748,13 +757,21 @@ describe('accountsRepo.remove', () => {
 
     await accountsRepo.remove('acc-1');
 
-    // The holding's transactions are deleted first, then the account's own
+    // The holding's transactions and the keys of its deleted import rows are
+    // deleted first, then the account's own
     // sync_state row and reminders (FK NO ACTION references — deleting the
     // account first would fail with a foreign key constraint error on any
     // account that ever ran a Monobank sync, even a failed first one, or has a
     // reminder), then the holdings, then the account row — proving the full
     // cascade runs inside the one transaction.
-    expect(captured.deletedFrom).toEqual([transactions, syncState, reminders, holdings, accounts]);
+    expect(captured.deletedFrom).toEqual([
+      transactions,
+      deletedImportKeys,
+      syncState,
+      reminders,
+      holdings,
+      accounts,
+    ]);
   });
 
   it('deletes each holding’s transactions before removing holdings and the account', async () => {
@@ -766,11 +783,13 @@ describe('accountsRepo.remove', () => {
 
     await accountsRepo.remove('acc-1');
 
-    // One transactions delete per holding, then sync_state and reminders, then
-    // the holdings, then the account.
+    // One transactions and one deleted-key delete per holding, then sync_state and
+    // reminders, then the holdings, then the account.
     expect(captured.deletedFrom).toEqual([
       transactions,
+      deletedImportKeys,
       transactions,
+      deletedImportKeys,
       syncState,
       reminders,
       holdings,
@@ -878,7 +897,7 @@ describe('accountsRepo.remove', () => {
 
     expect(mockClearToken).toHaveBeenCalledWith('acc-1');
     expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
-    expect(order).toEqual(['token after 5 deletes', 'credentials after 5 deletes']);
+    expect(order).toEqual(['token after 6 deletes', 'credentials after 6 deletes']);
   });
 
   // The account is already gone when the clear runs, so a failed clear is not a

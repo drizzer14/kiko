@@ -4,6 +4,7 @@ import {
   database,
   write,
   accounts,
+  deletedImportKeys,
   type HoldingRow,
   holdings,
   pricePoints,
@@ -187,6 +188,11 @@ const upsertManualPricePoint = (
 // normal cursor past the gap. It moves no balance; the balance written here is
 // the bank's own, as on every upsert.
 //
+// The update branch also forgets every kept key of the holding's deleted import
+// rows (`deleted_import_keys`): the bank's balance written here is the new anchor
+// and already holds what the user deleted. The sync clears the keys but never
+// reads them, so it never revives a row.
+//
 // The known limit (a holding closed before the mark existed stays closed) is
 // stated on `reconcileClosedHoldings` in the Monobank sync.
 const upsertByMetadataKey = async (
@@ -225,6 +231,8 @@ const upsertByMetadataKey = async (
         ...(reopenFrom === null ? {} : { closedAt: null }),
       })
       .where(eq(holdings.id, current.id));
+    // The bank's figure is the new anchor; it never reads a key, so no row is revived.
+    await clearDeletedImportKeysDatabaseTransaction(databaseTransaction, current.id);
 
     return;
   }
@@ -392,6 +400,19 @@ export const clearLoanLinksForHoldingsDatabaseTransaction = async (
     .where(inArray(transactions.loanHoldingId, holdingIds));
 };
 
+// Forgets every kept key of a holding's deleted import rows. A write that moves
+// the holding's balance anchor calls it in that same write: the new anchor
+// already holds what the user deleted, so a later import of the old statement
+// must not bring a deleted row back with its amount on top (`importRows`).
+export const clearDeletedImportKeysDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+): Promise<void> => {
+  await databaseTransaction
+    .delete(deletedImportKeys)
+    .where(eq(deletedImportKeys.holdingId, holdingId));
+};
+
 // Deletes a manual holding and all of its own transactions, on an EXISTING
 // transaction handle. `transactionsRepo.removeHolding` runs it after the cascade
 // to the transactions of OTHER holdings that are the other part of a movement,
@@ -420,6 +441,8 @@ export const removeHoldingDatabaseTransaction = async (
     throw new Error('remove: cannot delete a synced holding');
   }
   await databaseTransaction.delete(transactions).where(eq(transactions.holdingId, holdingId));
+  // The keys of its deleted import rows are a NO ACTION foreign key on it.
+  await clearDeletedImportKeysDatabaseTransaction(databaseTransaction, holdingId);
   // A loan holding is ledgerless, but OTHER holdings' payment rows can point
   // back at it via `loanHoldingId`. Clear those links in the SAME transaction —
   // never leaving a dangling id — so a linked payment reverts to counting as
@@ -773,7 +796,10 @@ export const holdingsRepo = {
    * `transactions.setsBalance`: this edit is now the holding's current set.
    * An older set's row keeps its mark, which only keeps a closing import from
    * counting it twice (`postClosingRowsWhere`): its edit and its delete move the
-   * balance by its amount, like any row's.
+   * balance by its amount, like any row's. The same non-zero delta also forgets
+   * every kept key of the holding's deleted import rows, in the same write: the
+   * hand-set balance is the new anchor and already holds what was deleted, so an
+   * older statement imported later must not bring a deleted row back on top of it.
    */
   updateWithBalanceDelta: (
     holdingId: string,
@@ -819,6 +845,7 @@ export const holdingsRepo = {
         return;
       }
 
+      await clearDeletedImportKeysDatabaseTransaction(databaseTransaction, holdingId);
       await databaseTransaction.insert(transactions).values({
         id: adjustmentRowId,
         holdingId,

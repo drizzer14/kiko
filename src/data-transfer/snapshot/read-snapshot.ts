@@ -6,6 +6,7 @@ import {
   categoryOverrides,
   currencyRateHistory,
   currencyRates,
+  deletedImportKeys,
   holdings,
   pricePoints,
   reminders,
@@ -55,4 +56,8 @@ export const readDataSnapshot = async (): Promise<DataSnapshot> => ({
     .orderBy(asc(pricePoints.instrument), asc(pricePoints.day)),
   bondRegister: await database.select().from(bondRegister).orderBy(asc(bondRegister.isin)),
   reminders: await database.select().from(reminders).orderBy(asc(reminders.id)),
+  deletedImportKeys: await database
+    .select()
+    .from(deletedImportKeys)
+    .orderBy(asc(deletedImportKeys.holdingId), asc(deletedImportKeys.externalId)),
 });

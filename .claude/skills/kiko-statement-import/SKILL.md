@@ -102,14 +102,54 @@ statement that keeps its identity between renders, since a new one is a new
 request, and the newest request wins. Never add a second copy of the balance
 rule for the preview.
 
+**A closing balance never absorbs a manual row.** On the closing path
+`resolveImportBalance` writes the bank figure plus `postClosingNet`: the net of
+this import's new rows dated after the as-of, and of every row already in the
+ledger that rides on top (`postClosingRowsWhere`: dated after the as-of, any
+source; or manual and dated on or before it; never a `setsBalance` row: an
+opening balance or a hand edit). Closing 10,000 as of Oct 1 with a manual -1,000
+dated Sep 20 gives 9,000, the same statement again keeps 9,000, a newer closing
+keeps the row on top, and deleting it gives 10,000 (user ruling 2026-10-06). The
+preview shares the plan, so it shows the same number and, once it differs from
+the bank figure, the line "plus entries not in this statement"
+(`statementImport.balanceWillBeSetWithLater`). KNOWN LIMIT: a manual row that
+duplicates a bank row of the statement counts twice until the user deletes it
+(the first closing import over a holding logged by hand shows it); the delete
+then lands exactly on the bank figure.
+
 **An imported row can be deleted, and its amount goes with it.** `transactionsRepo.remove`
 takes the row's full amount back from its holding whatever its date against the
 boundary (user rule 2026-10-05, "Every transaction updates its balance" in
 kiko-domain): the balance moves only, `balanceSetAt` stays, and no bank figure
 is stored, so deleting every row of an import ends on the statement's opening
-balance. Re-importing the same file brings a deleted row back (no tombstone;
-accepted): with a closing balance its amount returns with it, and a no-closing
-file's row dated before the boundary returns as history without its amount.
+balance. Re-importing the same file brings a deleted row back WITH its amount
+(user ruling 2026-10-06): a delete of a `source = 'import'` row
+with an `externalId` keeps its stored key in `deleted_import_keys` (migration
+0054; primary key `holding_id, external_id`; `removeRowsDatabaseTransaction`
+writes it, so a cascaded partner counts too). An import counts a new row at its
+full amount when its `externalId` or its `aliasExternalId` matches a key of the
+target holding (`readRevivedKeysDatabaseTransaction`, read before
+`dropRowsStoredUnderAlias` strips the alias), on the net-delta path; a closing
+balance still re-sets the bank's figure and ignores the keys for the number. A
+row the holding never had and dated on or before the boundary still counts 0,
+so a first import of past months never double-counts. The import deletes the
+matched keys of the rows it inserts (the preview deletes nothing). **A key is
+for the current balance anchor only:** every write that moves a holding's
+anchor deletes ALL of its keys in that same write, because the new anchor
+already holds what the user deleted: a closing balance that applies
+(`importRows`, `balanceSetAt` written), a hand-set balance
+(`updateWithBalanceDelta` with a non-zero delta) and the bank figure of a sync
+(`upsertByMetadataKey`'s update branch), all through
+`clearDeletedImportKeysDatabaseTransaction` (`holdings.repo.ts`). Without it,
+closing 85,000, a delete of -5,000 (90,000), a newer closing 70,000 and the old
+statement again gives 65,000, not 70,000. A hand edit with no balance change
+and a closing balance that does not apply keep the keys. The sync clears the
+keys but never reads them and never revives a row. A holding or account delete
+clears its keys, and the key rewrites (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave it
+alone: a rewritten key misses and the row comes back at 0. A delete made before
+the table existed left no key. A `.kiko` restore carries the table
+(`deletedImportKeys`, optional key, no `EXPORT_VERSION` bump) and skips a key
+whose holding it did not insert.
 `dropRowsHeldBySync` still stops a duplicate of a bank row from returning
 once the account is disconnected, and a connected account refuses the import.
 

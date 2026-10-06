@@ -29,6 +29,12 @@ Rules:
   agents; each role agent's own "Report back" rule (see its agent file) is what makes
   it send its result the moment it is known instead of going quiet.
 - "DEFAULT, pending user" means apply it now, not merely record the decision and leave the old behavior in place. A change that states a DEFAULT ruling must change the code in that same change — a later change should never have to circle back to actually apply a decision an earlier one only annotated.
+- A default applied as "DEFAULT, pending user" can leave a dangling state. Give each default's
+  consequence a targeted re-review that checks both "what stays" and "what goes".
+- A Stop-hook failure during a developer's TDD red phase is that developer's unfinished work. The
+  orchestrator forwards it to the developer and never edits the code itself.
+- When a planner's recommendation conflicts with a principle the user stated, the orchestrator
+  overrules toward the principle and states why in its question to the coordinator.
 - User questions go through the coordinator. An orchestrator session never asks the user in its own terminal (no AskUserQuestion there). It sends each user question or blocker to the coordinator by SendMessage: the question, 2-4 options with a one-line consequence each, the recommended option, and the work it can do meanwhile. The coordinator asks the user and relays the answer in the user's own words.
 - Every duration or ETA given to the user, and every BATCH READY's TIMES
   line, follows `kiko:estimator` — it owns the estimate-from-history and
@@ -417,8 +423,12 @@ average (`sysctl -n vm.loadavg`) is below 10: wait first with
 `bash scripts/wait-load.sh 10` (run it in the background and wait on its
 exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an
 optional second argument, passes first, 3 when it cannot read the load,
-64 for a bad argument; it prints one start line and nothing else, and
-never uses `pgrep`); at most ONE jest-heavy agent per track; Semgrep or jest
+64 for a bad argument; it prints one start line and nothing else).
+Every load or "is verify still running" wait goes ONLY through
+`bash scripts/wait-load.sh <max>` (background, exit code; main checkout path
+when the worktree lacks it). Never write a loop that greps ps/pgrep output for
+make verify, check:all, jest or stryker: the loop's own command line contains
+the pattern and it matches itself (three times so far). At most ONE jest-heavy agent per track; Semgrep or jest
 timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
 

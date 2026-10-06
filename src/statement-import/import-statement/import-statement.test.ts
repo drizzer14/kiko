@@ -25,6 +25,8 @@ jest.mock('@kiko/db/client', () => {
 // `importStatement`.
 let mockHoldingRows: { id: string; currency: string }[] = [{ id: 'holding-1', currency: 'UAH' }];
 jest.mock('@kiko/holdings/repo', () => ({
+  // The closing-balance write forgets the deleted-row keys; this file's fake handle holds none.
+  clearDeletedImportKeysDatabaseTransaction: () => Promise.resolve(),
   holdingsRepo: {
     byIdQuery: (holdingId: string) =>
       Promise.resolve(mockHoldingRows.filter((row) => row.id === holdingId)),

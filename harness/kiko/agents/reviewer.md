@@ -33,3 +33,5 @@ Rules:
   no extra checks or silent waiting after. Run any long-running check in the background
   and wait only for its exit code; past 30 minutes on one step, report "still running:
   <step>, <elapsed>" instead of going quiet. Lead with the pass/fail verdict, then findings.
+
+- A scratch copy uses its own node_modules (npm ci in the copy) or stays read-only; never symlink or install into another worktree's node_modules.

@@ -820,6 +820,10 @@ const fromCursorSeconds = (
  * normal cursor, because no run fetched the card while it was absent and the
  * closing run already moved the normal cursor past that gap. It never narrows
  * a window that is already wider.
+ *
+ * Known limit: that reopen window has no clamp. Monobank answers an old `from`
+ * (13 months back, probed 2026-10-06) with 200, so the sync completes, but rows
+ * older than the bank's own history depth may be missing without an error.
  */
 const fromSecondsForCard = (
   account: StatementSource,

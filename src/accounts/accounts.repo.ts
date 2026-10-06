@@ -5,6 +5,7 @@ import {
   write,
   type AccountRow,
   accounts,
+  deletedImportKeys,
   holdings,
   reminders,
   syncState,
@@ -438,6 +439,10 @@ export const accountsRepo = {
         await databaseTransaction
           .delete(transactions)
           .where(eq(transactions.holdingId, holding.id));
+        // A NO ACTION foreign key on the holding, like the rows above.
+        await databaseTransaction
+          .delete(deletedImportKeys)
+          .where(eq(deletedImportKeys.holdingId, holding.id));
       }
       // `sync_state.account_id` is an FK with NO ACTION (migration
       // `0027`), so deleting `accounts` while a row still references it throws

@@ -7,7 +7,8 @@
 // itself is a native module unavailable under Jest, and the fake
 // `databaseTransaction` double `transactions.repo.test.ts` uses elsewhere
 // never enforces real SQLite WHERE semantics, so only a real engine can
-// prove the STRICT `gt` boundary (a row exactly AT asOf is not counted) and
+// prove the STRICT `gt` boundary (a non-manual row exactly AT asOf is not
+// counted, a manual one is, once), the manual-only half on or before asOf, and
 // the `holdingId` scope (another holding's rows are not counted).
 import { sql } from 'drizzle-orm';
 import { transactions } from '@kiko/db';
@@ -64,15 +65,23 @@ type TransactionRow = {
   amountMinorUnits: number;
   time: number;
   setsBalance?: boolean;
+  source?: 'manual' | 'import' | 'monobank';
 };
 
 const insertTransaction = (database: DatabaseSync, row: TransactionRow): void => {
   database
     .prepare(
       `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, sets_balance)
-       VALUES (?, ?, ?, ?, 'manual', ?)`,
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .run(row.id, row.holdingId, row.amountMinorUnits, row.time, row.setsBalance ? 1 : 0);
+    .run(
+      row.id,
+      row.holdingId,
+      row.amountMinorUnits,
+      row.time,
+      row.source ?? 'manual',
+      row.setsBalance ? 1 : 0,
+    );
 };
 
 const netAfterAsOf = (
@@ -91,7 +100,41 @@ const netAfterAsOf = (
 describe('postClosingRowsWhere — existing-rows-after-asOf read, against a real SQLite engine', () => {
   const AS_OF_MILLISECONDS = 1_700_000_000_000;
 
-  it('excludes a row exactly AT asOf (the boundary belongs to the closing balance itself)', () => {
+  it.each(['import', 'monobank'] as const)(
+    'excludes a %s row exactly AT asOf (the boundary belongs to the closing balance itself)',
+    (source) => {
+      const database = openTestDatabase();
+
+      insertTransaction(database, {
+        id: 'tx-1',
+        holdingId: 'h-1',
+        amountMinorUnits: -500,
+        time: AS_OF_MILLISECONDS,
+        source,
+      });
+
+      expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBeNull();
+    },
+  );
+
+  it.each(['import', 'monobank'] as const)(
+    'excludes a %s row before asOf (the bank figure holds it)',
+    (source) => {
+      const database = openTestDatabase();
+
+      insertTransaction(database, {
+        id: 'tx-1',
+        holdingId: 'h-1',
+        amountMinorUnits: -500,
+        time: AS_OF_MILLISECONDS - 1_000,
+        source,
+      });
+
+      expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBeNull();
+    },
+  );
+
+  it('counts a manual row exactly AT asOf, once (a closing balance never absorbs a manual row)', () => {
     const database = openTestDatabase();
 
     insertTransaction(database, {
@@ -99,6 +142,46 @@ describe('postClosingRowsWhere — existing-rows-after-asOf read, against a real
       holdingId: 'h-1',
       amountMinorUnits: -500,
       time: AS_OF_MILLISECONDS,
+    });
+
+    expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBe(-500);
+  });
+
+  it('counts a manual row before asOf', () => {
+    const database = openTestDatabase();
+
+    insertTransaction(database, {
+      id: 'tx-1',
+      holdingId: 'h-1',
+      amountMinorUnits: -500,
+      time: AS_OF_MILLISECONDS - 1_000,
+    });
+
+    expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBe(-500);
+  });
+
+  it('excludes a row that set a balance, even a manual one before asOf', () => {
+    const database = openTestDatabase();
+
+    insertTransaction(database, {
+      id: 'tx-opening',
+      holdingId: 'h-1',
+      amountMinorUnits: 2_000,
+      time: AS_OF_MILLISECONDS - 1_000,
+      setsBalance: true,
+    });
+
+    expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBeNull();
+  });
+
+  it("excludes another holding's manual row before asOf", () => {
+    const database = openTestDatabase();
+
+    insertTransaction(database, {
+      id: 'tx-1',
+      holdingId: 'h-2',
+      amountMinorUnits: -700,
+      time: AS_OF_MILLISECONDS - 1_000,
     });
 
     expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBeNull();
@@ -146,7 +229,7 @@ describe('postClosingRowsWhere — existing-rows-after-asOf read, against a real
     expect(netAfterAsOf(database, 'h-1', AS_OF_MILLISECONDS)).toBeNull();
   });
 
-  it('sums every after-asOf row for the correct holding, ignoring the at-boundary row and the other holding', () => {
+  it('sums every row on top of the closing for the correct holding, ignoring the at-boundary import row and the other holding', () => {
     const database = openTestDatabase();
 
     insertTransaction(database, {
@@ -154,6 +237,7 @@ describe('postClosingRowsWhere — existing-rows-after-asOf read, against a real
       holdingId: 'h-1',
       amountMinorUnits: -100,
       time: AS_OF_MILLISECONDS,
+      source: 'import',
     });
     insertTransaction(database, {
       id: 'tx-other-holding',

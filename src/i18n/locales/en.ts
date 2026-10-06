@@ -1021,11 +1021,12 @@ export const en = {
     // What the import would leave the chosen holding's balance at, shown in the
     // preview once a holding is picked (`previewImportBalance`). A status line,
     // so no final ".". `balanceWillBeSet` is a closing balance that applies;
-    // `balanceWillBeSetWithLater` adds the bank figure when the holding's own
-    // later entries make the result differ from it.
+    // `balanceWillBeSetWithLater` adds the bank figure when entries the
+    // statement does not hold (a manual row, or any row after its date) make the
+    // result differ from it.
     balanceWillBeSet: 'Balance will be set to {{amount}}',
     balanceWillBeSetWithLater:
-      'Balance will be set to {{amount}} (bank balance {{bankAmount}} on {{date}}, plus your later entries)',
+      'Balance will be set to {{amount}} (bank balance {{bankAmount}} on {{date}}, plus entries not in this statement)',
     balanceWillChange: 'Balance will change from {{from}} to {{to}}',
     balanceStays: 'Balance stays at {{amount}}',
     // A row a format's parse could not resolve (e.g. a PrivatBank currency

@@ -333,9 +333,14 @@ its newest sync-source row (`balanceBoundaryOf`, `movesBalance`,
 `src/transactions/balance-boundary/`, read by `readAnchoredHoldingDatabaseTransaction`
 in `importRows` and its preview alone), and a closing balance sets the bank's
 figure outright. A bank-owned (synced) row is never deleted. Re-importing the
-same file brings a deleted row back; with a closing balance its amount returns
-with it, and with none a row dated before the boundary returns as history
-without its amount (accepted). The delete confirm states each holding's change
+same file brings a deleted row back with its amount: a deleted import row's
+stored key is kept per holding (`deleted_import_keys`, migration 0054), and a
+row matching one counts at full amount on the net-delta path whatever its date,
+while a row the holding never had and dated on or before the boundary still
+counts 0 (kiko-statement-import has the full rule). Every key of a holding goes in
+the same write that moves its balance anchor (a closing balance that applies, a
+hand-set balance with a non-zero delta, the bank figure of a sync): the sync
+clears the keys but never reads them and never revives a row. The delete confirm states each holding's change
 (`transactions.deleteLinked.balanceChange`, see "Deleting a movement takes its
 other parts"). A sync write is outside the rule: the Monobank balance is the
 bank's own figure on every sync, and a sync REOPEN of a closed card writes no
@@ -344,12 +349,19 @@ a reconnect (`addManyDedup`): it turns the import row into the sync's row in
 place, writes no `holdings` row and moves no balance, and the ledger keeps one
 row per purchase.
 
-*Open, user decision pending:* a back-dated MANUAL row dated on or before a
-closing balance's as-of moves the balance when written (Q7). Importing a statement
-with that closing applies the closing outright (`asOf >= boundary`), which
-counts only rows dated after its as-of, so the row's amount drops out of the
-balance while the row stays; a later delete of that row subtracts it again. No
-behaviour is changed for this until the user rules (`importRows` doc comment).
+*A closing balance never absorbs a manual row (user ruling 2026-10-06, "Manual
+rows stay on top"):* a back-dated MANUAL row dated on or before a closing
+balance's as-of moves the balance when written, and importing a statement with
+that closing (`asOf >= boundary`) keeps it on top of the bank figure, as it
+keeps a row of any source dated after the as-of (`postClosingRowsWhere`:
+`time > asOf` or `source = 'manual'`, never a `setsBalance` row). Example: closing 10,000 as of Oct 1 and
+a manual -1,000 dated Sep 20 give 9,000; the same statement again keeps 9,000, a
+newer closing keeps the row on top, and deleting the row gives 10,000. The
+preview line says "plus entries not in this statement" whenever the result
+differs from the bank figure. KNOWN LIMIT: a manual row that duplicates a bank
+row of the statement counts twice (in the bank figure and on top of it) until
+the user deletes it; the delete then lands exactly on the bank figure (a first
+closing import over a holding the user logged by hand shows it).
 
 **A manual write refuses a ledgerless holding.** `recordManualTransaction`
 (`transactions.repo.ts`) reads the holding first and, before any write,

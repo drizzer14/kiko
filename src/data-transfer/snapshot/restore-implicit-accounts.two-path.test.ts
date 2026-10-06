@@ -52,14 +52,20 @@ const MIGRATION_0050_SQL = readFileSync(
   'utf8',
 );
 
+const MIGRATION_0054_SQL = readFileSync(
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0054_add_deleted_import_keys.sql'),
+  'utf8',
+);
+
 const databaseBefore0050 = (): DatabaseSync => {
   const target = new DatabaseSync(':memory:');
 
   applyMigrationsThrough(target, '0049_bank_accounts_other_bank');
-  // The snapshot reader selects every column the schema has today, so this
-  // database carries the one added since (null on every row, as no row here is
-  // an exchange leg).
+  // The snapshot reader selects every column and table the schema has today, so
+  // this database carries the ones added since: a column (null on every row, as no
+  // row here is an exchange leg) and the table of deleted import keys (empty).
   target.exec('ALTER TABLE transactions ADD exchange_pair_id text;');
+  target.exec(MIGRATION_0054_SQL);
   target.exec('PRAGMA foreign_keys = ON;');
 
   return target;

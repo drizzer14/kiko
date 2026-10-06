@@ -65,6 +65,11 @@ positive; worktrees pass). Run the release `check:all` in a clean
 worktree at the release commit (as done for v1.1.0: next worktree at
 1c7c8731), or move the copied diff; never allowlist it silently.
 
+After a merge that adds a migration or a snapshot key, regenerate the demo
+.kiko fixtures (`KIKO_REGEN_DEMO=1 npx jest e2e/screenshot/fixtures/generate-demo-kiko.test.ts`,
+see e2e/screenshot/fixtures/README.md; example commit e764fb6f) and copy
+kiko-demo-en.kiko to the reviewer kit before the build bump.
+
 6. `kiko:ops` archives the `Release` configuration (signed with the
    KikoDistribution provisioning profile and the distribution
    certificate). Only Debug and Release configurations exist;

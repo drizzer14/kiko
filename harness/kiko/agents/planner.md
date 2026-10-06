@@ -20,6 +20,8 @@ Rules:
 - Write the plan to a file. Name each step, each file it touches, and each check it must pass.
 - Name each change set "<track> task N/M" and each step inside it "step N/M" (a number plus the total), per the harness-workflow skill; never an invented letter id.
 - Point the plan at the harness checks: `make verify` once at the end, run until it is green; plan mutation testing (`make deep`) per small change set, with `KIKO_MUTATION_BASE` set to that change set's own base commit — never one whole-branch or whole-release run (`mutation.sh` refuses more than 30 files).
+- When a ruling reverses an earlier rule, the scenario matrix adds a "was:" column (or rows)
+  that shows the old result next to the new one.
 - Keep the plan tight: name each step, its files, and its check. No restating the code, no essays.
 - Report back: send the plan the moment it is written, then end the turn — no extra
   checks or silent waiting after. Run any command over a few minutes in the background

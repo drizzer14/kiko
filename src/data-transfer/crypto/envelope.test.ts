@@ -115,7 +115,12 @@ describe('the export version against the migration journal', () => {
     // needed no bump.
     // Through 0053_add_loan_holding_id_index, an index: it holds no data and
     // changes nothing a file carries, so it needed no bump.
-    migrationCount: 54,
+    // Through 0054_add_deleted_import_keys, a new table the file carries as an
+    // optional key (`deletedImportKeys`): an older build restoring such a file
+    // drops the key and keeps today's rule for a re-imported deleted row, and
+    // this build restores an older file with the table empty, so it needed no
+    // bump (a bump would make an older build refuse every new file).
+    migrationCount: 55,
   };
 
   it('has a version decision for every migration', () => {
