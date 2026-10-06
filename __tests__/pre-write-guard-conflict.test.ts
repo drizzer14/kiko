@@ -7,8 +7,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 // through Edit/Write, so the guard must still let those writes through and
 // still catch a violation the resolution adds. These run the REAL semgrep
 // and the REAL Node checkers against a conflicted file on disk: a stub
-// would not prove that real Semgrep's parse failure on the markers no longer
-// denies.
+// would not prove that real Semgrep's parse failure on the markers does not
+// deny.
 const SCRIPT = join(__dirname, '../scripts/checks/pre-write-guard.sh');
 
 const OURS_MARKER = '<<<<<<< HEAD';

@@ -95,8 +95,8 @@ describe('scripts/checks/mutation.sh streaming', () => {
     const result = runWithStub(bin, temporaryDirectory, callLog);
 
     expect(result.code).toBe(0);
-    // The core regression: a passing run used to capture the output into a
-    // variable and print nothing. It must now reach stdout live.
+    // The core regression: a passing run must reach stdout live, not capture
+    // the output into a variable and print nothing.
     expect(result.stdout).toContain('STRYKER-STREAM-LINE-1');
     expect(result.stdout).toContain('STRYKER-STREAM-LINE-2');
   });
