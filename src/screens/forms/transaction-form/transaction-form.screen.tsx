@@ -323,8 +323,6 @@ const ruleCategoryFor = (
 // its branch count stays out of the screen component's cognitive-complexity
 // budget.
 type SaveDisabledParams = {
-  converting: boolean;
-  isExchange: boolean;
   isSplit: boolean;
   isReadOnly: boolean;
   isEditing: boolean;
@@ -350,7 +348,7 @@ type SaveDisabledField =
   | 'amount';
 
 // Every field's OWN independent error, gated only by which mode is ACTIVE
-// (converting/isExchange/isSplit/plain are mutually exclusive, so only one
+// (converting/exchange/split/plain are mutually exclusive, so only one
 // of these ever renders at a time), typed to hold ONLY the active mode's own
 // field keys — a mode's function never even mentions a field it has no
 // opinion on, so there is no all-undefined record to keep in sync by hand.
@@ -422,62 +420,54 @@ const plainFieldErrors = (params: SaveDisabledParams, t: TFunction): Transaction
   };
 };
 
-// Dispatches to the ACTIVE mode's own independent errors.
-const transactionFieldErrors = (
-  params: SaveDisabledParams,
-  t: TFunction,
-): TransactionFieldErrors => {
-  if (params.converting) {
-    return convertingFieldErrors(params, t);
-  }
+// Converting an existing row to an exchange is a sub-flow of an edit, not a
+// `FormMode`, so it is its own key here and wins over whatever form mode is
+// selected.
+type ActiveMode = FormMode | 'converting';
 
-  if (params.isExchange) {
-    return exchangeFieldErrors(params, t);
-  }
+export const resolveActiveMode = (converting: boolean, mode: FormMode): ActiveMode =>
+  converting ? 'converting' : mode;
 
-  if (params.isSplit) {
-    return splitFieldErrors(params, t);
-  }
+type SpecialSaves = Record<'convert' | 'split' | 'exchange', () => Promise<void>>;
 
-  return plainFieldErrors(params, t);
+type ModeBehavior = {
+  fieldErrors: (params: SaveDisabledParams, t: TFunction) => TransactionFieldErrors;
+  // The mode's field keys in the SAME priority order `fieldErrors` tests them —
+  // `firstInvalidField` below finds the first of these with an actual error,
+  // which is both the Save-block gate AND the scroll-to-first-invalid target, so
+  // the two can never disagree.
+  fieldOrder: readonly SaveDisabledField[];
+  // Null for the income/expense path: `performSave` itself writes that one, after
+  // the category confirm the three special modes have no use for.
+  save: ((saves: SpecialSaves) => Promise<void>) | null;
 };
 
-// Each mode's own field keys, in the SAME priority order that mode's own
-// error function above tests them — `firstInvalidField` below finds the
-// first of these with an actual error, which is both the Save-block gate
-// AND the scroll-to-first-invalid target, so the two can never disagree.
-const CONVERTING_FIELD_ORDER: readonly SaveDisabledField[] = [
-  'counterpartHolding',
-  'counterpartAmount',
-];
-const EXCHANGE_FIELD_ORDER: readonly SaveDisabledField[] = [
-  'destinationHolding',
-  'valueOut',
-  'valueIn',
-];
-const SPLIT_FIELD_ORDER: readonly SaveDisabledField[] = [
-  'amount',
-  'selectedCategory',
-  'splitReturns',
-];
-const PLAIN_FIELD_ORDER: readonly SaveDisabledField[] = ['amount', 'selectedCategory'];
+const PLAIN_MODE_BEHAVIOR: ModeBehavior = {
+  fieldErrors: plainFieldErrors,
+  fieldOrder: ['amount', 'selectedCategory'],
+  save: null,
+};
 
-// The active mode's own priority order — mirrors `transactionFieldErrors`'s
-// dispatcher exactly, so the two can never pick a different mode's fields.
-const activeFieldOrder = (params: SaveDisabledParams): readonly SaveDisabledField[] => {
-  if (params.converting) {
-    return CONVERTING_FIELD_ORDER;
-  }
-
-  if (params.isExchange) {
-    return EXCHANGE_FIELD_ORDER;
-  }
-
-  if (params.isSplit) {
-    return SPLIT_FIELD_ORDER;
-  }
-
-  return PLAIN_FIELD_ORDER;
+// Every per-mode decision of the form in one place, keyed by the active mode so
+// adding a mode is a compile error until each of the three is supplied.
+const MODE_BEHAVIOR: Record<ActiveMode, ModeBehavior> = {
+  income: PLAIN_MODE_BEHAVIOR,
+  expense: PLAIN_MODE_BEHAVIOR,
+  exchange: {
+    fieldErrors: exchangeFieldErrors,
+    fieldOrder: ['destinationHolding', 'valueOut', 'valueIn'],
+    save: (saves) => saves.exchange(),
+  },
+  split: {
+    fieldErrors: splitFieldErrors,
+    fieldOrder: ['amount', 'selectedCategory', 'splitReturns'],
+    save: (saves) => saves.split(),
+  },
+  converting: {
+    fieldErrors: convertingFieldErrors,
+    fieldOrder: ['counterpartHolding', 'counterpartAmount'],
+    save: (saves) => saves.convert(),
+  },
 };
 
 // The first still-invalid field in priority order, or null once every field
@@ -495,7 +485,7 @@ const firstInvalidField = (
 // wrote nothing — the row's own category is already persisted by `writeManual`
 // regardless, so `save` just returns to the list instead. Kept module-level
 // and pure for the same cognitive-complexity-budget reason as
-// `transactionFieldErrors`.
+// `MODE_BEHAVIOR`'s field-error functions.
 const resolveCategoryOverrideRequest = (
   categoryChanged: boolean,
   selectedCategory: string | null,
@@ -2005,7 +1995,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The description field's placeholder previews the label the row would carry
   // if left blank (see `resolveDescriptionPlaceholder`), and the Save button is
   // disabled for a create still missing its amount or category (see
-  // `transactionFieldErrors`). Both are module-level pure helpers so their
+  // `MODE_BEHAVIOR`). Both are module-level pure helpers so their
   // branches stay out of this component's cognitive-complexity budget.
   const descriptionPlaceholder = resolveDescriptionPlaceholder({
     holding,
@@ -2014,9 +2004,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     mode,
     t,
   });
+  const modeBehavior = MODE_BEHAVIOR[resolveActiveMode(converting, mode)];
   const saveDisabledParams: SaveDisabledParams = {
-    converting,
-    isExchange,
     isSplit,
     isReadOnly,
     isEditing,
@@ -2029,19 +2018,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     changeReturns,
     currency,
   };
-  // Every field's OWN independent error (see `transactionFieldErrors`'s own
+  // Every field's OWN independent error (see `TransactionFieldErrors`'s own
   // doc comment) — `fieldError` just applies the shared `attemptedSave` gate
   // once here instead of at each of the eight call sites below.
-  const activeFieldErrors = transactionFieldErrors(saveDisabledParams, t);
+  const activeFieldErrors = modeBehavior.fieldErrors(saveDisabledParams, t);
   const fieldError = (key: SaveDisabledField): string | undefined =>
     attemptedSave ? activeFieldErrors[key] : undefined;
   // The first still-blocking field, in the active mode's own priority order
   // — both the Save-block gate AND the scroll-to-first-invalid target, so
   // the two can never disagree about which field is blocking.
-  const disableSaveField = firstInvalidField(
-    activeFieldOrder(saveDisabledParams),
-    activeFieldErrors,
-  );
+  const disableSaveField = firstInvalidField(modeBehavior.fieldOrder, activeFieldErrors);
   const disableSave = disableSaveField !== null;
 
   // An explicit category pick: record the choice AND flag it, so a later
@@ -2448,25 +2434,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // single early-return without carrying all three branches in its own
   // cognitive-complexity budget.
   const dispatchSpecialSave = async (): Promise<boolean> => {
-    if (converting) {
-      await saveConvert();
+    const { save: saveSpecial } = modeBehavior;
 
-      return true;
+    if (saveSpecial === null) {
+      return false;
     }
 
-    if (isSplit) {
-      await saveSplit();
+    await saveSpecial({ convert: saveConvert, split: saveSplit, exchange: saveExchange });
 
-      return true;
-    }
-
-    if (isExchange) {
-      await saveExchange();
-
-      return true;
-    }
-
-    return false;
+    return true;
   };
 
   // The outer Save gate: Save is always enabled, so a press while

@@ -18,7 +18,7 @@ import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-wi
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
-import TransactionFormScreen, { canSaveSplit } from './transaction-form.screen';
+import TransactionFormScreen, { canSaveSplit, resolveActiveMode } from './transaction-form.screen';
 
 const mockScrollToEnd = jest.fn();
 
@@ -4246,6 +4246,25 @@ describe('TransactionFormScreen — blocked Save scrolls to the first invalid fi
     const amountOnly = await blockedSaveTarget(utils);
 
     expect(sameTarget(bothInvalid, amountOnly)).toBe(false);
+  });
+});
+
+describe('resolveActiveMode', () => {
+  it('keys the active mode by the form mode while not converting', () => {
+    expect(resolveActiveMode(false, 'income')).toBe('income');
+    expect(resolveActiveMode(false, 'expense')).toBe('expense');
+    expect(resolveActiveMode(false, 'exchange')).toBe('exchange');
+    expect(resolveActiveMode(false, 'split')).toBe('split');
+  });
+
+  // The convert flow only opens on an edited row, which offers income/expense
+  // alone, so the UI never pairs it with exchange or split; the precedence is
+  // still the contract of the field errors, scroll order and save path.
+  it('lets converting win over every form mode', () => {
+    expect(resolveActiveMode(true, 'income')).toBe('converting');
+    expect(resolveActiveMode(true, 'expense')).toBe('converting');
+    expect(resolveActiveMode(true, 'exchange')).toBe('converting');
+    expect(resolveActiveMode(true, 'split')).toBe('converting');
   });
 });
 
