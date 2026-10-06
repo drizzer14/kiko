@@ -40,8 +40,8 @@ const transactionFormRoute = (params: TransactionFormParams) =>
 // text leaves. Walking only `children` (never `props`) and keeping just the
 // string leaves reconstructs the SCREEN-READING order of every rendered
 // caption/label/button-text, independent of any prop value (e.g. a
-// `placeholder` that happens to equal a neighboring field's label) — used to
-// assert field order without depending on internal DOM structure.
+// `placeholder` that happens to equal a neighboring field's label) — so tests
+// can assert field order without depending on internal DOM structure.
 type RenderedNode = { children: (RenderedNode | string)[] | null };
 
 const collectRenderedText = (node: RenderedNode | string | null): string[] => {
@@ -452,7 +452,7 @@ describe('TransactionFormScreen — add mode', () => {
 
   it('backdates a manual transaction to the picked day, keeping the default time-of-day', async () => {
     // A fresh add defaults `time` to now; picking a DAY moves only the day and
-    // carries over that default time-of-day (the DateField no longer resets to
+    // carries over that default time-of-day (the DateField does not reset to
     // midnight, so a later time pick is not clobbered). Pin `Date.now()` so the
     // carried-over time-of-day (14:30) is deterministic.
     const nowSpy = jest
@@ -545,7 +545,7 @@ describe('TransactionFormScreen — add mode', () => {
 
     expect(mockRecordManual).not.toHaveBeenCalled();
     expect(getByText('Amount must be greater than 0.')).toBeTruthy();
-    // The reason moved onto the Amount field, so the footer no longer carries
+    // The reason sits on the Amount field, so the footer does not carry
     // it — see the "renders only the Save button in the footer" test below.
     expect(
       within(getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
@@ -985,7 +985,7 @@ describe('TransactionFormScreen — duplicate mode', () => {
     // The classic "duplicate this row, tweak the note" flow: the source seeds
     // Groceries, then the user retypes the description to a name matching NO
     // rule and blurs. A duplicate-seeded category is treated as a user pick, so
-    // the blur (A1) must NOT clear it — the category stays and Save stays on.
+    // the blur must NOT clear it — the category stays and Save stays on.
     const utils = await renderDuplicate('txn-src');
     const { getByLabelText, getByText } = utils;
 
@@ -1152,7 +1152,7 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
 
   it('does not surface the Exchange type option when the primary holding is a crypto_asset', async () => {
     // A crypto_asset holding (e.g. one migration 0044 moved a cash holding
-    // onto) is no longer an exchange SOURCE — `cryptoAssetDescriptor`'s
+    // onto) is not an exchange SOURCE — `cryptoAssetDescriptor`'s
     // `exchange.createSource` is `false`, unlike the cash holding it may have
     // come from.
     const cryptoHoldings = [
@@ -1243,8 +1243,8 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
 
   it('hydrates a 50-satoshi BTC transaction to 0.0000005, not 57', async () => {
     // Below 100 satoshis, `String(minor / 1e8)` emits exponential notation
-    // ("5e-7"), which the grouping formatter used to strip down to its digits
-    // ("57") — a 50-satoshi transaction rendered, and saved, as 57 BTC.
+    // ("5e-7"), which reducing to its digits would turn into "57" — a
+    // 50-satoshi transaction would render, and save, as 57 BTC.
     setLiveData([{ id: 'h-btc', currency: 'BTC', balanceMinorUnits: 0, type: 'crypto_asset' }], {
       id: 'tx-1',
       holdingId: 'h-btc',
@@ -1403,9 +1403,9 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(getByText('09:15')).toBeTruthy();
   });
 
-  // Deleting a manual transaction is no longer offered from this form — the
+  // Deleting a manual transaction is not offered from this form — the
   // row's touch-and-hold context menu (`CardContextMenu`) is the only delete
-  // entry point now, so the form itself never renders a Delete action or a
+  // entry point, so the form itself never renders a Delete action or a
   // delete confirm sheet.
   it('offers no Delete action, even on an editable manual transaction', async () => {
     const { queryByText } = await renderEdit('txn-1');
@@ -3281,7 +3281,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
-    // Part A: picking a destination now PREFILLS an approximate value through
+    // Picking a destination PREFILLS an approximate value through
     // the bundled fiat rate seed (`buildRateTable`'s fallback layer, proven in
     // the "convert counterpart prefill" describe block below) — explicitly
     // blank the field to exercise the validation guard this test targets.
@@ -3304,7 +3304,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    // Part A: picking a destination now PREFILLS an approximate value through
+    // Picking a destination PREFILLS an approximate value through
     // the bundled fiat rate seed — blank it explicitly so this still exercises
     // the "blocked until valid" guard (see the note on the test above).
     await fireEvent.changeText(utils.getByLabelText('Value in'), '');
@@ -3329,7 +3329,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    // Part A: picking a destination now PREFILLS an approximate value through
+    // Picking a destination PREFILLS an approximate value through
     // the bundled fiat rate seed — blank it explicitly to still reach the
     // "amount must be greater than 0" reason this test targets.
     await fireEvent.changeText(utils.getByLabelText('Value in'), '');
@@ -3420,7 +3420,7 @@ const SPLIT_ACCOUNTS: Account[] = [{ id: 'acc', name: 'Home' }];
 
 // A synced, same-currency, open holding: its account is connected to a sync
 // (Binance) AND it carries that source's metadata key, so `isSyncedHolding` is
-// true and the return picker must exclude it (item 6), even though currency and
+// true and the return picker must exclude it, even though currency and
 // open-status would otherwise qualify it.
 const SPLIT_SYNCED_HOLDING: Holding = {
   id: 'synced-uah',
@@ -3972,9 +3972,9 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
   // Wrapping `renderSplitReturns`'s Fragment in this `View` (wrapping the
   // divider/heading/rows/button in one `View`) pulls them OUT of the parent
-  // `Box gap={4}`'s own flex-item list — they used to be its direct children,
-  // each getting that 16pt rhythm; now they are all ONE child, with nothing
-  // supplying a gap between them. The wrapper must carry the SAME gap itself.
+  // `Box gap={4}`'s own flex-item list — direct children would each get that
+  // 16pt rhythm; as ONE child, nothing supplies a gap between them. The
+  // wrapper must carry the SAME gap itself.
   it('gives the split-returns wrapper its own gap matching the form rhythm, once split mode is selected', async () => {
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');
@@ -4030,7 +4030,7 @@ describe('canSaveSplit', () => {
     expect(canSaveSplit('', [{ holdingId: 'a', amount: '1' }], 'UAH')).toBe(false);
     // A return with no holding picked.
     expect(canSaveSplit('10', [{ holdingId: null, amount: '1' }], 'UAH')).toBe(false);
-    // A return that targets the payer itself is NOW allowed (item 2): the net is
+    // A return that targets the payer itself is allowed: the net is
     // still an expense (return < payment) and the balance nets on the payer with
     // no double-count, so a payer return is a valid split.
     expect(canSaveSplit('10', [{ holdingId: 'payer', amount: '1' }], 'UAH')).toBe(true);
@@ -4132,9 +4132,9 @@ describe('TransactionFormScreen — convert counterpart prefill', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  // Part A (bug-hunt fix): `buildRateTable` now falls back to the bundled fiat
+  // `buildRateTable` falls back to the bundled fiat
   // rate seed when `currency_rates` has no live row for a pair — a supported
-  // fiat pair therefore ALWAYS resolves, never `null`, so this no longer proves
+  // fiat pair therefore ALWAYS resolves, never `null`, so this does not prove
   // the blank-field path (see `exchange-prefill.test.ts`'s own "returns null
   // when no cached rate exists", unaffected by the seed since it hand-builds
   // its `RateTable` rather than going through `buildRateTable`). This proves
