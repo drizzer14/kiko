@@ -142,6 +142,45 @@ const adoptedConvertToDollars = async () => {
   };
 };
 
+// An import row of -40 000 on the card, Converted into a term deposit while it is
+// still the user's: the deposit takes the contribution and the row carries the
+// pair id and the `deposit` marker.
+const convertedIntoDeposit = async (): Promise<void> => {
+  run(
+    `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
+     VALUES ('deposit', 'account', 'Deposit', 'term_deposit', 'UAH', 0,
+       '{"contributions":[{"amountMinorUnits":500000,"date":${T}}],"annualRatePct":10,"termMonths":12,"recapitalization":true,"compounding":"monthly"}')`,
+  );
+  insertRow({ id: 'i1', time: T, amount_minor_units: -40_000 });
+  await transactionsRepo.recordExchangeCounterpart({
+    direction: 'record-destination',
+    counterpartHoldingId: 'deposit',
+    counterpartType: 'term_deposit',
+    amountMinorUnits: 40_000,
+    existingTransactionId: 'i1',
+    existingHoldingId: 'card',
+    time: T,
+  });
+};
+
+// The deposit source leg Converted again, into the dollar card, then adopted: the
+// dollar leg joins the pair and the row keeps the marker of the deposit.
+const adoptedDepositSourceConvertedToDollars = async (): Promise<string> => {
+  await convertedIntoDeposit();
+  await transactionsRepo.recordExchangeCounterpart({
+    direction: 'record-destination',
+    counterpartHoldingId: 'usd',
+    counterpartType: 'card',
+    amountMinorUnits: 1_000,
+    existingTransactionId: 'i1',
+    existingHoldingId: 'card',
+    time: T,
+  });
+  await sync([syncItem('k1', T + SECOND, { amountMinorUnits: -40_000 })]);
+
+  return storedRows().find((row) => row.holdingId === 'usd')?.id ?? '';
+};
+
 beforeEach(() => {
   mockDatabase = new DatabaseSync(':memory:');
   applyAllMigrations(mockDatabase);
@@ -590,21 +629,7 @@ describe('a sync item adopting its import twin and the balance', () => {
   });
 
   it('clears the marker of an adopted deposit source leg when the deposit is deleted', async () => {
-    run(
-      `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
-       VALUES ('deposit', 'account', 'Deposit', 'term_deposit', 'UAH', 0,
-         '{"contributions":[{"amountMinorUnits":500000,"date":${T}}],"annualRatePct":10,"termMonths":12,"recapitalization":true,"compounding":"monthly"}')`,
-    );
-    insertRow({ id: 'i1', time: T, amount_minor_units: -40_000 });
-    await transactionsRepo.recordExchangeCounterpart({
-      direction: 'record-destination',
-      counterpartHoldingId: 'deposit',
-      counterpartType: 'term_deposit',
-      amountMinorUnits: 40_000,
-      existingTransactionId: 'i1',
-      existingHoldingId: 'card',
-      time: T,
-    });
+    await convertedIntoDeposit();
     await sync([syncItem('k1', T + SECOND, { amountMinorUnits: -40_000 })]);
     const cardBalance = balanceOf();
 
@@ -615,6 +640,86 @@ describe('a sync item adopting its import twin and the balance', () => {
     expect(storedRows()).toMatchObject([{ id: 'i1', source: 'monobank', marker: null }]);
     expect(excludedIds()).toEqual(new Set());
     expect(balanceOf()).toBe(cardBalance);
+  });
+
+  describe('a bank-owned row of a split group', () => {
+    const insertBankRowOfSplit = (columns: Record<string, SqlParameter>): void => {
+      insertRow({
+        id: 'bank-row',
+        source: 'monobank',
+        change_group_id: 'group',
+        exchange_counterpart_holding_id: 'usd',
+        ...columns,
+      });
+    };
+    const insertReturn = (): void => {
+      insertRow({
+        id: 'return',
+        holding_id: 'cash',
+        amount_minor_units: 5_000,
+        source: 'manual',
+        external_id: null,
+        change_group_id: 'group',
+      });
+    };
+
+    it('keeps a marker only the split group reaches, which names no leg this delete removes', async () => {
+      insertBankRowOfSplit({});
+      insertReturn();
+
+      await transactionsRepo.remove('return');
+
+      expect(storedRows()).toMatchObject([{ id: 'bank-row', marker: 'usd' }]);
+    });
+
+    it('clears the marker when the same pair held the leg it names, removed with the split', async () => {
+      insertBankRowOfSplit({ exchange_pair_id: 'pair' });
+      insertReturn();
+      insertRow({
+        id: 'dollar-leg',
+        holding_id: 'usd',
+        amount_minor_units: 1_000,
+        source: 'manual',
+        external_id: null,
+        exchange_pair_id: 'pair',
+        exchange_counterpart_holding_id: 'card',
+      });
+
+      await transactionsRepo.remove('return');
+
+      expect(storedRows()).toMatchObject([{ id: 'bank-row', pairId: 'pair', marker: null }]);
+    });
+  });
+
+  describe('an adopted deposit source leg Converted again, into the dollar card', () => {
+    it('keeps the deposit marker when only the dollar leg is deleted', async () => {
+      const dollarLegId = await adoptedDepositSourceConvertedToDollars();
+
+      expect(storedRows().find((row) => row.id === 'i1')?.marker).toBe('deposit');
+
+      await transactionsRepo.remove(dollarLegId);
+
+      expect(storedRows()).toMatchObject([{ id: 'i1', source: 'monobank', marker: 'deposit' }]);
+      expect(excludedIds()).toEqual(new Set(['i1']));
+      expect(balanceOf('usd')).toBe(0);
+    });
+
+    it('keeps the deposit marker when the dollar card is deleted', async () => {
+      await adoptedDepositSourceConvertedToDollars();
+
+      await transactionsRepo.removeHolding('usd');
+
+      expect(storedRows()).toMatchObject([{ id: 'i1', source: 'monobank', marker: 'deposit' }]);
+      expect(excludedIds()).toEqual(new Set(['i1']));
+    });
+
+    it('clears the deposit marker when the deposit is deleted', async () => {
+      await adoptedDepositSourceConvertedToDollars();
+
+      await transactionsRepo.removeHolding('deposit');
+
+      expect(storedRows().find((row) => row.id === 'i1')?.marker).toBeNull();
+    });
   });
 });
 

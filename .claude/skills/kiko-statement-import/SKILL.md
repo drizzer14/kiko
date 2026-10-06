@@ -196,9 +196,13 @@ loan link and an exchange pair with its marker. The adopted input is not
 inserted and not counted, no `holdings` row is written (the sync overwrites the
 stored balance from the bank), and the row is bank-owned from then on, so the
 ledger keeps one row per purchase and no balance moves. The marker stays only
-while its partner lives: a delete that keeps the adopted row (the manual leg
-deleted, or its holding) clears the marker in the same write, so the purchase
-counts as spending again (`kiko-domain`, "A bank-owned partner is kept"). A manual twin is not
+while the leg it names lives: a delete that keeps the adopted row clears the
+marker in the same write only when that leg goes with it (the manual leg of the
+same pair deleted, or the holding the marker names), so the purchase counts as
+spending again. A marker naming something else stays: a deposit source leg
+Converted again keeps `deposit` while the dollar leg is deleted, and the deposit
+still holds the contribution (`kiko-domain`, "A bank-owned (synced) partner is
+kept"). A manual twin is not
 adopted: the user deletes that duplicate. A later import of the same file finds
 the adopted row as a synced row and holds its rows.
 RESIDUAL, left doubled: the adoption sees only the stored time, so an import

@@ -164,8 +164,11 @@ export const transactions = sqliteTable(
     // row the reconnect sync adopts (`adoptImportTwinsDatabaseTransaction`)
     // keeps it. A delete that keeps such a row clears the marker in the SAME
     // write (`removeRowsDatabaseTransaction`, for a leg delete and for a
-    // holding or account cascade alike), because the leg it names is gone and a
-    // marker left behind would keep a real purchase out of spending for good.
+    // holding or account cascade alike) only when the leg it names goes with
+    // that delete (`markerLegIsGone`): its holding is deleted, or a removed row
+    // of the same pair sat on it. A marker left behind naming a gone leg would
+    // keep a real purchase out of spending for good; one cleared while its leg
+    // stays (a deposit a second Convert never repointed) would count it twice.
     exchangeCounterpartHoldingId: text('exchange_counterpart_holding_id'),
     // Split-change grouping: a shared id across ONE manual payment row and the
     // N return rows that distribute its change into OTHER holdings, all written
@@ -188,7 +191,8 @@ export const transactions = sqliteTable(
     // manual or imported and carries none. A synced
     // (bank-owned) existing row gets this id and nothing else, so the delete
     // knows its partner is the bank's and keeps it (the pair id stays on the kept
-    // row, only its marker is cleared); `addManyDedup`'s upsert never touches the
+    // row, its marker cleared only when the leg it names is gone);
+    // `addManyDedup`'s upsert never touches the
     // column, like `loanHoldingId` and `category`. Null on a
     // row that is no leg, and on a legacy leg migration 0052 could not prove a
     // partner for. Deleting a holding or an account follows the same ids to the

@@ -986,13 +986,23 @@ Rules:
   can still carry a marker: a marked import row the reconnect sync adopted
   (`adoptImportTwinsDatabaseTransaction`). The delete that keeps it clears its
   `exchangeCounterpartHoldingId` in the same write (`removeRowsDatabaseTransaction`'s
-  `kept`, for a leg delete and the holding/account cascade alike; a deposit source
-  leg whose deposit is deleted included), keeps its pair id, and moves no balance:
-  a marker left naming a gone leg would keep a real purchase out of spending
-  (`exchangeExcludedTransactionIds`) for good. The confirm text does not change.
+  `kept`, for a leg delete and the holding/account cascade alike) ONLY when the leg
+  the marker names goes with that delete (`markerLegIsGone`): the marker's holding
+  is among the deleted holdings (a deposit source leg whose deposit is deleted
+  included), or a removed row of the same pair sat on it. A marker that names
+  anything else stays, because its leg stays: a deposit source leg Converted again
+  keeps `deposit` while the dollar leg joins the pair, so deleting that dollar leg
+  (or the dollar card) leaves the row excluded from spending, the deposit still
+  holding the contribution. A marker reached only through a split group names no
+  removed leg and stays too. The delete keeps the pair id and moves no balance: a
+  marker left naming a gone leg would keep a real purchase out of spending
+  (`exchangeExcludedTransactionIds`) for good, and one cleared while its leg stays
+  would count the purchase twice. The confirm text does not change.
 - **A re-Convert keeps the deposit marker.** `markExistingLegTransaction` sets
   the counterpart marker only when the row has none, so a deposit source leg
-  keeps the marker that takes its contribution out.
+  keeps the marker that takes its contribution out. The marker therefore may name
+  a holding no leg of the pair sits on (the deposit), which is why a delete never
+  clears a kept row's marker just because the row has one.
 - **An unreadable deposit is not an error.** `removeDepositContributionDatabaseTransaction`
   returns false when the metadata cannot be read or no single contribution
   matches: the leg deletes and the deposit stays, as the confirm said
@@ -2662,7 +2672,7 @@ Deleting a holding also deletes the movements its rows were one part of (the
 other legs of an Exchange or Convert, the rest of a split, the legs that paid
 into a deleted deposit), each taking its full amount back from its own
 holding (the deleted holding's own rows need no reversal: the holding goes). A
-bank-owned partner is kept, never deleted, and loses its exchange marker. `transactionsRepo.removeHolding` runs `cascadeLinkedRowsDatabaseTransaction`
+bank-owned partner is kept, never deleted, and loses its exchange marker only when the leg that marker names goes too (see "A bank-owned (synced) partner is kept"). `transactionsRepo.removeHolding` runs `cascadeLinkedRowsDatabaseTransaction`
 and then `removeHoldingDatabaseTransaction` in one transaction;
 `accountsRepo.remove` runs the same cascade for every holding of the account
 (closed ones included). The cascade's plan is

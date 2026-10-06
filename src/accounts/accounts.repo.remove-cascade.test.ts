@@ -177,6 +177,63 @@ describe('deleting an account whose holdings hold the legs of a movement', () =>
     expect(rowIds()).toEqual(['bank-expense']);
   });
 
+  describe('a bank row that pairs with a leg of the account and carries an exchange marker', () => {
+    const insertBankExpenseWithMarker = (markerHoldingId: string): void => {
+      insertRow({
+        id: 'bank-expense',
+        holdingId: 'bank',
+        amountMinorUnits: -40_000,
+        source: 'monobank',
+        exchangePairId: 'pair',
+        exchangeCounterpartHoldingId: markerHoldingId,
+      });
+      insertRow({
+        id: 'usd-leg',
+        holdingId: 'usd',
+        amountMinorUnits: 1_000,
+        exchangeCounterpartHoldingId: 'bank',
+        exchangePairId: 'pair',
+      });
+    };
+    const markerOfBankExpense = (): unknown =>
+      (
+        mockDatabase
+          .prepare(
+            "SELECT exchange_counterpart_holding_id AS value FROM transactions WHERE id = 'bank-expense'",
+          )
+          .get() as { value: unknown }
+      ).value;
+
+    it('clears the marker when the account holds the leg it names', async () => {
+      keepOnly('usd');
+      insertBankExpenseWithMarker('usd');
+
+      await accountsRepo.remove('account');
+
+      expect(rowIds()).toEqual(['bank-expense']);
+      expect(markerOfBankExpense()).toBeNull();
+    });
+
+    it('keeps the marker of a deposit in another account', async () => {
+      keepOnly('usd');
+      insertBankExpenseWithMarker('deposit');
+
+      await accountsRepo.remove('account');
+
+      expect(rowIds()).toEqual(['bank-expense']);
+      expect(markerOfBankExpense()).toBe('deposit');
+    });
+
+    it('clears the marker of the deposit when the account holds it', async () => {
+      keepOnly('usd', 'deposit');
+      insertBankExpenseWithMarker('deposit');
+
+      await accountsRepo.remove('account');
+
+      expect(markerOfBankExpense()).toBeNull();
+    });
+  });
+
   it('judges a partner by the boundary of its own holding', async () => {
     keepOnly('uah');
     insertRow({

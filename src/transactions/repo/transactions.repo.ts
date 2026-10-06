@@ -264,7 +264,8 @@ const recordManualTransaction = async (
 // documented on `transactions.exchangeCounterpartHoldingId` in `db/schema.ts`,
 // which also says how a bank-owned row can come to carry a marker anyway); it
 // still gets the pair id, which is what tells the delete its partner is the
-// bank's, and the delete then clears any marker that row carries. A row
+// bank's, and the delete then clears a marker that row carries once the leg it
+// names is gone (`markerLegIsGone`). A row
 // that already carries a marker keeps it: the marker of a deposit source leg is
 // what takes the deposit's contribution out with the leg, and a second Convert
 // of that leg must not point it somewhere else.
@@ -392,9 +393,9 @@ const readMovementRowsDatabaseTransaction = async (
 
 // What a delete does to the other rows of a movement: a row the user owns
 // (manual or imported) goes with it, a bank-owned row is never deleted — "kept",
-// and only its exchange marker is cleared — and a sync running in between cannot
-// change that,
-// because the rows are read inside the delete's own transaction. `split` are
+// and its exchange marker is cleared only when the leg it names goes too — and a
+// sync running in between cannot change that, because the rows are read inside
+// the delete's own transaction. `split` are
 // the rows in a split group of the movement, `pair` the rows in an Exchange or
 // Convert pair of it; one row can be in both.
 type LinkedRows = {
@@ -653,13 +654,35 @@ const removeContributionOfRowDatabaseTransaction = async (
 
 const NO_HOLDINGS: ReadonlySet<string> = new Set();
 
+// Whether the leg the marker of the kept row `keptRow` names goes with this delete:
+// its holding is among the deleted ones, or a removed row of the same pair sat on
+// it. A marker that names anything else (a deposit a second Convert of the leg
+// never repointed) still has its leg, and so still keeps the row out of spending.
+const markerLegIsGone = (
+  keptRow: TransactionRow,
+  removedRows: TransactionRow[],
+  deletedHoldingIds: ReadonlySet<string>,
+): boolean =>
+  foldMap(
+    maybe(keptRow.exchangeCounterpartHoldingId),
+    (markerHoldingId) =>
+      deletedHoldingIds.has(markerHoldingId) ||
+      removedRows.some(
+        (removedRow) =>
+          removedRow.holdingId === markerHoldingId &&
+          removedRow.exchangePairId !== null &&
+          removedRow.exchangePairId === keptRow.exchangePairId,
+      ),
+  ) ?? false;
+
 // Delete rows and give each one's full amount back to its OWN holding, in that
 // holding's currency, whatever the row's date or source: every row updated the
 // balance when it was written, so none can stay in it once the row is gone.
 // Then take a deposit's contribution out with the leg that paid it. A bank-owned
-// row of the same movement (`kept`) stays, but the leg its marker names is gone
-// with these rows, so its marker is cleared in the same write: a marker left
-// behind would keep a real purchase out of spending for good. Its pair id
+// row of the same movement (`kept`) stays. Its marker is cleared in the same write
+// only when the leg it names is gone with this delete (`markerLegIsGone`): a marker
+// left behind would keep a real purchase out of spending for good, and one cleared
+// while its leg stays would count that purchase twice. Its pair id
 // stays, and so does every bank-owned column. Everything runs on the caller's
 // transaction, so a throw (a database error mid-delete) rolls the rows and
 // balances back too.
@@ -685,7 +708,7 @@ const removeRowsDatabaseTransaction = async (
     );
   }
 
-  for (const row of kept.filter((keptRow) => keptRow.exchangeCounterpartHoldingId !== null)) {
+  for (const row of kept.filter((keptRow) => markerLegIsGone(keptRow, rows, deletedHoldingIds))) {
     await databaseTransaction
       .update(transactions)
       .set({ exchangeCounterpartHoldingId: null })
@@ -697,7 +720,7 @@ const removeRowsDatabaseTransaction = async (
 // of the deleted holdings that link to anything (a pair id, a split group or an
 // exchange marker; a row with none leads nowhere). `removed` are the rows
 // elsewhere that belong to the same movements and are the user's, `kept` the
-// bank's, which are never deleted (only their exchange marker is cleared). A
+// bank's, which are never deleted (a marker naming a deleted holding is cleared). A
 // deposit among the deleted
 // holdings also reaches the legs that paid into it, whose marker names it. A
 // partner on a deleted holding is in `own`, so it is never counted twice: it
@@ -762,7 +785,8 @@ const readLinksOfHoldingsDatabaseTransaction = async (
  * there to follow): delete the user's rows of the same movements on other
  * holdings, giving each row's full amount back to its holding, and take
  * out of a deposit the contribution a deleted holding's leg made. A bank-owned
- * row of a movement stays, with its exchange marker cleared in the same write.
+ * row of a movement stays, with its exchange marker cleared in the same write
+ * when the marker names a deleted holding or a leg removed with it.
  * Every deposit among the holdings also loses the legs that paid into it.
  */
 export const cascadeLinkedRowsDatabaseTransaction = async (
@@ -2173,8 +2197,8 @@ export const transactionsRepo = {
    * id with (a Convert on a split row links the two), and, for a leg that paid a
    * term deposit, the one contribution dated at the leg's time
    * (`removeDepositContributionDatabaseTransaction`). A bank-owned partner is
-   * kept, never deleted, with its exchange marker cleared in the same write (the
-   * leg it names is gone). The linked rows are read here,
+   * kept, never deleted, with its exchange marker cleared in the same write only
+   * when the leg it names is gone (`markerLegIsGone`). The linked rows are read here,
    * inside the delete, so a sync that ran after `removePlan` read them cannot
    * change what is deleted.
    */
@@ -2196,10 +2220,11 @@ export const transactionsRepo = {
 
       const linked = await readLinkedRowsDatabaseTransaction(databaseTransaction, row);
 
-      await removeRowsDatabaseTransaction(databaseTransaction, rowsToRemoveWith(row, linked), [
-        ...linked.pair.kept,
-        ...linked.split.kept,
-      ]);
+      await removeRowsDatabaseTransaction(
+        databaseTransaction,
+        rowsToRemoveWith(row, linked),
+        linked.pair.kept,
+      );
     }),
   /**
    * What `remove` would take with the row, for the delete confirm's text: a plain
