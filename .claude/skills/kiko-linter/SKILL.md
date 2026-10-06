@@ -255,6 +255,49 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   so `hooks.json` is unchanged and no plugin reinstall is needed; a
   session in the main checkout gets it only after the merge to main.
 
+  WAIT-LOOP deny (why: a `while`/`until` loop whose process scan names
+  the job it waits for matches its OWN command line, so it never ends;
+  the `[j]est` bracket trick only helps while the word appears nowhere
+  else in that command line, and a sibling waiter with the same pattern
+  deadlocks with it). Rule: deny a Bash command with a `while` or `until`
+  loop (condition or body, through its matching `done`) that both lists
+  processes and names a watched job where it filters them. Lists
+  (`PROCESS_LISTERS`, `scanTraits`): `ps`, `top`, `pstree`, or `pgrep`
+  WITH `-f` (any flag group holding `f`) or `--full`. Names a job:
+  `make verify` (any non-word run between the two words), `check:all`,
+  `jest`, `stryker`, `semgrep`, `xcodebuild` (`WATCHED_JOB`, case folded,
+  after `[`, `]`, `\` are dropped so `[j]est` and `make[ ]verify` count)
+  in the arguments of a filter (`TEXT_FILTERS`: `grep`/`egrep`/`fgrep`/
+  `rg`/`ag`/`ack`, `awk`/`gawk`, `sed`/`gsed`, `[`/`[[`/`test`) or of the
+  `pgrep -f` itself. The two may sit in different commands of the loop
+  (`ps aux | grep jest`, `ps aux > f; grep jest f`), in a `$(...)`/
+  backtick span of it (`until [ -z "$(pgrep -f jest)" ]`), or in a `-c`
+  string or `eval` text it runs. Loop tracking (`observeWaitLoops`): the
+  segments of one line are walked in order; a `while`/`until` (after
+  lead-in words: `do`, `then`, a group opener) opens a wait loop, `for`
+  and `select` open a loop that is only counted, `done` closes the last
+  open one, and the scan flags reset when the outermost wait loop
+  closes — so a one-time scan before or after a loop never counts. The
+  walk runs at every nesting level the other denies reach (a `-c`
+  string, a span, a heredoc body, `eval`), once per segment (linear;
+  `__tests__/kill-guard-wait-loops.test.ts` has the timing rows). Reason:
+  the standard WHAT/DETAILS/WHY/HOW/DO-NOT block; HOW points to
+  `bash scripts/wait-load.sh <load> <timeout>` (chain it with `&&`) for
+  a load wait, and to the tool's own `run_in_background` and its exit
+  code for a job the agent started. Allowed: a one-time `ps`/`pgrep`
+  outside a loop; a loop that scans nothing (`until bash
+  scripts/wait-load.sh …`, `until [ -f flag ]`, `while kill -0 <pid>`,
+  `while ps -p <pid>`, `while ! grep -q … log`); `pgrep` without `-f`
+  (`pgrep -x xcodebuild`: a name match cannot see the loop's own
+  command line); a bounded `for` loop (it ends). Rows:
+  `__tests__/kill-guard-wait-loops.test.ts`. Where it is live: like the
+  shell-write deny, `dispatch.sh` runs `kill-guard.js` from the Bash
+  call's own worktree, and `hooks.json` is unchanged, so the deny needs
+  no plugin reinstall; a session in the main checkout gets it only after
+  the merge to main. Only an agent-text change shipped beside it (the
+  plugin version bump) reaches a running session after a plugin
+  reinstall and `/reload-plugins`.
+
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
   EXECUTES shell text runs ONLY through the committed runner
   `scripts/checks/kill-guard-probe.sh bash|zsh '<probe>'` (read its
@@ -364,6 +407,20 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     /tmp/{a,b}/src/y` names a tree folder with an unresolved part);
     `sed -i` run GNU-style on
     macOS (`sed -i 's/a/b/' f`, which BSD sed rejects).
+  - Wait-loop deny, NOT denied: a pattern held in a variable
+    (`pgrep -f "$name"`) or built at run time; a scan in a script file
+    the loop calls; `for`/`select` loops and `watch` (a bounded loop
+    ends on its own); `pgrep` without `-f`, and `pidof`/`lsof` (a name
+    match cannot see the loop's own command line); a loop behind a
+    wrapper outside the `unwrap` sets (`time while …`); a job name
+    outside the watched six (`check:deep`, `make gate`); a regex class
+    that spells a name without its letters (`make[[:space:]]verify`).
+    Over-denied: a `ps`/`pgrep -f` anywhere in the loop and a filter
+    naming a watched job anywhere in it, even when they are unrelated
+    (`while read x; do ps -p $x; done` beside `grep -q jest f` in the
+    same outermost loop); prose in a heredoc body (a commit message) whose
+    lines read as a `while`/`until` loop plus a `ps`/`grep jest` line,
+    since a body is judged like the kill and stash denies judge it.
   - bash 3.2 only (zsh fails): a command after a heredoc inside
     `<(`/`$(` whose body holds an unbalanced paren, and
     `echo $( (echo a)#c ); pkill x`, both run and are not denied.
