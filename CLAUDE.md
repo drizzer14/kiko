@@ -16,7 +16,7 @@ below).
 | `npm run check:lint` | Biome | any lint/format violation fails (Biome skips only the bad fixtures `rules/fixtures/**/*.bad.*`; a good fixture is format-checked, never linted — see `docs/harness/documented-exceptions.md`) | fast (PostToolUse) |
 | `npm run check:dup` | jscpd | >5% duplicated lines/tokens fails | medium (Stop/SubagentStop) |
 | `npm run check:knip` | Knip | any unused file/export/dependency fails | medium |
-| `npm run check:deps` | depcheck + `npm ci --dry-run` + `deps-ranges.js` (exact-pin allowlist) + `npm ls --all` | any unused/missing dep, or broken lockfile, fails; any non-exact-semver spec in dependencies/devDependencies/optionalDependencies/peerDependencies/overrides fails; any `npm ls --all` ELSPROBLEMS (an unsatisfied resolved-tree requirement) fails; a changed dependency block is surfaced for confirmation | medium |
+| `npm run check:deps` | depcheck + `npm ci --dry-run` + `deps-ranges.js` (exact-pin allowlist) + `npm ls --all` | any unused/missing dep, or broken lockfile, fails; any non-exact-semver spec in dependencies/devDependencies/optionalDependencies/peerDependencies/overrides fails; any `npm ls --all` ELSPROBLEMS (an unsatisfied resolved-tree requirement) fails; a changed dependency block is surfaced for confirmation; a `node_modules/node_modules` link or folder fails before npm ls runs; the fix is `rm node_modules/node_modules` for a link and `npm ci` for a folder, never `rm -r node_modules` | medium |
 | `npm run check:security` | Semgrep (`p/typescript`, `p/react`, `p/secrets`, `rules/semgrep-mobile.yml`, `rules/semgrep-prewrite.yml`) | any Class A (ERROR) finding fails; Class B (WARNING) findings are surfaced, override-eligible, non-blocking; a Semgrep error, timeout, bad exit code, or invalid JSON output also fails (see `security.sh`) | fast |
 | `npm run check:rules` | `scripts/checks/semgrep-rules.sh` — Semgrep (`rules/semgrep-mobile.yml` and `rules/semgrep-prewrite.yml`) against `rules/fixtures/` | for every fixture present: a rule that reports nothing on its positive fixture, misses a line pinned there by an `EXPECT-FINDING` comment, or matches its negative one fails; so does a fixture id with only one half of its pair present, and a scan that proved nothing (no fixtures, a fixture semgrep never opened, a semgrep error, or a semgrep/verifier crash). A rule with no fixture at all is not detected here — the fixture set is the input | medium |
 | (PreToolUse hook) | `scripts/checks/pre-write-guard.sh` + `.js` — Semgrep (`rules/semgrep-prewrite.yml`) plus the Node-checker rules in `pre-write-guard.js`'s own `NODE_RULES` (see that file for the closed rule set) against the proposed post-edit content of an `Edit`/`Write`/`MultiEdit` target | any NEW finding from a Semgrep rule in `rules/semgrep-prewrite.yml` or a Node rule in `pre-write-guard.js`'s `NODE_RULES` denies the write before it lands; a "could not check" failure (Semgrep/Node crash, malformed input) denies too — fail-closed, never bypass | PreToolUse (pre-write) |
@@ -148,6 +148,18 @@ use Edit or Write. Move or rename a file with `git mv` (`git add` a new
 file first), then edit it with Edit/Write. Reads, git itself, and a
 formatter's own `--write` stay allowed. See kiko-linter's "SHELL-WRITE
 deny" for the full rule, limits, and where it is live.
+
+The same hook also denies a Bash command whose `while` or `until` loop,
+closed by its `done`, scans the process table for make verify, check:all,
+jest, stryker, semgrep, or xcodebuild (`ps`, `top`, or `pstree` piped to a
+grep, awk, sed, or `[` filter that names the job, or a `pgrep -f`/`--full`
+that names it), because the loop's own command line holds the pattern, so
+it matches itself and never ends; wait with
+`bash scripts/wait-load.sh <load> <timeout>` chained with `&&`, or run the
+job with `run_in_background` and wait on its exit code. A one-time
+`ps`/`pgrep`, a pid wait (`ps -p`, `--pid`, `-q`, or `kill -0`), a `pgrep`
+without `-f`, and a loop on a file stay allowed. See kiko-linter's
+"WAIT-LOOP deny".
 
 A second `PreToolUse` matcher (`Edit|Write|MultiEdit`, beside the
 `Bash` matcher above) runs `scripts/checks/pre-write-guard.sh`: it

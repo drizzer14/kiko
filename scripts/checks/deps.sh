@@ -7,6 +7,29 @@ ROOT="$(cd "$DIR/../.." && pwd)"
 cd "$ROOT" || exit 2
 BIN="$ROOT/node_modules/.bin/depcheck"
 
+# A node_modules/node_modules link (dangling ones included) is a stray
+# `ln -s … node_modules` run inside the installed folder. It loops the tree, so
+# npm ls reports every package invalid and drowns the real result; it changes
+# no fingerprinted input, so it must be named before the dedup skip below. A
+# real folder there is a broken install: `rm` fails on it, so it needs npm ci.
+if [ -e node_modules/node_modules ] || [ -L node_modules/node_modules ]; then
+  if [ -L node_modules/node_modules ]; then
+    self_link_cause="$ROOT/node_modules/node_modules is a link inside node_modules, usually a symlink to node_modules itself made by a stray ln -s run in the wrong directory."
+    self_link_fix="Remove that one link: rm node_modules/node_modules   then re-run: npm run check:deps"
+  else
+    self_link_cause="$ROOT/node_modules/node_modules is a folder inside node_modules, a broken install."
+    self_link_fix="Run: npm ci   (it rebuilds node_modules; rm cannot remove a folder) then re-run: npm run check:deps"
+  fi
+  print_block \
+    "Dependency hygiene (node_modules self-link)" \
+    "node_modules/node_modules exists, so npm ls and depcheck cannot read the installed tree." \
+    "$self_link_cause" \
+    "A looped tree makes npm ls --all report every package as invalid or extraneous, and the real dependency problems are lost in that noise." \
+    "$self_link_fix" \
+    "Do not rm -r node_modules by hand: the bad entry is only node_modules/node_modules, and removing the whole folder throws away the installed tree. Do not skip this check."
+  exit 2
+fi
+
 if [ ! -x "$BIN" ]; then
   print_block \
     "depcheck (unused / missing dependencies)" \

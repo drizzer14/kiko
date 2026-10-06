@@ -297,6 +297,7 @@ because it can compare against the actual pinned set.
 | Rule id | Finding | Enforce via | Notes |
 |---|---|---|---|
 | (kill-guard) SHELL-WRITE deny | Agents wrote `src/` with Bash or `sed` (3+ slips; caught only at Stop by the replay) | PreToolUse Bash hook (`scripts/checks/kill-guard.js`, `WRITE_GUARDED_TREES`); rows in `__tests__/kill-guard-writes.test.ts` | Common forms only; see kiko-linter "SHELL-WRITE deny" and its Known limits. guard-replay stays the backstop. |
+| (kill-guard) WAIT-LOOP deny | Wait loops that scanned ps/pgrep for make verify, jest or stryker matched their own command line and never ended (incidents 2026-09-10 and 2026-10-06) | PreToolUse Bash hook (`scripts/checks/kill-guard.js`, `PROCESS_LISTERS`, `listsAllProcesses`, `scanTraits`, `observeWaitLoops`); rows in `__tests__/kill-guard-wait-loops.test.ts` | See kiko-linter "WAIT-LOOP deny" and its NOT-denied list. |
 
 ### Enforced — Round A retrospect (test-file guard rules)
 

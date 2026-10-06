@@ -428,7 +428,9 @@ Every load or "is verify still running" wait goes ONLY through
 `bash scripts/wait-load.sh <max>` (background, exit code; main checkout path
 when the worktree lacks it). Never write a loop that greps ps/pgrep output for
 make verify, check:all, jest or stryker: the loop's own command line contains
-the pattern and it matches itself (three times so far). At most ONE jest-heavy agent per track; Semgrep or jest
+the pattern and it matches itself. kill-guard denies this loop shape before it
+runs (kiko-linter "WAIT-LOOP deny"); a `ps -p <pid>` or `kill -0 <pid>` wait
+stays allowed. At most ONE jest-heavy agent per track; Semgrep or jest
 timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
 
