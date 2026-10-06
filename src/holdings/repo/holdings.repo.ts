@@ -4,6 +4,7 @@ import {
   database,
   write,
   accounts,
+  deletedImportKeys,
   type HoldingRow,
   holdings,
   pricePoints,
@@ -420,6 +421,10 @@ export const removeHoldingDatabaseTransaction = async (
     throw new Error('remove: cannot delete a synced holding');
   }
   await databaseTransaction.delete(transactions).where(eq(transactions.holdingId, holdingId));
+  // The keys of its deleted import rows are a NO ACTION foreign key on it.
+  await databaseTransaction
+    .delete(deletedImportKeys)
+    .where(eq(deletedImportKeys.holdingId, holdingId));
   // A loan holding is ledgerless, but OTHER holdings' payment rows can point
   // back at it via `loanHoldingId`. Clear those links in the SAME transaction —
   // never leaving a dangling id — so a linked payment reverts to counting as

@@ -1,9 +1,16 @@
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import { currencyOptions } from '@kiko/currency/currency';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { type ReminderKind, type ReminderSchedule, reminderKinds } from '@kiko/reminders/schedule';
 
 // The currency columns below are TS-enum-typed text columns (SQLite stores plain
@@ -283,6 +290,32 @@ export const transactions = sqliteTable(
 );
 
 export type TransactionRow = typeof transactions.$inferSelect;
+
+// The stored key of every statement-import row the user deleted, per holding: a
+// re-import that brings such a row back counts its full amount (the delete
+// reversed it), while a row the holding never had and whose date is on or before
+// its balance boundary stays history and counts 0 (`importRows`). Written by
+// `removeRowsDatabaseTransaction` for a row with `source = 'import'` and an
+// `externalId`, deleted when the row is inserted again and with its holding
+// (`removeHoldingDatabaseTransaction`). The sync never reads or writes it, and
+// the key-rewrite passes (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave
+// it as it was, so a key they rewrote is a miss: the row comes back at 0, never
+// counted twice. No named index: the primary key's own index serves both reads.
+export const deletedImportKeys = sqliteTable(
+  'deleted_import_keys',
+  {
+    holdingId: text('holding_id')
+      .notNull()
+      .references(() => holdings.id),
+    externalId: text('external_id').notNull(),
+    deletedAt: integer('deleted_at').notNull().default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => ({
+    holdingExternalId: primaryKey({ columns: [table.holdingId, table.externalId] }),
+  }),
+);
+
+export type DeletedImportKeyRow = typeof deletedImportKeys.$inferSelect;
 
 export const currencyRates = sqliteTable(
   'currency_rates',

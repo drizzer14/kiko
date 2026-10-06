@@ -6,6 +6,7 @@ import type {
   CategoryRow,
   CurrencyRateHistoryRow,
   CurrencyRateRow,
+  DeletedImportKeyRow,
   HoldingRow,
   PricePointRow,
   ReminderRow,
@@ -33,4 +34,7 @@ export type DataSnapshot = {
   pricePoints: PricePointRow[];
   bondRegister: BondRegisterRow[];
   reminders: ReminderRow[];
+  // Optional, unlike the tables above: an older file never had the key, and a
+  // restore reads it defensively (`restoreDataSnapshot`) without a version bump.
+  deletedImportKeys?: DeletedImportKeyRow[];
 };

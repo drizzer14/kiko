@@ -333,9 +333,11 @@ its newest sync-source row (`balanceBoundaryOf`, `movesBalance`,
 `src/transactions/balance-boundary/`, read by `readAnchoredHoldingDatabaseTransaction`
 in `importRows` and its preview alone), and a closing balance sets the bank's
 figure outright. A bank-owned (synced) row is never deleted. Re-importing the
-same file brings a deleted row back; with a closing balance its amount returns
-with it, and with none a row dated before the boundary returns as history
-without its amount (accepted). The delete confirm states each holding's change
+same file brings a deleted row back with its amount: a deleted import row's
+stored key is kept per holding (`deleted_import_keys`, migration 0054), and a
+row matching one counts at full amount on the net-delta path whatever its date,
+while a row the holding never had and dated on or before the boundary still
+counts 0 (kiko-statement-import has the full rule). The delete confirm states each holding's change
 (`transactions.deleteLinked.balanceChange`, see "Deleting a movement takes its
 other parts"). A sync write is outside the rule: the Monobank balance is the
 bank's own figure on every sync, and a sync REOPEN of a closed card writes no

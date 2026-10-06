@@ -2,6 +2,7 @@ import {
   type Repository,
   accounts,
   categoryOverrides,
+  deletedImportKeys,
   type HoldingRow,
   holdings,
   type TransactionRow,
@@ -654,6 +655,30 @@ const removeContributionOfRowDatabaseTransaction = async (
 
 const NO_HOLDINGS: ReadonlySet<string> = new Set();
 
+// The stored key of each import row among `rows`, per holding: what a re-import
+// of the deleted row is recognised by (`readRevivedKeysDatabaseTransaction`).
+const deletedImportKeysOf = (rows: TransactionRow[]): { holdingId: string; externalId: string }[] =>
+  rows
+    .filter((row) => row.source === 'import')
+    .flatMap(
+      (row) =>
+        foldMap(maybe(row.externalId), (externalId) => [
+          { holdingId: row.holdingId, externalId },
+        ]) ?? [],
+    );
+
+// Keep the key of every deleted import row, so a re-import knows it was deleted
+// and not just never imported. Written once per holding and key (a row deleted
+// again after it came back writes the same key).
+const rememberDeletedImportKeysDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  rows: TransactionRow[],
+): Promise<void> => {
+  for (const part of chunkForTable(deletedImportKeys, deletedImportKeysOf(rows))) {
+    await databaseTransaction.insert(deletedImportKeys).values(part).onConflictDoNothing();
+  }
+};
+
 // Whether the leg the marker of the kept row `keptRow` names goes with this delete:
 // its holding is among the deleted ones, or a removed row of the same pair sat on
 // it. A marker that names anything else (a deposit a second Convert of the leg
@@ -707,6 +732,8 @@ const removeRowsDatabaseTransaction = async (
       deletedHoldingIds,
     );
   }
+
+  await rememberDeletedImportKeysDatabaseTransaction(databaseTransaction, rows);
 
   for (const row of kept.filter((keptRow) => markerLegIsGone(keptRow, rows, deletedHoldingIds))) {
     await databaseTransaction
@@ -1046,6 +1073,71 @@ const partitionNewRows = async (
  * the same row under (`noonAliasDedupKey` in statement-import's mapping), and
  * how coarse its clock is. */
 type ImportRow = NewTransaction & { aliasExternalId?: string; timeReading?: TimeReading };
+
+const isKey = (key: string | null | undefined): key is string => Boolean(key);
+
+/** The deleted keys of this holding that rows of the batch come back under: for
+ * each row's `externalId`, the deleted keys it matches, its own and its
+ * `aliasExternalId` (a row stored under the older noon key was deleted under
+ * that key). Read before `dropRowsStoredUnderAlias` strips the alias, and
+ * before any row is upserted. A row that is not inserted (stored already, or
+ * held by a sync row) never clears its key. */
+const readRevivedKeysDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  rows: ImportRow[],
+): Promise<Map<string, string[]>> => {
+  const candidates = [
+    ...new Set(rows.flatMap(({ externalId, aliasExternalId }) => [externalId, aliasExternalId])),
+  ].filter(isKey);
+  const deleted = new Set<string>();
+
+  for (const keyChunk of chunkRows(candidates, IN_CLAUSE_CHUNK_SIZE)) {
+    const found = await databaseTransaction
+      .select({ externalId: deletedImportKeys.externalId })
+      .from(deletedImportKeys)
+      .where(
+        and(
+          eq(deletedImportKeys.holdingId, holdingId),
+          inArray(deletedImportKeys.externalId, keyChunk),
+        ),
+      );
+
+    for (const { externalId } of found) {
+      deleted.add(externalId);
+    }
+  }
+
+  const revived = new Map<string, string[]>();
+
+  for (const { externalId, aliasExternalId } of rows) {
+    const matched = [externalId, aliasExternalId].filter(isKey).filter((key) => deleted.has(key));
+
+    if (isKey(externalId) && matched.length > 0) {
+      revived.set(externalId, matched);
+    }
+  }
+
+  return revived;
+};
+
+/** Forget the keys of the rows an import just brought back. */
+const clearRevivedKeysDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  keys: string[],
+): Promise<void> => {
+  for (const keyChunk of chunkRows(keys, IN_CLAUSE_CHUNK_SIZE)) {
+    await databaseTransaction
+      .delete(deletedImportKeys)
+      .where(
+        and(
+          eq(deletedImportKeys.holdingId, holdingId),
+          inArray(deletedImportKeys.externalId, keyChunk),
+        ),
+      );
+  }
+};
 
 /** A row the ledger already holds under its alias: its real `time`, and the
  * time and amount the ledger stores it with. */
@@ -1480,6 +1572,21 @@ const insertDedupRowsDatabaseTransaction = async (
   return newRows;
 };
 
+// What a row the import inserts adds to the balance on the net-delta path: all of
+// it for a row brought back after a delete, else its share by the boundary.
+const importShareOf = (
+  row: NewTransaction,
+  boundary: number | null,
+  revivedKeys: ReadonlyMap<string, string[]>,
+): number => {
+  const wasDeleted =
+    foldMap(maybe(row.externalId), (externalId) => revivedKeys.has(externalId)) ?? false;
+
+  return wasDeleted
+    ? row.amountMinorUnits
+    : balanceShareOf(row.amountMinorUnits, row.time, boundary);
+};
+
 type ImportBalanceDecision = {
   nextBalance: number;
   balanceSetAt?: number;
@@ -1495,18 +1602,19 @@ type ImportBalanceDecision = {
  * ledger (any source, never a row that set a balance) dated after the
  * closing balance's own as-of, read before this import inserted anything —
  * an already-imported holding's later rows must not be erased by an older
- * statement's own closing figure. */
+ * statement's own closing figure. `revivedKeys` are the rows this import brings
+ * back after the user deleted them: the net-delta path counts one at its full
+ * amount whatever its date (its delete reversed it), where a row the holding
+ * never had counts only after the boundary. */
 const resolveImportBalance = (
   holding: Pick<HoldingRow, 'balanceMinorUnits' | 'currency'>,
   boundary: number | null,
   newRows: NewTransaction[],
   closingBalance: ClosingBalance | undefined,
   existingPostClosingNetMinorUnits: number,
+  revivedKeys: ReadonlyMap<string, string[]>,
 ): ImportBalanceDecision => {
-  const netDelta = newRows.reduce(
-    (sum, row) => sum + balanceShareOf(row.amountMinorUnits, row.time, boundary),
-    0,
-  );
+  const netDelta = newRows.reduce((sum, row) => sum + importShareOf(row, boundary, revivedKeys), 0);
   // `>=`, not `movesBalance`'s `>`: a closing balance is itself an anchor, so
   // one as of exactly the boundary re-asserts the bank's figure rather than
   // being history the earlier anchor already counted.
@@ -1541,12 +1649,15 @@ type ImportInput = {
  * what `previewImportBalance` reads to say what that write would do. `rows` is
  * the batch without the rows the ledger already holds under an alias or a
  * sync source; `existingPostClosingNetMinorUnits` is `resolveImportBalance`'s
- * last argument. */
+ * penultimate argument. `revivedKeys` maps the `externalId` of a row of the
+ * batch to the deleted keys it matches (`readRevivedKeysDatabaseTransaction`),
+ * `resolveImportBalance`'s last. */
 type ImportPlan = {
   holding: HoldingRow;
   boundary: number | null;
   rows: NewTransaction[];
   existingPostClosingNetMinorUnits: number;
+  revivedKeys: Map<string, string[]>;
 };
 
 /** The reads both `importRows` and `previewImportBalance` make, refusals
@@ -1590,6 +1701,14 @@ const readImportPlanDatabaseTransaction = async (
     throw new Error('statement-import/ledgerless-holding');
   }
 
+  // The alias is read here, while `dropRowsStoredUnderAlias` below has not yet
+  // stripped it: a row stored under its noon alias was deleted under that key.
+  const revivedKeys = await readRevivedKeysDatabaseTransaction(
+    databaseTransaction,
+    input.holdingId,
+    input.rows,
+  );
+
   // Also read BEFORE the new rows are upserted — an EXISTING row (any
   // source, already in the ledger before this import ran) dated after a
   // closing balance's own as-of must still count toward it; only the
@@ -1607,7 +1726,7 @@ const readImportPlanDatabaseTransaction = async (
   const rows = await dropRowsHeldBySync(databaseTransaction, input.holdingId, unaliasedRows);
 
   if (input.closingBalance === undefined) {
-    return { holding, boundary, rows, existingPostClosingNetMinorUnits: 0 };
+    return { holding, boundary, rows, existingPostClosingNetMinorUnits: 0, revivedKeys };
   }
 
   const asOfMilliseconds = input.closingBalance.asOfSeconds * 1000;
@@ -1623,6 +1742,7 @@ const readImportPlanDatabaseTransaction = async (
     existingPostClosingNetMinorUnits:
       (existingPostClosingRows.at(0)?.net ?? 0) -
       aliasedNetBeforeClosing(aliased, asOfMilliseconds),
+    revivedKeys,
   };
 };
 
@@ -2185,7 +2305,11 @@ export const transactionsRepo = {
    * whatever the row's source, its date against THE BOUNDARY (`importRows`), and
    * whether it set a balance. Only the balance moves: `balanceSetAt` stays, and
    * no bank figure is stored, so deleting every row of an import ends on the
-   * statement's opening balance. A synced (monobank) transaction is owned by the
+   * statement's opening balance. A deleted import row with a stored key also
+   * leaves that key for its holding (`deleted_import_keys`), so a re-import can
+   * tell it from a row the holding never had; every row
+   * `removeRowsDatabaseTransaction` deletes does the same, a cascaded partner
+   * included. A synced (monobank) transaction is owned by the
    * sync and is refused with a typed error; a missing id is a no-op rather than
    * an error.
    *
@@ -2598,9 +2722,18 @@ export const transactionsRepo = {
    * import screens. A DISCONNECTED bank imports, and the synced-row match
    * above keeps the overlap single. An imported row can be deleted
    * (`remove`), which takes its full amount back from the balance whatever its
-   * date, and a deleted row returns when the same file is imported again, its
-   * amount with it when a closing balance applies: no record of a deleted key
-   * is kept.
+   * date and keeps its stored key for its holding (`deleted_import_keys`). A
+   * deleted row returns when the same file is imported again, its amount with
+   * it: a closing balance re-sets the bank's figure, and without one the row
+   * counts in full whatever its date, because its key was deleted. A row the
+   * holding never had, dated on or before the boundary, stays history (0), so a
+   * first import of past months never counts twice. A row matches a deleted key
+   * by its `externalId` or its `aliasExternalId`, and the import deletes the
+   * keys of the rows it inserts, in the same transaction (the preview deletes
+   * nothing). The sync neither reads nor writes the keys, and neither does a
+   * key rewrite (`upgradeStoredDedupKeys`, `rezoneImportTimes`): a key they
+   * rewrote misses, and the row then comes back at 0. A delete made before the
+   * table existed left no key, so such a row comes back at 0 as well.
    *
    * NO MIGRATION was written for holdings a pre-fix build already wrote a
    * wrong (0 or under-counted) balance into: `1.0.0` is
@@ -2620,7 +2753,7 @@ export const transactionsRepo = {
    */
   importRows: (input: ImportInput): Promise<number> =>
     write(async (databaseTransaction) => {
-      const { holding, boundary, rows, existingPostClosingNetMinorUnits } =
+      const { holding, boundary, rows, existingPostClosingNetMinorUnits, revivedKeys } =
         await readImportPlanDatabaseTransaction(databaseTransaction, input);
       const newRows = await insertDedupRowsDatabaseTransaction(databaseTransaction, rows);
       const { nextBalance, balanceSetAt, balanceSetRowId } = resolveImportBalance(
@@ -2629,6 +2762,15 @@ export const transactionsRepo = {
         newRows,
         input.closingBalance,
         existingPostClosingNetMinorUnits,
+        revivedKeys,
+      );
+
+      await clearRevivedKeysDatabaseTransaction(
+        databaseTransaction,
+        input.holdingId,
+        newRows.flatMap(
+          ({ externalId }) => foldMap(maybe(externalId), (key) => revivedKeys.get(key)) ?? [],
+        ),
       );
 
       if (nextBalance !== holding.balanceMinorUnits || balanceSetAt !== undefined) {
@@ -2648,7 +2790,7 @@ export const transactionsRepo = {
    * before importing is the number the import then stores.
    */
   previewImportBalance: async (input: ImportInput): Promise<ImportBalancePreview> => {
-    const { holding, boundary, rows, existingPostClosingNetMinorUnits } =
+    const { holding, boundary, rows, existingPostClosingNetMinorUnits, revivedKeys } =
       await readImportPlanDatabaseTransaction(database, input);
     const newRows = await partitionNewRows(database, dedupByConflictKey(rows));
 
@@ -2660,6 +2802,7 @@ export const transactionsRepo = {
         newRows,
         input.closingBalance,
         existingPostClosingNetMinorUnits,
+        revivedKeys,
       ),
       input.closingBalance,
     );
