@@ -4155,3 +4155,169 @@ describe('TransactionFormScreen — convert counterpart prefill', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
+
+// Presses a blocked Save and returns the field wrapper ref it scrolled to. A
+// wrapper ref has no host node to query by label, so a test names a field by
+// the one state in which only that field is invalid: the ref seen there is its
+// own, and a state with more invalid fields must not scroll to any other.
+const blockedSaveTarget = async (utils: Awaited<ReturnType<typeof render>>): Promise<unknown> => {
+  const scrollToFieldMock = scrollToField as jest.Mock;
+  scrollToFieldMock.mockClear();
+  await fireEvent.press(utils.getByText('Save'));
+
+  expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+
+  return scrollToFieldMock.mock.calls[0][1];
+};
+
+// Compared as a boolean, never with `toBe` on the refs: a failing `toBe` would
+// serialize two React fiber graphs and exhaust the heap.
+const sameTarget = (first: unknown, second: unknown): boolean => first === second;
+
+describe('TransactionFormScreen — blocked Save scrolls to the first invalid field, per mode', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('plain income/expense: Amount before Category', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+    const utils = await renderAdd();
+
+    const bothInvalid = await blockedSaveTarget(utils);
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    const categoryOnly = await blockedSaveTarget(utils);
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '');
+    await pickCategory(utils, 'Groceries');
+    const amountOnly = await blockedSaveTarget(utils);
+
+    expect(sameTarget(categoryOnly, amountOnly)).toBe(false);
+    expect(sameTarget(bothInvalid, amountOnly)).toBe(true);
+  });
+
+  it('exchange: destination, then Value out, then Value in', async () => {
+    setLiveData(EXCHANGE_HOLDINGS);
+    const utils = await renderAddFromHolding('cash-1');
+    await pickType(utils, 'exchange');
+
+    const allInvalid = await blockedSaveTarget(utils);
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    const outAndIn = await blockedSaveTarget(utils);
+    await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
+    const inOnly = await blockedSaveTarget(utils);
+
+    expect(sameTarget(outAndIn, inOnly)).toBe(false);
+    expect(sameTarget(allInvalid, inOnly)).toBe(false);
+    expect(sameTarget(allInvalid, outAndIn)).toBe(false);
+  });
+
+  it('split: Amount, then Category, then the returns', async () => {
+    setLiveData(SPLIT_HOLDINGS, undefined, CATEGORIES, SPLIT_ACCOUNTS);
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+
+    const allInvalid = await blockedSaveTarget(utils);
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
+    const categoryAndReturns = await blockedSaveTarget(utils);
+    await pickCategory(utils, 'Groceries');
+    const returnsOnly = await blockedSaveTarget(utils);
+
+    expect(sameTarget(categoryAndReturns, returnsOnly)).toBe(false);
+    expect(sameTarget(allInvalid, returnsOnly)).toBe(false);
+    expect(sameTarget(allInvalid, categoryAndReturns)).toBe(false);
+  });
+
+  it('converting: the counterpart holding, then the counterpart amount', async () => {
+    setLiveData(
+      CONVERT_HOLDINGS,
+      CONVERT_TRANSACTIONS['expense-manual'],
+      CATEGORIES,
+      CONVERT_ACCOUNTS,
+    );
+    const utils = await renderEdit('expense-manual');
+    await fireEvent.press(utils.getByText('Exchange'));
+
+    const bothInvalid = await blockedSaveTarget(utils);
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    // Picking a destination prefills the counterpart amount, so blank it to
+    // leave only the amount invalid.
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '');
+    const amountOnly = await blockedSaveTarget(utils);
+
+    expect(sameTarget(bothInvalid, amountOnly)).toBe(false);
+  });
+});
+
+const calledWrites = (): string[] =>
+  Object.entries({
+    manual: mockRecordManual,
+    withReturns: mockRecordManualWithReturns,
+    exchange: mockRecordExchange,
+    counterpart: mockRecordExchangeCounterpart,
+    update: mockUpdate,
+  })
+    .filter(([, write]) => write.mock.calls.length > 0)
+    .map(([name]) => name);
+
+describe("TransactionFormScreen — a valid Save runs only the active mode's own write", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRecordManualWithReturns.mockResolvedValue(undefined);
+  });
+
+  it('plain: only recordManual', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+    const utils = await renderAdd();
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(calledWrites()).toEqual(['manual']);
+  });
+
+  it('exchange: only recordExchange', async () => {
+    setLiveData(EXCHANGE_HOLDINGS);
+    const utils = await renderAddFromHolding('cash-1');
+    await pickType(utils, 'exchange');
+    await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.50');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(calledWrites()).toEqual(['exchange']);
+  });
+
+  it('split: only recordManualWithReturns', async () => {
+    setLiveData(SPLIT_HOLDINGS, undefined, CATEGORIES, SPLIT_ACCOUNTS);
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '212.00');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(calledWrites()).toEqual(['withReturns']);
+  });
+
+  it('converting: only recordExchangeCounterpart', async () => {
+    setLiveData(
+      CONVERT_HOLDINGS,
+      CONVERT_TRANSACTIONS['expense-manual'],
+      CATEGORIES,
+      CONVERT_ACCOUNTS,
+    );
+    const utils = await renderEdit('expense-manual');
+    await fireEvent.press(utils.getByText('Exchange'));
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.50');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(calledWrites()).toEqual(['counterpart']);
+  });
+});
