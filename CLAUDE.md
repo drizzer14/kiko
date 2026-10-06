@@ -168,9 +168,10 @@ worktree than the coordinator's own checkout still runs that
 worktree's own rules. See `dispatch.sh`'s own header for the full
 resolution order and fail-closed/fail-open split per hook.
 
-Both `import-order` and `full-word-identifiers` keep the same per-file
-dedup fingerprint (target file + the analyzer script's own contents)
-as every other check below.
+Both `import-order` and `full-word-identifiers` keep a per-file dedup
+fingerprint (target file + the analyzer script's own contents);
+`docs/harness/checks-internals.md` "Which call form dedups" lists every
+check's dedup.
 
 **Content dedup.** A check skips a run whose inputs did not change since
 its last PASS, so a subagent-driven session or a non-source change does
