@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { Alert, StyleSheet, TextInput } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -7,11 +7,11 @@ import { formatDate } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdingTypes } from '@kiko/holdings/holding-type';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
-import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
@@ -4246,6 +4246,89 @@ describe('TransactionFormScreen — blocked Save scrolls to the first invalid fi
     const amountOnly = await blockedSaveTarget(utils);
 
     expect(sameTarget(bothInvalid, amountOnly)).toBe(false);
+  });
+});
+
+describe('TransactionFormScreen — what the scroll is handed', () => {
+  const scrollToFieldMock = scrollToField as jest.Mock;
+  const scrollOffset = { value: 0 };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    scrollOffset.value = 0;
+    (useHeaderInset as jest.Mock).mockReturnValue(96);
+    // `requireMock`, not an import: the sorted import order would load reanimated
+    // before the mock helper this file's own `jest.mock` factory needs.
+    jest
+      .spyOn(jest.requireMock('react-native-reanimated'), 'useScrollOffset')
+      .mockReturnValue(scrollOffset);
+  });
+
+  afterEach(() => {
+    (useHeaderInset as jest.Mock).mockReset();
+    jest.restoreAllMocks();
+  });
+
+  const reportScrollGeometry = async (utils: Awaited<ReturnType<typeof render>>): Promise<void> => {
+    await fireEvent(utils.getByTestId('screen-scroll-view'), 'contentSizeChange', 320, 1234);
+    scrollOffset.value = 250;
+  };
+
+  it('hands a blocked Save the live offset, header inset and content height', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+    const utils = await renderAdd();
+    await reportScrollGeometry(utils);
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    expect(scrollToFieldMock.mock.calls[0][2]).toEqual({
+      currentOffset: 250,
+      headerInset: 96,
+      contentHeight: 1234,
+    });
+  });
+
+  it('hands the new-return scroll the live offset, header inset and content height', async () => {
+    setLiveData(SPLIT_HOLDINGS, undefined, CATEGORIES, SPLIT_ACCOUNTS);
+    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0);
+
+      return 0;
+    });
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await reportScrollGeometry(utils);
+    scrollToFieldMock.mockClear();
+
+    await fireEvent.press(utils.getByText('Add return'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    expect(scrollToFieldMock.mock.calls[0][2]).toEqual({
+      currentOffset: 250,
+      headerInset: 96,
+      contentHeight: 1234,
+    });
+  });
+
+  it("follows a blocked Save on the Amount with that field's focus, and on no other field with nothing", async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+    const utils = await renderAdd();
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => undefined);
+
+    await fireEvent.press(utils.getByText('Save'));
+    const amountSettled = scrollToFieldMock.mock.calls[0][3];
+
+    expect(amountSettled).toEqual(expect.any(Function));
+    expect(focus).not.toHaveBeenCalled();
+    amountSettled();
+    expect(focus).toHaveBeenCalledTimes(1);
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(scrollToFieldMock.mock.calls[0][3]).toBeUndefined();
   });
 });
 
