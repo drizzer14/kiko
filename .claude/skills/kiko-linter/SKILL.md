@@ -264,8 +264,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   processes and names a watched job where it filters them. Lists
   (`PROCESS_LISTERS`, `listsAllProcesses`, `scanTraits`): `top`,
   `pstree`, `ps` (but a `ps` named by pid with `-p`, `--pid`, or `-q`
-  and no `-A`/`-e`/BSD `a`/`x` lists only those pids: a pid wait, not a
-  scan), or `pgrep` WITH `-f` (any flag group holding `f`) or
+  and no `-A`/`-e`/`-a`/`-x`/BSD `a`/`x` lists only those pids: a pid
+  wait, not a scan; the `p`/`q` must end its flag group or be glued to
+  the pid, so a glued `-o` value such as `-opid,command` is no pid
+  option, and a letter after a glued `-o` is no `a`/`e`/`x` flag), or `pgrep` WITH `-f` (any flag group holding `f`) or
   `--full`. Names a job:
   `make verify` (any non-word run between the two words), `check:all`,
   `jest`, `stryker`, `semgrep`, `xcodebuild` (`WATCHED_JOB`, case folded,
@@ -429,9 +431,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     the same outermost loop, even when unrelated (`while ps aux | head
     -1; do grep -q jest f; done`); prose in a heredoc body (a commit
     message) that spells a complete `while`/`until` … `done` loop with a
-    scan in it. An UNCLOSED loop is never judged (a wrapped prose line
-    starting with `while`/`until` is not a loop), since a body is judged
-    like the kill and stash denies judge it.
+    scan in it, since a body is judged like the kill and stash denies
+    judge it. An UNCLOSED loop is never judged (a wrapped prose line
+    starting with `while`/`until` is not a loop).
   - bash 3.2 only (zsh fails): a command after a heredoc inside
     `<(`/`$(` whose body holds an unbalanced paren, and
     `echo $( (echo a)#c ); pkill x`, both run and are not denied.

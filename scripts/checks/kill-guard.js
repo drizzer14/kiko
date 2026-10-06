@@ -1884,9 +1884,11 @@ const LOOP_WORD_SEARCH = /\b(?:while|until|for|select|done)\b/;
 
 const PROCESS_LISTERS = new Set(['top', 'pstree']);
 // `ps` named by pid (`-p`, `--pid`, `-q`) lists just those pids, so it is a pid
-// wait, not a scan, unless it also selects every process (`-A`, `-e`, BSD `a`/`x`).
-const PS_PID_OPTION = /^--pid(?:=|$)|^-[A-Za-z]*[pq]/;
-const PS_ALL_OPTION = /^-[A-Za-z]*[Ae]|^[axuUwW]*[ax][axuUwW]*$/;
+// wait, not a scan, unless it also selects every process (`-A`, `-e`, `-a`, `-x`, BSD
+// `a`/`x`). The `p`/`q` ends its flag group or is glued to the pid (`-fp`, `-p123`),
+// and a letter after a glued `-o` belongs to its value (`-opid,command`), not to a flag.
+const PS_PID_OPTION = /^--pid(?:=|$)|^-[A-Za-z]*[pq](?:\d.*)?$/;
+const PS_ALL_OPTION = /^-[A-NP-Za-np-z]*[Aeax]|^[axuUwW]*[ax][axuUwW]*$/;
 
 const TEXT_FILTERS = new Set([
   'grep',

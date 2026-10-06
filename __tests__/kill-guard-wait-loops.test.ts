@@ -55,6 +55,11 @@ const DENIED_WAIT_LOOPS: string[] = [
   'while ps aux > /tmp/p.txt; grep -q semgrep /tmp/p.txt; do sleep 1; done',
   'while sleep 1; do ps aux | rg -q jest || break; done',
   'until ! ps -ep $pid | grep -q jest; do sleep 1; done',
+  // A glued -o value holding a p is not the -p option, and -ax selects every process.
+  'while ps -axopid,command | grep -q jest; do sleep 1; done',
+  'while ps -opid,command -ax | grep -q jest; do sleep 1; done',
+  'while ps -opid=,command= | grep -q jest; do sleep 1; done',
+  'while ps -ax -p 1 | grep -q jest; do sleep 1; done',
   'until ! ps -A -p 1 | grep -q jest; do sleep 1; done',
   "until ! pgrep -f 'jest|stryker'; do sleep 1; done",
   "eval 'until ! pgrep -f jest; do sleep 1; done'",
@@ -98,6 +103,8 @@ const ALLOWED_WAIT_COMMANDS: string[] = [
   `while ps -p "$XPID" > /dev/null; do tail -1 /tmp/build.log | grep -E 'Compiling|xcodebuild'; sleep 10; done`,
   'while ps --pid $pid >/dev/null; do grep -c jest /tmp/log; sleep 5; done',
   'while ps -q $pid >/dev/null; do grep -c jest /tmp/log; sleep 5; done',
+  'while ps -p $pid -ocommand= | grep -q jest; do sleep 1; done',
+  'while ps -fp $pid | grep -q jest; do sleep 1; done',
   'while ps -p $pid -o command= | grep -q node; do grep -c jest /tmp/log; sleep 5; done',
   // The scan flags reset when a loop closes: a later loop's filter is not paired with it.
   'while ps aux | grep -q foo; do sleep 1; done; while ! grep -q jest /tmp/log; do sleep 1; done',
