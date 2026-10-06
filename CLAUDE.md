@@ -172,16 +172,16 @@ Both `import-order` and `full-word-identifiers` keep the same per-file
 dedup fingerprint (target file + the analyzer script's own contents)
 as every other check below.
 
-**Content dedup (a check skips when its inputs did not change).** Every
-other check fingerprints its own real inputs and skips its next run when
-that fingerprint is unchanged, so a subagent-driven session or a
-non-source change does not re-trigger a check that already passed.
-Five checks are never deduped: `osv-scanner` (its result depends on the
-external vulnerability database, which changes even when the lockfile
-does not), `check:closure` (it reads a caller-chosen file and its answer
-depends on HEAD), and `check:typecheck`, `check:plist` and `check:rules`,
-which run in full on every call. Full mechanism (fingerprint scope per tier, the
-`medium.sh` and `mutation.sh` locks, skip-only-on-PASS) is in
+**Content dedup.** A check skips a run whose inputs did not change since
+its last PASS, so a subagent-driven session or a non-source change does
+not re-trigger a check that already passed. Which checks dedup, and for
+which call form (a hook's file list or single file versus a no-argument
+`check:all` run), is listed in `docs/harness/checks-internals.md`;
+`osv-scanner` and `check:closure` never dedup because their answer
+depends on outside state (the vulnerability database, which changes even
+when the lockfile does not; a caller-chosen file and HEAD). Full
+mechanism (fingerprint scope per tier, the `medium.sh` and
+`mutation.sh` locks, skip-only-on-PASS) is in
 `docs/harness/checks-internals.md`.
 
 ## Override protocol

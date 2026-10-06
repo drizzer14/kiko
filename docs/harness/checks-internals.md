@@ -152,5 +152,28 @@ its answer depends on HEAD.
 
 `check:typecheck`, `check:plist` and `check:rules` (`typecheck.sh`,
 `plist.sh`, `semgrep-rules.sh`) never record or read a fingerprint
-either: they run in full on every call. Every other check wrapper in
-`scripts/checks/` skips on an unchanged fingerprint.
+either: they run in full on every call.
+
+## Which call form dedups
+
+Whether a wrapper skips depends on how it is called. A run that does not
+dedup always runs in full.
+
+- Never dedups: `osv-scanner`, `check:closure`, `check:typecheck`,
+  `check:plist`, `check:rules`.
+- Dedups only a single-file run (a path to an existing file; a
+  whole-repo or directory target, as `check:all` runs it, always runs):
+  `check:lint`, `check:security`, `check:secrets`.
+- Dedups only a run given a file list (every argument an existing file,
+  as the Stop tier passes the session's changed files; a no-argument run
+  such as `check:all` always runs): `check:dup`, `check:overrides`.
+- Dedups both a single-file run and the project-wide run:
+  `check:import-order`, `check:full-word-identifiers`,
+  `check:screen-imports`, `check:feature-imports`,
+  `check:blank-line-separation`. The project-wide run does not dedup when
+  its test-seam source-root variable is set.
+- Dedups every run (project-wide only, no per-file mode): `check:knip`,
+  `check:deps`, `check:comment-line-width` (not when its test-seam
+  source-root variable is set), `check:shipped-migrations`,
+  `check:guard-replay`, `check:mutation` (the fingerprint includes its
+  scope: merge-base and file list).
