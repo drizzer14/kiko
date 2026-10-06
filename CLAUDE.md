@@ -31,7 +31,7 @@ below).
 | `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` (+ `.js`) | a physical line over 100 columns holding comment text (`kiko-comment-line-width`) fails project-wide, unless the comment has no wrap point (one long URL); no override of any kind (kiko-code-style "Wrap comments at 100 columns", kiko-linter's `comment-line-width.js` bullet) | project-wide (`check:all`) + pre-write guard |
 | `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` (+ `.js` planner/runner) — the unchanged pre-write guard (`pre-write-guard.sh`), run once per `.ts`/`.tsx` file the session changed, with BEFORE = the file at HEAD, or at the parent of the earliest session commit (one that no worktree's passed-replay mark ref `refs/kiko/guard-replay/<worktree id>` reaches and that is newer than the floor ref `refs/kiko/guard-replay-floor` or has a session commit as a parent; through a merge commit, a file the merge kept from one parent takes that parent's baseline, and a file it left different from every parent is checked against both parents' baselines (see `guard-replay.js`'s header)), and AFTER = the working-tree file | any finding the change ADDED fails, naming file, rule, and line (a Bash/python write or its commit bypassed the pre-write guard); a pre-existing finding does not; a replay or guard that could not run fails too (fail closed), and so does the Stop tier's deadline (at most 150 s) | medium (Stop/SubagentStop) + project-wide (`check:all`, no deadline) |
 | `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` (+ `.js`) | a shipped migration file that is modified, deleted, or renamed fails; a new migration passes; no override and no exemption list. The per-file rules, the baseline, and the known limits live in kiko-linter's "Shipped migrations are never edited" | medium (Stop/SubagentStop, before the replay and the HEAD-moved early exit) + project-wide (`check:all`) |
-| `npm run check:closure -- <table.md>` | `scripts/checks/closure-table.sh` (+ `.js`) | a closure-table row whose id cell is a range or list, a duplicate id, a fix sha that does not resolve or is not an ancestor of HEAD, a pinning test that is not an existing file:line, or a CLOSED row without a sha, a test, or "yes" under "Fails on pre-fix source" fails; run by hand at a round's end, not part of `check:all`, not deduped | manual |
+| `npm run check:closure -- <table.md>` | `scripts/checks/closure-table.sh` (+ `.js`) | a closure-table row whose id cell is a range or list, a duplicate id, a fix sha that does not resolve or is not an ancestor of HEAD, a pinning test that is not an existing file:line, or a CLOSED or CLOSED-UNPROVEN row without a sha or a test, or a CLOSED row without "yes" under "Fails on pre-fix source" fails; run by hand at a round's end, not part of `check:all`, not deduped | manual |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
 | `npm run check:mutation` | Stryker (Jest runner) + `scripts/checks/mutation-score.js` | a passing run is scored on the CHANGE SET only: `mutation-score.js` reads the `json` reporter's output (`reports/mutation/mutation.json`) for the files THIS run mutated and fails when the change-set total is below 75, any graded file is below 60, or the report's own recorded scope (`config.mutate`) differs from the changed-file list (the report is not this run's); a file with no mutants is n/a, not a failure. A changed file Stryker cannot resolve (its `did not result in any files` warning) fails too. Stryker's own break threshold (60, over the whole accumulated report) stays as a whole-report floor. `src/db/schema.ts` is excluded from both the total and the floor — see `docs/harness/documented-exceptions.md`. A changed file whose diff against the merge-base touches only comments or whitespace is skipped (`scripts/checks/comment-only-changes.js`, decided from the TypeScript parse and fail-closed: any doubt, a `Stryker` or JSX-pragma comment, a missing `typescript`, or a colocated test file (same folder only) changed in the same change set by more than comments keeps the file), before the cap and the scorer see the list. More than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap; `mutation.sh --list` (`make mutable`) prints the files it would mutate and their count, then exits (2 above the cap) without Stryker, and any other argument exits 2 | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
@@ -140,12 +140,13 @@ worktree, verify it, then run
 See kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits.
 
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
-redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc script (ruby/perl are a known limit))
-into `src/`, `__tests__/`, or `rules/` of any worktree of this repository,
-because the pre-write guard sees only Edit/Write/MultiEdit: use Edit or
-Write. Move or rename a file with `git mv` (`git add` a new file first),
-then edit it with Edit/Write. Reads, git itself, and a formatter's own
-`--write` stay allowed. See kiko-linter's "SHELL-WRITE
+redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc
+script (ruby/perl code — `-e` or a stdin script — is a known limit))
+into `src/`, `__tests__/`, or `rules/` of any worktree of this
+repository, because the pre-write guard sees only Edit/Write/MultiEdit:
+use Edit or Write. Move or rename a file with `git mv` (`git add` a new
+file first), then edit it with Edit/Write. Reads, git itself, and a
+formatter's own `--write` stay allowed. See kiko-linter's "SHELL-WRITE
 deny" for the full rule, limits, and where it is live.
 
 A second `PreToolUse` matcher (`Edit|Write|MultiEdit`, beside the
@@ -172,13 +173,14 @@ dedup fingerprint (target file + the analyzer script's own contents)
 as every other check below.
 
 **Content dedup (a check skips when its inputs did not change).** Every
-check fingerprints its own real inputs and skips its next run when that
-fingerprint is unchanged, so a subagent-driven session or a non-source
-change does not re-trigger a check that already passed; two checks are
-never deduped: `osv-scanner` (its result depends on the external
-vulnerability database, which changes even when the lockfile does not)
-and `check:closure` (it reads a caller-chosen file and its answer
-depends on HEAD). Full mechanism (fingerprint scope per tier, the
+other check fingerprints its own real inputs and skips its next run when
+that fingerprint is unchanged, so a subagent-driven session or a
+non-source change does not re-trigger a check that already passed.
+Five checks are never deduped: `osv-scanner` (its result depends on the
+external vulnerability database, which changes even when the lockfile
+does not), `check:closure` (it reads a caller-chosen file and its answer
+depends on HEAD), and `check:typecheck`, `check:plist` and `check:rules`,
+which run in full on every call. Full mechanism (fingerprint scope per tier, the
 `medium.sh` and `mutation.sh` locks, skip-only-on-PASS) is in
 `docs/harness/checks-internals.md`.
 

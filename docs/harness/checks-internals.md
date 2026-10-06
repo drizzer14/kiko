@@ -149,3 +149,8 @@ even when the lockfile does not.
 
 `check:closure` is also never deduped: it reads a caller-chosen file and
 its answer depends on HEAD.
+
+`check:typecheck`, `check:plist` and `check:rules` (`typecheck.sh`,
+`plist.sh`, `semgrep-rules.sh`) never record or read a fingerprint
+either: they run in full on every call. Every other check wrapper in
+`scripts/checks/` skips on an unchanged fingerprint.
