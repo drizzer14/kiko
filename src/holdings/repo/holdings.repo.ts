@@ -170,7 +170,7 @@ const upsertManualPricePoint = (
 //
 // The update branch also reads the row's OWN stored metadata (not just
 // `id`/`name`) so `withWalkOwnedMetadataCarried` can carry a walk-owned key
-// (the Binance history cursor, a reopened card's `statementFromMs`) over the
+// (the Binance history cursor, a reopened card's or jar's `statementFromMs`) over the
 // caller's `merged` object — a routine balance sync's `metadata: { syncedAt }`
 // would otherwise wipe it every run, since `merged` is built from the
 // CALLER-supplied `metadata` alone, never the stored row.

@@ -2559,17 +2559,17 @@ describe('runSync stale-holding reconciliation', () => {
   });
 });
 
+const fetchedFrom = (fetchStatement: jest.Mock, monobankId: string): number[] =>
+  fetchStatement.mock.calls
+    .filter(([, accountId]) => decodeURIComponent(accountId as string) === monobankId)
+    .map(([, , from]) => from as number);
+
 describe('runSync reopen of a sync-closed holding', () => {
   const noStatements = (): MonobankStatementItem[] => [];
   const idA = clientInfo.accounts[0].id;
   const idB = clientInfo.accounts[1].id;
   const jarId = clientInfo.jars[0].id;
   const ninetyDaysAgo = 1704326400000 - 90 * DAY_MS;
-
-  const fetchedFrom = (fetchStatement: jest.Mock, monobankId: string): number[] =>
-    fetchStatement.mock.calls
-      .filter(([, accountId]) => decodeURIComponent(accountId as string) === monobankId)
-      .map(([, , from]) => from as number);
 
   // A first full sync stores every holding and its marker, then one holding is
   // put into the state the sync-close leaves it in, and the next run is
@@ -2794,10 +2794,6 @@ describe('runSync fetches a jar statement like a card', () => {
 
   const fetchedIds = (fetchStatement: jest.Mock): string[] =>
     fetchStatement.mock.calls.map(([, accountId]) => decodeURIComponent(accountId as string));
-  const fetchedFrom = (fetchStatement: jest.Mock, monobankId: string): number[] =>
-    fetchStatement.mock.calls
-      .filter(([, accountId]) => decodeURIComponent(accountId as string) === monobankId)
-      .map(([, , from]) => from as number);
   const holdingOf = (holdingsStore: HoldingRow[], monobankId: string): HoldingRow => {
     const found = holdingsStore.find((holding) => monobankIdOf(holding.metadata) === monobankId);
 

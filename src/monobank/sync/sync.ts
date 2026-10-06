@@ -85,7 +85,7 @@ interface SyncAccountsRepo {
  *   partial/failed/empty response — see the guarded close block in `runSyncInner`.
  *   It is not the user's `closeMany`, which writes no mark, so a user-closed
  *   holding never reopens (see `reconcileClosedHoldings`).
- * - `clearStatementFrom` drops a reopened card's `statementFromMs` once its
+ * - `clearStatementFrom` drops a reopened card's or jar's `statementFromMs` once its
  *   widened statement import committed, right after `setSyncedBalance`.
  */
 interface SyncHoldingsRepo {
@@ -815,7 +815,7 @@ const fromCursorSeconds = (
  * the narrow incremental cursor. Shares the null-cursor fallback in
  * `fromCursorSeconds`.
  *
- * A card the sync just reopened carries `statementFromMs` on its POST-upsert
+ * A card or jar the sync just reopened carries `statementFromMs` on its POST-upsert
  * `holding`: the window reaches back to it when that is earlier than the
  * normal cursor, because no run fetched the card while it was absent and the
  * closing run already moved the normal cursor past that gap. It never narrows
@@ -1139,9 +1139,11 @@ export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> 
  *
  * Known limits (a user ruling, not an oversight):
  * - No backfill. A jar's window is a card's: it reaches back to `lastFullSyncAt`
- *   (a first sync: one default lookback) and never earlier, so a jar stored
- *   before jars had statements keeps the false drop its line shows on every top-up
- *   day older than that, and the card's debit of such a top-up stays spending.
+ *   (a first sync: one default lookback) and never earlier, except a jar the sync
+ *   closed and that returns, which reaches back to its close mark, like a card. So
+ *   a jar stored before jars had statements keeps the false drop its line shows on
+ *   every top-up day older than that, and the card's debit of such a top-up stays
+ *   spending.
  * - A jar in a foreign currency (a USD jar paid out to a UAH card) has no
  *   same-currency partner, so its debit counts as spending. The pairing is not
  *   rate-aware; a Minor follow-up, not built.

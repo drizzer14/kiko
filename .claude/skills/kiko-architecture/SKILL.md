@@ -1074,7 +1074,8 @@ LATE in client-info order dropped a real transaction:
   order, skip, window, fetch, crash-safe marker and failed set, under the one
   per-token 60 s request gate; a jar's rows land on its own holding. A jar's
   from-window is a card's: it reaches back to `lastFullSyncAt` (one default
-  lookback on a first sync) and never earlier. There is no backfill: a jar
+  lookback on a first sync) and never earlier, except a jar the sync closed and
+  that returns, which reaches back to its close mark, like a card. There is no backfill: a jar
   stored before jars had statements keeps its false net-worth drop on every
   top-up day older than that window, a known limit by user ruling. The run's
   `[monobank sync] done` diagnostic carries a `jars` count beside `cards`.

@@ -189,7 +189,7 @@ const walkOwnedMetadataKeys = [BINANCE_HISTORY_CURSOR_FIELD] as const;
  * `reconcileClosedHoldings` in monobank/sync.ts). Each key has one role:
  * `syncClosedFromMs` says the SYNC closed this holding (the user's own close
  * never writes it), and `statementFromMs` is the from-cursor of the next
- * statement fetch of a card the sync just reopened. Only the first is dropped
+ * statement fetch of a card or jar the sync just reopened. Only the first is dropped
  * by an upsert; the second survives one (see `carriedMetadataKeys`).
  */
 export const SYNC_CLOSED_FROM_FIELD = 'syncClosedFromMs';
@@ -200,7 +200,7 @@ export const STATEMENT_FROM_FIELD = 'statementFromMs';
  * `walkOwnedMetadataKeys` plus `statementFromMs`: what an upsert carries over
  * from the stored row. A separate list, because the Binance disconnect floor
  * reset (`withWalkOwnedMetadataResetToFloor`) must stay Binance-only and
- * never touch a Monobank card's statement cursor.
+ * never touch a Monobank card's or jar's statement cursor.
  */
 const carriedMetadataKeys = [...walkOwnedMetadataKeys, STATEMENT_FROM_FIELD] as const;
 
