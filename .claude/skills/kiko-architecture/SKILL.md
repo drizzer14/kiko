@@ -275,6 +275,20 @@ project-level pointer to this section.
   `restore-snapshot.ts`; see "Data transfer") is mandatory: without it
   a `.kiko` with two property accounts fails on the index. Proven by
   `drizzle/migrations/0050-implicit-property-debt-accounts.test.ts`.
+- **An index on a nullable column that a query filters with `IS NULL` is
+  PARTIAL (`WHERE col IS NOT NULL`).** The app never runs `ANALYZE`, so SQLite
+  has no row statistics and prefers an equality on the indexed column over a
+  range on another index: a full index on `loan_holding_id` made the loan
+  matcher (`loanMatchCandidatesQuery`, `loan_holding_id IS NULL AND time >= ?`)
+  read nearly every row instead of using `transactions_time`. Pin every new
+  index with an `EXPLAIN QUERY PLAN` test that builds the queries from the repo
+  builders (no copied SQL) and asserts which index each query uses. Write the
+  partial index in `src/db/schema.ts` with `index(...).on(...).where(sql\`...\`)`;
+  if drizzle-kit wants a new migration for an unshipped one, hand-edit the
+  unshipped `.sql` and snapshot and re-run `generate` until it reports no schema
+  changes. Pointer: migration 0053 is the partial index
+  `transactions_loan_holding_id`
+  (`drizzle/migrations/0053-add-loan-holding-id-index.test.ts`).
 - **A flag whose work SQL cannot do follows the flag-plus-launch-step
   shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
   (`false`): re-costing a sale needs the BigInt decimal helpers, so the
