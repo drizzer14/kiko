@@ -1729,4 +1729,28 @@ describe('StatementImportScreen — the derived format and stats', () => {
     // The load effect's own detect plus the screen's recognition of the new input.
     expect(mockDetectFormat.mock.calls.length - detectCallsBefore).toBeGreaterThanOrEqual(2);
   });
+
+  it('recognizes the loaded file again against a new expected format, flipping the bank mismatch', async () => {
+    const view = await renderScreen({
+      filePath: '/mock/statement.csv',
+      accountId: 'a',
+      expectedFormatId: 'sensebank-csv',
+    });
+    const mismatchText = i18n.t('statementImport.bankMismatch', { bank: 'Sensebank (CSV)' });
+    await waitFor(() => expect(view.getByText(mismatchText)).toBeTruthy());
+
+    await view.rerender(
+      <StatementImportScreen
+        route={asRouteProp<StatementImportProps['route']>('StatementImport', {
+          filePath: '/mock/statement.csv',
+          accountId: 'a',
+          expectedFormatId: 'monobank-csv',
+        })}
+        navigation={asNavigationProp<StatementImportProps['navigation']>(view.navigation)}
+      />,
+    );
+
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+    expect(view.queryByText(mismatchText)).toBeNull();
+  });
 });
