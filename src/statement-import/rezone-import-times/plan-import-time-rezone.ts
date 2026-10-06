@@ -134,7 +134,7 @@ const nextFreeOccurrence = (inUse: Set<number>): number => {
 };
 
 /**
- * A rezoned instant collapses two previously-distinct rows onto the SAME
+ * A rezoned instant collapses two rows that had distinct keys onto the SAME
  * final key (a spring-gap time, or a timed `00:00:00` row and a `12:00:00`
  * row with the same amount/description both landing on noon). Every row
  * keeps its own key unless it TIES with an earlier one (by old time, then

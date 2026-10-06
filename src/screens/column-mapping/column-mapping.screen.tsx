@@ -648,9 +648,9 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     // comment). When this screen was reached instead by "Map columns
     // manually" (a PUSH), `StatementImportScreen` stays mounted underneath
     // and still owns the file — deleting it here on a plain Back would
-    // strand that still-reachable preview with a filePath that no longer
-    // resolves, reintroducing item 6's exact bug (a second "Map columns
-    // manually" tap re-reading a file this screen already deleted). The
+    // strand that still-reachable preview with a filePath that does not
+    // resolve (a second "Map columns manually" tap would re-read a file this
+    // screen already deleted). The
     // preview's OWN unmount cleanup is the one that eventually deletes the
     // file in that case, once IT is genuinely done with the flow.
     return () => {

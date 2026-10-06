@@ -169,10 +169,10 @@ describe('readDateWithFormat', () => {
   });
 
   // Every preset's own components must survive the calendar-validity round
-  // trip, the same rollover guard `parseLocalDate` (`src/dates/format.ts`)
-  // already applies to a local-midnight day — otherwise an out-of-range
-  // component (a day past its month's length, an hour/minute past 23/59)
-  // silently rolls into a DIFFERENT, wrong calendar instant instead of
+  // trip, the same rollover guard `zoneWallClockToUtcMilliseconds`
+  // (`src/dates/zone-wall-clock.ts`) applies to a wall-clock instant —
+  // otherwise an out-of-range component (a day past its month's length, an
+  // hour/minute past 23/59) silently rolls into a DIFFERENT, wrong calendar instant instead of
   // failing as a recoverable row error.
   describe('rollover rejection — an out-of-range component must not silently roll into another date', () => {
     it('rejects 31.02.2026 (February has no 31st) under DD.MM.YYYY', () => {

@@ -53,7 +53,7 @@ export type TimeReading =
 export type ParsedAccountHint = {
   currency: Currency;
   /** A display name suggestion for a newly created holding (e.g. a masked
-   * PAN or the export's own account label), never used to MATCH an existing
+   * PAN or the export's own account label), never a basis to MATCH an existing
    * holding — matching is always the user's explicit pick. */
   suggestedName?: string;
   iban?: string;

@@ -60,7 +60,7 @@ const cellText = (cell: TableCell | undefined): string => (cell === undefined ? 
 
 const isEmptyCell = (cell: TableCell | undefined): boolean => cellText(cell).trim() === '';
 
-// Every column this mapping actually reads — used to decide whether a row is
+// Every column this mapping actually reads — decides whether a row is
 // blank (every mapped cell empty) and should be skipped silently, never as an
 // error (a trailing blank row in an exported file is normal, not malformed).
 const mappedColumnsFor = (mapping: ColumnMapping): number[] => [

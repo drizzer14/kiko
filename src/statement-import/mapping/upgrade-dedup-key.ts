@@ -17,8 +17,8 @@ type LegacyDedupCandidate = Pick<
  * pre-`␟` legacy key (`base + ' ' + digits`) to the injective form
  * (`base + '␟' + digits`). Returns `null` — no rewrite — for every other
  * case: an occurrence-0 key (already equals `base`, nothing to change), an
- * edited description or a bank-issued id (the recomputed base no longer
- * matches, so rewriting would be unsafe — the worst case of leaving it alone
+ * edited description or a bank-issued id (the recomputed base does not
+ * match, so rewriting would be unsafe — the worst case of leaving it alone
  * is a one-time duplicate on re-import, never data loss), and any row that
  * isn't itself a statement-import row.
  *
