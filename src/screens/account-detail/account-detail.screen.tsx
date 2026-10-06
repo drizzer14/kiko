@@ -23,6 +23,7 @@ import { useAnimatedRef } from 'react-native-reanimated';
 import { useReminderOffer } from '@kiko/reminders/offer';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import { sumByCurrency } from '@kiko/rates/currency-totals';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
@@ -36,6 +37,7 @@ import HoldingCard from '@kiko/design-system/components/holding-card';
 import { type AccountRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { fileNameOf } from '@kiko/statement-import/read-statement-file';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { removeHoldingsNoticeOf } from '@kiko/transactions/remove-notice';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
@@ -456,7 +458,11 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
                   <CardContextMenu
                     name={item.name}
                     deletable={!isSyncedHolding(item, account)}
-                    onDelete={() => holdingsRepo.remove(item.id)}
+                    // Read when the delete is requested, so it names what is stored
+                    // now: a holding's rows can be one part of a movement with
+                    // another holding, which the delete takes with it.
+                    deleteMessage={() => removeHoldingsNoticeOf([item.id], t)}
+                    onDelete={() => transactionsRepo.removeHolding(item.id)}
                     closeAction={closeActionFor(item)}
                   >
                     <HoldingCard

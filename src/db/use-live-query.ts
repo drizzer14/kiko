@@ -159,7 +159,6 @@ export function useLiveQuery<T>(
     if (!paused && dirtyRef.current) {
       dirtyRef.current = false;
       // runQuery folds a rejected read into a Left and never rejects.
-      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
       runQueryRef.current?.();
     }
   }, [paused]);

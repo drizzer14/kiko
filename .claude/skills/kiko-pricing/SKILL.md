@@ -625,7 +625,8 @@ when reading that file. A buy reads "Purchase", a sell "Sale".
 — when present, the SAME transaction that inserts the holding also
 inserts one `manual` price point on that holding's own `holding:<id>`
 instrument, so a freshly created priced holding never reads as "no
-price yet" for even one render. `holdingsRepo.remove` does the
+price yet" for even one render. `removeHoldingDatabaseTransaction` (`holdings.repo.ts`, reached through
+`transactionsRepo.removeHolding`) does the
 matching cleanup: it deletes the holding's own `holding:<id>` price
 series inline on the same `tx` (not through
 `pricePointsRepo.removeInstrument`, which would open its own

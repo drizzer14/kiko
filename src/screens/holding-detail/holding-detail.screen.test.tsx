@@ -11,6 +11,7 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { formatMoney } from '@kiko/currency/format';
 import { darkTheme } from '@kiko/design-system/theme';
+import { holdCard } from '@kiko/test-support/hold-card';
 import { formatDate, startOfLocalDay } from '@kiko/dates';
 import {
   EDIT_ACTION_TEST_ID,
@@ -225,8 +226,10 @@ jest.mock('@kiko/transactions/repo', () => ({
       toSQL: () => ({ sql: 'loan-ledger-payments', params: [] }),
     }),
     remove: jest.fn(),
+    removePlan: jest.fn(),
   },
 }));
+
 jest.mock('@kiko/bonds/bond-register-repo', () => ({
   bondRegisterRepo: {
     findByIsinQuery: (isin: string) => ({ toSQL: () => ({ sql: '', params: [isin] }) }),
@@ -416,6 +419,7 @@ const renderScreen = () =>
 describe('HoldingDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: false });
   });
 
   // The user placed the manual-entry offer on the account page only.
@@ -1382,6 +1386,33 @@ describe('HoldingDetailScreen', () => {
     expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-9');
   });
 
+  it('shows what else deleting a row takes under the confirm title, read from that row plan', async () => {
+    jest.mocked(transactionsRepo.removePlan).mockResolvedValue({
+      split: false,
+      exchange: { kind: 'deleted', names: ['Dollar card'] },
+    });
+    seed(cardHolding, [
+      { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
+    ]);
+
+    const { getByTestId, getByText } = await renderScreen();
+
+    await holdCard();
+    await act(async () => {
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+    });
+
+    expect(transactionsRepo.removePlan).toHaveBeenCalledWith('txn-9');
+    expect(getByText('Delete "Coffee"')).toBeTruthy();
+    expect(
+      getByText('This also deletes the other part of this exchange, in Dollar card.'),
+    ).toBeTruthy();
+
+    await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+    expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-9');
+  });
+
   it('duplicates a manual transaction row to a pre-filled create form', async () => {
     seed(cardHolding, [
       { id: 'txn-9', amountMinorUnits: -5000, time: 1, description: 'Coffee', source: 'manual' },
@@ -1426,6 +1457,39 @@ describe('HoldingDetailScreen', () => {
     // A synced (Monobank) row is not deletable, so CardContextMenu renders it
     // bare — no card-context-menu wrapper and no hold gesture to intercept it.
     expect(queryByTestId('card-context-menu')).toBeNull();
+  });
+
+  describe('an imported transaction row', () => {
+    const importedRow = {
+      id: 'txn-import',
+      amountMinorUnits: -5000,
+      time: 5_000,
+      description: 'Coffee',
+      source: 'import',
+    };
+
+    const holdRow = async () => {
+      const screen = await renderScreen();
+
+      await holdCard();
+
+      return screen;
+    };
+
+    it('opens the delete confirm straight away on a hold, and deletes through transactionsRepo.remove', async () => {
+      seed(cardHolding, [importedRow]);
+
+      const { getByTestId, getByText, queryByTestId } = await holdRow();
+
+      // An imported row is deletable but not duplicable, so there is no
+      // Duplicate/Delete choice: the hold raises the confirm itself.
+      expect(queryByTestId(DELETE_ACTION_TEST_ID)).toBeNull();
+      expect(getByText('Delete "Coffee"')).toBeTruthy();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-import');
+    });
   });
 
   it('renders the derived lifecycle rows (opening, accrual, taxes) marked Computed', async () => {

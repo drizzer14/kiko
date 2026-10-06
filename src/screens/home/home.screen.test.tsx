@@ -43,9 +43,13 @@ type HomeProps = ComponentProps<typeof HomeScreen>;
 
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 
+// A getter, so `mockTextTone` is read when `Text` is first used, not when the
+// `hold-card` import above it loads the design system before that import runs.
 jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
-  default: mockTextTone,
+  get default() {
+    return mockTextTone;
+  },
 }));
 
 // The transaction list's own bottom clearance (see `home.screen.tsx`) is the
@@ -145,6 +149,8 @@ jest.mock('@kiko/transactions/repo', () => ({
     contextSpanQuery: () => ({ kind: 'span', toSQL: () => ({ sql: '', params: [] }) }),
     contextCategoriesQuery: () => ({ kind: 'categories', toSQL: () => ({ sql: '', params: [] }) }),
     loanLedgerPaymentsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    // A row's delete confirm reads what else the delete takes.
+    removePlan: async () => ({ split: false }),
   },
 }));
 jest.mock('@kiko/categories/repo', () => ({
@@ -226,6 +232,8 @@ type Transaction = {
   holdingName: string;
   holdingType: string;
   exchangeCounterpartHoldingId: string | null;
+  holdingId?: string;
+  source?: string;
 };
 type Category = { key: string; title: string; icon: string };
 type PricePoint = {

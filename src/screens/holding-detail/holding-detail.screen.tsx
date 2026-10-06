@@ -1,3 +1,8 @@
+import {
+  isSyncedHolding,
+  isSyncedTransaction,
+  isDeletableTransaction,
+} from '@kiko/holdings/deletable';
 import { match } from 'ts-pattern';
 import {
   defaultHoldingSymbol,
@@ -46,6 +51,7 @@ import Divider from '@kiko/design-system/components/divider';
 import { loanLedgerSummary } from '@kiko/holdings/loan-ledger';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
+import { removeNotice } from '@kiko/transactions/remove-notice';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -66,7 +72,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { asLots, changedLots, hasNegativeHolding } from '@kiko/holdings/lots';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
-import { isSyncedHolding, isSyncedTransaction } from '@kiko/holdings/deletable';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
@@ -517,15 +522,22 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       // `CardContextMenu`) with a single destructive Delete action — the
       // same long-press pattern the account/holding cards use. A synced
       // (Monobank) row is not deletable (its state is owned by the sync),
-      // so `CardContextMenu` renders it with no gesture at all.
+      // so `CardContextMenu` renders it with no gesture at all. An imported
+      // row is deletable but not duplicable, so its hold opens the delete
+      // confirm directly.
       return (
         <CardContextMenu
           name={description}
-          deletable={!isSyncedTransaction(transactionRow.transaction)}
+          deletable={isDeletableTransaction(transactionRow.transaction)}
+          // Read when the delete is requested, so it names what is stored now: a
+          // row that is one part of a movement takes the rest with it.
+          deleteMessage={async () =>
+            removeNotice(await transactionsRepo.removePlan(transactionRow.transaction.id), t)
+          }
           onDelete={() => transactionsRepo.remove(transactionRow.transaction.id)}
-          // A synced row is not duplicable — pass no handler so its long-press keeps
-          // offering nothing (it already renders bare). A manual row's Duplicate
-          // opens the create form pre-filled from this row.
+          // A synced or imported row is not duplicable — pass no handler so its
+          // long-press keeps offering nothing more than Delete. A manual row's
+          // Duplicate opens the create form pre-filled from this row.
           onDuplicate={
             isSyncedTransaction(transactionRow.transaction)
               ? undefined

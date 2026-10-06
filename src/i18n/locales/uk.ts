@@ -40,6 +40,7 @@ export const uk: typeof en = {
     changeIcon: 'Змінити іконку',
     changeIconLabel: 'Змінити {{label}}',
     iconLabel: 'Іконка {{name}}',
+    listedName: '«{{name}}»',
     noDataForRange: 'Немає даних за цей період',
     segmentPosition: '{{index}} з {{count}}',
   },
@@ -478,6 +479,8 @@ export const uk: typeof en = {
       fromSheetTitle: 'Звідки',
       holding: 'Актив',
       holdingSheetTitle: 'Актив',
+      importedNotice:
+        'Цю транзакцію імпортовано з виписки, тому можна змінити лише категорію та зв’язок із кредитом.',
       income: 'Дохід',
       loanLinkedAuto: 'Пов’язано автоматично.',
       loanLinkUndo: 'Відмінити',
@@ -499,8 +502,6 @@ export const uk: typeof en = {
         'Додайте принаймні одне коректне повернення, і нехай сума повернень буде меншою за платіж.',
       syncedNotice:
         'Цю транзакцію синхронізовано, тому можна змінити лише категорію та зв’язок із кредитом.',
-      timeAfterBalanceSetError:
-        'Цю транзакцію збережено без опису й категорії, тож вона може бути давнішою зміною балансу. Оберіть дату й час не пізніше {{dateTime}}.',
       title: 'Транзакція',
       to: 'Куди',
       toSheetTitle: 'Куди',
@@ -688,6 +689,21 @@ export const uk: typeof en = {
     yieldToMaturity: 'Дохідність до погашення',
     yourShare: 'Ваша частка',
   },
+  holdings: {
+    deleteLinked: {
+      rows_one: 'Також буде видалено {{count}} пов’язану транзакцію в {{names}}.',
+      rows_few: 'Також буде видалено {{count}} пов’язані транзакції в {{names}}.',
+      rows_many: 'Також буде видалено {{count}} пов’язаних транзакцій в {{names}}.',
+      rows_other: 'Також буде видалено {{count}} пов’язаної транзакції в {{names}}.',
+      contributions: 'Також буде видалено його внески в {{names}}.',
+      contributionsKept:
+        'Деякі внески в {{names}} не вдалося знайти, тож вони залишаться. Щоб їх прибрати, відредагуйте депозит.',
+      syncedKept: 'Пов’язані транзакції з банку залишаться в {{names}}.',
+      unlinked:
+        'Деякі частини обмінів у {{names}} не знайдено, тож вони залишаться. Перевірте їх після видалення.',
+      unlinkedPlain: 'Деякі частини обмінів не знайдено, тож вони залишаться.',
+    },
+  },
   home: {
     addTransaction: 'Додати транзакцію',
     dateRangeField: {
@@ -759,6 +775,27 @@ export const uk: typeof en = {
     defaultDescriptionIncome: 'Надходження: {{name}}',
     defaultDescriptionExpensePlain: 'Витрата',
     defaultDescriptionIncomePlain: 'Надходження',
+    deleteLinked: {
+      exchange: 'Також буде видалено другу частину цього обміну, у {{name}}.',
+      exchangeSyncedKept:
+        'Друга частина, у {{name}}, надійшла з банку й залишиться. Буде видалено лише цю частину.',
+      exchangeUnlinked:
+        'Другу частину цього обміну, у «{{name}}», не знайдено. Буде видалено лише цю частину, тож перевірте «{{name}}».',
+      exchangeUnlinkedPlain:
+        'Другу частину цього обміну не знайдено. Буде видалено лише цю частину.',
+      deposit: 'Також буде видалено її внесок у «{{name}}».',
+      depositKept:
+        'Її внесок у «{{name}}» не вдалося знайти, тож він залишиться. Щоб його прибрати, відредагуйте «{{name}}».',
+      split: 'Також буде видалено всі інші частини цього розділеного платежу.',
+      exchangeAlsoKept: '«{{name}}» залишиться: це запис банку, його не можна видалити.',
+      splitExchange:
+        'Також буде видалено обмін, зроблений із цього розділеного платежу, у «{{name}}».',
+      splitExchangeSyncedKept: 'Обмін у «{{name}}» надійшов з банку й залишиться.',
+      splitExchangeUnlinked:
+        'Обмін із цього розділеного платежу в «{{name}}» не знайдено. Перевірте «{{name}}».',
+      splitExchangeUnlinkedPlain: 'Обмін із цього розділеного платежу не знайдено.',
+      balanceChange: 'Баланс «{{name}}» зміниться на {{amount}}.',
+    },
     exchangeFrom: 'Обмін з {{name}}',
     exchangeTo: 'Обмін на {{name}}',
   },
@@ -791,6 +828,11 @@ export const uk: typeof en = {
     importErrorMessage: 'Спробуйте ще раз.',
     importedCount: 'Імпортовано {{imported}} з {{total}}',
     importResultTitle: 'Імпорт завершено',
+    balanceWillBeSet: 'Баланс буде встановлено: {{amount}}',
+    balanceWillBeSetWithLater:
+      'Баланс буде встановлено: {{amount}} (баланс у банку {{bankAmount}} на {{date}}, плюс ваші пізніші записи)',
+    balanceWillChange: 'Баланс зміниться з {{from}} на {{to}}',
+    balanceStays: 'Баланс не зміниться: {{amount}}',
     // i18next's uk plural rule: _one (1 рядок), _few (2-4 рядки), _many (0,
     // 5-20 рядків), _other (fractional, unreachable here).
     unresolvedRowsSkipped_one: '{{count}} рядок пропущено: нерозпізнана валюта',

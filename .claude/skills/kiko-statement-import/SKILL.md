@@ -84,13 +84,41 @@ and `importRows`'s own doc comment, for the exact balance rule —
 `addManyDedup` is a DIFFERENT, still-live upsert-only path the sync
 routes use, not statement import).
 
+**The preview of the balance runs the import's own reads.** Both screens
+(statement-import and column-mapping) show an `ImportBalanceLine` from
+`useImportBalancePreview` (`src/statement-import/use-import-balance-preview/`)
+-> `previewParsedStatementBalance` (`import-statement.ts`) ->
+`transactionsRepo.previewImportBalance`, which shares
+`readImportPlanDatabaseTransaction` and `resolveImportBalance` with `importRows`
+so the preview equals the stored result (pinned by a parity test on real
+SQLite). `previewParsedStatementBalance` throws
+(the "preview-pending" error) until BOTH one-shot rewrites have settled
+(`settings.dedupKeysUpgraded` and `settings.importTimesRezoned`): the preview
+does not run `upgradeStoredDedupKeys` / `rezoneImportTimes`, so before they
+settle its dedup could differ from the import's. The hook logs the failure
+(tag only, through `logFailure`) and shows no line; a refusal of the import
+itself (a synced or ledgerless holding) also shows none. The hook needs a
+statement that keeps its identity between renders, since a new one is a new
+request, and the newest request wins. Never add a second copy of the balance
+rule for the preview.
+
+**An imported row can be deleted, and its amount goes with it.** `transactionsRepo.remove`
+takes the row's full amount back from its holding whatever its date against the
+boundary (user rule 2026-10-05, "Every transaction updates its balance" in
+kiko-domain): the balance moves only, `balanceSetAt` stays, and no bank figure
+is stored, so deleting every row of an import ends on the statement's opening
+balance. Re-importing the same file brings a deleted row back (no tombstone;
+accepted): with a closing balance its amount returns with it, and a no-closing
+file's row dated before the boundary returns as history without its amount.
+`dropRowsHeldBySync` still stops a duplicate of a bank row from returning
+once the account is disconnected, and a connected account refuses the import.
+
 **A synced account refuses the import.** `importRows`
 (`src/transactions/repo/transactions.repo.ts`) throws an Error with the
 message statement-import/synced-account, before it writes anything, for any
 holding of an account `isSyncedAccount` owns (a hand-added holding there
 included): the sync already writes those rows under its own `source`, so
-an `import` copy would be a second one, and an import row cannot be
-deleted. Account detail hides "Import statement" there with no caption;
+an `import` copy would be a second one. Account detail hides "Import statement" there with no caption;
 the guard covers a stale route. The target-holding picker
 (`useTargetHoldingOptions`) applies the same `isSyncedAccount` test, so it
 never offers a holding the guard refuses; it also drops closed and
@@ -148,8 +176,43 @@ whose clock is coarser than a second carries `ParsedTransaction.timeReading`:
   same purchase more precisely, claim first. Two equal date-only rows on
   one day against one synced row drop only one. A day after the newest
   synced row has no synced row of its own, so its rows always go in.
-Rows an earlier build already imported over synced ones stay; no
+Rows an earlier build already imported over synced ones stay, and so do
+the ones a later import writes where the sync cannot match them (below); no
 migration removes them.
+
+**The sync adopts its import twin after a reconnect.** The reverse
+direction of `dropRowsHeldBySync`: a statement imported over a disconnect
+writes `import` rows, and the reconnect sync fetches the same purchases under
+keys no import row holds. `transactionsRepo.addManyDedup` (the sync's insert
+path, never `importRows`) lets each NEW input (a key not stored yet)
+adopt a stored `import` row of the same holding and signed amount dated within
+±60 s of the input's time (inclusive), one to one, earliest unclaimed row in
+reach first, inputs claiming in (time, external id) order
+(`pairSyncInputsWithImportRows`, `src/transactions/sync-adoption/`). One
+UPDATE by the import row's id writes the bank-owned columns, `source` and
+`external_id` onto it: the row keeps its id, its category and comment (a
+missing one is filled from the sync) and every structural column, including a
+loan link and an exchange pair with its marker. The adopted input is not
+inserted and not counted, no `holdings` row is written (the sync overwrites the
+stored balance from the bank), and the row is bank-owned from then on, so the
+ledger keeps one row per purchase and no balance moves. The marker stays only
+while the leg it names lives: a delete that keeps the adopted row clears the
+marker in the same write only when that leg goes with it (the manual leg of the
+same pair deleted, or the holding the marker names), so the purchase counts as
+spending again. A marker naming something else stays: a deposit source leg
+Converted again keeps `deposit` while the dollar leg is deleted, and the deposit
+still holds the contribution (`kiko-domain`, "A bank-owned (synced) partner is
+kept"). A manual twin is not
+adopted: the user deletes that duplicate. A later import of the same file finds
+the adopted row as a synced row and holds its rows.
+RESIDUAL, left doubled: the adoption sees only the stored time, so an import
+row from a date-only file (stored at local noon), a minute-clock row whose bank
+stamp is more than 60 s past its floored minute, and a legacy row stored at
+Kyiv noon for a time near midnight are never adopted; a pending file amount
+against a settled tip is not equal either. The user deletes the import
+duplicate, which takes its amount back until the next sync overwrites the
+balance. OPEN ITEM, not built: a clock-reach column on import rows (and a
+migration) would let the adoption mirror `clockRangeOf` for those.
 
 ## Dedup
 

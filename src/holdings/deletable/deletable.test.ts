@@ -1,4 +1,35 @@
-import { isSyncedAccount, isSyncedHolding, isSyncedTransaction } from './deletable';
+import {
+  isSyncedAccount,
+  isSyncedHolding,
+  isSyncedTransaction,
+  isImportedTransaction,
+  isDeletableTransaction,
+} from './deletable';
+
+describe('isImportedTransaction', () => {
+  it('names a row a statement file wrote and no other', () => {
+    expect(isImportedTransaction({ source: 'import' })).toBe(true);
+    expect(isImportedTransaction({ source: 'manual' })).toBe(false);
+    expect(isImportedTransaction({ source: 'monobank' })).toBe(false);
+  });
+});
+
+describe('isDeletableTransaction', () => {
+  it('offers delete for a row the user wrote and a row the user imported', () => {
+    expect(isDeletableTransaction({ source: 'manual' })).toBe(true);
+    expect(isDeletableTransaction({ source: 'import' })).toBe(true);
+  });
+
+  it('refuses a row a sync owns', () => {
+    expect(isDeletableTransaction({ source: 'monobank' })).toBe(false);
+    expect(isDeletableTransaction({ source: 'btc_wallet' })).toBe(false);
+    expect(isDeletableTransaction({ source: 'binance' })).toBe(false);
+  });
+
+  it('keeps flagging an imported row as read-only', () => {
+    expect(isSyncedTransaction({ source: 'import' })).toBe(true);
+  });
+});
 
 describe('synced predicates', () => {
   it('flags every non-manual transaction source', () => {

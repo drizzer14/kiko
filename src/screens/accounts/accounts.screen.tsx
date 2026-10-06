@@ -19,6 +19,7 @@ import { useIsFocused } from '@react-navigation/native';
 import type { Currency } from '@kiko/currency/currency';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import SymbolIcon from '@kiko/design-system/components/symbol';
@@ -31,6 +32,7 @@ import type { AccountsStackParamList } from '@kiko/navigation/types';
 import HoldingCard from '@kiko/design-system/components/holding-card';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { writeThenReplan } from '@kiko/reminders/use-reminder-scheduler';
+import { removeHoldingsNoticeOf } from '@kiko/transactions/remove-notice';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
@@ -233,6 +235,16 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       <CardContextMenu
         name={item.name}
         deletable={!isSyncedAccount(item)}
+        // Every holding of the account goes, closed ones too, so the confirm
+        // names what they take from other accounts.
+        deleteMessage={() =>
+          removeHoldingsNoticeOf(
+            holdings
+              .filter((holding) => holding.accountId === item.id)
+              .map((holding) => holding.id),
+            t,
+          )
+        }
         // The delete takes the account's reminders with it; only a re-plan
         // takes their notifications off iOS.
         onDelete={() => writeThenReplan(() => accountsRepo.remove(item.id), t)}
@@ -359,7 +371,8 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               <CardContextMenu
                 name={item.name}
                 deletable={!isSyncedHolding(item, account)}
-                onDelete={() => holdingsRepo.remove(item.id)}
+                deleteMessage={() => removeHoldingsNoticeOf([item.id], t)}
+                onDelete={() => transactionsRepo.removeHolding(item.id)}
                 closeAction={closeActionFor(item)}
               >
                 <HoldingCard

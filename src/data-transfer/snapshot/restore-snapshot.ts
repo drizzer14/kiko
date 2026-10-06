@@ -231,6 +231,91 @@ const withLegacyBalanceSetMarksDerived = (
   };
 };
 
+type ExchangeCandidate = { leg: TransactionRow; other: TransactionRow };
+
+const isMarkedManualLeg = (row: TransactionRow): boolean =>
+  row.source === 'manual' &&
+  typeof row.exchangeCounterpartHoldingId === 'string' &&
+  !row.changeGroupId &&
+  row.amountMinorUnits !== 0;
+
+const isOtherHalfOf = (leg: TransactionRow, row: TransactionRow): boolean =>
+  row.time === leg.time &&
+  row.amountMinorUnits * leg.amountMinorUnits < 0 &&
+  (row.source === 'manual'
+    ? row.exchangeCounterpartHoldingId === leg.holdingId
+    : typeof row.exchangeCounterpartHoldingId !== 'string');
+
+const exchangeCandidatesOf = (snapshotTransactions: TransactionRow[]): ExchangeCandidate[] => {
+  const rowsByHolding = transactionsByHoldingId(snapshotTransactions);
+
+  return snapshotTransactions
+    .filter(isMarkedManualLeg)
+    .flatMap((leg) =>
+      (rowsByHolding.get(leg.exchangeCounterpartHoldingId ?? '') ?? [])
+        .filter((row) => isOtherHalfOf(leg, row))
+        .map((other) => ({ leg, other })),
+    );
+};
+
+const countBy = (
+  candidates: ExchangeCandidate[],
+  keyOf: (candidate: ExchangeCandidate) => string,
+) => {
+  const counts = new Map<string, number>();
+
+  for (const candidate of candidates) {
+    counts.set(keyOf(candidate), (counts.get(keyOf(candidate)) ?? 0) + 1);
+  }
+
+  return counts;
+};
+
+/**
+ * Migration 0052's backfill (`drizzle/migrations/0052_add_exchange_pair_id.sql`'s
+ * doc comment is the full statement of the rule), mirrored for a `.kiko` file
+ * exported before `transactions.exchangePairId` existed, whose rows carry no
+ * such key: a leg and the row it provably is the other half of, 1:1, both get
+ * the smaller of their two ids; every other row gets null. Fed the
+ * transactions the balance-set derivation produced, the order a live device
+ * runs 0047, then 0052 — and before the dedup-key upgrade and the import-time
+ * rezone, which a device runs only at launch. A row that carries its key keeps
+ * it as exported, a null included. String comparison on `id` matches SQLite's
+ * own BINARY collation for ASCII ids, as in `withLegacyBalanceSetMarksDerived`.
+ */
+const withLegacyExchangePairsDerived = (
+  snapshotTransactions: TransactionRow[],
+): TransactionRow[] => {
+  if (snapshotTransactions.every((row) => Object.hasOwn(row, 'exchangePairId'))) {
+    return snapshotTransactions;
+  }
+
+  const candidates = exchangeCandidatesOf(snapshotTransactions);
+  const candidatesOfLeg = countBy(candidates, ({ leg }) => leg.id);
+  const candidatesOfOther = countBy(candidates, ({ other }) => other.id);
+  const pairIdByRowId = new Map<string, string>();
+
+  for (const { leg, other } of candidates) {
+    if (candidatesOfLeg.get(leg.id) !== 1 || candidatesOfOther.get(other.id) !== 1) {
+      continue;
+    }
+
+    const pairId = leg.id < other.id ? leg.id : other.id;
+
+    for (const rowId of [leg.id, other.id]) {
+      const stored = pairIdByRowId.get(rowId);
+
+      pairIdByRowId.set(rowId, stored === undefined || pairId < stored ? pairId : stored);
+    }
+  }
+
+  return snapshotTransactions.map((row) =>
+    Object.hasOwn(row, 'exchangePairId')
+      ? row
+      : { ...row, exchangePairId: pairIdByRowId.get(row.id) ?? null },
+  );
+};
+
 // Migration 0039's own seed values (`drizzle/migrations/0039_seed_loan_interest_category.sql`),
 // duplicated here rather than imported: that migration's SQL runs only on a
 // LIVE device upgrade, never against a restored snapshot's own categories.
@@ -759,12 +844,16 @@ export const restoreDataSnapshot = (
       withStrayDepositBondBalanceCleaned(holdingsAfterLegacyBackfill, snapshot.transactions);
     const { holdings: holdingsAfterMarking, transactions: transactionsAfterMarking } =
       withLegacyBalanceSetMarksDerived(holdingsAfterStrayCleanup, transactionsAfterStrayCleanup);
+    // Reads only the exchange markers, times and amounts, which the marking
+    // above never changes, and runs before the launch-time steps below, as 0052
+    // runs before them on a live device.
+    const transactionsAfterPairing = withLegacyExchangePairsDerived(transactionsAfterMarking);
 
     // Independent of the backfills above (a different column, a different
     // migration) — applied to the FINAL transaction set they produced, since
     // that's what actually gets inserted.
     const { settings: dedupUpgradedSettings, transactions: dedupUpgradedTransactions } =
-      withLegacyDedupKeysUpgraded(settingsAfterImplicitMerge, transactionsAfterMarking);
+      withLegacyDedupKeysUpgraded(settingsAfterImplicitMerge, transactionsAfterPairing);
 
     // Applied last, to the FINAL settings/transactions/holdings sets every
     // step above produced — see its own doc comment for why it runs after

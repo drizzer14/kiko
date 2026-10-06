@@ -365,6 +365,20 @@
       "when": 1791148825000,
       "tag": "0051_monobank_accounts_bank_id",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1791202131982,
+      "tag": "0052_add_exchange_pair_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1791249729128,
+      "tag": "0053_add_loan_holding_id_index",
+      "breakpoints": true
     }
   ]
 }

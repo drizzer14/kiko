@@ -1,3 +1,4 @@
+import type { ImportBalancePreview } from '@kiko/transactions/repo';
 import type { PreviewStats } from '@kiko/statement-import/preview-stats';
 import type { ColumnMappingRowError } from '@kiko/statement-import/column-mapping';
 
@@ -31,4 +32,8 @@ export type MappingResultProps = {
   // own `holdingName` prop — feeds its income/expense
   // default-title fallback. `undefined` before a holding is chosen.
   holdingName?: string;
+  // What importing would leave the chosen holding's balance at
+  // (`useImportBalancePreview`) — `undefined` before a holding is chosen or
+  // while the read is out, which renders no line.
+  balancePreview?: ImportBalancePreview;
 };

@@ -15,6 +15,7 @@ import {
 } from '@kiko/design-system/components/card-context-menu';
 import { dropCard, liftCard } from '@kiko/test-support/lift-grid-card';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import type { RemoveHoldingsPlan } from '@kiko/transactions/remove-notice';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AccountDetailScreen from './account-detail.screen';
@@ -94,6 +95,16 @@ const mockPick = jest.fn();
 const mockKeepLocalCopy = jest.fn();
 const mockReadFile = jest.fn();
 const mockRemove = jest.fn();
+const mockRemoveHoldingsPlan = jest.fn(
+  async (..._args: unknown[]): Promise<RemoveHoldingsPlan> => ({
+    deletedRows: { count: 0, names: [] },
+    reversedContributions: [],
+    keptContributions: [],
+    keptSynced: [],
+    unlinked: [],
+    unlinkedPlain: false,
+  }),
+);
 const mockCloseMany = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
 const mockReorder = jest.fn();
 const mockAccountSetIcon = jest.fn();
@@ -165,7 +176,6 @@ jest.mock('@kiko/holdings/repo', () => ({
     listByAccountQuery: (accountId: string) => ({
       toSQL: () => ({ sql: '', params: [accountId] }),
     }),
-    remove: (...args: unknown[]) => mockRemove(...args),
     closeMany: (...args: unknown[]) => mockCloseMany(...args),
     reorder: (...args: unknown[]) => mockReorder(...args),
     balanceOf: (row: { currency: string; balanceMinorUnits: number }) => ({
@@ -174,6 +184,17 @@ jest.mock('@kiko/holdings/repo', () => ({
     }),
   },
 }));
+jest.mock('@kiko/transactions/repo', () => {
+  const actual = jest.requireActual('@kiko/transactions/repo');
+
+  return {
+    transactionsRepo: {
+      ...actual.transactionsRepo,
+      removeHolding: (...args: unknown[]) => mockRemove(...args),
+      removeHoldingsPlan: (...args: unknown[]) => mockRemoveHoldingsPlan(...args),
+    },
+  };
+});
 jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
@@ -963,6 +984,53 @@ describe('AccountDetailScreen', () => {
     await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 
     expect(mockRemove).toHaveBeenCalledWith('h1');
+  });
+
+  it('names what deleting a holding takes from other holdings under the confirm title', async () => {
+    mockRemoveHoldingsPlan.mockResolvedValueOnce({
+      deletedRows: { count: 1, names: ['Dollar card'] },
+      reversedContributions: ['Deposit'],
+      keptContributions: [],
+      keptSynced: [],
+      unlinked: [],
+      unlinkedPlain: false,
+    });
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+    const { getByTestId, getByText } = await renderScreen();
+
+    await holdHoldingCard();
+    await act(async () => {
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+    });
+
+    expect(mockRemoveHoldingsPlan).toHaveBeenCalledWith(['h1']);
+    expect(getByText('Delete "Black card"')).toBeTruthy();
+    expect(
+      getByText(
+        'This also deletes 1 linked transaction in Dollar card. This also removes the contributions it made to Deposit.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('keeps the holding confirm bare when nothing else is linked, or the plan cannot be read', async () => {
+    mockRemoveHoldingsPlan.mockRejectedValueOnce(new Error('read failed'));
+    setLiveData({
+      accounts: [account()],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+    const { getByTestId, getByText, queryByText } = await renderScreen();
+
+    await holdHoldingCard();
+    await act(async () => {
+      await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+    });
+
+    expect(getByText('Delete "Black card"')).toBeTruthy();
+    expect(queryByText(/This also/)).toBeNull();
+    expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
   });
 
   describe('closing a manual holding', () => {

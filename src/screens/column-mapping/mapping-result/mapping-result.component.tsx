@@ -4,6 +4,7 @@ import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import FieldError from '@kiko/design-system/components/field-error';
 import SummaryTable from '@kiko/design-system/components/summary-table';
+import ImportBalanceLine from '@kiko/design-system/components/import-balance-line';
 import ExampleTransaction from '@kiko/design-system/components/example-transaction';
 
 import { styles } from './mapping-result.styles';
@@ -30,6 +31,7 @@ const MappingResult: FC<MappingResultProps> = ({
   holdingName,
   mappingIncomplete,
   noRowsResolvedError,
+  balancePreview,
 }) => {
   const { t } = useTranslation();
   const visibleRowErrors = rowErrors.slice(0, ROW_ERROR_PREVIEW_COUNT);
@@ -78,6 +80,13 @@ const MappingResult: FC<MappingResultProps> = ({
                   },
                 ]}
               />
+
+              {balancePreview && (
+                <ImportBalanceLine
+                  preview={balancePreview}
+                  testID="column-mapping-balance-preview"
+                />
+              )}
 
               {stats.firstTransaction && (
                 <ExampleTransaction

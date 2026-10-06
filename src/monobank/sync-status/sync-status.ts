@@ -53,9 +53,9 @@ export const useSyncStatus = (): boolean => useSyncExternalStore(subscribe, getS
  *
  * - `workCompleted` / `workTotal` — the WORK units that drive the bar FILL. A
  *   run is WEIGHTED BY REAL WORK: a Monobank card weighs its statement-window
- *   count (a large history occupies more of the bar), a changed jar or a crypto
- *   balance fetch weighs one unit, and a skipped card / unchanged jar / manual
- *   holding weighs nothing. `workCompleted` STARTS at 0 (no pre-filled baseline)
+ *   count (a large history occupies more of the bar), a Monobank jar likewise,
+ *   a crypto balance fetch weighs one unit, and a skipped card or jar, or a
+ *   manual holding, weighs nothing. `workCompleted` STARTS at 0 (no pre-filled baseline)
  *   and rises as work is DONE.
  * - `completed` / `total` — the HOLDINGS count that drives the "N/M" label:
  *   `total` is the number of holdings that do real work this run, `completed` is
@@ -132,7 +132,7 @@ export const useSyncProgress = (): SyncProgress =>
  * work up front, then `commitWork(units)` as it fetches and `commitHolding(count)`
  * as each holding finishes. The bar is WEIGHTED BY REAL WORK: `workTotal` is the
  * SUM of every syncing holding's work units across every path — a Monobank card's
- * statement-window count, one unit per changed jar or crypto balance fetch — and
+ * or jar's statement-window count, one unit per crypto balance fetch — and
  * `workCompleted` rises as work is DONE, starting at 0 with NO pre-filled
  * baseline. `holdingsTotal`/`holdingsCompleted` count holdings for the label only.
  *

@@ -34,15 +34,16 @@ import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import Screen from '@kiko/design-system/components/screen';
-import { useRef, useEffect, useState, type FC } from 'react';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { previewStats } from '@kiko/statement-import/preview-stats';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { useRef, useMemo, useEffect, useState, type FC } from 'react';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ImportResultSheet from '@kiko/design-system/components/import-result-sheet';
 import { readTableRows, findSavedMapping } from '@kiko/statement-import/column-mapping';
 import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
+import { useImportBalancePreview } from '@kiko/statement-import/use-import-balance-preview';
 import { importStatement, type ImportResult } from '@kiko/statement-import/import-statement';
 
 import StatementImportFooter from './statement-import-footer';
@@ -102,17 +103,19 @@ const parseFormatSafely = (
   return bifoldr(attempt);
 };
 
-// Combines `parseFormatSafely` and `previewStats` into the one derivation
-// the component needs, keeping that component's own cognitive complexity
-// under the project's Biome cap.
-const statsFor = (
+// The parsed statement of a recognized file, or `undefined` while there is no
+// input or format, or when the parse fails. Kept out of the component so its
+// own cognitive complexity stays under the project's Biome cap.
+const parsedFor = (
   format: StatementFormat | undefined,
   input: StatementFormatInput | undefined,
-): ReturnType<typeof previewStats> | undefined => {
-  const parsed = format && input ? parseFormatSafely(format, input) : undefined;
+): ParsedStatement | undefined => (format && input ? parseFormatSafely(format, input) : undefined);
 
-  return format && parsed ? previewStats(parsed, format.displayName) : undefined;
-};
+const statsFor = (
+  format: StatementFormat | undefined,
+  parsed: ParsedStatement | undefined,
+): ReturnType<typeof previewStats> | undefined =>
+  format && parsed ? previewStats(parsed, format.displayName) : undefined;
 
 // The file-read pipeline's own state — kept separate from the derived
 // format/stats below so the screen always has SOMETHING to render (a
@@ -248,18 +251,26 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   }, [filePath]);
 
   const fileName = fileNameOf(filePath);
-  const input = match(loadState)
-    .with({ kind: 'ready' }, (state) => ({
-      text: state.text,
-      fileName,
-      sheetRows: state.sheetRows,
-    }))
-    .with({ kind: 'loading' }, { kind: 'unreadable' }, () => undefined)
-    .exhaustive();
+  // Memoized, with the parse below, so the balance preview keeps one statement
+  // until the file or the format changes: a new statement is a new request.
+  const input = useMemo(
+    () =>
+      match(loadState)
+        .with({ kind: 'ready' }, (state) => ({
+          text: state.text,
+          fileName,
+          sheetRows: state.sheetRows,
+        }))
+        .with({ kind: 'loading' }, { kind: 'unreadable' }, () => undefined)
+        .exhaustive(),
+    [loadState, fileName],
+  );
   const expectedFormat = expectedFormatOf(expectedFormatId);
   // Scoped recognition — see `formatFor`'s doc comment above for the full rule.
-  const format = formatFor(input, expectedFormat);
-  const stats = statsFor(format, input);
+  const format = useMemo(() => formatFor(input, expectedFormat), [input, expectedFormat]);
+  const parsed = useMemo(() => parsedFor(format, input), [format, input]);
+  const stats = useMemo(() => statsFor(format, parsed), [format, parsed]);
+  const balancePreview = useImportBalancePreview(parsed, selectedHoldingId);
   const bankMismatch = input !== undefined && expectedFormat !== undefined && format === undefined;
 
   // When this file matched NO format (unrecognized, or a bank
@@ -522,6 +533,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
         {stats && (
           <StatementPreviewBlock
             stats={stats}
+            balancePreview={balancePreview}
             holdingOptions={holdingOptions}
             holdingOptionsLoading={holdingOptionsLoading}
             accountId={accountId}

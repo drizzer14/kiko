@@ -20,7 +20,6 @@ import {
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
 } from '@kiko/categories/category-display';
-import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
 import {
@@ -34,11 +33,6 @@ import {
   scrollToField,
   type FieldInstance,
 } from '@kiko/design-system/scroll-to-field';
-import {
-  balanceBoundaryOf,
-  isPossibleBalanceSetRow,
-  redatesPossibleBalanceSetRowPastBoundary,
-} from '@kiko/transactions/balance-boundary';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import HoldingSelectField, {
@@ -49,7 +43,6 @@ import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
 import Text from '@kiko/design-system/components/text';
-import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { isSyncedHolding } from '@kiko/holdings/deletable';
 import Button from '@kiko/design-system/components/button';
@@ -57,7 +50,6 @@ import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import Divider from '@kiko/design-system/components/divider';
-import { type TimeClock, formatDateTime } from '@kiko/dates';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import CategoryField from '@kiko/screens/forms/category-field';
 import ExchangeFields from '@kiko/screens/forms/exchange-fields';
@@ -112,7 +104,14 @@ type Sign = 'income' | 'expense';
 // deposit contribution rows), never persisted.
 type ChangeReturnRow = { id: number; holdingId: string | null; amount: string };
 
-// The synced-row explanatory notice, or nothing on a manual/add row. Kept
+// The notice text for a read-only row: a statement-imported row names its file,
+// every other non-manual row (a sync's) says it was synced.
+const readOnlyNoticeKey = (
+  source: TransactionRow['source'] | undefined,
+): 'forms.transaction.importedNotice' | 'forms.transaction.syncedNotice' =>
+  source === 'import' ? 'forms.transaction.importedNotice' : 'forms.transaction.syncedNotice';
+
+// The read-only row's explanatory notice, or nothing on a manual/add row. Kept
 // module-level (returns `ReactElement | null`) for the same cognitive-
 // complexity-budget reason as `resolvePendingCategory` below: it moves this
 // branch into the helper's own scope, out of the screen's returned JSX. The
@@ -320,8 +319,7 @@ const ruleCategoryFor = (
 // - read-only (synced) row: never disabled here — Save only appears once the
 //   category changed (`showsSaveButton`), and its write touches only the
 //   category, never the bank-owned amount.
-// - edit (manual): a positive amount, and a time no later than `redateLimit`;
-//   the category is optional on an edit.
+// - edit (manual): a positive amount; the category is optional on an edit.
 // - fresh add: a positive amount AND a category.
 // Kept module-level and pure (a params object, not a long positional list) so
 // its branch count stays out of the screen component's cognitive-complexity
@@ -340,10 +338,6 @@ type SaveDisabledParams = {
   selectedCategory: string | null;
   changeReturns: readonly { holdingId: string | null; amount: string }[];
   currency: Currency;
-  // The latest time an edited row may take, or null when its time is free
-  // (see `redateLimitOf`).
-  redateLimit: number | null;
-  clock: TimeClock;
 };
 
 // The field key each save-blocking condition below belongs to.
@@ -355,8 +349,7 @@ type SaveDisabledField =
   | 'valueIn'
   | 'selectedCategory'
   | 'splitReturns'
-  | 'amount'
-  | 'time';
+  | 'amount';
 
 // Every field's OWN independent error, gated only by which mode is ACTIVE
 // (converting/isExchange/isSplit/plain are mutually exclusive, so only one
@@ -424,11 +417,6 @@ const plainFieldErrors = (params: SaveDisabledParams, t: TFunction): Transaction
 
   return {
     amount: isPositiveAmountText(params.amount) ? undefined : t('forms.transaction.amountError'),
-    time: foldMap(maybe(params.redateLimit), (redateLimit) =>
-      t('forms.transaction.timeAfterBalanceSetError', {
-        dateTime: formatDateTime(redateLimit, params.clock),
-      }),
-    ),
     selectedCategory:
       params.isEditing || params.selectedCategory !== null
         ? undefined
@@ -474,7 +462,7 @@ const SPLIT_FIELD_ORDER: readonly SaveDisabledField[] = [
   'selectedCategory',
   'splitReturns',
 ];
-const PLAIN_FIELD_ORDER: readonly SaveDisabledField[] = ['amount', 'time', 'selectedCategory'];
+const PLAIN_FIELD_ORDER: readonly SaveDisabledField[] = ['amount', 'selectedCategory'];
 
 // The active mode's own priority order — mirrors `transactionFieldErrors`'s
 // dispatcher exactly, so the two can never pick a different mode's fields.
@@ -500,42 +488,6 @@ const firstInvalidField = (
   order: readonly SaveDisabledField[],
   errors: TransactionFieldErrors,
 ): SaveDisabledField | null => order.find((key) => errors[key] !== undefined) ?? null;
-
-// Only a possible balance-set row can hit the re-date rule
-// (`redatesPossibleBalanceSetRowPastBoundary`), so only its edit reads the
-// boundary.
-const needsRedateBoundary = (existing: TransactionRow | undefined): boolean =>
-  existing !== undefined && isPossibleBalanceSetRow(existing);
-
-// The edited row's holding boundary, from the same two sources and the same
-// `balanceBoundaryOf` every balance writer judges a row by; null when the row
-// cannot hit the re-date rule.
-const useEditedRowBoundary = (
-  existing: TransactionRow | undefined,
-): { boundary: number | null; isLoading: boolean } => {
-  const { data, isLoading } = useLiveQuery(
-    transactionsRepo.balanceBoundaryQuery(existing?.holdingId ?? ''),
-    ['holdings', 'transactions'],
-    needsRedateBoundary(existing),
-  );
-
-  return { boundary: foldMap(maybe(data.at(0)), balanceBoundaryOf) ?? null, isLoading };
-};
-
-// The boundary, when moving the edited row to `time` is the re-date
-// `transactionsRepo.update` refuses (`redatesPossibleBalanceSetRowPastBoundary`),
-// so the form blocks it with a field error before the write; null otherwise.
-const redateLimitOf = (
-  existing: TransactionRow | undefined,
-  time: number,
-  boundary: number | null,
-): number | null => {
-  if (existing === undefined) {
-    return null;
-  }
-
-  return redatesPossibleBalanceSetRowPastBoundary(existing, time, boundary) ? boundary : null;
-};
 
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
 // payload: only when the category actually changed AND the affected name is
@@ -1087,7 +1039,8 @@ const resolveConvertView = (
   // Convert-mode eligibility uses the WIDER (cash/card) rule, unchanged from
   // the current create source rule — the create-only cash-source restriction
   // applies to CREATE only. Both manual and synced rows qualify; the action
-  // never mutates the existing row, so a synced row stays safe.
+  // gives the existing row only the pair id (plus the marker when it is manual
+  // or imported), so a synced row stays safe.
   const eligible =
     isEditing &&
     existing !== undefined &&
@@ -1200,8 +1153,6 @@ type FieldGroupProps = {
   // exchange, non-converting) Amount field has one; the Exchange/Convert
   // legs are owned by their own sub-components.
   amountInputRef?: RefObject<TextInputInstance | null>;
-  timeError?: string;
-  timeFieldRef?: RefObject<FieldInstance | null>;
   valueOutError?: string;
   destinationError?: string;
   valueInError?: string;
@@ -1302,25 +1253,14 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         is rendered unconditionally here. */}
       {props.descriptionSuggestions}
 
-      {/* One error for the Date + Time pair, which together set the one
-        instant it judges — directly under the row, with both labels red. */}
-      <View ref={props.timeFieldRef}>
-        <Box gap={1}>
-          <DateTimeRow
-            time={props.time}
-            onChangeTime={props.onChangeTime}
-            maxDate={props.maxDate}
-            disabled={props.isReadOnly}
-            invalid={props.timeError !== undefined}
-            dateTestID="transaction-date-field"
-            timeTestID="transaction-time-field"
-          />
-
-          {props.timeError !== undefined && (
-            <FieldError message={props.timeError} testID="transaction-time-error" />
-          )}
-        </Box>
-      </View>
+      <DateTimeRow
+        time={props.time}
+        onChangeTime={props.onChangeTime}
+        maxDate={props.maxDate}
+        disabled={props.isReadOnly}
+        dateTestID="transaction-date-field"
+        timeTestID="transaction-time-field"
+      />
     </>
   );
 };
@@ -1451,7 +1391,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
 
 // Whether the footer's Save button renders: a manual row always, a synced row
 // only once its category has changed, and a converting row always (its Save
-// writes the counterpart leg, never the existing row). Kept module-level and
+// writes the counterpart leg and only the existing row's pair id). Kept module-level and
 // pure so the footer's boolean expression does not add its own operator count
 // to the screen component's cognitive-complexity budget.
 const showsSaveButton = (
@@ -1459,13 +1399,6 @@ const showsSaveButton = (
   categoryChanged: boolean,
   converting: boolean,
 ): boolean => !isReadOnly || categoryChanged || converting;
-
-// Save disables while a submit is in flight, and while the edited row's
-// boundary loads: the re-date rule needs it, and a Save before it arrives would
-// reach the repo's refusal instead of the field error. Module-level for the
-// same cognitive-complexity-budget reason as `showsSaveButton` above.
-const isSaveDisabled = (isSubmitting: boolean, isBoundaryLoading: boolean): boolean =>
-  isSubmitting || isBoundaryLoading;
 
 // Whether the loan-payment field renders: an EXISTING debit row only (manual
 // or synced alike — `setLoanPayment`/`undoAutoLoanLink` carry no source
@@ -1600,8 +1533,9 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         />
       )}
 
-      {/* Shown for BOTH a manual and a synced row — the action never mutates
-        the existing row, so a read-only synced row stays safe to convert.
+      {/* Shown for BOTH a manual and a synced row — the existing row gets only
+        the pair id (plus the marker when it is manual or imported), so a
+        read-only synced row stays safe to convert.
         Not gated by `!isReadOnly` for that reason. */}
       {props.convertEligible && (
         <Button
@@ -1664,15 +1598,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     exchange: t('forms.transaction.exchange'),
     split: t('forms.transaction.split'),
   };
-  // The header's three candidate titles, and the synced-row notice — resolved
-  // once per render and handed to the module-level helpers above so they stay
-  // translation-agnostic.
+  // The header's three candidate titles — resolved once per render and handed
+  // to the module-level helper above so it stays translation-agnostic.
   const titleLabels = {
     readOnly: t('forms.transaction.title'),
     editing: t('forms.transaction.editTitle'),
     adding: t('forms.transaction.addTitle'),
   };
-  const syncedNotice = t('forms.transaction.syncedNotice');
   const buildApplyCategoryMessage = (category: string, name: string): string =>
     t('forms.transaction.applyCategoryMessage', { category, name });
   // `holdingsRepo` exposes no single-row lookup, so the holding's own currency
@@ -1718,9 +1650,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the form as editing the source row.
   const existing = editingId ? matchedTransactions.at(0) : undefined;
   const duplicateSource = duplicateOfId ? matchedTransactions.at(0) : undefined;
-  const { boundary: editedRowBoundary, isLoading: isBoundaryLoading } =
-    useEditedRowBoundary(existing);
-  const clock = useTimeClock();
 
   // The category picker's options come from the categories live query (a rename
   // flows straight through), and the confirm copy resolves the picked key to its
@@ -1823,6 +1752,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // persisted through the single-row `setCategory` in `save` (a synced row's
   // description is often blank, so no propagation sheet opens for it).
   const isReadOnly = existing !== undefined && existing.source !== 'manual';
+  const readOnlyNotice = t(readOnlyNoticeKey(existing?.source));
   // `editingId` is known synchronously from the route params, so the header
   // reads "Edit Transaction" immediately instead of flashing "Add Transaction"
   // until the row loads. Read-only still keys off the loaded `source`.
@@ -1904,7 +1834,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // than an unconditional `scrollToEnd`.
   const lastReturnFieldRef = useRef<FieldInstance>(null);
   const amountFieldRef = useRef<FieldInstance>(null);
-  const timeFieldRef = useRef<FieldInstance>(null);
   // The plain Amount field's own inner input, for a blocked Save's FOCUS
   // follow-up once it has scrolled into view — the ONLY validated field
   // owned directly by this screen (every other field above is a picker with
@@ -1923,7 +1852,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     selectedCategory: categoryFieldRef,
     splitReturns: splitReturnsFieldRef,
     amount: amountFieldRef,
-    time: timeFieldRef,
   };
   // The split payment's change-returns, one row per holding the change is
   // handed back to. Starts with a single empty row so the section always shows
@@ -2119,8 +2047,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     selectedCategory,
     changeReturns,
     currency,
-    redateLimit: redateLimitOf(existing, time, editedRowBoundary),
-    clock,
   };
   // Every field's OWN independent error (see `transactionFieldErrors`'s own
   // doc comment) — `fieldError` just applies the shared `attemptedSave` gate
@@ -2474,7 +2400,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   // The convert save path: writes ONLY the missing counterpart leg via
-  // `recordExchangeCounterpart`, never touching the existing row. Extracted
+  // `recordExchangeCounterpart`; the existing row gets only the pair id (plus
+  // the marker when it is manual or imported). Extracted
   // out of `save` for the same cognitive-complexity-budget reason as
   // `saveExchange` above.
   const saveConvert = async (): Promise<void> => {
@@ -2675,14 +2602,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         }}
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
-            <Button onPress={onSave} disabled={isSaveDisabled(isSubmitting, isBoundaryLoading)}>
+            <Button onPress={onSave} disabled={isSubmitting}>
               {t('common.save')}
             </Button>
           ) : undefined
         }
       >
         <Box gap={4} testID="transaction-form">
-          {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, syncedNotice)}
+          {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, readOnlyNotice)}
 
           {/* B: the primary-leg holding picker, shown ONLY when no holding was
             fixed by navigation (the global-add entry). It drives the shared
@@ -2758,8 +2685,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             amountInvalid: isSplitAmountInvalid(saveDisabledParams, attemptedSave),
             amountFieldRef,
             amountInputRef,
-            timeError: fieldError('time'),
-            timeFieldRef,
             valueOutError: fieldError('valueOut'),
             destinationError: fieldError('destinationHolding'),
             valueInError: fieldError('valueIn'),

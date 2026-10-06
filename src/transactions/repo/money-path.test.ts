@@ -150,12 +150,12 @@ describe('Money-path guard: split-change + convert prefill', () => {
     expect(seeded).toBe(830_00);
 
     // Convert of a SYNCED (bank-owned) withdrawal: only the new cash leg is
-    // written; the existing monobank row is never updated.
+    // written; the existing monobank row gets its pair id and nothing else.
     const { databaseTransaction, inserts, updates } = makeDatabaseTransaction([
       [{ accountId: 'cash-account', metadata: null }], // the counterpart holding
       [{ institution: null }], // its account
+      [{ source: 'monobank', exchangePairId: null }], // the existing bank row, read inside the tx
       [unanchoredBalance(0)], // the new cash leg's balance read
-      [{ source: 'monobank' }], // the existing bank row, read inside the tx
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -169,8 +169,8 @@ describe('Money-path guard: split-change + convert prefill', () => {
       time: 1,
     });
 
-    // One new leg inserted on the cash holding; the transactions table was never
-    // written (the bank row stays untouched).
+    // One new leg inserted on the cash holding; the bank row is written only
+    // with the leg's pair id, never its amount or a marker.
     expect(inserts).toEqual([
       expect.objectContaining({
         holdingId: 'cash-1',
@@ -179,7 +179,9 @@ describe('Money-path guard: split-change + convert prefill', () => {
         source: 'manual',
       }),
     ]);
-    expect(updates.every((update) => update.table !== transactions)).toBe(true);
+    expect(updates.filter((update) => update.table === transactions)).toEqual([
+      { table: transactions, values: { exchangePairId: inserts[0]?.exchangePairId } },
+    ]);
     expect(updates.some((update) => update.table === holdings)).toBe(true);
   });
 

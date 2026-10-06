@@ -26,10 +26,15 @@ import {
   asPropertyMeta,
   asTermDepositMeta,
   type PropertyMeta,
+  type TermDepositMeta,
   type OwnershipInput,
   type DepositContribution,
   type ExchangeMetadataField,
   type SyncedMetadataField,
+  statementFromOf,
+  syncClosedFromOf,
+  STATEMENT_FROM_FIELD,
+  SYNC_CLOSED_FROM_FIELD,
   withWalkOwnedMetadataCarried,
   BINANCE_HISTORY_CURSOR_FIELD,
   withWalkOwnedMetadataResetToFloor,
@@ -165,10 +170,25 @@ const upsertManualPricePoint = (
 //
 // The update branch also reads the row's OWN stored metadata (not just
 // `id`/`name`) so `withWalkOwnedMetadataCarried` can carry a walk-owned key
-// (currently only the Binance history cursor) over the caller's `merged`
-// object — a routine balance sync's `metadata: { syncedAt }` would otherwise
-// wipe it every run, since `merged` is built from the CALLER-supplied
-// `metadata` alone, never the stored row.
+// (the Binance history cursor, a reopened card's or jar's `statementFromMs`) over the
+// caller's `merged` object — a routine balance sync's `metadata: { syncedAt }`
+// would otherwise wipe it every run, since `merged` is built from the
+// CALLER-supplied `metadata` alone, never the stored row.
+//
+// The update branch also REOPENS a holding the sync closed (the Monobank
+// reconcile's `closeManyBySync`), and only that one: a row is reopened when it
+// is closed AND carries `syncClosedFromMs`, which the user's own close never
+// writes, so a user-closed holding stays closed and a Binance or wallet row
+// (no mark, ever) never reopens. The reopen clears `closedAt`, drops the mark
+// (an upsert carries only the walk-owned keys, so the mark is not carried), and
+// hands the mark on as `statementFromMs`, the from-cursor of its next statement
+// fetch, for a card and a jar alike (both are statement sources): while it was
+// absent no run fetched its statements, and the closing run graduated the
+// normal cursor past the gap. It moves no balance; the balance written here is
+// the bank's own, as on every upsert.
+//
+// The known limit (a holding closed before the mark existed stays closed) is
+// stated on `reconcileClosedHoldings` in the Monobank sync.
 const upsertByMetadataKey = async (
   databaseTransaction: typeof database,
   { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
@@ -176,7 +196,12 @@ const upsertByMetadataKey = async (
   const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
   const keyMatch = sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
   const existing = await databaseTransaction
-    .select({ id: holdings.id, name: holdings.name, metadata: holdings.metadata })
+    .select({
+      id: holdings.id,
+      name: holdings.name,
+      closedAt: holdings.closedAt,
+      metadata: holdings.metadata,
+    })
     .from(holdings)
     .where(and(eq(holdings.accountId, rest.accountId), keyMatch))
     .limit(1);
@@ -187,12 +212,17 @@ const upsertByMetadataKey = async (
     // one-time transition rename: rewrite it only when the stored name still
     // equals the exact old default `renameFromDefault` names.
     const rename = renameFromDefault !== undefined && current.name === renameFromDefault;
+    const syncClosedFrom = syncClosedFromOf(current.metadata);
+    const reopenFrom = current.closedAt !== null && syncClosedFrom !== null ? syncClosedFrom : null;
+    const carried = withWalkOwnedMetadataCarried(merged, current.metadata);
     await databaseTransaction
       .update(holdings)
       .set({
         balanceMinorUnits: rest.balanceMinorUnits ?? 0,
-        metadata: withWalkOwnedMetadataCarried(merged, current.metadata),
+        metadata:
+          reopenFrom === null ? carried : { ...carried, [STATEMENT_FROM_FIELD]: reopenFrom },
         ...(rename ? { name: rest.name } : {}),
+        ...(reopenFrom === null ? {} : { closedAt: null }),
       })
       .where(eq(holdings.id, current.id));
 
@@ -203,6 +233,28 @@ const upsertByMetadataKey = async (
   await databaseTransaction
     .insert(holdings)
     .values({ id: id(), ...rest, metadata: merged, sortOrder });
+};
+
+// Rewrites a deposit's metadata from the parsed `meta` with a new contribution
+// list, the clean shape every contribution write stores.
+const writeDepositContributionsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  meta: TermDepositMeta,
+  contributions: DepositContribution[],
+): Promise<void> => {
+  await databaseTransaction
+    .update(holdings)
+    .set({
+      metadata: {
+        contributions,
+        annualRatePct: meta.annualRatePct,
+        termMonths: meta.termMonths,
+        recapitalization: meta.recapitalization,
+        compounding: meta.compounding,
+      },
+    })
+    .where(eq(holdings.id, holdingId));
 };
 
 // Append one contribution to a term deposit and rewrite its metadata, operating
@@ -239,23 +291,89 @@ export const appendDepositContributionDatabaseTransaction = async (
     (a, b) => a.date - b.date,
   );
 
-  await databaseTransaction
-    .update(holdings)
-    .set({
-      metadata: {
-        contributions,
-        annualRatePct: meta.annualRatePct,
-        termMonths: meta.termMonths,
-        recapitalization: meta.recapitalization,
-        compounding: meta.compounding,
-      },
-    })
+  await writeDepositContributionsDatabaseTransaction(
+    databaseTransaction,
+    holdingId,
+    meta,
+    contributions,
+  );
+};
+
+// The ONE contribution an exchange wrote for a leg dated `date`: a contribution
+// has no id, and its amount is in the deposit's currency while the leg's is in
+// the source's, so the date is all a leg and its contribution share. No index
+// when zero or several contributions carry that date (a hand edit moved it, or
+// two exchanges landed on the same instant), and none when it is the last one
+// left: an empty list is not valid deposit metadata (`asTermDepositMeta`).
+const matchedContributionIndex = (contributions: DepositContribution[], date: number): number => {
+  const matches = contributions.flatMap((contribution, index) =>
+    contribution.date === date ? [index] : [],
+  );
+
+  return matches.length === 1 && contributions.length > 1 ? (matches[0] ?? -1) : -1;
+};
+
+// Whether the leg dated `date` would take its contribution to `holdingId` with
+// it, for the delete plan. False for anything unreadable: nothing is removed
+// then, and the plan says so.
+export const depositContributionMatchedDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  date: number,
+): Promise<boolean> => {
+  const rows = await databaseTransaction
+    .select({ metadata: holdings.metadata })
+    .from(holdings)
     .where(eq(holdings.id, holdingId));
+  const meta = asTermDepositMeta(rows.at(0)?.metadata);
+
+  return meta !== null && matchedContributionIndex(meta.contributions, date) !== -1;
+};
+
+// Remove the contribution `matchedContributionIndex` finds, on an EXISTING
+// transaction handle, so deleting a leg and its contribution commit together or
+// not at all. Reports whether a contribution was removed: false when none is
+// matched or the metadata cannot be read, which leaves the deposit as it is, as
+// the delete's confirm says (`depositContributionMatchedDatabaseTransaction`).
+// Throws only on a holding that is not a deposit, which the caller's marker
+// check rules out.
+export const removeDepositContributionDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  date: number,
+): Promise<boolean> => {
+  const rows = await databaseTransaction.select().from(holdings).where(eq(holdings.id, holdingId));
+  const row = rows.at(0);
+
+  if (row?.type !== 'term_deposit') {
+    throw new Error('removeDepositContribution: not a term deposit');
+  }
+
+  const meta = asTermDepositMeta(row.metadata);
+
+  if (meta === null) {
+    return false;
+  }
+
+  const index = matchedContributionIndex(meta.contributions, date);
+
+  if (index === -1) {
+    return false;
+  }
+
+  await writeDepositContributionsDatabaseTransaction(
+    databaseTransaction,
+    holdingId,
+    meta,
+    meta.contributions.filter((_, position) => position !== index),
+  );
+
+  return true;
 };
 
 // Clears `loanHoldingId`/`loanLinkSource` on every transaction row that
 // still points at one of `holdingIds`. A shared Tx helper (not private to
-// `holdingsRepo.remove`) so `accountsRepo.remove` runs the SAME cascade for
+// `removeHoldingDatabaseTransaction`) so `accountsRepo.remove` runs the SAME cascade for
 // every holding a deleted debt account owned, in the SAME transaction as
 // the account delete — a loan holding removed either way never leaves a
 // dangling link on another holding's payment rows. A no-op when
@@ -272,6 +390,50 @@ export const clearLoanLinksForHoldingsDatabaseTransaction = async (
     .update(transactions)
     .set({ loanHoldingId: null, loanLinkSource: null })
     .where(inArray(transactions.loanHoldingId, holdingIds));
+};
+
+// Deletes a manual holding and all of its own transactions, on an EXISTING
+// transaction handle. `transactionsRepo.removeHolding` runs it after the cascade
+// to the transactions of OTHER holdings that are the other part of a movement,
+// in the same transaction; a holding is never deleted without that cascade.
+// Refuses a holding whose balance is owned by a LIVE sync, so a synced row is
+// left untouched. That ownership is read from the holding's ACCOUNT (its
+// `institution`, fetched inside the same transaction) as well as the holding's
+// own sync key — a disconnected account keeps its holdings' keys so a reconnect
+// re-adopts them, and those rows are deletable again.
+export const removeHoldingDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+): Promise<void> => {
+  const rows = await databaseTransaction.select().from(holdings).where(eq(holdings.id, holdingId));
+  const row = rows.at(0);
+
+  if (!row) {
+    return;
+  }
+  const accountRows = await databaseTransaction
+    .select({ institution: accounts.institution })
+    .from(accounts)
+    .where(eq(accounts.id, row.accountId));
+
+  if (isSyncedHolding(row, accountRows.at(0))) {
+    throw new Error('remove: cannot delete a synced holding');
+  }
+  await databaseTransaction.delete(transactions).where(eq(transactions.holdingId, holdingId));
+  // A loan holding is ledgerless, but OTHER holdings' payment rows can point
+  // back at it via `loanHoldingId`. Clear those links in the SAME transaction —
+  // never leaving a dangling id — so a linked payment reverts to counting as
+  // normal spending. A no-op for every non-loan holding, since nothing ever
+  // points a `loanHoldingId` at one.
+  await clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, [holdingId]);
+  // A priced holding (property_item) has no transactions, but it may have its
+  // own price series on `holding:<id>` — cleared here, inline on the handle
+  // (not through `pricePointsRepo.removeInstrument`, which would open its own
+  // transaction), so a deleted holding never leaves an orphaned series behind.
+  await databaseTransaction
+    .delete(pricePoints)
+    .where(eq(pricePoints.instrument, holdingInstrument(holdingId)));
+  await databaseTransaction.delete(holdings).where(eq(holdings.id, holdingId));
 };
 
 type OwnershipRewrite = (meta: PropertyMeta) => {
@@ -609,8 +771,9 @@ export const holdingsRepo = {
    * own doc comment is the full statement of why — and points
    * `holdings.balanceSetRowId` at the new row, which carries
    * `transactions.setsBalance`: this edit is now the holding's current set.
-   * An older set's row keeps its mark, so its re-date or delete never moves
-   * the balance either.
+   * An older set's row keeps its mark, which only keeps a closing import from
+   * counting it twice (`postClosingRowsWhere`): its edit and its delete move the
+   * balance by its amount, like any row's.
    */
   updateWithBalanceDelta: (
     holdingId: string,
@@ -796,57 +959,12 @@ export const holdingsRepo = {
       input: meta.ownershipInput ?? 'percent',
     })),
   /**
-   * Deletes a manual holding and all of its transactions in one transaction.
-   * Refuses a holding whose balance is owned by a LIVE sync, so a synced row is
-   * left untouched. That ownership is read from the holding's ACCOUNT (its
-   * `institution`, fetched inside the same transaction) as well as the
-   * holding's own sync key — a disconnected account keeps its holdings' keys so
-   * a reconnect re-adopts them, and those rows are deletable again.
-   */
-  remove: (holdingId: string) =>
-    write(async (databaseTransaction) => {
-      const rows = await databaseTransaction
-        .select()
-        .from(holdings)
-        .where(eq(holdings.id, holdingId));
-      const row = rows.at(0);
-
-      if (!row) {
-        return;
-      }
-      const accountRows = await databaseTransaction
-        .select({ institution: accounts.institution })
-        .from(accounts)
-        .where(eq(accounts.id, row.accountId));
-
-      if (isSyncedHolding(row, accountRows.at(0))) {
-        throw new Error('remove: cannot delete a synced holding');
-      }
-      await databaseTransaction.delete(transactions).where(eq(transactions.holdingId, holdingId));
-      // A loan holding is ledgerless, but OTHER holdings' payment rows can
-      // point back at it via `loanHoldingId`. Clear those links in the SAME
-      // transaction — never leaving a dangling id — so a previously-linked
-      // payment reverts to counting as normal spending. A no-op for every
-      // non-loan holding, since nothing ever points a `loanHoldingId` at one.
-      await clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, [holdingId]);
-      // A priced holding (property_item) has no transactions, but it may
-      // have its own price series on `holding:<id>` — cleared here, inline on
-      // `tx` (not through `pricePointsRepo.removeInstrument`, which would open
-      // its own transaction), so a deleted holding never leaves an orphaned
-      // series behind.
-      await databaseTransaction
-        .delete(pricePoints)
-        .where(eq(pricePoints.instrument, holdingInstrument(holdingId)));
-      await databaseTransaction.delete(holdings).where(eq(holdings.id, holdingId));
-    }),
-  /**
    * Close a set of holdings (stamp `closedAt` with the current time) in ONE
    * transaction, so a bulk close commits all-or-nothing and fires the reactive
    * `holdings` callback once rather than once per row (kiko-architecture: one
-   * transaction for a bulk write). The Monobank sync's stale-holding
-   * reconciliation calls this for a card/jar the snapshot no longer returns, so
-   * a closed card stops counting toward net worth (kiko-domain). An empty set is
-   * a no-op.
+   * transaction for a bulk write). The user's Close sheet calls this, so a
+   * closed holding stops counting toward net worth (kiko-domain); the Monobank
+   * sync closes through `closeManyBySync` instead. An empty set is a no-op.
    */
   closeMany: (holdingIds: string[]) =>
     write(async (databaseTransaction) => {
@@ -857,6 +975,44 @@ export const holdingsRepo = {
         .update(holdings)
         .set({ closedAt: sql`(unixepoch() * 1000)` })
         .where(inArray(holdings.id, holdingIds));
+    }),
+  /**
+   * The Monobank sync's own close, distinct from `closeMany` (the user's
+   * Close sheet, which stays mark-free): stamps `closedAt` AND
+   * `syncClosedFromMs` in ONE update per row, so a close never exists without
+   * its mark. `fromMs` is the instant up to which every present card was
+   * certainly imported (`lastFullSyncAt` of the closing run); the mark keeps
+   * the earlier of it and a still-pending `statementFromMs`, so a card that
+   * vanishes again before its gap imported loses none of the earlier gap. A
+   * row that is already closed is left alone: the first mark is kept and a
+   * user-closed row never gains one. An empty set is a no-op.
+   */
+  closeManyBySync: (holdingIds: string[], fromMs: number) =>
+    write(async (databaseTransaction) => {
+      if (holdingIds.length === 0) {
+        return;
+      }
+
+      const rows = await databaseTransaction
+        .select({ id: holdings.id, metadata: holdings.metadata })
+        .from(holdings)
+        .where(and(inArray(holdings.id, holdingIds), isNull(holdings.closedAt)));
+
+      for (const row of rows) {
+        await databaseTransaction
+          .update(holdings)
+          .set({
+            closedAt: sql`(unixepoch() * 1000)`,
+            metadata: {
+              ...(isRecord(row.metadata) ? row.metadata : {}),
+              [SYNC_CLOSED_FROM_FIELD]: Math.min(
+                fromMs,
+                statementFromOf(row.metadata) ?? Number.POSITIVE_INFINITY,
+              ),
+            },
+          })
+          .where(eq(holdings.id, row.id));
+      }
     }),
   upsertMonobank: ({ monobankId, ...rest }: MonobankHolding) =>
     write((databaseTransaction) =>
@@ -982,6 +1138,36 @@ export const holdingsRepo = {
         .update(holdings)
         .set({ syncedBalanceMinorUnits: balance.minorUnits })
         .where(syncedBalanceUpdateWhere(holdingId, balance.minorUnits));
+    }),
+  /**
+   * Drop a reopened card's or jar's `statementFromMs` once its widened statement import
+   * committed. Writes only when the key is present, so the run after the
+   * clear (and every card that never reopened) fires no reactive `holdings`
+   * callback. The sync calls it AFTER `setSyncedBalance`: a crash in between
+   * re-fetches the wide window, which is idempotent (`(source, external_id)`
+   * upsert).
+   */
+  clearStatementFrom: (holdingId: string) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ metadata: holdings.metadata })
+        .from(holdings)
+        .where(eq(holdings.id, holdingId))
+        .limit(1);
+      const stored = rows.at(0)?.metadata;
+
+      if (!isRecord(stored) || !(STATEMENT_FROM_FIELD in stored)) {
+        return;
+      }
+
+      await databaseTransaction
+        .update(holdings)
+        .set({
+          metadata: Object.fromEntries(
+            Object.entries(stored).filter(([key]) => key !== STATEMENT_FROM_FIELD),
+          ),
+        })
+        .where(eq(holdings.id, holdingId));
     }),
   /**
    * Balance-provider counterpart of `upsertMonobank`: one live balance snapshot

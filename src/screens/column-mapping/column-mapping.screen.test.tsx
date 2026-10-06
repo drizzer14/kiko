@@ -6,6 +6,7 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { previewStats } from '@kiko/statement-import/preview-stats';
 import { supportedFormatNames } from '@kiko/statement-import/registry';
 import { headerFingerprint } from '@kiko/statement-import/column-mapping';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -61,9 +62,23 @@ jest.mock('@kiko/statement-import/read-statement-file', () => ({
 
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
+// A pass-through, so a test can count how often the screen recomputes the preview stats.
+jest.mock('@kiko/statement-import/preview-stats', () => {
+  const actual = jest.requireActual('@kiko/statement-import/preview-stats');
+
+  return { ...actual, previewStats: jest.fn(actual.previewStats) };
+});
+
 const mockImportParsedStatement = jest.fn();
 jest.mock('@kiko/statement-import/import-statement', () => ({
   importParsedStatement: (...args: unknown[]) => mockImportParsedStatement(...args),
+}));
+
+// The balance preview read has its own tests; this file only proves what the
+// screen hands it and what it shows of the answer.
+const mockUseImportBalancePreview = jest.fn().mockReturnValue(undefined);
+jest.mock('@kiko/statement-import/use-import-balance-preview', () => ({
+  useImportBalancePreview: (...args: unknown[]) => mockUseImportBalancePreview(...args),
 }));
 
 const mockSaveStatementMapping = jest.fn();
@@ -1891,5 +1906,114 @@ describe('ColumnMappingScreen — import outcomes', () => {
 
     expect(view.navigation.goBack).toHaveBeenCalledTimes(1);
     expect(view.navigation.popTo).not.toHaveBeenCalled();
+  });
+});
+
+describe('ColumnMappingScreen — the balance preview', () => {
+  const balancePreview = { kind: 'stays', currency: 'UAH', minorUnits: 100_000 };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseImportBalancePreview.mockReturnValue(undefined);
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+  });
+
+  // The hook's calls once a holding is picked, as [statement, holdingId] pairs.
+  const callsWithHolding = (holdingId: string | undefined) =>
+    mockUseImportBalancePreview.mock.calls.filter(
+      ([statement, picked]) => statement !== undefined && picked === holdingId,
+    );
+
+  it('asks for the balance of the mapped statement in the picked holding', async () => {
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumnsAndSelectHolding(view);
+
+    const [statement, holdingId] = mockUseImportBalancePreview.mock.calls.at(-1) ?? [];
+
+    expect(holdingId).toBe('h1');
+    expect(statement.transactions).toHaveLength(4);
+    expect(statement.formatId).toBe('column-mapping');
+  });
+
+  it('has no holding to ask about until one is picked', async () => {
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumns(view);
+
+    expect(callsWithHolding(undefined).length).toBeGreaterThan(0);
+    expect(mockUseImportBalancePreview.mock.calls.at(-1)?.[1]).toBeUndefined();
+  });
+
+  it('shows the answer in the result block, and no line without one', async () => {
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumnsAndSelectHolding(view);
+
+    expect(view.queryByTestId('column-mapping-balance-preview')).toBeNull();
+
+    mockUseImportBalancePreview.mockReturnValue(balancePreview);
+    await pickOption(view, 'description-column', 2);
+
+    expect(view.getByTestId('column-mapping-balance-preview')).toHaveTextContent(
+      'Balance stays at 1,000.00 ₴',
+    );
+  });
+
+  it('hands the hook one statement while nothing the statement depends on changes', async () => {
+    mockDefaultImportSuccess();
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumnsAndSelectHolding(view);
+    await pressImport(view);
+    await waitFor(() => expect(mockImportParsedStatement).toHaveBeenCalledTimes(1));
+
+    expect(new Set(callsWithHolding('h1').map(([statement]) => statement)).size).toBe(1);
+  });
+
+  it('hands the hook a new statement when a mapped column changes', async () => {
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumnsAndSelectHolding(view);
+    await pickOption(view, 'description-column', 2);
+
+    expect(new Set(callsWithHolding('h1').map(([statement]) => statement)).size).toBe(2);
+  });
+});
+
+describe('ColumnMappingScreen — the preview stats', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseImportBalancePreview.mockReturnValue(undefined);
+    mockReadFile.mockResolvedValue(monobankFixtureBase64);
+    setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding] });
+  });
+
+  it('does not recompute them on a re-render that changes nothing they depend on', async () => {
+    mockDefaultImportSuccess();
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumnsAndSelectHolding(view);
+
+    const callsBefore = jest.mocked(previewStats).mock.calls.length;
+
+    await pressImport(view);
+    await waitFor(() => expect(mockImportParsedStatement).toHaveBeenCalledTimes(1));
+
+    expect(callsBefore).toBeGreaterThan(0);
+    expect(jest.mocked(previewStats)).toHaveBeenCalledTimes(callsBefore);
+  });
+
+  it('recomputes them when a mapped column changes', async () => {
+    const view = await renderMonobankScreen();
+
+    await mapMonobankColumnsAndSelectHolding(view);
+
+    const callsBefore = jest.mocked(previewStats).mock.calls.length;
+
+    await pickOption(view, 'description-column', 2);
+
+    expect(jest.mocked(previewStats).mock.calls.length).toBeGreaterThan(callsBefore);
   });
 });

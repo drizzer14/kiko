@@ -184,21 +184,50 @@ export const BINANCE_HISTORY_CURSOR_FIELD = 'binanceHistoryCursor';
  */
 const walkOwnedMetadataKeys = [BINANCE_HISTORY_CURSOR_FIELD] as const;
 
-export const binanceHistoryCursorOf = (metadata: unknown): number | null => {
-  if (!isRecord(metadata)) {
-    return null;
-  }
+/**
+ * The two marks of a Monobank holding's close and reopen (see
+ * `reconcileClosedHoldings` in monobank/sync.ts). Each key has one role:
+ * `syncClosedFromMs` says the SYNC closed this holding (the user's own close
+ * never writes it), and `statementFromMs` is the from-cursor of the next
+ * statement fetch of a card or jar the sync just reopened. Only the first is dropped
+ * by an upsert; the second survives one (see `carriedMetadataKeys`).
+ */
+export const SYNC_CLOSED_FROM_FIELD = 'syncClosedFromMs';
 
-  const cursor = metadata[BINANCE_HISTORY_CURSOR_FIELD];
-
-  return isNumber(cursor) ? cursor : null;
-};
+export const STATEMENT_FROM_FIELD = 'statementFromMs';
 
 /**
- * Copies any `walkOwnedMetadataKeys` present on `storedMetadata` onto
+ * `walkOwnedMetadataKeys` plus `statementFromMs`: what an upsert carries over
+ * from the stored row. A separate list, because the Binance disconnect floor
+ * reset (`withWalkOwnedMetadataResetToFloor`) must stay Binance-only and
+ * never touch a Monobank card's or jar's statement cursor.
+ */
+const carriedMetadataKeys = [...walkOwnedMetadataKeys, STATEMENT_FROM_FIELD] as const;
+
+const numberFieldOf =
+  (field: string) =>
+  (metadata: unknown): number | null => {
+    if (!isRecord(metadata)) {
+      return null;
+    }
+
+    const value = metadata[field];
+
+    return isNumber(value) ? value : null;
+  };
+
+export const binanceHistoryCursorOf = numberFieldOf(BINANCE_HISTORY_CURSOR_FIELD);
+
+export const syncClosedFromOf = numberFieldOf(SYNC_CLOSED_FROM_FIELD);
+
+export const statementFromOf = numberFieldOf(STATEMENT_FROM_FIELD);
+
+/**
+ * Copies any `carriedMetadataKeys` present on `storedMetadata` onto
  * `target`, overwriting whatever (or nothing) `target` already has for that
  * key — the read-side counterpart of a balance sync's blanket metadata
- * overwrite, so a walk's own progress marker survives it.
+ * overwrite, so a walk's own progress marker (and a reopened card's pending
+ * statement cursor) survives it.
  */
 export const withWalkOwnedMetadataCarried = (
   target: Record<string, unknown>,
@@ -208,7 +237,7 @@ export const withWalkOwnedMetadataCarried = (
     return target;
   }
 
-  return walkOwnedMetadataKeys.reduce(
+  return carriedMetadataKeys.reduce(
     (accumulator, key) =>
       key in storedMetadata ? { ...accumulator, [key]: storedMetadata[key] } : accumulator,
     target,

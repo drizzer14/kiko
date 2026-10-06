@@ -100,9 +100,12 @@ export const holdings = sqliteTable('holdings', {
   // comment (`transactions/repo/transactions.repo.ts`) is the ONE full
   // statement of exactly which writes set it.
   balanceSetAt: integer('balance_set_at'),
-  // The `transactions.setsBalance` row whose set IS this balance, so only its
-  // amount edit moves the balance: an id, because a re-date leaves the row's
-  // time off `balanceSetAt`. NULL when a closing-balance import set it (no row
+  // The `transactions.setsBalance` row whose set IS this balance. Written by an
+  // opening balance, a balance edit, a closing import (which clears it) and the
+  // snapshot restore (which backfills it for an older snapshot), and carried by
+  // the snapshot export. Unread: every row's edit and delete moves the balance
+  // by its amount, so no write needs to find the setting row. Dropping it needs
+  // a migration (open item). NULL when a closing-balance import set it (no row
   // is written at its as-of) or the balance was never hand-set. No foreign key:
   // a deleted row's id is never reused, so a stale id matches nothing.
   balanceSetRowId: text('balance_set_row_id'),
@@ -154,8 +157,18 @@ export const transactions = sqliteTable(
     // lets the display layer resolve the CURRENT name at render time through
     // `t`, so no English sentence is ever persisted and a rename follows.
     // DOCUMENTED RESIDUAL: a Convert marks its EXISTING row only when that row
-    // is manual — a bank-owned (monobank) row is never mutated by this app, so
-    // a synced debit converted into another currency still counts as spending.
+    // is manual or imported (`isDeletableTransaction`) — a Convert never marks a
+    // bank-owned (monobank) row beyond `exchangePairId`, so a synced debit
+    // converted into another currency still counts as spending. A bank-owned row
+    // can still carry a marker while its manual partner lives: a marked import
+    // row the reconnect sync adopts (`adoptImportTwinsDatabaseTransaction`)
+    // keeps it. A delete that keeps such a row clears the marker in the SAME
+    // write (`removeRowsDatabaseTransaction`, for a leg delete and for a
+    // holding or account cascade alike) only when the leg it names goes with
+    // that delete (`markerLegIsGone`): its holding is deleted, or a removed row
+    // of the same pair sat on it. A marker left behind naming a gone leg would
+    // keep a real purchase out of spending for good; one cleared while its leg
+    // stays (a deposit a second Convert never repointed) would count it twice.
     exchangeCounterpartHoldingId: text('exchange_counterpart_holding_id'),
     // Split-change grouping: a shared id across ONE manual payment row and the
     // N return rows that distribute its change into OTHER holdings, all written
@@ -167,6 +180,24 @@ export const transactions = sqliteTable(
     // not a reserved `category` value, for the same reason the exchange marker
     // is: the category picker rewrites `category` and would destroy it.
     changeGroupId: text('change_group_id'),
+    // The id the legs of ONE Exchange or Convert share, so deleting a leg finds
+    // the others (`transactionsRepo.remove`). The role is stored, never derived
+    // from the shape of a row: `recordExchange` writes it on both legs (on the
+    // source leg alone when the destination is a term deposit, whose
+    // contribution is metadata, not a row), and `recordExchangeCounterpart`
+    // writes it on the new leg and on the EXISTING row, reusing the id that row
+    // already carries so a repeated Convert joins the same group. The existing
+    // row gets the pair id always, plus the counterpart marker only when it is
+    // manual or imported and carries none. A synced
+    // (bank-owned) existing row gets this id and nothing else, so the delete
+    // knows its partner is the bank's and keeps it (the pair id stays on the kept
+    // row, its marker cleared only when the leg it names is gone);
+    // `addManyDedup`'s upsert never touches the
+    // column, like `loanHoldingId` and `category`. Null on a
+    // row that is no leg, and on a legacy leg migration 0052 could not prove a
+    // partner for. Deleting a holding or an account follows the same ids to the
+    // legs on OTHER holdings (`transactionsRepo.removeHolding`).
+    exchangePairId: text('exchange_pair_id'),
     // The loan holding this payment counts against — null for an ordinary
     // transaction. A loan holding writes no ledger rows of its own
     // (`isLedgerlessHoldingType`), so every payment lives on the LINKED
@@ -177,7 +208,7 @@ export const transactions = sqliteTable(
     // user/matcher state, not bank data, so `addManyDedup`'s upsert never
     // refreshes it. Cleared (along with `loanLinkSource`) in the SAME
     // transaction a linked loan holding is deleted, whether directly
-    // (`holdingsRepo.remove`) or via its owning account
+    // (`transactionsRepo.removeHolding`) or via its owning account
     // (`accountsRepo.remove`) — a dangling id is never left to rot; a
     // cleared link counts as normal spending again.
     loanHoldingId: text('loan_holding_id'),
@@ -200,11 +231,11 @@ export const transactions = sqliteTable(
     // ordinary transaction) has never been rejected.
     loanLinkRejected: integer('loan_link_rejected', { mode: 'boolean' }).notNull().default(false),
     // True on every row whose amount set its holding's balance (an opening
-    // balance, a cash opening, a hand edit), for good: that amount is part of
-    // a balance that was set, so `transactionsRepo.update`/`remove` never let
-    // a re-date or a delete of the row move the balance, after a description
-    // or a category too, which its shape does not survive. Only the current
-    // set's row (`holdings.balanceSetRowId`) moves it, by an amount edit.
+    // balance, a cash opening, a hand edit), for good, after a description or a
+    // category too, which its shape does not survive. It only keeps a closing
+    // balance import from counting the row again past its as-of
+    // (`postClosingRowsWhere`): the row's edit and delete move the balance by its
+    // amount like any row's.
     setsBalance: integer('sets_balance', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
@@ -237,6 +268,14 @@ export const transactions = sqliteTable(
     // Every `where(eq(transactions.holdingId, …))` (holding detail, per-card
     // sync cursor) hit a full table scan without this.
     holdingIdIndex: index('transactions_holding_id').on(table.holdingId),
+    // The cascade delete looks the other legs up by this id.
+    exchangePairIdIndex: index('transactions_exchange_pair_id').on(table.exchangePairId),
+    // The loan-linked payments lookup reads the rows that name a loan holding.
+    // Partial, so the loan matcher's `loan_holding_id IS NULL` filter cannot pick
+    // it over `transactions_time`.
+    loanHoldingIdIndex: index('transactions_loan_holding_id')
+      .on(table.loanHoldingId)
+      .where(sql`${table.loanHoldingId} IS NOT NULL`),
     // Every `orderBy(desc(transactions.time))` (the ledger lists) did a full
     // sort without this.
     timeIndex: index('transactions_time').on(table.time),

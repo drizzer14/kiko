@@ -229,7 +229,7 @@ project-level pointer to this section.
 - **A column whose backfill SQL can derive adds it and backfills it in ONE
   migration, mirrored on restore.** `0047_add_sets_balance` adds
   `transactions.sets_balance` (the stored balance-set mark, kiko-domain's
-  "The manual boundary rule") and `holdings.balance_set_row_id` (the
+  "A balance-set row is a STORED mark") and `holdings.balance_set_row_id` (the
   current set's row) and, in the same transaction, points each holding at
   its smallest-id row shaped like a balance-set row and dated at
   `holdings.balance_set_at`, then marks that row (its doc comment is the
@@ -283,6 +283,20 @@ project-level pointer to this section.
   `restore-snapshot.ts`; see "Data transfer") is mandatory: without it
   a `.kiko` with two property accounts fails on the index. Proven by
   `drizzle/migrations/0050-implicit-property-debt-accounts.test.ts`.
+- **An index on a nullable column that a query filters with `IS NULL` is
+  PARTIAL (`WHERE col IS NOT NULL`).** The app never runs `ANALYZE`, so SQLite
+  has no row statistics and prefers an equality on the indexed column over a
+  range on another index: a full index on `loan_holding_id` made the loan
+  matcher (`loanMatchCandidatesQuery`, `loan_holding_id IS NULL AND time >= ?`)
+  read nearly every row instead of using `transactions_time`. Pin every new
+  index with an `EXPLAIN QUERY PLAN` test that builds the queries from the repo
+  builders (no copied SQL) and asserts which index each query uses. Write the
+  partial index in `src/db/schema.ts` with `index(...).on(...).where(sql\`...\`)`;
+  if drizzle-kit wants a new migration for an unshipped one, hand-edit the
+  unshipped `.sql` and snapshot and re-run `generate` until it reports no schema
+  changes. Pointer: migration 0053 is the partial index
+  `transactions_loan_holding_id`
+  (`drizzle/migrations/0053-add-loan-holding-id-index.test.ts`).
 - **A flag whose work SQL cannot do follows the flag-plus-launch-step
   shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
   (`false`): re-costing a sale needs the BigInt decimal helpers, so the
@@ -826,13 +840,14 @@ row-count chunk; the safe size depends on the table's column count,
 which only `chunkForTable` knows.
 
 Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and the
-shared `insertDedupRowsDatabaseTransaction`
+shared `upsertDedupRowsDatabaseTransaction`
 (`src/transactions/repo/transactions.repo.ts`, called by both
-`transactionsRepo.addManyDedup` and `importRows`) — the latter also
-chunks its two per-row `inArray(...)` selects (the category-override
-rule lookup and the existing-external-id lookup) directly at a safe
-item-count margin, since a one-column `inArray` list has no table to
-derive a column count from.
+`transactionsRepo.addManyDedup` and, through
+`insertDedupRowsDatabaseTransaction`, `importRows`) — two shared helpers
+also chunk a per-row `inArray(...)` select directly at a safe item-count
+margin (the category-override rule lookup in `withCategoryOverrides`, the
+existing-key lookup in `partitionNewRows`), since a one-column `inArray`
+list has no table to derive a column count from.
 
 `rateHistoryRepo.upsertMany` and the restore-snapshot import path
 have their own, older, pre-existing chunking — don't assume they use
@@ -897,6 +912,13 @@ The sync pipeline is deliberately functional, not OOP — see
    `addManyDedup` (`src/transactions/`). Two
    things about that upsert are load-bearing, both verified there
    rather than restated as a column list here:
+   - A NEW external id first **adopts** a stored statement-import twin
+     (same holding and signed amount, within ±60 s): `addManyDedup` only,
+     never `importRows`, in the same `write(...)`. The import row becomes
+     the sync's own in place (one UPDATE by its id) and the input is not
+     inserted or counted. No `holdings` row is written. The rule and its
+     residual live in `pairSyncInputsWithImportRows`'s header
+     (`src/transactions/sync-adoption/`) and in kiko-statement-import.
    - Re-syncing an existing external id **refreshes** the row's
      bank-owned columns (the settled amount and `hold` among them)
      and **never** its `category` or `comment` — the category may be
@@ -1069,6 +1091,16 @@ LATE in client-info order dropped a real transaction:
   build, so it cannot discriminate there, whereas the stored display
   balance still moves. This changes only the ORDER; `isBalanceDiffSkip`
   still decides WHICH cards are fetched, unchanged, inside the loop.
+- **Jars are statement sources.** `runSyncInner` builds ONE queue
+  (`[...accounts, ...jars]`) that a jar and a card share through the same
+  order, skip, window, fetch, crash-safe marker and failed set, under the one
+  per-token 60 s request gate; a jar's rows land on its own holding. A jar's
+  from-window is a card's: it reaches back to `lastFullSyncAt` (one default
+  lookback on a first sync) and never earlier, except a jar the sync closed and
+  that returns, which reaches back to its close mark, like a card. There is no backfill: a jar
+  stored before jars had statements keeps its false net-worth drop on every
+  top-up day older than that window, a known limit by user ruling. The run's
+  `[monobank sync] done` diagnostic carries a `jars` count beside `cards`.
 - **Per-card from-window** (`fromSecondsForCard`, `src/monobank/`).
   The from-cursor is now computed PER CARD, not once for the whole run.
   A card whose marker is NULL or BEHIND its /client-info balance
@@ -1081,12 +1113,59 @@ LATE in client-info order dropped a real transaction:
   route through the shared `fromCursorSeconds` (its null-cursor fallback
   to `DEFAULT_LOOKBACK_SECONDS` is unchanged), so a full fetch still
   widens to `lastFullSyncAt` for every card exactly as before.
+- **A reopened card reaches back to its mark** (`fromSecondsForCard` takes the
+  POST-upsert holding too). When the holding carries `statementFromMs`, the
+  from-window is `min(normal, floor(statementFromMs / 1000))`, never
+  narrower than the normal one, and `isBalanceDiffSkip` returns false for it
+  (otherwise an unchanged-balance card would be skipped and the key would
+  linger). See "Sync-closed holdings reopen" below.
 
 This fix carries NO data backfill: marking the just-changed card
 synced-through-its-new-balance (a backfill) would SKIP its unimported
 transaction. The recovery re-fetch (a NULL marker fetches every card
 once) is the deliberate one-time cost that recovers stranded cards —
 read `runSyncInner` end to end rather than trusting a restated shape.
+
+### Sync-closed holdings reopen
+
+Rule: a Monobank card or jar the SYNC closed reopens when Monobank returns
+it; one the USER closed never does. Two `holdings.metadata` keys, one role
+each (no migration; `holding-metadata.ts` owns the constants and readers
+`syncClosedFromOf` / `statementFromOf`):
+
+- `syncClosedFromMs` — written by `holdingsRepo.closeManyBySync(ids, fromMs)`
+  in the SAME update as `closedAt`, only by the Monobank reconcile
+  (`reconcileClosedHoldings`, a clean FULL fetch with a non-empty snapshot).
+  `fromMs` is the `lastFullSyncAt` the closing run READ before it graduated it
+  (null falls back to one default lookback below `now`), and the mark keeps
+  the earlier of it and a pending `statementFromMs`. A row that is already
+  closed is skipped, so the first mark is kept. The user's Close sheet calls
+  `closeMany`, which writes no mark: that is the whole "user-closed stays
+  closed" rule.
+- `statementFromMs` — the from-cursor of a reopened card's or jar's next
+  statement fetch. `upsertByMetadataKey`'s update branch reopens a row only when
+  `closedAt` is set AND `syncClosedFromMs` is a number: it clears `closedAt`,
+  drops the mark (an upsert carries only the carried keys) and writes
+  `statementFromMs = the mark`, whatever the holding type (a jar is a statement
+  source like a card). A reopen moves no
+  balance (the upsert writes the bank's own, as on every run). Binance and
+  wallet rows never carry the mark, so they never reopen.
+  `fetchCardWithProgress` calls `holdingsRepo.clearStatementFrom` AFTER
+  `setSyncedBalance`, so a failed or interrupted fetch keeps the key (carried
+  across upserts) and the next run force-fetches again; a crash between the two
+  re-fetches the wide window, which is idempotent.
+
+Why a window is needed: while the card was absent no run fetched its
+statements, and the closing run already moved the normal cursor past the gap.
+The cost is `ceil((now - mark) / 31 d)` requests behind the 60 s gate, once per
+reopen; the progress weight follows through `estimateWindows`.
+
+Known limit (device-checked, no repair built): a holding the sync closed
+BEFORE the mark existed has no mark, looks exactly like a user close, and stays
+closed. A blanket mark could reopen a holding the user closed by hand while
+disconnected. A disconnect keeps the mark and the `sync_state` cursors, so a
+sync-closed card still reopens after a reconnect; a backup round-trips both keys
+whole (`restore-sync-reopen.test.ts`).
 
 ### Robust graduation: `failedSyncMonobankIds`
 
@@ -1294,9 +1373,10 @@ Do NOT collapse them — each drives a different affordance:
      up-front statement-window count (`estimateWindows` = `ceil(span / 31d)`,
      the honest per-page granularity — the 1-req/60s statement fetch dominates
      the run), committed one unit per page then reconciled to the estimate on
-     card completion; a CHANGED Monobank jar and each crypto/exchange balance
-     fetch weigh ONE unit. A balance-diff-skipped card, an unchanged jar, and
-     every manual holding weigh NOTHING.
+     card completion; a Monobank JAR in `toFetch` weighs its window count the same way
+     (it is a statement source like a card); each crypto/exchange balance
+     fetch weighs ONE unit. A balance-diff-skipped card or jar and every manual
+     holding weigh NOTHING.
    - `completed` / `total` count HOLDINGS for the "N/M" label only (holdings
      doing work this run / holdings finished), DECOUPLED from the fill (the
      file-copy pattern: "1 / 2 holdings" can sit at a small fill while a heavy
@@ -1315,15 +1395,12 @@ Do NOT collapse them — each drives a different affordance:
    - a Monobank CARD in `toFetch` (NOT balance-diff-skipped, `selectCardsToFetch`)
      — weight = its statement-window count, committed per page in
      `fetchCardWithProgress` / `fetchAllStatements`'s `onPage` callback;
-   - a Monobank JAR whose /client-info balance MOVED since its prior stored
-     balance, or a new jar — weight 1, committed at the fast phase (jars have
-     no statements; an UNCHANGED jar has no crash-safe marker, so a moved
-     balance is its only "changed" signal, `runSyncInner`);
+   - a Monobank JAR in `toFetch` — the same weight and per-page commit as a
+     card, since a jar is a statement source in the same queue (`runSyncInner`);
    - every crypto/exchange holding a `runBalanceSync` upserts (Binance
      Spot/Funding/Earn, or a wallet) — a crypto sync has NO balance-diff skip,
      it always reads live balances, so each returned holding is one work unit.
-   ZERO work = every MANUAL holding, every balance-diff-skipped card, and every
-   unchanged jar.
+   ZERO work = every MANUAL holding and every balance-diff-skipped card or jar.
 3. `fastPhaseDone` (`isFastPhaseDone`/`setFastPhaseDone`/`subscribeFastPhase`)
    — a one-shot "balances have landed" signal. `runSyncInner` fires
    `setFastPhaseDone(true)` the instant `upsertAllHoldings` commits the
@@ -1602,12 +1679,15 @@ than restated here:
   Binance arm always runs balance-then-history in the same invocation, so
   this bites on literally every subsequent sync). The upsert now reads the
   stored row's metadata inside the same write and carries over any
-  `walkOwnedMetadataKeys` entry (today only the history cursor):
+  `carriedMetadataKeys` entry (the walk-owned keys, today only the history
+  cursor, plus a reopened Monobank card's `statementFromMs`):
   `withWalkOwnedMetadataCarried` ALWAYS overwrites the target's own key
   with the stored value when the stored row has it, regardless of
   whether the caller's object also set that key; every other key is still
-  fully replaced exactly as before. This is a no-op for Monobank/wallet
-  holdings, which never carry a walk-owned key.
+  fully replaced exactly as before. The two lists differ on purpose:
+  `withWalkOwnedMetadataResetToFloor` (the Binance disconnect) resets
+  `walkOwnedMetadataKeys` only and never touches `statementFromMs`. A
+  wallet holding never carries either kind of key.
 - **Per-window commit order, crash-safe.** The walk goes oldest -> newest.
   A window's rows commit (`transactionsRepo.addManyDedup`) BEFORE its
   watermark advances (`setBinanceHistoryCursor`) — two SEPARATE writes, not
@@ -1860,6 +1940,14 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `transactions`/`holdings` rows, so they need no `EXPORT_VERSION` change:
   an older build ignores the keys (Drizzle inserts only its own schema's
   columns), and this build derives them for an older file.
+- **`transactions.exchangePairId` (migration 0052) follows the same two-path
+  rule.** The migration pairs a leg with a row only where the stored data proves
+  it, 1:1 (read `drizzle/migrations/0052_add_exchange_pair_id.sql` for the full
+  rule), with an `UPDATE ... FROM` over a derived table. A `.kiko` file whose
+  rows carry no `exchangePairId` key gets the same ids from
+  `withLegacyExchangePairsDerived` (`snapshot/restore-snapshot.ts`); a row that
+  carries the key restores it as exported, a null included. Never change one
+  path's rule without the other.
 - **A data-only cleanup migration follows the SAME two-path rule.**
   Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
   pre-existing stray create-time artifact (a term_deposit/bond holding whose
@@ -2007,6 +2095,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   with the reason no bump is needed: a column riding inside an existing row
   and derived on restore needs none, and neither does an idempotent data
   rewrite that the restore mirror re-applies to an older file (0049, 0050, 0051).
+  The decision per migration is recorded in `VERSION_DECISIONS` in
+  `src/data-transfer/crypto/envelope.test.ts`, which is where to read it (0052's
+  `exchangePairId` is the first kind: a column riding inside a row).
 
 ## Reminders (local notifications)
 
@@ -2343,7 +2434,14 @@ what a change must keep.
   `intent: 'importStatement'`, `AccountDetail` waits for its loading gate,
   clears the param, then opens the file picker once, on a bank account
   only.
-- **Account delete.** `accountsRepo.remove` deletes the account's
+- **Account delete.** `accountsRepo.remove` first runs
+  `cascadeLinkedRowsDatabaseTransaction` (`transactions.repo.ts`) over ALL the
+  account's holdings, closed ones included, so the other legs of an Exchange,
+  Convert or split and a deposit's contributions on OTHER accounts' holdings go
+  with it, in the same transaction. The confirm text for it is
+  `removeHoldingsNoticeOf(holdingIds, t)` (`transactions/remove-notice/`, which
+  composes `transactionsRepo.removeHoldingsPlan` and `removeHoldingsNotice`),
+  whose sentences are the `holdings.deleteLinked.*` keys. It also deletes the account's
   `reminders` rows in the same transaction, before the account row (NO
   ACTION FK), next to the `sync_state` delete. The Accounts screen runs
   it through `writeThenReplan`, so the deleted reminders' pending

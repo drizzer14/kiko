@@ -51,6 +51,9 @@ export const en = {
     changeIcon: 'Change icon',
     changeIconLabel: 'Change {{label}}',
     iconLabel: 'Icon {{name}}',
+    // One name of a comma-joined list, in the language's own quotes (Hermes has
+    // no `Intl.ListFormat`, so the caller joins the names).
+    listedName: '{{name}}',
     noDataForRange: 'No data for this range',
     // A segment's position within its SegmentedControl group, e.g.
     // "1 of 2" — folded into each segment's accessibilityHint, since
@@ -538,6 +541,8 @@ export const en = {
       fromSheetTitle: 'From',
       holding: 'Holding',
       holdingSheetTitle: 'Holding',
+      importedNotice:
+        'This was imported from a statement, so only the category and loan link can be changed.',
       income: 'Income',
       // The auto-suggested loan-payment link's own caption, shown above its
       // Undo action — a caption, so it carries the final "." (see
@@ -564,8 +569,6 @@ export const en = {
       split: 'Split',
       splitInvalidError: 'Add at least one valid return, and keep the returns below the payment.',
       syncedNotice: 'This was synced, so only the category and loan link can be changed.',
-      timeAfterBalanceSetError:
-        'This transaction was saved without a description or category, so it may be an earlier balance change. Pick a date and time no later than {{dateTime}}.',
       title: 'Transaction',
       to: 'To',
       toSheetTitle: 'To',
@@ -808,6 +811,25 @@ export const en = {
     yieldToMaturity: 'Yield to maturity',
     yourShare: 'Your share',
   },
+  holdings: {
+    // The delete confirm's body for a holding, or an account's holdings, whose
+    // transactions are one part of a movement with another holding. Only `rows`
+    // takes a count; the other parts list holding names, joined by the caller
+    // (Hermes has no `Intl.ListFormat`).
+    deleteLinked: {
+      rows_one: 'This also deletes {{count}} linked transaction in {{names}}.',
+      rows_few: 'This also deletes {{count}} linked transactions in {{names}}.',
+      rows_many: 'This also deletes {{count}} linked transactions in {{names}}.',
+      rows_other: 'This also deletes {{count}} linked transactions in {{names}}.',
+      contributions: 'This also removes the contributions it made to {{names}}.',
+      contributionsKept:
+        'Some contributions to {{names}} could not be matched and stay. Edit the deposit to remove them.',
+      syncedKept: 'Linked transactions from your bank stay in {{names}}.',
+      unlinked:
+        'Some exchange parts in {{names}} could not be found and stay. Check them after deleting.',
+      unlinkedPlain: 'Some exchange parts could not be found and stay.',
+    },
+  },
   home: {
     // The floating "+" action's accessibility label (the global add-transaction
     // FAB pinned over the Home list).
@@ -901,6 +923,36 @@ export const en = {
     // empty name never interpolates into a dangling "{{name}} expense".
     defaultDescriptionExpensePlain: 'Expense',
     defaultDescriptionIncomePlain: 'Income',
+    // The delete confirm's body: a sentence per other part of the movement the
+    // transaction belongs to, then `balanceChange`, which every delete carries.
+    // No plurals: the holding names are the only variable, joined by the caller
+    // (Hermes has no `Intl.ListFormat`).
+    deleteLinked: {
+      exchange: 'This also deletes the other part of this exchange, in {{name}}.',
+      exchangeSyncedKept:
+        'The other part, in {{name}}, came from your bank and stays. Only this part is deleted.',
+      exchangeUnlinked:
+        'The other part of this exchange, in {{name}}, could not be found. Only this part is deleted, so check {{name}}.',
+      exchangeUnlinkedPlain:
+        'The other part of this exchange could not be found. Only this part is deleted.',
+      deposit: 'This also removes its contribution to {{name}}.',
+      depositKept:
+        'Its contribution to {{name}} could not be matched and stays. Edit {{name}} to remove it.',
+      split: 'This also deletes every other part of this split payment.',
+      // A bank-owned part of the exchange: the user's other parts go, this one
+      // never does.
+      exchangeAlsoKept: "{{name}} stays: it is the bank's record and cannot be deleted.",
+      // A conversion reached through a part of a split payment: one sentence per
+      // holding, and never "only this part", since the whole split goes.
+      splitExchange: 'This also deletes the conversion made from this split payment, in {{name}}.',
+      splitExchangeSyncedKept: 'The conversion in {{name}} came from your bank and stays.',
+      splitExchangeUnlinked:
+        'A conversion made from this split payment could not be found in {{name}}. Check {{name}}.',
+      splitExchangeUnlinkedPlain: 'A conversion made from this split payment could not be found.',
+      // One sentence per holding whose balance the delete changes; `amount` is
+      // signed, in that holding's currency.
+      balanceChange: 'This changes the balance of {{name}} by {{amount}}.',
+    },
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',
   },
@@ -966,6 +1018,16 @@ export const en = {
     // same result text `ImportOutcome` already rendered inline — its "Done"
     // button (`common.done`) navigates back to the account screen.
     importResultTitle: 'Import Complete',
+    // What the import would leave the chosen holding's balance at, shown in the
+    // preview once a holding is picked (`previewImportBalance`). A status line,
+    // so no final ".". `balanceWillBeSet` is a closing balance that applies;
+    // `balanceWillBeSetWithLater` adds the bank figure when the holding's own
+    // later entries make the result differ from it.
+    balanceWillBeSet: 'Balance will be set to {{amount}}',
+    balanceWillBeSetWithLater:
+      'Balance will be set to {{amount}} (bank balance {{bankAmount}} on {{date}}, plus your later entries)',
+    balanceWillChange: 'Balance will change from {{from}} to {{to}}',
+    balanceStays: 'Balance stays at {{amount}}',
     // A row a format's parse could not resolve (e.g. a PrivatBank currency
     // word its abbreviation map doesn't cover yet) — excluded
     // from the import, but surfaced honestly rather than silently dropped

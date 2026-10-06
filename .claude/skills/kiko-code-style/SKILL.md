@@ -631,9 +631,7 @@ one validation model — don't hand-roll a different one:
   and returns early when it fails, only then revealing the error.
   Save disables only while a submit is in flight, or when an edit's
   saved value depends on data still loading: the holding form's edit
-  waits for the price book, and the transaction form's edit waits for
-  the re-date boundary, only for a row the re-date rule can block
-  (`isPossibleBalanceSetRow`). See `kiko-design-system`'s FieldError
+  waits for the price book. See `kiko-design-system`'s FieldError
   entry.
 - A blocked field shows its message via the shared `FieldError`
   component (`src/design-system/components/field-error/`), not a

@@ -10,6 +10,7 @@ import '@kiko/design-system/unistyles';
 // Initialize i18next so the row's and CardContextMenu's `t()` labels resolve
 // to the real catalogue instead of the raw key.
 import '@kiko/i18n/init';
+import { holdCard } from '@kiko/test-support/hold-card';
 import {
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
@@ -22,7 +23,10 @@ import TransactionRow from './transaction-row.component';
 import type { HomeTransactionRow } from './transaction-row.props';
 
 jest.mock('@kiko/transactions/repo', () => ({
-  transactionsRepo: { remove: jest.fn() },
+  transactionsRepo: {
+    remove: jest.fn(),
+    removePlan: jest.fn(),
+  },
 }));
 
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -63,6 +67,7 @@ const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = 
 describe('TransactionRow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: false });
   });
 
   it('shows the loan-link marker when the row carries a loan link', async () => {
@@ -138,6 +143,102 @@ describe('TransactionRow', () => {
     expect(queryByTestId('card-context-menu')).toBeNull();
     expect(() => getByGestureTestId(HOLD_GESTURE_TEST_ID)).toThrow();
     expect(onDuplicate).not.toHaveBeenCalled();
+  });
+
+  describe('an imported row', () => {
+    const IMPORT_TIME = 1_000;
+    const importedItem: HomeTransactionRow = {
+      ...baseItem,
+      id: 'txn-import',
+      source: 'import',
+      time: IMPORT_TIME,
+    };
+    const holdRow = async (item: HomeTransactionRow, onDuplicate = jest.fn()) => {
+      const screen = await renderRow(item, jest.fn(), onDuplicate);
+
+      await holdCard();
+
+      return screen;
+    };
+
+    it('opens the delete confirm straight away on a hold and deletes through transactionsRepo.remove', async () => {
+      const { getByTestId, getByText } = await holdRow(importedItem);
+
+      expect(getByText('Delete "Coffee"')).toBeTruthy();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-import');
+    });
+
+    it('offers no Duplicate, so the hold goes straight to the confirm', async () => {
+      const onDuplicate = jest.fn();
+      const { queryByTestId } = await holdRow(importedItem, onDuplicate);
+
+      expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+      expect(onDuplicate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a row that is one part of a movement', () => {
+    it("reads its own row's plan and shows what else the delete takes under the confirm title", async () => {
+      jest.mocked(transactionsRepo.removePlan).mockResolvedValue({
+        split: false,
+        exchange: { kind: 'deleted', names: ['Dollar card'] },
+      });
+      const { getByTestId, getByText } = await renderRow(baseItem);
+
+      await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(transactionsRepo.removePlan).toHaveBeenCalledWith('txn-1');
+      expect(getByText('Delete "Coffee"')).toBeTruthy();
+      expect(
+        getByText('This also deletes the other part of this exchange, in Dollar card.'),
+      ).toBeTruthy();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(transactionsRepo.remove).toHaveBeenCalledWith('txn-1');
+    });
+
+    it('states the balance the delete changes under the confirm title, even for a row that stands alone', async () => {
+      jest.mocked(transactionsRepo.removePlan).mockResolvedValue({
+        split: false,
+        balanceChanges: [{ name: 'Card', currency: 'UAH', minorUnits: 5_000 }],
+      });
+      const { getByTestId, getByText } = await renderRow(baseItem);
+
+      await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(getByText('This changes the balance of Card by +50.00 ₴.')).toBeTruthy();
+    });
+
+    it('keeps the confirm bare for a row whose plan says nothing', async () => {
+      const { getByTestId, queryByText } = await renderRow(baseItem);
+
+      await holdCard();
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(queryByText(/This also/)).toBeNull();
+    });
+
+    it('opens a bare confirm when the plan cannot be read', async () => {
+      jest.mocked(transactionsRepo.removePlan).mockRejectedValue(new Error('read failed'));
+      const { getByTestId, getByText } = await renderRow({ ...baseItem, source: 'import' });
+
+      await holdCard();
+
+      expect(getByText('Delete "Coffee"')).toBeTruthy();
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
+    });
   });
 
   it('renders a synced row bare — no context-menu wrapper and no hold gesture', async () => {

@@ -1,8 +1,9 @@
 import { View } from 'react-native';
+import either, { bifoldr } from 'fnts/either';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 import { trigger } from 'react-native-haptic-feedback';
-import { type FC, type ReactNode, useState } from 'react';
+import { type FC, type ReactNode, useRef, useState } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -64,7 +65,8 @@ const HOLD_LIFT_DURATION_MS = 300;
  *   `HOLD_MAX_DISTANCE`) plays a medium-impact haptic. On a delete-only card
  *   it raises the shared, themed `ConfirmSheet` (a `BottomSheet`, NOT a
  *   native `ActionSheetIOS`) straight away, titled `Delete "<name>"` with a
- *   bare destructive `Delete` confirm and no body. A card with another action
+ *   bare destructive `Delete` confirm and no body, unless the card passes a
+ *   `deleteMessage`. A card with another action
  *   opens the action list instead, whose Delete (only when deletable) hands
  *   off to that same confirm. Only the confirm routes to `onDelete`; Cancel
  *   and a scrim/back dismiss delete nothing. The named title keeps an
@@ -111,6 +113,13 @@ const CardContextMenu: FC<{
   // consumer owns its label and its confirm, since what closing means, and
   // what the entity is called, is the entity's own.
   closeAction?: { label: string; onPress: () => void };
+  // An optional body message under the delete confirm's title, for a delete
+  // whose effect the user would not guess from the title alone. Omitted, the
+  // confirm stays title-only. A function reads the text when the delete is
+  // requested (the confirm opens once it settles, so the user never sees the
+  // sheet change under their finger), for a message that depends on what is
+  // stored right now; a rejection or `undefined` opens the title-only confirm.
+  deleteMessage?: () => Promise<string | undefined>;
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -128,12 +137,18 @@ const CardContextMenu: FC<{
   onDuplicate,
   onEdit,
   closeAction,
+  deleteMessage,
   liftOnHold = false,
   children,
 }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [confirmVisible, setConfirmVisible] = useState(false);
+  // The text a `deleteMessage` function resolved to for the confirm now open.
+  const [resolvedMessage, setResolvedMessage] = useState<string | undefined>(undefined);
+  // The newest request to open the confirm, so a read that settles after a newer
+  // request is dropped.
+  const latestRequest = useRef(0);
   // The action list's visibility, separate from the delete confirm's: a hold
   // opens THIS when a duplicate, edit, or close action exists, and choosing
   // Delete from it hands off to the confirm sheet below.
@@ -157,6 +172,28 @@ const CardContextMenu: FC<{
   if (!deletable && !hasActionList) {
     return <>{children}</>;
   }
+
+  // A message that must be read first holds the sheet back until it settles; no
+  // message opens the sheet at once. A read that fails opens the title-only
+  // confirm: the delete itself never depends on the text. A request made while an
+  // earlier read is pending supersedes it, so the earlier read settling late
+  // neither overwrites the newer text nor opens a confirm of its own.
+  const openConfirm = async (): Promise<void> => {
+    latestRequest.current += 1;
+    const request = latestRequest.current;
+
+    if (deleteMessage !== undefined) {
+      const message = bifoldr(await either(async () => deleteMessage()));
+
+      if (request !== latestRequest.current) {
+        return;
+      }
+
+      setResolvedMessage(message);
+    }
+
+    setConfirmVisible(true);
+  };
 
   // A hold offers the action-list CHOICE only when a duplicate, edit, or close action exists;
   // otherwise it keeps the original behavior and opens the delete confirm
@@ -183,7 +220,8 @@ const CardContextMenu: FC<{
         return;
       }
 
-      setConfirmVisible(true);
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
+      openConfirm();
     })
     .onFinalize(() => {
       if (liftOnHold) {
@@ -221,7 +259,8 @@ const CardContextMenu: FC<{
   // delete-only path uses: close the list, open the confirm.
   const chooseDelete = (): void => {
     setActionsVisible(false);
-    setConfirmVisible(true);
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
+    openConfirm();
   };
 
   // Close first, THEN delete: `onDelete` typically removes this card from its
@@ -285,6 +324,7 @@ const CardContextMenu: FC<{
       <ConfirmSheet
         visible={confirmVisible}
         title={t('common.deleteNamed', { name })}
+        message={resolvedMessage}
         confirmLabel={t('common.delete')}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}

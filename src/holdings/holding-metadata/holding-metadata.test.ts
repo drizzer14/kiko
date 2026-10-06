@@ -14,6 +14,8 @@ import {
   propertyCategoryOf,
   hasStoredBondPurchasePrice,
   syncedAtOf,
+  statementFromOf,
+  syncClosedFromOf,
   walletAddressOf,
   withWalkOwnedMetadataCarried,
   withWalkOwnedMetadataResetToFloor,
@@ -349,6 +351,49 @@ describe('withWalkOwnedMetadataCarried', () => {
 
     expect(withWalkOwnedMetadataCarried(target, null)).toEqual(target);
     expect(withWalkOwnedMetadataCarried(target, 'not-an-object')).toEqual(target);
+  });
+});
+
+describe('syncClosedFromOf / statementFromOf', () => {
+  it('read the stored number, or null when absent, non-numeric or not an object', () => {
+    expect(syncClosedFromOf({ syncClosedFromMs: 1_000 })).toBe(1_000);
+    expect(statementFromOf({ statementFromMs: 2_000 })).toBe(2_000);
+    expect(syncClosedFromOf({ monobankId: 'a' })).toBeNull();
+    expect(statementFromOf({ statementFromMs: 'soon' })).toBeNull();
+    expect(syncClosedFromOf({ syncClosedFromMs: Number.NaN })).toBeNull();
+    expect(statementFromOf(null)).toBeNull();
+    expect(syncClosedFromOf('not-an-object')).toBeNull();
+  });
+
+  it('keep the two keys apart', () => {
+    const metadata = { syncClosedFromMs: 1_000, statementFromMs: 2_000 };
+
+    expect(syncClosedFromOf(metadata)).toBe(1_000);
+    expect(statementFromOf(metadata)).toBe(2_000);
+  });
+});
+
+describe('withWalkOwnedMetadataCarried — the reopen statement cursor', () => {
+  it('carries statementFromMs, and never the sync-close mark', () => {
+    const target = { monobankId: 'card-1', syncedAt: 2_000 };
+    const stored = { monobankId: 'card-1', statementFromMs: 500, syncClosedFromMs: 400 };
+
+    expect(withWalkOwnedMetadataCarried(target, stored)).toEqual({
+      monobankId: 'card-1',
+      syncedAt: 2_000,
+      statementFromMs: 500,
+    });
+  });
+});
+
+describe('withWalkOwnedMetadataResetToFloor — the reopen statement cursor', () => {
+  it('leaves statementFromMs untouched (the floor reset is Binance-only)', () => {
+    const stored = { monobankId: 'card-1', statementFromMs: 500 };
+
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toBeUndefined();
+    expect(
+      withWalkOwnedMetadataResetToFloor({ ...stored, binanceHistoryCursor: 900 }, 100),
+    ).toEqual({ monobankId: 'card-1', statementFromMs: 500, binanceHistoryCursor: 100 });
   });
 });
 

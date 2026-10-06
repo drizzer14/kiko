@@ -58,9 +58,13 @@ jest.mock('@kiko/statement-import/rezone-import-times', () => ({
 }));
 
 let mockImportTimesRezoned = true;
+let mockDedupKeysUpgraded = true;
 jest.mock('@kiko/settings', () => ({
   settingsRepo: {
-    getQuery: () => Promise.resolve([{ importTimesRezoned: mockImportTimesRezoned }]),
+    getQuery: () =>
+      Promise.resolve([
+        { importTimesRezoned: mockImportTimesRezoned, dedupKeysUpgraded: mockDedupKeysUpgraded },
+      ]),
   },
 }));
 
@@ -78,7 +82,11 @@ import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
 import { StatementParseError } from '../parser';
 import { applyColumnMapping, type ColumnMapping } from '../column-mapping';
 
-import { importStatement, importParsedStatement } from './import-statement';
+import {
+  importStatement,
+  importParsedStatement,
+  previewParsedStatementBalance,
+} from './import-statement';
 
 const fixtureText = readFileSync(
   path.join(__dirname, '../formats/monobank-csv/__fixtures__/uabean-monobank-sample.csv'),
@@ -117,6 +125,7 @@ beforeEach(() => {
   mockUpgradeStoredDedupKeys.mockClear().mockResolvedValue(undefined);
   mockRezoneImportTimes.mockClear().mockResolvedValue(undefined);
   mockImportTimesRezoned = true;
+  mockDedupKeysUpgraded = true;
 });
 
 // Regression fixture for the occurrence-index bug: two rows identical on
@@ -1064,5 +1073,139 @@ describe('importParsedStatement runs the one-shot statement-import rewrites firs
       'statement-import/rezone-pending',
     );
     expect(store.transactions).toEqual([]);
+  });
+});
+
+describe('previewParsedStatementBalance', () => {
+  const closingBalance = {
+    minorUnits: 90_000,
+    currency: 'UAH' as const,
+    asOfSeconds: 1_700_086_400,
+  };
+  const parsed = {
+    formatId: 'column-mapping' as const,
+    account: { currency: 'UAH' as const },
+    closingBalance,
+    transactions: [
+      {
+        currency: 'UAH' as const,
+        amountMinorUnits: -1_000,
+        timeSeconds: 1_700_000_040,
+        timeReading: { kind: 'minute' as const },
+        description: 'Coffee',
+      },
+      {
+        currency: 'USD' as const,
+        amountMinorUnits: -2_000,
+        timeSeconds: 1_700_000_100,
+        description: 'Dollar lunch',
+      },
+      {
+        currency: 'UAH' as const,
+        amountMinorUnits: -1_000,
+        timeSeconds: 1_700_000_040,
+        timeReading: { kind: 'minute' as const },
+        description: 'Coffee',
+      },
+    ],
+  };
+  const preview = {
+    kind: 'set' as const,
+    currency: 'UAH' as const,
+    minorUnits: 90_000,
+    bankMinorUnits: 90_000,
+    asOfSeconds: closingBalance.asOfSeconds,
+  };
+  let previewImportBalance: jest.SpyInstance;
+  let importRows: jest.SpyInstance;
+
+  beforeEach(() => {
+    previewImportBalance = jest.spyOn(transactionsRepo, 'previewImportBalance');
+    previewImportBalance.mockResolvedValue(preview);
+    importRows = jest.spyOn(transactionsRepo, 'importRows');
+  });
+
+  afterEach(() => {
+    previewImportBalance.mockRestore();
+    importRows.mockRestore();
+  });
+
+  it('returns what the repository says the balance will become', async () => {
+    await expect(previewParsedStatementBalance(parsed, 'holding-1')).resolves.toEqual(preview);
+  });
+
+  it('hands the repository the same rows and closing balance the import writes', async () => {
+    const store: { transactions: StoredRow[] } = { transactions: [] };
+    mockDatabaseTransaction = makeImportDatabaseTransaction({
+      store,
+      holding: defaultHolding(),
+      account: unsyncedAccount,
+    }).databaseTransaction;
+
+    await importParsedStatement(parsed, 'holding-1');
+    await previewParsedStatementBalance(parsed, 'holding-1');
+
+    expect(previewImportBalance).toHaveBeenCalledTimes(1);
+    expect(previewImportBalance.mock.calls[0][0]).toEqual(importRows.mock.calls[0][0]);
+  });
+
+  it('leaves out a row in another currency than the holding, like the import', async () => {
+    await previewParsedStatementBalance(parsed, 'holding-1');
+
+    expect(
+      previewImportBalance.mock.calls[0][0].rows.map(
+        (row: { amountMinorUnits: number }) => row.amountMinorUnits,
+      ),
+    ).toEqual([-1_000, -1_000]);
+  });
+
+  it('gives a repeated row its own occurrence key, like the import', async () => {
+    await previewParsedStatementBalance(parsed, 'holding-1');
+
+    const keys = previewImportBalance.mock.calls[0][0].rows.map(
+      (row: { externalId: string }) => row.externalId,
+    );
+
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  it('writes nothing: no rewrite, no import, no loan matcher', async () => {
+    await previewParsedStatementBalance(parsed, 'holding-1');
+
+    expect(mockUpgradeStoredDedupKeys).not.toHaveBeenCalled();
+    expect(mockRezoneImportTimes).not.toHaveBeenCalled();
+    expect(importRows).not.toHaveBeenCalled();
+    expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
+  });
+
+  // The preview writes nothing, so it cannot run the two rewrites the import
+  // runs first; it would otherwise judge rows against keys and times the import
+  // has not yet put into the form it stores. It refuses, so no balance line
+  // shows rather than one the import could contradict.
+  it('throws while the import-time rezone flag is false, asking the repository nothing', async () => {
+    mockImportTimesRezoned = false;
+
+    await expect(previewParsedStatementBalance(parsed, 'holding-1')).rejects.toThrow(
+      'statement-import/preview-pending',
+    );
+    expect(previewImportBalance).not.toHaveBeenCalled();
+  });
+
+  it('throws while the stored dedup keys are not yet upgraded, asking the repository nothing', async () => {
+    mockDedupKeysUpgraded = false;
+
+    await expect(previewParsedStatementBalance(parsed, 'holding-1')).rejects.toThrow(
+      'statement-import/preview-pending',
+    );
+    expect(previewImportBalance).not.toHaveBeenCalled();
+  });
+
+  it('throws when the target holding cannot be found, asking the repository nothing', async () => {
+    mockHoldingRows = [];
+
+    await expect(previewParsedStatementBalance(parsed, 'missing-holding')).rejects.toThrow(
+      'Target holding not found: missing-holding',
+    );
+    expect(previewImportBalance).not.toHaveBeenCalled();
   });
 });

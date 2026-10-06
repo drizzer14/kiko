@@ -1091,6 +1091,25 @@ new component can land between reviews of this skill:
   deleted only from its page's `CardContextMenu`, so nothing under
   `src/screens/forms/` imports `ConfirmSheet`
   (`kiko-no-confirm-sheet-in-form`, `rules/semgrep-prewrite.yml`).
+  `deleteMessage` is an optional async function (`() => Promise<string |
+  undefined>`, never a plain string): the menu awaits it when the hold asks for
+  the confirm, so the text names what is stored now. A read that fails opens the
+  title-only confirm, since the delete never depends on the text. The newest
+  request wins (`latestRequest`): a read that settles after a newer request is
+  dropped and neither overwrites the text nor opens a confirm. A transaction row
+  whose source is `import` is deletable but passes NO `onDuplicate` and no other
+  action (`isSyncedTransaction` is every non-manual source), so its hold opens
+  the delete confirm directly; only a manual row is duplicable. The imported
+  row's confirm needs no boundary read: every delete takes the row's full
+  amount back, and the confirm's `removeNotice` states each holding's balance
+  change (`transactions.deleteLinked.balanceChange`).
+- **ImportBalanceLine** (`src/design-system/components/import-balance-line/`)
+  — the one line on the statement-import and column-mapping previews that says
+  what the target holding's balance will be, from an `ImportBalancePreview`
+  (see `kiko-domain`, "The import screens preview the balance"). Amounts go
+  through `formatMoney` in the holding's own currency; its sentences are the
+  `statementImport.balance*` keys. Render it only when the preview exists: no
+  preview means no line.
 - **HoldingCard** (`src/design-system/components/holding-card/`) — one
   holding as a wide row card, shared so a screen never imports another
   screen's card (`kiko-no-cross-screen-import`): the entity icon tile and
@@ -1215,19 +1234,16 @@ new component can land between reviews of this skill:
   label red through the label-only `invalid` prop (`DateTimeRow`, which
   passes it to `DateField` and `TimeField`; `TextField`; `FieldTrigger`
   and `HoldingSelectField`). `invalid` never renders a message and is
-  never set beside `error`. In the transaction form: the re-date error
-  under the Date and Time row (both labels), and the split-returns error
-  under the return rows (every row's "Return to N" and "Return N", plus
-  the payment Amount when the returns total it or more; an empty payment
-  is the Amount's own error). In the holding form, a contributions error
+  never set beside `error`. In the transaction form: the split-returns
+  error under the return rows (every row's "Return to N" and "Return N",
+  plus the payment Amount when the returns total it or more; an empty
+  payment is the Amount's own error). In the holding form, a contributions error
   turns the amount and date labels of every row it refuses red.
 
   Save/Import is never disabled for VALIDATION; it validates on press.
   It disables only while a submit is in flight, or when an edit's saved
   value depends on data still loading: the holding form's edit waits for
-  the price book (kiko-pricing), and the transaction form's edit waits
-  for the re-date boundary, only for a row the re-date rule can block
-  (`isPossibleBalanceSetRow`, `src/transactions/balance-boundary/`).
+  the price book (kiko-pricing).
   Every form composes this instead of hand-rolling its own error
   caption — see `kiko-code-style`'s "Form validation model" section for
   when to show it.

@@ -7,6 +7,7 @@ import type {
   ColumnMappingRowError,
 } from '@kiko/statement-import/column-mapping';
 import type { Currency } from '@kiko/currency/currency';
+import type { ImportBalancePreview } from '@kiko/transactions/repo';
 import type { PreviewStats } from '@kiko/statement-import/preview-stats';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import type { TargetHoldingOption } from '@kiko/design-system/components/target-holding-sheet';
@@ -104,6 +105,9 @@ export type ColumnMappingFormProps = {
   // Forwarded to `MappingResult` — see that component's own `stats` doc
   // comment for why this gates the generic incomplete hint.
   mappingIncomplete: boolean;
+  // Forwarded to `MappingResult`: what importing would leave the picked
+  // holding's balance at, `undefined` before a holding is picked.
+  balancePreview: ImportBalancePreview | undefined;
   holdingOptions: TargetHoldingOption[];
   // Whether `holdingOptions` is still on its own first load — forwarded to
   // `TargetHoldingField` so the picker never opens on an incomplete/empty

@@ -28,6 +28,7 @@ import type { Currency } from '@kiko/currency/currency';
 import { clearCredentials } from '@kiko/crypto-sync/binance';
 import { SYNCED_AT_FIELD } from '@kiko/holdings/holding-metadata';
 import { holdingTypesForAccountKind } from '@kiko/holdings/holding-type';
+import { cascadeLinkedRowsDatabaseTransaction } from '@kiko/transactions/repo';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 import { isSyncedAccount, type SyncedInstitution } from '@kiko/holdings/deletable';
 
@@ -391,13 +392,20 @@ export const accountsRepo = {
    * connection and is refused with a typed error; a missing id is a no-op
    * rather than an error.
    *
+   * The rows of the account's holdings are parts of movements too: the other
+   * legs of an Exchange or Convert, the rest of a split and a deposit's
+   * contributions, on holdings of OTHER accounts, go the same way a single
+   * holding delete takes them (`cascadeLinkedRowsDatabaseTransaction`), in the
+   * same transaction.
+   *
    * A debt account can hold a loan, and OTHER
    * holdings' payment rows can point back at that loan via `loanHoldingId`.
    * Deleting the account deletes the loan holding too, so this cascade
    * clears those links in the SAME transaction — the same
-   * `clearLoanLinksForHoldingsDatabaseTransaction` cascade `holdingsRepo.remove` runs for a
-   * single loan holding, applied here to every holding the
-   * deleted account owned. A no-op when none of them was a loan.
+   * `clearLoanLinksForHoldingsDatabaseTransaction` cascade
+   * `transactionsRepo.removeHolding` runs for a single loan holding, applied
+   * here to every holding the deleted account owned. A no-op when none of them
+   * was a loan.
    */
   remove: (accountId: string) =>
     write(async (databaseTransaction) => {
@@ -418,6 +426,13 @@ export const accountsRepo = {
         .select()
         .from(holdings)
         .where(eq(holdings.accountId, accountId));
+
+      // Before any row goes: the other parts of the movements these holdings'
+      // rows belong to, in other accounts, are found through them.
+      await cascadeLinkedRowsDatabaseTransaction(
+        databaseTransaction,
+        accountHoldings.map((holding) => holding.id),
+      );
 
       for (const holding of accountHoldings) {
         await databaseTransaction

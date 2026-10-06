@@ -771,6 +771,19 @@ verified usage, not dead weight:
   `__tests__/pre-write-guard-rules.test.ts` prove the test, test-support,
   `e2e/`, and `src/dates/` paths.
 
+- **`kiko-holding-delete-needs-cascade` (`rules/semgrep-prewrite.yml`)
+  excludes `src/transactions/repo/transactions.repo.ts`,
+  `src/holdings/repo/holdings.repo.ts`, `*.test.ts` and `*.test.tsx`.**
+  `holdings.repo.ts` defines `removeHoldingDatabaseTransaction` and
+  `transactions.repo.ts` is its one caller, which runs it right after the
+  cascade in `transactionsRepo.removeHolding`: the rule would fire on its
+  own owner. Test files may exercise the helper directly (a unit test of its
+  synced-holding refusal); none calls it today (grep, 2026-10-05). Measured on
+  2026-10-05: without the excludes the rule draws two hits, the definition in
+  `holdings.repo.ts` and the call in `transactions.repo.ts`, and none
+  elsewhere in `src/`. The flat fixture pair
+  proves the rule in `check:rules`.
+
 - **`kiko-no-whole-price-points-read` (`rules/semgrep-prewrite.yml`)
   excludes `src/prices/use-price-book/**`, `src/prices/price-points-repo/**`,
   `*.test.ts` and `*.test.tsx`.** The hook's folder is where
