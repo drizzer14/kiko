@@ -187,7 +187,7 @@ describe('the reopen of a sync-closed holding in upsertMonobankMany', () => {
     expect(row.metadata).toEqual({ monobankId: 'card-1', syncedAt: 2_000, statementFromMs: 300 });
   });
 
-  it('reopens a sync-closed jar without a statement cursor', async () => {
+  it('reopens a sync-closed jar with its statement cursor, like a card', async () => {
     const { seed, rowOf } = openTestDatabase();
     seed({
       id: 'h-jar',
@@ -202,7 +202,7 @@ describe('the reopen of a sync-closed holding in upsertMonobankMany', () => {
     const row = await rowOf('h-jar');
 
     expect(row.closedAt).toBeNull();
-    expect(row.metadata).toEqual({ monobankId: 'jar-1', syncedAt: 2_000 });
+    expect(row.metadata).toEqual({ monobankId: 'jar-1', syncedAt: 2_000, statementFromMs: 300 });
   });
 
   it('keeps a user-closed holding closed: no mark, even with a leftover cursor', async () => {

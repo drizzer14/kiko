@@ -206,7 +206,8 @@ implemented, and callers must skip it rather than assume every id resolves.
   undefined); every manual holding gets one, and the user has no reopen.
   A Monobank card or jar the SYNC closed (Monobank stopped returning it)
   carries `metadata.syncClosedFromMs` and reopens when it returns: a card
-  imports its gap from that mark, a jar reopens with its balance only; a holding the user closed by hand never does
+  or a jar imports its gap from that mark (both are statement sources); a
+  holding the user closed by hand never does
   (kiko-architecture "Sync-closed holdings reopen"). A
   loan is never called a holding there: `closeHoldingCopy(type)` picks
   the `accountDetail.closeLoan*` keys (menu label, confirm title,

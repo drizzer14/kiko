@@ -181,10 +181,11 @@ const upsertManualPricePoint = (
 // writes, so a user-closed holding stays closed and a Binance or wallet row
 // (no mark, ever) never reopens. The reopen clears `closedAt`, drops the mark
 // (an upsert carries only the walk-owned keys, so the mark is not carried), and
-// hands a CARD the mark as `statementFromMs`, the from-cursor of its next
-// statement fetch: while it was absent no run fetched its statements, and the
-// closing run graduated the normal cursor past the gap. It moves no balance;
-// the balance written here is the bank's own, as on every upsert.
+// hands the mark on as `statementFromMs`, the from-cursor of its next statement
+// fetch, for a card and a jar alike (both are statement sources): while it was
+// absent no run fetched its statements, and the closing run graduated the
+// normal cursor past the gap. It moves no balance; the balance written here is
+// the bank's own, as on every upsert.
 //
 // The known limit (a holding closed before the mark existed stays closed) is
 // stated on `reconcileClosedHoldings` in the Monobank sync.
@@ -198,7 +199,6 @@ const upsertByMetadataKey = async (
     .select({
       id: holdings.id,
       name: holdings.name,
-      type: holdings.type,
       closedAt: holdings.closedAt,
       metadata: holdings.metadata,
     })
@@ -220,9 +220,7 @@ const upsertByMetadataKey = async (
       .set({
         balanceMinorUnits: rest.balanceMinorUnits ?? 0,
         metadata:
-          reopenFrom !== null && current.type === 'card'
-            ? { ...carried, [STATEMENT_FROM_FIELD]: reopenFrom }
-            : carried,
+          reopenFrom === null ? carried : { ...carried, [STATEMENT_FROM_FIELD]: reopenFrom },
         ...(rename ? { name: rest.name } : {}),
         ...(reopenFrom === null ? {} : { closedAt: null }),
       })
@@ -1142,7 +1140,7 @@ export const holdingsRepo = {
         .where(syncedBalanceUpdateWhere(holdingId, balance.minorUnits));
     }),
   /**
-   * Drop a reopened card's `statementFromMs` once its widened statement import
+   * Drop a reopened card's or jar's `statementFromMs` once its widened statement import
    * committed. Writes only when the key is present, so the run after the
    * clear (and every card that never reopened) fires no reactive `holdings`
    * callback. The sync calls it AFTER `setSyncedBalance`: a crash in between

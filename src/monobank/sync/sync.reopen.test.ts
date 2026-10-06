@@ -1,4 +1,4 @@
-// The close and reopen of a Monobank card through the REAL repositories on a
+// The close and reopen of a Monobank card or jar through the REAL repositories on a
 // real, fully migrated SQLite engine: `sync.test.ts`'s in-memory doubles
 // mirror the reopen by hand, so only this file proves that the real
 // `closeManyBySync`, `upsertByMetadataKey` and `clearStatementFrom` agree with
@@ -30,7 +30,9 @@ const FIRST_RUN_MS = 1_700_000_000_000;
 const HOUR_MS = 60 * 60 * 1000;
 const cardId = clientInfo.accounts[0].id;
 const otherCardId = clientInfo.accounts[1].id;
+const jarId = clientInfo.jars[0].id;
 const allAccounts = clientInfo.accounts as MonobankAccount[];
+const allJars = clientInfo.jars as MonobankJar[];
 const withoutCard = allAccounts.filter((account) => account.id !== cardId);
 const returnRunMs = FIRST_RUN_MS + 40 * DAY_MS + HOUR_MS;
 
@@ -40,6 +42,14 @@ const gapItem: MonobankStatementItem = {
   ...(statement[0] as MonobankStatementItem),
   id: 'gap-item',
   time: (FIRST_RUN_MS + 20 * DAY_MS) / 1000,
+};
+
+// The same for a jar: a top-up inside the gap.
+const jarGapItem: MonobankStatementItem = {
+  ...gapItem,
+  id: 'jar-gap-item',
+  amount: 300_000,
+  operationAmount: 300_000,
 };
 
 const freshWorld = () => {
@@ -52,8 +62,10 @@ const freshWorld = () => {
     )
     .run();
 
-  const network = { accounts: allAccounts };
+  const network = { accounts: allAccounts, jars: allJars };
   const fetchStatementSpy = jest.fn();
+  const gapItemOf = (monobankId: string): MonobankStatementItem | undefined =>
+    ({ [cardId]: gapItem, [jarId]: jarGapItem })[monobankId];
 
   const sync = (atMs: number) =>
     runSync({
@@ -63,35 +75,42 @@ const freshWorld = () => {
       readToken: async () => 'token',
       fetchClientInfo: async () => ({
         accounts: network.accounts,
-        jars: clientInfo.jars as MonobankJar[],
+        jars: network.jars,
       }),
       fetchStatement: async (_token, accountId, from, to) => {
         const monobankId = decodeURIComponent(accountId);
+        const item = gapItemOf(monobankId);
         fetchStatementSpy(monobankId, from, to);
 
-        return monobankId === cardId && gapItem.time >= from && gapItem.time <= to ? [gapItem] : [];
+        return item !== undefined && item.time >= from && item.time <= to ? [item] : [];
       },
     });
 
   return { network, sync, fetchStatementSpy };
 };
 
-const cardRow = () =>
+const rowOf = (monobankId: string) =>
   mockDatabase
     .prepare(
       `SELECT id, closed_at AS closedAt, metadata FROM holdings
        WHERE json_extract(metadata, '$.monobankId') = ?`,
     )
-    .get(cardId) as { id: string; closedAt: number | null; metadata: string };
+    .get(monobankId) as { id: string; closedAt: number | null; metadata: string };
+
+const cardRow = () => rowOf(cardId);
+const jarRow = () => rowOf(jarId);
 
 const cardMetadata = (): Record<string, unknown> => JSON.parse(cardRow().metadata);
+const jarMetadata = (): Record<string, unknown> => JSON.parse(jarRow().metadata);
 
-const gapRowCount = (): number =>
+const rowCountOf = (holdingId: string): number =>
   (
     mockDatabase
       .prepare('SELECT count(*) AS total FROM transactions WHERE holding_id = ?')
-      .get(cardRow().id) as { total: number }
+      .get(holdingId) as { total: number }
   ).total;
+
+const gapRowCount = (): number => rowCountOf(cardRow().id);
 
 // Run 1 stores every card; run 2, a due full fetch, does not list the card
 // and so closes it. The return (run 3) is then an INCREMENTAL run.
@@ -101,7 +120,7 @@ const closeTheCard = async (world: ReturnType<typeof freshWorld>) => {
   await world.sync(FIRST_RUN_MS + 40 * DAY_MS);
 };
 
-describe('a Monobank card the sync closed, then sees again', () => {
+describe('a Monobank card or jar the sync closed, then sees again', () => {
   // The per-run `[monobank sync] done` summary is not under test here.
   beforeEach(() => {
     jest.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -156,6 +175,25 @@ describe('a Monobank card the sync closed, then sees again', () => {
     await world.sync(FIRST_RUN_MS + 120 * DAY_MS);
 
     expect(cardMetadata().syncClosedFromMs).toBe(FIRST_RUN_MS);
+  });
+
+  it('reopens a returned jar and imports its gap from the mark, like a card', async () => {
+    const world = freshWorld();
+
+    await world.sync(FIRST_RUN_MS);
+    world.network.jars = [];
+    await world.sync(FIRST_RUN_MS + 40 * DAY_MS);
+
+    expect(jarRow().closedAt).not.toBeNull();
+    expect(jarMetadata().syncClosedFromMs).toBe(FIRST_RUN_MS);
+
+    world.network.jars = allJars;
+    await world.sync(returnRunMs);
+
+    expect(jarRow().closedAt).toBeNull();
+    expect(jarMetadata()).not.toHaveProperty('syncClosedFromMs');
+    expect(jarMetadata()).not.toHaveProperty('statementFromMs');
+    expect(rowCountOf(jarRow().id)).toBe(1);
   });
 
   it('leaves a card the user closed while disconnected closed on reconnect', async () => {

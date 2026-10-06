@@ -1110,11 +1110,12 @@ each (no migration; `holding-metadata.ts` owns the constants and readers
   closed is skipped, so the first mark is kept. The user's Close sheet calls
   `closeMany`, which writes no mark: that is the whole "user-closed stays
   closed" rule.
-- `statementFromMs` — the from-cursor of a reopened CARD's next statement fetch.
-  `upsertByMetadataKey`'s update branch reopens a row only when `closedAt` is
-  set AND `syncClosedFromMs` is a number: it clears `closedAt`, drops the mark
-  (an upsert carries only the carried keys) and, for `type === 'card'`, writes
-  `statementFromMs = the mark`. A jar reopens with no cursor. A reopen moves no
+- `statementFromMs` — the from-cursor of a reopened card's or jar's next
+  statement fetch. `upsertByMetadataKey`'s update branch reopens a row only when
+  `closedAt` is set AND `syncClosedFromMs` is a number: it clears `closedAt`,
+  drops the mark (an upsert carries only the carried keys) and writes
+  `statementFromMs = the mark`, whatever the holding type (a jar is a statement
+  source like a card). A reopen moves no
   balance (the upsert writes the bank's own, as on every run). Binance and
   wallet rows never carry the mark, so they never reopen.
   `fetchCardWithProgress` calls `holdingsRepo.clearStatementFrom` AFTER
