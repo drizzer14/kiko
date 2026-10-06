@@ -2759,11 +2759,12 @@ export const transactionsRepo = {
    * (`upsertByMetadataKey`). Without it a newer anchor plus an older statement
    * imported afterwards counts the deleted row twice (closing 85,000; delete
    * -5,000 gives 90,000; a newer closing 70,000; the old statement again would
-   * give 65,000, not 70,000). The sync clears the keys but never reads them and
-   * never revives a row, and neither does a key rewrite
-   * (`upgradeStoredDedupKeys`, `rezoneImportTimes`): a key they rewrote misses,
-   * and the row then comes back at 0. A delete made before the table existed
-   * left no key, so such a row comes back at 0 as well.
+   * give 65,000, not 70,000). The sync clears the keys when it sets the balance
+   * but never reads them and never revives a row. The key rewrites
+   * (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave the keys as they were,
+   * so a key they rewrote misses, and the row then comes back at 0. A delete
+   * made before the table existed left no key, so such a row comes back at 0 as
+   * well.
    *
    * NO MIGRATION was written for holdings a pre-fix build already wrote a
    * wrong (0 or under-counted) balance into: `1.0.0` is
