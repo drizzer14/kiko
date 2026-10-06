@@ -110,11 +110,13 @@ top-level key for the same package is not valid.
 `@react-native-community/cli` -> `@react-native-community/cli-config`
 and `@react-native-community/cli-types`. Both parents request
 `^17.2.1`, which accepts the fixed `17.13.7`, and no existing override
-covers them, so it is pinned with a top-level override:
+covers them, so it is pinned with a top-level override. A later advisory
+(GHSA-wr44-6hxh-3jwq, CVSS 6.3) moved the same pin to `17.13.8`
+(published 2026-09-11):
 
 ```json
 "overrides": {
-  "joi": "17.13.7"
+  "joi": "17.13.8"
 }
 ```
 
@@ -146,6 +148,24 @@ static import graph reaches no `moment`, so this pin is defense in depth:
 ```json
 "overrides": {
   "moment": "2.31.0"
+}
+```
+
+`bash scripts/checks/osv.sh` also flagged `compression` 1.8.1
+(GHSA-vc2v-76pw-4v95, CVSS 7.5) and `smol-toml` 1.8.0
+(GHSA-r4xh-jqrq-34v2, CVSS 5.3), both dev-only. `compression` comes
+through `react-native` -> `@react-native/community-cli-plugin` ->
+`@react-native-community/cli` -> `cli-server-api` (the Metro dev server;
+a `devOptional` lockfile entry, never in the app bundle); `smol-toml`
+comes through `knip`. Both parent ranges (`^1.7.1`, `^1.5.2`) accept the
+fixed versions, so each is pinned with a top-level override to the
+smallest fixed release in the same major: `compression` 1.8.2 (published
+2026-09-11) and `smol-toml` 1.9.0 (published 2026-09-22):
+
+```json
+"overrides": {
+  "compression": "1.8.2",
+  "smol-toml": "1.9.0"
 }
 ```
 
@@ -206,3 +226,24 @@ debt (user decision 2026-10-03), same class
 as the `image-size` CVEs above — do not suppress it; re-check
 periodically with `bash scripts/checks/osv.sh` and bump the moment a
 fix ships. Last checked 2026-10-03.
+
+`check:deep` also flags `source-map-js` 1.2.1, advisory
+GHSA-68fv-2mgg-jv7q (CVSS 8.7, fixed in 1.2.2). It is dev-only: it comes
+only through `depcheck` -> `@vue/compiler-sfc` (and that package's
+`@vue/compiler-core` and `postcss`), and `npm ls source-map-js --all
+--omit=dev` is empty. The fix is NOT yet installable: `1.2.2` was
+published 2026-09-30, inside the 7-day minimum age, so it becomes
+eligible on 2026-10-07. Tracked debt until then, not a suppressed
+finding. Re-run `bash scripts/checks/osv.sh` from 2026-10-07 and pin it
+with a top-level override (`"source-map-js": "1.2.2"`; the parents'
+`^1.2.x` ranges accept it) the moment it is eligible. Last checked
+2026-10-06.
+
+`check:deep` also flags `sprintf-js` 1.0.3, advisory GHSA-hp3w-g68c-fv3c
+(CVSS 6.9). No fixed version exists. It is dev-only: the one path is
+`depcheck` -> `js-yaml` 3.15.2 -> `argparse` 1.0.10 -> `sprintf-js`, and
+`npm ls sprintf-js --all --omit=dev` is empty, so it is never in the app
+bundle. Accepted as tracked debt (same class as the `braces` advisory
+above) — do not suppress it; re-check periodically with
+`bash scripts/checks/osv.sh` and bump the moment a fix ships. Last
+checked 2026-10-06.
