@@ -28,11 +28,6 @@ import {
   isExchangeDestinationType,
   isExchangeSourceType,
 } from '@kiko/holdings/exchange-destination';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import HoldingSelectField, {
@@ -49,6 +44,7 @@ import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import DateTimeRow from '@kiko/screens/forms/date-time-row';
+import { type TextInputInstance, View } from 'react-native';
 import Divider from '@kiko/design-system/components/divider';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import CategoryField from '@kiko/screens/forms/category-field';
@@ -63,8 +59,9 @@ import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
@@ -74,7 +71,6 @@ import ConvertExchangeFields from '@kiko/screens/forms/convert-exchange-fields';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
-import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import ModeSelectField, { type FormMode } from '@kiko/screens/forms/mode-select-field';
 import { useLiveQuery, type AccountRow, type HoldingRow, type TransactionRow } from '@kiko/db';
 
@@ -1776,19 +1772,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [mode, setMode] = useState<FormMode>('expense');
   const isExchange = mode === 'exchange';
   const isSplit = mode === 'split';
-  // The scroll-mode ScrollView's ref, so adding a split return can bring the
-  // newly appended row into view. `useScrollOffset` reads its LIVE content
-  // offset for `save`'s own `scrollToField` call below.
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
-  const headerInset = useHeaderInset();
-  // The ScrollView's own total content height, captured off `Screen`'s
-  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
-  // can bound an over-large target against the real content extent — see
-  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
-  // read only imperatively at Save-press time, never needs to re-render.
-  const contentHeightRef = useRef(0);
-  // Per-field wrapper refs, one per validated field, passed to `scrollToField`
+  // The scroll-mode ScrollView's ref and content-height callback go to `Screen`;
+  // `scrollTo` brings a split return that was just added, or the field a blocked
+  // Save names, into view.
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
+  // Per-field wrapper refs, one per validated field, passed to `scrollTo`
   // in `save`'s blocked path below — each field's own inline error (a
   // `TextField`/`ExchangeFields`/`ConvertExchangeFields` `error` prop, or a
   // relocated `FieldError` for the category/split-returns reasons) sits right
@@ -2261,11 +2249,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     // never an unconditional `scrollToEnd`, which would fire even when the
     // new row was already fully on screen.
     requestAnimationFrame(() => {
-      scrollToField(scrollableRef, lastReturnFieldRef, {
-        currentOffset: scrollOffset.value,
-        headerInset,
-        contentHeight: contentHeightRef.current,
-      });
+      scrollTo(lastReturnFieldRef);
     });
   };
 
@@ -2465,16 +2449,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       setAttemptedSave(true);
 
       if (disableSaveField) {
-        scrollToField(
-          scrollableRef,
-          fieldRefsByKey[disableSaveField],
-          {
-            currentOffset: scrollOffset.value,
-            headerInset,
-            contentHeight: contentHeightRef.current,
-          },
-          focusByKey[disableSaveField],
-        );
+        scrollTo(fieldRefsByKey[disableSaveField], focusByKey[disableSaveField]);
       }
 
       return;
@@ -2563,9 +2538,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       <Screen
         scroll
         scrollableRef={scrollableRef}
-        onContentSizeChange={(_width, height) => {
-          contentHeightRef.current = height;
-        }}
+        onContentSizeChange={onContentSizeChange}
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
             <Button onPress={onSave} disabled={isSubmitting}>
