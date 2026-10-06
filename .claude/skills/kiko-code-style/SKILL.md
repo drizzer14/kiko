@@ -306,6 +306,18 @@ by the `kiko-no-switch` Semgrep rule (see kiko-linter's own
 `.otherwise()`-vs-`.exhaustive()` guidance for a closed set sourced from
 persisted or external data rather than constructed locally).
 
+Per-mode behavior chosen by booleans derived from one union (`isExchange
+= mode === 'exchange'`, `isSplit = mode === 'split'`, plus an override
+flag such as `converting`) goes into ONE typed table
+`Record<ActiveMode, Behavior>`, keyed by a resolved union value (resolve
+the override first: `converting ? 'converting' : mode`) — not parallel
+`if`-chains over the `isX` booleans. A new mode is then a compile error
+in one table. See `MODE_BEHAVIOR` in
+`src/screens/forms/transaction-form/transaction-form.screen.tsx`; this
+closes the open note of finding U5 in
+`docs/reviews/2026-09-codebase-review.md` that this section did not cover
+booleans derived from a union. A judgment rule, not mechanized.
+
 The set itself needs exactly one source of truth. Derive the literal
 union type from a `const` tuple, instead of hand-maintaining a union
 type and a separate `Set` literal that can drift apart:
