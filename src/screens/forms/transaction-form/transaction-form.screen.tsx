@@ -1772,9 +1772,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [mode, setMode] = useState<FormMode>('expense');
   const isExchange = mode === 'exchange';
   const isSplit = mode === 'split';
-  // The scroll-mode ScrollView's ref and content-height callback go to `Screen`;
-  // `scrollTo` brings a split return that was just added, or the field a blocked
-  // Save names, into view.
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   // Per-field wrapper refs, one per validated field, passed to `scrollTo`
   // in `save`'s blocked path below — each field's own inline error (a

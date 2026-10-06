@@ -4323,6 +4323,7 @@ describe('TransactionFormScreen — what the scroll is handed', () => {
     expect(focus).not.toHaveBeenCalled();
     amountSettled();
     expect(focus).toHaveBeenCalledTimes(1);
+    expect(focus.mock.contexts[0].props.accessibilityLabel).toBe('Amount');
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
     scrollToFieldMock.mockClear();

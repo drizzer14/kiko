@@ -19,10 +19,9 @@ import type { AccountsStackParamList } from '../types';
  * (`node_modules/@react-navigation/routers/src/StackRouter.tsx`'s `NAVIGATE`
  * case) — it does NOT pop back to an earlier instance the way React
  * Navigation 6 did. `useImportResultSheet`'s `onClosed` (shared by both import
- * screens) and both `HoldingFormScreen` `returnTo` branches used to call plain
- * `navigate` for
- * exactly this "return to an already-on-stack screen" case, which pushed a
- * duplicate instead of reusing the existing one — the fix is `popTo` (this
+ * screens) and both `HoldingFormScreen` `returnTo` branches return to a screen
+ * already on the stack, so they call `popTo`; `navigate` would push a
+ * duplicate instead of reusing the existing one (this
  * file exercises production's own `.popTo(name, params, { merge: true })`
  * shape against the REAL `@react-navigation/routers` `StackRouter`, not a
  * `navigationSpy`, because — per the reviewer's own repro — "a spy cannot
