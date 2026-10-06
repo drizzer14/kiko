@@ -354,8 +354,7 @@ rows stay on top"):* a back-dated MANUAL row dated on or before a closing
 balance's as-of moves the balance when written, and importing a statement with
 that closing (`asOf >= boundary`) keeps it on top of the bank figure, as it
 keeps a row of any source dated after the as-of (`postClosingRowsWhere`:
-`time > asOf`, or `source = 'manual'` and `time <= asOf`, never a `setsBalance`
-row, so a row at the as-of counts once). Example: closing 10,000 as of Oct 1 and
+`time > asOf` or `source = 'manual'`, never a `setsBalance` row). Example: closing 10,000 as of Oct 1 and
 a manual -1,000 dated Sep 20 give 9,000; the same statement again keeps 9,000, a
 newer closing keeps the row on top, and deleting the row gives 10,000. The
 preview line says "plus entries not in this statement" whenever the result

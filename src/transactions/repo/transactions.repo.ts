@@ -1366,17 +1366,12 @@ export const bankOwnedTransactionSetWhere = sql.join(
 // it. A row counts on top of a closing balance when it is dated after the as-of
 // (any source), or when it is MANUAL and dated on or before it: the bank figure
 // holds the bank's own rows, never a manual entry, so a closing never absorbs
-// one. A row exactly AT the as-of is a manual one only, so each row falls in one
-// half and counts once. A row that set a balance never counts: its amount is
-// part of the balance a hand edit or an opening set, which a closing balance
-// replaces outright, so a row re-dated past the as-of would count twice.
+// one. A row that set a balance never counts: its amount is part of the balance
+// a hand edit or an opening set, which a closing balance replaces outright.
 export const postClosingRowsWhere = (holdingId: string, asOfMilliseconds: number) =>
   and(
     eq(transactions.holdingId, holdingId),
-    or(
-      gt(transactions.time, asOfMilliseconds),
-      and(eq(transactions.source, 'manual'), lte(transactions.time, asOfMilliseconds)),
-    ),
+    or(gt(transactions.time, asOfMilliseconds), eq(transactions.source, 'manual')),
     eq(transactions.setsBalance, false),
   );
 
@@ -2687,9 +2682,9 @@ export const transactionsRepo = {
    * this statement's own rows are the WHOLE history) this is exact: nothing
    * is left unaccounted for.
    * For a holding with pre-existing history, `D` silently absorbs whatever
-   * happened before this statement's own coverage started — a prior manual
-   * entry error, an out-of-band transfer, or a real gap this particular
-   * statement predates — the resulting balance is correct as of
+   * happened before this statement's own coverage started — an out-of-band
+   * transfer, or a real gap this particular statement predates (never a
+   * manual row, which stays on top) — the resulting balance is correct as of
    * `asOfSeconds`, but the SIZE of `D` is never surfaced anywhere. A
    * history-only import (rows before the boundary, inserted at 0) leaves the
    * same kind of untracked adjustment one level down: `createHoldingValuer`
