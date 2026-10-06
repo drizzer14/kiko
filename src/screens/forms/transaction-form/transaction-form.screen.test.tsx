@@ -11,9 +11,8 @@ import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
-import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
-import { glyphTintsWithin } from '@kiko/test-support/glyph-tints-within';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';

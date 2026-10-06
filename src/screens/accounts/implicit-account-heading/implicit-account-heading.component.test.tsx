@@ -5,8 +5,8 @@ import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { accountKindSymbol } from '@kiko/holdings/entity-symbols';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { glyphNamesWithin } from '@kiko/test-support/glyphs-within';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
-import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import ImplicitAccountHeading from '.';

@@ -4,7 +4,7 @@ import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
 import type { LoanKind } from '@kiko/holdings/holding-metadata';
-import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
+import { glyphNamesWithin } from '@kiko/test-support/glyphs-within';
 
 import LoanKindField from './loan-kind-field.component';
 

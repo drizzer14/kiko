@@ -3,7 +3,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
-import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
+import { glyphNamesWithin } from '@kiko/test-support/glyphs-within';
 
 import PropertyTypeField from './property-type-field.component';
 

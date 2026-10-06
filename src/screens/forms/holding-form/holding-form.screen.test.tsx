@@ -20,12 +20,11 @@ import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
-import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
-import { glyphTintsWithin } from '@kiko/test-support/glyph-tints-within';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
+import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';

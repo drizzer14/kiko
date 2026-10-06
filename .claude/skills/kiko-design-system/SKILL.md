@@ -977,8 +977,8 @@ new component can land between reviews of this skill:
   at describe or file level, never inside a test or a hook (Jest rejects a
   hook defined there): it registers its own beforeEach spy and afterEach
   restore, so a caller has nothing to restore and cannot leak the spy into a
-  later test. Read a row's SF Symbols in a test with `glyphNamesWithin`
-  (`src/test-support/glyph-names-within.ts`). `AccountKindField` and
+  later test. Read a row's SF Symbols in a test with `glyphNamesWithin` and
+  `glyphTintsWithin` (`src/test-support/glyphs-within.ts`). `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`

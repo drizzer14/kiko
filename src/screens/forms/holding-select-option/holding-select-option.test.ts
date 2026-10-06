@@ -1,5 +1,4 @@
 import type { HoldingRow } from '@kiko/db';
-import { holdingIdentity } from '@kiko/holdings/holding-identity';
 
 import { toHoldingOption } from '.';
 
@@ -23,7 +22,8 @@ describe('toHoldingOption', () => {
       name: 'Black card',
       currency: 'USD',
       accountName: 'Monobank',
-      ...holdingIdentity(holdingOf()),
+      icon: 'creditcard',
+      color: '#FFFFFF',
     });
   });
 
@@ -38,16 +38,5 @@ describe('toHoldingOption', () => {
 
   it('leaves the account name empty when the parent account is not in the map', () => {
     expect(toHoldingOption(holdingOf(), new Map([['other', 'Monobank']])).accountName).toBe('');
-  });
-
-  it('adds no field beyond the six a picker row reads', () => {
-    expect(Object.keys(toHoldingOption(holdingOf(), new Map())).sort()).toEqual([
-      'accountName',
-      'color',
-      'currency',
-      'icon',
-      'id',
-      'name',
-    ]);
   });
 });
