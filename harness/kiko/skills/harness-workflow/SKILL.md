@@ -423,8 +423,12 @@ average (`sysctl -n vm.loadavg`) is below 10: wait first with
 `bash scripts/wait-load.sh 10` (run it in the background and wait on its
 exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an
 optional second argument, passes first, 3 when it cannot read the load,
-64 for a bad argument; it prints one start line and nothing else, and
-never uses `pgrep`); at most ONE jest-heavy agent per track; Semgrep or jest
+64 for a bad argument; it prints one start line and nothing else).
+Every load or "is verify still running" wait goes ONLY through
+`bash scripts/wait-load.sh <max>` (background, exit code; main checkout path
+when the worktree lacks it). Never write a loop that greps ps/pgrep output for
+make verify, check:all, jest or stryker: the loop's own command line contains
+the pattern and it matches itself (three times so far). At most ONE jest-heavy agent per track; Semgrep or jest
 timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
 

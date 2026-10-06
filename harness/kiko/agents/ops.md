@@ -38,3 +38,4 @@ Rules:
   background and wait only for its exit code; past 30 minutes on one step, report
   "still running: <step>, <elapsed>" instead of going quiet. Lead with pass/fail and
   the exit code, then the command and output.
+- Wait for load only via scripts/wait-load.sh; never a ps/pgrep grep loop.
