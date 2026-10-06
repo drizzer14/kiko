@@ -40,6 +40,7 @@ import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
+import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
@@ -106,14 +107,7 @@ const buildPaymentHoldingOptions = (
         candidate.currency === loanCurrency &&
         !isLedgerlessHoldingType(candidate.type),
     )
-    .map((candidate) => ({
-      id: candidate.id,
-      name: candidate.name,
-      icon: candidate.icon ?? defaultHoldingSymbol(candidate),
-      color: resolveEntityColor(candidate.color, defaultHoldingColor[candidate.type]),
-      currency: candidate.currency,
-      accountName: accountNameById.get(candidate.accountId) ?? '',
-    }));
+    .map((candidate) => toHoldingOption(candidate, accountNameById));
 
   if (selectedHoldingId === null || openOptions.some((option) => option.id === selectedHoldingId)) {
     return openOptions;
@@ -125,17 +119,7 @@ const buildPaymentHoldingOptions = (
     return openOptions;
   }
 
-  return [
-    ...openOptions,
-    {
-      id: selectedHolding.id,
-      name: selectedHolding.name,
-      icon: selectedHolding.icon ?? defaultHoldingSymbol(selectedHolding),
-      color: resolveEntityColor(selectedHolding.color, defaultHoldingColor[selectedHolding.type]),
-      currency: selectedHolding.currency,
-      accountName: accountNameById.get(selectedHolding.accountId) ?? '',
-    },
-  ];
+  return [...openOptions, toHoldingOption(selectedHolding, accountNameById)];
 };
 
 // Which field fills the Type slot. A `property` account's only type IS its

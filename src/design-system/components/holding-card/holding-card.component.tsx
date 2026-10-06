@@ -14,10 +14,8 @@ import { holdingValue } from '@kiko/holdings/holding-value';
 import { ownershipShareText } from '@kiko/holdings/ownership';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import MoneyText from '@kiko/design-system/components/money-text';
-import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
-import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
+import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import { holdingTypeLabel } from '@kiko/holdings/holding-type-label';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 
@@ -43,7 +41,7 @@ const HoldingCard: FC<{
   onOpen: () => void;
 }> = ({ holding, now, baseCurrency, rateTable, priceBook, onOpen }) => {
   const { t } = useTranslation();
-  const color = resolveEntityColor(holding.color, defaultHoldingColor[holding.type]);
+  const { icon, color } = holdingIdentity(holding);
   const value = holdingValue(holding, now, priceBook);
   const typeLabel = holdingTypeLabel(holding, t);
   // A property owned in part reads its owned value as the main line, and the
@@ -62,11 +60,7 @@ const HoldingCard: FC<{
     <Card testID="holding-card" padding={4}>
       <Pressable accessibilityRole="button" onPress={onOpen} style={styles.row}>
         <Box direction="row" gap={3} style={styles.rowLead}>
-          <EntityIconTile
-            name={holding.icon ?? defaultHoldingSymbol(holding)}
-            color={color}
-            accessibilityLabel={`${holding.name} icon`}
-          />
+          <EntityIconTile name={icon} color={color} accessibilityLabel={`${holding.name} icon`} />
           <Box gap={1} style={styles.rowDescription}>
             <Text variant="body">{holding.name}</Text>
 

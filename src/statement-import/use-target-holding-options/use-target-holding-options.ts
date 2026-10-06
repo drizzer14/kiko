@@ -3,9 +3,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { isSyncedAccount } from '@kiko/holdings/deletable';
-import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
-import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { TargetHoldingOption } from '@kiko/design-system/components/target-holding-sheet';
 
@@ -53,8 +51,7 @@ export const useTargetHoldingOptions = (accountId: string): TargetHoldingOptions
       name: holding.name,
       accountId: holding.accountId,
       accountName: accountById.get(holding.accountId)?.name ?? '',
-      icon: holding.icon ?? defaultHoldingSymbol(holding),
-      color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
+      ...holdingIdentity(holding),
     }));
 
   return { options, isLoading: holdingsLoading || accountsLoading };

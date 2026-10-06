@@ -56,12 +56,9 @@ import ExchangeFields from '@kiko/screens/forms/exchange-fields';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
-import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldError from '@kiko/design-system/components/field-error';
 import type { TransactionFormParams } from '@kiko/navigation/types';
-import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
@@ -70,6 +67,7 @@ import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
+import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import ConvertExchangeFields from '@kiko/screens/forms/convert-exchange-fields';
@@ -687,17 +685,7 @@ const buildLoanOptions = (
     return openOptions;
   }
 
-  return [
-    ...openOptions,
-    {
-      id: selectedHolding.id,
-      name: selectedHolding.name,
-      icon: selectedHolding.icon ?? defaultHoldingSymbol(selectedHolding),
-      color: resolveEntityColor(selectedHolding.color, defaultHoldingColor[selectedHolding.type]),
-      currency: selectedHolding.currency,
-      accountName: accountNameById.get(selectedHolding.accountId) ?? '',
-    },
-  ];
+  return [...openOptions, toHoldingOption(selectedHolding, accountNameById)];
 };
 
 // Order two holdings the way the Accounts screen shows them: primary by
@@ -750,14 +738,7 @@ const buildExchangeOptions = (
         isEligibleType(candidate.type),
     )
     .sort((first, second) => compareByAccountThenHolding(first, second, accountOrderById))
-    .map((candidate) => ({
-      id: candidate.id,
-      name: candidate.name,
-      icon: candidate.icon ?? defaultHoldingSymbol(candidate),
-      color: resolveEntityColor(candidate.color, defaultHoldingColor[candidate.type]),
-      currency: candidate.currency,
-      accountName: accountNameById.get(candidate.accountId) ?? '',
-    }));
+    .map((candidate) => toHoldingOption(candidate, accountNameById));
 };
 
 // Whether a holding TYPE takes a plain manual transaction — the same gate

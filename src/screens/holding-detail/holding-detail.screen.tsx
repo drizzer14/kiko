@@ -4,11 +4,6 @@ import {
   isDeletableTransaction,
 } from '@kiko/holdings/deletable';
 import { match } from 'ts-pattern';
-import {
-  defaultHoldingSymbol,
-  genericEntitySymbol,
-  holdingTypeSymbol,
-} from '@kiko/holdings/entity-symbols';
 import type { TFunction } from 'i18next';
 import {
   holdsOnlyDebts,
@@ -56,11 +51,10 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
 import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
 import { buildRateTable, canConvert } from '@kiko/rates/net-worth-view';
@@ -76,6 +70,7 @@ import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon'
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
+import { genericEntitySymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/money-text';
 import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
@@ -94,19 +89,6 @@ import LotRowMenu, { type LotActions } from './lot-row-menu';
 import { useBondRegisterTerms } from './use-bond-register-terms';
 
 type HoldingDetailScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingDetail'>;
-
-// The holding's display identity for the view-only header: its stored icon (or
-// the type default), and its effective color resolved through the SAME
-// `resolveEntityColor` the holding card uses — so the identity color on the card
-// and on this header can never diverge. A bare `color ?? default` here let an
-// empty-string stored color (neither null nor undefined) through, tinting the
-// header with an invalid empty color while the card showed the type default.
-// Extracted so the fallbacks don't count against the screen component's
-// cognitive-complexity budget.
-const holdingIdentity = (holding: HoldingRow): { icon: string; color: string } => ({
-  icon: holding.icon ?? defaultHoldingSymbol(holding),
-  color: resolveEntityColor(holding.color, defaultHoldingColor[holding.type]),
-});
 
 const isZero = (minorUnits: number): boolean => minorUnits === 0;
 
