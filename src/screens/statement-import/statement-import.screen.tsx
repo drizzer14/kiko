@@ -267,9 +267,9 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
   );
   const expectedFormat = expectedFormatOf(expectedFormatId);
   // Scoped recognition — see `formatFor`'s doc comment above for the full rule.
-  const format = formatFor(input, expectedFormat);
+  const format = useMemo(() => formatFor(input, expectedFormat), [input, expectedFormat]);
   const parsed = useMemo(() => parsedFor(format, input), [format, input]);
-  const stats = statsFor(format, parsed);
+  const stats = useMemo(() => statsFor(format, parsed), [format, parsed]);
   const balancePreview = useImportBalancePreview(parsed, selectedHoldingId);
   const bankMismatch = input !== undefined && expectedFormat !== undefined && format === undefined;
 

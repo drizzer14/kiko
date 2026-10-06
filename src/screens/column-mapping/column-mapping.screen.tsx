@@ -780,9 +780,10 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     [rows, mapping],
   );
   const balancePreview = useImportBalancePreview(applyResult?.statement, selectedHoldingId);
-  const stats: PreviewStats | undefined = applyResult
-    ? previewStats(applyResult.statement, t('columnMapping.title'))
-    : undefined;
+  const stats: PreviewStats | undefined = useMemo(
+    () => (applyResult ? previewStats(applyResult.statement, t('columnMapping.title')) : undefined),
+    [applyResult, t],
+  );
   const loadMessageKey = loadStateMessageKey(loadState.kind);
   // A required column/date-format is still unset — the Result block's own
   // `columnMapping.incomplete` hint gate (see `MappingResult`'s own `stats`

@@ -11,8 +11,9 @@ import type {
   StatementFormatInput,
 } from '@kiko/statement-import/parser';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
-import { supportedFormatNames } from '@kiko/statement-import/registry';
+import { previewStats } from '@kiko/statement-import/preview-stats';
 import { headerFingerprint } from '@kiko/statement-import/column-mapping';
+import { statementFormats, supportedFormatNames } from '@kiko/statement-import/registry';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import StatementImportScreen from './statement-import.screen';
@@ -220,9 +221,20 @@ jest.mock('@kiko/statement-import/registry', () => {
         return sensebankFormatStub.detect(input) ? sensebankFormatStub : undefined;
       }
 
+      mockDetectFormat(input);
+
       return actual.detectFormat(input);
     },
   };
+});
+
+// Counts the real, cross-format `detectFormat` calls (the sentinel files above do not reach it).
+const mockDetectFormat = jest.fn();
+// A pass-through, so a test can count how often the screen recomputes the preview stats.
+jest.mock('@kiko/statement-import/preview-stats', () => {
+  const actual = jest.requireActual('@kiko/statement-import/preview-stats');
+
+  return { ...actual, previewStats: jest.fn(actual.previewStats) };
 });
 
 // The target-holding picker has its own dedicated test file
@@ -1635,5 +1647,86 @@ describe('StatementImportScreen — the balance preview', () => {
     await fireEvent.press(view.getByText(i18n.t('statementImport.importButton')));
 
     expect(new Set(callsWithHolding('h1').map(([statement]) => statement)).size).toBe(1);
+  });
+});
+
+describe('StatementImportScreen — the derived format and stats', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseImportBalancePreview.mockReturnValue(undefined);
+    setLiveData({});
+    mockReadFile.mockResolvedValue(fixtureBase64);
+  });
+
+  it('does not detect the format again on a re-render that changes nothing it depends on', async () => {
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    const detectCallsBefore = mockDetectFormat.mock.calls.length;
+
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+
+    expect(detectCallsBefore).toBeGreaterThan(0);
+    expect(mockDetectFormat).toHaveBeenCalledTimes(detectCallsBefore);
+  });
+
+  it('does not recompute the stats on a re-render that changes nothing they depend on', async () => {
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    const statsCallsBefore = jest.mocked(previewStats).mock.calls.length;
+
+    await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+
+    expect(statsCallsBefore).toBeGreaterThan(0);
+    expect(jest.mocked(previewStats)).toHaveBeenCalledTimes(statsCallsBefore);
+  });
+
+  it('does not run the expected format detect again on such a re-render', async () => {
+    const expectedFormat = statementFormats.find((format) => format.id === 'monobank-csv');
+    const detectSpy = jest.spyOn(expectedFormat as StatementFormat, 'detect');
+
+    try {
+      const view = await renderScreen({
+        filePath: '/mock/statement.csv',
+        accountId: 'a',
+        expectedFormatId: 'monobank-csv',
+      });
+      await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+      const detectCallsBefore = detectSpy.mock.calls.length;
+
+      await fireEvent.press(view.getByTestId('mock-select-holding-h1'));
+
+      expect(detectCallsBefore).toBeGreaterThan(0);
+      expect(detectSpy).toHaveBeenCalledTimes(detectCallsBefore);
+    } finally {
+      detectSpy.mockRestore();
+    }
+  });
+
+  it('detects the format and recomputes the stats again when a different file loads', async () => {
+    const view = await renderScreen({ filePath: '/mock/statement.csv', accountId: 'a' });
+    await waitFor(() => expect(view.getByText('Monobank (CSV)')).toBeTruthy());
+
+    const detectCallsBefore = mockDetectFormat.mock.calls.length;
+    const statsCallsBefore = jest.mocked(previewStats).mock.calls.length;
+
+    mockReadFile.mockResolvedValue(Buffer.from(`${fixtureText}\n`, 'utf-8').toString('base64'));
+    await view.rerender(
+      <StatementImportScreen
+        route={asRouteProp<StatementImportProps['route']>('StatementImport', {
+          filePath: '/mock/other.csv',
+          accountId: 'a',
+        })}
+        navigation={asNavigationProp<StatementImportProps['navigation']>(view.navigation)}
+      />,
+    );
+    await waitFor(() =>
+      expect(jest.mocked(previewStats).mock.calls.length).toBeGreaterThan(statsCallsBefore),
+    );
+
+    // The load effect's own detect plus the screen's recognition of the new input.
+    expect(mockDetectFormat.mock.calls.length - detectCallsBefore).toBeGreaterThanOrEqual(2);
   });
 });
