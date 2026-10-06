@@ -261,6 +261,14 @@ project-level pointer to this section.
   `drizzle/migrations/0049-bank-accounts-other-bank.test.ts`,
   `drizzle/migrations/0051-monobank-accounts-bank-id.test.ts` and
   `src/data-transfer/snapshot/restore-bank-other.two-path.test.ts`.
+  **Wording note (the `0049` header comment is shipped and must not be
+  edited, so the correction lives here):** a bank account stored with
+  `bank_id = 'other'` ("Other bank") cannot be connected later, whether it
+  was never connected or is a pre-`0051` ex-Monobank account that was
+  disconnected before `0051` ran. The bank is chosen at create time and the
+  field is locked afterwards (`account-form.screen.tsx`); Connect exists
+  only for a provider bank. Any 0049 header wording that suggests an
+  Other-bank account can be connected afterwards is wrong.
 - **A uniqueness rule a merge must satisfy first is data merge, then
   partial unique index, in ONE migration.** `0050_implicit_property_debt_accounts`
   (its own header comment states the merge rule; for name/icon/color see
@@ -1661,6 +1669,13 @@ than restated here:
   match-by-key) and simply re-walks from the floor. Connecting a DIFFERENT
   Binance account afterward walks its own history from the floor instead
   of inheriting a stale, forward watermark.
+- **A BTC wallet re-sync fetches every OPEN holding's stored address.**
+  `bitcoinWalletProvider` (`src/crypto-sync/btc-wallet/`) syncs the Connect
+  address first, then each open holding's stored address (a closed holding's
+  address is never sent to the explorer), one request at a time, all-or-nothing:
+  the first failure throws and the orchestrator upserts nothing. A wallet
+  whose stored addresses are all closed re-syncs nothing (an empty result,
+  not an error); only a wallet that never stored an address throws.
 - **The lagging-history caption.** `isBinanceHistoryBehind` /
   `historyCursorOf` (`screens/account-detail/crypto-sync-section/binance-history-status.ts`)
   derive purely from the account's own `holdings` (already a screen prop —
@@ -2221,9 +2236,22 @@ what a change must keep.
   (`ios/Kiko/Reminders/KikoNotificationDelegate.swift`,
   `requestsReplacedBySnooze`) rebuilds the first two to remove the regular
   request at the snooze minute and the paused notice, and `tomorrow`
-  builds its day on `Calendar(identifier: .gregorian)` (time zone =
-  current), never `Calendar.current`, so its stamp equals `fireStamp`
-  under any device calendar. Change the format on both sides together.
+  builds its day on `Calendar.gregorian` (`KikoRemindersCenter.swift`:
+  `Calendar(identifier: .gregorian)`, time zone = autoupdatingCurrent),
+  never `Calendar.current`, so its stamp equals `fireStamp` under any
+  device calendar; it returns that Gregorian `LocalDateTime`, and
+  `requestsReplacedBySnooze` reads it. Every `UNCalendarNotificationTrigger`
+  takes `.floatingDateComponents` (`KikoRemindersCenter.swift`): the
+  Gregorian DAY built into a noon Date and converted with
+  `Calendar.current.dateComponents([.era, .year, .month, .day]`; the planned
+  hour and minute pass through unchanged (a DST gap would shift a Date
+  built at 03:30 to 04:30, away from the JS stamp). The components go over
+  with NO `calendar:` and NO `timeZone:`. The trigger reads components in the
+  device calendar, so a Buddhist or Japanese device needs that conversion;
+  a `Calendar` on the components is banned, since it always carries a zone,
+  the trigger is archived with it, and the reminder would stop floating
+  with the device zone. `__tests__/reminders-gregorian-calendar.test.ts`
+  pins it. Change the format on both sides together.
   `replaceRequests` also removes every DELIVERED notification in the
   `kiko.reminder` category (a regular reminder or a snooze) whose
   reminder has no planned request and no kept snooze
@@ -2378,6 +2406,15 @@ logic use the `UIWindowSceneDelegate` equivalents (`sceneWillResignActive`,
 `ios27-crash-uiscene-lifecycle-gap` and `scene-lifecycle-appdelegate-window-crash`
 in memory for the crash history this fixed.
 
+- **The stored URL cache is purged once, in `AppDelegate`.**
+  `purgeStoredURLCacheOnce()` (called from
+  `application(_:didFinishLaunchingWithOptions:)`) calls
+  `URLCache.shared.removeAllCachedResponses()` behind a `UserDefaults`
+  once-key that it writes only AFTER the purge, so an interrupted launch
+  retries. The key is in `UserDefaults`, not a `settings` column, because
+  Kiko's snapshot import restores the settings row: an imported export
+  must not mark the purge done on a device whose cache still holds rows. Pinned by code shape in
+  `__tests__/url-cache-purge.test.ts`.
 - **The notification delegate is set in `AppDelegate`.**
   `UNUserNotificationCenter.current().delegate = KikoNotificationDelegate.shared`
   must stay in `application(_:didFinishLaunchingWithOptions:)`, before

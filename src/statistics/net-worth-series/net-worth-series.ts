@@ -89,13 +89,22 @@ const bondRecognitionsFor = (
  *   weekends/holidays forward), backstopped by each pair's EARLIEST stored row
  *   (`earliestRateTable`) so buckets before a pair's first history day still
  *   value foreign holdings instead of silently dropping them, which is in turn
- *   backstopped by the bundled static `FIAT_RATE_SEED_TABLE` so a fiat
- *   currency with NO history row at all yet (the backfill only fetches the
- *   currencies actually used) never drops a holding out of a past bucket —
- *   precedence, weakest first: seed < earliest < at-or-before < live today;
+ *   backstopped by the live `rateTable` (a currency with NO history row at all,
+ *   such as a crypto holding, is valued flat at today's rate in every past
+ *   bucket, so the line has no step at its right edge) and then by the bundled
+ *   static `FIAT_RATE_SEED_TABLE` so a fiat currency with no history row and
+ *   no live rate yet (the backfill only fetches the currencies actually used)
+ *   never drops a holding out of a past bucket — precedence, weakest first:
+ *   seed < live < earliest < at-or-before, then live on top for today;
  * - the CURRENT-day bucket(s) are valued at the live `rateTable` when supplied,
  *   so the line's rightmost "now" point matches the headline / bar / pie, which
  *   use the same live (monobank BUY) rates rather than the day's NBU official one.
+ *
+ * Known limits: a currency missing from history AND the live table
+ * (a failed all-or-nothing crypto fetch, or a closed crypto holding with no
+ * stored rate) drops out of every bucket, today's included, so the line agrees
+ * with the headline; a past bucket of a currency with no history moves when its
+ * live rate moves.
  *
  * Holdings with no rate for their currency at `t` are skipped (guarded), never
  * crashing the sum.
@@ -196,11 +205,16 @@ export const buildNetWorthSeries = (input: {
     const dayKey = dayKeyOf(t);
     // Precedence, weakest first: the bundled static seed (covers every fiat
     // currency, so one with no history row yet never drops a holding out of
-    // a past bucket), then each pair's earliest stored row (backfills before
-    // its own first history day), then the day's own nearest-at-or-before
-    // row — a real historical rate always wins over the flat seed.
+    // a past bucket), then the live table (prices a currency with no stored
+    // history at all — a crypto holding, or a fiat the seed only roughly
+    // knows — flat at today's rate instead of dropping it from every past
+    // bucket and stepping up at today), then each pair's earliest stored row
+    // (backfills before its own first history day), then the day's own
+    // nearest-at-or-before row — a real historical rate always wins over both
+    // the flat seed and the live rate.
     const historical = {
       ...FIAT_RATE_SEED_TABLE,
+      ...liveRateTable,
       ...earliest,
       ...rateTableAt(historyRows, dayKey),
     };

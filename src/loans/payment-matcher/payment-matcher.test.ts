@@ -158,6 +158,25 @@ describe('matchLoanPayments', () => {
     expect(matches).toHaveLength(1);
   });
 
+  // The installment is 1,000.00 UAH, so 1% (10.00) is the tolerance.
+  it.each([
+    [1_000, 1],
+    [1_001, 0],
+    [-1_000, 1],
+    [-1_001, 0],
+  ])('links an amount %i minor units off the installment: %i match(es)', (offset, expected) => {
+    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
+    const transaction = baseTransaction({
+      holdingId: 'payer-1',
+      amountMinorUnits: -(firstInstallment.paymentMinorUnits + offset),
+      time: firstInstallment.dueDate,
+    });
+
+    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+
+    expect(matches).toHaveLength(expected);
+  });
+
   it('does not link a transaction more than 7 days after the due date', () => {
     const loan = loanHolding({ paymentHoldingId: 'payer-1' });
     const transaction = baseTransaction({

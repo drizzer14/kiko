@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
@@ -51,6 +51,20 @@ describe('ConvertExchangeFields', () => {
 
     expect(getByText('Value Out')).toBeTruthy();
     expect(getByDisplayValue('1,000.00')).toBeTruthy();
+  });
+
+  it('keeps the fixed leg read-only', async () => {
+    const { getByDisplayValue } = await render(<ConvertExchangeFields {...baseProps} />);
+
+    expect(getByDisplayValue('1,000.00').props.editable).toBe(false);
+  });
+
+  it('shows the catalogue placeholder in the counterpart amount field', async () => {
+    const { getByLabelText } = await render(<ConvertExchangeFields {...baseProps} />);
+
+    expect(getByLabelText('Value In').props.placeholder).toBe(
+      i18n.t('forms.transaction.convertAmountPlaceholder'),
+    );
   });
 
   it('shows the fixed and counterpart legs each their own currency glyph', async () => {
@@ -123,6 +137,17 @@ describe('ConvertExchangeFields', () => {
     // gap TextField's own `Box gap={1}` already gives its error line.
     const errorGroup = getByText('Select a counterpart account.').parent?.parent;
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
+  });
+
+  it('caps the Date calendar at the day of maxDate', async () => {
+    const maxDate = new Date(2026, 9, 5, 10, 30).getTime();
+    const { getByLabelText, getByTestId } = await render(
+      <ConvertExchangeFields {...baseProps} maxDate={maxDate} />,
+    );
+
+    await fireEvent.press(getByLabelText('Date'));
+
+    expect(getByTestId('Date calendar').props.maxDate).toBe('2026-10-05');
   });
 
   it('applies counterpartAmountError to the counterpart amount field', async () => {

@@ -15,6 +15,10 @@ if ! plutil -lint "$PLIST" >/dev/null 2>&1; then
   add_problem "$PLIST is not a valid property list ($(plutil -lint "$PLIST" 2>&1))"
 fi
 
+# The credential-bearing clients, listed once so checks 1 and 1b always agree on
+# the marker set: a marker added here reaches both.
+credential_files="$(grep -rlE "'(X-Token|X-MBX-APIKEY|Authorization)'|'[Aa]pi[-_]?[Kk]ey'|(^|[^A-Za-z0-9_])api_token([^A-Za-z0-9_]|$)" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')"
+
 # --- 1. Every credential-bearing host must be pinned (H3) ---------------------
 # A client that sends a credential header (X-Token, X-MBX-APIKEY, Authorization,
 # or an api-key-ish header) or a credential query parameter (the bare word
@@ -74,7 +78,7 @@ while IFS= read -r file; do
 $env_names
 EOF
 done <<EOF
-$(grep -rlE "'(X-Token|X-MBX-APIKEY|Authorization)'|'[Aa]pi[-_]?[Kk]ey'|(^|[^A-Za-z0-9_])api_token([^A-Za-z0-9_]|$)" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')
+$credential_files
 EOF
 
 # Every pinned domain must carry at least two SPKI pins (reinforces Task 7/H3).
@@ -98,22 +102,25 @@ if [ -n "$thin_pins" ]; then
   add_problem "domain(s) with fewer than 2 NSPinnedCAIdentities entries in ios/Kiko/Info.plist: $thin_pins — a single pin cannot be rotated without an outage; add a backup pin"
 fi
 
-# --- 1b. A credential in the URL must not be cacheable -----------------------
-# An api_token query parameter is part of the request URL, and NSURLCache keys
-# its Cache.db entries by URL, so a response the server lets a cache keep
-# (`no-cache, private` is one) writes the key to disk. Pinning does not
-# help there. Such a client must send the `Cache-Control: no-store` request
-# header, as an object key (`'Cache-Control': 'no-store'`) or a Headers call
+# --- 1b. A credential must not be cacheable ----------------------------------
+# NSURLCache keys its Cache.db entries by URL and stores the whole request
+# object, headers included. So an api_token query parameter lands in the stored
+# URL (a response the server lets a cache keep, `no-cache, private` among them,
+# writes the key to disk), and a credential header (X-Token, X-MBX-APIKEY,
+# Authorization, an api-key header) lands in the stored request. Pinning helps
+# with neither. Every credential client (check 1's marker set) must send the
+# `Cache-Control: no-store` request header, as an object key
+# (`'Cache-Control': 'no-store'`) or a Headers call
 # (`headers.set('cache-control', 'no-store')`); header names and directives are
 # case-insensitive. File-level, like the marker pass above: a second request in
 # the same file without the header is not caught.
 while IFS= read -r file; do
   [ -n "$file" ] || continue
   if ! grep -qiE "['\"]Cache-Control['\"][[:space:]]*[:,][[:space:]]*['\"][^'\"]*no-store" "$file"; then
-    add_problem "${file#"$ROOT"/} sends a credential as the 'api_token' query parameter but no 'Cache-Control: no-store' request header — the key is part of the URL, so a cached response writes it to Cache.db; send headers: { 'Cache-Control': 'no-store' } with the request"
+    add_problem "${file#"$ROOT"/} sends a credential (header or 'api_token' query parameter) but no 'Cache-Control: no-store' request header — NSURLCache stores the request URL and headers in Cache.db, so the credential is written to disk; send headers: { 'Cache-Control': 'no-store' } with every request"
   fi
 done <<EOF
-$(grep -rlE "(^|[^A-Za-z0-9_])api_token([^A-Za-z0-9_]|$)" "$ROOT/src" --include='*.ts' | grep -v '\.test\.')
+$credential_files
 EOF
 
 # --- 2. Release ATS hardening (H6) -------------------------------------------
@@ -216,10 +223,10 @@ fi
 if [ -n "$problems" ]; then
   print_block \
     "iOS Info.plist assertions" \
-    "The shipped Info.plist, an api_token client's request headers, its localized name tables, or the privacy manifest do not satisfy the project's invariants." \
+    "The shipped Info.plist, a credential client's request headers, its localized name tables, or the privacy manifest do not satisfy the project's invariants." \
     "$problems" \
-    "The plist is the app's ATS, pinning, and privacy-declaration policy. An unpinned credential-bearing host can be MITM'd by any device-trusted CA (an MDM or coerced configuration profile), which reads the credential and the response; an api_token URL without a Cache-Control: no-store request header lets NSURLCache write the key to Cache.db; a single-pin domain cannot survive a certificate rotation without an outage; NSAllowsLocalNetworking in a Release build exempts .local/loopback from ATS in the shipped binary; an empty NS*UsageDescription is an App Store review rejection trigger; a missing or unwired InfoPlist.strings shows one language's home-screen name to every user; an undeclared required-reason API draws ITMS-91053 on upload. See docs/security/README.md." \
-    "Fix ios/Kiko/Info.plist (and docs/security/README.md's host table), add the Cache-Control: no-store header to the named api_token client, or fix ios/Kiko/<language>.lproj/InfoPlist.strings and its project wiring, or ios/Kiko/PrivacyInfo.xcprivacy. Re-run: npm run check:plist" \
+    "The plist is the app's ATS, pinning, and privacy-declaration policy. An unpinned credential-bearing host can be MITM'd by any device-trusted CA (an MDM or coerced configuration profile), which reads the credential and the response; a credential (URL parameter or header) without a Cache-Control: no-store request header lets NSURLCache write it to Cache.db; a single-pin domain cannot survive a certificate rotation without an outage; NSAllowsLocalNetworking in a Release build exempts .local/loopback from ATS in the shipped binary; an empty NS*UsageDescription is an App Store review rejection trigger; a missing or unwired InfoPlist.strings shows one language's home-screen name to every user; an undeclared required-reason API draws ITMS-91053 on upload. See docs/security/README.md." \
+    "Fix ios/Kiko/Info.plist (and docs/security/README.md's host table), add the Cache-Control: no-store header to the named credential client, or fix ios/Kiko/<language>.lproj/InfoPlist.strings and its project wiring, or ios/Kiko/PrivacyInfo.xcprivacy. Re-run: npm run check:plist" \
     "Do not delete the assertion or add the host to an ignore list. Pin the host, or stop sending it a credential. Do not satisfy 1b with a comment, an unused constant, or no-cache; keep a required-reason entry while the dependency that links the API ships."
   exit 2
 fi

@@ -1180,6 +1180,9 @@ type FieldGroupProps = {
   isReadOnly: boolean;
   time: number;
   onChangeTime: (timestamp: number) => void;
+  // The latest day the Date calendar offers: today, because a future-dated row
+  // makes Home and the Statistics line disagree until that day arrives.
+  maxDate: number;
   t: TFunction;
   // Per-field validation-failure messages and wrapper refs, threaded straight
   // into `ExchangeFields`/`ConvertExchangeFields`'s own props or onto
@@ -1230,6 +1233,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         counterpartSuffix={props.counterpartSuffix}
         time={props.time}
         onChangeTime={props.onChangeTime}
+        maxDate={props.maxDate}
         counterpartError={props.counterpartError}
         counterpartAmountError={props.counterpartAmountError}
         counterpartFieldRef={props.counterpartFieldRef}
@@ -1252,6 +1256,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         valueInSuffix={props.valueInSuffix}
         time={props.time}
         onChangeTime={props.onChangeTime}
+        maxDate={props.maxDate}
         valueOutError={props.valueOutError}
         destinationError={props.destinationError}
         valueInError={props.valueInError}
@@ -1304,6 +1309,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
           <DateTimeRow
             time={props.time}
             onChangeTime={props.onChangeTime}
+            maxDate={props.maxDate}
             disabled={props.isReadOnly}
             invalid={props.timeError !== undefined}
             dateTestID="transaction-date-field"
@@ -2746,6 +2752,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             isReadOnly,
             time,
             onChangeTime: setTime,
+            maxDate: Date.now(),
             t,
             amountError: fieldError('amount'),
             amountInvalid: isSplitAmountInvalid(saveDisabledParams, attemptedSave),

@@ -394,6 +394,12 @@ supply distinct wording rather than default to the label text. The
 established placeholder copy is "Select a …" for a picker/select
 field.
 
+`DateField` takes an optional `maxDate` (unix ms, capped at the local day
+it falls on): a later day is greyed out and cannot be pressed; omitted,
+every day is pickable. `DateTimeRow`, `ExchangeFields` and
+`ConvertExchangeFields` forward it to their `DateField`. It caps the day
+only. Read `src/screens/forms/date-field/date-field.props.d.ts`.
+
 A picker/select field's error message takes the "No X selected." form
 (Ukrainian: "X не вибрано.") — never a synonym of the placeholder's
 own verb ("choose", "pick"). Read these live keys for the exact

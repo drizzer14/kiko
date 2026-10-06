@@ -128,7 +128,9 @@ const signedRequestPage = async (
     `${BINANCE_API_ENDPOINT}${path}?${query}&signature=${signature}`,
     {
       method,
-      headers: { 'X-MBX-APIKEY': apiKey },
+      // The key header and the signed URL must never reach NSURLCache's
+      // Cache.db.
+      headers: { 'X-MBX-APIKEY': apiKey, 'Cache-Control': 'no-store' },
     },
   );
 

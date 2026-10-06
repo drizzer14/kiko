@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { act, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -93,6 +93,36 @@ describe('ExchangeFields', () => {
     // error line.
     const errorGroup = getByText('Select a destination account.').parent?.parent;
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
+  });
+
+  it('caps the Date calendar at the day of maxDate', async () => {
+    const maxDate = new Date(2026, 9, 5, 10, 30).getTime();
+    const { getByLabelText, getByTestId } = await setup({ maxDate });
+
+    await fireEvent.press(getByLabelText('Date'));
+
+    expect(getByTestId('Date calendar').props.maxDate).toBe('2026-10-05');
+  });
+
+  it('shows the catalogue placeholder in each amount field', async () => {
+    const { getByLabelText } = await setup();
+
+    expect(getByLabelText('Value out').props.placeholder).toBe(
+      i18n.t('forms.transaction.valueOutPlaceholder'),
+    );
+    expect(getByLabelText('Value in').props.placeholder).toBe(
+      i18n.t('forms.transaction.valueInPlaceholder'),
+    );
+  });
+
+  it('titles the destination sheet from the catalogue', async () => {
+    const { getByLabelText, getAllByText } = await setup();
+    const title = i18n.t('forms.transaction.toSheetTitle');
+    const before = getAllByText(title, { includeHiddenElements: true }).length;
+
+    await fireEvent.press(getByLabelText('To'));
+
+    expect(getAllByText(title).length).toBe(before + 1);
   });
 
   it('applies valueInError to the Value in field', async () => {

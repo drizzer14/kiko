@@ -1,3 +1,6 @@
+import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import type { Currency } from '@kiko/currency/currency';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { multiplyToMinorUnits } from '@kiko/currency/decimal';
 import { dayKeyOf, priceAt, type PriceBook } from '@kiko/prices/price-book';
@@ -297,4 +300,74 @@ export const loanInterestPerPaymentMinor = (
   }
 
   return interests;
+};
+
+/**
+ * Whether a bank debit is close enough to an installment's scheduled payment
+ * to be that payment: within the LARGER of 1% or 1.00 (in the loan's own
+ * currency) either side, both bounds inclusive. The auto-link matcher
+ * (`src/loans/payment-matcher/`) and the ledger's excess below read this ONE
+ * function, which lives here because the matcher imports from holdings and
+ * holdings must not import from loans.
+ */
+export const withinInstallmentTolerance = (
+  installmentPaymentMinorUnits: number,
+  paymentAbsMinorUnits: number,
+  currency: Currency,
+): boolean => {
+  const percentTolerance = Math.round(installmentPaymentMinorUnits * 0.01);
+  const floorTolerance = Money.fromMajor(currency, 1).minorUnits;
+  const tolerance = Math.max(percentTolerance, floorTolerance);
+
+  return Math.abs(paymentAbsMinorUnits - installmentPaymentMinorUnits) <= tolerance;
+};
+
+/** One linked payment split into what the schedule counts as interest and a bank fee. */
+export type LoanPaymentSplit = { interestMinorUnits: number; excessMinorUnits: number };
+
+// What a payment paid ABOVE its mapped installment's scheduled payment, when
+// that is within the matcher's tolerance: a bank fee, not principal. Stateless
+// per payment (it reads only the amount and the installment), so a window that
+// holds only some of a loan's payments cannot change it. Not capped at the
+// scheduled PRINCIPAL: an earlier payment may already have taken this
+// installment's interest, and a cap at the principal would drop it too.
+const excessOver = (
+  scheduledMinorUnits: number,
+  paidMinorUnits: number,
+  currency: Currency,
+): number =>
+  paidMinorUnits > scheduledMinorUnits &&
+  withinInstallmentTolerance(scheduledMinorUnits, paidMinorUnits, currency)
+    ? paidMinorUnits - scheduledMinorUnits
+    : 0;
+
+/**
+ * The interest and the excess of each of one loan's linked bank payments, in
+ * the order `payments` is given: the interest is `loanInterestPerPaymentMinor`
+ * and the excess is the fee a within-tolerance over-payment carries. A
+ * payment's principal is its absolute amount minus both, so a payment above
+ * the tolerance (a prepayment) and one below the scheduled payment (a partial
+ * one) have no excess. `none` and a payment outside the schedule have none
+ * either. The ledger and the spending pie read this one split, so the two
+ * never disagree about what part of a payment is not principal.
+ */
+export const loanPaymentSplitsMinor = (
+  meta: LoanMeta,
+  payments: readonly LinkedPayment[],
+  currency: Currency,
+  plan: LoanPlan = loanPlanOf(meta),
+): LoanPaymentSplit[] => {
+  const interests = loanInterestPerPaymentMinor(meta, payments, plan);
+
+  return payments.map((payment, position) => ({
+    interestMinorUnits: interests[position],
+    excessMinorUnits:
+      foldMap(maybe(installmentIndexOf(meta, plan, payment.time)), (index) =>
+        excessOver(
+          plan.installments[index].paymentMinorUnits,
+          Math.abs(payment.amountMinorUnits),
+          currency,
+        ),
+      ) ?? 0,
+  }));
 };

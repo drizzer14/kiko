@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 
@@ -69,6 +69,35 @@ describe('DateTimeRow', () => {
 
     expect(getByTestId('row-date-field')).toBeTruthy();
     expect(getByTestId('row-time-field')).toBeTruthy();
+  });
+
+  it('caps the Date calendar at the day of maxDate', async () => {
+    const maxDate = new Date(2026, 9, 5, 10, 30).getTime();
+    const { getByLabelText, getByTestId } = await render(
+      <DateTimeRow time={0} onChangeTime={noop} maxDate={maxDate} />,
+    );
+
+    await fireEvent.press(getByLabelText('Date'));
+
+    expect(getByTestId('Date calendar').props.maxDate).toBe('2026-10-05');
+  });
+
+  it('titles the Date and Time sheets from the catalogue', async () => {
+    const { getByLabelText, getAllByText } = await render(
+      <DateTimeRow time={0} onChangeTime={noop} />,
+    );
+    const dateTitle = i18n.t('forms.fields.dateSheetTitle');
+    const timeTitle = i18n.t('forms.fields.timeSheetTitle');
+    const dateBefore = getAllByText(dateTitle, { includeHiddenElements: true }).length;
+    const timeBefore = getAllByText(timeTitle, { includeHiddenElements: true }).length;
+
+    await fireEvent.press(getByLabelText('Date'));
+
+    expect(getAllByText(dateTitle).length).toBe(dateBefore + 1);
+
+    await fireEvent.press(getByLabelText('Time'));
+
+    expect(getAllByText(timeTitle).length).toBe(timeBefore + 1);
   });
 
   it('keeps both labels plain by default', async () => {

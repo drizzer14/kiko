@@ -28,6 +28,7 @@ describe('fetchClientInfo', () => {
 
     expect(sentUrl).toBe('https://api.monobank.ua/personal/client-info');
     expect(sentHeaders['X-Token']).toBe('secret');
+    expect(sentHeaders['Cache-Control']).toBe('no-store');
     expect(result.accounts.length).toBeGreaterThan(0);
     expect(result.accounts[0].currencyCode).toBe(980);
     expect(result.accounts[0].maskedPan[0]).toContain('*');

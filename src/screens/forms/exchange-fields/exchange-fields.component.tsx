@@ -29,6 +29,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
   valueInSuffix,
   time,
   onChangeTime,
+  maxDate,
   valueOutError,
   destinationError,
   valueInError,
@@ -79,7 +80,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
         />
       </View>
 
-      <DateTimeRow time={time} onChangeTime={onChangeTime} />
+      <DateTimeRow time={time} onChangeTime={onChangeTime} maxDate={maxDate} />
     </>
   );
 };

@@ -356,9 +356,9 @@ const StatisticsScreen: FC = () => {
   // midnight-aligned: `rangeFrom` falls back to `spanStart` (the earliest
   // transaction's raw time, or `now` when there is none) and `rangeTo` falls
   // back to `now` itself. `buildNetWorthSeries` (below) does its OWN UTC-day
-  // normalization per bucket internally (`toUtcMidnight`, since
-  // `currency_rate_history.day` is UTC-midnight) — that is a rate LOOKUP KEY
-  // concern, entirely separate from these user-facing range bounds, and this
+  // normalization per bucket internally (`dayKeyOf`, the bucket's local day, in
+  // the same key shape as `currency_rate_history.day`) — that is a rate LOOKUP
+  // KEY concern, entirely separate from these user-facing range bounds, and this
   // screen has no other UTC-day-key use, so no local `utcDayKey`-style helper
   // is needed here. A picked `to` bound extends to the end of its day so a
   // same-day pick still captures that day's buckets, DST-correct on a
@@ -593,9 +593,9 @@ const StatisticsScreen: FC = () => {
         baseCurrency,
         range: { from: rangeFrom, to: rangeTo },
         bucketDays: bucketDaysForSpan(rangeTo - rangeFrom),
-        // Value today's rightmost point on the same live rates the bar/pie/
-        // headline use, so the line's "now" reconciles with them instead of
-        // sitting a few percent off on the day's NBU official rate.
+        // The live rates the bar/pie/headline use value today's buckets (so the
+        // line's "now" reconciles with them) and back any currency with no stored
+        // history in past buckets (flat at today's rate, no right-edge step).
         liveRateTable: rateTable,
         today: now,
         book: priceBook,
@@ -722,8 +722,9 @@ const StatisticsScreen: FC = () => {
   );
 
   // A linked payment never counts its PRINCIPAL as spending, only its
-  // INTEREST (`loanInterestRows` below, which replaces each excluded row
-  // with its own derived entry) — computed over the account-filtered rows,
+  // interest and any within-tolerance fee (`loanInterestEntries`, via
+  // `loanInterestRows` below, which replaces each excluded row with its own
+  // derived entries) — computed over the account-filtered rows,
   // because a payment and its interest entry belong to the payment's own
   // holding; only `loanHoldings` above reads every holding.
   const loanPaymentExcludedIds = useMemo(
@@ -852,9 +853,9 @@ const StatisticsScreen: FC = () => {
 
   // The union of every exclusion rule: the mcc/IBAN rule, the description rule,
   // the exchange-marker rule, the cheap secondary matched-pair matcher, and
-  // the linked-loan-payment rule (its own derived interest entry,
-  // `loanInterestRows` above, replaces the raw row this drops). A row is
-  // dropped from the spending pie if ANY rule catches it.
+  // the linked-loan-payment rule (its own derived interest and within-tolerance
+  // fee entries, `loanInterestRows` above, replace the raw row this drops). A
+  // row is dropped from the spending pie if ANY rule catches it.
   const excludedTransactionIds = useMemo(
     () =>
       new Set([

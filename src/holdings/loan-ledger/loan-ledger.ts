@@ -9,7 +9,7 @@ import {
   loanAnchorAt,
   installmentIndexOf,
   loanOutstandingMinorAt,
-  loanInterestPerPaymentMinor,
+  loanPaymentSplitsMinor,
   type LoanPlan,
   type LoanAnchor,
 } from '../loan-schedule';
@@ -18,11 +18,12 @@ import type { LoanMeta } from '../holding-metadata';
 /** The loan holding a ledger reads its own payments for. */
 type LedgerLoan = Pick<HoldingRow, 'id' | 'currency'>;
 
-/** A linked payment that pays the loan down, with its day key and interest part. */
+/** A linked payment that pays the loan down, with its day key, interest part and fee. */
 type LedgerEntry = {
   payment: LoanLedgerPayment;
   dayKey: number;
   interestMinorUnits: number;
+  excessMinorUnits: number;
 };
 
 /** A loan's installment table plus every payment that can pay it down, time ascending. */
@@ -55,11 +56,11 @@ const buildLedger = (meta: LoanMeta, loan: LedgerLoan, book: PriceBook): Ledger 
   const payments = (book.loanPayments.get(loan.id) ?? []).filter(
     (payment) => payment.currency === loan.currency && payment.amountMinorUnits < 0,
   );
-  const interests = loanInterestPerPaymentMinor(meta, payments, plan);
+  const splits = loanPaymentSplitsMinor(meta, payments, loan.currency, plan);
   const entries = payments.map((payment, index) => ({
     payment,
     dayKey: dayKeyOf(payment.time),
-    interestMinorUnits: interests[index],
+    ...splits[index],
   }));
 
   return { plan, entries };
@@ -103,7 +104,10 @@ const countedEntries = (ledger: Ledger, instant: number): readonly LedgerEntry[]
 
 const paidOf = (entry: LedgerEntry): number => Math.abs(entry.payment.amountMinorUnits);
 
-const principalOf = (entry: LedgerEntry): number => paidOf(entry) - entry.interestMinorUnits;
+// What the loan drops by: the bank amount less the interest and less the fee
+// a within-tolerance over-payment carries (kept in spending, not principal).
+const principalOf = (entry: LedgerEntry): number =>
+  paidOf(entry) - entry.interestMinorUnits - entry.excessMinorUnits;
 
 // With no correction to count down from, a scheduled loan starts from what
 // its schedule says was outstanding on the EARLIER of the day before its
@@ -196,9 +200,10 @@ export const loanLedgerOutstandingMinorAt = (
 
 /**
  * The loan detail's breakdown at `now`: the principal, what the counted
- * linked payments paid in total, its interest part (each payment's share
- * from `loanInterestPerPaymentMinor` — 0 for a `none` schedule), its principal
- * part, and the outstanding every other screen shows.
+ * linked payments paid in total (the bank total, fees included), its interest
+ * part (each payment's share from `loanInterestPerPaymentMinor` — 0 for a
+ * `none` schedule), its principal part (the fees left out, so the rows are not
+ * an equation), and the outstanding every other screen shows.
  */
 export const loanLedgerSummary = (
   meta: LoanMeta,
@@ -214,7 +219,7 @@ export const loanLedgerSummary = (
     principalMinorUnits: meta.principalMinorUnits,
     paidSoFarMinorUnits,
     interestPaidMinorUnits,
-    principalRepaidMinorUnits: paidSoFarMinorUnits - interestPaidMinorUnits,
+    principalRepaidMinorUnits: counted.reduce((sum, entry) => sum + principalOf(entry), 0),
     outstandingMinorUnits: loanLedgerOutstandingMinorAt(meta, loan, book, now),
   };
 };

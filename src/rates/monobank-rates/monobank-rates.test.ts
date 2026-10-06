@@ -54,6 +54,19 @@ describe('fetchFiatRates', () => {
     expect(sentUrl).toBe('https://api.monobank.ua/bank/currency');
   });
 
+  it('sends Cache-Control: no-store on the public currency request, like every Monobank call', async () => {
+    let sentHeaders: Record<string, string> | undefined;
+    const spyFetch = (async (_url: string, init?: { headers: Record<string, string> }) => {
+      sentHeaders = init?.headers;
+
+      return { ok: true, json: async () => fixture, status: 200 };
+    }) as unknown as typeof fetch;
+
+    await fetchFiatRates(spyFetch);
+
+    expect(sentHeaders?.['Cache-Control']).toBe('no-store');
+  });
+
   it('normalizes entries within the fiat set and derives the rate per entry', async () => {
     const result = await fetchFiatRates(makeFetch(fixture));
 

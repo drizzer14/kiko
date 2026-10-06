@@ -54,6 +54,7 @@ describe('fetchAccount', () => {
       `https://api.binance.com/api/v3/account?timestamp=${NOW}&recvWindow=5000&signature=${EXPECTED_SIGNATURE}`,
     );
     expect(sentHeaders['X-MBX-APIKEY']).toBe('api-key-fixture');
+    expect(sentHeaders['Cache-Control']).toBe('no-store');
   });
 
   it('returns the parsed balances', async () => {

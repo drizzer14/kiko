@@ -1,4 +1,5 @@
 import { DAY_MS } from '@kiko/dates';
+import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 
 import {
@@ -44,7 +45,11 @@ const linkedPayment: LoanPaymentTransaction = {
   time: PAYMENT_TIME,
   amountMinorUnits: -12_000,
   currency: 'UAH',
+  category: 'utilities',
 };
+
+// The one installment's scheduled payment: 900_000 principal + 9_000 interest.
+const SCHEDULED_PAYMENT = 909_000;
 
 describe('loanPaymentExcludedTransactionIds', () => {
   it('excludes a linked payment whose loan holding exists', () => {
@@ -231,5 +236,137 @@ describe('loanInterestEntries', () => {
     const entries = loanInterestEntries({ transactions: [credit], loanHoldings: [scheduledLoan] });
 
     expect(entries).toEqual([]);
+  });
+
+  // The part of a debit above the scheduled payment is a bank fee: it is not
+  // principal, so it stays in spending under the row's own category.
+  it('keeps the excess over the scheduled payment as its own entry under the row category', () => {
+    const withFee: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-fee',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+    };
+
+    const entries = loanInterestEntries({ transactions: [withFee], loanHoldings: [scheduledLoan] });
+
+    expect(entries).toEqual([
+      expect.objectContaining({ id: 'loan-interest:tx-fee', amountMinorUnits: -9_000 }),
+      {
+        id: 'loan-excess:tx-fee',
+        category: 'utilities',
+        amountMinorUnits: -300,
+        mcc: null,
+        counterIban: null,
+        description: '',
+        exchangeCounterpartHoldingId: null,
+        changeGroupId: null,
+        currency: 'UAH',
+        time: PAYMENT_TIME,
+      },
+    ]);
+  });
+
+  it('keeps the excess entry uncategorised when the payment row has no category', () => {
+    const withFee: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-fee',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+      category: null,
+    };
+
+    const entries = loanInterestEntries({ transactions: [withFee], loanHoldings: [scheduledLoan] });
+
+    expect(entries[1]).toEqual(expect.objectContaining({ category: null }));
+  });
+
+  it('produces no excess entry for an exact match, an under-payment or a prepayment', () => {
+    const paid = (amount: number): LoanPaymentTransaction => ({
+      ...linkedPayment,
+      id: `tx-${amount}`,
+      amountMinorUnits: -amount,
+    });
+
+    for (const amount of [SCHEDULED_PAYMENT, SCHEDULED_PAYMENT - 300, SCHEDULED_PAYMENT + 9_091]) {
+      const entries = loanInterestEntries({
+        transactions: [paid(amount)],
+        loanHoldings: [scheduledLoan],
+      });
+
+      expect(entries.map((entry) => entry.id)).toEqual([`loan-interest:tx-${amount}`]);
+    }
+  });
+
+  it('produces no excess entry for an informal loan', () => {
+    const informalPayment: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-informal',
+      loanHoldingId: 'loan-informal',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+    };
+
+    expect(
+      loanInterestEntries({ transactions: [informalPayment], loanHoldings: [informalLoan] }),
+    ).toEqual([]);
+  });
+
+  it('produces no excess entry for a payment in another currency than its loan', () => {
+    const crossCurrency: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-cross-currency',
+      currency: 'USD',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+    };
+
+    expect(
+      loanInterestEntries({ transactions: [crossCurrency], loanHoldings: [scheduledLoan] }),
+    ).toEqual([]);
+  });
+
+  // The spending window may hold only some of a loan's payments; the excess
+  // is stateless per payment, so a lone later installment still counts its own
+  // full interest and its own fee.
+  it('counts the interest and the excess of a lone later installment payment with a fee', () => {
+    const yearMeta: LoanMeta = { ...scheduledMeta, termMonths: 12 };
+    const [, , third] = loanInstallments(yearMeta);
+    const lone: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-lone',
+      time: third.dueDate,
+      amountMinorUnits: -(third.paymentMinorUnits + 300),
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [lone],
+      loanHoldings: [{ ...scheduledLoan, metadata: yearMeta }],
+    });
+
+    expect(entries.map((entry) => [entry.id, entry.amountMinorUnits])).toEqual([
+      ['loan-interest:tx-lone', -third.interestMinorUnits],
+      ['loan-excess:tx-lone', -300],
+    ]);
+  });
+
+  it('measures the excess of each payment of a loan against its own installment', () => {
+    const regular: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-regular',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+    };
+    const prepayment: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-prepayment',
+      time: PAYMENT_TIME - DAY_MS,
+      amountMinorUnits: -2_000_000,
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [regular, prepayment],
+      loanHoldings: [scheduledLoan],
+    });
+
+    expect(entries.map((entry) => [entry.id, entry.amountMinorUnits])).toEqual([
+      ['loan-excess:tx-regular', -300],
+      ['loan-interest:tx-prepayment', -9_000],
+    ]);
   });
 });

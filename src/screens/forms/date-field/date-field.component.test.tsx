@@ -103,6 +103,23 @@ describe('DateField', () => {
     expect(onChange).toHaveBeenCalledWith(new Date(2026, 2, 4).getTime());
   });
 
+  it('caps the calendar at the local day of maxDate, so a later day cannot be picked', async () => {
+    const maxDate = new Date(2026, 9, 5, 23, 59).getTime();
+    const { getByLabelText, getByTestId } = await renderDateField({ maxDate });
+
+    await fireEvent.press(getByLabelText('Start Date'));
+
+    expect(getByTestId('Start Date calendar').props.maxDate).toBe('2026-10-05');
+  });
+
+  it('leaves the calendar uncapped when no maxDate is given', async () => {
+    const { getByLabelText, getByTestId } = await renderDateField();
+
+    await fireEvent.press(getByLabelText('Start Date'));
+
+    expect(getByTestId('Start Date calendar').props.maxDate).toBeUndefined();
+  });
+
   it('preserves the existing time-of-day when only the day is re-picked', async () => {
     const onChange = jest.fn();
     // An existing value at 14:37:09 on 4 March 2026 — a day pick must move the

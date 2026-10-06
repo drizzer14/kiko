@@ -335,10 +335,41 @@ struct LocalDateTime: Decodable {
   let hour: Int
   let minute: Int
 
-  // No time zone: the trigger matches the device's local wall-clock time, so
-  // the reminder still fires at the chosen time after the user changes zone.
+  // No calendar and no time zone: the trigger matches the device's local
+  // wall-clock time, so the reminder still fires at the chosen time after the
+  // user changes zone. A Calendar on the components would carry a zone, and
+  // the trigger is archived to the notification daemon with it, so the
+  // reminder would stop floating. JS plans Gregorian dates and the trigger
+  // reads plain components in the device calendar (Buddhist, Japanese,
+  // Islamic), so the Gregorian DAY is converted to that calendar's own
+  // components, era included. The conversion runs at noon and the planned hour
+  // and minute pass through: a Date built at a wall-clock time that does not
+  // exist (a DST gap) is shifted by the hour, and the shifted hour would no
+  // longer match the stamp JS gave the request. Every calendar's day starts at
+  // midnight, so the day alone needs converting.
   var floatingDateComponents: DateComponents {
-    DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)
+    let gregorianNoon = DateComponents(year: year, month: month, day: day, hour: 12)
+
+    guard let date = Calendar.gregorian.date(from: gregorianNoon) else {
+      return DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)
+    }
+
+    var local = Calendar.current.dateComponents([.era, .year, .month, .day], from: date)
+    local.hour = hour
+    local.minute = minute
+
+    return local
+  }
+}
+
+extension Calendar {
+  // The zone follows the device after a zone change, the same as the floating
+  // wall-clock time the trigger matches.
+  static var gregorian: Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone.autoupdatingCurrent
+
+    return calendar
   }
 }
 

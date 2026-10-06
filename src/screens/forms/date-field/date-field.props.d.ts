@@ -14,6 +14,10 @@ export type DateFieldProps = {
   // than the field silently repeating `label` as its own unset-value text
   // (the caption AND the unset value reading the same word).
   placeholder: string;
+  // The latest day the calendar offers, as a unix-millis timestamp (the day it
+  // falls on, in local time); a later day is greyed out and cannot be pressed.
+  // Omitted, every day is pickable.
+  maxDate?: number;
   // When true, the label shows a red asterisk marking the field as required.
   // Defaults to false. See the shared FieldLabel.
   required?: boolean;

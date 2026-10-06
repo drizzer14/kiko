@@ -76,9 +76,41 @@ worktree at the release commit (as done for v1.1.0: next worktree at
      old `group.com.dmytro.pff` is absent.
    - `get-task-allow = false`.
    - The embedded provisioning profile is KikoDistribution.
-8. Hand off. The skill stops here. The user uploads the archive and
+8. Hand off. First run the Privacy policy check below; hand off only
+   when it exits 0. The skill stops here. The user uploads the archive and
    the screenshots through the Xcode Organizer. State plainly that
    this skill does not upload to the App Store.
+
+### Privacy policy check (before the upload)
+
+The App Store links the live policy (`https://drizzer14.github.io/kiko`,
+`/en.html`), not the repo markdown. Before the user uploads, compare
+the markdown's effective date and the hosts it names with the live
+page and with the hosts the code contacts:
+
+```
+npm run privacy:site -- check
+```
+
+It fetches the two public pages (no key, one `fetch` each) and exits 1
+with a `DRIFT` line per difference: effective date (md vs live), a host
+named on one side only, a host `.env.example`/`src/` names that the md omits. Run
+it by hand at submission time; no `check:*` gate calls it (a gate must
+not touch the network). On drift, regenerate the pages
+(`npm run privacy:site -- build`, output in `docs/privacy-site/`),
+have the user approve them, and hand the user the gh-pages publish
+commands; the release does not go to upload until `check` exits 0.
+Never edit the markdown without bumping its effective date; check the
+data flows against `src/` and `ios/Kiko/Info.plist` (hosts, pinning,
+Keychain surviving uninstall) first. The host list lives in the code
+and the md, never copy it here.
+
+### Release notes standing lines
+
+The App Store "What's New" text for 1.1.0 and later ends with
+"Requires iOS 18.2 or later." (uk: "Потрібна iOS 18.2 або новіша.").
+The notes live in App Store Connect, not in the repo; the changelog
+from step 2 is the draft, so add the line there.
 
 ### Navigation reachability for review notes
 

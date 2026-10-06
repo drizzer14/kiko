@@ -37,6 +37,7 @@ const DateField: FC<DateFieldProps> = ({
   value,
   onChange,
   placeholder,
+  maxDate,
   disabled = false,
   required,
   error,
@@ -117,6 +118,7 @@ const DateField: FC<DateFieldProps> = ({
           testID={`${label} calendar`}
           markedDates={markedDates}
           initialDate={initialDate}
+          maxDate={foldMap(maybe(maxDate), toCalendarKey)}
           onDayPress={handleDayPress}
         />
       </BottomSheet>
