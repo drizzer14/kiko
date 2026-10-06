@@ -687,9 +687,15 @@ A `property_item`'s default glyph follows its CATEGORY, not its type:
 own SF Symbol, and `defaultHoldingSymbol(holding)` — the category glyph
 for a `property_item` (read leniently via `propertyCategoryOf`, so
 garbled metadata still gets the Other glyph), else `holdingTypeSymbol`
-— is what every holding icon site calls as `icon ?? defaultHoldingSymbol(holding)`
-(the holding card, the holding-detail header, the holding- and
-transaction-form holding pickers, the statement-import target options).
+— is the glyph a holding shows. A holding's icon + color come from one
+helper, `holdingIdentity` (`src/holdings/holding-identity/`), the twin of
+`accountIdentity`: `icon ?? defaultHoldingSymbol(holding)` and the color
+through `resolveEntityColor` with `defaultHoldingColor[type]`. A holding
+picker option comes from `toHoldingOption(holding, accountNameById)`
+(`src/screens/forms/holding-select-option/`). A screen never rebuilds the
+pair, because copies of the rule drift apart (a colour divergence came
+from such copies). Users: the holding card, the holding-detail header, the
+holding form, the transaction form, the statement-import target options.
 The holding form's untouched icon chip follows the picked category live,
 and `PropertyTypeField` shows the same glyphs on its rows. A `loan` follows
 its KIND the same way (`loanKindSymbol`: mortgage `house.circle.fill`, car

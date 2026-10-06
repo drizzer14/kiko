@@ -1603,7 +1603,9 @@ where they can drift. The pipeline is:
   dark palette (`entityColorsDark` in `palette.ts`). For an account
   row, call `accountIdentity` (`src/holdings/account-identity/`), which
   pairs this color with the icon fallback (see `kiko-domain`'s "Entity
-  glyphs"). The Charts contribution builder
+  glyphs"); for a holding, call its twin `holdingIdentity`
+  (`src/holdings/holding-identity/`) under the same rule, because copies
+  of the pairing drift apart. The Charts contribution builder
   (`src/statistics/account-contribution/account-contribution.ts`) is
   the exception: its input has no icon, so it calls
   `resolveEntityColor` directly for the color only.
