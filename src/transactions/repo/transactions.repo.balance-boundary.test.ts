@@ -89,14 +89,14 @@ describe('a manual write against a closing balance an import set', () => {
     await importSeptemberStatement();
   });
 
-  it('starts from the bank closing balance', () => {
-    expect(balance()).toBe(90_000);
+  it('starts from the bank closing balance less the manual row, which it never absorbs', () => {
+    expect(balance()).toBe(80_000);
   });
 
   it('gives the amount back when a manual row dated before it is deleted', async () => {
     await transactionsRepo.remove(manualIdAt(SEPTEMBER_10));
 
-    expect(balance()).toBe(100_000);
+    expect(balance()).toBe(90_000);
   });
 
   it('moves the balance by the difference when a manual row dated before it is edited', async () => {
@@ -106,7 +106,7 @@ describe('a manual write against a closing balance an import set', () => {
       time: SEPTEMBER_10,
     });
 
-    expect(balance()).toBe(97_000);
+    expect(balance()).toBe(87_000);
   });
 
   it('keeps the balance when only the date of a row moves across it', async () => {
@@ -116,13 +116,13 @@ describe('a manual write against a closing balance an import set', () => {
       time: OCTOBER_5,
     });
 
-    expect(balance()).toBe(90_000);
+    expect(balance()).toBe(80_000);
   });
 
   it('keeps the balance when only the date of a row moves from after it to before it', async () => {
     await recordManual(-2_000, OCTOBER_2);
 
-    expect(balance()).toBe(88_000);
+    expect(balance()).toBe(78_000);
 
     await transactionsRepo.update({
       transactionId: manualIdAt(OCTOBER_2),
@@ -130,13 +130,13 @@ describe('a manual write against a closing balance an import set', () => {
       time: SEPTEMBER_15,
     });
 
-    expect(balance()).toBe(88_000);
+    expect(balance()).toBe(78_000);
   });
 
   it('moves the balance for a manual row dated after it, through create, edit and delete', async () => {
     await recordManual(-1_000, OCTOBER_2);
 
-    expect(balance()).toBe(89_000);
+    expect(balance()).toBe(79_000);
 
     await transactionsRepo.update({
       transactionId: manualIdAt(OCTOBER_2),
@@ -144,11 +144,11 @@ describe('a manual write against a closing balance an import set', () => {
       time: OCTOBER_2,
     });
 
-    expect(balance()).toBe(87_000);
+    expect(balance()).toBe(77_000);
 
     await transactionsRepo.remove(manualIdAt(OCTOBER_2));
 
-    expect(balance()).toBe(90_000);
+    expect(balance()).toBe(80_000);
   });
 });
 

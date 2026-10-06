@@ -102,6 +102,21 @@ statement that keeps its identity between renders, since a new one is a new
 request, and the newest request wins. Never add a second copy of the balance
 rule for the preview.
 
+**A closing balance never absorbs a manual row.** On the closing path
+`resolveImportBalance` writes the bank figure plus `postClosingNet`: the net of
+this import's new rows dated after the as-of, and of every row already in the
+ledger that rides on top (`postClosingRowsWhere`: dated after the as-of, any
+source; or manual and dated on or before it; never a `setsBalance` row: an
+opening balance or a hand edit). Closing 10,000 as of Oct 1 with a manual -1,000
+dated Sep 20 gives 9,000, the same statement again keeps 9,000, a newer closing
+keeps the row on top, and deleting it gives 10,000 (user ruling 2026-10-06). The
+preview shares the plan, so it shows the same number and, once it differs from
+the bank figure, the line "plus entries not in this statement"
+(`statementImport.balanceWillBeSetWithLater`). KNOWN LIMIT: a manual row that
+duplicates a bank row of the statement counts twice until the user deletes it
+(the first closing import over a holding logged by hand shows it); the delete
+then lands exactly on the bank figure.
+
 **An imported row can be deleted, and its amount goes with it.** `transactionsRepo.remove`
 takes the row's full amount back from its holding whatever its date against the
 boundary (user rule 2026-10-05, "Every transaction updates its balance" in

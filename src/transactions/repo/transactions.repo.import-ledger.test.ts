@@ -185,7 +185,13 @@ const fixtures: Fixture[] = [
       rows: [{ externalId: 'newer', amountMinorUnits: -3_000, time: CLOSING_AT + 2 * DAY_MS }],
       closingBalance: closing(70_000, CLOSING_AT + 3 * DAY_MS),
     },
-    expected: setTo(70_000, CLOSING_AT + 3 * DAY_MS),
+    expected: { ...setTo(65_000, CLOSING_AT + 3 * DAY_MS), bankMinorUnits: 70_000 },
+  },
+  {
+    name: 'a closing balance with an earlier manual entry already in the ledger',
+    prepare: () => insertStoredRow('earlier', 'manual', -5_000, CLOSING_AT - 3 * DAY_MS),
+    input: { rows: threeRows, closingBalance: CLOSING },
+    expected: { ...setTo(80_000, CLOSING_AT), bankMinorUnits: 85_000 },
   },
   {
     name: 'a closing balance with a later entry already in the ledger',

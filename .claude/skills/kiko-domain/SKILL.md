@@ -346,12 +346,20 @@ a reconnect (`addManyDedup`): it turns the import row into the sync's row in
 place, writes no `holdings` row and moves no balance, and the ledger keeps one
 row per purchase.
 
-*Open, user decision pending:* a back-dated MANUAL row dated on or before a
-closing balance's as-of moves the balance when written (Q7). Importing a statement
-with that closing applies the closing outright (`asOf >= boundary`), which
-counts only rows dated after its as-of, so the row's amount drops out of the
-balance while the row stays; a later delete of that row subtracts it again. No
-behaviour is changed for this until the user rules (`importRows` doc comment).
+*A closing balance never absorbs a manual row (user ruling 2026-10-06, "Manual
+rows stay on top"):* a back-dated MANUAL row dated on or before a closing
+balance's as-of moves the balance when written, and importing a statement with
+that closing (`asOf >= boundary`) keeps it on top of the bank figure, as it
+keeps a row of any source dated after the as-of (`postClosingRowsWhere`:
+`time > asOf`, or `source = 'manual'` and `time <= asOf`, never a `setsBalance`
+row, so a row at the as-of counts once). Example: closing 10,000 as of Oct 1 and
+a manual -1,000 dated Sep 20 give 9,000; the same statement again keeps 9,000, a
+newer closing keeps the row on top, and deleting the row gives 10,000. The
+preview line says "plus entries not in this statement" whenever the result
+differs from the bank figure. KNOWN LIMIT: a manual row that duplicates a bank
+row of the statement counts twice (in the bank figure and on top of it) until
+the user deletes it; the delete then lands exactly on the bank figure (a first
+closing import over a holding the user logged by hand shows it).
 
 **A manual write refuses a ledgerless holding.** `recordManualTransaction`
 (`transactions.repo.ts`) reads the holding first and, before any write,

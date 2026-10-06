@@ -1359,17 +1359,23 @@ export const bankOwnedTransactionSetWhere = sql.join(
   sql` OR `,
 );
 
-// The WHERE clause for `importRows`'s existing-rows-after-asOf read, exported
-// so a real-SQLite test can prove the exact predicate — both the `holdingId`
-// scope and the STRICT `gt` boundary (a row exactly AT `asOfMilliseconds`
-// belongs to the closing balance itself, not after it) — rather than a
-// hand-transcribed copy of it. A row that set a balance never counts: its
-// amount is part of the balance a hand edit or an opening set, which a closing
-// balance replaces outright, so a row re-dated past the as-of would count twice.
+// The WHERE clause for `importRows`'s existing-rows-on-top-of-the-closing read,
+// exported so a real-SQLite test can prove the exact predicate — the `holdingId`
+// scope and the STRICT `gt` boundary — rather than a hand-transcribed copy of
+// it. A row counts on top of a closing balance when it is dated after the as-of
+// (any source), or when it is MANUAL and dated on or before it: the bank figure
+// holds the bank's own rows, never a manual entry, so a closing never absorbs
+// one. A row exactly AT the as-of is a manual one only, so each row falls in one
+// half and counts once. A row that set a balance never counts: its amount is
+// part of the balance a hand edit or an opening set, which a closing balance
+// replaces outright, so a row re-dated past the as-of would count twice.
 export const postClosingRowsWhere = (holdingId: string, asOfMilliseconds: number) =>
   and(
     eq(transactions.holdingId, holdingId),
-    gt(transactions.time, asOfMilliseconds),
+    or(
+      gt(transactions.time, asOfMilliseconds),
+      and(eq(transactions.source, 'manual'), lte(transactions.time, asOfMilliseconds)),
+    ),
     eq(transactions.setsBalance, false),
   );
 
@@ -1599,10 +1605,19 @@ type ImportBalanceDecision = {
  * `balanceSetRowId` are present only when a closing balance actually applied
  * this call; the caller writes them to `holdings` alongside `nextBalance`.
  * `existingPostClosingNetMinorUnits` is the net of every row ALREADY in the
- * ledger (any source, never a row that set a balance) dated after the
- * closing balance's own as-of, read before this import inserted anything —
- * an already-imported holding's later rows must not be erased by an older
- * statement's own closing figure. `revivedKeys` are the rows this import brings
+ * ledger that rides on top of the bank figure (never a row that set a
+ * balance): any row dated after the closing balance's own as-of, and every
+ * MANUAL row dated on or before it, read before this import inserted anything
+ * — an already-imported holding's later rows must not be erased by an older
+ * statement's own closing figure, and the bank figure never holds a manual
+ * entry, so a closing never absorbs one (`postClosingRowsWhere`).
+ *
+ * KNOWN LIMIT: a manual row that duplicates a bank row (the user logged a
+ * purchase by hand, and the statement they import holds it too) counts twice,
+ * once in the bank figure and once on top, until the user deletes the manual
+ * row; that delete lands the balance exactly on the bank figure.
+ *
+ * `revivedKeys` are the rows this import brings
  * back after the user deleted them: the net-delta path counts one at its full
  * amount whatever its date (its delete reversed it), where a row the holding
  * never had counts only after the boundary. */
@@ -1709,15 +1724,15 @@ const readImportPlanDatabaseTransaction = async (
     input.rows,
   );
 
-  // Also read BEFORE the new rows are upserted — an EXISTING row (any
-  // source, already in the ledger before this import ran) dated after a
-  // closing balance's own as-of must still count toward it; only the
-  // rows THIS import adds were counted before, so a re-import (or an
-  // out-of-order older statement) could erase a later row the ledger
-  // already knew about. The query below filters by holdingId, time, and
-  // the balance-set mark, with no source/dedup check, so a manual entry the user
-  // already logged for the same real-world transaction as an
-  // after-asOf statement row is counted here too — the same
+  // Also read BEFORE the new rows are upserted — an EXISTING row already in
+  // the ledger before this import ran must still count on top of a closing
+  // balance: a row (any source) dated after its as-of, and a manual row dated
+  // on or before it; only the rows THIS import adds were counted before, so a
+  // re-import (or an out-of-order older statement) could erase a row the
+  // ledger already knew about. The query below filters by holdingId, time, the
+  // source of an on-or-before row, and the balance-set mark, with no dedup
+  // check, so a manual entry the user already logged for the same real-world
+  // transaction as a statement row is counted here too — the same
   // double-count risk the net-delta path already carries.
   const { rows: unaliasedRows, aliased } = await dropRowsStoredUnderAlias(
     databaseTransaction,
@@ -1749,7 +1764,9 @@ const readImportPlanDatabaseTransaction = async (
 /** What a statement import would leave a holding's balance at, for the preview
  * a user reads before importing. `set` is a closing balance that applies: the
  * balance becomes `minorUnits`, which is the bank figure plus the holding's own
- * later entries, so it differs from `bankMinorUnits` when there are any. A file
+ * entries the statement does not hold (every manual one dated on or before its
+ * date, and every row dated after it), so it differs from `bankMinorUnits` when
+ * there are any. A file
  * with no closing balance, or one that does not apply, either `change`s the
  * balance by its rows after the boundary or leaves it. */
 export type ImportBalancePreview = { currency: Currency } & (
@@ -2647,8 +2664,9 @@ export const transactionsRepo = {
    * closing balance is written outright PLUS `postClosingNet`: the net of
    * every row dated STRICTLY AFTER the closing balance's own as-of, from
    * BOTH this import's own new rows AND every row (any source) ALREADY in
-   * the ledger before this import ran, read once before this import inserts
-   * anything. The rows already in the ledger matter for an out-of-order
+   * the ledger before this import ran, and of every MANUAL row ALREADY in
+   * the ledger dated on or before the as-of, read once before this import
+   * inserts anything. The rows already in the ledger matter for an out-of-order
    * statement, e.g. importing September's closing balance after an October
    * manual row already exists — without them, September's own closing
    * figure would silently overwrite October's already-recorded row. A
@@ -2698,8 +2716,8 @@ export const transactionsRepo = {
    * any other genuinely new row. Importing a statement that covers a
    * transaction the user already entered manually therefore double-counts
    * that amount in the net-delta path when both land on the current side of
-   * the boundary (the closing-balance path is unaffected, since it overwrites
-   * rather than adds).
+   * the boundary, and in the closing-balance path whatever the manual row's
+   * date (see the KNOWN LIMIT below).
    *
    * A SYNC-source row is matched instead (`dropRowsHeldBySync`): a statement
    * row with the holding's synced row's amount, dated within 60 seconds of
@@ -2707,12 +2725,19 @@ export const transactionsRepo = {
    * inserted, not counted. One synced row stands for one statement row. Rows a pre-fix build
    * already imported over synced ones stay; no migration removes them.
    *
-   * OPEN, user decision pending: a back-dated MANUAL row dated on or before a closing
-   * balance's as-of moves the balance when written (every write counts). Importing
-   * a statement with that closing balance applies the closing outright
-   * (`asOfSeconds * 1000 >= boundary`), which counts only rows dated after its
-   * as-of, so the row's amount drops out of the balance while the row stays; a
-   * later delete of that row then takes its amount back a second time.
+   * A closing balance never absorbs a manual row (user ruling): a back-dated
+   * MANUAL row dated on or before a closing balance's as-of moves the balance
+   * when written (every write counts), and importing a statement with that
+   * closing balance (`asOfSeconds * 1000 >= boundary`) keeps it on top of the
+   * bank figure, as it keeps a row of any source dated after the as-of. Example:
+   * closing 10,000 as of Oct 1 and a manual -1,000 dated Sep 20 give 9,000; the
+   * same statement again keeps 9,000, a newer closing keeps the row on top, and
+   * deleting the row gives 10,000. The rows that set a balance (an opening
+   * balance, a hand edit) never ride on top: the closing replaces what they set.
+   * KNOWN LIMIT: a manual row that duplicates a bank row of the statement counts
+   * twice, in the bank figure and on top of it, until the user deletes the
+   * manual row, which then lands the balance exactly on the bank figure; a first
+   * closing import over a holding the user logged by hand shows it.
    *
    * An account a bank sync owns (`isSyncedAccount`) refuses the import
    * outright, before anything is written, whichever of its holdings is the
