@@ -6,9 +6,13 @@ import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdingTypes } from '@kiko/holdings/holding-type';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
+import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
+import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
+import { glyphTintsWithin } from '@kiko/test-support/glyph-tints-within';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
@@ -2324,6 +2328,64 @@ describe('TransactionFormScreen — loan payment field', () => {
     expect(getByText('Car loan')).toBeTruthy();
   });
 
+  it("shows an open loan option with the loan's own icon, color and account name", async () => {
+    setLiveData(
+      [PAYER_HOLDING, { ...LOAN_HOLDING, icon: 'star', color: '#ABCDEF' }],
+      debitTransaction,
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { getByLabelText } = await renderEdit('txn-1');
+
+    await fireEvent.press(getByLabelText('Loan payment'));
+
+    const row = getByLabelText('Car loan, Debts');
+
+    expect(glyphNamesWithin(row)).toEqual(['star']);
+    expect(glyphTintsWithin(row)).toEqual(['#ABCDEF']);
+  });
+
+  it("shows a closed linked loan with the loan's own icon and color, and no account name when its account never loaded", async () => {
+    setLiveData(
+      [PAYER_HOLDING, { ...LOAN_HOLDING, closedAt: 1, icon: 'star', color: '#ABCDEF' }],
+      { ...debitTransaction, loanHoldingId: 'loan-1', loanLinkSource: 'manual' },
+      undefined,
+      [],
+    );
+
+    const { getByLabelText } = await renderEdit('txn-1');
+    const trigger = getByLabelText('Loan payment');
+
+    expect(glyphNamesWithin(trigger)).toEqual(['star']);
+    expect(glyphTintsWithin(trigger)).toEqual(['#ABCDEF']);
+
+    await fireEvent.press(trigger);
+
+    expect(getByLabelText('Car loan, ')).toBeTruthy();
+  });
+
+  it("shows a closed linked loan with the loan type's default icon and color", async () => {
+    setLiveData(
+      [PAYER_HOLDING, { ...LOAN_HOLDING, closedAt: 1, icon: null, color: '' }],
+      { ...debitTransaction, loanHoldingId: 'loan-1', loanLinkSource: 'manual' },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { getByLabelText } = await renderEdit('txn-1');
+    const trigger = getByLabelText('Loan payment');
+
+    expect(glyphNamesWithin(trigger)).toEqual([
+      defaultHoldingSymbol({ type: 'loan', metadata: null }),
+    ]);
+    expect(glyphTintsWithin(trigger)).toEqual([defaultHoldingColor.loan]);
+
+    await fireEvent.press(trigger);
+
+    expect(getByLabelText('Car loan, Debts')).toBeTruthy();
+  });
+
   it('keeps the field visible and lists the linked loan once it moves to another currency, with no other open loan', async () => {
     setLiveData(
       [PAYER_HOLDING, { ...LOAN_HOLDING, currency: 'USD' }],
@@ -2800,6 +2862,57 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
     expect(queryByText('Card USD')).toBeNull(); // card excluded on create
     expect(queryByText('BTC Wallet')).toBeNull(); // crypto excluded on create
     expect(queryByText('USD Deposit')).toBeNull(); // term_deposit excluded on create
+  });
+
+  it("shows each destination's own icon, color and account name", async () => {
+    setLiveData(
+      [
+        ...EXCHANGE_CREATE_HOLDINGS,
+        {
+          id: 'cash-custom',
+          currency: 'USD',
+          balanceMinorUnits: 0,
+          type: 'cash',
+          name: 'Pocket cash',
+          accountId: 'acc-gone',
+          icon: 'star',
+          color: '#ABCDEF',
+        },
+        {
+          id: 'cash-blank',
+          currency: 'USD',
+          balanceMinorUnits: 0,
+          type: 'cash',
+          name: 'Blank color cash',
+          accountId: 'acc-wallet',
+          icon: null,
+          color: '',
+        },
+      ],
+      undefined,
+      CATEGORIES,
+      EXCHANGE_CREATE_ACCOUNTS,
+    );
+    const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
+
+    await fireEvent.press(getByLabelText('Type'));
+    await fireEvent.press(getByText('Exchange'));
+    await flushDeferredModeSelect();
+    await fireEvent.press(getByLabelText('To'));
+
+    const defaultRow = getByLabelText('Cash USD, Wallet');
+    const blankColorRow = getByLabelText('Blank color cash, Wallet');
+    // An account row that never loaded leaves the account name empty rather
+    // than printing "undefined".
+    const customRow = getByLabelText('Pocket cash, ');
+    const cashGlyph = defaultHoldingSymbol({ type: 'cash', metadata: null });
+
+    expect(glyphNamesWithin(defaultRow)).toEqual([cashGlyph]);
+    expect(glyphTintsWithin(defaultRow)).toEqual([defaultHoldingColor.cash]);
+    expect(glyphNamesWithin(blankColorRow)).toEqual([cashGlyph]);
+    expect(glyphTintsWithin(blankColorRow)).toEqual([defaultHoldingColor.cash]);
+    expect(glyphNamesWithin(customRow)).toEqual(['star']);
+    expect(glyphTintsWithin(customRow)).toEqual(['#ABCDEF']);
   });
 
   it('saves a cash->cash exchange with correct minor units and holding ids', async () => {
