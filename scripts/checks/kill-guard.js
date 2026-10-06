@@ -1882,7 +1882,12 @@ const WAIT_LOOP_WORDS = new Set(['while', 'until']);
 const LOOP_WORDS = new Set([...WAIT_LOOP_WORDS, 'for', 'select', 'done']);
 const LOOP_WORD_SEARCH = /\b(?:while|until|for|select|done)\b/;
 
-const PROCESS_LISTERS = new Set(['ps', 'top', 'pstree']);
+const PROCESS_LISTERS = new Set(['top', 'pstree']);
+// `ps` named by pid (`-p`, `--pid`, `-q`) lists just those pids, so it is a pid
+// wait, not a scan, unless it also selects every process (`-A`, `-e`, BSD `a`/`x`).
+const PS_PID_OPTION = /^--pid(?:=|$)|^-[A-Za-z]*[pq]/;
+const PS_ALL_OPTION = /^-[A-Za-z]*[Ae]|^[axuUwW]*[ax][axuUwW]*$/;
+
 const TEXT_FILTERS = new Set([
   'grep',
   'egrep',
@@ -1901,6 +1906,15 @@ const TEXT_FILTERS = new Set([
 // pgrep matches the full command line only with -f (any flag group holding it)
 // or --full; without it a name match cannot see the loop's own command line.
 const FULL_COMMAND_OPTION = /^-[A-Za-z]*f[A-Za-z]*$/;
+
+function listsAllProcesses(base, parameters) {
+  if (base !== 'ps') return false;
+
+  return (
+    !parameters.some((word) => PS_PID_OPTION.test(word)) ||
+    parameters.some((word) => PS_ALL_OPTION.test(word))
+  );
+}
 
 // The loop words that open the segment: lead-ins (`do`, `then`, a group
 // opener) may stand before them (`do until …`).
@@ -1957,20 +1971,35 @@ function scanTraits(command) {
   const filters = matchesFullCommand || TEXT_FILTERS.has(base);
 
   return {
-    lists: matchesFullCommand || PROCESS_LISTERS.has(base),
+    lists: matchesFullCommand || PROCESS_LISTERS.has(base) || listsAllProcesses(base, parameters),
     job: filters && watched !== null ? watched[0] : undefined,
   };
 }
 
 // Tracks the `while`/`until` loops one line opens and closes, in the order
 // its segments come, so a scan counts only inside the outermost wait loop
-// that holds it. `open` holds one flag per open loop (true for while/until).
-const newWaitLoopWatch = () => ({ open: [], waiting: 0, lists: false, job: undefined });
+// that holds it, and only once that loop's `done` closes it: an unclosed
+// `while` is a syntax error that never runs, so prose in a heredoc body
+// (a commit message) that starts a line with `while` is not a loop. `open`
+// holds one flag per open loop (true for while/until); `evidence` is the
+// segment where the loop's scan first showed both a lister and a job name.
+const newScanState = () => ({ lists: false, job: undefined, evidence: undefined });
+const newWaitLoopWatch = () => ({ open: [], waiting: 0, ...newScanState() });
 
+// Closes the innermost open loop; returns the finding when that was the
+// outermost wait loop and its scan named a watched job.
 function closeLoop(watch) {
-  if (watch.open.pop() !== true) return;
+  if (watch.open.pop() !== true) return null;
   watch.waiting--;
-  if (watch.waiting === 0) Object.assign(watch, { lists: false, job: undefined });
+  if (watch.waiting > 0) return null;
+  const { evidence, job } = watch;
+  Object.assign(watch, newScanState());
+  if (evidence === undefined) return null;
+
+  return {
+    kind: 'waitLoop',
+    detail: `${evidence.trim()} (a wait loop scanning the process list for "${job}")`,
+  };
 }
 
 function openLoop(watch, word) {
@@ -1990,16 +2019,12 @@ function addToScan(watch, segment, spans, tokens) {
     watch.lists = watch.lists || traits.lists;
     watch.job = watch.job ?? traits.job;
   }
-  if (!watch.lists || watch.job === undefined) return null;
-
-  return {
-    kind: 'waitLoop',
-    detail: `${segment.trim()} (a wait loop scanning the process list for "${watch.job}")`,
-  };
+  if (watch.lists && watch.job !== undefined) watch.evidence = watch.evidence ?? segment;
 }
 
 // Feeds one segment of a line, with the text of its spans, to the watch.
-// Returns a `waitLoop` finding when a wait loop's scan names a watched job.
+// Returns a `waitLoop` finding when the segment closes a wait loop whose scan
+// names a watched job.
 function observeWaitLoops(watch, segment, spans) {
   if (watch.waiting === 0 && !LOOP_WORD_SEARCH.test(segment)) return null;
   const tokens = words(segment);
@@ -2009,11 +2034,10 @@ function observeWaitLoops(watch, segment, spans) {
   }
   // A `done` closes before its segment is scanned: what feeds the loop
   // (`done < <(ps aux | grep jest)`) runs once, outside it.
-  for (const word of loopWords) {
-    if (word === 'done') closeLoop(watch);
-  }
+  const closed = loopWords.filter((word) => word === 'done').map(() => closeLoop(watch));
+  if (watch.waiting > 0) addToScan(watch, segment, spans, tokens);
 
-  return watch.waiting > 0 ? addToScan(watch, segment, spans, tokens) : null;
+  return closed.find((finding) => finding !== null) ?? null;
 }
 
 function firstFinding(lines, depth, checkHeredoc, rules) {

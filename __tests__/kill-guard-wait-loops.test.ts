@@ -54,6 +54,8 @@ const DENIED_WAIT_LOOPS: string[] = [
   'while [[ "$(ps -axo command)" == *xcodebuild* ]]; do sleep 5; done',
   'while ps aux > /tmp/p.txt; grep -q semgrep /tmp/p.txt; do sleep 1; done',
   'while sleep 1; do ps aux | rg -q jest || break; done',
+  'until ! ps -ep $pid | grep -q jest; do sleep 1; done',
+  'until ! ps -A -p 1 | grep -q jest; do sleep 1; done',
   "until ! pgrep -f 'jest|stryker'; do sleep 1; done",
   "eval 'until ! pgrep -f jest; do sleep 1; done'",
   "bash <<'EOF'\nuntil ! pgrep -f jest; do sleep 1; done\nEOF",
@@ -91,6 +93,20 @@ const ALLOWED_WAIT_COMMANDS: string[] = [
   'while true; do sleep 1; done; ps aux | grep jest',
   'grep -rn "pgrep -f jest" docs/',
   'until jest --listTests; do sleep 1; done',
+  // A pid wait: ps -p lists one pid, so a filter on a job name in the body is no scan.
+  'while ps -p $pid >/dev/null; do grep -c PASS /tmp/jest.log; sleep 5; done',
+  `while ps -p "$XPID" > /dev/null; do tail -1 /tmp/build.log | grep -E 'Compiling|xcodebuild'; sleep 10; done`,
+  'while ps --pid $pid >/dev/null; do grep -c jest /tmp/log; sleep 5; done',
+  'while ps -q $pid >/dev/null; do grep -c jest /tmp/log; sleep 5; done',
+  'while ps -p $pid -o command= | grep -q node; do grep -c jest /tmp/log; sleep 5; done',
+  // The scan flags reset when a loop closes: a later loop's filter is not paired with it.
+  'while ps aux | grep -q foo; do sleep 1; done; while ! grep -q jest /tmp/log; do sleep 1; done',
+  // An unclosed loop never runs, so prose in a heredoc body that starts a line with
+  // while/until and later quotes a scan is text.
+  'git commit -m "$(cat <<\'X\'\nfix(harness): stop self-matching waiters\n\nThe orchestrator kept a waiter alive\nwhile the gate ran; its `pgrep -f jest` matched itself.\nX\n)"',
+  'git commit -m "$(cat <<\'X\'\ndocs: note\n\nKeep polling\nuntil the run ends. A one-time `pgrep -f stryker` is fine.\nX\n)"',
+  'gh pr create --title t --body "$(cat <<\'X\'\n## Summary\n- kill-guard: deny a wait loop\nwhile `ps aux | grep jest` is fine once\nX\n)"',
+  "git commit -F - <<'X'\ndocs: explain the self-match trap\n\nuntil the load drops, agents used to run\nps aux | grep jest in a loop.\nX",
   // What feeds a loop runs once, outside it.
   'while read line; do echo "$line"; done < <(ps aux | grep jest)',
   'while read line; do echo "$line"; done <<< "$(ps aux | grep jest)"',
