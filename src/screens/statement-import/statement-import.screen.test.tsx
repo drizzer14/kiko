@@ -32,7 +32,7 @@ const fixtureText = readFileSync(
   'utf-8',
 );
 const fixtureBase64 = Buffer.from(fixtureText, 'utf-8').toString('base64');
-// The fixture's own real header row — used to build a saved mapping whose
+// The fixture's own real header row — the base of a saved mapping whose
 // `fingerprint` genuinely matches this file (the auto-replace check).
 const fixtureHeaderRow = fixtureText.split('\n')[0].split(',');
 
@@ -46,7 +46,7 @@ const unrelatedBase64 = Buffer.from(
 // whose date column is unparseable — `monobankCsvFormat.parse` throws a
 // REAL `StatementParseError` out of `parseDateTimeSeconds` for this, since
 // `detect()` only sniffs the header, never a data row. Proves the screen
-// catches a parse-time throw rather than crashing (CRITICAL #1).
+// catches a parse-time throw rather than crashing.
 const malformedRowBase64 = Buffer.from(
   'Дата i час операції,Деталі операції,MCC,Сума в валюті картки (UAH),Сума в валюті операції,Валюта,Курс,Сума комісій (UAH),Сума кешбеку (UAH),Залишок після операції\n' +
     'not-a-date,Coffee,4829,10.00,10.00,UAH,—,—,—,100\n',

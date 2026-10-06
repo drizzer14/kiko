@@ -17,8 +17,8 @@ export type SavedColumnMapping = ColumnMapping & {
 // real header cell, unlike a comma or pipe.
 const HEADER_FINGERPRINT_SEPARATOR = '␟';
 
-/** A stable fingerprint for a header row, used to recognize the SAME file
- * shape again later (an "Other" bank's saved mapping is keyed by this). */
+/** A stable fingerprint for a header row, so the SAME file
+ * shape is recognized again later (an "Other" bank's saved mapping is keyed by this). */
 export const headerFingerprint = (row: TableCell[]): string =>
   row.map((cell) => String(cell).trim()).join(HEADER_FINGERPRINT_SEPARATOR);
 

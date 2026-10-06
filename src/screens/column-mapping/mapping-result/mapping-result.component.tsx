@@ -14,7 +14,7 @@ const ROW_ERROR_PREVIEW_COUNT = 20;
 
 /**
  * The column-mapping screen's own "Result" block: the incomplete hint while
- * a required field is still unmapped, or the SAME summary table item 3 shows
+ * a required field is still unmapped, or the shared summary table
  * plus the shared `ExampleTransaction`,
  * then the first `ROW_ERROR_PREVIEW_COUNT` row errors (then a count of the
  * rest) once the mapping is structurally complete — extracted out of the
@@ -61,7 +61,7 @@ const MappingResult: FC<MappingResultProps> = ({
           {hasResolvedTransactions && (
             <>
               {/* The deposit/bond value-breakdown table's own UI layout
-                  (item 3), reused here via the shared `SummaryTable` — this
+                  reused here via the shared `SummaryTable` — this
                   screen's own columns, never the deposit table's own
                   value/percent/tax ones. */}
               <SummaryTable

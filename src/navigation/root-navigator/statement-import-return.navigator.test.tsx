@@ -18,18 +18,16 @@ import type { AccountsStackParamList } from '../types';
  * already the CURRENT route, `getId` matches, or `{ pop: true }` is passed
  * (`node_modules/@react-navigation/routers/src/StackRouter.tsx`'s `NAVIGATE`
  * case) — it does NOT pop back to an earlier instance the way React
- * Navigation 6 did. `statement-import.screen.tsx`'s `handleImportDone`,
- * `column-mapping.screen.tsx`'s `handleImportDone`, and both
- * `HoldingFormScreen` `returnTo` branches used to call plain `navigate` for
- * exactly this "return to an already-on-stack screen" case, which pushed a
- * duplicate instead of reusing the existing one — the fix is `popTo` (this
+ * Navigation 6 did. `useImportResultSheet`'s `onClosed` (shared by both import
+ * screens) and both `HoldingFormScreen` `returnTo` branches return to a screen
+ * already on the stack, so they call `popTo`; `navigate` would push a
+ * duplicate instead of reusing the existing one (this
  * file exercises production's own `.popTo(name, params, { merge: true })`
  * shape against the REAL `@react-navigation/routers` `StackRouter`, not a
- * `navigationSpy`, because — per the reviewer's own repro — "a spy cannot
- * see the router semantics": a spy only proves the CALL happened, never
- * whether the router pushed or popped.
+ * `navigationSpy`, because a spy cannot see the router semantics: a spy only
+ * proves the CALL happened, never whether the router pushed or popped.
  *
- * This suite proves the ROUTER-LEVEL property the fix depends on (a route
+ * This suite proves the ROUTER-LEVEL property `popTo` depends on (a route
  * already on the stack is REUSED, not duplicated, and that surviving
  * instance's own local React state is preserved) using a REAL
  * `NavigationContainer` + `createNativeStackNavigator` (no mock). Each
@@ -102,10 +100,10 @@ const AccountDetailStub: FC<NativeStackScreenProps<AccountsStackParamList, 'Acco
   </>
 );
 
-// Mirrors statement-import.screen.tsx:439-444 (handleMapColumnsManually,
-// a genuine PUSH — ColumnMapping is not yet on the stack, so `navigate` is
-// correct there and stays `navigate`, not `popTo`) and :419-431
-// (handleImportDone, fixed to `popTo` — the case under test here). The
+// Mirrors statement-import.screen.tsx's handleMapColumnsManually (a genuine
+// PUSH — ColumnMapping is not yet on the stack, so `navigate` is correct
+// there and stays `navigate`, not `popTo`) and useImportResultSheet's
+// `onClosed` (a `popTo` — the case under test here). The
 // `evaluatedRef`-guarded effect below mirrors that same file's own
 // auto-replace effect shape (decides at most once, against whatever
 // `savedMappingMatches` snapshot is available the first time it runs, and
@@ -185,7 +183,7 @@ const StatementImportStub: FC<
 };
 
 // Mirrors column-mapping.screen.tsx's own "Create new holding" (a genuine
-// PUSH, stays `navigate`) and its `handleImportDone` (fixed to `popTo`).
+// PUSH, stays `navigate`) and useImportResultSheet's `onClosed` (a `popTo`).
 // The local `dateColumn` state stands in for the real screen's own column
 // choices (date/amount/description column, decimal separator, etc.) — any
 // local `useState` demonstrates the SAME router property: it survives a

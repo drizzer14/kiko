@@ -58,10 +58,10 @@ describe('scripts/checks/import-order.sh', () => {
   });
 
   it('still flags an unsorted group when its first import carries a trailing line comment', () => {
-    // A trailing `// note` after the `;` used to make endsStatement's
-    // `/;\s*$/` anchor fail, so consumeStatement never stopped at this
-    // import — it kept reading forward looking for a later `;\s*$` line,
-    // which swallowed the second import into the same "statement" and hid
+    // A trailing `// note` after the `;` would make endsStatement's
+    // `/;\s*$/` anchor fail, so consumeStatement would never stop at this
+    // import — it would keep reading forward looking for a later `;\s*$` line,
+    // which would swallow the second import into the same "statement" and hide
     // the whole group from checking.
     const result = runCheck(
       "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'; // note\n" +

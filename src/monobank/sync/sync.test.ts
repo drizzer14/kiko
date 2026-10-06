@@ -1284,8 +1284,8 @@ describe('runSync', () => {
   // failure that still imported at least one card's rows must move the "last
   // synced" display (so the user sees it landed) WITHOUT advancing the cursor
   // (so the failed card's window is re-covered next run). The crash-safe marker
-  // (BUG A fix 1) is what prevents a stranded card from being silently skipped,
-  // so stamping "last sync" on any success no longer reads falsely current.
+  // is what prevents a stranded card from being silently skipped,
+  // so stamping "last sync" on any success never reads falsely current.
   it('stamps the display timestamp but NOT the cursor on a partial failure that imported something', async () => {
     const connected = bankAccount({ id: 'acc-mono', institution: 'monobank' });
     const idA = clientInfo.accounts[0].id;
@@ -1561,7 +1561,7 @@ describe('runSync', () => {
   // The per-run diagnostic: a single console.warn summarising the run's
   // fetch/skip/failure counts, so a dev reading a device log can tell whether
   // the balance-diff skip is engaging or a card is stuck in full-fetch mode.
-  // BUG C (fan-out coalescing): the fast-phase balance upsert must be ONE
+  // Fan-out coalescing: the fast-phase balance upsert must be ONE
   // batched write, so op-sqlite fires the reactive `holdings` callback once for
   // the whole fast phase — not once per card. A per-card write loop fanned out
   // N+M reactive fires in a tight burst at sync start, each re-running Home's
@@ -2006,7 +2006,7 @@ describe('runSync', () => {
 
       syncStateRow.lastSyncAt = 1704326400000 - 1000;
       syncStateRow.lastFullSyncAt = 1704326400000 - 1000;
-      // 'ghost-card' failed on a prior run but no longer appears in client-info
+      // 'ghost-card' failed on a prior run but is absent from client-info
       // (the user disconnected it): it must be dropped, not force-fetched forever.
       syncStateRow.failedSyncMonobankIds = ['ghost-card'];
       const setFailedSyncIds = jest.fn(
@@ -2053,14 +2053,14 @@ describe('runSync', () => {
       expect(setLastSyncAt).toHaveBeenCalledTimes(1);
     });
 
-    // BUG A fix 1 — the crash-safe marker. `upsertHoldings` commits each card's
+    // The crash-safe marker. `upsertHoldings` commits each card's
     // DISPLAY balance (`balanceMinorUnits`) up front, BEFORE the per-card
     // statement loop. If a run advances a card's balance but is interrupted (app
     // background/kill) before importing that card's statements — and before any
     // failed-set record is written — the display balance already equals
-    // /client-info, so the OLD skip (which compared the display balance) skipped
-    // the card on every later run and its transactions never imported until the
-    // 24h full fetch. The skip now compares `syncedBalanceMinorUnits`, which
+    // /client-info, so a skip that compared the display balance would skip
+    // the card on every later run and its transactions would not import until the
+    // 24h full fetch. The skip compares `syncedBalanceMinorUnits`, which
     // advances ONLY after a card's statements commit, so such a card is
     // re-fetched next run even with no failed-set record and no outstanding hold
     // — the marker is the ONLY thing that can force this re-fetch here.
@@ -2412,8 +2412,8 @@ describe('runSync', () => {
 describe('runSync stale-holding reconciliation', () => {
   const noStatements = (): MonobankStatementItem[] => [];
 
-  // A previously-synced Monobank holding whose card/jar the current snapshot no
-  // longer returns. Its `monobankId` is set (so it is a sync-owned row) and it is
+  // A synced Monobank holding whose card/jar is absent from the current
+  // snapshot. Its `monobankId` is set (so it is a sync-owned row) and it is
   // still open (`closedAt: null`).
   const staleHolding = (over: Partial<HoldingRow> = {}): HoldingRow => ({
     id: 'stale-1',

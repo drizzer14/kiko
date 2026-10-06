@@ -384,7 +384,7 @@ describe('ColumnMappingScreen', () => {
     );
   });
 
-  // The screen body no longer duplicates the native stack header's own
+  // The screen body does not duplicate the native stack header's own
   // title — the header (`accounts.stack.tsx`'s `title:
   // t('columnMapping.title')`) is not itself rendered by this component
   // under test (it lives in the navigator), so this pins that the

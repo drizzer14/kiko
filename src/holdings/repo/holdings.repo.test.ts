@@ -878,7 +878,7 @@ describe('holdingsRepo.upsertExchangeMany', () => {
     metadataKey,
   });
 
-  // The crypto sync used to call `upsertExchange` once per returned balance —
+  // Calling `upsertExchange` once per returned balance would cost
   // N separate op-sqlite transactions in one run. `upsertExchangeMany` mirrors
   // `upsertMonobankMany`: every balance upserts inside ONE transaction, so the
   // reactive `holdings` callback fires once per sync, not once per balance.
@@ -1011,8 +1011,8 @@ describe('holdingsRepo.resetBinanceHistoryCursor', () => {
 });
 
 describe('holdingsRepo.setBinanceHistoryCursor', () => {
-  // The write joins `accounts` to gate on `institution = 'binance'` (item 2:
-  // a walk holds the account's credentials for its whole run, so a disconnect
+  // The write joins `accounts` to gate on `institution = 'binance'` (a walk
+  // holds the account's credentials for its whole run, so a disconnect
   // can commit while it is still in flight) — the fake transaction below
   // chains `.innerJoin` between `.from` and `.where`, mirroring the real query.
   const makeJoinedTransaction = (
@@ -1163,9 +1163,9 @@ describe('disconnect then reconnect', () => {
     await accountsRepo.disconnect('acc-1');
     await sync();
 
-    // One row, one balance: stripping the sync key on disconnect used to make
-    // the second sync miss and insert a SECOND holding carrying the same
-    // balance, double-counting net worth.
+    // One row, one balance: the sync key survives a disconnect, because
+    // stripping it would make the second sync miss and insert a SECOND holding
+    // carrying the same balance, double-counting net worth.
     expect(store.holdings).toHaveLength(1);
     expect(store.holdings[0]).toMatchObject({
       balanceMinorUnits: 500_00,
@@ -1662,7 +1662,7 @@ describe('holdingsRepo.updateLoan', () => {
   });
 
   // A loan edit that changes its amortization schedule or a third-signal
-  // input can invalidate a previously-computed AUTO link's own rules 1/2
+  // input can invalidate an already-computed AUTO link's own rules 1/2
   // against the NEW schedule — the caller (`use-loan-fields.ts`'s `saveEdit`) detects
   // this and asks `updateLoan` to clear this loan's own auto links, in the
   // SAME transaction as the metadata patch, before the fire-and-forget

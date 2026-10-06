@@ -18,12 +18,13 @@ import { darkTheme } from '@kiko/design-system/theme';
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
-import { glyphNamesWithin } from '@kiko/test-support/glyph-names-within';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
+import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -2773,6 +2774,121 @@ describe('HoldingFormScreen loan', () => {
     await fireEvent.press(screen.getByTestId('loan-payment-holding-field'));
 
     expect(screen.queryByText('USD card')).toBeNull();
+  });
+
+  it('shows each "Paid from" option with the holding\'s own icon, color and account name', async () => {
+    mockAllHoldings = [
+      {
+        id: 'h-default',
+        accountId: 'acc-2',
+        name: 'Everyday card',
+        type: 'card',
+        currency: 'UAH',
+        closedAt: null,
+        icon: null,
+        color: null,
+      },
+      {
+        id: 'h-custom',
+        accountId: 'acc-missing',
+        name: 'Pocket cash',
+        type: 'cash',
+        currency: 'UAH',
+        closedAt: null,
+        icon: 'star',
+        color: '#ABCDEF',
+      },
+      {
+        id: 'h-blank-color',
+        accountId: 'acc-2',
+        name: 'Blank color card',
+        type: 'card',
+        currency: 'UAH',
+        closedAt: null,
+        icon: null,
+        color: '',
+      },
+    ];
+    mockAllAccounts = [{ id: 'acc-2', name: 'Monobank' }];
+    const screen = await renderScreen();
+
+    await fireEvent.press(screen.getByTestId('loan-payment-holding-field'));
+
+    const defaultRow = screen.getByTestId('loan-payment-holding-field-option-h-default');
+    const customRow = screen.getByTestId('loan-payment-holding-field-option-h-custom');
+    const blankColorRow = screen.getByTestId('loan-payment-holding-field-option-h-blank-color');
+    const cardGlyph = defaultHoldingSymbol({ type: 'card', metadata: null });
+
+    expect(defaultRow.props.accessibilityLabel).toBe('Everyday card, Monobank');
+    expect(glyphNamesWithin(defaultRow)).toEqual([cardGlyph]);
+    expect(glyphTintsWithin(defaultRow)).toEqual([defaultHoldingColor.card]);
+    expect(blankColorRow.props.accessibilityLabel).toBe('Blank color card, Monobank');
+    expect(glyphNamesWithin(blankColorRow)).toEqual([cardGlyph]);
+    expect(glyphTintsWithin(blankColorRow)).toEqual([defaultHoldingColor.card]);
+    // An account row that never loaded leaves the account name empty rather
+    // than printing "undefined".
+    expect(customRow.props.accessibilityLabel).toBe('Pocket cash, ');
+    expect(glyphNamesWithin(customRow)).toEqual(['star']);
+    expect(glyphTintsWithin(customRow)).toEqual(['#ABCDEF']);
+    expect(screen.getAllByText('Monobank · UAH')).toHaveLength(2);
+  });
+
+  it('shows a closed edit-mode "Paid from" holding with its own icon, color and account name', async () => {
+    mockAllHoldings = [
+      {
+        id: 'h-payer',
+        accountId: 'acc-missing',
+        name: 'Old card',
+        type: 'card',
+        currency: 'UAH',
+        closedAt: 1_700_000_000_000,
+        icon: 'star',
+        color: '#ABCDEF',
+      },
+      {
+        id: 'h-payer-default',
+        accountId: 'acc-2',
+        name: 'Default old card',
+        type: 'card',
+        currency: 'USD',
+        closedAt: 1_700_000_000_000,
+        icon: null,
+        color: null,
+      },
+    ];
+    mockAllAccounts = [{ id: 'acc-2', name: 'Monobank' }];
+    const editLoan = (paymentHoldingId: string) =>
+      renderEdit({ ...carLoan, metadata: { ...carLoan.metadata, paymentHoldingId } });
+
+    const customScreen = await editLoan('h-payer');
+    const customTrigger = customScreen.getByTestId('loan-payment-holding-field');
+
+    expect(glyphNamesWithin(customTrigger)).toEqual(['star']);
+    expect(glyphTintsWithin(customTrigger)).toEqual(['#ABCDEF']);
+
+    await fireEvent.press(customTrigger);
+
+    expect(
+      customScreen.getByTestId('loan-payment-holding-field-option-h-payer').props
+        .accessibilityLabel,
+    ).toBe('Old card, ');
+
+    await customScreen.unmount();
+
+    const defaultScreen = await editLoan('h-payer-default');
+    const defaultTrigger = defaultScreen.getByTestId('loan-payment-holding-field');
+
+    expect(glyphNamesWithin(defaultTrigger)).toEqual([
+      defaultHoldingSymbol({ type: 'card', metadata: null }),
+    ]);
+    expect(glyphTintsWithin(defaultTrigger)).toEqual([defaultHoldingColor.card]);
+
+    await fireEvent.press(defaultTrigger);
+
+    expect(
+      defaultScreen.getByTestId('loan-payment-holding-field-option-h-payer-default').props
+        .accessibilityLabel,
+    ).toBe('Default old card, Monobank');
   });
 
   // A filter never hides an ACTIVE selection —

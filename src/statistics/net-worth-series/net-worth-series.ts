@@ -173,8 +173,8 @@ export const buildNetWorthSeries = (input: {
   });
 
   // Built ONCE per holding, not once per (holding, bucket) — see
-  // `createHoldingValuer`'s own doc comment for why the per-bucket reduce/filter
-  // it replaces was loop-invariant work repeated at every point. A closed
+  // `createHoldingValuer`'s own doc comment for why a per-bucket reduce/filter
+  // would be loop-invariant work repeated at every point. A closed
   // holding's value is zeroed for every bucket AT OR AFTER its own
   // `closedAt` instant — a raw instant compare, not a local-day one, keeps
   // the rightmost "now" bucket consistent with the screen's other

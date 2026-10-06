@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 
 // The mutation cap is copied into every doc that tells an agent how to size a
 // change set for `make deep`. A cap change that misses one of them leaves that
-// doc naming a limit mutation.sh no longer enforces, so every copy must match
+// doc naming a limit mutation.sh does not enforce, so every copy must match
 // MUTATION_FILE_CAP.
 const REPOSITORY_ROOT = join(__dirname, '..');
 

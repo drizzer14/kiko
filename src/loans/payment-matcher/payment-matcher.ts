@@ -91,7 +91,7 @@ type LoanPaymentMatch = {
   dueDate: number;
 };
 
-// Rule-4's candidate filter: a debit, never already linked or previously
+// Rule-4's candidate filter: a debit, never already linked or already
 // rejected (a manual "None" or Undo must stick — kiko-domain), never one leg
 // of an Exchange/Convert (a structural marker, not a description guess — see
 // `exchange-exclusion.ts`'s identical check).
@@ -220,7 +220,7 @@ const installmentKey = (installment: CandidateInstallment): string =>
  * should be written with `source: 'auto'` (`transactionsRepo.setAutoLoanLinks`
  * is the ONLY write path for what this returns — see that function's own doc
  * comment). Never mutates anything itself; a caller re-running it against
- * already-linked data (its own `MatchableTransaction.loanHoldingId` no longer
+ * already-linked data (its own `MatchableTransaction.loanHoldingId` is not
  * `null`) simply excludes that row from `isEligibleTransaction`, so a re-run
  * is naturally idempotent.
  *

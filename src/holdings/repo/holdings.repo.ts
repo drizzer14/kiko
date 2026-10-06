@@ -873,10 +873,10 @@ export const holdingsRepo = {
    * `saveEdit`) passes `true` when the edit changed the loan's own
    * amortization schedule (`loanEditInvalidatesAutoLinks`'s installment
    * comparison) or one of rule 3's own signals (`paymentHoldingId`,
-   * `lenderIban`, `lenderName`): a previously-linked AUTO row proved rules
+   * `lenderIban`, `lenderName`): an already-linked AUTO row proved rules
    * 1/2 against the OLD schedule, and left in place it would count as
    * "taken" (`installmentIsTaken`, `payment-matcher.ts`) under that stale
-   * schedule forever, even once it no longer corresponds to any real
+   * schedule forever, even when it corresponds to no real
    * installment of the NEW one. Clearing it here, before the fire-and-forget
    * matcher re-run that follows a loan edit, lets that re-run recompute
    * cleanly against the new schedule.

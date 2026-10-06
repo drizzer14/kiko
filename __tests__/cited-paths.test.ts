@@ -84,8 +84,8 @@ const INLINE_CODE_PATTERN = /(?<!`)(`+)(?!`)([\s\S]+?)(?<!`)\1(?!`)/g;
 const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
 
 // Stale citations the test tolerates. Empty: a stale citation is fixed in
-// the skill or doc text, never added here. An entry that no longer fails
-// fails the test, so the list can only shrink.
+// the skill or doc text, never added here. An entry whose citation is not
+// stale fails the test, so the list can only shrink.
 const KNOWN_STALE_CITATIONS: ReadonlyArray<{ file: string; path: string }> = [];
 
 type Citation = { line: number; path: string };

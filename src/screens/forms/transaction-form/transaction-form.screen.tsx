@@ -28,11 +28,6 @@ import {
   isExchangeDestinationType,
   isExchangeSourceType,
 } from '@kiko/holdings/exchange-destination';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import HoldingSelectField, {
@@ -49,6 +44,7 @@ import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import DateTimeRow from '@kiko/screens/forms/date-time-row';
+import { type TextInputInstance, View } from 'react-native';
 import Divider from '@kiko/design-system/components/divider';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import CategoryField from '@kiko/screens/forms/category-field';
@@ -56,27 +52,25 @@ import ExchangeFields from '@kiko/screens/forms/exchange-fields';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
-import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldError from '@kiko/design-system/components/field-error';
 import type { TransactionFormParams } from '@kiko/navigation/types';
-import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
+import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import ConvertExchangeFields from '@kiko/screens/forms/convert-exchange-fields';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
-import { type ScrollViewInstance, type TextInputInstance, View } from 'react-native';
 import ModeSelectField, { type FormMode } from '@kiko/screens/forms/mode-select-field';
 import { useLiveQuery, type AccountRow, type HoldingRow, type TransactionRow } from '@kiko/db';
 
@@ -325,8 +319,6 @@ const ruleCategoryFor = (
 // its branch count stays out of the screen component's cognitive-complexity
 // budget.
 type SaveDisabledParams = {
-  converting: boolean;
-  isExchange: boolean;
   isSplit: boolean;
   isReadOnly: boolean;
   isEditing: boolean;
@@ -352,7 +344,7 @@ type SaveDisabledField =
   | 'amount';
 
 // Every field's OWN independent error, gated only by which mode is ACTIVE
-// (converting/isExchange/isSplit/plain are mutually exclusive, so only one
+// (converting/exchange/split/plain are mutually exclusive, so only one
 // of these ever renders at a time), typed to hold ONLY the active mode's own
 // field keys — a mode's function never even mentions a field it has no
 // opinion on, so there is no all-undefined record to keep in sync by hand.
@@ -424,62 +416,57 @@ const plainFieldErrors = (params: SaveDisabledParams, t: TFunction): Transaction
   };
 };
 
-// Dispatches to the ACTIVE mode's own independent errors.
-const transactionFieldErrors = (
-  params: SaveDisabledParams,
-  t: TFunction,
-): TransactionFieldErrors => {
-  if (params.converting) {
-    return convertingFieldErrors(params, t);
-  }
+// Converting an existing row to an exchange is a sub-flow of an edit, not a
+// `FormMode`, so it is its own key here and wins over whatever form mode is
+// selected.
+type ActiveMode = FormMode | 'converting';
 
-  if (params.isExchange) {
-    return exchangeFieldErrors(params, t);
-  }
+// Module-level, not inline in the screen: the one extra ternary there pushes
+// the screen past Biome's cognitive-complexity ceiling.
+const resolveActiveMode = (converting: boolean, mode: FormMode): ActiveMode =>
+  converting ? 'converting' : mode;
 
-  if (params.isSplit) {
-    return splitFieldErrors(params, t);
-  }
+type SpecialSaves = Record<'convert' | 'split' | 'exchange', () => Promise<void>>;
 
-  return plainFieldErrors(params, t);
+type ModeBehavior = {
+  fieldErrors: (params: SaveDisabledParams, t: TFunction) => TransactionFieldErrors;
+  // The mode's field keys in the SAME priority order `fieldErrors` tests them —
+  // `firstInvalidField` below finds the first of these with an actual error,
+  // which is both the Save-block gate AND the scroll-to-first-invalid target, so
+  // the two can never disagree.
+  fieldOrder: readonly SaveDisabledField[];
+  // Null for the income/expense path: `performSave` writes that one itself, then
+  // raises the category confirm the three special modes have no use for.
+  save: keyof SpecialSaves | null;
 };
 
-// Each mode's own field keys, in the SAME priority order that mode's own
-// error function above tests them — `firstInvalidField` below finds the
-// first of these with an actual error, which is both the Save-block gate
-// AND the scroll-to-first-invalid target, so the two can never disagree.
-const CONVERTING_FIELD_ORDER: readonly SaveDisabledField[] = [
-  'counterpartHolding',
-  'counterpartAmount',
-];
-const EXCHANGE_FIELD_ORDER: readonly SaveDisabledField[] = [
-  'destinationHolding',
-  'valueOut',
-  'valueIn',
-];
-const SPLIT_FIELD_ORDER: readonly SaveDisabledField[] = [
-  'amount',
-  'selectedCategory',
-  'splitReturns',
-];
-const PLAIN_FIELD_ORDER: readonly SaveDisabledField[] = ['amount', 'selectedCategory'];
+const PLAIN_MODE_BEHAVIOR: ModeBehavior = {
+  fieldErrors: plainFieldErrors,
+  fieldOrder: ['amount', 'selectedCategory'],
+  save: null,
+};
 
-// The active mode's own priority order — mirrors `transactionFieldErrors`'s
-// dispatcher exactly, so the two can never pick a different mode's fields.
-const activeFieldOrder = (params: SaveDisabledParams): readonly SaveDisabledField[] => {
-  if (params.converting) {
-    return CONVERTING_FIELD_ORDER;
-  }
-
-  if (params.isExchange) {
-    return EXCHANGE_FIELD_ORDER;
-  }
-
-  if (params.isSplit) {
-    return SPLIT_FIELD_ORDER;
-  }
-
-  return PLAIN_FIELD_ORDER;
+// Each mode's field errors, scroll order and save path in one place, keyed by the
+// active mode so adding a mode is a compile error until each of the three is
+// supplied.
+const MODE_BEHAVIOR: Record<ActiveMode, ModeBehavior> = {
+  income: PLAIN_MODE_BEHAVIOR,
+  expense: PLAIN_MODE_BEHAVIOR,
+  exchange: {
+    fieldErrors: exchangeFieldErrors,
+    fieldOrder: ['destinationHolding', 'valueOut', 'valueIn'],
+    save: 'exchange',
+  },
+  split: {
+    fieldErrors: splitFieldErrors,
+    fieldOrder: ['amount', 'selectedCategory', 'splitReturns'],
+    save: 'split',
+  },
+  converting: {
+    fieldErrors: convertingFieldErrors,
+    fieldOrder: ['counterpartHolding', 'counterpartAmount'],
+    save: 'convert',
+  },
 };
 
 // The first still-invalid field in priority order, or null once every field
@@ -497,7 +484,7 @@ const firstInvalidField = (
 // wrote nothing — the row's own category is already persisted by `writeManual`
 // regardless, so `save` just returns to the list instead. Kept module-level
 // and pure for the same cognitive-complexity-budget reason as
-// `transactionFieldErrors`.
+// `MODE_BEHAVIOR`'s field-error functions.
 const resolveCategoryOverrideRequest = (
   categoryChanged: boolean,
   selectedCategory: string | null,
@@ -548,9 +535,9 @@ type SplitReturn = { holdingId: string | null; amount: string };
 // Whether a split payment + its returns are writable: a positive payment, at
 // least one return, each return a positive amount on a DISTINCT holding, and Σ
 // returns strictly less than |payment| (the net stays an expense). The payer
-// holding IS an allowed return target (item 2): its balance nets the payment and
-// the return with no double-count, so a return on the payer is valid — which is
-// why the guard no longer takes a `payerHoldingId` to exclude. Same-currency
+// holding IS an allowed return target: its balance nets the payment and the
+// return with no double-count, so a return on the payer is valid and the guard
+// has no payer id to exclude. Same-currency
 // returns only for v1 (enforced by the picker's filter). This is the ENFORCEMENT
 // point for the distinct-holding/positive-amount invariant —
 // `recordManualWithReturns` has no runtime guard — so it is exported and unit-
@@ -613,9 +600,9 @@ const syncedHoldingIds = (
 
 // The return-row picker's options: every OPEN holding in the payer's own
 // currency (v1 keeps a split single-currency), except any holding already
-// picked in ANOTHER row and except a synced/syncable holding (item 6 — a sync
+// picked in ANOTHER row and except a synced/syncable holding (a sync
 // owns that holding's balance, so it can never be a return target). The payer
-// holding IS an allowed return target (item 2): the net stays an expense and
+// holding IS an allowed return target: the net stays an expense and
 // the balance nets on the payer with no double-count, so nothing is excluded by
 // id here (`undefined` keeps `buildExchangeOptions` from dropping the payer).
 // The eligible-TYPE gate is the primary picker's (`isTransactionEligibleType`):
@@ -687,17 +674,7 @@ const buildLoanOptions = (
     return openOptions;
   }
 
-  return [
-    ...openOptions,
-    {
-      id: selectedHolding.id,
-      name: selectedHolding.name,
-      icon: selectedHolding.icon ?? defaultHoldingSymbol(selectedHolding),
-      color: resolveEntityColor(selectedHolding.color, defaultHoldingColor[selectedHolding.type]),
-      currency: selectedHolding.currency,
-      accountName: accountNameById.get(selectedHolding.accountId) ?? '',
-    },
-  ];
+  return [...openOptions, toHoldingOption(selectedHolding, accountNameById)];
 };
 
 // Order two holdings the way the Accounts screen shows them: primary by
@@ -750,14 +727,7 @@ const buildExchangeOptions = (
         isEligibleType(candidate.type),
     )
     .sort((first, second) => compareByAccountThenHolding(first, second, accountOrderById))
-    .map((candidate) => ({
-      id: candidate.id,
-      name: candidate.name,
-      icon: candidate.icon ?? defaultHoldingSymbol(candidate),
-      color: resolveEntityColor(candidate.color, defaultHoldingColor[candidate.type]),
-      currency: candidate.currency,
-      accountName: accountNameById.get(candidate.accountId) ?? '',
-    }));
+    .map((candidate) => toHoldingOption(candidate, accountNameById));
 };
 
 // Whether a holding TYPE takes a plain manual transaction — the same gate
@@ -1314,7 +1284,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
   return (
     <>
       {/* A divider + title-case section heading mark where the change-returns
-        list begins (item 4), the same shared Divider + `variant="heading"` Text
+        list begins, the same shared Divider + `variant="heading"` Text
         the term-deposit contributions section uses. */}
       <Divider testID="returns-divider" />
 
@@ -1354,10 +1324,10 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
 
             {/* The delete-return control reuses the SAME shared Button the deposit
               (term-deposit contributions) form uses for its remove action — a
-              destructiveTonal small button WITH a text label — rather than the
-              hand-rolled icon-only button it was before (item 3). Gated on more
-              than one return, mirroring the contributions list's own guard, so
-              the last remaining split return cannot be deleted. */}
+              destructiveTonal small button WITH a text label, never a hand-rolled
+              icon-only button. Gated on more than one return, mirroring the
+              contributions list's own guard, so the last remaining split return
+              cannot be deleted. */}
             {props.returns.length > 1 && (
               <Button
                 variant="destructiveTonal"
@@ -1412,8 +1382,8 @@ const showsSaveButton = (
 // above.
 //
 // Also visible whenever the row already carries a link
-// (`selectedLoanHoldingId`), even with zero open loan options AND even once
-// the row is no longer a debit (a linked row later edited from debit
+// (`selectedLoanHoldingId`), even with zero open loan options AND even when
+// the row is not a debit (a linked row later edited from debit
 // to credit must not hide the field where None/Undo live) — a filter never
 // hides an active selection: the row stays linked whose loan closed, moved
 // currency, or whose own amount sign changed, and the user must be able to
@@ -1623,7 +1593,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   );
   // The full account rows keyed by id, so the return picker can ask
   // `isSyncedHolding` whether a candidate's account is connected to a sync
-  // (item 6) — the name/order maps above drop the `institution` that check needs.
+  // — the name/order maps above drop the `institution` that check needs.
   const accountById = new Map(accounts.map((account) => [account.id, account]));
   // The account display rank: `accountsRepo.listQuery` is already ordered
   // by the drag-and-drop `sortOrder`, so each account's index IS its rank on
@@ -1656,7 +1626,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // display title through the same map every screen uses.
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
   const categoryByKey = buildCategoryDisplayMap(categories);
-  // The name→category rules (A1): subscribed once and reduced to a normalized-
+  // The name→category rules: subscribed once and reduced to a normalized-
   // name lookup map, so a create can pre-select a category from the settled
   // description on blur. Matching is JS-normalized (never SQL), mirroring the
   // sync insert path — see `ruleCategoryFor` and the description blur handler.
@@ -1689,7 +1659,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     color: resolveCategoryColor(category.color, category.key),
   }));
 
-  // Feature 1 (convert prefill): the latest cached FX rates, parsed into a
+  // The latest cached FX rates, parsed into a
   // numeric table so a picked convert counterpart's amount can be seeded from
   // the withdrawal magnitude. A missing pair seeds null, leaving the field blank.
   const { data: rateRows } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
@@ -1802,19 +1772,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [mode, setMode] = useState<FormMode>('expense');
   const isExchange = mode === 'exchange';
   const isSplit = mode === 'split';
-  // The scroll-mode ScrollView's ref, so adding a split return can bring the
-  // newly appended row into view. `useScrollOffset` reads its LIVE content
-  // offset for `save`'s own `scrollToField` call below.
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
-  const headerInset = useHeaderInset();
-  // The ScrollView's own total content height, captured off `Screen`'s
-  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
-  // can bound an over-large target against the real content extent — see
-  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
-  // read only imperatively at Save-press time, never needs to re-render.
-  const contentHeightRef = useRef(0);
-  // Per-field wrapper refs, one per validated field, passed to `scrollToField`
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
+  // Per-field wrapper refs, one per validated field, passed to `scrollTo`
   // in `save`'s blocked path below — each field's own inline error (a
   // `TextField`/`ExchangeFields`/`ConvertExchangeFields` `error` prop, or a
   // relocated `FieldError` for the category/split-returns reasons) sits right
@@ -1876,7 +1835,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // via the override rule — there is no single-row-only category edit.
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   // Whether the user has explicitly picked a category through the picker. Gates
-  // the description-blur auto-pick (A1): once the user chooses, a later matching
+  // the description-blur auto-pick: once the user chooses, a later matching
   // blur must never overwrite that choice.
   const [userPickedCategory, setUserPickedCategory] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -1972,7 +1931,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     blankLabel,
   ]);
 
-  // Feature 1: seed the counterpart (cash) amount from the latest cached rate at
+  // Seed the counterpart (cash) amount from the latest cached rate at
   // the MOMENT a destination is picked — an EVENT, not a derivation, so it lives
   // in the pick handler rather than an effect (no re-seed-every-render clobber,
   // no exhaustive-deps override). Only on an expense-sourced convert (a card->cash
@@ -2024,7 +1983,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The description field's placeholder previews the label the row would carry
   // if left blank (see `resolveDescriptionPlaceholder`), and the Save button is
   // disabled for a create still missing its amount or category (see
-  // `transactionFieldErrors`). Both are module-level pure helpers so their
+  // `MODE_BEHAVIOR`). Both are module-level pure helpers so their
   // branches stay out of this component's cognitive-complexity budget.
   const descriptionPlaceholder = resolveDescriptionPlaceholder({
     holding,
@@ -2033,9 +1992,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     mode,
     t,
   });
+  const modeBehavior = MODE_BEHAVIOR[resolveActiveMode(converting, mode)];
   const saveDisabledParams: SaveDisabledParams = {
-    converting,
-    isExchange,
     isSplit,
     isReadOnly,
     isEditing,
@@ -2048,19 +2006,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     changeReturns,
     currency,
   };
-  // Every field's OWN independent error (see `transactionFieldErrors`'s own
+  // Every field's OWN independent error (see `TransactionFieldErrors`'s own
   // doc comment) — `fieldError` just applies the shared `attemptedSave` gate
   // once here instead of at each of the eight call sites below.
-  const activeFieldErrors = transactionFieldErrors(saveDisabledParams, t);
+  const activeFieldErrors = modeBehavior.fieldErrors(saveDisabledParams, t);
   const fieldError = (key: SaveDisabledField): string | undefined =>
     attemptedSave ? activeFieldErrors[key] : undefined;
   // The first still-blocking field, in the active mode's own priority order
   // — both the Save-block gate AND the scroll-to-first-invalid target, so
   // the two can never disagree about which field is blocking.
-  const disableSaveField = firstInvalidField(
-    activeFieldOrder(saveDisabledParams),
-    activeFieldErrors,
-  );
+  const disableSaveField = firstInvalidField(modeBehavior.fieldOrder, activeFieldErrors);
   const disableSave = disableSaveField !== null;
 
   // An explicit category pick: record the choice AND flag it, so a later
@@ -2139,10 +2094,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         description,
         // The row carries its OWN category. The override sheet below governs
         // only whether the pick ALSO propagates to every same-name row; it is
-        // not what categorises this row. Previously the pick was persisted
-        // only through the override rule, which returns early on a blank
-        // normalized name — so a blank-description row (and any row whose
-        // override the user cancelled) was written uncategorised despite
+        // not what categorises this row. The override rule alone cannot
+        // persist the pick: it returns early on a blank normalized name, so a
+        // blank-description row (and any row whose override the user
+        // cancelled) would be written uncategorised despite
         // `plainFieldErrors` forcing a pick on create.
         category: selectedCategory,
       });
@@ -2291,11 +2246,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     // never an unconditional `scrollToEnd`, which would fire even when the
     // new row was already fully on screen.
     requestAnimationFrame(() => {
-      scrollToField(scrollableRef, lastReturnFieldRef, {
-        currentOffset: scrollOffset.value,
-        headerInset,
-        contentHeight: contentHeightRef.current,
-      });
+      scrollTo(lastReturnFieldRef);
     });
   };
 
@@ -2314,9 +2265,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   // The return-row picker's options for a given row: every eligible payer-
-  // currency holding (the payer itself included — item 2), minus every holding
+  // currency holding (the payer itself included), minus every holding
   // already picked in ANOTHER row, so two rows can never target the same holding
-  // through the UI, and minus any synced/syncable holding (item 6).
+  // through the UI, and minus any synced/syncable holding.
   const returnOptionsFor = (index: number): HoldingSelectOption[] => {
     const pickedElsewhere = new Set(
       changeReturns
@@ -2467,25 +2418,21 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // single early-return without carrying all three branches in its own
   // cognitive-complexity budget.
   const dispatchSpecialSave = async (): Promise<boolean> => {
-    if (converting) {
-      await saveConvert();
+    const { save: saveSpecial } = modeBehavior;
 
-      return true;
+    if (saveSpecial === null) {
+      return false;
     }
 
-    if (isSplit) {
-      await saveSplit();
+    const saves: SpecialSaves = {
+      convert: saveConvert,
+      split: saveSplit,
+      exchange: saveExchange,
+    };
 
-      return true;
-    }
+    await saves[saveSpecial]();
 
-    if (isExchange) {
-      await saveExchange();
-
-      return true;
-    }
-
-    return false;
+    return true;
   };
 
   // The outer Save gate: Save is always enabled, so a press while
@@ -2499,16 +2446,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       setAttemptedSave(true);
 
       if (disableSaveField) {
-        scrollToField(
-          scrollableRef,
-          fieldRefsByKey[disableSaveField],
-          {
-            currentOffset: scrollOffset.value,
-            headerInset,
-            contentHeight: contentHeightRef.current,
-          },
-          focusByKey[disableSaveField],
-        );
+        scrollTo(fieldRefsByKey[disableSaveField], focusByKey[disableSaveField]);
       }
 
       return;
@@ -2563,8 +2501,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       navigation.goBack();
     } catch {
       // Every write above — recordManual/recordManualWithReturns/recordExchange/
-      // recordExchangeCounterpart/update/setCategory — used to escape unhandled:
-      // the screen just silently failed to navigate, with Save re-enabled and
+      // recordExchangeCounterpart/update/setCategory — can reject; unhandled,
+      // the screen would silently fail to navigate, with Save re-enabled and
       // no explanation. Mirror the established Alert pattern instead.
       showSaveErrorAlert();
     }
@@ -2597,9 +2535,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       <Screen
         scroll
         scrollableRef={scrollableRef}
-        onContentSizeChange={(_width, height) => {
-          contentHeightRef.current = height;
-        }}
+        onContentSizeChange={onContentSizeChange}
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
             <Button onPress={onSave} disabled={isSubmitting}>

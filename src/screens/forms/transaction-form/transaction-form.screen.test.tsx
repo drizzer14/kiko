@@ -1,15 +1,18 @@
 import type { ComponentProps } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { Alert, StyleSheet, TextInput } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdingTypes } from '@kiko/holdings/holding-type';
-import { scrollToField } from '@kiko/design-system/scroll-to-field';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
+import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
+import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
@@ -37,8 +40,8 @@ const transactionFormRoute = (params: TransactionFormParams) =>
 // text leaves. Walking only `children` (never `props`) and keeping just the
 // string leaves reconstructs the SCREEN-READING order of every rendered
 // caption/label/button-text, independent of any prop value (e.g. a
-// `placeholder` that happens to equal a neighboring field's label) — used to
-// assert field order without depending on internal DOM structure.
+// `placeholder` that happens to equal a neighboring field's label) — so tests
+// can assert field order without depending on internal DOM structure.
 type RenderedNode = { children: (RenderedNode | string)[] | null };
 
 const collectRenderedText = (node: RenderedNode | string | null): string[] => {
@@ -449,7 +452,7 @@ describe('TransactionFormScreen — add mode', () => {
 
   it('backdates a manual transaction to the picked day, keeping the default time-of-day', async () => {
     // A fresh add defaults `time` to now; picking a DAY moves only the day and
-    // carries over that default time-of-day (the DateField no longer resets to
+    // carries over that default time-of-day (the DateField does not reset to
     // midnight, so a later time pick is not clobbered). Pin `Date.now()` so the
     // carried-over time-of-day (14:30) is deterministic.
     const nowSpy = jest
@@ -542,7 +545,7 @@ describe('TransactionFormScreen — add mode', () => {
 
     expect(mockRecordManual).not.toHaveBeenCalled();
     expect(getByText('Amount must be greater than 0.')).toBeTruthy();
-    // The reason moved onto the Amount field, so the footer no longer carries
+    // The reason sits on the Amount field, so the footer does not carry
     // it — see the "renders only the Save button in the footer" test below.
     expect(
       within(getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
@@ -982,7 +985,7 @@ describe('TransactionFormScreen — duplicate mode', () => {
     // The classic "duplicate this row, tweak the note" flow: the source seeds
     // Groceries, then the user retypes the description to a name matching NO
     // rule and blurs. A duplicate-seeded category is treated as a user pick, so
-    // the blur (A1) must NOT clear it — the category stays and Save stays on.
+    // the blur must NOT clear it — the category stays and Save stays on.
     const utils = await renderDuplicate('txn-src');
     const { getByLabelText, getByText } = utils;
 
@@ -1149,7 +1152,7 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
 
   it('does not surface the Exchange type option when the primary holding is a crypto_asset', async () => {
     // A crypto_asset holding (e.g. one migration 0044 moved a cash holding
-    // onto) is no longer an exchange SOURCE — `cryptoAssetDescriptor`'s
+    // onto) is not an exchange SOURCE — `cryptoAssetDescriptor`'s
     // `exchange.createSource` is `false`, unlike the cash holding it may have
     // come from.
     const cryptoHoldings = [
@@ -1240,8 +1243,9 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
 
   it('hydrates a 50-satoshi BTC transaction to 0.0000005, not 57', async () => {
     // Below 100 satoshis, `String(minor / 1e8)` emits exponential notation
-    // ("5e-7"), which the grouping formatter used to strip down to its digits
-    // ("57") — a 50-satoshi transaction rendered, and saved, as 57 BTC.
+    // ("5e-7"), which the Amount field's grouping formatter, keeping only
+    // digits, would turn into "57" — a 50-satoshi transaction would render,
+    // and save, as 57 BTC.
     setLiveData([{ id: 'h-btc', currency: 'BTC', balanceMinorUnits: 0, type: 'crypto_asset' }], {
       id: 'tx-1',
       holdingId: 'h-btc',
@@ -1400,9 +1404,9 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     expect(getByText('09:15')).toBeTruthy();
   });
 
-  // Deleting a manual transaction is no longer offered from this form — the
+  // Deleting a manual transaction is not offered from this form — the
   // row's touch-and-hold context menu (`CardContextMenu`) is the only delete
-  // entry point now, so the form itself never renders a Delete action or a
+  // entry point, so the form itself never renders a Delete action or a
   // delete confirm sheet.
   it('offers no Delete action, even on an editable manual transaction', async () => {
     const { queryByText } = await renderEdit('txn-1');
@@ -2324,6 +2328,64 @@ describe('TransactionFormScreen — loan payment field', () => {
     expect(getByText('Car loan')).toBeTruthy();
   });
 
+  it("shows an open loan option with the loan's own icon, color and account name", async () => {
+    setLiveData(
+      [PAYER_HOLDING, { ...LOAN_HOLDING, icon: 'star', color: '#ABCDEF' }],
+      debitTransaction,
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { getByLabelText } = await renderEdit('txn-1');
+
+    await fireEvent.press(getByLabelText('Loan payment'));
+
+    const row = getByLabelText('Car loan, Debts');
+
+    expect(glyphNamesWithin(row)).toEqual(['star']);
+    expect(glyphTintsWithin(row)).toEqual(['#ABCDEF']);
+  });
+
+  it("shows a closed linked loan with the loan's own icon and color, and no account name when its account never loaded", async () => {
+    setLiveData(
+      [PAYER_HOLDING, { ...LOAN_HOLDING, closedAt: 1, icon: 'star', color: '#ABCDEF' }],
+      { ...debitTransaction, loanHoldingId: 'loan-1', loanLinkSource: 'manual' },
+      undefined,
+      [],
+    );
+
+    const { getByLabelText } = await renderEdit('txn-1');
+    const trigger = getByLabelText('Loan payment');
+
+    expect(glyphNamesWithin(trigger)).toEqual(['star']);
+    expect(glyphTintsWithin(trigger)).toEqual(['#ABCDEF']);
+
+    await fireEvent.press(trigger);
+
+    expect(getByLabelText('Car loan, ')).toBeTruthy();
+  });
+
+  it("shows a closed linked loan with the loan type's default icon and color", async () => {
+    setLiveData(
+      [PAYER_HOLDING, { ...LOAN_HOLDING, closedAt: 1, icon: null, color: '' }],
+      { ...debitTransaction, loanHoldingId: 'loan-1', loanLinkSource: 'manual' },
+      undefined,
+      [DEBT_ACCOUNT],
+    );
+
+    const { getByLabelText } = await renderEdit('txn-1');
+    const trigger = getByLabelText('Loan payment');
+
+    expect(glyphNamesWithin(trigger)).toEqual([
+      defaultHoldingSymbol({ type: 'loan', metadata: null }),
+    ]);
+    expect(glyphTintsWithin(trigger)).toEqual([defaultHoldingColor.loan]);
+
+    await fireEvent.press(trigger);
+
+    expect(getByLabelText('Car loan, Debts')).toBeTruthy();
+  });
+
   it('keeps the field visible and lists the linked loan once it moves to another currency, with no other open loan', async () => {
     setLiveData(
       [PAYER_HOLDING, { ...LOAN_HOLDING, currency: 'USD' }],
@@ -2802,6 +2864,57 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
     expect(queryByText('USD Deposit')).toBeNull(); // term_deposit excluded on create
   });
 
+  it("shows each destination's own icon, color and account name", async () => {
+    setLiveData(
+      [
+        ...EXCHANGE_CREATE_HOLDINGS,
+        {
+          id: 'cash-custom',
+          currency: 'USD',
+          balanceMinorUnits: 0,
+          type: 'cash',
+          name: 'Pocket cash',
+          accountId: 'acc-gone',
+          icon: 'star',
+          color: '#ABCDEF',
+        },
+        {
+          id: 'cash-blank',
+          currency: 'USD',
+          balanceMinorUnits: 0,
+          type: 'cash',
+          name: 'Blank color cash',
+          accountId: 'acc-wallet',
+          icon: null,
+          color: '',
+        },
+      ],
+      undefined,
+      CATEGORIES,
+      EXCHANGE_CREATE_ACCOUNTS,
+    );
+    const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
+
+    await fireEvent.press(getByLabelText('Type'));
+    await fireEvent.press(getByText('Exchange'));
+    await flushDeferredModeSelect();
+    await fireEvent.press(getByLabelText('To'));
+
+    const defaultRow = getByLabelText('Cash USD, Wallet');
+    const blankColorRow = getByLabelText('Blank color cash, Wallet');
+    // An account row that never loaded leaves the account name empty rather
+    // than printing "undefined".
+    const customRow = getByLabelText('Pocket cash, ');
+    const cashGlyph = defaultHoldingSymbol({ type: 'cash', metadata: null });
+
+    expect(glyphNamesWithin(defaultRow)).toEqual([cashGlyph]);
+    expect(glyphTintsWithin(defaultRow)).toEqual([defaultHoldingColor.cash]);
+    expect(glyphNamesWithin(blankColorRow)).toEqual([cashGlyph]);
+    expect(glyphTintsWithin(blankColorRow)).toEqual([defaultHoldingColor.cash]);
+    expect(glyphNamesWithin(customRow)).toEqual(['star']);
+    expect(glyphTintsWithin(customRow)).toEqual(['#ABCDEF']);
+  });
+
   it('saves a cash->cash exchange with correct minor units and holding ids', async () => {
     const { getByText, getByLabelText } = await renderAddFromHolding('cash-1');
     await fireEvent.press(getByLabelText('Type'));
@@ -3169,7 +3282,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await fireEvent.press(getByText('Exchange'));
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
-    // Part A: picking a destination now PREFILLS an approximate value through
+    // Picking a destination PREFILLS an approximate value through
     // the bundled fiat rate seed (`buildRateTable`'s fallback layer, proven in
     // the "convert counterpart prefill" describe block below) — explicitly
     // blank the field to exercise the validation guard this test targets.
@@ -3192,7 +3305,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    // Part A: picking a destination now PREFILLS an approximate value through
+    // Picking a destination PREFILLS an approximate value through
     // the bundled fiat rate seed — blank it explicitly so this still exercises
     // the "blocked until valid" guard (see the note on the test above).
     await fireEvent.changeText(utils.getByLabelText('Value in'), '');
@@ -3217,7 +3330,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    // Part A: picking a destination now PREFILLS an approximate value through
+    // Picking a destination PREFILLS an approximate value through
     // the bundled fiat rate seed — blank it explicitly to still reach the
     // "amount must be greater than 0" reason this test targets.
     await fireEvent.changeText(utils.getByLabelText('Value in'), '');
@@ -3308,7 +3421,7 @@ const SPLIT_ACCOUNTS: Account[] = [{ id: 'acc', name: 'Home' }];
 
 // A synced, same-currency, open holding: its account is connected to a sync
 // (Binance) AND it carries that source's metadata key, so `isSyncedHolding` is
-// true and the return picker must exclude it (item 6), even though currency and
+// true and the return picker must exclude it, even though currency and
 // open-status would otherwise qualify it.
 const SPLIT_SYNCED_HOLDING: Holding = {
   id: 'synced-uah',
@@ -3860,9 +3973,9 @@ describe('TransactionFormScreen — Split-change mode', () => {
 
   // Wrapping `renderSplitReturns`'s Fragment in this `View` (wrapping the
   // divider/heading/rows/button in one `View`) pulls them OUT of the parent
-  // `Box gap={4}`'s own flex-item list — they used to be its direct children,
-  // each getting that 16pt rhythm; now they are all ONE child, with nothing
-  // supplying a gap between them. The wrapper must carry the SAME gap itself.
+  // `Box gap={4}`'s own flex-item list — direct children would each get that
+  // 16pt rhythm; as ONE child, nothing supplies a gap between them. The
+  // wrapper must carry the SAME gap itself.
   it('gives the split-returns wrapper its own gap matching the form rhythm, once split mode is selected', async () => {
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');
@@ -3918,7 +4031,7 @@ describe('canSaveSplit', () => {
     expect(canSaveSplit('', [{ holdingId: 'a', amount: '1' }], 'UAH')).toBe(false);
     // A return with no holding picked.
     expect(canSaveSplit('10', [{ holdingId: null, amount: '1' }], 'UAH')).toBe(false);
-    // A return that targets the payer itself is NOW allowed (item 2): the net is
+    // A return that targets the payer itself is allowed: the net is
     // still an expense (return < payment) and the balance nets on the payer with
     // no double-count, so a payer return is a valid split.
     expect(canSaveSplit('10', [{ holdingId: 'payer', amount: '1' }], 'UAH')).toBe(true);
@@ -4020,9 +4133,9 @@ describe('TransactionFormScreen — convert counterpart prefill', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  // Part A (bug-hunt fix): `buildRateTable` now falls back to the bundled fiat
+  // `buildRateTable` falls back to the bundled fiat
   // rate seed when `currency_rates` has no live row for a pair — a supported
-  // fiat pair therefore ALWAYS resolves, never `null`, so this no longer proves
+  // fiat pair therefore ALWAYS resolves, never `null`, so this does not prove
   // the blank-field path (see `exchange-prefill.test.ts`'s own "returns null
   // when no cached rate exists", unaffected by the seed since it hand-builds
   // its `RateTable` rather than going through `buildRateTable`). This proves
@@ -4041,5 +4154,255 @@ describe('TransactionFormScreen — convert counterpart prefill', () => {
     // test above locks in for the same holdings at a different (live) rate.
     await waitFor(() => expect(utils.getByLabelText('Value in').props.value).toBe('892'));
     expect(mockUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// Presses a blocked Save and returns the field wrapper ref it scrolled to. A
+// wrapper ref has no host node to query by label, so a test names a field by
+// the one state in which only that field is invalid: the ref seen there is its
+// own, and a state with more invalid fields must not scroll to any other.
+const blockedSaveTarget = async (utils: Awaited<ReturnType<typeof render>>): Promise<unknown> => {
+  const scrollToFieldMock = scrollToField as jest.Mock;
+  scrollToFieldMock.mockClear();
+  await fireEvent.press(utils.getByText('Save'));
+
+  expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+
+  return scrollToFieldMock.mock.calls[0][1];
+};
+
+// Compared as a boolean, never with `toBe` on the refs: a failing `toBe` would
+// serialize two React fiber graphs and exhaust the heap.
+const sameTarget = (first: unknown, second: unknown): boolean => first === second;
+
+describe('TransactionFormScreen — blocked Save scrolls to the first invalid field, per mode', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('plain income/expense: Amount before Category', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+    const utils = await renderAdd();
+
+    const bothInvalid = await blockedSaveTarget(utils);
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    const categoryOnly = await blockedSaveTarget(utils);
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '');
+    await pickCategory(utils, 'Groceries');
+    const amountOnly = await blockedSaveTarget(utils);
+
+    expect(sameTarget(categoryOnly, amountOnly)).toBe(false);
+    expect(sameTarget(bothInvalid, amountOnly)).toBe(true);
+  });
+
+  it('exchange: destination, then Value out, then Value in', async () => {
+    setLiveData(EXCHANGE_HOLDINGS);
+    const utils = await renderAddFromHolding('cash-1');
+    await pickType(utils, 'exchange');
+
+    const allInvalid = await blockedSaveTarget(utils);
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    const outAndIn = await blockedSaveTarget(utils);
+    await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
+    const inOnly = await blockedSaveTarget(utils);
+
+    expect(sameTarget(outAndIn, inOnly)).toBe(false);
+    expect(sameTarget(allInvalid, inOnly)).toBe(false);
+    expect(sameTarget(allInvalid, outAndIn)).toBe(false);
+  });
+
+  it('split: Amount, then Category, then the returns', async () => {
+    setLiveData(SPLIT_HOLDINGS, undefined, CATEGORIES, SPLIT_ACCOUNTS);
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+
+    const allInvalid = await blockedSaveTarget(utils);
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
+    const categoryAndReturns = await blockedSaveTarget(utils);
+    await pickCategory(utils, 'Groceries');
+    const returnsOnly = await blockedSaveTarget(utils);
+
+    expect(sameTarget(categoryAndReturns, returnsOnly)).toBe(false);
+    expect(sameTarget(allInvalid, returnsOnly)).toBe(false);
+    expect(sameTarget(allInvalid, categoryAndReturns)).toBe(false);
+  });
+
+  it('converting: the counterpart holding, then the counterpart amount', async () => {
+    setLiveData(
+      CONVERT_HOLDINGS,
+      CONVERT_TRANSACTIONS['expense-manual'],
+      CATEGORIES,
+      CONVERT_ACCOUNTS,
+    );
+    const utils = await renderEdit('expense-manual');
+    await fireEvent.press(utils.getByText('Exchange'));
+
+    const bothInvalid = await blockedSaveTarget(utils);
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    // Picking a destination prefills the counterpart amount, so blank it to
+    // leave only the amount invalid.
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '');
+    const amountOnly = await blockedSaveTarget(utils);
+
+    expect(sameTarget(bothInvalid, amountOnly)).toBe(false);
+  });
+});
+
+describe('TransactionFormScreen — what the scroll is handed', () => {
+  const scrollToFieldMock = scrollToField as jest.Mock;
+  const scrollOffset = { value: 0 };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    scrollOffset.value = 0;
+    (useHeaderInset as jest.Mock).mockReturnValue(96);
+    // `requireMock`, not an import: the sorted import order would load reanimated
+    // before the mock helper this file's own `jest.mock` factory needs.
+    jest
+      .spyOn(jest.requireMock('react-native-reanimated'), 'useScrollOffset')
+      .mockReturnValue(scrollOffset);
+  });
+
+  afterEach(() => {
+    (useHeaderInset as jest.Mock).mockReset();
+    jest.restoreAllMocks();
+  });
+
+  const reportScrollGeometry = async (utils: Awaited<ReturnType<typeof render>>): Promise<void> => {
+    await fireEvent(utils.getByTestId('screen-scroll-view'), 'contentSizeChange', 320, 1234);
+    scrollOffset.value = 250;
+  };
+
+  it('hands a blocked Save the live offset, header inset and content height', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+    const utils = await renderAdd();
+    await reportScrollGeometry(utils);
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    expect(scrollToFieldMock.mock.calls[0][2]).toEqual({
+      currentOffset: 250,
+      headerInset: 96,
+      contentHeight: 1234,
+    });
+  });
+
+  it('hands the new-return scroll the live offset, header inset and content height', async () => {
+    setLiveData(SPLIT_HOLDINGS, undefined, CATEGORIES, SPLIT_ACCOUNTS);
+    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0);
+
+      return 0;
+    });
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await reportScrollGeometry(utils);
+    scrollToFieldMock.mockClear();
+
+    await fireEvent.press(utils.getByText('Add return'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    expect(scrollToFieldMock.mock.calls[0][2]).toEqual({
+      currentOffset: 250,
+      headerInset: 96,
+      contentHeight: 1234,
+    });
+  });
+
+  it("follows a blocked Save on the Amount with that field's focus, and on no other field with nothing", async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+    const utils = await renderAdd();
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => undefined);
+
+    await fireEvent.press(utils.getByText('Save'));
+    const amountSettled = scrollToFieldMock.mock.calls[0][3];
+
+    expect(amountSettled).toEqual(expect.any(Function));
+    expect(focus).not.toHaveBeenCalled();
+    amountSettled();
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(focus.mock.contexts[0].props.accessibilityLabel).toBe('Amount');
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(scrollToFieldMock.mock.calls[0][3]).toBeUndefined();
+  });
+});
+
+const calledWrites = (): string[] =>
+  Object.entries({
+    manual: mockRecordManual,
+    withReturns: mockRecordManualWithReturns,
+    exchange: mockRecordExchange,
+    counterpart: mockRecordExchangeCounterpart,
+    update: mockUpdate,
+  })
+    .filter(([, write]) => write.mock.calls.length > 0)
+    .map(([name]) => name);
+
+describe("TransactionFormScreen — a valid Save runs only the active mode's own write", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRecordManualWithReturns.mockResolvedValue(undefined);
+  });
+
+  it('plain: only recordManual', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+    const utils = await renderAdd();
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(calledWrites()).toEqual(['manual']);
+  });
+
+  it('exchange: only recordExchange', async () => {
+    setLiveData(EXCHANGE_HOLDINGS);
+    const utils = await renderAddFromHolding('cash-1');
+    await pickType(utils, 'exchange');
+    await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.50');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(calledWrites()).toEqual(['exchange']);
+  });
+
+  it('split: only recordManualWithReturns', async () => {
+    setLiveData(SPLIT_HOLDINGS, undefined, CATEGORIES, SPLIT_ACCOUNTS);
+    const utils = await renderAddFromHolding('payer');
+    await pickType(utils, 'split');
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Alice'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '212.00');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(calledWrites()).toEqual(['withReturns']);
+  });
+
+  it('converting: only recordExchangeCounterpart', async () => {
+    setLiveData(
+      CONVERT_HOLDINGS,
+      CONVERT_TRANSACTIONS['expense-manual'],
+      CATEGORIES,
+      CONVERT_ACCOUNTS,
+    );
+    const utils = await renderEdit('expense-manual');
+    await fireEvent.press(utils.getByText('Exchange'));
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Cash USD'));
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.50');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(calledWrites()).toEqual(['counterpart']);
   });
 });

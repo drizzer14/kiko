@@ -1241,6 +1241,13 @@ flip to ERROR when `check:security` reports 0 findings for this rule id,
 after the sweep (never when a grep is empty). The sweep is the user's
 call; do not run it as part of an unrelated task.
 
+**Hand-run scan target.** A rule's `paths.exclude` (for example `__tests__/**`) is
+relative to the semgrep scan target. A hand-run count or sweep (this rule and
+`kiko-no-task-id-comment`) must target the repo root (`.`) or single files; a directory
+target such as `__tests__` makes the paths relative to it, so the exclude misses (a
+2026-10-06 sweep counted 6 excluded `__tests__` files that way). `src` as a target is
+fine for these rules.
+
 The anchoring is the id rule's: the same string-skip
 `^(?:…)*` walk, `(?<!:)//` for the line arm, the block arm that never
 crosses `*/`, the same `\K` match shape (see "What a finding is" in the

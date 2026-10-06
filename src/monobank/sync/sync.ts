@@ -81,7 +81,7 @@ interface SyncAccountsRepo {
  * - `closeManyBySync` stamps `closedAt` AND the sync-close mark
  *   (`syncClosedFromMs`) on a set of holdings in ONE transaction. The sync calls
  *   it ONLY on a COMPLETE, clean full-fetch run to reconcile away a holding
- *   Monobank no longer returns (a closed card, a deleted jar); never on a
+ *   Monobank omits from its response (a closed card, a deleted jar); never on a
  *   partial/failed/empty response — see the guarded close block in `runSyncInner`.
  *   It is not the user's `closeMany`, which writes no mark, so a user-closed
  *   holding never reopens (see `reconcileClosedHoldings`).
@@ -973,7 +973,7 @@ const closeMarkFromMs = (lastFullSyncAt: number | null, toSeconds: number): numb
 
 /**
  * On a COMPLETE, clean full fetch, close every Monobank holding under `accountId`
- * that the snapshot no longer returns (a closed card, a deleted jar). Such a
+ * that is absent from the snapshot (a closed card, a deleted jar). Such a
  * holding is only UPSERTED while present, so without this reconciliation it
  * lingers with `closedAt = null` and its last balance, over-counting net worth
  * until some later event removes it.
@@ -1349,8 +1349,8 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // the partial-failure `throw` below. This is decoupled from the statement
   // cursor (`setLastSyncAt`), which advances only on a fully clean run.
   //
-  // Stamping on ANY success does NOT re-introduce the false-current bug: the
-  // crash-safe marker (`syncedBalanceMinorUnits`, BUG A fix 1) makes a
+  // Stamping on ANY success never reads falsely current: the
+  // crash-safe marker (`syncedBalanceMinorUnits`) makes a
   // still-pending card RE-FETCH next run rather than being skipped, so "Last
   // sync" tracking the last reached-Monobank run is honest. Stamping only on a
   // fully clean run would instead FREEZE "Last sync" whenever one card fails
@@ -1362,7 +1362,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
   // Persist the force-fetch set for the NEXT run BEFORE the partial-failure
   // throw, so a failed card is re-fetched next run even though the cursor stays
   // put. `nextFailedSet` drops the ids that succeeded this run, adds the ones
-  // that failed, and prunes any no longer in client-info. Written only when it
+  // that failed, and prunes any absent from client-info. Written only when it
   // actually changed, to avoid a redundant transaction on the common (all-clean)
   // path where both sets are empty.
   const currentIds = new Set(sources.map((source) => source.id));
@@ -1399,7 +1399,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     throw failures[0];
   }
 
-  // Reconcile away holdings the snapshot no longer returns (a closed card, a
+  // Reconcile away holdings absent from the snapshot (a closed card, a
   // deleted jar), but ONLY on a complete, clean full fetch — see
   // `reconcileClosedHoldings` for the load-bearing guard.
   await reconcileClosedHoldings(

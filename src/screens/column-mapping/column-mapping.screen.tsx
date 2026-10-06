@@ -3,11 +3,6 @@ import * as RNFS from 'react-native-fs';
 import { useLiveQuery } from '@kiko/db';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
-import {
-  scrollToField,
-  useHeaderInset,
-  type FieldInstance,
-} from '@kiko/design-system/scroll-to-field';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
@@ -40,7 +35,6 @@ import {
 } from '@kiko/statement-import/read-statement-file';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
-import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import either, { bifoldr, eitherSync } from 'fnts/either';
 import Button from '@kiko/design-system/components/button';
@@ -48,15 +42,17 @@ import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { supportedFormatNames } from '@kiko/statement-import/registry';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { importParsedStatement } from '@kiko/statement-import/import-statement';
 import ImportResultSheet from '@kiko/design-system/components/import-result-sheet';
 import { type FC, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { useImportResultSheet } from '@kiko/statement-import/use-import-result-sheet';
 import { previewStats, type PreviewStats } from '@kiko/statement-import/preview-stats';
 import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
 import { useImportBalancePreview } from '@kiko/statement-import/use-import-balance-preview';
 import type { SpreadsheetCellValue, StatementFormatInput } from '@kiko/statement-import/parser';
-import { importParsedStatement, type ImportResult } from '@kiko/statement-import/import-statement';
 
 import ColumnMappingForm from './column-mapping-form';
 import type {
@@ -553,13 +549,6 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
 
   const [pickedHoldingId, setPickedHoldingId] = useState<string | undefined>(undefined);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | undefined>(undefined);
-  // Decoupled from `importResult` itself — see
-  // `handleImportDone` below for why.
-  const [resultSheetVisible, setResultSheetVisible] = useState(false);
-  // Guards `handleSheetClosed` against running
-  // its navigation more than once — see that function's own comment.
-  const navigatedAwayRef = useRef(false);
   // Import is ALWAYS enabled — this flips true on the FIRST Import press
   // and stays true, the same "validate on press" contract every other Kiko
   // form uses (`kiko-code-style`'s "Form validation model").
@@ -576,16 +565,18 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
   const descriptionColumnFieldRef = useRef<FieldInstance>(null);
   const resultFieldRef = useRef<FieldInstance>(null);
   const targetHoldingFieldRef = useRef<FieldInstance>(null);
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
-  const headerInset = useHeaderInset();
-  const contentHeightRef = useRef(0);
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
 
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.byIdQuery(accountId),
     ['accounts'],
   );
   const account = accounts.at(0);
+  const { sheetProps: importResultSheetProps, show: showImportResult } = useImportResultSheet({
+    navigation,
+    accountId,
+    accountName: account?.name,
+  });
   const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(accountId), ['holdings']);
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(settingsRepo.getQuery(), [
     'settings',
@@ -657,9 +648,9 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     // comment). When this screen was reached instead by "Map columns
     // manually" (a PUSH), `StatementImportScreen` stays mounted underneath
     // and still owns the file — deleting it here on a plain Back would
-    // strand that still-reachable preview with a filePath that no longer
-    // resolves, reintroducing item 6's exact bug (a second "Map columns
-    // manually" tap re-reading a file this screen already deleted). The
+    // strand that still-reachable preview with a filePath that does not
+    // resolve (a second "Map columns manually" tap would re-read a file this
+    // screen already deleted). The
     // preview's OWN unmount cleanup is the one that eventually deletes the
     // file in that case, once IT is genuinely done with the flow.
     return () => {
@@ -852,11 +843,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
       const target = firstInvalidColumnMappingFieldRef(fieldErrors, fieldRefs);
 
       if (target) {
-        scrollToField(scrollableRef, target, {
-          currentOffset: scrollOffset.value,
-          headerInset,
-          contentHeight: contentHeightRef.current,
-        });
+        scrollTo(target);
       }
 
       return;
@@ -865,8 +852,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     setImporting(true);
 
     try {
-      setImportResult(await importParsedStatement(applyResult.statement, selectedHoldingId));
-      setResultSheetVisible(true);
+      showImportResult(await importParsedStatement(applyResult.statement, selectedHoldingId));
 
       const fingerprint = headerFingerprint(rows[mapping.headerRowIndex] ?? []);
       const key = mappingKeyFor(account?.bankId, fingerprint);
@@ -889,44 +875,6 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     }
   };
 
-  // Closes the successful-import modal. Does NOT navigate —
-  // see `handleSheetClosed` below and its matching
-  // comment on `statement-import.screen.tsx`'s own pair of handlers for the
-  // full rationale. `importResult` itself is still never cleared.
-  const handleImportDone = (): void => {
-    setResultSheetVisible(false);
-  };
-
-  // Same shape as `statement-import.screen.tsx`'s
-  // own `handleSheetClosed` — runs once `ImportResultSheet`'s `onClosed`
-  // fires (the sheet's close animation actually finished), guarded by
-  // `navigatedAwayRef` so a repeated call navigates at most once.
-  // `navigation.popTo` — NOT `navigate`, which on React Navigation 7 pushes
-  // a DUPLICATE of an already-on-stack route instead of reusing it — see
-  // `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` for the
-  // real-router proof) — finds the existing `AccountDetail` instance
-  // already on the stack (this screen was pushed from StatementImport,
-  // itself pushed FROM there) and pops back to it in one hop.
-  const handleSheetClosed = (): void => {
-    if (navigatedAwayRef.current) {
-      return;
-    }
-
-    navigatedAwayRef.current = true;
-
-    if (account) {
-      navigation.popTo(
-        'AccountDetail',
-        { accountId, name: account.name, reminderOffer: 'afterImport' },
-        { merge: true },
-      );
-
-      return;
-    }
-
-    navigation.goBack();
-  };
-
   const footer =
     loadState.kind === 'ready' ? (
       // Import is ALWAYS enabled — `disabled={importing}` only, never a
@@ -942,9 +890,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
       scroll
       footer={footer}
       scrollableRef={scrollableRef}
-      onContentSizeChange={(_width, height) => {
-        contentHeightRef.current = height;
-      }}
+      onContentSizeChange={onContentSizeChange}
     >
       <Box gap={4} testID="column-mapping-content">
         {loadMessageKey !== undefined && (
@@ -1015,12 +961,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
         )}
       </Box>
 
-      <ImportResultSheet
-        visible={resultSheetVisible}
-        result={importResult}
-        onDone={handleImportDone}
-        onClosed={handleSheetClosed}
-      />
+      <ImportResultSheet {...importResultSheetProps} />
     </Screen>
   );
 };

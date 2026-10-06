@@ -23,8 +23,8 @@ import { COLUMN, DETECT_PREFIX, procreditBusinessCsvFormat } from '.';
 const fixtureInput = procreditBusinessFixtureInput;
 const fixtureText = fixtureInput.text;
 
-// The real fixture's own header, byte-verified — used to
-// hand-assemble minimal malformed-row inputs, same convention as
+// The real fixture's own header, byte-verified — the base for
+// hand-assembled minimal malformed-row inputs, same convention as
 // Monobank/Sensebank's own malformed-row fixtures.
 const REAL_HEADER =
   'ЄДРПОУ;Код ID НБУ;Рахунок;Валюта;Дата операції;Код операції;МФО банка;Назва банка;Рахунок кореспондента;ЄДРПОУ кореспондента;Кореспондент;Номер документа;Дата документа;Дебет;Кредит;Призначення платежу;Гривневе покриття';

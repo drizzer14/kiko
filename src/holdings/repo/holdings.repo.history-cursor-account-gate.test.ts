@@ -5,7 +5,7 @@
 // to an in-process `node:sqlite` engine, and mocks `@kiko/db/client`'s `write`
 // to route the repo's OWN `write(...)` calls through `executingDrizzle`
 // against it — proving `setBinanceHistoryCursor`'s account-institution gate
-// (item 2: a walk holds the account's credentials for its whole run, so a
+// (a walk holds the account's credentials for its whole run, so a
 // disconnect can commit while it is still in flight) against a real join.
 let mockWorkDatabase: unknown;
 jest.mock('@kiko/db/client', () => {

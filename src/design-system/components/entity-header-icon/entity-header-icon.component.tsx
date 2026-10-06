@@ -6,7 +6,7 @@ import SymbolIcon from '../symbol';
 // The entity's identity glyph as it appears beside the Balance/Value amount in
 // `EntityAmountHeader`, built from the account's/holding's effective icon + color
 // (see `accountIdentity` in `@kiko/holdings/account-identity` and
-// `holdingIdentity` in the holding-detail screen). Both detail
+// `holdingIdentity` in `@kiko/holdings/holding-identity`). Both detail
 // screens render an identical icon here, so it lives in one component rather than
 // duplicating the `SymbolIcon` markup — and each screen can pass it
 // unconditionally: with no identity yet (the row's live query still loading) it
