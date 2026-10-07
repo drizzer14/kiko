@@ -186,6 +186,8 @@ const DENIED_NESTED: string[] = [
   "ls src/*.ts | xargs -eS sed -i 's/a/b/'",
   "xargs -iR sed -i 's/a/b/' src/x.ts",
   "xargs -eS sed -i 's/a/b/' src/x.ts",
+  "ls src/*.ts | xargs --max-args 1 sed -i 's/a/b/'",
+  "ls src/*.ts | xargs -0iR sed -i 's/a/b/' R",
   "$(which sed) -i 's/a/b/' src/x.ts",
 ];
 
@@ -220,6 +222,9 @@ const DENIED_COPY_MOVE: string[] = [
   'ls /tmp/*.ts | xargs -I {} cp -t {} x.ts',
   'ls /tmp/*.ts | xargs cp /tmp/a.ts',
   'ls /tmp/*.ts | xargs cp /tmp/a.ts /tmp/b/',
+  'echo src | xargs -eIX cp /tmp/a /tmp/b',
+  'echo src | xargs -ei cp /tmp/a /tmp/b',
+  'echo src | xargs -lI{} cp /tmp/a /tmp/b',
 ];
 
 const ALLOWED_COPY_MOVE: string[] = [

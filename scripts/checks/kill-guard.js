@@ -809,7 +809,28 @@ const OPTION_WRAPPERS = new Map([
   ['time', new Set()],
   ['env', new Set(['-C', '-u', '--chdir', '--unset'])],
   ['timeout', new Set(['-k', '-s', '--kill-after', '--signal'])],
-  ['xargs', new Set(['-a', '-d', '-E', '-I', '-J', '-L', '-n', '-P', '-R', '-S', '-s'])],
+  [
+    'xargs',
+    new Set([
+      '-a',
+      '-d',
+      '-E',
+      '-I',
+      '-J',
+      '-L',
+      '-n',
+      '-P',
+      '-R',
+      '-S',
+      '-s',
+      '--arg-file',
+      '--delimiter',
+      '--max-args',
+      '--max-procs',
+      '--max-chars',
+      '--process-slot-var',
+    ]),
+  ],
 ]);
 
 // `env -S 'a b'` splits its one word into the command line.
@@ -828,18 +849,25 @@ const SHELL_COMMAND_FLAG = /^-[A-Za-z]*c[A-Za-z]*$/;
 // never the next word, so a letter after one of them is part of that value.
 const XARGS_GLUED_ONLY_OPTIONS = new Set(['i', 'e', 'l']);
 
-// Whether an option takes its value as the NEXT word: a listed option, or a
-// flag group whose first value-taking letter comes last (`sudo -iu me`, as
-// getopt reads it; in `-uroot` the value is glued on). A letter at or after
-// the first glued-only one (`-iR`) never takes the next word.
+// A `--long` option written without `=` whose name getopt_long accepts as an
+// abbreviation (`--max-p`) of a listed value-taking one.
+const abbreviatesLongOption = (option, optionsWithValue) =>
+  option.length > 2 &&
+  option.startsWith('--') &&
+  !option.includes('=') &&
+  [...optionsWithValue].some((name) => name.startsWith(option));
+
+// Whether an option takes its value as the NEXT word: a listed option (or an
+// abbreviation of a listed long one), or a flag group whose first value-taking
+// letter comes last (`sudo -iu me`, as getopt reads it; in `-uroot` the value
+// is glued on). A group holding a glued-only letter never takes the next word.
 function takesNextWord(option, optionsWithValue, gluedOnlyLetters = new Set()) {
-  if (optionsWithValue.has(option)) return true;
+  if (optionsWithValue.has(option) || abbreviatesLongOption(option, optionsWithValue)) return true;
   if (!/^-[A-Za-z0-9]{2,}$/.test(option)) return false;
   const letters = [...option.slice(1)];
-  const gluedAt = letters.findIndex((letter) => gluedOnlyLetters.has(letter));
-  const reachable = gluedAt === -1 ? letters : letters.slice(0, gluedAt);
+  if (letters.some((letter) => gluedOnlyLetters.has(letter))) return false;
 
-  return reachable.findIndex((letter) => optionsWithValue.has(`-${letter}`)) === letters.length - 1;
+  return letters.findIndex((letter) => optionsWithValue.has(`-${letter}`)) === letters.length - 1;
 }
 
 // The tokens after a command word and its leading options.
@@ -883,7 +911,7 @@ function xargsPlaceholder(tokens) {
     const word = tokens[index];
     const replace = /^--replace(?:=(.*))?$/s.exec(word);
     const letters = /^-([^-].*)$/s.exec(word)?.[1] ?? '';
-    const at = letters.search(/[adEIJLnPRSsi]/);
+    const at = letters.search(/[adEeIJLlnPRSsi]/);
     if (replace !== null) placeholder = replace[1] ?? '{}';
     else if (letters[at] === 'i') placeholder = letters.slice(at + 1) || '{}';
     else if ('IJ'.includes(letters[at] ?? '-')) {

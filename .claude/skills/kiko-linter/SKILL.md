@@ -74,9 +74,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   for the closed sets) skips lead-in words (`(`/`{` group openers,
   reserved words, `NAME=value` prefixes, an end-of-options `--`) and
   wrappers such as `sudo`, `nice`, `time`, `env`, `exec` (`-a name`
-  takes a value), `timeout`, `xargs` (BSD `-J`/`-R`/`-S` take a value; GNU `-i`/`-e`/`-l` take only a
-  glued value, so in `-iR` or `-eS` the `R`/`S` is that value, never a
-  next-word option — `XARGS_GLUED_ONLY_OPTIONS`);
+  takes a value), `timeout`, `xargs` (BSD `-J`/`-R`/`-S` take a value;
+  GNU `-i`/`-e`/`-l` take only a glued value, so in `-iR` or `-eS` the
+  `R`/`S` is that value, never a next-word option, and a group holding
+  one never takes the next word — `XARGS_GLUED_ONLY_OPTIONS`; a GNU long
+  option with a required value (`--max-procs 2`, `--arg-file f`), or an
+  abbreviation of one (`--max-p`), takes the next word, while the
+  optional-value `--replace`/`--eof`/`--max-lines` take only `=value`);
   `env -S`/`--split-string` splits its one word into the command line.
   There is no closer stripping: an unquoted `)` ends the segment, like
   `;`. Any shell flag group holding `c` (`-lc`, `-xc`) counts as `-c`,
