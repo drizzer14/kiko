@@ -175,6 +175,21 @@ smallest fixed release in the same major: `compression` 1.8.2 (published
 }
 ```
 
+`bash scripts/checks/osv.sh` also flagged `source-map-js` 1.2.1
+(GHSA-68fv-2mgg-jv7q, CVSS 8.7), dev-only: it comes through `depcheck`
+-> `@vue/compiler-sfc` (and that package's `@vue/compiler-core` and
+`postcss`), and `npm ls source-map-js --all --omit=dev` is empty. The
+parent ranges (`^1.2.x`) accept the fixed 1.2.2 (published 2026-09-30,
+eligible under `min-release-age=7` from 2026-10-07), so it is pinned with
+a top-level override. Drop the override once the parents resolve 1.2.2 or
+later on their own:
+
+```json
+"overrides": {
+  "source-map-js": "1.2.2"
+}
+```
+
 ## `.env` is public-only
 
 `react-native-dotenv` inlines every `.env` value into the JS bundle at
@@ -232,19 +247,6 @@ debt (user decision 2026-10-03), same class
 as the `image-size` CVEs above — do not suppress it; re-check
 periodically with `bash scripts/checks/osv.sh` and bump the moment a
 fix ships. Last checked 2026-10-03.
-
-`check:deep` also flags `source-map-js` 1.2.1, advisory
-GHSA-68fv-2mgg-jv7q (CVSS 8.7, fixed in 1.2.2). It is dev-only: it comes
-only through `depcheck` -> `@vue/compiler-sfc` (and that package's
-`@vue/compiler-core` and `postcss`), and `npm ls source-map-js --all
---omit=dev` is empty. The fix is NOT yet installable: `1.2.2` was
-published 2026-09-30, inside the 7-day minimum age, so it becomes
-eligible on 2026-10-07 14:08Z (published 2026-09-30T14:08Z; an install
-before then is refused by `min-release-age=7`). Tracked debt until then,
-not a suppressed finding. Re-run `bash scripts/checks/osv.sh` from that
-time and pin it with a top-level override (`"source-map-js": "1.2.2"`;
-the parents' `^1.2.x` ranges accept it) the moment it is eligible. Last
-checked 2026-10-06.
 
 `check:deep` also flags `sprintf-js` 1.0.3, advisory GHSA-hp3w-g68c-fv3c
 (CVSS 6.9). No fixed version exists. It is dev-only: both paths run
