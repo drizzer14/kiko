@@ -6,6 +6,7 @@ import {
 import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
 import FieldLabel from '../field-label';
@@ -22,6 +23,9 @@ type CryptoSyncFormProps = {
   accountId: string;
   onConnectWallet: (address: string) => Promise<boolean>;
   onConnectBinance: () => Promise<boolean>;
+  // Each source's field takes its own reminder: only the picked source's field is mounted.
+  walletReminder?: ConnectReminder;
+  binanceReminder?: ConnectReminder;
 };
 
 // A function (not a module-level constant) so its labels re-resolve against
@@ -41,6 +45,8 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
   accountId,
   onConnectWallet,
   onConnectBinance,
+  walletReminder,
+  binanceReminder,
 }) => {
   const { t } = useTranslation();
   const [source, setSource] = useState<BalanceProviderId>('btc_wallet');
@@ -66,10 +72,16 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
         />
       </Box>
 
-      {source === 'btc_wallet' && <WalletAddressField onConnect={onConnectWallet} />}
+      {source === 'btc_wallet' && (
+        <WalletAddressField onConnect={onConnectWallet} reminder={walletReminder} />
+      )}
 
       {source === 'binance' && (
-        <BinanceCredentialsField accountId={accountId} onConnect={onConnectBinance} />
+        <BinanceCredentialsField
+          accountId={accountId}
+          onConnect={onConnectBinance}
+          reminder={binanceReminder}
+        />
       )}
     </Box>
   );

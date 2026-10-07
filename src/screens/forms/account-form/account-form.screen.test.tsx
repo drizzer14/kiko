@@ -11,6 +11,7 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
+import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -129,31 +130,91 @@ jest.mock('@kiko/sync/use-crypto-sync', () => ({
 // pressable that fires the screen's `onConnect*` closure, so what is under test
 // is the create screen's wiring (create-first, no duplicate, secret stays in the
 // field).
+// Each mock also honors the `reminder` contract the real fields implement: it
+// reports every edit of its input (and its unmount), reports a Connect press,
+// hangs the ref on its Connect row and prints the message under it.
 jest.mock('@kiko/design-system/components/wallet-address-field', () => {
-  const { Pressable, Text } = require('react-native');
+  const { useEffect } = require('react');
+  const { Pressable, Text, TextInput, View } = require('react-native');
 
   return {
     __esModule: true,
-    default: ({ onConnect }: { onConnect: (address: string) => Promise<boolean> }) => (
-      <Pressable
-        accessibilityLabel="wallet-field"
-        onPress={() => onConnect('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq')}
-      >
-        <Text>wallet field</Text>
-      </Pressable>
-    ),
+    default: ({
+      onConnect,
+      reminder,
+    }: {
+      onConnect: (address: string) => Promise<boolean>;
+      reminder?: ConnectReminder;
+    }) => {
+      const onDraftChange = reminder?.onDraftChange;
+      useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
+
+      return (
+        <View ref={reminder?.ref}>
+          <TextInput
+            testID="wallet-input"
+            onChangeText={(text: string) => reminder?.onDraftChange(text.trim() !== '')}
+          />
+
+          <Pressable
+            accessibilityLabel="wallet-field"
+            onPress={() => {
+              reminder?.onConnectPress();
+
+              return onConnect('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq');
+            }}
+          >
+            <Text>wallet field</Text>
+          </Pressable>
+
+          {reminder?.message !== undefined && (
+            <Text testID="wallet-reminder">{reminder.message}</Text>
+          )}
+        </View>
+      );
+    },
   };
 });
 jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
-  const { Pressable, Text } = require('react-native');
+  const { useEffect } = require('react');
+  const { Pressable, Text, TextInput, View } = require('react-native');
 
   return {
     __esModule: true,
-    default: ({ onConnect }: { onConnect: () => Promise<boolean> }) => (
-      <Pressable accessibilityLabel="binance-field" onPress={() => onConnect()}>
-        <Text>binance field</Text>
-      </Pressable>
-    ),
+    default: ({
+      onConnect,
+      reminder,
+    }: {
+      onConnect: () => Promise<boolean>;
+      reminder?: ConnectReminder;
+    }) => {
+      const onDraftChange = reminder?.onDraftChange;
+      useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
+
+      return (
+        <View ref={reminder?.ref}>
+          <TextInput
+            testID="binance-input"
+            onChangeText={(text: string) => reminder?.onDraftChange(text.trim() !== '')}
+          />
+
+          <Pressable
+            accessibilityLabel="binance-field"
+            onPress={() => {
+              reminder?.onConnectPress();
+
+              return onConnect();
+            }}
+          >
+            <Text>binance field</Text>
+          </Pressable>
+
+          {reminder?.message !== undefined && (
+            <Text testID="binance-reminder">{reminder.message}</Text>
+          )}
+        </View>
+      );
+    },
   };
 });
 // The bank create form now offers the SAME explicit-Connect pattern as crypto,
@@ -163,8 +224,8 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
 // (testID `monobank-token-input`) that loses its value on unmount, so what is under test is
 // the create screen's wiring (create-first, no duplicate, secret via the closure).
 jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
-  const { useState } = require('react');
-  const { Pressable, Text, TextInput } = require('react-native');
+  const { useEffect, useState } = require('react');
+  const { Pressable, Text, TextInput, View } = require('react-native');
 
   return {
     __esModule: true,
@@ -173,29 +234,45 @@ jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
     // create -> saveToken -> sync chain actually propagates the sync outcome
     // back to the caller, rather than a mutant swallowing it (e.g. hard-coding
     // `true` or losing a rejection inside the try/catch).
-    default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => {
+    default: ({
+      onConnect,
+      reminder,
+    }: {
+      onConnect: (token: string) => Promise<boolean>;
+      reminder?: ConnectReminder;
+    }) => {
       const [result, setResult] = useState('');
       // Local state of the real field's token input: a remount loses it.
       const [typedToken, setTypedToken] = useState('');
+      const onDraftChange = reminder?.onDraftChange;
+      useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
 
       return (
-        <>
+        <View ref={reminder?.ref}>
           <TextInput
             testID="monobank-token-input"
             value={typedToken}
-            onChangeText={setTypedToken}
+            onChangeText={(text: string) => {
+              setTypedToken(text);
+              reminder?.onDraftChange(text.trim() !== '');
+            }}
           />
 
           <Pressable
             accessibilityLabel="monobank-field"
             onPress={async () => {
+              reminder?.onConnectPress();
               setResult(String(await onConnect('tok-123')));
             }}
           >
             <Text>monobank field</Text>
             <Text testID="monobank-connect-result">{result}</Text>
           </Pressable>
-        </>
+
+          {reminder?.message !== undefined && (
+            <Text testID="monobank-reminder">{reminder.message}</Text>
+          )}
+        </View>
       );
     },
   };
@@ -2440,5 +2517,300 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockSaveCredentials).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
     expect(mockSaveToken).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccountFormScreen — reminder to Connect a typed credential', () => {
+  type FormView = Awaited<ReturnType<typeof renderForm>>;
+
+  type SourceCase = {
+    source: string;
+    // Puts the form on the screen that shows this source's Connect field.
+    open: (view: FormView) => Promise<void>;
+    input: string;
+    connectLabel: string;
+    reminderTestID: string;
+    hintKey:
+      | 'forms.account.connectMonobankHint'
+      | 'forms.account.connectBinanceHint'
+      | 'forms.account.connectWalletHint';
+  };
+
+  const openBank = async (view: FormView): Promise<void> => {
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+  };
+
+  const openWallet = async (view: FormView): Promise<void> => {
+    await selectKind(view.getByTestId, 'crypto');
+  };
+
+  const openBinance = async (view: FormView): Promise<void> => {
+    await selectKind(view.getByTestId, 'crypto');
+    await fireEvent.press(view.getByText('Binance'));
+  };
+
+  const sourceCases: SourceCase[] = [
+    {
+      source: 'Monobank token',
+      open: openBank,
+      input: 'monobank-token-input',
+      connectLabel: 'monobank-field',
+      reminderTestID: 'monobank-reminder',
+      hintKey: 'forms.account.connectMonobankHint',
+    },
+    {
+      source: 'Binance key or secret',
+      open: openBinance,
+      input: 'binance-input',
+      connectLabel: 'binance-field',
+      reminderTestID: 'binance-reminder',
+      hintKey: 'forms.account.connectBinanceHint',
+    },
+    {
+      source: 'wallet address',
+      open: openWallet,
+      input: 'wallet-input',
+      connectLabel: 'wallet-field',
+      reminderTestID: 'wallet-reminder',
+      hintKey: 'forms.account.connectWalletHint',
+    },
+  ];
+
+  // A named form with the source's Connect field showing and `typed` in its input.
+  const fillForm = async (sourceCase: SourceCase, typed: string | null): Promise<FormView> => {
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Account');
+    await sourceCase.open(view);
+
+    if (typed !== null) {
+      await fireEvent.changeText(view.getByTestId(sourceCase.input), typed);
+    }
+
+    return view;
+  };
+
+  const pressSave = async (view: FormView): Promise<void> => {
+    await act(async () => {
+      await fireEvent.press(view.getByText(i18n.t('common.save')));
+    });
+  };
+
+  const hint = (sourceCase: SourceCase): string => i18n.t(sourceCase.hintKey);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAccounts = [];
+    mockCreate.mockResolvedValue('new-account-id');
+    mockSetIcon.mockResolvedValue(undefined);
+    mockUpdate.mockResolvedValue(undefined);
+    mockSaveToken.mockResolvedValue(undefined);
+    mockSaveCredentials.mockResolvedValue(undefined);
+    mockMonobankSync.mockResolvedValue(true);
+    mockCryptoSync.mockResolvedValue(true);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  describe.each(sourceCases)('$source', (sourceCase) => {
+    it('blocks the first Save, shows the hint under Connect and scrolls to it', async () => {
+      const view = await fillForm(sourceCase, 'typed');
+      const scrollToFieldMock = scrollToField as jest.Mock;
+      scrollToFieldMock.mockClear();
+
+      await pressSave(view);
+
+      expect(view.getByTestId(sourceCase.reminderTestID)).toHaveTextContent(hint(sourceCase));
+      expect(view.navigation.goBack).not.toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+      const [, reminderRef, , onSettled] = scrollToFieldMock.mock.calls[0];
+      expect(reminderRef.current).not.toBeNull();
+      expect(onSettled).toBeUndefined();
+    });
+
+    it('shows no hint before the first Save', async () => {
+      const view = await fillForm(sourceCase, 'typed');
+
+      expect(view.queryByTestId(sourceCase.reminderTestID)).toBeNull();
+    });
+
+    it('saves the account unconnected on the second Save and stores nothing typed', async () => {
+      const view = await fillForm(sourceCase, 'typed-secret-text');
+      await pressSave(view);
+      const scrollToFieldMock = scrollToField as jest.Mock;
+      scrollToFieldMock.mockClear();
+
+      await pressSave(view);
+
+      await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(scrollToFieldMock).not.toHaveBeenCalled();
+      expect(mockSaveToken).not.toHaveBeenCalled();
+      expect(mockSaveCredentials).not.toHaveBeenCalled();
+      expect(mockMonobankSync).not.toHaveBeenCalled();
+      expect(mockCryptoSync).not.toHaveBeenCalled();
+      expect(JSON.stringify(mockCreate.mock.calls)).not.toContain('typed-secret-text');
+    });
+
+    it('saves on the first Save when the input is empty', async () => {
+      const view = await fillForm(sourceCase, null);
+
+      await pressSave(view);
+
+      await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(view.queryByTestId(sourceCase.reminderTestID)).toBeNull();
+    });
+
+    it('saves on the first Save when the input is only whitespace', async () => {
+      const view = await fillForm(sourceCase, '   ');
+
+      await pressSave(view);
+
+      await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(view.queryByTestId(sourceCase.reminderTestID)).toBeNull();
+    });
+
+    it('saves on the first Save once the source is connected', async () => {
+      const view = await fillForm(sourceCase, 'typed');
+      await fireEvent.press(view.getByLabelText(sourceCase.connectLabel));
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+
+      await pressSave(view);
+
+      await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(view.queryByTestId(sourceCase.reminderTestID)).toBeNull();
+    });
+
+    it('still blocks the first Save after a Connect that failed', async () => {
+      mockMonobankSync.mockResolvedValue(false);
+      mockCryptoSync.mockResolvedValue(false);
+      const view = await fillForm(sourceCase, 'typed');
+      await fireEvent.press(view.getByLabelText(sourceCase.connectLabel));
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+
+      await pressSave(view);
+
+      expect(view.getByTestId(sourceCase.reminderTestID)).toBeTruthy();
+      expect(view.navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('hides the hint and starts over when the input is edited', async () => {
+      const view = await fillForm(sourceCase, 'typed');
+      await pressSave(view);
+      expect(view.getByTestId(sourceCase.reminderTestID)).toBeTruthy();
+
+      await fireEvent.changeText(view.getByTestId(sourceCase.input), 'typed more');
+
+      expect(view.queryByTestId(sourceCase.reminderTestID)).toBeNull();
+
+      await pressSave(view);
+
+      expect(view.getByTestId(sourceCase.reminderTestID)).toBeTruthy();
+      expect(view.navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('hides the hint and saves on the first Save once the input is cleared', async () => {
+      const view = await fillForm(sourceCase, 'typed');
+      await pressSave(view);
+
+      await fireEvent.changeText(view.getByTestId(sourceCase.input), '');
+
+      expect(view.queryByTestId(sourceCase.reminderTestID)).toBeNull();
+
+      await pressSave(view);
+
+      await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+    });
+
+    it('hides the hint and starts over when Connect is tapped', async () => {
+      mockMonobankSync.mockResolvedValue(false);
+      mockCryptoSync.mockResolvedValue(false);
+      const view = await fillForm(sourceCase, 'typed');
+      await pressSave(view);
+      expect(view.getByTestId(sourceCase.reminderTestID)).toBeTruthy();
+
+      await fireEvent.press(view.getByLabelText(sourceCase.connectLabel));
+
+      expect(view.queryByTestId(sourceCase.reminderTestID)).toBeNull();
+
+      await pressSave(view);
+
+      expect(view.getByTestId(sourceCase.reminderTestID)).toBeTruthy();
+      expect(view.navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('asks for the missing name before it reminds', async () => {
+      const view = await fillForm(sourceCase, 'typed');
+      await fireEvent.changeText(view.getByLabelText('Name'), '');
+
+      await pressSave(view);
+
+      expect(view.queryByTestId('holding-identity-name-field-error')).toBeTruthy();
+      expect(view.queryByTestId(sourceCase.reminderTestID)).toBeNull();
+    });
+
+    it('shows the hint in Ukrainian under the Ukrainian catalog', async () => {
+      const view = await fillForm(sourceCase, 'typed');
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      await pressSave(view);
+
+      const shown = view.getByTestId(sourceCase.reminderTestID);
+      expect(shown).toHaveTextContent(hint(sourceCase));
+      expect(shown).toHaveTextContent(/[А-Яа-яІіЇїЄє]/);
+    });
+  });
+
+  it('reminds only about the source that is on screen after switching the crypto source', async () => {
+    const view = await fillForm(sourceCases[2], 'typed');
+    await pressSave(view);
+    expect(view.getByTestId('wallet-reminder')).toBeTruthy();
+
+    await fireEvent.press(view.getByText('Binance'));
+
+    expect(view.queryByTestId('wallet-reminder')).toBeNull();
+
+    await pressSave(view);
+
+    await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+  });
+
+  it('forgets a typed token when the bank pick moves off Monobank', async () => {
+    const view = await fillForm(sourceCases[0], 'typed');
+
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-other'));
+    await pressSave(view);
+
+    await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+  });
+
+  it('never reminds on the edit form', async () => {
+    mockAccounts = [
+      {
+        id: 'acc-1',
+        name: 'Ukrsibbank Card',
+        kind: 'bank',
+        icon: 'banknote',
+        color: entityColors.violet,
+        bankId: 'monobank',
+      },
+    ];
+    const view = await renderForm({ accountId: 'acc-1' });
+
+    await pressSave(view);
+
+    await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+    expect(view.queryByTestId('monobank-reminder')).toBeNull();
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
   });
 });

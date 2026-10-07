@@ -1,7 +1,9 @@
-import type { ReactNode } from 'react';
+import { createRef, type ReactNode } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import BinanceCredentialsField from '.';
 
@@ -266,5 +268,121 @@ describe('BinanceCredentialsField — localization', () => {
     expect(getByText('Відкрити керування API Binance')).toBeTruthy();
     expect(getByText('Підключити Binance')).toBeTruthy();
     expect(queryByText('Connect Binance')).toBeNull();
+  });
+});
+
+describe('BinanceCredentialsField — connect reminder', () => {
+  const makeReminder = (message?: string): ConnectReminder => ({
+    ref: createRef<FieldInstance>(),
+    message,
+    onDraftChange: jest.fn(),
+    onConnectPress: jest.fn(),
+  });
+
+  const apiKeyPlaceholder = 'Binance API key';
+  const secretPlaceholder = 'Binance API secret';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows the reminder message under the Connect button, and nothing without one', async () => {
+    const reminder = makeReminder('Tap Connect first.');
+    const view = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
+    );
+
+    expect(view.getByText('Tap Connect first.')).toBeTruthy();
+
+    await view.rerender(
+      <BinanceCredentialsField
+        accountId="acc-1"
+        onConnect={jest.fn()}
+        reminder={{ ...reminder, message: undefined }}
+      />,
+    );
+
+    expect(view.queryByText('Tap Connect first.')).toBeNull();
+  });
+
+  it('attaches the reminder ref to the Connect row so a blocked Save can scroll to it', async () => {
+    const reminder = makeReminder();
+    await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
+    );
+
+    expect(reminder.ref.current).not.toBeNull();
+  });
+
+  it('reports a typed key or secret on every edit, until both are blank', async () => {
+    const reminder = makeReminder();
+    const view = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
+    );
+
+    await fireEvent.changeText(view.getByPlaceholderText(apiKeyPlaceholder), 'key');
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+
+    await fireEvent.changeText(view.getByPlaceholderText(apiKeyPlaceholder), 'key2');
+    expect(reminder.onDraftChange).toHaveBeenCalledTimes(2);
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+
+    await fireEvent.changeText(view.getByPlaceholderText(secretPlaceholder), 'secret');
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+
+    // The secret alone still counts while the key is cleared.
+    await fireEvent.changeText(view.getByPlaceholderText(apiKeyPlaceholder), '  ');
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+
+    await fireEvent.changeText(view.getByPlaceholderText(secretPlaceholder), '');
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('counts a typed secret with a blank key as a draft', async () => {
+    const reminder = makeReminder();
+    const view = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
+    );
+
+    await fireEvent.changeText(view.getByPlaceholderText(secretPlaceholder), 'secret');
+
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('reports no typed credential once it unmounts', async () => {
+    const reminder = makeReminder();
+    const view = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
+    );
+
+    await view.unmount();
+
+    expect(reminder.onDraftChange).toHaveBeenCalledWith(false);
+  });
+
+  it('does not report on a plain re-render', async () => {
+    const reminder = makeReminder();
+    const view = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
+    );
+
+    await view.rerender(
+      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
+    );
+
+    expect(reminder.onDraftChange).not.toHaveBeenCalled();
+  });
+
+  it('reports a Connect press, blank or not', async () => {
+    const reminder = makeReminder();
+    const view = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
+    );
+
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect Binance'));
+    });
+
+    expect(reminder.onConnectPress).toHaveBeenCalledTimes(1);
   });
 });

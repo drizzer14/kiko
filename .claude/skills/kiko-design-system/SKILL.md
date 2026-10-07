@@ -384,6 +384,20 @@ The established patterns grouped under this heading:
   (via the field's `error` prop) on a Connect press instead —
   `disabled` stays reserved for the field's own
   in-flight `status.kind === 'checking'`.
+- The "Connect first" reminder (user-approved 2026-10-08, create form only).
+  Typed input in a Connect field that was never connected turns the FIRST
+  Save press into a reminder: nothing saves, and the hint appears directly
+  under that field's Connect button and scrolls into view. It is not a
+  validation error, so it is the informational hint style
+  (`Text variant="caption" tone="textSecondary"`, as
+  `forms.account.importOnlyBankHint`), with no icon and no error tone. A
+  SECOND Save press saves the account unconnected, storing nothing typed.
+  Editing the input, pressing Connect, or the field unmounting starts over;
+  an empty or already connected source saves on the first press. The field
+  keeps its input and takes a `reminder` prop (`ConnectReminder`,
+  `src/design-system/connect-reminder/`) to report whether anything is typed;
+  `useConnectReminder` (`src/screens/forms/account-form/use-connect-reminder/`)
+  holds the state. The hint copy is `forms.account.connect*Hint`.
 
 ## Field placeholder and error copy
 

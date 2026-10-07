@@ -1,8 +1,11 @@
-import { type FC, useState } from 'react';
+import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { type FC, useEffect, useState } from 'react';
 import { fetchClientInfo } from '@kiko/monobank/client';
+import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
+import Text from '../text';
 import Button from '../button';
 import MonobankTokenInput from '../monobank-token-input';
 import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
@@ -15,6 +18,8 @@ type MonobankConnectFieldProps = {
   // whether it succeeded. The field passes the RAW token here and holds it only
   // for the duration of this call — never to the DB or a log.
   onConnect: (token: string) => Promise<boolean>;
+  // Lets a form that saves without this connection remind the user to press Connect first.
+  reminder?: ConnectReminder;
 };
 
 // The bank-create counterpart of WalletAddressField: the shared MonobankTokenInput
@@ -25,7 +30,7 @@ type MonobankConnectFieldProps = {
 // Keychain item itself — the secret's storage stays in the screen closure keyed by
 // the pre-generated account id, so a validated-but-unstorable token surfaces as a
 // `false` result here rather than an unhandled rejection.
-const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
+const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect, reminder }) => {
   const { t } = useTranslation();
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
@@ -33,14 +38,21 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
   // enabled now (kiko-code-style's form validation model), so this surfaces
   // the token-required reason on press rather than a standing disabled state.
   const [showTokenRequiredError, setShowTokenRequiredError] = useState(false);
+  const onDraftChange = reminder?.onDraftChange;
+
+  // The typed token goes with the field, so a draft it reported must not outlive it.
+  useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
 
   const handleChangeToken = (value: string): void => {
     setToken(value);
     setStatus({ kind: 'idle' });
     setShowTokenRequiredError(false);
+    onDraftChange?.(value.trim() !== '');
   };
 
   const handleConnect = (): void => {
+    reminder?.onConnectPress();
+
     const trimmed = token.trim();
 
     if (trimmed === '') {
@@ -70,6 +82,7 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
         // SECURITY: drop the raw token from state once connected so the bank
         // secret is not parked in the React tree.
         setToken('');
+        onDraftChange?.(false);
         setStatus({
           kind: 'success',
           message: t('accountDetail.connectedAs', { name: clientName }),
@@ -91,20 +104,30 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect }) => {
         error={showTokenRequiredError ? t('accountDetail.tokenRequiredError') : undefined}
       />
 
-      <Box direction="row" gap={2} style={styles.statusLine}>
-        <Button
-          variant="secondaryTonal"
-          size="small"
-          fullWidth={false}
-          onPress={handleConnect}
-          disabled={status.kind === 'checking'}
-          icon="lock"
-        >
-          {t('accountDetail.connectMonobank')}
-        </Button>
+      <View ref={reminder?.ref}>
+        <Box gap={2}>
+          <Box direction="row" gap={2} style={styles.statusLine}>
+            <Button
+              variant="secondaryTonal"
+              size="small"
+              fullWidth={false}
+              onPress={handleConnect}
+              disabled={status.kind === 'checking'}
+              icon="lock"
+            >
+              {t('accountDetail.connectMonobank')}
+            </Button>
 
-        <SyncStatusLine status={status} />
-      </Box>
+            <SyncStatusLine status={status} />
+          </Box>
+
+          {reminder?.message !== undefined && (
+            <Text variant="caption" tone="textSecondary">
+              {reminder.message}
+            </Text>
+          )}
+        </Box>
+      </View>
     </Box>
   );
 };

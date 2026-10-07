@@ -257,6 +257,12 @@ export const en = {
       brokerTypePlaceholder: 'Select a broker',
       brokerTypeSheetTitle: 'Broker',
       cash: 'Cash',
+      connectBinanceHint:
+        'Tap “Connect” to link this account. The API key and secret are not saved until you connect.',
+      connectMonobankHint:
+        'Tap “Connect” to link this account. The token is not saved until you connect.',
+      connectWalletHint:
+        'Tap “Connect” to link this account. The wallet address is not saved until you connect.',
       crypto: 'Crypto',
       debt: 'Debt',
       editTitle: 'Edit Account',
