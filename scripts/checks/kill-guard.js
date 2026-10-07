@@ -1296,17 +1296,30 @@ function namesGuardedTree(target) {
   );
 }
 
+// Where `target` lands from `directory` (resolved when the text allows) when
+// that is inside a tree, or null. A cp/mv `destination` may be a folder, and
+// what it copies lands inside it, so one that is a tree folder itself counts
+// too.
+function guardedPlace(target, directory, rules, destination) {
+  const resolved = resolveDirectory(directory, target);
+  const inside = (place) => (destination ? `${place.replace(/\/+$/, '')}/_` : place);
+  if (resolved === null) return namesGuardedTree(inside(target)) ? target : null;
+
+  return isInsideGuardedTree(inside(resolved), rules) ? resolved : null;
+}
+
 // The first of `targets` that lands inside a tree from any directory the
-// command may run in (resolved when the text allows), as `{ verb, where }`
-// for the deny's DETAILS, or null.
-function firstGuardedWrite(targets, directories, rules, verb = 'writes') {
+// command may run in, as `{ verb, where }` for the deny's DETAILS, or null.
+function firstGuardedWrite(
+  targets,
+  directories,
+  rules,
+  { verb = 'writes', destination = false } = {},
+) {
   for (const target of targets) {
     for (const directory of directories) {
-      const resolved = resolveDirectory(directory, target);
-      if (resolved === null && namesGuardedTree(target)) return { verb, where: target };
-      if (resolved !== null && isInsideGuardedTree(resolved, rules)) {
-        return { verb, where: resolved };
-      }
+      const where = guardedPlace(target, directory, rules, destination);
+      if (where !== null) return { verb, where };
     }
   }
 
@@ -1554,9 +1567,12 @@ const OPEN_CALL = /^open(?:Sync)?$/;
 // A mode string that opens for writing: `'w'`, `'a'`, `'x'`, `'r+'`, `'wb'`.
 const WRITING_MODE = /(['"])[rbt]*[wax+][rbtwax+]*\1/;
 // pathlib's `.write_text(`/`.write_bytes(` names its file in the receiver, and
-// so does its `.open('w')` (or `mode='w'`).
+// so does its `.open(` with a writing mode: its first argument (`'w'`), or a
+// `mode=` keyword in any place (`encoding='utf8', mode='w'`).
 const PATHLIB_WRITE = /\.write_(?:text|bytes)\s*\(/g;
-const PATHLIB_OPEN = /\.open\s*\(\s*(?:mode\s*=\s*)?(['"])[rbt]*[wax+][rbtwax+]*\1/g;
+const PATHLIB_OPEN = /\.open\s*\(/g;
+const PATHLIB_WRITING_MODE =
+  /^\s*(['"])[rbt]*[wax+][rbtwax+]*\1|\bmode\s*=\s*(['"])[rbt]*[wax+][rbtwax+]*\2/;
 // A string literal, with python's r/b/f/u prefixes, or a JS template.
 const STRING_LITERAL = /(?:\b[rRbBuUfF]{1,2})?(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
 const WHOLE_STRING_LITERAL = /^\s*(?:[rRbBuUfF]{1,2})?(['"`])((?:\\.|(?!\1)[^\\])*)\1\s*$/s;
@@ -1609,7 +1625,8 @@ function writeCallTargets(code) {
     targets.push(statementBefore(code, match.index));
   }
   for (const match of code.matchAll(PATHLIB_OPEN)) {
-    targets.push(statementBefore(code, match.index));
+    const { content } = matchDelimited(code, match.index + match[0].length, '(', ')');
+    if (PATHLIB_WRITING_MODE.test(content)) targets.push(statementBefore(code, match.index));
   }
 
   return targets;
@@ -1667,7 +1684,7 @@ function interpreterWrite(program, directories, rules) {
 
   return (
     firstGuardedWrite([...certain], directories, rules) ??
-    firstGuardedWrite([...possible], directories, rules, 'may write')
+    firstGuardedWrite([...possible], directories, rules, { verb: 'may write' })
   );
 }
 
@@ -1675,26 +1692,37 @@ function interpreterWrite(program, directories, rules) {
 // any file.
 const XARGS_WRITE = { verb: 'writes', where: 'the files xargs reads from its input' };
 
-// A cp/mv behind `xargs` writes into a folder its own text names only when
-// the input cannot reach the destination: a `-t DIR` without the
-// placeholder, or, with a placeholder, a literal last operand. Null when the
-// input may be the destination (it is appended last without a placeholder).
-function xargsCopyMoveTargets(base, parameters, placeholder) {
-  if (!COPY_MOVE_COMMANDS.has(base)) return null;
+// Whether the input `xargs` hands a cp/mv may be its destination: a
+// `-t DIR` that holds the placeholder, or, with no `-t`, a last operand that
+// holds it, or no placeholder at all (the input is appended last).
+function inputMayBeDestination(parameters, placeholder) {
   const holdsInput = (word) => placeholder !== undefined && word.includes(placeholder);
   const { options } = splitOptions(parameters, readCopyMoveOption);
   const folder = options.findLast((option) => option.targetDirectory !== undefined);
-  if (folder !== undefined) {
-    return holdsInput(folder.targetDirectory)
-      ? null
-      : intoFolder(folder.targetDirectory, ['xargs-input']);
-  }
+  if (folder !== undefined) return holdsInput(folder.targetDirectory);
   const destination = parameters.at(-1);
-  if (placeholder === undefined || destination === undefined || holdsInput(destination)) {
-    return null;
-  }
 
-  return copyMoveTargets(parameters);
+  return placeholder === undefined || destination === undefined || holdsInput(destination);
+}
+
+// The cp/mv words with one `input` in place of the placeholder, or appended
+// last when there is none.
+const withXargsInput = (parameters, placeholder, input) =>
+  placeholder === undefined
+    ? [...parameters, input]
+    : parameters.map((word) => word.replaceAll(placeholder, input));
+
+// A cp/mv behind `xargs` writes into a folder its own text names only when
+// the input cannot reach the destination; null when it may. The input may
+// carry any name, so each source it fills counts once as a fixed marker
+// (a plain file) and once as each tree folder's name (`ls | xargs -I{} cp
+// -r {} .` may write `./src`).
+function xargsCopyMoveTargets(base, parameters, placeholder) {
+  if (!COPY_MOVE_COMMANDS.has(base) || inputMayBeDestination(parameters, placeholder)) return null;
+
+  return ['xargs-input', ...WRITE_GUARDED_TREES].flatMap((input) =>
+    copyMoveTargets(withXargsInput(parameters, placeholder, input)),
+  );
 }
 
 // Where one unwrapped command writes inside a tree, or null.
@@ -1705,11 +1733,14 @@ function commandWrite(
   const base = basename(tokens[0]);
   const parameters = tokens.slice(1);
   const files = writtenFiles(base, parameters);
+  const destination = COPY_MOVE_COMMANDS.has(base);
   if (files !== null && viaXargs) {
     const targets = xargsCopyMoveTargets(base, parameters, placeholder);
-    return targets === null ? XARGS_WRITE : firstGuardedWrite(targets, directories, rules);
+    return targets === null
+      ? XARGS_WRITE
+      : firstGuardedWrite(targets, directories, rules, { destination });
   }
-  if (files !== null) return firstGuardedWrite(files, directories, rules);
+  if (files !== null) return firstGuardedWrite(files, directories, rules, { destination });
   const program = interpreterProgramOf(base, parameters, stdinScripts);
   if (program === null) return null;
 
@@ -2004,7 +2035,10 @@ const TEXT_FILTERS = new Set([
 ]);
 // pgrep matches the full command line only with -f (any flag group holding it)
 // or --full; without it a name match cannot see the loop's own command line.
-const FULL_COMMAND_OPTION = /^-[A-Za-z]*f[A-Za-z]*$/;
+// The rest of a group after a letter that takes a value (GNU and BSD: `-d`,
+// `-F`, `-g`, `-G`, `-j`, `-M`, `-N`, `-P`, `-r`, `-s`, `-t`, `-u`, `-U`) is
+// that value, so its `f` is no flag (`-ufred` is `-u fred`).
+const FULL_COMMAND_OPTION = /^-(?:(?![dFgGjMNPrstuU])[A-Za-z])*f/;
 
 function listsAllProcesses(base, parameters) {
   if (base !== 'ps') return false;

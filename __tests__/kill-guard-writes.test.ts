@@ -162,6 +162,8 @@ const DENIED_INTERPRETERS: string[] = [
   "cd src && python3 - <<'EOF'\nopen('x.ts', 'w').write('x')\nEOF",
   "python3 - <<'EOF'\nfrom pathlib import Path\nPath('src/x.ts').open('w').write('x')\nEOF",
   "python3 - <<'EOF'\nfrom pathlib import Path\nPath('src/x.ts').open(mode='w').write('x')\nEOF",
+  `python3 -c "from pathlib import Path; Path('src/x.ts').open(encoding='utf8', mode='w')"`,
+  `python3 -c "from pathlib import Path; Path('src/x.ts').open(newline='', mode = 'a')"`,
   "python3 - <<'EOF'\nfrom pathlib import Path\nfor name in ['src/x.ts']:\n    Path(name).write_text('x')\nEOF",
   "python3 - <<'EOF'\nfiles = ['src/x.ts']\nfor name in files:\n    open(os.path.join(root, name), 'w')\nEOF",
   "python3 - <<'EOF'\nroot = '/tmp'\nopen(f'{root}/src/x.ts', 'w').write('x')\nEOF",
@@ -225,6 +227,23 @@ const DENIED_COPY_MOVE: string[] = [
   'echo src | xargs -eIX cp /tmp/a /tmp/b',
   'echo src | xargs -ei cp /tmp/a /tmp/b',
   'echo src | xargs -lI{} cp /tmp/a /tmp/b',
+  // A destination that is a tree folder itself gets what it copies inside it,
+  // also when only the source's name makes it one (`src` into `.`).
+  'cp -a /tmp/snap/. src/',
+  'cp -a /tmp/snap/. ./src',
+  'cp -r /tmp/backup/src .',
+  'mv /tmp/src .',
+  `cp -R /tmp/snap/__tests__ ${MAIN}/`,
+  'cp -r /tmp/rules .',
+  'cp -rT /tmp/x ./src',
+  'cp -Tr /tmp/x src',
+  'mv -T /tmp/x src',
+  'cp --no-target-directory /tmp/x src',
+  'cp -rT /tmp/x "$ROOT/src"',
+  // The input xargs hands a cp/mv may carry a tree folder's name.
+  'ls | xargs -I{} cp -r {} .',
+  'ls /tmp/snap | xargs -I % mv /tmp/snap/% .',
+  'ls /tmp/snap | xargs cp -r -t .',
 ];
 
 const ALLOWED_COPY_MOVE: string[] = [
@@ -243,6 +262,18 @@ const ALLOWED_COPY_MOVE: string[] = [
   'cp -S src /tmp/x.ts /tmp/y/',
   'cp src/a.ts',
   'cp -r src /tmp/backup',
+  'cp /tmp/a /tmp/b',
+  'cp -r /tmp/x /tmp/y',
+  'cp -r /tmp/srcx .',
+  'cp -rT /tmp/x ./scripts',
+  'cp -r /tmp/x ./docs/src',
+  `cp -r /tmp/x ${OTHER}/src`,
+  // A backup folder outside the project is no tree, whatever name the input
+  // carries.
+  'ls | xargs -I{} cp {} /tmp/bk/src/',
+  'ls | xargs -I % cp % /tmp/bk/src/',
+  'ls | xargs -I{} cp -r {} /tmp/bk/',
+  'ls | xargs cp -r -t /tmp/bk/src',
 ];
 
 const ALLOWED: string[] = [
@@ -290,6 +321,8 @@ const ALLOWED: string[] = [
   "python3 - <<'EOF'\nfrom pathlib import Path\nPath('/tmp/out.txt').write_text(Path('src/x.ts').read_text())\nEOF",
   "python3 - <<'EOF'\nfrom pathlib import Path\nfor name in ['/tmp/a.txt']:\n    Path(name).write_text('x')\nEOF",
   "python3 - <<'EOF'\nfrom pathlib import Path\nwith Path('src/x.ts').open('r') as source:\n    print(source.read())\nEOF",
+  `python3 -c "from pathlib import Path; Path('src/x.ts').open(encoding='utf8', mode='r')"`,
+  `python3 -c "from pathlib import Path; Path('src/x.ts').open('r', encoding='utf8')"`,
   "python3 - <<'EOF'\nroot = '/tmp'\nopen(f'{root}/out.txt', 'w').write('x')\nEOF",
   "node - <<'EOF'\nrequire('fs').writeFileSync('/tmp/x.txt', require('fs').readFileSync('src/x.ts'))\nEOF",
   "node - <<'EOF'\nconsole.log(require('fs').readFileSync('src/x.ts', 'utf8'))\nEOF",
@@ -352,6 +385,8 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
       "python3 - <<'EOF'\nfor name in ['src/x.ts']:\n    Path(name).write_text('x')\nEOF",
       `(may write ${MAIN}/src/x.ts)`,
     ],
+    ['cp -r /tmp/backup/src .', `(writes ${MAIN}/src)`],
+    ['cp -a /tmp/snap/. src/', `(writes ${MAIN}/src)`],
   ])('names the file in DETAILS: %s', (command, detail) => {
     expect(detailOf(command)).toContain(detail);
   });

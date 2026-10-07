@@ -241,23 +241,32 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   write calls are python/node `open`/`openSync` with a writing mode,
   `writeFile`/`writeFileSync`/`appendFile`/`appendFileSync`/
   `createWriteStream`, pathlib's `.write_text`/`.write_bytes`/`.open('w')`
-  (the path is its receiver). A `{` in a path
+  (also a `mode='w'` keyword in any place, `.open(encoding='utf8',
+  mode='w')`; the path is its receiver). A `{` in a path
   (a python f-string field, a `.format` placeholder, a brace group)
   makes it unresolved, like `$`. A `cp`/`mv` writes `DIR/<source name>`
   for `-t DIR`, and for three or more operands or a destination ending
   in `/`; `-T` writes the destination itself; with exactly two operands
   both the destination and `destination/<source name>` count, since the
-  text cannot tell a folder (so `cp x.ts src` denies). A moved source is
+  text cannot tell a folder (so `cp x.ts src` denies). A destination may
+  be a folder, and what it copies lands inside it, so a written path that
+  is a tree folder itself counts too (`guardedPlace`): `cp -a /tmp/snap/.
+  src/` and `cp -T /tmp/x src` deny, and, judged by the resolved path
+  rather than the destination word, so do `cp -r /tmp/backup/src .` and
+  `mv /tmp/rules .`, while `cp -r /tmp/srcx .` passes. A moved source is
   removed, not written, so moving a tree file out to `/tmp/` passes.
   Behind `xargs` (`xargsCopyMoveTargets`), a `cp`/`mv` is judged by its
   own destination only when the input cannot reach it: a `-t DIR`/
   `--target-directory` value, or, with a placeholder (`-I`, `-J`, GNU
-  `-i`/`--replace`), a last operand that does not hold the placeholder;
-  so `find src … | xargs cp -t /tmp/snaps` and
-  `ls src/*.ts | xargs -I{} cp {} /tmp/backup/` pass, and
-  `xargs cp -t src/` denies. Otherwise (no placeholder, so the input is
-  appended last, or a destination holding the placeholder) it denies as
-  a write of any file. `git mv` stays
+  `-i`/`--replace`), a last operand that does not hold the placeholder.
+  The input may carry any name, so each source it fills counts as a
+  plain file and as each tree folder's name; so
+  `find src … | xargs cp -t /tmp/snaps`,
+  `ls src/*.ts | xargs -I{} cp {} /tmp/backup/`, and
+  `ls | xargs -I{} cp {} /tmp/bk/src/` pass, and `xargs cp -t src/` and,
+  at a worktree root, `ls | xargs -I{} cp -r {} .` deny. Otherwise (no
+  placeholder, so the input is appended last, or a destination holding
+  the placeholder) it denies as a write of any file. `git mv` stays
   allowed and is the way to move a file: guard-replay follows it as a
   rename, while a plain `mv` reads as a new file whose every existing
   finding looks new. Worktree test (`isProjectWorktree`): the
@@ -288,8 +297,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   and no `-A`/`-e`/`-a`/`-x`/BSD `a`/`x` lists only those pids: a pid
   wait, not a scan; the `p`/`q` must end its flag group or be glued to
   the pid, so a glued `-o` value such as `-opid,command` is no pid
-  option, and a letter after a glued `-o` is no `a`/`e`/`x` flag), or `pgrep` WITH `-f` (any flag group holding `f`) or
-  `--full`. Names a job:
+  option, and a letter after a glued `-o` is no `a`/`e`/`x` flag), or `pgrep` WITH `-f` (any flag group holding `f` before a
+  letter that takes a value: `-fu fred` counts, the glued `-ufred` or
+  `-Gstaff` does not) or `--full`. Names a job:
   `make verify` (any non-word run between the two words), `check:all`,
   `jest`, `stryker`, `semgrep`, `xcodebuild` (`WATCHED_JOB`, case folded,
   after `[`, `]`, `\` are dropped so `[j]est` and `make[ ]verify` count)
