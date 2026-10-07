@@ -247,7 +247,9 @@ SEC-8). This is accepted debt, not a suppressed finding — do
 not silence it. Re-run `bash scripts/checks/osv.sh` periodically (not
 `npm run check:deep`: its mutation step runs first and can stop at the
 mutation file cap before osv-scanner runs) and upgrade
-`image-size` (via `overrides`) the moment a fixed version ships.
+`image-size` (via `overrides`) the moment a fixed version ships. A
+re-check reads the whole `osv.sh` output and triages every id it
+prints, not only the tracked ones.
 
 `check:deep` also flags `decode-uri-component` 0.2.2, advisory
 GHSA-vcc3-ghjq-m6fr (CVSS 6.6), pulled transitively via
