@@ -182,6 +182,10 @@ const DENIED_NESTED: string[] = [
   'echo x | tee >(cat > src/x.ts)',
   `bash -c "python3 -c \\"open('src/x.ts', 'w')\\""`,
   "grep -rl foo src | xargs sed -i 's/foo/bar/'",
+  "ls src/*.ts | xargs -iR sed -i 's/a/b/' R",
+  "ls src/*.ts | xargs -eS sed -i 's/a/b/'",
+  "xargs -iR sed -i 's/a/b/' src/x.ts",
+  "xargs -eS sed -i 's/a/b/' src/x.ts",
   "$(which sed) -i 's/a/b/' src/x.ts",
 ];
 
