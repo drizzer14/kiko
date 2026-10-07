@@ -809,7 +809,28 @@ const OPTION_WRAPPERS = new Map([
   ['time', new Set()],
   ['env', new Set(['-C', '-u', '--chdir', '--unset'])],
   ['timeout', new Set(['-k', '-s', '--kill-after', '--signal'])],
-  ['xargs', new Set(['-a', '-d', '-E', '-I', '-J', '-L', '-n', '-P', '-R', '-S', '-s'])],
+  [
+    'xargs',
+    new Set([
+      '-a',
+      '-d',
+      '-E',
+      '-I',
+      '-J',
+      '-L',
+      '-n',
+      '-P',
+      '-R',
+      '-S',
+      '-s',
+      '--arg-file',
+      '--delimiter',
+      '--max-args',
+      '--max-procs',
+      '--max-chars',
+      '--process-slot-var',
+    ]),
+  ],
 ]);
 
 // `env -S 'a b'` splits its one word into the command line.
@@ -824,22 +845,36 @@ const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash']);
 // `-c`, and any flag group that holds it (`-lc`, `-ec`, `-xc`).
 const SHELL_COMMAND_FLAG = /^-[A-Za-z]*c[A-Za-z]*$/;
 
-// Whether an option takes its value as the NEXT word: a listed option, or a
-// flag group whose first value-taking letter comes last (`sudo -iu me`, as
-// getopt reads it; in `-uroot` the value is glued on).
-function takesNextWord(option, optionsWithValue) {
-  if (optionsWithValue.has(option)) return true;
+// GNU `xargs -i[R]`, `-e[EOF]`, and `-l[N]` take only a value glued on (`-iR`),
+// never the next word, so a letter after one of them is part of that value.
+const XARGS_GLUED_ONLY_OPTIONS = new Set(['i', 'e', 'l']);
+
+// A `--long` option written without `=` whose name getopt_long accepts as an
+// abbreviation (`--max-p`) of a listed value-taking one.
+const abbreviatesLongOption = (option, optionsWithValue) =>
+  option.length > 2 &&
+  option.startsWith('--') &&
+  !option.includes('=') &&
+  [...optionsWithValue].some((name) => name.startsWith(option));
+
+// Whether an option takes its value as the NEXT word: a listed option (or an
+// abbreviation of a listed long one), or a flag group whose first value-taking
+// letter comes last (`sudo -iu me`, as getopt reads it; in `-uroot` the value
+// is glued on). A group holding a glued-only letter never takes the next word.
+function takesNextWord(option, optionsWithValue, gluedOnlyLetters = new Set()) {
+  if (optionsWithValue.has(option) || abbreviatesLongOption(option, optionsWithValue)) return true;
   if (!/^-[A-Za-z0-9]{2,}$/.test(option)) return false;
   const letters = [...option.slice(1)];
+  if (letters.some((letter) => gluedOnlyLetters.has(letter))) return false;
 
   return letters.findIndex((letter) => optionsWithValue.has(`-${letter}`)) === letters.length - 1;
 }
 
 // The tokens after a command word and its leading options.
-function skipOptions(tokens, optionsWithValue) {
+function skipOptions(tokens, optionsWithValue, gluedOnlyLetters) {
   let i = 1;
   while (i < tokens.length && tokens[i].startsWith('-')) {
-    i += takesNextWord(tokens[i], optionsWithValue) ? 2 : 1;
+    i += takesNextWord(tokens[i], optionsWithValue, gluedOnlyLetters) ? 2 : 1;
   }
 
   return tokens.slice(i);
@@ -876,13 +911,13 @@ function xargsPlaceholder(tokens) {
     const word = tokens[index];
     const replace = /^--replace(?:=(.*))?$/s.exec(word);
     const letters = /^-([^-].*)$/s.exec(word)?.[1] ?? '';
-    const at = letters.search(/[adEIJLnPRSsi]/);
+    const at = letters.search(/[adEeIJLlnPRSsi]/);
     if (replace !== null) placeholder = replace[1] ?? '{}';
     else if (letters[at] === 'i') placeholder = letters.slice(at + 1) || '{}';
     else if ('IJ'.includes(letters[at] ?? '-')) {
       placeholder = letters.slice(at + 1) || tokens[index + 1];
     }
-    if (takesNextWord(word, OPTION_WRAPPERS.get('xargs'))) index++;
+    if (takesNextWord(word, OPTION_WRAPPERS.get('xargs'), XARGS_GLUED_ONLY_OPTIONS)) index++;
   }
 
   return placeholder;
@@ -927,7 +962,11 @@ function unwrap(tokens) {
       viaXargs = true;
       placeholder = xargsPlaceholder(t);
     }
-    t = skipOptions(t, OPTION_WRAPPERS.get(base));
+    t = skipOptions(
+      t,
+      OPTION_WRAPPERS.get(base),
+      base === 'xargs' ? XARGS_GLUED_ONLY_OPTIONS : undefined,
+    );
     if (base === 'timeout') t = t.slice(1);
   }
 
