@@ -829,7 +829,9 @@ const OPTION_WRAPPERS = new Map([
     ]),
   ],
   ['nice', new Set(['-n', '--adjustment'])],
-  ['time', new Set()],
+  // `/usr/bin/time -o file` (BSD and GNU) and GNU `-f format`.
+  ['time', new Set(['-o', '-f', '--output', '--format'])],
+  ['stdbuf', new Set(['-i', '-o', '-e', '--input', '--output', '--error'])],
   ['env', new Set(['-C', '-P', '-a', '-u', '--chdir', '--unset', '--argv0'])],
   ['timeout', new Set(['-k', '-s', '--kill-after', '--signal'])],
   [

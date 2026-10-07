@@ -73,16 +73,20 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `isLeadIn`, `RESERVED_WORDS`, and `OPTION_WRAPPERS` in `kill-guard.js`
   for the closed sets) skips lead-in words (`(`/`{` group openers,
   reserved words, `NAME=value` prefixes, an end-of-options `--`) and
-  wrappers such as `sudo`, `nice`, `time`, `env`, `exec` (`-a name`
+  wrappers such as `sudo`, `nice`, `time` (`-o file`, GNU `-f format`,
+  and `--output`/`--format` take a value), `stdbuf` (`-i`/`-o`/`-e` and
+  `--input`/`--output`/`--error` take a value, glued as in `-oL` or
+  separate as in `-o L`), `env`, `exec` (`-a name`
   takes a value), `timeout`, `xargs` (BSD `-J`/`-R`/`-S` take a value;
   GNU `-i`/`-e`/`-l` take only a glued value, so in `-iR` or `-eS` the
   `R`/`S` is that value, never a next-word option, and a group holding
   one never takes the next word — `XARGS_GLUED_ONLY_OPTIONS`; the
   optional-value `--replace`/`--eof`/`--max-lines` take only `=value`).
-  For every option wrapper (`sudo`, `nice`, `env`, `timeout`, `xargs`)
-  and for git's global options, a `--long` option listed as taking a
-  value, or any abbreviation of one (`--max-p`, `sudo --u me`,
-  `timeout --s 9 5`, `nice --adj 5`), takes the next word
+  For every option wrapper (`sudo`, `nice`, `time`, `stdbuf`, `env`,
+  `timeout`, `xargs`) and for git's global options, a `--long` option
+  listed as taking a value, or any abbreviation of one (`--max-p`,
+  `sudo --u me`, `timeout --s 9 5`, `nice --adj 5`, `stdbuf --o L`),
+  takes the next word
   (`abbreviatesLongOption`); git rejects abbreviations, so there it only
   over-skips a word, a fail-safe. `sudo` lists its long value options
   (`--close-from`, `--chdir`, `--host`, `--prompt`, `--chroot`,
