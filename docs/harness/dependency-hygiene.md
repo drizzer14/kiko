@@ -190,6 +190,28 @@ later on their own:
 }
 ```
 
+`bash scripts/checks/osv.sh` also flagged `shell-quote` 1.10.0
+(GHSA-pqg4-j6r4-53mv, CVSS 9.2, fixed in 1.11.0, published 2026-09-29).
+It has two parents: `react-native` -> `react-devtools-core` 6.1.5
+(`^1.6.1`) and `@react-native-community/cli-tools` -> `launch-editor`
+2.14.1 (`^1.8.4`). Both ranges accept 1.11.0, so it is pinned with a
+top-level override. It is installed in the production dependency tree
+(`npm ls shell-quote --all --omit=dev` shows both paths), but it is
+Node-side tooling and does not reach the app bundle: `launch-editor`
+calls it in `guess.js`, which runs in the CLI process, and
+`react-devtools-core` references it only in its Node `dist/standalone.js`
+DevTools server (its source map names `shell-quote`), not in
+`dist/backend.js`, the part React Native `require`s on the device. That
+`require('react-devtools-core')` in `setUpReactDevTools.js` sits behind
+`if (__DEV__)`, which a release bundle drops. Drop the override once both
+parents resolve 1.11.0 or later on their own:
+
+```json
+"overrides": {
+  "shell-quote": "1.11.0"
+}
+```
+
 ## `.env` is public-only
 
 `react-native-dotenv` inlines every `.env` value into the JS bundle at
