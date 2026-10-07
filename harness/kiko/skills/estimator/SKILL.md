@@ -48,6 +48,12 @@ Rules:
   - 26 files: 192 min
   - 30 files: 523 min, run beside a heavy planner agent (load matters
     as much as file count)
+- Mutation 10-14 files: 58-119 min; 23-25 files: 206-224 min; a re-run after
+  a tests-only floor fix: ~24 min (incremental).
+- Merge-result `make verify` on a quiet machine: 7-9 min.
+- Rule reversal touching many tests: x1.5-2; hook-code task (kill-guard):
+  x1.7-2.6 of the agent estimate.
+- Stryker's start-of-run ETA is unreliable (~7 h quoted for a 224 min run).
 
 These are a snapshot of a small sample, not a formula — always re-check
 against the log's current rows, which may have more by the time you read

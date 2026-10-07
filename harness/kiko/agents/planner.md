@@ -22,6 +22,8 @@ Rules:
 - Point the plan at the harness checks: `make verify` once at the end, run until it is green; plan mutation testing (`make deep`) per small change set, with `KIKO_MUTATION_BASE` set to that change set's own base commit — never one whole-branch or whole-release run (`mutation.sh` refuses more than 30 files).
 - When a ruling reverses an earlier rule, the scenario matrix adds a "was:" column (or rows)
   that shows the old result next to the new one.
+- A plan that adds a migration (even a pure CREATE INDEX) includes a `kiko:reviewer` step
+  before BATCH READY and, for an index, an EXPLAIN QUERY PLAN test.
 - Keep the plan tight: name each step, its files, and its check. No restating the code, no essays.
 - Report back: send the plan the moment it is written, then end the turn — no extra
   checks or silent waiting after. Run any command over a few minutes in the background

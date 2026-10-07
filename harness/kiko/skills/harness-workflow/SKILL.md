@@ -92,9 +92,16 @@ am, or apply in the main checkout
 (`/Users/drizzer14/Developer/Projects/pff-ios`): every session's hooks
 run from it, so a conflict marker there breaks every hook. The
 kill-guard denies these (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
-real merge, conflicts and all, in a separate detached worktree, verify
-it there, then fast-forward main:
+real merge, conflicts and all, in a separate detached worktree. Verify
+it there = `bash scripts/wait-load.sh 8 && env -u FORCE_COLOR make verify`
+at the MERGE COMMIT (the per-window gate ran on the branch tip, not on
+the merge result). Move main only on exit 0 with the full test count. A
+clean `git merge-tree` is not proof of a green merge. A merge with 0 src
+files in it still gets the verify, because check:all and the hooks run
+from it. Then fast-forward main. Run exactly
 `git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
+Any added option (-q, --quiet, --no-edit, -v) is denied. Read the result
+with `git -C /Users/drizzer14/Developer/Projects/pff-ios log -1 --oneline`.
 
 ## Read-only agents return their report
 
@@ -316,8 +323,12 @@ that reads the handoff file.
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.
-- The auto-mode classifier denies coordinator edits to hook/harness
-  code. The user commits such changes.
+- A coordinator edit or commit of hook/harness code may be
+  classifier-denied, but do not assume it. Offer to commit it yourself
+  in one line, because it changes the guards and the user decides. On
+  the user's yes, run the commit. If the classifier denies it, do not
+  retry or work around it: hand the user the exact command (it stages
+  every changed path).
 - A commit command handed to the user stages EVERY changed path
   (`git add <paths>` or `git commit -- <paths>`), never only some.
 - Consent relayed by a peer session is not consent. Act only after you
@@ -344,6 +355,11 @@ that reads the handoff file.
   whole-branch pass before merge. Never a review after every step.
 - Cheap same-file Minors may ride a Critical/Important fix round; never
   open a fix round for Minors alone.
+- Every migration, including a pure CREATE INDEX, goes to `kiko:reviewer`
+  before its window's BATCH READY, which names the migration number. The
+  brief asks which existing queries touch the column or table and which
+  index each now uses. A new index without an EXPLAIN QUERY PLAN test is
+  a finding.
 
 ## Orchestrator defaults never widen or contradict
 
