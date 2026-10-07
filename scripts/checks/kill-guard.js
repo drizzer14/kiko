@@ -803,11 +803,34 @@ const OPTION_WRAPPERS = new Map([
   ['exec', new Set(['-a'])],
   [
     'sudo',
-    new Set(['-C', '-D', '-g', '-p', '-R', '-r', '-T', '-t', '-U', '-u', '--user', '--group']),
+    new Set([
+      '-C',
+      '-D',
+      '-g',
+      '-h',
+      '-p',
+      '-R',
+      '-r',
+      '-T',
+      '-t',
+      '-U',
+      '-u',
+      '--user',
+      '--group',
+      '--close-from',
+      '--chdir',
+      '--host',
+      '--prompt',
+      '--chroot',
+      '--command-timeout',
+      '--other-user',
+      '--role',
+      '--type',
+    ]),
   ],
   ['nice', new Set(['-n', '--adjustment'])],
   ['time', new Set()],
-  ['env', new Set(['-C', '-u', '--chdir', '--unset'])],
+  ['env', new Set(['-C', '-P', '-a', '-u', '--chdir', '--unset', '--argv0'])],
   ['timeout', new Set(['-k', '-s', '--kill-after', '--signal'])],
   [
     'xargs',
@@ -833,9 +856,6 @@ const OPTION_WRAPPERS = new Map([
   ],
 ]);
 
-// `env -S 'a b'` splits its one word into the command line.
-const SPLIT_STRING_OPTIONS = new Set(['-S', '--split-string']);
-
 // Words that can stand before a command in its own position.
 const RESERVED_WORDS = new Set(['!', 'if', 'then', 'elif', 'else', 'do', 'while', 'until']);
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
@@ -849,8 +869,10 @@ const SHELL_COMMAND_FLAG = /^-[A-Za-z]*c[A-Za-z]*$/;
 // never the next word, so a letter after one of them is part of that value.
 const XARGS_GLUED_ONLY_OPTIONS = new Set(['i', 'e', 'l']);
 
-// A `--long` option written without `=` whose name getopt_long accepts as an
-// abbreviation (`--max-p`) of a listed value-taking one.
+// A `--long` option written without `=` that is a prefix of a listed
+// value-taking one (`--max-p` for `--max-procs`), as getopt_long accepts it.
+// For `git`, which rejects abbreviations, this only over-skips a word, never
+// hides a command.
 const abbreviatesLongOption = (option, optionsWithValue) =>
   option.length > 2 &&
   option.startsWith('--') &&
@@ -895,8 +917,42 @@ const isLeadIn = (word) =>
 // `env -S` carries the whole command line in one word. Null for any other.
 function unwrapSpecial(base, t) {
   if (base === 'command') return t.slice(t[1] === '-p' ? 2 : 1);
-  if (base === 'env' && SPLIT_STRING_OPTIONS.has(t[1])) {
-    return [...words(t[2] || ''), ...t.slice(3)];
+  if (base === 'env') return envSplitCommand(t);
+
+  return null;
+}
+
+// The `=value` of `--name[=value]` (undefined when bare) when `name` is `full`
+// or an abbreviation of it, as getopt_long reads it; null for any other word.
+function longOptionValue(word, full) {
+  const match = /^(--[a-z][a-z-]*)(?:=(.*))?$/s.exec(word);
+
+  return match !== null && full.startsWith(match[1]) ? { value: match[2] } : null;
+}
+
+// `env`'s split-string option (`-S str`, `-Sstr`, `-iS str`, `--split-string
+// str`, `--split-string=str`, or an abbreviation of the long form) with its
+// value and how many words it used, or null for any other option. A short
+// group holds it only when no other value-taking letter comes first.
+function splitStringOption(option, next) {
+  const long = longOptionValue(option, '--split-string');
+  if (long !== null) {
+    return { value: long.value ?? next ?? '', used: long.value === undefined ? 2 : 1 };
+  }
+  const short = /^-([^CuPaS-]*)S(.*)$/s.exec(option);
+  if (short === null) return null;
+
+  return { value: short[2] || (next ?? ''), used: short[2] ? 1 : 2 };
+}
+
+// An `env` command line whose leading options hold a split-string: its string
+// split into words, then the words after it. Null when none does.
+function envSplitCommand(t) {
+  let i = 1;
+  while (i < t.length && t[i].startsWith('-')) {
+    const split = splitStringOption(t[i], t[i + 1]);
+    if (split !== null) return [...words(split.value), ...t.slice(i + split.used)];
+    i += takesNextWord(t[i], OPTION_WRAPPERS.get('env')) ? 2 : 1;
   }
 
   return null;
@@ -909,10 +965,10 @@ function xargsPlaceholder(tokens) {
   let placeholder;
   for (let index = 1; index < tokens.length && tokens[index].startsWith('-'); index++) {
     const word = tokens[index];
-    const replace = /^--replace(?:=(.*))?$/s.exec(word);
+    const replace = longOptionValue(word, '--replace');
     const letters = /^-([^-].*)$/s.exec(word)?.[1] ?? '';
     const at = letters.search(/[adEeIJLlnPRSsi]/);
-    if (replace !== null) placeholder = replace[1] ?? '{}';
+    if (replace !== null) placeholder = replace.value ?? '{}';
     else if (letters[at] === 'i') placeholder = letters.slice(at + 1) || '{}';
     else if ('IJ'.includes(letters[at] ?? '-')) {
       placeholder = letters.slice(at + 1) || tokens[index + 1];

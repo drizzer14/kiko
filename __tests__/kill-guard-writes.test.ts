@@ -233,6 +233,7 @@ const ALLOWED_COPY_MOVE: string[] = [
   'ls src/*.ts | xargs -I {} mv {} /tmp/backup/',
   'ls src/*.ts | xargs -J % cp % /tmp/backup/',
   'ls src/*.ts | xargs -i cp {} /tmp/backup/',
+  'ls src/*.ts | xargs --rep=R cp R /tmp/backup/',
   'ls src/*.ts | xargs mv --target-directory=/tmp/backup',
   'cp src/a.ts /tmp/',
   'mv src/a.ts /tmp/a.ts',

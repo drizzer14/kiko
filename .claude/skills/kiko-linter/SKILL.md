@@ -77,11 +77,22 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   takes a value), `timeout`, `xargs` (BSD `-J`/`-R`/`-S` take a value;
   GNU `-i`/`-e`/`-l` take only a glued value, so in `-iR` or `-eS` the
   `R`/`S` is that value, never a next-word option, and a group holding
-  one never takes the next word — `XARGS_GLUED_ONLY_OPTIONS`; a GNU long
-  option with a required value (`--max-procs 2`, `--arg-file f`), or an
-  abbreviation of one (`--max-p`), takes the next word, while the
-  optional-value `--replace`/`--eof`/`--max-lines` take only `=value`);
-  `env -S`/`--split-string` splits its one word into the command line.
+  one never takes the next word — `XARGS_GLUED_ONLY_OPTIONS`; the
+  optional-value `--replace`/`--eof`/`--max-lines` take only `=value`).
+  For every option wrapper (`sudo`, `nice`, `env`, `timeout`, `xargs`)
+  and for git's global options, a `--long` option listed as taking a
+  value, or any abbreviation of one (`--max-p`, `sudo --u me`,
+  `timeout --s 9 5`, `nice --adj 5`), takes the next word
+  (`abbreviatesLongOption`); git rejects abbreviations, so there it only
+  over-skips a word, a fail-safe. `sudo` lists its long value options
+  (`--close-from`, `--chdir`, `--host`, `--prompt`, `--chroot`,
+  `--command-timeout`, `--other-user`, `--role`, `--type`) and `-h`;
+  `env` lists `-C`, `-P`, `-a`, `-u` and their long forms. `env`'s
+  `-S`/`--split-string` (also glued `-Sstr`, `--split-string=str`, a
+  group `-iS`, any leading position, or an abbreviation) is not skipped
+  as a value: its string is split into words and re-parsed as the
+  command line (`envSplitCommand`). `xargs --rep=R` sets the
+  placeholder like `--replace=R`.
   There is no closer stripping: an unquoted `)` ends the segment, like
   `;`. Any shell flag group holding `c` (`-lc`, `-xc`) counts as `-c`,
   and `eval`'s arguments are scanned as a command string. `$(...)`,
