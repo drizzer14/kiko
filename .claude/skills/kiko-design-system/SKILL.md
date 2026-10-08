@@ -1065,9 +1065,13 @@ new component can land between reviews of this skill:
   NOT `GlassSurface`, whatever "glass card" says elsewhere), never a warning
   tone. A `body` `textPrimary` message, then a trailing icon-only `ghost`
   `compact` `xmark` close `Button` (44pt tap) labelled by `closeLabel`. Strings
-  come in as props. **One per screen, through `useTip` from `@kiko/tips`**:
-  the screen renders it only while `useTip` says the tip is unseen, and
-  `onClose` is the hook's dismiss; never hand-roll the dismissed state.
+  come in as props. **One `useTip` call per screen, from `@kiko/tips`**:
+  `const { visible, dismiss } = useTip(TIP_ID, condition)`, then
+  `{visible && <TipCard onClose={dismiss} … />}`. `useTip` takes one candidate
+  (`id: TipId`, `condition: boolean`); `visible` is `!isLoading && condition &&
+  not dismissed`, so it is false while settings load and follows the caller's
+  condition. Two `useTip` calls on one screen could show two tips (`pickTip` is
+  the single picker), so a screen has one. Never hand-roll the dismissed state.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
