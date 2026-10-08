@@ -2580,26 +2580,42 @@ in memory for the crash history this fixed.
   "Tomorrow" action are lost. It must not touch `window` (see memory
   `scene-lifecycle-appdelegate-window-crash`). The center holds its delegate
   weakly, so the delegate is a `static let shared`.
-- **Only the wrapper loads the reminders TurboModule spec.**
-  `src/reminders/native/NativeKikoReminders.ts` calls
+- **Only the wrapper loads a TurboModule spec.**
+  A spec in `src/native-specs/` (for example `NativeKikoReminders.ts`) calls
   `TurboModuleRegistry.getEnforcing` at module load, which throws on a binary
-  built without the module. `reminders-native.ts` loads it with a lazy
-  `require` on first use, so importing reminders code can never crash the
-  app; every other module calls `remindersNative` from
-  `@kiko/reminders/native`, and a type is imported with `import type`. A test
-  reaches the global mock (`jest/setup.js`) through `jest.requireMock`.
-  `reminders-native.lazy-load.test.ts` proves the lazy load, and the Semgrep
-  rule `kiko-no-native-reminders-module-import` (`rules/semgrep-prewrite.yml`)
-  denies any other value import, re-export, `require`, or dynamic `import()`.
-- **`KikoReminders` is the app's one TurboModule, so it also carries the one
-  non-reminder read: `uses24HourClock()`.** A SYNCHRONOUS method (spec
-  `NativeKikoReminders.ts`, `- (NSNumber *)uses24HourClock` in
+  built without the module. The wrappers
+  `src/reminders/native/reminders-native.ts` and
+  `src/display-regions/display-regions-native/display-regions-native.ts`
+  lazy-`require` their spec from `@kiko/native-specs` on first use, so
+  importing feature code can never crash the app; every other module calls the
+  wrapper through its feature barrel, and a type is imported with
+  `import type`. A test reaches the global mock (`jest/setup.js`) through
+  `jest.requireMock`. Each wrapper has a `*.lazy-load.test.ts` proving the lazy
+  load, and a Semgrep rule in `rules/semgrep-prewrite.yml`
+  (`kiko-no-native-reminders-module-import`,
+  `kiko-no-native-display-regions-module-import`) denies any other value
+  import, re-export, `require`, or dynamic `import()`.
+- **`DisplayRegions` feeds the layout hooks.** Feature `src/display-regions/`
+  (barrel exports `useDisplayRegions`, `useLayoutMode`, `useFoldRegion`,
+  `useVerticalBarEdge`); native `ios/Kiko/DisplayRegions/`
+  (`DisplayRegionsCenter.swift`, `RCTDisplayRegions.h`/`.mm`). Swift guards the
+  iOS 27.1 symbols with a compile-time SDK check plus `#available(iOS 27.1, *)`
+  (read the exact guard in `DisplayRegionsCenter.swift`), observes the hinge
+  with a `UIHingeInteraction`, and logs one `os.Logger` `.debug` line per
+  emitted snapshot (category `DisplayRegions`; read it with `log stream
+  --level debug`). The JS wrapper reads native once, keeps its cache current
+  from `onChange`, and falls back to `FALLBACK_SNAPSHOT` when the module is
+  missing.
+- **`KikoReminders` also carries the one non-reminder read:
+  `uses24HourClock()`.** A SYNCHRONOUS method (spec
+  `src/native-specs/NativeKikoReminders.ts`, `- (NSNumber *)uses24HourClock` in
   `RCTKikoReminders.mm`): the iOS 24-Hour Time setting, read as "the `j`
   hour skeleton of `[NSLocale autoupdatingCurrentLocale]` has no `a`".
   Only `useTimeClock` (`src/i18n/use-time-clock/`) calls it, through
   `remindersNative.uses24HourClock`, which throws where the module is
-  missing; the hook falls back then (en 12-hour, uk 24-hour). A new method
-  on the spec changes codegen: run `make pods` and commit
+  missing; the hook falls back then (en 12-hour, uk 24-hour). `package.json`
+  `codegenConfig.jsSrcsDir` is `src/native-specs`, so every codegen spec goes
+  there. A new method on the spec changes codegen: run `make pods` and commit
   `ios/Podfile.lock` with the spec when it changes. The global jest mock
   (`jest/setup.js`) returns `true`.
 - **An ObjC++ (`.mm`) file that imports `Kiko-Swift.h` must first import

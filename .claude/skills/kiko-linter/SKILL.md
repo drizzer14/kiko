@@ -1809,7 +1809,8 @@ a pre-existing finding points at. A Semgrep deny names
   `export const a = b`), with comments inside the import braces
   ignored. Its classification
   (`CONTAINERS`, `TEST_ONLY`, `AMBIENT_LOOSE`, …) lives in the checker;
-  read it there. No `--write`.
+  read it there. `native-specs/**` has no barrel and is deep-imported via
+  the alias (`NATIVE_SPEC_PATTERN`; read it there). No `--write`.
 - `specifier-scanner.js` is the shared import-specifier scanner. A new
   checker that reads import specifiers reuses it. Its `commentSpans`
   returns the real comment spans (offsets) that `blankNoise` passes over,
