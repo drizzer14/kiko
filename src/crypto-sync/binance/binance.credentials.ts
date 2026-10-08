@@ -3,8 +3,8 @@ import { bifoldr, eitherSync } from 'fnts/either';
 
 /**
  * The single GLOBAL Binance credentials service. Historically the app stored ONE
- * Binance key pair per device under this service. The multi-account plan
- * (2026-09-11) moves the pair to a PER-ACCOUNT item (`serviceFor` below); this
+ * Binance key pair per device under this service. Multi-account support keeps the
+ * pair in a PER-ACCOUNT item (`serviceFor` below); this
  * global item is now transitional — it is what `migrate-binance-credential.ts`
  * reads and clears once the pair is bound to its connected account.
  */

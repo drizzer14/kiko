@@ -266,6 +266,12 @@ describe('HelpScreen', () => {
     });
 
     describe('under the uk language', () => {
+      beforeEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('uk');
+        });
+      });
+
       afterEach(async () => {
         await act(async () => {
           await i18n.changeLanguage('en');
@@ -273,9 +279,6 @@ describe('HelpScreen', () => {
       });
 
       it('reads the confirmation in Ukrainian', async () => {
-        await act(async () => {
-          await i18n.changeLanguage('uk');
-        });
         const { getByTestId, findByTestId } = await renderScreen();
 
         await fireEvent.press(getByTestId('help-show-tips-again'));

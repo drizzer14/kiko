@@ -428,6 +428,38 @@ passed in. `balanceChange`'s `{{amount}}` is the shared `formatMoney` text in th
 holding's own currency with a `+` put in front of a gain (`formatMoney` writes
 only the minus), never a hand-formatted number.
 
+## A test sets the language in a hook, never in an `it` body
+
+`i18n` is one shared instance, so a language a test switches to stays for every
+later test of the file until something switches it back. A `changeLanguage` call
+inside an `it`/`test` body (and a reset after the assertions in that body) leaks the
+language when an assertion throws first: the reset never runs and later tests fail
+for a reason unrelated to them. Switch the language in a `beforeEach` of the
+`describe` that needs it, inside `act`, and reset it to `en` in an `afterEach`
+(`beforeAll`/`afterAll` for a file-wide language). A test that needs both languages
+gets one `describe` per language.
+
+```ts
+describe('under the uk language', () => {
+  beforeEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+});
+```
+
+Mechanized in `*.test.ts(x)` by the `kiko-no-change-language-in-test-body` Semgrep rule
+(WARNING until its sweep lands; see kiko-linter's section on it). A helper that wraps
+`changeLanguage` and is called from an `it` body leaks the same way and is not seen by
+the rule: call it from a hook too.
+
 ## Review new/changed keys before a shipping deploy
 
 Standing workflow rule: any new or changed `en`/`uk` catalogue key is

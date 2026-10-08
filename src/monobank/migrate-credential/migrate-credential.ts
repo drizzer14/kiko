@@ -5,7 +5,7 @@ import { hardenedFor, MONOBANK_TOKEN_SERVICE, serviceFor } from '../token';
 /**
  * Move the single GLOBAL Monobank token (`kiko.monobank.token`) to a PER-ACCOUNT
  * Keychain item keyed by the connected account id, so a second Monobank
- * connection can bind its own token (multi-account plan, 2026-09-11). Run once at
+ * connection can bind its own token. Run once at
  * app bootstrap AFTER `migrateLegacyToken` (which brings a pre-`kiko` token up to
  * the global item first) and BEFORE anything reads the per-account token.
  *

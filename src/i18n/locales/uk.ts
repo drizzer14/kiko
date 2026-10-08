@@ -814,7 +814,7 @@ export const uk: typeof en = {
       // i18next's uk plural rule: _one (1 категорія), _few (2-4 категорії),
       // _many (0, 5-20 категорій), _other (fractional, unreachable here).
       // uk is sentence case everywhere, so the noun stays lowercase even
-      // mid-string here (CASE track, 2026-09-24).
+      // mid-string here.
       button: {
         allCategories: 'Всі категорії',
         manual_one: '{{count}} категорія',
