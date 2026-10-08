@@ -756,7 +756,7 @@ new component can land between reviews of this skill:
   (an entity card, e.g. the FAB) paints an OPAQUE `surface` backdrop
   and an entity-color wash — see "Entity color and tint" below. A
   `transparent` variant paints a TRANSLUCENT
-  `surfaceTranslucent` backdrop and no wash, so the screen behind reads
+  `surfaceTranslucent` backdrop (iOS 26+; below it the BottomSheet bypasses GlassSurface) and no wash, so the screen behind reads
   through while the drift/pop-in stays softened; a `tint` always wins
   over it. `transparent`/`bloom`/`material` are NAV-LAYER variants now
   — a new CONTENT surface (a settings row, a chart card, a summary, a
@@ -844,7 +844,7 @@ new component can land between reviews of this skill:
   absolutely-positioned first child of the sheet card
   (`bottom-sheet.styles.ts`'s `glassFill`), painted BEHIND the grabber
   and body that follow it in JSX. Since this is the ONE shared
-  primitive, every sheet in the app gets the glass background from this
+  primitive, every sheet in the app gets the glass background on iOS 26+ from this
   single change point. `GlassSurface` only exposes a single ALL-corner
   `radius` (there is no top-only variant); the sheet still needs to read
   as top-rounded / bottom-flush (anchored to the screen's bottom edge),
@@ -894,8 +894,9 @@ new component can land between reviews of this skill:
   a sheet's test hooks.
 
   The full-bleed dismiss SCRIM (a sibling of the sheet card, not the
-  card's own `glassFill` above) is a SEPARATE Liquid Glass layer with a
-  DEVICE BUG fix of its own: Liquid Glass draws a native specular rim at
+  card's own `glassFill` above) is, on iOS 26+, a SEPARATE Liquid Glass layer with a
+  DEVICE BUG fix of its own (below iOS 26 the scrim is a plain `scrimFallback` View with no rim to hide;
+  it shares `styles.backdropFill`'s sizing, so the overscan is harmless there, not a fix): Liquid Glass draws a native specular rim at
   the edge of whatever bounds it is given (a `UIGlassEffect` property,
   not a border/inset this app draws), which at the scrim's original
   exact-screen-size bounds landed on the screen edge and read as a sharp
