@@ -1850,6 +1850,18 @@ export const transactionsRepo = {
   // each holding's balance over time, which `listWithContextBetweenQuery` (a
   // display projection without `holdingId`) cannot feed.
   listAllQuery: () => database.select().from(transactions).orderBy(desc(transactions.time)),
+  // Whether the ledger holds any transaction at all: one row or none, so an empty-state or
+  // tip check never reads the ledger itself.
+  anyQuery: () => database.select({ id: transactions.id }).from(transactions).limit(1),
+  // The same check for one account, through the `transactions_holding_id` index of its
+  // holdings.
+  anyInAccountQuery: (accountId: string) =>
+    database
+      .select({ id: transactions.id })
+      .from(transactions)
+      .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
+      .where(eq(holdings.accountId, accountId))
+      .limit(1),
   getByIdQuery: (transactionId: string) =>
     database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),
   /**

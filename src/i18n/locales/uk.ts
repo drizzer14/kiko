@@ -737,6 +737,11 @@ export const uk: typeof en = {
       title: 'Почніть із рахунку',
     },
   },
+  tips: {
+    close: 'Закрити підказку',
+    importStatement:
+      'Експортуйте виписку в застосунку свого банку як CSV або XLSX, а потім імпортуйте її сюди.',
+  },
   statistics: {
     accountContribution: 'Внесок рахунків',
     byType: 'За типом',

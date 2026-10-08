@@ -876,6 +876,12 @@ export const en = {
       title: 'Start with an account',
     },
   },
+  // One-time tips (`TipCard`, `src/tips/`): the close label is shared, each tip has its own
+  // message.
+  tips: {
+    close: 'Close tip',
+    importStatement: 'Export a statement from your bank’s app as CSV or XLSX, then import it here.',
+  },
   statistics: {
     accountContribution: 'Account Contribution',
     byType: 'By Type',

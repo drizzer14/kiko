@@ -1,5 +1,6 @@
 import either from 'fnts/either';
 import { match } from 'ts-pattern';
+import { useTip } from '@kiko/tips';
 import {
   accountDisplayName,
   isImplicitAccount,
@@ -28,6 +29,7 @@ import { sumByCurrency } from '@kiko/rates/currency-totals';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import type { ReminderKind } from '@kiko/reminders/schedule';
+import TipCard from '@kiko/design-system/components/tip-card';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -89,6 +91,24 @@ const showsBankSync = (
     (found) => found.kind === 'bank' && (isConnectableBank(found.bankId) || isSyncedAccount(found)),
   ) ?? false;
 
+// The tip lives in its own component so the screen's branching stays within the complexity
+// budget; it is the screen's one `useTip`.
+const ImportStatementTip: FC<{ eligible: boolean }> = ({ eligible }) => {
+  const { t } = useTranslation();
+  const { visible, dismiss } = useTip('accountDetail.importStatement', eligible);
+
+  return (
+    visible && (
+      <TipCard
+        testID="tip-import-statement"
+        message={t('tips.importStatement')}
+        closeLabel={t('tips.close')}
+        onClose={dismiss}
+      />
+    )
+  );
+};
+
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
   const { accountId, name: initialName, kind: kindHint, reminderOffer, intent } = route.params;
   const { theme } = useUnistyles();
@@ -118,6 +138,13 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     true,
     { cached: true },
   );
+  // The import tip shows only while the account has no transaction yet.
+  const { data: anyRows, isLoading: anyLoading } = useLiveQuery(
+    transactionsRepo.anyInAccountQuery(accountId),
+    ['transactions', 'holdings'],
+    true,
+    { cached: true },
+  );
   // kiko-architecture: skip the price_points read while nothing rendered on
   // this screen ever reads it — a holding whose type carries no priced spec
   // and is not a loan (`needsPriceBook`) never touches `price_points`. It
@@ -137,6 +164,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     holdingsLoading,
     ratesLoading,
     settingsLoading,
+    anyLoading,
     priceBookLoading,
   );
   const account = accounts.at(0);
@@ -368,6 +396,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
       scrollableRef={scrollableRef}
       footer={
         <Box gap={2}>
+          <ImportStatementTip eligible={canImportStatement && anyRows.length === 0} />
           {canImportStatement && (
             <Button variant="secondaryTonal" onPress={pickAndOpenStatement} icon="doc.badge.plus">
               {t('accountDetail.importStatement')}

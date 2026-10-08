@@ -110,6 +110,7 @@ const mockReorder = jest.fn();
 const mockAccountSetIcon = jest.fn();
 const mockAccountUpdate = jest.fn();
 const mockDisconnect = jest.fn();
+const mockDismissTip = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
 
 // HoldingCard (rendered inside this screen) subscribes to the native stack's
 // `transitionEnd` event via `useNavigation` to defer its Liquid Glass one-shot
@@ -199,7 +200,10 @@ jest.mock('@kiko/rates/repo', () => ({
   ratesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({
-  settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+  settingsRepo: {
+    getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    dismissTip: (...args: unknown[]) => mockDismissTip(...args),
+  },
 }));
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({
   syncStateRepo: {
@@ -241,7 +245,7 @@ type Holding = {
   metadata?: Record<string, unknown> | null;
 };
 type Rate = { base: string; quote: string; rate: string };
-type Settings = { baseCurrency: string };
+type Settings = { baseCurrency: string; dismissedTips?: string[] };
 type SyncState = { lastSyncAt?: number | null; lastSyncDisplayAt?: number | null };
 
 // One mocked `useLiveQuery` result.
@@ -260,6 +264,8 @@ const setLiveData = (data: {
   rates?: Rate[];
   settings?: Settings[];
   syncState?: SyncState[];
+  // The rows of the "any transaction in this account" read, for the import tip.
+  transactions?: { id: string }[];
   // Every flag below defaults to `false` (an already-resolved query), so
   // every existing call site keeps behaving exactly as before; a test that
   // cares about the loading gate passes one or more explicitly.
@@ -267,6 +273,7 @@ const setLiveData = (data: {
   holdingsIsLoading?: boolean;
   ratesIsLoading?: boolean;
   settingsIsLoading?: boolean;
+  transactionsIsLoading?: boolean;
   pricePointsIsLoading?: boolean;
   // `true` = the holdings are still the cached rows (`isFresh: false`), for
   // the reorder-gate test only.
@@ -291,6 +298,10 @@ const setLiveData = (data: {
       isLoading: data.settingsIsLoading ?? false,
     },
     sync_state: { data: data.syncState ?? [] },
+    transactions: {
+      data: data.transactions ?? [],
+      isLoading: data.transactionsIsLoading ?? false,
+    },
     price_points: { data: [], isLoading: data.pricePointsIsLoading ?? false },
   };
 
@@ -2199,8 +2210,12 @@ describe('AccountDetailScreen — the price_points gate', () => {
   // Only a loan reads its linked payments, so a priced-only screen never
   // runs the linked-payments read.
   it('reads the linked loan payments only once a loan is present', async () => {
+    // The import tip's "any transaction" read subscribes to the same tables and is mounted
+    // first, so the linked-payments read is the last of the two.
     const loanPaymentsCall = () =>
-      mockUseLiveQuery.mock.calls.find((call) => call[1].join(',') === 'transactions,holdings');
+      mockUseLiveQuery.mock.calls
+        .filter((call) => call[1].join(',') === 'transactions,holdings')
+        .at(-1);
     const holdingOfType = (type: string) => ({
       id: 'h1',
       name: 'Holding',
@@ -2511,4 +2526,126 @@ describe('AccountDetailScreen — an implicit account', () => {
       expect(queryByLabelText(/delete account|archive/i)).toBeNull();
     },
   );
+});
+
+describe('AccountDetailScreen — the import statement tip', () => {
+  const TIP_ID = 'accountDetail.importStatement';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockButtonProps.length = 0;
+    mockSync.mockResolvedValue(undefined);
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    mockDismissTip.mockResolvedValue(undefined);
+    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+  });
+
+  it('shows the tip in the footer, above the Import statement button, for a bank account with no sync and no transactions', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    const siblings = within(footer).getByTestId('tip-import-statement').parent?.children ?? [];
+    // The tip card carries a testID; the Import statement button is told apart by its label.
+    const order = siblings
+      .filter((sibling) => typeof sibling !== 'string')
+      .map(
+        (sibling) =>
+          sibling.props.testID ??
+          (within(sibling).queryByText('Import statement') ? 'import-statement' : 'other'),
+      );
+
+    expect(within(footer).getByText(i18n.t('tips.importStatement'))).toBeTruthy();
+    expect(order).toEqual(['tip-import-statement', 'import-statement', 'other']);
+  });
+
+  it('shows the tip with the close label of the tips catalogue', async () => {
+    const { getByLabelText } = await renderScreen();
+
+    expect(getByLabelText(i18n.t('tips.close'))).toBeTruthy();
+  });
+
+  it('hides the tip for an account a bank sync owns', async () => {
+    setLiveData({
+      accounts: [account({ bankId: 'monobank', institution: 'monobank' })],
+      holdings: [],
+    });
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('tip-import-statement')).toBeNull();
+  });
+
+  it('hides the tip for an account that is not a bank account', async () => {
+    setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [] });
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('tip-import-statement')).toBeNull();
+  });
+
+  it('hides the tip once the account has a transaction', async () => {
+    setLiveData({
+      accounts: [account({ bankId: 'monobank' })],
+      holdings: [],
+      transactions: [{ id: 't1' }],
+    });
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('tip-import-statement')).toBeNull();
+  });
+
+  it('hides the tip once its id is dismissed', async () => {
+    setLiveData({
+      accounts: [account({ bankId: 'monobank' })],
+      holdings: [],
+      settings: [{ baseCurrency: 'UAH', dismissedTips: [TIP_ID] }],
+    });
+    const { queryByTestId, queryByLabelText } = await renderScreen();
+
+    expect(queryByTestId('tip-import-statement')).toBeNull();
+    expect(queryByLabelText(i18n.t('tips.close'))).toBeNull();
+  });
+
+  it('keeps the tip hidden while the transactions read is still on its first load', async () => {
+    setLiveData({
+      accounts: [account({ bankId: 'monobank' })],
+      holdings: [],
+      transactionsIsLoading: true,
+    });
+    const { queryByTestId, getByTestId } = await renderScreen();
+
+    expect(getByTestId('account-detail-loading')).toBeTruthy();
+    expect(queryByTestId('tip-import-statement')).toBeNull();
+  });
+
+  it('keeps the tip hidden while the settings are still loading', async () => {
+    setLiveData({
+      accounts: [account({ bankId: 'monobank' })],
+      holdings: [],
+      settingsIsLoading: true,
+    });
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('tip-import-statement')).toBeNull();
+  });
+
+  it('reads whether the account has any transaction, over the transactions and holdings tables', async () => {
+    await renderScreen();
+
+    expect(mockUseLiveQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      ['transactions', 'holdings'],
+      true,
+      { cached: true },
+    );
+  });
+
+  it('records the dismissal of the tip when its close button is pressed', async () => {
+    const { getByLabelText } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText(i18n.t('tips.close')));
+    });
+
+    expect(mockDismissTip).toHaveBeenCalledTimes(1);
+    expect(mockDismissTip).toHaveBeenCalledWith(TIP_ID);
+  });
 });

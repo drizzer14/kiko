@@ -4,6 +4,17 @@ import { asNavigationProp, navigationSpy } from '@kiko/test-support/navigation-p
 
 import { useImportResultSheet, type ImportResultNavigation } from './use-import-result-sheet';
 
+const mockDismissTip = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
+const mockLogFailure = jest.fn();
+
+jest.mock('@kiko/diagnostics/log-failure', () => ({
+  logFailure: (...args: unknown[]) => mockLogFailure(...args),
+}));
+
+jest.mock('@kiko/settings/settings.repo', () => ({
+  settingsRepo: { dismissTip: (...args: unknown[]) => mockDismissTip(...args) },
+}));
+
 const importResult: ImportResult = {
   formatId: 'monobank-csv',
   imported: 3,
@@ -28,6 +39,52 @@ const setup = async (accountName: string | undefined) => {
 };
 
 describe('useImportResultSheet', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDismissTip.mockResolvedValue(undefined);
+  });
+
+  it('dismisses the import statement tip once when an import finishes', async () => {
+    const { result } = await setup('Monobank');
+
+    await act(async () => {
+      result.current.show(importResult);
+    });
+
+    expect(mockDismissTip).toHaveBeenCalledTimes(1);
+    expect(mockDismissTip).toHaveBeenCalledWith('accountDetail.importStatement');
+  });
+
+  it('dismisses the tip for a completed import that added no row', async () => {
+    const { result } = await setup('Monobank');
+
+    await act(async () => {
+      result.current.show({ ...importResult, imported: 0 });
+    });
+
+    expect(mockDismissTip).toHaveBeenCalledTimes(1);
+    expect(mockDismissTip).toHaveBeenCalledWith('accountDetail.importStatement');
+  });
+
+  it('dismisses nothing before an import finishes', async () => {
+    await setup('Monobank');
+
+    expect(mockDismissTip).not.toHaveBeenCalled();
+  });
+
+  it('still shows the sheet when the tip cannot be dismissed', async () => {
+    mockDismissTip.mockRejectedValue(new Error('write failed'));
+    const { result } = await setup('Monobank');
+
+    await act(async () => {
+      result.current.show(importResult);
+    });
+
+    expect(result.current.sheetProps.visible).toBe(true);
+    expect(result.current.sheetProps.result).toBe(importResult);
+    expect(mockLogFailure).toHaveBeenCalledWith('tips.dismiss', expect.any(Error));
+  });
+
   it('starts hidden with no result', async () => {
     const { result } = await setup('Monobank');
 

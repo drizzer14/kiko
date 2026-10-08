@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { settingsRepo } from '@kiko/settings';
+import { logOnFailure } from '@kiko/diagnostics';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import type { ImportResult } from '@kiko/statement-import/import-statement';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -55,9 +57,14 @@ export const useImportResultSheet = ({
   const [result, setResult] = useState<ImportResult | undefined>(undefined);
   const [visible, setVisible] = useState(false);
   const navigatedAwayRef = useRef(false);
-  const show = (shown: ImportResult): void => {
+  // A finished import ends the import tip's job, even one that added no row. The sheet shows
+  // first, and a failed dismiss only leaves the tip on screen, so there is no alert.
+  const show = async (shown: ImportResult): Promise<void> => {
     setResult(shown);
     setVisible(true);
+    await logOnFailure('tips.dismiss', () =>
+      settingsRepo.dismissTip('accountDetail.importStatement'),
+    );
   };
 
   const onDone = (): void => {
