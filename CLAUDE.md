@@ -316,7 +316,7 @@ found"). The coordinator checks that sha before it merges.
 | explorer | Read-only codebase search | sonnet | low | `claude --agent explorer --effort low` |
 | retrospect | Gathers durable lessons after a run | sonnet | medium | `claude --agent retrospect --effort medium` |
 | scribe | Persists durable knowledge (memory, skills, agents, plugin) | sonnet | low | `claude --agent scribe --effort low` |
-| ops | Runs builds, installs, pods, and the harness checks | haiku | low | `claude --agent ops --effort low` |
+| ops | Runs builds, installs, pods, and the harness checks | sonnet | low | `claude --agent ops --effort low` |
 | pm | Reports the live task board, branches, and worktrees from Orca and git; verifies narrative docs and flags drift | sonnet | low | `claude --agent pm --effort low` |
 | auditor | Read-only whole-codebase audit (security, performance, bundle, dependencies); reports ranked findings, writes no code | sonnet | medium | `claude --agent auditor --effort medium` |
 | researcher | Read-only web research and live API probes; returns findings with source URL + check date per claim | sonnet | medium | `claude --agent researcher --effort medium` |
