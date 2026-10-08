@@ -20,14 +20,11 @@
 # TAB BAR IDENTIFIERS: `tray` (Accounts) and `gear` (Settings) are the SF
 # Symbol names `src/navigation/root-navigator/root.navigator.tsx` gives the
 # tabs; `tray` is the same selector `.maestro/statement-import.yaml` relies on.
-# `gear` is unconfirmed on a live run.
 #
-# THIS FLOW WAS AUTHORED WITHOUT A LIVE MAESTRO RUN — ops must verify the step
-# sequence on a real simulator the first time it executes. Two spots need
-# live confirmation: the `gear` tab selector, and the left-edge swipe that
-# stands in for the native back button (Maestro's `back` command is
-# Android-only, and the iOS back button carries the previous screen's title as
-# its label).
+# BACK NAVIGATION: the left-edge swipe stands in for the native back button,
+# because Maestro's `back` command is Android-only and the iOS back button
+# carries the previous screen's title as its label, so no stable selector
+# exists for it.
 appId: com.dmytro-vasylkivskyi.kiko
 ---
 - launchApp:
@@ -60,6 +57,8 @@ appId: com.dmytro-vasylkivskyi.kiko
 - swipe:
     start: "1%, 50%"
     end: "80%, 50%"
+- assertNotVisible:
+    id: "account-form"
 - assertVisible:
     id: "accounts-empty"
 
