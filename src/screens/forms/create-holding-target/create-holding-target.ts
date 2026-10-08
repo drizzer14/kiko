@@ -2,7 +2,7 @@ import { match } from 'ts-pattern';
 import type { AccountRow } from '@kiko/db';
 import { isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
-export type CreateHoldingTarget =
+type CreateHoldingTarget =
   | { screen: 'HoldingForm'; params: { accountId: string } }
   | { screen: 'AccountForm' };
 

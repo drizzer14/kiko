@@ -46,7 +46,9 @@ describe('PaymentHoldingField', () => {
 
   it('reports the picked holding id at once', async () => {
     const onSelect = jest.fn();
-    const { getByLabelText, getByText } = await renderPaymentHoldingField({ onSelect });
+    const { getByLabelText, getByText } = await renderPaymentHoldingField({
+      onSelect,
+    });
 
     await fireEvent.press(getByLabelText('Paid from'));
     await fireEvent.press(getByText('Everyday card'));
@@ -78,83 +80,53 @@ describe('PaymentHoldingField', () => {
   });
 
   describe('"Add holding" row', () => {
-    it('is absent when the field has no onCreateNew', async () => {
-      const { getByLabelText, queryByTestId } = await renderPaymentHoldingField({
-        options: [],
+    const openSheet = async (overrides: Partial<PaymentHoldingFieldProps>) => {
+      const view = await renderPaymentHoldingField({
         testID: 'paid-from',
+        ...overrides,
       });
 
-      await fireEvent.press(getByLabelText('Paid from'));
+      await fireEvent.press(view.getByLabelText('Paid from'));
 
-      expect(queryByTestId('paid-from-create-new')).toBeNull();
+      return view;
+    };
+
+    it.each([
+      ['the field has no onCreateNew', { options: [] }],
+      ['the picker has a real option', { onCreateNew: jest.fn() }],
+    ])('is absent when %s', async (_reason, overrides) => {
+      const view = await openSheet(overrides);
+
+      expect(view.queryByTestId('paid-from-create-new')).toBeNull();
     });
 
-    it('is absent once the picker has a real option', async () => {
-      const { getByLabelText, queryByTestId } = await renderPaymentHoldingField({
-        onCreateNew: jest.fn(),
-        testID: 'paid-from',
-      });
-
-      await fireEvent.press(getByLabelText('Paid from'));
-
-      expect(queryByTestId('paid-from-create-new')).toBeNull();
-    });
-
-    it('is shown beside the lone "None" row when the picker has no options', async () => {
-      const { getByLabelText, getByTestId, getByText } = await renderPaymentHoldingField({
-        options: [],
-        onCreateNew: jest.fn(),
-        testID: 'paid-from',
-      });
-
-      await fireEvent.press(getByLabelText('Paid from'));
-
-      expect(getByTestId('paid-from-option-none')).toBeTruthy();
-      expect(getByTestId('paid-from-create-new')).toBeTruthy();
-      expect(getByText('Add holding')).toBeTruthy();
-    });
-
-    it('closes the sheet and calls onCreateNew once when pressed', async () => {
+    it('sits beside the lone "None" row, then reports once, closes the sheet and selects the new holding', async () => {
       const onCreateNew = jest.fn();
-      const { getByLabelText, getByTestId, queryByText } = await renderPaymentHoldingField({
-        options: [],
-        onCreateNew,
-        testID: 'paid-from',
-      });
+      const onSelect = jest.fn();
+      const view = await openSheet({ options: [], onCreateNew, onSelect });
 
-      await fireEvent.press(getByLabelText('Paid from'));
-      await fireEvent.press(getByTestId('paid-from-create-new'));
+      expect(view.getByTestId('paid-from-option-none')).toBeTruthy();
+
+      await fireEvent.press(view.getByText('Add holding'));
 
       expect(onCreateNew).toHaveBeenCalledTimes(1);
-      expect(queryByText('Paid From')).toBeNull();
-    });
+      expect(view.queryByText('Paid From')).toBeNull();
 
-    it('selects the holding created after the press', async () => {
-      const onSelect = jest.fn();
-      const { getByLabelText, getByTestId, rerender } = await renderPaymentHoldingField({
-        options: [],
-        onCreateNew: jest.fn(),
-        onSelect,
-        testID: 'paid-from',
-      });
+      const created = { ...options[0], id: 'created', createdAt: Date.now() };
 
-      await fireEvent.press(getByLabelText('Paid from'));
-      await fireEvent.press(getByTestId('paid-from-create-new'));
-      await rerender(
+      await view.rerender(
         <PaymentHoldingField
           label="Paid from"
           sheetTitle="Paid From"
           noneLabel="None"
-          options={[{ ...options[0], id: 'created', createdAt: Date.now() }]}
+          options={[created]}
           selectedId={null}
           onSelect={onSelect}
-          onCreateNew={jest.fn()}
-          testID="paid-from"
+          onCreateNew={onCreateNew}
         />,
       );
 
-      expect(onSelect).toHaveBeenCalledTimes(1);
-      expect(onSelect).toHaveBeenCalledWith('created');
+      expect(onSelect.mock.calls).toEqual([['created']]);
     });
   });
 });
