@@ -1464,11 +1464,6 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         exchange" action — everything below the field group except while
         converting. */}
 
-      {/* The category picker is ALWAYS editable on an income/expense row —
-        even on a synced row — since a category edit propagates to every
-        same-name transaction and to future imports, unlike the bank-owned
-        amount/sign. Exchange has no category: both legs' descriptions are
-        fixed, auto-generated copy. */}
       {props.tip.visible && (
         <TipCard
           testID="tip-apply-to-all"
@@ -1478,6 +1473,11 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         />
       )}
 
+      {/* The category picker is ALWAYS editable on an income/expense row —
+        even on a synced row — since a category edit propagates to every
+        same-name transaction and to future imports, unlike the bank-owned
+        amount/sign. Exchange has no category: both legs' descriptions are
+        fixed, auto-generated copy. */}
       {!props.isExchange && (
         <View ref={props.categoryFieldRef}>
           <CategoryField
@@ -1572,15 +1572,22 @@ const resolvePendingCategory = (
 };
 
 // The tip points at the category picker of an existing income/expense row, and only until an
-// override rule exists: the first one is what the tip teaches. Module-level so its `&&` chain
-// stays out of the screen's cognitive-complexity budget.
+// override rule exists: the first one is what the tip teaches. An exchange leg is excluded by its
+// row, not by the form mode: an edit never reaches the exchange mode, and an untouched leg's
+// category change writes that row only, so the tip's promise would be false. The rules read
+// returns an empty list until its first load, so the tip waits for it. Module-level so its `&&`
+// chain stays out of the screen's cognitive-complexity budget.
 const isApplyToAllTipEligible = (input: {
-  isExisting: boolean;
-  isExchange: boolean;
+  existing: Pick<TransactionRow, 'exchangeCounterpartHoldingId'> | undefined;
   categoryCount: number;
   overrideRuleCount: number;
+  overrideRulesLoading: boolean;
 }): boolean =>
-  input.isExisting && !input.isExchange && input.categoryCount > 0 && input.overrideRuleCount === 0;
+  input.existing !== undefined &&
+  input.existing.exchangeCounterpartHoldingId === null &&
+  input.categoryCount > 0 &&
+  !input.overrideRulesLoading &&
+  input.overrideRuleCount === 0;
 
 const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
   const { theme } = useUnistyles();
@@ -1656,9 +1663,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // name lookup map, so a create can pre-select a category from the settled
   // description on blur. Matching is JS-normalized (never SQL), mirroring the
   // sync insert path — see `ruleCategoryFor` and the description blur handler.
-  const { data: overrideRules } = useLiveQuery(categoryOverridesRepo.allQuery(), [
-    'category_overrides',
-  ]);
+  const { data: overrideRules, isLoading: overrideRulesLoading } = useLiveQuery(
+    categoryOverridesRepo.allQuery(),
+    ['category_overrides'],
+  );
   const categoryByNormalizedName = useMemo(
     () => new Map(overrideRules.map((rule) => [rule.normalizedName, rule.category])),
     [overrideRules],
@@ -1800,10 +1808,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const applyToAllTip = useTip(
     'transaction.applyToAll',
     isApplyToAllTipEligible({
-      isExisting: existing !== undefined,
-      isExchange,
+      existing,
       categoryCount: categories.length,
       overrideRuleCount: overrideRules.length,
+      overrideRulesLoading,
     }),
   );
   const isSplit = mode === 'split';

@@ -71,6 +71,8 @@ const mockDismissTip = jest.fn((..._args: unknown[]): Promise<void> => Promise.r
 // The settings row the tip hook reads; a test sets it to hide a tip or to hold the first load.
 const mockDismissedTips: string[] = [];
 let mockSettingsIsLoading = false;
+// The override-rules read answers `data: []` until its first load, as the real hook does.
+let mockOverridesIsLoading = false;
 
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
@@ -232,6 +234,10 @@ const setLiveData = (
         data: latestManualHoldingId ? [{ holdingId: latestManualHoldingId }] : [],
         isLoading: false,
       };
+    }
+
+    if (tables[0] === 'category_overrides' && mockOverridesIsLoading) {
+      return { data: [], isLoading: true };
     }
 
     return { data: dataByTable[tables[0]] ?? [] };
@@ -4438,12 +4444,14 @@ describe('TransactionFormScreen — the apply-to-all tip', () => {
     description: 'Coffee',
     source: 'manual',
     category: 'groceries',
+    exchangeCounterpartHoldingId: null,
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockDismissedTips.length = 0;
     mockSettingsIsLoading = false;
+    mockOverridesIsLoading = false;
     mockDismissTip.mockResolvedValue(undefined);
     mockUpsertCategoryOverride.mockResolvedValue(undefined);
     mockSetCategory.mockResolvedValue(undefined);
@@ -4499,7 +4507,7 @@ describe('TransactionFormScreen — the apply-to-all tip', () => {
   it('hides the tip while an existing row is converted to an exchange', async () => {
     setLiveData(
       CONVERT_HOLDINGS,
-      CONVERT_TRANSACTIONS['expense-manual'],
+      { ...CONVERT_TRANSACTIONS['expense-manual'], exchangeCounterpartHoldingId: null },
       CATEGORIES,
       CONVERT_ACCOUNTS,
     );
@@ -4510,6 +4518,31 @@ describe('TransactionFormScreen — the apply-to-all tip', () => {
     await fireEvent.press(utils.getByText('Exchange'));
 
     expect(utils.queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it.each([
+    ['the outgoing leg', { exchangeCounterpartHoldingId: 'h-usd' }],
+    ['the incoming leg', { holdingId: 'h-usd', exchangeCounterpartHoldingId: 'h1' }],
+  ])(
+    'hides the tip on an existing exchange leg (%s), whose category change is this row only',
+    async (_name, legFields) => {
+      setLiveData(
+        [...HOLDINGS, { id: 'h-usd', currency: 'USD', balanceMinorUnits: 5000, type: 'cash' }],
+        { ...ROW, ...legFields },
+      );
+      const { queryByTestId, getByTestId } = await renderEdit('txn-1');
+
+      expect(getByTestId('transaction-category-field')).toBeTruthy();
+      expect(queryByTestId('tip-apply-to-all')).toBeNull();
+    },
+  );
+
+  it('keeps the tip hidden while the override rules are still on their first load', async () => {
+    mockOverridesIsLoading = true;
+    setLiveData(HOLDINGS, ROW);
+    const { queryByTestId } = await renderEdit('txn-1');
+
+    expect(queryByTestId('tip-apply-to-all')).toBeNull();
   });
 
   it('hides the tip when there is no category to change', async () => {
