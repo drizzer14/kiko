@@ -280,6 +280,15 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             onPress={() => navigation.navigate('Categories')}
           />
         </Card>
+
+        <Card testID="settings-card-help" padding={3}>
+          <SettingsRow
+            testID="settings-row-help"
+            icon="questionmark.circle"
+            label={t('help.rowLabel')}
+            onPress={() => navigation.navigate('Help')}
+          />
+        </Card>
       </Box>
     </Screen>
   );

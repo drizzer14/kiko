@@ -209,6 +209,7 @@ describe('SettingsScreen', () => {
       'settings-card-data-transfer',
       'settings-card-base-currency',
       'settings-card-categories',
+      'settings-card-help',
     ]);
   });
 
@@ -360,6 +361,22 @@ describe('SettingsScreen', () => {
     await fireEvent.press(getByTestId('settings-row-categories'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('Categories');
+  });
+
+  it('puts a questionmark.circle Help row in the last card, after Categories, and opens Help', async () => {
+    const navigation = navigationSpy();
+    const { getByTestId, root } = await renderScreen(navigation);
+
+    const card = getByTestId('settings-card-help');
+
+    expect(within(card).getByText('Help & tips')).toBeTruthy();
+    expect(
+      root?.queryAll((node) => node.props.name === 'questionmark.circle').length,
+    ).toBeGreaterThan(0);
+
+    await fireEvent.press(within(card).getByTestId('settings-row-help'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('Help');
   });
 
   it('navigates to the ExportData sub-screen when the Export Data row is pressed', async () => {
@@ -559,6 +576,7 @@ describe('SettingsScreen — the categories tip', () => {
       'settings-card-base-currency',
       'tip-categories',
       'settings-card-categories',
+      'settings-card-help',
     ]);
   });
 

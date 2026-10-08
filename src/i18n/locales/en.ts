@@ -885,6 +885,41 @@ export const en = {
     close: 'Close tip',
     importStatement: 'Export a statement from your bank’s app as CSV or XLSX, then import it here.',
   },
+  // The Help & Tips page (`src/help/`). Each topic has a nav title (Title Case) and a list-row
+  // label (sentence case) as two keys, and numbered steps that each end with ".". The step keys
+  // are quoted because i18next's typed keys skip a numeric property name.
+  help: {
+    actions: {
+      openCategories: 'Open categories',
+    },
+    privacy: 'All your data stays on this device.',
+    rowLabel: 'Help & tips',
+    showTipsAgain: 'Show tips again',
+    title: 'Help & Tips',
+    topics: {
+      addAccount: {
+        rowLabel: 'Add an account',
+        steps: {
+          '1': 'On the "Accounts" tab, tap "Add account".',
+          '2': 'Choose the account type: bank, cash, crypto, property, metals, debt, or broker.',
+          '3': 'Enter a name. Cash needs a currency and a starting balance; a bank account needs its bank.',
+          '4': 'Optional: connect Monobank with a token, Binance with an API key, or Bitcoin with a wallet address.',
+          '5': 'For other banks, open the account, tap "Import statement", and choose a CSV or XLSX file from your bank.',
+        },
+        title: 'Add an Account',
+      },
+      manageCategories: {
+        rowLabel: 'Manage categories',
+        steps: {
+          '1': 'Open the "Settings" tab, then tap "Categories".',
+          '2': 'Tap "Add category", enter a name, and choose an icon and a color.',
+          '3': 'To apply a category to every transaction with the same name, open one of them, change its category, and tap "Save".',
+          '4': 'Choose "Apply". The rule also applies to future imports.',
+        },
+        title: 'Manage Categories',
+      },
+    },
+  },
   statistics: {
     accountContribution: 'Account Contribution',
     byType: 'By Type',
