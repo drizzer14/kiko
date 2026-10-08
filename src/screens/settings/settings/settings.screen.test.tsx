@@ -365,13 +365,13 @@ describe('SettingsScreen', () => {
 
   it('puts a questionmark.circle Help row in the last card, after Categories, and opens Help', async () => {
     const navigation = navigationSpy();
-    const { getByTestId, root } = await renderScreen(navigation);
+    const { getByTestId } = await renderScreen(navigation);
 
     const card = getByTestId('settings-card-help');
 
     expect(within(card).getByText('Help & tips')).toBeTruthy();
     expect(
-      root?.queryAll((node) => node.props.name === 'questionmark.circle').length,
+      card.queryAll((node) => node.props.name === 'questionmark.circle').length,
     ).toBeGreaterThan(0);
 
     await fireEvent.press(within(card).getByTestId('settings-row-help'));
