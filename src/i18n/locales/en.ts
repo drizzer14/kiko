@@ -257,6 +257,7 @@ export const en = {
       brokerTypePlaceholder: 'Select a broker',
       brokerTypeSheetTitle: 'Broker',
       cash: 'Cash',
+      connectHint: 'Tap “{{label}}” to link this account.',
       crypto: 'Crypto',
       debt: 'Debt',
       editTitle: 'Edit Account',

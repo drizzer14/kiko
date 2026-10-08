@@ -1,8 +1,9 @@
-import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BINANCE_API_MANAGEMENT_URL } from '@env';
-import { Linking, Pressable } from 'react-native';
+import { type FC, useEffect, useState } from 'react';
+import { Linking, Pressable, View } from 'react-native';
 import { fetchAccount, saveCredentials } from '@kiko/crypto-sync/binance';
+import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
 import Text from '../text';
@@ -22,6 +23,8 @@ type BinanceCredentialsFieldProps = {
    * succeeded.
    */
   onConnect: () => Promise<boolean>;
+  // Lets a form that saves without this connection remind the user to press Connect first.
+  reminder?: ConnectReminder;
 };
 
 type Field = 'apiKey' | 'secret';
@@ -30,7 +33,11 @@ type Field = 'apiKey' | 'secret';
 // read-only ("Enable Reading" only) key pair. Connect verifies the pair with one
 // account call BEFORE it is written to the biometric Keychain, then runs the
 // first sync. The pair never leaves this component except into `saveCredentials`.
-const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, onConnect }) => {
+const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
+  accountId,
+  onConnect,
+  reminder,
+}) => {
   const { t } = useTranslation();
   const [apiKey, setAPIKey] = useState('');
   const [secret, setSecret] = useState('');
@@ -44,6 +51,10 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
     attemptedConnect && apiKey.trim() === '' ? t('accountDetail.apiKeyRequiredError') : undefined;
   const secretError =
     attemptedConnect && secret.trim() === '' ? t('accountDetail.secretRequiredError') : undefined;
+  const onDraftChange = reminder?.onDraftChange;
+
+  // The typed pair goes with the field, so a draft it reported must not outlive it.
+  useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
 
   // Also runs on a clipboard paste (`ClipboardTextField` calls it with the
   // already-trimmed pasted value), so typing and pasting reset the stale
@@ -56,6 +67,10 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
     }
 
     setStatus({ kind: 'idle' });
+
+    // Either input alone is a draft, so the other one's current text counts too.
+    const otherValue = field === 'apiKey' ? secret : apiKey;
+    onDraftChange?.(value.trim() !== '' || otherValue.trim() !== '');
   };
 
   const handleOpenBinance = (): void => {
@@ -63,6 +78,8 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
   };
 
   const handleConnect = (): void => {
+    reminder?.onConnectPress();
+
     if (apiKey.trim() === '' || secret.trim() === '') {
       setAttemptedConnect(true);
 
@@ -90,6 +107,12 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
       }
 
       const connected = await onConnect();
+
+      if (connected) {
+        // A connected pair is not an unsaved draft; editing it again makes it one.
+        onDraftChange?.(false);
+      }
+
       setStatus(
         connected
           ? { kind: 'success', message: t('accountDetail.binanceConnected') }
@@ -137,20 +160,30 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({ accountId, 
         {t('accountDetail.binanceKeychainDisclosure')}
       </Text>
 
-      <Box direction="row" gap={2} style={styles.statusLine}>
-        <Button
-          variant="secondaryTonal"
-          size="small"
-          fullWidth={false}
-          onPress={handleConnect}
-          disabled={status.kind === 'checking'}
-          icon="lock"
-        >
-          {t('accountDetail.connectBinance')}
-        </Button>
+      <View ref={reminder?.ref}>
+        <Box gap={2}>
+          <Box direction="row" gap={2} style={styles.statusLine}>
+            <Button
+              variant="secondaryTonal"
+              size="small"
+              fullWidth={false}
+              onPress={handleConnect}
+              disabled={status.kind === 'checking'}
+              icon="lock"
+            >
+              {t('accountDetail.connectBinance')}
+            </Button>
 
-        <SyncStatusLine status={status} />
-      </Box>
+            <SyncStatusLine status={status} />
+          </Box>
+
+          {reminder?.message !== undefined && (
+            <Text variant="caption" tone="textSecondary">
+              {reminder.message}
+            </Text>
+          )}
+        </Box>
+      </View>
     </Box>
   );
 };

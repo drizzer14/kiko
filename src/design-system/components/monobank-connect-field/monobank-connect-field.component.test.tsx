@@ -1,6 +1,9 @@
+import { createRef } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import MonobankConnectField from './monobank-connect-field.component';
 
@@ -148,5 +151,89 @@ it('disables Connect while validation is in flight, even with a filled token', a
 
   await act(async () => {
     resolveFetch({ name: 'Ada' });
+  });
+});
+
+describe('connect reminder', () => {
+  const makeReminder = (message?: string): ConnectReminder => ({
+    ref: createRef<FieldInstance>(),
+    message,
+    onDraftChange: jest.fn(),
+    onConnectPress: jest.fn(),
+  });
+
+  it('shows the reminder message under the Connect button, and nothing without one', async () => {
+    const reminder = makeReminder('Tap Connect first.');
+    const view = await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+
+    expect(view.getByText('Tap Connect first.')).toBeTruthy();
+
+    await view.rerender(
+      <MonobankConnectField onConnect={jest.fn()} reminder={{ ...reminder, message: undefined }} />,
+    );
+
+    expect(view.queryByText('Tap Connect first.')).toBeNull();
+  });
+
+  it('attaches the reminder ref to the Connect row so a blocked Save can scroll to it', async () => {
+    const reminder = makeReminder();
+    await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+
+    expect(reminder.ref.current).not.toBeNull();
+  });
+
+  it('reports whether a token is typed on every edit, a whitespace-only token counting as none', async () => {
+    const reminder = makeReminder();
+    const view = await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+
+    await type(view, 'tok');
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+
+    await fireEvent.changeText(view.getByDisplayValue('tok'), 'tok2');
+    expect(reminder.onDraftChange).toHaveBeenCalledTimes(2);
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+
+    await fireEvent.changeText(view.getByDisplayValue('tok2'), '   ');
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports no typed token once it unmounts', async () => {
+    const reminder = makeReminder();
+    const view = await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+
+    await view.unmount();
+
+    expect(reminder.onDraftChange).toHaveBeenCalledWith(false);
+  });
+
+  it('does not report on a plain re-render', async () => {
+    const reminder = makeReminder();
+    const view = await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+
+    await view.rerender(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+
+    expect(reminder.onDraftChange).not.toHaveBeenCalled();
+  });
+
+  it('reports the cleared token once a connect succeeds', async () => {
+    mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
+    const reminder = makeReminder();
+    const view = await render(
+      <MonobankConnectField onConnect={jest.fn().mockResolvedValue(true)} reminder={reminder} />,
+    );
+
+    await type(view, 'tok');
+    await pressConnect(view);
+
+    await waitFor(() => expect(reminder.onDraftChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it('reports a Connect press, blank or not', async () => {
+    const reminder = makeReminder();
+    const view = await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+
+    await pressConnect(view);
+
+    expect(reminder.onConnectPress).toHaveBeenCalledTimes(1);
   });
 });

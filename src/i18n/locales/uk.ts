@@ -223,6 +223,7 @@ export const uk: typeof en = {
       brokerTypePlaceholder: 'Оберіть брокера',
       brokerTypeSheetTitle: 'Брокер',
       cash: 'Готівка',
+      connectHint: 'Натисніть «{{label}}», щоб прив’язати цей рахунок.',
       crypto: 'Крипто',
       debt: 'Борг',
       editTitle: 'Редагувати рахунок',

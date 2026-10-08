@@ -1,6 +1,9 @@
+import { createRef } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import WalletAddressField from '.';
 
@@ -197,5 +200,116 @@ describe('WalletAddressField — localization', () => {
     expect(getByLabelText('Вставити з буфера обміну')).toBeTruthy();
     expect(getByText('Підключити гаманець')).toBeTruthy();
     expect(queryByText('Connect wallet')).toBeNull();
+  });
+});
+
+describe('WalletAddressField — connect reminder', () => {
+  const makeReminder = (message?: string): ConnectReminder => ({
+    ref: createRef<FieldInstance>(),
+    message,
+    onDraftChange: jest.fn(),
+    onConnectPress: jest.fn(),
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows the reminder message under the Connect button, and nothing without one', async () => {
+    const reminder = makeReminder('Tap Connect first.');
+    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+
+    expect(view.getByText('Tap Connect first.')).toBeTruthy();
+
+    await view.rerender(
+      <WalletAddressField onConnect={jest.fn()} reminder={{ ...reminder, message: undefined }} />,
+    );
+
+    expect(view.queryByText('Tap Connect first.')).toBeNull();
+  });
+
+  it('attaches the reminder ref to the Connect row so a blocked Save can scroll to it', async () => {
+    const reminder = makeReminder();
+    await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+
+    expect(reminder.ref.current).not.toBeNull();
+  });
+
+  it('reports whether an address is typed on every edit, a whitespace-only one counting as none', async () => {
+    const reminder = makeReminder();
+    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+
+    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), 'bc1');
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+
+    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), 'bc1q');
+    expect(reminder.onDraftChange).toHaveBeenCalledTimes(2);
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+
+    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), '   ');
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports a clipboard paste as a typed address', async () => {
+    mockGetString.mockResolvedValue(ADDRESS);
+    const reminder = makeReminder();
+    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText('Paste from clipboard'));
+    });
+
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('reports no typed address once it unmounts', async () => {
+    const reminder = makeReminder();
+    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+
+    await view.unmount();
+
+    expect(reminder.onDraftChange).toHaveBeenCalledWith(false);
+  });
+
+  it('does not report on a plain re-render', async () => {
+    const reminder = makeReminder();
+    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+
+    await view.rerender(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+
+    expect(reminder.onDraftChange).not.toHaveBeenCalled();
+  });
+
+  it('reports no typed address once a connect succeeds, and keeps it while one fails', async () => {
+    const reminder = makeReminder();
+    const onConnect = jest.fn<Promise<boolean>, [string]>().mockResolvedValueOnce(false);
+    const view = await render(<WalletAddressField onConnect={onConnect} reminder={reminder} />);
+    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), ADDRESS);
+
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect wallet'));
+    });
+
+    expect(reminder.onDraftChange).toHaveBeenCalledTimes(1);
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+
+    onConnect.mockResolvedValueOnce(true);
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect wallet'));
+    });
+
+    expect(reminder.onDraftChange).toHaveBeenCalledTimes(2);
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports a Connect press, blank or not', async () => {
+    const reminder = makeReminder();
+    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect wallet'));
+    });
+
+    expect(reminder.onConnectPress).toHaveBeenCalledTimes(1);
   });
 });
