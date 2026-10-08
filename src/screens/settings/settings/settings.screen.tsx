@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import { useTip } from '@kiko/tips';
 import { type FC, useState } from 'react';
 import SettingsRow, {
   chevronSize,
@@ -11,7 +12,9 @@ import { useDataReady, useLiveQuery } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
 import Card from '@kiko/design-system/components/card';
 import Screen from '@kiko/design-system/components/screen';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import Divider from '@kiko/design-system/components/divider';
+import TipCard from '@kiko/design-system/components/tip-card';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { PRIVACY_POLICY_URL_EN, PRIVACY_POLICY_URL_UK } from '@env';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -74,10 +77,21 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
     cached: true,
   });
   const settings = data.at(0);
+  // The categories tip shows only once the user has a transaction.
+  const { data: anyRows, isLoading: anyLoading } = useLiveQuery(
+    transactionsRepo.anyQuery(),
+    ['transactions'],
+    true,
+    { cached: true },
+  );
+  const { visible: tipVisible, dismiss: dismissTip } = useTip(
+    'settings.categories',
+    anyRows.length > 0,
+  );
   // The base-currency field must never render as "none selected" while
   // settings is still on its own first load (kiko-architecture's
   // useLiveQuery consumer rule).
-  const isReady = useDataReady(isLoading);
+  const isReady = useDataReady(isLoading, anyLoading);
 
   // The Import/Export card's per-row padding and leading-inset divider, both
   // PLAIN objects built from the live theme rather than a
@@ -248,6 +262,15 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             />
           </SettingsRow>
         </Card>
+
+        {tipVisible && (
+          <TipCard
+            testID="tip-categories"
+            message={t('tips.categories')}
+            closeLabel={t('tips.close')}
+            onClose={dismissTip}
+          />
+        )}
 
         <Card testID="settings-card-categories" padding={3}>
           <SettingsRow

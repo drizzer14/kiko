@@ -10,6 +10,7 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import { chevronSize, chevronTrailingWhitespace } from '@kiko/screens/settings/settings-row';
 
 import pkg from '../../../../package.json';
@@ -36,17 +37,41 @@ const renderScreen = (navigation: NavigationSpy = navigationSpy()) =>
   );
 
 const mockSetBaseCurrency = jest.fn();
-let mockLiveQueryData: Array<{ baseCurrency: string }> = [{ baseCurrency: 'UAH' }];
+const mockDismissTip = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
+let mockLiveQueryData: Array<{ baseCurrency: string; dismissedTips?: string[] }> = [
+  { baseCurrency: 'UAH' },
+];
 let mockLiveQueryIsLoading = false;
+// The rows of the "any transaction" read, for the categories tip.
+let mockTransactionRows: Array<{ id: string }> = [];
+let mockTransactionsIsLoading = false;
 
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     setBaseCurrency: (...args: unknown[]) => mockSetBaseCurrency(...args),
+    dismissTip: (...args: unknown[]) => mockDismissTip(...args),
   },
 }));
+
+type SqlQuery = { toSQL: () => { sql: string; params: unknown[] } };
+
+// The "any transaction" read is told apart from the settings read by its query, not by call order.
+const mockIsAnyTransactionQuery = (query: SqlQuery): boolean =>
+  query.toSQL().sql === transactionsRepo.anyQuery().toSQL().sql;
+
+// A disabled read is empty and never loading, as the real hook returns it.
+const mockUseLiveQuery = jest.fn((query: SqlQuery, _tables: string[], enabled = true) => {
+  if (!enabled) {
+    return { data: [], isLoading: false, isFresh: true };
+  }
+
+  return mockIsAnyTransactionQuery(query)
+    ? { data: mockTransactionRows, isLoading: mockTransactionsIsLoading }
+    : { data: mockLiveQueryData, isLoading: mockLiveQueryIsLoading };
+});
 jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: () => ({ data: mockLiveQueryData, isLoading: mockLiveQueryIsLoading }),
+  useLiveQuery: (...args: Parameters<typeof mockUseLiveQuery>) => mockUseLiveQuery(...args),
 }));
 
 // The active-tab re-tap → scroll-to-top hook reads the navigation context, which
@@ -63,6 +88,8 @@ describe('SettingsScreen', () => {
     jest.clearAllMocks();
     mockLiveQueryData = [{ baseCurrency: 'UAH' }];
     mockLiveQueryIsLoading = false;
+    mockTransactionRows = [];
+    mockTransactionsIsLoading = false;
   });
 
   it('wires its scroll view to scroll to top on an active-tab re-tap', async () => {
@@ -502,5 +529,78 @@ describe('SettingsScreen — loading gate', () => {
 
     expect(getByTestId('settings-card-base-currency')).toBeTruthy();
     expect(queryByTestId('settings-loading')).toBeNull();
+  });
+});
+
+describe('SettingsScreen — the categories tip', () => {
+  const TIP_ID = 'settings.categories';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDismissTip.mockResolvedValue(undefined);
+    mockLiveQueryData = [{ baseCurrency: 'UAH' }];
+    mockLiveQueryIsLoading = false;
+    mockTransactionRows = [{ id: 't1' }];
+    mockTransactionsIsLoading = false;
+  });
+
+  it('shows the tip directly above the Categories card once there is a transaction', async () => {
+    const { getByText, getAllByTestId } = await renderScreen();
+
+    const order = getAllByTestId(/^(tip-categories|settings-card-)/).map(
+      (node) => node.props.testID as string,
+    );
+
+    expect(getByText(i18n.t('tips.categories'))).toBeTruthy();
+    expect(order).toEqual([
+      'settings-card-system',
+      'settings-card-reminders',
+      'settings-card-data-transfer',
+      'settings-card-base-currency',
+      'tip-categories',
+      'settings-card-categories',
+    ]);
+  });
+
+  it('hides the tip while there is no transaction', async () => {
+    mockTransactionRows = [];
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('tip-categories')).toBeNull();
+  });
+
+  it('hides the tip once its id is dismissed', async () => {
+    mockLiveQueryData = [{ baseCurrency: 'UAH', dismissedTips: [TIP_ID] }];
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('tip-categories')).toBeNull();
+  });
+
+  it('keeps the tip hidden behind the loading state while the transactions read is on its first load', async () => {
+    mockTransactionRows = [{ id: 't1' }];
+    mockTransactionsIsLoading = true;
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('settings-loading')).toBeTruthy();
+    expect(queryByTestId('tip-categories')).toBeNull();
+  });
+
+  it('reads whether there is any transaction, over the transactions table', async () => {
+    await renderScreen();
+
+    const anyCall = mockUseLiveQuery.mock.calls.find(([query]) => mockIsAnyTransactionQuery(query));
+
+    expect(anyCall?.slice(1)).toEqual([['transactions'], true, { cached: true }]);
+  });
+
+  it('records the dismissal of the tip when its close button is pressed', async () => {
+    const { getByLabelText } = await renderScreen();
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText(i18n.t('tips.close')));
+    });
+
+    expect(mockDismissTip).toHaveBeenCalledTimes(1);
+    expect(mockDismissTip).toHaveBeenCalledWith(TIP_ID);
   });
 });
