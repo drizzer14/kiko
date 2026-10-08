@@ -212,9 +212,10 @@ const headerTitle = (
 
 // This screen is registered in BOTH the Accounts and Home stacks (Home reaches it
 // from the transaction form's empty pickers), so it cannot bind its props to one
-// stack's param list. It declares exactly the navigation methods it calls,
-// structurally satisfied by either stack. `popTo` is only reached when a
-// `returnTo` is present, which only the Accounts stack's import screens set.
+// stack's param list. Its route params take the Accounts stack's shape, of which
+// the Home stack's is a subset (no `returnTo`), and it declares exactly the
+// navigation methods it calls. `popTo` is only reached when a `returnTo` is
+// present, which the Home stack's params cannot carry.
 type HoldingFormScreenProps = {
   route: { params: AccountsStackParamList['HoldingForm'] };
   navigation: {

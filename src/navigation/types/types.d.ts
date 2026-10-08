@@ -48,6 +48,23 @@ export type ReminderFormParams = { reminderId: string } | { accountId: string; k
  */
 export type FormDraft = { name: string; icon: string | null; color: string | null };
 
+/**
+ * What every entry to the holding form carries. `implicitKind` (instead of
+ * `accountId`) opens the form in implicit create mode: the one property or debt
+ * account is found or created on Save, and `draft` seeds the identity the
+ * account form carried over. Without the Accounts stack's `returnTo`, so the
+ * Home stack, which has no import screen to pop back to, cannot pass one.
+ */
+type HoldingFormParams = (
+  | { accountId: string }
+  | { implicitKind: ImplicitAccountKind; draft?: FormDraft }
+) & {
+  holdingId?: string;
+  // Edit only: whether the account holds only debts, so the title reads "Loan"
+  // on the first frame; the form reads the account itself when this is absent.
+  debtAccount?: boolean;
+};
+
 export type HomeStackParamList = {
   Home: undefined;
   TransactionForm: TransactionFormParams;
@@ -55,7 +72,7 @@ export type HomeStackParamList = {
   // sit in this stack, not behind a switch to the Accounts tab, because leaving
   // the tab resets its stack and the transaction form's draft would go with it.
   AccountForm: AccountsStackParamList['AccountForm'];
-  HoldingForm: AccountsStackParamList['HoldingForm'];
+  HoldingForm: HoldingFormParams;
 };
 
 export type AccountsStackParamList = {
@@ -113,17 +130,7 @@ export type AccountsStackParamList = {
   // back no id at all. Absent for every other HoldingForm entry point
   // (account-detail's "Add holding", holding-detail's "Edit"), which keep
   // the plain `goBack()`.
-  // `implicitKind` (instead of `accountId`) opens the form in implicit create
-  // mode: the one property or debt account is found or created on Save, and
-  // `draft` seeds the identity the account form carried over.
-  HoldingForm: (
-    | { accountId: string }
-    | { implicitKind: ImplicitAccountKind; draft?: FormDraft }
-  ) & {
-    holdingId?: string;
-    // Edit only: whether the account holds only debts, so the title reads "Loan"
-    // on the first frame; the form reads the account itself when this is absent.
-    debtAccount?: boolean;
+  HoldingForm: HoldingFormParams & {
     returnTo?:
       | { screen: 'StatementImport'; params: AccountsStackParamList['StatementImport'] }
       | { screen: 'ColumnMapping'; params: AccountsStackParamList['ColumnMapping'] };
