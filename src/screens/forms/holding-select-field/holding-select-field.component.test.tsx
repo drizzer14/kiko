@@ -4,6 +4,7 @@ import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
 import HoldingSelectField from '.';
 import type { HoldingSelectOption, HoldingSelectFieldProps } from './holding-select-field.props';
 
@@ -23,6 +24,7 @@ const options: HoldingSelectOption[] = [
     color: '#3366FF',
     currency: 'USD',
     accountName: 'Personal',
+    createdAt: 0,
   },
   {
     id: 'h2',
@@ -31,6 +33,7 @@ const options: HoldingSelectOption[] = [
     color: '#22AA55',
     currency: 'USD',
     accountName: 'Personal',
+    createdAt: 0,
   },
 ];
 
@@ -124,6 +127,7 @@ describe('HoldingSelectField', () => {
           color: '#3366FF',
           currency: 'USD',
           accountName: 'Personal',
+          createdAt: 0,
         },
         {
           id: 'h2',
@@ -132,6 +136,7 @@ describe('HoldingSelectField', () => {
           color: '#22AA55',
           currency: 'USD',
           accountName: 'Business',
+          createdAt: 0,
         },
       ],
     });
@@ -146,5 +151,100 @@ describe('HoldingSelectField', () => {
     // VoiceOver announces the two same-named holdings distinctly.
     expect(getByLabelText('Card USD, Personal')).toBeTruthy();
     expect(getByLabelText('Card USD, Business')).toBeTruthy();
+  });
+
+  describe('"Add holding" row', () => {
+    it('is absent when the field has no onCreateNew', async () => {
+      const { getByLabelText, queryByTestId } = await renderHoldingSelectField({ options: [] });
+
+      await fireEvent.press(getByLabelText('To'));
+
+      expect(queryByTestId('holding-select-create-new')).toBeNull();
+    });
+
+    it('is absent when the picker has options', async () => {
+      const { getByLabelText, queryByTestId } = await renderHoldingSelectField({
+        onCreateNew: jest.fn(),
+      });
+
+      await fireEvent.press(getByLabelText('To'));
+
+      expect(queryByTestId('holding-select-create-new')).toBeNull();
+    });
+
+    it('is shown, labelled "Add holding", when the picker has no options', async () => {
+      const { getByLabelText, getByTestId, getByText } = await renderHoldingSelectField({
+        options: [],
+        onCreateNew: jest.fn(),
+      });
+
+      await fireEvent.press(getByLabelText('To'));
+
+      expect(getByTestId('holding-select-create-new')).toBeTruthy();
+      expect(getByText('Add holding')).toBeTruthy();
+    });
+
+    it('closes the sheet and calls onCreateNew once when pressed', async () => {
+      const onCreateNew = jest.fn();
+      const { getByLabelText, getByTestId, queryByText } = await renderHoldingSelectField({
+        options: [],
+        onCreateNew,
+      });
+
+      await fireEvent.press(getByLabelText('To'));
+      await fireEvent.press(getByTestId('holding-select-create-new'));
+
+      expect(onCreateNew).toHaveBeenCalledTimes(1);
+      expect(queryByText('Select a Holding')).toBeNull();
+    });
+
+    it('selects the holding created after the press', async () => {
+      const onSelect = jest.fn();
+      const { getByLabelText, getByTestId, rerender } = await renderHoldingSelectField({
+        options: [],
+        onCreateNew: jest.fn(),
+        onSelect,
+      });
+
+      await fireEvent.press(getByLabelText('To'));
+      await fireEvent.press(getByTestId('holding-select-create-new'));
+      await rerender(
+        <HoldingSelectField
+          label="To"
+          sheetTitle="Select a Holding"
+          placeholder="Select holding"
+          options={[{ ...options[0], id: 'created', createdAt: Date.now() }]}
+          selectedId={null}
+          onSelect={onSelect}
+          onCreateNew={jest.fn()}
+        />,
+      );
+
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith('created');
+    });
+
+    it('selects nothing when a holding appears without the row having been pressed', async () => {
+      const onSelect = jest.fn();
+      const { rerender } = await renderHoldingSelectField({
+        options: [],
+        onCreateNew: jest.fn(),
+        onSelect,
+      });
+
+      await rerender(
+        <HoldingSelectField
+          label="To"
+          sheetTitle="Select a Holding"
+          placeholder="Select holding"
+          options={[{ ...options[0], createdAt: Date.now() }]}
+          selectedId={null}
+          onSelect={onSelect}
+          onCreateNew={jest.fn()}
+        />,
+      );
+
+      expect(onSelect).not.toHaveBeenCalled();
+    });
   });
 });
