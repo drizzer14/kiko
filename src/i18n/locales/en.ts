@@ -879,6 +879,8 @@ export const en = {
   // One-time tips (`TipCard`, `src/tips/`): the close label is shared, each tip has its own
   // message.
   tips: {
+    applyToAll:
+      'Change the category and save: you can apply it to every transaction with the same name, now and in future imports.',
     categories: 'Create your own categories and choose their icon and color.',
     close: 'Close tip',
     importStatement: 'Export a statement from your bank’s app as CSV or XLSX, then import it here.',

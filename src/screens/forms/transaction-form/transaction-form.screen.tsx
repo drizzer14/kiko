@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 import { match } from 'ts-pattern';
+import { useTip } from '@kiko/tips';
 import {
   canConvertToExchange,
   type ExchangeConvertDirection,
@@ -29,7 +30,9 @@ import {
   isExchangeSourceType,
 } from '@kiko/holdings/exchange-destination';
 import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import { logOnFailure } from '@kiko/diagnostics';
 import HoldingSelectField, {
   type HoldingSelectOption,
 } from '@kiko/screens/forms/holding-select-field';
@@ -46,6 +49,7 @@ import { buildRateTable } from '@kiko/rates/net-worth-view';
 import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import { type TextInputInstance, View } from 'react-native';
 import Divider from '@kiko/design-system/components/divider';
+import TipCard from '@kiko/design-system/components/tip-card';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import CategoryField from '@kiko/screens/forms/category-field';
 import ExchangeFields from '@kiko/screens/forms/exchange-fields';
@@ -1431,6 +1435,8 @@ type ModeAndActionsProps = {
   convertEligible: boolean;
   onPressConvert: () => void;
   isEditing: boolean;
+  // The apply-to-all tip: one card directly above the category picker.
+  tip: { visible: boolean; dismiss: () => void };
   t: TFunction;
   // The category picker's own validation-failure message, or `undefined` when
   // valid — the `CategoryField` renders it under itself and turns its label
@@ -1463,6 +1469,15 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         same-name transaction and to future imports, unlike the bank-owned
         amount/sign. Exchange has no category: both legs' descriptions are
         fixed, auto-generated copy. */}
+      {props.tip.visible && (
+        <TipCard
+          testID="tip-apply-to-all"
+          message={props.t('tips.applyToAll')}
+          closeLabel={props.t('tips.close')}
+          onClose={props.tip.dismiss}
+        />
+      )}
+
       {!props.isExchange && (
         <View ref={props.categoryFieldRef}>
           <CategoryField
@@ -1555,6 +1570,17 @@ const resolvePendingCategory = (
     message: buildMessage(display.title, pendingOverride.name.trim()),
   };
 };
+
+// The tip points at the category picker of an existing income/expense row, and only until an
+// override rule exists: the first one is what the tip teaches. Module-level so its `&&` chain
+// stays out of the screen's cognitive-complexity budget.
+const isApplyToAllTipEligible = (input: {
+  isExisting: boolean;
+  isExchange: boolean;
+  categoryCount: number;
+  overrideRuleCount: number;
+}): boolean =>
+  input.isExisting && !input.isExchange && input.categoryCount > 0 && input.overrideRuleCount === 0;
 
 const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
   const { theme } = useUnistyles();
@@ -1771,6 +1797,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [description, setDescription] = useState('');
   const [mode, setMode] = useState<FormMode>('expense');
   const isExchange = mode === 'exchange';
+  const applyToAllTip = useTip(
+    'transaction.applyToAll',
+    isApplyToAllTipEligible({
+      isExisting: existing !== undefined,
+      isExchange,
+      categoryCount: categories.length,
+      overrideRuleCount: overrideRules.length,
+    }),
+  );
   const isSplit = mode === 'split';
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   // Per-field wrapper refs, one per validated field, passed to `scrollTo`
@@ -2161,6 +2196,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         pendingOverride.name,
         pendingOverride.category,
       );
+      // Applying a rule answers the tip; a failed dismiss only shows the tip once more, so it is
+      // logged, not alerted, and never blocks leaving.
+      await logOnFailure('tips.dismiss', () => settingsRepo.dismissTip('transaction.applyToAll'));
       navigation.goBack();
     } catch {
       showSaveErrorAlert();
@@ -2691,6 +2729,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             convertEligible: convertView.eligible,
             onPressConvert: () => setConverting(true),
             isEditing,
+            tip: applyToAllTip,
             t,
             categoryError: fieldError('selectedCategory'),
             categoryFieldRef,
