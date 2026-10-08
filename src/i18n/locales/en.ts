@@ -607,7 +607,11 @@ export const en = {
   },
   accounts: {
     addAccount: 'Add account',
-    emptyState: 'No accounts yet',
+    empty: {
+      message:
+        'An account can be a bank card, cash, crypto, or property. Monobank, Binance, and Bitcoin accounts can sync.',
+      title: 'No accounts yet',
+    },
     icon: '{{name}} icon',
     // The display name of THE implicit Property / Loans account
     // (`accountDisplayName`, `src/holdings/implicit-account/`): at most one live
@@ -846,6 +850,10 @@ export const en = {
       label: 'Date range',
       until: 'Until {{date}}',
     },
+    // The Home list's empty slot, shown only when the whole ledger is empty (not
+    // when the picked date range merely excludes its rows).
+    emptyLedgerHint:
+      'Add a transaction with "+", or import a bank statement from a bank account’s page.',
     emptyTransactions: 'No transactions',
     filterAccounts: 'Accounts',
     filterAccountsSheetTitle: 'Accounts',
@@ -861,6 +869,57 @@ export const en = {
     title: 'Home',
     today: 'Today',
     yesterday: 'Yesterday',
+  },
+  // The empty state Home and Statistics share while the user has no account.
+  emptyStates: {
+    noAccounts: {
+      message: 'Kiko totals your net worth from your accounts.',
+      title: 'Start by creating an account',
+    },
+  },
+  // One-time tips (`TipCard`, `src/tips/`): the close label is shared, each tip has its own
+  // message.
+  tips: {
+    applyToAll:
+      'Change the category and save: you can apply it to every transaction with the same name, now and in future imports.',
+    categories: 'Create your own categories and choose their icon and color.',
+    close: 'Close tip',
+    importStatement: 'Export a statement from your bank’s app as CSV or XLSX, then import it here.',
+  },
+  // The Help & Tips page (`src/help/`). Each topic has a nav title (Title Case) and a list-row
+  // label (sentence case) as two keys, and numbered steps that each end with ".". The step keys
+  // are quoted because i18next's typed keys skip a numeric property name.
+  help: {
+    actions: {
+      openCategories: 'Open categories',
+    },
+    privacy: 'All your data stays on this device.',
+    rowLabel: 'Help & tips',
+    showTipsAgain: 'Show tips again',
+    title: 'Help & Tips',
+    topics: {
+      addAccount: {
+        rowLabel: 'Add an account',
+        steps: {
+          '1': 'On the "Accounts" tab, tap "Add account".',
+          '2': 'Choose the account kind: bank, cash, crypto, property, metals, debt, or broker.',
+          '3': 'Enter a name. Cash needs a currency and an initial value; a bank account needs its bank.',
+          '4': 'Optional: connect Monobank with a token, Binance with an API key, or Bitcoin with a wallet address.',
+          '5': 'For other banks, open the account, tap "Import statement", and choose a CSV or XLSX file from your bank.',
+        },
+        title: 'Add an Account',
+      },
+      manageCategories: {
+        rowLabel: 'Manage categories',
+        steps: {
+          '1': 'Open the "Settings" tab, then tap "Categories".',
+          '2': 'Tap "Add category", enter a name, and choose an icon and a color.',
+          '3': 'To apply a category to every transaction with the same name, open one of them, change its category, and tap "Save".',
+          '4': 'Choose "Apply". The rule also applies to future imports.',
+        },
+        title: 'Manage Categories',
+      },
+    },
   },
   statistics: {
     accountContribution: 'Account Contribution',

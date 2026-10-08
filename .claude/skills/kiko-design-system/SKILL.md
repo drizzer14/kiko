@@ -410,12 +410,13 @@ The established patterns grouped under this heading:
   under that field's Connect button and scrolls into view. It is not a
   validation error, so it is the informational hint style (caption,
   `textSecondary`, no error tone) with an `info.circle` icon, rendered by the
-  shared `InfoHint` (`src/design-system/components/info-hint/`, user-approved
-  2026-10-09): the icon is a `SymbolIcon` at the caption icon-size token,
+  shared `InfoHint` (`src/design-system/components/info-hint/`): the icon is a `SymbolIcon` at the caption icon-size token,
   top-left, the text takes the rest of the row so it wraps beside the icon,
   and the row is one accessible element labelled by the message (the icon is
   decorative). `InfoHint` is used ONLY for this reminder; the plain hint
   (`forms.account.importOnlyBankHint`) stays a bare caption `Text`. A
+  Connect reminder uses InfoHint; any other informational hint with no
+  action stays a bare caption Text. A
   SECOND Save press saves the account unconnected, storing nothing typed.
   Editing the input, pressing Connect, or the field unmounting starts over;
   a successful connect reports the input as no longer typed, so an empty or
@@ -1096,6 +1097,29 @@ new component can land between reviews of this skill:
   `surfaceHigh` `sm` block), body primary text (not caption secondary),
   and two required actions (not one optional tonal one). First
   consumer: `AccountDetail`'s reminder offer.
+- **EmptyState** (`src/design-system/components/empty-state/`) — Apple's
+  `ContentUnavailableView` pattern for a screen with no data yet: centered
+  on the screen background (no Card, no glass), a `display`-size
+  `textSecondary` symbol, a semibold `body` `textPrimary` title (sentence
+  case, no final "."; never the `heading` variant, which would pull its keys
+  into `TITLE_KEYS`), a centered `caption` `textSecondary` message (one or
+  two sentences, final "."), then an optional `primary` non-full-width
+  `Button` from `action: { label, icon?, onPress }`. Strings come in as
+  props. `testID` gives `<testID>-icon` and `<testID>-action`. Gate it on
+  `useDataReady`, never on `data.length === 0` alone.
+- **TipCard** (`src/design-system/components/tip-card/`) — a one-time,
+  dismissible hint, following the ReminderOfferCard precedent: inline and
+  non-modal, on the plain `Card` (solid `surface`, hairline border, `padding={3}`;
+  NOT `GlassSurface`, whatever "glass card" says elsewhere), never a warning
+  tone. A `body` `textPrimary` message, then a trailing icon-only `ghost`
+  `compact` `xmark` close `Button` (44pt tap) labelled by `closeLabel`. Strings
+  come in as props. **One `useTip` call per screen, from `@kiko/tips`**:
+  `const { visible, dismiss } = useTip(TIP_ID, condition)`, then
+  `{visible && <TipCard onClose={dismiss} … />}`. `useTip` takes one candidate
+  (`id: TipId`, `condition: boolean`); `visible` is `!isLoading && condition &&
+  not dismissed`, so it is false while settings load and follows the caller's
+  condition. Two `useTip` calls on one screen could show two tips (`pickTip` is
+  the single picker), so a screen has one. Never hand-roll the dismissed state.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE

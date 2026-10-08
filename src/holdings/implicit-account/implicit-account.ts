@@ -43,6 +43,29 @@ export const accountsForFilter = <Account extends Pick<AccountRow, 'id' | 'kind'
   );
 };
 
+// True when the user has nothing to show as an account: no live account of a
+// kind other than property or debt, and no OPEN holding under a live implicit
+// account. A live implicit account with nothing open (a new one, or one whose
+// holdings are all closed) shows no section on the Accounts screen, so it
+// counts as no account; one open flat or loan is something the user added.
+export const hasNoAccounts = (
+  accounts: readonly Pick<AccountRow, 'id' | 'kind' | 'archivedAt'>[],
+  holdings: readonly Pick<HoldingRow, 'accountId' | 'closedAt'>[],
+): boolean => {
+  const liveAccounts = accounts.filter((account) => account.archivedAt == null);
+
+  if (liveAccounts.some((account) => !isImplicitAccount(account))) {
+    return false;
+  }
+
+  // Every live account left here is implicit.
+  const liveAccountIds = new Set(liveAccounts.map((account) => account.id));
+
+  return !holdings.some(
+    (holding) => holding.closedAt == null && liveAccountIds.has(holding.accountId),
+  );
+};
+
 // The fixed English sentinel stored in `accounts.name` for an UNRENAMED implicit
 // account (migration 0050 and every implicit create write it). It stands for
 // "the localized kind name": nothing reads it back to detect an implicit

@@ -38,10 +38,23 @@ jest.mock('@kiko/statistics/net-worth-series', () => {
 // focused (matches every other test in this file), overridden per test.
 const mockUseIsFocused = jest.fn(() => true);
 
+// The no-account empty state's action navigates to the Accounts tab; a
+// standalone render has no navigator, so the hook answers with a spy.
+const mockNavigate = jest.fn();
+
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
   useIsFocused: () => mockUseIsFocused(),
+  useNavigation: () => ({ navigate: mockNavigate }),
 }));
+
+// A marker for the shared tip card, so a test can pin that Statistics renders none.
+jest.mock('@kiko/design-system/components/tip-card', () => {
+  const { View } = require('react-native');
+  const { createElement } = require('react');
+
+  return { __esModule: true, default: () => createElement(View, { testID: 'mock-tip-card' }) };
+});
 
 import { i18n } from '@kiko/i18n/init';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
@@ -1738,14 +1751,85 @@ describe('StatisticsScreen', () => {
   });
 
   it('renders all four empty charts without crashing when there is no data', async () => {
-    setLiveData({});
+    setLiveData({ accounts: [CASH] });
 
-    const { getByTestId } = await renderScreen();
+    const { getByTestId, getAllByText } = await renderScreen();
 
     expect(getByTestId('bar-chart-empty')).toBeTruthy();
     expect(getByTestId('net-worth-line-empty')).toBeTruthy();
     expect(getByTestId('pie-chart-empty')).toBeTruthy();
     expect(getByTestId('category-pie-empty')).toBeTruthy();
+    expect(getAllByText(i18n.t('statistics.noSpendingToShow')).length).toBeGreaterThan(0);
+  });
+
+  describe('with no accounts', () => {
+    it('shows the shared no-account empty state in place of the charts', async () => {
+      setLiveData({});
+
+      const { getByTestId, getByText, queryByTestId } = await renderScreen();
+
+      expect(getByTestId('statistics-empty')).toBeTruthy();
+      expect(getByText(i18n.t('emptyStates.noAccounts.title'))).toBeTruthy();
+      expect(getByText(i18n.t('emptyStates.noAccounts.message'))).toBeTruthy();
+      expect(queryByTestId('statistics-blocks')).toBeNull();
+      expect(queryByTestId('bar-chart-empty')).toBeNull();
+    });
+
+    it('opens the account form on the Accounts tab from its Add account action', async () => {
+      setLiveData({});
+
+      const { getByTestId } = await renderScreen();
+
+      await fireEvent.press(getByTestId('statistics-empty-action'));
+
+      expect(mockNavigate).toHaveBeenCalledTimes(1);
+      expect(mockNavigate).toHaveBeenCalledWith('AccountsTab', {
+        screen: 'AccountForm',
+        params: {},
+        initial: false,
+      });
+    });
+
+    it('is not shown while a query is on its first load', async () => {
+      setLiveData({ isLoading: { accounts: true } });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(queryByTestId('statistics-empty')).toBeNull();
+      expect(getByTestId('statistics-loading')).toBeTruthy();
+    });
+
+    it('is not shown for a user with only an open flat', async () => {
+      setLiveData({
+        accounts: [
+          { id: 'p', name: 'Properties', kind: 'property', color: null, archivedAt: null },
+        ],
+        holdings: [
+          {
+            id: 'h-flat',
+            accountId: 'p',
+            currency: 'UAH',
+            type: 'property_item',
+            balanceMinorUnits: 0,
+            metadata: null,
+            closedAt: null,
+          },
+        ],
+      });
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(queryByTestId('statistics-empty')).toBeNull();
+      expect(getByTestId('statistics-blocks')).toBeTruthy();
+    });
+
+    it('shows no tip', async () => {
+      setLiveData({});
+
+      const { queryByTestId } = await renderScreen();
+
+      expect(queryByTestId('mock-tip-card')).toBeNull();
+    });
   });
 
   it('does not run the backfill when there are no transactions to bound the span', async () => {

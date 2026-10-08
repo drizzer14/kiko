@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 import { match } from 'ts-pattern';
+import { useTip } from '@kiko/tips';
 import {
   canConvertToExchange,
   type ExchangeConvertDirection,
@@ -29,7 +30,9 @@ import {
   isExchangeSourceType,
 } from '@kiko/holdings/exchange-destination';
 import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
+import { logOnFailure } from '@kiko/diagnostics';
 import HoldingSelectField, {
   type HoldingSelectOption,
 } from '@kiko/screens/forms/holding-select-field';
@@ -46,6 +49,7 @@ import { buildRateTable } from '@kiko/rates/net-worth-view';
 import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import { type TextInputInstance, View } from 'react-native';
 import Divider from '@kiko/design-system/components/divider';
+import TipCard from '@kiko/design-system/components/tip-card';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import CategoryField from '@kiko/screens/forms/category-field';
 import ExchangeFields from '@kiko/screens/forms/exchange-fields';
@@ -1431,6 +1435,8 @@ type ModeAndActionsProps = {
   convertEligible: boolean;
   onPressConvert: () => void;
   isEditing: boolean;
+  // The apply-to-all tip: one card directly above the category picker.
+  tip: { visible: boolean; dismiss: () => void };
   t: TFunction;
   // The category picker's own validation-failure message, or `undefined` when
   // valid — the `CategoryField` renders it under itself and turns its label
@@ -1457,6 +1463,15 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         This helper owns only the category picker and the "Convert to
         exchange" action — everything below the field group except while
         converting. */}
+
+      {props.tip.visible && (
+        <TipCard
+          testID="tip-apply-to-all"
+          message={props.t('tips.applyToAll')}
+          closeLabel={props.t('tips.close')}
+          onClose={props.tip.dismiss}
+        />
+      )}
 
       {/* The category picker is ALWAYS editable on an income/expense row —
         even on a synced row — since a category edit propagates to every
@@ -1556,6 +1571,27 @@ const resolvePendingCategory = (
   };
 };
 
+// The tip points at the category picker of an existing income/expense row, and only until an
+// override rule exists: the first one is what the tip teaches. An exchange leg is excluded by its
+// row, not by the form mode: an edit never reaches the exchange mode, and an untouched leg's
+// category change writes that row only, so the tip's promise would be false. The rules read
+// returns an empty list until its first load, so the tip waits for it. Module-level so its `&&`
+// chain stays out of the screen's cognitive-complexity budget. A row with a blank name is excluded
+// too: `resolveCategoryOverrideRequest` never opens the sheet for one, so the tip could not be
+// dismissed by its own gesture.
+const isApplyToAllTipEligible = (input: {
+  existing: Pick<TransactionRow, 'exchangeCounterpartHoldingId' | 'description'> | undefined;
+  categoryCount: number;
+  overrideRuleCount: number;
+  overrideRulesLoading: boolean;
+}): boolean =>
+  input.existing !== undefined &&
+  input.existing.exchangeCounterpartHoldingId === null &&
+  normalizeTransactionName(input.existing.description) !== '' &&
+  input.categoryCount > 0 &&
+  !input.overrideRulesLoading &&
+  input.overrideRuleCount === 0;
+
 const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -1630,9 +1666,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // name lookup map, so a create can pre-select a category from the settled
   // description on blur. Matching is JS-normalized (never SQL), mirroring the
   // sync insert path — see `ruleCategoryFor` and the description blur handler.
-  const { data: overrideRules } = useLiveQuery(categoryOverridesRepo.allQuery(), [
-    'category_overrides',
-  ]);
+  const { data: overrideRules, isLoading: overrideRulesLoading } = useLiveQuery(
+    categoryOverridesRepo.allQuery(),
+    ['category_overrides'],
+  );
   const categoryByNormalizedName = useMemo(
     () => new Map(overrideRules.map((rule) => [rule.normalizedName, rule.category])),
     [overrideRules],
@@ -1771,6 +1808,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [description, setDescription] = useState('');
   const [mode, setMode] = useState<FormMode>('expense');
   const isExchange = mode === 'exchange';
+  const applyToAllTip = useTip(
+    'transaction.applyToAll',
+    isApplyToAllTipEligible({
+      existing,
+      categoryCount: categories.length,
+      overrideRuleCount: overrideRules.length,
+      overrideRulesLoading,
+    }),
+  );
   const isSplit = mode === 'split';
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   // Per-field wrapper refs, one per validated field, passed to `scrollTo`
@@ -2160,6 +2206,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       await categoryOverridesRepo.upsertCategoryOverride(
         pendingOverride.name,
         pendingOverride.category,
+      );
+      // Applying a rule answers the tip; a failed dismiss only shows the tip once more, so it is
+      // logged, not alerted, and never blocks leaving.
+      await logOnFailure('[tips] dismiss failed', () =>
+        settingsRepo.dismissTip('transaction.applyToAll'),
       );
       navigation.goBack();
     } catch {
@@ -2691,6 +2742,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             convertEligible: convertView.eligible,
             onPressConvert: () => setConverting(true),
             isEditing,
+            tip: applyToAllTip,
             t,
             categoryError: fieldError('selectedCategory'),
             categoryFieldRef,

@@ -215,9 +215,16 @@ string:
   items, field labels, captions, placeholders, errors, hints. This is
   the majority role — assume sentence case for a new string unless it
   is unambiguously one of the three Title Case roles above.
-- **Keep as written** — proper nouns and brand names (Kiko/Кіко,
-  Monobank, Binance, Diia/Дія, Apple, NBU/НБУ, Keychain, Face ID,
-  iOS), acronyms (ISIN, API, CSV, BTC, ISO codes), a unit in
+- **Keep as written** — proper nouns and brand names (for example
+  Kiko/Кіко, Monobank, Binance; the closed set is `PROPER_NOUNS` in
+  `en.casing-by-role.test.ts` for en and in `uk.casing.test.ts` for uk
+  — read them there, add a new name to the right one). A uk word
+  missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence.
+  uk writes the network name with a capital in every case form. It is a
+  proper noun beside Monobank and Binance. The uk `PROPER_NOUNS` holds
+  «Біткоїн» and «Біткоїна» today; add any other case form you use (for
+  example «Біткоїну») to that list in the same commit. Also
+  acronyms (ISIN, API, CSV, BTC, ISO codes), a unit in
   parentheses cases per the rule of the role it sits inside, and a
   capital letter standing for a user-chosen number ("Every N days" /
   "Кожні N днів"; `NUMBER_PLACEHOLDER_LETTERS` in
@@ -299,6 +306,16 @@ trailing punctuation is decided by its UI ROLE, not habit:
   the NBU register."); a full-sentence empty-page explanation shown as
   a caption (`reminders.emptyHint`). Note that the user's key review
   decides it (no test checks it yet).
+
+Key families added with onboarding (read `en.ts` for the current
+strings; the final Help/tips wording is still pending the user's
+review): `emptyStates.*` title is sentence case with no final ".", its
+message is a full sentence with "."; `tips.*` messages are sentences
+with "."; `tips.close` (a button label) is sentence case; `help.*`
+topic titles are Title Case and listed in `TITLE_KEYS`
+(`src/i18n/locales/title-keys.ts`), the help steps are sentence case
+with ".". The numbered step keys are quoted (`'1'`..`'5'`) because
+i18next `ParseKeys` rejects a numeric property name.
 
 The mechanized invariant lives in
 `src/i18n/locales/en.final-stop-by-role.test.ts` (checks both `en` and

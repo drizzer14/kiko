@@ -190,7 +190,11 @@ From `biome.json`'s `linter.rules`:
   statement with a justified override on the line above:
   `// biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) <callee> never rejects`.
   Verify the callee never rejects before you write that; if it can
-  reject, handle the rejection instead. Biome does not flag a promise
+  reject, handle the rejection instead. For `logOnFailure(...)` (never
+  rejects): in an event handler make the handler `async` and
+  `await logOnFailure(...)`; in a `useFocusEffect`/`useEffect` callback,
+  which must not return a Promise, use the expression statement with the
+  override above. Its log tag is `'[module] message'`. Biome does not flag a promise
   returned from an expression-bodied arrow (`onDelete={(day) =>
   repo.remove(day)}`), so a void-typed callback prop that drops a
   promise stays a review item.

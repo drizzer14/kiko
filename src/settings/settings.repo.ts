@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import type { TipId } from '@kiko/tips';
 import type { Currency } from '@kiko/currency/currency';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { AppLanguage } from '@kiko/i18n/device-language';
@@ -118,6 +119,37 @@ export const settingsRepo = {
   dismissReminderOffer: (accountId: string, kind: ReminderKind) =>
     write((databaseTransaction) =>
       recordReminderOfferDismissal(databaseTransaction, accountId, kind),
+    ),
+  /**
+   * Records a tip as dismissed, keeping every other id, an id this build does
+   * not know included. Read-modify-write inside one `write()`, the
+   * `saveStatementMapping` shape, since the column holds the whole list as one
+   * JSON blob.
+   */
+  dismissTip: (tipId: TipId) =>
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select({ dismissedTips: settings.dismissedTips })
+        .from(settings)
+        .where(eq(settings.id, SETTINGS_ID));
+      const existing = rows[0]?.dismissedTips ?? [];
+
+      if (existing.includes(tipId)) {
+        return;
+      }
+
+      await databaseTransaction
+        .update(settings)
+        .set({ dismissedTips: [...existing, tipId] })
+        .where(eq(settings.id, SETTINGS_ID));
+    }),
+  /** "Show tips again": clears the list, never a global hide flag. */
+  resetTips: () =>
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(settings)
+        .set({ dismissedTips: [] })
+        .where(eq(settings.id, SETTINGS_ID)),
     ),
   notificationsDeliverableSinceQuery: () =>
     database

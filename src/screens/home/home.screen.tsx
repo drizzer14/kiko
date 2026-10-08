@@ -1,4 +1,9 @@
 import {
+  accountDisplayName,
+  accountsForFilter,
+  hasNoAccounts,
+} from '@kiko/holdings/implicit-account';
+import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
@@ -26,6 +31,9 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import EmptyState from '@kiko/design-system/components/empty-state';
+import { openAccountForm } from '@kiko/navigation/open-account-form';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
@@ -41,7 +49,6 @@ import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown
 import { type CompositeScreenProps, useIsFocused } from '@react-navigation/native';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
-import { accountDisplayName, accountsForFilter } from '@kiko/holdings/implicit-account';
 import { type FC, type ReactElement, useCallback, useMemo, useRef, useState } from 'react';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '@kiko/rates/net-worth-view';
@@ -564,6 +571,28 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     );
   }
 
+  // Gated after the first ready, never on an empty `accounts` read alone: that
+  // is also what a query on its first load answers.
+  if (hasNoAccounts(accounts, holdings)) {
+    return (
+      <Screen>
+        <Box style={styles.empty}>
+          <EmptyState
+            icon={genericEntitySymbol.account}
+            title={t('emptyStates.noAccounts.title')}
+            message={t('emptyStates.noAccounts.message')}
+            action={{
+              label: t('accounts.addAccount'),
+              icon: genericEntitySymbol.account,
+              onPress: () => openAccountForm(navigation),
+            }}
+            testID="home-empty"
+          />
+        </Box>
+      </Screen>
+    );
+  }
+
   return (
     // The SectionList below is this screen's own scrollable surface and applies
     // the tab-bar clearance to its own content (`listContent`), so Screen must
@@ -656,8 +685,16 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             transactionsLoading ? (
               <LoadingState testID="home-transactions-loading" />
             ) : (
-              <Box style={styles.empty}>
+              <Box gap={2} style={styles.empty}>
                 <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>
+
+                {/* Only an empty ledger hints at how to fill it: with rows outside
+                    the picked range the list is empty too, but the user already has data. */}
+                {ledgerSpan?.earliest == null && (
+                  <Text variant="caption" tone="textSecondary" style={styles.hint}>
+                    {t('home.emptyLedgerHint')}
+                  </Text>
+                )}
               </Box>
             )
           }

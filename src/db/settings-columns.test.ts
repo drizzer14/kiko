@@ -71,6 +71,7 @@ const TAKEN_FROM_FILE_ON_RESTORE = [
   'reminderOfferDismissals',
   'lotsRecosted',
   'quoteQuota',
+  'dismissedTips',
 ];
 
 const SCHEMA_PATH = join(__dirname, 'schema.ts');

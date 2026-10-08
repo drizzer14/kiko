@@ -52,6 +52,7 @@ const PROPER_NOUNS = new Set([
   'Kiko',
   'Monobank',
   'Binance',
+  'Bitcoin',
   'Diia',
   'Apple',
   'Keychain',
