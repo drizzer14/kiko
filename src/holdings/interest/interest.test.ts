@@ -1,9 +1,11 @@
+import { DAY_MS } from '@kiko/dates';
+
 import {
   accruedMajor,
   addMonths,
-  biweeklyCreditDates,
   bondCouponDates,
   bondCouponMajor,
+  couponPaymentOn,
   daysBetween,
   depositAccruedMajor,
   depositLedger,
@@ -13,9 +15,8 @@ import {
   periodsPerYear,
 } from './interest';
 
-const DAY = 86_400_000;
 const START = Date.UTC(2024, 0, 1);
-const AFTER_1Y = START + 365 * DAY;
+const AFTER_1Y = START + 365 * DAY_MS;
 
 // Local-midnight instant, matching the local Date arithmetic the bi-weekly and
 // bond-coupon helpers use (addMonths / new Date(y, m, d)).
@@ -41,25 +42,14 @@ describe('monthsPerCouponPeriod', () => {
 });
 
 describe('daysBetween', () => {
-  const day = 86_400_000;
   it('floors to whole days', () => {
-    expect(daysBetween(0, 10 * day + 500)).toBe(10);
+    expect(daysBetween(0, 10 * DAY_MS + 500)).toBe(10);
   });
   it('never returns a negative count', () => {
-    expect(daysBetween(10 * day, 0)).toBe(0);
+    expect(daysBetween(10 * DAY_MS, 0)).toBe(0);
   });
 
   describe('DST-safe whole-day counting (Kyiv spring-forward)', () => {
-    const originalTz = process.env.TZ;
-    beforeAll(() => {
-      // Force a DST-observing zone so the spring-forward is actually exercised
-      // even when the test host runs in UTC. Node re-reads TZ per Date op.
-      process.env.TZ = 'Europe/Kyiv';
-    });
-    afterAll(() => {
-      process.env.TZ = originalTz;
-    });
-
     it('counts 20 calendar days across the last-Sunday-of-March DST change', () => {
       // A bi-weekly Mar 12 -> Apr 1 2024 period straddles Kyiv's spring-forward
       // (Sun 31 Mar). The two local-midnight instants are 19h short of 20*24h,
@@ -300,13 +290,13 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
     expect(accrued).toBeCloseTo((10000 * 0.1 * 364) / 365, 6);
   });
 
-  // BUG2 regression: recap-OFF used to accrue from the contribution DATE itself,
-  // one day more than the statement-validated recap-ON engine (`depositLedger`
-  // earns each tranche from `dayAfter` it lands). Pin that the two conventions
-  // now AGREE on the first-period accrual: a single 10,000 deposit at 10% over
-  // the first full year (now = maturity), annual compounding. Compared against
-  // recap-ON's pre-tax gross for that period. Before the fix recap-OFF counted
-  // 366 days (leap year) vs recap-ON's 365, diverging by a day's interest.
+  // Pins that recap-OFF and the statement-validated recap-ON engine
+  // (`depositLedger`, which earns each tranche from `dayAfter` it lands)
+  // AGREE on the first-period accrual: a single 10,000 deposit at 10% over
+  // the first full year (now = maturity), annual compounding, compared
+  // against recap-ON's pre-tax gross for that period. Accruing from the
+  // contribution DATE itself instead of `dayAfter` would count 366 days
+  // (leap year) vs recap-ON's 365, diverging by a day's interest.
   it("agrees with the recap-ON engine's first-period accrual (day-after convention)", () => {
     const rate = 10;
     const contributionMajor = 10000;
@@ -331,9 +321,9 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
   });
 
   it('sums cumulative accrual across contributions, each from the day after its own date', () => {
-    const now = START + 200 * DAY;
-    const c1 = { amountMajor: 10000, date: now - 180 * DAY };
-    const c2 = { amountMajor: 5000, date: now - 60 * DAY };
+    const now = START + 200 * DAY_MS;
+    const c1 = { amountMajor: 10000, date: now - 180 * DAY_MS };
+    const c2 = { amountMajor: 5000, date: now - 60 * DAY_MS };
     const accrued = depositAccruedMajor([c1, c2], 10, 120, now);
     // BUG2 day-after convention: each contribution earns from the day AFTER it
     // lands, so a 180-day-old tranche accrues 179 days and a 60-day-old one 59.
@@ -341,10 +331,10 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
     expect(accrued).toBeCloseTo(expected, 6);
   });
 
-  it('excludes a future-dated contribution (D2)', () => {
-    const now = START + 200 * DAY;
+  it('excludes a future-dated contribution', () => {
+    const now = START + 200 * DAY_MS;
     const past = { amountMajor: 10000, date: START };
-    const future = { amountMajor: 5000, date: now + 10 * DAY };
+    const future = { amountMajor: 5000, date: now + 10 * DAY_MS };
     const withFuture = depositAccruedMajor([past, future], 10, 120, now);
     const withoutFuture = depositAccruedMajor([past], 10, 120, now);
     expect(withFuture).toBeCloseTo(withoutFuture, 6);
@@ -352,19 +342,28 @@ describe('depositAccruedMajor — recap-off cumulative interest', () => {
 
   it('stays non-zero for a matured multi-contribution deposit (capped at maturity)', () => {
     const c1 = { amountMajor: 10000, date: START };
-    const c2 = { amountMajor: 5000, date: START + 30 * DAY };
-    const accrued = depositAccruedMajor([c1, c2], 10, 12, AFTER_1Y + 500 * DAY);
+    const c2 = { amountMajor: 5000, date: START + 30 * DAY_MS };
+    const accrued = depositAccruedMajor([c1, c2], 10, 12, AFTER_1Y + 500 * DAY_MS);
     expect(accrued).toBeGreaterThan(0);
   });
 });
 
-describe('biweeklyCreditDates — opening-day-anchored semi-monthly boundaries', () => {
-  it('reproduces the user statement: opened Jan 11, credits on Feb 1/12, Mar 1/12, Apr 1', () => {
-    // Opened 2024-01-11 (D=11). First accrual runs from Jan 12; each credit is a
-    // period end. Boundaries alternate mid-month (the 12th = D+1) and the 1st.
-    const dates = biweeklyCreditDates(local(2024, 0, 11), local(2024, 3, 1));
+describe('depositLedger bi-weekly period boundaries — opening-day-anchored semi-monthly', () => {
+  it('reproduces the user statement: opened Jan 11, periods end on Feb 1/12, Mar 1/12, Apr 1', () => {
+    // Opened 2024-01-11 (D=11). First accrual runs from Jan 12; each accrual's
+    // date is a period end. Boundaries alternate mid-month (the 12th = D+1)
+    // and the 1st.
+    const start = local(2024, 0, 11);
+    const ledger = depositLedger(
+      [{ amountMinor: 100_000_00, date: start }],
+      12,
+      'bi-weekly',
+      12,
+      start,
+    );
+    const dates = ledger.accruals.slice(0, 5).map((accrual) => accrual.date);
+
     expect(dates).toEqual([
-      local(2024, 0, 12), // Jan 12  (credits Period B of Jan: Jan 12 -> Feb 1)... first accrual start
       local(2024, 1, 1), // Feb 1   (credits Jan 12 -> Feb 1)
       local(2024, 1, 12), // Feb 12 (credits Feb 1 -> Feb 12)
       local(2024, 2, 1), // Mar 1   (credits Feb 12 -> Mar 1)
@@ -375,13 +374,90 @@ describe('biweeklyCreditDates — opening-day-anchored semi-monthly boundaries',
 
   it('clamps the mid-month boundary when the opening day exceeds a month length', () => {
     // Opened Jan 31 (D=31). February has 28 days, so its (D+1) mid-boundary
-    // collapses onto Mar 1: February is one whole period, not two.
-    const dates = biweeklyCreditDates(local(2023, 0, 31), local(2023, 2, 2));
-    expect(dates).toContain(local(2023, 1, 1)); // Feb 1
-    expect(dates).toContain(local(2023, 2, 1)); // Mar 1
-    // February emits no distinct mid-month credit: its only boundaries are the
-    // 1st and the next 1st (Mar), so nothing falls strictly inside the month.
-    expect(dates.some((d) => d > local(2023, 1, 1) && d < local(2023, 2, 1))).toBe(false);
+    // collapses onto Mar 1: February is one whole period (Feb 1 -> Mar 1),
+    // not split into a mid-month and a month-end period.
+    const start = local(2023, 0, 31);
+    const ledger = depositLedger(
+      [{ amountMinor: 100_000_00, date: start }],
+      12,
+      'bi-weekly',
+      12,
+      start,
+    );
+
+    expect(ledger.accruals[0].periodStart).toBe(local(2023, 1, 1)); // Feb 1
+    expect(ledger.accruals[0].date).toBe(local(2023, 2, 1)); // Mar 1
+  });
+});
+
+describe('depositLedger bi-weekly capitalization — one per calendar month, every opening day', () => {
+  // Every opening day 1..31, over BOTH a leap (2024) and a non-leap (2023)
+  // year, so the collapsed mid-credit (openingDay+1 past the month end — 28
+  // in non-leap Feb, 29, 30, 31) is exercised the same way a real user's
+  // opening day would be. A 12-month, 12%, bi-weekly, recap-ON deposit
+  // capitalizes exactly once per calendar month over its whole life,
+  // regardless of which day it opened on, and the period ending AT maturity
+  // always capitalizes — even for an opening day of 1, where maturity would
+  // otherwise coincide with December's own plain "1st" credit.
+  const openingDays = Array.from({ length: 31 }, (_, index) => index + 1);
+  const years = [2023, 2024] as const;
+  const cases = years.flatMap((year) => openingDays.map((day): [number, number] => [day, year]));
+
+  it.each(cases)(
+    'opened on day %s of year %s still capitalizes once per elapsed month, ending at maturity',
+    (day, year) => {
+      const start = local(year, 0, day);
+      const termMonths = 12;
+      const maturity = addMonths(start, termMonths);
+      const ledger = depositLedger(
+        [{ amountMinor: 10_000_000, date: start }],
+        12,
+        'bi-weekly',
+        termMonths,
+        maturity,
+      );
+
+      const capitalizations = ledger.accruals.filter((accrual) => accrual.capitalized);
+
+      expect(capitalizations).toHaveLength(termMonths);
+      expect(ledger.accruals[ledger.accruals.length - 1].capitalized).toBe(true);
+    },
+  );
+
+  it('reproduces the reported fixture: 100,000.00 at 12% for 12 months, opened 31 Jan, is no longer stuck at the bare principal by July', () => {
+    const start = local(2026, 0, 31);
+    const now = local(2026, 6, 20);
+    const ledger = depositLedger(
+      [{ amountMinor: 10_000_000, date: start }],
+      12,
+      'bi-weekly',
+      12,
+      now,
+    );
+
+    expect(ledger.currentValueMinor).not.toBe(10_000_000);
+  });
+
+  it('capitalizes the final period for a deposit opened exactly on the 1st (100,000 UAH, 12%, 12 months)', () => {
+    const start = local(2026, 0, 1);
+    const maturity = addMonths(start, 12);
+    const ledger = depositLedger(
+      [{ amountMinor: 100_000_00, date: start }],
+      12,
+      'bi-weekly',
+      12,
+      maturity,
+    );
+    const finalAccrual = ledger.accruals[ledger.accruals.length - 1];
+
+    // Opening on the 1st lands maturity on what would otherwise be a plain,
+    // non-capitalizing "1st" credit; the period ending AT maturity must still
+    // capitalize, or the deposit's value is short by a month of net interest.
+    expect(finalAccrual.date).toBe(maturity);
+    expect(finalAccrual.capitalized).toBe(true);
+    expect(ledger.currentValueMinor).toBe(
+      ledger.principalMinor + ledger.capitalizedGrossMinor - ledger.capitalizedTaxMinor,
+    );
   });
 });
 
@@ -444,5 +520,35 @@ describe('bondCouponMajor', () => {
     expect(bondCouponMajor(100_000, 12, 'quarterly')).toBeCloseTo(3000, 6);
     expect(bondCouponMajor(100_000, 12, 'monthly')).toBeCloseTo(1000, 6);
     expect(bondCouponMajor(100_000, 12, 'annually')).toBeCloseTo(12000, 6);
+  });
+});
+
+describe('couponPaymentOn', () => {
+  const beforeStep = { date: local(2027, 1, 1), amount: '0.0225' };
+  const afterStep = { date: local(2027, 7, 1), amount: '0.03' };
+
+  const schedule = [beforeStep, afterStep];
+
+  it('reads the scheduled coupon closest to a ledger date, on either side', () => {
+    expect(couponPaymentOn(schedule, local(2027, 1, 15), 'semiannually')).toBe(beforeStep);
+    expect(couponPaymentOn(schedule, local(2027, 6, 25), 'semiannually')).toBe(afterStep);
+  });
+
+  it('keeps the earlier coupon for a date exactly between two', () => {
+    const midway = (beforeStep.date + afterStep.date) / 2;
+
+    expect(couponPaymentOn(schedule, midway, 'semiannually')).toBe(beforeStep);
+  });
+
+  it('reads nothing from an empty schedule', () => {
+    expect(couponPaymentOn([], local(2027, 1, 15), 'semiannually')).toBeUndefined();
+  });
+
+  it('reads nothing when the closest coupon is more than half a period away', () => {
+    // 168 days before the first scheduled coupon: a semiannual half-period is ~91 days.
+    expect(couponPaymentOn(schedule, local(2026, 7, 15), 'semiannually')).toBeUndefined();
+    // 73 days from the closest one: a quarterly half-period is ~46 days.
+    expect(couponPaymentOn(schedule, local(2027, 3, 15), 'quarterly')).toBeUndefined();
+    expect(couponPaymentOn(schedule, local(2027, 3, 15), 'annually')).toBe(beforeStep);
   });
 });

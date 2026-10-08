@@ -1,19 +1,22 @@
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { FC } from 'react';
+import { match } from 'ts-pattern';
+import { Alert } from 'react-native';
+import { confirmOwner } from '@kiko/auth';
+import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
-
-import { APP_LOCK_ENABLED } from '../../../db/db-config';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Box from '../../../design-system/components/box';
-import Card from '../../../design-system/components/card';
-import LanguageSwitch from '../../../design-system/components/language-switch';
-import Screen from '../../../design-system/components/screen';
-import { type AppLanguage, deviceLanguage } from '../../../i18n';
-import type { SettingsStackParamList } from '../../../navigation/types';
+import Box from '@kiko/design-system/components/box';
+import { useDataReady, useLiveQuery } from '@kiko/db';
+import Card from '@kiko/design-system/components/card';
+import Screen from '@kiko/design-system/components/screen';
+import SettingsRow from '@kiko/screens/settings/settings-row';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import LanguageSwitch from '@kiko/design-system/components/language-switch';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { type AppLanguage, deviceLanguage } from '@kiko/i18n/device-language';
 
 import AppLockSetting from './app-lock-setting/app-lock-setting.component';
-import SettingsRow from '../settings-row';
 
 type SystemScreenProps = NativeStackScreenProps<SettingsStackParamList, 'System'>;
 
@@ -25,20 +28,50 @@ type SystemScreenProps = NativeStackScreenProps<SettingsStackParamList, 'System'
 const SystemScreen: FC<SystemScreenProps> = () => {
   const { t } = useTranslation();
 
-  const { data } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
+  const { data, isLoading } = useLiveQuery(settingsRepo.getQuery(), ['settings'], true, {
+    cached: true,
+  });
   const settings = data.at(0);
+  // The App Lock toggle and the selected language must never render their
+  // own defaults (off, device-default) while settings is still on its own
+  // first load (kiko-architecture's useLiveQuery consumer rule).
+  const isReady = useDataReady(isLoading);
 
   const handleSelectLanguage = (language: AppLanguage): void => {
     settingsRepo.setLanguage(language);
   };
 
+  const confirmAndDisable = async (): Promise<void> => {
+    const confirmation = await confirmOwner(t('auth.reason.disableLock'));
+
+    match(confirmation)
+      // A device with no passcode has no owner authentication to run at
+      // all — iOS itself asks for the old passcode before it removes one.
+      .with({ kind: 'confirmed' }, { kind: 'noPasscode' }, () => settingsRepo.setLockEnabled(false))
+      .with({ kind: 'cancelled' }, () => undefined)
+      .with({ kind: 'failed' }, (result) =>
+        Alert.alert(t('auth.reauth.failedTitle'), t(result.hintKey)),
+      )
+      .exhaustive();
+  };
+
+  const { onPress: disableLock } = useSubmitOnce(confirmAndDisable);
+
   const handleToggleLock = (enabled: boolean): void => {
-    settingsRepo.setLockEnabled(enabled);
+    enabled ? settingsRepo.setLockEnabled(true) : disableLock();
   };
 
   // The effective language shown as selected: the explicit choice if set,
   // otherwise the device-detected default. null in the DB means "follow device".
   const effectiveLanguage = settings?.language ?? deviceLanguage();
+
+  if (!isReady) {
+    return (
+      <Screen scroll>
+        <LoadingState testID="system-loading" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen scroll>
@@ -49,15 +82,7 @@ const SystemScreen: FC<SystemScreenProps> = () => {
           </SettingsRow>
         </Card>
 
-        {/* Gated behind APP_LOCK_ENABLED (a build-time kill switch, hardcoded on):
-            flipping it off is the escape hatch for a build without the
-            biometrics pod, so it shows no non-functional App Lock toggle. */}
-        {APP_LOCK_ENABLED && (
-          <AppLockSetting
-            lockEnabled={settings?.lockEnabled ?? false}
-            onToggle={handleToggleLock}
-          />
-        )}
+        <AppLockSetting lockEnabled={settings?.lockEnabled ?? false} onToggle={handleToggleLock} />
       </Box>
     </Screen>
   );

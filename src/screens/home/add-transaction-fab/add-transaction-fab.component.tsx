@@ -2,9 +2,8 @@ import { Pressable } from 'react-native';
 import { type FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
-
-import SymbolIcon from '../../../design-system/components/symbol';
-import GlassSurface from '../../../design-system/components/glass-surface';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import GlassSurface from '@kiko/design-system/components/glass-surface';
 
 import { styles } from './add-transaction-fab.styles';
 import type { AddTransactionFabProps } from './add-transaction-fab.props';

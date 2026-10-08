@@ -1,13 +1,12 @@
-import { bifold, eitherSync, isRight } from 'fnts/either';
 import * as Keychain from 'react-native-keychain';
+import { bifoldr, eitherSync } from 'fnts/either';
 
 /**
  * The single GLOBAL Binance credentials service. Historically the app stored ONE
  * Binance key pair per device under this service. The multi-account plan
  * (2026-09-11) moves the pair to a PER-ACCOUNT item (`serviceFor` below); this
  * global item is now transitional — it is what `migrate-binance-credential.ts`
- * reads and clears once the pair is bound to its connected account, and what the
- * old-app import restores into for that migration to pick up.
+ * reads and clears once the pair is bound to its connected account.
  */
 export const BINANCE_CREDENTIALS_SERVICE = 'kiko.binance.credentials';
 
@@ -32,14 +31,14 @@ const isCredentials = (value: unknown): value is BinanceCredentials =>
  * Storage-at-rest policy for the read-only Binance key pair: readable only
  * while the device is unlocked, and bound to this device (never iCloud-synced
  * or restored onto another one from a backup). Deliberately NO `accessControl`
- * — this pair used to carry `BIOMETRY_CURRENT_SET`, which forced a Face ID /
+ * — an item carrying `BIOMETRY_CURRENT_SET` forces a Face ID /
  * Touch ID prompt on EVERY read, so a pull-to-refresh sync (`readCredentials`
- * -> `fetchAccount`) prompted the user each time. The app-wide biometric gate
- * is now `LockGate` (`src/auth`), which replaces the per-item prompt. The pair
+ * -> `fetchAccount`) would prompt the user each time. The app-wide biometric
+ * gate is `LockGate` (`src/auth`), which replaces the per-item prompt. The pair
  * is never written to SQLite, holding metadata, or a log. Only the `service`
  * differs between the global item and each per-account item; the hardening is
  * identical, so it is derived here from ONE place and reused verbatim by every
- * writer (the per-account save, the global save, and the credential migration).
+ * writer (the per-account save and the credential migration).
  */
 export const hardenedFor = (service: string): Keychain.SetOptions => ({
   service,
@@ -79,21 +78,6 @@ export const saveCredentials = async (
 };
 
 /**
- * Write the TRANSITIONAL GLOBAL credentials item. Used ONLY by the old-app
- * import, which restores the retired app's single pair before any account row
- * exists to key it by; the boot migration (`migrateBinanceCredentialToPerAccount`)
- * then binds it to the connected account. Ordinary in-app saves use the
- * per-account `saveCredentials`.
- */
-export const saveGlobalCredentials = async (credentials: BinanceCredentials): Promise<void> => {
-  await Keychain.setGenericPassword(
-    'binance',
-    JSON.stringify(credentials),
-    hardenedFor(BINANCE_CREDENTIALS_SERVICE),
-  );
-};
-
-/**
  * Reads the pair for ONE account. The per-account service string is derived from
  * the account id on every call, so a read for account A can never return account
  * B's credentials. No biometric prompt for an item stored under the hardened
@@ -113,19 +97,19 @@ export const readCredentials = async (
   }
 
   const parsed = eitherSync<unknown, unknown>(() => JSON.parse(stored.password));
-  const value = isRight(parsed) ? bifold(parsed) : undefined;
+  const value = bifoldr(parsed);
 
   if (!isCredentials(value)) {
     return undefined;
   }
 
-  // Repair an item written before the hardening shipped (it still carries the
-  // old per-read `BIOMETRY_CURRENT_SET` control). Gated so a READ stays a read:
-  // this used to run on every single call, turning every pull-to-refresh and
-  // every crypto sync into a full Keychain write of the API key and secret — a
-  // routine read path that could disturb stored credentials if a write failed
-  // partway. `readToken` and `readDbKey` are pure; this now matches them after
-  // the first call.
+  // Repair an item still carrying the old per-read `BIOMETRY_CURRENT_SET`
+  // control from before the hardening shipped. Gated so a READ stays a read
+  // after the first call: running the repair unconditionally on every call
+  // would turn every pull-to-refresh and every crypto sync into a full
+  // Keychain write of the API key and secret — a routine read path that
+  // could disturb stored credentials if a write failed partway. `readToken`
+  // and `readDbKey` are pure; this now matches them after the first call.
   if (!hasRepairedAccessPolicy) {
     await saveCredentials(accountId, value);
   }

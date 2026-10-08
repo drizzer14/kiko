@@ -3,15 +3,22 @@
  * so a test can read `navigation.navigate.mock.calls` back.
  *
  * WHY THIS EXISTS: a screen's `navigation` prop type has ~30 members, so every
- * test used to build a 2-key object and cast it `as never` — which made each
- * later `navigation.setOptions` read a property access on `never` (TS2339,
- * ~49 errors) while giving the test no type safety at all. This module is the
+ * test that builds a 2-key object would have to cast it `as never` — which
+ * makes each later `navigation.setOptions` read a property access on `never`
+ * (TS2339) while giving the test no type safety at all. This module is the
  * ONE place that cast lives, narrowed to `as unknown as` at a single
- * documented boundary, instead of scattered across twelve files.
+ * documented boundary, instead of scattered across every screen test.
  */
 export type NavigationSpy = {
   navigate: jest.Mock;
+  // `popTo` is the correct call for "return to a route already on the
+  // stack" under React Navigation 7 — plain `navigate` PUSHES a duplicate
+  // there instead of reusing the existing instance (see
+  // `statement-import-return.navigator.test.tsx` for the real-router proof).
+  popTo: jest.Mock;
+  replace: jest.Mock;
   setOptions: jest.Mock;
+  setParams: jest.Mock;
   goBack: jest.Mock;
   push: jest.Mock;
   addListener: jest.Mock;
@@ -22,7 +29,10 @@ export type NavigationSpy = {
 
 export const navigationSpy = (): NavigationSpy => ({
   navigate: jest.fn(),
+  popTo: jest.fn(),
+  replace: jest.fn(),
   setOptions: jest.fn(),
+  setParams: jest.fn(),
   goBack: jest.fn(),
   push: jest.fn(),
   addListener: jest.fn(() => jest.fn()),

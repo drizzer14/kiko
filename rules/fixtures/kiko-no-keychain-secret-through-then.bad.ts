@@ -7,6 +7,7 @@
 import { useState } from 'react';
 
 import { readToken } from '../../src/monobank/token';
+import { readCredentials } from '../../src/crypto-sync/binance/binance.credentials';
 
 export const FixtureBadThenForm = () => {
   const [token, setToken] = useState('');
@@ -19,4 +20,17 @@ export const FixtureBadThenForm = () => {
   });
 
   return token;
+};
+
+export const FixtureBadCredentialsThenForm = () => {
+  const [apiKey, setApiKey] = useState('');
+
+  // EXPECT-FINDING
+  readCredentials('acc-1').then((existing) => {
+    if (existing !== undefined) {
+      setApiKey(existing.apiKey);
+    }
+  });
+
+  return apiKey;
 };

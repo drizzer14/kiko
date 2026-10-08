@@ -1,9 +1,8 @@
-import { render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-
-import { ancestorWithStyle } from '../../../test-support/ancestor-with-style';
-import '../../unistyles';
-import { darkTheme } from '../../theme';
+import { render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import Switch from './switch.component';
 
@@ -21,14 +20,19 @@ describe('Switch', () => {
     expect(thumbColor).toBe(darkTheme.colors.onAccent);
   });
 
-  // A long label ("Follow system setting") previously overflowed past the
-  // toggle instead of wrapping, because RN's `flexShrink` defaults to 0. This
-  // asserts the STYLE CONTRACT that enables wrapping (not actual pixel
-  // wrapping, which Jest cannot lay out): the label sits in a `flexShrink: 1`
-  // container, and the row top-aligns to the label's first line rather than
-  // vertically centering the toggle against the label's full (once wrapped,
-  // multi-line) height.
-  it('lets a long label shrink to wrap, and top-aligns the toggle to it', async () => {
+  it('names a label-less toggle for VoiceOver', async () => {
+    const { getByLabelText } = await render(
+      <Switch value onValueChange={() => {}} accessibilityLabel="Reminder on" />,
+    );
+
+    expect(getByLabelText('Reminder on').props.value).toBe(true);
+  });
+
+  // A long label ("Follow system setting") would overflow past the toggle
+  // instead of wrapping, because RN's `flexShrink` defaults to 0. Jest
+  // cannot lay out pixels, so this pins the style contract: a `flexShrink: 1`
+  // label box, and a row that centers the toggle on the label.
+  it('lets a long label shrink to wrap, and centers the toggle on it', async () => {
     const { getByText } = await render(
       <Switch value onValueChange={() => {}} label="Follow system setting" />,
     );
@@ -39,6 +43,6 @@ describe('Switch', () => {
     expect(StyleSheet.flatten(shrinkable.props.style).flexShrink).toBe(1);
 
     const row = ancestorWithStyle(label, 'alignItems');
-    expect(StyleSheet.flatten(row.props.style).alignItems).toBe('flex-start');
+    expect(StyleSheet.flatten(row.props.style).alignItems).toBe('center');
   });
 });

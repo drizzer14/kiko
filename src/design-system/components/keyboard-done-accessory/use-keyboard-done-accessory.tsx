@@ -44,22 +44,18 @@ type KeyboardDoneAccessory = {
 // against — pass it straight to the same input's `keyboardAppearance` prop.
 // Off iOS it returns no id, no element, and no keyboardAppearance.
 //
-// REDESIGN (2026-09-14): this used to be a full-width bar flush against the
-// keyboard, with a solid fill, a top hairline, and bottom corners rounded to
-// tuck against the keyboard's own curve (see git history — commits
-// ed4cceb/5aa3fda/0faaab3 — for that bar's layering and its now-removed
-// `keyboardAccessoryBackground` fill token). It is now a compact pill that
-// sizes to fit its own label (`styles.doneButton`'s padding, no stretch to
-// full width), floats clear of the keyboard with a padding-driven gap
-// (`styles.accessoryContainer`), and carries a white (`textPrimary`) label —
-// see `keyboard-done-accessory.styles.ts` for the full geometry writeup.
+// The accessory is a compact pill that sizes to fit its own label
+// (`styles.doneButton`'s padding, no stretch to full width), floats clear of
+// the keyboard with a padding-driven gap (`styles.accessoryContainer`), and
+// carries a white (`textPrimary`) label — see
+// `keyboard-done-accessory.styles.ts` for the full geometry writeup.
 // `GlassSurface`'s `material` variant (the same one `BottomSheet` uses for
-// its own card) is still the Liquid Glass response to Apple's HIG "Virtual
+// its own card) is the Liquid Glass response to Apple's HIG "Virtual
 // keyboards" guidance ("apply Liquid Glass to the view that contains your
-// controls" above the keyboard) — only the shape and fill it paints changed,
-// from a full-width bar to a small capsule (`radius="full"`), with a
-// `bordered` hairline edge for legibility since the pill has no opaque/
-// pinned backdrop of its own. Paint order in the JSX below matters:
+// controls" above the keyboard), painted as a small capsule
+// (`radius="full"`) with a `bordered` hairline edge for legibility since the
+// pill has no opaque/pinned backdrop of its own. Paint order in the JSX
+// below matters:
 // `doneGlass` renders FIRST (behind, filling the Pressable's own bounds),
 // the Done label SECOND (always on top).
 export const useKeyboardDoneAccessory = (): KeyboardDoneAccessory => {

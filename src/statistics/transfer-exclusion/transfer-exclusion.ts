@@ -1,4 +1,4 @@
-import { ALWAYS_EXCLUDED_MCCS, OWN_ACCOUNT_TRANSFER_MCC } from '../../monobank/mcc-category';
+import { ALWAYS_EXCLUDED_MCCS, OWN_ACCOUNT_TRANSFER_MCC } from '@kiko/monobank/mcc-category';
 
 /**
  * The minimal transaction shape the MCC/IBAN exclusion rule needs. `mcc` is the
@@ -33,9 +33,11 @@ export const isMccExcludedTransfer = (
   ownIbans: ReadonlySet<string>,
 ): boolean => {
   const { mcc, counterIban } = transaction;
+
   if (mcc === null) {
     return false;
   }
+
   if (ALWAYS_EXCLUDED.has(mcc)) {
     return true;
   }
@@ -94,10 +96,11 @@ export const isDescriptionExcludedTransfer = (description: string | null | undef
  * `isDescriptionExcludedTransfer`). Unioned by the caller with the mcc/IBAN ids
  * and the matched-pair ids.
  */
-export const descriptionExcludedTransferTxIds = (
+export const descriptionExcludedTransferTransactionIds = (
   transactions: readonly { id: string; description: string | null | undefined }[],
 ): Set<string> => {
   const ids = new Set<string>();
+
   for (const transaction of transactions) {
     if (isDescriptionExcludedTransfer(transaction.description)) {
       ids.add(transaction.id);
@@ -113,11 +116,12 @@ export const descriptionExcludedTransferTxIds = (
  * from `internalTransferTxIds` to drop both cash-outs/own-transfers and the
  * structurally-paired self-transfers the mcc rule cannot see.
  */
-export const mccExcludedTransferTxIds = (
+export const mccExcludedTransferTransactionIds = (
   transactions: readonly ({ id: string } & ExclusionTransaction)[],
   ownIbans: ReadonlySet<string>,
 ): Set<string> => {
   const ids = new Set<string>();
+
   for (const transaction of transactions) {
     if (isMccExcludedTransfer(transaction, ownIbans)) {
       ids.add(transaction.id);

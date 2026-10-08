@@ -1,13 +1,14 @@
 import { Pressable } from 'react-native';
+import { formatTime } from '@kiko/dates';
 import { type FC, useState } from 'react';
+import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
+import Text from '@kiko/design-system/components/text';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import FieldLabel from '@kiko/design-system/components/field-label';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-
-import { formatTime } from '../../../dates/format';
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import SymbolIcon from '../../../design-system/components/symbol';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
 
 import { styles } from './time-field.styles';
 import type { TimeFieldProps } from './time-field.props';
@@ -30,18 +31,22 @@ const combineDayAndTime = (dayMillis: number, picked: Date): number => {
 };
 
 // A single labeled time-of-day field that opens the native time picker in a
-// bottom sheet. Displays the current value's time as HH:mm (24-hour) and, on a
-// pick, keeps the value's DAY while replacing only its time-of-day — the mirror
-// of DateField, which keeps the time-of-day while replacing only the day.
+// bottom sheet. Displays the current value's time on the device's own clock, as
+// the picker does, and, on a pick, keeps the value's DAY while replacing only
+// its time-of-day — the mirror of DateField, which keeps the time-of-day while
+// replacing only the day.
 const TimeField: FC<TimeFieldProps> = ({
   label,
+  sheetTitle,
   value,
   onChange,
   placeholder,
   disabled = false,
+  invalid = false,
   testID,
 }) => {
   const { theme } = useUnistyles();
+  const clock = useTimeClock();
   const [open, setOpen] = useState(false);
 
   const handleChange = (_event: DateTimePickerEvent, picked?: Date): void => {
@@ -54,9 +59,7 @@ const TimeField: FC<TimeFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <Text variant="caption" tone="textSecondary">
-        {label}
-      </Text>
+      <FieldLabel label={label} invalid={invalid} />
 
       <Pressable
         accessibilityRole="button"
@@ -70,7 +73,7 @@ const TimeField: FC<TimeFieldProps> = ({
           <SymbolIcon name="clock" size={theme.iconSizes.body} tone="textSecondary" />
 
           <Text variant="body" tone={disabled || value === null ? 'textSecondary' : 'textPrimary'}>
-            {value === null ? (placeholder ?? label) : formatTime(value)}
+            {value === null ? placeholder : formatTime(value, clock)}
           </Text>
         </Box>
       </Pressable>
@@ -79,7 +82,7 @@ const TimeField: FC<TimeFieldProps> = ({
         visible={open}
         onDismiss={() => setOpen(false)}
         gap={4}
-        header={<Text variant="heading">{label}</Text>}
+        header={<Text variant="heading">{sheetTitle}</Text>}
       >
         <DateTimePicker
           testID={`${label} picker`}

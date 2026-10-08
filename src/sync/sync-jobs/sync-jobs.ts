@@ -1,10 +1,9 @@
-import type { AccountRow } from '../../db/schema';
-import type { BankProviderId } from '../../bank-sync/provider';
-import { bankProviderRegistry } from '../../bank-sync/registry';
-import { isBalanceProviderId } from '../../crypto-sync/provider';
-import { resyncRequest } from '../../crypto-sync/resync-request';
-import { runCryptoSync } from '../../crypto-sync/run-crypto-sync';
-import { bankProviderIdOf, isBankProviderId } from '../../bank-sync/provider';
+import type { AccountRow } from '@kiko/db';
+import { bankProviderRegistry } from '@kiko/bank-sync/registry';
+import { isBalanceProviderId } from '@kiko/crypto-sync/provider';
+import { resyncRequest } from '@kiko/crypto-sync/resync-request';
+import { runCryptoSync } from '@kiko/crypto-sync/run-crypto-sync';
+import { type BankProviderId, bankProviderIdOf, isBankProviderId } from '@kiko/bank-sync/provider';
 
 /**
  * The fan-out only needs each account's connection marker and a name to report a

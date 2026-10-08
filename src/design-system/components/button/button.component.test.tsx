@@ -1,11 +1,10 @@
-import { fireEvent, render } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
+import { i18n } from '@kiko/i18n/init';
 import { StyleSheet } from 'react-native';
-
-import { i18n } from '../../../i18n';
-import type { RenderedElement } from '../../../test-support/rendered-element';
-import '../../unistyles';
-import { darkTheme } from '../../theme';
+import type { ComponentProps } from 'react';
+import { fireEvent, render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
 
 import Button from './button.component';
 
@@ -15,7 +14,7 @@ import Button from './button.component';
 // these tests assert behavior and the NON-variant style axes (size, width,
 // disabled), never the variant colors. The icon is mocked to a plain text node
 // so its presence is queryable without the native SFSymbolView.
-jest.mock('../symbol', () => {
+jest.mock('@kiko/design-system/components/symbol', () => {
   const { Text: RNText } = require('react-native');
 
   return {
@@ -299,5 +298,63 @@ describe('Button', () => {
     expect(getByText('Додати рахунок')).toBeTruthy();
 
     await i18n.changeLanguage('en');
+  });
+
+  describe('loading', () => {
+    it('shows a spinner in the label color and blocks presses while loading', async () => {
+      const onPress = jest.fn();
+      const { getByRole, getByTestId } = await render(
+        <Button onPress={onPress} loading>
+          Apply
+        </Button>,
+      );
+
+      const button = getByRole('button');
+      await fireEvent.press(button);
+
+      expect(onPress).not.toHaveBeenCalled();
+      expect(button.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
+      expect(getByTestId('button-loading-spinner').props.color).toBe(darkTheme.colors.onAccent);
+    });
+
+    it('keeps the same size: the hidden label still lays out under the spinner', async () => {
+      const { getByRole, getByText } = await render(
+        <Button onPress={jest.fn()} icon="checkmark" loading>
+          Apply
+        </Button>,
+      );
+      const idle = await render(
+        <Button onPress={jest.fn()} icon="checkmark">
+          Apply
+        </Button>,
+      );
+
+      const loadingRoot = flattenRoot(getByRole('button'));
+      const idleRoot = flattenRoot(idle.getByRole('button'));
+      expect(loadingRoot.minHeight).toBe(idleRoot.minHeight);
+      expect(loadingRoot.width).toBe(idleRoot.width);
+
+      // The label and icon stay mounted (so the button keeps its content
+      // width), only made invisible.
+      const content = getByText('Apply').parent;
+      expect(flattenRoot(content as RenderedElement).opacity).toBe(0);
+      expect(getByText('icon:checkmark')).toBeTruthy();
+    });
+
+    it('does not dim a loading button the way a disabled one is dimmed', async () => {
+      const { getByRole } = await render(
+        <Button onPress={jest.fn()} loading>
+          Apply
+        </Button>,
+      );
+
+      expect(flattenRoot(getByRole('button')).opacity).toBeUndefined();
+    });
+
+    it('renders no spinner when not loading', async () => {
+      const { queryByTestId } = await render(<Button onPress={jest.fn()}>Apply</Button>);
+
+      expect(queryByTestId('button-loading-spinner')).toBeNull();
+    });
   });
 });

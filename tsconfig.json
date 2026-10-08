@@ -4,8 +4,7 @@
     // The base config pins `types: ["jest"]`, which drops the Node ambient
     // globals and module typings the file-reading tests legitimately use
     // (the schema/category-override assertions read drizzle/migrations with
-    // `node:fs` + `__dirname`; the plist assertion reads ios/Kiko/Info.plist;
-    // interest.test.ts sets `process.env.TZ` to force a DST-observing zone).
+    // `node:fs` + `__dirname`; the plist assertion reads ios/Kiko/Info.plist).
     // Jest runs on Node, so these are real, available globals — not a shim and
     // not a way to silence an error. Widening `types` is the only way to reach
     // them: the alternative, hand-writing ambient `fs`/`path`/`__dirname`

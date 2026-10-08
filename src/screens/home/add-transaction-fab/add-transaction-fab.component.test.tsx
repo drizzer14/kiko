@@ -1,15 +1,14 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
-
 // Register the design-system theme so `useUnistyles()` resolves inside this
 // isolated render (the app entry imports it transitively; a lone component test
 // must import it itself).
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 // Initialize i18next so the FAB's accessibility label resolves to the real
 // catalogue string rather than the bare key.
-import '../../../i18n';
-import { darkTheme } from '../../../design-system/theme';
-import { asNavigationProp, navigationSpy } from '../../../test-support/navigation-props';
+import '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
+import { asNavigationProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AddTransactionFab from './add-transaction-fab.component';
 
@@ -65,7 +64,7 @@ describe('AddTransactionFab', () => {
   it('paints its background with the shared translucent GlassSurface, not a flat accent fill', async () => {
     // The FAB's circular background must be the design system's shared
     // GlassSurface (neutral `transparent` variant), never a hand-rolled glass
-    // effect or the old flat accent circle. `GlassSurface` renders a layer
+    // effect or a flat accent circle. `GlassSurface` renders a layer
     // testID'd `${testID}-base` under jest's non-glass fallback (see its own
     // test file) — its presence is proof the real component tree renders,
     // not just a plain colored View standing in for it.
@@ -79,8 +78,8 @@ describe('AddTransactionFab', () => {
     const fab = getByLabelText('Add transaction');
     const flattened = StyleSheet.flatten(fab.props.style);
 
-    // The flat accent circle is gone: the touch target itself must no longer
-    // paint the solid accent color now that the visible background is glass.
+    // The visible background is glass, so the touch target itself must not
+    // paint the solid accent color.
     expect(flattened.backgroundColor).not.toBe(darkTheme.colors.accent);
   });
 

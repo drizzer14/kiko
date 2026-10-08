@@ -5,8 +5,10 @@ description: Invoke when touching a Gesture/GestureDetector, react-native-sortab
 
 # Kiko gesture and animation conventions
 
-Source files: `src/design-system/` (grid-interaction),
+Source files: `src/design-system/` (grid-interaction, use-grid-lift-guard),
 `src/design-system/components/card-context-menu/`,
+`src/design-system/components/holding-card/`,
+`src/design-system/components/close-holding-sheet/`,
 `src/screens/accounts/accounts.screen.tsx`,
 `src/screens/account-detail/account-detail.screen.tsx`,
 `src/screens/settings/categories/`,
@@ -26,7 +28,8 @@ they must never both fire on one hold:
   a hold that moves.
 
 The split: a hold that **stays still** past the long-press's min-duration
-opens the delete menu (`maxDistance` not exceeded); a hold that **moves**
+opens the context menu (the action list, or the delete confirm on a
+delete-only card; `maxDistance` not exceeded); a hold that **moves**
 past `maxDistance` fails the long-press gesture, freeing the finger for the
 enclosing sortables drag-to-reorder; a quick tap satisfies neither gesture
 and falls through to the card's own `onPress` (open detail). See
@@ -39,6 +42,46 @@ If a hold on-device sometimes opens the wrong thing, this is the first
 place to look: read both files' current constants, not what this skill
 used to say.
 
+### A hold lifts the card, and a lifted card never opens its page
+
+`Sortable.Grid` lifts a card (`activeItemScale`) once a hold passes its
+`dragActivationDelay` — the library default, 200 ms, which is BEFORE the
+`CardContextMenu` long-press (450 ms) — so every hold on a sortable card
+lifts it first. Two rules follow, shared by all three card grids
+(Accounts' main grid and its Property/Debts holding grids, and the
+account-detail holding grid):
+
+- **A lone card lifts too.** `sortEnabled` is the query's `isFresh` only,
+  never `&& data.length > 1`. react-native-sortables' touch handler gates
+  only on `sortEnabled`, the absolute layout being ready, and no other
+  active item (`DragProvider.ts` `handleTouchStart`) — it never counts
+  items — so a single card lifts and drops back (`onDragEnd` reports
+  `fromIndex === toIndex`, which `onGridDragEnd` persists nothing for).
+- **A hold that lifted the card never fires the card's tap.** A moved
+  drag and an opened context menu deliver NO `onPress`: react-native-sortables
+  1.10.0 on RNGH 3.2.1 (v3 adapter,
+  `integrations/gesture-handler/adapters/v3.ts`) makes RNGH cancel the JS
+  responder when its gesture activates (`RNRootViewGestureRecognizer.m:39-52`,
+  `cancelsJSResponder` defaults to YES). The press reaches JS only on a
+  still hold released before the menu (450 ms) with no touch-move after the
+  lift, because the v3 adapter activates on the next move. That is the path
+  this guard covers; `onActiveItemDropped` clears the flag in every other
+  case.
+  `useGridLiftGuard` (`src/design-system/use-grid-lift-guard/`) is the one
+  shared mechanism: pass its `onDragStart` and `onActiveItemDropped` to
+  the `Sortable.Grid` (both are JS callbacks the library hops to the JS
+  thread itself) and wrap each card's open handler:
+  `onOpen={openUnlessLifted(item.id, () => navigation.navigate(...))}`.
+  The lifted key is cleared by the press it suppressed, and again by
+  `onActiveItemDropped` (fires after the release, a drop animation
+  later) since a lift can end without any press. A quick tap never
+  activates the drag, so it opens as before. One hook call per screen
+  serves every grid on it (the guard is keyed by the card's id). A new
+  card grid must do the same; Jest cannot hit-test, so a screen test
+  drives `onDragStart` / `onActiveItemDropped` off the mocked grid's
+  props (`@kiko/test-support/lift-grid-card`) and the real feel is an
+  on-device check.
+
 ## Every function called inside a worklet needs its own `'worklet'` directive
 
 Any function — imported from another module or defined locally — that is
@@ -46,7 +89,9 @@ called SYNCHRONOUSLY inside a reanimated worklet hook (`useAnimatedStyle`,
 `useDerivedValue`, `useAnimatedReaction`, `useAnimatedScrollHandler`, or a
 `Gesture.*` worklet callback) MUST carry its own `'worklet'` directive at
 its definition, or be defined inline in the worklet — otherwise the
-worklets runtime captures it as a "remote function." See
+worklets runtime captures it as a "remote function." The pre-write guard
+(`kiko-worklet-directive-required`) catches only a SAME-FILE helper; an
+imported helper is still a review item. See
 `src/design-system/components/bottom-sheet/bottom-sheet.keyboard.ts`'s
 `resolveKeyboardLift`/`resolveKeyboardAwareMaxHeight`/
 `resolveKeyboardAwareBottomPadding` for the worked example: each carries
@@ -72,7 +117,10 @@ legacy AppDelegate-owns-the-window assumption. This app runs the iOS
 UIScene lifecycle (`SceneDelegate` owns the `UIWindow`; `AppDelegate` has
 none), so that call sends an unrecognized selector and SIGABRTs on cold
 launch — it hit every screen once, since the shared `BottomSheet` calls
-whatever drives its keyboard height. `bottom-sheet.component.tsx` instead
+whatever drives its keyboard height. Mechanized as the
+`kiko-no-use-animated-keyboard` Semgrep rule (ERROR,
+`rules/semgrep-prewrite.yml`, see `kiko-linter`) — any new call is a hard-fail,
+not just a review comment. `bottom-sheet.component.tsx` instead
 drives its `keyboardHeight` shared value by hand from RN core's `Keyboard`
 events (`keyboardWillChangeFrame` / `keyboardWillHide`); read that file's
 `useEffect` for the exact listener wiring rather than restating it here.
@@ -81,6 +129,20 @@ animation — see memory `scene-lifecycle-appdelegate-window-crash` for the
 full crash chain, and the "Every function called inside a worklet..."
 rule above for the RELEASE-vs-Debug verification gap this class of bug
 shares.
+
+## No swipe actions — row edit/delete is the long-press CardContextMenu
+
+Swipe actions were removed on purpose. A row's edit/delete is the
+long-press `CardContextMenu` (Edit/Duplicate/Close/Delete, in that
+order, each only where the consumer passes it), never a swipe
+gesture. Do not propose or add one: no gesture-handler `Swipeable` /
+`ReanimatedSwipeable`, no swipe-list package (by default, named, or
+namespace import), no fling recognizer
+(`Gesture.Fling()`, `useFlingGesture`, `FlingGestureHandler`), no
+swipe-named row component, and no `PanResponder.create` (the app's own
+former swipe row was a PanResponder row). The bottom sheet's drag-to-dismiss
+(`Gesture.Pan()`) stays allowed. Mechanized as `kiko-no-swipe-action`
+(ERROR, `rules/semgrep-prewrite.yml`).
 
 ## `runOnJS(true)` for non-worklet callbacks
 
@@ -98,22 +160,72 @@ from there throws or silently no-ops.
 
 ## Sortables grid conventions
 
-Both grids — `accounts.screen.tsx` (1 column) and the account-detail
-holding grid (2 columns) — share the same tuning, so a value drifting on
-one and not the other is a bug, not a deliberate difference. Read the
-current values in both files before restating them; do not trust a copy
-in this skill. As of this writing both grids use `activeItemScale={1.03}`
-(a barely-there lift on touch-and-hold — the library default of `1.1` pops
-the card up too far) and `autoScrollActivationOffset={75}`.
+Four grids — `accounts.screen.tsx`'s main grid (1 column, account
+cards), its "Property" and "Debts" section grids below it (also 1
+column, but HOLDING grids: one `HoldingCard` per open holding of the
+implicit property / debt account, with `holdingsRepo.reorder`; see
+"Section-scoped grids must persist the FULL order" below), and the
+account-detail holding grid — share the same tuning, so a value
+drifting on one and not the others is a bug, not a deliberate
+difference. Read the current values in all of them before restating
+them; do not trust a copy in this skill. As of this writing all use
+`activeItemScale={1.03}` (a barely-there lift on touch-and-hold — the
+library default of `1.1` pops the card up too far),
+`overDrag="vertical"`, and `autoScrollActivationOffset={75}`. The
+accounts main grid gates `sortEnabled` on the ACCOUNTS query's
+`isFresh`; the two section grids gate it on the HOLDINGS query's
+`isFresh` (a drag persists the rows on screen, so it never starts from
+a cached read), with no item-count condition — see "A hold lifts the
+card" above. (The categories grid,
+`src/screens/settings/categories/`, is a FIFTH grid with a
+deliberately different `dragActivationDelay` — see its own entry below
+— it is not part of this shared-tuning claim.)
+
+### Section-scoped grids must persist the FULL order
+
+`accountsRepo.reorder(orderedIds)` rewrites `sortOrder = index` for
+ONLY the ids it is given — its contract is "the full new front-to-back
+order", not "this grid's own ids". When a screen splits one list into
+several grids by a filter, persisting only the dragged grid's own
+reordered ids restarts THAT SECTION's `sortOrder` back at 0 on every
+drag, colliding with the other section's own 0-based run — every
+OTHER `listQuery` consumer that reads the full, unfiltered list
+(Statistics' account filter, the transaction-form account rank, Home,
+statement import) then sees the sections interleaved instead of kept
+apart. Fix: a grid's `onDragEnd` persists the WHOLE order, splicing
+its own new order back into the other sections' (unchanged) ids.
+
+Today `accounts.screen.tsx` has ONE account-order grid, the main one
+(every non-implicit kind): its `onDragEnd` persists
+`accountsRepo.reorder([...mainIds, ...implicitAccountIds])`, the
+property account's id first, then the debt account's. The Property and
+Debts sections are no longer account grids: each lists the OPEN
+holdings of its implicit account (at most one live account per kind,
+`src/holdings/implicit-account/`), and its `onDragEnd` persists that
+account's open holdings only through
+`onGridDragEnd(…, holdingsRepo.reorder)` — the same contract as the
+account-detail grid (`holdingsRepo.reorder` rewrites only the ids it is
+given, so no other account's holdings move). Closed holdings keep
+their old `sortOrder`. A screen introducing a NEW filtered account
+section must extend the account-order rule the same way, not revert to
+passing a single grid's own ids straight through.
+
+Each section keeps its own long-press `CardContextMenu` (Close / Delete)
+and its own `useCloseHoldingAction` instance (one per implicit
+account); render EACH instance's `closeSheet`, or "Close" in that
+section opens nothing.
 
 - **`scrollableRef` + `autoScrollActivationOffset`**: the grid is nested
   inside the screen's own `ScrollView`, so it needs that `ScrollView`'s
   `useAnimatedRef` passed through as `scrollableRef` to auto-scroll the
   parent list when a drag nears an edge — a grid with no surrounding
   scroll view does not need this prop.
-- **Single-item `sortEnabled` guard**: `sortEnabled={items.length > 1}`.
-  With exactly one item there is nothing to reorder against, and leaving
-  sort enabled invites a spurious drag interaction on the lone card.
+- **No single-item `sortEnabled` guard on a card grid.** A lone card must
+  lift on a hold like any other (see "A hold lifts the card" above), so
+  `sortEnabled` is the freshness gate alone. The spurious-drag worry that
+  once motivated `items.length > 1` is covered by `onGridDragEnd`
+  persisting nothing for a release in place and by `useGridLiftGuard`
+  suppressing the tap.
 - **`onDragEnd` always routes through `onGridDragEnd`** (`src/design-system/`)
   rather than calling the repo's `reorder()` inline, so the
   release-in-place guard lives in exactly one place.

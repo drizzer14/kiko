@@ -1,10 +1,8 @@
-import { ratesRepo } from '@kiko/rates/repo';
-import either from 'fnts/either';
 import { useState } from 'react';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 
-import { refreshRates } from '../../rates/rates-refresh';
-import { SYNC_CONCURRENCY_LIMIT, settleAllLimited } from '../settle-limited';
 import { type SyncableAccount, type SyncJob, syncJobsFor } from '../sync-jobs';
+import { settleJobsBesideMarketRefresh } from '../settle-jobs-beside-market-refresh';
 
 type UseSyncAll = {
   /** Names of the accounts whose sync failed on the last run — empty on full success. */
@@ -13,31 +11,35 @@ type UseSyncAll = {
 };
 
 /**
- * Run one whole fan-out and refresh rates once, returning the names of the
- * accounts whose job rejected (empty on full success).
+ * Run one whole fan-out and refresh rates + metals once, returning the names
+ * of the accounts whose job rejected (empty on full success). Only the sync
+ * FAN-OUT is gated on having jobs; the refresh is decoupled from it so a
+ * manual-only account list (no Monobank/crypto connected) still gets
+ * cross-rates cached — mirroring `useAutoSync`'s identical decoupling. Running it
+ * unconditionally is safe: `refreshMarketData` is self-throttled (its own
+ * `refreshRates` step) and hits only PUBLIC, tokenless endpoints.
+ *
+ * `refreshMarketData` never rejects (it logs its own failure and returns a
+ * Left/Right), so the single-flight lock in `runSyncAllOnce` below still
+ * releases only once this whole call settles. The concurrent-refresh and
+ * orphan-promise guards (running rates and metals under ONE
+ * `Promise.allSettled` rather than sequentially) live in `refreshMarketData`,
+ * not here.
  */
 const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
-  // Cap CONCURRENT syncs so a many-connection pull never fires N provider
-  // requests at once (device load / provider rate limits). Results come back in
-  // job order, so `results[index]` still aligns to `jobs[index]` for naming the
-  // failed accounts — see `settleAllLimited`.
-  const results = await settleAllLimited(
-    jobs.map((job) => job.run),
-    SYNC_CONCURRENCY_LIMIT,
-  );
-  const failed = jobs
-    .filter((_, index) => results[index].status === 'rejected')
-    .map((job) => job.name);
+  // One refresh for the whole fan-out (not per account), mirroring the single
+  // refresh a lone sync does — `metals` since a pull-to-refresh also needs
+  // metal prices, unlike a single Monobank/crypto sync.
+  // Results come back in job order, so `results[index]` still aligns to
+  // `jobs[index]` for naming the failed accounts.
+  const results = await settleJobsBesideMarketRefresh(jobs);
 
-  // One rate refresh for the whole fan-out (not per account), mirroring the
-  // single refresh a lone sync does. Wrapped so a rate-refresh failure — not
-  // tied to any one account — never throws out of pull-to-refresh.
-  await either(async () => {
-    const lastRefreshAt = await ratesRepo.latestFetchedAt();
-    await refreshRates({ lastRefreshAt });
-  });
+  // One matcher run for the whole fan-out too — any account's sync can bring
+  // in a new loan-payment debit. Never rejects (its own doc comment), so a
+  // failed auto-link never turns a successful fan-out into a reported one.
+  await runLoanAutoLink();
 
-  return failed;
+  return jobs.filter((_, index) => results[index].status === 'rejected').map((job) => job.name);
 };
 
 /**
@@ -66,6 +68,7 @@ const runSyncAllOnce = (jobs: SyncJob[]): Promise<string[]> => {
     }
   };
   run.then(release, release);
+
   return run;
 };
 
@@ -83,9 +86,6 @@ export const useSyncAll = (accounts: SyncableAccount[]): UseSyncAll => {
 
   const syncAll = async (): Promise<void> => {
     const jobs = accounts.flatMap(syncJobsFor);
-    if (jobs.length === 0) {
-      return;
-    }
 
     setFailures([]);
     const failed = await runSyncAllOnce(jobs);

@@ -1,22 +1,27 @@
 // `buildNetWorthSeries` uses `rateTableAt` from the rate-history repo, whose
 // module opens the op-sqlite connection at load. Stub the native module so the
 // (pure) builder can be exercised without a real database.
-import { startOfLocalDay } from '../../dates/local-day';
-import type { CurrencyRateHistoryRow, HoldingRow } from '../../db/schema';
-import type { MonobankStatementItem } from '../../monobank/monobank.types';
 // `sync.ts` itself imports the repos, which open the op-sqlite connection at
 // load — `jest/setup.js` mocks `@op-engineering/op-sqlite` globally, so this
 // module graph loads safely under Jest and `mapStatementItem` runs for real.
-import { mapStatementItem } from '../../monobank/sync';
+import { Money, toMajor } from '@kiko/currency/money';
+import { mapStatementItem } from '@kiko/monobank/sync';
+import { guardedNetWorth } from '@kiko/rates/net-worth-view';
+import { FIAT_UAH_PRICE_SEED } from '@kiko/rates/fiat-rate-seed';
+import { buildPriceBook, dayKeyOf } from '@kiko/prices/price-book';
+import type { CurrencyRateHistoryRow, HoldingRow } from '@kiko/db';
+import { DAY_MS, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
+import type { MonobankStatementItem } from '@kiko/monobank/monobank-types';
+import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
+
 import type { SeriesHolding } from '../holding-value-at';
 
 import { buildNetWorthSeries, type NetWorthSeries } from './net-worth-series';
 
-const DAY = 86_400_000;
 const HOUR = 3_600_000;
 const D0 = Date.UTC(2026, 0, 1);
-const D1 = D0 + DAY;
-const D2 = D0 + 2 * DAY;
+const D1 = D0 + DAY_MS;
+const D2 = D0 + 2 * DAY_MS;
 
 // Local midnight of the calendar day `n` days after `t`. Built from local Y/M/D
 // fields (never a fixed ms offset) so the cross-day fixtures below map onto the
@@ -34,17 +39,64 @@ const holding = (over: Partial<HoldingRow> & Pick<HoldingRow, 'id'>): SeriesHold
   type: 'cash',
   balanceMinorUnits: 0,
   metadata: null,
+  closedAt: null,
   ...over,
 });
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;
 
+// Every call site below still reads as "rate(UAH, USD)" (its historical
+// meaning) — the star model instead stores the RECIPROCAL as an `X:UAH` row
+// (`rate(USD, UAH) = 1 / rate`), so this is the one place that inverts it;
+// no call site or expected value below needed to change.
 const uahUsd = (day: number, rate: string): HistoryRow => ({
-  base: 'UAH',
-  quote: 'USD',
+  base: 'USD',
+  quote: 'UAH',
   day,
-  rate,
+  rate: String(1 / Number(rate)),
 });
+
+// Shared by every card->bond funding-recognition test below: the built
+// series' own point at bucket `t`, or a descriptive throw if that bucket is
+// missing (a `buildNetWorthSeries` bug, never expected against these
+// fixtures' own ranges).
+const amountAt = (series: NetWorthSeries, t: number): number => {
+  const point = series.points.find((candidate) => candidate.t === t);
+
+  if (point === undefined) {
+    throw new Error(`no bucket at ${t}`);
+  }
+
+  return point.amount;
+};
+
+// The same government-bond shape every card->bond funding-recognition test
+// below builds (quantity 1, no coupon, a fixed 2027 maturity) — only the
+// face value, purchase day, and purchase price vary per scenario (a
+// premium/discount, a cross-day gap, or an unmatched funding debit).
+const bondFor = (params: {
+  id: string;
+  currency: HoldingRow['currency'];
+  faceValueMinorUnits: number;
+  purchaseDate: number;
+  purchasePriceMinorUnits: number;
+}): SeriesHolding =>
+  holding({
+    id: params.id,
+    currency: params.currency,
+    type: 'bond',
+    balanceMinorUnits: 0,
+    metadata: {
+      quantity: 1,
+      faceValueMinorUnits: params.faceValueMinorUnits,
+      couponPct: 0,
+      couponFrequency: 'annually',
+      bondKind: 'government',
+      purchaseDate: params.purchaseDate,
+      purchasePriceMinorUnits: params.purchasePriceMinorUnits,
+      maturityDate: Date.UTC(2027, 0, 1),
+    },
+  });
 
 describe('buildNetWorthSeries', () => {
   it('converts holdings across currencies at each day’s historical rate', () => {
@@ -58,13 +110,13 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionsByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D1 },
     });
 
-    // D0: $100 + 4000*0.025=$100 -> $200. D1: $100 + 4000*0.05=$200 -> $300.
+    // day 0: $100 + 4000*0.025=$100 -> $200. day 1: $100 + 4000*0.05=$200 -> $300.
     expect(series.points).toEqual([
       { t: D0, amount: 200 },
       { t: D1, amount: 300 },
@@ -76,12 +128,13 @@ describe('buildNetWorthSeries', () => {
       holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 }), // $100.00
       holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 }), // 4000.00 UAH
     ];
-    // A rate on D0 and D2 but a GAP on D1: D1 must reuse D0's carried-forward rate.
+    // A rate on day 0 and day 2 but a GAP on day 1: day 1 must reuse day 0's
+    // carried-forward rate.
     const historyRows = [uahUsd(D0, '0.025'), uahUsd(D2, '0.05')];
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionsByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D2 },
@@ -96,7 +149,7 @@ describe('buildNetWorthSeries', () => {
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionsByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D1 },
@@ -107,21 +160,23 @@ describe('buildNetWorthSeries', () => {
   });
 
   it('carries the earliest stored rate backward to buckets before the first history day', () => {
-    // The UAH holding's only rate row starts on D1. Without carrying the earliest
-    // rate backward, the D0 bucket would omit UAH entirely and understate the
-    // start; instead D0 is priced at D1's (earliest) rate.
-    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })]; // 4000 UAH
+    // The UAH holding's only rate row starts on day 1. Without carrying the
+    // earliest rate backward, the day 0 bucket would omit UAH entirely and
+    // understate the start; instead day 0 is priced at day 1's (earliest) rate.
+    // 4000 UAH
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })];
     const historyRows = [uahUsd(D1, '0.05')];
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionsByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D1 },
     });
 
-    // D0 carries D1's 0.05 backward: 4000 * 0.05 = $200 (not $0 from a dropped holding).
+    // day 0 carries day 1's 0.05 backward: 4000 * 0.05 = $200 (not $0 from a
+    // dropped holding).
     expect(series.points.map((point) => point.amount)).toEqual([200, 200]);
     expect(series.startReference).toBe(200);
   });
@@ -130,41 +185,90 @@ describe('buildNetWorthSeries', () => {
     // The line's historical rate for today (NBU official) differs from the app's
     // live monobank BUY rate used by the headline/bar/pie. To reconcile, the most
     // recent bucket is valued at the live table so its “now” point matches them.
-    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })]; // 4000 UAH
+    // 4000 UAH
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })];
     const historyRows = [uahUsd(D0, '0.025'), uahUsd(D1, '0.025')];
 
     const series = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionsByHolding: new Map(),
       historyRows,
       baseCurrency: 'USD',
       range: { from: D0, to: D1 },
-      liveRateTable: { 'UAH:USD': 0.05 },
+      liveRateTable: { USD: 20 }, // rate(UAH, USD) = 1 / 20 = 0.05, the live table's own reading
       today: D1,
     });
 
-    // D0 (a past day) stays on the historical 0.025 -> $100; D1 (today) uses the
-    // live 0.05 -> $200.
+    // day 0 (a past day) stays on the historical 0.025 -> $100; day 1 (today)
+    // uses the live 0.05 -> $200.
     expect(series.points.map((point) => point.amount)).toEqual([100, 200]);
   });
 
-  it('resolves the rate for an intraday bucket instant to that UTC day’s row', () => {
-    // History `day` is UTC-midnight; a bucket instant partway through the day must
-    // still resolve to that day's rate rather than sliding to an adjacent day.
-    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })];
-    const historyRows = [uahUsd(D0, '0.025'), uahUsd(D1, '0.05')];
+  describe('a bucket reads the stored row of its LOCAL calendar day', () => {
+    // USD 100 held against a UAH base, so the amount is the day's USD:UAH rate
+    // x 100. History `day` is the UTC-midnight stand-in for a calendar date
+    // (an NBU `exchangedate`), the same key shape `dayKeyOf` returns.
+    const usdHundred = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })];
+    const septemberDay = (day: number): number => Date.UTC(2026, 8, day);
+    const usdRow = (day: number, rate: string): HistoryRow => ({
+      base: 'USD',
+      quote: 'UAH',
+      day: septemberDay(day),
+      rate,
+    });
+    const historyRows = [usdRow(1, '30'), usdRow(2, '31'), usdRow(3, '32')];
 
-    const series = buildNetWorthSeries({
-      holdings,
-      txByHolding: new Map(),
-      historyRows,
-      baseCurrency: 'USD',
-      range: { from: D0 + 13 * HOUR, to: D1 + 13 * HOUR },
+    it('reads day D’s row for the bucket at local midnight D, never D-1’s', () => {
+      // Kyiv local midnight of Sep 2 is Sep 1 21:00Z; a UTC-day key would floor
+      // it to Sep 1 and read the previous day's rate.
+      const series = buildNetWorthSeries({
+        holdings: usdHundred,
+        transactionsByHolding: new Map(),
+        historyRows,
+        baseCurrency: 'UAH',
+        range: { from: new Date(2026, 8, 1).getTime(), to: new Date(2026, 8, 3).getTime() },
+      });
+
+      expect(series.points.map((point) => point.amount)).toEqual([3000, 3100, 3200]);
     });
 
-    // Both buckets sit 13h into their UTC day and pick up that day's rate:
-    // D0 -> 4000 * 0.025 = $100, D1 -> 4000 * 0.05 = $200.
-    expect(series.points.map((point) => point.amount)).toEqual([100, 200]);
+    it('keeps an afternoon bucket on its own day’s row', () => {
+      const series = buildNetWorthSeries({
+        holdings: usdHundred,
+        transactionsByHolding: new Map(),
+        historyRows,
+        baseCurrency: 'UAH',
+        range: {
+          from: new Date(2026, 8, 1, 15).getTime(),
+          to: new Date(2026, 8, 3, 15).getTime(),
+        },
+      });
+
+      expect(series.points.map((point) => point.amount)).toEqual([3000, 3100, 3200]);
+    });
+
+    it.each([
+      ['00:30', new Date(2026, 8, 3, 0, 30).getTime()],
+      ['09:00', new Date(2026, 8, 3, 9).getTime()],
+    ])(
+      'at %s local, today’s midnight bucket takes the live rate like any current-day bucket',
+      (_label, now) => {
+        // End-of-local-day rule: every bucket whose local day is today is a
+        // current-day bucket, so it reads the live table at any time of day.
+        const series = buildNetWorthSeries({
+          holdings: usdHundred,
+          transactionsByHolding: new Map(),
+          historyRows,
+          baseCurrency: 'UAH',
+          range: { from: new Date(2026, 8, 2).getTime(), to: now },
+          liveRateTable: { USD: 99 },
+          today: now,
+        });
+
+        // Sep 2 midnight: its own stored row (31); Sep 3 midnight and now: live (99).
+        expect(series.points.map((point) => point.amount)).toEqual([3100, 9900, 9900]);
+      },
+    );
   });
 
   it('stays flat across a same-day card->bond move (the bond turns on for the whole day)', () => {
@@ -180,49 +284,32 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $100 and was debited $100, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000, // nominal $100.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000,
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000,
     });
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
+      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY_MS + 12 * HOUR },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
     // Day D (bond bought, card debited) must equal day D-1 (card still full): $100.
-    expect(amountAt(bucketDayD)).toBe(amountAt(D0 + 12 * HOUR));
-    expect(amountAt(bucketDayD)).toBe(100);
+    expect(amountAt(series, bucketDayD)).toBe(amountAt(series, D0 + 12 * HOUR));
+    expect(amountAt(series, bucketDayD)).toBe(100);
   });
 
   it('stays flat across a same-day card->bond move for a PREMIUM bond (valued at cost)', () => {
     // A PREMIUM bond: $107.87 paid for a $100.00 nominal. The card is debited the
     // price PAID. Valuing the live bond at cost (not nominal) makes the move
     // net-worth-neutral; valuing at nominal would leave a permanent $7.87 dip
-    // until maturity (the R4 bug).
+    // until maturity.
     const dayD = D1;
     const debitTime = dayD + 6 * HOUR; // 06:00 on day D
     const purchaseDate = dayD + 18 * HOUR; // 18:00 on day D (a mid-day timestamp)
@@ -230,53 +317,34 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $107.87 and was debited $107.87, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000, // nominal $100.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_787, // paid $107.87 (a premium over the $100.00 nominal)
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate,
+      purchasePriceMinorUnits: 10_787, // paid $107.87 (a premium over the $100.00 nominal)
     });
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
+      transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
+      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY_MS + 12 * HOUR },
     });
-
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
 
     // Day D (bond bought at cost, card debited the same price) must equal day D-1
     // (card still full): $107.87.
-    expect(amountAt(bucketDayD)).toBe(amountAt(D0 + 12 * HOUR));
-    expect(amountAt(bucketDayD)).toBe(107.87);
+    expect(amountAt(series, bucketDayD)).toBe(amountAt(series, D0 + 12 * HOUR));
+    expect(amountAt(series, bucketDayD)).toBe(107.87);
   });
 
-  it('stays flat across a same-day card->bond move when the synced debit ≠ the typed price', () => {
-    // The real synced case. The card is debited the ACTUAL amount that left (Q =
-    // $1100.00 — a fee / accrued-coupon (НКД) / rounded "roughly the price"),
-    // while the user typed a slightly different price (P = $1078.68). Recognizing
-    // the bond at the TYPED price leaves a permanent (Q − P) = $21.32 dip from the
-    // purchase day on, because the two legs are drawn from unrelated paths and
-    // never cancel. Reconciling the bond's held cost to the matched debit's amount
-    // (Q) makes the move net-worth-neutral: the card's −Q and the bond's +Q cancel.
+  it('ends the line at the typed price when the synced debit ≠ the typed price', () => {
+    // The card is debited the ACTUAL amount that left (Q = $1100.00 — a fee /
+    // accrued-coupon (НКД) / rounded "roughly the price"), while the user typed a
+    // slightly different price (P = $1078.68). The bond is worth P, the value its
+    // holding card and Home show, so the line steps down by (Q − P) = $21.32 on
+    // the purchase day and its "now" point matches Home.
     const dayD = D1;
     const debitTime = dayD + 6 * HOUR; // 06:00 on day D
     const purchaseDate = dayD + 18 * HOUR; // 18:00 on day D (a mid-day timestamp)
@@ -284,52 +352,33 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $1100.00 and was debited $1100.00, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 100_000, // nominal $1000.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 107_868, // user typed $1078.68 (roughly the price)
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 100_000, // nominal $1000.00
+      purchaseDate,
+      purchasePriceMinorUnits: 107_868, // user typed $1078.68 (roughly the price)
     });
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
       // The synced debit is $1100.00 — NOT equal to the typed $1078.68 price.
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -110_000 }]]]),
+      transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -110_000 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
+      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY_MS + 12 * HOUR },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-
-      return point.amount;
-    };
-
-    // Day D (bond bought, card debited Q) must equal day D-1 (card still full): the
-    // bond is recognized at the matched debit's amount Q = $1100.00, so no dip.
-    expect(amountAt(bucketDayD)).toBe(amountAt(D0 + 12 * HOUR));
-    expect(amountAt(bucketDayD)).toBe(1100);
+    expect(amountAt(series, D0 + 12 * HOUR)).toBe(1100);
+    expect(amountAt(series, bucketDayD)).toBe(1078.68);
+    expect(series.points.at(-1)?.amount).toBe(1078.68);
   });
 
-  it('stays flat through the REAL monobank statement->transaction mapping when the synced debit ≠ the typed price', () => {
+  it('recognizes the bond on the debit day through the REAL monobank statement->transaction mapping when the synced debit ≠ the typed price', () => {
     // REGRESSION for the reported bug, driven through the actual sync data path
     // instead of a hand-built fixture.
     //
-    // Every OTHER bond case above builds `txByHolding` from a literal
+    // Every OTHER bond case above builds `transactionsByHolding` from a literal
     // `{ time, amountMinorUnits }` object — including the "synced debit ≠ typed
     // price" case just above this one, which types `amountMinorUnits: -110_000`
     // directly into a `SeriesTransaction`. That proves `reconcileBondFunding`'s
@@ -344,8 +393,9 @@ describe('buildNetWorthSeries', () => {
     // major-unit amount, an un-scaled timestamp).
     //
     // This test instead builds a plain `MonobankStatementItem` — the exact wire
-    // shape `GET /personal/statement/...` returns (`src/monobank/monobank.types.d.ts`)
-    // — and threads it through the REAL, exported `mapStatementItem` from
+    // shape `GET /personal/statement/...` returns
+    // (`src/monobank/monobank-types/monobank.types.d.ts`) — and threads it through the REAL,
+    // exported `mapStatementItem` from
     // `src/monobank/sync.ts` (the same function `mapFetched`/`importAccount` call
     // in production) to produce the funding debit, rather than typing
     // `amountMinorUnits` by hand. That exercises the real sign/unit convention
@@ -400,100 +450,67 @@ describe('buildNetWorthSeries', () => {
     // Card started with $1100.00 and was debited $1100.00 (via the real mapped
     // transaction), so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 100_000, // nominal $1000.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 107_868, // P: user typed $1078.68 (roughly the price)
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 100_000, // nominal $1000.00
+      purchaseDate,
+      purchasePriceMinorUnits: 107_868, // P: user typed $1078.68 (roughly the price)
     });
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
       // The card's ledger holds the transaction the REAL mapping produced — not
       // a hand-typed `{ time, amountMinorUnits }` literal.
-      txByHolding: new Map([['card', [debitTransaction]]]),
+      transactionsByHolding: new Map([['card', [debitTransaction]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY + 12 * HOUR },
+      range: { from: D0 + 12 * HOUR, to: D0 + 2 * DAY_MS + 12 * HOUR },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
-    // Net worth must be FLAT across the purchase day: day D-1 (card still full,
-    // bond not yet recognized) must equal day D (bond bought, card debited by
-    // the real synced Q) — no permanent (Q - P) = $21.32 dip.
-    expect(amountAt(bucketDayD)).toBe(amountAt(D0 + 12 * HOUR));
-    expect(amountAt(bucketDayD)).toBe(1100);
+    // Day D-1: the card still holds Q. Day D: the card is debited the real synced
+    // Q and the bond is worth its typed price P, the value Home shows.
+    expect(amountAt(series, D0 + 12 * HOUR)).toBe(1100);
+    expect(amountAt(series, bucketDayD)).toBe(1078.68);
   });
 
   it('does not treat an unrelated same-currency debit far from the price as the funding outflow', () => {
     // A guard: a debit whose amount is NOWHERE near the bond's price (here 4× the
     // price) is not the bond's funding outflow. It must NOT be reconciled onto the
     // bond — neither its day nor its amount — so the bond falls back to the typed
-    // purchase day and typed price and STEPS net worth up there, and the day-D0
+    // purchase day and typed price and STEPS net worth up there, and the day-0
     // bucket (where the unrelated debit lands) is NOT inflated by a bond value.
-    const purchaseDate = D1 + 18 * HOUR; // typed mid-day timestamp on day D1
+    const purchaseDate = D1 + 18 * HOUR; // typed mid-day timestamp on day 1
 
-    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 }); // $200, untouched
-    // Card started with $400 and was debited $400 on D0 (unrelated spend), balance 0.
+    // $200, untouched
+    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 });
+    // Card started with $400 and was debited $400 on day 0 (unrelated spend), balance 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000,
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000, // $100.00 — the $400 debit is 4× this, outside tolerance
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000,
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000, // $100.00 — the $400 debit is 4× this, outside tolerance
     });
 
     const series = buildNetWorthSeries({
       holdings: [cash, card, bond],
-      txByHolding: new Map([['card', [{ time: D0 + 6 * HOUR, amountMinorUnits: -40_000 }]]]),
+      transactionsByHolding: new Map([
+        ['card', [{ time: D0 + 6 * HOUR, amountMinorUnits: -40_000 }]],
+      ]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: D0, to: D2 },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-
-      return point.amount;
-    };
-
-    // D0: only cash ($200) — the bond has NOT been mis-recognized onto the $400
+    // day 0: only cash ($200) — the bond has NOT been mis-recognized onto the $400
     // debit's day/amount (that would inflate this bucket to $600).
-    expect(amountAt(D0)).toBe(200);
-    // D1 (typed purchase day) and D2: the bond turns on at its typed price and
-    // STEPS net worth up by $100, unaffected by the unrelated debit — $300.
-    expect(amountAt(D1)).toBe(300);
-    expect(amountAt(D2)).toBe(300);
+    expect(amountAt(series, D0)).toBe(200);
+    // day 1 (typed purchase day) and day 2: the bond turns on at its typed price
+    // and STEPS net worth up by $100, unaffected by the unrelated debit — $300.
+    expect(amountAt(series, D1)).toBe(300);
+    expect(amountAt(series, D2)).toBe(300);
   });
 
   it('stays flat across a card->bond move sampled at LOCAL MIDNIGHT buckets (premium, at cost)', () => {
@@ -510,43 +527,27 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $107.87 and was debited $107.87, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000, // nominal $100.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate: dayD, // UTC/local midnight of day D
-        purchasePriceMinorUnits: 10_787, // paid $107.87 (a premium over the $100.00 nominal)
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate: dayD, // UTC/local midnight of day D
+      purchasePriceMinorUnits: 10_787, // paid $107.87 (a premium over the $100.00 nominal)
     });
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
+      transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_787 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
-      range: { from: D0, to: D0 + 2 * DAY }, // buckets at D0, D1 (=dayD), D2 — all midnight
+      // buckets at day 0, day 1 (=dayD), day 2 — all midnight
+      range: { from: D0, to: D0 + 2 * DAY_MS },
     });
-
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
 
     // Day-D midnight bucket (bond bought at cost, card debited the same price) must
     // equal the day-(D-1) midnight bucket (card still full): $107.87.
-    expect(amountAt(dayD)).toBe(amountAt(D0));
-    expect(amountAt(dayD)).toBe(107.87);
+    expect(amountAt(series, dayD)).toBe(amountAt(series, D0));
+    expect(amountAt(series, dayD)).toBe(107.87);
   });
 
   it('stays flat across a CROSS-day card->bond move (funding debit dated BEFORE purchaseDate)', () => {
@@ -566,46 +567,29 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $100 and was debited $100, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000, // nominal $100.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000, // paid $100.00
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000, // paid $100.00
     });
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: dayDm1, to: dayD2 },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
     // Every bucket from the gap day D through the typed purchase day D+2 must equal
     // the pre-move net worth ($100): the money left on day D, so the bond's cost
     // is recognized from day D and there is no dip on D or D+1.
-    expect(amountAt(dayDm1)).toBe(100);
-    expect(amountAt(dayD)).toBe(100);
-    expect(amountAt(dayD1)).toBe(100);
-    expect(amountAt(dayD2)).toBe(100);
+    expect(amountAt(series, dayDm1)).toBe(100);
+    expect(amountAt(series, dayD)).toBe(100);
+    expect(amountAt(series, dayD1)).toBe(100);
+    expect(amountAt(series, dayD2)).toBe(100);
   });
 
   it('stays flat across a CROSS-day card->bond move (funding debit dated AFTER purchaseDate)', () => {
@@ -623,45 +607,28 @@ describe('buildNetWorthSeries', () => {
 
     // Card started with $100 and was debited $100, so its current balance is 0.
     const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
-    const bond = holding({
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000, // nominal $100.00
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000, // paid $100.00
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000, // paid $100.00
     });
 
     const series = buildNetWorthSeries({
       holdings: [card, bond],
-      txByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: dayDm1, to: dayD2 },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
     // No bump between the typed purchase day D and the later funding day D+2: the
     // bond's cost is recognized only from day D+2, when the money actually left.
-    expect(amountAt(dayDm1)).toBe(100);
-    expect(amountAt(dayD)).toBe(100);
-    expect(amountAt(dayD1)).toBe(100);
-    expect(amountAt(dayD2)).toBe(100);
+    expect(amountAt(series, dayDm1)).toBe(100);
+    expect(amountAt(series, dayD)).toBe(100);
+    expect(amountAt(series, dayD1)).toBe(100);
+    expect(amountAt(series, dayD2)).toBe(100);
   });
 
   it('turns a bond on at its typed purchaseDate when no funding debit matches (fallback, no regression)', () => {
@@ -671,129 +638,1101 @@ describe('buildNetWorthSeries', () => {
     // falls back to the typed `purchaseDate`, so net worth should still STEP UP
     // there — proving the fix doesn't flatten a legitimately unfunded bond into
     // never showing its cost.
-    const purchaseDate = D1 + 18 * HOUR; // mid-day timestamp on day D1
+    const purchaseDate = D1 + 18 * HOUR; // mid-day timestamp on day 1
 
-    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 }); // $200, untouched
-    const bond = holding({
+    // $200, untouched
+    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 20_000 });
+    const bond = bondFor({
       id: 'bond',
       currency: 'USD',
-      type: 'bond',
-      balanceMinorUnits: 0,
-      metadata: {
-        quantity: 1,
-        faceValueMinorUnits: 10_000,
-        couponPct: 0,
-        couponFrequency: 'annually',
-        bondKind: 'government',
-        purchaseDate,
-        purchasePriceMinorUnits: 10_000, // paid $100.00
-        maturityDate: Date.UTC(2027, 0, 1),
-      },
+      faceValueMinorUnits: 10_000,
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000, // paid $100.00
     });
 
     const series = buildNetWorthSeries({
       holdings: [cash, bond],
-      txByHolding: new Map(), // no transaction anywhere funds the bond's cost
+      transactionsByHolding: new Map(), // no transaction anywhere funds the bond's cost
       historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
       baseCurrency: 'USD',
       range: { from: D0, to: D2 },
     });
 
-    const amountAt = (t: number): number => {
-      const point = series.points.find((candidate) => candidate.t === t);
-      if (point === undefined) {
-        throw new Error(`no bucket at ${t}`);
-      }
-      return point.amount;
-    };
-
-    // D0 (before purchaseDate's local day): the bond has not turned on yet.
-    expect(amountAt(D0)).toBe(200);
-    // D1 (purchaseDate's local day) and D2 (after): the bond turns ON at its
+    // day 0 (before purchaseDate's local day): the bond has not turned on yet.
+    expect(amountAt(series, D0)).toBe(200);
+    // day 1 (purchaseDate's local day) and day 2 (after): the bond turns ON at its
     // typed day and STEPS net worth up, since there is no offsetting debit to
     // net it against — the manual-bond path is unchanged by the fix.
-    expect(amountAt(D1)).toBe(300);
-    expect(amountAt(D2)).toBe(300);
+    expect(amountAt(series, D1)).toBe(300);
+    expect(amountAt(series, D2)).toBe(300);
   });
 
-  describe('under an explicit non-host timezone (Kiritimati, UTC+14)', () => {
-    // Every cross-day fixture above relies on the IMPLICIT host process
-    // timezone (this repo's dev machine runs Europe/Kyiv, UTC+2/+3) via
-    // `addLocalDays`/`startOfLocalDay`, which read `new Date(...)` in whatever
-    // zone the process happens to be in. Pin an explicit, extreme, DST-free,
-    // non-Kyiv, non-UTC offset so the same funding-day recognition is proven
-    // independent of which machine runs the suite — not merely passing by
-    // coincidence of the dev box's zone (a CI runner defaulting to UTC would
-    // never have exercised the local-day arithmetic at all).
-    const originalTz = process.env.TZ;
+  it('lets only ONE of two same-price, same-week bonds claim the shared funding debit', () => {
+    // Two bonds typed on the SAME day at the SAME price, but only ONE real
+    // funding debit exists in the ledger. Without claiming, both bonds would
+    // match that single debit and each recognize its cost from the debit's
+    // day — a phantom $100 appearing from nowhere. Claiming forces the two
+    // bonds to a FIXED order (typed purchaseDate, then id): 'bond-a' sorts
+    // before 'bond-b', so 'bond-a' claims the debit and 'bond-b' falls back
+    // to its own typed day/price instead of double-claiming it.
+    const dayDm1 = startOfLocalDay(Date.UTC(2026, 0, 5, 12)); // a winter day (no DST step)
+    const dayD = addLocalDays(dayDm1, 1); // the one funding debit lands here
+    const dayD2 = addLocalDays(dayDm1, 3); // both bonds' typed purchaseDate
 
-    beforeAll(() => {
-      process.env.TZ = 'Pacific/Kiritimati';
+    const debitTime = dayD + 6 * HOUR;
+    const purchaseDate = dayD2 + 18 * HOUR;
+
+    // Card started at $100 and was debited $100 ONCE, so its current balance is 0.
+    const card = holding({ id: 'card', currency: 'USD', balanceMinorUnits: 0 });
+    const bondA = bondFor({
+      id: 'bond-a',
+      currency: 'USD',
+      faceValueMinorUnits: 10_000, // nominal $100.00
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000, // paid $100.00 — same price as bond-b
+    });
+    const bondB = bondFor({
+      id: 'bond-b',
+      currency: 'USD',
+      faceValueMinorUnits: 10_000,
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000,
     });
 
-    afterAll(() => {
-      process.env.TZ = originalTz;
+    const series = buildNetWorthSeries({
+      holdings: [card, bondA, bondB],
+      transactionsByHolding: new Map([['card', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      historyRows: [uahUsd(D0, '0.025')], // present only to pass the no-history guard
+      baseCurrency: 'USD',
+      range: { from: dayDm1, to: dayD2 },
     });
 
-    it('still recognizes the funding-debit day across a one-day gap', () => {
-      const purchaseDay = startOfLocalDay(Date.UTC(2026, 0, 10, 12));
-      const debitDay = addLocalDays(purchaseDay, -1); // funded one calendar day earlier
-      const debitTime = debitDay + 6 * HOUR;
-      const purchaseDate = purchaseDay + 18 * HOUR;
-
-      const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 0 });
-      const bond = holding({
-        id: 'bond',
-        currency: 'USD',
-        type: 'bond',
-        balanceMinorUnits: 0,
-        metadata: {
-          quantity: 1,
-          faceValueMinorUnits: 10_000,
-          couponPct: 0,
-          couponFrequency: 'annually',
-          bondKind: 'government',
-          purchaseDate,
-          purchasePriceMinorUnits: 10_000,
-          maturityDate: Date.UTC(2027, 0, 1),
-        },
-      });
-
-      const series = buildNetWorthSeries({
-        holdings: [cash, bond],
-        txByHolding: new Map([['cash', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
-        historyRows: [uahUsd(D0, '0.025')],
-        baseCurrency: 'USD',
-        range: { from: debitDay, to: purchaseDay },
-      });
-
-      const at = (t: number): number => {
-        const point = series.points.find((candidate) => candidate.t === t);
-        if (point === undefined) {
-          throw new Error(`no bucket at ${t}`);
-        }
-        return point.amount;
-      };
-
-      // The money left on the debit day, so the bond's cost is recognized from
-      // there and net worth is $100 flat on both the debit day and the typed
-      // purchase day — no dip, even under this far-flung timezone.
-      expect(at(debitDay)).toBe(100);
-      expect(at(purchaseDay)).toBe(100);
-    });
+    // Before the debit: card full ($100), neither bond has turned on yet.
+    expect(amountAt(series, dayDm1)).toBe(100);
+    // On the debit day: 'bond-a' claims it and turns on at cost ($100),
+    // netting the card's -$100 to zero — flat, NOT $200 (which double-claiming
+    // would produce). 'bond-b' has not turned on yet (its typed day is later).
+    expect(amountAt(series, dayD)).toBe(100);
+    // On the typed purchase day: 'bond-b' had no debit left to claim, so it
+    // falls back to its own typed day/price and STEPS net worth up by $100 —
+    // a real, additional, unfunded-in-this-ledger cost, not absorbed twice.
+    expect(amountAt(series, dayD2)).toBe(200);
   });
 
-  it('returns an empty series when no history has been backfilled yet', () => {
+  it('recognizes the funding-debit day across a one-day gap between local midnights', () => {
+    const purchaseDay = startOfLocalDay(Date.UTC(2026, 0, 10, 12));
+    const debitDay = addLocalDays(purchaseDay, -1); // funded one calendar day earlier
+    const debitTime = debitDay + 6 * HOUR;
+    const purchaseDate = purchaseDay + 18 * HOUR;
+
+    const cash = holding({ id: 'cash', currency: 'USD', balanceMinorUnits: 0 });
+    const bond = bondFor({
+      id: 'bond',
+      currency: 'USD',
+      faceValueMinorUnits: 10_000,
+      purchaseDate,
+      purchasePriceMinorUnits: 10_000,
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [cash, bond],
+      transactionsByHolding: new Map([['cash', [{ time: debitTime, amountMinorUnits: -10_000 }]]]),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: debitDay, to: purchaseDay },
+    });
+
+    // The money left on the debit day, so the bond's cost is recognized from
+    // there and net worth is $100 flat on both the debit day and the typed
+    // purchase day — no dip.
+    expect(amountAt(series, debitDay)).toBe(100);
+    expect(amountAt(series, purchaseDay)).toBe(100);
+  });
+
+  // A base-currency-only user (no foreign holding, ever) never gets a
+  // `currency_rate_history` row at all — the backfill gate has nothing
+  // cross-currency to fetch — so gating the whole series on `historyRows.length`
+  // left that user's "Net worth over time" line empty forever. A same-currency
+  // holding needs no cross-rate conversion (`canConvert` returns true whenever
+  // `currency === base`), so it must still produce points with zero history rows.
+  it('produces points for a base-currency-only (UAH) user with no history rows', () => {
+    // 4000.00 UAH
+    const holdings = [holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 })];
+
+    const series: NetWorthSeries = buildNetWorthSeries({
+      holdings,
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([4000, 4000, 4000]);
+    expect(series.startReference).toBe(4000);
+  });
+
+  it('produces points for a base-currency-only (USD) user with no history rows', () => {
+    // $100.00
     const holdings = [holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 })];
 
     const series: NetWorthSeries = buildNetWorthSeries({
       holdings,
-      txByHolding: new Map(),
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([100, 100, 100]);
+    expect(series.startReference).toBe(100);
+  });
+
+  describe('the bundled fiat seed backs a currency with no history row', () => {
+    const gbpSeedRate = FIAT_UAH_PRICE_SEED.GBP;
+
+    if (gbpSeedRate === undefined) {
+      throw new Error('fixture assumption broken: FIAT_UAH_PRICE_SEED has no GBP entry');
+    }
+
+    it('values a GBP holding at the seed rate when only a different currency has history', () => {
+      const holdings = [
+        holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 1_000_000 }), // 10,000.00 UAH
+        holding({ id: 'gbp', currency: 'GBP', balanceMinorUnits: 100_000 }), // 1,000.00 GBP
+      ];
+      // Only a USD history row exists — present just to pass the no-history
+      // gate; GBP has NO stored row at all, historical or earliest.
+      const historyRows = [uahUsd(D0, '0.025')];
+
+      const series = buildNetWorthSeries({
+        holdings,
+        transactionsByHolding: new Map(),
+        historyRows,
+        baseCurrency: 'UAH',
+        range: { from: D0, to: D1 },
+      });
+
+      // 10,000 UAH + 1,000 GBP * the bundled seed's GBP-in-UAH price.
+      const expected = 10_000 + 1_000 * gbpSeedRate;
+      expect(series.points.map((point) => point.amount)).toEqual([expected, expected]);
+    });
+
+    it('converts every holding into a foreign base currency when both legs have real history', () => {
+      const holdings = [
+        holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 1_000_000 }), // 10,000.00 UAH
+        holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 100_000 }), // 1,000.00 USD
+      ];
+      const historyRows: HistoryRow[] = [
+        { base: 'USD', quote: 'UAH', day: D0, rate: '40' },
+        { base: 'GBP', quote: 'UAH', day: D0, rate: '55' },
+      ];
+
+      const series = buildNetWorthSeries({
+        holdings,
+        transactionsByHolding: new Map(),
+        historyRows,
+        baseCurrency: 'GBP',
+        range: { from: D0, to: D0 },
+      });
+
+      // 10,000 UAH / 55 (UAH->GBP) + 1,000 USD * 40 / 55 (USD->UAH->GBP), each
+      // leg rounded to GBP's own 2-decimal minor-unit scale before summing —
+      // matching how `convert` builds each leg's own `Money`.
+      const expected =
+        Money.fromMajor('GBP', 10_000 / 55).minorUnits +
+        Money.fromMajor('GBP', (1_000 * 40) / 55).minorUnits;
+      expect(series.points[0]?.amount).toBe(toMajor(expected, 'GBP'));
+    });
+
+    it('prefers a real stored GBP history row over the bundled seed value', () => {
+      // 100.00 GBP
+      const holdings = [holding({ id: 'gbp', currency: 'GBP', balanceMinorUnits: 100_00 })];
+      const historyRows: HistoryRow[] = [{ base: 'GBP', quote: 'UAH', day: D0, rate: '999' }];
+
+      const series = buildNetWorthSeries({
+        holdings,
+        transactionsByHolding: new Map(),
+        historyRows,
+        baseCurrency: 'UAH',
+        range: { from: D0, to: D0 },
+      });
+
+      // 100 GBP * the STORED 999 rate, never the seed's 60.326.
+      expect(series.points[0]?.amount).toBe(100 * 999);
+    });
+  });
+
+  // With no history rows yet (the backfill still running or offline), a
+  // mixed-currency user's foreign holding would otherwise just drop out of
+  // every past point while today's point (valued at the live rate table)
+  // keeps it — a misleading jump, not the loading/empty state the user saw
+  // before. Only a base-currency-only user (no holding ever needs a
+  // cross-rate) still gets points with no history rows.
+  it('returns an empty series for mixed holdings with no history rows, even though one holding shares the base currency', () => {
+    const holdings = [
+      holding({ id: 'usd', currency: 'USD', balanceMinorUnits: 10_000 }), // $100.00, base
+      holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 400_000 }), // foreign, no rate yet
+    ];
+
+    const series: NetWorthSeries = buildNetWorthSeries({
+      holdings,
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D0 },
+    });
+
+    expect(series).toEqual({ points: [], startReference: 0 });
+  });
+
+  // A holding-less user (no accounts at all yet) must still see the genuine
+  // empty state, never a spurious flat-zero line: `bucketTimes` produces a
+  // bucket regardless of whether any holding exists, so with zero holdings
+  // the reduce below would otherwise sum to a real (if zero) point for every
+  // bucket instead of reporting nothing to plot.
+  it('returns an empty series when there are no holdings at all', () => {
+    const series: NetWorthSeries = buildNetWorthSeries({
+      holdings: [],
+      transactionsByHolding: new Map(),
       historyRows: [],
       baseCurrency: 'USD',
       range: { from: D0, to: D2 },
     });
 
     expect(series).toEqual({ points: [], startReference: 0 });
+  });
+
+  // `property_item` is ledgerless — its value derives from its `lots`
+  // metadata (priced at read time), never from `transactionsByHolding` — so the series
+  // is flat across every bucket even with an EMPTY transaction map, and it is
+  // valued at its cost basis (never 0) by default, without a `book`.
+  it('values a property flat via its lots cost basis, with no ledger rows', () => {
+    const propertyHolding = holding({
+      id: 'prop',
+      currency: 'USD',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 20_000_00 }],
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [propertyHolding],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([20_000, 20_000, 20_000]);
+  });
+
+  // Threading a real `PriceBook` through overrides the cost-basis
+  // fallback with the priced value — proving `book` reaches
+  // `createHoldingValuer` through the whole builder, not just its own default.
+  it('values a property at its priced value when a PriceBook is supplied, not its cost basis', () => {
+    const propertyHolding = holding({
+      id: 'prop',
+      currency: 'USD',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 20_000_00 }],
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop'),
+        day: D0,
+        price: '25000',
+        currency: 'USD',
+        source: 'manual',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [propertyHolding],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D0 },
+      book,
+    });
+
+    expect(series.points[0]?.amount).toBe(25_000);
+  });
+
+  it('values each bucket at the ownership share of its own day', () => {
+    const propertyHolding = holding({
+      id: 'prop',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 20_000_00 }],
+        ownership: [{ day: D1, numerator: 1, denominator: 2 }],
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [propertyHolding],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([20_000, 10_000, 10_000]);
+  });
+
+  it('values the whole asset on the buckets before the first share change', () => {
+    const propertyHolding = holding({
+      id: 'prop',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 20_000_00 }],
+        ownership: [{ day: D2, numerator: 1, denominator: 2 }],
+      },
+    });
+
+    const series = buildNetWorthSeries({
+      holdings: [propertyHolding],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([20_000, 20_000, 10_000]);
+  });
+
+  it('reads a share set at creation from the lot day, the first day with value', () => {
+    const propertyHolding = holding({
+      id: 'prop',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: D1, quantityDelta: '1', costMinorUnits: 20_000_00 }],
+        ownership: [{ day: D1, numerator: 1, denominator: 2 }],
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('prop'),
+        day: D0,
+        price: '20000',
+        currency: 'USD',
+        source: 'manual',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [propertyHolding],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'USD',
+      range: { from: D0, to: D2 },
+      book,
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([0, 10_000, 10_000]);
+  });
+
+  // A metal holding is priced through the SHARED
+  // `metal:<XAU|...>` instrument, not a per-holding `holding:<id>` series —
+  // its series must FOLLOW that instrument's own day-to-day NBU points
+  // (quantity * purity * price / troy-ounce-grams for 'g'), unlike
+  // property_item's flat cost-basis-fallback series above.
+  it('follows the NBU metal:XAU points day to day for a gold bar holding', () => {
+    const goldBar = holding({
+      id: 'gold',
+      currency: 'UAH',
+      type: 'metal',
+      metadata: {
+        metal: 'XAU',
+        form: 'bar',
+        unit: 'oz',
+        purity: '1',
+        lots: [{ day: D0, quantityDelta: '1', costMinorUnits: 7_000_000_00 }],
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: D0,
+        price: '80000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+      {
+        instrument: metalInstrument('XAU'),
+        day: D1,
+        price: '81000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [goldBar],
+      transactionsByHolding: new Map(),
+      // `historyRows` gates the WHOLE series (empty -> "nothing accurate to
+      // draw yet"), even though a same-currency holding needs no cross-rate
+      // conversion — a row is required to get past that gate, same as the
+      // property tests above.
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D1 },
+      book,
+    });
+
+    // 1 oz * purity 1 * price -> the NBU price itself, in major units.
+    expect(series.points.map((point) => point.amount)).toEqual([80_000, 81_000]);
+  });
+
+  // `quantityAt` reads 0 before a lot's own day, so a metal holding
+  // contributes exactly 0 to net worth at any bucket before its first lot —
+  // even though the shared metal:XAU instrument already carries a price
+  // point that far back (this is a REAL zero quantity, not "no price yet").
+  it('contributes 0 to net worth before its first lot day', () => {
+    const goldBar = holding({
+      id: 'gold',
+      currency: 'UAH',
+      type: 'metal',
+      metadata: {
+        metal: 'XAU',
+        form: 'bar',
+        unit: 'oz',
+        purity: '1',
+        lots: [{ day: D1, quantityDelta: '1', costMinorUnits: 8_000_000_00 }],
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: metalInstrument('XAU'),
+        day: D0,
+        price: '80000',
+        currency: 'UAH',
+        source: 'nbu',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [goldBar],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D0 },
+      book,
+    });
+
+    expect(series.points[0]?.amount).toBe(0);
+  });
+
+  // Net worth = assets − debt outstanding. A loan's own
+  // value is negative (`holding-value.ts`), and `buildNetWorthSeries` needs
+  // no debt-aware logic of its own — it already sums every holding's own
+  // (possibly negative) value at each bucket, day by day, following manual
+  // corrections the same way a `none`-schedule loan's series already does.
+  it("subtracts a loan holding's outstanding balance from net worth, day by day", () => {
+    const loan = holding({
+      id: 'loan',
+      currency: 'UAH',
+      type: 'loan',
+      metadata: {
+        kind: 'personal',
+        principalMinorUnits: 100_000_00,
+        startDate: D0,
+        schedule: 'none',
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('loan'),
+        day: D0,
+        price: '100000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+      {
+        instrument: holdingInstrument('loan'),
+        day: D1,
+        price: '90000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [loan],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D1 },
+      book,
+    });
+
+    // Value = -outstanding, in major units, at each day's own correction.
+    expect(series.points.map((point) => point.amount)).toEqual([-100_000, -90_000]);
+  });
+
+  // A linked payment moves money from the payer card to the loan: each bucket
+  // counts only the payments dated at or before it, on the same local day the
+  // card's own running balance drops, so net worth stays flat.
+  it('stays flat across a linked loan payment: the card and the loan move in the same bucket', () => {
+    const loan = holding({
+      id: 'loan',
+      currency: 'UAH',
+      type: 'loan',
+      metadata: {
+        kind: 'personal',
+        principalMinorUnits: 100_000_00,
+        startDate: D0,
+        schedule: 'none',
+      },
+    });
+    const card = holding({
+      id: 'card',
+      currency: 'UAH',
+      type: 'card',
+      balanceMinorUnits: 40_000_00,
+    });
+    const paymentTime = D1 + 5 * HOUR;
+    const book = buildPriceBook(
+      [
+        {
+          instrument: holdingInstrument('loan'),
+          day: D0,
+          price: '100000',
+          currency: 'UAH',
+          source: 'manual',
+        },
+      ],
+      [{ loanHoldingId: 'loan', time: paymentTime, amountMinorUnits: -10_000_00, currency: 'UAH' }],
+    );
+
+    const series = buildNetWorthSeries({
+      holdings: [loan, card],
+      transactionsByHolding: new Map([
+        ['card', [{ time: paymentTime, amountMinorUnits: -10_000_00 }]],
+      ]),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D2 },
+      book,
+    });
+
+    expect(series.points.map((point) => point.amount)).toEqual([-50_000, -50_000, -50_000]);
+  });
+
+  // A correction dated AFTER the queried instant must never retroactively
+  // anchor it — the loan contributes exactly 0 before its own `startDate`,
+  // the same rule `holding-value.test.ts` covers at the single-holding level,
+  // now exercised through the full series builder.
+  it("contributes 0 to net worth before the loan's own start date", () => {
+    const loan = holding({
+      id: 'loan',
+      currency: 'UAH',
+      type: 'loan',
+      metadata: {
+        kind: 'personal',
+        principalMinorUnits: 100_000_00,
+        startDate: D1,
+        schedule: 'none',
+      },
+    });
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('loan'),
+        day: D1,
+        price: '100000',
+        currency: 'UAH',
+        source: 'manual',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings: [loan],
+      transactionsByHolding: new Map(),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: D0, to: D0 },
+      book,
+    });
+
+    expect(series.points[0]?.amount).toBe(0);
+  });
+
+  // Every weekly bucket re-reads the same loan against the same book, so the
+  // installment table and each linked payment's interest must be built once,
+  // not once per payment per bucket.
+  it('values a 30-year loan with 60 linked payments over 260 weekly buckets within budget', () => {
+    const startDate = new Date(2001, 0, 15).getTime();
+    const loan = holding({
+      id: 'loan',
+      currency: 'UAH',
+      type: 'loan',
+      metadata: {
+        kind: 'mortgage',
+        principalMinorUnits: 3_000_000_00,
+        startDate,
+        annualRatePct: 12,
+        termMonths: 360,
+        schedule: 'annuity',
+      },
+    });
+    const payments = Array.from({ length: 60 }, (_, index) => ({
+      loanHoldingId: 'loan',
+      time: new Date(2021, index, 15, 10).getTime(),
+      amountMinorUnits: -30_000_00,
+      currency: 'UAH' as const,
+    }));
+    const from = new Date(2021, 0, 1).getTime();
+    const startedAt = performance.now();
+
+    const series = buildNetWorthSeries({
+      holdings: [loan],
+      transactionsByHolding: new Map(),
+      historyRows: [],
+      baseCurrency: 'UAH',
+      range: { from, to: from + 259 * 7 * DAY_MS },
+      bucketDays: 7,
+      book: buildPriceBook([], payments),
+    });
+
+    expect(series.points).toHaveLength(260);
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+  });
+
+  describe('a closed holding', () => {
+    const openDay = D0;
+    const midDay = D1;
+    const closeDay = D2;
+    // A real `closedAt` is whatever instant the user tapped Close — never
+    // exactly local midnight — so every test below closes the holding
+    // MID-DAY, the same way `holdings.repo.ts`'s `closeMany` stamps it
+    // (`unixepoch() * 1000`).
+    const closedAt = closeDay + 12 * HOUR;
+    const afterCloseDay = D2 + DAY_MS;
+    const range = { from: openDay, to: afterCloseDay };
+
+    it('keeps its real reconstructed value through its own close day, then zeros afterward', () => {
+      const jar = holding({ id: 'jar', currency: 'UAH', balanceMinorUnits: 1_000_00, closedAt });
+      // No transaction after openDay: the balance stays 1,000 for the whole
+      // range unless the closedAt gate zeroes it, so afterCloseDay reading 0
+      // can only come from that gate, never from a ledger row.
+      const ledger = new Map([['jar', [{ time: openDay, amountMinorUnits: 1_000_00 }]]]);
+
+      const series = buildNetWorthSeries({
+        holdings: [jar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+
+      expect(amountAt(series, openDay)).toBe(1_000);
+      expect(amountAt(series, midDay)).toBe(1_000);
+      // The close day's own bucket sits at LOCAL MIDNIGHT, strictly BEFORE
+      // the mid-day closedAt instant, so it still reads the real value.
+      expect(amountAt(series, closeDay)).toBe(1_000);
+      expect(amountAt(series, afterCloseDay)).toBe(0);
+    });
+
+    it('does not change any past point when a zero-balance holding is closed (parity with an equivalent still-open holding)', () => {
+      const ledger = new Map([
+        [
+          'jar',
+          [
+            { time: openDay, amountMinorUnits: 1_000_00 },
+            { time: midDay, amountMinorUnits: -1_000_00 }, // drained BEFORE the close
+          ],
+        ],
+      ]);
+      const openJar = holding({ id: 'jar', currency: 'UAH', balanceMinorUnits: 0 });
+      const closedJar = holding({
+        id: 'jar',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        closedAt,
+      });
+
+      const openSeries = buildNetWorthSeries({
+        holdings: [openJar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+      const closedSeries = buildNetWorthSeries({
+        holdings: [closedJar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+
+      for (const point of openSeries.points) {
+        if (point.t < closedAt) {
+          expect(amountAt(closedSeries, point.t)).toBe(point.amount);
+        }
+      }
+    });
+
+    it("zeros every bucket after the close day even when the holding's reconstructed balance would otherwise stay nonzero", () => {
+      const jar = holding({
+        id: 'jar',
+        currency: 'UAH',
+        balanceMinorUnits: 500_00,
+        closedAt,
+      });
+      // No transactions after openDay: the UN-zeroed reconstructed balance
+      // would read 500 forever, proving the zero comes from `closedAt`, not
+      // a ledger row.
+      const ledger = new Map([['jar', [{ time: openDay, amountMinorUnits: 500_00 }]]]);
+
+      const series = buildNetWorthSeries({
+        holdings: [jar],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range,
+      });
+
+      expect(amountAt(series, closeDay)).toBe(500);
+      expect(amountAt(series, afterCloseDay)).toBe(0);
+    });
+
+    // The screen's own "now" snapshots (the headline, the by-type bar, the
+    // account pie) read ONLY open holdings, so the moment a holding closes it
+    // is excluded from them entirely, however early or late that happens
+    // today. The line's own rightmost point (the "now" bucket, at the exact
+    // range end) must therefore also zero a holding closed EARLIER TODAY —
+    // comparing raw instants (`t >= closedAt`), not local days, is what makes
+    // that true: a local-day compare treats "today" as a single unit and
+    // would have kept counting the holding right up through today's bucket.
+    it('zeroes a holding closed earlier today at the rightmost ("now") point, matching the open-holdings-only headline', () => {
+      const closedToday = closeDay + 6 * HOUR;
+      const now = closeDay + 18 * HOUR; // later the SAME day
+      const closedJar = holding({
+        id: 'jar',
+        currency: 'UAH',
+        balanceMinorUnits: 500_00,
+        closedAt: closedToday,
+      });
+      const stillOpen = holding({ id: 'card', currency: 'UAH', balanceMinorUnits: 200_00 });
+      const ledger = new Map([['jar', [{ time: openDay, amountMinorUnits: 500_00 }]]]);
+
+      const series = buildNetWorthSeries({
+        holdings: [closedJar, stillOpen],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range: { from: openDay, to: now },
+        today: now,
+      });
+      // The equivalent open-holdings-only build a headline/bar/pie would use.
+      const headlineOnlySeries = buildNetWorthSeries({
+        holdings: [stillOpen],
+        transactionsByHolding: ledger,
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range: { from: openDay, to: now },
+        today: now,
+      });
+
+      expect(amountAt(series, now)).toBe(amountAt(headlineOnlySeries, now));
+      expect(amountAt(series, now)).toBe(200);
+    });
+
+    // Deleting a sold-out lot holding erased its lots while the cash kept the
+    // buy debit, so every bucket between buy and sale dropped by the holding's
+    // value; closing it keeps them.
+    it('keeps every past bucket of a sold-out manually priced holding closed after its sale', () => {
+      const month = (index: number, day: number): number => Date.UTC(2026, index, day);
+      const buy = month(1, 1);
+      const sale = month(5, 1);
+      const lotHolding = holding({
+        id: 'lot-holding',
+        type: 'property_item',
+        currency: 'UAH',
+        metadata: {
+          category: 'real_estate',
+          lots: [
+            { day: buy, quantityDelta: '10', costMinorUnits: 10_000_00 },
+            { day: sale, quantityDelta: '-10', costMinorUnits: -10_000_00 },
+          ],
+        },
+      });
+      const brokerCash = holding({ id: 'cash', currency: 'UAH', balanceMinorUnits: 22_000_00 });
+      const ledger = new Map([
+        [
+          'cash',
+          [
+            { time: month(0, 10), amountMinorUnits: 20_000_00 },
+            { time: buy + HOUR, amountMinorUnits: -10_000_00 },
+            { time: sale + HOUR, amountMinorUnits: 12_000_00 },
+          ],
+        ],
+      ]);
+      const book = buildPriceBook([
+        {
+          instrument: holdingInstrument('lot-holding'),
+          day: buy,
+          price: '1000',
+          currency: 'UAH',
+          source: 'manual',
+        },
+        {
+          instrument: holdingInstrument('lot-holding'),
+          day: month(3, 1),
+          price: '1200',
+          currency: 'UAH',
+          source: 'manual',
+        },
+      ]);
+      const seriesWith = (closedAt: number | null): number[] =>
+        buildNetWorthSeries({
+          holdings: [brokerCash, { ...lotHolding, closedAt }],
+          transactionsByHolding: ledger,
+          historyRows: [],
+          baseCurrency: 'UAH',
+          range: { from: month(0, 15), to: month(6, 15) },
+          bucketDays: 30,
+          today: month(6, 15),
+          book,
+        }).points.map((point) => point.amount);
+
+      expect(seriesWith(month(5, 20))).toEqual(seriesWith(null));
+      expect(seriesWith(month(5, 20))).toEqual([
+        20_000, 20_000, 20_000, 22_000, 22_000, 22_000, 22_000, 22_000,
+      ]);
+    });
+  });
+
+  it('ends on the net worth Home shows for a bond, a lot holding, and a closed holding', () => {
+    const start = new Date(2026, 8, 1).getTime();
+    const day = (offset: number, hour = 0): number => addLocalDays(start, offset) + hour * HOUR;
+    const now = day(29, 12);
+    // Funded by a 1100.00 debit, typed at 1078.68.
+    const card = holding({ id: 'card' });
+    const bond = bondFor({
+      id: 'bond',
+      currency: 'USD',
+      faceValueMinorUnits: 1_000_00,
+      purchaseDate: day(9, 18),
+      purchasePriceMinorUnits: 1_078_68,
+    });
+    const lotHolding = holding({
+      id: 'lot-holding',
+      type: 'property_item',
+      metadata: {
+        category: 'real_estate',
+        lots: [{ day: dayKeyOf(day(11)), quantityDelta: '10', costMinorUnits: 1_500_00 }],
+      },
+    });
+    const brokerCash = holding({ id: 'broker', balanceMinorUnits: 500_00 });
+    const closedJar = holding({ id: 'jar', balanceMinorUnits: 300_00, closedAt: day(19, 12) });
+    const holdings = [card, bond, lotHolding, brokerCash, closedJar];
+    const book = buildPriceBook([
+      {
+        instrument: holdingInstrument('lot-holding'),
+        day: dayKeyOf(day(11)),
+        price: '150',
+        currency: 'USD',
+        source: 'manual',
+      },
+      {
+        instrument: holdingInstrument('lot-holding'),
+        day: dayKeyOf(day(19)),
+        price: '200',
+        currency: 'USD',
+        source: 'manual',
+      },
+    ]);
+
+    const series = buildNetWorthSeries({
+      holdings,
+      transactionsByHolding: new Map([
+        [
+          'card',
+          [
+            { time: day(0, 12), amountMinorUnits: 1_100_00 },
+            { time: day(9, 15), amountMinorUnits: -1_100_00 },
+          ],
+        ],
+        [
+          'broker',
+          [
+            { time: day(0, 12), amountMinorUnits: 2_000_00 },
+            { time: day(11, 15), amountMinorUnits: -1_500_00 },
+          ],
+        ],
+        ['jar', [{ time: day(0, 12), amountMinorUnits: 300_00 }]],
+      ]),
+      historyRows: [],
+      baseCurrency: 'USD',
+      range: { from: day(0), to: endOfLocalDay(now) },
+      today: now,
+      book,
+    });
+    const home = guardedNetWorth(
+      holdings.filter((candidate) => candidate.closedAt === null),
+      'USD',
+      {},
+      now,
+      book,
+    );
+
+    expect(series.points.at(-1)?.amount).toBe(toMajor(home.minorUnits, 'USD'));
+    expect(series.points.at(-1)?.amount).toBe(3_578.68);
+  });
+
+  describe('the live rate backs a currency the stored history does not cover', () => {
+    const D3 = D0 + 3 * DAY_MS;
+    const D5 = D0 + 5 * DAY_MS;
+    const sixDays = { from: D0, to: D5 };
+    const uahThousand = holding({ id: 'uah', currency: 'UAH', balanceMinorUnits: 100_000 });
+    const tenthOfBitcoin = holding({ id: 'btc', currency: 'BTC', balanceMinorUnits: 10_000_000 });
+    // Present only to pass the no-history gate; no BTC, ETH or GBP row.
+    const unrelatedHistory = [uahUsd(D0, '0.025')];
+
+    it('values a crypto holding with no history flat at the live rate in every bucket', () => {
+      const series = buildNetWorthSeries({
+        holdings: [uahThousand, tenthOfBitcoin],
+        transactionsByHolding: new Map(),
+        historyRows: unrelatedHistory,
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { BTC: 2_500_000 },
+        today: D5,
+      });
+
+      // 1,000 UAH + 0.1 BTC * 2.5M, with no step at the right edge.
+      expect(series.points.map((point) => point.amount)).toEqual(Array(6).fill(251_000));
+      expect(series.startReference).toBe(251_000);
+    });
+
+    it('keeps a purchase made mid-window at 0 before it and at the live rate after it', () => {
+      const series = buildNetWorthSeries({
+        holdings: [tenthOfBitcoin],
+        transactionsByHolding: new Map([
+          ['btc', [{ time: D3 + HOUR, amountMinorUnits: 10_000_000 }]],
+        ]),
+        historyRows: unrelatedHistory,
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { BTC: 2_500_000 },
+        today: D5,
+      });
+
+      expect(series.points.map((point) => point.amount)).toEqual([
+        0, 0, 0, 250_000, 250_000, 250_000,
+      ]);
+    });
+
+    it('keeps the earliest and at-or-before rows ahead of live in past buckets', () => {
+      const bitcoinRow = (day: number, rate: string): HistoryRow => ({
+        base: 'BTC',
+        quote: 'UAH',
+        day,
+        rate,
+      });
+
+      const series = buildNetWorthSeries({
+        holdings: [tenthOfBitcoin],
+        transactionsByHolding: new Map(),
+        historyRows: [bitcoinRow(D1, '1000000'), bitcoinRow(D2, '2000000')],
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { BTC: 2_500_000 },
+        today: D5,
+      });
+
+      // Before the first row: flat at it. Then each row carries forward; only
+      // today reads live, so the step at today is the real price move.
+      expect(series.points.map((point) => point.amount)).toEqual([
+        100_000, 100_000, 200_000, 200_000, 200_000, 250_000,
+      ]);
+    });
+
+    it('layers per currency: a crypto with rows keeps them while one without takes live', () => {
+      const series = buildNetWorthSeries({
+        holdings: [
+          tenthOfBitcoin,
+          holding({ id: 'eth', currency: 'ETH', balanceMinorUnits: 100_000_000 }),
+        ],
+        transactionsByHolding: new Map(),
+        historyRows: [{ base: 'BTC', quote: 'UAH', day: D0, rate: '2000000' }],
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { BTC: 2_500_000, ETH: 100_000 },
+        today: D5,
+      });
+
+      // ETH (no rows) is flat at live; BTC steps only at today.
+      expect(series.points.map((point) => point.amount)).toEqual([
+        300_000, 300_000, 300_000, 300_000, 300_000, 350_000,
+      ]);
+    });
+
+    it('drops a crypto holding from every bucket when neither history nor live prices it', () => {
+      const series = buildNetWorthSeries({
+        holdings: [uahThousand, tenthOfBitcoin],
+        transactionsByHolding: new Map(),
+        historyRows: unrelatedHistory,
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { USD: 40 },
+        today: D5,
+      });
+
+      expect(series.points.map((point) => point.amount)).toEqual(Array(6).fill(1_000));
+    });
+
+    it('values a fiat currency with no history at the live rate, not the bundled seed, in past buckets', () => {
+      const series = buildNetWorthSeries({
+        holdings: [holding({ id: 'gbp', currency: 'GBP', balanceMinorUnits: 100_000 })],
+        transactionsByHolding: new Map(),
+        historyRows: unrelatedHistory,
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { GBP: 70 },
+        today: D5,
+      });
+
+      // 1,000 GBP * the live 70 in every bucket, past ones included.
+      expect(series.points.map((point) => point.amount)).toEqual(Array(6).fill(70_000));
+    });
+
+    it('keeps a fiat currency’s stored history ahead of live in past buckets', () => {
+      const series = buildNetWorthSeries({
+        holdings: [holding({ id: 'gbp', currency: 'GBP', balanceMinorUnits: 100_000 })],
+        transactionsByHolding: new Map(),
+        historyRows: [{ base: 'GBP', quote: 'UAH', day: D0, rate: '50' }],
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { GBP: 70 },
+        today: D5,
+      });
+
+      expect(series.points.map((point) => point.amount)).toEqual([
+        50_000, 50_000, 50_000, 50_000, 50_000, 70_000,
+      ]);
+    });
+
+    it('returns no points for a foreign holder with no history rows, however live is priced', () => {
+      const series = buildNetWorthSeries({
+        holdings: [tenthOfBitcoin],
+        transactionsByHolding: new Map(),
+        historyRows: [],
+        baseCurrency: 'UAH',
+        range: sixDays,
+        liveRateTable: { BTC: 2_500_000 },
+        today: D5,
+      });
+
+      expect(series).toEqual({ points: [], startReference: 0 });
+    });
   });
 });

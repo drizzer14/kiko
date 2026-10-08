@@ -1,8 +1,8 @@
+import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
-import '../../unistyles';
-
-import { darkTheme } from '../../theme';
-import { entityIconTileGradient } from '../../entity-tint';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 
 import EntityIconTile from '.';
 
@@ -18,6 +18,27 @@ describe('EntityIconTile', () => {
     expect(getByTestId('entity-icon-tile')).toBeTruthy();
     expect(getByTestId('entity-icon-tile-gradient-svg')).toBeTruthy();
     expect(getByLabelText('Checking icon')).toBeTruthy();
+  });
+
+  it('draws a 36pt tile by default and a one-step-smaller 32pt tile when compact', async () => {
+    const regular = await render(<EntityIconTile name="banknote" color="#0A84FF" />);
+    const regularTile = StyleSheet.flatten(regular.getByTestId('entity-icon-tile').props.style);
+
+    expect(regularTile.width).toBe(darkTheme.spacing(9));
+    expect(regular.getByTestId('entity-icon-tile-gradient-svg').props.width).toBe(
+      darkTheme.spacing(9),
+    );
+
+    const compact = await render(<EntityIconTile name="banknote" color="#0A84FF" compact />);
+    const compactTile = StyleSheet.flatten(compact.getByTestId('entity-icon-tile').props.style);
+
+    expect(compactTile).toMatchObject({
+      width: darkTheme.spacing(8),
+      height: darkTheme.spacing(8),
+    });
+    expect(compact.getByTestId('entity-icon-tile-gradient-svg').props.width).toBe(
+      darkTheme.spacing(8),
+    );
   });
 
   it("derives the gradient's two stops from the entity color via entityIconTileGradient", async () => {
@@ -36,7 +57,7 @@ describe('EntityIconTile', () => {
     expect(getByLabelText('Checking icon').props.tintColor).toBe(darkTheme.colors.onAccent);
   });
 
-  // DEVICE BUG (review, 2026-09-13): a fixed white glyph fails WCAG AA on a
+  // A fixed white glyph fails WCAG AA on a
   // light entity swatch (e.g. `white`, `yellow` — see `isLightEntityColor`'s
   // doc comment in `entity-tint.ts`). The glyph must switch to the dark
   // `theme.colors.background` token instead of staying white on a tile this
@@ -65,7 +86,7 @@ describe('EntityIconTile', () => {
     expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.background);
   });
 
-  // Cheap safety (review, 2026-09-13): the accounts grid mounts many tiles at
+  // Cheap safety: the accounts grid mounts many tiles at
   // once with different gradient stops. Each tile must derive its own
   // gradient id via `useId()` rather than sharing one static id, so no two
   // simultaneously-mounted tiles can ever collide.

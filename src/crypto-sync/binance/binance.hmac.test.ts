@@ -1,6 +1,6 @@
 import { signQuery } from './binance.hmac';
 
-// RFC 4231 §4.3 test case 2 (HMAC-SHA-256).
+// RFC 4231 test case 2 (HMAC-SHA-256).
 const RFC4231_CASE_2 = {
   signer: 'Jefe',
   data: 'what do ya want for nothing?',

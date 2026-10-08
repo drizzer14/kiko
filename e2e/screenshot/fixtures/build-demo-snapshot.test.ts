@@ -1,7 +1,13 @@
+import { buildPriceBook } from '@kiko/prices/price-book';
+import { holdingValue } from '@kiko/holdings/holding-value';
+import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { bankCatalog, isBankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
+import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
+import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
+
+import { ANCHOR, buildScreenshotDataset } from '../seed/screenshot-seed';
+
 import { buildDemoSnapshot } from './build-demo-snapshot';
-import { buildScreenshotDataset } from '../seed/screenshot-seed';
-import { SEEDED_CATEGORIES } from '../../../src/db/__fixtures__/seeded-categories';
-import { readSeedCategoryColors } from '../../../src/db/__fixtures__/seed-category-colors';
 
 describe('buildDemoSnapshot', () => {
   const dataset = buildScreenshotDataset('uk');
@@ -16,6 +22,43 @@ describe('buildDemoSnapshot', () => {
     expect(snapshot.holdings).toHaveLength(
       dataset.accounts.reduce((total, account) => total + account.holdings.length, 0),
     );
+  });
+
+  it('gives every bank account a catalog bank id, as a post-0049 device stores it, and no other kind a bank id', () => {
+    const bankIdByKind = snapshot.accounts.map((account) => [account.kind, account.bankId]);
+
+    expect(bankIdByKind.filter(([kind]) => kind === 'bank').length).toBeGreaterThan(0);
+
+    for (const [kind, bankId] of bankIdByKind) {
+      if (kind === 'bank') {
+        expect(isBankId(bankId)).toBe(true);
+      } else {
+        expect(bankId).toBeNull();
+      }
+    }
+  });
+
+  // The App Store reviewer reaches Connect only on a connectable bank's page
+  // (Guideline 5.6), so the demo must hold one account per connectable bank.
+  it('holds at least one bank account per connectable catalog bank, and one Other bank', () => {
+    const demoBankIds = new Set(snapshot.accounts.map((account) => account.bankId));
+    const connectableIds = bankCatalog
+      .filter((entry) => entry.connectable)
+      .map((entry) => entry.id);
+
+    expect(connectableIds.length).toBeGreaterThan(0);
+
+    for (const bankId of connectableIds) {
+      expect(demoBankIds.has(bankId)).toBe(true);
+    }
+
+    expect(demoBankIds.has(OTHER_BANK_ID)).toBe(true);
+  });
+
+  // `useAutoSync` keys on `account.institution` (`src/sync/use-auto-sync/
+  // use-auto-sync.ts`), so a null one means a demo bank id never starts a sync.
+  it('leaves every account unconnected: institution null, so no auto-sync starts on a demo account', () => {
+    expect(snapshot.accounts.every((account) => account.institution === null)).toBe(true);
   });
 
   it('gives every holding a balance equal to the sum of its own transactions', () => {
@@ -41,10 +84,71 @@ describe('buildDemoSnapshot', () => {
     expect(snapshot.transactions.every((t) => t.externalId === null)).toBe(true);
   });
 
-  it('carries the 10 default categories and an empty syncState', () => {
-    expect(snapshot.categories.map((category) => category.key)).toEqual(
-      SEEDED_CATEGORIES.map((category) => category.key),
+  it('links every loan payment to a loan holding, manually', () => {
+    const loanIds = new Set(
+      snapshot.holdings.filter((holding) => holding.type === 'loan').map((holding) => holding.id),
     );
+    const linked = snapshot.transactions.filter(
+      (transaction) => transaction.loanHoldingId !== null,
+    );
+
+    expect(linked.length).toBeGreaterThan(0);
+
+    for (const transaction of linked) {
+      expect(loanIds.has(transaction.loanHoldingId ?? '')).toBe(true);
+      expect(transaction.loanLinkSource).toBe('manual');
+    }
+  });
+
+  it('prices every holding-scoped point against a real holding', () => {
+    const holdingInstruments = new Set(snapshot.holdings.map((holding) => `holding:${holding.id}`));
+    const holdingPoints = snapshot.pricePoints.filter((point) =>
+      point.instrument.startsWith('holding:'),
+    );
+
+    expect(holdingPoints.length).toBeGreaterThan(0);
+    expect(holdingPoints.every((point) => holdingInstruments.has(point.instrument))).toBe(true);
+  });
+
+  // A holding whose metadata does not parse, or whose price is missing, reads
+  // as 0 on screen: the reviewer would see the type but not the feature.
+  it('values every holding with no ledger of its own through the app valuation', () => {
+    const book = buildPriceBook(
+      snapshot.pricePoints,
+      snapshot.transactions.map((transaction) => ({
+        loanHoldingId: transaction.loanHoldingId,
+        time: transaction.time,
+        amountMinorUnits: transaction.amountMinorUnits,
+        currency: 'UAH' as const,
+      })),
+    );
+    const ledgerless = snapshot.holdings.filter((holding) => isLedgerlessHoldingType(holding.type));
+
+    expect(ledgerless).toHaveLength(8);
+
+    for (const holding of ledgerless) {
+      expect(holdingValue(holding, ANCHOR, book).minorUnits).not.toBe(0);
+    }
+  });
+
+  it('caches the register terms of every bond added under an ISIN', () => {
+    const registerIsins = new Set(snapshot.bondRegister.map((row) => row.isin));
+    const bondIsins = snapshot.holdings
+      .filter((holding) => holding.type === 'bond')
+      .map((holding) => (holding.metadata as { isin?: string }).isin);
+
+    expect(bondIsins.length).toBeGreaterThan(0);
+    expect(bondIsins.every((isin) => isin !== undefined && registerIsins.has(isin))).toBe(true);
+  });
+
+  // A real install seeds loan_interest by its own migration; the import
+  // replaces every category, so the snapshot must carry it for the linked
+  // loan payment's interest to file under a named category.
+  it('carries the 10 default categories plus loan interest, and an empty syncState', () => {
+    expect(snapshot.categories.map((category) => category.key)).toEqual([
+      ...SEEDED_CATEGORIES.map((category) => category.key),
+      LOAN_INTEREST_CATEGORY.key,
+    ]);
     expect(snapshot.syncState).toEqual([]);
     expect(snapshot.categoryOverrides).toEqual([]);
   });
@@ -57,9 +161,19 @@ describe('buildDemoSnapshot', () => {
     // back to the same hashed `categoryColor` both here and in production.
     expect(seedColors.size).toBe(8);
 
-    for (const category of snapshot.categories) {
+    for (const category of snapshot.categories.slice(0, SEEDED_CATEGORIES.length)) {
       expect(category.color).toBe(seedColors.get(category.key) ?? null);
     }
+  });
+
+  // The color `0039_seed_loan_interest_category.sql` seeds on a fresh install.
+  it('colors loan interest the way its own migration does', () => {
+    const loanInterest = snapshot.categories.find(
+      (category) => category.key === LOAN_INTEREST_CATEGORY.key,
+    );
+
+    expect(loanInterest?.color).toBe('#5E5CE6');
+    expect(loanInterest?.sortOrder).toBe(SEEDED_CATEGORIES.length);
   });
 
   it('carries one settings row with the dataset language, UAH, and the lock OFF', () => {

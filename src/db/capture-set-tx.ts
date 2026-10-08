@@ -11,20 +11,26 @@ type SetCapture = {
   whereCalled: boolean;
 };
 
-export const captureSetTx = (): { captured: SetCapture; tx: unknown } => {
+export const captureSetDatabaseTransaction = (): {
+  captured: SetCapture;
+  databaseTransaction: unknown;
+} => {
   const captured: SetCapture = { whereCalled: false };
-  const tx = {
+  const databaseTransaction = {
     update: () => ({
       set: (values: Record<string, unknown>) => {
         captured.set = values;
+
         return {
           where: () => {
             captured.whereCalled = true;
+
             return Promise.resolve();
           },
         };
       },
     }),
   };
-  return { captured, tx };
+
+  return { captured, databaseTransaction };
 };

@@ -1,7 +1,5 @@
 import type { TFunction } from 'i18next';
-
-import { formatDate } from '../../dates/format';
-import { startOfLocalDay } from '../../dates/local-day';
+import { formatDate, startOfLocalDay } from '@kiko/dates';
 
 // A day's worth of rows, headed by a human-readable label. A transaction list
 // renders a SectionList of these — one section per calendar day, newest day
@@ -22,6 +20,7 @@ const dayHeader = (dayStart: number, now: number, t: TFunction): string => {
   if (dayStart === today) {
     return t('home.today');
   }
+
   if (dayStart === yesterdayDate.getTime()) {
     return t('home.yesterday');
   }

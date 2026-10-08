@@ -1,7 +1,6 @@
 import type { RefObject } from 'react';
-
-import type { FieldInstance } from '../scroll-to-field/scroll-to-field';
-import type { HoldingSelectOption } from '../holding-select-field/holding-select-field.props';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 export type ExchangeFieldsProps = {
   // The outgoing amount, in the source holding's major currency units.
@@ -23,11 +22,12 @@ export type ExchangeFieldsProps = {
   // The transaction's date (unix-millis, local midnight once picked).
   time: number;
   onChangeTime: (timestamp: number) => void;
+  // The latest day the Date calendar offers (see DateField's `maxDate`).
+  maxDate?: number;
   // Per-field validation-failure messages, or `undefined` when valid — mirrors
-  // TextField's own `error` contract (text-field.props.d.ts). `destinationError`
-  // has no matching border (HoldingSelectField is a picker trigger, not a
-  // TextField) but still renders directly under its own field, never in the
-  // screen's footer.
+  // TextField's own `error` contract (text-field.props.d.ts): each renders
+  // directly under its own field and turns that field's label red, never in
+  // the screen's footer.
   valueOutError?: string;
   destinationError?: string;
   valueInError?: string;

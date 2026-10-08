@@ -21,12 +21,10 @@ describe('StatementParseError', () => {
 });
 
 describe('statementFormatIds', () => {
-  // Phase 4 (Task 5) widens this tuple again to add the three FOP/business
-  // CSV ids, per docs/plans/statement-import.md's own Phase 4 file list —
-  // the one prior-phase assertion this task is authorized to touch
-  // (task-5-brief.md), for the same reason Phase 2/3 touched it: each new
-  // stub's own `id` field cannot typecheck against `StatementFormatId`
-  // without this tuple actually carrying it.
+  // Widens this tuple to add the three FOP/business CSV ids, per
+  // docs/plans/statement-import.md's own file list: each new stub's own
+  // `id` field cannot typecheck against `StatementFormatId` without this
+  // tuple actually carrying it.
   it('ships exactly the Monobank CSV, PrivatBank XLSX, Sensebank CSV, and the three FOP/business CSV format ids in this phase', () => {
     expect(statementFormatIds).toEqual([
       'monobank-csv',

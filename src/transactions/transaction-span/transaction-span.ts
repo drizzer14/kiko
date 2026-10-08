@@ -23,9 +23,11 @@ export const transactionSpan = (
 
   for (let index = 1; index < times.length; index += 1) {
     const time = times[index];
+
     if (time < start) {
       start = time;
     }
+
     if (time > end) {
       end = time;
     }

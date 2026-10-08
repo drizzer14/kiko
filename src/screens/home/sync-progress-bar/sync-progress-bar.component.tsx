@@ -1,12 +1,11 @@
+import { View } from 'react-native';
 import { type FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import { useSyncProgress, useSyncStatus } from '../../../monobank/sync-status';
+import Text from '@kiko/design-system/components/text';
+import { useSyncProgress, useSyncStatus } from '@kiko/monobank/sync-status';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 // The fill creeps toward JUST SHORT of the next work unit over roughly the
 // per-token rate-limit cadence, so a card whose statements span several 60s pages

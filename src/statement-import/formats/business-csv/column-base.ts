@@ -4,7 +4,7 @@
 // column 1 (ProCredit's own `Код ID НБУ` vs Ukrsib's own `МФО`). Shared here
 // so `procredit-business-csv.format.ts`/`ukrsib-business-csv.format.ts`
 // don't each restate the other 16 identical index/key pairs (jscpd flagged
-// this duplication, Task 5 review). Alfa business has a genuinely different
+// this duplication). Alfa business has a genuinely different
 // 19-column layout and does NOT use this base.
 //
 // This does NOT blur Ukrsib's own Latin-`i` glyph fact (`операцiї` vs

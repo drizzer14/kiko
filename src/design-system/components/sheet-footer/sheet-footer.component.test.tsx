@@ -1,9 +1,9 @@
 import { render } from '@testing-library/react-native';
 import { StyleSheet, Text as RNText } from 'react-native';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
-import '../../unistyles';
 import Text from '../text';
-import { darkTheme } from '../../theme';
 
 import SheetFooter from '.';
 

@@ -15,9 +15,8 @@ import type { ReactNode } from 'react';
 // treatment for a lower-emphasis INLINE/standalone secondary action (Connect,
 // Sync now, a per-row Add, the category set-default) that must carry a faint
 // tinted background rather than a solid `secondary` surfaceHigh pill.
-// ghost — no fill at all, label-only: a borderless nav-bar/header action (e.g.
-// the detail screens' Edit button) that must read as plain text-with-icon,
-// the standard iOS header-button treatment, never a filled pill.
+// ghost — no fill at all, label-only: a borderless inline action that must read
+// as a bare label or glyph, never a filled pill.
 type ButtonVariant =
   | 'primary'
   | 'secondary'
@@ -48,6 +47,11 @@ type ButtonBaseProps = {
   // (usually paired with `size="compact"`).
   fullWidth?: boolean;
   disabled?: boolean;
+  // An in-flight write: the button shows a spinner (in the label color) over
+  // its hidden label and icons, so it keeps the SAME size, and ignores presses
+  // until the write settles. Not dimmed like `disabled` — the spinner already
+  // says why it cannot be pressed.
+  loading?: boolean;
   // An optional leading SF Symbol name, rendered before the label in a row and
   // tinted to match the variant's white label — the button owns the icon tint
   // so a call site cannot desync it from the label.

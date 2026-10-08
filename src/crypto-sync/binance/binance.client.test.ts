@@ -1,4 +1,6 @@
 import {
+  BinanceRateLimitError,
+  DEFAULT_RETRY_AFTER_MS,
   fetchAccount,
   fetchDepositHistory,
   fetchFlexiblePosition,
@@ -9,7 +11,8 @@ import {
 } from './binance.client';
 
 const NOW = 1_704_326_400_000;
-// signQuery('secret-fixture', 'timestamp=1704326400000&recvWindow=5000') — see binance.hmac.test.ts.
+// signQuery('secret-fixture', 'timestamp=1704326400000&recvWindow=5000') — see
+// binance.hmac.test.ts.
 const EXPECTED_SIGNATURE = 'c548b5a5c27c61b57b685766340cfe11dff7cb5d0a693484f3af3e13f129df7f';
 
 const accountBody = {
@@ -23,8 +26,13 @@ const accountBody = {
 
 type SpyFetchInit = { headers: Record<string, string> };
 
-const makeFetch = (body: unknown, ok = true, status = ok ? 200 : 401): typeof fetch =>
-  (async () => ({ ok, json: async () => body, status })) as unknown as typeof fetch;
+const makeFetch = (
+  body: unknown,
+  ok = true,
+  status = ok ? 200 : 401,
+  headers: Headers = new Headers(),
+): typeof fetch =>
+  (async () => ({ ok, json: async () => body, status, headers })) as unknown as typeof fetch;
 
 describe('fetchAccount', () => {
   it('sends the X-MBX-APIKEY header and a signed timestamp/recvWindow query to /api/v3/account', async () => {
@@ -33,6 +41,7 @@ describe('fetchAccount', () => {
     const spyFetch = (async (url: string, init: SpyFetchInit) => {
       sentUrl = url;
       sentHeaders = init.headers;
+
       return { ok: true, json: async () => accountBody, status: 200 };
     }) as unknown as typeof fetch;
 
@@ -45,6 +54,7 @@ describe('fetchAccount', () => {
       `https://api.binance.com/api/v3/account?timestamp=${NOW}&recvWindow=5000&signature=${EXPECTED_SIGNATURE}`,
     );
     expect(sentHeaders['X-MBX-APIKEY']).toBe('api-key-fixture');
+    expect(sentHeaders['Cache-Control']).toBe('no-store');
   });
 
   it('returns the parsed balances', async () => {
@@ -105,6 +115,46 @@ describe('fetchAccount', () => {
   });
 });
 
+describe('BinanceRateLimitError', () => {
+  it('rejects with the status and Retry-After converted to milliseconds', async () => {
+    await expect(
+      fetchAccount('api-key-fixture', 'secret-fixture', {
+        fetchImpl: makeFetch({}, false, 429, new Headers({ 'Retry-After': '30' })),
+      }),
+    ).rejects.toMatchObject({ status: 429, retryAfterMs: 30_000 });
+  });
+
+  it('falls back to the default retry-after when the header is absent', async () => {
+    await expect(
+      fetchAccount('api-key-fixture', 'secret-fixture', { fetchImpl: makeFetch({}, false, 429) }),
+    ).rejects.toMatchObject({ status: 429, retryAfterMs: DEFAULT_RETRY_AFTER_MS });
+  });
+
+  it('treats a 418 IP ban the same way, with its own Retry-After', async () => {
+    await expect(
+      fetchAccount('api-key-fixture', 'secret-fixture', {
+        fetchImpl: makeFetch({}, false, 418, new Headers({ 'Retry-After': '120' })),
+      }),
+    ).rejects.toMatchObject({ status: 418, retryAfterMs: 120_000 });
+  });
+
+  it('is a real BinanceRateLimitError instance', async () => {
+    await expect(
+      fetchAccount('api-key-fixture', 'secret-fixture', { fetchImpl: makeFetch({}, false, 429) }),
+    ).rejects.toBeInstanceOf(BinanceRateLimitError);
+  });
+
+  it('still throws the localized request-failed error for a non-rate-limit status', async () => {
+    const invalidBody = { code: -2010, msg: 'Account has insufficient balance' };
+
+    await expect(
+      fetchAccount('api-key-fixture', 'secret-fixture', {
+        fetchImpl: makeFetch(invalidBody, false, 400),
+      }),
+    ).rejects.toThrow('Binance request failed: 400: Account has insufficient balance');
+  });
+});
+
 // The base `timestamp=…&recvWindow=…` signing is pinned to EXPECTED_SIGNATURE by
 // the fetchAccount tests above; the SAPI reads add an `asset=BTC` filter (and the
 // position reads add pagination params), so these assert the param set and that a
@@ -118,6 +168,7 @@ describe('fetchFundingAsset', () => {
     const spyFetch = (async (url: string, init: SpyInit) => {
       sentUrl = url;
       sentInit = init;
+
       return { ok: true, json: async () => [], status: 200 };
     }) as unknown as typeof fetch;
 
@@ -169,6 +220,7 @@ const pagedFetch = (
     calls.push(url);
     const current = new URL(url).searchParams.get('current') ?? '1';
     const page = pagesByCurrent[current] ?? { rows: [], total: 0 };
+
     return { ok: true, status: 200, json: async () => page };
   }) as unknown as typeof fetch;
 
@@ -182,6 +234,7 @@ describe('fetchFlexiblePosition', () => {
     const spyFetch = (async (url: string, init: SpyInit) => {
       sentUrl = url;
       sentInit = init;
+
       return { ok: true, json: async () => ({ rows: [], total: 0 }), status: 200 };
     }) as unknown as typeof fetch;
 
@@ -287,6 +340,7 @@ describe('fetchFlexiblePosition', () => {
   it('rejects if a later page fails, so the caller skips the whole wallet (no partial total)', async () => {
     const spyFetch = (async (url: string) => {
       const current = new URL(url).searchParams.get('current');
+
       if (current === '1') {
         return {
           ok: true,
@@ -294,10 +348,11 @@ describe('fetchFlexiblePosition', () => {
           json: async () => ({ rows: Array.from({ length: 100 }, () => flexRow), total: 150 }),
         };
       }
+
       return {
         ok: false,
-        status: 429,
-        json: async () => ({ code: -1003, msg: 'Too much request weight used' }),
+        status: 403,
+        json: async () => ({ code: -2015, msg: 'Invalid API-key, IP, or permissions for action.' }),
       };
     }) as unknown as typeof fetch;
 
@@ -306,7 +361,7 @@ describe('fetchFlexiblePosition', () => {
         fetchImpl: spyFetch,
         now: () => NOW,
       }),
-    ).rejects.toThrow('Too much request weight used');
+    ).rejects.toThrow('Invalid API-key, IP, or permissions for action.');
   });
 });
 
@@ -321,6 +376,7 @@ describe('fetchDepositHistory', () => {
     const spyFetch = (async (url: string, init: SpyInit) => {
       sentUrl = url;
       sentInit = init;
+
       return { ok: true, json: async () => [], status: 200 };
     }) as unknown as typeof fetch;
 
@@ -372,7 +428,8 @@ describe('fetchWithdrawHistory', () => {
     const spyFetch = (async (url: string, init: SpyInit) => {
       sentUrl = url;
       sentInit = init;
-      return { ok: true, json: async () => [], status: 200 };
+
+      return { ok: true, json: async () => [], status: 200, headers: new Headers() };
     }) as unknown as typeof fetch;
 
     await fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
@@ -392,7 +449,7 @@ describe('fetchWithdrawHistory', () => {
     expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
   });
 
-  it('returns the parsed withdrawal array', async () => {
+  it('returns the parsed withdrawal rows, with no used-UID-weight when the header is absent', async () => {
     const body = [
       {
         id: '9',
@@ -410,17 +467,34 @@ describe('fetchWithdrawHistory', () => {
       now: () => NOW,
     });
 
-    expect(result).toEqual(body);
+    expect(result).toEqual({ rows: body, usedUidWeight1m: undefined });
   });
 
-  it('rejects on a non-ok response so the caller can surface the failure', async () => {
-    const invalidBody = { code: -1003, msg: 'Too much request weight used' };
+  it('reports the used-UID-weight-1m header, so the caller can budget the next page', async () => {
+    const result = await fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
+      fetchImpl: makeFetch([], true, 200, new Headers({ 'X-SAPI-USED-UID-WEIGHT-1M': '36000' })),
+      now: () => NOW,
+    });
+
+    expect(result.usedUidWeight1m).toBe(36_000);
+  });
+
+  it('rejects with BinanceRateLimitError on a 429, honouring Retry-After', async () => {
+    await expect(
+      fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
+        fetchImpl: makeFetch({}, false, 429, new Headers({ 'Retry-After': '30' })),
+      }),
+    ).rejects.toMatchObject({ status: 429, retryAfterMs: 30_000 });
+  });
+
+  it('rejects on a non-rate-limit non-ok response so the caller can surface the failure', async () => {
+    const invalidBody = { code: -2015, msg: 'Invalid API-key, IP, or permissions for action.' };
 
     await expect(
       fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
-        fetchImpl: makeFetch(invalidBody, false, 429),
+        fetchImpl: makeFetch(invalidBody, false, 401),
       }),
-    ).rejects.toThrow('Too much request weight used');
+    ).rejects.toThrow('Invalid API-key, IP, or permissions for action.');
   });
 });
 
@@ -431,6 +505,7 @@ describe('fetchLockedPosition', () => {
     const spyFetch = (async (url: string, init: SpyInit) => {
       sentUrl = url;
       sentInit = init;
+
       return { ok: true, json: async () => ({ rows: [], total: 0 }), status: 200 };
     }) as unknown as typeof fetch;
 

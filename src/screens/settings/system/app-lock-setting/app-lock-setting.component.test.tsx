@@ -1,13 +1,13 @@
-import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-import '../../../../design-system/unistyles';
-import '../../../../i18n';
-import { darkTheme } from '../../../../design-system/theme';
+import { fireEvent, render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import AppLockSetting from './app-lock-setting.component';
 
 const mockIsSensorAvailable = jest.fn();
-jest.mock('../../../../auth/biometrics', () => ({
+jest.mock('@kiko/auth/biometrics', () => ({
   isSensorAvailable: () => mockIsSensorAvailable(),
 }));
 
@@ -25,8 +25,8 @@ describe('AppLockSetting', () => {
 
     expect(getByTestId('settings-card-app-lock')).toBeTruthy();
     expect(getByTestId('settings-row-app-lock')).toBeTruthy();
-    expect(getByText('App Lock')).toBeTruthy();
-    expect(getByText('Require Face ID or Passcode')).toBeTruthy();
+    expect(getByText('App lock')).toBeTruthy();
+    expect(getByText('Require Face ID or passcode')).toBeTruthy();
     expect(await findByRole('switch')).toBeEnabled();
     expect(queryByText(/Set a device passcode/)).toBeNull();
     expect(queryByText(/unavailable/)).toBeNull();
@@ -35,7 +35,7 @@ describe('AppLockSetting', () => {
 
   // The App Lock card is the shared solid content-layer `Card`: a flat
   // `surface` fill applied directly to its own node (see `Card`'s own doc
-  // comment for why content no longer routes through `GlassSurface`/Liquid
+  // comment for why content does not route through `GlassSurface`/Liquid
   // Glass at all).
   it('fills the App Lock card with the shared solid surface token', async () => {
     const { getByTestId } = await renderSetting();
@@ -58,7 +58,7 @@ describe('AppLockSetting', () => {
     const { findByRole, findByText } = await renderSetting();
 
     expect(await findByRole('switch')).toBeDisabled();
-    expect(await findByText('Set a device passcode in iOS Settings to use App Lock.')).toBeTruthy();
+    expect(await findByText('Set a device passcode in iOS Settings to use app lock.')).toBeTruthy();
   });
 
   it('disables the switch with a hint when biometric hardware is unavailable', async () => {
@@ -69,13 +69,35 @@ describe('AppLockSetting', () => {
     expect(await findByText('Biometric hardware is unavailable on this device.')).toBeTruthy();
   });
 
+  // An ON lock switch stays operable, so a device with no usable sensor at
+  // all can still reach the toggle to turn it off.
+  it('never greys out an ON switch, even when the sensor reports unavailable', async () => {
+    mockIsSensorAvailable.mockResolvedValue({ kind: 'unavailable' });
+    const { findByRole } = await renderSetting({ lockEnabled: true });
+
+    expect(await findByRole('switch')).toBeEnabled();
+  });
+
   it('keeps the switch enabled with a passcode-only hint when no biometry is enrolled', async () => {
-    mockIsSensorAvailable.mockResolvedValue({ kind: 'passcodeOnly' });
+    mockIsSensorAvailable.mockResolvedValue({ kind: 'passcodeOnly', reason: 'notEnrolled' });
     const { findByRole, findByText } = await renderSetting();
 
     expect(await findByRole('switch')).toBeEnabled();
     expect(
       await findByText('No Face ID enrolled — your device passcode will be used.'),
+    ).toBeTruthy();
+  });
+
+  it('keeps the switch enabled with a biometry-unavailable hint when Face ID is off for Kiko', async () => {
+    mockIsSensorAvailable.mockResolvedValue({
+      kind: 'passcodeOnly',
+      reason: 'biometryUnavailable',
+    });
+    const { findByRole, findByText } = await renderSetting();
+
+    expect(await findByRole('switch')).toBeEnabled();
+    expect(
+      await findByText("Face ID isn't available right now — your device passcode will be used."),
     ).toBeTruthy();
   });
 });

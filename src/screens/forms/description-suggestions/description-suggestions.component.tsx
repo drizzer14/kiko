@@ -1,8 +1,7 @@
 import type { ReactElement } from 'react';
-
-import ChipRow from '../chip-row';
-import Box from '../../../design-system/components/box';
-import { normalizeTransactionName } from '../../../transactions/normalize-name';
+import Box from '@kiko/design-system/components/box';
+import ChipRow from '@kiko/design-system/components/chip-row';
+import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import type { DescriptionSuggestionsProps } from './description-suggestions.props';
 
@@ -41,14 +40,16 @@ const matchSuggestions = (descriptions: readonly string[], value: string): strin
   return matches;
 };
 
-// An inline, tap-to-fill suggestion row under the description field (D1): up to
+// An inline, tap-to-fill suggestion row under the description field: up to
 // five distinct past MANUAL descriptions matching what the user is typing,
-// rendered as tappable chips through the shared `ChipRow`. It reports the picked
-// value verbatim through `onPick`; `selected` is deliberately a value that never
-// appears in the options, so no chip renders highlighted (this is a pick list,
-// not a single-select toggle). The row hides itself when there is nothing to
-// offer OR the field already holds a suggestion verbatim (e.g. right after a
-// tap-to-fill), so it never lingers over a completed field.
+// rendered as tappable chips through the shared `ChipRow`. It reports the
+// picked value verbatim through `onPick`; `selected={undefined}` is
+// ChipRow's own no-selection state (rather than faking it with an empty
+// string that happens never to match), so no chip renders highlighted (this
+// is a pick list, not a single-select toggle). The row hides itself when
+// there is nothing to offer OR the field already holds a suggestion verbatim
+// (e.g. right after a tap-to-fill), so it never lingers over a completed
+// field.
 const DescriptionSuggestions = ({
   descriptions,
   value,
@@ -62,7 +63,7 @@ const DescriptionSuggestions = ({
 
   return (
     <Box testID="description-suggestions">
-      <ChipRow options={matches} selected="" onSelect={onPick} />
+      <ChipRow options={matches} selected={undefined} onSelect={onPick} />
     </Box>
   );
 };

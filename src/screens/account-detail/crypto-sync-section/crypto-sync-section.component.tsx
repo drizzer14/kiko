@@ -1,27 +1,31 @@
-import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
-import type { TFunction } from 'i18next';
-import type { FC } from 'react';
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Alert } from 'react-native';
 import { match } from 'ts-pattern';
-
-import { disconnectCryptoAccount } from '../../../crypto-sync/disconnect';
 import {
   type BalanceProviderId,
   isBalanceProviderId,
   providerDisplayName,
-} from '../../../crypto-sync/provider';
-import { resyncRequest } from '../../../crypto-sync/resync-request';
-import type { AccountRow, HoldingRow } from '../../../db/schema';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import SymbolIcon from '../../../design-system/components/symbol';
-import Text from '../../../design-system/components/text';
+} from '@kiko/crypto-sync/provider';
+import type { TFunction } from 'i18next';
+import { type FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import type { AccountRow, HoldingRow } from '@kiko/db';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
+import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import { resyncRequest } from '@kiko/crypto-sync/resync-request';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
+import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
+import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
+import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
+
 import { styles } from '../account-detail.styles';
-import CryptoSyncForm from '../crypto-sync-form';
+import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
+
+import { historyCursorOf, isBinanceHistoryBehind } from './binance-history-status';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;
@@ -41,29 +45,45 @@ const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string 
 // connected: Sync with the last-sync stamp, and a confirmed Disconnect.
 const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) => {
   const { t } = useTranslation();
+  const clock = useTimeClock();
   const { isSyncing, error, sync } = useCryptoSync();
-  // Multi-connection (Task 5.2): each crypto account connects independently, so
+  // Multi-connection: each crypto account connects independently, so
   // there is no "connected elsewhere" gate — another account holding this source
-  // no longer blocks connecting it here.
+  // does not block connecting it here.
   const connectedProvider = isBalanceProviderId(account.institution)
     ? account.institution
     : undefined;
-  // Whether the themed Disconnect confirm (`ConfirmSheet`) is up, replacing the
-  // old native `Alert.alert`; a scrim/back dismiss behaves like Cancel.
+  // Whether the themed Disconnect confirm (`ConfirmSheet`) is up; a scrim/back
+  // dismiss behaves like Cancel.
   const [disconnectPending, setDisconnectPending] = useState(false);
 
+  // A synced account sends no reminder, and a disconnected one sends them
+  // again, so both re-plan; the sync can make the account synced even when it
+  // fails later on.
+  const connectThenReplan = async (request: CryptoSyncRequest): Promise<boolean> => {
+    const synced = await sync(request);
+
+    replanReminders();
+
+    return synced;
+  };
+
   const connectWallet = (address: string): Promise<boolean> =>
-    sync({ providerId: 'btc_wallet', targetAccountId: account.id, address });
+    connectThenReplan({ providerId: 'btc_wallet', targetAccountId: account.id, address });
 
   const connectBinance = (): Promise<boolean> =>
-    sync({ providerId: 'binance', targetAccountId: account.id });
+    connectThenReplan({ providerId: 'binance', targetAccountId: account.id });
 
   const runDisconnect = async (providerId: BalanceProviderId): Promise<void> => {
     try {
       await disconnectCryptoAccount(account.id, providerId);
     } catch {
-      Alert.alert(t('accountDetail.disconnectErrorTitle'), t('accountDetail.tryAgainMessage'));
+      alertOnCatch(t, 'accountDetail.disconnectErrorTitle', 'accountDetail.tryAgainMessage');
+
+      return;
     }
+
+    replanReminders();
   };
 
   const confirmDisconnect = (): void => {
@@ -76,10 +96,23 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
   const disconnect = (providerId: BalanceProviderId): void => {
     setDisconnectPending(false);
+    // runDisconnect catches and alerts every failure itself.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     runDisconnect(providerId);
   };
 
   if (connectedProvider !== undefined) {
+    // Only Binance imports a separate transaction history behind the balance —
+    // a wallet's balance IS the whole synced picture, so it never lags. Hidden
+    // while a sync is in flight: `syncedAt` moves the instant the balance leg
+    // commits, but the history walk's own cursor only catches up a few seconds
+    // later (a SEPARATE, slower step), so the caption would otherwise flash on
+    // every sync after more than a day away.
+    const historyBehind =
+      !isSyncing &&
+      connectedProvider === 'binance' &&
+      isBinanceHistoryBehind(historyCursorOf(holdings), latestSyncedAt(holdings));
+
     return (
       <Box gap={3}>
         <Text variant="heading">{t('accountDetail.synchronization')}</Text>
@@ -94,42 +127,30 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
             <Text variant="body" tone="textSecondary">
               {t('accountDetail.lastSync', {
-                time: formatLastSyncAt(latestSyncedAt(holdings), t),
+                time: formatLastSyncAt(latestSyncedAt(holdings), t, clock),
               })}
             </Text>
           </Box>
 
-          {/* Sync and Disconnect share a single row. Sync is the affirmative blue
-              `primary` re-import action; Disconnect stays a neutral tonal action
-              beside it — never blue. */}
-          <Box direction="row" gap={2} testID="crypto-sync-actions-row">
-            <Button
-              variant="primary"
-              size="small"
-              fullWidth={false}
-              onPress={() => {
-                sync(resyncRequest(connectedProvider, account.id));
-              }}
-              disabled={isSyncing}
-              // iOS-26 rotate glyph; the central IOS26_SYMBOL_FALLBACKS map
-              // (symbol.availability.ts) hands SymbolIcon the iOS-16-safe
-              // `arrow.triangle.2.circlepath` on a pre-26 device for free, even
-              // through the shared Button's `icon` prop.
-              icon="arrow.trianglehead.2.clockwise.rotate.90"
-            >
-              {isSyncing ? t('accountDetail.syncing') : t('accountDetail.syncNow')}
-            </Button>
+          {historyBehind && (
+            <Text variant="caption" tone="textSecondary">
+              {t('accountDetail.binanceHistoryPending')}
+            </Text>
+          )}
 
-            <Button
-              variant="secondaryTonal"
-              size="small"
-              fullWidth={false}
-              onPress={confirmDisconnect}
-              icon="lock.open"
-            >
-              {t('accountDetail.disconnectAction')}
-            </Button>
-          </Box>
+          {/* Sync and Disconnect share a single row — the shared
+              SyncDisconnectActionsRow (both the neutral `secondaryTonal`
+              treatment, never blue). */}
+          <SyncDisconnectActionsRow
+            onSync={() => {
+              // The shared sync action folds a failure into its error state and never rejects.
+              // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
+              sync(resyncRequest(connectedProvider, account.id));
+            }}
+            isSyncing={isSyncing}
+            onDisconnect={confirmDisconnect}
+            testID="crypto-sync-actions-row"
+          />
         </Box>
 
         {error !== undefined && (
@@ -139,8 +160,8 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
         )}
 
         {/* The crypto provider Disconnect confirmation — the same shared themed
-            `ConfirmSheet` the grid-card long-press delete uses, replacing the old
-            native `Alert.alert`. A scrim/back dismiss behaves like Cancel. */}
+            `ConfirmSheet` the grid-card long-press delete uses. A scrim/back
+            dismiss behaves like Cancel. */}
         <ConfirmSheet
           visible={disconnectPending}
           title={t('accountDetail.disconnectProvider', {

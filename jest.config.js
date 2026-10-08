@@ -4,6 +4,15 @@
 // explicit `ENVFILE` still wins.
 process.env.ENVFILE = process.env.ENVFILE || '.env.test';
 
+// Local-calendar and DST tests assert Europe/Kyiv wall-clock times, so every
+// host must run them on that zone. A `process.env.TZ` set inside a test only
+// writes the test sandbox's own copy of `process.env` and never retargets
+// `Date`, so the pin lives here: this file loads in the process that runs the
+// tests in-band (Stryker's jest runner, a single-file `jest` run) and before
+// `jest` forks its workers, which inherit the environment. It overrides the
+// host `TZ` on purpose.
+process.env.TZ = 'Europe/Kyiv';
+
 module.exports = {
   preset: '@react-native/jest-preset',
   setupFiles: ['./jest/setup.js'],
@@ -28,12 +37,14 @@ module.exports = {
   //
   // react-native-calendars also ships untranspiled ESM ("main": "src/index.ts"
   // in its own package.json, and the .js files under src/ use bare `import`/
-  // `export`). The app never renders it directly — jest/setup.js mocks the
-  // bare `'react-native-calendars'` specifier to a plain View for every other
-  // test — but the day-cell color-precedence regression test
-  // (kiko-calendar.day-cell-color.test.tsx) deep-imports its real, unmocked
-  // Day components (a different module specifier, so unaffected by that
-  // mock) to prove the actual selected/today text-color precedence the
+  // `export`). No test renders the real Calendar: KikoCalendar imports it by
+  // the deep `'react-native-calendars/src/calendar'` specifier, which the
+  // manual mock __mocks__/react-native-calendars/src/calendar.tsx serves as a
+  // plain View (jest/setup.js's root mock covers only a test that imports the
+  // bare `'react-native-calendars'` specifier). But the day-cell
+  // color-precedence regression test (kiko-calendar.day-cell-color.test.tsx)
+  // deep-imports the real, unmocked Day components (specifiers neither mock
+  // intercepts) to prove the actual selected/today text-color precedence the
   // library applies, not just the marks data Kiko hands it.
   //
   // windows-1251 (Phase 3, statement-import's cp1251 decoder) ships ONLY an
@@ -56,4 +67,13 @@ module.exports = {
   moduleNameMapper: {
     '^@kiko/(.*)$': '<rootDir>/src/$1',
   },
+  // Jest's default testMatch runs every file under a `__tests__/` folder as a
+  // suite, so the shared harness-test helpers in `__tests__/test-support/`
+  // would each fail as an empty suite. The lookahead keeps a `*.test.*` file
+  // placed beside a helper running instead of silently skipping it.
+  // `/node_modules/` is Jest's own default.
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '<rootDir>/__tests__/test-support/(?!.*\\.test\\.[jt]sx?$)',
+  ],
 };

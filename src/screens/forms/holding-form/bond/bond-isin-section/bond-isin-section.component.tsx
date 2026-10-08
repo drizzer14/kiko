@@ -1,0 +1,202 @@
+import type { FC } from 'react';
+import { View } from 'react-native';
+import { formatDate } from '@kiko/dates';
+import {
+  type BondEntryMode,
+  bondCouponFrequencies,
+  type BondCouponFrequency,
+} from '@kiko/holdings/holding-metadata';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { validateIsin } from '@kiko/bonds/isin';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import { activeLocale } from '@kiko/i18n/active-locale';
+import Button from '@kiko/design-system/components/button';
+import TextField from '@kiko/design-system/components/text-field';
+import FieldLabel from '@kiko/design-system/components/field-label';
+import SelectField from '@kiko/design-system/components/select-field';
+import SummaryTable from '@kiko/design-system/components/summary-table';
+import SegmentedControl from '@kiko/design-system/components/segmented-control';
+
+import type { BondIsinSectionProps } from './bond-isin-section.props';
+
+const modeLabels = (t: TFunction): Record<BondEntryMode, string> => ({
+  isin: t('forms.holding.isinModeIsin'),
+  manual: t('forms.holding.isinModeManual'),
+});
+
+// Exported (not local to this file) since `ManualBondFields` needs the exact
+// same map for its OWN coupon-frequency `ChipRow` — one shared source keeps
+// the two from ever drifting apart.
+export const couponFrequencyLabels = (t: TFunction): Record<BondCouponFrequency, string> => ({
+  monthly: t('forms.holding.monthly'),
+  quarterly: t('forms.holding.quarterly'),
+  semiannually: t('forms.holding.semiannually'),
+  annually: t('forms.holding.annually'),
+});
+
+/**
+ * The Bond form's ISIN/Manual mode section: the shared design-system
+ * `SegmentedControl` (one control type per kind of mode choice, not a
+ * `ChipRow`), the ISIN text field itself (always shown — required in ISIN
+ * mode, optional but still validated in Manual mode, see
+ * `useBondIsinMode`'s own `isinReasonKey`), a read-only summary once the
+ * register finds a match (plus, when that match left `couponFrequency`
+ * unmapped, a picker with no default — never guess one), a
+ * not-in-register/not-loaded hint with a Switch-to-manual button when a
+ * validly-shaped ISIN has no match, and the Diia hint, which renders in
+ * every mode since Diia bonds land under a partner institution regardless
+ * of how THIS holding gets added.
+ *
+ * Purely presentational, like `MetalSection`/`PropertySection`: the NBU
+ * register lookup and every auto-fill/validation decision live in
+ * `useBondIsinMode`; this component only renders what it is handed.
+ */
+const BondIsinSection: FC<BondIsinSectionProps> = ({
+  mode,
+  onSelectMode,
+  isin,
+  onChangeIsin,
+  isinError,
+  isinFieldRef,
+  isinInputRef,
+  foundTerms,
+  registerLoaded,
+  onSwitchToManual,
+  needsCouponFrequencyPick,
+  pickedCouponFrequency,
+  onPickCouponFrequency,
+  couponFrequencyError,
+}) => {
+  const { t } = useTranslation();
+
+  // A "not found" hint only makes sense once the typed candidate is a
+  // complete, validly-shaped (check-digit-passing) ISIN — otherwise it would
+  // flash on every keystroke while the user is still mid-typing.
+  const isValidlyShaped = validateIsin(isin).ok;
+  const showNotFoundHint = mode === 'isin' && foundTerms === null && isValidlyShaped;
+
+  return (
+    <Box gap={4}>
+      <Box gap={1} testID="bond-isin-mode">
+        <FieldLabel label={t('forms.holding.isinMode')} />
+
+        <SegmentedControl<BondEntryMode>
+          options={['isin', 'manual']}
+          selected={mode}
+          onSelect={onSelectMode}
+          labels={modeLabels(t)}
+          accessibilityLabel={t('forms.holding.isinMode')}
+          testID="bond-isin-mode-control"
+        />
+      </Box>
+
+      <View ref={isinFieldRef}>
+        <TextField
+          label={t('forms.holding.isin')}
+          value={isin}
+          onChangeText={onChangeIsin}
+          placeholder={t('forms.holding.isinPlaceholder')}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          required={mode === 'isin'}
+          error={isinError}
+          inputRef={isinInputRef}
+        />
+      </View>
+
+      {mode === 'isin' && foundTerms !== null && (
+        // Three "X: value" captions render through the shared "label left,
+        // value right" SummaryTable, the same row layout the holding-detail
+        // value breakdown and the statement-import preview already use,
+        // instead of a one-off stack of colon-joined captions.
+        <SummaryTable
+          testID="bond-isin-summary"
+          rows={[
+            {
+              key: 'coupon',
+              label: t('forms.holding.couponSummaryLabel'),
+              value: (
+                <Text variant="caption" tone="textSecondary">
+                  {`${foundTerms.couponPct.toLocaleString(activeLocale())}%`}
+                </Text>
+              ),
+            },
+            {
+              key: 'maturity',
+              label: t('forms.holding.maturityDate'),
+              value: (
+                <Text variant="caption" tone="textSecondary">
+                  {formatDate(foundTerms.maturityDate)}
+                </Text>
+              ),
+            },
+            {
+              key: 'currency',
+              label: t('forms.fields.currency'),
+              value: (
+                <Text variant="caption" tone="textSecondary">
+                  {foundTerms.currency}
+                </Text>
+              ),
+            },
+          ]}
+        />
+      )}
+
+      {needsCouponFrequencyPick && (
+        // A `ChipRow` with no chip selected read as a picker nobody had
+        // touched yet, not a deliberately blank "no default" (never guess
+        // one). `SelectField` supports `selected: null`
+        // directly (no more widening the option type to fake an empty
+        // string match) and shows a "Select..." placeholder in the trigger
+        // instead.
+        <SelectField
+          label={t('forms.holding.couponFrequency')}
+          sheetTitle={t('forms.holding.couponFrequencySheetTitle')}
+          options={bondCouponFrequencies}
+          selected={pickedCouponFrequency}
+          onSelect={onPickCouponFrequency}
+          labels={couponFrequencyLabels(t)}
+          placeholder={t('forms.holding.couponFrequencyPlaceholder')}
+          required
+          error={couponFrequencyError}
+          testID="bond-coupon-frequency-field"
+        />
+      )}
+
+      {showNotFoundHint && (
+        <Box gap={2} testID="bond-isin-not-found">
+          {/* A plain caption, not the red `FieldError` — a blocking-validation
+              tone is wrong for a hint the user can act on (Switch to Manual)
+              rather than a form error to fix in place. The Diia hint two
+              rows below is the exact same caption/textSecondary tone; this
+              matches it. */}
+          <Text variant="caption" tone="textSecondary">
+            {t(
+              registerLoaded
+                ? 'forms.holding.isinNotInRegister'
+                : 'forms.holding.isinRegisterNotLoaded',
+            )}
+          </Text>
+
+          <Button
+            variant="secondaryTonal"
+            size="small"
+            fullWidth={false}
+            onPress={onSwitchToManual}
+          >
+            {t('forms.holding.switchToManual')}
+          </Button>
+        </Box>
+      )}
+
+      <Text variant="caption" tone="textSecondary">
+        {t('forms.holding.diiaHint')}
+      </Text>
+    </Box>
+  );
+};
+
+export default BondIsinSection;

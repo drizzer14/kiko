@@ -5,18 +5,18 @@ const mockSyncBinanceTransactions = jest.fn();
 // whole module keeps this a pure dispatch test. `./binance/binance.transactions`
 // is replaced for the same reason. The Binance credentials module imports
 // react-native-keychain, whose native binding is absent under Jest.
-jest.mock('../sync', () => ({
+jest.mock('@kiko/crypto-sync/sync', () => ({
   runBalanceSync: (...args: unknown[]) => mockRunBalanceSync(...args),
 }));
-jest.mock('../binance/binance.transactions', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.transactions', () => ({
   syncBinanceTransactions: (...args: unknown[]) => mockSyncBinanceTransactions(...args),
 }));
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));
 
-import { binanceProvider, defaultBinanceDeps } from '../binance/binance.provider';
-import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet/btc-wallet.provider';
+import { binanceProvider, defaultBinanceDeps } from '../binance';
+import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
 
 import { type CryptoSyncRequest, runCryptoSync } from './run-crypto-sync';
 
@@ -69,12 +69,57 @@ describe('runCryptoSync', () => {
 
   it('still resolves with the balance result when the transaction import fails', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    mockSyncBinanceTransactions.mockRejectedValue(new Error('Too much request weight used'));
+    mockSyncBinanceTransactions.mockRejectedValue(new Error('Too much request weight used SECRET'));
 
     const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
 
     expect(result).toEqual({ syncedHoldings: 1 });
-    expect(warn).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('[binance sync] transaction history import failed', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
     warn.mockRestore();
+  });
+
+  // P2: an account-detail Connect overlapping a pull-to-refresh fan-out can
+  // both trigger a Binance sync for the SAME account while the first is still
+  // in flight. `runBalanceSync` is already per-account single-flight-locked
+  // (`src/crypto-sync/sync/sync.ts`), but the transaction import that runs
+  // AFTER it was not, so a second overlapping trigger re-ran
+  // `syncBinanceTransactions` — wasted requests and a possible swallowed 429.
+  // The whole binance arm (balance + transaction import) must join one
+  // in-flight run per account.
+  describe('single-flight join over the whole Binance arm (P2)', () => {
+    it('runs syncBinanceTransactions once when two overlapping triggers target the SAME Binance account', async () => {
+      const [a, b] = await Promise.all([
+        runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' }),
+        runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' }),
+      ]);
+
+      expect(a).toEqual(b);
+      expect(mockRunBalanceSync).toHaveBeenCalledTimes(1);
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs independently for two DIFFERENT Binance accounts', async () => {
+      await Promise.all([
+        runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' }),
+        runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-3' }),
+      ]);
+
+      expect(mockRunBalanceSync).toHaveBeenCalledTimes(2);
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledTimes(2);
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledWith({ targetAccountId: 'acc-2' });
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledWith({ targetAccountId: 'acc-3' });
+    });
+
+    it('releases the lock after settling so a later, non-overlapping sync runs fresh', async () => {
+      await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+      await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+      expect(mockRunBalanceSync).toHaveBeenCalledTimes(2);
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledTimes(2);
+    });
   });
 });

@@ -35,7 +35,7 @@ const CALENDAR_GRID_HEIGHT = 6 * (PERIOD_DAY_CELL_HEIGHT + WEEK_VERTICAL_MARGIN 
 export const buildCalendarTheme = (theme: AppTheme) => ({
   // Transparent, not an opaque surface: the calendar is presented inside a
   // glass BottomSheet, so it must let the sheet's material show through rather
-  // than paint a flat card over it (iOS HIG materials; M1 in the HIG audit).
+  // than paint a flat card over it, per the iOS HIG materials guidance.
   calendarBackground: 'transparent',
   monthTextColor: theme.colors.textPrimary,
   dayTextColor: theme.colors.textPrimary,

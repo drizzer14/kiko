@@ -3,10 +3,9 @@
 // crypto the app's real Export Data screen uses (`encryptEnvelope`,
 // `src/data-transfer/crypto/envelope.ts`), so a committed fixture round-trips
 // through the real Import UI exactly like a user's own export.
+import { type ExportPayload, encryptEnvelope, type DataSnapshot } from '@kiko/data-transfer';
+
 import { ANCHOR } from '../seed/screenshot-seed';
-import type { ExportPayload } from '../../../src/data-transfer/payload';
-import { encryptEnvelope } from '../../../src/data-transfer/crypto/envelope';
-import type { DataSnapshot } from '../../../src/data-transfer/snapshot/data-snapshot';
 
 /**
  * Builds the plaintext `ExportPayload`. `exportedAt` is the dataset's own

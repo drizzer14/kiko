@@ -1,13 +1,23 @@
 export type DateFieldProps = {
   // The caption rendered above the field, and the field's accessibility label.
   label: string;
+  // The calendar sheet's header: a Title Case sheet title, a separate key
+  // from the sentence-case `label` (kiko-translator: one key per UI role).
+  sheetTitle: string;
   // The selected day as a unix-millis timestamp (local midnight), or null when
   // nothing is picked yet.
   value: number | null;
   // Reports the picked day as a unix-millis timestamp (local midnight).
   onChange: (timestamp: number) => void;
-  // Shown in the field when `value` is null.
-  placeholder?: string;
+  // Shown in the field when `value` is null. Required — every call site
+  // names its own "Select a …" copy, so tsc catches a missing one rather
+  // than the field silently repeating `label` as its own unset-value text
+  // (the caption AND the unset value reading the same word).
+  placeholder: string;
+  // The latest day the calendar offers, as a unix-millis timestamp (the day it
+  // falls on, in local time); a later day is greyed out and cannot be pressed.
+  // Omitted, every day is pickable.
+  maxDate?: number;
   // When true, the label shows a red asterisk marking the field as required.
   // Defaults to false. See the shared FieldLabel.
   required?: boolean;
@@ -19,10 +29,13 @@ export type DateFieldProps = {
   // The validation-failure message for this field, or `undefined` when it's
   // currently valid — same contract as TextField's own `error`. Renders via
   // the shared FieldError directly under the field, and tints the label
-  // negative, uniform with every other field type (Option A: no per-field
-  // outline — see text-field.component.tsx's own doc comment). REFLOW, not
+  // negative, uniform with every other field type (the reflow error model: no
+  // per-field outline — see text-field.component.tsx's own doc comment). REFLOW, not
   // reserve: no error node at all while valid.
   error?: string;
+  // Tints the label negative with no error line of its own, for a field whose
+  // one error renders under its whole group (DateTimeRow). Defaults to false.
+  invalid?: boolean;
   // An optional testID applied to the field's Pressable trigger, so a flow can
   // open the picker sheet deterministically. When set, the FieldError message
   // (when shown) additionally takes `${testID}-error`, matching TextField's

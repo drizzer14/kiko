@@ -1,7 +1,5 @@
 import type { TFunction } from 'i18next';
-
-import { formatDate } from '../../dates/format';
-import { startOfLocalDay } from '../../dates/local-day';
+import { DAY_MS, formatDate, startOfLocalDay } from '@kiko/dates';
 
 import { groupByDay } from './group-by-day';
 
@@ -9,8 +7,6 @@ import { groupByDay } from './group-by-day';
 // branches assert on the exact key the mapping asks for without pulling in the
 // i18n runtime.
 const t = ((key: string): string => key) as unknown as TFunction;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe('groupByDay', () => {
   it('returns no sections for an empty list', () => {

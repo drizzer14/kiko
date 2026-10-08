@@ -1,0 +1,217 @@
+// The fixed set of date presets a user can pick for the column-mapping
+// import's date column — one entry per shape actually seen across the
+// dedicated bank formats (Monobank/PrivatBank's `DD.MM.YYYY HH:MM:SS`,
+// Sensebank's 2-digit-year `DD.MM.YY HH:MM`), plus a few common shorter/ISO
+// variants a manually-exported statement might carry instead.
+import {
+  DAY_MS,
+  type ZoneRule,
+  zoneWallClockOf,
+  type WallClockParts,
+  zoneWallClockToUtcMilliseconds,
+} from '@kiko/dates';
+import maybe, { foldMap } from 'fnts/maybe';
+
+import type { TimeReading } from '../parser';
+
+import type { TableCell } from './table-rows';
+
+export const dateFormatIds = [
+  'DD.MM.YYYY HH:MM:SS',
+  'DD.MM.YYYY HH:MM',
+  'DD.MM.YYYY',
+  'DD.MM.YY HH:MM',
+  'YYYY-MM-DD HH:MM:SS',
+  'YYYY-MM-DD',
+  'MM/DD/YYYY',
+  'DD/MM/YYYY',
+] as const;
+
+export type DateFormatId = (typeof dateFormatIds)[number];
+
+type Clock = 'second' | 'minute' | 'day';
+
+type DatePreset = {
+  pattern: RegExp;
+  toParts: (match: RegExpExecArray) => WallClockParts;
+  clockOf: (match: RegExpExecArray) => Clock;
+};
+
+// Reads the parts in the mapping's own source zone, never the device's: the
+// instant feeds the dedup key, so a device-zone reading would give the same
+// file a different key once the phone changes zone, and an overlapping
+// re-import would duplicate every row. `zoneWallClockToUtcMilliseconds`
+// rejects a rollover — an out-of-range day ("31.02.2026"), month
+// ("2026-13-45"), hour, or minute silently rolling into a DIFFERENT, wrong
+// calendar instant.
+const partsToSeconds = (parts: WallClockParts, zone: ZoneRule): number | undefined =>
+  foldMap(
+    maybe(zoneWallClockToUtcMilliseconds(zone, parts)),
+    (milliseconds) => milliseconds / 1000,
+  );
+
+// A date-only cell has no time at all, so it reads as noon in the source zone
+// and shows the same calendar day on a device at most 12 hours behind, and
+// less than 12 hours ahead of, that zone. A timed preset keeps a real `00:00`
+// at midnight: as noon it would sort after a later row on the same day.
+const dateOnlyParts = (year: string, month: string, day: string): WallClockParts => ({
+  year: Number(year),
+  month: Number(month),
+  day: Number(day),
+  hour: 12,
+  minute: 0,
+  second: 0,
+});
+
+// Every preset reads its own wall-clock parts — the digits themselves are
+// zone-agnostic; `partsToSeconds` above is what resolves them, in the
+// mapping's source zone. `DD.MM.YY HH:MM` maps its 2-digit year to `20YY`,
+// matching Sensebank's own dedicated parse exactly (real years past 2099
+// never appear in a bank export).
+const presets: Record<DateFormatId, DatePreset> = {
+  'DD.MM.YYYY HH:MM:SS': {
+    pattern: /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/,
+    toParts: ([, day, month, year, hour, minute, second]) => ({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: Number(hour),
+      minute: Number(minute),
+      second: Number(second),
+    }),
+    clockOf: () => 'second',
+  },
+  'DD.MM.YYYY HH:MM': {
+    pattern: /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2})$/,
+    toParts: ([, day, month, year, hour, minute]) => ({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: Number(hour),
+      minute: Number(minute),
+      second: 0,
+    }),
+    clockOf: () => 'minute',
+  },
+  'DD.MM.YYYY': {
+    pattern: /^(\d{2})\.(\d{2})\.(\d{4})$/,
+    toParts: ([, day, month, year]) => dateOnlyParts(year, month, day),
+    clockOf: () => 'day',
+  },
+  'DD.MM.YY HH:MM': {
+    pattern: /^(\d{2})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})$/,
+    toParts: ([, day, month, year, hour, minute]) => ({
+      year: 2000 + Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: Number(hour),
+      minute: Number(minute),
+      second: 0,
+    }),
+    clockOf: () => 'minute',
+  },
+  // The time is optional: a date-only spreadsheet Date cell reaches this
+  // preset as plain `YYYY-MM-DD` (`table-rows.ts`).
+  'YYYY-MM-DD HH:MM:SS': {
+    pattern: /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}):(\d{2}))?$/,
+    toParts: ([, year, month, day, hour, minute, second]) =>
+      hour === undefined
+        ? dateOnlyParts(year, month, day)
+        : {
+            year: Number(year),
+            month: Number(month),
+            day: Number(day),
+            hour: Number(hour),
+            minute: Number(minute),
+            second: Number(second),
+          },
+    clockOf: ([, , , , hour]) => (hour === undefined ? 'day' : 'second'),
+  },
+  'YYYY-MM-DD': {
+    pattern: /^(\d{4})-(\d{2})-(\d{2})$/,
+    toParts: ([, year, month, day]) => dateOnlyParts(year, month, day),
+    clockOf: () => 'day',
+  },
+  'MM/DD/YYYY': {
+    pattern: /^(\d{2})\/(\d{2})\/(\d{4})$/,
+    toParts: ([, month, day, year]) => dateOnlyParts(year, month, day),
+    clockOf: () => 'day',
+  },
+  'DD/MM/YYYY': {
+    pattern: /^(\d{2})\/(\d{2})\/(\d{4})$/,
+    toParts: ([, day, month, year]) => dateOnlyParts(year, month, day),
+    clockOf: () => 'day',
+  },
+};
+
+// A date-only cell's local day runs from its own midnight up to the next one
+// in the source zone: 23 or 25 hours where summer time starts or ends. A day
+// and a half past one midnight always falls on the next local day.
+const dayReadingOf = (parts: WallClockParts, zone: ZoneRule): TimeReading | undefined => {
+  const midnightSecondsOf = ({ year, month, day }: WallClockParts) =>
+    partsToSeconds({ year, month, day, hour: 0, minute: 0, second: 0 }, zone);
+
+  return foldMap(maybe(midnightSecondsOf(parts)), (fromSeconds) =>
+    foldMap(
+      maybe(midnightSecondsOf(zoneWallClockOf(zone, fromSeconds * 1000 + 1.5 * DAY_MS))),
+      (untilSeconds): TimeReading => ({ kind: 'day', fromSeconds, untilSeconds }),
+    ),
+  );
+};
+
+const timeReadingOf: Record<
+  Clock,
+  (parts: WallClockParts, zone: ZoneRule) => TimeReading | undefined
+> = {
+  second: () => undefined,
+  minute: () => ({ kind: 'minute' }),
+  day: dayReadingOf,
+};
+
+// The column-mapping date-format picker shows a real WORKED example as each
+// option's label, not the RAW preset id ("DD.MM.YYYY HH:MM:SS") — meaningless
+// to a user who doesn't already know date-format notation. Every example
+// renders off the SAME instant (31 Dec 2026,
+// 23:59:59 UTC — an unambiguous day > 12, so DD-first vs MM-first reads
+// correctly at a glance) so every option is directly comparable.
+export const dateFormatExamples: Record<DateFormatId, string> = {
+  'DD.MM.YYYY HH:MM:SS': '31.12.2026 23:59:59',
+  'DD.MM.YYYY HH:MM': '31.12.2026 23:59',
+  'DD.MM.YYYY': '31.12.2026',
+  'DD.MM.YY HH:MM': '31.12.26 23:59',
+  'YYYY-MM-DD HH:MM:SS': '2026-12-31 23:59:59',
+  'YYYY-MM-DD': '2026-12-31',
+  'MM/DD/YYYY': '12/31/2026',
+  'DD/MM/YYYY': '31/12/2026',
+};
+
+/**
+ * Parses one date/time cell against a single named preset, returning `undefined`
+ * (never throwing) on a mismatch — the column-mapping core surfaces that as a
+ * recoverable per-row `'date'` error (`applyColumnMapping`) rather than
+ * aborting the whole import, unlike a dedicated format's own
+ * `parseDateTimeSeconds`, which throws because its shape is fixed and known
+ * in advance. A cell that matches the preset's SHAPE but describes an
+ * impossible calendar instant (`partsToSeconds`'s round-trip check) is the
+ * same kind of mismatch, not a distinct case. `timeReading` says how coarse
+ * the preset's clock is (`ParsedTransaction.timeReading`).
+ */
+export const readDateWithFormat = (
+  raw: TableCell,
+  id: DateFormatId,
+  zone: ZoneRule,
+): { timeSeconds: number; timeReading?: TimeReading } | undefined => {
+  const preset = presets[id];
+  const found = preset.pattern.exec(String(raw).trim());
+
+  if (!found) {
+    return undefined;
+  }
+
+  const parts = preset.toParts(found);
+
+  return foldMap(maybe(partsToSeconds(parts, zone)), (timeSeconds) => ({
+    timeSeconds,
+    timeReading: timeReadingOf[preset.clockOf(found)](parts, zone),
+  }));
+};

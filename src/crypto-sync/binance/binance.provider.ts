@@ -1,10 +1,16 @@
-import { Money } from '../../currency/money';
-import type { HoldingRow } from '../../db/schema';
+import { identity } from 'fnts';
+import { i18n } from '@kiko/i18n/init';
+import type { HoldingRow } from '@kiko/db';
+import { Money } from '@kiko/currency/money';
+import { logFailure } from '@kiko/diagnostics';
+import either, { bifoldMap } from 'fnts/either';
+
 import type { BalanceProvider, ProviderBalance } from '../provider';
 
 import {
   type BinanceAccount,
   type BinanceBalance,
+  BinanceRateLimitError,
   type BinanceFlexiblePosition,
   type BinanceFundingAsset,
   type BinanceLockedPosition,
@@ -15,6 +21,7 @@ import {
   fetchLockedPosition,
 } from './binance.client';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
+import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
 type WalletFetch<Body> = (
   apiKey: string,
@@ -127,7 +134,7 @@ const hasRows = (body: unknown): body is { rows: unknown[] } =>
 /** Spot BTC satoshis: `free + locked` per BTC balance. Throws on a malformed body. */
 const spotSatoshis = (account: BinanceAccount): number => {
   if (!hasBalances(account)) {
-    throw new Error('Binance account response did not contain a balances array');
+    throw new Error(i18n.t('accountDetail.binanceMissingBalancesArray'));
   }
 
   const btcBalances = account.balances.filter((balance): balance is BinanceBalance =>
@@ -136,7 +143,7 @@ const spotSatoshis = (account: BinanceAccount): number => {
 
   for (const balance of btcBalances) {
     if (!isFiniteAmount(balance.free) || !isFiniteAmount(balance.locked)) {
-      throw new Error('Binance balance contained a non-numeric free/locked amount');
+      throw new Error(i18n.t('accountDetail.binanceNonNumericBalanceAmount'));
     }
   }
 
@@ -146,15 +153,16 @@ const spotSatoshis = (account: BinanceAccount): number => {
 /** Funding BTC satoshis: `free + locked + freeze + withdrawing` per BTC row. */
 const fundingSatoshis = (assets: BinanceFundingAsset[]): number => {
   if (!Array.isArray(assets)) {
-    throw new Error('Binance funding response was not an array');
+    throw new Error(i18n.t('accountDetail.binanceFundingResponseNotArray'));
   }
 
   const btcAssets = assets.filter((asset): asset is BinanceFundingAsset => isBTCEntry(asset));
 
   for (const asset of btcAssets) {
     const fields = [asset.free, asset.locked, asset.freeze, asset.withdrawing];
+
     if (fields.some((field) => !isFiniteAmount(field))) {
-      throw new Error('Binance funding balance contained a non-numeric amount');
+      throw new Error(i18n.t('accountDetail.binanceNonNumericFundingAmount'));
     }
   }
 
@@ -174,14 +182,14 @@ const positionSatoshis = (
   amountField: 'totalAmount' | 'amount',
 ): number => {
   if (!hasRows(body)) {
-    throw new Error('Binance simple-earn response did not contain a rows array');
+    throw new Error(i18n.t('accountDetail.binanceMissingRowsArray'));
   }
 
   const btcRows = body.rows.filter((row): row is Record<string, unknown> => isBTCEntry(row));
 
   for (const row of btcRows) {
     if (!isFiniteAmount(row[amountField])) {
-      throw new Error('Binance simple-earn position contained a non-numeric amount');
+      throw new Error(i18n.t('accountDetail.binanceNonNumericPositionAmount'));
     }
   }
 
@@ -202,25 +210,31 @@ const walletSatoshis = async (
   wallet: string,
   satoshis: () => Promise<number>,
 ): Promise<number | null> => {
-  try {
-    return await satoshis();
-  } catch (error) {
-    // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) one wallet's failure (a missing API-key permission, a throttle) must skip only that wallet, not break the whole Binance sync; log which one so a device log shows what was dropped.
-    console.warn(`[binance sync] skipped the ${wallet} wallet`, error);
+  const attempt = await either<unknown, number>(satoshis);
 
-    return null;
-  }
+  return bifoldMap(
+    attempt,
+    (error) => {
+      logFailure(`[binance sync] skipped the ${wallet} wallet`, error);
+
+      return null;
+    },
+    identity,
+  );
 };
 
 /** The `binanceAsset` match keys already present among a target's holdings. */
 const existingBinanceKeys = (holdings: HoldingRow[]): Set<string> => {
   const keys = new Set<string>();
+
   for (const holding of holdings) {
     const key = (holding.metadata as { binanceAsset?: unknown } | null)?.binanceAsset;
+
     if (typeof key === 'string') {
       keys.add(key);
     }
   }
+
   return keys;
 };
 
@@ -245,6 +259,7 @@ const appendWallet = (
   if (satoshis === null) {
     return;
   }
+
   if (satoshis === 0 && !existingKeys.has(metadataKey)) {
     return;
   }
@@ -255,10 +270,20 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
   id: 'binance',
   metadataField: 'binanceAsset',
   fetchBalances: async (deps, target) => {
+    // A 429/418 cooldown is SHARED with the history walk (`binance.cooldown.ts`)
+    // — either path tripping it means the same UID is over its weight budget.
+    // Checked BEFORE even reading credentials, so a cooling-down account makes
+    // ZERO Binance requests; returning no balances (never throwing) keeps the
+    // "balance sync never fails because of the history walk" contract even
+    // when the history walk is the one that set the cooldown.
+    if (isBinanceCoolingDown(target.accountId, deps.now())) {
+      return [];
+    }
+
     const credentials = await deps.readCredentials(target.accountId);
 
     if (credentials === undefined) {
-      throw new Error('No Binance credentials stored; connect Binance before syncing');
+      throw new Error(i18n.t('accountDetail.noBinanceCredentials'));
     }
 
     const { apiKey, secret } = credentials;
@@ -267,8 +292,27 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     // Spot MUST succeed — its failure fails the whole Binance sync. It is the
     // connection's proof of life and the split's anchor, so it is ALWAYS written
     // (a genuine zero included), and it reuses the legacy key so the pre-split
-    // aggregated holding is updated in place into the Spot holding.
-    const spot = spotSatoshis(await deps.fetchAccount(apiKey, secret, options));
+    // aggregated holding is updated in place into the Spot holding. A 429/418
+    // sets the shared cooldown (so a subsequent history-walk request also backs
+    // off) and surfaces as the LOCALIZED `binanceRequestFailed` message, never
+    // the raw `BinanceRateLimitError` text `useSyncAction` would otherwise show
+    // verbatim.
+    let spotAccount: BinanceAccount;
+
+    try {
+      spotAccount = await deps.fetchAccount(apiKey, secret, options);
+    } catch (error) {
+      if (error instanceof BinanceRateLimitError) {
+        setBinanceCooldownUntil(target.accountId, deps.now() + error.retryAfterMs);
+        throw new Error(
+          i18n.t('accountDetail.binanceRequestFailed', { status: error.status, detail: '' }),
+        );
+      }
+
+      throw error;
+    }
+
+    const spot = spotSatoshis(spotAccount);
     const balances: ProviderBalance[] = [
       {
         balanceMinorUnits: spot,
@@ -301,6 +345,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
         await deps.fetchLockedPosition(apiKey, secret, options),
         'amount',
       );
+
       return flexible + locked;
     });
     appendWallet(balances, earn, EARN_KEY, EARN_HOLDING_NAME, existingKeys);

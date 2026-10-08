@@ -4,8 +4,8 @@ import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 // `StyleSheet.hairlineWidth`, which is not necessarily react-native's, so the
 // assertion reads the expected value from the same source the style uses.
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
-import '../../unistyles';
-import { darkTheme } from '../../theme';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/glass-surface`), not `./glass-surface.component`
@@ -49,8 +49,10 @@ jest.mock('@callstack/liquid-glass', () => {
     useEffect(() => {
       state.baseMountCount += 1;
     }, []);
+
     return createElement(View, props);
   };
+
   return {
     LiquidGlassView,
     isLiquidGlassSupported: false,
@@ -84,8 +86,8 @@ describe('GlassSurface', () => {
   // foreign inline style appended to the PARENT's own style array, so it
   // paints on the very first render the same way `children` always has — no
   // Unistyles-managed style member or ShadowNode-reconciliation gap to route
-  // around (the old first-paint-transparent bug an inline style on the
-  // parent node used to hit).
+  // around (an inline style on the parent node would paint transparent on
+  // first render).
   it('renders the wash as a flat backgroundColor on first render when a tint is set', async () => {
     const tint = 'rgba(230, 62, 52, 0.1)';
     const { getByTestId } = await render(
@@ -111,7 +113,7 @@ describe('GlassSurface', () => {
   // The border must land on the very first render for the same reason as the
   // tint: it flows through a Unistyles-managed style member, so its width/color
   // are written to the native ShadowNode on the first frame rather than only
-  // after a re-render (the intermittently-bordered card bug, G2).
+  // after a re-render, which would leave the border intermittently missing.
   it('draws the hairline separator border on first render when bordered', async () => {
     const { getByTestId } = await render(
       <GlassSurface testID="bordered-surface" bordered>
@@ -165,7 +167,7 @@ describe('GlassSurface', () => {
     expect(queryByTestId('transparent-fallback-backdrop')).toBeNull();
   });
 
-  // `material` (item 2, BottomSheet's own live-blur variant) must ALSO stay
+  // `material` (BottomSheet's own live-blur variant) must ALSO stay
   // translucent on the non-glass fallback — a device without Liquid Glass
   // has no live-sample material to fall back to, so without this branch the
   // sheet would render as a solid opaque panel there instead of see-through.
@@ -216,10 +218,13 @@ describe('GlassSurface', () => {
   // the non-glass fallback path at all, so `bloom` here must not schedule
   // one even though it is set.
   it('does not schedule a remount for a bloom surface on the non-glass fallback path', async () => {
-    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
+    const rafSpy = jest
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        callback(0);
+
+        return 0;
+      });
 
     await render(
       <GlassSurface testID="bloom-fallback-resample" bloom>
@@ -307,12 +312,13 @@ describe('GlassSurface', () => {
 
   // The real Liquid Glass branch (isLiquidGlassSupported === true), which Jest
   // otherwise never reaches because the module is mocked to the non-glass
-  // fallback. These assertions encode the device-only stability fix: the card
-  // background used to be ~90% a LIVE glass sample of whatever sat behind the
-  // card, so its lightness drifted on every scroll/reorder/navigation and it
-  // flashed on drag pickup. The fix composites the entity tint INTO the
-  // material natively (`tintColor`), pins what the glass samples to a constant
-  // opaque `backdrop`, and disables the frost-in animation on remount.
+  // fallback. These assertions pin the device-only stability contract: the card
+  // background would otherwise be ~90% a LIVE glass sample of whatever sits
+  // behind the card, so its lightness would drift on every
+  // scroll/reorder/navigation and it would flash on drag pickup. The fix
+  // composites the entity tint INTO the material natively (`tintColor`), pins
+  // what the glass samples to a constant opaque `backdrop`, and disables the
+  // frost-in animation on remount.
   describe('on liquid-glass-capable iOS', () => {
     const tint = 'rgba(255, 69, 58, 0.1)';
 
@@ -477,7 +483,7 @@ describe('GlassSurface', () => {
       expect(queryByTestId('no-backdrop-glass-backdrop')).toBeNull();
     });
 
-    // `material` (BottomSheet's own variant — item 2): a REAL translucent
+    // `material` (BottomSheet's own variant): a REAL translucent
     // blur, so the glass path renders NO backdrop at all — byte-for-byte the
     // same "live sample" tree a plain, tint-less surface already renders
     // (unlike `transparent`, which pins a translucent backdrop under the
@@ -548,18 +554,18 @@ describe('GlassSurface', () => {
       expect(getByTestId('bloom-glass-base').props.effect).toBe('clear');
     });
 
-    // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12, follow-up fix
-    // confirmed 2026-09-12): a `bloom` surface on the real glass path has no
-    // backdrop under a `'clear'`-effect `LiquidGlassView`, which samples its
-    // backdrop exactly once, at native layout. `GlassSurface` compensates by
-    // polling the surface's REAL on-screen position (`measureInWindow`, which
-    // includes a `Sortable.Grid` item's live Reanimated transform, unlike
-    // `onLayout`) every frame until two consecutive reads agree, then
-    // remounting exactly once (`needsResample`/`remountToken`, decision math
-    // in `glass-surface.resample.ts`). A fixed 2-frame delay (the original
-    // fix) raced this transform and lost for any card whose transform had not
-    // yet landed by frame 2 — only cards near the top of the grid happened to
-    // settle that fast. These tests drive `measureInWindow` (mocked on the
+    // FIRST-PAINT RE-SAMPLE (device-only): a `bloom` surface on the real glass
+    // path has no backdrop under a `'clear'`-effect `LiquidGlassView`, which
+    // samples its backdrop exactly once, at native layout. `GlassSurface`
+    // compensates by polling the surface's REAL on-screen position
+    // (`measureInWindow`, which includes a `Sortable.Grid` item's live
+    // Reanimated transform, unlike `onLayout`) every frame until two
+    // consecutive reads agree, then remounting exactly once
+    // (`needsResample`/`remountToken`, decision math in
+    // `glass-surface.resample.ts`). A fixed 2-frame delay would race this
+    // transform and lose for any card whose transform has not yet landed by
+    // frame 2 — only cards near the top of the grid settle that fast. These
+    // tests drive `measureInWindow` (mocked on the
     // shared `View` prototype — see `probeViewPrototype` above) through a
     // scripted sequence of on-screen reads to prove the loop actually keeps
     // polling past frame 2 rather than assuming a fixed duration.
@@ -574,16 +580,19 @@ describe('GlassSurface', () => {
         measureInWindowSpy.mockRestore();
       });
 
-      // The minimum-latency case (a top-of-grid card, or the previously-safe
-      // fixed-2-frame path): the position already matches on the very next
-      // read, so the loop settles — and remounts — after exactly two reads,
-      // never fewer (a single read has nothing to compare against) and never
-      // more.
+      // The minimum-latency case (a top-of-grid card, the case a fixed 2-frame
+      // delay would also get right): the position already matches on the very
+      // next read, so the loop settles — and remounts — after exactly two
+      // reads, never fewer (a single read has nothing to compare against) and
+      // never more.
       it('remounts once two consecutive reads agree, for a card whose position is already settled', async () => {
-        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-          cb(0);
-          return 0;
-        });
+        const rafSpy = jest
+          .spyOn(globalThis, 'requestAnimationFrame')
+          .mockImplementation((callback) => {
+            callback(0);
+
+            return 0;
+          });
 
         try {
           measureInWindowSpy.mockImplementation((callback: MeasureInWindowCallback) =>
@@ -610,7 +619,7 @@ describe('GlassSurface', () => {
           expect(liquidGlass.baseMountCount).toBe(2);
           expect(getByTestId('bloom-resample-glass-base').props.effect).toBe('clear');
 
-          rerender(
+          await rerender(
             <GlassSurface testID="bloom-resample-glass" transparent bloom>
               <Text>content</Text>
             </GlassSurface>,
@@ -630,10 +639,13 @@ describe('GlassSurface', () => {
       // loop instead keeps polling — six reads here — until the position
       // finally repeats, and only remounts then.
       it('keeps polling past a fixed 2-frame count while the position keeps moving, and remounts once it settles', async () => {
-        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-          cb(0);
-          return 0;
-        });
+        const rafSpy = jest
+          .spyOn(globalThis, 'requestAnimationFrame')
+          .mockImplementation((callback) => {
+            callback(0);
+
+            return 0;
+          });
 
         try {
           const positions = [10, 40, 90, 150, 150, 150];
@@ -669,10 +681,13 @@ describe('GlassSurface', () => {
       // out at `MAX_SETTLE_ATTEMPTS` and remounts anyway rather than leaving
       // the card unsampled indefinitely.
       it('caps the settle loop and remounts anyway if the position never stops changing', async () => {
-        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-          cb(0);
-          return 0;
-        });
+        const rafSpy = jest
+          .spyOn(globalThis, 'requestAnimationFrame')
+          .mockImplementation((callback) => {
+            callback(0);
+
+            return 0;
+          });
 
         try {
           let y = 0;
@@ -699,10 +714,13 @@ describe('GlassSurface', () => {
       // backdrop, or the standard `'regular'` effect), so it must not pay for
       // an extra native remount it does not need.
       it('does not schedule a remount for a non-bloom surface on the real glass path', async () => {
-        const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-          cb(0);
-          return 0;
-        });
+        const rafSpy = jest
+          .spyOn(globalThis, 'requestAnimationFrame')
+          .mockImplementation((callback) => {
+            callback(0);
+
+            return 0;
+          });
 
         try {
           await render(

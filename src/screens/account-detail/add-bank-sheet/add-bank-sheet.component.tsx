@@ -1,13 +1,12 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
 import { useTranslation } from 'react-i18next';
-
-import Box from '../../../design-system/components/box';
-import Text from '../../../design-system/components/text';
-import type { BankProviderId } from '../../../bank-sync/provider';
-import { bankProviderRegistry } from '../../../bank-sync/registry';
-import BottomSheet from '../../../design-system/components/bottom-sheet';
-import { type ProviderCatalogEntry, providerCatalog } from '../../../bank-sync/provider-catalog';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import type { BankProviderId } from '@kiko/bank-sync/provider';
+import { bankProviderRegistry } from '@kiko/bank-sync/registry';
+import BottomSheet from '@kiko/design-system/components/bottom-sheet';
+import { type ProviderCatalogEntry, providerCatalog } from '@kiko/bank-sync/provider-catalog';
 
 import { styles } from './add-bank-sheet.styles';
 import type { AddBankProviderSheetProps } from './add-bank-sheet.props';
@@ -50,7 +49,7 @@ const AddBankProviderSheet: FC<AddBankProviderSheetProps> = ({ visible, onDismis
     <BottomSheet
       visible={visible}
       onDismiss={onDismiss}
-      header={<Text variant="heading">{t('accountDetail.addBankAction')}</Text>}
+      header={<Text variant="heading">{t('accountDetail.addBankSheetTitle')}</Text>}
       testID="add-bank-sheet"
     >
       {availableEntries.map((entry) => (
@@ -66,9 +65,11 @@ const AddBankProviderSheet: FC<AddBankProviderSheetProps> = ({ visible, onDismis
             <Text variant="body" tone="textPrimary">
               {entry.displayName}
             </Text>
+
             <Text variant="caption" tone="textSecondary">
               {t(entry.aboutKey)}
             </Text>
+
             <Text variant="caption" tone="textSecondary">
               {t(entry.eligibilityKey)}
             </Text>

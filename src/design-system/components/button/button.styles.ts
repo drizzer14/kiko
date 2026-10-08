@@ -1,6 +1,5 @@
 import { StyleSheet } from 'react-native-unistyles';
-
-import { DISABLED_OPACITY } from '../../disabled-opacity';
+import { DISABLED_OPACITY } from '@kiko/design-system/disabled-opacity';
 
 // The shared regular Button's rendered height.
 const BUTTON_MIN_HEIGHT = 50;
@@ -82,6 +81,23 @@ export const styles = StyleSheet.create((theme) => ({
   disabled: {
     opacity: DISABLED_OPACITY,
   },
+  // A loading button's label and icons: still laid out, so the button keeps
+  // the exact size it has at rest, but invisible under the spinner.
+  hiddenContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(2),
+    opacity: 0,
+  },
+  // The loading spinner fills the button and centers itself over the hidden
+  // content (ActivityIndicator centers its glyph inside its own frame).
+  spinner: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
   // A plain `Text as RNText`, not the design-system `Text` primitive: `Text`
   // intentionally excludes `color` from its style prop (see text.props.ts) so
   // the tone token stays authoritative, but this label's color must vary by
@@ -93,10 +109,10 @@ export const styles = StyleSheet.create((theme) => ({
   label: {
     ...theme.typography.body,
     fontWeight: '600',
-    // NOTE: no `textTransform`. It used to force `capitalize` so call sites
-    // "need not be edited", which rendered every Ukrainian label in Title Case
-    // ("Додати Рахунок") — Ukrainian UI labels are sentence case. Each catalogue
-    // now supplies its own casing; there is no per-language gate, because a copy
-    // decision does not belong in the style layer.
+    // NOTE: no `textTransform`. Forcing `capitalize` would render every
+    // Ukrainian label in Title Case ("Додати Рахунок") — Ukrainian UI labels
+    // are sentence case. Each catalogue supplies its own casing; there is no
+    // per-language gate, because a copy decision does not belong in the style
+    // layer.
   },
 }));

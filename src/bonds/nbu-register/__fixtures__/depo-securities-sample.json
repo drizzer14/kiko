@@ -1,0 +1,72 @@
+[
+  {
+    "cpcode": "UA4000234215",
+    "nominal": 1000,
+    "auk_proc": 15.1,
+    "pgs_date": "2026-06-24",
+    "cptype": "DCP",
+    "cpdescr": "Середньострокові",
+    "pay_period": 182,
+    "val_code": "UAH",
+    "payments": [
+      { "pay_date": "2025-06-25", "pay_type": "1", "pay_val": 75.5 },
+      { "pay_date": "2025-12-24", "pay_type": "1", "pay_val": 75.5 },
+      { "pay_date": "2026-06-24", "pay_type": "1", "pay_val": 75.5 },
+      { "pay_date": "2026-06-24", "pay_type": "2", "pay_val": 1000 }
+    ]
+  },
+  {
+    "cpcode": "UA4000237077",
+    "nominal": 1000,
+    "auk_proc": 3.19,
+    "pgs_date": "2027-02-25",
+    "cptype": "DCP",
+    "cpdescr": "Середньострокові",
+    "pay_period": 182,
+    "val_code": "EUR",
+    "payments": [
+      { "pay_date": "2026-02-26", "pay_type": "1", "pay_val": 15.95 },
+      { "pay_date": "2026-08-27", "pay_type": "1", "pay_val": 15.95 },
+      { "pay_date": "2027-02-25", "pay_type": "1", "pay_val": 15.95 },
+      { "pay_date": "2027-02-25", "pay_type": "2", "pay_val": 1000 }
+    ]
+  },
+  {
+    "cpcode": "XS2895055981",
+    "nominal": 1,
+    "auk_proc": 4.5,
+    "pgs_date": "2029-02-01",
+    "cptype": "OZDP",
+    "cpdescr": "OЗДП-середньострокова",
+    "pay_period": 182,
+    "val_code": "USD",
+    "payments": [
+      { "pay_date": "2025-02-01", "pay_type": "1", "pay_val": 0.00875 },
+      { "pay_date": "2025-08-01", "pay_type": "1", "pay_val": 0.00875 },
+      { "pay_date": "2026-02-01", "pay_type": "1", "pay_val": 0.0225 },
+      { "pay_date": "2026-08-01", "pay_type": "1", "pay_val": 0.0225 },
+      { "pay_date": "2027-02-01", "pay_type": "1", "pay_val": 0.0225 },
+      { "pay_date": "2027-08-01", "pay_type": "1", "pay_val": 0.03 },
+      { "pay_date": "2028-02-01", "pay_type": "1", "pay_val": 0.03 },
+      { "pay_date": "2028-08-01", "pay_type": "1", "pay_val": 0.03 },
+      { "pay_date": "2029-02-01", "pay_type": "1", "pay_val": 0.03 },
+      { "pay_date": "2029-02-01", "pay_type": "2", "pay_val": 1 }
+    ]
+  },
+  {
+    "cpcode": "UA4000239115",
+    "nominal": 1000,
+    "auk_proc": 15.18,
+    "pgs_date": "2027-09-15",
+    "cptype": "DCP",
+    "cpdescr": "Середньострокові",
+    "pay_period": 182,
+    "val_code": "UAH",
+    "payments": [
+      { "pay_date": "2026-09-16", "pay_type": "1", "pay_val": 75.9 },
+      { "pay_date": "2027-03-17", "pay_type": "1", "pay_val": 75.9 },
+      { "pay_date": "2027-09-15", "pay_type": "1", "pay_val": 75.9 },
+      { "pay_date": "2027-09-15", "pay_type": "2", "pay_val": 1000 }
+    ]
+  }
+]

@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 
 import PreviewDetailList from './preview-detail-list.component';
 

@@ -1,9 +1,9 @@
-import { render, within } from '@testing-library/react-native';
 import type { ComponentProps } from 'react';
+import { render, within } from '@testing-library/react-native';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
 
-import type { RenderedElement } from '../../../test-support/rendered-element';
-import '../../unistyles';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
+import '@kiko/design-system/unistyles';
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/screen`), not `./screen.component` directly, so
 // this test also exercises index.ts's re-export.
@@ -73,6 +73,7 @@ jest.mock('react-native-safe-area-context', () => {
     // header owns the top inset (see the `bleedTop` tests below).
     const edges = props.edges as readonly string[] | undefined;
     const reservesBottomInset = edges === undefined || edges.includes('bottom');
+
     return (
       <View
         {...props}
@@ -80,6 +81,7 @@ jest.mock('react-native-safe-area-context', () => {
       />
     );
   };
+
   return {
     SafeAreaView: mockSafeAreaView,
     SafeAreaProvider: View,
@@ -284,7 +286,7 @@ describe('Screen', () => {
     // intermediate padded wrapper `View` between the SafeAreaView and the child
     // scrollable stops that collapse — the working `account-detail` scroll
     // branch proves a scrollable rendered as a DIRECT child of the SafeAreaView
-    // both collapses AND does not float (feedback round-3, item 1). So under
+    // both collapses AND does not float. So under
     // `bleedTop` Screen renders the child directly, with NO `screen-content`
     // wrapper, exactly like the scroll branch's ScrollView: the child (a
     // FlatList) becomes the tracked scroll view. The render helper's plain
@@ -458,7 +460,7 @@ describe('Screen', () => {
 
       // Sidebar mode distrusts the tab-bar height entirely: the footer's own
       // padding is just the gap (16) plus 0 extra clearance, not 16 + 644 —
-      // the ~676pt footer that used to cover the screen.
+      // a ~676pt footer would cover the whole screen.
       expect(footerStyle.paddingBottom).toBe(FOOTER_GAP);
       // The enclosing SafeAreaView already reserves the 84pt right sidebar
       // inset itself (`edges` includes 'right' in every branch — see

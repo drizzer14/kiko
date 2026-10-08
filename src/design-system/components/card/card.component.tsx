@@ -2,8 +2,8 @@ import type { FC } from 'react';
 import { View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
-import type { CardProps } from './card.props';
 import { styles } from './card.styles';
+import type { CardProps } from './card.props';
 
 // The shared CONTENT-layer surface: a solid, opaque themed fill with a
 // defined hairline border, no glass/blur material at all. Apple's iOS Human
@@ -11,14 +11,14 @@ import { styles } from './card.styles';
 // floats above content (the tab bar, toolbars, bottom sheets) — "don't use
 // Liquid Glass in the content layer" — and iOS 27 itself leans on DEFINED
 // BORDERS and tuned diffusion for content separation, not glass or heavy
-// shadows. `Card` is that content-layer surface: every card, list row, and
-// chart container that used to be a neutral (non-tint) `GlassSurface` now
-// renders through this one shared component instead, so content reads as a
-// consistent, solid, bordered surface regardless of OS version or Liquid
-// Glass API drift — see `GlassSurface`'s own doc comment for why the native
-// glass material is the wrong lever for content in the first place (no
-// intensity/reach knob, samples only its own rect, and iOS 27 ships a
-// user-facing transparency slider content has no way to react to).
+// shadows. `Card` is that content-layer surface: every neutral (non-tint)
+// card, list row, and chart container renders through this one shared
+// component, never a `GlassSurface`, so content reads as a consistent, solid,
+// bordered surface regardless of OS version or Liquid Glass API drift — see
+// `GlassSurface`'s own doc comment for why the native glass material is the
+// wrong lever for content in the first place (no intensity/reach knob,
+// samples only its own rect, and iOS 27 ships a user-facing transparency
+// slider content has no way to react to).
 // `GlassSurface` remains the correct surface for the navigation layer
 // (`BottomSheet`'s own glass fill/scrim, the keyboard "Done" accessory pill,
 // the Home add-transaction floating action button) — this component does

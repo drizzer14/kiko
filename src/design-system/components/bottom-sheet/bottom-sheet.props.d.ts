@@ -1,13 +1,25 @@
 import type { ReactNode } from 'react';
 
-/** The Modal transition used to present the sheet. */
-type BottomSheetAnimation = 'fade' | 'slide';
+/** The Modal transition that presents the sheet. */
+type BottomSheetAnimation = 'fade' | 'slide' | 'none';
 
 export type BottomSheetProps = {
   /** Whether the sheet and its dismiss scrim are mounted and shown. */
   visible: boolean;
   /** Called on a tap on the scrim behind the sheet, or a hardware/gesture back. */
   onDismiss: () => void;
+  /**
+   * Called when the underlying RN `Modal` reports its OWN `onDismiss` — the
+   * close ANIMATION has actually finished (iOS only; RN's `Modal` never
+   * fires this on Android). Distinct from `onDismiss` above, which means "a
+   * dismiss was REQUESTED" (a scrim tap, or `onRequestClose`) — this means
+   * "the sheet has genuinely finished closing". Optional: a caller that
+   * only needs the request signal (the vast majority) never passes it, and
+   * every existing `BottomSheet` caller is unaffected. Use this for
+   * anything that must not run until the sheet is visually gone — e.g.
+   * navigating the screen away, which would otherwise pop mid-animation.
+   */
+  onClosed?: () => void;
   /** The sheet's content, laid out in a bottom-anchored column. */
   children: ReactNode;
   /**
@@ -29,7 +41,12 @@ export type BottomSheetProps = {
    * than a shared constant. Defaults to 3.
    */
   gap?: number;
-  /** The Modal transition. Defaults to `'fade'`. */
+  /**
+   * The Modal transition. Defaults to `'fade'`. `'none'` shows and dismisses
+   * with no animation, so `onClosed` follows at once; a caller that needs it
+   * for ONE close sets it in the same render that hides the sheet (the native
+   * Modal reads it again on every props commit, dismiss included).
+   */
   animationType?: BottomSheetAnimation;
   /**
    * An optional STRICTER cap on the sheet's height, in pixels, for a sheet
@@ -46,8 +63,8 @@ export type BottomSheetProps = {
    * Whether the sheet wraps `children` in its own scrolling container so
    * content taller than the 66% cap scrolls instead of being clipped.
    * Defaults to `true` — the shared fix for every plain sheet (filter-menu,
-   * date-field, the transaction-form category-override confirm) that used to
-   * render no scroll container at all and simply got clipped at the cap.
+   * date-field, the transaction-form category-override confirm), which has no
+   * scroll container of its own and would otherwise be clipped at the cap.
    *
    * Set to `false` only when the sheet needs a pinned header/footer/actions
    * row that must stay OUTSIDE the scrollable region, or needs direct control

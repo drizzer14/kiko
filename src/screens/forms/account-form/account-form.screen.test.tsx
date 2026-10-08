@@ -1,17 +1,19 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import type { ComponentProps } from 'react';
 import { Alert } from 'react-native';
-import '../../../design-system/unistyles';
-import { darkTheme } from '../../../design-system/theme';
-import { accountKindSymbol, genericEntitySymbol } from '../../../holdings/entity-symbols';
-import { i18n } from '../../../i18n';
-import { scrollToField } from '../scroll-to-field/scroll-to-field';
+import type { ComponentProps } from 'react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+import { Money } from '@kiko/currency/money';
 import {
   asNavigationProp,
   asRouteProp,
   type NavigationSpy,
   navigationSpy,
-} from '../../../test-support/navigation-props';
+} from '@kiko/test-support/navigation-props';
+import { darkTheme } from '@kiko/design-system/theme';
+import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
+import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
+import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 
 import AccountFormScreen from './account-form.screen';
 
@@ -24,7 +26,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 // Finds which theme entity-color swatch (if any) the ColorPicker currently
 // marks selected, by its accessibility label, and resolves it back to a hex.
 // `undefined` means no swatch matches the form's current effective color —
-// the failure mode a stored '' or an unmapped kind/type used to produce.
+// the failure mode a stored '' or an unmapped kind/type would produce.
 const selectedSwatchHex = (
   getByLabelText: Awaited<ReturnType<typeof render>>['getByLabelText'],
 ): string | undefined => {
@@ -33,15 +35,48 @@ const selectedSwatchHex = (
       return hex;
     }
   }
+
   return undefined;
 };
 
+// Opens the AccountKindField sheet and picks the given kind — every kind
+// switch goes through this trigger-press -> option-press pair, matching
+// the field's own sheet-based interaction.
+const selectKind = async (
+  getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
+  kind: 'bank' | 'cash' | 'crypto' | 'property' | 'metals' | 'debt' | 'broker',
+): Promise<void> => {
+  await fireEvent.press(getByTestId('account-kind-field'));
+  const sheet = getByTestId('account-kind-field-sheet-modal');
+  await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
+  // The sheet's close animation ending, which is when a swap may navigate.
+  await act(async () => sheet.props.onDismiss());
+};
+
+// A new bank account cannot Save until a bank is picked; tests about anything
+// else on the bank form pick the catalog's fallback, "Other bank".
+const pickOtherBank = async (
+  getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
+): Promise<void> => {
+  await fireEvent.press(getByTestId('account-bank-type-field'));
+  await fireEvent.press(getByTestId('bank-type-option-other'));
+};
+
+// The AccountKindField trigger's own `disabled` accessibility state — the
+// field carries it directly on its testID'd Pressable, which the read-only-kind
+// assertions read.
+const isKindFieldDisabled = (
+  getByTestId: Awaited<ReturnType<typeof render>>['getByTestId'],
+): boolean => Boolean(getByTestId('account-kind-field').props.accessibilityState.disabled);
+
 const mockCreate = jest.fn();
 const mockCreateCashAccount = jest.fn();
+const mockCreateImplicitHolding = jest.fn();
 const mockSetIcon = jest.fn();
 const mockUpdate = jest.fn();
 const mockSaveToken = jest.fn();
 const mockSaveCredentials = jest.fn();
+const mockClearCredentials = jest.fn();
 const mockMonobankSync = jest.fn();
 const mockCryptoSync = jest.fn();
 const mockFetchAccount = jest.fn();
@@ -50,7 +85,7 @@ const mockFetchAccount = jest.fn();
 // the hoisted factory may close over it; create-mode tests leave it empty.
 let mockAccounts: unknown[] = [];
 
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockAccounts }),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
@@ -58,20 +93,22 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     create: (...args: unknown[]) => mockCreate(...args),
     createCashAccount: (...args: unknown[]) => mockCreateCashAccount(...args),
+    createImplicitHolding: (...args: unknown[]) => mockCreateImplicitHolding(...args),
     setIcon: (...args: unknown[]) => mockSetIcon(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
   },
 }));
-jest.mock('../../../monobank/token', () => ({
+jest.mock('@kiko/monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
-jest.mock('../../../crypto-sync/binance/binance.credentials', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (...args: unknown[]) => mockSaveCredentials(...args),
+  clearCredentials: (...args: unknown[]) => mockClearCredentials(...args),
 }));
-jest.mock('../../../crypto-sync/binance/binance.client', () => ({
+jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
-jest.mock('../scroll-to-field/scroll-to-field');
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => ({
     isSyncing: false,
@@ -92,8 +129,9 @@ jest.mock('@kiko/sync/use-crypto-sync', () => ({
 // pressable that fires the screen's `onConnect*` closure, so what is under test
 // is the create screen's wiring (create-first, no duplicate, secret stays in the
 // field).
-jest.mock('../../account-detail/wallet-address-field', () => {
+jest.mock('@kiko/design-system/components/wallet-address-field', () => {
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ onConnect }: { onConnect: (address: string) => Promise<boolean> }) => (
@@ -106,8 +144,9 @@ jest.mock('../../account-detail/wallet-address-field', () => {
     ),
   };
 });
-jest.mock('../../account-detail/binance-credentials-field', () => {
+jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ onConnect }: { onConnect: () => Promise<boolean> }) => (
@@ -119,12 +158,14 @@ jest.mock('../../account-detail/binance-credentials-field', () => {
 });
 // The bank create form now offers the SAME explicit-Connect pattern as crypto,
 // through MonobankConnectField. It owns its own token input, live validation, and
-// status (covered by its own test); here it collapses to one pressable that fires
-// the screen's `connectMonobank` closure with a token, so what is under test is
+// status (covered by its own test); here it renders one pressable that fires the
+// screen's `connectMonobank` closure with a token, plus a stateful token TextInput
+// (testID `monobank-token-input`) that loses its value on unmount, so what is under test is
 // the create screen's wiring (create-first, no duplicate, secret via the closure).
-jest.mock('../../account-detail/monobank-connect-field', () => {
+jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
   const { useState } = require('react');
-  const { Pressable, Text } = require('react-native');
+  const { Pressable, Text, TextInput } = require('react-native');
+
   return {
     __esModule: true,
     // Unlike the wallet/binance mocks above, this one also surfaces the boolean
@@ -134,22 +175,33 @@ jest.mock('../../account-detail/monobank-connect-field', () => {
     // `true` or losing a rejection inside the try/catch).
     default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => {
       const [result, setResult] = useState('');
+      // Local state of the real field's token input: a remount loses it.
+      const [typedToken, setTypedToken] = useState('');
+
       return (
-        <Pressable
-          accessibilityLabel="monobank-field"
-          onPress={() => {
-            onConnect('tok-123').then((connected: boolean) => setResult(String(connected)));
-          }}
-        >
-          <Text>monobank field</Text>
-          <Text testID="monobank-connect-result">{result}</Text>
-        </Pressable>
+        <>
+          <TextInput
+            testID="monobank-token-input"
+            value={typedToken}
+            onChangeText={setTypedToken}
+          />
+
+          <Pressable
+            accessibilityLabel="monobank-field"
+            onPress={async () => {
+              setResult(String(await onConnect('tok-123')));
+            }}
+          >
+            <Text>monobank field</Text>
+            <Text testID="monobank-connect-result">{result}</Text>
+          </Pressable>
+        </>
       );
     },
   };
 });
 
-type RouteParams = { accountId?: string };
+type RouteParams = AccountFormProps['route']['params'];
 
 const renderForm = async (
   params: RouteParams = {},
@@ -162,6 +214,7 @@ const renderForm = async (
       route={route}
     />,
   );
+
   return { ...view, navigation };
 };
 
@@ -172,6 +225,11 @@ describe('AccountFormScreen', () => {
     mockAccounts = [];
     // create resolves to the new row's id so the form can set its icon on it.
     mockCreate.mockResolvedValue('new-account-id');
+    mockCreateImplicitHolding.mockResolvedValue({
+      accountId: 'implicit-account-id',
+      holdingId: 'new-holding-id',
+    });
+    mockSetIcon.mockResolvedValue(undefined);
     // The credential writes resolve so the save flow can await them, and the
     // sync hooks resolve a boolean like the real fire-and-forget connect.
     mockSaveToken.mockResolvedValue(undefined);
@@ -189,15 +247,15 @@ describe('AccountFormScreen', () => {
     expect(queryByText('Add account')).toBeNull();
   });
 
-  // DEVICE BUG fix (root cause): the currency sheet's search field lives
-  // inside a Modal above this Screen's background ScrollView, which
-  // otherwise misfires `automaticallyAdjustKeyboardInsets` for a responder
-  // it does not contain. `CurrencyField`'s `onOpenChange` must gate that
-  // prop off for exactly the window the sheet is open.
+  // The currency sheet's search field lives inside a Modal above this
+  // Screen's background ScrollView, which otherwise misfires
+  // `automaticallyAdjustKeyboardInsets` for a responder it does not contain.
+  // `CurrencyField`'s `onOpenChange` must gate that prop off for exactly the
+  // window the sheet is open.
   it('suspends automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
-    const { getByTestId, getByText } = await renderForm();
+    const { getByTestId } = await renderForm();
 
-    await fireEvent.press(getByText('Cash'));
+    await selectKind(getByTestId, 'cash');
 
     expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
 
@@ -215,8 +273,10 @@ describe('AccountFormScreen', () => {
     expect(getAllByTestId('form-divider')).toHaveLength(2);
   });
 
-  it('marks only the required Name field with an asterisk', async () => {
-    const { getByText, getAllByText } = await renderForm();
+  it('marks only the required Name field with an asterisk on a kind that picks no bank or broker', async () => {
+    const { getByText, getAllByText, getByTestId } = await renderForm();
+
+    await selectKind(getByTestId, 'metals');
 
     // Name gates save (canSave = trimmed name), so it shows the marker; Kind and
     // Color are optional (they carry defaults), so no other asterisk renders.
@@ -224,31 +284,79 @@ describe('AccountFormScreen', () => {
     expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(1);
   });
 
-  it('offers the three account kinds with humanized labels', async () => {
-    const { getByText, queryByText } = await renderForm();
-
-    expect(getByText('Bank')).toBeTruthy();
-    expect(getByText('Cash')).toBeTruthy();
-    expect(getByText('Crypto')).toBeTruthy();
-    expect(queryByText('Broker')).toBeNull();
-  });
-
-  it('renders the account-type chips in the order Cash, Bank, Crypto', async () => {
+  it('marks the Bank type field required on a new bank account, beside Name', async () => {
     const { getAllByText } = await renderForm();
 
-    // getAllByText returns matches in render (tree) order, and the ChipRow lays
-    // its chips out in the `kinds` array order, so this asserts the visible
-    // left-to-right order is Cash -> Bank -> Crypto.
-    const order = getAllByText(/^(Cash|Bank|Crypto)$/).map((node) => node.props.children);
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(2);
+  });
 
-    expect(order).toEqual(['Cash', 'Bank', 'Crypto']);
+  it('marks the Broker field required on a new broker account, beside Name', async () => {
+    const { getAllByText, getByTestId } = await renderForm();
+
+    await selectKind(getByTestId, 'broker');
+
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(2);
+  });
+
+  it('offers the account kinds with humanized labels and subtitles, Broker included', async () => {
+    const { getByTestId } = await renderForm();
+
+    await fireEvent.press(getByTestId('account-kind-field'));
+
+    // Each row's text content is the label immediately followed by its
+    // subtitle (no separator node between them), so this checks a leading
+    // partial match rather than an exact one.
+    expect(getByTestId('account-kind-field-option-bank')).toHaveTextContent('Bank', {
+      exact: false,
+    });
+    expect(getByTestId('account-kind-field-option-cash')).toHaveTextContent('Cash', {
+      exact: false,
+    });
+    expect(getByTestId('account-kind-field-option-crypto')).toHaveTextContent('Crypto', {
+      exact: false,
+    });
+    expect(getByTestId('account-kind-field-option-property')).toHaveTextContent('Property', {
+      exact: false,
+    });
+    expect(getByTestId('account-kind-field-option-broker')).toHaveTextContent('Broker', {
+      exact: false,
+    });
+    expect(getByTestId('account-kind-field-option-broker-description')).toHaveTextContent(
+      'Bonds and cash at a broker.',
+    );
+  });
+
+  it('renders the account-kind sheet options in the order Bank, Cash, Crypto, Property, Metals, Debt, Broker', async () => {
+    const { getByTestId, getAllByTestId } = await renderForm();
+
+    await fireEvent.press(getByTestId('account-kind-field'));
+
+    // AccountKindField lays its rows out in the `kinds` array order
+    // (accountKindSymbol's own key order), so their testIDs mount in that
+    // same top-to-bottom order. The regex excludes each row's own
+    // `-description` child testID, which shares the same prefix.
+    const order = getAllByTestId(/^account-kind-field-option-[a-z]+$/).map((node) =>
+      (node.props.testID as string).replace('account-kind-field-option-', ''),
+    );
+
+    expect(order).toEqual(['bank', 'cash', 'crypto', 'property', 'metals', 'debt', 'broker']);
+  });
+
+  it('shows a subtitle under every kind option in the sheet', async () => {
+    const { getByTestId } = await renderForm();
+
+    await fireEvent.press(getByTestId('account-kind-field'));
+
+    expect(getByTestId('account-kind-field-option-property-description')).toHaveTextContent(
+      'Real estate, car, valuables, money you lent.',
+    );
   });
 
   it('creates a crypto account with the crypto kind (no source connected)', async () => {
-    const { getByLabelText, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     await fireEvent.press(getByText('Save'));
 
     // The row is inserted with the screen's pre-generated id (so a field Connect
@@ -259,6 +367,414 @@ describe('AccountFormScreen', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  describe('picking an implicit kind swaps in the holding form', () => {
+    const kindSheetModal = spyOnModalAnimationPerTest('account-kind-field-sheet-modal');
+
+    it('replaces the screen with the property holding form, carrying the typed name', async () => {
+      const { getByLabelText, getByTestId, navigation } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My House');
+      await selectKind(getByTestId, 'property');
+
+      // `replace`, not `navigate`: Back from the holding form must leave the
+      // flow rather than land on this stale form.
+      expect(navigation.replace).toHaveBeenCalledTimes(1);
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: 'My House', icon: null, color: null },
+      });
+      expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+
+    it('waits for the kind sheet to finish closing before replacing the screen', async () => {
+      const { getByLabelText, getByTestId, navigation } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My House');
+      await fireEvent.press(getByTestId('account-kind-field'));
+      const sheet = getByTestId('account-kind-field-sheet-modal');
+      await fireEvent.press(getByTestId('account-kind-field-option-property'));
+
+      // Replacing now would unmount the screen that owns the sheet mid-close.
+      expect(navigation.replace).not.toHaveBeenCalled();
+
+      await act(async () => sheet.props.onDismiss());
+
+      expect(navigation.replace).toHaveBeenCalledTimes(1);
+    });
+
+    // The sheet is still closing here, so the kind field is what tells the user
+    // the tap landed; left on the old kind the form looks frozen.
+    it.each([
+      ['property', 'Property'],
+      ['debt', 'Debt'],
+    ] as const)(
+      'shows %s on the kind field at once, before the sheet has finished closing',
+      async (kind, label) => {
+        const { getByTestId, navigation } = await renderForm();
+
+        await fireEvent.press(getByTestId('account-kind-field'));
+        await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
+
+        expect(getByTestId('account-kind-field')).toHaveTextContent(label);
+        expect(navigation.replace).not.toHaveBeenCalled();
+      },
+    );
+
+    // The fade is only a wait for a pick that leaves the form (the replace runs
+    // once the sheet is gone), so Property and Loan close with none; a pick that
+    // stays keeps it.
+    it.each([
+      ['property', 'none'],
+      ['debt', 'none'],
+      ['bank', 'fade'],
+      ['cash', 'fade'],
+      ['crypto', 'fade'],
+      ['metals', 'fade'],
+      ['broker', 'fade'],
+    ] as const)('closes the kind sheet for %s with animation "%s"', async (kind, animation) => {
+      const { getByTestId } = await renderForm();
+
+      await fireEvent.press(getByTestId('account-kind-field'));
+      await fireEvent.press(getByTestId(`account-kind-field-option-${kind}`));
+
+      expect(kindSheetModal.lastHiddenAnimation()).toBe(animation);
+    });
+
+    // The swap removes the kind-specific fields anyway, so they stay put rather
+    // than jumping away for the frames before it.
+    it('keeps the fields of the kind it was on while the sheet closes', async () => {
+      const { getByTestId, queryByTestId } = await renderForm();
+
+      await selectKind(getByTestId, 'broker');
+      expect(queryByTestId('account-broker-type-field')).not.toBeNull();
+
+      await fireEvent.press(getByTestId('account-kind-field'));
+      await fireEvent.press(getByTestId('account-kind-field-option-property'));
+
+      expect(queryByTestId('account-broker-type-field')).not.toBeNull();
+    });
+
+    it('replaces the screen with the loan holding form when Debt is picked', async () => {
+      const { getByLabelText, getByTestId, navigation } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'Car loan');
+      await selectKind(getByTestId, 'debt');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'debt',
+        draft: { name: 'Car loan', icon: null, color: null },
+      });
+    });
+
+    it('carries the icon and color the user picked', async () => {
+      const { getByLabelText, getByTestId, navigation } = await renderForm();
+
+      await fireEvent.press(getByLabelText('Change Icon'));
+      await fireEvent.press(getByLabelText('Choose icon giftcard'));
+      await fireEvent.press(getByLabelText('Color violet'));
+      await selectKind(getByTestId, 'property');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: '', icon: 'giftcard', color: entityColors.violet },
+      });
+    });
+
+    it('does not carry the kind default icon, only a pick', async () => {
+      const { getByTestId, navigation } = await renderForm();
+
+      await selectKind(getByTestId, 'cash');
+      await selectKind(getByTestId, 'debt');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'debt',
+        draft: { name: '', icon: null, color: null },
+      });
+    });
+
+    it('drops an icon picked before a kind switch, as the switch resets it to the default', async () => {
+      const { getByLabelText, getByTestId, navigation } = await renderForm();
+
+      await fireEvent.press(getByLabelText('Change Icon'));
+      await fireEvent.press(getByLabelText('Choose icon giftcard'));
+      await selectKind(getByTestId, 'crypto');
+      await selectKind(getByTestId, 'property');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: '', icon: null, color: null },
+      });
+    });
+
+    it('does not carry a cleared icon', async () => {
+      const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
+
+      await fireEvent.press(getByLabelText('Change Icon'));
+      await fireEvent.press(getByLabelText('Choose icon giftcard'));
+      await fireEvent.press(getByLabelText('Change Icon'));
+      await fireEvent.press(getByText('Remove'));
+      await selectKind(getByTestId, 'property');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: '', icon: null, color: null },
+      });
+    });
+
+    it('creates nothing and does not leave the screen by itself', async () => {
+      const { getByTestId, navigation } = await renderForm();
+
+      await selectKind(getByTestId, 'property');
+
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockCreateImplicitHolding).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('does not swap for a kind that creates an account', async () => {
+      const { getByTestId, navigation } = await renderForm();
+
+      await selectKind(getByTestId, 'metals');
+
+      expect(navigation.replace).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('seeding from a swap back', () => {
+    it('opens on the initial kind, with the draft name, icon and color', async () => {
+      const { getByLabelText, getByTestId } = await renderForm({
+        initialKind: 'cash',
+        draft: { name: 'Wallet', icon: 'giftcard', color: entityColors.violet },
+      });
+
+      expect(getByTestId('account-kind-field')).toHaveTextContent('Cash');
+      expect(getByLabelText('Name').props.value).toBe('Wallet');
+      expect(getByLabelText('Icon giftcard')).toBeTruthy();
+      expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+    });
+
+    it("shows the initial kind's default icon and color when the draft carries none", async () => {
+      const { getByLabelText } = await renderForm({
+        initialKind: 'crypto',
+        draft: { name: 'Wallet', icon: null, color: null },
+      });
+
+      expect(getByLabelText(`Icon ${accountKindSymbol.crypto}`)).toBeTruthy();
+      expect(selectedSwatchHex(getByLabelText)).toBe(entityColors.yellow);
+    });
+
+    it('treats a carried icon as the user pick, so a swap forward again keeps it', async () => {
+      const { getByTestId, navigation } = await renderForm({
+        initialKind: 'cash',
+        draft: { name: '', icon: 'giftcard', color: null },
+      });
+
+      await selectKind(getByTestId, 'property');
+
+      expect(navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: '', icon: 'giftcard', color: null },
+      });
+    });
+
+    it('seeds the kind default icon, not a carried pick, once the kind changes again', async () => {
+      const { getByLabelText, getByTestId } = await renderForm({
+        initialKind: 'cash',
+        draft: { name: '', icon: 'giftcard', color: null },
+      });
+
+      await selectKind(getByTestId, 'crypto');
+
+      expect(getByLabelText(`Icon ${accountKindSymbol.crypto}`)).toBeTruthy();
+    });
+
+    it('still opens a plain create form on bank when no initial kind is given', async () => {
+      const { getByLabelText, getByTestId } = await renderForm({});
+
+      expect(getByTestId('account-kind-field')).toHaveTextContent('Bank');
+      expect(getByLabelText('Name').props.value).toBe('');
+    });
+  });
+
+  it('creates a metals account with the metals kind (no bank/crypto section rendered)', async () => {
+    // Metals has no extra creation fields yet, so it shares the generic
+    // create path with bank/crypto: the row
+    // inserts with just name/kind/color/icon, and neither the cash currency
+    // fields nor the bank/crypto sync sections render for it.
+    const { getByLabelText, getByTestId, getByText, navigation, queryByText, queryByTestId } =
+      await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Gold');
+    await selectKind(getByTestId, 'metals');
+
+    expect(queryByTestId('account-currency-field')).toBeNull();
+    expect(queryByText('Synchronization')).toBeNull();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Gold', kind: 'metals', color: null }),
+    );
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('creates a broker account with the picked broker as its bankId, and no sync connection', async () => {
+    const { getByLabelText, getByTestId, getByText, navigation, queryByText, queryByTestId } =
+      await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Trading 212');
+    await selectKind(getByTestId, 'broker');
+
+    expect(queryByTestId('account-bank-type-field')).toBeNull();
+    expect(queryByText('Synchronization')).toBeNull();
+
+    await fireEvent.press(getByTestId('account-broker-type-field'));
+    await fireEvent.press(getByTestId('account-broker-type-field-option-trading212'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My Trading 212', kind: 'broker', bankId: 'trading212' }),
+    );
+    expect((mockCreate.mock.calls[0][0] as { institution?: unknown }).institution).toBeUndefined();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('does not create a broker account with no broker picked, and says why on the field', async () => {
+    const { getByLabelText, getByTestId, getByText, navigation, queryByTestId } =
+      await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My broker');
+    await selectKind(getByTestId, 'broker');
+
+    expect(queryByTestId('account-broker-type-field-error')).toBeNull();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(getByText('Select a broker.')).toBeTruthy();
+    expect(getByTestId('account-broker-type-field-error')).toBeTruthy();
+  });
+
+  it('does not create a bank account with no bank picked, and says why on the field', async () => {
+    const { getByLabelText, getByTestId, getByText, navigation, queryByTestId } =
+      await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My bank');
+
+    expect(queryByTestId('account-bank-type-field-error')).toBeNull();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(getByText('Select a bank.')).toBeTruthy();
+    expect(getByTestId('account-bank-type-field-error')).toBeTruthy();
+  });
+
+  it('scrolls to the unpicked bank field, a different target than the name, once the name is filled', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByLabelText, getByText } = await renderForm();
+
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, nameFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My bank');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, bankFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    expect(bankFieldRef).not.toBe(nameFieldRef);
+    expect(bankFieldRef.current.props.children.props.testID).toBe('account-bank-type-field');
+  });
+
+  it('scrolls to the unpicked broker field once the name is filled', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await selectKind(getByTestId, 'broker');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, nameFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My broker');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, brokerFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    expect(brokerFieldRef).not.toBe(nameFieldRef);
+    expect(brokerFieldRef.current.props.children.props.testID).toBe('account-broker-type-field');
+  });
+
+  it('shows the name error and the bank error together on one blocked Save, scrolling once', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByText } = await renderForm();
+
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+
+    expect(getByText('Enter a name.')).toBeTruthy();
+    expect(getByText('Select a bank.')).toBeTruthy();
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the bank error once a bank is picked, and then creates the account with it', async () => {
+    const { getByLabelText, getByTestId, getByText, queryByText, navigation } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My bank');
+    await fireEvent.press(getByText('Save'));
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+    await fireEvent.press(getByTestId('bank-type-option-other'));
+
+    expect(queryByText('Select a bank.')).toBeNull();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My bank', kind: 'bank', bankId: 'other' }),
+    );
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('never writes a picked broker as the bankId once the kind switches to bank', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Switched');
+    await selectKind(getByTestId, 'broker');
+    await fireEvent.press(getByTestId('account-broker-type-field'));
+    await fireEvent.press(getByTestId('account-broker-type-field-option-ibkr'));
+    await selectKind(getByTestId, 'bank');
+    await fireEvent.press(getByText('Save'));
+
+    // The broker pick is gone, so the bank pick is still missing: nothing is
+    // created under the broker's id.
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(getByText('Select a bank.')).toBeTruthy();
+  });
+
+  it('clears the picked broker when the kind switches away and back', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Round trip');
+    await selectKind(getByTestId, 'broker');
+    await fireEvent.press(getByTestId('account-broker-type-field'));
+    await fireEvent.press(getByTestId('account-broker-type-field-option-ibkr'));
+    await selectKind(getByTestId, 'cash');
+    await selectKind(getByTestId, 'broker');
+
+    expect(getByTestId('account-broker-type-field')).toHaveTextContent('Select a broker', {
+      exact: false,
+    });
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(getByText('Select a broker.')).toBeTruthy();
   });
 
   it('creates one cash account for a double-tapped Save', async () => {
@@ -277,10 +793,11 @@ describe('AccountFormScreen', () => {
         }),
     );
 
-    const { getByLabelText, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
-    await fireEvent.press(getByText('Cash'));
+    await selectKind(getByTestId, 'cash');
+    await fireEvent.changeText(getByLabelText('Initial value'), '100');
 
     const save = getByText('Save');
 
@@ -302,10 +819,12 @@ describe('AccountFormScreen', () => {
   });
 
   it('creates a bank account without touching the cash-account path', async () => {
-    const { getByLabelText, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
-    await fireEvent.press(getByText('Bank'));
+    await selectKind(getByTestId, 'bank');
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+    await fireEvent.press(getByTestId('bank-type-option-other'));
     await fireEvent.press(getByText('Save'));
 
     // The bank row now shares the crypto create path: it is inserted with the
@@ -319,20 +838,21 @@ describe('AccountFormScreen', () => {
   });
 
   it('keeps the icon field visible after selecting the Cash kind', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId } = await renderForm();
 
     // Choosing Cash must not hide the icon picker — every kind, cash included,
     // can pick an icon in the create form now.
-    await fireEvent.press(getByText('Cash'));
+    await selectKind(getByTestId, 'cash');
 
     expect(getByLabelText('Change Icon')).toBeTruthy();
   });
 
   it('persists a picked icon on a cash account created atomically', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
-    await fireEvent.press(getByText('Cash'));
+    await selectKind(getByTestId, 'cash');
+    await fireEvent.changeText(getByLabelText('Initial value'), '100');
     await fireEvent.press(getByLabelText('Change Icon'));
     await fireEvent.press(getByLabelText('Choose icon banknote'));
     await fireEvent.press(getByText('Save'));
@@ -342,20 +862,19 @@ describe('AccountFormScreen', () => {
     );
   });
 
-  it('sets the picked icon on the new account using the returned id', async () => {
-    const { getByLabelText, getByText, navigation } = await renderForm();
+  it('creates the new account with the picked icon in the one insert', async () => {
+    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await pickOtherBank(getByTestId);
     await fireEvent.press(getByLabelText('Change Icon'));
     await fireEvent.press(getByLabelText('Choose icon banknote'));
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
+      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null, icon: 'banknote' }),
     );
-    // The icon is set on the same pre-generated id the row was created with.
-    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
-    expect(mockSetIcon).toHaveBeenCalledWith(createdId, 'banknote');
+    expect(mockSetIcon).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
@@ -367,21 +886,24 @@ describe('AccountFormScreen', () => {
     expect(getByLabelText(`Icon ${accountKindSymbol.bank}`)).toBeTruthy();
   });
 
-  it('sets the icon to each account type default when its chip is selected', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+  it('sets the icon to each account type default when its kind is selected', async () => {
+    const { getByLabelText, getByTestId } = await renderForm();
 
-    await fireEvent.press(getByText('Cash'));
+    await selectKind(getByTestId, 'cash');
     expect(getByLabelText(`Icon ${accountKindSymbol.cash}`)).toBeTruthy();
 
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     expect(getByLabelText(`Icon ${accountKindSymbol.crypto}`)).toBeTruthy();
 
-    await fireEvent.press(getByText('Bank'));
+    await selectKind(getByTestId, 'metals');
+    expect(getByLabelText(`Icon ${accountKindSymbol.metals}`)).toBeTruthy();
+
+    await selectKind(getByTestId, 'bank');
     expect(getByLabelText(`Icon ${accountKindSymbol.bank}`)).toBeTruthy();
   });
 
   it('resets a hand-picked icon back to the new type default when the type changes', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId } = await renderForm();
 
     // The user overrides the default with a custom icon (from the Kiko Entities
     // pool the account form now offers)...
@@ -390,21 +912,26 @@ describe('AccountFormScreen', () => {
     expect(getByLabelText('Icon giftcard')).toBeTruthy();
 
     // ...then switches type, which re-seeds the icon to the new type's default.
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     expect(getByLabelText(`Icon ${accountKindSymbol.crypto}`)).toBeTruthy();
   });
 
   it('persists the initial kind default icon when the user does not change it', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await pickOtherBank(getByTestId);
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
+      expect.objectContaining({
+        name: 'My Bank',
+        kind: 'bank',
+        color: null,
+        icon: accountKindSymbol.bank,
+      }),
     );
-    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
-    expect(mockSetIcon).toHaveBeenCalledWith(createdId, accountKindSymbol.bank);
+    expect(mockSetIcon).not.toHaveBeenCalled();
   });
 
   it('falls the account icon field back to the generic tray glyph once the icon is removed', async () => {
@@ -420,18 +947,19 @@ describe('AccountFormScreen', () => {
     expect(getByLabelText(`Icon ${genericEntitySymbol.account}`)).toBeTruthy();
   });
 
-  it('does not set an icon when the user removes the default before saving', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+  it('creates the account with a null icon when the user removes the default before saving', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
-    // Removing clears the seeded default back to null, so the create path skips
-    // setIcon and the row follows its kind default at display time.
+    await pickOtherBank(getByTestId);
+    // Removing clears the seeded default back to null, so the row follows its
+    // kind default at display time.
     await fireEvent.press(getByLabelText('Change Icon'));
     await fireEvent.press(getByText('Remove'));
     await fireEvent.press(getByText('Save'));
 
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
+      expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null, icon: null }),
     );
     expect(mockSetIcon).not.toHaveBeenCalled();
   });
@@ -466,16 +994,67 @@ describe('AccountFormScreen', () => {
     expect(scrollToField).toHaveBeenCalled();
   });
 
-  it('clamps a negative cash initial value to zero', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+  it('shows both the name-required and initial-value-required errors on one blocked Save press when both are blank', async () => {
+    const { getByTestId, getByText } = await renderForm();
+
+    await selectKind(getByTestId, 'cash');
+    await fireEvent.press(getByText('Save'));
+
+    expect(getByText('Enter a name.')).toBeTruthy();
+    expect(getByText('Enter an initial value.')).toBeTruthy();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+  });
+
+  it('scrolls to a DIFFERENT field target once the name is fixed but the initial value is still blank', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByTestId, getByLabelText, getByText } = await renderForm();
+
+    await selectKind(getByTestId, 'cash');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, nameFieldRef] = scrollToFieldMock.mock.calls[0];
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
-    await fireEvent.press(getByText('Cash'));
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+    const [, initialValueFieldRef] = scrollToFieldMock.mock.calls[0];
+
+    expect(initialValueFieldRef).not.toBe(nameFieldRef);
+  });
+
+  it('shows an initial-value-required error and saves nothing when the field is blank', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await selectKind(getByTestId, 'cash');
+    await fireEvent.press(getByText('Save'));
+
+    expect(getByText('Enter an initial value.')).toBeTruthy();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+  });
+
+  it('shows an initial-value-negative error and saves nothing for a negative value', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await selectKind(getByTestId, 'cash');
     await fireEvent.changeText(getByLabelText('Initial value'), '-50');
     await fireEvent.press(getByText('Save'));
 
+    expect(getByText('Initial value must be 0 or greater.')).toBeTruthy();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
+  });
+
+  it('saves a typed zero initial value', async () => {
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
+    await selectKind(getByTestId, 'cash');
+    await fireEvent.changeText(getByLabelText('Initial value'), '0');
+    await fireEvent.press(getByText('Save'));
+
     expect(mockCreateCashAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Wallet', initialBalanceMinorUnits: 0 }),
+      expect.objectContaining({ name: 'Wallet', initialBalance: Money.of('UAH', 0) }),
     );
   });
 
@@ -484,7 +1063,7 @@ describe('AccountFormScreen', () => {
       await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
-    await fireEvent.press(getByText('Cash'));
+    await selectKind(getByTestId, 'cash');
     await fireEvent.changeText(getByLabelText('Initial value'), '250.50');
     await fireEvent.press(getByTestId('account-currency-field'));
     // Narrow by search: unfiltered, EUR sorts alphabetically by its localized
@@ -503,17 +1082,16 @@ describe('AccountFormScreen', () => {
       // No color was picked either, so the create passes an explicit null and the
       // row follows its cash kind default at display time.
       color: null,
-      initialBalanceMinorUnits: 25050,
+      initialBalance: Money.of('EUR', 25050),
     });
     expect(mockCreate).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
   it('offers only fiat currencies for a cash account (no BTC)', async () => {
-    const { getByLabelText, getByPlaceholderText, getByText, getByTestId, queryByTestId } =
-      await renderForm();
+    const { getByLabelText, getByPlaceholderText, getByTestId, queryByTestId } = await renderForm();
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
-    await fireEvent.press(getByText('Cash'));
+    await selectKind(getByTestId, 'cash');
     await fireEvent.press(getByTestId('account-currency-field'));
     // Narrow by search: unfiltered, USD ("US Dollar") and GBP ("British Pound
     // Sterling") both sort alphabetically by localized name outside the
@@ -534,10 +1112,11 @@ describe('AccountFormScreen', () => {
     mockCreateCashAccount.mockRejectedValueOnce(new Error('boom'));
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 
-    const { getByLabelText, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
-    await fireEvent.press(getByText('Cash'));
+    await selectKind(getByTestId, 'cash');
+    await fireEvent.changeText(getByLabelText('Initial value'), '100');
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() =>
@@ -561,33 +1140,34 @@ describe('AccountFormScreen color follows kind until dirty', () => {
   });
 
   it('re-derives the color to the newly selected kind default while not dirty', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId } = await renderForm();
 
     // bank default is white; switching to crypto swaps the selected default
     // swatch to yellow, because the color has not been manually picked.
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
 
     expect(getByLabelText('Color yellow').props.accessibilityState.selected).toBe(true);
     expect(getByLabelText('Color white').props.accessibilityState.selected).toBe(false);
   });
 
   it('keeps a manually picked color when the kind changes afterwards (dirty)', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId } = await renderForm();
 
     await fireEvent.press(getByLabelText('Color violet'));
 
     expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
 
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
 
     expect(getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
     expect(getByLabelText('Color yellow').props.accessibilityState.selected).toBe(false);
   });
 
   it('persists the manually picked color on a bank account', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Bank');
+    await pickOtherBank(getByTestId);
     await fireEvent.press(getByLabelText('Color violet'));
     await fireEvent.press(getByText('Save'));
 
@@ -601,10 +1181,11 @@ describe('AccountFormScreen color follows kind until dirty', () => {
   });
 
   it('persists the manually picked color on a cash account', async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
-    await fireEvent.press(getByText('Cash'));
+    await selectKind(getByTestId, 'cash');
+    await fireEvent.changeText(getByLabelText('Initial value'), '100');
     await fireEvent.press(getByLabelText('Color violet'));
     await fireEvent.press(getByText('Save'));
 
@@ -624,6 +1205,7 @@ describe('AccountFormScreen edit mode', () => {
         kind: 'bank',
         icon: 'banknote',
         color: entityColors.violet,
+        bankId: null,
       },
     ];
   });
@@ -648,11 +1230,15 @@ describe('AccountFormScreen edit mode', () => {
   });
 
   it('shows the kind read-only (disabled) so it cannot change after creation', async () => {
-    const { getByText } = await renderForm({ accountId: 'acc-1' });
+    const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
 
-    // The kind chip still shows Bank selected, but pressing another kind is inert.
-    expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(true);
-    await fireEvent.press(getByText('Crypto'));
+    // The kind field still shows Bank selected, but pressing it is inert — the
+    // sheet never opens, so no option row mounts.
+    expect(getByTestId('account-kind-field')).toHaveTextContent('Bank');
+    expect(isKindFieldDisabled(getByTestId)).toBe(true);
+    await fireEvent.press(getByTestId('account-kind-field'));
+    expect(() => getByTestId('account-kind-field-option-crypto')).toThrow();
+
     // Save still routes to the account's original kind via update (never create).
     await fireEvent.press(getByText('Save'));
     expect(mockCreate).not.toHaveBeenCalled();
@@ -699,12 +1285,403 @@ describe('AccountFormScreen edit mode', () => {
   });
 
   it('resolves a since-removed account kind to a real swatch, not blank', async () => {
-    // `broker` was a valid Account.kind once and was dropped; the schema enum
-    // is TS-only with no CHECK constraint, so such a row can still exist.
-    mockAccounts = [{ id: 'acc-1', name: 'X', kind: 'broker', icon: null, color: null }];
+    // The schema enum is TS-only with no CHECK constraint, so a row under a
+    // kind outside the current list can still exist.
+    mockAccounts = [{ id: 'acc-1', name: 'X', kind: 'retired_kind', icon: null, color: null }];
     const { getByLabelText } = await renderForm({ accountId: 'acc-1' });
 
     expect(selectedSwatchHex(getByLabelText)).toMatch(HEX);
+  });
+
+  it('edit-hydrates bankId from the stored row and shows it pre-selected in the bank picker', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'privatbank' },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-bank-type-field')).toHaveTextContent('PrivatBank');
+  });
+
+  it('edit-hydrates a broker account and re-selects its broker in the broker picker', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'T212', kind: 'broker', icon: null, color: null, bankId: 'trading212' },
+    ];
+    const { getByTestId, getByText, queryByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-kind-field')).toHaveTextContent('Broker');
+    expect(getByTestId('account-broker-type-field')).toHaveTextContent('Trading 212', {
+      exact: false,
+    });
+    expect(queryByTestId('account-bank-type-field')).toBeNull();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect('bankId' in (mockUpdate.mock.calls[0][1] as Record<string, unknown>)).toBe(false);
+  });
+
+  // The kind, bank and broker are set once, on create: each shows its stored
+  // value, but disabled and inert, and Save never writes any of them.
+  it('shows the broker read-only (disabled) in edit mode, and pressing it opens no sheet', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'T212', kind: 'broker', icon: null, color: null, bankId: 'trading212' },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-broker-type-field').props.accessibilityState.disabled).toBe(true);
+
+    await fireEvent.press(getByTestId('account-broker-type-field'));
+
+    expect(() => getByTestId('account-broker-type-field-option-other')).toThrow();
+  });
+
+  it('shows the bank read-only (disabled) in edit mode, and pressing it opens no sheet', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'privatbank' },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-bank-type-field')).toHaveTextContent('PrivatBank');
+    expect(getByTestId('account-bank-type-field').props.accessibilityState.disabled).toBe(true);
+
+    await fireEvent.press(getByTestId('account-bank-type-field'));
+
+    expect(() => getByTestId('bank-type-option-other')).toThrow();
+  });
+
+  it.each([
+    ['a bank named in the catalog', 'bank', 'privatbank'],
+    ['a bank stored as no bank', 'bank', null],
+    ['a since-removed catalog id', 'bank', 'removedbank'],
+    ['a broker', 'broker', 'trading212'],
+    ['a broker stored as no broker', 'broker', null],
+    ['a broker stored with a bank id', 'broker', 'monobank'],
+  ])('never writes the bank id on an edit Save: %s', async (_name, kind, bankId) => {
+    mockAccounts = [{ id: 'acc-1', name: 'Account', kind, icon: null, color: null, bankId }];
+    const { getByText } = await renderForm({ accountId: 'acc-1' });
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('acc-1', { name: 'Account', color: null });
+  });
+
+  it('shows no broker picked for a broker account whose stored bankId is not a catalog broker', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Old', kind: 'broker', icon: null, color: null, bankId: 'monobank' },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-broker-type-field')).toHaveTextContent('Select a broker', {
+      exact: false,
+    });
+  });
+
+  it('shows no bank picked for a bank account whose stored bankId is a since-removed catalog id', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'removedbank' },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-bank-type-field')).toHaveTextContent('Select a bank');
+  });
+
+  // The "Synchronization" heading renders above the bank picker in edit
+  // mode too, not just create — otherwise that block sits under a bare
+  // divider with no section name at all.
+  it('shows the Synchronization heading above the bank picker in edit mode too', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'privatbank' },
+    ];
+    const { getByText } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByText('Synchronization')).toBeTruthy();
+  });
+
+  it('shows the placeholder for an account saved with no bankId', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-bank-type-field')).toHaveTextContent('Select a bank');
+  });
+
+  it('shows "Other bank" for an account stored as other', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: 'other' },
+    ];
+    const { getByTestId } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-bank-type-field')).toHaveTextContent('Other bank');
+  });
+
+  it('shows no required marker and no error on the bank picker in edit mode, even after a Save', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null, bankId: null },
+    ];
+    const { getByText, queryByText, queryByTestId, getAllByText } = await renderForm({
+      accountId: 'acc-1',
+    });
+
+    // Only the Name's own asterisk.
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(1);
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(queryByText('Select a bank.')).toBeNull();
+    expect(queryByTestId('account-bank-type-field-error')).toBeNull();
+  });
+
+  it('saves an existing broker account with no broker picked, without forcing a pick', async () => {
+    mockAccounts = [
+      { id: 'acc-1', name: 'Old', kind: 'broker', icon: null, color: null, bankId: null },
+    ];
+    const { getByText, queryByText, queryByTestId, getAllByText } = await renderForm({
+      accountId: 'acc-1',
+    });
+
+    expect(getAllByText('*', { includeHiddenElements: true })).toHaveLength(1);
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(queryByText('Select a broker.')).toBeNull();
+    expect(queryByTestId('account-broker-type-field-error')).toBeNull();
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a connected Monobank account’s bank read-only and saves without the bank id or the connection', async () => {
+    // Every account's bank is set on create only, so a connected one needs no
+    // special case: the field is disabled and the update patch carries neither
+    // `bankId` nor `institution`, so the live connection can never be touched
+    // from here.
+    mockAccounts = [
+      {
+        id: 'acc-1',
+        name: 'Monobank Card',
+        kind: 'bank',
+        icon: null,
+        color: null,
+        bankId: 'monobank',
+        institution: 'monobank',
+      },
+    ];
+    const { getByTestId, getByText } = await renderForm({ accountId: 'acc-1' });
+
+    expect(getByTestId('account-bank-type-field')).toHaveTextContent('Monobank');
+    expect(getByTestId('account-bank-type-field').props.accessibilityState.disabled).toBe(true);
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('acc-1', { name: 'Monobank Card', color: null });
+  });
+});
+
+describe('AccountFormScreen edit mode — implicit Properties / Loans account', () => {
+  const implicitAccount = (overrides: Record<string, unknown> = {}) => ({
+    id: 'implicit-1',
+    name: 'Properties',
+    kind: 'property',
+    icon: null,
+    color: null,
+    bankId: null,
+    archivedAt: null,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAccounts = [implicitAccount()];
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('opens a Properties account holding the sentinel with the localized default name', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByDisplayValue } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByDisplayValue('Майно')).toBeTruthy();
+  });
+
+  it('opens a Loans account holding the sentinel with the localized default name', async () => {
+    mockAccounts = [implicitAccount({ id: 'implicit-2', name: 'Loans', kind: 'debt' })];
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByDisplayValue } = await renderForm({ accountId: 'implicit-2' });
+
+    expect(getByDisplayValue('Кредити')).toBeTruthy();
+  });
+
+  it('opens a renamed account with the name as typed, in any language', async () => {
+    mockAccounts = [implicitAccount({ name: 'Family assets' })];
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByDisplayValue } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByDisplayValue('Family assets')).toBeTruthy();
+  });
+
+  it('saves the sentinel when the localized default is left unchanged', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    const { getByText, navigation } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.press(getByText('Зберегти'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-1', {
+      name: 'Properties',
+      color: null,
+    });
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('saves the sentinel of a Loans account left unchanged in English', async () => {
+    mockAccounts = [implicitAccount({ id: 'implicit-2', name: 'Loans', kind: 'debt' })];
+
+    const { getByText } = await renderForm({ accountId: 'implicit-2' });
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-2', {
+      name: 'Loans',
+      color: null,
+    });
+  });
+
+  it('saves a renamed account under the name typed, and the picked color', async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), '  Family assets ');
+    await fireEvent.press(getByLabelText('Color teal'));
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-1', {
+      name: 'Family assets',
+      color: entityColors.teal,
+    });
+  });
+
+  it("saves the OTHER kind's sentinel typed as a name as the name typed", async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Loans');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).toHaveBeenCalledWith('implicit-1', {
+      name: 'Loans',
+      color: null,
+    });
+  });
+
+  it('does not save a blank name', async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    await fireEvent.changeText(getByLabelText('Name'), '   ');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("shows the kind's default glyph while the stored icon is NULL, and keeps it NULL on Save", async () => {
+    const { getByLabelText, getByText } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByLabelText(`Icon ${accountKindSymbol.property}`)).toBeTruthy();
+
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockSetIcon).toHaveBeenCalledWith('implicit-1', null);
+  });
+
+  it("shows a Loans account's default glyph while the stored icon is NULL", async () => {
+    mockAccounts = [implicitAccount({ id: 'implicit-2', name: 'Loans', kind: 'debt' })];
+    const { getByLabelText } = await renderForm({ accountId: 'implicit-2' });
+
+    expect(getByLabelText(`Icon ${accountKindSymbol.debt}`)).toBeTruthy();
+  });
+
+  it('shows the stored icon over the default', async () => {
+    mockAccounts = [implicitAccount({ icon: 'star.fill' })];
+    const { getByLabelText } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(getByLabelText('Icon star.fill')).toBeTruthy();
+  });
+
+  it('keeps the title and the read-only kind field', async () => {
+    const { getByTestId, navigation } = await renderForm({ accountId: 'implicit-1' });
+
+    expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Edit Account' });
+    expect(isKindFieldDisabled(getByTestId)).toBe(true);
+  });
+});
+
+describe('AccountFormScreen — the icon picker offers the default glyph of every account kind', () => {
+  const defaults: readonly string[] = Object.values(accountKindSymbol);
+
+  const offeredIcons = (
+    getAllByLabelText: Awaited<ReturnType<typeof render>>['getAllByLabelText'],
+  ) =>
+    getAllByLabelText(/^Choose icon /).map((option) =>
+      String(option.props.accessibilityLabel).replace('Choose icon ', ''),
+    );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAccounts = [];
+    mockSetIcon.mockResolvedValue(undefined);
+  });
+
+  it.each(Object.entries(accountKindSymbol))(
+    'lets a %s account that stores a custom icon pick its default %s back',
+    async (kind, defaultIcon) => {
+      mockAccounts = [
+        {
+          id: 'acc-1',
+          name: 'Account',
+          kind,
+          icon: 'giftcard',
+          color: null,
+          bankId: null,
+          archivedAt: null,
+        },
+      ];
+      const { getAllByLabelText, getByLabelText, getByText } = await renderForm({
+        accountId: 'acc-1',
+      });
+
+      await fireEvent.press(getByLabelText('Change Icon'));
+
+      const offered = offeredIcons(getAllByLabelText);
+
+      expect(offered.slice(0, defaults.length)).toEqual(defaults);
+      expect(new Set(offered).size).toBe(offered.length);
+
+      await fireEvent.press(getByLabelText(`Choose icon ${defaultIcon}`));
+      await fireEvent.press(getByText('Save'));
+
+      expect(mockSetIcon).toHaveBeenCalledWith('acc-1', defaultIcon);
+    },
+  );
+
+  it('offers a new account the defaults first once it holds a custom icon', async () => {
+    const { getAllByLabelText, getByLabelText } = await renderForm();
+
+    await fireEvent.press(getByLabelText('Change Icon'));
+    await fireEvent.press(getByLabelText('Choose icon giftcard'));
+    await fireEvent.press(getByLabelText('Change Icon'));
+
+    expect(offeredIcons(getAllByLabelText).slice(0, defaults.length)).toEqual(defaults);
   });
 });
 
@@ -725,14 +1702,26 @@ describe('AccountFormScreen — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByLabelText, getByText, queryByText } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, queryByText } = await renderForm();
 
     expect(getByLabelText('Назва')).toBeTruthy();
     expect(getByText('Колір')).toBeTruthy();
     expect(getByText('Вид')).toBeTruthy();
-    expect(getByText('Банк')).toBeTruthy();
-    expect(getByText('Готівка')).toBeTruthy();
-    expect(getByText('Крипто')).toBeTruthy();
+    // The trigger shows the default (bank) kind's translated label without
+    // opening the sheet.
+    expect(getByTestId('account-kind-field')).toHaveTextContent('Банк');
+
+    await fireEvent.press(getByTestId('account-kind-field'));
+    expect(getByTestId('account-kind-field-option-cash')).toHaveTextContent('Готівка', {
+      exact: false,
+    });
+    expect(getByTestId('account-kind-field-option-crypto')).toHaveTextContent('Крипто', {
+      exact: false,
+    });
+    expect(getByTestId('account-kind-field-option-property')).toHaveTextContent('Майно', {
+      exact: false,
+    });
+
     expect(getByText('Зберегти')).toBeTruthy();
     expect(queryByText('Bank')).toBeNull();
   });
@@ -743,6 +1732,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     jest.clearAllMocks();
     mockAccounts = [];
     mockCreate.mockResolvedValue('new-account-id');
+    mockSetIcon.mockResolvedValue(undefined);
     mockSaveToken.mockResolvedValue(undefined);
     mockSaveCredentials.mockResolvedValue(undefined);
     mockMonobankSync.mockResolvedValue(true);
@@ -755,7 +1745,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
   it('connect creates the bank row once, saves the token to the Keychain, and syncs it', async () => {
     // The field's own Connect (mocked to fire with a token) drives the screen's
     // connectMonobank closure: create the row FIRST, store the secret keyed by
-    // that pre-generated id, then start the first sync (Global Constraint 2 order).
+    // that pre-generated id, then start the first sync (the write-only-secret
+    // order).
     mockMonobankSync.mockResolvedValue(true);
     const view = await renderForm();
 
@@ -800,7 +1791,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('does not save a token or sync when the bank row create rejects', async () => {
-    // Mirrors the crypto create-reject coverage (C-1) for the bank-specific
+    // Mirrors the crypto create-reject coverage for the bank-specific
     // connectMonobank closure: a failed create must short-circuit BEFORE
     // saveToken/sync ever run, and connectMonobank must resolve to false (its
     // own try/catch), not throw or resolve true.
@@ -820,7 +1811,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     );
     // No row was actually inserted (the create latch was reset), so the kind
     // switch must not lock.
-    expect(view.getByText('Crypto').parent?.props.accessibilityState.disabled).toBe(false);
+    expect(isKindFieldDisabled(view.getByTestId)).toBe(false);
   });
 
   it('does not sync when saving the token to the Keychain fails', async () => {
@@ -843,11 +1834,31 @@ describe('AccountFormScreen — sync credentials on create', () => {
     // Unlike a create failure, the row itself was created before saveToken
     // threw, so the kind switch stays locked — the latch was never reset.
     expect(mockCreate).toHaveBeenCalledTimes(1);
-    expect(view.getByText('Crypto').parent?.props.accessibilityState.disabled).toBe(true);
+    expect(isKindFieldDisabled(view.getByTestId)).toBe(true);
+  });
+
+  it('resolves connectMonobank to false, not a rejection, when ensureAccount throws synchronously', async () => {
+    // Provokes the synchronous throw ensureAccount's name-required branch can
+    // raise (here, a scrollToField layout failure) BEFORE it reaches its own
+    // `return Promise.reject(...)` — proving `accountEnsured` still resolves
+    // false instead of leaving `connectMonobank` a rejected promise.
+    (scrollToField as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('layout not ready');
+    });
+    const view = await renderForm();
+
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    await waitFor(() =>
+      expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
+    );
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('connect then Save updates the same row — never a duplicate account', async () => {
-    // Option A: the field's Connect already inserted the row. A later Save must
+    // Connect-first: the field's Connect already inserted the row. A later Save must
     // UPDATE that same row (persisting any name edit after connecting), never
     // insert a second account.
     mockMonobankSync.mockResolvedValue(true);
@@ -873,27 +1884,30 @@ describe('AccountFormScreen — sync credentials on create', () => {
     const view = await renderForm();
 
     await fireEvent.changeText(view.getByLabelText('Name'), 'Plain Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-other'));
     await fireEvent.press(view.getByText('Save'));
 
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'bank', name: 'Plain Bank' }),
+      expect.objectContaining({ kind: 'bank', name: 'Plain Bank', bankId: 'other' }),
     );
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockMonobankSync).not.toHaveBeenCalled();
   });
 
+  // The placeholder, not a pre-selected value: a new bank account must pick.
   it('does not auto-select any bank on a fresh bank create (no auto-jump to Monobank)', async () => {
     const view = await renderForm();
 
-    await fireEvent.press(view.getByText('Bank'));
+    await selectKind(view.getByTestId, 'bank');
 
-    expect(view.getByText('Select a bank (optional)')).toBeTruthy();
+    expect(view.getByText('Select a bank')).toBeTruthy();
     expect(view.queryByLabelText('monobank-field')).toBeNull();
   });
 
-  it('lists all six banks in the picker sheet', async () => {
+  it('lists all six banks and Other bank in the picker sheet', async () => {
     const view = await renderForm();
 
     await fireEvent.press(view.getByLabelText('Bank type'));
@@ -904,6 +1918,21 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(view.getByTestId('bank-type-option-procredit')).toBeTruthy();
     expect(view.getByTestId('bank-type-option-ukrsib')).toBeTruthy();
     expect(view.getByTestId('bank-type-option-alfa')).toBeTruthy();
+    expect(view.getByTestId('bank-type-option-other')).toBeTruthy();
+  });
+
+  it('shows the import-only hint for a named import-only bank, but not for Other bank (the old "no bank" state)', async () => {
+    const view = await renderForm();
+
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-privatbank'));
+
+    expect(view.getByText('You can import a statement for this bank after saving.')).toBeTruthy();
+
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-other'));
+
+    expect(view.queryByText('You can import a statement for this bank after saving.')).toBeNull();
   });
 
   it('creates the bank row tagged with the selected bank id when connecting Monobank', async () => {
@@ -941,7 +1970,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
   it('connecting a bank source locks the kind switch', async () => {
     // Connecting inserts the bank row via the shared latch; switching to crypto
     // afterwards would route Save to a SECOND create and orphan the bank row, so
-    // the kind chip is disabled once connected.
+    // the kind field is disabled once connected.
     mockMonobankSync.mockResolvedValue(true);
     const view = await renderForm();
 
@@ -950,9 +1979,70 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
     await fireEvent.press(view.getByLabelText('monobank-field'));
 
-    await waitFor(() =>
-      expect(view.getByText('Crypto').parent?.props.accessibilityState.disabled).toBe(true),
+    await waitFor(() => expect(isKindFieldDisabled(view.getByTestId)).toBe(true));
+  });
+
+  it('connecting Monobank locks the bank picker, and Save still writes the connected bank', async () => {
+    // Re-picking the bank after the connect inserted the row would make Save
+    // write that pick over the connected Monobank row's bank id.
+    mockMonobankSync.mockResolvedValue(true);
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    await waitFor(() => expect(isKindFieldDisabled(view.getByTestId)).toBe(true));
+    const bankField = view.getByTestId('account-bank-type-field');
+
+    expect(bankField.props.accessibilityState.disabled).toBe(true);
+
+    await fireEvent.press(bankField);
+
+    expect(view.queryByTestId('bank-type-option-other')).toBeNull();
+    expect(bankField).toHaveTextContent('Monobank');
+
+    await fireEvent.press(view.getByText('Save'));
+
+    await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      createdId,
+      expect.objectContaining({ bankId: 'monobank' }),
     );
+  });
+
+  it('keeps the bank pick, the custom icon and the typed token when the already-selected Bank kind is picked again', async () => {
+    const view = await renderForm();
+
+    await fireEvent.press(view.getByLabelText('Change Icon'));
+    await fireEvent.press(view.getByLabelText('Choose icon giftcard'));
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+    await fireEvent.changeText(view.getByTestId('monobank-token-input'), 'typed-token');
+
+    await selectKind(view.getByTestId, 'bank');
+
+    expect(view.getByTestId('account-bank-type-field')).toHaveTextContent('Monobank');
+    expect(view.getByLabelText('Icon giftcard')).toBeTruthy();
+    expect(view.getByTestId('monobank-token-input').props.value).toBe('typed-token');
+  });
+
+  it('keeps the broker pick and the custom icon when the already-selected Broker kind is picked again', async () => {
+    const view = await renderForm();
+
+    await selectKind(view.getByTestId, 'broker');
+    await fireEvent.press(view.getByLabelText('Change Icon'));
+    await fireEvent.press(view.getByLabelText('Choose icon giftcard'));
+    await fireEvent.press(view.getByTestId('account-broker-type-field'));
+    await fireEvent.press(view.getByTestId('account-broker-type-field-option-ibkr'));
+
+    await selectKind(view.getByTestId, 'broker');
+
+    expect(view.getByTestId('account-broker-type-field')).toHaveTextContent('Interactive Brokers');
+    expect(view.getByLabelText('Icon giftcard')).toBeTruthy();
   });
 
   it('shows the name-required reason only after a Connect is attempted with an empty name, on the bank form', async () => {
@@ -976,10 +2066,10 @@ describe('AccountFormScreen — sync credentials on create', () => {
     // account-detail screen: a Wallet/Binance source picker and the matching
     // field, proving it reuses CryptoSyncForm rather than hand-rolling a second
     // Binance-only copy. The two secure API-key/secret TextFields are gone.
-    const { getByLabelText, getByText, queryByLabelText } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, queryByLabelText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
 
     expect(getByText('Wallet')).toBeTruthy();
     expect(getByText('Binance')).toBeTruthy();
@@ -995,18 +2085,18 @@ describe('AccountFormScreen — sync credentials on create', () => {
     // Full parity with the bank form: the sync form appears the moment Crypto is
     // selected, empty name or not. No account row is created without a name — that
     // is enforced at Connect/Save time, not by hiding the form.
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId } = await renderForm();
 
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
 
     // The Wallet source field (the default source) is present with no name typed.
     expect(getByLabelText('wallet-field')).toBeTruthy();
   });
 
   it('shows the name-required reason only after a Connect is attempted with an empty name, on the crypto form', async () => {
-    const { getByLabelText, getByText, queryByTestId } = await renderForm();
+    const { getByLabelText, getByTestId, queryByTestId } = await renderForm();
 
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     expect(queryByTestId('holding-identity-name-field-error')).toBeNull();
 
     await fireEvent.press(getByLabelText('wallet-field'));
@@ -1017,35 +2107,157 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('does not create a crypto account when a source Connect is tapped with an empty name', async () => {
-    const { getByLabelText, getByText, queryByTestId } = await renderForm();
+    const { getByLabelText, getByTestId, queryByTestId } = await renderForm();
 
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     await fireEvent.press(getByLabelText('wallet-field'));
 
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
-    expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(false);
+    expect(isKindFieldDisabled(getByTestId)).toBe(false);
     expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
   });
 
-  it('does not create a crypto account when the Binance field Connect is tapped with an empty name', async () => {
-    const { getByLabelText, getByText, queryByTestId } = await renderForm();
+  it('scrolls the same mounted name field into view with the live scroll geometry on a blocked Connect and a blocked Save', async () => {
+    (useHeaderInset as jest.Mock).mockReturnValue(96);
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
 
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
+    await fireEvent(getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByLabelText('wallet-field'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    const [connectScrollable, connectFieldRef, connectGeometry, connectOnSettled] =
+      scrollToFieldMock.mock.calls[0];
+    expect(connectScrollable).toEqual({ current: null });
+    expect(connectFieldRef.current).not.toBeNull();
+    expect(connectGeometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+    expect(connectOnSettled).toEqual(expect.any(Function));
+
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    const [, saveFieldRef, saveGeometry, saveOnSettled] = scrollToFieldMock.mock.calls[0];
+    expect(saveFieldRef).toBe(connectFieldRef);
+    expect(saveGeometry).toEqual({ currentOffset: 0, headerInset: 96, contentHeight: 640 });
+    expect(saveOnSettled).toEqual(expect.any(Function));
+  });
+
+  it('scrolls the bank picker, which has no keyboard, without a focus follow-up once the name is filled', async () => {
+    const scrollToFieldMock = scrollToField as jest.Mock;
+    const { getByLabelText, getByText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Main');
+    scrollToFieldMock.mockClear();
+    await fireEvent.press(getByText('Save'));
+
+    expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+    const [, catalogFieldRef, , onSettled] = scrollToFieldMock.mock.calls[0];
+    expect(catalogFieldRef.current).not.toBeNull();
+    expect(onSettled).toBeUndefined();
+  });
+
+  it('does not create a crypto account when the Binance field Connect is tapped with an empty name', async () => {
+    const { getByLabelText, getByTestId, getByText, queryByTestId } = await renderForm();
+
+    await selectKind(getByTestId, 'crypto');
     await fireEvent.press(getByText('Binance'));
     await fireEvent.press(getByLabelText('binance-field'));
 
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
-    expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(false);
+    expect(isKindFieldDisabled(getByTestId)).toBe(false);
     expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
   });
 
+  // The Binance field stores the key pair before it calls the screen's connect,
+  // so a connect that cannot create the row leaves a pair no account owns.
+  describe('the key pair the Binance field stored before the connect', () => {
+    it('is cleared when the empty name blocks the account row', async () => {
+      mockClearCredentials.mockResolvedValue(undefined);
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockClearCredentials).toHaveBeenCalledTimes(1));
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockClearCredentials).toHaveBeenCalledWith(expect.any(String));
+    });
+
+    it('is cleared when the account row cannot be inserted', async () => {
+      mockClearCredentials.mockResolvedValue(undefined);
+      mockCreate.mockRejectedValueOnce(new Error('db locked'));
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockClearCredentials).toHaveBeenCalledTimes(1));
+      expect(mockClearCredentials).toHaveBeenCalledWith(
+        (mockCreate.mock.calls[0][0] as { id: string }).id,
+      );
+      expect(mockCryptoSync).not.toHaveBeenCalled();
+    });
+
+    it('stays once the row exists, even when the first sync fails', async () => {
+      mockCryptoSync.mockResolvedValue(false);
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
+      expect(mockClearCredentials).not.toHaveBeenCalled();
+    });
+
+    it('stays when an icon write fails after the row exists, since the icon goes in the create', async () => {
+      mockSetIcon.mockRejectedValue(new Error('icon write failed'));
+      mockCryptoSync.mockResolvedValue(true);
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ icon: accountKindSymbol.crypto }),
+      );
+      expect(mockSetIcon).not.toHaveBeenCalled();
+      expect(mockClearCredentials).not.toHaveBeenCalled();
+    });
+
+    it('does not fail the connect when the clear itself fails', async () => {
+      mockClearCredentials.mockRejectedValueOnce(new Error('keychain delete failed'));
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockClearCredentials).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
+
+      warn.mockRestore();
+    });
+  });
+
   it('treats a whitespace-only name exactly like an empty name on the crypto form', async () => {
-    const { getByLabelText, getByText, queryByTestId } = await renderForm();
+    const { getByLabelText, getByTestId, queryByTestId } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), '   ');
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
 
     expect(getByLabelText('wallet-field')).toBeTruthy();
     expect(queryByTestId('holding-identity-name-field-error')).toBeNull();
@@ -1062,9 +2274,9 @@ describe('AccountFormScreen — sync credentials on create', () => {
     // latch behind: a first Connect with no name creates nothing, and a SECOND
     // Connect on the same field — after typing a valid name — must still succeed,
     // creating the account exactly once and running its sync.
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId } = await renderForm();
 
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     await fireEvent.press(getByLabelText('wallet-field'));
 
     expect(mockCreate).not.toHaveBeenCalled();
@@ -1088,10 +2300,10 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it("creates the crypto account first, then runs the wallet field's connect against its id", async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     await fireEvent.press(getByLabelText('wallet-field'));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
@@ -1110,10 +2322,10 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it("creates the crypto account first, then runs the Binance field's connect against its id", async () => {
-    const { getByLabelText, getByText } = await renderForm();
+    const { getByLabelText, getByTestId, getByText } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     await fireEvent.press(getByText('Binance'));
     await fireEvent.press(getByLabelText('binance-field'));
 
@@ -1131,13 +2343,13 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('does not create a DUPLICATE crypto account when a field Connect is followed by Save', async () => {
-    // Option A: the field's own Connect already inserted the row. A subsequent
+    // Connect-first: the field's own Connect already inserted the row. A subsequent
     // Save must UPDATE that same row (persisting any later name/color/icon edit),
     // never insert a second account.
-    const { getByLabelText, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     await fireEvent.press(getByText('Binance'));
     await fireEvent.press(getByLabelText('binance-field'));
 
@@ -1158,15 +2370,15 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('clears the create latch when a field-Connect create rejects, so Save re-attempts (no silent no-op)', async () => {
-    // C-1: a rejected insert (DB locked/disk full) must not leave the one-shot
+    // A rejected insert (DB locked/disk full) must not leave the one-shot
     // latch set — otherwise Save would take the UPDATE branch, match no row, and
     // silently goBack while no account exists. The first create rejects; the row
     // was never inserted, so Save must run a fresh CREATE (not a no-op update).
     mockCreate.mockRejectedValueOnce(new Error('db locked'));
-    const { getByLabelText, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     await fireEvent.press(getByText('Binance'));
     // The field's Connect fails cleanly (no unhandled rejection); nothing saved.
     await fireEvent.press(getByLabelText('binance-field'));
@@ -1184,22 +2396,24 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('locks the kind switch once a crypto source is connected, so Save cannot orphan the row', async () => {
-    // C-3: connecting a source inserts the crypto row. Switching to Bank/Cash
+    // Connecting a source inserts the crypto row. Switching to Bank/Cash
     // afterwards would route Save to a SECOND create and orphan that row, so the
-    // kind chip is disabled once connected — the Bank press is inert and Save
+    // kind field is disabled once connected — pressing it is inert, and Save
     // stays on the crypto UPDATE path.
-    const { getByLabelText, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     await fireEvent.press(getByText('Binance'));
     await fireEvent.press(getByLabelText('binance-field'));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
 
-    // The kind chip is now disabled; pressing Bank is a no-op.
-    expect(getByText('Bank').parent?.props.accessibilityState.disabled).toBe(true);
-    await fireEvent.press(getByText('Bank'));
+    // The kind field is now disabled; pressing it never opens the sheet.
+    expect(isKindFieldDisabled(getByTestId)).toBe(true);
+    await fireEvent.press(getByTestId('account-kind-field'));
+    expect(() => getByTestId('account-kind-field-option-bank')).toThrow();
+
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
@@ -1215,10 +2429,10 @@ describe('AccountFormScreen — sync credentials on create', () => {
     // exactly once and never touches a credential write or sync. Validation of a
     // bad credential — and the skip-the-write-but-still-create guarantee — now
     // lives in BinanceCredentialsField's own test, not here.
-    const { getByLabelText, getByText, navigation } = await renderForm();
+    const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
     await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
-    await fireEvent.press(getByText('Crypto'));
+    await selectKind(getByTestId, 'crypto');
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());

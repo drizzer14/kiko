@@ -7,7 +7,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deploy pods gate jest deep typecheck lint dup knip deps \
+.PHONY: help deploy pods gate jest deep mutable typecheck lint dup knip deps \
         security secrets rules plist overrides start clean-ios verify
 
 help: ## List available targets
@@ -16,8 +16,8 @@ help: ## List available targets
 
 # --- Build & deploy (physical iPhone) ---
 
-deploy: ## Build Release-AdHoc + install on the connected iPhone (pod install auto-runs on build failure)
-	npm run deploy:device $(DEVICE)
+deploy: ## Build Release-AdHoc + install on the connected iPhone (pod install auto-runs on build failure; EXPECT='<str>' checks the bundle for <str> before install, no single quotes in <str> (use EXPECT_BUNDLE_STRING), write $$ for $)
+	$(if $(EXPECT),EXPECT_BUNDLE_STRING='$(EXPECT)' )npm run deploy:device $(DEVICE)
 
 pods: ## Install CocoaPods in ios/
 	cd ios && pod install
@@ -27,7 +27,7 @@ clean-ios: ## Remove the iOS build output (forces a clean rebuild + pod install 
 
 # --- Quality gates ---
 
-gate: ## Full fast+medium gate: lint, dup, knip, deps, security, rules, plist, secrets, overrides, typecheck
+gate: ## Full fast+medium gate: every check in package.json check:all
 	npm run check:all
 
 verify: ## Fail-fast end-of-work check: lint, then full jest, then gate — stops at first failure
@@ -36,8 +36,11 @@ verify: ## Fail-fast end-of-work check: lint, then full jest, then gate — stop
 jest: ## Run the full Jest suite
 	npx jest
 
-deep: ## Deep gate: mutation testing + osv-scanner (slow, 10-20+ min). It prints a `tail -f` line to watch progress.
+deep: ## Deep gate: mutation testing + osv-scanner, per small change set (set KIKO_MUTATION_BASE; > 30 files fails). It prints a `tail -f` line to watch progress.
 	npm run check:deep
+
+mutable: ## List the mutable files and count for KIKO_MUTATION_BASE (no Stryker)
+	bash scripts/checks/mutation.sh --list
 
 typecheck: ## tsc --noEmit
 	npm run check:typecheck

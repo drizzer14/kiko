@@ -8,7 +8,7 @@ import { StyleSheet } from 'react-native-unistyles';
 // parity with its own top and sides. The icon picker's old spacing(6) was the
 // lone outlier and its extra room was never needed (its grid carries its own
 // internal gaps); the filter menu used spacing(4) but dropped the safe-area
-// inset entirely (bug A2) — this one owner adds `insets.bottom` for every sheet
+// inset entirely — this one owner adds `insets.bottom` for every sheet
 // so neither drift can recur.
 // Exported so the component can resolve the SAME base step for its own
 // keyboard-aware `paddingBottom` override (`resolveKeyboardAwareBottomPadding`
@@ -16,7 +16,7 @@ import { StyleSheet } from 'react-native-unistyles';
 export const SHEET_PADDING_STEP = 4;
 
 // An EXTRA buffer kept at the very end of a sheet's own content, on top of
-// `sheet`'s own bottom padding below. Bug A: the Home filter menu (short,
+// `sheet`'s own bottom padding below. The Home filter menu (short,
 // never-scrolled content) read roomier at the bottom than every other sheet,
 // because `sheet`'s own bottom padding is applied to the OUTER card, not the
 // content — a short sheet's content simply falls short of the card's full
@@ -36,7 +36,7 @@ export const SHEET_PADDING_STEP = 4;
 // padding rather than `sheet`'s own.
 const CONTENT_BOTTOM_PADDING_STEP = SHEET_PADDING_STEP;
 
-// DEVICE BUG fix: Liquid Glass draws a native specular rim at the edge of
+// Liquid Glass draws a native specular rim at the edge of
 // whatever bounds it is given — a `UIGlassEffect` property this app does not
 // control, not a border/inset anywhere in this file. At the scrim's original
 // full-screen size that rim landed exactly on the screen edge and read as a
@@ -54,8 +54,8 @@ const BACKDROP_RIM_OVERSCAN = 32;
 
 // The grabber region's floor: the iOS HIG 44pt minimum touch target
 // (`kiko-design-system`'s "Touch targets" HIG axis), the same floor
-// `button.styles.ts`'s `COMPACT_MIN_HEIGHT` restores for a Button. DEVICE BUG
-// fix: a header-less sheet's region used to be only ~21pt tall (paddingTop 4 +
+// `button.styles.ts`'s `COMPACT_MIN_HEIGHT` restores for a Button. A header-less
+// sheet's region is only ~21pt tall without it (paddingTop 4 +
 // the 5pt pill + paddingBottom 12, no header sibling to fill it out), well
 // under the floor, with no `hitSlop` to compensate. `minHeight` grows the
 // region's OWN claimed bounds rather than the Pan's hit-test area past them,
@@ -71,14 +71,13 @@ const GRABBER_REGION_MIN_HEIGHT = 44;
 
 // The ONE token controlling the gap between the grabber/title band and the
 // first row of a sheet's body, for every sheet in the app. Every sheet's own
-// inline `<Text variant="heading">` title now migrates into the `header` prop
+// inline `<Text variant="heading">` title goes through the `header` prop
 // (see `kiko-design-system`'s "BottomSheet header"), so this single step —
-// applied to `grabberRegion.paddingBottom` below — is what used to be the
-// generic `gap` prop's per-child spacing applied ad hoc to a title. A full
-// step more than the previous bare `theme.spacing(3)` magic number gives the
-// title clearer breathing room now that it consistently anchors the header
-// band above every sheet's content, matching `SHEET_PADDING_STEP`'s own
-// weight rather than reading as a smaller, secondary gap.
+// applied to `grabberRegion.paddingBottom` below — is the one spacing between
+// the title and the body. It gives the title clear breathing room, since the
+// title consistently anchors the header band above every sheet's content,
+// matching `SHEET_PADDING_STEP`'s own weight rather than reading as a smaller,
+// secondary gap.
 const TITLE_TO_BODY_GAP_STEP = 4;
 
 export const styles = StyleSheet.create((theme) => ({
@@ -152,7 +151,7 @@ export const styles = StyleSheet.create((theme) => ({
   // cards/controls on it, so a selected pill (`surfaceHigh`) reads as raised
   // rather than blending into the sheet. It used `surfaceHigh` itself before —
   // the SAME tone as a selected pill — which the trend filter sheet blended
-  // into (on-device review). The base fill itself now lives on `glassFill`'s
+  // into. The base fill itself now lives on `glassFill`'s
   // `GlassSurface` (its `material` variant — a real live-blur on iOS 26+ that
   // reads the true content behind the sheet, or the same `surfaceTranslucent`
   // token on the non-glass fallback, composited over true-black to
@@ -197,7 +196,7 @@ export const styles = StyleSheet.create((theme) => ({
     right: 0,
     bottom: -theme.radii.lg,
   },
-  // DEVICE BUG (F5) fix: the 66% cap (`sheet.maxHeight` above) is forced on
+  // The 66% cap (`sheet.maxHeight` above) is forced on
   // every sheet, but until now the sheet card rendered no scroll container of
   // its own, so a plain-Box sheet whose content ran taller than the cap
   // (filter-menu, date-field, date-range-field, the transaction-form
@@ -221,10 +220,10 @@ export const styles = StyleSheet.create((theme) => ({
   // sheet's own ScrollView). Extending the header into this same region is what
   // makes a drag ANYWHERE across the header — not only on the small pill — drive
   // the dismiss. `paddingTop` is the sheet card's OWN top inset
-  // (`SHEET_PADDING_STEP`) — it used to sit on `sheet` above, OUTSIDE the
-  // GestureDetector, which left a dead, non-draggable strip between the card's
-  // rounded top edge and the grabber; moving it here instead means the entire
-  // band from the card's top edge down through the pill and (now-migrated)
+  // (`SHEET_PADDING_STEP`) — it sits here, not on `sheet` above, because on
+  // `sheet` it would be OUTSIDE the GestureDetector and leave a dead,
+  // non-draggable strip between the card's rounded top edge and the grabber;
+  // here the entire band from the card's top edge down through the pill and
   // title is draggable. `paddingBottom` (`TITLE_TO_BODY_GAP_STEP`) is the ONE
   // token separating the region from the first content row — every sheet's
   // title now renders through `header`, so this single step controls
@@ -234,7 +233,7 @@ export const styles = StyleSheet.create((theme) => ({
   // The grabber centers itself via its own `alignSelf` below rather than this
   // region's `alignItems`, so the header stays full-width/left-aligned (the
   // region's default `stretch`) instead of being centered with the pill.
-  // DEVICE BUG fix: `minHeight` (see `GRABBER_REGION_MIN_HEIGHT` above) floors
+  // `minHeight` (see `GRABBER_REGION_MIN_HEIGHT` above) floors
   // this region at the 44pt HIG touch-target minimum — the padding+pill alone
   // still falls short of it for a headerless sheet even at the larger padding
   // steps above. A header-bearing sheet already clears 44pt on its own
@@ -246,17 +245,17 @@ export const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing(3),
   },
   // The grabber pill itself: the standard iOS ~36x5pt rounded handle.
-  // DEVICE BUG fix (live review): `theme.colors.border` (#38383A, the hairline
+  // `theme.colors.border` (#38383A, the hairline
   // separator gray) read almost invisible against the sheet's own dark glass
   // background — both are near-black, so the drag affordance nearly
   // disappeared instead of reading clearly. `textSecondary` (the iOS
   // secondaryLabel translucency, ~6:1 contrast over true-black per
   // `docs/design/2026-09-10-ios-hig-audit.md`'s "Secondary text contrast"
-  // finding) is the same lighter gray `OptionPills`' unselected label already
+  // finding) is the same lighter gray `ChipRow`'s unselected label already
   // uses for a legible-but-subordinate tone, so the pill now reads as a clear
   // affordance without competing with the sheet's primary content.
-  // `alignSelf: 'center'` keeps it centered now that its region no longer
-  // sets `alignItems: 'center'` (so an optional header sibling can stay
+  // `alignSelf: 'center'` keeps it centered because its region does not set
+  // `alignItems: 'center'` (so an optional header sibling can stay
   // left-aligned).
   grabber: {
     alignSelf: 'center',
@@ -272,7 +271,7 @@ export const styles = StyleSheet.create((theme) => ({
   // path's equivalent). A `ScrollView`'s OWN `style` never lays out its
   // children (only `contentContainerStyle` does), so the gap cannot live on
   // `scrollBody` above. `paddingBottom` is the extra comfortable-bottom-space
-  // buffer (bug A, see `CONTENT_BOTTOM_PADDING_STEP` above) — living in the
+  // buffer (see `CONTENT_BOTTOM_PADDING_STEP` above) — living in the
   // content container itself means it is still visible even once the
   // ScrollView is scrolled all the way to its end, unlike padding on `sheet`
   // (which only ever shows beneath content short enough to never need to
@@ -293,7 +292,7 @@ export const styles = StyleSheet.create((theme) => ({
   // closes that gap in the ONE shared wrapper instead of relying on every
   // opted-out sheet getting its own inner ScrollView's sizing exactly right.
   // `paddingBottom` gives it the SAME comfortable bottom buffer as
-  // `scrollContent` above (bug A) — directly beneath whichever child renders
+  // `scrollContent` above — directly beneath whichever child renders
   // last: a pinned actions row (date-range-field), or the sheet's own inner
   // ScrollView's frame (category-field, icon-picker-modal).
   box: {

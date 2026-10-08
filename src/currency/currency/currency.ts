@@ -361,19 +361,32 @@ export const currencySymbol: Record<Currency, string> = {
   USDT: '₮',
 };
 
+/** The crypto subset of `Currency` — `isCrypto`'s own type-guard narrowing. */
+export type CryptoCurrency = 'BTC' | 'ETH' | 'USDT';
+
 // The crypto codes. Everything else in `currencyOptions` is fiat. `isCrypto`
 // (and, through it, `isFiat`/`fiatCurrencyOptions`) reads this ONE set rather
 // than re-enumerating which codes are crypto. Not exported: consumers classify
 // through the predicates, so exposing the raw Set would be dead surface.
 const cryptoCurrencies: ReadonlySet<Currency> = new Set<Currency>(['BTC', 'ETH', 'USDT']);
 
-export const isCrypto = (currency: Currency): boolean => cryptoCurrencies.has(currency);
+// A type guard (not a bare boolean predicate): narrows `.filter(isCrypto)` to
+// `CryptoCurrency[]` (see `cryptoCurrencyOptions` below), so a caller that
+// scopes a CoinGecko request to only the held crypto currencies never needs
+// its own cast.
+export const isCrypto = (currency: Currency): currency is CryptoCurrency =>
+  cryptoCurrencies.has(currency);
 
 export const isFiat = (currency: Currency): boolean => !isCrypto(currency);
 
 // The fiat subset of `currencyOptions`, order-preserving. Filtered through the
 // `Currency`-typed predicate so it stays `readonly Currency[]`.
 export const fiatCurrencyOptions: readonly Currency[] = currencyOptions.filter(isFiat);
+
+// The crypto subset of `currencyOptions`, order-preserving — the fiat set's
+// twin. Used to scope a held-holding query to crypto currencies only (an
+// `inArray` needs a concrete list, not just the `isCrypto` predicate).
+export const cryptoCurrencyOptions: readonly CryptoCurrency[] = currencyOptions.filter(isCrypto);
 
 export const isCurrency = (value: string): value is Currency =>
   (currencyOptions as readonly string[]).includes(value);

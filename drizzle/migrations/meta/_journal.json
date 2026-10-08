@@ -239,6 +239,153 @@
       "when": 1789719446662,
       "tag": "0033_add_account_bank_id",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1790182312793,
+      "tag": "0034_add_statement_mappings",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1790186131250,
+      "tag": "0035_add_price_points",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1790208400306,
+      "tag": "0036_add_balance_set_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1790223905874,
+      "tag": "0037_add_bond_register",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1790243858087,
+      "tag": "0038_add_loan_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1790250690000,
+      "tag": "0039_seed_loan_interest_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1790267000000,
+      "tag": "0040_cleanup_stray_deposit_bond_balance",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1790382038200,
+      "tag": "0041_add_dedup_key_upgraded",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1790400000000,
+      "tag": "0042_uah_star_rates",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1790617553621,
+      "tag": "0043_add_import_times_rezoned",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1790700000000,
+      "tag": "0044_move_crypto_cash_holdings",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1790644084553,
+      "tag": "0045_add_reminders",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1790812131823,
+      "tag": "0046_add_quote_quota",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1790867996042,
+      "tag": "0047_add_sets_balance",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1790886355551,
+      "tag": "0048_add_lots_recosted",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1790963734711,
+      "tag": "0049_bank_accounts_other_bank",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1791029668733,
+      "tag": "0050_implicit_property_debt_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1791148825000,
+      "tag": "0051_monobank_accounts_bank_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1791202131982,
+      "tag": "0052_add_exchange_pair_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1791249729128,
+      "tag": "0053_add_loan_holding_id_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1791274093021,
+      "tag": "0054_add_deleted_import_keys",
+      "breakpoints": true
     }
   ]
 }

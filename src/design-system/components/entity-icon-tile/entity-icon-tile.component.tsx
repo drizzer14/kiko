@@ -2,9 +2,9 @@ import { View } from 'react-native';
 import { type FC, useId } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { Defs, LinearGradient, Rect, Stop, Svg } from 'react-native-svg';
+import { entityIconTileGradient, isLightEntityColor } from '@kiko/design-system/entity-tint';
 
 import SymbolIcon from '../symbol';
-import { entityIconTileGradient, isLightEntityColor } from '../../entity-tint';
 
 import { iconTileSize, styles } from './entity-icon-tile.styles';
 import type { EntityIconTileProps } from './entity-icon-tile.props';
@@ -21,15 +21,11 @@ import type { EntityIconTileProps } from './entity-icon-tile.props';
 // sites keep their surrounding card BACKGROUND neutral (a plain `transparent`
 // frosted surface) rather than painting it with an entity-color wash.
 //
-// DEVICE BUG (review, 2026-09-14): this tile previously carried a two-ring
-// hairline edge (a white outer ring plus a darker inset ring, each on its own
-// `theme.ts` token) meant to imitate a native app-icon edge separator. Neither
-// ring read as intended on device — REVERTED entirely per that on-device
-// review, back to a plain squircle with no border/edge treatment at all. An
-// earlier version of this tile also washed a white specular "glass" highlight
-// sheen over its top portion — a live design review judged that gloss look
-// bad too, so it was removed the same way. The tile is now just the gradient
-// fill and the glyph, nothing drawn around the edge.
+// The tile is a plain squircle of the gradient fill and the glyph,
+// with nothing drawn around the edge. A two-ring hairline edge (a white outer
+// ring plus a darker inset ring) meant to imitate a native app-icon edge
+// separator does not read as intended on device, and a white specular "glass"
+// sheen over the top reads as a cheap gloss, so the tile draws neither.
 
 // Every tile mounts its own separate `Svg` document, so a gradient id only
 // needs to be unique WITHIN that document (the same scoping
@@ -44,16 +40,22 @@ import type { EntityIconTileProps } from './entity-icon-tile.props';
 // rather than React's own `:r0:`-shaped id.
 const GRADIENT_ID_PREFIX = 'entity-icon-tile-gradient';
 
-const EntityIconTile: FC<EntityIconTileProps> = ({ name, color, accessibilityLabel, size }) => {
+const EntityIconTile: FC<EntityIconTileProps> = ({
+  name,
+  color,
+  accessibilityLabel,
+  size,
+  compact = false,
+}) => {
   const { theme } = useUnistyles();
   const gradientId = `${GRADIENT_ID_PREFIX}-${useId().replace(/:/g, '')}`;
 
   const [topStop, bottomStop] = entityIconTileGradient(color);
-  const tileSize = iconTileSize(theme);
-  // DEVICE BUG (review, 2026-09-13): a fixed white `onAccent` glyph fails
+  const tileSize = iconTileSize(theme, compact);
+  // A fixed white `onAccent` glyph fails
   // WCAG AA contrast on the palette's lighter swatches (`white`, `yellow`,
   // `khaki`, `mint`, `teal` — see `isLightEntityColor`'s own doc comment in
-  // `entity-tint.ts`), reading as a near-invisible icon. The glyph tint now
+  // `entity-tint.ts`), reading as a near-invisible icon, so the glyph tint
   // adapts to the tile's own resolved hue: `theme.colors.background` (the
   // app's true-black token, already used everywhere else as the dark
   // extreme) on a light tile, the standard white `onAccent` on a dark one —
@@ -63,7 +65,7 @@ const EntityIconTile: FC<EntityIconTileProps> = ({ name, color, accessibilityLab
     : theme.colors.onAccent;
 
   return (
-    <View testID="entity-icon-tile" style={styles.tile}>
+    <View testID="entity-icon-tile" style={[styles.tile, compact && styles.compactTile]}>
       <Svg
         testID="entity-icon-tile-gradient-svg"
         width={tileSize}

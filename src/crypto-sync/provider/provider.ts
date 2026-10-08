@@ -1,8 +1,7 @@
-import type { TFunction } from 'i18next';
 import { match } from 'ts-pattern';
-
-import type { HoldingRow } from '../../db/schema';
-import type { ExchangeMetadataField } from '../../holdings/holding-metadata';
+import type { TFunction } from 'i18next';
+import type { HoldingRow } from '@kiko/db';
+import type { ExchangeMetadataField } from '@kiko/holdings/holding-metadata';
 
 /**
  * The single source of truth for the balance-provider ids. Each id doubles as
@@ -32,8 +31,8 @@ export type ProviderBalance = {
   /** Satoshis. */
   balanceMinorUnits: number;
   /**
-   * Provider-specific key used to match/upsert the target holding: the wallet
-   * address itself, or the fixed 'BTC' asset code for Binance.
+   * Provider-specific key the sync matches and upserts the target holding by:
+   * the wallet address itself, or the fixed 'BTC' asset code for Binance.
    */
   metadataKey: string;
   /**
@@ -45,7 +44,7 @@ export type ProviderBalance = {
   /**
    * One-time transition rename. When set, the upsert rewrites an EXISTING
    * matched holding's name to `name` ONLY IF its current name still equals this
-   * exact string (the old default). A user-edited name never matches, so it is
+   * exact string. A user-edited name never matches, so it is
    * preserved. Binance's Spot balance sets this to the pre-split default
    * ('Binance BTC') so a legacy aggregated holding is relabeled to 'Binance
    * Spot' on the first post-split sync; every other provider omits it.

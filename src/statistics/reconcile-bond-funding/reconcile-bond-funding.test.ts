@@ -1,10 +1,10 @@
-import { startOfLocalDay } from '../../dates/local-day';
-import type { BondMeta } from '../../holdings/holding-metadata';
+import { DAY_MS, startOfLocalDay } from '@kiko/dates';
+import type { BondMeta } from '@kiko/holdings/holding-metadata';
+
 import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
 
 import { reconcileBondFunding } from './reconcile-bond-funding';
 
-const DAY = 86_400_000;
 const HOUR = 3_600_000;
 
 const bondMeta = (over: Partial<BondMeta> = {}): BondMeta => ({
@@ -25,43 +25,38 @@ const cardHolding = (id: string, currency: SeriesHolding['currency']): SeriesHol
   type: 'card',
   balanceMinorUnits: 0,
   metadata: null,
+  closedAt: null,
 });
 
-const tx = (time: number, amountMinorUnits: number): SeriesTransaction => ({
+const transaction = (time: number, amountMinorUnits: number): SeriesTransaction => ({
   time,
   amountMinorUnits,
 });
 
 describe('reconcileBondFunding', () => {
-  it('recognizes cost from the funding debit’s day and amount, not the typed values', () => {
+  it('recognizes cost from the funding debit’s day, not the typed day', () => {
     const meta = bondMeta();
-    const debitDay = startOfLocalDay(meta.purchaseDate) - 2 * DAY; // funded two days earlier
+    const debitDay = startOfLocalDay(meta.purchaseDate) - 2 * DAY_MS; // funded two days earlier
     const holdings = [cardHolding('card', 'USD')];
     // The synced debit (110_000) differs from the typed price (107_868): a ~2% gap.
-    const txByHolding = new Map([['card', [tx(debitDay + 7 * HOUR, -110_000)]]]);
+    const transactionsByHolding = new Map([['card', [transaction(debitDay + 7 * HOUR, -110_000)]]]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, txByHolding)).toEqual({
-      recognitionDay: debitDay,
-      recognitionCostMinorUnits: 110_000,
-    });
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toBe(debitDay);
   });
 
   it('picks the debit whose day is nearest the typed purchase day when several match', () => {
     const meta = bondMeta();
     const typedDay = startOfLocalDay(meta.purchaseDate);
-    const near = typedDay - DAY;
-    const far = typedDay - 5 * DAY;
+    const near = typedDay - DAY_MS;
+    const far = typedDay - 5 * DAY_MS;
     const holdings = [cardHolding('card', 'USD')];
-    const txByHolding = new Map([
-      ['card', [tx(far + 7 * HOUR, -108_000), tx(near + 7 * HOUR, -110_000)]],
+    const transactionsByHolding = new Map([
+      ['card', [transaction(far + 7 * HOUR, -108_000), transaction(near + 7 * HOUR, -110_000)]],
     ]);
 
     // The nearer day wins on the day axis even though its amount is FARTHER from
     // the typed price — day proximity is the primary key, amount only the tie-break.
-    expect(reconcileBondFunding(meta, 'USD', holdings, txByHolding)).toEqual({
-      recognitionDay: near,
-      recognitionCostMinorUnits: 110_000,
-    });
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toBe(near);
   });
 
   it('breaks a same-day tie by the amount closest to the typed price', () => {
@@ -69,63 +64,130 @@ describe('reconcileBondFunding', () => {
     const typedDay = startOfLocalDay(meta.purchaseDate);
     const holdings = [cardHolding('card', 'USD')];
     // Two debits on the SAME day: the one closest to the typed 107_868 wins.
-    const txByHolding = new Map([
-      ['card', [tx(typedDay + 3 * HOUR, -110_000), tx(typedDay + 9 * HOUR, -108_000)]],
+    const transactionsByHolding = new Map([
+      [
+        'card',
+        [transaction(typedDay + 3 * HOUR, -110_000), transaction(typedDay + 9 * HOUR, -108_000)],
+      ],
     ]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, txByHolding)).toEqual({
-      recognitionDay: typedDay,
-      recognitionCostMinorUnits: 108_000,
-    });
+    const claimed = new Set<string>();
+
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding, claimed)).toBe(
+      typedDay,
+    );
+    expect([...claimed]).toEqual(['card:1']);
   });
 
-  it('accepts an exact-price debit (Q == P) and returns the typed price', () => {
+  it('accepts an exact-price debit (Q == P)', () => {
     const meta = bondMeta();
-    const debitDay = startOfLocalDay(meta.purchaseDate) - DAY;
+    const debitDay = startOfLocalDay(meta.purchaseDate) - DAY_MS;
     const holdings = [cardHolding('card', 'USD')];
-    const txByHolding = new Map([
-      ['card', [tx(debitDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
+    const transactionsByHolding = new Map([
+      ['card', [transaction(debitDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
     ]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, txByHolding)).toEqual({
-      recognitionDay: debitDay,
-      recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
-    });
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toBe(debitDay);
   });
 
-  it('falls back to the typed day and price when a debit is outside the tolerance band', () => {
+  it('falls back to the typed day when a debit is outside the tolerance band', () => {
     const meta = bondMeta();
     const holdings = [cardHolding('card', 'USD')];
     // A debit far from the price (here ~7% off, beyond the 5% band) is not the
     // bond's funding outflow.
-    const txByHolding = new Map([['card', [tx(meta.purchaseDate - 2 * DAY, -100_000)]]]);
+    const transactionsByHolding = new Map([
+      ['card', [transaction(meta.purchaseDate - 2 * DAY_MS, -100_000)]],
+    ]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, txByHolding)).toEqual({
-      recognitionDay: startOfLocalDay(meta.purchaseDate),
-      recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
-    });
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toBe(
+      startOfLocalDay(meta.purchaseDate),
+    );
   });
 
   it('ignores a CREDIT (positive amount) even when its magnitude is near the price', () => {
     const meta = bondMeta();
     const holdings = [cardHolding('card', 'USD')];
     // A same-magnitude CREDIT is not an outflow — it must never fund a bond.
-    const txByHolding = new Map([['card', [tx(meta.purchaseDate - 2 * DAY, 108_000)]]]);
+    const transactionsByHolding = new Map([
+      ['card', [transaction(meta.purchaseDate - 2 * DAY_MS, 108_000)]],
+    ]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, txByHolding)).toEqual({
-      recognitionDay: startOfLocalDay(meta.purchaseDate),
-      recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
-    });
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toBe(
+      startOfLocalDay(meta.purchaseDate),
+    );
   });
 
   it('ignores a matching debit that is in a different currency than the bond', () => {
     const meta = bondMeta();
     const holdings = [cardHolding('uah-card', 'UAH')];
-    const txByHolding = new Map([['uah-card', [tx(meta.purchaseDate - 2 * DAY, -108_000)]]]);
+    const transactionsByHolding = new Map([
+      ['uah-card', [transaction(meta.purchaseDate - 2 * DAY_MS, -108_000)]],
+    ]);
 
-    expect(reconcileBondFunding(meta, 'USD', holdings, txByHolding)).toEqual({
-      recognitionDay: startOfLocalDay(meta.purchaseDate),
-      recognitionCostMinorUnits: meta.purchasePriceMinorUnits,
-    });
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toBe(
+      startOfLocalDay(meta.purchaseDate),
+    );
+  });
+
+  it('matches a debit exactly at the 7-day funding window boundary', () => {
+    const meta = bondMeta();
+    const typedDay = startOfLocalDay(meta.purchaseDate);
+    const boundaryDay = typedDay - 7 * DAY_MS;
+    const holdings = [cardHolding('card', 'USD')];
+    const transactionsByHolding = new Map([
+      ['card', [transaction(boundaryDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
+    ]);
+
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toBe(boundaryDay);
+  });
+
+  it('matches a debit exactly 7 local days away across a fall-back DST change', () => {
+    // Europe/Kyiv falls back on 2026-10-25 (that local day is 25 hours), so
+    // the raw ms between Oct 20 and Oct 27 local midnight is 169h, one hour
+    // OVER the 7*24h window — a purely ms-based comparison would wrongly
+    // reject a debit that is exactly 7 CALENDAR days away.
+    const typedDay = new Date(2026, 9, 20).getTime();
+    const boundaryDay = new Date(2026, 9, 27).getTime();
+    const meta = bondMeta({ purchaseDate: typedDay });
+    const holdings = [cardHolding('card', 'USD')];
+    const transactionsByHolding = new Map([
+      ['card', [transaction(boundaryDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
+    ]);
+
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toBe(boundaryDay);
+  });
+
+  it('never matches a debit more than 7 days from the typed purchase day', () => {
+    const meta = bondMeta();
+    const typedDay = startOfLocalDay(meta.purchaseDate);
+    const farDay = typedDay - 8 * DAY_MS;
+    const holdings = [cardHolding('card', 'USD')];
+    // Same amount as the typed price (Q == P), so only the day window can be
+    // the reason this is rejected.
+    const transactionsByHolding = new Map([
+      ['card', [transaction(farDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
+    ]);
+
+    expect(reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding)).toBe(typedDay);
+  });
+
+  it('claims the matched debit so a second bond cannot also match it', () => {
+    const meta = bondMeta();
+    const holdings = [cardHolding('card', 'USD')];
+    // A day distinct from the typed purchase day, so a claimed-vs-fallback
+    // second call resolves to a visibly DIFFERENT day/price than the first.
+    const debitDay = startOfLocalDay(meta.purchaseDate) - 2 * DAY_MS;
+    const transactionsByHolding = new Map([
+      ['card', [transaction(debitDay + 7 * HOUR, -meta.purchasePriceMinorUnits)]],
+    ]);
+    const claimed = new Set<string>();
+
+    const first = reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding, claimed);
+    expect(first).toBe(debitDay);
+
+    // The one debit is already claimed: a second bond with the SAME candidate
+    // pool falls back to its own typed day instead of double-claiming it.
+    const second = reconcileBondFunding(meta, 'USD', holdings, transactionsByHolding, claimed);
+    expect(second).toBe(startOfLocalDay(meta.purchaseDate));
   });
 });

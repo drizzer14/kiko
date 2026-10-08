@@ -1,14 +1,14 @@
+import { Pressable } from 'react-native';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable } from 'react-native';
 
 import Box from '../box';
-import IconPickerModal from '../icon-picker-modal';
-import SymbolIcon from '../symbol';
 import Text from '../text';
+import SymbolIcon from '../symbol';
+import IconPickerModal from '../icon-picker-modal';
 
-import type { IconEditorProps } from './icon-editor.props';
 import { styles } from './icon-editor.styles';
+import type { IconEditorProps } from './icon-editor.props';
 
 // The leading icon affordance shared by the account/holding create forms and
 // their edit (detail) screens: an optional field caption (`label`) above a

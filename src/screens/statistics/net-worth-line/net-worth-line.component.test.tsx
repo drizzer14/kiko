@@ -1,10 +1,10 @@
+import { i18n } from '@kiko/i18n/init';
+import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { act, render, within } from '@testing-library/react-native';
+import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';
 
-import { endOfLocalDay, startOfLocalDay } from '../../../dates/local-day';
-import { darkTheme } from '../../../design-system/theme';
-import { i18n } from '../../../i18n';
-import type { NetWorthPoint } from '../../../statistics/net-worth-series';
-import '../../../design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+import '@kiko/design-system/unistyles';
 import NetWorthLine from './index';
 import { buildLineSegments, buildTicks, toAreaPath } from './net-worth-line.component';
 
@@ -25,12 +25,12 @@ const polylineYs = (raw: string): number[] =>
     .split(' ')
     .map((pair) => Number(pair.split(',')[1]));
 
-// R5-D split the stroke into one <Polyline> per sign-contiguous segment
+// The stroke splits into one <Polyline> per sign-contiguous segment
 // (testID `net-worth-line-polyline-<key>`) instead of a single polyline —
 // this flattens every segment's points into one Y array, the same shape
-// `polylineYs` used to return from the old single polyline, so the
-// gradient-anchoring math below (which only cares about the SET of plotted
-// Y's, not which segment carried which) is unchanged.
+// `polylineYs` returns for one polyline, so the gradient-anchoring math below
+// (which only cares about the SET of plotted Y's, not which segment carried
+// which) reads it as one array.
 const allSegmentYs = (segments: { props: Record<string, unknown> }[]): number[] =>
   segments.flatMap((segment) => polylineYs(String(segment.props.points)));
 
@@ -121,7 +121,7 @@ describe('toAreaPath', () => {
   });
 });
 
-// R5-D: the stroke's per-sign segmentation. Reuses the exact same identity
+// The stroke's per-sign segmentation. Reuses the exact same identity
 // scale, `crossing` fixture, and `referenceY` as the `toAreaPath` suite
 // above — proving the STROKE's crossing x's (0.5, 1.625) are the FILL's own,
 // not independently re-derived.
@@ -200,16 +200,16 @@ describe('buildLineSegments', () => {
 });
 
 describe('buildTicks', () => {
-  // The bottom Y-axis tick is the domain minimum. It now represents the net
+  // The bottom Y-axis tick is the domain minimum. It represents the net
   // worth's OWN minimum value (the lowest plotted amount, including the start
   // reference so the dashed baseline stays on-screen), floored to a nearby round
-  // number — NOT the old symmetric `startReference - halfRange`, which sat far
-  // below the data and made the line hug the top of the plot.
+  // number — NOT a symmetric `startReference - halfRange`, which would sit far
+  // below the data and make the line hug the top of the plot.
 
   it('floors the minimum to the reference value when the whole series sits above it', async () => {
     // All amounts are above the start reference, so the reference IS the minimum.
-    // The old symmetric domain put the bottom at 150000 - 8000 = 142000; the new
-    // one floors the true minimum (150000) to a nearby round number.
+    // A symmetric domain would put the bottom at 150000 - 8000 = 142000; the
+    // true minimum (150000) is floored to a nearby round number instead.
     const ticks = buildTicks(
       [
         { t: 0, amount: 150_000 },
@@ -255,8 +255,8 @@ describe('buildTicks', () => {
     );
 
     const bottom = ticks[ticks.length - 1].value;
-    // The old symmetric domain would have floored to 340000 (110000 below the
-    // data); the new one stays within one nice step of the minimum.
+    // A symmetric domain would floor to 340000 (110000 below the data); the
+    // bottom stays within one nice step of the minimum.
     expect(bottom).toBe(440_000);
     expect(min - bottom).toBeLessThanOrEqual(20_000);
   });
@@ -308,7 +308,7 @@ describe('NetWorthLine', () => {
     expect(getByText('1 236 ₴')).toBeTruthy();
   });
 
-  // R5-D changed this from a single always-white polyline to sign-colored
+  // The stroke changed from a single always-white polyline to sign-colored
   // segments (see "colors the net-worth stroke by sign" below); this guard
   // now covers only the non-crossing case, where the segmentation collapses
   // back to exactly one polyline carrying one coordinate pair per point —
@@ -328,6 +328,7 @@ describe('NetWorthLine', () => {
 
     const pairs = segments[0].props.points.trim().split(' ');
     expect(pairs).toHaveLength(nonCrossingPoints.length);
+
     for (const pair of pairs) {
       expect(pair).toMatch(/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/);
     }
@@ -489,7 +490,7 @@ describe('NetWorthLine', () => {
     expect(getByText('$0.2M')).toBeTruthy();
   });
 
-  it('offsets the X-axis label track past the Y-axis column so the dates line up with the plot (G5)', async () => {
+  it('offsets the X-axis label track past the Y-axis column so the dates line up with the plot', async () => {
     const { getByTestId } = await render(
       <NetWorthLine points={points} startReference={200} baseCurrency="USD" />,
     );
@@ -556,55 +557,38 @@ describe('NetWorthLine', () => {
     expect(transform).toEqual([{ translateX: '-50%' }]);
   });
 
-  // Regression guard (NEW-1): the "tomorrow as the end date" symptom exists only
-  // on `main`, where the range bounds were UTC-anchored (an inline `startOfLocalDay`
-  // returning `Date.UTC(...)` plus a fixed `+ DAY_MS - 1`). On this branch the
-  // range is built from `startOfLocalDay`/`endOfLocalDay` (`src/dates/local-day.ts`),
-  // which return TRUE LOCAL instants — a local midnight and a local end-of-day —
-  // so the chart's bucket `t` values are true-local, and formatting them in the
-  // device-local zone (the shipped `formatAxisTime`) already reads the picked
-  // calendar day. This guard drives points through the real range-bound helpers
-  // in a positive-offset zone (Europe/Kyiv, UTC+) and asserts the start and end
-  // ticks read the picked days — proving the bug is already fixed here and
-  // catching a regression (e.g. a stray `timeZone: 'UTC'` on `formatAxisTime`)
-  // that would shift the start tick a day back. It is a guard, not a TDD
-  // RED->GREEN fix: no source change is needed on this branch. Node re-reads TZ
-  // per Date op, so pinning it for the render is enough even when the host runs
-  // in UTC.
-  it('labels the X-axis extremes with the picked local calendar days in a positive-offset zone (NEW-1)', async () => {
-    const originalTz = process.env.TZ;
-    process.env.TZ = 'Europe/Kyiv';
-    try {
-      // The real range bounds a Sep 5 -> Sep 7 2026 pick produces on-device.
-      const fromT = startOfLocalDay(new Date(2026, 8, 5).getTime());
-      const toT = endOfLocalDay(new Date(2026, 8, 7).getTime());
-      const rangePoints: NetWorthPoint[] = [
-        { t: fromT, amount: 100 },
-        { t: startOfLocalDay(new Date(2026, 8, 6).getTime()), amount: 300 },
-        { t: toT, amount: 200 },
-      ];
-      const { getByTestId } = await render(
-        <NetWorthLine points={rangePoints} startReference={200} baseCurrency="USD" />,
-      );
+  // Regression guard: UTC-anchored range bounds (a `Date.UTC(...)` midnight
+  // plus a fixed `+ DAY_MS - 1`) made the axis show tomorrow as the end date.
+  // `startOfLocalDay`/`endOfLocalDay` (`src/dates/local-day.ts`) return true
+  // local instants, so formatting them in the device-local zone (the shipped
+  // `formatAxisTime`) reads the picked calendar day. This guard drives points
+  // through the real range-bound helpers in a positive-offset zone (the suite
+  // runs on Europe/Kyiv) and asserts the start and end ticks read the picked
+  // days, so a stray `timeZone: 'UTC'` on `formatAxisTime` that would shift
+  // the start tick a day back fails here.
+  it('labels the X-axis extremes with the picked local calendar days in a positive-offset zone', async () => {
+    // The real range bounds a Sep 5 -> Sep 7 2026 pick produces on-device.
+    const fromT = startOfLocalDay(new Date(2026, 8, 5).getTime());
+    const toT = endOfLocalDay(new Date(2026, 8, 7).getTime());
+    const rangePoints: NetWorthPoint[] = [
+      { t: fromT, amount: 100 },
+      { t: startOfLocalDay(new Date(2026, 8, 6).getTime()), amount: 300 },
+      { t: toT, amount: 200 },
+    ];
+    const { getByTestId } = await render(
+      <NetWorthLine points={rangePoints} startReference={200} baseCurrency="USD" />,
+    );
 
-      expect(getByTestId('net-worth-line-x-tick-0.00')).toHaveTextContent('05.09');
-      expect(getByTestId('net-worth-line-x-tick-1.00')).toHaveTextContent('07.09');
-      // The new numeric day.month format (this task's change) applies to the
-      // middle label too, not just the two range extremes.
-      expect(getByTestId('net-worth-line-x-tick-0.50')).toHaveTextContent(/^\d{2}\.\d{2}$/);
-    } finally {
-      if (originalTz === undefined) {
-        delete process.env.TZ;
-      } else {
-        process.env.TZ = originalTz;
-      }
-    }
+    expect(getByTestId('net-worth-line-x-tick-0.00')).toHaveTextContent('05.09');
+    expect(getByTestId('net-worth-line-x-tick-1.00')).toHaveTextContent('07.09');
+    // The numeric day.month format applies to the middle label too, not just
+    // the two range extremes.
+    expect(getByTestId('net-worth-line-x-tick-0.50')).toHaveTextContent(/^\d{2}\.\d{2}$/);
   });
 
   // Crossing data at the component level: net worth starts ABOVE the start
   // reference (250 > 200), dips BELOW it (150 < 200), then returns above (250) —
-  // so both the green and the red area are non-empty. This is the exact shape
-  // whose red region failed to render on device under the old ClipPath approach.
+  // so both the green and the red area are non-empty.
   const crossingPoints: NetWorthPoint[] = [
     { t: 0, amount: 250 },
     { t: 1, amount: 150 },
@@ -731,7 +715,7 @@ describe('NetWorthLine', () => {
     expect(Number(negGrad.props.y1)).toBeCloseTo(referenceY);
     expect(Number(negGrad.props.y2)).toBeCloseTo(redBottomY);
 
-    // NOT the old whole-plot extents (PADDING_Y at the top, baselineY at the
+    // NOT the whole-plot extents (PADDING_Y at the top, baselineY at the
     // bottom) — the ramp is compressed into the filled sliver.
     expect(Number(posGrad.props.y1)).not.toBeCloseTo(12);
     expect(Number(negGrad.props.y2)).not.toBeCloseTo(baselineY);
@@ -740,7 +724,7 @@ describe('NetWorthLine', () => {
   it('keeps a SHALLOW dip readable: the red opaque stop lands at redBottomY, not the plot bottom', async () => {
     const height = 200;
     // Starts above, dips only SLIGHTLY below the reference (199 vs 200), returns
-    // above. Under the old whole-plot ramp this dip sat where red opacity ~ 0.
+    // above. Under a whole-plot ramp this dip would sit where red opacity ~ 0.
     const shallow: NetWorthPoint[] = [
       { t: 0, amount: 250 },
       { t: 1, amount: 199 },
@@ -766,11 +750,10 @@ describe('NetWorthLine', () => {
     expect(redBottomY).toBeLessThan(baselineY);
     expect(redBottomY - referenceY).toBeLessThan((baselineY - referenceY) / 2);
 
-    // The opaque stop is pinned at redBottomY (offset 1). Tests render on the
-    // default (dark) theme — see unistyles.ts — where the red/negative stop
-    // is boosted to 0.5 (not the shared 0.3 green/positive uses) so the fill
-    // still reads clearly composited over OLED true-black; see
-    // NEGATIVE_AREA_OPACITY_DARK in net-worth-line.component.tsx.
+    // The opaque stop is pinned at redBottomY (offset 1). The red/negative
+    // stop is boosted to 0.5 (not the shared 0.3 green/positive uses) so the
+    // fill still reads clearly composited over OLED true-black; see
+    // NEGATIVE_AREA_OPACITY in net-worth-line.component.tsx.
     const negLine = getByTestId('net-worth-line-gradient-negative-stop-line');
     expect(negLine.props.offset).toBe('1');
     expect(negLine.props.stopOpacity).toBe(0.5);
@@ -794,10 +777,8 @@ describe('NetWorthLine', () => {
     expect(queryByTestId('net-worth-line-gradient-negative')).toBeNull();
   });
 
-  // R5-D (exploratory — kept as one cohesive block in the component, so it
-  // reverts in a single edit if dropped): the stroke is no longer a single
-  // fixed white polyline — it is sign-colored per contiguous segment,
-  // matching the fill's own green-above/red-below convention.
+  // The stroke is sign-colored per contiguous segment, matching the fill's
+  // own green-above/red-below convention, never a single fixed white line.
   it('colors the net-worth stroke by sign per segment, not a fixed white', async () => {
     const { getAllByTestId } = await render(
       <NetWorthLine points={crossingPoints} startReference={200} baseCurrency="USD" height={200} />,
@@ -813,9 +794,8 @@ describe('NetWorthLine', () => {
     expect(segments[2].props.stroke).toBe(darkTheme.colors.positive);
     expect(segments[0].props.fill).toBe('none');
 
-    // Every segment keeps the SAME stroke width the single polyline used to
-    // (LINE_STROKE_WIDTH is not exported; consistency across segments is
-    // the observable contract for "preserve the current stroke width").
+    // Every segment carries the SAME stroke width (LINE_STROKE_WIDTH is not
+    // exported; consistency across segments is the observable contract).
     const widths = new Set(segments.map((segment) => segment.props.strokeWidth));
     expect(widths.size).toBe(1);
 
@@ -828,7 +808,7 @@ describe('NetWorthLine', () => {
     expect(lastVertexOf(segments[1].props.points)).toBe(firstVertexOf(segments[2].props.points));
   });
 
-  it('splits the stroke at the SAME crossing x the fill uses, so line and fill agree (R5-D)', async () => {
+  it('splits the stroke at the SAME crossing x the fill uses, so line and fill agree', async () => {
     const { getAllByTestId, getByTestId } = await render(
       <NetWorthLine points={crossingPoints} startReference={200} baseCurrency="USD" height={200} />,
     );
@@ -867,6 +847,7 @@ describe('NetWorthLine', () => {
     // Exactly three labels (first, middle, last) — the 0.25/0.75 gridline
     // fractions get no label of their own, unlike the gridline set above.
     expect(getAllByTestId(/^net-worth-line-x-tick-/)).toHaveLength(3);
+
     for (const key of ['0.00', '0.50', '1.00']) {
       expect(getByTestId(`net-worth-line-x-tick-${key}`)).toBeTruthy();
     }
@@ -953,12 +934,11 @@ describe('NetWorthLine', () => {
     return numberStyleOf(getByTestId('net-worth-line-loading').props.style, 'height');
   };
 
-  // Regression: the loading placeholder used to be a short spinner box that
-  // grew ~135px once the loaded chart replaced it, jumping the Charts screen's
-  // content height above the viewport mid-render and interrupting the OS's
-  // native scroll-to-top (tapping the active tab). The placeholder must now
-  // reserve the SAME total height the loaded chart occupies for a given plot
-  // height, so no post-mount height change ever occurs.
+  // The loading placeholder must reserve the SAME total height the loaded
+  // chart occupies for a given plot height, so no post-mount height change
+  // ever occurs: a shorter placeholder would jump the Charts screen's content
+  // height above the viewport mid-render and interrupt the OS's native
+  // scroll-to-top (tapping the active tab).
   it('reserves the same total height in the loading state as the loaded chart', async () => {
     const height = 200;
     const loadingHeight = await loadingHeightAt(height);

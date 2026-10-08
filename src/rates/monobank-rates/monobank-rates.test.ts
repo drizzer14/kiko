@@ -1,5 +1,6 @@
+import { Money } from '@kiko/currency/money';
+
 import { convert } from '../conversion';
-import { Money } from '../../currency/money';
 
 import { fetchFiatRates } from './monobank-rates';
 
@@ -16,13 +17,20 @@ const makeFetch = (body: unknown, ok = true): typeof fetch =>
   (async () => ({ ok, json: async () => body, status: ok ? 200 : 429 })) as unknown as typeof fetch;
 
 const fixture: MonoRate[] = [
-  { currencyCodeA: 840, currencyCodeB: 980, date: 1, rateBuy: 39, rateSell: 41 }, // USD:UAH -> buy 39
-  { currencyCodeA: 978, currencyCodeB: 980, date: 1, rateCross: 43 }, // EUR:UAH cross 43
-  { currencyCodeA: 826, currencyCodeB: 980, date: 1, rateCross: 52 }, // GBP:UAH cross 52
-  { currencyCodeA: 756, currencyCodeB: 980, date: 1, rateCross: 46 }, // CHF:UAH cross 46
-  { currencyCodeA: 840, currencyCodeB: 978, date: 1, rateSell: 0.93 }, // USD:EUR sell-only
-  { currencyCodeA: 643, currencyCodeB: 980, date: 1, rateBuy: 0.27, rateSell: 0.28 }, // RUB:UAH -> dropped (outside the supported set)
-  { currencyCodeA: 985, currencyCodeB: 980, date: 1 }, // PLN: in the set, but no rate at all -> dropped
+  // USD:UAH -> buy 39
+  { currencyCodeA: 840, currencyCodeB: 980, date: 1, rateBuy: 39, rateSell: 41 },
+  // EUR:UAH cross 43
+  { currencyCodeA: 978, currencyCodeB: 980, date: 1, rateCross: 43 },
+  // GBP:UAH cross 52
+  { currencyCodeA: 826, currencyCodeB: 980, date: 1, rateCross: 52 },
+  // CHF:UAH cross 46
+  { currencyCodeA: 756, currencyCodeB: 980, date: 1, rateCross: 46 },
+  // USD:EUR sell-only
+  { currencyCodeA: 840, currencyCodeB: 978, date: 1, rateSell: 0.93 },
+  // RUB:UAH -> dropped (outside the supported set)
+  { currencyCodeA: 643, currencyCodeB: 980, date: 1, rateBuy: 0.27, rateSell: 0.28 },
+  // PLN: in the set, but no rate at all -> dropped
+  { currencyCodeA: 985, currencyCodeB: 980, date: 1 },
 ];
 
 // A holding of a foreign currency is a bank ASSET: monobank values it at its
@@ -37,12 +45,26 @@ describe('fetchFiatRates', () => {
     let sentUrl = '';
     const spyFetch = (async (url: string) => {
       sentUrl = url;
+
       return { ok: true, json: async () => fixture, status: 200 };
     }) as unknown as typeof fetch;
 
     await fetchFiatRates(spyFetch);
 
     expect(sentUrl).toBe('https://api.monobank.ua/bank/currency');
+  });
+
+  it('sends Cache-Control: no-store on the public currency request, like every Monobank call', async () => {
+    let sentHeaders: Record<string, string> | undefined;
+    const spyFetch = (async (_url: string, init?: { headers: Record<string, string> }) => {
+      sentHeaders = init?.headers;
+
+      return { ok: true, json: async () => fixture, status: 200 };
+    }) as unknown as typeof fetch;
+
+    await fetchFiatRates(spyFetch);
+
+    expect(sentHeaders?.['Cache-Control']).toBe('no-store');
   });
 
   it('normalizes entries within the fiat set and derives the rate per entry', async () => {
@@ -66,7 +88,7 @@ describe('fetchFiatRates', () => {
     // midpoint (44.6455) would overvalue the holding by ~742 UAH.
     expect(usdUah).toEqual({ base: 'USD', quote: 'UAH', rate: 44.46, source: 'monobank' });
 
-    const rates = { [`${usdUah.base}:${usdUah.quote}`]: usdUah.rate };
+    const rates = { [usdUah.base]: usdUah.rate };
     const converted = convert(Money.fromMajor('USD', 4000), 'UAH', rates);
 
     expect(converted).toEqual(Money.fromMajor('UAH', 177840));

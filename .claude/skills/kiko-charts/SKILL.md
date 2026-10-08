@@ -107,14 +107,17 @@ render under Jest** — extend `__mocks__/react-native-svg.tsx` with the
 new primitive in the same passthrough style before writing the chart's
 test, not after chasing a mysterious render failure.
 
-## An SVG gradient, if one is ever needed again
+## An SVG gradient template
 
-`GlassSurface` no longer uses an SVG gradient for its entity-color wash —
-it renders one flat `entityCardBackground` color as a plain `View`
-`backgroundColor` (see `kiko-design-system`'s "Entity color and tint"),
-so there is currently no `<LinearGradient>` usage anywhere in the app to
-follow as a template. If a future chart genuinely needs an SVG gradient,
-the general `react-native-svg` shape is: an absolutely-positioned,
+`net-worth-line.component.tsx` and `EntityIconTile`
+(`src/design-system/components/entity-icon-tile/`) both use a real
+`react-native-svg` `<LinearGradient>` today — read either directly for
+a working example before adding a new one. `GlassSurface`'s own
+entity-color wash does not use an SVG gradient (see
+`kiko-design-system`'s "Entity color and tint" — its content-layer
+counterpart, `Card`/`EntityIconTile`, renders a flat resolved-hue
+background instead). The general `react-native-svg` shape for a new
+gradient: an absolutely-positioned,
 `pointerEvents="none"` `<Svg>` containing a `<Defs><LinearGradient
 id="..."><Stop .../><Stop .../></LinearGradient></Defs>` plus a single
 `<Rect fill="url(#...)" />` sized to `100%`/`100%`, with each `<Stop>`
@@ -126,27 +129,30 @@ native gradient extractor masks off any alpha embedded in an rgba()
 `stopColor` and substitutes `stopOpacity` (defaulting to fully opaque)
 instead, so an rgba() color alone silently renders fully opaque.
 
-## Net-worth stroke is sign-colored per segment
+## Net-worth stroke is sign-colored per segment (approved visual)
 
-The net-worth line's `<Polyline>` STROKE is colored green where the
-line is at or above the dashed `startReference` baseline and red
-where it is below, not a single fixed color — `buildLineSegments`
+The net-worth line's `<Polyline>` STROKE is colored green
+(`theme.colors.positive`) where the line is at or above the dashed
+`startReference` baseline and red (`theme.colors.negative`) where it is
+below — the user-approved look, LOCKED: never replace it with a single
+fixed-color (white) stroke. `buildLineSegments`
 (`net-worth-line.component.tsx`) splits the plotted points into
 contiguous same-sign runs, one `<Polyline>` per run. It deliberately
 REUSES `toAreaPath`'s exact crossing-x formula so a segment's split
 lands at the identical x as the fill's own crossing, and the line and
 fill never visually disagree — read both functions together rather
-than assuming the stroke split is independently derived.
+than assuming the stroke split is independently derived. The area
+FILL stays sign-colored too (green above, red below).
 
-The stroke `testID` changed from a single `net-worth-line-polyline`
-to per-segment `net-worth-line-polyline-${segment.key}`. This is
-load-bearing for any test/consumer that queries the stroke: a fixed
-`getByTestId('net-worth-line-polyline')` no longer matches anything
-— query with a prefix match (e.g. `getAllByTestId(/^net-worth-line-polyline-/)`),
-the pattern `statistics.screen.test.tsx` and
-`net-worth-line.component.test.tsx` already use. A non-crossing series
-still renders as exactly one segment, so the prefix query also covers
-the common case.
+The stroke `testID` is per segment,
+`net-worth-line-polyline-${segment.key}` — there is no single
+`net-worth-line-polyline`. Query it with a prefix match
+(`getAllByTestId(/^net-worth-line-polyline-/)`), the pattern
+`statistics.screen.test.tsx` and `net-worth-line.component.test.tsx`
+use. A non-crossing series renders as exactly one segment, so the
+prefix query also covers the common case.
+
+## Net-worth area-fill opacity
 
 The red/negative area gradient uses a HIGHER opacity than the
 green/positive one, not the same constant for both: alpha-compositing
@@ -157,6 +163,14 @@ needs more opacity to stay visibly legible against true black. Read
 the `AREA_OPACITY`/`NEGATIVE_AREA_OPACITY` constants in
 `net-worth-line.component.tsx` for the current values rather than
 restating them here.
+
+**Net worth can go negative** (see kiko-domain "Net worth"): a debt
+outweighing assets means the line can cross 0 — this
+needed NO change to `NetWorthLine` itself: `buildLineSegments` and
+`toAreaPath` already split the stroke and the fill on sign per crossing
+(above), which is exactly the "cross 0" case. The Y axis already floors to the series' own minimum (whatever
+that is, positive or negative), so a negative range draws correctly
+with no separate floor-at-0 logic to remove.
 
 ## Legend percent labels sum to 100
 
@@ -185,13 +199,18 @@ restating them here — and resolves each line's color the same way the
 donut does, via `resolveCategoryColor`. It no longer buckets by
 calendar month: it takes an explicit `range` (`{ from, to }`) and
 `bucketDays`, and folds every kept expense into
-`bucketTimes(range.from, range.to, bucketDays)` — the SAME bucket
-positions `buildNetWorthSeries` plots for the same `range`/`bucketDays`
-(see `src/statistics/buckets/`), so the trend chart honors the
-Statistics screen's own date-range picker rather than a fixed span, and
-zero-fills every bucket in that range for every series so all lines
-share one set of X positions even where a category had no spend in a
-given bucket. It sorts the returned series by total spend descending.
+`periodStartBucketTimes(range.from, range.to, bucketDays)` — PERIOD-START
+instants only (see `src/statistics/buckets/`), unlike
+`buildNetWorthSeries`' own `bucketTimes`, which also closes on `to`
+itself: a per-period series has no real value to put at that extra
+closing instant (every expense already folds into the period-start
+bucket that contains it), so keeping it produced a permanent phantom
+zero point at the end of every line, dragging down the Rising measure
+below. This lets the trend chart honor the Statistics screen's own
+date-range picker rather than a fixed span, and zero-fills every real
+bucket in that range for every series so all lines share one set of X
+positions even where a category had no spend in a given bucket. It
+sorts the returned series by total spend descending.
 Read `bucketDaysForSpan` (`src/statistics/buckets/`, how the screen
 picks day-vs-week bucketing from the active range) and `category-trend.ts`
 itself for the exact bucket math rather than trusting a restated
@@ -265,6 +284,20 @@ toggle. The Expenses-by-Category donut passes `legendMinShare={0.05}`
 (`CATEGORY_LEGEND_MIN_SHARE` in `statistics.screen.tsx`); the
 account-contribution pie passes nothing, so its legend is uncropped.
 
+## The account pie excludes debts
+
+`PieChart` itself has no debt concept — the exclusion lives entirely
+in its caller. `buildAccountContribution` (`src/statistics/account-contribution/`)
+filters to `slice.amount > 0` before this component ever sees the
+slice list, so a debt account's net worth (negative, since a `loan`
+holding's own value is negative — see `kiko-domain` "Net worth")
+never reaches the ring: no negative-slice case exists inside
+`PieChart`/`allocatePercents` to handle. The SAME file's
+`buildDebtTotal` sums every `loan` holding's value into a separate
+"Debts" `Money` total, rendered on Statistics via `MoneyText` under
+the account-contribution pie card (`statistics-debts-total`), not as
+a pie slice.
+
 ## Reuse the entity-color system for fills
 
 A chart fill color is never a chart-local palette. `bar-chart` fills each
@@ -273,7 +306,7 @@ per-entity override exists); `pie-chart` colors each donut wedge and its
 legend swatch with the same slice's resolved entity color. See
 `kiko-design-system`'s "Entity color and tint" section for the full color
 pipeline (`defaultAccountColor`/`defaultHoldingColor`,
-`resolveEntityColor`, `entityCardBackground`) — a new chart follows the
+`resolveEntityColor`, `entityIconTileGradient`) — a new chart follows the
 same pipeline rather than inventing its own color set, so a swatch in a
 chart legend always matches that same entity's color everywhere else in
 the app (its card, its icon tint).

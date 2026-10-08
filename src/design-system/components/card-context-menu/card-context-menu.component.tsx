@@ -1,8 +1,9 @@
 import { View } from 'react-native';
+import either, { bifoldr } from 'fnts/either';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 import { trigger } from 'react-native-haptic-feedback';
-import { type FC, type ReactNode, useState } from 'react';
+import { type FC, type ReactNode, useRef, useState } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -21,10 +22,12 @@ export const HOLD_GESTURE_TEST_ID = 'card-context-menu-hold';
 export const DELETE_CONFIRM_TEST_ID = 'card-context-menu-delete-confirm';
 
 // The action-list buttons' jest test ids, exported so a consumer's test can
-// drive the Duplicate/Delete CHOICE that a hold opens once `onDuplicate` is
-// wired. Only present when `onDuplicate` is provided (a delete-only card never
-// renders the action list — it opens the confirm directly).
+// drive the CHOICE that a hold opens once `onDuplicate`, `onEdit`, or
+// `closeAction` is wired. Only present then (a delete-only card never renders the
+// action list — it opens the confirm directly).
 export const DUPLICATE_ACTION_TEST_ID = 'card-context-menu-duplicate';
+export const EDIT_ACTION_TEST_ID = 'card-context-menu-edit';
+export const CLOSE_ACTION_TEST_ID = 'card-context-menu-close';
 export const DELETE_ACTION_TEST_ID = 'card-context-menu-delete-action';
 
 // A touch-and-hold must stay still for this long to open the delete confirm —
@@ -49,21 +52,25 @@ const HOLD_LIFT_SCALE = 1.03;
 const HOLD_LIFT_DURATION_MS = 300;
 
 /**
- * Wraps a grid card in a self-contained "deep-press (haptic)" delete confirm.
+ * Wraps a grid card in a self-contained "deep-press (haptic)" context menu.
  *
- * A manual (deletable) entity gets a `react-native-gesture-handler` `LongPress`
- * composed alongside — never over — the card:
+ * A card with any action (deletable, or given `onDuplicate`/`onEdit`/
+ * `closeAction`) gets a `react-native-gesture-handler` `LongPress` composed
+ * alongside — never over — the card:
  *
  * - a quick TAP never activates the long-press (its min duration is not met), so
  *   it falls straight through to the child card's own `onPress` (open detail).
  *   Nothing is layered on top of the card that could swallow the tap.
  * - a touch-and-HOLD that stays still (past `HOLD_DURATION_MS`, within
- *   `HOLD_MAX_DISTANCE`) plays a medium-impact haptic and raises the shared,
- *   themed `ConfirmSheet` (a `BottomSheet`, NOT a native `ActionSheetIOS`),
- *   titled `Delete "<name>"` with a bare destructive `Delete` confirm and no
- *   body. Only that confirm routes to `onDelete`; Cancel and a scrim/back
- *   dismiss delete nothing. The named title keeps an accidental hold from
- *   deleting an unnamed item.
+ *   `HOLD_MAX_DISTANCE`) plays a medium-impact haptic. On a delete-only card
+ *   it raises the shared, themed `ConfirmSheet` (a `BottomSheet`, NOT a
+ *   native `ActionSheetIOS`) straight away, titled `Delete "<name>"` with a
+ *   bare destructive `Delete` confirm and no body, unless the card passes a
+ *   `deleteMessage`. A card with another action
+ *   opens the action list instead, whose Delete (only when deletable) hands
+ *   off to that same confirm. Only the confirm routes to `onDelete`; Cancel
+ *   and a scrim/back dismiss delete nothing. The named title keeps an
+ *   accidental hold from deleting an unnamed item.
  * - a hold that MOVES past `HOLD_MAX_DISTANCE` fails the long-press, freeing the
  *   finger for the enclosing sortables drag-to-reorder.
  *
@@ -73,27 +80,46 @@ const HOLD_LIFT_DURATION_MS = 300;
  * callback (the haptic bridge plus the `setState`) runs on the JS thread
  * directly, neither being a worklet.
  *
- * A synced (Monobank) entity is not deletable here, so it renders bare — no
+ * A card with no action at all (a synced (Monobank) entity) renders bare — no
  * gesture and no sheet. This keeps the synced guard AND, deliberately, leaves
  * the touch-and-hold free for the enclosing sortables drag to claim, so a
  * synced card can still be reordered.
  *
  * COEXISTENCE NOTE: both this long-press and the sortables drag begin from a
- * hold. A hold that stays still opens this confirm; a hold that moves the finger
+ * hold. A hold that stays still opens this menu; a hold that moves the finger
  * fails this gesture (`HOLD_MAX_DISTANCE`) and reorders instead; a quick tap
  * opens the card. On-device, `HOLD_DURATION_MS` may need tuning against the
- * grid's drag activation so the two never both fire on a single hold.
+ * grid's drag activation so the two never both fire on a single hold. The grid
+ * lifts the card at its own 200 ms activation, before this menu's hold. A still
+ * hold released before the menu can still deliver a press after the lift; the
+ * grid's `useGridLiftGuard`, not this component, keeps that press from opening
+ * the card. A moved drag and an opened menu deliver no press at all.
  */
 const CardContextMenu: FC<{
   name: string;
   deletable: boolean;
   onDelete: () => void;
-  // An optional "duplicate this entity" action. When provided, a hold opens a
-  // themed CHOICE (Duplicate + Delete) instead of the delete confirm directly;
-  // when omitted, the hold keeps its original delete-only behavior byte-for-
-  // behavior. Only the transaction rows (Home + the holding-detail ledger) pass
-  // it, for manual rows only — the account/holding cards and grids never do.
+  // An optional "duplicate this entity" action. It joins the action list a
+  // hold opens instead of the delete confirm. Only the transaction rows (Home
+  // + the holding-detail ledger) pass it, for manual rows only — the
+  // account/holding cards and grids never do.
   onDuplicate?: () => void;
+  // An optional "edit this entry" action for a row that has no tap target of
+  // its own to open an editor (the holding detail's share changes). Joins
+  // the same action list as Duplicate.
+  onEdit?: () => void;
+  // An optional "close this entity, keep its history" action (a manual
+  // holding the user sold or gave away). Joins the same action list; the
+  // consumer owns its label and its confirm, since what closing means, and
+  // what the entity is called, is the entity's own.
+  closeAction?: { label: string; onPress: () => void };
+  // An optional body message under the delete confirm's title, for a delete
+  // whose effect the user would not guess from the title alone. Omitted, the
+  // confirm stays title-only. A function reads the text when the delete is
+  // requested (the confirm opens once it settles, so the user never sees the
+  // sheet change under their finger), for a message that depends on what is
+  // stored right now; a rejection or `undefined` opens the title-only confirm.
+  deleteMessage?: () => Promise<string | undefined>;
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -104,12 +130,27 @@ const CardContextMenu: FC<{
   // would double-animate it. Only the Home transaction row passes it today.
   liftOnHold?: boolean;
   children: ReactNode;
-}> = ({ name, deletable, onDelete, onDuplicate, liftOnHold = false, children }) => {
+}> = ({
+  name,
+  deletable,
+  onDelete,
+  onDuplicate,
+  onEdit,
+  closeAction,
+  deleteMessage,
+  liftOnHold = false,
+  children,
+}) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [confirmVisible, setConfirmVisible] = useState(false);
-  // The Duplicate/Delete action list's visibility, separate from the delete
-  // confirm's: a hold opens THIS when a duplicate action exists, and choosing
+  // The text a `deleteMessage` function resolved to for the confirm now open.
+  const [resolvedMessage, setResolvedMessage] = useState<string | undefined>(undefined);
+  // The newest request to open the confirm, so a read that settles after a newer
+  // request is dropped.
+  const latestRequest = useRef(0);
+  // The action list's visibility, separate from the delete confirm's: a hold
+  // opens THIS when a duplicate, edit, or close action exists, and choosing
   // Delete from it hands off to the confirm sheet below.
   const [actionsVisible, setActionsVisible] = useState(false);
   // The `liftOnHold` scale, driven straight from the JS thread (the whole
@@ -121,15 +162,40 @@ const CardContextMenu: FC<{
   const liftStyle = useAnimatedStyle(() => ({ transform: [{ scale: liftScale.value }] }));
 
   const canDuplicate = onDuplicate !== undefined;
+  const canEdit = onEdit !== undefined;
+  const canClose = closeAction !== undefined;
+  const hasActionList = canDuplicate || canEdit || canClose;
 
-  // A card with NEITHER a delete nor a duplicate action renders bare — no
-  // gesture, no sheet — leaving the touch-and-hold free for an enclosing
-  // sortables drag to claim (a synced row keeps its reorder this way).
-  if (!deletable && !canDuplicate) {
+  // A card with NO action renders bare — no gesture, no sheet — leaving the
+  // touch-and-hold free for an enclosing sortables drag to claim (a synced
+  // row keeps its reorder this way).
+  if (!deletable && !hasActionList) {
     return <>{children}</>;
   }
 
-  // A hold offers the action-list CHOICE only when a duplicate action exists;
+  // A message that must be read first holds the sheet back until it settles; no
+  // message opens the sheet at once. A read that fails opens the title-only
+  // confirm: the delete itself never depends on the text. A request made while an
+  // earlier read is pending supersedes it, so the earlier read settling late
+  // neither overwrites the newer text nor opens a confirm of its own.
+  const openConfirm = async (): Promise<void> => {
+    latestRequest.current += 1;
+    const request = latestRequest.current;
+
+    if (deleteMessage !== undefined) {
+      const message = bifoldr(await either(async () => deleteMessage()));
+
+      if (request !== latestRequest.current) {
+        return;
+      }
+
+      setResolvedMessage(message);
+    }
+
+    setConfirmVisible(true);
+  };
+
+  // A hold offers the action-list CHOICE only when a duplicate, edit, or close action exists;
   // otherwise it keeps the original behavior and opens the delete confirm
   // straight away, so every delete-only consumer is unchanged. `liftOnHold`
   // additionally scales the card up on `onStart` and eases it back to 1 on
@@ -148,13 +214,14 @@ const CardContextMenu: FC<{
         liftScale.value = withTiming(HOLD_LIFT_SCALE, { duration: HOLD_LIFT_DURATION_MS });
       }
 
-      if (canDuplicate) {
+      if (hasActionList) {
         setActionsVisible(true);
 
         return;
       }
 
-      setConfirmVisible(true);
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
+      openConfirm();
     })
     .onFinalize(() => {
       if (liftOnHold) {
@@ -170,18 +237,30 @@ const CardContextMenu: FC<{
     setActionsVisible(false);
   };
 
-  // Duplicate closes the action list first, THEN runs the handler (which
-  // typically navigates away), keeping the setState off a soon-unmounted node.
+  // Duplicate and Edit close the action list first, THEN run the handler
+  // (which typically navigates away), keeping the setState off a
+  // soon-unmounted node.
   const runDuplicate = (): void => {
     setActionsVisible(false);
     onDuplicate?.();
+  };
+
+  const runEdit = (): void => {
+    setActionsVisible(false);
+    onEdit?.();
+  };
+
+  const runClose = (): void => {
+    setActionsVisible(false);
+    closeAction?.onPress();
   };
 
   // Delete from the action list hands off to the SAME named confirm sheet the
   // delete-only path uses: close the list, open the confirm.
   const chooseDelete = (): void => {
     setActionsVisible(false);
-    setConfirmVisible(true);
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
+    openConfirm();
   };
 
   // Close first, THEN delete: `onDelete` typically removes this card from its
@@ -204,7 +283,7 @@ const CardContextMenu: FC<{
         )}
       </GestureDetector>
 
-      {canDuplicate && (
+      {hasActionList && (
         <BottomSheet
           visible={actionsVisible}
           onDismiss={dismissActions}
@@ -212,9 +291,23 @@ const CardContextMenu: FC<{
           header={<Text variant="heading">{name}</Text>}
           testID="card-context-menu-actions"
         >
-          <Button onPress={runDuplicate} testID={DUPLICATE_ACTION_TEST_ID}>
-            {t('common.duplicate')}
-          </Button>
+          {canEdit && (
+            <Button onPress={runEdit} testID={EDIT_ACTION_TEST_ID}>
+              {t('common.edit')}
+            </Button>
+          )}
+
+          {canDuplicate && (
+            <Button onPress={runDuplicate} testID={DUPLICATE_ACTION_TEST_ID}>
+              {t('common.duplicate')}
+            </Button>
+          )}
+
+          {canClose && (
+            <Button onPress={runClose} testID={CLOSE_ACTION_TEST_ID}>
+              {closeAction?.label}
+            </Button>
+          )}
 
           {deletable && (
             <Button variant="destructive" onPress={chooseDelete} testID={DELETE_ACTION_TEST_ID}>
@@ -231,6 +324,7 @@ const CardContextMenu: FC<{
       <ConfirmSheet
         visible={confirmVisible}
         title={t('common.deleteNamed', { name })}
+        message={resolvedMessage}
         confirmLabel={t('common.delete')}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}

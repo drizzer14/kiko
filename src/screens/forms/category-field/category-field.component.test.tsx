@@ -1,9 +1,18 @@
-import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
 import { ScrollView } from 'react-native';
-import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
+import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 
 import CategoryField from './category-field.component';
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 // The element type RNTL's own queries return (its bundled test-renderer
 // TestInstance), derived from the query signature so no react-test-renderer
@@ -51,6 +60,7 @@ const renderCategoryField = (
   render(
     <CategoryField
       label="Category"
+      sheetTitle="Select a Category"
       options={OPTIONS}
       selectedKey={selectedKey}
       onSelect={onSelect}
@@ -69,6 +79,7 @@ describe('CategoryField', () => {
     const { getByText } = await render(
       <CategoryField
         label="Category"
+        sheetTitle="Select a Category"
         options={OPTIONS}
         selectedKey={null}
         onSelect={jest.fn()}
@@ -77,6 +88,33 @@ describe('CategoryField', () => {
     );
 
     expect(getByText('*', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('shows its error directly under the field and turns the label red', async () => {
+    const { getByTestId } = await render(
+      <CategoryField
+        label="Category"
+        sheetTitle="Select a Category"
+        options={OPTIONS}
+        selectedKey={null}
+        onSelect={jest.fn()}
+        error="Select a category."
+        testID="category-field"
+      />,
+    );
+
+    expect(getByTestId('category-field-error')).toHaveTextContent('Select a category.');
+    expect(isLabelInvalid(mockFieldLabel, 'Category')).toBe(true);
+  });
+
+  it('shows sheetTitle, not label, as the sheet header', async () => {
+    const { getByLabelText, queryByText } = await renderCategoryField(null);
+
+    expect(queryByText('Select a Category')).toBeNull();
+
+    await fireEvent.press(getByLabelText('Category'));
+
+    expect(queryByText('Select a Category')).toBeTruthy();
   });
 
   it('shows the selected category title in the field', async () => {
@@ -123,8 +161,8 @@ describe('CategoryField', () => {
 
     await fireEvent.press(utils.getByLabelText('Category'));
 
-    // Every row's glyph reads in its own category color — including the icons
-    // that used to render with a flat textSecondary/textPrimary tone.
+    // Every row's glyph reads in its own category color, never a flat
+    // textSecondary/textPrimary tone.
     expect(glyphTint(utils, 'cart')).toBe('#112233');
     expect(glyphTint(utils, 'fork.knife')).toBe('#445566');
   });

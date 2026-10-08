@@ -1,18 +1,19 @@
+import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
-import '../../../design-system/unistyles';
-import { i18n } from '../../../i18n';
-import pkg from '../../../../package.json';
-import { darkTheme } from '../../../design-system/theme';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
 import {
   asNavigationProp,
   asRouteProp,
   type NavigationSpy,
   navigationSpy,
-} from '../../../test-support/navigation-props';
+} from '@kiko/test-support/navigation-props';
+import { darkTheme } from '@kiko/design-system/theme';
+import { chevronSize, chevronTrailingWhitespace } from '@kiko/screens/settings/settings-row';
 
-import { chevronSize, chevronTrailingWhitespace } from '../settings-row/settings-row.chevron';
+import pkg from '../../../../package.json';
+
 import SettingsScreen from './settings.screen';
 
 type SettingsProps = ComponentProps<typeof SettingsScreen>;
@@ -34,14 +35,9 @@ const renderScreen = (navigation: NavigationSpy = navigationSpy()) =>
     />,
   );
 
-// The App Lock card moved to the System sub-screen, so the main Settings screen
-// never renders it regardless of the flag. This suite pins APP_LOCK_ENABLED OFF
-// and asserts the card is absent here; the visible/hidden App Lock paths now
-// live in system.screen.test.tsx and system.screen.app-lock-off.test.tsx.
-jest.mock('../../../db/db-config', () => ({ APP_LOCK_ENABLED: false }));
-
 const mockSetBaseCurrency = jest.fn();
 let mockLiveQueryData: Array<{ baseCurrency: string }> = [{ baseCurrency: 'UAH' }];
+let mockLiveQueryIsLoading = false;
 
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
@@ -49,15 +45,15 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     setBaseCurrency: (...args: unknown[]) => mockSetBaseCurrency(...args),
   },
 }));
-jest.mock('../../../db/use-live-query', () => ({
-  useLiveQuery: () => ({ data: mockLiveQueryData }),
+jest.mock('@kiko/db/use-live-query', () => ({
+  useLiveQuery: () => ({ data: mockLiveQueryData, isLoading: mockLiveQueryIsLoading }),
 }));
 
 // The active-tab re-tap → scroll-to-top hook reads the navigation context, which
 // a standalone screen render lacks; stand it in with a spy so this test can
 // assert the screen hands it the scroll view's own ref.
 const mockUseScrollToTopOnTabPress = jest.fn();
-jest.mock('../../../navigation/use-scroll-to-top-on-tab-press', () => ({
+jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
   useScrollToTopOnTabPress: (ref: unknown, scrollOffset: unknown) =>
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
@@ -66,6 +62,7 @@ describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLiveQueryData = [{ baseCurrency: 'UAH' }];
+    mockLiveQueryIsLoading = false;
   });
 
   it('wires its scroll view to scroll to top on an active-tab re-tap', async () => {
@@ -103,12 +100,11 @@ describe('SettingsScreen', () => {
     expect(queryByText('Settings')).toBeNull();
   });
 
-  // DEVICE BUG (review, 2026-09-14): CurrencyField's own trigger no longer
-  // shows the ISO code at all (see `currency-field.component.tsx`'s
+  // CurrencyField's own trigger does not
+  // show the ISO code at all (see `currency-field.component.tsx`'s
   // `triggerValue`) — it shows the localized NAME only, matching the option
-  // rows. This used to match the bare "UAH" substring inside the old
-  // "UAH — Ukrainian Hryvnia" trigger value; assert the localized name
-  // instead, the same fix already made to CurrencyField's own tests.
+  // rows. So assert the localized name, not a bare "UAH" substring, the same
+  // way CurrencyField's own tests do.
   it('shows the current base currency', async () => {
     const { getByText } = await renderScreen();
     expect(getByText('Ukrainian Hryvnia')).toBeTruthy();
@@ -142,9 +138,9 @@ describe('SettingsScreen', () => {
   it('labels the base-currency control exactly once (SettingsRow labels it, CurrencyField shows no duplicate caption)', async () => {
     const { getAllByText } = await renderScreen();
 
-    // The SettingsRow renders "Base Currency"; the CurrencyField must NOT also
+    // The SettingsRow renders "Base currency"; the CurrencyField must NOT also
     // render its own inline caption, or the label would appear twice.
-    expect(getAllByText('Base Currency')).toHaveLength(1);
+    expect(getAllByText('Base currency')).toHaveLength(1);
   });
 
   it('renders each setting in its own separate card, not one shared grouped card', async () => {
@@ -168,24 +164,21 @@ describe('SettingsScreen', () => {
     expect(within(categoriesCard).queryByTestId('settings-row-base-currency')).toBeNull();
   });
 
-  it('renders the System navigation card at the very top, then Import/Export directly below it', async () => {
+  it('renders the System navigation card at the very top, then Reminders, then Import/Export', async () => {
     const { getByTestId, getAllByTestId } = await renderScreen();
 
     expect(getByTestId('settings-card-system')).toBeTruthy();
     expect(getByTestId('settings-row-system')).toBeTruthy();
 
-    // `Card` renders a single flat node per testID (no inner `-base` layer the
-    // way `GlassSurface` used to), but the filter is kept defensively so this
+    // `Card` renders a single flat node per testID (no inner `-base` layer
+    // like `GlassSurface`'s), but the filter stays defensively so this
     // assertion only ever compares top-level card order.
-    //
-    // device-feedback-round-4 item 9: the Import/Export group moves to sit
-    // directly BELOW System (round-2 asked for this and it had not landed —
-    // it previously rendered LAST, after Categories).
     const cardOrder = getAllByTestId(/^settings-card-/)
       .map((node) => node.props.testID as string)
       .filter((testID) => !testID.endsWith('-base'));
     expect(cardOrder).toEqual([
       'settings-card-system',
+      'settings-card-reminders',
       'settings-card-data-transfer',
       'settings-card-base-currency',
       'settings-card-categories',
@@ -226,7 +219,7 @@ describe('SettingsScreen', () => {
     ]);
   });
 
-  it("insets the Import/Export divider to the row LABEL's first letter, past the icon (device-feedback round-4 item 6, round-8)", async () => {
+  it("insets the Import/Export divider to the row LABEL's first letter, past the icon", async () => {
     const { getByTestId } = await renderScreen();
 
     const divider = getByTestId('settings-divider-data-transfer');
@@ -235,11 +228,11 @@ describe('SettingsScreen', () => {
     // Lands on the label's first letter: it must clear the row's OWN left
     // padding, then the leading icon's width, then the icon-to-label gap — the
     // same three spans the row lays the label out behind. Omitting the row's
-    // own padding lands it on the icon's RIGHT EDGE instead (round-8 fix).
+    // own padding lands it on the icon's RIGHT EDGE instead.
     expect(marginLeft).toBe(darkTheme.spacing(3) + darkTheme.iconSizes.body + darkTheme.spacing(3));
   });
 
-  it("insets the Import/Export divider on the RIGHT to the chevron glyph's visible edge, not the row padding (round-7 device feedback item 1)", async () => {
+  it("insets the Import/Export divider on the RIGHT to the chevron glyph's visible edge, not the row padding", async () => {
     const { getByTestId } = await renderScreen();
 
     const divider = getByTestId('settings-divider-data-transfer');
@@ -247,16 +240,16 @@ describe('SettingsScreen', () => {
 
     // The card's own padding is 0 (each row carries its own
     // `paddingHorizontal`, see `dataTransferRowStyle`), so the row's padding
-    // alone (round-6 item 4) is no longer the whole story: the divider must
-    // also cross the trailing whitespace inside the (round-7 item 2 resized)
-    // chevron's own render frame, so it visually terminates at the ">"
-    // glyph's right edge rather than the frame's.
+    // alone is not the whole story: the divider must also cross the
+    // trailing whitespace inside the (resized) chevron's own render frame,
+    // so it visually terminates at the ">" glyph's right edge rather than
+    // the frame's.
     expect(marginRight).toBe(
       darkTheme.spacing(3) + chevronTrailingWhitespace(chevronSize(darkTheme), darkTheme),
     );
   });
 
-  it('gives the Import/Export card no padding of its own, letting each row carry consistent native row padding (device-feedback-round-4 item 6)', async () => {
+  it('gives the Import/Export card no padding of its own, letting each row carry consistent native row padding', async () => {
     const { getByTestId } = await renderScreen();
 
     const card = getByTestId('settings-card-data-transfer');
@@ -277,6 +270,21 @@ describe('SettingsScreen', () => {
     await fireEvent.press(getByTestId('settings-row-system'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('System');
+  });
+
+  it('navigates to the Reminders list from its own bell row', async () => {
+    const navigation = navigationSpy();
+    const { getByTestId, root } = await renderScreen(navigation);
+
+    const card = getByTestId('settings-card-reminders');
+
+    expect(within(card).getByText('Reminders')).toBeTruthy();
+    // The bell glyph is unique to this row, so a whole-tree lookup suffices.
+    expect(root?.queryAll((node) => node.props.name === 'bell').length).toBeGreaterThan(0);
+
+    await fireEvent.press(within(card).getByTestId('settings-row-reminders'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('Reminders');
   });
 
   it('no longer renders the Language card (it moved to the System sub-screen)', async () => {
@@ -301,8 +309,8 @@ describe('SettingsScreen', () => {
     expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 
-  // DEVICE BUG fix (root cause, same as the account/holding forms —
-  // `holding-form.screen.test.tsx`'s own test of this name): the currency
+  // Same root cause as the account/holding forms (`holding-form.screen.test.tsx`'s own
+  // test of this name): the currency
   // sheet's search field lives inside a Modal above this Screen's background
   // ScrollView, which otherwise misfires `automaticallyAdjustKeyboardInsets`
   // for a responder it does not contain. This screen's base-currency
@@ -331,7 +339,7 @@ describe('SettingsScreen', () => {
     const navigation = navigationSpy();
     const { findByTestId } = await renderScreen(navigation);
 
-    fireEvent.press(await findByTestId('settings-row-export-data'));
+    await fireEvent.press(await findByTestId('settings-row-export-data'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('ExportData');
   });
@@ -340,7 +348,7 @@ describe('SettingsScreen', () => {
     const navigation = navigationSpy();
     const { findByTestId } = await renderScreen(navigation);
 
-    fireEvent.press(await findByTestId('settings-row-import-data'));
+    await fireEvent.press(await findByTestId('settings-row-import-data'));
 
     expect(navigation.navigate).toHaveBeenCalledWith('ImportData');
   });
@@ -407,14 +415,14 @@ describe('SettingsScreen — footer', () => {
   it('renders a Privacy Policy link that opens the English page under en', async () => {
     const { getByText } = await renderScreen();
 
-    await fireEvent.press(getByText('Privacy Policy'));
+    await fireEvent.press(getByText('Privacy policy'));
 
     expect(mockOpenURL).toHaveBeenCalledWith('https://drizzer14.github.io/kiko/en.html');
   });
 
-  // DEVICE BUG: the footer previously rendered as scroll CONTENT (a `flex: 1`
-  // spacer plus `Screen`'s `fillHeight`), which pushed it below the fold on a
-  // real device — the user had to scroll to see it. It must instead render
+  // The footer must not render as scroll CONTENT (a `flex: 1`
+  // spacer plus `Screen`'s `fillHeight`), which pushes it below the fold on a
+  // real device — the user would have to scroll to see it. It must instead render
   // through `Screen`'s pinned `footer` slot, the same mechanism
   // `account-detail.screen.tsx` uses for its Add-holding button, so it always
   // stays visible just above the tab bar with no scrolling.
@@ -442,7 +450,7 @@ describe('SettingsScreen — localization', () => {
     });
     const { getByText } = await renderScreen();
 
-    expect(getByText('Base Currency')).toBeTruthy();
+    expect(getByText('Base currency')).toBeTruthy();
     expect(getByText('System')).toBeTruthy();
   });
 
@@ -469,5 +477,30 @@ describe('SettingsScreen — localization', () => {
     await fireEvent.press(getByText('Політика конфіденційності'));
 
     expect(mockOpenURL).toHaveBeenCalledWith('https://drizzer14.github.io/kiko');
+  });
+});
+
+describe('SettingsScreen — loading gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLiveQueryData = [];
+    mockLiveQueryIsLoading = true;
+  });
+
+  it('shows a loading spinner, not an unselected base currency, while settings is on its first load', async () => {
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('settings-loading')).toBeTruthy();
+    expect(queryByTestId('settings-card-base-currency')).toBeNull();
+  });
+
+  it('renders the real content once settings has loaded', async () => {
+    mockLiveQueryIsLoading = false;
+    mockLiveQueryData = [{ baseCurrency: 'UAH' }];
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('settings-card-base-currency')).toBeTruthy();
+    expect(queryByTestId('settings-loading')).toBeNull();
   });
 });

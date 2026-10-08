@@ -10,7 +10,7 @@ describe('settleAllLimited', () => {
   });
 
   it('returns results in the ORIGINAL task order regardless of settle order', async () => {
-    // Task 0 settles LAST, task 1 first — the result array must still be [1, 2, 3].
+    // task 0 settles LAST, task 1 first — the result array must still be [1, 2, 3].
     const results = await settleAllLimited(
       [deferred(1, 30), deferred(2, 5), deferred(3, 15)],
       SYNC_CONCURRENCY_LIMIT,

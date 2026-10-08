@@ -69,12 +69,16 @@ jest.mock('@op-engineering/op-sqlite', () => ({
   }),
 }));
 
-// react-native-calendars' Calendar is a pure-JS component, but it pulls in
-// XDate/recyclerlistview machinery that is noisy under react-test-renderer and
-// gives a test no direct handle on day selection. Mocked to a plain View that
-// preserves `testID`, `markedDates`, `markingType`, and `onDayPress` as props,
-// so the Home date-range sheet mounts and a test can drive a day tap by calling
-// `onDayPress` with a DateData object directly.
+// The app's Calendar (KikoCalendar, behind the Home date-range sheet and every
+// date field) imports the deep `'react-native-calendars/src/calendar'`
+// specifier, which __mocks__/react-native-calendars/src/calendar.tsx serves;
+// this mock never reaches it. This one covers only a test that imports the
+// bare `'react-native-calendars'` root: the kiko-no-root-calendars-value-import
+// rule excludes test files, so such an import stays legal there (see
+// docs/harness/documented-exceptions.md). The root pulls in the whole package
+// (Agenda, lists, XDate/recyclerlistview machinery), noisy under
+// react-test-renderer and with no direct handle on a day tap, so its Calendar
+// is a plain View that keeps every prop for a test to read or call.
 jest.mock('react-native-calendars', () => {
   const { View } = require('react-native');
   return { Calendar: View };
@@ -159,12 +163,13 @@ jest.mock('react-native-haptic-feedback', () => ({ trigger: jest.fn() }));
 
 // @sbaiahmed1/react-native-biometrics resolves its native TurboModule with
 // `TurboModuleRegistry.getEnforcing('ReactNativeBiometrics')` at module load,
-// which throws under react-test-renderer (no native binary). App code reaches it
-// only lazily, gated on `APP_LOCK_ENABLED` (default OFF), so no runtime test path
-// loads it today — but the wrapper's own test and any future LockGate/Settings
-// test import it, so it is stubbed globally. Defaults model a Face ID device with
-// a passcode; tests that exercise the wrapper's mapping override these with their
-// own `jest.mock` factory.
+// which throws under react-test-renderer (no native binary). App code reaches
+// it only lazily, from inside `authenticate()` (`src/auth/biometrics.ts`), so a
+// test that never exercises the real unlock flow never loads it — but the
+// wrapper's own test and any LockGate/Settings test that does import it, so it
+// is stubbed globally. Defaults model a Face ID device with a passcode; tests
+// that exercise the wrapper's mapping override these with their own
+// `jest.mock` factory.
 jest.mock('@sbaiahmed1/react-native-biometrics', () => ({
   isSensorAvailable: jest.fn(async () => ({
     available: true,
@@ -200,4 +205,23 @@ jest.mock('react-native-fs', () => ({
 jest.mock('@react-native-documents/picker', () => ({
   pick: jest.fn(() => Promise.reject({ code: 'OPERATION_CANCELED' })),
   types: { csv: 'text/csv', xlsx: 'application/xlsx', plainText: 'text/plain', allFiles: '*/*' },
+}));
+
+// The app's own reminders TurboModule resolves `KikoReminders` with
+// `TurboModuleRegistry.getEnforcing` when first loaded, which throws under
+// react-test-renderer (no native binary) — the same class of failure as the
+// native-binding mocks above. Registered globally so any test that reaches the
+// reminders wrapper transitively gets a working stub. Defaults model a fresh
+// install: permission not asked yet, nothing queued.
+jest.mock('@kiko/reminders/native/NativeKikoReminders', () => ({
+  __esModule: true,
+  default: {
+    authorizationStatus: jest.fn(async () => 'notDetermined'),
+    requestAuthorization: jest.fn(async () => true),
+    replaceRequests: jest.fn(async () => undefined),
+    registerCategories: jest.fn(() => undefined),
+    drainResponses: jest.fn(async () => '[]'),
+    onResponse: jest.fn(() => ({ remove: jest.fn() })),
+    uses24HourClock: jest.fn(() => true),
+  },
 }));

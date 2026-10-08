@@ -9,9 +9,9 @@ import type { TFunction } from 'i18next';
  * holding's CURRENT row, looked up by the stored
  * `exchangeCounterpartHoldingId`, so a rename flows through with no write.
  *
- * Nothing is persisted: the repo used to store a literal English
- * `Exchange to <name>` sentence, which stayed English after a language switch
- * and went stale after a rename.
+ * Nothing is persisted: a stored literal `Exchange to <name>` sentence would
+ * stay in whichever language was active when it was written, and go stale
+ * after a rename.
  */
 export const exchangeLegDescription = (input: {
   counterpartName: string;

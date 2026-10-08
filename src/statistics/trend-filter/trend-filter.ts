@@ -1,3 +1,5 @@
+import { match } from 'ts-pattern';
+
 import type { CategoryMeasure } from '../category-trend';
 
 /** The two trend-filter modes: an explicit manual pick, or a live "Top N". */
@@ -33,6 +35,7 @@ const measureValue = (measure: CategoryMeasure, by: TrendMeasure): number => {
   if (by === 'contribution') {
     return measure.total;
   }
+
   if (by === 'frequency') {
     return measure.count;
   }
@@ -65,7 +68,7 @@ export const selectTopCategories = (input: {
 /**
  * Resolve the stored filter into the effective one the chart renders. A `null`
  * stored value falls back to `DEFAULT_TREND_FILTER`. A `manual` selection is
- * pruned to the categories that still exist (Decision D5) — a prune to empty
+ * pruned to the categories that still exist — a prune to empty
  * stays a valid empty manual (every category). A `top` amount is clamped into
  * 1..5.
  */
@@ -76,9 +79,25 @@ export const resolveTrendFilter = (
   if (stored === null) {
     return DEFAULT_TREND_FILTER;
   }
-  if (stored.mode === 'manual') {
-    return { mode: 'manual', keys: stored.keys.filter((key) => existingCategoryKeys.has(key)) };
-  }
 
-  return { mode: 'top', amount: clampAmount(stored.amount), by: stored.by };
+  return (
+    match(stored)
+      .with(
+        { mode: 'manual' },
+        (filter): TrendFilter => ({
+          mode: 'manual',
+          keys: filter.keys.filter((key) => existingCategoryKeys.has(key)),
+        }),
+      )
+      // Not `.exhaustive()`: the original if/else's implicit else treated any
+      // non-'manual' stored value as 'top' — a malformed stored mode falls back
+      // to top handling instead of throwing.
+      .otherwise(
+        (filter): TrendFilter => ({
+          mode: 'top',
+          amount: clampAmount(filter.amount),
+          by: filter.by,
+        }),
+      )
+  );
 };

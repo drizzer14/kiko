@@ -7,6 +7,29 @@ ROOT="$(cd "$DIR/../.." && pwd)"
 cd "$ROOT" || exit 2
 BIN="$ROOT/node_modules/.bin/depcheck"
 
+# A node_modules/node_modules link (dangling ones included) is a stray
+# `ln -s … node_modules` run inside the installed folder. It loops the tree, so
+# npm ls reports every package invalid and drowns the real result; it changes
+# no fingerprinted input, so it must be named before the dedup skip below. A
+# real folder there is a broken install: `rm` fails on it, so it needs npm ci.
+if [ -e node_modules/node_modules ] || [ -L node_modules/node_modules ]; then
+  if [ -L node_modules/node_modules ]; then
+    self_link_cause="$ROOT/node_modules/node_modules is a link inside node_modules, usually a symlink to node_modules itself made by a stray ln -s run in the wrong directory."
+    self_link_fix="Remove that one link: rm node_modules/node_modules   then re-run: npm run check:deps"
+  else
+    self_link_cause="$ROOT/node_modules/node_modules is a folder inside node_modules, a broken install."
+    self_link_fix="Run: npm ci   (it rebuilds node_modules; rm cannot remove a folder) then re-run: npm run check:deps"
+  fi
+  print_block \
+    "Dependency hygiene (node_modules self-link)" \
+    "node_modules/node_modules exists, so npm ls and depcheck cannot read the installed tree." \
+    "$self_link_cause" \
+    "A looped tree makes npm ls --all report every package as invalid or extraneous, and the real dependency problems are lost in that noise." \
+    "$self_link_fix" \
+    "Do not rm -r node_modules by hand: the bad entry is only node_modules/node_modules, and removing the whole folder throws away the installed tree. Do not skip this check."
+  exit 2
+fi
+
 if [ ! -x "$BIN" ]; then
   print_block \
     "depcheck (unused / missing dependencies)" \
@@ -51,7 +74,41 @@ ${ci_out}
 "
 fi
 
-# 3. Hallucinated / new-dependency flag: surface any change to the
+# 3. Exact pinning: no range spec (^, ~, *, x, >, <, ||, or a
+# space-separated range) in dependencies, devDependencies, or overrides —
+# see the pin-exact-dependency-versions rule.
+ranges_out="$(node "$DIR/deps-ranges.js" "$ROOT/package.json" 2>&1)"
+ranges_code=$?
+if [ "$ranges_code" -ne 0 ]; then
+  fail=1
+  details="${details}--- deps-ranges.js (range spec, not an exact pin) ---
+${ranges_out}
+
+"
+fi
+
+# 4. A resolved-but-invalid dependency tree: npm ls --all fails
+# (ELSPROBLEMS) when an override or a version conflict leaves some
+# installed package's own requirement unsatisfied. The full tree can run
+# to thousands of lines, so only the lines npm itself marks as the
+# problem (its stderr, plus any tree line npm tags "invalid:"/"missing:")
+# belong in the failure block.
+ls_stderr_file="$(mktemp)"
+ls_stdout="$(npm ls --all 2>"$ls_stderr_file")"
+ls_code=$?
+ls_stderr="$(cat "$ls_stderr_file" 2>/dev/null)"
+rm -f "$ls_stderr_file"
+if [ "$ls_code" -ne 0 ]; then
+  fail=1
+  ls_problem_lines="$(printf '%s\n' "$ls_stdout" | grep -E 'invalid:|missing:')"
+  details="${details}--- npm ls --all (resolved tree validity) ---
+${ls_stderr}
+${ls_problem_lines}
+
+"
+fi
+
+# 5. Hallucinated / new-dependency flag: surface any change to the
 # dependencies or devDependencies blocks since the last commit, for
 # human confirmation. This does not fail the check by itself.
 if git rev-parse --verify HEAD >/dev/null 2>&1; then
@@ -67,11 +124,11 @@ fi
 if [ "$fail" -ne 0 ]; then
   print_block \
     "Dependency hygiene" \
-    "depcheck or the lockfile integrity check failed." \
+    "depcheck, the lockfile integrity check, the exact-pin check, or npm ls failed." \
     "$details" \
-    "An unused dependency bloats the app and its attack surface. A broken lockfile means installs are not reproducible. A hallucinated dependency (a package name an LLM invented or mistyped) can be squatted by an attacker." \
-    "Remove the unused dependency; fix the lockfile with npm install; confirm any new dependency actually exists and is the one you meant. Re-run: npm run check:deps" \
-    "Do not add the dependency to depcheck ignores. Remove the unused dep; confirm any new dep is real."
+    "An unused dependency bloats the app and its attack surface. A broken lockfile means installs are not reproducible. A range spec (rather than an exact pin) lets the resolved tree drift silently between installs. An ELSPROBLEMS tree means some installed package's own requirement is unsatisfied. A hallucinated dependency (a package name an LLM invented or mistyped) can be squatted by an attacker." \
+    "Remove the unused dependency; fix the lockfile with npm install; pin any range spec to the exact version package-lock.json already resolves; scope an override to its real target package if it is making npm ls report another package invalid; confirm any new dependency actually exists and is the one you meant. Re-run: npm run check:deps" \
+    "Do not add the dependency to depcheck ignores. Remove the unused dep; confirm any new dep is real. Do not widen an exact pin back to a range to silence this check."
   exit 2
 fi
 harness_mark_pass "$ROOT" "deps" "$fp"

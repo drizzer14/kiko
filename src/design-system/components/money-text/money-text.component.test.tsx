@@ -1,9 +1,9 @@
-import { act, render } from '@testing-library/react-native';
+import { i18n } from '@kiko/i18n/init';
 import type { ReactNode } from 'react';
+import { act, render } from '@testing-library/react-native';
 
-import { Money } from '../../../currency/money';
-import { i18n } from '../../../i18n';
-import '../../unistyles';
+import { Money } from '@kiko/currency/money';
+import '@kiko/design-system/unistyles';
 import MoneyText from './money-text.component';
 
 // The Text primitive's tone -> color mapping lives inside a
@@ -13,7 +13,7 @@ import MoneyText from './money-text.component';
 // here instead, exposing the `tone` prop MoneyText resolves via a testID —
 // the money amount itself still renders as plain text underneath, so the
 // existing formatted-amount assertion below is unaffected.
-jest.mock('../text', () => {
+jest.mock('@kiko/design-system/components/text', () => {
   const { Text: RNText } = require('react-native');
 
   return {

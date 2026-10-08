@@ -1,8 +1,8 @@
 import { render } from '@testing-library/react-native';
 
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
-import type { TypeSlice } from '../../../statistics/type-breakdown';
-import '../../../design-system/unistyles';
+import type { TypeSlice } from '@kiko/statistics/type-breakdown';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import '@kiko/design-system/unistyles';
 import BarChart from './index';
 
 const data: TypeSlice[] = [
@@ -27,7 +27,7 @@ describe('BarChart', () => {
     expect(getByTestId('bar-chart-label-term_deposit')).toBeTruthy();
     expect(getByText('Card')).toBeTruthy();
     expect(getByText('Deposit')).toBeTruthy();
-    expect(getByText('Crypto Asset')).toBeTruthy();
+    expect(getByText('Crypto asset')).toBeTruthy();
   });
 
   it('renders the converted amount label per entry', async () => {
@@ -36,6 +36,22 @@ describe('BarChart', () => {
     expect(getByText(/\$1,000\.00/)).toBeTruthy();
     expect(getByText(/\$500\.00/)).toBeTruthy();
     expect(getByText(/\$250\.00/)).toBeTruthy();
+  });
+
+  it('renders the property_item label', async () => {
+    const { getByText } = await render(
+      <BarChart data={[{ type: 'property_item', amount: 100_00 }]} baseCurrency="USD" />,
+    );
+
+    expect(getByText('Property')).toBeTruthy();
+  });
+
+  it('renders the metal label', async () => {
+    const { getByText } = await render(
+      <BarChart data={[{ type: 'metal', amount: 100_00 }]} baseCurrency="USD" />,
+    );
+
+    expect(getByText('Precious metal')).toBeTruthy();
   });
 
   it('scales each bar width to the largest entry', async () => {

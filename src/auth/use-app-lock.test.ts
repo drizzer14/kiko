@@ -1,14 +1,9 @@
-import { act, renderHook } from '@testing-library/react-native';
 import { AppState, type AppStateStatus } from 'react-native';
+import { act, renderHook } from '@testing-library/react-native';
 
-import '../i18n';
+import '@kiko/i18n/init';
 
 import { useAppLock } from './use-app-lock';
-
-// The whole lock is gated OFF by default (`APP_LOCK_ENABLED`, src/db/db-config).
-// These tests exercise the locking LOGIC, so they run with the flag forced ON.
-// The OFF path (flag defaulted false) is covered by use-app-lock.disabled.test.ts.
-jest.mock('../db/db-config', () => ({ APP_LOCK_ENABLED: true }));
 
 const mockAuthenticate = jest.fn();
 jest.mock('./biometrics', () => ({
@@ -19,7 +14,7 @@ type SettingsRow = { lockEnabled: boolean };
 const mockLiveQuery: { current: { data: SettingsRow[]; isLoading: boolean } } = {
   current: { data: [], isLoading: true },
 };
-jest.mock('../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => mockLiveQuery.current,
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({

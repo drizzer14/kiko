@@ -1,78 +1,97 @@
-import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import { categoriesRepo } from '@kiko/categories/repo';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import { ratesRepo } from '@kiko/rates/repo';
-import { settingsRepo } from '@kiko/settings/settings.repo';
-import { useSyncAll } from '@kiko/sync/use-sync-all';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import type { CompositeScreenProps } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { FC, ReactElement } from 'react';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { RefreshControl, SectionList, useWindowDimensions } from 'react-native';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
   resolveCategoryDisplay,
   resolveCategoryKey,
-} from '../../categories/category-display';
-import type { Currency } from '../../currency/currency';
-import { defaultDateRange } from '../../dates/default-range';
-import { endOfLocalDay, startOfLocalDay } from '../../dates/local-day';
-import { useLiveQuery } from '../../db/use-live-query';
-import Box from '../../design-system/components/box';
-import Card from '../../design-system/components/card';
-import CurrencyBreakdown from '../../design-system/components/currency-breakdown';
-import MoneyText from '../../design-system/components/money-text';
-import Screen, {
-  isSidebarTabBarMode,
-  resolveBottomClearance,
-} from '../../design-system/components/screen';
-import Text from '../../design-system/components/text';
-import { resolveEntityColor } from '../../design-system/entity-tint';
-import { defaultAccountColor } from '../../holdings/entity-colors';
-import type { HomeStackParamList, TabParamList } from '../../navigation/types';
-import { useScrollToTopOnTabPress } from '../../navigation/use-scroll-to-top-on-tab-press';
-import { activeHoldings } from '../../rates/active-holdings';
-import { buildRateTable, guardedBreakdown, guardedNetWorth } from '../../rates/net-worth-view';
-import { resolveCategoryColor } from '../../statistics/category-breakdown';
-import { type DaySection, groupByDay } from '../../transactions/group-by-day';
-import { transactionSpan } from '../../transactions/transaction-span';
+} from '@kiko/categories/category-display';
+import maybe, { foldMap } from 'fnts/maybe';
+import { ratesRepo } from '@kiko/rates/repo';
+import { accountsRepo } from '@kiko/accounts';
+import { settingsRepo } from '@kiko/settings';
+import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { useSyncAll } from '@kiko/sync/use-sync-all';
+import Box from '@kiko/design-system/components/box';
+import { useDataReady, useLiveQuery } from '@kiko/db';
+import { categoriesRepo } from '@kiko/categories/repo';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
+import type { Currency } from '@kiko/currency/currency';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { activeHoldings } from '@kiko/rates/active-holdings';
+import { needsPriceBook } from '@kiko/holdings/priced-value';
+import Divider from '@kiko/design-system/components/divider';
+import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
+import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import MoneyText from '@kiko/design-system/components/money-text';
+import { accountIdentity } from '@kiko/holdings/account-identity';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { isSidebarTabBarMode } from '@kiko/design-system/sidebar-mode';
+import LoadingState from '@kiko/design-system/components/loading-state';
+import { visibleSelection } from '@kiko/design-system/visible-selection';
+import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { toggleFilterValue } from '@kiko/design-system/toggle-filter-value';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { type DaySection, groupByDay } from '@kiko/transactions/group-by-day';
+import type { FilterOption } from '@kiko/design-system/components/filter-menu';
+import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
+import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
+import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
+import { type CompositeScreenProps, useIsFocused } from '@react-navigation/native';
+import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
+import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
+import { accountDisplayName, accountsForFilter } from '@kiko/holdings/implicit-account';
+import { type FC, type ReactElement, useCallback, useMemo, useRef, useState } from 'react';
+import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
+import { RefreshControl, ScrollView, SectionList, useWindowDimensions } from 'react-native';
+import { buildRateTable, guardedBreakdown, guardedNetWorth } from '@kiko/rates/net-worth-view';
 
-import AddTransactionFab from './add-transaction-fab';
-import type { FilterOption } from './filter-menu';
 import { styles } from './home.styles';
-import SyncProgressBar from './sync-progress-bar';
-import TransactionFilterBar, { FILTER_ALL } from './transaction-filter-bar';
 import TransactionRow from './transaction-row';
-import type { HomeTransactionRow } from './transaction-row/transaction-row.props';
+import SyncProgressBar from './sync-progress-bar';
+import AddTransactionFab from './add-transaction-fab';
+import TransactionFilterBar from './transaction-filter-bar';
 import { useRefreshControlSignal } from './use-refresh-control-signal';
+import type { HomeTransactionRow } from './transaction-row/transaction-row.props';
 
 // Home lives in its own tab; some of its future navigation targets belong to
 // the Accounts tab's stack. Composing the Home stack props with the tab props
-// keeps that cross-tab navigation type-safe even though this screen no longer
-// issues those navigate() calls itself.
+// keeps that cross-tab navigation type-safe even though this screen issues
+// none of those navigate() calls itself.
 type HomeScreenProps = CompositeScreenProps<
   NativeStackScreenProps<HomeStackParamList, 'Home'>,
   NativeBottomTabScreenProps<TabParamList, 'HomeTab'>
 >;
 
-// Whether a transaction time falls within the (inclusive) date range. A null
-// bound is open-ended on that side. The `to` bound is pushed to the end of its
-// calendar day — the last millisecond before the NEXT local midnight
-// (DST-correct; see `endOfLocalDay`) — so a same-day transaction any time
-// that day still matches, including on a 25-hour fall-back day.
-const withinDateRange = (time: number, from: Date | null, to: Date | null): boolean => {
-  if (from !== null && time < startOfLocalDay(from.getTime())) {
+type DateRangeBounds = { from: number | undefined; to: number | undefined };
+
+const NO_SECTIONS: DaySection<HomeTransactionRow>[] = [];
+
+/**
+ * The (inclusive) date-range bounds as raw instants, resolved ONCE per range
+ * rather than once per transaction: `startOfLocalDay`/`endOfLocalDay` are
+ * loop-invariant for every row the filter below checks against the SAME
+ * `from`/`to`, so recomputing them per row was pure waste on a long list. The
+ * `to` bound is pushed to the end of its calendar day — the last millisecond
+ * before the NEXT local midnight (DST-correct; see `endOfLocalDay`) — so a
+ * same-day transaction any time that day still matches, including on a
+ * 25-hour fall-back day. A `null` side stays open-ended.
+ */
+const dateRangeBounds = (from: Date | null, to: Date | null): DateRangeBounds => ({
+  from: foldMap(maybe(from), (date) => startOfLocalDay(date.getTime())),
+  to: foldMap(maybe(to), (date) => endOfLocalDay(date.getTime())),
+});
+
+// Whether `time` falls within already-resolved (inclusive) bounds — a plain
+// numeric comparison, so the filter that calls this per row never re-derives
+// a local-day boundary from `from`/`to` for every transaction.
+const withinBounds = (time: number, bounds: DateRangeBounds): boolean => {
+  if (bounds.from !== undefined && time < bounds.from) {
     return false;
   }
 
-  if (to !== null && time > endOfLocalDay(to.getTime())) {
+  if (bounds.to !== undefined && time > bounds.to) {
     return false;
   }
 
@@ -111,18 +130,128 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const listRef = useRef<SectionList<HomeTransactionRow, DaySection<HomeTransactionRow>>>(null);
   useScrollToTopOnTabPress(listRef);
 
-  const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
-  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
-  const { data: rates } = useLiveQuery(ratesRepo.allQuery(), ['currency_rates']);
-  const { data: settingsRows } = useLiveQuery(settingsRepo.getQuery(), ['settings']);
-  const { data: transactions } = useLiveQuery(transactionsRepo.listAllWithContextQuery(), [
-    'transactions',
-    'holdings',
-    'accounts',
-  ]);
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
+  // Read once here (rather than where the net-worth total needs it below) so
+  // the date-range state below can seed off this same instant instead of a
+  // second, separately-timed `Date.now()` read. The ledger query below needs
+  // the range's bounds, so this block sits above the reads.
+  const now = Date.now();
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `buildCategoryDisplayMap` resolves each default category's title through i18n (`resolveDefaultCategoryTitle`) INTERNALLY, so `i18n.language` is a real dependency Biome cannot see — without it a live language switch leaves the resolved titles in the previous language.
+  const { dateFrom, dateTo, applyDateRange, clearDateRange } = useDateRangeSelection(now);
+  // Computed every render (cheap — two Date constructions, not the filter
+  // below), but its VALUES are what the ledger read and `filteredTransactions`
+  // key on: `bounds.from`/`bounds.to` are day-aligned numbers
+  // (`startOfLocalDay`/`endOfLocalDay`), so they only change once per calendar
+  // day even on the DEFAULT range, where `dateFrom`/`dateTo` are fresh `Date`
+  // objects on every render (see `defaultDateRange`) — keying on those raw
+  // `Date` objects would re-run the read, the filter (and the section
+  // grouping, and the SectionList it feeds) on every single render instead of
+  // once per day.
+  const { from: boundsFrom, to: boundsTo } = dateRangeBounds(dateFrom, dateTo);
+
+  // Deliberately `paused` (not `enabled`) while another tab or a form shows:
+  // this screen stays mounted, so its subscriptions stay and a write elsewhere
+  // only marks each query dirty — hiding Home costs no read and no re-render,
+  // and returning to it runs one read per dirty query (`enabled: false` would
+  // unsubscribe and drop every list to empty; see kiko-architecture's
+  // `paused` vs `enabled`).
+  const isFocused = useIsFocused();
+  const liveOptions = { cached: true, paused: !isFocused } as const;
+
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.listQuery(),
+    ['accounts'],
+    true,
+    liveOptions,
+  );
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
+    holdingsRepo.allQuery(),
+    ['holdings'],
+    true,
+    liveOptions,
+  );
+  const { data: rates, isLoading: ratesLoading } = useLiveQuery(
+    ratesRepo.allQuery(),
+    ['currency_rates'],
+    true,
+    liveOptions,
+  );
+  // kiko-architecture: skip the price_points read while nothing rendered on
+  // this screen ever reads it — a holding whose type carries no priced spec
+  // and is not a loan (`needsPriceBook`) never touches `price_points`. It
+  // stays enabled while holdings are still on their first load, so the two
+  // reads run in parallel instead of price_points waiting on holdings. Only a
+  // loan reads the linked-payments half of the book.
+  const { book: priceBook, isLoading: priceBookLoading } = useCurrentPriceBook(
+    holdingsLoading || holdings.some((holding) => needsPriceBook(holding.type)),
+    liveOptions,
+    holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
+    now,
+  );
+  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
+    settingsRepo.getQuery(),
+    ['settings'],
+    true,
+    liveOptions,
+  );
+  // The ledger rows of the picked date range only, not the whole ledger: it
+  // grows with every transaction ever synced and re-reads on every write. The
+  // range filter below still applies; the two reads after it carry what the
+  // screen shows of the rows OUTSIDE the range (their span and categories).
+  const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
+    transactionsRepo.listWithContextBetweenQuery(boundsFrom, boundsTo),
+    ['transactions', 'holdings', 'accounts'],
+    true,
+    liveOptions,
+  );
+  const { data: spanRows, isLoading: spanLoading } = useLiveQuery(
+    transactionsRepo.contextSpanQuery(),
+    ['transactions', 'holdings', 'accounts'],
+    true,
+    liveOptions,
+  );
+  const { data: categoryRows, isLoading: categoryRowsLoading } = useLiveQuery(
+    transactionsRepo.contextCategoriesQuery(),
+    ['transactions', 'holdings', 'accounts'],
+    true,
+    liveOptions,
+  );
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+    true,
+    liveOptions,
+  );
+  // The net-worth headline (it would otherwise read 0 while still loading)
+  // and the empty-transactions text must never render while any of this
+  // screen's own queries is still on its first load (kiko-architecture's
+  // useLiveQuery consumer rule) — gated below, right at the return.
+  const isReady = useDataReady(
+    accountsLoading,
+    holdingsLoading,
+    ratesLoading,
+    priceBookLoading,
+    settingsLoading,
+    transactionsLoading,
+    spanLoading,
+    categoryRowsLoading,
+    categoriesLoading,
+  );
+  // `useDataReady` is true only until a query re-keys: the window read does on
+  // every date-range pick and clear and when the local day rolls over, and the
+  // price book does when a holding turns it on and on a day roll; each re-key
+  // reads loading again. Swapping the whole screen for the spinner then would
+  // drop the filter bar and its open sheet for a read that only affects one
+  // part, so only the FIRST ready gates the whole screen. Each re-keyable read
+  // is gated where it is shown: the list on `transactionsLoading`, the net-worth
+  // card on `priceBookLoading`.
+  const hasBeenReady = useRef(false);
+  hasBeenReady.current ||= isReady;
+
+  // `buildCategoryDisplayMap` resolves each default category's title through i18n
+  // (`resolveDefaultCategoryTitle`) INTERNALLY, so `i18n.language` is a real dependency Biome
+  // cannot see — without it a live language switch leaves the resolved titles in the previous
+  // language.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label)
   const categoryByKey = useMemo(
     () => buildCategoryDisplayMap(categories),
     [categories, i18n.language],
@@ -147,53 +276,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
-  // Read once here (rather than where the net-worth total needs it below) so
-  // the date-range state below can seed off this same instant instead of a
-  // second, separately-timed `Date.now()` read.
-  const now = Date.now();
-
-  // The date-range bounds; a null bound is ignored so the range is open-ended
-  // on that side. Both default to the last 30 days on mount — a user pick can
-  // still set either to null (open-ended) via the date-range field.
-  const [dateFrom, setDateFrom] = useState<Date | null>(() => defaultDateRange(now).from);
-  const [dateTo, setDateTo] = useState<Date | null>(() => defaultDateRange(now).to);
-
-  const clearDateRange = (): void => {
-    const range = defaultDateRange();
-    setDateFrom(range.from);
-    setDateTo(range.to);
-  };
-
-  // The date-range modal commits both bounds at once on Apply; either may be
-  // null when that side of the range is left open-ended.
-  const applyDateRange = (from: Date | null, to: Date | null): void => {
-    setDateFrom(from);
-    setDateTo(to);
-  };
-
-  // The `FILTER_ALL` chip clears the dimension; any other value toggles in/out.
-  // A fresh Set keeps the state update immutable.
-  const toggleFilter =
-    (setSelected: (updater: (previous: Set<string>) => Set<string>) => void) =>
-    (value: string): void => {
-      if (value === FILTER_ALL) {
-        setSelected(() => new Set());
-
-        return;
-      }
-
-      setSelected((previous) => {
-        const next = new Set(previous);
-        if (next.has(value)) {
-          next.delete(value);
-        } else {
-          next.add(value);
-        }
-
-        return next;
-      });
-    };
-
   const baseCurrency: Currency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   // The configurable catch-all category: a null/empty transaction category folds
   // into it (its filter chip, its row label, its color) instead of a separate
@@ -210,28 +292,19 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   );
 
   const active = activeHoldings(holdings, accounts);
-  const total = guardedNetWorth(active, baseCurrency, rateTable, now);
-  const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now);
+  const total = guardedNetWorth(active, baseCurrency, rateTable, now, priceBook);
+  const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now, priceBook);
 
   // The full span of transaction dates, shown as the date-range field's default
   // display when no range is active. It never filters — it only tells the user
   // the range their data covers. With no transactions both bounds fall back to
   // today so the field always has something to render.
-  // The earliest/latest transaction time in ONE O(n) pass (see `transactionSpan`
-  // — `Math.min(...times)` spread the whole array and overflowed the stack on a
-  // long history, and re-ran on every reactive fire during a sync). Memoized on
-  // `transactions` alone; the empty-list fallback to `now` is applied outside,
-  // so a per-render `now` never invalidates the memo.
-  const span = useMemo(
-    () =>
-      transactionSpan(
-        transactions.map((row) => row.time),
-        0,
-      ),
-    [transactions],
-  );
-  const spanStart = transactions.length > 0 ? span.start : now;
-  const spanEnd = transactions.length > 0 ? span.end : now;
+  // The earliest/latest time come from the database in one aggregate row (null
+  // for an empty ledger), not from the rows this screen holds: those are only
+  // the picked range's, so they would shrink the span to the range itself.
+  const ledgerSpan = spanRows.at(0);
+  const spanStart = ledgerSpan?.earliest ?? now;
+  const spanEnd = ledgerSpan?.latest ?? now;
 
   // The date-range field's *selectable* bounds are distinct from the display
   // span above: the earliest a user may pick is the earliest transaction's day
@@ -242,26 +315,36 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // (earliest–latest transaction) stays independent of the selectable range.
 
   // Every active (non-archived) account, so a newly-added account with no
-  // transactions yet still appears in the Accounts filter. Sourced from the
+  // transactions yet still appears in the Accounts filter, except an implicit
+  // account with no holding left (`accountsForFilter`). Sourced from the
   // accounts live query rather than from the transactions, which would omit it.
-  // Each option carries its own seeded icon + resolved entity color for the
-  // menu row; transaction matching still keys off `option.value` (the account
-  // name, matched against `row.accountName` below). De-duplicated by name,
-  // first-seen-wins, preserving the old `Set`-based distinctness.
-  const accountOptions = useMemo(() => {
-    const byName = new Map<string, FilterOption>();
-    for (const account of accounts) {
-      if (account.archivedAt != null || byName.has(account.name)) {
-        continue;
-      }
-      byName.set(account.name, {
-        value: account.name,
-        icon: account.icon ?? undefined,
-        color: resolveEntityColor(account.color, defaultAccountColor[account.kind]),
-      });
-    }
-    return Array.from(byName.values());
-  }, [accounts]);
+  // Each option carries the account's own identity icon + color for the
+  // menu row; transaction matching keys off `option.value` (the account ID,
+  // matched against `row.accountId` below), never a name: two accounts may share
+  // a name (a renamed implicit account, two banks), a rename must keep the
+  // selection, and a name may equal the "All" option's value. The id is also
+  // language-independent, so a selection survives a language switch; only the
+  // option's `label` is the display name.
+  const accountOptions = useMemo(
+    () =>
+      accountsForFilter(accounts, holdings).map((account) => ({
+        value: account.id,
+        label: accountDisplayName(account, t),
+        ...accountIdentity(account),
+      })),
+    [accounts, holdings, t],
+  );
+  // The stored selection can name an account that was archived or deleted since,
+  // with no checked row left to clear it, so only the ids still among the options
+  // filter and count; an empty result is "All".
+  const visibleSelectedAccounts = useMemo(
+    () =>
+      visibleSelection(
+        selectedAccounts,
+        accountOptions.map((option) => option.value),
+      ),
+    [selectedAccounts, accountOptions],
+  );
   // Group and match the category filter by the STABLE `categories.key` slug,
   // never by the resolved display title: the title is language-dependent (a
   // default category's title changes under a live language switch — see
@@ -280,15 +363,22 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [categoryByKey, defaultCategoryKey],
   );
   // One option per distinct resolved key, first-seen-wins (the same
-  // distinctness the old `Set` gave), each carrying the category's resolved
+  // distinctness a `Set` gives), each carrying the category's resolved
   // icon, effective color, and localized label for the menu row. Matching
   // keys on `option.value` (the stable key, compared to
   // `categoryKeyForRow(row.category)` below); the row renders `option.label`.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label) `resolveCategoryDisplay` resolves a default category's title through i18n INTERNALLY (not via a captured variable Biome can see), so `i18n.language` is a real dependency — without it a live language switch leaves the option labels in the previous language.
+  // `resolveCategoryDisplay` resolves a default category's title through i18n INTERNALLY (not via
+  // a captured variable Biome can see), so `i18n.language` is a real dependency — without it a
+  // live language switch leaves the option labels in the previous language.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(localized label)
   const categoryOptions = useMemo(() => {
     const byKey = new Map<string, FilterOption>();
-    for (const row of transactions) {
+
+    // Every category the ledger holds, not only the picked range's: each
+    // stored category once, in the order the newest-first ledger meets it.
+    for (const row of categoryRows) {
       const key = categoryKeyForRow(row.category);
+
       if (byKey.has(key)) {
         continue;
       }
@@ -310,6 +400,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     categories.forEach((category, index) => {
       orderByKey.set(category.key, index);
     });
+
     return Array.from(byKey.values()).sort((a, b) => {
       const orderA = orderByKey.get(a.value) ?? Number.POSITIVE_INFINITY;
       const orderB = orderByKey.get(b.value) ?? Number.POSITIVE_INFINITY;
@@ -317,25 +408,31 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       return orderA - orderB;
     });
   }, [
-    transactions,
+    categoryRows,
     categories,
     categoryByKey,
     defaultCategoryKey,
     categoryKeyForRow,
     i18n.language,
   ]);
-  const filteredTransactions = useMemo(
-    () =>
-      transactions.filter((row) => {
-        const matchesAccount = selectedAccounts.size === 0 || selectedAccounts.has(row.accountName);
-        const matchesCategory =
-          selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
-        const matchesDate = withinDateRange(row.time, dateFrom, dateTo);
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((row) => {
+      const matchesAccount =
+        visibleSelectedAccounts.size === 0 || visibleSelectedAccounts.has(row.accountId);
+      const matchesCategory =
+        selectedCategories.size === 0 || selectedCategories.has(categoryKeyForRow(row.category));
+      const matchesDate = withinBounds(row.time, { from: boundsFrom, to: boundsTo });
 
-        return matchesAccount && matchesCategory && matchesDate;
-      }),
-    [transactions, selectedAccounts, selectedCategories, dateFrom, dateTo, categoryKeyForRow],
-  );
+      return matchesAccount && matchesCategory && matchesDate;
+    });
+  }, [
+    transactions,
+    visibleSelectedAccounts,
+    selectedCategories,
+    boundsFrom,
+    boundsTo,
+    categoryKeyForRow,
+  ]);
 
   // Grouping/sorting happens after filtering, over the query's newest-first
   // order (transactionsRepo orders by time desc), so sections come out
@@ -344,8 +441,21 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // midnight, so this recomputes when the filtered rows change or the day rolls,
   // not on every reactive fire during a sync.
   const todayStart = startOfLocalDay(now);
+  // The rows RENDER the account's display name (an implicit account's stored
+  // name is an English sentinel); the filter above matched the stored one.
   const sections = useMemo(
-    () => groupByDay(filteredTransactions, todayStart, t),
+    () =>
+      groupByDay(
+        filteredTransactions.map((row) => ({
+          ...row,
+          accountName: accountDisplayName(
+            { kind: row.accountKind, name: row.accountName, archivedAt: row.accountArchivedAt },
+            t,
+          ),
+        })),
+        todayStart,
+        t,
+      ),
     [filteredTransactions, todayStart, t],
   );
 
@@ -359,7 +469,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [navigation],
   );
 
-  // Duplicating a row opens the create form pre-filled from it (D2), stateless
+  // Duplicating a row opens the create form pre-filled from it, stateless
   // via the `duplicateOfTransactionId` route param. Stable across renders (it
   // closes over `navigation` alone), like `handleRowPress`, so the memoized
   // rows never re-render on a new handler identity.
@@ -378,7 +488,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   }, [navigation]);
 
   // A stable `renderItem` identity is what lets the SectionList row bail-out
-  // engage: the row body now lives in the memoized `TransactionRow` component,
+  // engage: the row body lives in the memoized `TransactionRow` component,
   // so an unchanged row skips re-rendering when the screen re-renders (e.g. a
   // reactive fire during a sync) as long as its props are unchanged.
   const renderTransaction = useCallback(
@@ -428,6 +538,39 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [sections],
   );
 
+  if (!hasBeenReady.current) {
+    return (
+      // The SAME Screen mode as the ready branch below (`bleedBottom`), the
+      // determinate sync progress bar (it shows the sync this screen's own
+      // first read is queued behind — see kiko-architecture's op-sqlite
+      // one-worker-thread section), and pull-to-refresh on the same scroll
+      // view the ready branch offers, once the accounts query has loaded, so
+      // a user can still trigger a fresh sync while this screen's own
+      // queries are still loading.
+      <Screen bleedBottom>
+        <Box gap={4} style={styles.content}>
+          <SyncProgressBar />
+          <ScrollView
+            testID="home-loading-scroll"
+            style={styles.list}
+            contentContainerStyle={styles.listContent(listBottomClearance)}
+            // `syncAll` fans a job out over the `accounts` query's own data
+            // (`useSyncAll(accounts)` above) — pulling before that query has
+            // loaded would fan out over an empty list, syncing nothing while
+            // still holding the fan-out's single-flight lock.
+            refreshControl={
+              accountsLoading ? undefined : (
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              )
+            }
+          >
+            <LoadingState testID="home-loading" />
+          </ScrollView>
+        </Box>
+      </Screen>
+    );
+  }
+
   return (
     // The SectionList below is this screen's own scrollable surface and applies
     // the tab-bar clearance to its own content (`listContent`), so Screen must
@@ -436,15 +579,28 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     <Screen bleedBottom>
       <Box gap={4} testID="home-content" style={styles.content}>
         <Card padding={4} radius="lg">
-          <Box gap={1} style={styles.header}>
-            <Text variant="caption" tone="textSecondary">
-              {t('home.netWorth')}
-            </Text>
-            <MoneyText money={total} context="balance" style={styles.balance} />
-            <Box style={styles.breakdown}>
-              <CurrencyBreakdown items={breakdown} />
+          {/* The price book changes after the first ready: the first metal,
+              share, property or loan holding turns its read on, and a day roll
+              re-keys it. Until the read lands the book is empty (turned on
+              again) or holds the earlier day's rows (a day roll), so a metal
+              would drop to its cost or an old price and a loan would be valued
+              without its payments: the headline and the breakdown wait for it,
+              nothing else does. */}
+          {priceBookLoading ? (
+            <LoadingState testID="home-net-worth-loading" />
+          ) : (
+            <Box gap={1} style={styles.header}>
+              <Text variant="caption" tone="textSecondary">
+                {t('home.netWorth')}
+              </Text>
+
+              <MoneyText money={total} context="balance" style={styles.balance} />
+
+              <Box style={styles.breakdown}>
+                <CurrencyBreakdown items={breakdown} />
+              </Box>
             </Box>
-          </Box>
+          )}
         </Card>
 
         {failures.length > 0 && (
@@ -459,15 +615,15 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             divider → filters spacing — splitting the existing card-to-filter band
             evenly around the rule instead of stacking a second, doubled gap. */}
         <Box>
-          <Box style={styles.divider} />
+          <Divider />
           <Box style={styles.filterBar}>
             <TransactionFilterBar
               accounts={accountOptions}
               categories={categoryOptions}
-              selectedAccount={selectedAccounts}
+              selectedAccount={visibleSelectedAccounts}
               selectedCategory={selectedCategories}
-              onToggleAccount={toggleFilter(setSelectedAccounts)}
-              onToggleCategory={toggleFilter(setSelectedCategories)}
+              onToggleAccount={(value) => setSelectedAccounts(toggleFilterValue(value))}
+              onToggleCategory={(value) => setSelectedCategories(toggleFilterValue(value))}
               dateFrom={dateFrom}
               dateTo={dateTo}
               minDate={new Date(spanStart)}
@@ -487,10 +643,15 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             column's `gap(4)` sits between it and the list. */}
         <SyncProgressBar />
 
+        {/* While a new range's window read loads, `transactions` still holds the
+            previous range's rows and the empty text would be a lie, so the list
+            shows no section and the loading state in the empty slot. The list
+            stays mounted: it is the scroll view that carries pull-to-refresh and
+            the large-title collapse. */}
         <SectionList
           ref={listRef}
           testID="home-transactions"
-          sections={sections}
+          sections={transactionsLoading ? NO_SECTIONS : sections}
           keyExtractor={(item) => item.id}
           renderItem={renderTransaction}
           renderSectionHeader={renderDayHeader}
@@ -499,9 +660,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           contentContainerStyle={styles.listContent(listBottomClearance)}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
-            <Box style={styles.empty}>
-              <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>
-            </Box>
+            transactionsLoading ? (
+              <LoadingState testID="home-transactions-loading" />
+            ) : (
+              <Box style={styles.empty}>
+                <Text tone="textSecondary">{t('home.emptyTransactions')}</Text>
+              </Box>
+            )
           }
         />
 

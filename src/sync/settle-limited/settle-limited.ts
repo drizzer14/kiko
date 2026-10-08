@@ -5,8 +5,7 @@
  * provider request simultaneously would spike device load and risk provider
  * rate limits on a user with many connections. A small pool of 3 keeps a
  * background sync gentle while still overlapping the slow, 60s-gated Monobank
- * runs with the light crypto balance fetches. (User decision — multi-account
- * plan, Phase 3.)
+ * runs with the light crypto balance fetches.
  */
 export const SYNC_CONCURRENCY_LIMIT = 3;
 

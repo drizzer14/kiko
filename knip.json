@@ -1,8 +1,31 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["App.tsx", "jest/setup.js", "__tests__/**/*.{test,spec}.{ts,tsx}"],
+  "entry": [
+    "App.tsx",
+    "jest/setup.js",
+    "scripts/bundle-contains.js",
+    "__tests__/**/*.{test,spec}.{ts,tsx}"
+  ],
   "project": ["**/*.{ts,tsx,js}"],
-  "ignore": ["rules/fixtures/**"],
+  "ignore": [
+    "rules/fixtures/**",
+    "scripts/checks/kill-guard.js",
+    "scripts/checks/import-order.js",
+    "scripts/checks/full-word-identifiers.js",
+    "scripts/checks/blank-line-separation.js",
+    "scripts/checks/screen-imports.js",
+    "scripts/checks/feature-imports.js",
+    "scripts/checks/plural-count.js",
+    "scripts/checks/comment-line-width.js",
+    "scripts/checks/specifier-scanner.js",
+    "scripts/checks/pre-write-guard.js",
+    "scripts/checks/guard-replay.js",
+    "scripts/checks/shipped-migrations.js",
+    "scripts/checks/closure-table.js",
+    "scripts/checks/deps-ranges.js",
+    "scripts/checks/mutation-score.js",
+    "scripts/checks/comment-only-changes.js"
+  ],
   "ignoreDependencies": [
     "@babel/runtime",
     "@typescript/native-preview",

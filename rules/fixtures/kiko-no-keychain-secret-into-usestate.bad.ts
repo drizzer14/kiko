@@ -9,6 +9,7 @@
 // companion rule's own fixture, not this one.
 import { useState } from 'react';
 
+import { readToken } from '../../src/monobank/token';
 import { readCredentials } from '../../src/crypto-sync/binance/binance.credentials';
 
 export const FixtureBadAwaitForm = () => {
@@ -20,4 +21,16 @@ export const FixtureBadAwaitForm = () => {
   };
 
   return { credentials, load };
+};
+
+export const FixtureBadTokenAwaitForm = () => {
+  const [token, setToken] = useState<string | undefined>(undefined);
+
+  const load = async (): Promise<void> => {
+    const stored = await readToken('acc-1');
+    // EXPECT-FINDING
+    setToken(stored);
+  };
+
+  return { token, load };
 };

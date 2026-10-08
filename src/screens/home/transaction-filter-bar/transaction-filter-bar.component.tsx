@@ -1,13 +1,9 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-
-import Box from '../../../design-system/components/box';
-import DateRangeField from '../date-range-field';
-import FilterMenu, { type FilterOption } from '../filter-menu';
-
-// Re-exported so the Home screen keeps a single import site for the sentinel
-// while the checkable-menu logic lives with the FilterMenu that owns it.
-export { FILTER_ALL } from '../filter-menu';
+import Box from '@kiko/design-system/components/box';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import DateRangeField from '@kiko/design-system/components/date-range-field';
+import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
 
 type TransactionFilterBarProps = {
   accounts: FilterOption[];
@@ -46,6 +42,7 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
       <Box direction="row" gap={3}>
         <FilterMenu
           label={t('home.filterAccounts')}
+          sheetTitle={t('home.filterAccountsSheetTitle')}
           options={accounts}
           selected={selectedAccount}
           onToggle={onToggleAccount}
@@ -55,10 +52,11 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
 
         <FilterMenu
           label={t('home.filterCategories')}
+          sheetTitle={t('home.filterCategoriesSheetTitle')}
           options={categories}
           selected={selectedCategory}
           onToggle={onToggleCategory}
-          triggerIcon="tag"
+          triggerIcon={genericEntitySymbol.category}
           testID="category-filter-menu"
         />
       </Box>

@@ -1,300 +1,268 @@
 import { match } from 'ts-pattern';
-import type { TFunction } from 'i18next';
-import { Alert, View } from 'react-native';
-import { useTranslation } from 'react-i18next';
-import { holdingsRepo } from '@kiko/holdings/repo';
-import type { ScrollViewInstance, TextInputInstance } from 'react-native';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { accountsRepo } from '@kiko/accounts/accounts.repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
-
 import {
   creatableHoldingTypesForAccount,
   type HoldingType,
   holdingTypes,
   holdingTypesForAccountKind,
-} from '../../../holdings/holding-type';
+} from '@kiko/holdings/holding-type';
+import type { TFunction } from 'i18next';
 import {
-  asBondMeta,
-  asTermDepositMeta,
-  type BondKind,
-  type BondMeta,
-  type CompoundingFrequency,
-  type TermDepositMeta,
-} from '../../../holdings/holding-metadata';
-import { Money } from '../../../currency/money';
-import type { HoldingRow } from '../../../db/schema';
-import { parseAmount } from '../../../currency/parse';
-import Box from '../../../design-system/components/box';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import Switch from '../../../design-system/components/switch';
-import { isSyncedAccount, isSyncedHolding } from '../../../holdings/deletable';
-import Divider from '../../../design-system/components/divider';
-import TextField from '../../../design-system/components/text-field';
-import { holdingTypeSymbol } from '../../../holdings/entity-symbols';
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
-import FieldError from '../../../design-system/components/field-error';
-import { resolveEntityColor } from '../../../design-system/entity-tint';
-import type { AccountsStackParamList } from '../../../navigation/types';
-import { type Currency, currencySymbol } from '../../../currency/currency';
-import CurrencyField from '../../../design-system/components/currency-field';
-import { KIKO_ENTITIES_ICONS } from '../../../design-system/components/icon-picker-modal/icon-pools';
+  holdsOnlyDebts,
+  holdingDescriptor,
+  isLedgerlessHoldingType,
+} from '@kiko/holdings/holding-descriptor';
+import maybe, { foldMap } from 'fnts/maybe';
+import { accountsRepo } from '@kiko/accounts';
+import { useTranslation } from 'react-i18next';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import Box from '@kiko/design-system/components/box';
+import type { Currency } from '@kiko/currency/currency';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
+import { type TextInputInstance, View } from 'react-native';
+import { needsPriceBook } from '@kiko/holdings/priced-value';
+import Divider from '@kiko/design-system/components/divider';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { holdingIconPool } from '@kiko/holdings/entity-icon-pool';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import { resolveEntityColor } from '@kiko/design-system/entity-tint';
+import ColorPicker from '@kiko/design-system/components/color-picker';
+import HoldingTypeField from '@kiko/screens/forms/holding-type-field';
+import AccountKindField from '@kiko/screens/forms/account-kind-field';
+import { isImplicitAccountKind } from '@kiko/holdings/implicit-account';
+import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
+import CurrencyField from '@kiko/design-system/components/currency-field';
+import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
+import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
+import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
+import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
+import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 
-import ChipRow from '../chip-row';
-import DateField from '../date-field';
-import ColorPicker from '../color-picker';
-import HoldingIdentityField from '../holding-identity-field';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import { groupAmount, majorAmountText } from '../amount-format/amount-format';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
+import LoanFormBlock from './loan/loan-form-block';
+import LoanKindField from './loan/loan-kind-field';
+import BondFormBlock from './bond/bond-form-block';
+import MetalFormBlock from './metal/metal-form-block';
+import MetalTypeField from './metal/metal-type-field';
+import { useLoanFields } from './loan/use-loan-fields';
+import { useBondFields } from './bond/use-bond-fields';
+import { useMetalFields } from './metal/use-metal-fields';
+import BalanceFormBlock from './balance/balance-form-block';
+import PropertyFormBlock from './property/property-form-block';
+import PropertyTypeField from './property/property-type-field';
+import { useBalanceFields } from './balance/use-balance-fields';
+import { usePropertyFields } from './property/use-property-fields';
+import type { ScrollTarget, HoldingTypeForm } from './holding-type-form';
+import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
+import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
+import { type HoldingFormTarget, holdingFormDraft, holdingFormTarget } from './holding-form-target';
+
+// Fire-and-forget, only for a loan: the matcher backfills from the loan's
+// own start date, so a create OR an edit (principal/schedule/
+// paymentHoldingId/lenderName/lenderIban can all change) needs a fresh run.
+// Never rejects (its own doc comment),
+// so `save` never awaits or catches it. Extracted to a module-level function
+// (a plain call, not an inline `if`) so this ONE extra branch stays out of
+// `save`'s own cognitive-complexity budget.
+const runLoanAutoLinkIfLoan = (type: HoldingType): void => {
+  if (type === 'loan') {
+    // runLoanAutoLink catches every failure and never rejects.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
+    runLoanAutoLink();
+  }
+};
+
+// The loan form's "Paid from" picker options: every OPEN, non-ledgerless
+// holding in the LOAN's own currency — a `paymentHoldingId` link is only
+// ever a meaningful matcher signal when the payer holding shares the loan's
+// currency (mirrors `buildLoanOptions`'s identical currency filter on the
+// transaction form's own loan-payment field). A loan holding is itself
+// ledgerless, so this can never offer the loan as its own payer.
+//
+// A filter never hides an active selection (kiko-design-system): the
+// CURRENTLY selected `paymentHoldingId` is unioned back in even once it has
+// since closed or moved to another currency — mirrors `buildLoanOptions`'s
+// own union-back — or `PaymentHoldingField` would resolve no match for it
+// and silently show "None" for a link that still exists in the metadata,
+// with no way to see or clear it.
+const buildPaymentHoldingOptions = (
+  holdings: readonly HoldingRow[],
+  accountNameById: ReadonlyMap<string, string>,
+  loanCurrency: Currency,
+  selectedHoldingId: string | null,
+): HoldingSelectOption[] => {
+  const openOptions = holdings
+    .filter(
+      (candidate) =>
+        candidate.closedAt == null &&
+        candidate.currency === loanCurrency &&
+        !isLedgerlessHoldingType(candidate.type),
+    )
+    .map((candidate) => toHoldingOption(candidate, accountNameById));
+
+  if (selectedHoldingId === null || openOptions.some((option) => option.id === selectedHoldingId)) {
+    return openOptions;
+  }
+
+  const selectedHolding = holdings.find((candidate) => candidate.id === selectedHoldingId);
+
+  if (selectedHolding === undefined) {
+    return openOptions;
+  }
+
+  return [...openOptions, toHoldingOption(selectedHolding, accountNameById)];
+};
+
+// Which field fills the Type slot. A `property` account's only type IS its
+// category, and a `debt` account's only type IS its loan kind, so the category
+// or kind picker takes the slot. Wherever a `metal` holding
+// can be created — a metals account, or a bank that sells metals — or one is
+// being edited, each metal is its own row (`MetalTypeField`), after the
+// account's other creatable types; an edit locks the type, so it lists the
+// metals alone. Everything else, including the edit of a non-metal holding on
+// a bank that sells metals, keeps the generic field.
+type TypeSlot =
+  | { kind: 'property' }
+  | { kind: 'loan' }
+  | { kind: 'metal'; otherTypes: readonly HoldingType[] }
+  | { kind: 'generic' };
+
+const typeSlotFor = (
+  accountKind: AccountRow['kind'] | undefined,
+  typeOptions: readonly HoldingType[],
+  isEdit: boolean,
+  type: HoldingType,
+): TypeSlot =>
+  match(accountKind)
+    .with('property', (): TypeSlot => ({ kind: 'property' }))
+    .with('debt', (): TypeSlot => ({ kind: 'loan' }))
+    .otherwise((): TypeSlot => {
+      if (isEdit) {
+        return type === 'metal' ? { kind: 'metal', otherTypes: [] } : { kind: 'generic' };
+      }
+
+      if (typeOptions.includes('metal')) {
+        return { kind: 'metal', otherTypes: typeOptions.filter((option) => option !== 'metal') };
+      }
+
+      return { kind: 'generic' };
+    });
+
+// An implicit create names no account, so the account query it shares with the
+// account mode gets the empty id that matches no row.
+const targetAccountId = (target: HoldingFormTarget): string =>
+  match(target)
+    .with({ kind: 'account' }, ({ accountId }) => accountId)
+    .with({ kind: 'implicit' }, () => '')
+    .exhaustive();
+
+// What constrains the offered holding types: the named account's kind once its
+// row loads, or the kind an implicit create was opened for.
+const kindOfTarget = (
+  target: HoldingFormTarget,
+  account: AccountRow | undefined,
+): AccountRow['kind'] | undefined =>
+  match(target)
+    .with({ kind: 'account' }, () => account?.kind)
+    .with({ kind: 'implicit' }, ({ implicitKind }) => implicitKind)
+    .exhaustive();
+
+type NewHoldingInput = Parameters<typeof accountsRepo.createImplicitHolding>[1];
+
+// Inserts the holding and resolves to its id: into the named account, or into
+// the implicit account of the kind, which that one write finds or creates.
+const createHolding = (target: HoldingFormTarget, input: NewHoldingInput): Promise<string> =>
+  match(target)
+    .with({ kind: 'account' }, ({ accountId }) => holdingsRepo.create({ accountId, ...input }))
+    .with({ kind: 'implicit' }, async ({ implicitKind }) => {
+      const { holdingId } = await accountsRepo.createImplicitHolding(implicitKind, input);
+
+      return holdingId;
+    })
+    .exhaustive();
+
+// The header names what the form does. An implicit create keeps the account
+// form's title, since on screen it is that form with the fields swapped, and a
+// debt account's form names a loan, never a "holding".
+const headerTitle = (
+  t: TFunction,
+  flags: { isEdit: boolean; isImplicit: boolean; debtAccount: boolean },
+): string | undefined =>
+  match(flags)
+    .with({ isEdit: true, debtAccount: true }, () => t('forms.holding.editLoanTitle'))
+    .with({ isEdit: true }, () => t('forms.holding.editTitle'))
+    .with({ isImplicit: true }, () => t('forms.account.addTitle'))
+    .with({ debtAccount: true }, () => t('forms.holding.addLoanTitle'))
+    .otherwise(() => undefined);
 
 type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
 
-// The literal i18n keys `termDepositReasonKey` may return, so `t()` (typed
-// from src/i18n/locales/en.ts) accepts them.
-type TermDepositReasonKey =
-  | 'forms.holding.contributionsRequiredError'
-  | 'forms.holding.contributionIncompleteError'
-  | 'forms.holding.annualRateError'
-  | 'forms.holding.termMonthsError';
+type HoldingFormNavigation = HoldingFormScreenProps['navigation'];
 
-// The literal i18n keys `bondReasonKey` may return, so `t()` (typed from
-// src/i18n/locales/en.ts) accepts them.
-type BondReasonKey =
-  | 'forms.holding.quantityError'
-  | 'forms.holding.faceValueError'
-  | 'forms.holding.couponPctError'
-  | 'forms.holding.maturityDateError';
+// The kind field's two outcomes in implicit mode. The other implicit kind
+// re-targets this form at once, in place. Any other kind leaves for the account
+// form once the sheet has closed, so the field shows that pick at once: the
+// sheet is still closing, and left on the old kind the form looks frozen.
+const retargetImplicitKind = (
+  navigation: HoldingFormNavigation,
+  kind: AccountRow['kind'],
+  showLeavingKind: (kind: AccountRow['kind']) => void,
+): void => {
+  if (isImplicitAccountKind(kind)) {
+    navigation.setParams({ implicitKind: kind });
 
-// `saved` marks a contribution that is already persisted in the holding's
-// stored metadata (an edit-mode hydrated row) versus one the user just added in
-// this session. Only unsaved rows may be removed — a persisted contribution is
-// part of the deposit's history, so its Remove control renders disabled. The
-// flag is explicit rather than inferred from id ordering: an explicit boolean is
-// clearer and does not break if the seeding/id scheme ever changes.
-type Contribution = { id: number; amount: string; date: number | null; saved: boolean };
-
-// Seed the repeatable contributions list from a stored deposit: each stored
-// amount is minor units, shown back in the field as a grouped major string the
-// user can edit (the inverse of the create form's parse-on-save). Every seeded
-// row is `saved: true` — it already exists in the database, so it cannot be
-// removed here.
-const seedContributions = (meta: TermDepositMeta, currency: Currency): Contribution[] =>
-  meta.contributions.map((contribution, index) => ({
-    id: index,
-    amount: groupAmount(majorAmountText(currency, contribution.amountMinorUnits)),
-    date: contribution.date,
-    saved: true,
-  }));
-
-// Seed the bond number/date fields from stored metadata. Minor-unit money
-// fields (face value, purchase price) convert back to grouped major strings;
-// plain-number fields (quantity, coupon %) render verbatim.
-const seedBondFields = (meta: BondMeta, currency: Currency) => ({
-  quantity: groupAmount(String(meta.quantity)),
-  faceValue: groupAmount(majorAmountText(currency, meta.faceValueMinorUnits)),
-  couponPct: String(meta.couponPct),
-  purchasePrice: groupAmount(majorAmountText(currency, meta.purchasePriceMinorUnits)),
-  purchaseDate: meta.purchaseDate,
-  maturityDate: meta.maturityDate,
-  bondKind: meta.bondKind,
-  couponFrequency: meta.couponFrequency,
-});
-
-// The partial row an edit-mode save writes: always the editable identity fields
-// (name, color), plus the one value field that belongs to the type — a
-// deposit/bond's value derives from its metadata (its balance is not stored), so
-// those write metadata; every other type writes its edited balance. A synced
-// (Monobank) holding is the exception: its balance is owned by the sync, so the
-// patch omits balanceMinorUnits entirely and only touches the identity fields.
-const buildHoldingPatch = (params: {
-  name: string;
-  color: string | null;
-  type: HoldingType;
-  currency: Currency;
-  openingBalance: string;
-  metadata: Record<string, unknown> | undefined;
-  isSynced: boolean;
-}): Partial<HoldingRow> => {
-  const { name, color, type, currency, openingBalance, metadata, isSynced } = params;
-
-  if (type === 'term_deposit' || type === 'bond') {
-    return { name, color, metadata };
+    return;
   }
 
-  if (isSynced) {
-    return { name, color };
+  showLeavingKind(kind);
+};
+
+// Any other kind creates an account, so the account form takes over. It runs
+// once the kind sheet has finished closing, as replacing sooner would unmount
+// the screen that owns the sheet mid-close.
+const leaveForAccountForm = (
+  navigation: HoldingFormNavigation,
+  kind: AccountRow['kind'],
+  draft: FormDraft,
+): void => {
+  if (!isImplicitAccountKind(kind)) {
+    navigation.replace('AccountForm', { initialKind: kind, draft });
   }
-
-  return {
-    name,
-    color,
-    balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
-  };
 };
 
-const bondKinds: readonly BondKind[] = ['government', 'corporate'];
+// A kind that creates an account takes the user to the account form, which only
+// runs once the kind sheet's Modal is gone, so that sheet closes with no fade
+// rather than make the swap wait for it.
+const isLeavingKind = (kind: AccountRow['kind']): boolean => !isImplicitAccountKind(kind);
 
-const compoundingOptions: readonly CompoundingFrequency[] = [
-  'bi-weekly',
-  'monthly',
-  'quarterly',
-  'annually',
-];
-
-const couponFrequencies = ['monthly', 'quarterly', 'semiannually', 'annually'] as const;
-type CouponFrequency = (typeof couponFrequencies)[number];
-
-// The name-required reason, shown only after a failed Save press: gated on
-// `attemptedSave` so it renders nothing before the first press. The
-// type-specific per-field reasons (term deposit / bond) no longer flow
-// through this helper — each field now calls `termDepositReasonKey()` /
-// `bondReasonKey()` directly (see `fieldErrorMessage` below), since each field
-// needs its OWN reason, not the type's single first-failing one. Kept as a
-// module-level helper (rather than inline in the component) to mirror the
-// pattern the rest of this file already uses for save-time branching.
-const saveReasonsFor = (params: {
-  attemptedSave: boolean;
-  name: string;
-}): { showNameReason: boolean } => {
-  const { attemptedSave, name } = params;
-
-  return { showNameReason: attemptedSave && name.trim().length === 0 };
-};
-
-// The active error message for one of `termDepositReasonKey`'s /
-// `bondReasonKey`'s own returned keys, or `undefined` while that field's own
-// check still passes (or before the first failed Save press) — shared by
-// every per-field `TextField`/`HoldingIdentityField` `error` prop and the two
-// relocated group `<FieldError>`s below, so each render site is a single call
-// rather than repeating the `attemptedSave &&` comparison inline at all seven
-// fields. Kept module-level and pure so its branch stays out of
-// HoldingFormScreen's own cognitive-complexity budget (the same reason
-// transaction-form's `resolveDescriptionPlaceholder` is a module-level
-// helper).
-const fieldErrorMessage = (
-  t: TFunction,
-  attemptedSave: boolean,
-  reasonKey: TermDepositReasonKey | BondReasonKey | null,
-  expectedKey: TermDepositReasonKey | BondReasonKey,
-): string | undefined => (attemptedSave && reasonKey === expectedKey ? t(expectedKey) : undefined);
-
-// The wrapper refs `firstInvalidFieldRef` (below) picks a scroll target from —
-// grouped into its own type so that function's own signature reads as one
-// param per concern (the reasons, then the refs) rather than eight positional
-// refs.
-type ValidatedFieldRefs = {
-  nameFieldRef: RefObject<FieldInstance | null>;
-  contributionsFieldRef: RefObject<FieldInstance | null>;
-  annualRateFieldRef: RefObject<FieldInstance | null>;
-  termMonthsFieldRef: RefObject<FieldInstance | null>;
-  quantityFieldRef: RefObject<FieldInstance | null>;
-  faceValueFieldRef: RefObject<FieldInstance | null>;
-  couponPctFieldRef: RefObject<FieldInstance | null>;
-  maturityDateFieldRef: RefObject<FieldInstance | null>;
-};
-
-// A blocked Save's FOCUS action for each TEXT-backed validated field — called
-// once `scrollToField` has positioned it on screen (see `save`'s own
-// `onSettled` callback below). The contributions group and the maturity date
-// have no matching entry: both are composite/picker targets with no single
-// input to focus (a date picker has no keyboard of its own), so `save`'s
-// scroll for those two lands the field on screen with no focus follow-up.
-type ValidatedFieldFocus = {
-  name: () => void;
-  annualRate: () => void;
-  termMonths: () => void;
-  quantity: () => void;
-  faceValue: () => void;
-  couponPct: () => void;
-};
-
-// The first still-invalid field's own wrapper ref (plus its FOCUS action,
-// when it has one — see `ValidatedFieldFocus` above), in the SAME priority
-// order `termDepositReasonKey`/`bondReasonKey` already check their fields
-// in: the name field first (it always applies, independent of type), then
-// the active type's fields. `save`'s `!isValid` branch passes this straight
-// to `scrollToField`. Module-level and pure (given the already-computed
-// reason keys) so this branching stays out of `save`'s own
-// cognitive-complexity budget — the same reason `fieldErrorMessage` above is
-// a module-level helper.
-const firstInvalidFieldRef = (params: {
-  name: string;
-  type: HoldingType;
-  termDepositReasonKey: TermDepositReasonKey | null;
-  bondReasonKey: BondReasonKey | null;
-  refs: ValidatedFieldRefs;
-  focus: ValidatedFieldFocus;
-}): { ref: RefObject<FieldInstance | null>; focus?: () => void } | null => {
-  const { name, type, termDepositReasonKey, bondReasonKey, refs, focus } = params;
-
-  const order: { invalid: boolean; ref: RefObject<FieldInstance | null>; focus?: () => void }[] = [
-    { invalid: name.trim().length === 0, ref: refs.nameFieldRef, focus: focus.name },
-    ...(type === 'term_deposit'
-      ? [
-          {
-            invalid:
-              termDepositReasonKey === 'forms.holding.contributionsRequiredError' ||
-              termDepositReasonKey === 'forms.holding.contributionIncompleteError',
-            ref: refs.contributionsFieldRef,
-          },
-          {
-            invalid: termDepositReasonKey === 'forms.holding.annualRateError',
-            ref: refs.annualRateFieldRef,
-            focus: focus.annualRate,
-          },
-          {
-            invalid: termDepositReasonKey === 'forms.holding.termMonthsError',
-            ref: refs.termMonthsFieldRef,
-            focus: focus.termMonths,
-          },
-        ]
-      : []),
-    ...(type === 'bond'
-      ? [
-          {
-            invalid: bondReasonKey === 'forms.holding.quantityError',
-            ref: refs.quantityFieldRef,
-            focus: focus.quantity,
-          },
-          {
-            invalid: bondReasonKey === 'forms.holding.faceValueError',
-            ref: refs.faceValueFieldRef,
-            focus: focus.faceValue,
-          },
-          {
-            invalid: bondReasonKey === 'forms.holding.couponPctError',
-            ref: refs.couponPctFieldRef,
-            focus: focus.couponPct,
-          },
-          {
-            invalid: bondReasonKey === 'forms.holding.maturityDateError',
-            ref: refs.maturityDateFieldRef,
-          },
-        ]
-      : []),
-  ];
-
-  const entry = order.find((candidate) => candidate.invalid);
-
-  return entry === undefined ? null : { ref: entry.ref, focus: entry.focus };
-};
+// What the kind field shows: the kind just picked that leaves for the account
+// form, else the implicit kind this form is on. At module scope to keep this
+// branch out of HoldingFormScreen's own cognitive complexity score.
+const shownKind = (
+  implicitKind: AccountRow['kind'],
+  leavingKind: AccountRow['kind'] | undefined,
+): AccountRow['kind'] => leavingKind ?? implicitKind;
 
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
-  const { accountId, holdingId } = route.params;
+  const { holdingId, returnTo } = route.params;
+  // A named account, or the implicit one a create finds or makes on Save, and
+  // the identity the account form carried over (an implicit create only).
+  const target = holdingFormTarget(route.params);
+  const draft = holdingFormDraft(route.params);
   const { t } = useTranslation();
-  // Human display text for the id-like holding types, the bond kind, and the
-  // two frequency chip rows below; the chips still report the underlying
-  // value on select. Built from the catalog inside the component (rather than
-  // a module-level constant) so it always reflects the active language.
+  // Human display text for the id-like holding types (the select field
+  // below still reports the underlying value on select). Built from the
+  // catalog inside the component (rather than a module-level constant) so it
+  // always reflects the active language.
   const typeLabels: Record<HoldingType, string> = {
     card: t('forms.holding.card'),
     term_deposit: t('forms.holding.deposit'),
@@ -302,25 +270,22 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     cash: t('forms.account.cash'),
     crypto_asset: t('forms.holding.cryptoAsset'),
     jar: t('forms.holding.jar'),
+    property_item: t('forms.holding.propertyItem'),
+    metal: t('forms.holding.metal'),
+    loan: t('forms.holding.loan'),
   };
-  const bondKindLabels: Record<BondKind, string> = {
-    government: t('forms.holding.government'),
-    corporate: t('forms.holding.corporate'),
-  };
-  // Coupon frequency additionally offers 'semiannually', which compounding
-  // does not; the shared vocabulary (monthly/quarterly/annually) resolves to
-  // the same catalog key either way.
-  const compoundingLabels: Record<CompoundingFrequency, string> = {
-    'bi-weekly': t('forms.holding.biWeekly'),
-    monthly: t('forms.holding.monthly'),
-    quarterly: t('forms.holding.quarterly'),
-    annually: t('forms.holding.annually'),
-  };
-  const couponFrequencyLabels: Record<CouponFrequency, string> = {
-    monthly: t('forms.holding.monthly'),
-    quarterly: t('forms.holding.quarterly'),
-    semiannually: t('forms.holding.semiannually'),
-    annually: t('forms.holding.annually'),
+  // The example name in the empty Name field, one per type, so the hint never
+  // names a different kind of holding than the selected one.
+  const namePlaceholders: Record<HoldingType, string> = {
+    card: t('forms.holding.namePlaceholders.card'),
+    term_deposit: t('forms.holding.namePlaceholders.deposit'),
+    bond: t('forms.holding.namePlaceholders.bond'),
+    cash: t('forms.holding.namePlaceholders.cash'),
+    crypto_asset: t('forms.holding.namePlaceholders.cryptoAsset'),
+    jar: t('forms.holding.namePlaceholders.jar'),
+    property_item: t('forms.holding.namePlaceholders.propertyItem'),
+    metal: t('forms.holding.namePlaceholders.metal'),
+    loan: t('forms.holding.namePlaceholders.loan'),
   };
   // A `holdingId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing holding, saving through the update path
@@ -328,9 +293,11 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const isEdit = holdingId !== undefined;
   // The account this holding is created under; its `kind` constrains which
   // holding types are offered (a bank can't hold a crypto asset or cash, etc.).
-  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(accountId), ['accounts']);
+  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(targetAccountId(target)), [
+    'accounts',
+  ]);
   const account = accounts.at(0);
-  const accountKind = account?.kind;
+  const accountKind = kindOfTarget(target, account);
   // Whether THIS account is a live sync connection (see `isSyncedAccount` in
   // `../../../holdings/deletable`) — an unresolved account (query still
   // loading) is treated as not-yet-synced.
@@ -343,10 +310,13 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // bank excludes both card and jar (its sync creates them); a non-synced,
   // statement-import-only bank has no sync to own a card, so card is offered —
   // jar stays excluded regardless (see `creatableHoldingTypesForAccount`'s
-  // comment). The create form offers only these; edit mode keeps the full set
-  // (above).
+  // comment). `account?.bankId` additionally gates `metal` under a `bank`
+  // account (the sellsMetals allow-list; undefined for a `metals`-kind
+  // account, which never gates on it). The create form offers only these;
+  // edit mode keeps
+  // the full set (above).
   const creatableTypes = accountKind
-    ? creatableHoldingTypesForAccount(accountKind, isSynced)
+    ? creatableHoldingTypesForAccount(accountKind, isSynced, account?.bankId)
     : holdingTypes;
   // Create mode offers the manually-creatable subset; edit mode shows the full
   // set (its chip is read-only) so a synced card/jar row still displays.
@@ -368,32 +338,50 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const isSyncedEdit =
     editingHolding !== undefined && isSyncedHolding(editingHolding, accounts.at(0));
 
-  const [name, setName] = useState('');
-  // The selected type starts at `card`, then the effect below snaps it to the
-  // first CREATABLE type for the account's kind once it loads — so a bank create
-  // (where card/jar are sync-only and excluded) defaults to `term_deposit`, and
-  // an edit seeds the real type from the row.
-  const [type, setType] = useState<HoldingType>('card');
+  const [name, setName] = useState(draft.name);
+  // The selected type starts at the first type the form offers right now
+  // (`typeOptions[0]`). The account loads asynchronously, so the effect below
+  // snaps it to the first CREATABLE type for the account's kind once the option
+  // set is known — a bank create (where card/jar are sync-only and excluded)
+  // lands on `term_deposit` — and an edit seeds the real type from the row.
+  const [type, setType] = useState<HoldingType>(typeOptions[0]);
+
+  // Reactive `PriceBook`, passed through `EditContext.book` to every hook's
+  // own `saveEdit`: a loan edit that changes its schedule INTO `'none'`
+  // needs the OLD schedule's outstanding, which may itself be anchored on an
+  // existing manual correction (see `useLoanFields`'s own `saveEdit`).
+  // kiko-architecture: skip the price_points read while the active type
+  // (the row being edited, read straight off the query rather than waiting
+  // for the type-sync effect below; the currently selected type in create
+  // mode) never reads it (`needsPriceBook`). Save waits for the book on an
+  // edit: saved against a still-empty book, a loan changed into `'none'`
+  // would store its schedule-only outstanding as a permanent manual point.
+  const { book: priceBook, isLoading: isPriceBookLoading } = useCurrentPriceBook(
+    needsPriceBook(editingHolding?.type ?? type),
+  );
   const [currency, setCurrency] = useState<Currency>('UAH');
-  // DEVICE BUG fix (root cause): while the currency sheet's search field can
-  // be focused, this screen's background ScrollView must NOT react to the
+  // While the currency sheet's search field can be
+  // focused, this screen's background ScrollView must NOT react to the
   // keyboard's frame change — it does not contain that responder, but
-  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless
-  // (see `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
-  const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
-  const [openingBalance, setOpeningBalance] = useState('');
+  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless (see
+  // `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
+  const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
+  // The kind just picked on the kind field that leaves for the account form,
+  // shown there until the swap replaces this screen (see `retargetImplicitKind`).
+  const [leavingKind, setLeavingKind] = useState<AccountRow['kind'] | undefined>(undefined);
   // The icon is null until the user picks one ("not dirty"): while null, the
-  // chip shows the selected type's default glyph (holdingTypeSymbol[type]) and
-  // switching type re-derives it, so an untouched icon follows the type. Once
-  // the user picks (icon !== null, "dirty"), that choice overrides the default
-  // and type changes no longer move it.
-  const [icon, setIcon] = useState<string | null>(null);
+  // chip shows the selected type's default glyph (`defaultHoldingSymbol`, a
+  // property's own category glyph) and switching type or category re-derives
+  // it, so an untouched icon follows the selection. Once the user picks (icon
+  // !== null, "dirty"), that choice overrides the default and type changes
+  // leave it in place.
+  const [icon, setIcon] = useState<string | null>(draft.icon);
   // The color mirrors the icon's dirty pattern: null until the user taps a
   // swatch ("not dirty"). While null, the effective color follows the selected
   // type's default (defaultHoldingColor[type]), so the ColorPicker highlights
   // that swatch and switching type moves it. Once picked (color !== null,
-  // "dirty"), the choice sticks and type changes no longer move it.
-  const [color, setColor] = useState<string | null>(null);
+  // "dirty"), the choice sticks and type changes leave it in place.
+  const [color, setColor] = useState<string | null>(draft.color);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the type default —
   // because `color` here is seeded straight from a stored row
   // (setColor(holding.color) below): a stored empty-string color reaches
@@ -402,7 +390,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   // Keep the selected type valid for what the form currently OFFERS. The account
   // loads asynchronously, so once its option set is known, a default (or
-  // previously selected) type outside that set snaps to the first offered type —
+  // already-selected) type outside that set snaps to the first offered type —
   // which also re-derives the non-dirty icon to match. `typeOptions` is the
   // creatable subset in create mode (so a bank create snaps `card` -> the first
   // creatable type, `term_deposit`) and the full set in edit mode (so a seeded
@@ -413,78 +401,80 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     }
   }, [typeOptions, type]);
 
-  // The scroll-mode ScrollView's ref, so adding a contribution can bring the
-  // newly appended row into view. `useScrollOffset` reads its LIVE content
-  // offset, so a blocked Save's `scrollToField` call below knows whether the
-  // first-invalid field is already visible without re-measuring the scroll
-  // position itself.
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
-  const headerInset = useHeaderInset();
-  // The ScrollView's own total content height, captured off `Screen`'s
-  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
-  // can bound an over-large target against the real content extent — see
-  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
-  // read only imperatively at Save-press time, never needs to re-render.
-  const contentHeightRef = useRef(0);
+  // Every call site (a blocked Save, an added contribution) hands `scrollTo`
+  // just the target field and its optional focus follow-up, so the scroll
+  // geometry can never drift between call sites.
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
 
-  // Per-field wrapper refs, one per validated field, passed to `scrollToField`
+  // Per-field wrapper refs, one per validated field, passed to `scrollTo`
   // in `save`'s ordered first-invalid scroll below — each field's own inline
   // error (a `TextField`/`HoldingIdentityField` `error` prop, or a relocated
   // `FieldError` for the two group/relational reasons) sits right beside it,
   // so the scroll always lands on the same field the message is anchored to.
   const nameFieldRef = useRef<FieldInstance>(null);
-  const contributionsFieldRef = useRef<FieldInstance>(null);
-  // The LAST contribution row's own wrapper — a SEPARATE ref from
-  // `contributionsFieldRef` above (which always anchors row 0, for the
-  // Save-invalid scroll) — so `addContribution` below can scroll to whichever
-  // row is newest, via the SAME occlusion-aware `scrollToField` helper
-  // (round-6 device feedback item 3), rather than an unconditional
-  // `scrollToEnd` that used to fire even when the new row was already
-  // fully visible.
-  const lastContributionFieldRef = useRef<FieldInstance>(null);
-  const annualRateFieldRef = useRef<FieldInstance>(null);
-  const termMonthsFieldRef = useRef<FieldInstance>(null);
-  const quantityFieldRef = useRef<FieldInstance>(null);
-  const faceValueFieldRef = useRef<FieldInstance>(null);
-  const couponPctFieldRef = useRef<FieldInstance>(null);
-  const maturityDateFieldRef = useRef<FieldInstance>(null);
-  // The TEXT-backed validated fields' own inner TextInput/name-input, so a
-  // blocked Save can focus the first-invalid one imperatively once it has
-  // scrolled into view — mirrors `TextField`'s own `inputRef` /
-  // `HoldingIdentityField`'s own `nameInputRef`. The contributions group and
-  // the maturity date are composite/picker targets with no single input to
-  // focus (a picker/date has no keyboard of its own), so they have no
-  // matching entry here — `save`'s scroll below simply omits the focus
-  // callback for those two.
+  // The name field's own inner TextInput, so a blocked Save can focus it
+  // imperatively once it has scrolled into view — mirrors `TextField`'s own
+  // `inputRef` / `HoldingIdentityField`'s own `nameInputRef`. Every other
+  // type's own fields carry their input ref alongside their `scrollTargets`
+  // entry instead (see each `use<Type>Fields` hook).
   const nameInputRef = useRef<TextInputInstance>(null);
-  const annualRateInputRef = useRef<TextInputInstance>(null);
-  const termMonthsInputRef = useRef<TextInputInstance>(null);
-  const quantityInputRef = useRef<TextInputInstance>(null);
-  const faceValueInputRef = useRef<TextInputInstance>(null);
-  const couponPctInputRef = useRef<TextInputInstance>(null);
 
-  // term deposit state
-  const nextContributionId = useRef(1);
-  const [contributions, setContributions] = useState<Contribution[]>([
-    { id: 0, amount: '', date: null, saved: false },
-  ]);
-  const [annualRate, setAnnualRate] = useState('');
-  const [termMonths, setTermMonths] = useState('');
-  const [recapitalization, setRecap] = useState(false);
-  const [compounding, setCompounding] = useState<CompoundingFrequency>('bi-weekly');
+  const deposit = useTermDepositFields({ currency, scrollTo });
+  const bond = useBondFields({ type, isEdit, currency, setCurrency, name, setName });
+  const property = usePropertyFields({ isEdit, currency });
+  const metal = useMetalFields({ isEdit });
+  const loanFields = useLoanFields({ currency });
+  // Stays mounted across every type, not only while a balance type is
+  // selected, so a value typed before switching away survives the switch.
+  const balance = useBalanceFields({ currency });
 
-  // bond state
-  const [quantity, setQuantity] = useState('');
-  const [faceValue, setFaceValue] = useState('');
-  const [couponPct, setCouponPct] = useState('');
-  const [purchasePrice, setPurchasePrice] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState<number | null>(null);
-  const [maturityDate, setMaturityDate] = useState<number | null>(null);
-  const [bondKind, setBondKind] = useState<BondKind>('government');
-  // Semiannual coupons are the common case for the government/corporate bonds
-  // this tracks (the Monobank statement default), so the picker starts there.
-  const [couponFrequency, setCouponFrequency] = useState<CouponFrequency>('semiannually');
+  // The loan form's own "Paid from" picker options — read here, alongside
+  // every other holdings-derived option list, the same way the transaction
+  // form reads its own `loanOptions`. Every OTHER holding type's form block
+  // needs neither the full holdings list nor the full account list, so
+  // these two queries are scoped to this ONE field rather than hoisted to
+  // the top of the component.
+  const { data: allHoldings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
+  const { data: allAccounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
+  const accountNameById = new Map(allAccounts.map((row) => [row.id, row.name] as const));
+  const paymentHoldingOptions = buildPaymentHoldingOptions(
+    allHoldings,
+    accountNameById,
+    currency,
+    loanFields.paymentHoldingId,
+  );
+
+  // The one place every holding type's own form behaviour is looked up —
+  // `active` is what `isValid`, the blocked-Save scroll, and the create/edit
+  // writes below all read through, so none of them need their own
+  // `match(type)` dispatch. Each of the four ledgered types shares the SAME
+  // `balance` hook instance (it stays mounted regardless of which type is
+  // selected — see that hook's own doc comment).
+  const forms: Record<HoldingType, HoldingTypeForm> = {
+    term_deposit: deposit,
+    bond,
+    property_item: property,
+    metal,
+    loan: loanFields,
+    card: balance,
+    cash: balance,
+    crypto_asset: balance,
+    jar: balance,
+  };
+  const active = forms[type];
+
+  // A holding type with a fixed currency (today, only `metal` — NBU quotes
+  // precious metals only in UAH, kiko-pricing) offers no currency picker at
+  // all (below) and this effect forces the state back to that fixed currency
+  // whenever the type is (or becomes) one — covering a user who picked a
+  // different currency before switching the type chip.
+  useEffect(() => {
+    const fixedCurrency = holdingDescriptor(type).fixedCurrency;
+
+    if (fixedCurrency !== null && currency !== fixedCurrency) {
+      setCurrency(fixedCurrency);
+    }
+  }, [type, currency]);
 
   // Seed the form once from the loaded holding (edit mode only). `useLiveQuery`
   // resolves asynchronously, so the initial render precedes the data; a one-shot
@@ -504,385 +494,204 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     setIcon(holding.icon);
     setColor(holding.color);
 
-    if (holding.type === 'term_deposit') {
-      const meta = asTermDepositMeta(holding.metadata);
-      if (meta) {
-        const rows = seedContributions(meta, holding.currency);
-        setContributions(rows);
-        nextContributionId.current = rows.length;
-        setAnnualRate(String(meta.annualRatePct));
-        setTermMonths(String(meta.termMonths));
-        setRecap(meta.recapitalization);
-        setCompounding(meta.compounding);
-      }
-      return;
-    }
-
-    if (holding.type === 'bond') {
-      const meta = asBondMeta(holding.metadata);
-      if (meta) {
-        const fields = seedBondFields(meta, holding.currency);
-        setQuantity(fields.quantity);
-        setFaceValue(fields.faceValue);
-        setCouponPct(fields.couponPct);
-        setPurchasePrice(fields.purchasePrice);
-        setPurchaseDate(fields.purchaseDate);
-        setMaturityDate(fields.maturityDate);
-        setBondKind(fields.bondKind);
-        setCouponFrequency(fields.couponFrequency);
-      }
-      return;
-    }
-
-    setOpeningBalance(groupAmount(majorAmountText(holding.currency, holding.balanceMinorUnits)));
-  }, [isEdit, editingHolding]);
+    // The balance seed is the normal path for card/cash/crypto_asset/jar —
+    // those types have no type-specific fields of their own. It is also the
+    // fallback for a corrupted row's `type`: SQLite enforces no constraint on
+    // the stored `type` column (`holdingDescriptor`'s own doc comment), so it
+    // could be any string. The `Object.hasOwn` guard (mirroring
+    // `holdingDescriptorOrUndefined`) routes both cases to the balance seed.
+    const seeds: Record<string, HoldingTypeForm['seed']> = {
+      term_deposit: deposit.seed,
+      bond: bond.seed,
+      property_item: property.seed,
+      metal: metal.seed,
+      loan: loanFields.seed,
+    };
+    const seed = Object.hasOwn(seeds, holding.type) ? seeds[holding.type] : balance.seed;
+    seed(holding);
+  }, [
+    isEdit,
+    editingHolding,
+    deposit.seed,
+    bond.seed,
+    property.seed,
+    metal.seed,
+    loanFields.seed,
+    balance.seed,
+  ]);
 
   // The stack sets the static "Add Holding" title; in edit mode override it with
-  // "Edit Holding" so the header reads correctly for the update flow.
+  // "Edit Holding" so the header reads correctly for the update flow. An edit's
+  // route says on the first frame whether it is a loan; the account row only
+  // arrives on a later render.
+  const debtAccount = route.params.debtAccount ?? holdsOnlyDebts(accountKind);
+  const isImplicit = target.kind === 'implicit';
+
   useLayoutEffect(() => {
-    if (isEdit) {
-      navigation.setOptions({ title: t('forms.holding.editTitle') });
-    }
-  }, [isEdit, navigation, t]);
-
-  const addContribution = (): void => {
-    const id = nextContributionId.current++;
-    setContributions((rows) => [...rows, { id, amount: '', date: null, saved: false }]);
-
-    // The new row's fields are only measured after this render commits, so
-    // defer the scroll to the next frame — otherwise `lastContributionFieldRef`
-    // would still measure the PRE-add (one row shorter) layout. Same
-    // deferred-RAF pattern as the categories screen's own
-    // `scrollToAddCategoryForm`. Routes through the SAME occlusion-aware
-    // `scrollToField` helper `save`'s own scroll-to-invalid uses below (round-6
-    // device feedback item 3) — an unconditional `scrollToEnd` used to fire
-    // even when the new row was already fully on screen.
-    requestAnimationFrame(() => {
-      scrollToField(scrollableRef, lastContributionFieldRef, {
-        currentOffset: scrollOffset.value,
-        headerInset,
-        contentHeight: contentHeightRef.current,
-      });
-    });
-  };
-
-  const removeContribution = (index: number): void => {
-    setContributions((rows) => rows.filter((_, i) => i !== index));
-  };
-
-  const updateContributionAmount = (index: number, next: string): void => {
-    setContributions((rows) =>
-      rows.map((row, i) => {
-        return i === index ? { ...row, amount: next } : row;
-      }),
+    foldMap(maybe(headerTitle(t, { isEdit, isImplicit, debtAccount })), (title) =>
+      navigation.setOptions({ title }),
     );
-  };
+  }, [isEdit, isImplicit, debtAccount, navigation, t]);
 
-  const updateContributionDate = (index: number, next: number): void => {
-    setContributions((rows) =>
-      rows.map((row, i) => {
-        return i === index ? { ...row, date: next } : row;
-      }),
-    );
-  };
-
-  // Drop blank/partial rows: keep only a positive amount paired with a picked date.
-  const parsedContributions = (): { amountMinorUnits: number; date: number }[] =>
-    contributions.flatMap(({ amount, date }) => {
-      const amountValue = parseAmount(amount);
-      if (!(amountValue > 0) || date === null) {
-        return [];
-      }
-
-      return [{ amountMinorUnits: Money.fromMajor(currency, amountValue).minorUnits, date }];
-    });
-
-  // A single contribution ROW's own validity: a positive amount paired with a
-  // picked date, the same pair `parsedContributions` requires to keep a row.
-  // Used to catch a row `parsedContributions` would otherwise silently DROP —
-  // a blank or partially-filled row (most often a fresh `addContribution`
-  // left unfilled) — while at least one OTHER row is already valid, so the
-  // overall `contributionsRequiredError` (below) never fires (round-4 device
-  // feedback item 10: saving used to drop that row without any indication it
-  // was ignored).
-  const isContributionRowValid = (contribution: Contribution): boolean =>
-    parseAmount(contribution.amount) > 0 && contribution.date !== null;
-
-  const buildDepositMetadata = (): Record<string, unknown> | undefined => {
-    const rows = parsedContributions();
-    if (rows.length === 0) {
-      return undefined;
-    }
-    return {
-      contributions: rows,
-      annualRatePct: parseAmount(annualRate) || 0,
-      termMonths: parseAmount(termMonths) || 0,
-      recapitalization,
-      compounding,
-    };
-  };
-
-  const buildBondMetadata = (): Record<string, unknown> => {
-    const quantityValue = parseAmount(quantity) || 0;
-    const faceValueMinorUnits = Money.fromMajor(currency, parseAmount(faceValue) || 0).minorUnits;
-    const priceValue = parseAmount(purchasePrice);
-    return {
-      quantity: quantityValue,
-      faceValueMinorUnits,
-      couponPct: parseAmount(couponPct) || 0,
-      // The total actually paid. If left blank, fall back to nominal (par), so
-      // the purchase entry and expected profit read as break-even.
-      purchasePriceMinorUnits:
-        priceValue > 0
-          ? Money.fromMajor(currency, priceValue).minorUnits
-          : quantityValue * faceValueMinorUnits,
-      purchaseDate: purchaseDate ?? Date.now(),
-      maturityDate: maturityDate ?? Date.now(),
-      bondKind,
-      couponFrequency,
-    };
-  };
-
-  const buildMetadata = (): Record<string, unknown> | undefined => {
-    if (type === 'term_deposit') {
-      return buildDepositMetadata();
-    }
-    if (type === 'bond') {
-      return buildBondMetadata();
-    }
-    return undefined;
-  };
-
-  // A term deposit needs at least one contribution with a positive amount and a
-  // picked date (parsedContributions already drops blank/partial rows), EVERY
-  // row present to be either fully filled in or removed (never silently
-  // dropped — round-4 device feedback item 10), a non-negative annual rate
-  // that was actually entered, and a whole-month term greater than zero.
-  // Recapitalization and compounding always carry defaults. Not gated on
-  // whether the name is filled: the name's own required asterisk covers that
-  // separately.
-  const termDepositReasonKey = (): TermDepositReasonKey | null => {
-    if (parsedContributions().length === 0) {
-      return 'forms.holding.contributionsRequiredError';
-    }
-
-    if (contributions.some((contribution) => !isContributionRowValid(contribution))) {
-      return 'forms.holding.contributionIncompleteError';
-    }
-
-    const rate = parseAmount(annualRate);
-
-    if (annualRate.trim() === '' || !(rate >= 0)) {
-      return 'forms.holding.annualRateError';
-    }
-
-    const months = parseAmount(termMonths);
-
-    if (!(Number.isInteger(months) && months > 0)) {
-      return 'forms.holding.termMonthsError';
-    }
-
-    return null;
-  };
-
-  // Derived from `termDepositReasonKey` so the two can never disagree: valid
-  // exactly when there is no reason to reject.
-  const isTermDepositValid = (): boolean => termDepositReasonKey() === null;
-
-  // A bond needs a positive quantity and face value, a non-negative coupon that
-  // was actually entered, both dates picked, and a maturity strictly after the
-  // purchase. Coupon frequency always carries a default, so it is always valid.
-  const isBondValid = (): boolean =>
-    parseAmount(quantity) > 0 &&
-    parseAmount(faceValue) > 0 &&
-    couponPct.trim() !== '' &&
-    parseAmount(couponPct) >= 0 &&
-    purchaseDate !== null &&
-    maturityDate !== null &&
-    maturityDate > purchaseDate;
-
-  // The reason `isBondValid` above is false, for the SAME checks in the
-  // SAME priority order. A missing (not-yet-picked) date is already covered
-  // by that field's own required asterisk, so this returns null rather than
-  // a redundant "pick a date" line until BOTH dates are set — only then does
-  // an invalid ORDER between them get its own reason.
-  const bondReasonKey = (): BondReasonKey | null => {
-    if (!(parseAmount(quantity) > 0)) {
-      return 'forms.holding.quantityError';
-    }
-
-    if (!(parseAmount(faceValue) > 0)) {
-      return 'forms.holding.faceValueError';
-    }
-
-    if (couponPct.trim() === '' || !(parseAmount(couponPct) >= 0)) {
-      return 'forms.holding.couponPctError';
-    }
-
-    if (purchaseDate !== null && maturityDate !== null && maturityDate <= purchaseDate) {
-      return 'forms.holding.maturityDateError';
-    }
-
-    return null;
-  };
-
-  const isValid =
-    name.trim().length > 0 &&
-    match(type)
-      .with('term_deposit', isTermDepositValid)
-      .with('bond', isBondValid)
-      .with('card', 'cash', 'crypto_asset', 'jar', () => true)
-      .exhaustive();
+  const isValid = name.trim().length > 0 && active.isValid;
 
   const [attemptedSave, setAttemptedSave] = useState(false);
 
-  const { showNameReason } = saveReasonsFor({ attemptedSave, name });
+  // Shown only after a failed Save press: gated on `attemptedSave` so it
+  // renders nothing before the first press.
+  const showNameReason = attemptedSave && name.trim().length === 0;
+
+  // Every field shows its own error from now on; the first one still invalid
+  // scrolls into view.
+  const revealInvalid = (targets: readonly ScrollTarget[]): void => {
+    setAttemptedSave(true);
+
+    const target = targets.find((candidate) => candidate.invalid);
+
+    if (target) {
+      scrollTo(target.ref, target.focus);
+    }
+  };
+
+  // Type/currency are read-only in edit mode. The hook write carries no icon
+  // (each `saveEdit`'s own doc comment), so it is written here separately,
+  // unconditionally, so clearing a custom icon (icon === null) persists the
+  // removal rather than leaving the old glyph.
+  const saveEdit = async (editedHoldingId: string): Promise<void> => {
+    await active.saveEdit({
+      holdingId: editedHoldingId,
+      name,
+      color,
+      currency,
+      isSynced: isSyncedEdit,
+      editingHolding,
+      book: priceBook,
+    });
+    await holdingsRepo.setIcon(editedHoldingId, icon);
+
+    // A loan's principal, schedule, paymentHoldingId, lenderName, and
+    // lenderIban all stay editable — any of them can change what the
+    // matcher would now link, so an EDIT backfills too (see
+    // `runLoanAutoLinkIfLoan`'s own doc comment).
+    runLoanAutoLinkIfLoan(type);
+
+    navigation.goBack();
+  };
 
   const save = async (): Promise<void> => {
     if (!isValid) {
-      setAttemptedSave(true);
+      const nameTarget: ScrollTarget = {
+        invalid: name.trim().length === 0,
+        ref: nameFieldRef,
+        focus: () => nameInputRef.current?.focus(),
+      };
 
-      const target = firstInvalidFieldRef({
-        name,
-        type,
-        termDepositReasonKey: termDepositReasonKey(),
-        bondReasonKey: bondReasonKey(),
-        refs: {
-          nameFieldRef,
-          contributionsFieldRef,
-          annualRateFieldRef,
-          termMonthsFieldRef,
-          quantityFieldRef,
-          faceValueFieldRef,
-          couponPctFieldRef,
-          maturityDateFieldRef,
-        },
-        focus: {
-          name: () => nameInputRef.current?.focus(),
-          annualRate: () => annualRateInputRef.current?.focus(),
-          termMonths: () => termMonthsInputRef.current?.focus(),
-          quantity: () => quantityInputRef.current?.focus(),
-          faceValue: () => faceValueInputRef.current?.focus(),
-          couponPct: () => couponPctInputRef.current?.focus(),
-        },
-      });
-
-      if (target) {
-        scrollToField(
-          scrollableRef,
-          target.ref,
-          {
-            currentOffset: scrollOffset.value,
-            headerInset,
-            contentHeight: contentHeightRef.current,
-          },
-          target.focus,
-        );
-      }
+      revealInvalid([nameTarget, ...active.scrollTargets]);
 
       return;
     }
 
-    const metadata = buildMetadata();
-
     try {
       if (isEdit && holdingId !== undefined) {
-        // Update the editable fields in one transaction (see buildHoldingPatch:
-        // deposit/bond write metadata, every other type writes its balance). The
-        // icon routes through setIcon (so a cleared icon persists an explicit
-        // null), the same split the create path uses. Type/currency are read-only.
-        //
-        // `updateWithBalanceDelta`, not `update`: an edited balance also has to
-        // land on the ledger as a `manual` transaction for the difference, or the
-        // holding's history stops being derivable from its transactions and the
-        // whole past net-worth series shifts under the edit (kiko-domain). A patch
-        // with no balance in it (a deposit/bond, or a synced holding) writes no
-        // ledger row, so this is the right call for every edit.
-        await holdingsRepo.updateWithBalanceDelta(
-          holdingId,
-          buildHoldingPatch({
-            name,
-            color,
-            type,
-            currency,
-            openingBalance,
-            metadata,
-            isSynced: isSyncedEdit,
-          }),
-          Date.now(),
-        );
-
-        // Write the icon unconditionally in edit mode so clearing a custom icon
-        // (icon === null) persists the removal rather than leaving the old glyph.
-        await holdingsRepo.setIcon(holdingId, icon);
-
-        navigation.goBack();
+        await saveEdit(holdingId);
 
         return;
       }
 
-      const newHoldingId = await holdingsRepo.create({
-        accountId,
+      // Every ledgerless type (property/metal/loan/deposit/bond)'s
+      // `createPayload` writes a zero stored balance — its value derives
+      // entirely from its own lots/schedule. Only `useBalanceFields`
+      // (card/cash/crypto_asset/jar) reads its own live opening-balance field.
+      const newHoldingId = await createHolding(target, {
         name,
         type,
         currency,
-        balanceMinorUnits: Money.fromMajor(currency, parseAmount(openingBalance) || 0).minorUnits,
-        metadata,
         // Persist the color only when the user picked one (dirty). Left null, the
         // row follows its type's default at display time — the same fallback the
         // icon uses — so a type-default color is not frozen onto the row.
         color,
+        // The icon goes in the create's own write: a second write could fail
+        // after the row exists, and the retry would then insert it again.
+        icon,
+        ...active.createPayload(),
       });
 
-      // Persist the chosen icon on the freshly-created row, using the id the
-      // create resolved to. Awaited so it commits before navigating away.
-      if (icon !== null) {
-        await holdingsRepo.setIcon(newHoldingId, icon);
-      }
+      // The FIRST metal, foreign-currency, or crypto holding needs its
+      // price/rate visible without an app restart — trigger the SAME gated
+      // refresh app-open runs, unthrottled (a manual create is a deliberate
+      // user action, not a background poll). Every step gates itself on
+      // data presence (kiko-architecture), so this is a no-op for a
+      // type/currency that needs none of them. `refreshMarketData` never rejects
+      // and logs its own failure, so it never turns a successful create into
+      // a shown error. Fire-and-forget (not awaited): the refresh is a
+      // background nicety, not a save precondition — Save must not sit on
+      // the network before navigating back; only fire the refresh after the
+      // write commits.
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
+      refreshMarketData({ throttled: false, metals: true });
+      // A freshly created loan can already have past ledger history worth
+      // backfilling (see `runLoanAutoLinkIfLoan`'s own doc comment).
+      runLoanAutoLinkIfLoan(type);
 
-      navigation.goBack();
+      // A `returnTo` route param (set only by the "Create new holding" entry
+      // points on StatementImport/ColumnMapping) carries that screen's own
+      // full params plus a `screen` discriminant — this create was launched
+      // from THAT screen's own target-holding picker, so pop back to it with
+      // `holdingId` merged in, rather than a bare `goBack()`, which handed
+      // back no id and left the just-created holding unselected even though
+      // it already showed in the list. This is `popTo`, NOT `navigate`:
+      // React Navigation 7's `navigate(name, params)` PUSHES a duplicate of
+      // an already-on-stack route unless it is the CURRENT route, `getId`
+      // matches, or `{ pop: true }` is passed
+      // (`node_modules/@react-navigation/routers/src/StackRouter.tsx`'s
+      // `NAVIGATE` case) — none of which apply here. `popTo` reuses the
+      // existing StatementImport/ColumnMapping instance in place (its own
+      // local React state, e.g. the user's already-picked columns, survives)
+      // and merges `holdingId` into its params; see
+      // `src/navigation/root-navigator/statement-import-return.navigator.test.tsx` for the
+      // real-router proof a `navigationSpy` test cannot give. `ts-pattern`'s
+      // exhaustive match narrows the union so each branch's `params`
+      // type-checks against its own screen (kiko-code-style). Every other
+      // HoldingForm entry point carries no `returnTo` and keeps the plain
+      // `goBack()`.
+      if (returnTo === undefined) {
+        navigation.goBack();
+      } else {
+        match(returnTo)
+          .with({ screen: 'StatementImport' }, ({ params }) =>
+            navigation.popTo(
+              'StatementImport',
+              { ...params, holdingId: newHoldingId },
+              { merge: true },
+            ),
+          )
+          .with({ screen: 'ColumnMapping' }, ({ params }) =>
+            navigation.popTo(
+              'ColumnMapping',
+              { ...params, holdingId: newHoldingId },
+              { merge: true },
+            ),
+          )
+          .exhaustive();
+      }
     } catch {
       // Mirrors contribution-form's and account-form's Alert pattern: a write
       // failure keeps the screen open with the entered values intact, rather
       // than navigating away as if nothing was wrong.
-      Alert.alert(t('forms.fields.saveErrorTitle'), t('forms.fields.saveErrorMessage'));
+      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
     }
   };
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
-  // Computed once here (rather than inline at each render site below) so the
-  // group `<FieldError>`'s own `message` prop reuses this exact string
-  // instead of calling `t()` a second time for the same key.
-  const contributionsRequiredMessage = fieldErrorMessage(
-    t,
-    attemptedSave,
-    termDepositReasonKey(),
-    'forms.holding.contributionsRequiredError',
-  );
-  const contributionIncompleteMessage = fieldErrorMessage(
-    t,
-    attemptedSave,
-    termDepositReasonKey(),
-    'forms.holding.contributionIncompleteError',
-  );
-  const maturityDateErrorMessage = fieldErrorMessage(
-    t,
-    attemptedSave,
-    bondReasonKey(),
-    'forms.holding.maturityDateError',
-  );
-
   return (
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
-      onContentSizeChange={(_width, height) => {
-        contentHeightRef.current = height;
-      }}
+      automaticallyAdjustKeyboardInsets={!isSearchSheetOpen}
+      onContentSizeChange={onContentSizeChange}
       footer={
-        <Button onPress={onSave} disabled={isSubmitting}>
+        <Button onPress={onSave} disabled={isSubmitting || (isEdit && isPriceBookLoading)}>
           {t('common.save')}
         </Button>
       }
@@ -890,15 +699,18 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       <Box gap={4} testID="holding-form">
         <View ref={nameFieldRef}>
           <HoldingIdentityField
-            icons={KIKO_ENTITIES_ICONS}
+            icons={holdingIconPool}
             icon={icon}
-            fallbackIcon={holdingTypeSymbol[type]}
+            fallbackIcon={defaultHoldingSymbol({
+              type,
+              metadata: { category: property.category, kind: loanFields.kind },
+            })}
             iconColor={effectiveColor}
             name={name}
             onChangeName={setName}
             onSelectIcon={setIcon}
             onRemoveIcon={() => setIcon(null)}
-            namePlaceholder={t('forms.holding.namePlaceholder')}
+            namePlaceholder={namePlaceholders[type]}
             required
             error={showNameReason ? t('forms.fields.nameRequiredError') : undefined}
             nameInputRef={nameInputRef}
@@ -910,6 +722,23 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
         <Divider testID="form-divider" />
 
+        {/* Where the account form's kind field sits, so picking Property or Loan
+            there swaps the fields below it and leaves this one in place. */}
+        {match(target)
+          .with({ kind: 'implicit' }, ({ implicitKind }) => (
+            <AccountKindField
+              selected={shownKind(implicitKind, leavingKind)}
+              onSelect={(kind) => retargetImplicitKind(navigation, kind, setLeavingKind)}
+              onSelectClosed={(kind) =>
+                leaveForAccountForm(navigation, kind, { name, icon, color })
+              }
+              closesWithoutAnimation={isLeavingKind}
+              disabled={false}
+            />
+          ))
+          .with({ kind: 'account' }, () => null)
+          .exhaustive()}
+
         {/* A holding's type shapes its metadata and value math, and its currency
             fixes the unit of every stored balance/transaction; no repo path
             re-shapes either, so both are read-only in edit mode — shown, but not
@@ -918,301 +747,89 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             bank create offers only term_deposit / bond. Edit mode uses the full
             set so an existing synced card/jar row still displays its (read-only)
             type. */}
-        <ChipRow
-          label={t('forms.holding.type')}
-          options={typeOptions}
-          selected={type}
-          onSelect={setType}
-          labels={typeLabels}
-          icons={holdingTypeSymbol}
-          disabled={isEdit}
-        />
+        {/* A select sheet, mirroring AccountKindField — up to 9 long type
+            names (e.g. "Строковий депозит") run too wide for a chip row.
+            `typeSlotFor` picks which field fills the slot. */}
+        {match(typeSlotFor(accountKind, typeOptions, isEdit, type))
+          .with({ kind: 'property' }, () => (
+            <PropertyTypeField
+              selected={property.category}
+              onSelect={property.setCategory}
+              testID="property-category-field"
+            />
+          ))
+          .with({ kind: 'loan' }, () => (
+            <LoanKindField
+              selected={loanFields.kind}
+              onSelect={loanFields.setKind}
+              testID="loan-kind-field"
+            />
+          ))
+          .with({ kind: 'metal' }, ({ otherTypes }) => (
+            <MetalTypeField
+              otherTypes={otherTypes}
+              typeLabels={typeLabels}
+              type={type}
+              metal={metal.metal}
+              onSelectType={setType}
+              onSelectMetal={metal.setMetal}
+              testID="holding-type-field"
+            />
+          ))
+          .with({ kind: 'generic' }, () => (
+            <HoldingTypeField
+              options={typeOptions}
+              selected={type}
+              onSelect={setType}
+              labels={typeLabels}
+              icons={holdingTypeSymbol}
+              disabled={isEdit}
+              testID="holding-type-field"
+            />
+          ))
+          .exhaustive()}
 
-        <CurrencyField
-          label={t('forms.fields.currency')}
-          selected={currency}
-          onSelect={setCurrency}
-          disabled={isEdit}
-          onOpenChange={setIsCurrencySheetOpen}
-          testID="holding-currency-field"
-        />
-
-        {type !== 'term_deposit' && type !== 'bond' && !isSyncedEdit && (
-          <TextField
-            label={t('forms.holding.balance')}
-            value={openingBalance}
-            onChangeText={(text) => setOpeningBalance(groupAmount(text))}
-            keyboardType="decimal-pad"
-            placeholder={t('forms.holding.balancePlaceholder')}
-            suffix={currencySymbol[currency]}
+        {/* A holding type with a fixed currency (today, only `metal` — NBU
+            quotes precious metals only in UAH, kiko-pricing) offers no
+            currency picker at all — the effect above keeps `currency` at
+            that fixed value underneath regardless of what this field would
+            otherwise show. */}
+        {holdingDescriptor(type).fixedCurrency === null && (
+          <CurrencyField
+            label={t('forms.fields.currency')}
+            sheetTitle={t('forms.fields.currencySheetTitle')}
+            selected={currency}
+            onSelect={setCurrency}
+            options={holdingCurrencyOptions(type)}
+            cryptoFirst={type === 'crypto_asset'}
+            disabled={isEdit}
+            onOpenChange={setIsSearchSheetOpen}
+            testID="holding-currency-field"
           />
         )}
 
-        {type === 'term_deposit' && (
-          <Box gap={4}>
-            <Divider testID="form-divider" />
-
-            <Text variant="heading">{t('forms.holding.contributions')}</Text>
-
-            {/* The mapped contributions and the inline Add button form ONE
-                group under a tighter inner gap (spacing(2) = 8pt), so the small
-                Add button hugs the list — ~8pt below the last contribution —
-                rather than sitting the section's full spacing(4) = 16pt below
-                it. That 16pt is the uniform outer-section gap between
-                full-height rows (headings, dividers, the balance group); above
-                a short `size="small"` button, and right after each
-                contribution's own tight 8pt internal rhythm, it read as a
-                disproportionate top gap (the Add button is NOT the shared
-                Screen footer, so last round's footer-padding fix never touched
-                it). The contributions keep their own spacing(4) = 16pt
-                separation from each other via the inner list Box, so distinct
-                contributions stay visually distinct. */}
-            <Box gap={2} testID="contributions-group">
-              <Box gap={4}>
-                {contributions.map((contribution, index) => (
-                  <View
-                    key={contribution.id}
-                    // Row 0 anchors `contributionsFieldRef` (the Save-invalid
-                    // scroll target, unchanged); the LAST row additionally
-                    // anchors `lastContributionFieldRef` (round-6 item 3's
-                    // add-row scroll target) — a callback ref, since a single
-                    // native element can only take one `ref` prop, and a
-                    // one-row list satisfies both conditions on the SAME node.
-                    ref={(node) => {
-                      if (index === 0) {
-                        contributionsFieldRef.current = node;
-                      }
-                      if (index === contributions.length - 1) {
-                        lastContributionFieldRef.current = node;
-                      }
-                    }}
-                  >
-                    <Box gap={2}>
-                      <TextField
-                        label={t('forms.holding.contributionAmount', { index: index + 1 })}
-                        value={contribution.amount}
-                        onChangeText={(next) => updateContributionAmount(index, groupAmount(next))}
-                        keyboardType="decimal-pad"
-                        placeholder={t('forms.holding.contributionPlaceholder')}
-                        suffix={currencySymbol[currency]}
-                        required
-                      />
-
-                      <DateField
-                        label={t('forms.holding.contributionDate', { index: index + 1 })}
-                        value={contribution.date}
-                        onChange={(next) => updateContributionDate(index, next)}
-                        placeholder={t('forms.holding.selectDatePlaceholder')}
-                        required
-                      />
-
-                      {index === 0 && contributionsRequiredMessage !== undefined && (
-                        <FieldError message={contributionsRequiredMessage} />
-                      )}
-
-                      {/* A row left blank or half-filled once at least one
-                        OTHER row is already valid — `contributionsRequiredMessage`
-                        above only fires when EVERY row is empty, so this
-                        catches the row `parsedContributions` would otherwise
-                        silently drop (round-4 device feedback item 10). */}
-                      {contributionIncompleteMessage !== undefined &&
-                        !isContributionRowValid(contribution) && (
-                          <FieldError message={contributionIncompleteMessage} />
-                        )}
-
-                      {contributions.length > 1 && (
-                        <Button
-                          variant="destructiveTonal"
-                          size="small"
-                          fullWidth={false}
-                          icon="trash"
-                          disabled={contribution.saved}
-                          accessibilityLabel={t('forms.holding.removeContribution', {
-                            index: index + 1,
-                          })}
-                          onPress={() => removeContribution(index)}
-                        >
-                          {t('forms.holding.remove')}
-                        </Button>
-                      )}
-                    </Box>
-                  </View>
-                ))}
-              </Box>
-
-              <Button
-                variant="secondaryTonal"
-                size="small"
-                fullWidth={false}
-                icon="plus"
-                onPress={addContribution}
-              >
-                {t('forms.holding.addContribution')}
-              </Button>
-            </Box>
-
-            <Divider testID="form-divider" />
-
-            <Text variant="heading">{t('forms.holding.terms')}</Text>
-
-            <View ref={annualRateFieldRef}>
-              <TextField
-                label={t('forms.holding.annualRatePct')}
-                value={annualRate}
-                onChangeText={setAnnualRate}
-                keyboardType="decimal-pad"
-                placeholder={t('forms.holding.annualRatePlaceholder')}
-                required
-                error={fieldErrorMessage(
-                  t,
-                  attemptedSave,
-                  termDepositReasonKey(),
-                  'forms.holding.annualRateError',
-                )}
-                inputRef={annualRateInputRef}
-              />
-            </View>
-
-            <View ref={termMonthsFieldRef}>
-              <TextField
-                label={t('forms.holding.termMonths')}
-                value={termMonths}
-                onChangeText={setTermMonths}
-                keyboardType="number-pad"
-                placeholder={t('forms.holding.termMonthsPlaceholder')}
-                required
-                error={fieldErrorMessage(
-                  t,
-                  attemptedSave,
-                  termDepositReasonKey(),
-                  'forms.holding.termMonthsError',
-                )}
-                inputRef={termMonthsInputRef}
-              />
-            </View>
-
-            <Switch
-              label={t('forms.holding.recapitalization')}
-              value={recapitalization}
-              onValueChange={setRecap}
+        {match(type)
+          .with('term_deposit', () => (
+            <TermDepositFormBlock fields={deposit} attemptedSave={attemptedSave} />
+          ))
+          .with('bond', () => <BondFormBlock fields={bond} attemptedSave={attemptedSave} />)
+          .with('property_item', () => (
+            <PropertyFormBlock fields={property} attemptedSave={attemptedSave} isEdit={isEdit} />
+          ))
+          .with('metal', () => (
+            <MetalFormBlock fields={metal} attemptedSave={attemptedSave} isEdit={isEdit} />
+          ))
+          .with('loan', () => (
+            <LoanFormBlock
+              fields={loanFields}
+              attemptedSave={attemptedSave}
+              paymentHoldingOptions={paymentHoldingOptions}
             />
-
-            <ChipRow
-              label={t('forms.holding.compounding')}
-              options={compoundingOptions}
-              selected={compounding}
-              onSelect={setCompounding}
-              labels={compoundingLabels}
-            />
-          </Box>
-        )}
-
-        {type === 'bond' && (
-          <Box gap={4}>
-            <Divider testID="form-divider" />
-
-            <Text variant="heading">{t('forms.holding.details')}</Text>
-
-            <View ref={quantityFieldRef}>
-              <TextField
-                label={t('forms.holding.quantity')}
-                value={quantity}
-                onChangeText={(text) => setQuantity(groupAmount(text))}
-                keyboardType="number-pad"
-                placeholder={t('forms.holding.quantityPlaceholder')}
-                required
-                error={fieldErrorMessage(
-                  t,
-                  attemptedSave,
-                  bondReasonKey(),
-                  'forms.holding.quantityError',
-                )}
-                inputRef={quantityInputRef}
-              />
-            </View>
-
-            <View ref={faceValueFieldRef}>
-              <TextField
-                label={t('forms.holding.faceValue')}
-                value={faceValue}
-                onChangeText={(text) => setFaceValue(groupAmount(text))}
-                keyboardType="decimal-pad"
-                placeholder={t('forms.holding.faceValuePlaceholder')}
-                suffix={currencySymbol[currency]}
-                required
-                error={fieldErrorMessage(
-                  t,
-                  attemptedSave,
-                  bondReasonKey(),
-                  'forms.holding.faceValueError',
-                )}
-                inputRef={faceValueInputRef}
-              />
-            </View>
-
-            <View ref={couponPctFieldRef}>
-              <TextField
-                label={t('forms.holding.couponPct')}
-                value={couponPct}
-                onChangeText={setCouponPct}
-                keyboardType="decimal-pad"
-                placeholder={t('forms.holding.couponPlaceholder')}
-                required
-                error={fieldErrorMessage(
-                  t,
-                  attemptedSave,
-                  bondReasonKey(),
-                  'forms.holding.couponPctError',
-                )}
-                inputRef={couponPctInputRef}
-              />
-            </View>
-
-            <TextField
-              label={t('forms.holding.purchasePrice')}
-              value={purchasePrice}
-              onChangeText={(text) => setPurchasePrice(groupAmount(text))}
-              keyboardType="decimal-pad"
-              placeholder={t('forms.holding.purchasePricePlaceholder')}
-              suffix={currencySymbol[currency]}
-            />
-
-            <DateField
-              label={t('forms.holding.purchaseDate')}
-              value={purchaseDate}
-              onChange={setPurchaseDate}
-              placeholder={t('forms.holding.selectDatePlaceholder')}
-              required
-            />
-
-            <View ref={maturityDateFieldRef} testID="maturity-date-field">
-              <DateField
-                label={t('forms.holding.maturityDate')}
-                value={maturityDate}
-                onChange={setMaturityDate}
-                placeholder={t('forms.holding.selectDatePlaceholder')}
-                required
-                error={maturityDateErrorMessage}
-              />
-            </View>
-
-            <ChipRow
-              label={t('forms.holding.bondKind')}
-              options={bondKinds}
-              selected={bondKind}
-              onSelect={setBondKind}
-              labels={bondKindLabels}
-            />
-
-            <ChipRow
-              label={t('forms.holding.couponFrequency')}
-              options={couponFrequencies}
-              selected={couponFrequency}
-              onSelect={setCouponFrequency}
-              labels={couponFrequencyLabels}
-            />
-          </Box>
-        )}
+          ))
+          .with('card', 'cash', 'crypto_asset', 'jar', () => (
+            <BalanceFormBlock fields={balance} isSyncedEdit={isSyncedEdit} />
+          ))
+          .exhaustive()}
       </Box>
     </Screen>
   );

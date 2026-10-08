@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { decode as decodeWindows1251 } from 'windows-1251';
+import { StatementParseError } from '@kiko/statement-import/parser';
 
-import { StatementParseError } from '../../parser';
 import { PRIVATBANK_TITLE_PREFIX } from '../privatbank-xlsx';
 
 import {
@@ -18,12 +18,11 @@ import {
 
 // The REAL uabean fixture (C.4, NOTICE.md) — confirmed SYNTHETIC (placeholder
 // IBAN, test-card Visa number, year-2000 dates) — reused byte for byte,
-// cp1251-encoded, exactly as committed (task-4-report.md confirms the copy's
-// checksum matches the clone it came from). Decoded here via the REAL
+// cp1251-encoded, exactly as committed (a checksum confirms the copy
+// matches the clone it came from). Decoded here via the REAL
 // `windows-1251` library, the SAME decode step the screen's cp1251 fallback
 // will perform before handing text to this format — `sensebankCsvFormat`
-// itself stays text-based (section C.2's KEY DESIGN), never touching raw
-// bytes.
+// itself stays text-based, never touching raw bytes.
 const fixtureBytes = readFileSync(path.join(__dirname, '__fixtures__/uabean-sensebank-sample.csv'));
 const fixtureText = decodeWindows1251(fixtureBytes);
 const fixtureInput = { text: fixtureText, fileName: 'uabean-sensebank-sample.csv' };
@@ -53,9 +52,9 @@ const preambleLines = [
   HEADER_ROW.join(';'),
 ].join('\n');
 
-// Task 3 review precedent (NaN guard, IMPORTANT): neither the debit nor the
-// credit cell is populated — an empty or malformed amount cell must never
-// reach `Money.fromMajor` as `NaN`. Sensebank has no PrivatBank-style
+// The NaN guard: neither the debit nor the credit cell is populated — an
+// empty or malformed amount cell must never reach `Money.fromMajor` as
+// `NaN`. Sensebank has no PrivatBank-style
 // "unresolved rows" concept (its currency is a single regex match, not a
 // per-row word lookup), so this format follows Monobank's convention: throw
 // `StatementParseError` rather than silently writing `NaN`.
@@ -69,6 +68,37 @@ const malformedDateInput = {
   fileName: 'malformed-date.csv',
 };
 
+// The pattern matches (two digits per field) but the day doesn't exist —
+// `Date.UTC` would otherwise silently roll it into 1 March instead of
+// rejecting it, the same round-trip guard `parseDateTimeSeconds` and
+// `date-formats.ts`'s presets already apply.
+const rolloverDateInput = {
+  text: `${preambleLines}\n31.02.26 10:00;виконано;Інше;Rollover Date Row;Kyiv, UKR;;-1,00;`,
+  fileName: 'rollover-date.csv',
+};
+
+// 2024 is a leap year: 29 February is a real calendar day and must parse.
+const leapDayInput = {
+  text: `${preambleLines}\n29.02.24 10:00;виконано;Інше;Leap Day Row;Kyiv, UKR;;-1,00;`,
+  fileName: 'leap-day.csv',
+};
+
+// 2025 is NOT a leap year: 29 February rolls into 1 March and must be
+// rejected the same way the plain rollover case is.
+const nonLeapDayInput = {
+  text: `${preambleLines}\n29.02.25 10:00;виконано;Інше;Non-Leap Day Row;Kyiv, UKR;;-1,00;`,
+  fileName: 'non-leap-day.csv',
+};
+
+// Money-safety guard (mirrors `business-csv`'s Дебет XOR Кредит guard): a row
+// carrying BOTH a debit AND a credit amount is not a valid single-amount
+// row — silently preferring one side (the old `||` fallback) would drop the
+// other without a trace, so this must throw rather than guess.
+const bothDebitAndCreditInput = {
+  text: `${preambleLines}\n09.01.00 00:58;виконано;Інше;Both Amounts Row;Kyiv, UKR;;-150,00;1000,00`,
+  fileName: 'both-debit-and-credit.csv',
+};
+
 const noAccountLineInput = {
   text: [
     SENSEBANK_PREAMBLE,
@@ -80,8 +110,8 @@ const noAccountLineInput = {
 };
 
 // The exported constants ARE the real contract a kiko:developer implements
-// `detect`/`parse` against (section C.2) — pinned here, verified against the
-// REAL fixture's bytes (task-4-report.md), so a future edit that silently
+// `detect`/`parse` against — pinned here, verified against the
+// REAL fixture's bytes, so a future edit that silently
 // drifts the preamble, the account-line regex, the header row (note the
 // LATIN "C" in "Cума"), the skip prefixes, the column order, or the date
 // pattern is caught by a real assertion.
@@ -109,7 +139,7 @@ describe('sensebank-csv format constants', () => {
       'Cума зарахування',
     ]);
     // U+0043 LATIN CAPITAL LETTER C, not U+0421 CYRILLIC CAPITAL LETTER ES —
-    // verified against the real fixture's own bytes (task-4-report.md); a
+    // verified against the real fixture's own bytes; a
     // hand-typed Cyrillic "С" would silently never match a real export.
     expect(HEADER_ROW[6].codePointAt(0)).toBe(0x43);
     expect(HEADER_ROW[7].codePointAt(0)).toBe(0x43);
@@ -197,7 +227,7 @@ describe('sensebankCsvFormat.parse', () => {
     const first = parsed.transactions[0];
 
     expect(first.amountMinorUnits).toBe(-15_000);
-    expect(first.timeSeconds).toBe(947_379_480);
+    expect(first.timeSeconds).toBe(947_372_280);
     expect(first.description).toBe('Щомісячна комісія за обслуговування пакета банківських послуг');
     expect(first.mcc).toBeUndefined();
   });
@@ -209,7 +239,7 @@ describe('sensebankCsvFormat.parse', () => {
     const second = parsed.transactions[1];
 
     expect(second.amountMinorUnits).toBe(1_000_013);
-    expect(second.timeSeconds).toBe(948_802_320);
+    expect(second.timeSeconds).toBe(948_795_120);
     expect(second.description).toBe('Перерахування чистого підприємницького доходу, без ПДВ');
     expect(second.mcc).toBeUndefined();
   });
@@ -222,7 +252,7 @@ describe('sensebankCsvFormat.parse', () => {
     const fifth = parsed.transactions[4];
 
     expect(fifth.amountMinorUnits).toBe(-158_582);
-    expect(fifth.timeSeconds).toBe(947_090_580);
+    expect(fifth.timeSeconds).toBe(947_083_380);
     expect(fifth.description).toBe('Зняття готівки в банкоматі');
     expect(fifth.mcc).toBe(6011);
   });
@@ -235,7 +265,7 @@ describe('sensebankCsvFormat.parse', () => {
     const last = parsed.transactions[5];
 
     expect(last.amountMinorUnits).toBe(160_000);
-    expect(last.timeSeconds).toBe(947_087_700);
+    expect(last.timeSeconds).toBe(947_080_500);
     expect(last.description).toBe('Переказ з картки на картку (зарахування)');
     expect(last.mcc).toBe(4829);
   });
@@ -250,6 +280,14 @@ describe('sensebankCsvFormat.parse', () => {
     expect(fourth.mcc).toBe(7311);
   });
 
+  it('marks every row as read off a clock that shows minutes only', () => {
+    const parsed = sensebankCsvFormat.parse(fixtureInput);
+
+    expect(parsed.transactions.map((transaction) => transaction.timeReading)).toEqual(
+      parsed.transactions.map(() => ({ kind: 'minute' })),
+    );
+  });
+
   it('throws a StatementParseError instead of writing a NaN amount when both debit and credit are empty', () => {
     expect(() => sensebankCsvFormat.parse(malformedAmountInput)).toThrow(StatementParseError);
   });
@@ -258,7 +296,25 @@ describe('sensebankCsvFormat.parse', () => {
     expect(() => sensebankCsvFormat.parse(malformedDateInput)).toThrow(StatementParseError);
   });
 
+  it('throws a StatementParseError for a date that rolls over (February has no 31st)', () => {
+    expect(() => sensebankCsvFormat.parse(rolloverDateInput)).toThrow(StatementParseError);
+  });
+
+  it('accepts 29 February on a leap year (2024)', () => {
+    const parsed = sensebankCsvFormat.parse(leapDayInput);
+
+    expect(parsed.transactions[0].timeSeconds).toBe(Date.UTC(2024, 1, 29, 8, 0, 0) / 1000);
+  });
+
+  it('throws a StatementParseError for 29 February on a non-leap year (2025)', () => {
+    expect(() => sensebankCsvFormat.parse(nonLeapDayInput)).toThrow(StatementParseError);
+  });
+
   it('throws a StatementParseError when no "Рахунок … (…)" account line is present', () => {
     expect(() => sensebankCsvFormat.parse(noAccountLineInput)).toThrow(StatementParseError);
+  });
+
+  it('throws a StatementParseError instead of silently dropping the credit when both debit and credit are populated', () => {
+    expect(() => sensebankCsvFormat.parse(bothDebitAndCreditInput)).toThrow(StatementParseError);
   });
 });

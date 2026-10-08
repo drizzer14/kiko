@@ -1,7 +1,7 @@
-// Column layout verified against docs/plans/statement-import.md section C.2
+// Column layout verified against docs/plans/statement-import.md
 // (grounded in OSadovy/uabean's Sensebank CSV importer facts, cross-checked
-// against the REAL fixture bytes this task copied — see
-// src/statement-import/NOTICE.md) — see task-4-report.md for the exact
+// against the REAL fixture bytes — see
+// src/statement-import/NOTICE.md for the exact
 // per-line facts recorded from reading the fixture. No uabean source is
 // reused; this is an independent TypeScript implementation. The fixture this
 // format is tested against
@@ -9,31 +9,30 @@
 // confirmed synthetic (placeholder IBAN, test-card Visa number, year-2000
 // dates), unlike PrivatBank XLSX's hand-authored one.
 import Papa from 'papaparse';
+import {
+  type ParsedStatement,
+  type ParsedTransaction,
+  type StatementFormat,
+  type StatementFormatInput,
+  StatementParseError,
+} from '@kiko/statement-import/parser';
+import { Money } from '@kiko/currency/money';
+import { parseAmount } from '@kiko/currency/parse';
+import { kyivWallClockToUtcMilliseconds } from '@kiko/dates';
+import { type Currency, isCurrency } from '@kiko/currency/currency';
 
-import type {
-  ParsedStatement,
-  ParsedTransaction,
-  StatementFormat,
-  StatementFormatInput,
-} from '../../parser';
-import { Money } from '../../../currency/money';
-import { StatementParseError } from '../../parser';
-import { parseAmount } from '../../../currency/parse';
-import { isCurrency } from '../../../currency/currency';
-import type { Currency } from '../../../currency/currency';
-
-// Section C.2: "Detect signature — file content starts with the literal
-// preamble line `Виписка за рахунком;;;;;;;`". Verified byte-for-byte
-// against the real fixture's first line (task-4-report.md).
+// Detect signature: file content starts with the literal preamble line
+// `Виписка за рахунком;;;;;;;`. Verified byte-for-byte
+// against the real fixture's first line.
 export const SENSEBANK_PREAMBLE = 'Виписка за рахунком;;;;;;;';
 
-// Section C.2: "an account line matching `Рахунок (\w+) \((\w+)\)` → IBAN +
-// CURRENCY". Verified against the real fixture's 4th line:
+// An account line matching `Рахунок (\w+) \((\w+)\)` → IBAN + CURRENCY.
+// Verified against the real fixture's 4th line:
 // "Рахунок UA111111111111111111111111111 (UAH);;;;;;;".
 export const ACCOUNT_LINE_PATTERN = /Рахунок (\w+) \((\w+)\)/;
 
 // The repeated per-block header row, verified EXACTLY against the real
-// fixture's bytes (task-4-report.md) — note the FIRST "Cума" cell starts
+// fixture's bytes — note the FIRST "Cума" cell starts
 // with a LATIN capital "C" (U+0043), not the visually-identical Cyrillic
 // "С" (U+0421), in BOTH amount column headers. A naive hand-typed Cyrillic
 // "С" would silently never match a real Sensebank export.
@@ -48,12 +47,12 @@ export const HEADER_ROW = [
   'Cума зарахування',
 ] as const;
 
-// Section C.2: skip every line starting with either literal prefix — a
-// section/subtotal marker between (or after) the repeated header+rows
-// blocks. Verified against the real fixture: TWO "Деталізація операцій…"
-// lines are present (one per block); "Вклади гарантуються" is NOT present in
-// this particular fixture but is still guarded per the plan's own C.2 fact
-// (a deposit-guarantee disclaimer footer uabean's own importer also skips).
+// Skip every line starting with either literal prefix — a section/subtotal
+// marker between (or after) the repeated header+rows blocks. Verified against
+// the real fixture: TWO "Деталізація операцій…" lines are present (one per
+// block); "Вклади гарантуються" is NOT present in this particular fixture but
+// is still guarded (a deposit-guarantee disclaimer footer uabean's own
+// importer also skips).
 export const SECTION_SKIP_PREFIX = 'Деталізація операцій';
 export const GUARANTEE_SKIP_PREFIX = 'Вклади гарантуються';
 
@@ -70,7 +69,7 @@ export const COLUMN = {
   credit: 7,
 } as const;
 
-// Section C.2: "DD.MM.YY HH:MM (2-digit year)" — deliberately NOT the shared
+// "DD.MM.YY HH:MM" (2-digit year) — deliberately NOT the shared
 // `parseDateTimeSeconds` helper (Monobank/PrivatBank's `DD.MM.YYYY
 // HH:MM:SS`, seconds precision) — Sensebank has its own 2-digit-year,
 // minute-precision shape.
@@ -84,7 +83,7 @@ const detect = (input: StatementFormatInput): boolean => input.text.startsWith(S
 const isHeaderRow = (row: string[]): boolean =>
   row.length === HEADER_ROW.length && HEADER_ROW.every((cell, index) => row[index] === cell);
 
-// Scans every row for the account preamble line (section C.2) — resolves the
+// Scans every row for the account preamble line — resolves the
 // file's single account currency (and IBAN) once, up front, rather than
 // re-deriving it per row. Throws when no such line is present at all, or the
 // captured currency word isn't one Kiko recognizes — a Sensebank file with no
@@ -105,9 +104,13 @@ const resolveAccount = (rows: string[][]): { currency: Currency; iban: string } 
   );
 };
 
-// Section C.2: "DD.MM.YY HH:MM (2-digit year)" — its own parse, deliberately
+// "DD.MM.YY HH:MM" (2-digit year) — its own parse, deliberately
 // not the shared `parseDateTimeSeconds` helper (see `SENSEBANK_DATE_PATTERN`'s
-// doc comment above).
+// doc comment above), but the same shared `kyivWallClockToUtcMilliseconds`
+// reads the wall clock as Europe/Kyiv local time and rejects a rollover — an
+// out-of-range day ("31.02.26") silently landing on a DIFFERENT, wrong
+// calendar instant — the same way every other bank-export date parser in
+// this project does.
 const parseSensebankDateSeconds = (raw: string): number => {
   const match = SENSEBANK_DATE_PATTERN.exec(raw);
 
@@ -116,25 +119,41 @@ const parseSensebankDateSeconds = (raw: string): number => {
   }
 
   const [, day, month, year, hour, minute] = match;
-  const millis = Date.UTC(
-    2000 + Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-    0,
-  );
+  const milliseconds = kyivWallClockToUtcMilliseconds({
+    year: 2000 + Number(year),
+    month: Number(month),
+    day: Number(day),
+    hour: Number(hour),
+    minute: Number(minute),
+    second: 0,
+  });
 
-  return millis / 1000;
+  if (milliseconds === undefined) {
+    throw new StatementParseError(`Unrecognized Sensebank date: "${raw}"`);
+  }
+
+  return milliseconds / 1000;
 };
 
-// Controller ruling 3: the debit cell's raw text already carries its own
-// leading minus sign (e.g. "-150,00"); the credit cell is unsigned positive —
-// no manual negation anywhere. Controller ruling 5 (Task 3 review precedent):
-// guards against ever computing a `NaN` `amountMinorUnits` — an empty or
-// malformed debit/credit pair throws rather than silently writing `NaN`.
+// The debit cell's raw text already carries its own leading minus sign
+// (e.g. "-150,00"); the credit cell is unsigned positive — no manual
+// negation anywhere. An empty or malformed debit/credit pair throws
+// rather than silently computing a `NaN` `amountMinorUnits`. A row carrying
+// BOTH a debit AND a credit is not a valid single-amount row at
+// all (money-safety review, mirrors `business-csv`'s Дебет/Кредит guard) —
+// silently preferring the debit side would drop the credit amount without a
+// trace, so this throws instead of guessing.
 const parseRowAmountMinorUnits = (row: string[], currency: Currency): number => {
-  const raw = row[COLUMN.debit] || row[COLUMN.credit];
+  const debitRaw = row[COLUMN.debit];
+  const creditRaw = row[COLUMN.credit];
+
+  if (debitRaw && creditRaw) {
+    throw new StatementParseError(
+      `Sensebank row carries both a "Cума списання" ("${debitRaw}") and a "Cума зарахування" ("${creditRaw}") amount`,
+    );
+  }
+
+  const raw = debitRaw || creditRaw;
   const major = parseAmount(raw);
 
   if (!Number.isFinite(major)) {
@@ -150,11 +169,12 @@ const parseDataRow = (row: string[], currency: Currency): ParsedTransaction => (
   currency,
   amountMinorUnits: parseRowAmountMinorUnits(row, currency),
   timeSeconds: parseSensebankDateSeconds(row[COLUMN.date]),
+  timeReading: { kind: 'minute' },
   description: row[COLUMN.details],
   mcc: parseMcc(row[COLUMN.mcc]),
 });
 
-// Section C.2: the file can carry ONE OR MORE repeated header+rows blocks
+// The file can carry ONE OR MORE repeated header+rows blocks
 // under the one account (a block per card). A row only counts as data while
 // "inside" a block — after its own `HEADER_ROW` line and before the next
 // section/footer skip line — so every preamble/metadata line before the

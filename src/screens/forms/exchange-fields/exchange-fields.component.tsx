@@ -1,12 +1,9 @@
 import type { FC } from 'react';
-import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
-
-import DateTimeRow from '../date-time-row';
-import Box from '../../../design-system/components/box';
-import HoldingSelectField from '../holding-select-field';
-import TextField from '../../../design-system/components/text-field';
-import FieldError from '../../../design-system/components/field-error';
+import { useTranslation } from 'react-i18next';
+import DateTimeRow from '@kiko/screens/forms/date-time-row';
+import TextField from '@kiko/design-system/components/text-field';
+import HoldingSelectField from '@kiko/screens/forms/holding-select-field';
 
 import type { ExchangeFieldsProps } from './exchange-fields.props';
 
@@ -32,6 +29,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
   valueInSuffix,
   time,
   onChangeTime,
+  maxDate,
   valueOutError,
   destinationError,
   valueInError,
@@ -57,18 +55,16 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
       </View>
 
       <View ref={destinationFieldRef}>
-        <Box gap={1}>
-          <HoldingSelectField
-            label={t('forms.transaction.to')}
-            placeholder={t('forms.transaction.selectHolding')}
-            options={destinationOptions}
-            selectedId={destinationHoldingId}
-            onSelect={onSelectDestination}
-            required
-          />
-
-          {destinationError !== undefined && <FieldError message={destinationError} />}
-        </Box>
+        <HoldingSelectField
+          label={t('forms.transaction.to')}
+          sheetTitle={t('forms.transaction.toSheetTitle')}
+          placeholder={t('forms.transaction.selectHolding')}
+          options={destinationOptions}
+          selectedId={destinationHoldingId}
+          onSelect={onSelectDestination}
+          required
+          error={destinationError}
+        />
       </View>
 
       <View ref={valueInFieldRef}>
@@ -84,7 +80,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
         />
       </View>
 
-      <DateTimeRow time={time} onChangeTime={onChangeTime} />
+      <DateTimeRow time={time} onChangeTime={onChangeTime} maxDate={maxDate} />
     </>
   );
 };

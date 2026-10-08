@@ -1,8 +1,8 @@
+import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import '../../../design-system/unistyles';
-import '../../../i18n';
-
-import type { AccountRow } from '../../../db/schema';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
+import type { AccountRow } from '@kiko/db';
 
 import BankSyncSection from './bank-sync-section.component';
 
@@ -11,9 +11,14 @@ const mockMonobankSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockSaveToken = jest.fn();
 const mockDisconnectMonobank = jest.fn();
+const mockSyncReminders = jest.fn().mockResolvedValue(undefined);
 
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
+}));
+jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
+  syncReminders: (...args: unknown[]) => mockSyncReminders(...args),
+  drainReminderResponses: async () => [],
 }));
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({
   syncStateRepo: {
@@ -23,18 +28,19 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
 }));
-jest.mock('../../../monobank/token', () => ({
+jest.mock('@kiko/monobank/token', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
 }));
-jest.mock('../../../monobank/disconnect', () => ({
+jest.mock('@kiko/monobank/disconnect', () => ({
   disconnectMonobank: (...args: unknown[]) => mockDisconnectMonobank(...args),
 }));
 // The Monobank field is tested on its own; here it collapses to one
 // pressable that fires `onConnect` with a fixture, so the section's wiring
 // (which field renders, and where its `onConnect` result goes) is what is
 // under test.
-jest.mock('../monobank-connect-field', () => {
+jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ onConnect }: { onConnect: (token: string) => Promise<boolean> }) => (
@@ -96,6 +102,35 @@ describe('BankSyncSection — disconnected', () => {
     await waitFor(() => expect(mockMonobankSync).toHaveBeenCalledWith('a'));
   });
 
+  it.each([true, false])(
+    'connecting re-plans the reminders after the sync (sync succeeded: %s), since a synced bank sends none',
+    async (synced) => {
+      mockMonobankSync.mockResolvedValue(synced);
+      const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+
+      await act(async () => {
+        await fireEvent.press(view.getByLabelText('monobank-field'));
+      });
+
+      await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+      expect(mockMonobankSync.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
+      );
+    },
+  );
+
+  it('re-plans nothing when the token cannot be stored, since nothing changed', async () => {
+    mockSaveToken.mockRejectedValue(new Error('keychain locked'));
+    const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText('monobank-field'));
+    });
+
+    expect(mockMonobankSync).not.toHaveBeenCalled();
+    expect(mockSyncReminders).not.toHaveBeenCalled();
+  });
+
   it('offers a Change action once a provider is picked, which re-shows the "Add a bank" trigger', async () => {
     const view = await render(<BankSyncSection account={bankAccount()} />);
 
@@ -129,9 +164,100 @@ describe('BankSyncSection — disconnected', () => {
 
     expect(view.getByText('monobank boom')).toBeTruthy();
   });
+
+  // An account whose identity picker (BankTypeField, in the
+  // account form) already identified it as Monobank must not re-ask via the
+  // generic "Add a bank" picker (redundant when Monobank is the only
+  // connectable provider) — it goes straight to the Connect field.
+  it('skips the "Add a bank" trigger and goes straight to the Monobank field when bankId is already monobank', async () => {
+    const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+
+    expect(view.queryByText('Add a bank')).toBeNull();
+    expect(view.getByText('monobank field')).toBeTruthy();
+  });
+
+  it('still asks through the "Add a bank" trigger when bankId is other (it names no connectable bank, as before with no bankId)', async () => {
+    const view = await render(<BankSyncSection account={bankAccount({ bankId: 'other' })} />);
+
+    expect(view.getByText('Add a bank')).toBeTruthy();
+    expect(view.queryByText('monobank field')).toBeNull();
+  });
+
+  // When `bankId` already identifies Monobank, `selectedProviderId`
+  // is always undefined and `shownProviderId` falls straight back to
+  // `bankIdProviderId` — pressing "Change bank" would visibly change nothing.
+  // The bank is set on create only, so the button is hidden here rather than
+  // left as a no-op.
+  it('hides "Change bank" when bankId already identifies Monobank (it would do nothing)', async () => {
+    const view = await render(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+
+    expect(view.getByText('monobank field')).toBeTruthy();
+    expect(view.queryByText('Change bank')).toBeNull();
+  });
+
+  // A mount-once `useState` seed that only read `bankId` once would leave
+  // the section showing "Add a bank" forever the moment the bank is edited
+  // to Monobank AFTER this component already mounted (AccountForm pops, the
+  // live-queried `account` prop updates with the SAME component instance
+  // still mounted). The shown provider must follow `account.bankId` LIVE,
+  // not just at mount.
+  it('follows bankId LIVE: editing an unidentified bank account to Monobank switches "Add a bank" to Connect, with no remount', async () => {
+    const view = await render(<BankSyncSection account={bankAccount({ bankId: null })} />);
+
+    expect(view.getByText('Add a bank')).toBeTruthy();
+
+    await act(async () => {
+      await view.rerender(<BankSyncSection account={bankAccount({ bankId: 'monobank' })} />);
+    });
+
+    expect(view.queryByText('Add a bank')).toBeNull();
+    expect(view.getByText('monobank field')).toBeTruthy();
+  });
+
+  // A second transition: Disconnect does not clear `bankId` (only
+  // `institution` — see `kiko-architecture`'s "bankId is identity-only,
+  // independent of institution"), so a just-disconnected account is STILL
+  // Monobank and must show Connect again, not "Add a bank".
+  it('follows bankId LIVE: disconnecting a Monobank account (bankId unchanged) shows Connect again, not "Add a bank"', async () => {
+    const view = await render(
+      <BankSyncSection account={bankAccount({ institution: 'monobank', bankId: 'monobank' })} />,
+    );
+
+    await fireEvent.press(view.getByText('Disconnect'));
+    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+    await waitFor(() => expect(mockDisconnectMonobank).toHaveBeenCalledWith('a'));
+
+    // Disconnect itself clears `institution`, not `bankId` — the live query
+    // re-renders this same instance with the post-disconnect row.
+    await act(async () => {
+      await view.rerender(
+        <BankSyncSection account={bankAccount({ institution: null, bankId: 'monobank' })} />,
+      );
+    });
+
+    expect(view.queryByText('Add a bank')).toBeNull();
+    expect(view.getByText('monobank field')).toBeTruthy();
+  });
 });
 
 describe('BankSyncSection — connected', () => {
+  it('gates the "Last sync" status line on its own sync_state isLoading, without hiding Sync/Disconnect', async () => {
+    // The status line must never render its own "Never" default while
+    // sync_state is still on its first load — kiko-architecture's
+    // useLiveQuery consumer rule — but the Sync/Disconnect actions
+    // themselves do not depend on that query, so they stay available.
+    mockUseLiveQuery.mockReturnValue({ data: [], isLoading: true });
+
+    const view = await render(
+      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
+    );
+
+    expect(view.getByTestId('bank-sync-status-actions')).toBeTruthy();
+    expect(view.queryByText(/Last sync/)).toBeNull();
+    expect(view.getByText('Sync')).toBeTruthy();
+    expect(view.getByText('Disconnect')).toBeTruthy();
+  });
+
   it('shows Sync + Disconnect for a Monobank-connected account, syncing through the Monobank action', async () => {
     const view = await render(
       <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
@@ -153,6 +279,36 @@ describe('BankSyncSection — connected', () => {
     await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
 
     await waitFor(() => expect(mockDisconnectMonobank).toHaveBeenCalledWith('a'));
+  });
+
+  it('re-plans the reminders after a Disconnect, since the manual account takes them again', async () => {
+    const view = await render(
+      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
+    );
+
+    await fireEvent.press(view.getByText('Disconnect'));
+    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+    expect(mockDisconnectMonobank.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it('re-plans nothing after a failed Disconnect', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockDisconnectMonobank.mockRejectedValue(new Error('keychain locked'));
+    const view = await render(
+      <BankSyncSection account={bankAccount({ institution: 'monobank' })} />,
+    );
+
+    await fireEvent.press(view.getByText('Disconnect'));
+    await fireEvent.press(view.getByTestId('bank-disconnect-confirm'));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
+    expect(mockSyncReminders).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
   });
 
   it('shows a syncing label while the active provider is syncing', async () => {

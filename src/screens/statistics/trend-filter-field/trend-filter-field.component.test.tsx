@@ -1,10 +1,9 @@
-import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-
-import '../../../design-system/unistyles';
-import { darkTheme } from '../../../design-system/theme';
-import { i18n } from '../../../i18n';
-import type { FilterOption } from '../../home/filter-menu/filter-menu.props';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
+import type { FilterOption } from '@kiko/design-system/components/filter-menu';
 
 import TrendFilterField from './trend-filter-field.component';
 
@@ -31,7 +30,7 @@ const renderField = (
 
 const press = async (node: Parameters<typeof fireEvent.press>[0]): Promise<void> => {
   await act(async () => {
-    fireEvent.press(node);
+    await fireEvent.press(node);
   });
 };
 
@@ -89,10 +88,10 @@ describe('TrendFilterField button label', () => {
     expect(getByTestId(TEST_ID)).toHaveTextContent('3 Categories');
   });
 
-  it('reads "All Categories" for an empty manual selection', async () => {
+  it('reads "All categories" for an empty manual selection', async () => {
     const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: [] } });
 
-    expect(getByTestId(TEST_ID)).toHaveTextContent('All Categories');
+    expect(getByTestId(TEST_ID)).toHaveTextContent('All categories');
   });
 
   it('renders the three Ukrainian plural forms for the manual count', async () => {
@@ -100,15 +99,15 @@ describe('TrendFilterField button label', () => {
 
     expect(
       (await renderField({ filter: { mode: 'manual', keys: ['a'] } })).getByTestId(TEST_ID),
-    ).toHaveTextContent('1 Категорія');
+    ).toHaveTextContent('1 категорія');
     expect(
       (await renderField({ filter: { mode: 'manual', keys: ['a', 'b'] } })).getByTestId(TEST_ID),
-    ).toHaveTextContent('2 Категорії');
+    ).toHaveTextContent('2 категорії');
     expect(
       (
         await renderField({ filter: { mode: 'manual', keys: ['a', 'b', 'c', 'd', 'e'] } })
       ).getByTestId(TEST_ID),
-    ).toHaveTextContent('5 Категорій');
+    ).toHaveTextContent('5 категорій');
   });
 
   it('interpolates the Ukrainian instrumental measure into the top label', async () => {
@@ -321,20 +320,21 @@ describe('TrendFilterField grouped sections', () => {
     expect(StyleSheet.flatten(measure.props.style).backgroundColor).toBeUndefined();
   });
 
-  it('renders each mode pill with its decided glyph (Top -> chart.bar.fill, Manual -> tag)', async () => {
+  // The Mode control swaps which section renders below it (amount/measure vs
+  // the category list), so it is a SegmentedControl, not a ChipRow —
+  // SegmentedControl has no icon slot (see `segmented-control.props.d.ts` —
+  // no consumer in the app renders one), so both mode options are text-only,
+  // matching amount-mode/currency-mode elsewhere.
+  it('renders the mode control as a SegmentedControl inside the selection group', async () => {
     const { getByTestId } = await renderField();
     await press(getByTestId(TEST_ID));
 
-    // The Mode OptionPills carry a leading glyph per option (infra item I4):
-    // Top ranks -> chart.bar.fill, Manual pins categories -> tag. Both pills are
-    // rendered at once (only the selected one fills), so both glyphs appear
-    // inside the selection group.
-    const selection = getByTestId(`${TEST_ID}-group-selection`);
-    const topPill = within(selection).getByText('Top').parent;
-    const manualPill = within(selection).getByText('Manual').parent;
-
-    expect(topPill?.queryAll((node) => node.props.name === 'chart.bar.fill')).not.toHaveLength(0);
-    expect(manualPill?.queryAll((node) => node.props.name === 'tag')).not.toHaveLength(0);
+    expect(
+      getByTestId(`${TEST_ID}-mode-control-option-top`).props.accessibilityState.selected,
+    ).toBe(true);
+    expect(
+      getByTestId(`${TEST_ID}-mode-control-option-manual`).props.accessibilityState.selected,
+    ).toBe(false);
   });
 
   it('renders the Top mode option before Manual in the selection group', async () => {
@@ -366,6 +366,17 @@ describe('TrendFilterField grouped sections', () => {
   });
 });
 
+describe('TrendFilterField a saved manual key missing from categoryOptions', () => {
+  it('renders no row for it — the caller (statistics.screen.tsx) is responsible for unioning a saved key back into categoryOptions before it reaches this component', async () => {
+    const { getByTestId, queryByTestId } = await renderField({
+      filter: { mode: 'manual', keys: ['archived'] },
+    });
+    await press(getByTestId(TEST_ID));
+
+    expect(queryByTestId(`${TEST_ID}-option-archived`)).toBeNull();
+  });
+});
+
 describe('TrendFilterField selected manual row', () => {
   it('fills the selected row with the accent surface and keeps an unselected row transparent', async () => {
     const { getByTestId } = await renderField({ filter: { mode: 'manual', keys: ['groceries'] } });
@@ -375,8 +386,9 @@ describe('TrendFilterField selected manual row', () => {
     const unselected = getByTestId(`${TEST_ID}-option-transport`);
 
     // The selected row paints the FILLED accent surface (the app's standard
-    // selection vocabulary — the OptionPills / ChipRow selected pill), so it
-    // reads unambiguously as chosen; the unselected row paints none.
+    // selection vocabulary — the same treatment ChipRow's selected pill
+    // uses), so it reads unambiguously as chosen; the unselected row paints
+    // none.
     expect(selected.props.accessibilityState.checked).toBe(true);
     expect(unselected.props.accessibilityState.checked).toBe(false);
     expect(StyleSheet.flatten(selected.props.style).backgroundColor).toBe(darkTheme.colors.accent);

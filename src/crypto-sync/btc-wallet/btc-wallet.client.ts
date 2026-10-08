@@ -1,5 +1,6 @@
-import { BTC_EXPLORER_ENDPOINT } from '@env';
 import { guard } from 'fnts';
+import { i18n } from '@kiko/i18n/init';
+import { BTC_EXPLORER_ENDPOINT } from '@env';
 
 /** The Esplora `/address/:address` payload fields this client reads. */
 type EsploraAddress = { chain_stats: { funded_txo_sum: number; spent_txo_sum: number } };
@@ -13,7 +14,9 @@ const readAddress = guard(
   [
     (response: Response) => !response.ok,
     (response: Response): never => {
-      throw new Error(`Block explorer request failed: ${response.status}`);
+      throw new Error(
+        i18n.t('accountDetail.blockExplorerRequestFailed', { status: response.status }),
+      );
     },
   ],
   (response: Response): Promise<EsploraAddress> => response.json(),

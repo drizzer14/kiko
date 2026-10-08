@@ -1,21 +1,20 @@
-import type { FC } from 'react';
-import { useState } from 'react';
 import { Alert } from 'react-native';
+import { i18n } from '@kiko/i18n/init';
+import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { importData } from '@kiko/data-transfer/import-data';
-import { i18n } from '@kiko/i18n';
+import Box from '@kiko/design-system/components/box';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import FieldError from '@kiko/design-system/components/field-error';
+import type { SettingsStackParamList } from '@kiko/navigation/types';
+import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import { type ExportSecretKind, importData } from '@kiko/data-transfer';
 import { keepLocalCopy, pick, types } from '@react-native-documents/picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import Box from '../../../design-system/components/box';
-import Card from '../../../design-system/components/card';
-import Text from '../../../design-system/components/text';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import type { SettingsStackParamList } from '../../../navigation/types';
-import ClipboardTextField from '../../account-detail/clipboard-text-field';
-import ConfirmSheet from '../../../design-system/components/confirm-sheet';
-import { useSubmitOnce } from '../../forms/use-submit-once/use-submit-once';
+import ClipboardTextField from '@kiko/design-system/components/clipboard-text-field';
 
 type ImportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ImportData'>;
 
@@ -48,6 +47,25 @@ const fileNameFrom = (value: string): string => {
   }
 };
 
+// Brand names, written the same in every language.
+const CONNECTION_NAMES: Record<ExportSecretKind, string> = {
+  monobank: 'Monobank',
+  binance: 'Binance',
+};
+
+// The error copy for a failed import, picked by the prefix `importData`'s own
+// decrypt step puts on the message; anything else reads as an invalid file.
+const IMPORT_ERROR_KEYS = [['data-transfer/decrypt', 'settings.dataImport.wrongKeyError']] as const;
+
+const importErrorKey = (error: unknown) => {
+  const message = error instanceof Error ? error.message : '';
+
+  return (
+    IMPORT_ERROR_KEYS.find(([prefix]) => message.startsWith(prefix))?.[1] ??
+    'settings.dataImport.invalidFileError'
+  );
+};
+
 const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   const { t } = useTranslation();
   const [fileUri, setFileUri] = useState<string | undefined>(undefined);
@@ -55,6 +73,7 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
   const [keyBase64, setKeyBase64] = useState('');
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | undefined>(undefined);
+  const [credentialsMessage, setCredentialsMessage] = useState<string | undefined>(undefined);
   const [wrongFileTypeError, setWrongFileTypeError] = useState(false);
   const [keyTooShortError, setKeyTooShortError] = useState(false);
   const [noFileError, setNoFileError] = useState(false);
@@ -74,14 +93,14 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
         setFileUri(undefined);
         setFileName(undefined);
         setWrongFileTypeError(true);
+
         return;
       }
 
       // The picker hands back a security-scoped external URI (iCloud / Files /
       // an AirDropped file) that `RNFS.readFile` cannot read directly — the
-      // read yields nothing and import fails as "invalid file"
-      // (device-feedback: an AirDropped demo `.kiko` would not import). Copy
-      // the file into the app's cache first and read that local copy; fall
+      // read yields nothing and import fails as "invalid file". Copy the
+      // file into the app's cache first and read that local copy; fall
       // back to the original uri only if the copy fails.
       const [copied] = await keepLocalCopy({
         files: [{ uri: picked.uri, fileName: name }],
@@ -128,23 +147,28 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
       setResultMessage(
         i18n.t('settings.dataImport.successMessage', { count: summary.accountsRestored }),
       );
+      setCredentialsMessage(
+        summary.unrestoredCredentials.length === 0
+          ? undefined
+          : i18n.t('settings.dataImport.credentialsNotRestoredMessage', {
+              connections: summary.unrestoredCredentials
+                .map((kind) => CONNECTION_NAMES[kind])
+                .join(', '),
+            }),
+      );
     } catch (error) {
-      const message =
-        error instanceof Error && error.message.startsWith('data-transfer/decrypt')
-          ? t('settings.dataImport.wrongKeyError')
-          : t('settings.dataImport.invalidFileError');
-      Alert.alert(t('settings.dataImport.errorTitle'), message);
+      Alert.alert(t('settings.dataImport.errorTitle'), t(importErrorKey(error)));
     }
   };
 
   const { onPress: handleConfirmedImport, isSubmitting } = useSubmitOnce(runImport);
 
   const handleImportPress = (): void => {
-    // BUG (device-feedback-round-4 item 7): pressing Import with no file
-    // and/or no key used to fail SILENTLY — an early `return` on a missing
-    // file skipped the key check entirely, so a combined "nothing picked,
-    // nothing pasted" press showed no error at all. Both are now validated
-    // independently on every press, each surfacing its own inline error.
+    // Pressing Import with no file and/or no key must not fail SILENTLY: an
+    // early `return` on a missing file would skip the key check entirely, so a
+    // combined "nothing picked, nothing pasted" press would show no error at
+    // all. Both are validated independently on every press, each surfacing
+    // its own inline error.
     const missingFile = fileUri === undefined;
     const missingKey = keyBase64.length < MIN_KEY_LENGTH;
 
@@ -171,7 +195,6 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
           <Button
             testID="settings-button-import"
             variant="primary"
-            fullWidth
             onPress={handleImportPress}
             disabled={isSubmitting}
           >
@@ -196,18 +219,14 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
             </Button>
 
             {wrongFileTypeError && (
-              <Text variant="caption" tone="negative">
-                {t('settings.dataImport.wrongFileTypeError')}
-              </Text>
+              <FieldError message={t('settings.dataImport.wrongFileTypeError')} />
             )}
 
             {/* The more specific wrong-file-type error above already implies
                 "no valid file chosen yet" — showing both would be redundant,
                 so this only renders when that one is not already up. */}
             {noFileError && !wrongFileTypeError && (
-              <Text variant="caption" tone="negative">
-                {t('settings.dataImport.noFileError')}
-              </Text>
+              <FieldError message={t('settings.dataImport.noFileError')} />
             )}
           </Box>
         </Card>
@@ -221,13 +240,8 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
               placeholder={t('settings.dataImport.keyPlaceholder')}
               pasteAccessibilityLabel={t('settings.dataImport.pasteKey')}
               secureTextEntry
+              error={keyTooShortError ? t('settings.dataImport.keyTooShortError') : undefined}
             />
-
-            {keyTooShortError && (
-              <Text variant="caption" tone="negative">
-                {t('settings.dataImport.keyTooShortError')}
-              </Text>
-            )}
           </Box>
         </Card>
 
@@ -236,6 +250,12 @@ const ImportDataScreen: FC<ImportDataScreenProps> = () => {
           // no test queries this row, so the prop is simply dropped rather
           // than adding testID support to the shared component.
           <Text variant="body">{resultMessage}</Text>
+        )}
+
+        {credentialsMessage !== undefined && (
+          <Text variant="body" tone="textSecondary">
+            {credentialsMessage}
+          </Text>
         )}
       </Box>
 

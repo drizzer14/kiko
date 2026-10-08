@@ -1,0 +1,372 @@
+import { DAY_MS } from '@kiko/dates';
+import { loanInstallments } from '@kiko/holdings/loan-schedule';
+import type { LoanMeta } from '@kiko/holdings/holding-metadata';
+
+import {
+  type LoanHolding,
+  type LoanPaymentTransaction,
+  loanInterestEntries,
+  loanPaymentExcludedTransactionIds,
+  LOAN_INTEREST_CATEGORY_KEY,
+} from './loan-payments';
+
+// A single-installment (termMonths: 1) annuity loan: its whole schedule is
+// one installment, so `loanInterestPerPaymentMinor` never has to pick among
+// several — the payment maps to it directly. `principalMinorUnits: 900_000`
+// at 12% annual (1% monthly) gives `round(900_000 * 0.01) = 9_000` interest.
+const scheduledMeta: LoanMeta = {
+  kind: 'personal',
+  principalMinorUnits: 900_000,
+  startDate: new Date(2024, 0, 1).getTime(),
+  annualRatePct: 12,
+  termMonths: 1,
+  schedule: 'annuity',
+};
+
+const informalMeta: LoanMeta = {
+  kind: 'personal',
+  principalMinorUnits: 50_000_00,
+  startDate: new Date(2024, 0, 1).getTime(),
+  schedule: 'none',
+};
+
+const PAYMENT_TIME = new Date(2024, 0, 5).getTime();
+
+const scheduledLoan: LoanHolding = {
+  id: 'loan-scheduled',
+  metadata: scheduledMeta,
+  currency: 'UAH',
+};
+const informalLoan: LoanHolding = { id: 'loan-informal', metadata: informalMeta, currency: 'UAH' };
+
+const linkedPayment: LoanPaymentTransaction = {
+  id: 'tx-linked',
+  loanHoldingId: 'loan-scheduled',
+  time: PAYMENT_TIME,
+  amountMinorUnits: -12_000,
+  currency: 'UAH',
+  category: 'utilities',
+};
+
+// The one installment's scheduled payment: 900_000 principal + 9_000 interest.
+const SCHEDULED_PAYMENT = 909_000;
+
+describe('loanPaymentExcludedTransactionIds', () => {
+  it('excludes a linked payment whose loan holding exists', () => {
+    const ids = loanPaymentExcludedTransactionIds([linkedPayment], [scheduledLoan]);
+
+    expect(ids.has('tx-linked')).toBe(true);
+  });
+
+  it('does not exclude an unlinked payment (loanHoldingId null)', () => {
+    const unlinked: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-unlinked',
+      loanHoldingId: null,
+    };
+
+    const ids = loanPaymentExcludedTransactionIds([unlinked], [scheduledLoan]);
+
+    expect(ids.has('tx-unlinked')).toBe(false);
+  });
+
+  // A link to a missing loan counts as normal spending — a dangling
+  // `loanHoldingId` is not excluded.
+  it('does not exclude a payment linked to a MISSING loan holding', () => {
+    const dangling: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-dangling',
+      loanHoldingId: 'ghost-loan',
+    };
+
+    const ids = loanPaymentExcludedTransactionIds([dangling], [scheduledLoan]);
+
+    expect(ids.has('tx-dangling')).toBe(false);
+  });
+
+  // A USD loan paid from a UAH card (or vice versa) is a common case for
+  // Kiko's users; the write path (`transactionsRepo.setLoanPayment`) refuses
+  // such a link going forward, but a link written before that guard existed
+  // must still read back as ordinary spending, not a wrong-currency interest
+  // entry.
+  it('does not exclude a payment whose currency differs from its linked loan holding currency', () => {
+    const crossCurrency: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-cross-currency',
+      currency: 'USD',
+    };
+
+    const ids = loanPaymentExcludedTransactionIds([crossCurrency], [scheduledLoan]);
+
+    expect(ids.has('tx-cross-currency')).toBe(false);
+  });
+});
+
+describe('loanInterestEntries', () => {
+  it('a linked -12,000 payment with installment interest 9,000 produces a 9,000 interest entry', () => {
+    const entries = loanInterestEntries({
+      transactions: [linkedPayment],
+      loanHoldings: [scheduledLoan],
+    });
+
+    expect(entries).toEqual([
+      {
+        id: 'loan-interest:tx-linked',
+        category: LOAN_INTEREST_CATEGORY_KEY,
+        amountMinorUnits: -9_000,
+        mcc: null,
+        counterIban: null,
+        description: '',
+        exchangeCounterpartHoldingId: null,
+        changeGroupId: null,
+        currency: 'UAH',
+        time: PAYMENT_TIME,
+      },
+    ]);
+  });
+
+  it('an informal (none-schedule) loan payment counts 0 interest — no entry', () => {
+    const informalPayment: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-informal',
+      loanHoldingId: 'loan-informal',
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [informalPayment],
+      loanHoldings: [informalLoan],
+    });
+
+    expect(entries).toEqual([]);
+  });
+
+  it('an unlinked payment produces no interest entry', () => {
+    const unlinked: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-unlinked',
+      loanHoldingId: null,
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [unlinked],
+      loanHoldings: [scheduledLoan],
+    });
+
+    expect(entries).toEqual([]);
+  });
+
+  it('a payment linked to a MISSING loan holding produces no interest entry', () => {
+    const dangling: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-dangling',
+      loanHoldingId: 'ghost-loan',
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [dangling],
+      loanHoldings: [scheduledLoan],
+    });
+
+    expect(entries).toEqual([]);
+  });
+
+  it('caps the counted interest at the payment amount for a partial payment', () => {
+    const partial: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-partial',
+      amountMinorUnits: -4_000,
+    };
+
+    const entries = loanInterestEntries({ transactions: [partial], loanHoldings: [scheduledLoan] });
+
+    expect(entries).toEqual([expect.objectContaining({ amountMinorUnits: -4_000 })]);
+  });
+
+  // Listed newest first, the way the statistics screen reads transactions:
+  // the earlier part still takes the interest.
+  it('counts an installment paid in two parts as interest once, on the earlier part', () => {
+    const earlier: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-earlier',
+      time: PAYMENT_TIME - DAY_MS,
+      amountMinorUnits: -6_000,
+    };
+    const later: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-later',
+      amountMinorUnits: -6_000,
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [later, earlier],
+      loanHoldings: [scheduledLoan],
+    });
+
+    expect(entries).toEqual([
+      expect.objectContaining({ id: 'loan-interest:tx-later', amountMinorUnits: -3_000 }),
+      expect.objectContaining({ id: 'loan-interest:tx-earlier', amountMinorUnits: -6_000 }),
+    ]);
+  });
+
+  it('produces no interest entry for a payment whose currency differs from its linked loan holding currency', () => {
+    const crossCurrency: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-cross-currency',
+      currency: 'USD',
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [crossCurrency],
+      loanHoldings: [scheduledLoan],
+    });
+
+    expect(entries).toEqual([]);
+  });
+
+  // A linked row can be edited after linking from a debit into a credit (e.g.
+  // a returned/reversed payment); a credit is not spending, so it must not
+  // manufacture a negative "Loan interest" entry either.
+  it('produces no interest entry for a linked CREDIT (a positive amount)', () => {
+    const credit: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-credit',
+      amountMinorUnits: 12_000,
+    };
+
+    const entries = loanInterestEntries({ transactions: [credit], loanHoldings: [scheduledLoan] });
+
+    expect(entries).toEqual([]);
+  });
+
+  // The part of a debit above the scheduled payment is a bank fee: it is not
+  // principal, so it stays in spending under the row's own category.
+  it('keeps the excess over the scheduled payment as its own entry under the row category', () => {
+    const withFee: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-fee',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+    };
+
+    const entries = loanInterestEntries({ transactions: [withFee], loanHoldings: [scheduledLoan] });
+
+    expect(entries).toEqual([
+      expect.objectContaining({ id: 'loan-interest:tx-fee', amountMinorUnits: -9_000 }),
+      {
+        id: 'loan-excess:tx-fee',
+        category: 'utilities',
+        amountMinorUnits: -300,
+        mcc: null,
+        counterIban: null,
+        description: '',
+        exchangeCounterpartHoldingId: null,
+        changeGroupId: null,
+        currency: 'UAH',
+        time: PAYMENT_TIME,
+      },
+    ]);
+  });
+
+  it('keeps the excess entry uncategorised when the payment row has no category', () => {
+    const withFee: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-fee',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+      category: null,
+    };
+
+    const entries = loanInterestEntries({ transactions: [withFee], loanHoldings: [scheduledLoan] });
+
+    expect(entries[1]).toEqual(expect.objectContaining({ category: null }));
+  });
+
+  it('produces no excess entry for an exact match, an under-payment or a prepayment', () => {
+    const paid = (amount: number): LoanPaymentTransaction => ({
+      ...linkedPayment,
+      id: `tx-${amount}`,
+      amountMinorUnits: -amount,
+    });
+
+    for (const amount of [SCHEDULED_PAYMENT, SCHEDULED_PAYMENT - 300, SCHEDULED_PAYMENT + 9_091]) {
+      const entries = loanInterestEntries({
+        transactions: [paid(amount)],
+        loanHoldings: [scheduledLoan],
+      });
+
+      expect(entries.map((entry) => entry.id)).toEqual([`loan-interest:tx-${amount}`]);
+    }
+  });
+
+  it('produces no excess entry for an informal loan', () => {
+    const informalPayment: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-informal',
+      loanHoldingId: 'loan-informal',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+    };
+
+    expect(
+      loanInterestEntries({ transactions: [informalPayment], loanHoldings: [informalLoan] }),
+    ).toEqual([]);
+  });
+
+  it('produces no excess entry for a payment in another currency than its loan', () => {
+    const crossCurrency: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-cross-currency',
+      currency: 'USD',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+    };
+
+    expect(
+      loanInterestEntries({ transactions: [crossCurrency], loanHoldings: [scheduledLoan] }),
+    ).toEqual([]);
+  });
+
+  // The spending window may hold only some of a loan's payments; the excess
+  // is stateless per payment, so a lone later installment still counts its own
+  // full interest and its own fee.
+  it('counts the interest and the excess of a lone later installment payment with a fee', () => {
+    const yearMeta: LoanMeta = { ...scheduledMeta, termMonths: 12 };
+    const [, , third] = loanInstallments(yearMeta);
+    const lone: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-lone',
+      time: third.dueDate,
+      amountMinorUnits: -(third.paymentMinorUnits + 300),
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [lone],
+      loanHoldings: [{ ...scheduledLoan, metadata: yearMeta }],
+    });
+
+    expect(entries.map((entry) => [entry.id, entry.amountMinorUnits])).toEqual([
+      ['loan-interest:tx-lone', -third.interestMinorUnits],
+      ['loan-excess:tx-lone', -300],
+    ]);
+  });
+
+  it('measures the excess of each payment of a loan against its own installment', () => {
+    const regular: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-regular',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+    };
+    const prepayment: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-prepayment',
+      time: PAYMENT_TIME - DAY_MS,
+      amountMinorUnits: -2_000_000,
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [regular, prepayment],
+      loanHoldings: [scheduledLoan],
+    });
+
+    expect(entries.map((entry) => [entry.id, entry.amountMinorUnits])).toEqual([
+      ['loan-excess:tx-regular', -300],
+      ['loan-interest:tx-prepayment', -9_000],
+    ]);
+  });
+});

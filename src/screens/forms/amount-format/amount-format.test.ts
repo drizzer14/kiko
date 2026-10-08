@@ -1,6 +1,6 @@
-import { Money } from '../../../currency/money';
-import { parseAmount } from '../../../currency/parse';
-import { type Currency, currencyOptions, currencyScale } from '../../../currency/currency';
+import { Money } from '@kiko/currency/money';
+import { parseAmount } from '@kiko/currency/parse';
+import { type Currency, currencyOptions, currencyScale } from '@kiko/currency/currency';
 
 import { groupAmount, majorAmountText } from './amount-format';
 

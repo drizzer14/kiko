@@ -1,6 +1,6 @@
-import { currencyOptions, isCrypto } from '../../currency/currency';
+import { currencyOptions, isFiat } from '@kiko/currency/currency';
 
-import { codeFromCurrency, currencyFromCode } from './currency-code';
+import { currencyFromCode } from './currency-code';
 
 describe('currency-code', () => {
   it('maps ISO numeric codes to currencies', () => {
@@ -15,39 +15,23 @@ describe('currency-code', () => {
     expect(currencyFromCode(999)).toBeUndefined();
   });
 
-  it('maps currencies back to codes', () => {
-    expect(codeFromCurrency('UAH')).toBe(980);
-  });
-
-  it('maps GBP and CHF in both directions', () => {
+  it('maps GBP and CHF codes', () => {
     expect(currencyFromCode(826)).toBe('GBP');
     expect(currencyFromCode(756)).toBe('CHF');
-    expect(codeFromCurrency('GBP')).toBe(826);
-    expect(codeFromCurrency('CHF')).toBe(756);
   });
 
-  it('maps the additional Monobank fiats in both directions', () => {
+  it('maps the additional Monobank fiats', () => {
     expect(currencyFromCode(392)).toBe('JPY');
-    expect(codeFromCurrency('JPY')).toBe(392);
     expect(currencyFromCode(985)).toBe('PLN');
-    expect(codeFromCurrency('PLN')).toBe(985);
   });
 
-  it('gives crypto currencies no ISO numeric code (BTC/ETH/USDT are not Monobank fiats)', () => {
-    expect(codeFromCurrency('BTC')).toBeUndefined();
-    expect(codeFromCurrency('ETH')).toBeUndefined();
-    expect(codeFromCurrency('USDT')).toBeUndefined();
-  });
+  it('has an ISO numeric code for every fiat currency', () => {
+    const codedCurrencies = new Set(
+      Array.from({ length: 1000 }, (_unused, code) => currencyFromCode(code)),
+    );
 
-  it('round-trips every fiat currency through both directions', () => {
-    for (const currency of currencyOptions) {
-      if (isCrypto(currency)) {
-        continue;
-      }
-
-      const code = codeFromCurrency(currency);
-      expect(code).toBeDefined();
-      expect(currencyFromCode(code as number)).toBe(currency);
+    for (const currency of currencyOptions.filter(isFiat)) {
+      expect(codedCurrencies.has(currency)).toBe(true);
     }
   });
 });

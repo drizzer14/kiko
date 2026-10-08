@@ -93,7 +93,7 @@ describe('resolveKeyboardAwareBottomPadding', () => {
   // exactly at the TOP of the accessory strip, which is what makes the gap
   // above the Done pill (content-bottom -> pill-top) match the pill's own
   // fixed gap below it (pill-bottom -> keys), instead of reading nearly 3x
-  // larger (user device feedback).
+  // larger.
   it('grows the bottom padding to the accessory strip height MINUS the base step, so it cancels the content buffer stacked beneath it', () => {
     expect(
       resolveKeyboardAwareBottomPadding(BASE_PADDING, BOTTOM_INSET, 300, ACCESSORY_HEIGHT),

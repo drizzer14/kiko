@@ -1,17 +1,14 @@
 // src/data-transfer/payload.d.ts
 import type { DataSnapshot } from './snapshot/data-snapshot';
 
+/**
+ * Every field is optional because a restore reads what a file holds: a build
+ * writes both arrays on every export, but a file from an earlier build, or one
+ * made with no saved key, may lack any of them.
+ */
 export type ExportSecrets = {
-  /**
-   * DISPLAY-ONLY. Included so a power user has an out-of-band record of the
-   * device's SQLCipher key, but NEVER re-imported into the Keychain — see the
-   * safety comment on `restoreExportSecrets` (`secrets/restore-secrets.ts`)
-   * for exactly why re-storing a foreign device's DB key would brick the
-   * importing device's OWN encrypted database on its next launch.
-   */
-  dbKeyHex?: string;
-  monobankTokens: { accountId: string; token: string }[];
-  binanceCredentials: { accountId: string; apiKey: string; secret: string }[];
+  monobankTokens?: { accountId: string; token: string }[];
+  binanceCredentials?: { accountId: string; apiKey: string; secret: string }[];
 };
 
 /** The plaintext JSON that gets AES-256-GCM-encrypted into the `.kiko` file. */

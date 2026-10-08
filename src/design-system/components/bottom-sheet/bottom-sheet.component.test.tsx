@@ -3,11 +3,11 @@ import { State } from 'react-native-gesture-handler';
 import { Dimensions, Keyboard, StyleSheet, Text } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
+import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
 
-import type { RenderedElement } from '../../../test-support/rendered-element';
-import '../../unistyles';
-import { darkTheme } from '../../theme';
-import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory/keyboard-done-accessory.styles';
+import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory';
 
 import BottomSheet from '.';
 import { KEYBOARD_CORNER_OVERLAP, SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sheet.component';
@@ -20,6 +20,7 @@ import { KEYBOARD_CORNER_OVERLAP, SHEET_DRAG_GESTURE_TEST_ID } from './bottom-sh
 // describe block below can flip it on for its own scope.
 jest.mock('@callstack/liquid-glass', () => {
   const { View } = require('react-native');
+
   return { LiquidGlassView: View, isLiquidGlassSupported: false };
 });
 
@@ -38,13 +39,14 @@ const MAX_HEIGHT_RATIO = 0.66;
 
 // A device with a home indicator reports a non-zero bottom safe-area inset. The
 // sheet renders inside a Modal (outside any SafeAreaView), so it must add that
-// inset to its own bottom padding — this is the drift/A2 regression the shared
+// inset to its own bottom padding — this is the drift regression the shared
 // primitive exists to prevent. Override the package's zero-inset global mock
 // with a concrete inset so the padding assertion actually proves the inset is
 // added (a zero inset would make "added" and "dropped" indistinguishable).
 const MOCK_BOTTOM_INSET = 34;
 jest.mock('react-native-safe-area-context', () => {
   const { View } = require('react-native');
+
   return {
     SafeAreaView: View,
     SafeAreaProvider: View,
@@ -85,9 +87,56 @@ describe('BottomSheet', () => {
       </BottomSheet>,
     );
 
-    fireEvent.press(getByTestId('sheet-backdrop'));
+    await fireEvent.press(getByTestId('sheet-backdrop'));
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  // A real completion signal for "the sheet has actually finished closing" —
+  // RN `Modal`'s own `onDismiss` (iOS only; fires once the dismiss ANIMATION
+  // has finished, unlike `onDismiss`/`onRequestClose` above, which mean "a
+  // dismiss was requested"). Passed through as its own optional prop so a
+  // caller that needs to run something ONLY after the close animation
+  // completes (e.g. navigating away) doesn't have to guess a delay.
+  it('calls onClosed when the underlying Modal reports its own dismiss (the close animation finished)', async () => {
+    const onClosed = jest.fn();
+    const { getByTestId } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} onClosed={onClosed} testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    await fireEvent(getByTestId(`${SHEET_TEST_ID}-modal`), 'dismiss');
+
+    expect(onClosed).toHaveBeenCalledTimes(1);
+  });
+
+  it('fades by default, and hands its Modal `none` when a caller asks for no animation', async () => {
+    const { getByTestId, rerender } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    expect(getByTestId(`${SHEET_TEST_ID}-modal`).props.animationType).toBe('fade');
+
+    await rerender(
+      <BottomSheet visible onDismiss={jest.fn()} animationType="none" testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    expect(getByTestId(`${SHEET_TEST_ID}-modal`).props.animationType).toBe('none');
+  });
+
+  it('does not require onClosed — every other caller stays unaffected', async () => {
+    const { getByText } = await render(
+      <BottomSheet visible onDismiss={jest.fn()}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    expect(getByText('sheet body')).toBeTruthy();
   });
 
   it('owns the bottom safe-area inset on top of its single base padding step', async () => {
@@ -100,19 +149,20 @@ describe('BottomSheet', () => {
     const sheetStyle = StyleSheet.flatten(getByTestId(SHEET_TEST_ID).props.style);
 
     // The sheet's bottom padding is the base step PLUS the home-indicator inset,
-    // never one without the other (dropping the inset is bug A2; the base step
-    // is what the four sheets previously drifted on, 4 vs 6 vs missing).
+    // never one without the other (dropping the inset puts the content under the
+    // home indicator; the base step is what the four sheets drifted on, 4 vs 6 vs
+    // missing).
     expect(sheetStyle.paddingBottom).toBe(SHEET_BASE_PADDING + MOCK_BOTTOM_INSET);
     expect(sheetStyle.paddingHorizontal).toBe(SHEET_BASE_PADDING);
 
-    // The sheet card's own top inset no longer lives here: it moved INTO the
-    // draggable grabber region below (see the "extends the drag region up to
-    // the card's top edge" test), so the card itself carries none.
+    // The sheet card's own top inset lives INSIDE the draggable grabber region
+    // below (see the "extends the drag region up to the card's top edge" test),
+    // so the card itself carries none.
     expect(sheetStyle.paddingTop).toBeUndefined();
 
-    // The base step that used to sit on the card now sits on the grabber
-    // region instead, so the whole band from the card's rounded top edge down
-    // through the pill is inside the one draggable hit area.
+    // The base step sits on the grabber region, so the whole band from the
+    // card's rounded top edge down through the pill is inside the one
+    // draggable hit area.
     const grabberStyle = StyleSheet.flatten(getByTestId(`${SHEET_TEST_ID}-grabber`).props.style);
     expect(grabberStyle.paddingTop).toBe(SHEET_BASE_PADDING);
   });
@@ -283,9 +333,8 @@ describe('BottomSheet', () => {
   });
 
   // A call site's own `maxHeight` can never loosen the cap past 66%, even if
-  // it explicitly requests more — this is the "reconcile to the 66% ceiling"
-  // requirement: the icon picker and category-field sheets used to request
-  // 80%/70% before this cap existed, both looser than 66%.
+  // it explicitly requests more — the "reconcile to the 66% ceiling"
+  // requirement, so a sheet asking for a looser 80% or 70% still gets 66%.
   it('clamps a call-site maxHeight looser than the 66% cap down to 66%', async () => {
     const looserCap = WINDOW_HEIGHT * 0.9;
     const { getByTestId } = await render(
@@ -320,7 +369,7 @@ describe('BottomSheet', () => {
     expect(childStyle.backgroundColor).not.toBe(darkTheme.colors.background);
   });
 
-  // F5 device bug: the 66% cap above was forced on every sheet, but the
+  // The 66% cap above was forced on every sheet, but the
   // primitive rendered no scroll container of its own, so a plain-Box sheet
   // (filter-menu, date-field, the transaction-form category-override
   // confirm) whose content ran taller than the cap simply got CLIPPED, with
@@ -394,14 +443,14 @@ describe('BottomSheet', () => {
     });
   });
 
-  // DEVICE BUG fix: a `KeyboardAvoidingView` wrapping the sheet's OWN body
-  // (attempt B) had ZERO effect on device — a KAV repositions its subtree
+  // A `KeyboardAvoidingView` wrapping the sheet's OWN body has ZERO effect on
+  // device — a KAV repositions its subtree
   // within its PARENT's layout, but this sheet's parent is the Modal's own
   // transparent root, which never resizes for the keyboard. The real fix
   // lifts the CARD itself, driven by RN core `Keyboard` events (not
   // reanimated's own `useAnimatedKeyboard`, whose native observer crashes
-  // under this app's iOS UIScene lifecycle — see `bottom-sheet.component.tsx`'s
-  // CRASH fix comment): the live height feeds both the card's own
+  // under this app's iOS UIScene lifecycle — see the `keyboardHeight` comment
+  // in `bottom-sheet.component.tsx`): the live height feeds both the card's own
   // `translateY` (so it rises clear of the keyboard) and a shrunk ratio cap
   // (`resolveKeyboardAwareMaxHeight`, unit-tested on its own in
   // `bottom-sheet.keyboard.test.ts`), so a shrinking search-result list still
@@ -486,19 +535,17 @@ describe('BottomSheet', () => {
       // floating "Done" pill strip) sitting above the real keys — lifting by
       // the FULL keyboard height would land the sheet's bottom edge at the
       // TOP of that strip instead of the top of the keys, leaving the strip's
-      // transparent container over the dark modal scrim (the black-band bug,
-      // builds 17/18). See `resolveKeyboardLift`.
+      // transparent container over the dark modal scrim (a black band). See
+      // `resolveKeyboardLift`.
       expect(sheetStyle.transform).toEqual([{ translateY: -expectedLift }]);
       expect(sheetStyle.maxHeight).toBe((WINDOW_HEIGHT - expectedLift) * MAX_HEIGHT_RATIO);
     });
 
-    // VISUAL fix (build 19): build 18 dropped the bottom safe-area inset,
-    // leaving only the base padding step — the wrong direction. The sheet's
-    // bottom edge now lands at the BOTTOM of the accessory strip
+    // The sheet's bottom edge lands at the BOTTOM of the accessory strip
     // (`resolveKeyboardLift`), so the strip's own height sits BEHIND the
     // sheet's last content row. Padding set to the FULL accessory height
-    // (first pass) still read wrong on device: every sheet's content ALSO
-    // carries its own fixed `CONTENT_BOTTOM_PADDING_STEP` buffer (the SAME
+    // would still read wrong: every sheet's content ALSO carries its own
+    // fixed `CONTENT_BOTTOM_PADDING_STEP` buffer (the SAME
     // `SHEET_PADDING_STEP` token as `SHEET_BASE_PADDING` here) beneath its
     // last row, which stacks UNDER this outer padding — subtracting it here
     // cancels that stack so the two together total exactly the (effective)

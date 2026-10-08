@@ -12,7 +12,7 @@ import type { FieldLabelProps } from './field-label.props';
 // looks and behaves the same everywhere. Pass `invalid` to tint the label
 // itself the same `negative` red as the field's own error message below it —
 // a uniform, colour-plus-text affordance across every field type (see
-// `FieldError`'s own doc comment for the Option A error-state model).
+// `FieldError`'s own doc comment for the reflow error model).
 const FieldLabel: FC<FieldLabelProps> = ({ label, required = false, invalid = false }) => {
   return (
     <Box direction="row" gap={1}>

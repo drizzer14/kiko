@@ -40,7 +40,7 @@ type MockScreenProps = {
 // UITabBar. Surfaced here on the `tab-bar` view so tests can assert the app
 // pins them (e.g. `tabBarStyle.backgroundColor` to keep the bar's scheme
 // deterministic, `tabBarActiveTintColor`/`tabBarInactiveTintColor` to keep the
-// tints theme-reactive — Task 6). None of these are real `ViewProps`
+// tints theme-reactive). None of these are real `ViewProps`
 // members, so the host element below is cast through `TabBarView` rather
 // than typed as plain `View`.
 type MockTabBarProps = {
@@ -71,11 +71,11 @@ type MockNavigatorProps = MockTabBarProps & {
   // `...rest` and react-native-bottom-tabs' TabView then OVERWRITES it with
   // `tabBarStyle?.backgroundColor` (TabView.tsx:477). A mock that accepted and
   // painted `barTintColor` made root.navigator.test.tsx green while the device
-  // tab bar still flipped light/dark (bug B1). Keep this mock's prop surface
+  // tab bar still flipped light/dark. Keep this mock's prop surface
   // narrower than the app's, never wider. `tabBarActiveTintColor` /
   // `tabBarInactiveTintColor` ARE real NativeBottomTabNavigatorProps members
   // (unlike `barTintColor`), so this mock forwards them onto the `tab-bar`
-  // view below for tests to assert on (Task 6: theme-reactive tab bar).
+  // view below for a test to assert the tab bar stays theme-reactive.
 };
 
 function Screen(_props: MockScreenProps): null {

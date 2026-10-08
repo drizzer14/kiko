@@ -1,39 +1,46 @@
-import type { TFunction } from 'i18next';
-import { type FC, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { match } from 'ts-pattern';
-
-import { isSensorAvailable, type SensorStatus } from '../../../../auth/biometrics';
-import Card from '../../../../design-system/components/card';
-import Switch from '../../../../design-system/components/switch';
-import Text from '../../../../design-system/components/text';
-import SettingsRow from '../../settings-row';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { type FC, useEffect, useState } from 'react';
+import Card from '@kiko/design-system/components/card';
+import Text from '@kiko/design-system/components/text';
+import Switch from '@kiko/design-system/components/switch';
+import SettingsRow from '@kiko/screens/settings/settings-row';
+import { isSensorAvailable, type SensorStatus } from '@kiko/auth';
 
 import type { AppLockSettingProps } from './app-lock-setting.props';
 
 // A pure helper (no hook access), so the translator function is threaded in
 // from the component's own `useTranslation()` rather than called globally.
+// Matches on the WHOLE status, not just `kind` — `passcodeOnly` carries a
+// `reason` that picks between two different hint strings.
 const sensorHint = (status: SensorStatus | undefined, t: TFunction): string | undefined =>
-  match(status?.kind)
+  match(status)
     .with(undefined, () => undefined)
-    .with('available', () => undefined)
-    .with('passcodeOnly', () => t('settings.appLock.hint.passcodeOnly'))
-    .with('passcodeNotSet', () => t('settings.appLock.hint.passcodeNotSet'))
-    .with('unavailable', () => t('settings.appLock.hint.unavailable'))
+    .with({ kind: 'available' }, () => undefined)
+    .with({ kind: 'passcodeOnly', reason: 'notEnrolled' }, () =>
+      t('settings.appLock.hint.passcodeOnly'),
+    )
+    .with({ kind: 'passcodeOnly', reason: 'biometryUnavailable' }, () =>
+      t('settings.appLock.hint.biometryUnavailable'),
+    )
+    .with({ kind: 'passcodeNotSet' }, () => t('settings.appLock.hint.passcodeNotSet'))
+    .with({ kind: 'unavailable' }, () => t('settings.appLock.hint.unavailable'))
     .exhaustive();
 
 // The lock can be offered whenever the system sheet has something to ask for:
 // biometrics, or (passcodeOnly) the device passcode. A device with no passcode
 // gets a disabled switch and a hint instead of a lock that would fail at runtime.
 const canOfferLock = (status: SensorStatus | undefined): boolean =>
-  status?.kind === 'available' || status?.kind === 'passcodeOnly';
+  match(status)
+    .with({ kind: 'available' }, { kind: 'passcodeOnly' }, () => true)
+    .with(undefined, { kind: 'passcodeNotSet' }, { kind: 'unavailable' }, () => false)
+    .exhaustive();
 
 /**
  * The Settings App Lock card: a labeled switch that enables/disables the
  * biometric lock, plus a sensor-status hint. The lock is asked for only on a
- * fresh app open, so there is nothing else to configure. The screen mounts this
- * card only when `APP_LOCK_ENABLED` is on, so a safe build with the flag off
- * shows no non-functional toggle.
+ * fresh app open, so there is nothing else to configure.
  */
 const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
   const { t } = useTranslation();
@@ -41,6 +48,8 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
 
   useEffect(() => {
     let alive = true;
+    // isSensorAvailable never rejects; a failure resolves as `unavailable`.
+    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
     isSensorAvailable().then((status) => {
       if (alive) {
         setSensorStatus(status);
@@ -53,7 +62,11 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
   }, []);
 
   const hint = sensorHint(sensorStatus, t);
-  const lockAvailable = canOfferLock(sensorStatus);
+  // An ON switch stays operable regardless of sensor status, so a passcode
+  // removed while the app is running (`passcodeNotSet`) or a device with no
+  // usable sensor at all (`unavailable`) can still reach the toggle to turn
+  // the lock off — see `canOfferLock`'s own doc comment for the OFF case.
+  const disabled = !lockEnabled && !canOfferLock(sensorStatus);
 
   return (
     <Card testID="settings-card-app-lock" padding={3}>
@@ -62,7 +75,7 @@ const AppLockSetting: FC<AppLockSettingProps> = ({ lockEnabled, onToggle }) => {
           testID="settings-switch-app-lock"
           value={lockEnabled}
           onValueChange={onToggle}
-          disabled={!lockAvailable}
+          disabled={disabled}
           label={t('settings.appLock.requireFaceIdOrPasscode')}
         />
 

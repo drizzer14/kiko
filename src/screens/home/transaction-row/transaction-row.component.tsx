@@ -1,24 +1,21 @@
-import { resolveCategoryDisplay } from '@kiko/categories/category-display';
-import { Money } from '@kiko/currency/money';
-import { formatTime } from '@kiko/dates/format';
-import Box from '@kiko/design-system/components/box';
-import Card from '@kiko/design-system/components/card';
-import CardContextMenu from '@kiko/design-system/components/card-context-menu';
-import MoneyText from '@kiko/design-system/components/money-text';
-import SymbolIcon from '@kiko/design-system/components/symbol';
-import Text from '@kiko/design-system/components/text';
-import { isSyncedTransaction } from '@kiko/holdings/deletable';
-import { isTimeExemptHoldingType } from '@kiko/holdings/holding-type';
-import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { type FC, memo } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
+import { formatTime } from '@kiko/dates';
+import { Money } from '@kiko/currency/money';
+import { useTranslation } from 'react-i18next';
+import { useTimeClock } from '@kiko/i18n/use-time-clock';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { removeNotice } from '@kiko/transactions/remove-notice';
+import { resolveCategoryDisplay } from '@kiko/categories/category-display';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { isTimeExemptHoldingType } from '@kiko/holdings/holding-descriptor';
+import TransactionCard from '@kiko/design-system/components/transaction-card';
+import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import { transactionRowDescription } from '@kiko/transactions/row-description';
+import { isDeletableTransaction, isSyncedTransaction } from '@kiko/holdings/deletable';
 
-import type { TransactionRowProps } from './transaction-row.props';
 import { styles } from './transaction-row.styles';
+import type { TransactionRowProps } from './transaction-row.props';
 
 const TransactionRow: FC<TransactionRowProps> = ({
   item,
@@ -30,8 +27,12 @@ const TransactionRow: FC<TransactionRowProps> = ({
   onDuplicate,
 }) => {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
+  const clock = useTimeClock();
   const isSynced = isSyncedTransaction(item);
+  // Read when the delete is requested, so it names what is stored now: a row
+  // that is one part of a movement takes the rest with it.
+  const deleteMessage = async (): Promise<string | undefined> =>
+    removeNotice(await transactionsRepo.removePlan(item.id), t);
 
   const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);
   const description = transactionRowDescription({
@@ -46,20 +47,20 @@ const TransactionRow: FC<TransactionRowProps> = ({
   // resolves which from the transaction's own `source`, so the row only needs
   // to pass the id.
   //
-  // The card is the shared solid content-layer `Card` — a flat, opaque
-  // `surface` fill with a defined border, no drift or legibility concern to
-  // manage while the list scrolls (unlike the `GlassSurface translucentStrong
-  // bloom` combination this row used before: Apple's iOS Human Interface
-  // Guidelines reserve Liquid Glass for the navigation layer, not scrolling
-  // content, so this row no longer needs a glass-material anti-drift pin or
-  // a legibility wash at all).
+  // The row's presentational body is the shared `TransactionCard` — the
+  // SAME card `ExampleTransaction` previews a statement import through, so
+  // a real Home row and its import preview render
+  // identically. `TransactionCard` owns the `Card` content surface itself;
+  // this component keeps only the tap/hold wrapping below.
   //
   // The row wraps in the shared `CardContextMenu` (touch-and-hold to delete),
-  // mirroring the holding-detail ledger: a manual row is deletable and routes
-  // its confirm through `transactionsRepo.remove`, which already guards a
-  // synced row (throws) and reverses the balance in one transaction; a synced
-  // (Monobank/crypto) row is not deletable, so `CardContextMenu` renders it
-  // bare — no gesture at all.
+  // mirroring the holding-detail ledger: a manual or imported row is deletable
+  // and routes its confirm through `transactionsRepo.remove`, which already
+  // guards a synced row (throws) and reverses the balance in one transaction,
+  // together with the rest of the movement the row is a part of;
+  // a synced (Monobank/crypto) row is not deletable, so `CardContextMenu`
+  // renders it bare — no gesture at all. An imported row is not duplicable
+  // either, so its hold opens the delete confirm directly.
   //
   // This is a PLAIN list row (no `react-native-sortables` grid), unlike the
   // account/holding cards, so it gets no free scale-up lift from a grid's own
@@ -70,56 +71,35 @@ const TransactionRow: FC<TransactionRowProps> = ({
   return (
     <CardContextMenu
       name={description}
-      deletable={!isSynced}
+      deletable={isDeletableTransaction(item)}
+      deleteMessage={deleteMessage}
       onDelete={() => transactionsRepo.remove(item.id)}
       // A synced row is not duplicable — pass no handler so its long-press keeps
       // offering nothing (it already renders bare). A manual row's Duplicate
-      // opens the create form pre-filled from this row (D2).
+      // opens the create form pre-filled from this row.
       onDuplicate={isSynced ? undefined : () => onDuplicate(item.id)}
       liftOnHold
     >
       <Pressable accessibilityRole="button" onPress={() => onPress(item.id)}>
-        <Card padding={3} testID="transaction-row" style={styles.rowCard}>
-          <Box gap={2}>
-            <Box direction="row" style={styles.rowMain}>
-              <Box direction="row" gap={2} style={styles.rowLead}>
-                <SymbolIcon
-                  name={category.icon}
-                  size={theme.iconSizes.body}
-                  tone="textSecondary"
-                  // The row icon and this category's filter chip must hash on the
-                  // SAME resolved key (`categoryKeyForRow`, above): hashing here
-                  // on the raw lowercased slug renders one category in two hues
-                  // whenever that slug is absent from the categories table, since
-                  // the chip has already folded it onto the default key.
-                  color={resolveCategoryColor(category.color, categoryKeyForRow(item.category))}
-                  accessibilityLabel={category.title}
-                />
-                <Box style={styles.rowDescription}>
-                  <Text variant="body">{description}</Text>
-                </Box>
-              </Box>
-              <Box style={styles.rowAmount}>
-                <MoneyText
-                  money={Money.of(item.currency, item.amountMinorUnits)}
-                  context="transaction"
-                />
-              </Box>
-            </Box>
-            <Box direction="row" gap={2} style={styles.rowFooter}>
-              <Box style={styles.rowFooterMeta}>
-                <Text variant="caption" tone="textSecondary">
-                  {`${item.accountName} · ${category.title}`}
-                </Text>
-              </Box>
-              {!isTimeExemptHoldingType(item.holdingType) && (
-                <Text variant="caption" tone="textSecondary">
-                  {formatTime(item.time)}
-                </Text>
-              )}
-            </Box>
-          </Box>
-        </Card>
+        <TransactionCard
+          title={description}
+          categoryIcon={category.icon}
+          // The row icon and this category's filter chip must hash on the
+          // SAME resolved key (`categoryKeyForRow`, below): hashing here on
+          // the raw lowercased slug renders one category in two hues
+          // whenever that slug is absent from the categories table, since
+          // the chip has already folded it onto the default key.
+          categoryIconColor={resolveCategoryColor(category.color, categoryKeyForRow(item.category))}
+          categoryAccessibilityLabel={category.title}
+          money={Money.of(item.currency, item.amountMinorUnits)}
+          footerMeta={`${item.accountName} · ${category.title}`}
+          footerTrailing={
+            isTimeExemptHoldingType(item.holdingType) ? undefined : formatTime(item.time, clock)
+          }
+          loanLinked={item.loanHoldingId !== null}
+          style={styles.rowCard}
+          testID="transaction-row"
+        />
       </Pressable>
     </CardContextMenu>
   );

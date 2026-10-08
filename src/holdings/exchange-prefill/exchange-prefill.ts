@@ -1,8 +1,8 @@
-import { Money } from '../../currency/money';
-import type { Currency } from '../../currency/currency';
-import { convert, type RateTable } from '../../rates/conversion';
+import { Money } from '@kiko/currency/money';
+import type { Currency } from '@kiko/currency/currency';
+import { convert, type RateTable, rateBetween } from '@kiko/rates/conversion';
 
-// Seed the Convert flow's counterpart amount (Feature 1): the cash leg's amount
+// Seed the Convert flow's counterpart amount: the cash leg's amount
 // in ITS OWN minor units, from the withdrawal magnitude and the latest cached
 // rate. Same currency → 1:1. A missing cross-rate → null, so the form leaves the
 // field BLANK and editable rather than crashing (convert throws on a missing
@@ -20,7 +20,7 @@ export const seedCounterpartMinorUnits = (input: {
     return magnitude;
   }
 
-  if (rateTable[`${sourceCurrency}:${counterpartCurrency}`] === undefined) {
+  if (rateBetween(rateTable, sourceCurrency, counterpartCurrency) === undefined) {
     return null;
   }
 

@@ -1,11 +1,19 @@
-import { render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-
-import '../../../design-system/unistyles';
-import '../../../i18n';
-import { darkTheme } from '../../../design-system/theme';
+import { fireEvent, render } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
+import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 
 import DateTimeRow from './date-time-row.component';
+
+const mockFieldLabel = jest.fn();
+
+jest.mock('@kiko/design-system/components/field-label', () =>
+  require('@kiko/test-support/field-label-spy').fieldLabelSpyModule((props: unknown) =>
+    mockFieldLabel(props),
+  ),
+);
 
 const noop = (): void => {};
 
@@ -17,8 +25,8 @@ describe('DateTimeRow', () => {
     expect(getByLabelText('Time')).toBeTruthy();
   });
 
-  // Round-6 device feedback item 1: Date and Time used to stack full-width;
-  // they now render SIDE BY SIDE in one row, each taking an equal share.
+  // Date and Time render SIDE BY SIDE in one row, each taking an equal
+  // share, rather than stacked full-width.
   it('lays the two fields out in a single row with a gap, not stacked', async () => {
     const { getByLabelText } = await render(<DateTimeRow time={0} onChangeTime={noop} />);
 
@@ -61,5 +69,48 @@ describe('DateTimeRow', () => {
 
     expect(getByTestId('row-date-field')).toBeTruthy();
     expect(getByTestId('row-time-field')).toBeTruthy();
+  });
+
+  it('caps the Date calendar at the day of maxDate', async () => {
+    const maxDate = new Date(2026, 9, 5, 10, 30).getTime();
+    const { getByLabelText, getByTestId } = await render(
+      <DateTimeRow time={0} onChangeTime={noop} maxDate={maxDate} />,
+    );
+
+    await fireEvent.press(getByLabelText('Date'));
+
+    expect(getByTestId('Date calendar').props.maxDate).toBe('2026-10-05');
+  });
+
+  it('titles the Date and Time sheets from the catalogue', async () => {
+    const { getByLabelText, getAllByText } = await render(
+      <DateTimeRow time={0} onChangeTime={noop} />,
+    );
+    const dateTitle = i18n.t('forms.fields.dateSheetTitle');
+    const timeTitle = i18n.t('forms.fields.timeSheetTitle');
+    const dateBefore = getAllByText(dateTitle, { includeHiddenElements: true }).length;
+    const timeBefore = getAllByText(timeTitle, { includeHiddenElements: true }).length;
+
+    await fireEvent.press(getByLabelText('Date'));
+
+    expect(getAllByText(dateTitle).length).toBe(dateBefore + 1);
+
+    await fireEvent.press(getByLabelText('Time'));
+
+    expect(getAllByText(timeTitle).length).toBe(timeBefore + 1);
+  });
+
+  it('keeps both labels plain by default', async () => {
+    await render(<DateTimeRow time={0} onChangeTime={noop} />);
+
+    expect(isLabelInvalid(mockFieldLabel, 'Date')).toBe(false);
+    expect(isLabelInvalid(mockFieldLabel, 'Time')).toBe(false);
+  });
+
+  it('turns both labels red when invalid', async () => {
+    await render(<DateTimeRow time={0} onChangeTime={noop} invalid />);
+
+    expect(isLabelInvalid(mockFieldLabel, 'Date')).toBe(true);
+    expect(isLabelInvalid(mockFieldLabel, 'Time')).toBe(true);
   });
 });

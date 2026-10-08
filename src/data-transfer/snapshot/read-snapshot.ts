@@ -1,18 +1,21 @@
 // src/data-transfer/snapshot/read-snapshot.ts
-import { asc } from 'drizzle-orm';
-
-import { database } from '../../db/client';
 import {
   accounts,
+  bondRegister,
   categories,
   categoryOverrides,
   currencyRateHistory,
   currencyRates,
+  deletedImportKeys,
   holdings,
+  pricePoints,
+  reminders,
   settings,
   syncState,
   transactions,
-} from '../../db/schema';
+  database,
+} from '@kiko/db';
+import { asc } from 'drizzle-orm';
 
 import type { DataSnapshot } from './data-snapshot';
 
@@ -46,4 +49,15 @@ export const readDataSnapshot = async (): Promise<DataSnapshot> => ({
     .select()
     .from(categoryOverrides)
     .orderBy(asc(categoryOverrides.normalizedName)),
+  // nosemgrep: kiko-no-whole-price-points-read OVERRIDE(export) the backup holds every price point
+  pricePoints: await database
+    .select()
+    .from(pricePoints)
+    .orderBy(asc(pricePoints.instrument), asc(pricePoints.day)),
+  bondRegister: await database.select().from(bondRegister).orderBy(asc(bondRegister.isin)),
+  reminders: await database.select().from(reminders).orderBy(asc(reminders.id)),
+  deletedImportKeys: await database
+    .select()
+    .from(deletedImportKeys)
+    .orderBy(asc(deletedImportKeys.holdingId), asc(deletedImportKeys.externalId)),
 });

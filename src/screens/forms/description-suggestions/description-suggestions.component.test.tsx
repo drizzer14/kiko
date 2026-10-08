@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
-import '../../../design-system/unistyles';
+import '@kiko/design-system/unistyles';
 import DescriptionSuggestions from '.';
 
 // A small pool of past MANUAL descriptions, newest-first (the query already

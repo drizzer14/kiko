@@ -1,8 +1,12 @@
-import type { Repository } from '@kiko/db/repository';
+import {
+  type Repository,
+  database,
+  write,
+  chunkForTable,
+  type CurrencyRateRow,
+  currencyRates,
+} from '@kiko/db';
 import { max, sql } from 'drizzle-orm';
-
-import { database, write } from '../../db/client';
-import { type CurrencyRateRow, currencyRates } from '../../db/schema';
 
 type NewRate = Pick<CurrencyRateRow, 'base' | 'quote' | 'rate' | 'source' | 'fetchedAt'>;
 
@@ -15,25 +19,47 @@ export const ratesRepo = {
    */
   latestFetchedAt: async (): Promise<number | null> => {
     const rows = await database.select({ value: max(currencyRates.fetchedAt) }).from(currencyRates);
+
     return rows.at(0)?.value ?? null;
   },
+  /**
+   * Distinct currencies with at least one stored row — a cheap presence
+   * check, never the full cross table. `buildUahRows` writes one row per
+   * priced currency, always as `base` (a star row's `quote` is always `UAH`,
+   * so `UAH` itself never appears here — the caller must treat `UAH` as
+   * always present, see `shouldThrottle`, `rates-refresh.ts`). A one-shot
+   * read (not reactive) — `refreshRates`'s own throttle-skip check awaits it.
+   */
+  presentCurrenciesQuery: () =>
+    database.selectDistinct({ currency: currencyRates.base }).from(currencyRates),
   upsertMany: (rates: NewRate[]) =>
-    write(async (tx) => {
+    write(async (databaseTransaction) => {
       if (rates.length === 0) {
         return;
       }
-      // Upsert on the (base, quote) unique index: a refreshed rate for an
-      // existing pair overwrites its value, source, and timestamp in place.
-      await tx
-        .insert(currencyRates)
-        .values(rates)
-        .onConflictDoUpdate({
-          target: [currencyRates.base, currencyRates.quote],
-          set: {
-            rate: sql`excluded.rate`,
-            source: sql`excluded.source`,
-            fetchedAt: sql`excluded.fetched_at`,
-          },
-        });
+      // A full Monobank sync now writes only ~109 rows (one X:UAH row per
+      // priced currency, not the ~11,990-row cross join a legacy write once
+      // composed) — well under SQLite's SQLITE_MAX_VARIABLE_NUMBER (32766).
+      // The chunking stays anyway: it costs nothing at this size and keeps
+      // this function safe against that same bound-parameter limit
+      // regardless of row count, the way `chunkForTable` is used everywhere
+      // else in the app — NOT because a `.kiko` restore routes through this
+      // function (it doesn't: `restore-snapshot.ts` normalizes and chunks
+      // `currencyRates` rows itself, with its own `chunkForTable` call).
+      for (const chunk of chunkForTable(currencyRates, rates)) {
+        // Upsert on the (base, quote) unique index: a refreshed rate for an
+        // existing pair overwrites its value, source, and timestamp in place.
+        await databaseTransaction
+          .insert(currencyRates)
+          .values(chunk)
+          .onConflictDoUpdate({
+            target: [currencyRates.base, currencyRates.quote],
+            set: {
+              rate: sql`excluded.rate`,
+              source: sql`excluded.source`,
+              fetchedAt: sql`excluded.fetched_at`,
+            },
+          });
+      }
     }),
 } satisfies Repository;

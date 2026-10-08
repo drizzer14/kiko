@@ -1,11 +1,19 @@
+import { View } from 'react-native';
 import { render } from '@testing-library/react-native';
+import Calendar from 'react-native-calendars/src/calendar';
 import '@kiko/design-system/unistyles';
 import KikoCalendar from './kiko-calendar.component';
 
-// The react-native-calendars mock (jest/setup.js) renders Calendar as a plain
-// View that passes every prop through, so these assertions read the props the
-// wrapper hands the underlying Calendar.
+// The Calendar manual mock (__mocks__/react-native-calendars/src/calendar.tsx)
+// renders Calendar as a plain View that passes every prop through, so these
+// assertions read the props the wrapper hands the underlying Calendar.
 describe('KikoCalendar', () => {
+  // Without the mock on the deep specifier, every prop assertion below would
+  // read the real library tree instead of the props KikoCalendar passes.
+  it('mocks Calendar on its deep import path', () => {
+    expect(Calendar).toBe(View);
+  });
+
   it('pins the grid to a fixed six-week height so months never reflow', async () => {
     const { getByTestId } = await render(<KikoCalendar testID="cal" onDayPress={jest.fn()} />);
 
@@ -56,5 +64,16 @@ describe('KikoCalendar', () => {
 
     expect(calendar.props.minDate).toBe('2026-03-01');
     expect(calendar.props.maxDate).toBe('2026-03-31');
+  });
+
+  // deviceRegion reads NativeModules.SettingsManager.settings.AppleLocale,
+  // which the RN Jest preset leaves undefined (see device-region.test.ts's
+  // own mocked cases for the region -> weekday mapping); weekStartFor then
+  // falls back to Monday (1), the same fallback path deviceLanguage's own
+  // Jest tests exercise for AppleLanguages.
+  it("passes the device region's first weekday as firstDay", async () => {
+    const { getByTestId } = await render(<KikoCalendar testID="cal" onDayPress={jest.fn()} />);
+
+    expect(getByTestId('cal').props.firstDay).toBe(1);
   });
 });

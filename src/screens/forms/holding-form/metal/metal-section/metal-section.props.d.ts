@@ -1,0 +1,35 @@
+import type { RefObject } from 'react';
+import type { TextInputInstance } from 'react-native';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { MetalForm, MetalUnit } from '@kiko/holdings/holding-metadata';
+
+export type MetalSectionProps = {
+  form: MetalForm;
+  onSelectForm: (form: MetalForm) => void;
+  unit: MetalUnit;
+  onSelectUnit: (unit: MetalUnit) => void;
+  purity: string;
+  onChangePurity: (text: string) => void;
+  // Purity is typed as a fineness per mille and validated on Save
+  // (0 < fineness <= 1000) in BOTH create and edit
+  // mode — a garbled or out-of-range value blocks Save instead of silently
+  // falling back to the standard fineness default.
+  purityError?: string;
+  purityFieldRef?: RefObject<FieldInstance | null>;
+  purityInputRef?: RefObject<TextInputInstance | null>;
+  // The first-lot fields only apply at CREATE time — they seed the holding's
+  // one lot (mirrors PropertySection's `showCost`). A later buy/sell goes
+  // through the dedicated Lot form instead, so an edit-mode render hides them.
+  showFirstLot: boolean;
+  quantity: string;
+  onChangeQuantity: (text: string) => void;
+  cost: string;
+  onChangeCost: (text: string) => void;
+  currencySuffix: string;
+  quantityError?: string;
+  costError?: string;
+  quantityFieldRef?: RefObject<FieldInstance | null>;
+  quantityInputRef?: RefObject<TextInputInstance | null>;
+  costFieldRef?: RefObject<FieldInstance | null>;
+  costInputRef?: RefObject<TextInputInstance | null>;
+};

@@ -1,8 +1,8 @@
-import { exchangeExcludedTxIds } from './exchange-exclusion';
+import { exchangeExcludedTransactionIds } from './exchange-exclusion';
 
-describe('exchangeExcludedTxIds', () => {
+describe('exchangeExcludedTransactionIds', () => {
   it('excludes both legs of a cross-currency exchange', () => {
-    const ids = exchangeExcludedTxIds([
+    const ids = exchangeExcludedTransactionIds([
       { id: 'out', exchangeCounterpartHoldingId: 'h-usd' },
       { id: 'in', exchangeCounterpartHoldingId: 'h-uah' },
       { id: 'groceries', exchangeCounterpartHoldingId: null },
@@ -14,12 +14,14 @@ describe('exchangeExcludedTxIds', () => {
   it('excludes a single-legged exchange into a term deposit', () => {
     // A term_deposit destination writes a metadata contribution, not a credit
     // row, so only the debit leg exists — nothing cancels it.
-    expect(exchangeExcludedTxIds([{ id: 'out', exchangeCounterpartHoldingId: 'h-dep' }])).toEqual(
-      new Set(['out']),
-    );
+    expect(
+      exchangeExcludedTransactionIds([{ id: 'out', exchangeCounterpartHoldingId: 'h-dep' }]),
+    ).toEqual(new Set(['out']));
   });
 
   it('returns an empty set for an ordinary ledger', () => {
-    expect(exchangeExcludedTxIds([{ id: 'a', exchangeCounterpartHoldingId: null }]).size).toBe(0);
+    expect(
+      exchangeExcludedTransactionIds([{ id: 'a', exchangeCounterpartHoldingId: null }]).size,
+    ).toBe(0);
   });
 });

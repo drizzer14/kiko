@@ -1,33 +1,124 @@
-import type { Repository } from '@kiko/db/repository';
-import { asc, eq, sql } from 'drizzle-orm';
+import {
+  type Repository,
+  id,
+  database,
+  write,
+  type AccountRow,
+  accounts,
+  deletedImportKeys,
+  holdings,
+  reminders,
+  syncState,
+  transactions,
+} from '@kiko/db';
+import {
+  clearLoanLinksForHoldingsDatabaseTransaction,
+  insertHoldingDatabaseTransaction,
+  type NewHolding,
+} from '@kiko/holdings/repo';
+import {
+  IMPLICIT_ACCOUNT_STORED_NAME,
+  type ImplicitAccountKind,
+  isImplicitAccountKind,
+} from '@kiko/holdings/implicit-account';
+import { logOnFailure } from '@kiko/diagnostics';
+import { clearToken } from '@kiko/monobank/token';
+import type { Money } from '@kiko/currency/money';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import type { Currency } from '@kiko/currency/currency';
+import { clearCredentials } from '@kiko/crypto-sync/binance';
+import { SYNCED_AT_FIELD } from '@kiko/holdings/holding-metadata';
+import { holdingTypesForAccountKind } from '@kiko/holdings/holding-type';
+import { cascadeLinkedRowsDatabaseTransaction } from '@kiko/transactions/repo';
+import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
+import { isSyncedAccount, type SyncedInstitution } from '@kiko/holdings/deletable';
 
-import type { Currency } from '../currency/currency';
-import { database, write } from '../db/client';
-import { id } from '../db/id';
-import { type AccountRow, accounts, holdings, transactions } from '../db/schema';
-import { isSyncedAccount, type SyncedInstitution } from '../holdings/deletable';
-import { SYNCED_AT_FIELD } from '../holdings/holding-metadata';
+// A failed first Connect stores its Monobank token or Binance key pair under
+// the account's id before any sync makes the account synced, so a deletable
+// account can still own one. Cleared after the delete commits, like a
+// disconnect does: the account is gone by then, so nothing else could ever
+// clear them, and a clear that fails first would leave a live account behind.
+// Never rejects: the delete has committed, so a failed clear is logged, not
+// shown as a failed delete that would skip the reminders re-plan.
+const clearKeychainItems = async (accountId: string): Promise<void> => {
+  for (const clear of [clearToken, clearCredentials]) {
+    await logOnFailure('[accounts] a Keychain item could not be cleared', () => clear(accountId));
+  }
+};
 
-// The next free grid slot for a new account: one past the current highest
-// `sortOrder` (or 0 when there are no accounts yet), so a freshly created
-// account appends to the end of the grid instead of tying with the first row.
-// Read inside the same write transaction as the insert so a concurrent create
-// cannot observe a stale maximum.
-const nextSortOrder = async (tx: typeof database): Promise<number> => {
-  const rows = await tx
-    .select({ value: sql<number>`coalesce(max(${accounts.sortOrder}), -1)` })
+// The next free grid slot for a new account, read inside the same write
+// transaction as the insert so a concurrent create cannot observe a stale
+// maximum. A DEBT account appends after every account; an ASSET account
+// must sort before every debt account, but an archived row can leave
+// `assetMax` tied with or past `debtMin` (`reorder` only rewrites ACTIVE
+// ids) — when the candidate slot would collide, every debt account shifts
+// up by exactly `candidate - debtMin + 1`, not a flat `+ 1`, to clear the
+// WHOLE gap, not just a contiguous one.
+const nextSortOrder = async (
+  databaseTransaction: typeof database,
+  kind: AccountRow['kind'],
+): Promise<number> => {
+  const rows = await databaseTransaction
+    .select({
+      assetMax: sql<number>`coalesce(max(case when ${accounts.kind} != 'debt' then ${accounts.sortOrder} end), -1)`,
+      debtMin: sql<
+        number | null
+      >`min(case when ${accounts.kind} = 'debt' then ${accounts.sortOrder} end)`,
+      allMax: sql<number>`coalesce(max(${accounts.sortOrder}), -1)`,
+    })
     .from(accounts);
+  const row = rows.at(0);
 
-  return (rows.at(0)?.value ?? -1) + 1;
+  if (kind === 'debt') {
+    return (row?.allMax ?? -1) + 1;
+  }
+
+  const candidate = (row?.assetMax ?? -1) + 1;
+  const debtMin = row?.debtMin;
+
+  if (debtMin !== null && debtMin !== undefined && candidate >= debtMin) {
+    await databaseTransaction
+      .update(accounts)
+      .set({ sortOrder: sql`${accounts.sortOrder} + ${candidate - debtMin + 1}` })
+      .where(eq(accounts.kind, 'debt'));
+  }
+
+  return candidate;
+};
+
+// The stored name is the fixed English sentinel until the user renames the
+// account; `accountDisplayName` shows the localized kind name for it. No icon
+// or color, so the kind defaults show (kiko-domain "The three levels").
+const insertImplicitAccount = async (
+  databaseTransaction: typeof database,
+  kind: ImplicitAccountKind,
+): Promise<string> => {
+  const accountId = id();
+
+  await databaseTransaction.insert(accounts).values({
+    id: accountId,
+    name: IMPLICIT_ACCOUNT_STORED_NAME[kind],
+    kind,
+    icon: null,
+    color: null,
+    institution: null,
+    bankId: null,
+    sortOrder: await nextSortOrder(databaseTransaction, kind),
+  });
+
+  return accountId;
 };
 
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
-  Partial<Pick<AccountRow, 'id' | 'institution' | 'bankId' | 'sortOrder' | 'color'>>;
+  Partial<Pick<AccountRow, 'id' | 'institution' | 'bankId' | 'sortOrder' | 'color' | 'icon'>>;
 
 type NewCashAccount = {
   name: string;
   currency: Currency;
-  initialBalanceMinorUnits: number;
+  // Converted to minor units, and currency-checked against `currency`, inside
+  // the write itself (kiko-domain "Money at the boundary") — never by the
+  // caller.
+  initialBalance: Money;
   // Optional SF Symbol icon, persisted on the account row in the same
   // transaction so a cash account created with a picked icon keeps it (the
   // create form now offers the icon picker for every kind, cash included).
@@ -71,20 +162,62 @@ export const accountsRepo = {
     database.select().from(accounts).where(eq(accounts.institution, institution)),
   /**
    * Insert a new account and resolve to its app id (the text UUID), so a caller
-   * can immediately act on the new row (e.g. set its icon). The id is generated
-   * here unless the caller pre-generated one and passes it in `input.id` — the
-   * create form does this so the shared crypto sync fields (which bind to an
-   * existing account id) can key their Keychain write and connect to the future
-   * row before it is inserted. The op-sqlite insert result
+   * can act on the new row. The icon and color are part of the input and go in
+   * this same write, never in a second one. The id is generated here unless
+   * the caller pre-generated one and passes it in `input.id` — the create form
+   * does this so the shared crypto sync fields (which bind to an existing
+   * account id) can key their Keychain write and connect to the future row
+   * before it is inserted. The op-sqlite insert result
    * (rowsAffected/lastInsertRowId) is the SQLite rowid, not this id, so it is
    * not returned.
    */
   create: (input: NewAccount): Promise<string> =>
-    write(async (tx) => {
+    write(async (databaseTransaction) => {
+      if (isImplicitAccountKind(input.kind)) {
+        throw new Error(
+          'accountsRepo.create: a property/debt account is implicit; use createImplicitHolding',
+        );
+      }
+
       const accountId = input.id ?? id();
-      const sortOrder = input.sortOrder ?? (await nextSortOrder(tx));
-      await tx.insert(accounts).values({ ...input, id: accountId, sortOrder });
+      const sortOrder = input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.kind));
+      await databaseTransaction.insert(accounts).values({ ...input, id: accountId, sortOrder });
+
       return accountId;
+    }),
+  /**
+   * Insert a property or loan holding into the one live implicit account of its
+   * kind, creating that account first when there is none, in ONE write: a
+   * rejected holding rolls the account insert back too, so no empty implicit
+   * account is left behind. A type the kind does not hold is refused before
+   * any insert. The lookup filters in SQL, never a full-table read.
+   * An archived account of the kind is never reused: the partial unique index
+   * `accounts_implicit_kind` ignores it, so a live one is created beside it.
+   */
+  createImplicitHolding: (
+    kind: ImplicitAccountKind,
+    input: Omit<NewHolding, 'accountId'>,
+  ): Promise<{ accountId: string; holdingId: string }> =>
+    write(async (databaseTransaction) => {
+      if (!holdingTypesForAccountKind[kind].includes(input.type)) {
+        throw new Error(
+          `accountsRepo.createImplicitHolding: a ${input.type} holding does not belong in the ${kind} account`,
+        );
+      }
+
+      const existing = await databaseTransaction
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(and(eq(accounts.kind, kind), isNull(accounts.archivedAt)))
+        .limit(1);
+      const accountId =
+        existing.at(0)?.id ?? (await insertImplicitAccount(databaseTransaction, kind));
+      const holdingId = await insertHoldingDatabaseTransaction(databaseTransaction, {
+        ...input,
+        accountId,
+      });
+
+      return { accountId, holdingId };
     }),
   /**
    * Create a cash account, its initial cash holding, and — for a non-zero
@@ -96,23 +229,45 @@ export const accountsRepo = {
    * The opening balance is a manual adjustment like any other, so it gets its
    * own `manual` transaction (kiko-domain: a holding's balance history must stay
    * derivable from its transactions; `holdingsRepo.updateWithBalanceDelta`
-   * enforces the same invariant for a later edit). Without it, `holdingValueAt`
-   * (statistics/holding-value-at.ts) back-derived the opening balance as
-   * `balance - sum(transactions)` and the whole historical net-worth series
-   * carried a step no ledger row could explain.
+   * enforces the same invariant for a later edit). Without it,
+   * `createHoldingValuer` (statistics/holding-value-at/holding-value-at.ts)
+   * back-derived the opening balance as `balance - sum(transactions)` and the
+   * whole historical net-worth series carried a step no ledger row could
+   * explain.
    *
    * The row is inserted directly rather than through
    * `transactionsRepo.recordManual`, which would ALSO add the amount to a
    * balance the insert above has already set. It carries no description and no
    * category: the label resolves at render time
    * (transactions/row-description.ts).
+   *
+   * A non-zero initial balance also stamps the holding's `balanceSetAt` — it
+   * IS a hand-set balance, the same as `holdingsRepo.create`'s own typed
+   * opening balance (see `transactionsRepo.importRows`'s doc comment for why
+   * this matters) — at the SAME instant as the ledger row's `time`, and the
+   * row carries `transactions.setsBalance` and is the holding's
+   * `balanceSetRowId`.
    */
-  createCashAccount: ({ name, currency, initialBalanceMinorUnits, icon, color }: NewCashAccount) =>
-    write(async (tx) => {
+  createCashAccount: ({ name, currency, initialBalance, icon, color }: NewCashAccount) =>
+    write(async (databaseTransaction) => {
+      if (initialBalance.currency !== currency) {
+        throw new Error(
+          'accountsRepo.createCashAccount: initial balance currency does not match the account currency',
+        );
+      }
+
+      if (!isCurrencyAllowedForHoldingType('cash', currency)) {
+        throw new Error(`accountsRepo.createCashAccount: a cash holding cannot hold ${currency}`);
+      }
+
       const accountId = id();
       const holdingId = id();
-      const sortOrder = await nextSortOrder(tx);
-      await tx.insert(accounts).values({
+      const openingRowId = id();
+      const sortOrder = await nextSortOrder(databaseTransaction, 'cash');
+      const now = Date.now();
+      const initialBalanceMinorUnits = initialBalance.minorUnits;
+
+      await databaseTransaction.insert(accounts).values({
         id: accountId,
         name,
         kind: 'cash',
@@ -120,27 +275,30 @@ export const accountsRepo = {
         color: color ?? null,
         sortOrder,
       });
-      await tx.insert(holdings).values({
+      await databaseTransaction.insert(holdings).values({
         id: holdingId,
         accountId,
         name,
         type: 'cash',
         currency,
         balanceMinorUnits: initialBalanceMinorUnits,
+        balanceSetAt: initialBalanceMinorUnits !== 0 ? now : null,
+        balanceSetRowId: initialBalanceMinorUnits !== 0 ? openingRowId : null,
       });
 
       if (initialBalanceMinorUnits === 0) {
         return;
       }
 
-      await tx.insert(transactions).values({
-        id: id(),
+      await databaseTransaction.insert(transactions).values({
+        id: openingRowId,
         holdingId,
         amountMinorUnits: initialBalanceMinorUnits,
-        time: Date.now(),
+        time: now,
         description: '',
         category: null,
         source: 'manual',
+        setsBalance: true,
       });
     }),
   /**
@@ -162,9 +320,12 @@ export const accountsRepo = {
    * `crypto-sync/disconnect` operations compose both.
    */
   disconnect: (accountId: string) =>
-    write(async (tx) => {
-      await tx.update(accounts).set({ institution: null }).where(eq(accounts.id, accountId));
-      const accountHoldings = await tx
+    write(async (databaseTransaction) => {
+      await databaseTransaction
+        .update(accounts)
+        .set({ institution: null })
+        .where(eq(accounts.id, accountId));
+      const accountHoldings = await databaseTransaction
         .select()
         .from(holdings)
         .where(eq(holdings.accountId, accountId));
@@ -182,24 +343,24 @@ export const accountsRepo = {
           continue;
         }
 
-        await tx
+        await databaseTransaction
           .update(holdings)
           .set({ metadata: withoutSyncMetadata(metadata as Record<string, unknown>) })
           .where(eq(holdings.id, holding.id));
       }
     }),
   update: (accountId: string, patch: Partial<AccountRow>) =>
-    write((tx) => tx.update(accounts).set(patch).where(eq(accounts.id, accountId))),
+    write((databaseTransaction) =>
+      databaseTransaction.update(accounts).set(patch).where(eq(accounts.id, accountId)),
+    ),
   /**
    * Sets the account's icon (an SF Symbol name) or, with `null`, clears it back
    * to no custom icon. The display layer falls back to a kind-derived default
    * when the stored icon is null.
    */
   setIcon: (accountId: string, icon: string | null) =>
-    write((tx) => tx.update(accounts).set({ icon }).where(eq(accounts.id, accountId))),
-  archive: (accountId: string) =>
-    write((tx) =>
-      tx.update(accounts).set({ archivedAt: Date.now() }).where(eq(accounts.id, accountId)),
+    write((databaseTransaction) =>
+      databaseTransaction.update(accounts).set({ icon }).where(eq(accounts.id, accountId)),
     ),
   /**
    * Persist a drag-and-drop reorder of the accounts grid. `orderedIds` is the
@@ -211,41 +372,96 @@ export const accountsRepo = {
    * `createdAt` tiebreak keeps any tie deterministic.
    */
   reorder: (orderedIds: string[]) =>
-    write(async (tx) => {
+    write(async (databaseTransaction) => {
       for (let index = 0; index < orderedIds.length; index += 1) {
-        await tx
+        await databaseTransaction
           .update(accounts)
           .set({ sortOrder: index })
           .where(eq(accounts.id, orderedIds[index]));
       }
     }),
   /**
-   * Delete a MANUAL account together with all of its holdings and every one of
-   * their transactions, in ONE op-sqlite transaction so a partial failure can
-   * never leave orphaned holdings or ledger rows behind (and so foreign-key
-   * enforcement, ON per connection, is satisfied by deleting children before
-   * parents: transactions, then holdings, then the account). A synced (monobank)
-   * account is owned by the bank connection and is refused with a typed error; a
-   * missing id is a no-op rather than an error.
+   * Delete a MANUAL account together with all of its holdings, every one of
+   * their transactions, its reminders, and its `sync_state` cursor row (an
+   * account that ever attempted a Monobank sync, even a failed first Connect,
+   * carries one), in
+   * ONE op-sqlite transaction so a partial failure can never leave
+   * orphaned holdings, ledger rows, or a stranded cursor behind (and so
+   * foreign-key enforcement, ON per connection, is satisfied by deleting
+   * children before parents: transactions, `sync_state` and reminders, then holdings,
+   * then the account). A synced (monobank) account is owned by the bank
+   * connection and is refused with a typed error; a missing id is a no-op
+   * rather than an error.
+   *
+   * The rows of the account's holdings are parts of movements too: the other
+   * legs of an Exchange or Convert, the rest of a split and a deposit's
+   * contributions, on holdings of OTHER accounts, go the same way a single
+   * holding delete takes them (`cascadeLinkedRowsDatabaseTransaction`), in the
+   * same transaction.
+   *
+   * A debt account can hold a loan, and OTHER
+   * holdings' payment rows can point back at that loan via `loanHoldingId`.
+   * Deleting the account deletes the loan holding too, so this cascade
+   * clears those links in the SAME transaction — the same
+   * `clearLoanLinksForHoldingsDatabaseTransaction` cascade
+   * `transactionsRepo.removeHolding` runs for a single loan holding, applied
+   * here to every holding the deleted account owned. A no-op when none of them
+   * was a loan.
    */
   remove: (accountId: string) =>
-    write(async (tx) => {
-      const rows = await tx.select().from(accounts).where(eq(accounts.id, accountId));
+    write(async (databaseTransaction) => {
+      const rows = await databaseTransaction
+        .select()
+        .from(accounts)
+        .where(eq(accounts.id, accountId));
       const row = rows.at(0);
+
       if (!row) {
-        return;
+        return false;
       }
+
       if (isSyncedAccount(row)) {
         throw new Error('accountsRepo.remove: cannot delete a synced account');
       }
-      const accountHoldings = await tx
+      const accountHoldings = await databaseTransaction
         .select()
         .from(holdings)
         .where(eq(holdings.accountId, accountId));
+
+      // Before any row goes: the other parts of the movements these holdings'
+      // rows belong to, in other accounts, are found through them.
+      await cascadeLinkedRowsDatabaseTransaction(
+        databaseTransaction,
+        accountHoldings.map((holding) => holding.id),
+      );
+
       for (const holding of accountHoldings) {
-        await tx.delete(transactions).where(eq(transactions.holdingId, holding.id));
+        await databaseTransaction
+          .delete(transactions)
+          .where(eq(transactions.holdingId, holding.id));
+        // A NO ACTION foreign key on the holding, like the rows above.
+        await databaseTransaction
+          .delete(deletedImportKeys)
+          .where(eq(deletedImportKeys.holdingId, holding.id));
       }
-      await tx.delete(holdings).where(eq(holdings.accountId, accountId));
-      await tx.delete(accounts).where(eq(accounts.id, accountId));
-    }),
+      // `sync_state.account_id` is an FK with NO ACTION (migration
+      // `0027`), so deleting `accounts` while a row still references it throws
+      // a foreign key constraint error and rolls back the whole delete — for
+      // ANY account that ever ran a Monobank sync, including one whose very
+      // first Connect attempt failed (`runSyncInner` creates this row via
+      // `syncStateRepo.ensure` before the account ever becomes synced). Delete
+      // it here, before the account row goes — mirrors the order
+      // `restoreDataSnapshot` already uses (`data-transfer/snapshot/restore-snapshot.ts`).
+      await databaseTransaction.delete(syncState).where(eq(syncState.accountId, accountId));
+      // `reminders.account_id` is the same kind of NO ACTION foreign key.
+      await databaseTransaction.delete(reminders).where(eq(reminders.accountId, accountId));
+      await clearLoanLinksForHoldingsDatabaseTransaction(
+        databaseTransaction,
+        accountHoldings.map((holding) => holding.id),
+      );
+      await databaseTransaction.delete(holdings).where(eq(holdings.accountId, accountId));
+      await databaseTransaction.delete(accounts).where(eq(accounts.id, accountId));
+
+      return true;
+    }).then((isRemoved) => (isRemoved ? clearKeychainItems(accountId) : undefined)),
 } satisfies Repository;

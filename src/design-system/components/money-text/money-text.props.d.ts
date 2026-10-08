@@ -1,6 +1,5 @@
+import type { Money } from '@kiko/currency/money';
 import type { StyleProp, TextStyle } from 'react-native';
-
-import type { Money } from '../../../currency/money';
 
 export type MoneyTextContext = 'balance' | 'transaction';
 

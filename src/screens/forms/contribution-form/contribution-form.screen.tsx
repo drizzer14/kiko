@@ -1,28 +1,23 @@
-import { holdingsRepo } from '@kiko/holdings/repo';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { type FC, useRef, useState } from 'react';
+import { useLiveQuery } from '@kiko/db';
+import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
-import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
-import { Alert, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
-
-import { type Currency, currencySymbol } from '../../../currency/currency';
-import { Money } from '../../../currency/money';
-import { parseAmount } from '../../../currency/parse';
-import { useLiveQuery } from '../../../db/use-live-query';
-import Box from '../../../design-system/components/box';
-import Button from '../../../design-system/components/button';
-import Screen from '../../../design-system/components/screen';
-import TextField from '../../../design-system/components/text-field';
-import type { AccountsStackParamList } from '../../../navigation/types';
-
-import DateField from '../date-field';
-import { groupAmount } from '../amount-format/amount-format';
-import { useSubmitOnce } from '../use-submit-once/use-submit-once';
-import {
-  useHeaderInset,
-  scrollToField,
-  type FieldInstance,
-} from '../scroll-to-field/scroll-to-field';
+import { type FC, useRef, useState } from 'react';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { parseAmount } from '@kiko/currency/parse';
+import Box from '@kiko/design-system/components/box';
+import DateField from '@kiko/screens/forms/date-field';
+import Button from '@kiko/design-system/components/button';
+import Screen from '@kiko/design-system/components/screen';
+import { View, type TextInputInstance } from 'react-native';
+import { groupAmount } from '@kiko/screens/forms/amount-format';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import TextField from '@kiko/design-system/components/text-field';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
+import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { type Currency, currencySymbol } from '@kiko/currency/currency';
+import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
@@ -37,10 +32,9 @@ const startOfToday = (): number => {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 };
 
-// A dedicated screen for adding a deposit top-up, replacing the old inline
-// collapsible form on the holding-detail screen. It uses the same shared inputs
-// as the other forms — a grouped-amount TextField and the calendar DateField —
-// and persists through the exact same repo call the inline form used.
+// A dedicated screen for adding a deposit top-up. It uses the same shared
+// inputs as the other forms — a grouped-amount TextField and the calendar
+// DateField — and persists through `holdingsRepo.appendDepositContribution`.
 const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, navigation }) => {
   const { holdingId } = route.params;
   // `holdingsRepo` exposes no single-row lookup, so the holding's own currency
@@ -55,24 +49,13 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
   const [date, setDate] = useState<number>(startOfToday);
   const [attemptedSave, setAttemptedSave] = useState(false);
 
-  // The scrollable content root and the amount field's own wrapper — passed
-  // to `scrollToField` so a blocked Save (an invalid amount) scrolls the
-  // field into view alongside its inline error. See scroll-to-field.ts. An
-  // `useAnimatedRef` (rather than a plain `useRef`) so `useScrollOffset`
-  // below can read the ScrollView's own live content offset.
-  const scrollableRef = useAnimatedRef<ScrollViewInstance>();
-  const scrollOffset = useScrollOffset(scrollableRef);
+  // The amount field's own wrapper — a blocked Save (an invalid amount)
+  // scrolls it into view alongside its inline error. See scroll-to-field.ts.
+  const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const amountFieldRef = useRef<FieldInstance>(null);
   // The amount field's own inner TextInput, so a blocked Save can focus it
   // imperatively once it has scrolled into view.
   const amountInputRef = useRef<TextInputInstance>(null);
-  const headerInset = useHeaderInset();
-  // The ScrollView's own total content height, captured off `Screen`'s
-  // `onContentSizeChange` (forwarded from its ScrollView) so `scrollToField`
-  // can bound an over-large target against the real content extent — see
-  // scroll-to-field.ts's own overshoot-clamp doc. A plain ref, not state:
-  // read only imperatively at Save-press time, never needs to re-render.
-  const contentHeightRef = useRef(0);
 
   const save = async (): Promise<void> => {
     if (!holding) {
@@ -82,18 +65,10 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     // field, and `!(NaN > 0)` rejects it: require a strictly positive major
     // amount before persisting anything.
     const majorAmount = parseAmount(amount);
+
     if (!(majorAmount > 0)) {
       setAttemptedSave(true);
-      scrollToField(
-        scrollableRef,
-        amountFieldRef,
-        {
-          currentOffset: scrollOffset.value,
-          headerInset,
-          contentHeight: contentHeightRef.current,
-        },
-        () => amountInputRef.current?.focus(),
-      );
+      scrollTo(amountFieldRef, () => amountInputRef.current?.focus());
 
       return;
     }
@@ -102,7 +77,8 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
       await holdingsRepo.appendDepositContribution(holding.id, { amountMinorUnits, date });
     } catch {
       // Keep the screen open on failure so the entered values are not lost.
-      Alert.alert(t('forms.contribution.errorTitle'), t('forms.contribution.errorMessage'));
+      alertOnCatch(t, 'forms.contribution.errorTitle', 'forms.contribution.errorMessage');
+
       return;
     }
     navigation.goBack();
@@ -114,9 +90,7 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      onContentSizeChange={(_width, height) => {
-        contentHeightRef.current = height;
-      }}
+      onContentSizeChange={onContentSizeChange}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('forms.contribution.save')}
@@ -142,7 +116,13 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
           />
         </View>
 
-        <DateField label={t('forms.fields.date')} value={date} onChange={setDate} />
+        <DateField
+          label={t('forms.fields.date')}
+          sheetTitle={t('forms.fields.dateSheetTitle')}
+          value={date}
+          onChange={setDate}
+          placeholder={t('forms.fields.selectDatePlaceholder')}
+        />
       </Box>
     </Screen>
   );

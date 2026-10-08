@@ -1,8 +1,8 @@
 import {
-  descriptionExcludedTransferTxIds,
+  descriptionExcludedTransferTransactionIds,
   isDescriptionExcludedTransfer,
   isMccExcludedTransfer,
-  mccExcludedTransferTxIds,
+  mccExcludedTransferTransactionIds,
 } from './transfer-exclusion';
 
 const ownIbans = new Set(['UA-OWN-1', 'UA-OWN-2']);
@@ -86,7 +86,7 @@ describe('isDescriptionExcludedTransfer', () => {
 
 describe('descriptionExcludedTransferTxIds', () => {
   it('collects the ids of exactly the description-matched internal transfers', () => {
-    const ids = descriptionExcludedTransferTxIds([
+    const ids = descriptionExcludedTransferTransactionIds([
       { id: 'dep', description: 'Поповнення депозиту' },
       { id: 'black', description: 'На чорну картку' },
       { id: 'fop', description: 'На гривневий рахунок ФОП для переказу на картку' },
@@ -98,11 +98,11 @@ describe('descriptionExcludedTransferTxIds', () => {
   });
 
   it('returns an empty set when no row matches', () => {
-    expect(descriptionExcludedTransferTxIds([])).toEqual(new Set());
+    expect(descriptionExcludedTransferTransactionIds([])).toEqual(new Set());
   });
 
   it('does NOT drop a third-party FOP payee id (only the own-FOP top-up phrase matches)', () => {
-    const ids = descriptionExcludedTransferTxIds([
+    const ids = descriptionExcludedTransferTransactionIds([
       { id: 'fop-topup', description: 'На гривневий рахунок ФОП для переказу на картку' },
       { id: 'landlord', description: 'ФОП Песляк Валентина Петрівна' },
     ]);
@@ -135,12 +135,12 @@ describe('mccExcludedTransferTxIds', () => {
       // A manual row with no mcc — kept (falls through to the pair matcher).
       { id: 'manual', mcc: null, counterIban: null, category: 'transfers' },
     ];
-    const ids = mccExcludedTransferTxIds(rows, ownIbans);
+    const ids = mccExcludedTransferTransactionIds(rows, ownIbans);
 
     expect(ids).toEqual(new Set(['cash', 'own']));
   });
 
   it('returns an empty set when no row matches', () => {
-    expect(mccExcludedTransferTxIds([], ownIbans)).toEqual(new Set());
+    expect(mccExcludedTransferTransactionIds([], ownIbans)).toEqual(new Set());
   });
 });

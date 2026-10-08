@@ -2,22 +2,40 @@
  * @format
  */
 
-import { render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { remindersNative } from '@kiko/reminders/native';
+import { navigationRef } from '@kiko/navigation/navigation-ref';
+import { act, render, waitFor } from '@testing-library/react-native';
 
 // MigrationsGate pulls in the op-sqlite native binding, which has no jest
 // binary; stub it to render its children as if migrations already succeeded.
-jest.mock('../src/migration/migrations-gate', () => ({
+jest.mock('@kiko/migration/migrations-gate', () => ({
   __esModule: true,
   default: ({ children }: { children: ReactNode }) => children,
 }));
 
 // LockGate reads settings through useLiveQuery; stub it as a passthrough so the
-// boot smoke test reaches Home exactly as MigrationsGate is stubbed.
-jest.mock('../src/auth/lock-gate/lock-gate.component', () => ({
-  __esModule: true,
-  default: ({ children }: { children: ReactNode }) => children,
-}));
+// boot smoke test reaches Home exactly as MigrationsGate is stubbed. A test
+// that needs the lock up starts it locked and unlocks it through `mockLock`.
+const mockLock: { startsLocked: boolean; unlock: () => void } = {
+  startsLocked: false,
+  unlock: () => undefined,
+};
+
+jest.mock('@kiko/auth/lock-gate/lock-gate.component', () => {
+  const { useState } = require('react');
+
+  return {
+    __esModule: true,
+    default: ({ children }: { children: ReactNode }) => {
+      const [isLocked, setLocked] = useState(mockLock.startsLocked);
+
+      mockLock.unlock = () => setLocked(false);
+
+      return isLocked ? null : children;
+    },
+  };
+});
 
 // The real Settings screen (wired into RootNavigator, rendered inside App)
 // also pulls in db/client directly (via useLiveQuery), which opens a real
@@ -47,6 +65,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
 // through the mocked `useLiveQuery` (which ignores its query argument).
 jest.mock('@kiko/accounts/accounts.repo', () => {
   const actual = jest.requireActual('@kiko/accounts/accounts.repo');
+
   return {
     accountsRepo: {
       ...actual.accountsRepo,
@@ -55,19 +74,81 @@ jest.mock('@kiko/accounts/accounts.repo', () => {
   };
 });
 
+// useReminderScheduler (wired into AppRoot) one-shot `await`s these directly.
+// Stub them to model a user with no reminders and no queued responses, so the
+// smoke test exercises the scheduler's real "no reminders" path on purpose
+// rather than passing through a swallowed "database not initialized" error.
+jest.mock('@kiko/reminders/repo/reminders.repo', () => ({
+  remindersRepo: {
+    hasAnyQuery: () => Promise.resolve([]),
+    recordEngagements: () => Promise.resolve(),
+  },
+}));
+
+// useLotRecost (wired into AppRoot) runs the one-time lot recost; spied so a
+// test can tell when the app root starts it.
+const mockRecostStoredLots = jest.fn().mockResolvedValue(undefined);
+jest.mock('@kiko/holdings/lot-recost/lot-recost', () => ({
+  recostStoredLots: () => mockRecostStoredLots(),
+}));
+
 // The Home screen is data-driven (accounts/holdings/rates/settings via
 // useLiveQuery). This boot smoke test only asserts the screen mounts, so stub
 // the hook to return empty data rather than opening a real op-sqlite reactive
 // subscription.
-jest.mock('../src/db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: [] }),
 }));
 
 import App from '../App';
 
 describe('App', () => {
+  afterEach(() => {
+    mockLock.startsLocked = false;
+  });
+
   it('boots to the Home screen', async () => {
     const { findByText } = await render(<App />);
     expect(await findByText('Home')).toBeTruthy();
+  });
+
+  it('re-plans the reminders once the app root mounts', async () => {
+    const replaceRequests = jest.spyOn(remindersNative, 'replaceRequests');
+
+    await render(<App />);
+
+    await waitFor(() => expect(replaceRequests).toHaveBeenCalledWith([], []));
+  });
+
+  it('costs the stored lots again once the app root mounts, never while locked', async () => {
+    mockRecostStoredLots.mockClear();
+    mockLock.startsLocked = true;
+
+    await render(<App />);
+
+    expect(mockRecostStoredLots).not.toHaveBeenCalled();
+
+    await act(async () => {
+      mockLock.unlock();
+    });
+
+    await waitFor(() => expect(mockRecostStoredLots).toHaveBeenCalledTimes(1));
+  });
+
+  it('reads no notification tap and has no navigator to route to until the app is unlocked', async () => {
+    const drainResponses = jest.spyOn(remindersNative, 'drainResponses');
+    mockLock.startsLocked = true;
+
+    await render(<App />);
+
+    expect(drainResponses).not.toHaveBeenCalled();
+    expect(navigationRef.isReady()).toBe(false);
+
+    await act(async () => {
+      mockLock.unlock();
+    });
+
+    await waitFor(() => expect(drainResponses).toHaveBeenCalledTimes(1));
+    expect(navigationRef.isReady()).toBe(true);
   });
 });

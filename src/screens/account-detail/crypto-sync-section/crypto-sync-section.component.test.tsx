@@ -1,11 +1,10 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
-import '../../../design-system/unistyles';
-
-import { formatDateTime } from '../../../dates/format';
-import type { AccountRow, HoldingRow } from '../../../db/schema';
-import { i18n } from '../../../i18n';
+import { Alert, StyleSheet } from 'react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import { i18n } from '@kiko/i18n/init';
+import { DAY_MS, formatDateTime } from '@kiko/dates';
+import type { AccountRow, HoldingRow } from '@kiko/db';
 
 import CryptoSyncSection from './crypto-sync-section.component';
 
@@ -13,14 +12,19 @@ const mockUseLiveQuery = jest.fn();
 const mockSync = jest.fn();
 const mockUseCryptoSync = jest.fn();
 const mockDisconnect = jest.fn();
+const mockSyncReminders = jest.fn().mockResolvedValue(undefined);
 
-jest.mock('../../../db/use-live-query', () => ({
+jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
+}));
+jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
+  syncReminders: (...args: unknown[]) => mockSyncReminders(...args),
+  drainReminderResponses: async () => [],
 }));
 jest.mock('@kiko/sync/use-crypto-sync', () => ({
   useCryptoSync: () => mockUseCryptoSync(),
 }));
-jest.mock('../../../crypto-sync/disconnect', () => ({
+jest.mock('@kiko/crypto-sync/disconnect', () => ({
   disconnectCryptoAccount: (...args: unknown[]) => mockDisconnect(...args),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
@@ -34,8 +38,9 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 // The two fields are tested on their own; here each collapses to one pressable
 // that fires `onConnect` with a fixture, so the section's wiring is what is
 // under test.
-jest.mock('../wallet-address-field', () => {
+jest.mock('@kiko/design-system/components/wallet-address-field', () => {
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ onConnect }: { onConnect: (address: string) => Promise<boolean> }) => (
@@ -48,8 +53,9 @@ jest.mock('../wallet-address-field', () => {
     ),
   };
 });
-jest.mock('../binance-credentials-field', () => {
+jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
   const { Pressable, Text } = require('react-native');
+
   return {
     __esModule: true,
     default: ({ onConnect }: { onConnect: () => Promise<boolean> }) => (
@@ -69,7 +75,7 @@ jest.mock('../binance-credentials-field', () => {
 // getByText/press assertion is unaffected.
 const mockButtonProps: { variant?: string; children?: ReactNode; icon?: string }[] = [];
 
-jest.mock('../../../design-system/components/button', () => {
+jest.mock('@kiko/design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
 
   return {
@@ -119,18 +125,42 @@ const holding = (metadata: unknown): HoldingRow => ({
   color: null,
   balanceMinorUnits: 0,
   syncedBalanceMinorUnits: null,
+  balanceSetAt: null,
+  balanceSetRowId: null,
   metadata,
   sortOrder: 0,
   closedAt: null,
   createdAt: 0,
 });
 
-/** Seed the two connected-accounts live queries, keyed on the institution each one was built for. */
+/**
+ * Seed the two connected-accounts live queries, keyed on the institution each one was built
+ * for.
+ */
 const setConnected = (connected: { btc_wallet?: AccountRow[]; binance?: AccountRow[] }): void => {
   mockUseLiveQuery.mockImplementation((query: { __institution: 'btc_wallet' | 'binance' }) => ({
     data: connected[query.__institution] ?? [],
   }));
 };
+
+const CONNECTED_WALLET_SYNCED_AT = 1_700_000_000_000;
+
+// Shared by every "already connected to a wallet" test below — each one only
+// differs in what it asserts afterward, never in how the section itself is
+// rendered.
+const renderConnectedWallet = () =>
+  render(
+    <CryptoSyncSection
+      account={account({ institution: 'btc_wallet' })}
+      holdings={[holding({ walletAddress: ADDRESS, syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
+    />,
+  );
+
+// Shared by every test below that has no synced holding yet (no connection,
+// or connected with nothing to show a "last sync" stamp for) — each one only
+// differs in what account override and assertion it needs.
+const renderSection = (overrides: Partial<AccountRow> = {}) =>
+  render(<CryptoSyncSection account={account(overrides)} holdings={[]} />);
 
 describe('CryptoSyncSection', () => {
   beforeEach(() => {
@@ -143,9 +173,7 @@ describe('CryptoSyncSection', () => {
   });
 
   it('shows the heading, a Wallet/Binance source picker, and the wallet field by default', async () => {
-    const { getByText, getByLabelText, queryByLabelText } = await render(
-      <CryptoSyncSection account={account()} holdings={[]} />,
-    );
+    const { getByText, getByLabelText, queryByLabelText } = await renderSection();
 
     expect(getByText('Synchronization')).toBeTruthy();
     expect(getByText('Wallet')).toBeTruthy();
@@ -155,9 +183,7 @@ describe('CryptoSyncSection', () => {
   });
 
   it('switches to the Binance field when the Binance chip is selected', async () => {
-    const { getByText, getByLabelText, queryByLabelText } = await render(
-      <CryptoSyncSection account={account()} holdings={[]} />,
-    );
+    const { getByText, getByLabelText, queryByLabelText } = await renderSection();
 
     await fireEvent.press(getByText('Binance'));
 
@@ -166,9 +192,7 @@ describe('CryptoSyncSection', () => {
   });
 
   it('runs a wallet connect sync with the address when the wallet field connects', async () => {
-    const { getByLabelText } = await render(
-      <CryptoSyncSection account={account()} holdings={[]} />,
-    );
+    const { getByLabelText } = await renderSection();
 
     await fireEvent.press(getByLabelText('wallet-field'));
 
@@ -182,9 +206,7 @@ describe('CryptoSyncSection', () => {
   });
 
   it('runs a Binance connect sync when the Binance field connects', async () => {
-    const { getByText, getByLabelText } = await render(
-      <CryptoSyncSection account={account()} holdings={[]} />,
-    );
+    const { getByText, getByLabelText } = await renderSection();
 
     await fireEvent.press(getByText('Binance'));
     await fireEvent.press(getByLabelText('binance-field'));
@@ -194,13 +216,42 @@ describe('CryptoSyncSection', () => {
     );
   });
 
+  it.each([true, false])(
+    'connecting Binance re-plans the reminders after the sync (sync succeeded: %s), since a synced account sends none',
+    async (synced) => {
+      mockSync.mockResolvedValue(synced);
+      const { getByText, getByLabelText } = await renderSection();
+
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+
+      await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+      expect(mockSync.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
+      );
+    },
+  );
+
+  it.each([true, false])(
+    'connecting a wallet re-plans the reminders after the sync (sync succeeded: %s), since a synced account sends none',
+    async (synced) => {
+      mockSync.mockResolvedValue(synced);
+      const { getByLabelText } = await renderSection();
+
+      await fireEvent.press(getByLabelText('wallet-field'));
+
+      await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+      expect(mockSync.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
+      );
+    },
+  );
+
   it('still shows the wallet field (no "connected elsewhere" hint) when another account holds a wallet', async () => {
-    // Multi-connection (Task 5.2): each crypto account connects independently, so
-    // another account already holding a wallet no longer blocks this one's field.
+    // Multi-connection: each crypto account connects independently, so
+    // another account already holding a wallet does not block this one's field.
     setConnected({ btc_wallet: [account({ id: 'other', institution: 'btc_wallet' })] });
-    const { getByLabelText, queryByText } = await render(
-      <CryptoSyncSection account={account()} holdings={[]} />,
-    );
+    const { getByLabelText, queryByText } = await renderSection();
 
     expect(getByLabelText('wallet-field')).toBeTruthy();
     expect(queryByText('Wallet is already connected to another account')).toBeNull();
@@ -208,9 +259,7 @@ describe('CryptoSyncSection', () => {
 
   it('still shows the Binance field when another account already holds Binance', async () => {
     setConnected({ binance: [account({ id: 'other', institution: 'binance' })] });
-    const { getByText, getByLabelText } = await render(
-      <CryptoSyncSection account={account()} holdings={[]} />,
-    );
+    const { getByText, getByLabelText } = await renderSection();
 
     await fireEvent.press(getByText('Binance'));
 
@@ -218,63 +267,41 @@ describe('CryptoSyncSection', () => {
   });
 
   it('once connected to a wallet, shows Sync + last sync and Disconnect, no picker or fields', async () => {
-    const syncedAt = 1_700_000_000_000;
-    const { getByText, queryByText, queryByLabelText } = await render(
-      <CryptoSyncSection
-        account={account({ institution: 'btc_wallet' })}
-        holdings={[holding({ walletAddress: ADDRESS, syncedAt })]}
-      />,
-    );
+    const { getByText, queryByText, queryByLabelText } = await renderConnectedWallet();
 
     expect(getByText('Sync')).toBeTruthy();
     expect(getByText('Disconnect')).toBeTruthy();
-    const stamp = formatDateTime(syncedAt);
+    const stamp = formatDateTime(CONNECTED_WALLET_SYNCED_AT, { uses24Hour: true });
     expect(getByText(new RegExp(stamp.replace(/[.]/g, '\\.')))).toBeTruthy();
     expect(queryByText('Binance')).toBeNull();
     expect(queryByLabelText('wallet-field')).toBeNull();
   });
 
   it('puts Sync and Disconnect side by side in a single row', async () => {
-    const { getByTestId } = await render(
-      <CryptoSyncSection
-        account={account({ institution: 'btc_wallet' })}
-        holdings={[holding({ walletAddress: ADDRESS, syncedAt: 1_700_000_000_000 })]}
-      />,
-    );
+    const { getByTestId } = await renderConnectedWallet();
 
     // The two buttons now share one horizontal row rather than stacking.
     const row = getByTestId('crypto-sync-actions-row');
     expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
   });
 
-  it('makes the Sync button blue (primary) and keeps Disconnect neutral (secondaryTonal)', async () => {
+  it('keeps Sync and Disconnect both neutral (secondaryTonal)', async () => {
     mockButtonProps.length = 0;
-    await render(
-      <CryptoSyncSection
-        account={account({ institution: 'btc_wallet' })}
-        holdings={[holding({ walletAddress: ADDRESS, syncedAt: 1_700_000_000_000 })]}
-      />,
-    );
+    await renderConnectedWallet();
 
-    // Sync is the affirmative re-import CTA, so it takes the solid blue `primary`
-    // accent fill; Disconnect stays the neutral `secondaryTonal` tint beside it.
+    // Sync is now the same lower-emphasis `secondaryTonal` tint as Disconnect
+    // beside it — the pinned account-detail Sync button style.
     const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
-    expect(syncEntry?.variant).toBe('primary');
+    expect(syncEntry?.variant).toBe('secondaryTonal');
     expect(disconnectEntry?.variant).toBe('secondaryTonal');
   });
 
   it('uses the Kiko UI sync glyph for Sync and the open-lock glyph for Disconnect', async () => {
     mockButtonProps.length = 0;
-    await render(
-      <CryptoSyncSection
-        account={account({ institution: 'btc_wallet' })}
-        holdings={[holding({ walletAddress: ADDRESS, syncedAt: 1_700_000_000_000 })]}
-      />,
-    );
+    await renderConnectedWallet();
 
-    // Sync-now takes the iOS-26 rotate glyph (the central availability map
-    // hands the iOS-16-safe fallback for free); Disconnect takes the open-lock
+    // Sync-now takes the iOS-18 rotate glyph; Disconnect takes the open-lock
     // glyph mirroring the lock used by the Connect affordance.
     const syncEntry = mockButtonProps.find((entry) => entry.children === 'Sync');
     const disconnectEntry = mockButtonProps.find((entry) => entry.children === 'Disconnect');
@@ -283,17 +310,13 @@ describe('CryptoSyncSection', () => {
   });
 
   it('shows Never when a connected account has no synced holding yet', async () => {
-    const { getByText } = await render(
-      <CryptoSyncSection account={account({ institution: 'binance' })} holdings={[]} />,
-    );
+    const { getByText } = await renderSection({ institution: 'binance' });
 
     expect(getByText(/Last sync: Never/)).toBeTruthy();
   });
 
   it('re-syncs a connected wallet account without an address', async () => {
-    const { getByText } = await render(
-      <CryptoSyncSection account={account({ institution: 'btc_wallet' })} holdings={[]} />,
-    );
+    const { getByText } = await renderSection({ institution: 'btc_wallet' });
 
     await fireEvent.press(getByText('Sync'));
 
@@ -303,9 +326,7 @@ describe('CryptoSyncSection', () => {
   });
 
   it('confirms via the themed sheet before disconnecting Binance, then disconnects with the provider id', async () => {
-    const { getByText, getByTestId } = await render(
-      <CryptoSyncSection account={account({ institution: 'binance' })} holdings={[]} />,
-    );
+    const { getByText, getByTestId } = await renderSection({ institution: 'binance' });
 
     await fireEvent.press(getByText('Disconnect'));
 
@@ -321,10 +342,34 @@ describe('CryptoSyncSection', () => {
     await waitFor(() => expect(mockDisconnect).toHaveBeenCalledWith('a', 'binance'));
   });
 
-  it('disconnects nothing when the themed Disconnect confirm is dismissed via Cancel', async () => {
-    const { getByText } = await render(
-      <CryptoSyncSection account={account({ institution: 'binance' })} holdings={[]} />,
+  it('re-plans the reminders after a Disconnect, since the manual account takes them again', async () => {
+    const { getByText, getByTestId } = await renderSection({ institution: 'binance' });
+
+    await fireEvent.press(getByText('Disconnect'));
+    await fireEvent.press(getByTestId('crypto-disconnect-confirm'));
+
+    await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
+    expect(mockDisconnect.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
     );
+  });
+
+  it('re-plans nothing after a failed Disconnect', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockDisconnect.mockRejectedValue(new Error('keychain locked'));
+    const { getByText, getByTestId } = await renderSection({ institution: 'binance' });
+
+    await fireEvent.press(getByText('Disconnect'));
+    await fireEvent.press(getByTestId('crypto-disconnect-confirm'));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
+    expect(mockSyncReminders).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
+  });
+
+  it('disconnects nothing when the themed Disconnect confirm is dismissed via Cancel', async () => {
+    const { getByText } = await renderSection({ institution: 'binance' });
 
     await fireEvent.press(getByText('Disconnect'));
     await fireEvent.press(getByText('Cancel'));
@@ -338,12 +383,85 @@ describe('CryptoSyncSection', () => {
       error: 'Binance request failed: 401',
       sync: mockSync,
     });
-    const { getByText } = await render(
-      <CryptoSyncSection account={account({ institution: 'binance' })} holdings={[]} />,
-    );
+    const { getByText } = await renderSection({ institution: 'binance' });
 
     expect(getByText('Syncing…')).toBeTruthy();
     expect(getByText('Binance request failed: 401')).toBeTruthy();
+  });
+
+  it('shows the lagging-history caption when the Binance history walk is more than a day behind the balance sync', async () => {
+    const { getByText } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'binance' })}
+        holdings={[
+          holding({
+            binanceAsset: 'BTC',
+            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS,
+            syncedAt: CONNECTED_WALLET_SYNCED_AT,
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      getByText('Some Binance deposit and withdrawal history is not imported yet.', {
+        exact: false,
+      }),
+    ).toBeTruthy();
+  });
+
+  it('shows no caption once the Binance history walk is caught up', async () => {
+    const { queryByText } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'binance' })}
+        holdings={[
+          holding({
+            binanceAsset: 'BTC',
+            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 2 * 60 * 60 * 1000,
+            syncedAt: CONNECTED_WALLET_SYNCED_AT,
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      queryByText('Some Binance deposit and withdrawal history is not imported yet.', {
+        exact: false,
+      }),
+    ).toBeNull();
+  });
+
+  it('hides the lagging-history caption while a sync is in flight, even when the history walk is behind', async () => {
+    mockUseCryptoSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
+
+    const { queryByText } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'binance' })}
+        holdings={[
+          holding({
+            binanceAsset: 'BTC',
+            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS,
+            syncedAt: CONNECTED_WALLET_SYNCED_AT,
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      queryByText('Some Binance deposit and withdrawal history is not imported yet.', {
+        exact: false,
+      }),
+    ).toBeNull();
+  });
+
+  it('never shows the Binance caption for a wallet account', async () => {
+    const { queryByText } = await renderConnectedWallet();
+
+    expect(
+      queryByText('Some Binance deposit and withdrawal history is not imported yet.', {
+        exact: false,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -366,9 +484,7 @@ describe('CryptoSyncSection — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByText, queryByText } = await render(
-      <CryptoSyncSection account={account()} holdings={[]} />,
-    );
+    const { getByText, queryByText } = await renderSection();
 
     expect(getByText('Синхронізація')).toBeTruthy();
     expect(getByText('Джерело')).toBeTruthy();
@@ -380,9 +496,7 @@ describe('CryptoSyncSection — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByText } = await render(
-      <CryptoSyncSection account={account({ institution: 'binance' })} holdings={[]} />,
-    );
+    const { getByText } = await renderSection({ institution: 'binance' });
 
     expect(getByText(/Ніколи/)).toBeTruthy();
   });

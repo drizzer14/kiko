@@ -1,14 +1,18 @@
-import type { HoldingRow } from '../../db/schema';
+import { i18n } from '@kiko/i18n/init';
+import type { HoldingRow } from '@kiko/db';
+
 import type { SyncTarget } from '../provider';
 
 import {
   type BinanceAccount,
+  BinanceRateLimitError,
   fetchAccount,
   fetchFlexiblePosition,
   fetchFundingAsset,
   fetchLockedPosition,
 } from './binance.client';
 import { readCredentials } from './binance.credentials';
+import { setBinanceCooldownUntil } from './binance.cooldown';
 import { type BinanceDeps, binanceProvider, defaultBinanceDeps } from './binance.provider';
 
 // The credentials module imports react-native-keychain, whose native binding is
@@ -56,6 +60,8 @@ const binanceHolding = (binanceAsset: string, balanceMinorUnits = 1): HoldingRow
   color: null,
   balanceMinorUnits,
   syncedBalanceMinorUnits: null,
+  balanceSetAt: null,
+  balanceSetRowId: null,
   metadata: { binanceAsset, syncedAt: 0 },
   sortOrder: 0,
   closedAt: null,
@@ -183,6 +189,46 @@ describe('binanceProvider — Spot holding', () => {
 
     await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(/Binance/);
   });
+
+  it('surfaces a Spot 429/418 as the localized binanceRequestFailed message, not the raw rate-limit text', async () => {
+    // A distinct account id: this 429 sets the SHARED cooldown, which
+    // must not leak into a later test that reuses `emptyTarget`'s account id.
+    const target: SyncTarget = { accountId: 'acc-spot-429', holdings: [] };
+    const deps = makeDeps([]);
+    deps.fetchAccount.mockRejectedValue(new BinanceRateLimitError(429, 5_000));
+
+    await expect(binanceProvider.fetchBalances(deps, target)).rejects.toThrow(
+      i18n.t('accountDetail.binanceRequestFailed', { status: 429, detail: '' }),
+    );
+  });
+});
+
+describe('binanceProvider — shared 429/418 cooldown', () => {
+  it('makes ZERO Binance requests while the account is still cooling down from an earlier 429/418', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '0.5', locked: '0' }]);
+    const target: SyncTarget = { accountId: 'acc-cooldown-provider', holdings: [] };
+    setBinanceCooldownUntil(target.accountId, NOW + 60_000);
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(balances).toEqual([]);
+    expect(deps.readCredentials).not.toHaveBeenCalled();
+    expect(deps.fetchAccount).not.toHaveBeenCalled();
+    expect(deps.fetchFundingAsset).not.toHaveBeenCalled();
+    expect(deps.fetchFlexiblePosition).not.toHaveBeenCalled();
+    expect(deps.fetchLockedPosition).not.toHaveBeenCalled();
+  });
+
+  it('makes requests again once the cooldown instant has passed', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '0.5', locked: '0' }]);
+    const target: SyncTarget = { accountId: 'acc-cooldown-provider-2', holdings: [] };
+    setBinanceCooldownUntil(target.accountId, NOW);
+
+    const balances = await binanceProvider.fetchBalances(deps, target);
+
+    expect(byKey(balances, 'BTC')).toMatchObject({ balanceMinorUnits: 50_000_000 });
+    expect(deps.fetchAccount).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('binanceProvider — Funding holding', () => {
@@ -206,7 +252,7 @@ describe('binanceProvider — Funding holding', () => {
 
   it('skips ONLY the Funding holding on error; Spot and Earn still write', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '1', locked: '0' }]); // Spot 1
-    deps.fetchFundingAsset.mockRejectedValue(new Error('Binance request failed: 401'));
+    deps.fetchFundingAsset.mockRejectedValue(new Error('Binance request failed: 401 SECRET'));
     deps.fetchFlexiblePosition.mockResolvedValue({
       rows: [{ asset: 'BTC', totalAmount: '0.1' }],
       total: 1,
@@ -214,12 +260,19 @@ describe('binanceProvider — Funding holding', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     let balances: Awaited<ReturnType<typeof binanceProvider.fetchBalances>>;
+    let loggedCalls: string;
     try {
       balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+      expect(warn).toHaveBeenCalledWith('[binance sync] skipped the funding wallet', {
+        name: 'Error',
+        code: undefined,
+      });
+      loggedCalls = JSON.stringify(warn.mock.calls);
     } finally {
       warn.mockRestore();
     }
 
+    expect(loggedCalls).not.toContain('SECRET');
     // No Funding holding is written — its existing balance (if any) is left
     // untouched rather than clobbered with a fabricated zero.
     expect(byKey(balances, 'BTC:funding')).toBeUndefined();

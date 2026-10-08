@@ -1,5 +1,5 @@
-import type { TrendFilter } from '../../../statistics/trend-filter';
-import type { FilterOption } from '../../home/filter-menu/filter-menu.props';
+import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import type { FilterOption } from '@kiko/design-system/components/filter-menu';
 
 export type TrendFilterFieldProps = {
   // The APPLIED (saved) filter — drives the button label and seeds the sheet's

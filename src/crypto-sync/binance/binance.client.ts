@@ -1,6 +1,8 @@
-import { BINANCE_API_ENDPOINT } from '@env';
 import { guard } from 'fnts';
-import either, { bifold, isRight } from 'fnts/either';
+import { i18n } from '@kiko/i18n/init';
+import { BINANCE_API_ENDPOINT } from '@env';
+import maybe, { foldMap } from 'fnts/maybe';
+import either, { bifoldr } from 'fnts/either';
 
 import { signQuery } from './binance.hmac';
 
@@ -23,13 +25,45 @@ export type FetchAccountOptions = {
 const RECV_WINDOW_MS = 5000;
 
 /**
+ * Binance rejects a request under its weight limit with 429, or bans the IP
+ * outright with 418 — both carry a `Retry-After` the caller must honour before
+ * trying again, so both are surfaced as this ONE typed error rather than the
+ * generic `binanceRequestFailed` text: a caller that needs to set a cooldown
+ * would otherwise have to parse the localized message to tell them apart.
+ */
+export class BinanceRateLimitError extends Error {
+  constructor(
+    public readonly status: 429 | 418,
+    public readonly retryAfterMs: number,
+  ) {
+    super(`Binance rate limit ${status}`);
+    this.name = 'BinanceRateLimitError';
+    // A Babel/Hermes-transpiled `extends Error` loses the prototype link that
+    // `instanceof` relies on unless it is restored explicitly.
+    Object.setPrototypeOf(this, BinanceRateLimitError.prototype);
+  }
+}
+
+/**
+ * Binance sends `Retry-After` in seconds. Anything missing, non-numeric, or
+ * non-positive falls back to this default rather than a zero or negative wait.
+ */
+export const DEFAULT_RETRY_AFTER_MS = 60_000;
+
+const retryAfterMsFromHeaders = (headers: Headers): number => {
+  const seconds = Number(headers.get('Retry-After'));
+
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : DEFAULT_RETRY_AFTER_MS;
+};
+
+/**
  * Binance error bodies are `{ code, msg }`. Surface `msg` (the clock-skew or
  * invalid-key text) so the user sees the real cause, not a bare status. A
  * non-JSON body (a gateway HTML page) yields no suffix.
  */
 const errorSuffix = async (response: Response): Promise<string> => {
   const body = await either<unknown, unknown>(() => response.json());
-  const parsed = isRight(body) ? bifold(body) : undefined;
+  const parsed = bifoldr(body);
   const message = (parsed as { msg?: unknown } | undefined)?.msg;
 
   return typeof message === 'string' ? `: ${message}` : '';
@@ -44,7 +78,12 @@ const readBody = guard(
   [
     (response: Response) => !response.ok,
     async (response: Response): Promise<never> => {
-      throw new Error(`Binance request failed: ${response.status}${await errorSuffix(response)}`);
+      throw new Error(
+        i18n.t('accountDetail.binanceRequestFailed', {
+          status: response.status,
+          detail: await errorSuffix(response),
+        }),
+      );
     },
   ],
   (response: Response): Promise<unknown> => response.json(),
@@ -53,6 +92,9 @@ const readBody = guard(
 /** The single asset this milestone reads; every SAPI read filters to it. */
 const BINANCE_ASSET = 'BTC';
 
+/** A signed request's parsed body alongside its response headers. */
+type SignedPage = { body: unknown; headers: Headers };
+
 /**
  * One signed Binance request. HMAC-SHA256 over the full query
  * (`params…&timestamp=…&recvWindow=…`) under the API secret, appended as
@@ -60,17 +102,22 @@ const BINANCE_ASSET = 'BTC';
  * (Spot account, Funding wallet, Simple Earn positions) shares this signing —
  * only the method, path, and extra params differ — so a key with only "Enable
  * Reading" is enough. `params` (an `asset` filter, a position page's
- * `current`/`size`) are signed together with the timestamp. Throws on a non-ok
- * response (via `readBody`), which is what lets a caller SKIP a failing wallet.
+ * `current`/`size`) are signed together with the timestamp.
+ *
+ * A 429 (weight limit) or 418 (IP ban) is checked BEFORE the body is read —
+ * both throw `BinanceRateLimitError` so a caller can set a cooldown, rather
+ * than the generic `binanceRequestFailed` text `readBody` would otherwise
+ * produce for any other non-ok status (which is what lets a caller SKIP a
+ * failing wallet).
  */
-const signedRequest = async (
+const signedRequestPage = async (
   apiKey: string,
   secret: string,
   method: 'GET' | 'POST',
   path: string,
   params: Record<string, string>,
   { fetchImpl = fetch, now = Date.now }: FetchAccountOptions = {},
-): Promise<unknown> => {
+): Promise<SignedPage> => {
   const query = new URLSearchParams({
     ...params,
     timestamp: String(now()),
@@ -81,12 +128,28 @@ const signedRequest = async (
     `${BINANCE_API_ENDPOINT}${path}?${query}&signature=${signature}`,
     {
       method,
-      headers: { 'X-MBX-APIKEY': apiKey },
+      // The key header and the signed URL must never reach NSURLCache's
+      // Cache.db.
+      headers: { 'X-MBX-APIKEY': apiKey, 'Cache-Control': 'no-store' },
     },
   );
 
-  return readBody(response);
+  if (response.status === 429 || response.status === 418) {
+    throw new BinanceRateLimitError(response.status, retryAfterMsFromHeaders(response.headers));
+  }
+
+  return { body: await readBody(response), headers: response.headers };
 };
+
+const signedRequest = async (
+  apiKey: string,
+  secret: string,
+  method: 'GET' | 'POST',
+  path: string,
+  params: Record<string, string>,
+  options: FetchAccountOptions = {},
+): Promise<unknown> =>
+  (await signedRequestPage(apiKey, secret, method, path, params, options)).body;
 
 /**
  * `GET /api/v3/account` (Spot wallet). Read-only. The Spot balance is the one
@@ -175,6 +238,7 @@ const fetchAllPositions = async <Row>(
 
     const pageRows = page.rows ?? [];
     rows.push(...pageRows);
+
     if (typeof page.total === 'number') {
       total = page.total;
     }
@@ -292,6 +356,22 @@ export type BinanceWithdrawal = {
 };
 
 /**
+ * One offset page of withdrawal history, plus the requesting minute's spent
+ * SAPI weight (`X-SAPI-USED-UID-WEIGHT-1M`) when Binance reports it — the
+ * signal the resumable history walk budgets its next call against.
+ */
+export type WithdrawHistoryPage = {
+  rows: BinanceWithdrawal[];
+  usedUidWeight1m: number | undefined;
+};
+
+const usedUidWeight1mFromHeaders = (headers: Headers): number | undefined => {
+  const raw = foldMap(maybe(headers.get('X-SAPI-USED-UID-WEIGHT-1M')), Number);
+
+  return raw !== undefined && Number.isFinite(raw) ? raw : undefined;
+};
+
+/**
  * `GET /sapi/v1/capital/withdraw/history` (withdrawal history), filtered to BTC,
  * for ONE offset page of ONE window. Signed, read-only. Same window/paging
  * contract as `fetchDepositHistory`.
@@ -301,8 +381,8 @@ export const fetchWithdrawHistory = async (
   secret: string,
   window: HistoryWindow,
   options: FetchAccountOptions = {},
-): Promise<BinanceWithdrawal[]> =>
-  (await signedRequest(
+): Promise<WithdrawHistoryPage> => {
+  const { body, headers } = await signedRequestPage(
     apiKey,
     secret,
     'GET',
@@ -315,4 +395,10 @@ export const fetchWithdrawHistory = async (
       limit: String(HISTORY_PAGE_LIMIT),
     },
     options,
-  )) as BinanceWithdrawal[];
+  );
+
+  return {
+    rows: body as BinanceWithdrawal[],
+    usedUidWeight1m: usedUidWeight1mFromHeaders(headers),
+  };
+};

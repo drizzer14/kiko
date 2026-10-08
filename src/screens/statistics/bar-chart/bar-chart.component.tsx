@@ -1,17 +1,16 @@
-import { type FC, memo } from 'react';
-import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
+import { type FC, memo } from 'react';
+import { maxOf } from '@kiko/numbers';
 import { Rect, Svg } from 'react-native-svg';
-import { match } from 'ts-pattern';
-
-import type { Currency } from '../../../currency/currency';
-import { Money } from '../../../currency/money';
-import Box from '../../../design-system/components/box';
-import MoneyText from '../../../design-system/components/money-text';
-import Text from '../../../design-system/components/text';
-import { defaultHoldingColor } from '../../../holdings/entity-colors';
-import type { HoldingType } from '../../../holdings/holding-type';
-import type { TypeSlice } from '../../../statistics/type-breakdown';
+import { Money } from '@kiko/currency/money';
+import { useTranslation } from 'react-i18next';
+import Box from '@kiko/design-system/components/box';
+import Text from '@kiko/design-system/components/text';
+import type { Currency } from '@kiko/currency/currency';
+import type { TypeSlice } from '@kiko/statistics/type-breakdown';
+import MoneyText from '@kiko/design-system/components/money-text';
+import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
+import { holdingTypeName } from '@kiko/holdings/holding-type-label';
 
 import { styles } from './bar-chart.styles';
 
@@ -28,21 +27,6 @@ const VIEW_WIDTH = 320;
 // The thickness of a single bar, in the same logical units.
 const BAR_THICKNESS = 14;
 const BAR_RADIUS = 4;
-
-// Human display text for the id-like holding types, so a bar reads "Deposit"
-// rather than "term_deposit" — matched against the existing forms.* catalog
-// keys (the same wording the holding-kind picker uses), via ts-pattern so a
-// new HoldingType fails this `exhaustive()` at compile time instead of
-// silently falling through, and each key is a literal `t()` calls tsc checks.
-const holdingTypeLabel = (type: HoldingType, t: ReturnType<typeof useTranslation>['t']): string =>
-  match(type)
-    .with('card', () => t('forms.holding.card'))
-    .with('term_deposit', () => t('forms.holding.deposit'))
-    .with('bond', () => t('forms.holding.bond'))
-    .with('cash', () => t('forms.account.cash'))
-    .with('crypto_asset', () => t('forms.holding.cryptoAsset'))
-    .with('jar', () => t('forms.holding.jar'))
-    .exhaustive();
 
 // One bar row: the type name and its converted amount above a bar whose width
 // is proportional to `abs(amount) / scale`.
@@ -63,7 +47,7 @@ const BarRow: FC<{ slice: TypeSlice; baseCurrency: Currency; scale: number; colo
       <View style={styles.rowHeader}>
         <View testID={`bar-chart-label-${slice.type}`}>
           <Text variant="body" tone="textPrimary">
-            {holdingTypeLabel(slice.type, t)}
+            {holdingTypeName(slice.type, t)}
           </Text>
         </View>
 
@@ -114,7 +98,7 @@ const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
   // read the real figure. Guarded non-zero: `buildTypeBreakdown` filters
   // `amount !== 0`, but an empty-after-filter list is handled above and a
   // defensive `|| 1` keeps the division total.
-  const scale = Math.max(...data.map((slice) => Math.abs(slice.amount))) || 1;
+  const scale = maxOf(data.map((slice) => Math.abs(slice.amount))) || 1;
 
   return (
     <Box style={styles.container}>

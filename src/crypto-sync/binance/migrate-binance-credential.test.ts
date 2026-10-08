@@ -12,11 +12,13 @@ let mockFailNextGlobalReset = false;
 jest.mock('react-native-keychain', () => {
   const store: Record<string, { username: string; password: string }> = {};
   const key = (options?: { service?: string }): string => options?.service ?? 'default';
+
   return {
     ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
     setGenericPassword: jest.fn(
       async (username: string, password: string, options?: { service?: string }) => {
         store[key(options)] = { username, password };
+
         return true;
       },
     ),
@@ -26,11 +28,13 @@ jest.mock('react-native-keychain', () => {
     hasGenericPassword: jest.fn(async (options?: { service?: string }) => key(options) in store),
     resetGenericPassword: jest.fn(async (options?: { service?: string }) => {
       const service = key(options);
+
       if (service === 'kiko.binance.credentials' && mockFailNextGlobalReset) {
         mockFailNextGlobalReset = false;
         throw new Error('keychain reset boom');
       }
       delete store[service];
+
       return true;
     }),
   };

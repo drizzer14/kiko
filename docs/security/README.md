@@ -10,7 +10,9 @@ accepted rather than mitigated.
 
 `ios/Kiko/Info.plist` → `NSAppTransportSecurity` → `NSPinnedDomains` pins every
 host the app sends a credential to, with two CA SPKI-SHA256 pins each under
-`NSPinnedCAIdentities` (primary = root CA, backup = current intermediate).
+`NSPinnedCAIdentities` (primary = root CA, backup = current intermediate; for
+a host on a CA with rotating intermediates, such as Let's Encrypt, both pins are
+roots).
 Pinning is scoped to secret-bearing hosts: a MITM on a public, unauthenticated
 endpoint can misreport a number, but has no credential to steal, and pinning a
 third-party public API the user cannot re-provision trades a real
@@ -22,7 +24,7 @@ availability risk for little.
 | `api.binance.com` | `src/crypto-sync/binance/binance.client.ts` (`X-MBX-APIKEY` header) | yes — the read-only API key | **yes** | A MITM reads the API key and the full `/api/v3/account` balance response, and can replay the captured signed request inside the 5 s `recvWindow`. The HMAC secret itself never crosses the wire (`binance.hmac.ts` signs locally). |
 | `api.coingecko.com` | `src/rates/` (`coingecko`, `coingecko-history`) | no | no | Public BTC price quote, no auth header. Worst case an active MITM misreports the BTC price. |
 | `blockstream.info` | `src/crypto-sync/btc-wallet/btc-wallet.client.ts` | no | no | Public Esplora explorer, no auth header. Worst case an active MITM forges `chain_stats` and misreports the BTC balance. See the accepted risk on address disclosure below. |
-| `bank.gov.ua` | `src/rates/` (`nbu-history`) | no | no | Public NBU historical fiat rates, no auth header. |
+| `bank.gov.ua` | `src/rates/` (`nbu-history`, `nbu-rates`), `src/prices/nbu-metals`, `src/bonds/nbu-register` | no | no | Public NBU historical AND current fiat rates, no auth header. `nbu-rates` is the unpinned live fallback `rates-refresh.ts` reaches for only when the cert-pinned Monobank fiat fetch fails. `nbu-metals` reads the SAME two endpoints for precious-metal (XAU/XAG/XPT/XPD) prices, refreshed only for currently held metals (`metal-refresh.ts`). `nbu-register` reads a THIRD endpoint on the same host, the public securities register, to refresh the `bond_register` cache at most once per local day (`bond-register.repo.ts`'s `refreshBondRegisterIfStale`). |
 
 ### Current chains (verified 2026-09-06)
 
@@ -47,15 +49,16 @@ availability risk for little.
 Monobank: every Monobank request fails closed with a TLS error
 (`useSync`/`useAutoSync` surface it as a failed sync; no data leaves the
 device). Binance: the crypto sync's Binance provider fails the same way; the
-BTC-wallet provider, CoinGecko price sync, and NBU history keep working. Fail
-closed is the intended mode in both cases.
+BTC-wallet provider, CoinGecko price sync, and NBU history keep working. The
+key never crosses an untrusted chain: fail closed is the intended mode in every
+case.
 
 ### Rotation runbook
 
 Owner: the repository owner (single-user app). Cadence: on every release build,
 and immediately if a sync starts failing with a TLS error.
 
-1. Recompute BOTH chains:
+1. Recompute every pinned host's chain:
 
    ```bash
    cd "$(mktemp -d)"
@@ -77,14 +80,29 @@ and immediately if a sync starts failing with a TLS error.
 3. If a host moved to a different CA: replace BOTH of that host's pins with the
    new root (primary) and new intermediate (backup), update the table above,
    run `plutil -lint ios/Kiko/Info.plist` and `npm run check:plist`, rebuild,
-   run the positive and negative device checks, ship.
+   run the positive and negative device checks, ship. For a host that moved to
+   (or stays on) a CA with rotating intermediates, such as Let's Encrypt, pin
+   two roots instead.
 4. Positive check: on device, Monobank sync succeeds AND a Binance sync
    succeeds.
 5. Negative check: temporarily corrupt one character in BOTH of a host's pins,
    rebuild, confirm that host's sync fails with a TLS error while the other
-   host's still succeeds, then revert.
-6. Adding a new host that sends a credential header means adding it here AND to
+   hosts' still succeed, then revert.
+6. Adding a new host that sends a credential (a header, or the `api_token`
+   query parameter) means adding it here AND to
    `NSPinnedDomains`. `npm run check:plist` fails the build if you forget.
+   A client that sends the credential as the `api_token` query parameter or
+   in a header (`X-Token`, `X-MBX-APIKEY`) must also send the
+   `Cache-Control: no-store` request header, so NSURLCache never writes the
+   key-bearing URL or request to `Cache.db`; `npm run check:plist` fails
+   without it. Every Monobank request (the public `/bank/currency` one
+   included) and every Binance request sends it. Every build before the
+   fix (up to 27) stored the X-Token in `Cache.db`, so
+   `AppDelegate.purgeStoredURLCacheOnce` clears the shared URL cache once
+   per install, at launch (a `UserDefaults` once-key). Known limit:
+   `removeAllCachedResponses` removes rows and body files, but SQLite free
+   pages/WAL may keep bytes until overwritten; the complete remedy is token
+   rotation (done by the user 2026-10-05).
 
 ## Fixed since the 2026-09-06 audit
 
@@ -96,22 +114,33 @@ and immediately if a sync starts failing with a TLS error.
 - **The empty `NSLocationWhenInUseUsageDescription` was deleted.** The app uses
   no location API and no pod requires one; an empty purpose string is an App
   Store review rejection trigger. Asserted by `npm run check:plist`.
-- **The Monobank token field no longer prefills the input with the stored
-  secret.** `src/screens/account-detail/monobank-token-field/monobank-token-field.component.tsx`
-  reads only `hasToken()` (a boolean) to drive its "already saved" caption;
-  the real token is never read back into React state, so it cannot park in
-  the JS heap or a retained fiber. Changing a saved token means re-entering
-  it. Enforced by `kiko-no-keychain-secret-into-usestate` and
+- **The localized app names ship.** `ios/Kiko/en.lproj/InfoPlist.strings` and
+  `ios/Kiko/uk.lproj/InfoPlist.strings` set `CFBundleDisplayName` (Kiko /
+  Кіко) and sit in the Kiko target's Resources build phase. Asserted by
+  `npm run check:plist`.
+- **The disk-space required-reason API is declared.** Some dependencies link a
+  disk-space API without a pod privacy manifest that covers it (the set is
+  check 5's linked list in `scripts/checks/plist.sh`; read it there). So
+  `ios/Kiko/PrivacyInfo.xcprivacy` declares `NSPrivacyAccessedAPICategoryDiskSpace`
+  (`E174.1`) while any dependency on that list ships (else ITMS-91053). `npm run check:plist` asserts it
+  and fails closed when it cannot tell.
+- **The Monobank token input never prefills with the stored secret.**
+  Connect takes the text typed this session (`MonobankConnectField`; grep it
+  under `src/`), validates it, then writes the Keychain. The token is never
+  read back into React state, and a failed connect clears nothing it did not
+  store. Enforced by `kiko-no-keychain-secret-into-usestate` and
   `kiko-no-keychain-secret-through-then` in `rules/semgrep-mobile.yml`.
 - **`readCredentials` re-saves a legacy-policy Binance credential pair at most
   once per process, not on every call.** `src/crypto-sync/binance/binance.credentials.ts`
   gates the repair write behind a module-level `hasRepairedAccessPolicy`
   latch, set only after the write succeeds; every read after the first
   repair is a pure Keychain read, matching `readToken` and `readDbKey`.
-- **`db-config.ts`'s doc comments now match the shipped flag values.**
-  `DB_ENCRYPTION_ENABLED` and `APP_LOCK_ENABLED` are both documented as
-  "ON in every shipping build, and it must stay on", matching their `true`
-  values, and both are asserted by `src/db/db-config.test.ts`.
+- **`db-config.ts`'s doc comment matches the shipped flag value.**
+  `DB_ENCRYPTION_ENABLED` is documented as "ON in every shipping build, and
+  it must stay on", matching its `true` value, and is asserted by
+  `src/db/db-config.test.ts`. The app lock has no build-time switch; it is
+  the live `settings.lockEnabled` toggle (see kiko-domain's "App lock /
+  security settings" section).
 
 ## Accepted risks (not mitigated by design)
 
@@ -152,9 +181,10 @@ and immediately if a sync starts failing with a TLS error.
   (`docs/superpowers/specs/2026-09-04-security-and-app-lock-design.md:198-203`)
   was built and then replaced, because a re-lock on every foreground made the
   app unusable for the quick balance checks it exists for. The app-switcher
-  redaction overlay (`ios/Kiko/AppDelegate.swift:55-86`) still protects the
-  thumbnail — it protects the snapshot, not the resumed app. Revisit only with
-  a deliberate decision to resurrect the grace period.
+  redaction overlay (`ios/Kiko/SceneDelegate.swift`, `showPrivacyOverlay`/
+  `hidePrivacyOverlay`) still protects the thumbnail — it protects the
+  snapshot, not the resumed app. Revisit only with a deliberate decision to
+  resurrect the grace period.
 - **`settings.lock_grace_seconds` is a legacy column with zero readers.** It
   survives from the abandoned grace-period design (migration
   `drizzle/migrations/0011_add_lock_settings.sql`), has no setter in
@@ -165,7 +195,7 @@ and immediately if a sync starts failing with a TLS error.
   `settings`-columns-have-a-reader test (`src/db/settings-columns.test.ts`), so
   neither a new dead column nor a silent re-wiring of this one can slip through.
 - **Every BTC sync discloses the wallet address to `blockstream.info`.**
-  `src/crypto-sync/btc-wallet/btc-wallet.client.ts:33` requests
+  `fetchAddressBalance` in `src/crypto-sync/btc-wallet/btc-wallet.client.ts` requests
   `${BTC_EXPLORER_ENDPOINT}/address/<address>` on every sync, so Blockstream
   learns `(address, source IP, timestamp)` and can correlate a specific wallet
   with a specific network location over time. Accepted: a public Esplora
@@ -179,6 +209,89 @@ and immediately if a sync starts failing with a TLS error.
   Esplora instance — both larger changes than this warrants today. The address
   is format-validated before use (`bitcoin-address.ts:7-11`) and URL-encoded at
   the call site, so it cannot be used to inject a path.
+
+## App lock re-authentication
+
+Turning `settings.lockEnabled` OFF also gates on `confirmOwner`
+(`system.screen.tsx`, `handleToggleLock`): turning the lock ON stays
+instant and prompt-free, unchanged, but turning it OFF re-confirms the
+device owner first, so a still-unlocked app left unattended can't be
+disarmed by anyone who picks it up. A cancelled or failed prompt leaves
+the switch back on. A device with **no** device passcode proceeds with
+no prompt at all — iOS itself demands the OLD passcode before it lets
+the user remove one, so there is no owner authentication `confirmOwner`
+could run there, and refusing the toggle would just strand the user
+with no way to ever turn the lock off. This is the opposite of the data
+export's own `noPasscode` handling below: turning the lock off
+treats it like a fresh authentication, while a credential export treats
+it as a refusal — the two call sites read the SAME `confirmOwner` result
+differently, on purpose, because only one of them has an iOS-side
+passcode prompt standing in for the missing check.
+
+`confirmOwner` (`src/auth/confirm-owner/`) wraps `authenticate`
+(`src/auth/biometrics.ts`), which now classifies every iOS rejection
+correctly instead of folding it into a generic failure: a cancel/system-
+cancel/fallback tap resolves as `cancelled`, and a biometry lockout as
+`lockout` — the real native module REJECTS these, it never resolves
+`{ success: false, errorCode }`, so the classification runs on the thrown
+`code` (or the resolved shape, for defense in depth). A rejection that
+would otherwise classify as a generic `failed` is disambiguated by a
+follow-up `isSensorAvailable()` query: if the passcode was just removed,
+that query now reports it, and `authenticate` resolves `passcodeNotSet`
+instead of the generic failure. A secure device whose biometry is merely
+unusable reports one of two distinct `passcodeOnly` reasons, each with
+its own Settings hint string: `notEnrolled` (biometry was never set up)
+or `biometryUnavailable` (denied Face ID permission, a temporary
+lockout). Either way the Settings switch stays reachable through the
+passcode fallback instead of greying out — and an ON switch never greys
+out at all, regardless of sensor status, so a passcode removed while the
+app is running, or a device with no usable sensor at all, can still
+reach the toggle to turn the lock back off.
+
+## Data export/import
+
+`src/data-transfer/` (`export-data.ts`, `import-data.ts`, `crypto/envelope.ts`,
+`secrets/`, `snapshot/`) builds and reads the `.kiko` export file. Every
+export is an AES-256-GCM envelope: a fresh random key and a fresh random
+12-byte nonce are generated per export (`crypto/generate-key.ts`,
+`crypto/envelope.ts`), and the key is returned to the caller for the user to
+save separately — it is never written into the file itself. Credentials
+(Monobank tokens, Binance API key/secret) are included only when the user
+opts in via `includeSecrets` (`secrets/read-secrets.ts`); the database
+encryption key is never exported.
+
+**Re-authentication now gates a credential export.** `export-data.screen.tsx`
+calls `confirmOwner` (`src/auth/confirm-owner/`) before `exportData` ever runs
+with `includeSecrets: true`, so a still-unlocked, still-running app can no
+longer hand out every stored credential with no further check. A cancelled or
+failed prompt shows no key card and no file; `includeSecrets: false` still
+exports with no prompt at all, unchanged. A device with **no** device
+passcode has no owner authentication to run at all, and is refused outright
+(`auth.reauth.passcodeRequired`) rather than let through unauthenticated —
+this is the one call site where "no passcode" is a REFUSAL, not a pass. See
+"App lock re-authentication" above for the other call site, where the same
+"no passcode" result means the opposite.
+
+Open items, deferred (see `FINDINGS.md`):
+
+- **SEC-5** — the export key is copied to the general system pasteboard, with
+  no expiry and no local-only restriction.
+- **SEC-4** — a restore can leave orphaned Keychain items behind (the
+  accounts it replaces keep theirs). Deleting one account clears its own
+  items (`accountsRepo.remove`, after the commit).
+
+On import, the credentials block is validated before the database is replaced
+(`secrets/is-export-secrets.ts`): a field present with the wrong shape refuses
+the file, while a missing or empty array means no secrets, and a secret for an
+account the file does not carry is dropped. A restore keeps this device's app
+lock setting (`settings.lockEnabled`) and its notifications start, whatever the file carries
+(`KEPT_FROM_LIVE_ON_RESTORE`, `src/db/kept-from-live-on-restore.ts`), also
+when the file has no settings row. A Keychain write that fails after the data
+committed does not fail the import: the screen shows the success and names the
+connections (Monobank, Binance) to set up again. Failing to clear an
+account's Keychain items after its delete is logged and never fails the
+delete; a Binance connect on a new account that cannot create the row clears
+the key pair it stored first.
 
 ## Next steps
 

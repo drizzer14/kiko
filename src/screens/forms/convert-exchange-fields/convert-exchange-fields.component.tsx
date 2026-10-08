@@ -1,12 +1,9 @@
 import type { FC } from 'react';
-import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
-
-import DateTimeRow from '../date-time-row';
-import Box from '../../../design-system/components/box';
-import HoldingSelectField from '../holding-select-field';
-import TextField from '../../../design-system/components/text-field';
-import FieldError from '../../../design-system/components/field-error';
+import { useTranslation } from 'react-i18next';
+import DateTimeRow from '@kiko/screens/forms/date-time-row';
+import TextField from '@kiko/design-system/components/text-field';
+import HoldingSelectField from '@kiko/screens/forms/holding-select-field';
 
 import type { ConvertExchangeFieldsProps } from './convert-exchange-fields.props';
 
@@ -24,6 +21,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
   fixedValue,
   fixedSuffix,
   counterpartLabel,
+  counterpartSheetTitle,
   counterpartPlaceholder,
   counterpartOptions,
   counterpartHoldingId,
@@ -34,6 +32,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
   counterpartSuffix,
   time,
   onChangeTime,
+  maxDate,
   counterpartError,
   counterpartAmountError,
   counterpartFieldRef,
@@ -53,18 +52,16 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
       />
 
       <View ref={counterpartFieldRef}>
-        <Box gap={1}>
-          <HoldingSelectField
-            label={counterpartLabel}
-            placeholder={counterpartPlaceholder}
-            options={counterpartOptions}
-            selectedId={counterpartHoldingId}
-            onSelect={onSelectCounterpart}
-            required
-          />
-
-          {counterpartError !== undefined && <FieldError message={counterpartError} />}
-        </Box>
+        <HoldingSelectField
+          label={counterpartLabel}
+          sheetTitle={counterpartSheetTitle}
+          placeholder={counterpartPlaceholder}
+          options={counterpartOptions}
+          selectedId={counterpartHoldingId}
+          onSelect={onSelectCounterpart}
+          required
+          error={counterpartError}
+        />
       </View>
 
       <View ref={counterpartAmountFieldRef}>
@@ -80,7 +77,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
         />
       </View>
 
-      <DateTimeRow time={time} onChangeTime={onChangeTime} />
+      <DateTimeRow time={time} onChangeTime={onChangeTime} maxDate={maxDate} />
     </>
   );
 };

@@ -1,3 +1,5 @@
+import { maxOf } from '@kiko/numbers';
+
 import { applySymbolPlacement, type Currency } from '../currency';
 
 // A compact money unit: the divisor that scales a major-unit value into the
@@ -45,11 +47,12 @@ const keepsLabelsDistinct = (values: number[], unit: CompactUnit): boolean => {
  */
 export const chooseCompactUnit = (values: number[]): CompactUnit => {
   const finite = values.filter((value) => Number.isFinite(value));
+
   if (finite.length === 0) {
     return BASE_UNIT;
   }
 
-  const maxAbs = Math.max(...finite.map((value) => Math.abs(value)));
+  const maxAbs = maxOf(finite.map((value) => Math.abs(value)));
   const startIndex = UNITS.findIndex((unit) => unit.divisor <= maxAbs);
   const start = startIndex === -1 ? UNITS.length - 1 : startIndex;
 

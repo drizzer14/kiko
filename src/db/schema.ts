@@ -1,8 +1,17 @@
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
-
-import { currencyOptions } from '../currency/currency';
-import type { TrendFilter } from '../statistics/trend-filter';
+import { currencyOptions } from '@kiko/currency/currency';
+import type { BondTerms } from '@kiko/bonds/nbu-register';
+import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
+import { type ReminderKind, type ReminderSchedule, reminderKinds } from '@kiko/reminders/schedule';
 
 // The currency columns below are TS-enum-typed text columns (SQLite stores plain
 // text; drizzle's `enum` is a compile-time constraint, no CHECK, so widening it
@@ -10,27 +19,45 @@ import type { TrendFilter } from '../statistics/trend-filter';
 // currency.ts so the persisted set can never drift from the app's supported
 // currencies — the same single-source-of-truth rule the rate layer follows.
 
-export const accounts = sqliteTable('accounts', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  kind: text('kind', { enum: ['bank', 'cash', 'crypto'] }).notNull(),
-  institution: text('institution'),
-  // The bank this account REPRESENTS (device-feedback-round-1 item 3,
-  // `src/bank-sync/bank-catalog/`), independent of `institution`
-  // (which marks a LIVE sync connection). Set from the account-form's bank
-  // picker at create time; import-only for 5 of the 6 catalog entries.
-  // Deliberately NEVER read by `isSyncedAccount`/`isSyncedHolding`
-  // (`src/holdings/deletable/`) or any registry lookup — those stay keyed
-  // on `institution` alone, so tagging an account `bankId: 'privatbank'`
-  // can never make it look connected. TS-only enum (no DB CHECK), matching
-  // every other free-text catalog-id column in this table.
-  bankId: text('bank_id'),
-  icon: text('icon'),
-  color: text('color'),
-  sortOrder: integer('sort_order').notNull().default(0),
-  archivedAt: integer('archived_at'),
-  createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
-});
+export const accounts = sqliteTable(
+  'accounts',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    kind: text('kind', {
+      enum: ['bank', 'cash', 'crypto', 'property', 'metals', 'debt', 'broker'],
+    }).notNull(),
+    institution: text('institution'),
+    // The catalog identity this account REPRESENTS, per kind: a `bankCatalog`
+    // id (`src/bank-sync/bank-catalog/`) for a `bank`, a `brokerCatalog` id
+    // (`src/brokers/`) for a `broker`. Independent of `institution`
+    // (which marks a LIVE sync connection). Set from the account-form's bank
+    // or broker picker, which a NEW bank or broker account must set. `other`
+    // (migration 0049 gave it to every bank account with no value) covers any
+    // bank not listed; an older broker, or any other kind, may still hold NULL.
+    // A value neither catalog lists (a bank since removed) is kept as stored:
+    // restore and the edit form leave it alone, and the pickers show no pick.
+    // Deliberately NEVER read by `isSyncedAccount`/`isSyncedHolding`
+    // (`src/holdings/deletable/`) or any registry lookup — those stay keyed
+    // on `institution` alone, so tagging an account `bankId: 'privatbank'`
+    // can never make it look connected. TS-only enum (no DB CHECK), matching
+    // every other free-text catalog-id column in this table.
+    bankId: text('bank_id'),
+    icon: text('icon'),
+    color: text('color'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    archivedAt: integer('archived_at'),
+    createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => ({
+    // At most one LIVE account per implicit kind (migration 0050 merged the
+    // existing ones; `isImplicitAccount`, `src/holdings/implicit-account/`, is
+    // the same predicate). An archived property/debt account is outside it.
+    implicitKindUnique: uniqueIndex('accounts_implicit_kind')
+      .on(table.kind)
+      .where(sql`${table.kind} IN ('property', 'debt') AND ${table.archivedAt} IS NULL`),
+  }),
+);
 
 export type AccountRow = typeof accounts.$inferSelect;
 
@@ -41,7 +68,17 @@ export const holdings = sqliteTable('holdings', {
     .references(() => accounts.id),
   name: text('name').notNull(),
   type: text('type', {
-    enum: ['card', 'term_deposit', 'bond', 'cash', 'crypto_asset', 'jar'],
+    enum: [
+      'card',
+      'term_deposit',
+      'bond',
+      'cash',
+      'crypto_asset',
+      'jar',
+      'property_item',
+      'metal',
+      'loan',
+    ],
   }).notNull(),
   currency: text('currency', { enum: currencyOptions }).notNull(),
   icon: text('icon'),
@@ -52,19 +89,33 @@ export const holdings = sqliteTable('holdings', {
   // against, NOT `balanceMinorUnits`. `balanceMinorUnits` is the live display
   // balance, which `upsertHoldings` (src/monobank/sync.ts) overwrites from
   // /client-info at the START of every sync, BEFORE the per-card statement loop
-  // runs. Comparing the skip against that display balance was a data-loss bug: a
+  // runs. Comparing the skip against that display balance would lose data: a
   // run that committed a card's new balance up front and was then interrupted
-  // (app background/kill) before importing that card's statements left display
-  // balance == /client-info balance, so every later run skipped the card and its
-  // transactions never imported (until the 24h full fetch). This marker advances
-  // ONLY after a card's statements commit (see the per-card loop in
-  // `runSyncInner`), so an interrupted run leaves it behind and the next run
-  // re-imports the card. NULL for a never-synced-through holding: every
+  // (app background/kill) before importing that card's statements would leave
+  // display balance == /client-info balance, so every later run would skip the
+  // card and its transactions would never import (until the 24h full fetch).
+  // This marker advances ONLY after a card's statements commit (see the
+  // per-card loop in `runSyncInner`), so an interrupted run leaves it behind
+  // and the next run re-imports the card. NULL for a never-synced-through holding: every
   // non-Monobank holding, and a Monobank card upgraded before this column
   // existed — its first post-upgrade sync fetches it once (NULL never matches a
-  // balance, so the skip cannot fire), which also RECOVERS any card the old bug
-  // had stranded, and then sets the marker.
+  // balance, so the skip cannot fire), which re-imports any card an interrupted
+  // run left skipped, and then sets the marker.
   syncedBalanceMinorUnits: integer('synced_balance_minor_units'),
+  // The instant (ms) this holding's balance was last SET, not moved — the
+  // statement-import boundary. `transactionsRepo.importRows`'s own doc
+  // comment (`transactions/repo/transactions.repo.ts`) is the ONE full
+  // statement of exactly which writes set it.
+  balanceSetAt: integer('balance_set_at'),
+  // The `transactions.setsBalance` row whose set IS this balance. Written by an
+  // opening balance, a balance edit, a closing import (which clears it) and the
+  // snapshot restore (which backfills it for an older snapshot), and carried by
+  // the snapshot export. Unread: every row's edit and delete moves the balance
+  // by its amount, so no write needs to find the setting row. Dropping it needs
+  // a migration (open item). NULL when a closing-balance import set it (no row
+  // is written at its as-of) or the balance was never hand-set. No foreign key:
+  // a deleted row's id is never reused, so a stale id matches nothing.
+  balanceSetRowId: text('balance_set_row_id'),
   metadata: text('metadata', { mode: 'json' }),
   sortOrder: integer('sort_order').notNull().default(0),
   closedAt: integer('closed_at'),
@@ -113,8 +164,18 @@ export const transactions = sqliteTable(
     // lets the display layer resolve the CURRENT name at render time through
     // `t`, so no English sentence is ever persisted and a rename follows.
     // DOCUMENTED RESIDUAL: a Convert marks its EXISTING row only when that row
-    // is manual — a bank-owned (monobank) row is never mutated by this app, so
-    // a synced debit converted into another currency still counts as spending.
+    // is manual or imported (`isDeletableTransaction`) — a Convert never marks a
+    // bank-owned (monobank) row beyond `exchangePairId`, so a synced debit
+    // converted into another currency still counts as spending. A bank-owned row
+    // can still carry a marker while its manual partner lives: a marked import
+    // row the reconnect sync adopts (`adoptImportTwinsDatabaseTransaction`)
+    // keeps it. A delete that keeps such a row clears the marker in the SAME
+    // write (`removeRowsDatabaseTransaction`, for a leg delete and for a
+    // holding or account cascade alike) only when the leg it names goes with
+    // that delete (`markerLegIsGone`): its holding is deleted, or a removed row
+    // of the same pair sat on it. A marker left behind naming a gone leg would
+    // keep a real purchase out of spending for good; one cleared while its leg
+    // stays (a deposit a second Convert never repointed) would count it twice.
     exchangeCounterpartHoldingId: text('exchange_counterpart_holding_id'),
     // Split-change grouping: a shared id across ONE manual payment row and the
     // N return rows that distribute its change into OTHER holdings, all written
@@ -126,6 +187,63 @@ export const transactions = sqliteTable(
     // not a reserved `category` value, for the same reason the exchange marker
     // is: the category picker rewrites `category` and would destroy it.
     changeGroupId: text('change_group_id'),
+    // The id the legs of ONE Exchange or Convert share, so deleting a leg finds
+    // the others (`transactionsRepo.remove`). The role is stored, never derived
+    // from the shape of a row: `recordExchange` writes it on both legs (on the
+    // source leg alone when the destination is a term deposit, whose
+    // contribution is metadata, not a row), and `recordExchangeCounterpart`
+    // writes it on the new leg and on the EXISTING row, reusing the id that row
+    // already carries so a repeated Convert joins the same group. The existing
+    // row gets the pair id always, plus the counterpart marker only when it is
+    // manual or imported and carries none. A synced
+    // (bank-owned) existing row gets this id and nothing else, so the delete
+    // knows its partner is the bank's and keeps it (the pair id stays on the kept
+    // row, its marker cleared only when the leg it names is gone);
+    // `addManyDedup`'s upsert never touches the
+    // column, like `loanHoldingId` and `category`. Null on a
+    // row that is no leg, and on a legacy leg migration 0052 could not prove a
+    // partner for. Deleting a holding or an account follows the same ids to the
+    // legs on OTHER holdings (`transactionsRepo.removeHolding`).
+    exchangePairId: text('exchange_pair_id'),
+    // The loan holding this payment counts against — null for an ordinary
+    // transaction. A loan holding writes no ledger rows of its own
+    // (`isLedgerlessHoldingType`), so every payment lives on the LINKED
+    // bank holding's own row instead, tied back here. Set by the auto-matcher
+    // (`transactionsRepo.setAutoLoanLinks`) or by the user
+    // (`transactionsRepo.setLoanPayment`). Allowed on a synced (bank-owned)
+    // row, EXACTLY LIKE `category`'s own override path — the link is
+    // user/matcher state, not bank data, so `addManyDedup`'s upsert never
+    // refreshes it. Cleared (along with `loanLinkSource`) in the SAME
+    // transaction a linked loan holding is deleted, whether directly
+    // (`transactionsRepo.removeHolding`) or via its owning account
+    // (`accountsRepo.remove`) — a dangling id is never left to rot; a
+    // cleared link counts as normal spending again.
+    loanHoldingId: text('loan_holding_id'),
+    // How `loanHoldingId` was set: 'auto' (the matcher) or 'manual' (the
+    // user), null when there is no link — kept in sync with `loanHoldingId`
+    // (both null together, never one without the other). Drives the "Linked
+    // automatically" + Undo affordance vs a plain manual link.
+    loanLinkSource: text('loan_link_source', { enum: ['auto', 'manual'] }),
+    // True once the user has explicitly rejected an auto-suggested link on
+    // this row (`transactionsRepo.undoAutoLoanLink`), so the matcher never
+    // re-proposes it — false-positive handling. Only a MANUAL action ever
+    // moves this flag: a manual LINK clears it (a fresh pick always
+    // overrides an earlier Undo), but a manual "None" SETS it — the user's
+    // explicit "not a loan payment" must stick, or the very next sync would
+    // just auto-link the row again. This deviates from the original design
+    // note's literal text ("a manual None clears the flag"). `setAutoLoanLinks`
+    // (the matcher's path) never touches this column either way; its own
+    // WHERE clause just skips a rejected row.
+    // NOT NULL default 0: every existing row (pre-migration and every
+    // ordinary transaction) has never been rejected.
+    loanLinkRejected: integer('loan_link_rejected', { mode: 'boolean' }).notNull().default(false),
+    // True on every row whose amount set its holding's balance (an opening
+    // balance, a cash opening, a hand edit), for good, after a description or a
+    // category too, which its shape does not survive. It only keeps a closing
+    // balance import from counting the row again past its as-of
+    // (`postClosingRowsWhere`): the row's edit and delete move the balance by its
+    // amount like any row's.
+    setsBalance: integer('sets_balance', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
     // BALANCE sync writes no transaction rows, but the Binance crypto sync now
@@ -157,6 +275,14 @@ export const transactions = sqliteTable(
     // Every `where(eq(transactions.holdingId, …))` (holding detail, per-card
     // sync cursor) hit a full table scan without this.
     holdingIdIndex: index('transactions_holding_id').on(table.holdingId),
+    // The cascade delete looks the other legs up by this id.
+    exchangePairIdIndex: index('transactions_exchange_pair_id').on(table.exchangePairId),
+    // The loan-linked payments lookup reads the rows that name a loan holding.
+    // Partial, so the loan matcher's `loan_holding_id IS NULL` filter cannot pick
+    // it over `transactions_time`.
+    loanHoldingIdIndex: index('transactions_loan_holding_id')
+      .on(table.loanHoldingId)
+      .where(sql`${table.loanHoldingId} IS NOT NULL`),
     // Every `orderBy(desc(transactions.time))` (the ledger lists) did a full
     // sort without this.
     timeIndex: index('transactions_time').on(table.time),
@@ -165,13 +291,45 @@ export const transactions = sqliteTable(
 
 export type TransactionRow = typeof transactions.$inferSelect;
 
+// The stored key of every statement-import row the user deleted, per holding: a
+// re-import that brings such a row back counts its full amount (the delete
+// reversed it), while a row the holding never had and whose date is on or before
+// its balance boundary stays history and counts 0 (`importRows`). Written by
+// `removeRowsDatabaseTransaction` for a row with `source = 'import'` and an
+// `externalId`, deleted when the row is inserted again and with its holding
+// (`removeHoldingDatabaseTransaction`). Every key of a holding is also deleted
+// in the write that moves the holding's balance anchor (a closing balance that
+// applies, a hand-set balance, the bank figure of a sync), because the new
+// anchor already holds what the user deleted. The sync clears the keys that way
+// but never reads them and never revives a row, and the key-rewrite passes
+// (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave them as they were, so a
+// key they rewrote is a miss: the row comes back at 0, never counted twice. No
+// named index: the primary key's own index serves both reads.
+export const deletedImportKeys = sqliteTable(
+  'deleted_import_keys',
+  {
+    holdingId: text('holding_id')
+      .notNull()
+      .references(() => holdings.id),
+    externalId: text('external_id').notNull(),
+    // When the key was deleted: kept for the export audit and a future pruning of
+    // old keys; nothing reads it today.
+    deletedAt: integer('deleted_at').notNull().default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => ({
+    holdingExternalId: primaryKey({ columns: [table.holdingId, table.externalId] }),
+  }),
+);
+
+export type DeletedImportKeyRow = typeof deletedImportKeys.$inferSelect;
+
 export const currencyRates = sqliteTable(
   'currency_rates',
   {
     base: text('base', { enum: currencyOptions }).notNull(),
     quote: text('quote', { enum: currencyOptions }).notNull(),
     rate: text('rate').notNull(),
-    source: text('source', { enum: ['monobank', 'coingecko'] }).notNull(),
+    source: text('source', { enum: ['monobank', 'coingecko', 'nbu'] }).notNull(),
     fetchedAt: integer('fetched_at').notNull(),
   },
   (table) => ({
@@ -210,7 +368,7 @@ export const settings = sqliteTable('settings', {
   id: integer('id').primaryKey(),
   baseCurrency: text('base_currency', { enum: currencyOptions }).notNull().default('UAH'),
   // SUPERSEDED (retained): the global Monobank statement CURSOR. De-globalized
-  // to the per-connection `syncState` table (2026-09-11 multi-account plan);
+  // to the per-connection `syncState` table so each account keeps its own;
   // migration 0028 backfills the connected account's row from it. The sync no
   // longer writes it and no `settings` setter remains. Deliberately NOT dropped
   // (migrations here are additive-only — same class as `appearance` /
@@ -246,11 +404,11 @@ export const settings = sqliteTable('settings', {
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),
-  // SUPERSEDED (retained): the global DISPLAY "last synced" timestamp. Moved to
-  // per-connection `syncState.lastSyncDisplayAt` (2026-09-11 multi-account plan);
-  // migration 0028 backfills it. The sync no longer writes it and account-detail
-  // now reads `syncState`. Retained (additive-only migrations). The description
-  // below still documents the live semantics, which now hold on `syncState`.
+  // SUPERSEDED (retained): the global DISPLAY "last synced" timestamp. Each
+  // account keeps its own on per-connection `syncState.lastSyncDisplayAt`;
+  // migration 0028 backfills it. The sync does not write this column and
+  // account-detail reads `syncState`. Retained (additive-only migrations). The
+  // description below documents the live semantics, which hold on `syncState`.
   // The DISPLAY "last synced" timestamp (epoch ms), updated on EVERY sync run
   // that reached Monobank with at least one card succeeding — including a
   // PARTIAL failure, where some cards imported but one threw. Decoupled from
@@ -263,29 +421,33 @@ export const settings = sqliteTable('settings', {
   // NULLABLE: rows that existed before this column read null, and the display
   // falls back to `lastSyncAt`.
   lastSyncDisplayAt: integer('last_sync_display_at'),
-  // SUPERSEDED (retained): the global last-FULL-fetch marker. Moved to
-  // per-connection `syncState.lastFullSyncAt` (2026-09-11 multi-account plan);
-  // migration 0028 backfills it. The sync no longer writes it. Retained
-  // (additive-only migrations). The description below documents the live
-  // semantics, which now hold on `syncState`.
+  // SUPERSEDED (retained): the global last-FULL-fetch marker. Each account keeps
+  // its own on per-connection `syncState.lastFullSyncAt`; migration 0028
+  // backfills it. The sync does not write this column. Retained (additive-only
+  // migrations). The description below documents the live semantics, which hold
+  // on `syncState`.
   // The epoch-ms timestamp of the last FULL statement fetch (every card
-  // fetched regardless of balance). The steady-state sync SKIPS a card whose
-  // /client-info balance is unchanged since the last sync (a "balance-diff
-  // skip") to stay under Monobank's 1-req/60s-per-token limit; this timestamp
-  // drives the periodic safety net that forces an all-cards fetch, bounding
-  // the worst-case miss window for a net-zero same-window transaction pair
-  // (a +X and a -X in one sync window that leave the balance untouched, which
-  // the balance-diff skip would otherwise never catch). It is ALSO the
-  // from-cursor of that forced full fetch: the sync re-queries [lastFullSyncAt,
-  // now] so every window skipped since the last full fetch is actually
-  // re-covered — using the recent incremental cursor instead would re-query
-  // only the already-covered recent window and recover nothing. NULL ⇒ never
-  // done a full fetch, which forces one.
+  // fetched regardless of balance) — OR, on a first-ever full fetch that
+  // FAILED, that attempt's own from-cursor instead (`resolveFullSyncAtToPersist`
+  // in `monobank/sync/sync.ts`), so a delayed retry still derives the same
+  // window rather than sliding forward with the clock. The steady-state sync
+  // SKIPS a card whose /client-info balance is unchanged since the last sync
+  // (a "balance-diff skip") to stay under Monobank's 1-req/60s-per-token
+  // limit; this timestamp drives the periodic safety net that forces an
+  // all-cards fetch, bounding the worst-case miss window for a net-zero
+  // same-window transaction pair (a +X and a -X in one sync window that leave
+  // the balance untouched, which the balance-diff skip would otherwise never
+  // catch). It is ALSO the from-cursor of that forced full fetch: the sync
+  // re-queries [lastFullSyncAt, now] so every window skipped since the last
+  // full fetch is actually re-covered — using the recent incremental cursor
+  // instead would re-query only the already-covered recent window and
+  // recover nothing. NULL ⇒ never done (or even attempted) a full fetch,
+  // which forces one.
   lastFullSyncAt: integer('last_full_sync_at'),
   // DEAD (retained): the previous spending-trend selection — a JSON array of
   // stable `categories.key` slugs. Superseded by `trendFilter` below, into which
   // migration 0025 copies any non-null value as `{ mode: 'manual', keys }`.
-  // Nothing in `src/` reads or writes it any more; deliberately NOT dropped
+  // Nothing in `src/` reads or writes it; deliberately NOT dropped
   // (migrations here are additive-only — same class as `appearance` /
   // `lockGraceSeconds`). Enforced reader-less by settings-columns.test.ts.
   trendCategoryKeys: text('trend_category_keys', { mode: 'json' }).$type<string[]>(),
@@ -297,11 +459,11 @@ export const settings = sqliteTable('settings', {
   // contribution). Written by settingsRepo.setTrendFilter (Save persists; there
   // is no clear-to-null path from the UI, but the setter accepts null).
   trendFilter: text('trend_filter', { mode: 'json' }).$type<TrendFilter>(),
-  // SUPERSEDED (retained): the global force-retry set. Moved to per-connection
-  // `syncState.failedSyncMonobankIds` (2026-09-11 multi-account plan); migration
-  // 0028 backfills it. The sync no longer writes it. Retained (additive-only
-  // migrations). The description below documents the live semantics, which now
-  // hold on `syncState`.
+  // SUPERSEDED (retained): the global force-retry set. Each account keeps its
+  // own on per-connection `syncState.failedSyncMonobankIds`; migration 0028
+  // backfills it. The sync does not write this column. Retained (additive-only
+  // migrations). The description below documents the live semantics, which hold
+  // on `syncState`.
   // The Monobank account ids whose statement fetch FAILED on the last sync run.
   // The next run force-fetches only these (regardless of balance) so one flaky
   // card does not strand the whole account in daily full-fetch mode: without
@@ -310,22 +472,79 @@ export const settings = sqliteTable('settings', {
   // the balance-diff skip never engages again. Pruned to ids still present in
   // client-info. NULL means the empty set (no card is currently force-retried).
   failedSyncMonobankIds: text('failed_sync_monobank_ids', { mode: 'json' }).$type<string[]>(),
+  // The user's saved column-mapping imports
+  // (`statement-import/column-mapping/saved-mapping.ts`): a map from
+  // `mappingKeyFor(bankId, fingerprint)` (`bank:<bankId>` for a catalog bank,
+  // else `header:<fingerprint>` for "Other") to the `SavedColumnMapping` last
+  // confirmed for that key. NULL means nothing saved yet. Written (read-
+  // modify-write) by `settingsRepo.saveStatementMapping`; looked up by
+  // `findSavedMapping` to PRE-FILL the mapping form on a later import — the
+  // user still taps Import, a saved mapping never applies itself silently.
+  statementMappings: text('statement_mappings', { mode: 'json' }).$type<
+    Record<string, SavedColumnMapping>
+  >(),
+  // One-shot flag: has this device already rewritten its stored statement-
+  // import dedup keys from the pre-`␟`-separator format to the injective one
+  // (`statement-import/mapping/upgrade-dedup-key.ts`'s `upgradeLegacyDedupKey`)?
+  // Migration 0041 adds this column defaulting to `false` (unrun);
+  // `MigrationsGate` flips it to `true` after the one-time rewrite, the same
+  // shape every other one-shot migration-adjacent flag in this table uses.
+  // `restoreDataSnapshot` treats an entirely absent key (a pre-0041 `.kiko`
+  // export) as `false` too — see `restore-snapshot.ts`.
+  dedupKeysUpgraded: integer('dedup_keys_upgraded', { mode: 'boolean' }).notNull().default(false),
+  // One-shot flag: has this device already rewritten its stored statement-
+  // import rows' `time` (and the matching dedup-key token) from the legacy
+  // "wall clock written as UTC" convention to a real instant
+  // (`statement-import/rezone-import-times/`'s `planImportTimeRezone`)?
+  // Migration 0043 adds this column defaulting to `false` (unrun);
+  // `MigrationsGate` flips it to `true` after the one-time rewrite, the same
+  // shape `dedupKeysUpgraded` above uses. `restoreDataSnapshot` treats an
+  // entirely absent key (a pre-0043 `.kiko` export) as `false` too — see
+  // `restore-snapshot.ts`.
+  importTimesRezoned: integer('import_times_rezoned', { mode: 'boolean' }).notNull().default(false),
+  // The reminder offers the user dismissed, or whose reminder the user
+  // deleted, as a map from `accounts.id` to those kinds, so such an offer
+  // never comes back for that account. NULL means nothing dismissed yet.
+  reminderOfferDismissals: text('reminder_offer_dismissals', { mode: 'json' }).$type<
+    Record<string, ReminderKind[]>
+  >(),
+  // When the reminder sync first saw iOS allow this app's notifications, since
+  // they were last off. The ignored-reminder count starts no earlier, because
+  // a reminder iOS never showed was not ignored. NULL while they are off, or
+  // before the first sync.
+  notificationsDeliverableSince: integer('notifications_deliverable_since'),
+  // LEGACY, zero readers. The removed EODHD share-price daily quota (migration
+  // 0046 created it). Deliberately not dropped — a schema removal here would
+  // make the next drizzle-kit generate emit a DROP that diverges from the
+  // migration snapshots, and the column is harmless. Pinned as a documented
+  // exception in `src/db/settings-columns.test.ts`; re-wiring it means
+  // removing it there first. A restore takes it from the file like any other
+  // legacy column.
+  quoteQuota: text('quote_quota', { mode: 'json' }),
+  // One-shot flag: has this device already worked out every stored lot
+  // list's sale costs again in the one lot order (`recostStoredLots`,
+  // `holdings/lot-recost/`)? An older build costed a sale in the order the
+  // lots were recorded, so a backdated buy left a stale sale cost. Migration
+  // 0048 adds it as `false`; the app-open step sets it once the run commits.
+  // A restored backup without the key keeps the default `false`, so the
+  // restore runs it again.
+  lotsRecosted: integer('lots_recosted', { mode: 'boolean' }).notNull().default(false),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;
 
 /**
- * Per-connection Monobank sync cursor. This DE-GLOBALIZES the former single-row
- * `settings` cursor (`last_sync_at`, `last_full_sync_at`, `last_sync_display_at`,
- * `failed_sync_monobank_ids`): those columns modelled ONE Monobank connection, so
- * a second connected Monobank account would have shared and corrupted the one
- * cursor. Each connected Monobank account now owns its own row here, keyed by its
- * `accounts.id`. The old `settings` columns are retained-but-dead — pinned as
- * reader-less in `src/db/settings-columns.test.ts` per the 2026-09-11
- * multi-account plan (Task 1.3), same additive-only class as `appearance` /
- * `lockGraceSeconds`. Each column mirrors the identically-named `settings` one;
- * read the comments on those columns above for the load-bearing semantics
- * (balance-diff skip, robust `lastFullSyncAt` graduation, the display stamp).
+ * Per-connection Monobank sync cursor. The `settings` cursor columns
+ * (`last_sync_at`, `last_full_sync_at`, `last_sync_display_at`,
+ * `failed_sync_monobank_ids`) model ONE Monobank connection, so a second
+ * connected Monobank account would share and corrupt the one cursor. Each
+ * connected Monobank account owns its own row here instead, keyed by its
+ * `accounts.id`. The superseded `settings` columns are retained-but-dead — pinned as
+ * reader-less in `src/db/settings-columns.test.ts`, same additive-only class
+ * as `appearance` / `lockGraceSeconds`. Each column mirrors the
+ * identically-named `settings` one; read the comments on those columns above
+ * for the load-bearing semantics (balance-diff skip, robust
+ * `lastFullSyncAt` graduation, the display stamp).
  */
 export const syncState = sqliteTable('sync_state', {
   accountId: text('account_id')
@@ -380,3 +599,90 @@ export const categoryOverrides = sqliteTable('category_overrides', {
 });
 
 export type CategoryOverrideRow = typeof categoryOverrides.$inferSelect;
+
+/**
+ * One priced point for a metal/holding on a given day. Keyed the
+ * same way `currencyRateHistory` keys a rate: one row per (instrument, day),
+ * carried forward across a gap by the reader (`src/prices/price-book/`), not
+ * backfilled here.
+ */
+export const pricePoints = sqliteTable(
+  'price_points',
+  {
+    /**
+     * The priced thing's key — `metal:<metal>` or `holding:<holdingId>` (see
+     * `src/prices/instrument/instrument.ts`). Free-text, not an FK: it may
+     * point at a metal with no matching row anywhere, or at a holding that
+     * has since been deleted.
+     */
+    instrument: text('instrument').notNull(),
+    /**
+     * The price's day, as a normalized UTC-midnight epoch value in
+     * MILLISECONDS (00:00:00.000 UTC of that calendar day) — same convention
+     * as `currencyRateHistory.day`. One row per (instrument, day).
+     */
+    day: integer('day').notNull(),
+    price: text('price').notNull(),
+    currency: text('currency', { enum: currencyOptions }).notNull(),
+    source: text('source', { enum: ['manual', 'nbu'] }).notNull(),
+  },
+  (table) => ({
+    instrumentDayUnique: uniqueIndex('price_points_instrument_day').on(table.instrument, table.day),
+  }),
+);
+
+export type PricePointRow = typeof pricePoints.$inferSelect;
+
+/**
+ * NBU securities-register cache — one row per bond ISIN,
+ * refreshed WHOLESALE (never patched field-by-field) at most once per
+ * local day by `refreshBondRegisterIfStale`
+ * (`src/bonds/bond-register-repo/`). `terms` stores the register's
+ * resolved `BondTerms` shape as JSON (`src/bonds/nbu-register/`) since the
+ * ISIN-mode bond form reads the whole object at once; `fetchedAt` is the
+ * one write-time stamp shared by every row in a given refresh, which is
+ * what makes `bondRegisterRepo.fetchedAtQuery()`'s `MAX(fetched_at)` read
+ * the same value any single row's own `fetchedAt` would.
+ */
+export const bondRegister = sqliteTable('bond_register', {
+  isin: text('isin').primaryKey(),
+  terms: text('terms', { mode: 'json' }).notNull().$type<BondTerms>(),
+  fetchedAt: integer('fetched_at').notNull(),
+});
+
+export type BondRegisterRow = typeof bondRegister.$inferSelect;
+
+/**
+ * One user-configured local reminder per `(account, kind)`. `schedule` is the
+ * whole `ReminderSchedule` as JSON, since the planner reads it at once.
+ * `activeSince` is when the reminder last started counting: data older than it
+ * never skips an occurrence. `lastEngagedAt` is the latest tap on one of its
+ * notifications, which resets the ignored-fire count. `lastSnoozedAt` is the
+ * latest "Tomorrow" tap while that snooze is still pending, so every later
+ * re-plan can skip the regular occurrence the snooze stands in for; the
+ * native queue that reported the tap is drained only once. `pausedAt` with
+ * `pauseReason` is either a user pause or the automatic back-off pause.
+ */
+export const reminders = sqliteTable(
+  'reminders',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id')
+      .notNull()
+      .references(() => accounts.id),
+    kind: text('kind', { enum: reminderKinds }).notNull(),
+    schedule: text('schedule', { mode: 'json' }).$type<ReminderSchedule>().notNull(),
+    pausedAt: integer('paused_at'),
+    pauseReason: text('pause_reason', { enum: ['user', 'backoff'] }),
+    activeSince: integer('active_since').notNull(),
+    lastEngagedAt: integer('last_engaged_at'),
+    lastSnoozedAt: integer('last_snoozed_at'),
+    createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => ({
+    accountKind: uniqueIndex('reminders_account_kind').on(table.accountId, table.kind),
+  }),
+);
+
+export type ReminderRow = typeof reminders.$inferSelect;

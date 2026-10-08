@@ -1,11 +1,12 @@
-import { isSensorAvailable } from '@sbaiahmed1/react-native-biometrics';
 import { render } from '@testing-library/react-native';
-import '../../../../design-system/unistyles';
-import '../../../../i18n';
+import { isSensorAvailable } from '@sbaiahmed1/react-native-biometrics';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
 
 import AppLockSetting from './app-lock-setting.component';
 
-// T-15 regression: proves the fix end to end, through the REAL
+// Proves a native rejection keeps the switch disabled with a hint, end to
+// end, through the REAL
 // `../../../../auth/biometrics.isSensorAvailable` (only the native module itself
 // is mocked, unlike `app-lock-setting.component.test.tsx`, which mocks the
 // wrapper directly). `AppLockSetting`'s `isSensorAvailable().then(...)`

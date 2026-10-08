@@ -13,7 +13,7 @@
  * — an exchange into a term deposit writes a metadata contribution instead of
  * a credit row, so there is no counterpart row to pair against at all.
  */
-export const exchangeExcludedTxIds = (
+export const exchangeExcludedTransactionIds = (
   transactions: readonly { id: string; exchangeCounterpartHoldingId: string | null }[],
 ): Set<string> => {
   const ids = new Set<string>();

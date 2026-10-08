@@ -14,20 +14,25 @@
 // `encryptEnvelope` uses a fresh random nonce every call (see
 // `envelope.ts`), so the ciphertext is NEVER byte-reproducible — the guard
 // below decrypts and compares the PAYLOAD, never the raw `.kiko` bytes.
-import { join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-
 import {
   decryptEnvelope,
   EXPORT_FORMAT,
   type ExportEnvelope,
   EXPORT_VERSION,
-} from '../../../src/data-transfer/crypto/envelope';
-import type { AppLanguage } from '../../../src/i18n';
+  type ExportPayload,
+  generateExportKey,
+  decodeBase64ToBytes,
+  encodeBytesToBase64,
+} from '@kiko/data-transfer';
+import { join } from 'node:path';
+import maybe, { foldMap } from 'fnts/maybe';
+import { accounts, holdings, reminders } from '@kiko/db';
+import { eligibleReminderKinds } from '@kiko/reminders/rules';
+import { isReminderSchedule } from '@kiko/reminders/schedule';
+import type { AppLanguage } from '@kiko/i18n/device-language';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+
 import { ANCHOR, buildScreenshotDataset } from '../seed/screenshot-seed';
-import type { ExportPayload } from '../../../src/data-transfer/payload';
-import { generateExportKey } from '../../../src/data-transfer/crypto/generate-key';
-import { decodeBase64ToBytes, encodeBytesToBase64 } from '../../../src/data-transfer/base64/base64';
 
 import { buildDemoSnapshot } from './build-demo-snapshot';
 import { buildDemoEnvelopeJson } from './generate-demo-kiko';
@@ -67,6 +72,43 @@ describe('buildDemoEnvelopeJson (always runs — proves the encoder itself, not 
   });
 });
 
+// The App Store reviewer reaches every feature through this dataset
+// (Guideline 5.6), so an account kind, holding type, or reminder kind missing
+// from it is a feature the reviewer cannot see.
+describe('the demo dataset covers every account kind, holding type, and reminder kind', () => {
+  for (const { language } of LANGUAGES) {
+    it(`${language}: holds at least one account of every kind and one holding of every type`, () => {
+      const snapshot = buildDemoSnapshot(buildScreenshotDataset(language));
+
+      expect(new Set(snapshot.accounts.map((account) => account.kind))).toEqual(
+        new Set(accounts.kind.enumValues),
+      );
+      expect(new Set(snapshot.holdings.map((holding) => holding.type))).toEqual(
+        new Set(holdings.type.enumValues),
+      );
+    });
+
+    // A reminder on an ineligible account is never scheduled and its page
+    // shows it as not sent, so the reviewer would not see it work.
+    it(`${language}: holds one reminder of every kind, each on an account eligible for it`, () => {
+      const snapshot = buildDemoSnapshot(buildScreenshotDataset(language));
+      const accountsById = new Map(snapshot.accounts.map((account) => [account.id, account]));
+
+      expect(new Set(snapshot.reminders.map((reminder) => reminder.kind))).toEqual(
+        new Set(reminders.kind.enumValues),
+      );
+
+      for (const reminder of snapshot.reminders) {
+        const eligibleKinds =
+          foldMap(maybe(accountsById.get(reminder.accountId)), eligibleReminderKinds) ?? [];
+
+        expect(eligibleKinds).toContain(reminder.kind);
+        expect(isReminderSchedule(reminder.schedule)).toBe(true);
+      }
+    });
+  }
+});
+
 if (process.env.KIKO_REGEN_DEMO === '1') {
   describe('regenerate the committed demo .kiko fixtures', () => {
     it('writes kiko-demo.key (reusing it if already committed) and both .kiko files', () => {
@@ -96,6 +138,8 @@ describe('the committed demo .kiko fixtures decrypt back to the current dataset'
   for (const { language, fileName } of LANGUAGES) {
     it(`${fileName} decrypts to buildDemoSnapshot(buildScreenshotDataset('${language}')), with no secrets block`, () => {
       const envelope: ExportEnvelope = JSON.parse(
+        // The file name comes from the LANGUAGES table, so the rule cannot see its extension.
+        // nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(.kiko fixture from a table)
         readFileSync(join(FIXTURES_DIR, fileName), 'utf8'),
       );
       const plaintext = decryptEnvelope(envelope, key);

@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `statement_mappings` text;

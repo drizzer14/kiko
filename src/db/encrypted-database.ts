@@ -1,6 +1,6 @@
-import { migrateLegacyDatabase } from '@kiko/migration/migrate-legacy-db';
-import { type DB, isSQLCipher, open } from '@op-engineering/op-sqlite';
 import { bifold, eitherSync, isLeft } from 'fnts/either';
+import { type DB, isSQLCipher, open } from '@op-engineering/op-sqlite';
+import { migrateLegacyDatabase } from '@kiko/migration/migrate-legacy-db';
 
 import { generateDbKey, readDbKey, storeDbKey, toSQLCipherRawKey } from './keys/db-key';
 

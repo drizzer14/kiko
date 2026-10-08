@@ -9,7 +9,7 @@
 // leading-zero run ("007"), and a lone separator (",") are all preserved rather
 // than reformatted, so typing never drops a character or reshuffles digits.
 
-import { type Currency, currencyScale } from '../../../currency/currency';
+import { type Currency, currencyScale } from '@kiko/currency/currency';
 
 // Inserts a grouping space every three digits from the right. A run of pure
 // digits (no separators) — the integer part — is all this needs to handle.
@@ -22,9 +22,9 @@ export const groupAmount = (input: string): string => {
 
   // A value that is not a plain decimal number — an exponent ("5e-7"), a stray
   // letter, anything from a paste — is REFUSED rather than reduced to its
-  // digits. The old `replace(/\D/g, '')` turned "5e-7" into "57", a fabricated
-  // amount seven orders of magnitude off, which Save then persisted. An empty
-  // string leaves the field blank, which the save guards already reject.
+  // digits, which would turn "5e-7" into "57", a fabricated amount seven
+  // orders of magnitude off. An empty string leaves the field blank, which
+  // the save guards already reject.
   if (/[^\d\s,.-]/.test(compact)) {
     return '';
   }
@@ -62,10 +62,10 @@ export const groupAmount = (input: string): string => {
  * (the caller pipes this through `groupAmount`).
  *
  * WHY NOT `String(minorUnits / factor)`: below 1e-6 JavaScript switches to
- * exponential notation, and `groupAmount`'s no-separator branch used to strip
- * every non-digit — so 50 satoshis hydrated as `5e-7` and rendered as `57`,
- * which Save then stored as 57 BTC (5,700,000,000 sat) and applied as a
- * balance delta. `toFixed(scale)` never emits an exponent.
+ * exponential notation, and `groupAmount` refuses any value with a letter
+ * (`5e-7`) by returning '' — so a valid 50-satoshi holding would open with a
+ * blank Balance field, and Save would write that blank as a zero balance.
+ * `toFixed(scale)` never emits an exponent.
  */
 export const majorAmountText = (currency: Currency, minorUnits: number): string => {
   const scale = currencyScale[currency];

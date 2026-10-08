@@ -1,15 +1,19 @@
 // src/data-transfer/snapshot/data-snapshot.d.ts
 import type {
   AccountRow,
+  BondRegisterRow,
   CategoryOverrideRow,
   CategoryRow,
   CurrencyRateHistoryRow,
   CurrencyRateRow,
+  DeletedImportKeyRow,
   HoldingRow,
+  PricePointRow,
+  ReminderRow,
   SettingsRow,
   SyncStateRow,
   TransactionRow,
-} from '../../db/schema';
+} from '@kiko/db';
 
 /**
  * Every logical table in the app, as a flat row-array snapshot. This is the
@@ -27,4 +31,10 @@ export type DataSnapshot = {
   syncState: SyncStateRow[];
   categories: CategoryRow[];
   categoryOverrides: CategoryOverrideRow[];
+  pricePoints: PricePointRow[];
+  bondRegister: BondRegisterRow[];
+  reminders: ReminderRow[];
+  // Optional, unlike the tables above: an older file never had the key, and a
+  // restore reads it defensively (`restoreDataSnapshot`) without a version bump.
+  deletedImportKeys?: DeletedImportKeyRow[];
 };

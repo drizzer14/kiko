@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native-unistyles';
 // The fixed Y-axis label column width and the gap between it and the plot, in
 // spacing units. Shared so the X-axis label row can offset itself by exactly
 // the same amount (column width + gap) and line its date labels up with the
-// plot area rather than the axis labels (G5). The column is deliberately narrow
+// plot area rather than the axis labels. The column is deliberately narrow
 // — the compact money labels ("$1.2M", "1,290K ₴") shrink to fit via
 // `adjustsFontSizeToFit`, so a wide reserve only stole horizontal space from
 // the plot.
@@ -44,7 +44,7 @@ export const styles = StyleSheet.create((theme) => ({
   // that lines up exactly with the SVG plot beside that column. Structuring it as
   // a flex row (rather than one View pushed over by `marginLeft`) is what gives
   // the label track a definite laid-out width, so its absolutely-positioned
-  // interior labels can resolve their percentage `left` against it (G5). A row of
+  // interior labels can resolve their percentage `left` against it. A row of
   // only-absolute children under a bare `marginLeft` had no such width, so every
   // interior percentage collapsed to 0 and the dates stacked at one x on device.
   xAxis: {

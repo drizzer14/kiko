@@ -1,14 +1,13 @@
-import { ratesRepo } from '@kiko/rates/repo';
-import either, { bifold, isLeft } from 'fnts/either';
 import { useState } from 'react';
-
-import { runSync } from '../../monobank/sync';
-import { refreshRates } from '../../rates/rates-refresh';
+import { runSync } from '@kiko/monobank/sync';
+import either, { bifold, isLeft } from 'fnts/either';
+import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
+import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 
 export type SyncAction<Input> = {
   isSyncing: boolean;
   error: string | undefined;
-  /** Resolves `true` on success, `false` when the run or the rate refresh failed (the failure is in `error`). */
+  /** Resolves `true` on success, `false` when the run failed (the failure is in `error`). */
   sync: (input: Input) => Promise<boolean>;
 };
 
@@ -35,20 +34,31 @@ export const useSyncAction = <Input>(
 
     const result = await either<unknown, void>(async () => {
       await run(input);
-      const lastRefreshAt = await ratesRepo.latestFetchedAt();
-      await refreshRates({ lastRefreshAt });
     });
 
-    // Always clear the syncing flag, whether the run succeeded or failed —
-    // this is the old `finally` block.
-    setIsSyncing(false);
-
     if (isLeft(result)) {
+      // Always clear the syncing flag, whether the run succeeded or failed —
+      // this is the old `finally` block.
+      setIsSyncing(false);
       const caught = bifold(result);
       setError(caught instanceof Error ? caught.message : String(caught));
 
       return false;
     }
+
+    // One rate refresh per sync, run only after a SUCCESSFUL account sync —
+    // a single sync keeps rates-only scope (`metals: false`), unchanged from
+    // before this refactor. `refreshMarketData` never rejects and logs its
+    // own failure with no UI surface, so a rate-refresh failure never turns
+    // a successful sync into a reported error here.
+    await refreshMarketData({ throttled: true, metals: false });
+    // A sync can bring in a new loan-payment debit, so the matcher runs
+    // right alongside the rate refresh — never rejects either (its own doc
+    // comment), so a failed auto-link never turns a successful sync into a
+    // reported error here.
+    await runLoanAutoLink();
+
+    setIsSyncing(false);
 
     return true;
   };

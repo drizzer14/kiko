@@ -1,9 +1,10 @@
-import type { Currency } from '../../currency/currency';
+import { DAY_MS } from '@kiko/dates';
+import type { Currency } from '@kiko/currency/currency';
 
 /**
  * One normalized historical rate point from a provider, before it is composed
- * into the stored UAH-anchored cross pairs. `day` is the UTC-midnight epoch-ms
- * of the rate's calendar day, matching `currency_rate_history.day`.
+ * into a stored `X:UAH` row. `day` is the UTC-midnight epoch-ms of the rate's
+ * calendar day, matching `currency_rate_history.day`.
  */
 export type HistoryRateEntry = {
   base: Currency;
@@ -12,8 +13,6 @@ export type HistoryRateEntry = {
   rate: number;
   source: 'nbu' | 'coingecko';
 };
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Floor an epoch-ms instant to the UTC midnight of its calendar day. Epoch 0 is

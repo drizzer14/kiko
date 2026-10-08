@@ -10,8 +10,9 @@ argument (Guideline 5.6):
   with the UI in Ukrainian.
 - **`kiko-demo-en.kiko`** — handed to the **App Store reviewer**. Imports
   with the UI in English, so an English-reading reviewer is not dropped into
-  a Ukrainian app (`restoreDataSnapshot` replaces the whole `settings` row,
-  including `language`).
+  a Ukrainian app (`restoreDataSnapshot` takes the `settings` row from the file except the
+  columns in `KEPT_FROM_LIVE_ON_RESTORE`, see
+  `src/db/kept-from-live-on-restore.ts`; `language` comes from the file).
 
 ## Files
 
@@ -19,8 +20,9 @@ argument (Guideline 5.6):
 |---|---|
 | `kiko-demo-uk.kiko` | AES-256-GCM `ExportEnvelope` JSON (`src/data-transfer/crypto/envelope.ts`), Ukrainian dataset |
 | `kiko-demo-en.kiko` | Same, English dataset |
-| `kiko-demo.key` | The base64 AES-256 key, **shared by both files** |
-| `build-demo-snapshot.ts` | Pure mapper: `ScreenshotDataset` -> `DataSnapshot` (all 9 logical tables) |
+| `kiko-demo-en-1.1.kiko` | A frozen copy of the English file as release 1.1 wrote it (export version 1, none of 1.2's settings columns); never regenerated, read only by `src/data-transfer/import-data.back-compat.test.ts` |
+| `kiko-demo.key` | The base64 AES-256 key, **shared by all the files** |
+| `build-demo-snapshot.ts` | Pure mapper: `ScreenshotDataset` -> `DataSnapshot` (all 10 logical tables) |
 | `generate-demo-kiko.ts` | Pure encoder: `DataSnapshot` + key -> the `.kiko` file's JSON, via the app's real `encryptEnvelope` |
 | `generate-demo-kiko.test.ts` | REGEN (writes the fixtures) + GUARD (decrypts and diffs them against the current builder — this is what `make gate` runs on every future commit) |
 
@@ -37,7 +39,9 @@ Import UI a real export would use.
 
 ## Regenerating
 
-Run this after any change to `screenshot-seed.ts` or `build-demo-snapshot.ts`:
+Run this after any change to `screenshot-seed.ts` or `build-demo-snapshot.ts`,
+or any change to the snapshot shape: a new table, a new `settings` column,
+or a changed column default. Regenerate in the same commit as the migration:
 
 ```bash
 KIKO_REGEN_DEMO=1 npx jest e2e/screenshot/fixtures/generate-demo-kiko.test.ts

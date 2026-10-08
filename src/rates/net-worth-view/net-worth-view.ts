@@ -1,34 +1,57 @@
-import type { Currency } from '../../currency/currency';
-import type { Money } from '../../currency/money';
-import type { CurrencyRateRow, HoldingRow } from '../../db/schema';
-import { netWorth, type RateTable } from '../conversion';
+import type { Money } from '@kiko/currency/money';
+import type { Currency } from '@kiko/currency/currency';
+import type { CurrencyRateRow, HoldingRow } from '@kiko/db';
+import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
+
 import { sumByCurrency } from '../currency-totals';
+import { FIAT_RATE_SEED_TABLE } from '../fiat-rate-seed';
+import { netWorth, type RateTable, rateBetween, rateTableFromRows } from '../conversion';
 
-type ConvertibleHolding = Pick<HoldingRow, 'currency' | 'balanceMinorUnits' | 'type' | 'metadata'>;
-
-/** The `rate` column is stored as a string; parse it into the numeric RateTable. */
-export const buildRateTable = (
-  rows: Pick<CurrencyRateRow, 'base' | 'quote' | 'rate'>[],
-): RateTable => {
-  const table: RateTable = {};
-
-  for (const row of rows) {
-    const rate = Number(row.rate);
-    if (Number.isFinite(rate)) {
-      table[`${row.base}:${row.quote}`] = rate;
-    }
-  }
-  return table;
-};
+type ConvertibleHolding = Pick<
+  HoldingRow,
+  'currency' | 'balanceMinorUnits' | 'type' | 'metadata' | 'id'
+>;
 
 /**
- * `convert`/`netWorth` throw on a missing rate pair (RULING R2). A holding is
- * convertible only when it is already in the base currency or a base rate
- * exists — otherwise it is excluded from any sum so a first-run (no rates yet)
- * render never crashes.
+ * The `rate` column is stored as a string; parse it into the numeric,
+ * per-currency `RateTable` (`rateTableFromRows`). The bundled
+ * `FIAT_RATE_SEED_TABLE` is a FALLBACK LAYER underneath the live DB rows —
+ * spread first, then overwritten PER CURRENCY by whatever `rows` actually
+ * has, so a live UAH price always wins and the seed only fills a gap. This
+ * is what makes a non-UAH fiat holding value correctly right after creation,
+ * even fully offline, on a fresh install whose `currency_rates` table is
+ * still empty (`refreshRates` writes nothing until a live Monobank fetch
+ * succeeds — see `rates-refresh.ts`). Crypto has no seed entry, so an
+ * unrated crypto holding is excluded from net worth (this is the one
+ * silent-drop case, and it's intentional — crypto pricing is a separate,
+ * live-only path).
+ */
+export const buildRateTable = (
+  rows: Pick<CurrencyRateRow, 'base' | 'quote' | 'rate'>[],
+): RateTable => ({
+  ...FIAT_RATE_SEED_TABLE,
+  ...rateTableFromRows(rows),
+});
+
+/**
+ * `convert`/`netWorth` throw on a missing rate. A holding is convertible only
+ * when it is already in the base currency or `rateBetween` resolves a
+ * POSITIVE, finite rate through the UAH pivot — otherwise it is excluded from
+ * any sum so a first-run (no rates yet) render never crashes. `rateBetween`
+ * already treats a missing/zero/NaN UAH price on either leg as unresolvable,
+ * which is what keeps a bad provider tick (a rate of 0) from letting
+ * `guardedNetWorth` convert the holding to 0 while `guardedBreakdown` kept
+ * showing it at full own-currency value.
+ *
+ * Since `buildRateTable`'s fiat seed fallback (above) now covers
+ * every supported FIAT currency, this silent exclusion in practice fires
+ * only for a currency with neither a live rate NOR a seed entry — today that
+ * is exactly the crypto set (BTC/ETH/USDT), which has no seed by design and
+ * is excluded here until a live CoinGecko price lands, exactly as before
+ * this fix. This is the one remaining, intentional silent-drop case.
  */
 export const canConvert = (currency: Currency, base: Currency, rates: RateTable): boolean =>
-  currency === base || rates[`${currency}:${base}`] !== undefined;
+  rateBetween(rates, currency, base) !== undefined;
 
 /** Sum the given holdings in the base currency, excluding any that cannot convert. */
 export const guardedNetWorth = (
@@ -36,9 +59,11 @@ export const guardedNetWorth = (
   base: Currency,
   rates: RateTable,
   now: number,
+  book: PriceBook = EMPTY_PRICE_BOOK,
 ): Money => {
   const convertible = holdings.filter((holding) => canConvert(holding.currency, base, rates));
-  return netWorth(convertible, base, rates, now);
+
+  return netWorth(convertible, base, rates, now, book);
 };
 
 /**
@@ -50,17 +75,20 @@ export const guardedNetWorth = (
  * rate — which `guardedNetWorth` had already dropped from the total. With a
  * BTC holding and no BTC:UAH rate yet (a first run, or a CoinGecko outage),
  * the Home card's headline excluded BTC while the breakdown beneath it still
- * listed BTC, so the rows visibly did not add up. The widget's snapshot had
- * the identical divergence, which is why this lives here rather than in either
- * caller.
+ * listed BTC, so the rows visibly did not add up. This guard lives here,
+ * shared with `guardedNetWorth`, rather than duplicated inline in
+ * `home.screen.tsx` (its one current caller), so a future second consumer
+ * of the headline total gets the identical divergence fix for free.
  */
 export const guardedBreakdown = (
   holdings: ConvertibleHolding[],
   base: Currency,
   rates: RateTable,
   now: number,
+  book: PriceBook = EMPTY_PRICE_BOOK,
 ): Money[] =>
   sumByCurrency(
     holdings.filter((holding) => canConvert(holding.currency, base, rates)),
     now,
+    book,
   );
