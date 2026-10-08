@@ -8,15 +8,13 @@ Replaces: the Phase 2 section of
 
 ## Context and facts
 
-Each fact names its source. "Brainstorm" is the researcher's notes
-`memory/refs/duo-phase2-brainstorm-2026-10-08.md` (untracked; holds the quotes and URLs).
+Each fact names its source from the "Sources" list at the end.
 
-- Simulator, Xcode 27.1 Duo (captures of 2026-10-08, brainstorm "Simulator facts"):
+- Simulator, Xcode 27.1 Duo (Xcode 27.1 Duo simulator captures, 2026-10-08):
   - closed portrait: outer display 1398x2034 px, vertical bars (status bar and tab bar) on the right;
   - inner landscape: 2853x2007 px, vertical bars on the right;
   - inner portrait: 2007x2853 px, horizontal bars (status bar top, tab bar bottom with labels).
-- Apple guidance (brainstorm "Apple guidance"; HIG "designing for iPhone Duo",
-  developer.apple.com/iphone-duo/prepare/, Tech Talks 111461-111466):
+- Apple guidance (HIG; Prepare page; Tech Talks 111461, 111462, 111463, 111466):
   - same hierarchy on both displays, with one extra level on the inner display (Mail);
   - split views collapse to one stack on the outer display and tile on the inner display;
   - the fold is a reserved region of kind `.division`, active only when partly folded, width 0
@@ -24,11 +22,11 @@ Each fact names its source. "Brainstorm" is the researcher's notes
   - `traitCollection.verticalBarEdge` tells where the bars are;
   - size classes: outer portrait is compact width, inner is regular/regular; do not use idiom,
     orientation, or `UIScreen.main`;
-  - from April 2027 every submitted app needs iPhone Duo screenshots (outer 1398x2034 and
-    2034x1398; inner 2007x2853 and 2853x2007).
-- User (2026-10-08): the hinge is at the middle, depending on orientation. Inner landscape has a
+  - from April 2027 every submitted app needs iPhone Duo screenshots (Prepare page; sizes: outer
+    1398x2034 and 2034x1398; inner 2007x2853 and 2853x2007, screenshot specifications).
+- User, 2026-10-08: the hinge is at the middle, depending on orientation. Inner landscape has a
   vertical fold line; inner portrait has a horizontal fold line. Apple does not state the fold
-  axis (brainstorm).
+  axis (HIG).
 
 ## Goals
 
@@ -110,14 +108,14 @@ Own Swift module `DisplayRegions` (codegen spec, no new dependency; precedent: t
 JS does all layout.
 
 - Fold: the gap equals `foldRegion` while partly folded. System sheets, alerts, and menus need
-  nothing. Scrollable lists may cross the fold (Apple, brainstorm).
+  nothing. Scrollable lists may cross the fold (HIG).
 - Bars: native bars stay untouched. The Phase 1 "sidebar mode" guess (tab-bar height over 50% or
   a side inset) is REPLACED by `verticalBarEdge`. Content stays clear of bars through safe
   areas. Our floating controls follow `verticalBarEdge`: the "+" button sits next to the
   vertical tab bar, and bottom right when the bars are horizontal.
 - Older systems (iOS before 27.1, or an older SDK): `none` and null, so today's behaviour holds.
   An iOS 27.1 SDK build extends to the full display with vertical bars; older SDK builds are
-  letterboxed (brainstorm).
+  letterboxed (Prepare page).
 
 ## Section 4 - testing and delivery
 
@@ -142,7 +140,7 @@ Unit tests:
 Simulators: the Duo in all three poses (the user sets the pose in Device Hub; ops captures; the
 screenshots become the App Store Duo set), iPad landscape and portrait, and a regular iPhone
 regression. Known tooling limits: the Device Hub window shows a spinner on the inner display
-while the framebuffer is fine, and the CLI cannot navigate (brainstorm). A real Duo device check
+while the framebuffer is fine, and the CLI cannot navigate (Xcode 27.1 Duo simulator captures, 2026-10-08). A real Duo device check
 follows after 2026-10-23 if a device is available.
 
 Release: a later build, archived with Xcode 27.1, before April 2027.
@@ -151,3 +149,20 @@ Release: a later build, archived with Xcode 27.1, before April 2027.
 
 - The exact width cap (600 pt is a proposal).
 - Whether both Duo screenshot sets (outer and inner) are required; Apple's page does not say.
+
+## Sources (checked 2026-10-08)
+
+- HIG, designing for iPhone Duo:
+  https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo
+  (JSON form: https://developer.apple.com/tutorials/data/design/human-interface-guidelines/designing-for-iphone-duo.json)
+- Prepare your app for iPhone Duo: https://developer.apple.com/iphone-duo/prepare/
+- Apple developer news: https://developer.apple.com/news/?id=kkphp5qo
+- App Store Connect screenshot specifications:
+  https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/
+- Tech Talks 111461, 111462, 111463, 111466:
+  https://developer.apple.com/videos/play/tech-talks/111461/ (and the same path with 111462,
+  111463, 111466)
+- SwiftUI `GeometryProxy.reservedRegions(kind:)`:
+  https://developer.apple.com/documentation/swiftui/geometryproxy/reservedregions(kind:)
+- UIKit `UIView.reservedRegions(kind:options:)`:
+  https://developer.apple.com/documentation/uikit/uiview/reservedregions(kind:options:)
