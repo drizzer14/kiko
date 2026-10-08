@@ -20,8 +20,8 @@ jest.mock('@kiko/transactions/group-by-day', () => {
   };
 });
 
+import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
-import { Dimensions, StyleSheet } from 'react-native';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -60,7 +60,7 @@ jest.mock('@kiko/design-system/components/text', () => ({
 // height" formula indistinguishable from the correct one, so a double-counting
 // bug would go unnoticed.
 const MOCK_TAB_BAR_HEIGHT = 80;
-// Mutable so the dedicated "Duo sidebar mode" cases below can override it
+// Mutable so the dedicated "Duo vertical bar" cases below can override it
 // per test and restore it afterwards — see `mockUseSafeAreaInsets` just
 // below for the identical treatment and rationale.
 const mockUseBottomTabBarHeight = jest.fn(() => MOCK_TAB_BAR_HEIGHT);
@@ -68,11 +68,19 @@ jest.mock('react-native-bottom-tabs', () => ({
   useBottomTabBarHeight: () => mockUseBottomTabBarHeight(),
 }));
 
+// The system's own vertical-bar trait, in place of any geometry guess; `none`
+// is an ordinary bottom bar, which every test here but the "Duo vertical bar"
+// cases sees.
+const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
+jest.mock('@kiko/display-regions', () => ({
+  useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+}));
+
 const MOCK_BOTTOM_INSET = 34;
 // A plain arrow-returning factory can't be overridden per test, so this is a
 // mutable `jest.fn()` wrapper instead — its default return value is exactly
 // what every existing test in this file expects (a bottom-tab-bar iPhone,
-// zero horizontal inset); only the dedicated "Duo sidebar mode" tests at the
+// zero horizontal inset); only the dedicated "Duo vertical bar" tests at the
 // end of this file override it, restoring it in their own `afterEach`.
 const mockUseSafeAreaInsets = jest.fn(() => ({
   top: 0,
@@ -1843,7 +1851,9 @@ describe('HomeScreen', () => {
     // clearance on top of the bottom inset Screen's SafeAreaView already
     // reserves (see `home.screen.tsx`), which would leave 130pt of dead space
     // under the last row instead of the 96pt every other screen has.
-    expect(listPadding).toBe(resolveBottomClearance(MOCK_TAB_BAR_HEIGHT, MOCK_BOTTOM_INSET, false));
+    expect(listPadding).toBe(
+      resolveBottomClearance(MOCK_TAB_BAR_HEIGHT, MOCK_BOTTOM_INSET, 'none', 844),
+    );
 
     // Total dead space under the last row must match every other screen's 96:
     // the SafeAreaView's 34 inset + Screen's own 16 base padding + this 46.
@@ -1912,36 +1922,34 @@ describe('HomeScreen', () => {
     expect(getByText(/Cold storage/)).toBeTruthy();
   });
 
-  describe('Duo sidebar mode (regular-width scene, native right-edge sidebar)', () => {
+  describe('Duo vertical bar (the system places the tab bar on a vertical edge)', () => {
     // The primary panel's measured live geometry — see the duo-adaptive
     // design doc's "Context" section.
     const DUO_TAB_BAR_HEIGHT = 678;
-    const DUO_WINDOW_FRAME = { width: 466, height: 678, scale: 3, fontScale: 1 };
     const DUO_INSETS = { top: 0, right: 84, bottom: MOCK_BOTTOM_INSET, left: 0 };
-    const NORMAL_IPHONE_WINDOW_FRAME = { width: 393, height: 852, scale: 3, fontScale: 1 };
 
     afterEach(() => {
       mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
+      mockUseVerticalBarEdge.mockReturnValue('none');
       mockUseSafeAreaInsets.mockReturnValue({
         top: 0,
         right: 0,
         bottom: MOCK_BOTTOM_INSET,
         left: 0,
       });
-      Dimensions.set({ window: NORMAL_IPHONE_WINDOW_FRAME, screen: NORMAL_IPHONE_WINDOW_FRAME });
     });
 
     it('ignores the poisoned tab-bar height, drops the list clearance to 0, and leaves the FAB anchor unchanged — the exact measured Duo primary-panel geometry', async () => {
       mockUseBottomTabBarHeight.mockReturnValue(DUO_TAB_BAR_HEIGHT);
+      mockUseVerticalBarEdge.mockReturnValue('trailing');
       mockUseSafeAreaInsets.mockReturnValue(DUO_INSETS);
-      Dimensions.set({ window: DUO_WINDOW_FRAME, screen: DUO_WINDOW_FRAME });
 
       const { getByTestId, getByLabelText } = await renderHome();
 
       const listPadding =
         getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
 
-      // Not 678 - 34 = 644 (the bug) — sidebar mode distrusts the tab-bar
+      // Not 678 - 34 = 644 (the bug) — a vertical bar distrusts the tab-bar
       // height entirely.
       expect(listPadding).toBe(0);
 
@@ -1949,14 +1957,14 @@ describe('HomeScreen', () => {
       const flattened = StyleSheet.flatten(fab.props.style);
 
       // The enclosing Screen's SafeAreaView already reserves the 84pt right
-      // sidebar inset itself, so the FAB's own container sits clear of the
-      // sidebar without any extra offset — the usual spacing(4) = 16 gap,
+      // inset itself, so the FAB's own container sits clear of the
+      // bar without any extra offset — the usual spacing(4) = 16 gap,
       // unchanged. Adding the inset again here flung the FAB into the middle
       // of the screen — the bug the real-device screenshots caught.
       expect(flattened.right).toBe(16);
     });
 
-    it('keeps the ordinary bottom-tab-bar clearance and FAB anchor unchanged when the tab bar is NOT a sidebar', async () => {
+    it('keeps the ordinary bottom-tab-bar clearance and FAB anchor unchanged when there is no vertical bar', async () => {
       mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
       mockUseSafeAreaInsets.mockReturnValue({
         top: 0,
@@ -1964,7 +1972,6 @@ describe('HomeScreen', () => {
         bottom: MOCK_BOTTOM_INSET,
         left: 0,
       });
-      Dimensions.set({ window: NORMAL_IPHONE_WINDOW_FRAME, screen: NORMAL_IPHONE_WINDOW_FRAME });
 
       const { getByTestId, getByLabelText } = await renderHome();
 

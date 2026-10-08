@@ -1,3 +1,11 @@
+import type { VerticalBarEdge } from '@kiko/display-regions';
+
+// The fraction of window height a native BOTTOM tab bar can plausibly reach. A real bottom tab bar
+// tops out well under this even at the largest Dynamic Type size and on the shortest current
+// iPhone window (~667pt, ~83pt bar = ~12%). A tab bar that reports its own FULL frame height
+// (678 of 678 on the Duo primary panel, 100%) sits far above it.
+const IMPLAUSIBLE_TAB_BAR_HEIGHT_FRACTION = 0.5;
+
 /**
  * The clearance a view that owns the screen's true bottom edge must add ABOVE
  * the safe-area inset, so its last row clears the floating native glass tab
@@ -11,18 +19,16 @@
  * computed its own clearance. This function is the ONE place that arithmetic
  * lives, shared by `Screen` and by every `bleedBottom` child.
  *
- * `isSidebarMode` (see `isSidebarTabBarMode`, `sidebar-mode.ts`) — when the
- * native tab bar renders as a right-edge sidebar (a regular-width scene, e.g.
- * the iPhone Duo primary panel or a landscape Plus/Max-class iPhone), it
- * misreports its own height as the FULL WINDOW HEIGHT rather than a short
- * bar (confirmed: 678pt on a 678pt-tall window). `tabBarHeight` is therefore
- * UNTRUSTED in sidebar mode and ignored entirely: there is no floating
- * bottom bar to clear at all in that mode, so the correct extra clearance is
- * ZERO — the SafeAreaView's own bottom-inset reservation is already the
- * full, correct clearance, exactly the same invariant the ordinary zero-clamp
- * below already documents, just reached through a reliable signal instead of
- * the accidental `tabBarHeight <= insetBottom` case (which the bug's real
- * numbers, 678 > 34, never triggers).
+ * `verticalBarEdge` (`useVerticalBarEdge`, from the system's own trait) is
+ * `leading` or `trailing` when the system places the tab bar as a vertical
+ * bar (a regular-width scene, e.g. the iPhone Duo's inner window). Then there
+ * is no floating bottom bar to clear at all, the reported `tabBarHeight` is
+ * untrusted and ignored, and the correct extra clearance is ZERO: the
+ * SafeAreaView's own bottom-inset reservation is already the full clearance.
+ *
+ * With `none`, a tab bar that reports an implausible fraction of the window
+ * height (the same misreport) is clamped to zero too, as a guard for a
+ * window where the trait and the bar disagree.
  *
  * Clamped at 0 in bottom-bar mode too: on a device whose bottom inset alone
  * exceeds the bar height, the SafeAreaView's reservation is already the
@@ -31,9 +37,13 @@
 export const resolveBottomClearance = (
   tabBarHeight: number,
   insetBottom: number,
-  isSidebarMode: boolean,
+  verticalBarEdge: VerticalBarEdge,
+  windowHeight: number,
 ): number => {
-  if (isSidebarMode) {
+  const isImplausibleTabBarHeight =
+    windowHeight > 0 && tabBarHeight / windowHeight > IMPLAUSIBLE_TAB_BAR_HEIGHT_FRACTION;
+
+  if (verticalBarEdge !== 'none' || isImplausibleTabBarHeight) {
     return 0;
   }
 

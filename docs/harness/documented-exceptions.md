@@ -799,16 +799,22 @@ verified usage, not dead weight:
   `nosemgrep ... OVERRIDE(...)` in the source, never a file exclude. The flat
   fixture pair proves the rule in `check:rules`.
 
-- **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
-  `.ts` file name in `src/`.** React Native codegen reads a spec file only
-  if its basename matches `/^(Native.+|.+NativeComponent)/`
+- **`src/native-specs/Native*.ts` (`NativeKikoReminders.ts`,
+  `NativeDisplayRegions.ts`) — the only PascalCase `.ts` file names in
+  `src/`, in a folder with no barrel.** React Native codegen reads a spec
+  file only if its basename matches `/^(Native.+|.+NativeComponent)/`
   (case-sensitive) and has exactly one dot (see `filterJSFile` in
   `node_modules/@react-native/codegen/lib/cli/combine/combine-utils.js`),
   so the name cannot be kebab-case. `package.json` `codegenConfig.jsSrcsDir`
-  points at that folder. Only `reminders-native.ts` loads it (lazily, via
-  `require`), and the barrel does not export it; the
-  `kiko-no-native-reminders-module-import` Semgrep rule
-  (`rules/semgrep-prewrite.yml`) denies any other value import. Add another
+  points at that folder. A barrel there would call
+  `TurboModuleRegistry.getEnforcing` on load, so `feature-imports.js`
+  (`NATIVE_SPECS`) treats `native-specs/**` as barrel-less: the folder needs no
+  `index.ts` and a spec is imported deep through the alias. Only each module's
+  wrapper (`reminders-native.ts`, `display-regions-native.ts`) loads its spec
+  (lazily, via `require`); the
+  `kiko-no-native-reminders-module-import` and
+  `kiko-no-native-display-regions-module-import` Semgrep rules
+  (`rules/semgrep-prewrite.yml`) deny any other value import. Add another
   `Native*` spec only for a new app TurboModule.
 
 - **`sf-symbols-typescript` — a transitive package read by path in a test,

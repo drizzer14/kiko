@@ -11,21 +11,14 @@ import {
   type FieldInstance,
 } from './scroll-to-field';
 
-// A mutable `jest.fn()` wrapper so the dedicated sidebar-mode cases below can
-// override the reported insets per test and restore them afterwards. Every
-// OTHER test in this file (and every real caller of `useHeaderInset` — the 4
-// form screens, none of which mock this module at all) keeps this exact
-// zero-inset default, which resolves `isSidebarMode` to `false` and leaves
-// `useHeaderInset` an exact passthrough of `HeaderHeightContext` — no
-// existing behavior changes. `useBottomTabBarHeight` needs no local mock
-// here: the global manual mock (`__mocks__/react-native-bottom-tabs.tsx`)
-// already returns `0`, and a nonzero horizontal inset alone is sufficient to
-// flip `isSidebarTabBarMode` (see its own "Design decision" — either signal
-// alone is sufficient), so this file never needs to touch the tab-bar-height
-// or window-dimensions signals at all.
-const mockUseSafeAreaInsets = jest.fn(() => ({ top: 0, right: 0, bottom: 0, left: 0 }));
-jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => mockUseSafeAreaInsets(),
+// A mutable `jest.fn()` wrapper so the dedicated vertical-bar cases below can
+// override the reported edge per test. Every OTHER test in this file (and
+// every real caller of `useHeaderInset` — the 4 form screens, none of which
+// mock this module at all) sees `none`, which leaves `useHeaderInset` an exact
+// passthrough of `HeaderHeightContext` — no existing behavior changes.
+const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
+jest.mock('@kiko/display-regions', () => ({
+  useVerticalBarEdge: () => mockUseVerticalBarEdge(),
 }));
 
 // Plain `createElement` (not JSX) — this module stays a `.ts` file, so JSX
@@ -50,26 +43,29 @@ describe('useHeaderInset', () => {
     expect(result.current).toBe(0);
   });
 
-  it('floors an implausible zero header height to the known backgrounded-stack value, ONLY in sidebar mode (a nonzero right safe-area inset)', async () => {
-    mockUseSafeAreaInsets.mockReturnValueOnce({ top: 0, right: 84, bottom: 34, left: 0 });
+  it.each(['leading', 'trailing'] as const)(
+    'floors an implausible zero header height to the known backgrounded-stack value, ONLY with a vertical bar (the %s edge)',
+    async (edge) => {
+      mockUseVerticalBarEdge.mockReturnValueOnce(edge);
 
-    const { result } = await renderHook(() => useHeaderInset(), {
-      wrapper: headerHeightWrapper(0),
-    });
+      const { result } = await renderHook(() => useHeaderInset(), {
+        wrapper: headerHeightWrapper(0),
+      });
 
-    expect(result.current).toBe(82);
-  });
+      expect(result.current).toBe(82);
+    },
+  );
 
-  it('does NOT floor a genuinely absent header context, even in sidebar mode (Home has no header at all)', async () => {
-    mockUseSafeAreaInsets.mockReturnValueOnce({ top: 0, right: 84, bottom: 34, left: 0 });
+  it('does NOT floor a genuinely absent header context, even with a vertical bar (Home has no header at all)', async () => {
+    mockUseVerticalBarEdge.mockReturnValueOnce('trailing');
 
     const { result } = await renderHook(() => useHeaderInset());
 
     expect(result.current).toBe(0);
   });
 
-  it('never floors an already-nonzero reported height, in or out of sidebar mode', async () => {
-    mockUseSafeAreaInsets.mockReturnValueOnce({ top: 0, right: 84, bottom: 34, left: 0 });
+  it('never floors an already-nonzero reported height, with or without a vertical bar', async () => {
+    mockUseVerticalBarEdge.mockReturnValueOnce('trailing');
 
     const { result } = await renderHook(() => useHeaderInset(), {
       wrapper: headerHeightWrapper(140),
@@ -80,17 +76,20 @@ describe('useHeaderInset', () => {
 });
 
 describe('resolveHeaderInset', () => {
-  it('floors a reported 0 to the known backgrounded-stack value in sidebar mode', () => {
-    expect(resolveHeaderInset(0, true)).toBe(82);
-  });
+  it.each(['leading', 'trailing'] as const)(
+    'floors a reported 0 to the known backgrounded-stack value with a vertical bar on the %s edge',
+    (edge) => {
+      expect(resolveHeaderInset(0, edge)).toBe(82);
+    },
+  );
 
-  it('passes a reported 0 straight through outside sidebar mode (a genuine no-header screen, e.g. Home)', () => {
-    expect(resolveHeaderInset(0, false)).toBe(0);
+  it('passes a reported 0 straight through with no vertical bar (a genuine no-header screen, e.g. Home)', () => {
+    expect(resolveHeaderInset(0, 'none')).toBe(0);
   });
 
   it('never floors an already-nonzero reported height', () => {
-    expect(resolveHeaderInset(44, true)).toBe(44);
-    expect(resolveHeaderInset(96, false)).toBe(96);
+    expect(resolveHeaderInset(44, 'trailing')).toBe(44);
+    expect(resolveHeaderInset(96, 'none')).toBe(96);
   });
 });
 

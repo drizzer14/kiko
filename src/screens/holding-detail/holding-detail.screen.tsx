@@ -36,6 +36,7 @@ import type { Currency } from '@kiko/currency/currency';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { useVerticalBarEdge } from '@kiko/display-regions';
 import Button from '@kiko/design-system/components/button';
 import { isHoldingType } from '@kiko/holdings/holding-type';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
@@ -56,7 +57,6 @@ import { ownershipShareDetailText } from '@kiko/holdings/ownership';
 import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
-import { isSidebarTabBarMode } from '@kiko/design-system/sidebar-mode';
 import { FlatList, Pressable, useWindowDimensions } from 'react-native';
 import { buildRateTable, canConvert } from '@kiko/rates/net-worth-view';
 import SummaryTable from '@kiko/design-system/components/summary-table';
@@ -950,10 +950,10 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const windowHeight = useWindowDimensions().height;
-  const isSidebarMode = isSidebarTabBarMode(tabBarHeight, windowHeight, insets.left, insets.right);
+  const verticalBarEdge = useVerticalBarEdge();
   const listBottomClearance =
     footerAction === 'none'
-      ? resolveBottomClearance(tabBarHeight, insets.bottom, isSidebarMode)
+      ? resolveBottomClearance(tabBarHeight, insets.bottom, verticalBarEdge, windowHeight)
       : 0;
   // A term_deposit/bond event is day-granular (a contribution, coupon, or
   // redemption), so its ledger rows show the date only; every other holding

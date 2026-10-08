@@ -16,12 +16,19 @@ import Screen from '.';
 // indistinguishable from "no clearance applied").
 const MOCK_TAB_BAR_HEIGHT = 80;
 // A mutable `jest.fn()` wrapper (not a plain arrow factory) so the dedicated
-// "Duo sidebar mode" cases at the end of this file can override it per test
+// "Duo vertical bar" cases at the end of this file can override it per test
 // and restore it afterwards — every other test here never touches it, so it
 // keeps returning this exact default throughout.
 const mockUseBottomTabBarHeight = jest.fn(() => MOCK_TAB_BAR_HEIGHT);
 jest.mock('react-native-bottom-tabs', () => ({
   useBottomTabBarHeight: () => mockUseBottomTabBarHeight(),
+}));
+
+// The system's own vertical-bar trait, in place of any geometry guess. Every
+// test here but the "Duo vertical bar" cases sees `none`, an ordinary bottom bar.
+const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
+jest.mock('@kiko/display-regions', () => ({
+  useVerticalBarEdge: () => mockUseVerticalBarEdge(),
 }));
 
 // A device with a home indicator reports a non-zero bottom safe-area inset.
@@ -437,11 +444,12 @@ describe('Screen', () => {
     expect(totalBottomOffset(footer) - MOCK_TAB_BAR_HEIGHT).toBe(FOOTER_GAP);
   });
 
-  describe('Duo sidebar mode (regular-width scene, native right-edge sidebar)', () => {
+  describe('Duo vertical bar (the system places the tab bar on a vertical edge)', () => {
     const DUO_INSETS = { top: 0, right: 84, bottom: MOCK_BOTTOM_INSET, left: 0 };
 
     afterEach(() => {
       mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
+      mockUseVerticalBarEdge.mockReturnValue('none');
       mockUseSafeAreaInsets.mockReturnValue({
         top: 0,
         right: 0,
@@ -450,28 +458,32 @@ describe('Screen', () => {
       });
     });
 
-    it('ignores the poisoned tab-bar height and leaves horizontal padding unchanged — the exact measured Duo primary-panel geometry', async () => {
-      mockUseBottomTabBarHeight.mockReturnValue(678);
-      mockUseSafeAreaInsets.mockReturnValue(DUO_INSETS);
+    it.each(['leading', 'trailing'] as const)(
+      'ignores the poisoned tab-bar height on the %s edge and leaves horizontal padding unchanged — the exact measured Duo primary-panel geometry',
+      async (edge) => {
+        mockUseBottomTabBarHeight.mockReturnValue(678);
+        mockUseVerticalBarEdge.mockReturnValue(edge);
+        mockUseSafeAreaInsets.mockReturnValue(DUO_INSETS);
 
-      const { getByTestId } = await renderScreen({ footer: footerNode });
+        const { getByTestId } = await renderScreen({ footer: footerNode });
 
-      const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
+        const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
-      // Sidebar mode distrusts the tab-bar height entirely: the footer's own
-      // padding is just the gap (16) plus 0 extra clearance, not 16 + 644 —
-      // a ~676pt footer would cover the whole screen.
-      expect(footerStyle.paddingBottom).toBe(FOOTER_GAP);
-      // The enclosing SafeAreaView already reserves the 84pt right sidebar
-      // inset itself (`edges` includes 'right' in every branch — see
-      // `screen.component.tsx`), so the footer's OWN horizontal padding stays
-      // exactly the base spacing(4) = 16 step. Adding the inset again here
-      // would double-count it — the 100pt dead gap the real-device
-      // screenshots caught.
-      expect(footerStyle.paddingHorizontal).toBe(16);
-    });
+        // A vertical bar distrusts the tab-bar height entirely: the footer's own
+        // padding is just the gap (16) plus 0 extra clearance, not 16 + 644 —
+        // a ~676pt footer would cover the whole screen.
+        expect(footerStyle.paddingBottom).toBe(FOOTER_GAP);
+        // The enclosing SafeAreaView already reserves the 84pt right inset
+        // itself (`edges` includes 'right' in every branch — see
+        // `screen.component.tsx`), so the footer's OWN horizontal padding stays
+        // exactly the base spacing(4) = 16 step. Adding the inset again here
+        // would double-count it — the 100pt dead gap the real-device
+        // screenshots caught.
+        expect(footerStyle.paddingHorizontal).toBe(16);
+      },
+    );
 
-    it("keeps today's horizontal padding unchanged when the tab bar is NOT a sidebar", async () => {
+    it("keeps today's horizontal padding unchanged when the tab bar is NOT a vertical bar", async () => {
       const { getByTestId } = await renderScreen({ footer: footerNode });
 
       const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);

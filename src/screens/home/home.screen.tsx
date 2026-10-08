@@ -23,6 +23,7 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { useVerticalBarEdge } from '@kiko/display-regions';
 import { activeHoldings } from '@kiko/rates/active-holdings';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
@@ -34,7 +35,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { openAccountForm } from '@kiko/navigation/open-account-form';
-import { isSidebarTabBarMode } from '@kiko/design-system/sidebar-mode';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
@@ -119,12 +119,17 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const windowHeight = useWindowDimensions().height;
-  // The ONE shared signal Screen itself uses (see `sidebar-mode.ts`) — Home
+  // The ONE shared signal Screen itself uses (`useVerticalBarEdge`) — Home
   // computes its own clearance because it opts out of Screen's own bottom
   // handling with `bleedBottom`, so it must key off the identical function,
   // never re-derive the rule.
-  const isSidebarMode = isSidebarTabBarMode(tabBarHeight, windowHeight, insets.left, insets.right);
-  const listBottomClearance = resolveBottomClearance(tabBarHeight, insets.bottom, isSidebarMode);
+  const verticalBarEdge = useVerticalBarEdge();
+  const listBottomClearance = resolveBottomClearance(
+    tabBarHeight,
+    insets.bottom,
+    verticalBarEdge,
+    windowHeight,
+  );
 
   // Re-tapping the Home tab while already on it returns this transaction list to
   // the top (the standard iOS active-tab re-tap), driven off the native tab
