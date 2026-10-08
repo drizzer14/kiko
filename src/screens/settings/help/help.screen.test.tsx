@@ -207,6 +207,30 @@ describe('HelpScreen', () => {
       announce.mockRestore();
     });
 
+    it('shows no tip and no announcement when the reset resolves after the screen lost focus', async () => {
+      const announce = jest
+        .spyOn(AccessibilityInfo, 'announceForAccessibility')
+        .mockImplementation(() => undefined);
+      let finishReset: () => void = () => undefined;
+      mockResetTips.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          finishReset = resolve;
+        }),
+      );
+      const navigation = navigationSpy();
+      const { getByText, queryByTestId } = await renderScreen(navigation);
+
+      // Awaited last: the press settles only once the reset resolves, which this test holds back.
+      const pressed = fireEvent.press(getByText('Show tips again'));
+      navigation.isFocused.mockReturnValue(false);
+      finishReset();
+      await pressed;
+
+      expect(queryByTestId('help-tips-reset-tip')).toBeNull();
+      expect(announce).not.toHaveBeenCalled();
+      announce.mockRestore();
+    });
+
     it('hides the confirmation tip when its close button is pressed', async () => {
       const { getByText, findByTestId, getByRole, queryByTestId } = await renderScreen();
 

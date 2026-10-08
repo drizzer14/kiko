@@ -52,7 +52,9 @@ const HelpScreen: FC<HelpScreenProps> = ({ navigation }) => {
   const handleShowTipsAgain = async (): Promise<void> => {
     const reset = await logOnFailure('[help] tips reset failed', () => settingsRepo.resetTips());
 
-    if (reset) {
+    // The reset can resolve after the user opened a topic page; the focus cleanup above has run
+    // by then and would not run again, so the tip would be waiting on return.
+    if (reset && navigation.isFocused()) {
       setResetConfirmed(true);
       // A tip appearing above the pressed button is silent to VoiceOver without this.
       AccessibilityInfo.announceForAccessibility(t('help.tipsResetConfirmation'));
