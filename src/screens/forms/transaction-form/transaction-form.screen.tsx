@@ -36,6 +36,11 @@ import { logOnFailure } from '@kiko/diagnostics';
 import HoldingSelectField, {
   type HoldingSelectOption,
 } from '@kiko/screens/forms/holding-select-field';
+import {
+  type CreateHoldingRoute,
+  openCreateHolding,
+  resolveCreateHoldingTarget,
+} from '@kiko/screens/forms/create-holding-target';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
@@ -80,12 +85,17 @@ import { useLiveQuery, type AccountRow, type HoldingRow, type TransactionRow } f
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
 // every transaction; Accounts reaches it from a holding), so it cannot bind its
-// props to a single stack's param list. It only needs the route params and two
-// navigation methods, so it declares exactly that minimal shape — structurally
-// satisfied by either stack's generated props.
+// props to a single stack's param list. It only needs the route params and a few
+// navigation methods (`navigate` for the create forms both stacks register), so
+// it declares exactly that minimal shape — structurally satisfied by either
+// stack's generated props.
 type TransactionFormScreenProps = {
   route: { params: TransactionFormParams };
-  navigation: { goBack: () => void; setOptions: (options: { title: string }) => void };
+  navigation: {
+    goBack: () => void;
+    setOptions: (options: { title: string }) => void;
+    navigate: (...route: CreateHoldingRoute) => void;
+  };
 };
 
 type Sign = 'income' | 'expense';
@@ -813,6 +823,7 @@ const renderPrimaryHoldingField = (props: {
   options: readonly HoldingSelectOption[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onCreateNew: () => void;
 }): ReactElement | null => {
   if (!props.visible) {
     return null;
@@ -826,6 +837,7 @@ const renderPrimaryHoldingField = (props: {
       options={props.options}
       selectedId={props.selectedId}
       onSelect={props.onSelect}
+      onCreateNew={props.onCreateNew}
       required
     />
   );
@@ -1072,6 +1084,7 @@ type FieldGroupProps = {
   convertView: ConvertView;
   counterpartHoldingId: string | null;
   onSelectCounterpart: (id: string) => void;
+  onCreateCounterpart: () => void;
   counterpartAmount: string;
   onChangeCounterpartAmount: (text: string) => void;
   isExchange: boolean;
@@ -1083,6 +1096,7 @@ type FieldGroupProps = {
   destinationOptions: HoldingSelectOption[];
   destinationHoldingId: string | null;
   onSelectDestination: (id: string) => void;
+  onCreateDestination: () => void;
   valueIn: string;
   onChangeValueIn: (text: string) => void;
   // The destination holding's currency glyph, shown as the Value-In field's
@@ -1152,6 +1166,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         counterpartOptions={props.convertView.options}
         counterpartHoldingId={props.counterpartHoldingId}
         onSelectCounterpart={props.onSelectCounterpart}
+        onCreateCounterpart={props.onCreateCounterpart}
         counterpartAmountLabel={props.convertView.counterpartAmountLabel}
         counterpartAmount={props.counterpartAmount}
         onChangeCounterpartAmount={props.onChangeCounterpartAmount}
@@ -1176,6 +1191,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         destinationOptions={props.destinationOptions}
         destinationHoldingId={props.destinationHoldingId}
         onSelectDestination={props.onSelectDestination}
+        onCreateDestination={props.onCreateDestination}
         valueIn={props.valueIn}
         onChangeValueIn={props.onChangeValueIn}
         valueInSuffix={props.valueInSuffix}
@@ -1254,6 +1270,7 @@ type SplitReturnsProps = {
   returns: readonly ChangeReturnRow[];
   buildOptions: (index: number) => HoldingSelectOption[];
   onSelectHolding: (index: number, holdingId: string) => void;
+  onCreateHolding: () => void;
   onChangeAmount: (index: number, text: string) => void;
   onRemove: (index: number) => void;
   onAdd: () => void;
@@ -1311,6 +1328,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
               options={props.buildOptions(index)}
               selectedId={row.holdingId}
               onSelect={(holdingId) => props.onSelectHolding(index, holdingId)}
+              onCreateNew={props.onCreateHolding}
               required
               invalid={invalid}
             />
@@ -1720,6 +1738,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // leg (plain amount, Exchange Value Out, and the convert fixed leg) all read
   // the current holding's currency.
   const amountSuffix = holding ? currencySymbol[holding.currency] : '';
+  // An empty picker's "Add holding" row opens the create form with `navigate`,
+  // so this form stays mounted underneath with its draft. A picker tied to this
+  // form's own holding creates in that holding's account.
+  const openCreateHoldingIn = (anchorAccountId: string | undefined) => (): void => {
+    openCreateHolding(resolveCreateHoldingTarget(anchorAccountId, accounts), (...route) =>
+      navigation.navigate(...route),
+    );
+  };
 
   // The picker's eligible options (open, non-synced, transaction-eligible),
   // Accounts-ordered — also the fallback source when the user has no manual
@@ -2610,6 +2636,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             options: primaryOptions,
             selectedId: primaryHoldingId,
             onSelect: setPrimaryHoldingId,
+            onCreateNew: openCreateHoldingIn(undefined),
           })}
 
           {/* The transaction-TYPE selector, directly under the Holding select.
@@ -2632,6 +2659,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             convertView,
             counterpartHoldingId,
             onSelectCounterpart: selectCounterpart,
+            onCreateCounterpart: openCreateHoldingIn(holding?.accountId),
             counterpartAmount,
             onChangeCounterpartAmount: (text) => setCounterpartAmount(groupAmount(text)),
             isExchange,
@@ -2644,6 +2672,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             destinationOptions,
             destinationHoldingId,
             onSelectDestination: setDestinationHoldingId,
+            onCreateDestination: openCreateHoldingIn(holding?.accountId),
             valueIn,
             onChangeValueIn: (text) => setValueIn(groupAmount(text)),
             valueInSuffix: holdingSuffix(holdings, destinationHoldingId),
@@ -2717,6 +2746,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               returns: changeReturns,
               buildOptions: returnOptionsFor,
               onSelectHolding: selectReturnHolding,
+              onCreateHolding: openCreateHoldingIn(holding?.accountId),
               onChangeAmount: changeReturnAmount,
               onRemove: removeReturn,
               onAdd: addReturn,

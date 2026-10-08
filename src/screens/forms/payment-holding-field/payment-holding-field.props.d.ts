@@ -14,4 +14,8 @@ export type PaymentHoldingFieldProps = {
   // Fires for BOTH a real pick and "None" (`null`).
   onSelect: (id: string | null) => void;
   testID?: string;
+  // When set AND `options` is empty (the "None" row is not an option), the sheet
+  // shows one "Add holding" row that calls this. The field then selects the
+  // holding created on that round trip, once it appears among `options`.
+  onCreateNew?: () => void;
 };

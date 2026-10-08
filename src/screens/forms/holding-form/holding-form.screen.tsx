@@ -14,6 +14,10 @@ import {
 import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
+import {
+  openCreateHolding,
+  resolveCreateHoldingTarget,
+} from '@kiko/screens/forms/create-holding-target';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import type { Currency } from '@kiko/currency/currency';
@@ -443,6 +447,14 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     currency,
     loanFields.paymentHoldingId,
   );
+  // `push`, not `navigate`: `navigate` to this form's own route name only
+  // changes this route's params, which would turn the loan form into the new
+  // holding's form. A push leaves this one mounted underneath with its draft.
+  const createPaymentHolding = (): void => {
+    openCreateHolding(resolveCreateHoldingTarget(undefined, allAccounts), (...route) =>
+      navigation.push(...route),
+    );
+  };
 
   // The one place every holding type's own form behaviour is looked up —
   // `active` is what `isValid`, the blocked-Save scroll, and the create/edit
@@ -824,6 +836,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               fields={loanFields}
               attemptedSave={attemptedSave}
               paymentHoldingOptions={paymentHoldingOptions}
+              onCreatePaymentHolding={createPaymentHolding}
             />
           ))
           .with('card', 'cash', 'crypto_asset', 'jar', () => (

@@ -212,6 +212,7 @@ export const en = {
     // share one key instead of duplicating the same English/Ukrainian pair
     // per screen.
     fields: {
+      addHolding: 'Add holding',
       amount: 'Amount',
       color: 'Color',
       currency: 'Currency',

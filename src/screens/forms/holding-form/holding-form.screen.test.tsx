@@ -2969,6 +2969,91 @@ describe('HoldingFormScreen loan', () => {
     expect(screen.getByText('USD card')).toBeTruthy();
   });
 
+  describe('the "Add holding" row of the empty "Paid from" sheet', () => {
+    const MONOBANK = { id: 'acc-2', name: 'Monobank', kind: 'bank', archivedAt: null };
+    const FLATS = { id: 'flats', name: 'Property', kind: 'property', archivedAt: null };
+    const openPaidFromSheet = (screen: Screen) =>
+      fireEvent.press(screen.getByTestId('loan-payment-holding-field'));
+
+    it('pushes the holding form on the first account that can hold a payer', async () => {
+      mockAllAccounts = [FLATS, MONOBANK];
+      const screen = await renderScreen();
+
+      await openPaidFromSheet(screen);
+      await fireEvent.press(screen.getByTestId('loan-payment-holding-field-create-new'));
+
+      // `navigate` to a holding form's own name would only change this loan
+      // form's params, so the nested form has to be pushed.
+      expect(navigation.push).toHaveBeenCalledTimes(1);
+      expect(navigation.push).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-2' });
+      expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+
+    it('pushes the account form when no account can hold a payer', async () => {
+      mockAllAccounts = [FLATS];
+      const screen = await renderScreen();
+
+      await openPaidFromSheet(screen);
+      await fireEvent.press(screen.getByText('Add holding'));
+
+      expect(navigation.push).toHaveBeenCalledWith('AccountForm', {});
+    });
+
+    it('shows no row while a payer holding in the loan currency exists', async () => {
+      mockAllAccounts = [MONOBANK];
+      mockAllHoldings = [
+        {
+          id: 'h-payer',
+          accountId: 'acc-2',
+          name: 'Everyday card',
+          type: 'card',
+          currency: 'UAH',
+          closedAt: null,
+          icon: null,
+          color: null,
+        },
+      ];
+      const screen = await renderScreen();
+
+      await openPaidFromSheet(screen);
+
+      expect(screen.queryByTestId('loan-payment-holding-field-create-new')).toBeNull();
+    });
+
+    it('keeps the loan draft and selects the holding created on the round trip', async () => {
+      mockAllAccounts = [MONOBANK];
+      const screen = await renderScreen();
+
+      await fill(screen, 'Principal', '500000');
+      await fill(screen, 'Lender name', 'PrivatBank');
+      await openPaidFromSheet(screen);
+      await fireEvent.press(screen.getByTestId('loan-payment-holding-field-create-new'));
+
+      // The pushed holding form saved a hryvnia card and the user came back.
+      mockAllHoldings = [
+        {
+          id: 'h-new',
+          accountId: 'acc-2',
+          name: 'New card',
+          type: 'card',
+          currency: 'UAH',
+          closedAt: null,
+          icon: null,
+          color: null,
+          createdAt: Date.now(),
+        },
+      ];
+      await screen.rerender(
+        <HoldingFormScreen navigation={navigationProp(navigation)} route={route} />,
+      );
+
+      // The amount groups its thousands with a no-break space.
+      expect(screen.getByLabelText('Principal').props.value).toMatch(/^500\s000$/);
+      expect(screen.getByLabelText('Lender name').props.value).toBe('PrivatBank');
+      expect(screen.getByTestId('loan-payment-holding-field')).toHaveTextContent(/New card/);
+    });
+  });
+
   it('creates a car-loan-kind loan under the tapped kind option', async () => {
     const screen = await renderScreen();
 

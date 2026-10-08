@@ -12,6 +12,7 @@ const holdingOf = (overrides: Partial<HoldingRow> = {}): HoldingRow =>
     icon: null,
     color: null,
     metadata: null,
+    createdAt: 1_700_000_000_000,
     ...overrides,
   }) as HoldingRow;
 
@@ -22,6 +23,7 @@ describe('toHoldingOption', () => {
       name: 'Black card',
       currency: 'USD',
       accountName: 'Monobank',
+      createdAt: 1_700_000_000_000,
       icon: 'creditcard',
       color: '#FFFFFF',
     });
