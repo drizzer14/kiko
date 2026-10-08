@@ -21,6 +21,11 @@ import {
   buildCategoryTrend,
   type TrendTransaction,
 } from '@kiko/statistics/category-trend';
+import {
+  accountDisplayName,
+  accountsForFilter,
+  hasNoAccounts,
+} from '@kiko/holdings/implicit-account';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
 import {
@@ -48,12 +53,12 @@ import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
 import type { Currency } from '@kiko/currency/currency';
 import { ibanOf } from '@kiko/holdings/holding-metadata';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { usePriceBook } from '@kiko/prices/use-price-book';
 import Screen from '@kiko/design-system/components/screen';
+import type { TabParamList } from '@kiko/navigation/types';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import { bucketDaysForSpan } from '@kiko/statistics/buckets';
@@ -63,7 +68,9 @@ import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import EmptyState from '@kiko/design-system/components/empty-state';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
+import { openAccountForm } from '@kiko/navigation/open-account-form';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { transactionSpan } from '@kiko/transactions/transaction-span';
 import { type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
@@ -80,9 +87,9 @@ import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-no
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 import { internalTransferTransactionIds } from '@kiko/statistics/internal-transfers';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
-import { accountDisplayName, accountsForFilter } from '@kiko/holdings/implicit-account';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
+import { type NavigationProp, useIsFocused, useNavigation } from '@react-navigation/native';
 import { buildCategoryDisplayMap, DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 
 import BarChart from './bar-chart';
@@ -167,6 +174,9 @@ const CATEGORY_LEGEND_MIN_SHARE = 0.05;
  */
 const StatisticsScreen: FC = () => {
   const { t, i18n } = useTranslation();
+  // This screen sits in its own tab's stack; the stack hands a navigate it
+  // cannot answer (a jump to the Accounts tab) up to the tab navigator.
+  const navigation = useNavigation<NavigationProp<TabParamList>>();
 
   // Re-tapping the Statistics tab while already on it returns this scrolling
   // page to the top (the standard iOS active-tab re-tap), driven off the native
@@ -1138,6 +1148,26 @@ const StatisticsScreen: FC = () => {
     return (
       <Screen scroll scrollableRef={scrollRef}>
         <LoadingState testID="statistics-loading" />
+      </Screen>
+    );
+  }
+
+  if (hasNoAccounts(accounts, holdings)) {
+    return (
+      <Screen scroll scrollableRef={scrollRef}>
+        <Box style={styles.empty}>
+          <EmptyState
+            icon={genericEntitySymbol.account}
+            title={t('emptyStates.noAccounts.title')}
+            message={t('emptyStates.noAccounts.message')}
+            action={{
+              label: t('accounts.addAccount'),
+              icon: genericEntitySymbol.account,
+              onPress: () => openAccountForm(navigation),
+            }}
+            testID="statistics-empty"
+          />
+        </Box>
       </Screen>
     );
   }

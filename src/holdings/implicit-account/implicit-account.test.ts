@@ -1,9 +1,10 @@
 import { i18n } from '@kiko/i18n/init';
-import { accounts, type AccountRow } from '@kiko/db';
+import { accounts, type AccountRow, type HoldingRow } from '@kiko/db';
 
 import {
   accountDisplayName,
   accountsForFilter,
+  hasNoAccounts,
   IMPLICIT_ACCOUNT_STORED_NAME,
   type ImplicitAccountKind,
   implicitAccountStoredName,
@@ -107,6 +108,57 @@ describe('accountsForFilter', () => {
     expect(
       accountsForFilter(accountList, [{ accountId: 'flat' }]).map((listed) => listed.id),
     ).toEqual(['flat']);
+  });
+});
+
+describe('hasNoAccounts', () => {
+  const account = (
+    id: string,
+    kind: AccountKind,
+    archivedAt: number | null = null,
+  ): Pick<AccountRow, 'id' | 'kind' | 'archivedAt'> => ({ id, kind, archivedAt });
+
+  const holding = (
+    accountId: string,
+    closedAt: number | null = null,
+  ): Pick<HoldingRow, 'accountId' | 'closedAt'> => ({ accountId, closedAt });
+
+  it('is true for no accounts at all', () => {
+    expect(hasNoAccounts([], [])).toBe(true);
+  });
+
+  it('is true when the only bank account is archived', () => {
+    expect(hasNoAccounts([account('old-bank', 'bank', 5)], [])).toBe(true);
+  });
+
+  it('is true for a live property account whose only holding is closed', () => {
+    expect(hasNoAccounts([account('flat', 'property')], [holding('flat', 5)])).toBe(true);
+  });
+
+  it('is true for live implicit accounts with no holding at all', () => {
+    expect(hasNoAccounts([account('flat', 'property'), account('loans', 'debt')], [])).toBe(true);
+  });
+
+  it('is false for a live account of any other kind, even with no holding', () => {
+    for (const kind of otherKinds) {
+      expect(hasNoAccounts([account(kind, kind)], [])).toBe(false);
+    }
+  });
+
+  it('is false for a property account with an open holding', () => {
+    expect(hasNoAccounts([account('flat', 'property')], [holding('flat')])).toBe(false);
+  });
+
+  it('is false for a debt account with an open holding', () => {
+    expect(hasNoAccounts([account('loans', 'debt')], [holding('loans')])).toBe(false);
+  });
+
+  it('ignores an open holding of an archived implicit account', () => {
+    expect(hasNoAccounts([account('old-flat', 'property', 5)], [holding('old-flat')])).toBe(true);
+  });
+
+  it('ignores an open holding whose account is not in the list', () => {
+    expect(hasNoAccounts([account('flat', 'property')], [holding('elsewhere')])).toBe(true);
   });
 });
 

@@ -67,7 +67,19 @@ const mockSetCategory = jest.fn();
 const mockSetLoanPayment = jest.fn();
 const mockUndoAutoLoanLink = jest.fn();
 const mockUseLiveQuery = jest.fn();
+const mockDismissTip = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
+// The settings row the tip hook reads; a test sets it to hide a tip or to hold the first load.
+const mockDismissedTips: string[] = [];
+let mockSettingsIsLoading = false;
+// The override-rules read answers `data: []` until its first load, as the real hook does.
+let mockOverridesIsLoading = false;
 
+jest.mock('@kiko/settings/settings.repo', () => ({
+  settingsRepo: {
+    getQuery: () => ({ __kind: 'settings', toSQL: () => ({ sql: '', params: [] }) }),
+    dismissTip: (...args: unknown[]) => mockDismissTip(...args),
+  },
+}));
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
     recordManual: (...args: unknown[]) => mockRecordManual(...args),
@@ -200,6 +212,14 @@ const setLiveData = (
 
   mockUseLiveQuery.mockImplementation((query: unknown, tables: string[]) => {
     const kind = (query as { __kind?: string })?.__kind;
+    // The tip hook's settings read, found by its own query rather than by call order.
+    if (kind === 'settings') {
+      return {
+        data: [{ dismissedTips: mockDismissedTips }],
+        isLoading: mockSettingsIsLoading,
+      };
+    }
+
     // The distinct-descriptions subscription shares the `['transactions']`
     // key with the by-id lookup, so it is disambiguated by the tagged query
     // object the mocked repo returns.
@@ -214,6 +234,10 @@ const setLiveData = (
         data: latestManualHoldingId ? [{ holdingId: latestManualHoldingId }] : [],
         isLoading: false,
       };
+    }
+
+    if (tables[0] === 'category_overrides' && mockOverridesIsLoading) {
+      return { data: [], isLoading: true };
     }
 
     return { data: dataByTable[tables[0]] ?? [] };
@@ -4404,5 +4428,226 @@ describe("TransactionFormScreen — a valid Save runs only the active mode's own
     await fireEvent.press(utils.getByText('Save'));
 
     expect(calledWrites()).toEqual(['counterpart']);
+  });
+});
+
+describe('TransactionFormScreen — the apply-to-all tip', () => {
+  const TIP_ID = 'transaction.applyToAll';
+  const HOLDINGS: Holding[] = [
+    { id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'cash', name: 'Wallet' },
+  ];
+  const ROW: Transaction = {
+    id: 'txn-1',
+    holdingId: 'h1',
+    amountMinorUnits: -1234,
+    time: 42,
+    description: 'Coffee',
+    source: 'manual',
+    category: 'groceries',
+    exchangeCounterpartHoldingId: null,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDismissedTips.length = 0;
+    mockSettingsIsLoading = false;
+    mockOverridesIsLoading = false;
+    mockDismissTip.mockResolvedValue(undefined);
+    mockUpsertCategoryOverride.mockResolvedValue(undefined);
+    mockSetCategory.mockResolvedValue(undefined);
+  });
+
+  it('shows the tip above the Category field when opening a manual row', async () => {
+    setLiveData(HOLDINGS, ROW);
+    const utils = await renderEdit('txn-1');
+
+    expect(utils.getByTestId('tip-apply-to-all')).toBeTruthy();
+    expect(utils.getByLabelText(i18n.t('tips.close'))).toBeTruthy();
+    // The screen-reading order: the last field above the picker, the tip, then the picker.
+    const rendered = collectRenderedText(utils.toJSON());
+    const order = ['Time', i18n.t('tips.applyToAll'), 'Category'].map((text) =>
+      rendered.indexOf(text),
+    );
+
+    for (const index of order) {
+      expect(index).toBeGreaterThan(-1);
+    }
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('shows the tip for a synced row, whose category is still editable', async () => {
+    setLiveData(HOLDINGS, { ...ROW, source: 'monobank' });
+    const { getByTestId } = await renderEdit('txn-1');
+
+    expect(getByTestId('tip-apply-to-all')).toBeTruthy();
+  });
+
+  it('hides the tip on a create', async () => {
+    setLiveData(HOLDINGS);
+    const { queryByTestId } = await renderAddFromHolding('h1');
+
+    expect(queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it('hides the tip on a duplicate', async () => {
+    setLiveData(HOLDINGS, ROW);
+    const { queryByTestId } = await renderDuplicate('txn-1');
+
+    expect(queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it('hides the tip on an exchange being created', async () => {
+    setLiveData(EXCHANGE_HOLDINGS);
+    const utils = await renderAddFromHolding('cash-1');
+    await pickType(utils, 'exchange');
+
+    expect(utils.queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it('hides the tip while an existing row is converted to an exchange', async () => {
+    setLiveData(
+      CONVERT_HOLDINGS,
+      { ...CONVERT_TRANSACTIONS['expense-manual'], exchangeCounterpartHoldingId: null },
+      CATEGORIES,
+      CONVERT_ACCOUNTS,
+    );
+    const utils = await renderEdit('expense-manual');
+
+    expect(utils.getByTestId('tip-apply-to-all')).toBeTruthy();
+
+    await fireEvent.press(utils.getByText('Exchange'));
+
+    expect(utils.queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it.each([
+    ['the outgoing leg', { exchangeCounterpartHoldingId: 'h-usd' }],
+    ['the incoming leg', { holdingId: 'h-usd', exchangeCounterpartHoldingId: 'h1' }],
+  ])(
+    'hides the tip on an existing exchange leg (%s), whose category change is this row only',
+    async (_name, legFields) => {
+      setLiveData(
+        [...HOLDINGS, { id: 'h-usd', currency: 'USD', balanceMinorUnits: 5000, type: 'cash' }],
+        { ...ROW, ...legFields },
+      );
+      const { queryByTestId, getByTestId } = await renderEdit('txn-1');
+
+      expect(getByTestId('transaction-category-field')).toBeTruthy();
+      expect(queryByTestId('tip-apply-to-all')).toBeNull();
+    },
+  );
+
+  it('keeps the tip hidden while the override rules are still on their first load', async () => {
+    mockOverridesIsLoading = true;
+    setLiveData(HOLDINGS, ROW);
+    const { queryByTestId } = await renderEdit('txn-1');
+
+    expect(queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it('hides the tip on a row with a blank name, which can never get an override rule', async () => {
+    setLiveData(HOLDINGS, { ...ROW, description: '' });
+    const { queryByTestId } = await renderEdit('txn-1');
+
+    expect(queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it('hides the tip when there is no category to change', async () => {
+    setLiveData(HOLDINGS, ROW, []);
+    const { queryByTestId } = await renderEdit('txn-1');
+
+    expect(queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it('hides the tip once any category override exists', async () => {
+    setLiveData(HOLDINGS, ROW, CATEGORIES, [], [], [{ normalizedName: 'tea', category: 'dining' }]);
+    const { queryByTestId } = await renderEdit('txn-1');
+
+    expect(queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it('hides the tip once its id is dismissed', async () => {
+    mockDismissedTips.push(TIP_ID);
+    setLiveData(HOLDINGS, ROW);
+    const { queryByTestId } = await renderEdit('txn-1');
+
+    expect(queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it('keeps the tip hidden while the settings are still loading', async () => {
+    mockSettingsIsLoading = true;
+    setLiveData(HOLDINGS, ROW);
+    const { queryByTestId } = await renderEdit('txn-1');
+
+    expect(queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
+  it('dismisses the tip when its close button is pressed', async () => {
+    setLiveData(HOLDINGS, ROW);
+    const { getByLabelText } = await renderEdit('txn-1');
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText(i18n.t('tips.close')));
+    });
+
+    expect(mockDismissTip).toHaveBeenCalledTimes(1);
+    expect(mockDismissTip).toHaveBeenCalledWith(TIP_ID);
+  });
+
+  it('dismisses the tip once the sheet "Apply" has written the override, before leaving', async () => {
+    setLiveData(HOLDINGS, ROW);
+    const utils = await renderEdit('txn-1');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+    await fireEvent.press(utils.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(mockDismissTip).toHaveBeenCalledTimes(1);
+    expect(mockDismissTip).toHaveBeenCalledWith(TIP_ID);
+    expect(mockUpsertCategoryOverride.mock.invocationCallOrder[0]).toBeLessThan(
+      mockDismissTip.mock.invocationCallOrder[0],
+    );
+    expect(mockDismissTip.mock.invocationCallOrder[0]).toBeLessThan(
+      (navigation.goBack as jest.Mock).mock.invocationCallOrder[0],
+    );
+  });
+
+  it('still leaves the form when the dismissal write fails', async () => {
+    mockDismissTip.mockRejectedValue(new Error('write failed'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    setLiveData(HOLDINGS, ROW);
+    const utils = await renderEdit('txn-1');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+    await fireEvent.press(utils.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    warn.mockRestore();
+  });
+
+  it('keeps the tip when the override write fails', async () => {
+    mockUpsertCategoryOverride.mockRejectedValue(new Error('write failed'));
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    setLiveData(HOLDINGS, ROW);
+    const utils = await renderEdit('txn-1');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+    await fireEvent.press(utils.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => expect(alert).toHaveBeenCalled());
+    expect(mockDismissTip).not.toHaveBeenCalled();
+    alert.mockRestore();
+  });
+
+  it('does not dismiss the tip on "Just for this one"', async () => {
+    setLiveData(HOLDINGS, ROW);
+    const utils = await renderEdit('txn-1');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+    await fireEvent.press(utils.getByText('Just for this one'));
+
+    await waitFor(() => expect(mockSetCategory).toHaveBeenCalled());
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(mockDismissTip).not.toHaveBeenCalled();
   });
 });

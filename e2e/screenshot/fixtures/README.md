@@ -7,9 +7,11 @@ argument (Guideline 5.6):
 
 - **`kiko-demo-uk.kiko`** — the user's own manual marketing screenshots
   (matches the shipped `screenshots/appstore/**/uk/` deliverables). Imports
-  with the UI in Ukrainian.
-- **`kiko-demo-en.kiko`** — handed to the **App Store reviewer**. Imports
-  with the UI in English, so an English-reading reviewer is not dropped into
+  with the UI in Ukrainian. Tips **hidden** (`dismissedTips` holds every id in
+  `TIP_IDS`), so no tip card appears in a marketing screenshot.
+- **`kiko-demo-en.kiko`** — handed to the **App Store reviewer**. Tips
+  **shown** (`dismissedTips` is empty), so App Review finds the tips feature.
+  Imports with the UI in English, so an English-reading reviewer is not dropped into
   a Ukrainian app (`restoreDataSnapshot` takes the `settings` row from the file except the
   columns in `KEPT_FROM_LIVE_ON_RESTORE`, see
   `src/db/kept-from-live-on-restore.ts`; `language` comes from the file).
@@ -18,11 +20,11 @@ argument (Guideline 5.6):
 
 | File | What it is |
 |---|---|
-| `kiko-demo-uk.kiko` | AES-256-GCM `ExportEnvelope` JSON (`src/data-transfer/crypto/envelope.ts`), Ukrainian dataset |
-| `kiko-demo-en.kiko` | Same, English dataset |
+| `kiko-demo-uk.kiko` | AES-256-GCM `ExportEnvelope` JSON (`src/data-transfer/crypto/envelope.ts`), Ukrainian dataset, tips hidden (`{ tips: 'hidden' }`) |
+| `kiko-demo-en.kiko` | Same, English dataset, tips shown (`{ tips: 'shown' }`) |
 | `kiko-demo-en-1.1.kiko` | A frozen copy of the English file as release 1.1 wrote it (export version 1, none of 1.2's settings columns); never regenerated, read only by `src/data-transfer/import-data.back-compat.test.ts` |
 | `kiko-demo.key` | The base64 AES-256 key, **shared by all the files** |
-| `build-demo-snapshot.ts` | Pure mapper: `ScreenshotDataset` -> `DataSnapshot` (all 10 logical tables) |
+| `build-demo-snapshot.ts` | Pure mapper: `ScreenshotDataset` + required `{ tips: 'hidden' \| 'shown' }` -> `DataSnapshot` (all 10 logical tables). The tips choice follows each output file's purpose, never its language; set it at the file's entry in `generate-demo-kiko.test.ts` |
 | `generate-demo-kiko.ts` | Pure encoder: `DataSnapshot` + key -> the `.kiko` file's JSON, via the app's real `encryptEnvelope` |
 | `generate-demo-kiko.test.ts` | REGEN (writes the fixtures) + GUARD (decrypts and diffs them against the current builder — this is what `make gate` runs on every future commit) |
 

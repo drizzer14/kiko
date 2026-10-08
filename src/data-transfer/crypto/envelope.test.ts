@@ -120,7 +120,11 @@ describe('the export version against the migration journal', () => {
     // drops the key and keeps today's rule for a re-imported deleted row, and
     // this build restores an older file with the table empty, so it needed no
     // bump (a bump would make an older build refuse every new file).
-    migrationCount: 55,
+    // Through 0055_add_dismissed_tips, a column riding inside the settings row
+    // (`dismissedTips`): an older build restoring a file that carries it drops
+    // the key, and this build restores an older file without it as `[]` (the
+    // schema default), so it needed no bump.
+    migrationCount: 56,
   };
 
   it('has a version decision for every migration', () => {

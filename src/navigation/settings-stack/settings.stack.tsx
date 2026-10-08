@@ -1,8 +1,11 @@
 import type { FC } from 'react';
+import { helpTopicById } from '@kiko/help';
 import { useTranslation } from 'react-i18next';
+import HelpScreen from '@kiko/screens/settings/help';
 import SystemScreen from '@kiko/screens/settings/system';
 import SettingsScreen from '@kiko/screens/settings/settings';
 import RemindersScreen from '@kiko/screens/settings/reminders';
+import HelpTopicScreen from '@kiko/screens/settings/help-topic';
 import CategoriesScreen from '@kiko/screens/settings/categories';
 import ExportDataScreen from '@kiko/screens/settings/export-data';
 import ImportDataScreen from '@kiko/screens/settings/import-data';
@@ -63,6 +66,14 @@ const SettingsStack: FC = () => {
         name="ReminderForm"
         component={ReminderFormScreen}
         options={{ title: t('reminders.form.createTitle') }}
+      />
+
+      <Stack.Screen name="Help" component={HelpScreen} options={{ title: t('help.title') }} />
+
+      <Stack.Screen
+        name="HelpTopic"
+        component={HelpTopicScreen}
+        options={({ route }) => ({ title: t(helpTopicById(route.params.topicId).titleKey) })}
       />
     </Stack.Navigator>
   );

@@ -91,6 +91,14 @@ const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
   isLiquidGlassSupported: boolean;
 };
 
+// A marker for the shared tip card, so a test can pin that Home renders none.
+jest.mock('@kiko/design-system/components/tip-card', () => {
+  const { View } = require('react-native');
+  const { createElement } = require('react');
+
+  return { __esModule: true, default: () => createElement(View, { testID: 'mock-tip-card' }) };
+});
+
 const mockUseIsFocused = jest.fn(() => true);
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
@@ -712,7 +720,8 @@ describe('HomeScreen', () => {
   });
 
   it('excludes holdings whose parent account is archived from the total', async () => {
-    seed({ accounts: [{ ...MONOBANK, archivedAt: 123 }] });
+    // A second, live account keeps the screen out of its no-account empty state.
+    seed({ accounts: [{ ...MONOBANK, archivedAt: 123 }, PRIVATBANK] });
     const { getAllByText } = await renderHome();
     expect(getAllByText(/0\.00 ₴/).length).toBeGreaterThan(0);
   });
@@ -2227,6 +2236,104 @@ describe('HomeScreen — localization', () => {
     const { getByText } = await renderHome();
 
     expect(getByText(i18n.t('transactions.exchangeTo', { name: 'Ощадний' }))).toBeTruthy();
+  });
+});
+
+describe('HomeScreen — empty states', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsFocused.mockReturnValue(true);
+    mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
+    mockUseSyncStatus.mockReturnValue(false);
+    mockRefreshing.mockReturnValue(false);
+  });
+
+  describe('with no accounts', () => {
+    it('shows the shared no-account empty state in place of the list and the add button', async () => {
+      setLiveData({ accounts: [], holdings: [] });
+
+      const { getByTestId, getByText, queryByTestId } = await renderHome();
+
+      expect(getByTestId('home-empty')).toBeTruthy();
+      expect(getByText(i18n.t('emptyStates.noAccounts.title'))).toBeTruthy();
+      expect(getByText(i18n.t('emptyStates.noAccounts.message'))).toBeTruthy();
+      expect(queryByTestId('home-transactions')).toBeNull();
+      expect(queryByTestId('add-transaction-fab-glass')).toBeNull();
+      expect(queryByTestId('home-content')).toBeNull();
+    });
+
+    it('opens the account form on the Accounts tab from its Add account action', async () => {
+      setLiveData({ accounts: [], holdings: [] });
+
+      const { getByTestId } = await renderHome();
+
+      await fireEvent.press(getByTestId('home-empty-action'));
+
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountsTab', {
+        screen: 'AccountForm',
+        params: {},
+        initial: false,
+      });
+    });
+
+    it('is not shown while a query is on its first load', async () => {
+      setLiveData({ accounts: [], holdings: [], isLoading: { accounts: true } });
+
+      const { getByTestId, queryByTestId } = await renderHome();
+
+      expect(queryByTestId('home-empty')).toBeNull();
+      expect(getByTestId('home-loading')).toBeTruthy();
+    });
+
+    it('shows no tip beside the empty state', async () => {
+      setLiveData({ accounts: [], holdings: [] });
+
+      const { queryByTestId } = await renderHome();
+
+      expect(queryByTestId('mock-tip-card')).toBeNull();
+    });
+  });
+
+  it('does not show the empty state for a user with only an open flat', async () => {
+    setLiveData({
+      accounts: [{ id: 'p', name: 'Properties', kind: 'property', archivedAt: null }],
+      holdings: [PROPERTY_HOLDING],
+    });
+
+    const { getByTestId, queryByTestId } = await renderHome();
+
+    expect(queryByTestId('home-empty')).toBeNull();
+    expect(getByTestId('home-content')).toBeTruthy();
+  });
+
+  describe('with accounts and an empty ledger', () => {
+    it('hints at adding a transaction or importing a statement', async () => {
+      seed({ transactions: [] });
+
+      const { getByText, queryByTestId } = await renderHome();
+
+      expect(queryByTestId('home-empty')).toBeNull();
+      expect(getByText(i18n.t('home.emptyTransactions'))).toBeTruthy();
+      expect(getByText(i18n.t('home.emptyLedgerHint'))).toBeTruthy();
+    });
+
+    it('omits the hint while the ledger holds rows outside the picked range', async () => {
+      seed({ transactions: [transaction({ id: 'old' })], windowRows: [] });
+
+      const { getByText, queryByText } = await renderHome();
+
+      expect(getByText(i18n.t('home.emptyTransactions'))).toBeTruthy();
+      expect(queryByText(i18n.t('home.emptyLedgerHint'))).toBeNull();
+    });
+
+    it('shows no tip', async () => {
+      seed({ transactions: [] });
+
+      const { queryByTestId } = await renderHome();
+
+      expect(queryByTestId('mock-tip-card')).toBeNull();
+    });
   });
 });
 
