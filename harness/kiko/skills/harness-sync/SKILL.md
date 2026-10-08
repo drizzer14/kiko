@@ -70,7 +70,7 @@ Switches live in the harness repo's `harness.config.json`. Read the harness READ
   `git --git-common-dir`); `false` = rule off.
 - `killGuard.protectedDirs`: default `src`, `__tests__`, `rules`.
 - `killGuard.waitLoopJobs`: default list; `[]` = off.
-- `closure.paths`: default `docs/closures`; a missing default passes.
+- `closure.paths`: default is the harness repo's closures docs folder (see its README); a missing default passes.
 - `checkAllLists.docs`: default `CLAUDE.md`.
 - `style.comment-line-width.width`: default 100, no override.
 - Mutate-set gate 75 (change-set total) and 60 (per file).
