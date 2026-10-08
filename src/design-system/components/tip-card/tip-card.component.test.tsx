@@ -39,6 +39,16 @@ describe('TipCard', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the close button hugging its icon instead of stretching across the card', async () => {
+    const { getByRole } = await render(
+      <TipCard message={MESSAGE} closeLabel={CLOSE} onClose={jest.fn()} />,
+    );
+
+    expect(
+      StyleSheet.flatten(getByRole('button', { name: CLOSE }).props.style).width,
+    ).toBeUndefined();
+  });
+
   it('keeps a 44pt tap target on the close button', async () => {
     const { getByRole } = await render(
       <TipCard message={MESSAGE} closeLabel={CLOSE} onClose={jest.fn()} />,

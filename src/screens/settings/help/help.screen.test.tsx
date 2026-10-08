@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -9,6 +10,8 @@ import {
   type NavigationSpy,
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
+import { darkTheme } from '@kiko/design-system/theme';
+import { chevronSize, chevronTrailingWhitespace } from '@kiko/screens/settings/settings-row';
 
 import HelpScreen from './help.screen';
 
@@ -46,6 +49,59 @@ describe('HelpScreen', () => {
     }
 
     expect(getAllByTestId('help-divider-topics')).toHaveLength(HELP_TOPICS.length - 1);
+  });
+
+  it('puts the divider after the first row, never before it', async () => {
+    const { getAllByTestId } = await renderScreen();
+
+    const orderedIds = getAllByTestId(/^help-(divider-topics|row-)/).map(
+      (node) => node.props.testID as string,
+    );
+
+    expect(orderedIds).toEqual([
+      `help-row-${HELP_TOPICS[0].id}`,
+      'help-divider-topics',
+      `help-row-${HELP_TOPICS[1].id}`,
+    ]);
+  });
+
+  it('pads each row and insets the divider to match the Settings card', async () => {
+    const { getByTestId, getAllByTestId } = await renderScreen();
+    const theme = darkTheme;
+
+    for (const topic of HELP_TOPICS) {
+      const rowStyle = StyleSheet.flatten(getByTestId(`help-row-${topic.id}`).props.style);
+
+      expect(rowStyle.paddingHorizontal).toBe(theme.spacing(3));
+      expect(rowStyle.paddingVertical).toBe(theme.spacing(3));
+    }
+
+    const dividerStyle = StyleSheet.flatten(getAllByTestId('help-divider-topics')[0].props.style);
+
+    expect(dividerStyle.marginLeft).toBe(theme.spacing(3));
+    expect(dividerStyle.marginRight).toBe(
+      theme.spacing(3) + chevronTrailingWhitespace(chevronSize(theme), theme),
+    );
+    expect(chevronTrailingWhitespace(chevronSize(theme), theme)).toBeGreaterThan(0);
+  });
+
+  it('centers the privacy line', async () => {
+    const { getByText } = await renderScreen();
+
+    expect(
+      StyleSheet.flatten(getByText('All your data stays on this device.').props.style),
+    ).toEqual(expect.objectContaining({ textAlign: 'center' }));
+  });
+
+  it('logs a failed tips reset under the help tag', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockResetTips.mockRejectedValueOnce(new Error('boom'));
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Show tips again'));
+
+    expect(warn).toHaveBeenCalledWith('[help] tips reset failed', expect.anything());
+    warn.mockRestore();
   });
 
   it('opens a topic page with its id when a row is pressed', async () => {
