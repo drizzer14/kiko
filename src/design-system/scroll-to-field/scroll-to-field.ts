@@ -22,9 +22,8 @@ type FieldRef = RefObject<FieldInstance | null> | { current: FieldInstance | nul
 // COLLAPSED large-title header on a BACKGROUNDED native-stack (measured live
 // on the Duo primary panel — see the duo-adaptive design doc's "Context"
 // section). Used ONLY as a floor for the FOCUSED stack's own implausible `0`
-// report with a vertical bar below — a pragmatic Phase 1 value, not a live
-// per-screen measurement; Phase 2 may replace it with something more
-// precise if this proves insufficient on device.
+// report with a vertical bar below. It is a fixed value, not a live
+// per-screen measurement.
 const DUO_VERTICAL_BAR_HEADER_INSET_FLOOR = 82;
 
 // Every REAL (non-test) caller of `useHeaderInset` is a form screen pushed
