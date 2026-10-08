@@ -388,9 +388,14 @@ The established patterns grouped under this heading:
   Typed input in a Connect field that was not connected turns the FIRST
   Save press into a reminder: nothing saves, and the hint appears directly
   under that field's Connect button and scrolls into view. It is not a
-  validation error, so it is the informational hint style
-  (`Text variant="caption" tone="textSecondary"`, as
-  `forms.account.importOnlyBankHint`), with no icon and no error tone. A
+  validation error, so it is the informational hint style (caption,
+  `textSecondary`, no error tone) with an `info.circle` icon, rendered by the
+  shared `InfoHint` (`src/design-system/components/info-hint/`, user-approved
+  2026-10-09): the icon is a `SymbolIcon` at the caption icon-size token,
+  top-left, the text takes the rest of the row so it wraps beside the icon,
+  and the row is one accessible element labelled by the message (the icon is
+  decorative). `InfoHint` is used ONLY for this reminder; the plain hint
+  (`forms.account.importOnlyBankHint`) stays a bare caption `Text`. A
   SECOND Save press saves the account unconnected, storing nothing typed.
   Editing the input, pressing Connect, or the field unmounting starts over;
   a successful connect reports the input as no longer typed, so an empty or
@@ -1041,6 +1046,11 @@ new component can land between reviews of this skill:
   confirm surface in the app — a delete/destructive confirmation routes
   through it rather than a native `ActionSheetIOS` or a hand-rolled
   `Modal`.
+- **InfoHint** (`src/design-system/components/info-hint/`) — a caption
+  `textSecondary` message led by an `info.circle` `SymbolIcon` (caption
+  icon-size token), top-left aligned, text wrapping beside the icon, one
+  accessible element labelled by the message. Used only for the Connect
+  reminder in the three Connect fields.
 - **NoticeBanner** (`src/design-system/components/notice-banner/`) — an
   inline, non-modal notice for a state the user can keep working
   around (never an alert or sheet): a `surfaceHigh` box, a `caption`

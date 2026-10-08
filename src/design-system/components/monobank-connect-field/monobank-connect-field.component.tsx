@@ -5,8 +5,8 @@ import { fetchClientInfo } from '@kiko/monobank/client';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
-import Text from '../text';
 import Button from '../button';
+import InfoHint from '../info-hint';
 import MonobankTokenInput from '../monobank-token-input';
 import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
 
@@ -121,11 +121,7 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect, remind
             <SyncStatusLine status={status} />
           </Box>
 
-          {reminder?.message !== undefined && (
-            <Text variant="caption" tone="textSecondary">
-              {reminder.message}
-            </Text>
-          )}
+          {reminder?.message !== undefined && <InfoHint message={reminder.message} />}
         </Box>
       </View>
     </Box>

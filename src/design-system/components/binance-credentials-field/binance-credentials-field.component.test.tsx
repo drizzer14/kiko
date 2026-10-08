@@ -293,6 +293,10 @@ describe('BinanceCredentialsField — connect reminder', () => {
     );
 
     expect(view.getByText('Tap Connect first.')).toBeTruthy();
+    expect(view.getByLabelText('Tap Connect first.')).toBeTruthy();
+    expect(view.root?.queryAll((node) => node.props.name === 'info.circle').length).toBeGreaterThan(
+      0,
+    );
 
     await view.rerender(
       <BinanceCredentialsField
@@ -303,6 +307,7 @@ describe('BinanceCredentialsField — connect reminder', () => {
     );
 
     expect(view.queryByText('Tap Connect first.')).toBeNull();
+    expect(view.root?.queryAll((node) => node.props.name === 'info.circle')).toHaveLength(0);
   });
 
   it('attaches the reminder ref to the Connect row so a blocked Save can scroll to it', async () => {

@@ -5,8 +5,8 @@ import { isValidBitcoinAddress } from '@kiko/crypto-sync/btc-wallet';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
-import Text from '../text';
 import Button from '../button';
+import InfoHint from '../info-hint';
 import ClipboardTextField from '../clipboard-text-field';
 import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
 
@@ -112,11 +112,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect, reminder }
             <SyncStatusLine status={status} />
           </Box>
 
-          {reminder?.message !== undefined && (
-            <Text variant="caption" tone="textSecondary">
-              {reminder.message}
-            </Text>
-          )}
+          {reminder?.message !== undefined && <InfoHint message={reminder.message} />}
         </Box>
       </View>
     </Box>
