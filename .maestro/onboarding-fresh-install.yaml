@@ -1,0 +1,91 @@
+# Functional flow for the onboarding surfaces on a FRESH install: the Accounts
+# empty state, its "Add account" action, and the Help & Tips page reached from
+# Settings. NOT a screenshot-diff check — no `takeScreenshot` step, no baseline.
+#
+# DESTRUCTIVE: `launchApp` below passes `clearState: true` and
+# `clearKeychain: true`, so ALL app data and keychain items on the target
+# device are WIPED. Run on a SIMULATOR ONLY, never on a device that holds real
+# data.
+#
+# LOCALE: this flow asserts the ENGLISH catalog (`src/i18n/locales/en.ts`). A
+# `clearState: true` install has no seeded Ukrainian content (unlike the
+# statement-import flows, which lean on the retired Ukrainian seed), and
+# `src/i18n/device-language/device-language.ts` picks the catalog from the
+# device's first `AppleLanguages` tag: `uk`/`ru` gives Ukrainian, anything else
+# gives English. The typical US-locale simulator therefore shows English. A
+# simulator set to Ukrainian needs the `text:` values below swapped for their
+# `uk.ts` counterparts. Every other selector is a testID and is locale-proof,
+# so a later wording change only touches the two `text:` assertions.
+#
+# TAB BAR IDENTIFIERS: `tray` (Accounts) and `gear` (Settings) are the SF
+# Symbol names `src/navigation/root-navigator/root.navigator.tsx` gives the
+# tabs; `tray` is the same selector `.maestro/statement-import.yaml` relies on.
+# `gear` is unconfirmed on a live run.
+#
+# THIS FLOW WAS AUTHORED WITHOUT A LIVE MAESTRO RUN — ops must verify the step
+# sequence on a real simulator the first time it executes. Two spots need
+# live confirmation: the `gear` tab selector, and the left-edge swipe that
+# stands in for the native back button (Maestro's `back` command is
+# Android-only, and the iOS back button carries the previous screen's title as
+# its label).
+appId: com.dmytro-vasylkivskyi.kiko
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+
+- extendedWaitUntil:
+    notVisible:
+      id: "migrations-gate-pending"
+    timeout: 30000
+
+# ---------------------------------------------------------------------------
+# 1. Accounts tab: empty state, then the account form via its action
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "tray"
+- assertVisible:
+    id: "accounts-empty"
+# `accounts.empty.title`
+- assertVisible:
+    text: "No accounts yet"
+# `accounts-empty-action` is EmptyState's `${testID}-action`; its label is
+# `accounts.addAccount` ("Add account").
+- tapOn:
+    id: "accounts-empty-action"
+- assertVisible:
+    id: "account-form"
+
+# Back to the Accounts list (native-stack interactive-pop edge swipe).
+- swipe:
+    start: "1%, 50%"
+    end: "80%, 50%"
+- assertVisible:
+    id: "accounts-empty"
+
+# ---------------------------------------------------------------------------
+# 2. Settings tab -> Help & tips -> both topic rows -> Show tips again
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "gear"
+- assertVisible:
+    id: "settings-card-help"
+# The Help card's only row, `help.rowLabel` ("Help & tips").
+- tapOn:
+    id: "settings-row-help"
+
+# Help screen nav title, `help.title`
+- assertVisible:
+    text: "Help & Tips"
+# One row per topic in `src/help/help-topics.ts`.
+- assertVisible:
+    id: "help-row-addAccount"
+- assertVisible:
+    id: "help-row-manageCategories"
+
+# `help.showTipsAgain` only clears the dismissed-tip list; it shows no
+# confirmation, so the step proves the button is reachable and tappable.
+- tapOn:
+    id: "help-show-tips-again"
+- assertVisible:
+    id: "help-row-addAccount"
