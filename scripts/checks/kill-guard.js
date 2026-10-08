@@ -1299,11 +1299,13 @@ function namesGuardedTree(target) {
 // Where `target` lands from `directory` (resolved when the text allows) when
 // that is inside a tree, or null. A cp/mv `destination` may be a folder, and
 // what it copies lands inside it, so one that is a tree folder itself counts
-// too.
-function guardedPlace(target, directory, rules, destination) {
+// too. With `resolvedOnly`, a target the text cannot resolve never counts.
+function guardedPlace(target, directory, rules, { destination, resolvedOnly }) {
   const resolved = resolveDirectory(directory, target);
   const inside = (place) => (destination ? `${place.replace(/\/+$/, '')}/_` : place);
-  if (resolved === null) return namesGuardedTree(inside(target)) ? target : null;
+  if (resolved === null) {
+    return !resolvedOnly && namesGuardedTree(inside(target)) ? target : null;
+  }
 
   return isInsideGuardedTree(inside(resolved), rules) ? resolved : null;
 }
@@ -1314,11 +1316,11 @@ function firstGuardedWrite(
   targets,
   directories,
   rules,
-  { verb = 'writes', destination = false } = {},
+  { verb = 'writes', destination = false, resolvedOnly = false } = {},
 ) {
   for (const target of targets) {
     for (const directory of directories) {
-      const where = guardedPlace(target, directory, rules, destination);
+      const where = guardedPlace(target, directory, rules, { destination, resolvedOnly });
       if (where !== null) return { verb, where };
     }
   }
@@ -1423,6 +1425,7 @@ function inPlaceFiles({ options, operands }, suppliesScript) {
 const SED_COMMANDS = new Set(['sed', 'gsed']);
 
 const COPY_MOVE_COMMANDS = new Set(['cp', 'mv', 'gcp', 'gmv']);
+const MOVE_COMMANDS = new Set(['mv', 'gmv']);
 
 function readCopyMoveLongOption(word, next) {
   const [name, value] = word.split(/=(.*)/s);
@@ -1431,13 +1434,15 @@ function readCopyMoveLongOption(word, next) {
   return {
     targetDirectory: name === '--target-directory' ? (value ?? next) : undefined,
     noTargetDirectory: name === '--no-target-directory',
+    recursive: name === '--recursive' || name === '--archive',
     skip: takesValue && value === undefined ? 1 : 0,
   };
 }
 
 // One cp/mv option word: the target folder it names (`-t DIR`, `-tDIR`,
 // `--target-directory[=]DIR`), whether it names the destination itself
-// (`-T`, `--no-target-directory`), and whether the next word is its value
+// (`-T`, `--no-target-directory`), whether it copies folders (`-r`, `-R`,
+// `-a`, `--recursive`, `--archive`), and whether the next word is its value
 // (`-t`, `-S`, `--suffix`, `--target-directory` with no `=`).
 function readCopyMoveOption(word, next) {
   if (word.startsWith('--')) return readCopyMoveLongOption(word, next);
@@ -1449,6 +1454,7 @@ function readCopyMoveOption(word, next) {
   return {
     targetDirectory: letters[valueAt] === 't' ? value : undefined,
     noTargetDirectory: head.includes('T'),
+    recursive: /[rRa]/.test(head),
     skip: valueAt !== -1 && valueAt === letters.length - 1 ? 1 : 0,
   };
 }
@@ -1716,13 +1722,20 @@ const withXargsInput = (parameters, placeholder, input) =>
 // the input cannot reach the destination; null when it may. The input may
 // carry any name, so each source it fills counts once as a fixed marker
 // (a plain file) and once as each tree folder's name (`ls | xargs -I{} cp
-// -r {} .` may write `./src`).
+// -r {} .` may write `./src`). Those folder names are `named`; a plain cp
+// cannot copy a folder, so `canCopyFolder` is false for it and its `named`
+// targets count only where the text resolves them.
 function xargsCopyMoveTargets(base, parameters, placeholder) {
   if (!COPY_MOVE_COMMANDS.has(base) || inputMayBeDestination(parameters, placeholder)) return null;
+  const targetsFor = (inputs) =>
+    inputs.flatMap((input) => copyMoveTargets(withXargsInput(parameters, placeholder, input)));
+  const { options } = splitOptions(parameters, readCopyMoveOption);
 
-  return ['xargs-input', ...WRITE_GUARDED_TREES].flatMap((input) =>
-    copyMoveTargets(withXargsInput(parameters, placeholder, input)),
-  );
+  return {
+    plain: targetsFor(['xargs-input']),
+    named: targetsFor([...WRITE_GUARDED_TREES]),
+    canCopyFolder: MOVE_COMMANDS.has(base) || options.some((option) => option.recursive),
+  };
 }
 
 // Where one unwrapped command writes inside a tree, or null.
@@ -1736,9 +1749,15 @@ function commandWrite(
   const destination = COPY_MOVE_COMMANDS.has(base);
   if (files !== null && viaXargs) {
     const targets = xargsCopyMoveTargets(base, parameters, placeholder);
-    return targets === null
-      ? XARGS_WRITE
-      : firstGuardedWrite(targets, directories, rules, { destination });
+    if (targets === null) return XARGS_WRITE;
+
+    return (
+      firstGuardedWrite(targets.plain, directories, rules, { destination }) ??
+      firstGuardedWrite(targets.named, directories, rules, {
+        destination,
+        resolvedOnly: !targets.canCopyFolder,
+      })
+    );
   }
   if (files !== null) return firstGuardedWrite(files, directories, rules, { destination });
   const program = interpreterProgramOf(base, parameters, stdinScripts);

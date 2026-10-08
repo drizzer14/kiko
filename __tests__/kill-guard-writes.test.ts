@@ -244,6 +244,17 @@ const DENIED_COPY_MOVE: string[] = [
   'ls | xargs -I{} cp -r {} .',
   'ls /tmp/snap | xargs -I % mv /tmp/snap/% .',
   'ls /tmp/snap | xargs cp -r -t .',
+  // A destination the text cannot resolve may hold a folder, so a recursive
+  // copy or any move may write a tree folder there; the text itself still
+  // names one in `cp -r /tmp/src "$BK"/`.
+  'ls | xargs -I{} cp -r {} "$BK"/',
+  'ls | xargs -I{} cp -R {} "$BK"/',
+  'ls | xargs -I{} cp -ra {} "$BK"/',
+  'ls | xargs -I{} cp --recursive {} "$BK"/',
+  'ls | xargs -I{} mv {} "$BK"/old/',
+  'ls | xargs cp -a -t "$BK"',
+  'ls | xargs cp --archive -t "$BK"',
+  'cp -r /tmp/src "$BK"/',
 ];
 
 const ALLOWED_COPY_MOVE: string[] = [
@@ -274,6 +285,14 @@ const ALLOWED_COPY_MOVE: string[] = [
   'ls | xargs -I % cp % /tmp/bk/src/',
   'ls | xargs -I{} cp -r {} /tmp/bk/',
   'ls | xargs cp -r -t /tmp/bk/src',
+  // A plain cp cannot copy a folder, so an unresolved destination holds only
+  // plain files.
+  'ls *.log | xargs -I{} cp {} "$TMPDIR"/logs/',
+  'ls | xargs -I{} cp {} "$BK"/',
+  'ls | xargs cp -t "$BK"',
+  'cd "$X" && ls | xargs -I{} cp {} bk/',
+  'ls | xargs -I{} cp {} "$(mktemp -d)"/',
+  'ls | xargs -I{} cp {} /tmp/*/',
 ];
 
 const ALLOWED: string[] = [
