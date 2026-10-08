@@ -1049,6 +1049,16 @@ new component can land between reviews of this skill:
   `surfaceHigh` `sm` block), body primary text (not caption secondary),
   and two required actions (not one optional tonal one). First
   consumer: `AccountDetail`'s reminder offer.
+- **EmptyState** (`src/design-system/components/empty-state/`) — Apple's
+  `ContentUnavailableView` pattern for a screen with no data yet: centered
+  on the screen background (no Card, no glass), a `display`-size
+  `textSecondary` symbol, a semibold `body` `textPrimary` title (sentence
+  case, no final "."; never the `heading` variant, which would pull its keys
+  into `TITLE_KEYS`), a centered `caption` `textSecondary` message (one or
+  two sentences, final "."), then an optional `primary` non-full-width
+  `Button` from `action: { label, icon?, onPress }`. Strings come in as
+  props. `testID` gives `<testID>-icon` and `<testID>-action`. Gate it on
+  `useDataReady`, never on `data.length === 0` alone.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
