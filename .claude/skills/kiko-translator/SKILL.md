@@ -220,9 +220,10 @@ string:
   `en.casing-by-role.test.ts` for en and in `uk.casing.test.ts` for uk
   — read them there, add a new name to the right one). A uk word
   missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence.
-  uk writes the network name with a capital in every form: «Біткоїн»,
-  «Біткоїна», and every other case form. It is a proper noun beside
-  Monobank and Binance; each form is in the uk `PROPER_NOUNS`. Also
+  uk writes the network name with a capital in every case form. It is a
+  proper noun beside Monobank and Binance. The uk `PROPER_NOUNS` holds
+  «Біткоїн» and «Біткоїна» today; add any other case form you use (for
+  example «Біткоїну») to that list in the same commit. Also
   acronyms (ISIN, API, CSV, BTC, ISO codes), a unit in
   parentheses cases per the rule of the role it sits inside, and a
   capital letter standing for a user-chosen number ("Every N days" /
