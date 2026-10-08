@@ -1,6 +1,6 @@
 import type { TipId } from './tip-ids';
 
-export type TipCandidate = { id: TipId; condition: boolean };
+type TipCandidate = { id: TipId; condition: boolean };
 
 // The single place that enforces "one tip per screen": it returns at most one id.
 export const pickTip = (
