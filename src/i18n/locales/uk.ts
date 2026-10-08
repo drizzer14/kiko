@@ -718,6 +718,7 @@ export const uk: typeof en = {
       label: 'Період дат',
       until: 'До {{date}}',
     },
+    emptyLedgerHint: 'Додайте транзакцію кнопкою «+» або імпортуйте виписку зі сторінки рахунку.',
     emptyTransactions: 'Немає транзакцій',
     filterAccounts: 'Рахунки',
     filterAccountsSheetTitle: 'Рахунки',
@@ -729,6 +730,12 @@ export const uk: typeof en = {
     title: 'Головна',
     today: 'Сьогодні',
     yesterday: 'Вчора',
+  },
+  emptyStates: {
+    noAccounts: {
+      message: 'Кіко рахує ваш капітал за вашими рахунками.',
+      title: 'Почніть із рахунку',
+    },
   },
   statistics: {
     accountContribution: 'Внесок рахунків',

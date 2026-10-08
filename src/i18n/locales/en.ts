@@ -849,6 +849,10 @@ export const en = {
       label: 'Date range',
       until: 'Until {{date}}',
     },
+    // The Home list's empty slot, shown only when the whole ledger is empty (not
+    // when the picked date range merely excludes its rows).
+    emptyLedgerHint:
+      'Add a transaction with "+", or import a bank statement from an account’s page.',
     emptyTransactions: 'No transactions',
     filterAccounts: 'Accounts',
     filterAccountsSheetTitle: 'Accounts',
@@ -864,6 +868,13 @@ export const en = {
     title: 'Home',
     today: 'Today',
     yesterday: 'Yesterday',
+  },
+  // The empty state Home and Statistics share while the user has no account.
+  emptyStates: {
+    noAccounts: {
+      message: 'Kiko totals your net worth from your accounts.',
+      title: 'Start with an account',
+    },
   },
   statistics: {
     accountContribution: 'Account Contribution',
