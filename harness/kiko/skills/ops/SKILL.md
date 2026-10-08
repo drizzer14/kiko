@@ -201,6 +201,12 @@ copies it into the device-test request it sends the user.
   migration-behavior change is device-verified BEFORE archiving, not
   after — Jest cannot see real network/device behavior.
 
+## Maestro on this host
+
+Maestro needs `JAVA_HOME=/opt/homebrew/opt/openjdk@21`; without it the
+run fails before the flow starts (verified 2026-10-08,
+`.maestro/onboarding-fresh-install.yaml`, 17/17 steps).
+
 ## Load rule
 
 Run `make verify` / `check:all` / full jest only when the 5-minute load
