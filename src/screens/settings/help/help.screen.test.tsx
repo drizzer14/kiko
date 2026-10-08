@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { AccessibilityInfo, StyleSheet } from 'react-native';
-import { fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { HELP_TOPICS } from '@kiko/help';
@@ -208,18 +208,49 @@ describe('HelpScreen', () => {
       expect(getAllByTestId('help-tips-reset-tip')).toHaveLength(1);
     });
 
-    it('reads the confirmation in Ukrainian under the uk language', async () => {
-      await i18n.changeLanguage('uk');
-      const { getByTestId, findByTestId } = await renderScreen();
+    describe('with fake timers', () => {
+      beforeEach(() => {
+        jest.useFakeTimers();
+      });
 
-      await fireEvent.press(getByTestId('help-show-tips-again'));
-      await findByTestId('help-tips-reset-tip');
+      afterEach(() => {
+        jest.useRealTimers();
+      });
 
-      expect(getByTestId('help-tips-reset-tip')).toHaveTextContent(
-        i18n.t('help.tipsResetConfirmation'),
-      );
-      expect(i18n.t('help.tipsResetConfirmation')).not.toBe('Tips will be shown again.');
-      await i18n.changeLanguage('en');
+      it('keeps the confirmation tip shown after a long wait, with no auto-hide', async () => {
+        const { getByText, findByTestId, getByTestId } = await renderScreen();
+
+        await fireEvent.press(getByText('Show tips again'));
+        await findByTestId('help-tips-reset-tip');
+        await act(async () => {
+          jest.advanceTimersByTime(10 * 60 * 1000);
+        });
+
+        expect(getByTestId('help-tips-reset-tip')).toBeTruthy();
+      });
+    });
+
+    describe('under the uk language', () => {
+      afterEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      });
+
+      it('reads the confirmation in Ukrainian', async () => {
+        await act(async () => {
+          await i18n.changeLanguage('uk');
+        });
+        const { getByTestId, findByTestId } = await renderScreen();
+
+        await fireEvent.press(getByTestId('help-show-tips-again'));
+        await findByTestId('help-tips-reset-tip');
+
+        expect(getByTestId('help-tips-reset-tip')).toHaveTextContent(
+          i18n.t('help.tipsResetConfirmation'),
+        );
+        expect(i18n.t('help.tipsResetConfirmation')).not.toBe('Tips will be shown again.');
+      });
     });
   });
 });

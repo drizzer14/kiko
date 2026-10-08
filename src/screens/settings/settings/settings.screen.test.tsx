@@ -229,7 +229,7 @@ describe('SettingsScreen', () => {
     expect(rowOrder).toEqual(['settings-row-import-data', 'settings-row-export-data']);
   });
 
-  // User ruling 2026-10-08: a Settings row that opens a screen reads in Title Case, like that
+  // By user ruling, a Settings row that opens a screen reads in Title Case, like that
   // screen's nav title.
   it('labels the Import and Export rows in Title Case', async () => {
     const { getByTestId } = await renderScreen();

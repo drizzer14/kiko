@@ -161,10 +161,10 @@ describe('ClipboardTextField', () => {
     expect(getByText('Enter your Monobank token.')).toBeTruthy();
   });
 
-  // Device finding: with an error, the inner TextField's own FieldError grew
-  // the field's column, so the row's `alignItems: 'center'` moved the paste
-  // button down with it. The error must render OUTSIDE the [input, button]
-  // row so the button stays centered on the input alone.
+  // An error inside the inner TextField would grow the field's column, and the
+  // row's `alignItems: 'center'` would move the paste button down with it. The
+  // error must render OUTSIDE the [input, button] row so the button stays
+  // centered on the input alone.
   it('renders the error outside the input/paste row so the paste button stays centered on the input', async () => {
     const { getByText, getByLabelText } = await render(
       <ClipboardTextField

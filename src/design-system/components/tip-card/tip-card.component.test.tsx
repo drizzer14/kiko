@@ -17,21 +17,20 @@ describe('TipCard', () => {
     expect(getByText(MESSAGE)).toBeTruthy();
   });
 
-  it('paints the tinted accent fill, not the Card surface, with no border or shadow', async () => {
+  it('paints the tinted accent fill with no border or shadow', async () => {
     const { getByTestId } = await render(
       <TipCard message={MESSAGE} closeLabel={CLOSE} onClose={jest.fn()} testID="tip" />,
     );
     const style = StyleSheet.flatten(getByTestId('tip').props.style);
 
     expect(style.backgroundColor).toBe(darkTheme.colors.accentSubtle);
-    expect(style.backgroundColor).not.toBe(darkTheme.colors.surface);
     expect(style.borderWidth).toBeUndefined();
     expect(style.borderColor).toBeUndefined();
     expect(style.shadowOpacity).toBeUndefined();
     expect(style.elevation).toBeUndefined();
   });
 
-  it('leads with the filled lightbulb in the accent color, hidden from VoiceOver', async () => {
+  it('leads with the filled lightbulb in the accent color, with no accessibility label of its own', async () => {
     const { getByTestId } = await render(
       <TipCard message={MESSAGE} closeLabel={CLOSE} onClose={jest.fn()} testID="tip" />,
     );

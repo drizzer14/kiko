@@ -90,8 +90,8 @@ export const en = {
       keyLabel: 'Encryption key',
       keyWarning:
         'Save this key somewhere safe — it will not be shown again, and it is the only way to unlock this file.',
-      // The Settings row that opens this screen. Title Case by user ruling
-      // 2026-10-08, so it reads the same as `title` below (the nav header).
+      // The Settings row that opens this screen. Title Case by user ruling, so it
+      // reads the same as `title` below (the nav header).
       rowLabel: 'Export Data',
       shareFile: 'Share file',
       title: 'Export Data',

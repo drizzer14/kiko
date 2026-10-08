@@ -3,11 +3,13 @@
 // The explicit set of every screen/nav title, section heading, and
 // sheet/modal title key — the Title Case role's own key list, now also
 // reused by the full-stop-by-role invariant: a title/heading/sheet-title
-// key is one of the roles with NO final "." either. Verified by call site
-// (a nav `options.title`/
-// `navigation.setOptions`, a `variant="heading"` `Text`, or a
-// `BottomSheet`/`ConfirmSheet` title/header prop) against its own real
-// call site. Extracted out of `en.casing-by-role.test.ts`
+// key is one of the roles with NO final "." either. Every entry is verified
+// by call site (a nav `options.title`/`navigation.setOptions`, a
+// `variant="heading"` `Text`, or a `BottomSheet`/`ConfirmSheet` title/header
+// prop), except the three Settings-root row labels (`help.rowLabel`,
+// `settings.dataExport.rowLabel`, `settings.dataImport.rowLabel`), which are
+// listed by user ruling and are not headings at any call site.
+// Extracted out of `en.casing-by-role.test.ts`
 // into its own module (not a `.test.ts` file, so a non-test consumer — or a
 // second test file — can import it without pulling in Jest globals) so the
 // casing test and the full-stop test share ONE list rather than two
@@ -89,7 +91,7 @@ export const TITLE_KEYS = new Set([
   'forms.transaction.toSheetTitle',
   'forms.transaction.typeSheetTitle',
   // `help.rowLabel`, `settings.dataExport.rowLabel` and `settings.dataImport.rowLabel` are
-  // Settings rows in Title Case by user ruling 2026-10-08, so each row matches the nav title
+  // Settings rows in Title Case by user ruling, so each row matches the nav title
   // of the screen it opens (`help.title`, `settings.dataExport.title`,
   // `settings.dataImport.title`).
   'help.rowLabel',

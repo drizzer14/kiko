@@ -49,7 +49,7 @@ const HelpScreen: FC<HelpScreenProps> = ({ navigation }) => {
 
     if (reset) {
       setResetConfirmed(true);
-      // A tip appearing under the pressed button is silent to VoiceOver without this.
+      // A tip appearing above the pressed button is silent to VoiceOver without this.
       AccessibilityInfo.announceForAccessibility(t('help.tipsResetConfirmation'));
     }
   };
