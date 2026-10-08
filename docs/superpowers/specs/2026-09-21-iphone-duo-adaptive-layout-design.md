@@ -76,7 +76,8 @@ Three reported bugs, all this one cause:
 
 ## Non-goals
 
-- Spanning or using the Duo's second physical panel.
+- Spanning both panels as one surface. (Phase 2 now uses the inner display as its own adaptive
+  layout; see the Phase 2 spec.)
 - Any change to the submitted 1.0.0 / build 20 (this track is parallel;
   branch off `next`).
 - Patching `node_modules`/`react-native-bottom-tabs` native code (fix in
@@ -122,28 +123,10 @@ a normal iPhone (bottom bar) is unchanged.
 
 ## Design — Phase 2 (adaptive layout)
 
-Note: the sidebar does **not** require app-level horizontal-inset
-handling — `Screen`'s `SafeAreaView` already covers it (see Phase 1
-item 3/5 above). Phase 2 must not re-introduce that.
-
-1. Re-apply the `ipad-adaptive` pattern onto `next` (do **not** merge
-   that branch): the breakpoints scale, `useIsAtLeastBreakpoint` runtime
-   hook, the `TwoPaneLayout` primitive, and the `Screen` content-width
-   cap.
-2. Key adaptivity off the size class / sidebar signal from Phase 1,
-   **not** a raw pixel width (466 pt is regular yet below the old
-   `sm:500` threshold, so a width number misclassifies it). Recalibrate
-   thresholds to the real regular-width signal.
-3. Apply two-pane where it helps: Home (summary + list) and Accounts
-   (list + in-place detail), as `ipad-adaptive` did; re-evaluate
-   Settings.
-4. Re-diagnose the `topClearance` / sidebar piece on the real Duo
-   (`ipad-adaptive` marked it PROVISIONAL / unverified).
-5. Retire the screenshot subsystem during the port (5.6 App Store
-   compliance — it was stripped from `next`; must not be reintroduced).
-
-**Testing**: unit tests for breakpoint/mount-gating; the `ipad-adaptive`
-tests re-applied; Duo-sim visual verification; iPhone + iPad regression.
+Phase 2 is specified in
+`docs/superpowers/specs/2026-10-08-iphone-duo-phase2-adaptive-design.md`
+(user-approved 2026-10-08). It replaces the earlier plan to re-apply the `ipad-adaptive`
+pattern; the inner display is now in scope.
 
 ## Existing foundation to reuse
 
