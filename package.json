@@ -131,10 +131,11 @@
   "codegenConfig": {
     "name": "KikoSpecs",
     "type": "modules",
-    "jsSrcsDir": "src/reminders/native",
+    "jsSrcsDir": "src/native-specs",
     "ios": {
       "modulesProvider": {
-        "KikoReminders": "RCTKikoReminders"
+        "KikoReminders": "RCTKikoReminders",
+        "DisplayRegions": "RCTDisplayRegions"
       }
     }
   }

@@ -102,6 +102,11 @@ describe('scripts/checks/feature-imports.js per-file findings', () => {
       `src/${SCREENS}/home/home.screen.tsx`,
       `@kiko/${SCREENS}/accounts`,
     ],
+    [
+      'a codegen spec file through the alias, with no barrel',
+      'src/reminders/native/reminders-native.ts',
+      '@kiko/native-specs/NativeKikoReminders',
+    ],
   ])('allows %s', (_label, importer, specifier) => {
     const file = writeFixture(importer, importFrom(specifier));
 
@@ -372,6 +377,15 @@ describe('scripts/checks/feature-imports.js --tree', () => {
       ].join('\n'),
     );
     writeFixture('src/rates/own/own.ts', 'export const own = 1;\n');
+
+    const result = runTree();
+
+    expect(result.stdout).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it('does not ask the codegen spec folder for a barrel', () => {
+    writeFixture('src/native-specs/NativeThing.ts', 'export interface Spec {}\n');
 
     const result = runTree();
 

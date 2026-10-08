@@ -213,7 +213,7 @@ jest.mock('@react-native-documents/picker', () => ({
 // native-binding mocks above. Registered globally so any test that reaches the
 // reminders wrapper transitively gets a working stub. Defaults model a fresh
 // install: permission not asked yet, nothing queued.
-jest.mock('@kiko/reminders/native/NativeKikoReminders', () => ({
+jest.mock('@kiko/native-specs/NativeKikoReminders', () => ({
   __esModule: true,
   default: {
     authorizationStatus: jest.fn(async () => 'notDetermined'),
@@ -223,5 +223,18 @@ jest.mock('@kiko/reminders/native/NativeKikoReminders', () => ({
     drainResponses: jest.fn(async () => '[]'),
     onResponse: jest.fn(() => ({ remove: jest.fn() })),
     uses24HourClock: jest.fn(() => true),
+  },
+}));
+
+// The app's own display-regions TurboModule, mocked for the same reason as
+// `KikoReminders` above. The default snapshot is the ordinary single-window
+// iPhone: compact width, no vertical bar, no fold.
+jest.mock('@kiko/native-specs/NativeDisplayRegions', () => ({
+  __esModule: true,
+  default: {
+    getSnapshot: jest.fn(() =>
+      JSON.stringify({ horizontalSizeClass: 'compact', verticalBarEdge: 'none', foldRegion: null }),
+    ),
+    onChange: jest.fn(() => ({ remove: jest.fn() })),
   },
 }));

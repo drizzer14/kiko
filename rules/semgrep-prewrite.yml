@@ -1090,6 +1090,31 @@ rules:
     patterns:
       - pattern-regex: |-
           (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?NativeKikoReminders(?:\.tsx?)?['"]
+  # The same lazy-load guard for the display-regions TurboModule spec
+  # (`NativeDisplayRegions.ts`): only its wrapper may load it, on first use, so
+  # that the layout hooks, which every screen reads, never crash a binary built
+  # without the module. The regex and its exclusions mirror
+  # `kiko-no-native-reminders-module-import` above; read that comment for the
+  # shape it matches.
+  - id: kiko-no-native-display-regions-module-import
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Only `src/display-regions/display-regions-native/display-regions-native.ts`
+      may load the `NativeDisplayRegions` TurboModule spec, lazily on first use:
+      `TurboModuleRegistry.getEnforcing` throws at module load on a binary
+      built without the module. Call `displayRegionsNative` (or a layout hook)
+      from `@kiko/display-regions` instead; a type-only `import type` is fine.
+    metadata:
+      fix: "Call `displayRegionsNative` or a hook from `@kiko/display-regions` (or use `import type` for a type); never value-import `NativeDisplayRegions`."
+      skill: "kiko-architecture › Native iOS shell"
+    paths:
+      exclude:
+        - "src/display-regions/display-regions-native/display-regions-native.ts"
+        - "jest/setup.js"
+    patterns:
+      - pattern-regex: |-
+          (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?NativeDisplayRegions(?:\.tsx?)?['"]
   # kiko-domain's "Dates": `jest.config.js` pins `process.env.TZ` to
   # Europe/Kyiv at config load, and Jest gives each test sandbox its own copy
   # of `process.env`, so an assignment in a test file, a `beforeAll`, or a
