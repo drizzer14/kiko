@@ -1,4 +1,5 @@
 import UIKit
+import os
 
 /// The native side of the `DisplayRegions` TurboModule: the foreground window's horizontal size
 /// class, the system's preferred vertical bar edge, and the fold's division region. JS decides
@@ -11,8 +12,15 @@ import UIKit
 @objc public final class DisplayRegionsCenter: NSObject {
   @objc public static let shared = DisplayRegionsCenter()
 
-  private var changeEmitter: ((String) -> Void)?
-  private weak var changeEmitterOwner: AnyObject?
+  private static let logger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "", category: "DisplayRegions")
+
+  // The emitter points into the JS runtime and is set and removed from the TurboModule's own
+  // threads, so it sits behind a lock instead of the main actor: `removeChangeEmitter` must have
+  // taken effect before it returns, or a queued refresh could still emit into a torn-down runtime.
+  private nonisolated let emitterLock = NSLock()
+  nonisolated(unsafe) private var changeEmitter: ((String) -> Void)?
+  nonisolated(unsafe) private weak var changeEmitterOwner: AnyObject?
   // The last snapshot the observers saw, so an event that changes nothing emits nothing. A JS
   // read never touches it: a read that updated it would hide the change from the observer that
   // follows, and the JS side would keep what it rendered before.
@@ -20,6 +28,7 @@ import UIKit
   private weak var observedWindow: UIWindow?
   private var traitRegistration: UITraitChangeRegistration?
   private var geometryObservation: NSKeyValueObservation?
+  private var hingeInteraction: UIInteraction?
   private var notificationObservers: [NSObjectProtocol] = []
 
   override private init() {
@@ -33,7 +42,7 @@ import UIKit
     return Self.encode(readSnapshot())
   }
 
-  struct Snapshot: Equatable {
+  struct Snapshot {
     var horizontalSizeClass: String
     var verticalBarEdge: String
     var foldRegion: CGRect?
@@ -137,6 +146,22 @@ import UIKit
 
       return [UITraitHorizontalSizeClass.self] + UITraitCollection.systemTraitsAffectingVerticalBarEdge
     }
+
+    // The traits, the window geometry and the scene state do not move when a flat device starts to
+    // fold, so the hinge is observed itself. Its handler also runs once on adding, which `refresh`
+    // finds unchanged.
+    private func makeHingeInteraction(for window: UIWindow) -> UIInteraction? {
+      guard #available(iOS 27.1, *) else {
+        return nil
+      }
+
+      let interaction = UIHingeInteraction { [weak self] _, _ in
+        self?.refreshAfterLayout()
+      }
+      window.addInteraction(interaction)
+
+      return interaction
+    }
   #else
     private static func verticalBarEdgeName(of window: UIWindow) -> String {
       return "none"
@@ -149,6 +174,10 @@ import UIKit
     private static func observedTraits() -> [UITrait] {
       return [UITraitHorizontalSizeClass.self]
     }
+
+    private func makeHingeInteraction(for window: UIWindow) -> UIInteraction? {
+      return nil
+    }
   #endif
 
   // MARK: - Observing
@@ -157,10 +186,13 @@ import UIKit
   /// runtime, so `removeChangeEmitter` must run before that runtime goes away.
   @objc(setChangeEmitter:owner:)
   public nonisolated func setChangeEmitter(_ emitter: @escaping (String) -> Void, owner: AnyObject) {
+    emitterLock.lock()
+    changeEmitter = emitter
+    changeEmitterOwner = owner
+    emitterLock.unlock()
+
     DispatchQueue.main.async {
       MainActor.assumeIsolated {
-        self.changeEmitter = emitter
-        self.changeEmitterOwner = owner
         self.startObserving()
       }
     }
@@ -168,14 +200,20 @@ import UIKit
 
   @objc(removeChangeEmitterForOwner:)
   public nonisolated func removeChangeEmitter(owner: AnyObject) {
-    DispatchQueue.main.async {
-      MainActor.assumeIsolated {
-        if self.changeEmitterOwner === owner {
-          self.changeEmitter = nil
-          self.changeEmitterOwner = nil
-        }
-      }
+    emitterLock.lock()
+    defer { emitterLock.unlock() }
+
+    if changeEmitterOwner === owner {
+      changeEmitter = nil
+      changeEmitterOwner = nil
     }
+  }
+
+  private nonisolated func currentChangeEmitter() -> ((String) -> Void)? {
+    emitterLock.lock()
+    defer { emitterLock.unlock() }
+
+    return changeEmitterOwner == nil ? nil : changeEmitter
   }
 
   private func startObserving() {
@@ -199,8 +237,8 @@ import UIKit
       }
     }
 
-    attachToForegroundWindow()
     lastObservedJson = snapshotJson()
+    attachToForegroundWindow()
   }
 
   // The trait and geometry observers follow the foreground window, and are dropped from the one
@@ -210,8 +248,14 @@ import UIKit
       return
     }
 
-    if let previous = observedWindow, let registration = traitRegistration {
-      previous.unregisterForTraitChanges(registration)
+    if let previous = observedWindow {
+      if let registration = traitRegistration {
+        previous.unregisterForTraitChanges(registration)
+      }
+
+      if let interaction = hingeInteraction {
+        previous.removeInteraction(interaction)
+      }
     }
 
     observedWindow = window
@@ -219,12 +263,23 @@ import UIKit
       [weak self] (_: UIWindow, _) in
       self?.refresh()
     }
+    hingeInteraction = makeHingeInteraction(for: window)
     geometryObservation = window.windowScene?.observe(\.effectiveGeometry, options: []) {
       [weak self] _, _ in
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
           self?.refresh()
         }
+      }
+    }
+  }
+
+  // UIKit finishes the layout pass that a hinge change starts after the callback returns, so the
+  // reserved region is read on the next turn of the main queue.
+  private func refreshAfterLayout() {
+    DispatchQueue.main.async {
+      MainActor.assumeIsolated {
+        self.refresh()
       }
     }
   }
@@ -237,6 +292,24 @@ import UIKit
     }
 
     lastObservedJson = json
-    changeEmitter?(json)
+
+    guard let emitter = currentChangeEmitter() else {
+      return
+    }
+
+    logEmitted(json)
+    emitter(json)
+  }
+
+  // One line per emit, never per read, so a Release build can be checked with
+  // `log stream --level debug --predicate 'category == "DisplayRegions"'`. The payload is public
+  // because it holds only layout numbers.
+  private func logEmitted(_ json: String) {
+    let bounds = foregroundWindow()?.bounds ?? .zero
+    let scale = foregroundWindow()?.traitCollection.displayScale ?? 0
+
+    Self.logger.debug(
+      "emit \(json, privacy: .public) windowBounds=\(bounds.width, privacy: .public)x\(bounds.height, privacy: .public)pt scale=\(scale, privacy: .public)"
+    )
   }
 }
