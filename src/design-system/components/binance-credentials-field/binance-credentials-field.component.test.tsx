@@ -373,6 +373,32 @@ describe('BinanceCredentialsField — connect reminder', () => {
     expect(reminder.onDraftChange).not.toHaveBeenCalled();
   });
 
+  it('reports no typed credential once a connect succeeds, and keeps it while one fails', async () => {
+    mockFetchAccount.mockResolvedValue({ balances: [] });
+    mockSaveCredentials.mockResolvedValue(undefined);
+    const reminder = makeReminder();
+    const onConnect = jest.fn<Promise<boolean>, []>().mockResolvedValueOnce(false);
+    const view = await render(
+      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} reminder={reminder} />,
+    );
+    await fillBoth(view.getByPlaceholderText);
+    const callsBeforeConnect = (reminder.onDraftChange as jest.Mock).mock.calls.length;
+
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect Binance'));
+    });
+
+    expect(reminder.onDraftChange).toHaveBeenCalledTimes(callsBeforeConnect);
+
+    onConnect.mockResolvedValueOnce(true);
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect Binance'));
+    });
+
+    expect(reminder.onDraftChange).toHaveBeenCalledTimes(callsBeforeConnect + 1);
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(false);
+  });
+
   it('reports a Connect press, blank or not', async () => {
     const reminder = makeReminder();
     const view = await render(

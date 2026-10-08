@@ -287,9 +287,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // it into view alongside its inline error, rather than leaving the reason
   // rendered off-screen above the fold. See scroll-to-field.ts.
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
-  // A Connect field holding a typed credential that was never connected turns the first Save press
-  // into a reminder under its Connect button (see `useConnectReminder`).
-  const { reminderFor, trackConnect, remindOnSave } = useConnectReminder(scrollTo);
+  // A Connect field holding typed input that was not connected turns the first Save press into a
+  // reminder under its Connect button (see `useConnectReminder`).
+  const { reminderFor, remindOnSave } = useConnectReminder(scrollTo);
   const nameFieldRef = useRef<FieldInstance>(null);
   // The name field's own inner TextInput, so a blocked Connect/Save can
   // focus it imperatively once it has scrolled into view (see `onSettled`
@@ -767,7 +767,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
             {!isEdit && bankId === 'monobank' && (
               <MonobankConnectField
-                onConnect={trackConnect('monobank', connectMonobank)}
+                onConnect={connectMonobank}
                 reminder={reminderFor('monobank')}
               />
             )}
@@ -797,8 +797,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
             <CryptoSyncForm
               accountId={pendingAccountId}
-              onConnectWallet={trackConnect('wallet', connectWallet)}
-              onConnectBinance={trackConnect('binance', connectBinance)}
+              onConnectWallet={connectWallet}
+              onConnectBinance={connectBinance}
               walletReminder={reminderFor('wallet')}
               binanceReminder={reminderFor('binance')}
             />

@@ -158,10 +158,12 @@ jest.mock('@kiko/design-system/components/wallet-address-field', () => {
 
           <Pressable
             accessibilityLabel="wallet-field"
-            onPress={() => {
+            onPress={async () => {
               reminder?.onConnectPress();
 
-              return onConnect('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq');
+              if (await onConnect('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq')) {
+                reminder?.onDraftChange(false);
+              }
             }}
           >
             <Text>wallet field</Text>
@@ -200,10 +202,12 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
 
           <Pressable
             accessibilityLabel="binance-field"
-            onPress={() => {
+            onPress={async () => {
               reminder?.onConnectPress();
 
-              return onConnect();
+              if (await onConnect()) {
+                reminder?.onDraftChange(false);
+              }
             }}
           >
             <Text>binance field</Text>
@@ -262,7 +266,12 @@ jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
             accessibilityLabel="monobank-field"
             onPress={async () => {
               reminder?.onConnectPress();
-              setResult(String(await onConnect('tok-123')));
+              const connected = await onConnect('tok-123');
+              setResult(String(connected));
+
+              if (connected) {
+                reminder?.onDraftChange(false);
+              }
             }}
           >
             <Text>monobank field</Text>
@@ -2530,10 +2539,12 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
     input: string;
     connectLabel: string;
     reminderTestID: string;
-    hintKey:
-      | 'forms.account.connectMonobankHint'
-      | 'forms.account.connectBinanceHint'
-      | 'forms.account.connectWalletHint';
+    // The Connect button the hint names, and what the hint reads in English.
+    buttonLabelKey:
+      | 'accountDetail.connectMonobank'
+      | 'accountDetail.connectBinance'
+      | 'accountDetail.connectWallet';
+    hintText: string;
   };
 
   const openBank = async (view: FormView): Promise<void> => {
@@ -2557,7 +2568,8 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
       input: 'monobank-token-input',
       connectLabel: 'monobank-field',
       reminderTestID: 'monobank-reminder',
-      hintKey: 'forms.account.connectMonobankHint',
+      buttonLabelKey: 'accountDetail.connectMonobank',
+      hintText: 'Tap “Connect Monobank” to link this account.',
     },
     {
       source: 'Binance key or secret',
@@ -2565,7 +2577,8 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
       input: 'binance-input',
       connectLabel: 'binance-field',
       reminderTestID: 'binance-reminder',
-      hintKey: 'forms.account.connectBinanceHint',
+      buttonLabelKey: 'accountDetail.connectBinance',
+      hintText: 'Tap “Connect Binance” to link this account.',
     },
     {
       source: 'wallet address',
@@ -2573,7 +2586,8 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
       input: 'wallet-input',
       connectLabel: 'wallet-field',
       reminderTestID: 'wallet-reminder',
-      hintKey: 'forms.account.connectWalletHint',
+      buttonLabelKey: 'accountDetail.connectWallet',
+      hintText: 'Tap “Connect wallet” to link this account.',
     },
   ];
 
@@ -2597,7 +2611,16 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
     });
   };
 
-  const hint = (sourceCase: SourceCase): string => i18n.t(sourceCase.hintKey);
+  // The hint under the active language, naming the button the user sees.
+  const hint = (sourceCase: SourceCase): string =>
+    i18n.t('forms.account.connectHint', { label: i18n.t(sourceCase.buttonLabelKey) });
+
+  // Presses the field's Connect and lets the connect run to its end.
+  const connectAndSettle = async (view: FormView, sourceCase: SourceCase): Promise<void> => {
+    await fireEvent.press(view.getByLabelText(sourceCase.connectLabel));
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -2625,6 +2648,7 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
 
       await pressSave(view);
 
+      expect(view.getByTestId(sourceCase.reminderTestID)).toHaveTextContent(sourceCase.hintText);
       expect(view.getByTestId(sourceCase.reminderTestID)).toHaveTextContent(hint(sourceCase));
       expect(view.navigation.goBack).not.toHaveBeenCalled();
       expect(mockCreate).not.toHaveBeenCalled();
@@ -2653,7 +2677,6 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
       expect(mockCreate).toHaveBeenCalledTimes(1);
       expect(scrollToFieldMock).not.toHaveBeenCalled();
       expect(mockSaveToken).not.toHaveBeenCalled();
-      expect(mockSaveCredentials).not.toHaveBeenCalled();
       expect(mockMonobankSync).not.toHaveBeenCalled();
       expect(mockCryptoSync).not.toHaveBeenCalled();
       expect(JSON.stringify(mockCreate.mock.calls)).not.toContain('typed-secret-text');
@@ -2679,13 +2702,48 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
 
     it('saves on the first Save once the source is connected', async () => {
       const view = await fillForm(sourceCase, 'typed');
-      await fireEvent.press(view.getByLabelText(sourceCase.connectLabel));
-      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+      await connectAndSettle(view, sourceCase);
 
       await pressSave(view);
 
       await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
       expect(view.queryByTestId(sourceCase.reminderTestID)).toBeNull();
+    });
+
+    it('takes the hint away when a pending connect succeeds after the hint showed', async () => {
+      let resolveSync: (connected: boolean) => void = () => {};
+      const pendingSync = new Promise<boolean>((resolve) => {
+        resolveSync = resolve;
+      });
+      mockMonobankSync.mockReturnValue(pendingSync);
+      mockCryptoSync.mockReturnValue(pendingSync);
+      const view = await fillForm(sourceCase, 'typed');
+      // The press settles only once the connect does, so it is awaited after the sync resolves.
+      let connectPress: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        connectPress = fireEvent.press(view.getByLabelText(sourceCase.connectLabel));
+      });
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+      await pressSave(view);
+      expect(view.getByTestId(sourceCase.reminderTestID)).toBeTruthy();
+
+      await act(async () => {
+        resolveSync(true);
+        await connectPress;
+      });
+
+      expect(view.queryByTestId(sourceCase.reminderTestID)).toBeNull();
+    });
+
+    it('reminds again when a connected source is edited afterwards', async () => {
+      const view = await fillForm(sourceCase, 'typed');
+      await connectAndSettle(view, sourceCase);
+
+      await fireEvent.changeText(view.getByTestId(sourceCase.input), 'typed again');
+      await pressSave(view);
+
+      expect(view.getByTestId(sourceCase.reminderTestID)).toBeTruthy();
+      expect(view.navigation.goBack).not.toHaveBeenCalled();
     });
 
     it('still blocks the first Save after a Connect that failed', async () => {

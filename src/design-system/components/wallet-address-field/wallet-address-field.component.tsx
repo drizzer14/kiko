@@ -71,6 +71,11 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect, reminder }
 
     setStatus({ kind: 'checking' });
     onConnect(trimmed).then((connected) => {
+      if (connected) {
+        // A connected address is not an unsaved draft; editing it again makes it one.
+        onDraftChange?.(false);
+      }
+
       setStatus(
         connected
           ? { kind: 'success', message: t('accountDetail.walletConnected') }

@@ -280,6 +280,28 @@ describe('WalletAddressField — connect reminder', () => {
     expect(reminder.onDraftChange).not.toHaveBeenCalled();
   });
 
+  it('reports no typed address once a connect succeeds, and keeps it while one fails', async () => {
+    const reminder = makeReminder();
+    const onConnect = jest.fn<Promise<boolean>, [string]>().mockResolvedValueOnce(false);
+    const view = await render(<WalletAddressField onConnect={onConnect} reminder={reminder} />);
+    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), ADDRESS);
+
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect wallet'));
+    });
+
+    expect(reminder.onDraftChange).toHaveBeenCalledTimes(1);
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
+
+    onConnect.mockResolvedValueOnce(true);
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect wallet'));
+    });
+
+    expect(reminder.onDraftChange).toHaveBeenCalledTimes(2);
+    expect(reminder.onDraftChange).toHaveBeenLastCalledWith(false);
+  });
+
   it('reports a Connect press, blank or not', async () => {
     const reminder = makeReminder();
     const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);

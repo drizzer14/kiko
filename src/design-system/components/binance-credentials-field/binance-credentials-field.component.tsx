@@ -107,6 +107,12 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
       }
 
       const connected = await onConnect();
+
+      if (connected) {
+        // A connected pair is not an unsaved draft; editing it again makes it one.
+        onDraftChange?.(false);
+      }
+
       setStatus(
         connected
           ? { kind: 'success', message: t('accountDetail.binanceConnected') }
