@@ -390,12 +390,13 @@ The established patterns grouped under this heading:
   under that field's Connect button and scrolls into view. It is not a
   validation error, so it is the informational hint style (caption,
   `textSecondary`, no error tone) with an `info.circle` icon, rendered by the
-  shared `InfoHint` (`src/design-system/components/info-hint/`, user-approved
-  2026-10-09): the icon is a `SymbolIcon` at the caption icon-size token,
+  shared `InfoHint` (`src/design-system/components/info-hint/`): the icon is a `SymbolIcon` at the caption icon-size token,
   top-left, the text takes the rest of the row so it wraps beside the icon,
   and the row is one accessible element labelled by the message (the icon is
   decorative). `InfoHint` is used ONLY for this reminder; the plain hint
   (`forms.account.importOnlyBankHint`) stays a bare caption `Text`. A
+  Connect reminder uses InfoHint; any other informational hint with no
+  action stays a bare caption Text. A
   SECOND Save press saves the account unconnected, storing nothing typed.
   Editing the input, pressing Connect, or the field unmounting starts over;
   a successful connect reports the input as no longer typed, so an empty or
