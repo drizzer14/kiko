@@ -308,8 +308,7 @@ trailing punctuation is decided by its UI ROLE, not habit:
   decides it (no test checks it yet).
 
 Key families added with onboarding (read `en.ts` for the current
-strings; the final Help/tips wording is still pending the user's
-review): `emptyStates.*` title is sentence case with no final ".", its
+strings in `src/i18n/locales/en.ts`): `emptyStates.*` title is sentence case with no final ".", its
 message is a full sentence with "."; `tips.*` messages are sentences
 with "."; `tips.close` (a button label) is sentence case; `help.*`
 topic titles are Title Case and listed in `TITLE_KEYS`
