@@ -45,9 +45,13 @@ describe('the display-regions native module is required on first use, not at imp
 
 describe('with the display-regions native module absent', () => {
   it('reads the fallback snapshot instead of throwing', () => {
-    const { displayRegionsNative, FALLBACK_SNAPSHOT } = loadDisplayRegionsWithoutNativeModule();
+    const { displayRegionsNative } = loadDisplayRegionsWithoutNativeModule();
 
-    expect(displayRegionsNative.getSnapshot()).toBe(FALLBACK_SNAPSHOT);
+    expect(displayRegionsNative.getSnapshot()).toEqual({
+      horizontalSizeClass: 'compact',
+      verticalBarEdge: 'none',
+      foldRegion: null,
+    });
   });
 
   it('subscribes to nothing and returns an unsubscribe that does nothing', () => {

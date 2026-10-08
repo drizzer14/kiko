@@ -808,7 +808,7 @@ verified usage, not dead weight:
   so the name cannot be kebab-case. `package.json` `codegenConfig.jsSrcsDir`
   points at that folder. A barrel there would call
   `TurboModuleRegistry.getEnforcing` on load, so `feature-imports.js`
-  (`NATIVE_SPECS`) treats `native-specs/**` as barrel-less: the folder needs no
+  (`NATIVE_SPEC_PATTERN`) treats `native-specs/**` as barrel-less: the folder needs no
   `index.ts` and a spec is imported deep through the alias. Only each module's
   wrapper (`reminders-native.ts`, `display-regions-native.ts`) loads its spec
   (lazily, via `require`); the

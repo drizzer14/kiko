@@ -1,6 +1,6 @@
 import type { Spec } from '@kiko/native-specs/NativeDisplayRegions';
 
-import type { DisplayRegionsSnapshot } from '.';
+import { type DisplayRegionsSnapshot, FALLBACK_SNAPSHOT } from '.';
 
 type DisplayRegionsNativeModule = typeof import('.');
 
@@ -21,12 +21,11 @@ const flatSnapshot: DisplayRegionsSnapshot = {
 // factories, and the wrapper requires the native module lazily from that same registry. The mock
 // is read through the registry, not a value import: only the wrapper may load the native module.
 let displayRegionsNative: DisplayRegionsNativeModule['displayRegionsNative'];
-let FALLBACK_SNAPSHOT: DisplayRegionsNativeModule['FALLBACK_SNAPSHOT'];
 let nativeModule: jest.Mocked<Spec>;
 
 beforeEach(() => {
   jest.resetModules();
-  ({ displayRegionsNative, FALLBACK_SNAPSHOT } = require('.') as DisplayRegionsNativeModule);
+  ({ displayRegionsNative } = require('.') as DisplayRegionsNativeModule);
   nativeModule = (
     jest.requireMock('@kiko/native-specs/NativeDisplayRegions') as { default: jest.Mocked<Spec> }
   ).default;
@@ -87,7 +86,7 @@ describe('displayRegionsNative.getSnapshot', () => {
   ])('returns the fallback snapshot for %s', (_name, nativeJson) => {
     nativeModule.getSnapshot.mockReturnValueOnce(nativeJson);
 
-    expect(displayRegionsNative.getSnapshot()).toBe(FALLBACK_SNAPSHOT);
+    expect(displayRegionsNative.getSnapshot()).toEqual(FALLBACK_SNAPSHOT);
   });
 
   it('models an older system as a compact, bar-less, unfolded window', () => {

@@ -84,8 +84,7 @@ const TEST_ONLY = [
 // codegen reads only its `Native*` files, so it has no barrel: a barrel re-exporting a spec would
 // call `TurboModuleRegistry.getEnforcing` on load (kiko-architecture "Native iOS shell"). Each
 // spec is imported deep, by the one wrapper that owns it; a Semgrep rule bans every other value
-// import.
-const NATIVE_SPECS = [{ path: 'native-specs/**' }];
+// import. (`NATIVE_SPEC_PATTERN` below, after `globToRegExp`.)
 
 // Ambient declarations, never imported, so they stay loose at a container
 // root.
@@ -128,10 +127,9 @@ const stripExtension = (filePath) => filePath.replace(/\.d\.ts$|\.tsx?$|\.js$/, 
 const isTestOnly = (sourceRelative) =>
   TEST_ONLY_PATTERNS.some((pattern) => pattern.test(sourceRelative));
 
-const NATIVE_SPEC_PATTERNS = NATIVE_SPECS.map((entry) => globToRegExp(entry.path));
+const NATIVE_SPEC_PATTERN = globToRegExp('native-specs/**');
 
-const isNativeSpec = (sourceRelative) =>
-  NATIVE_SPEC_PATTERNS.some((pattern) => pattern.test(sourceRelative));
+const isNativeSpec = (sourceRelative) => NATIVE_SPEC_PATTERN.test(sourceRelative);
 
 const IN_SCOPE_FROM_ROOT = /^(?:(?:src|__tests__|e2e|jest)\/|App\.tsx$)/;
 
