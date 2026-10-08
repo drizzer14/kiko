@@ -1088,10 +1088,16 @@ new component can land between reviews of this skill:
   props. `testID` gives `<testID>-icon` and `<testID>-action`. Gate it on
   `useDataReady`, never on `data.length === 0` alone.
 - **TipCard** (`src/design-system/components/tip-card/`) — a one-time,
-  dismissible hint, following the ReminderOfferCard precedent: inline and
-  non-modal, on the plain `Card` (solid `surface`, hairline border, `padding={3}`;
-  NOT `GlassSurface`, whatever "glass card" says elsewhere), never a warning
-  tone. A `body` `textPrimary` message, then a trailing icon-only `ghost`
+  dismissible hint: inline and non-modal, never a warning tone. **LOCKED look
+  (user-approved 2026-10-08, "tinted callout", pinned by the TipCard and theme
+  tests):** a flat `accentSubtle` fill (`rgba(10,132,255,0.14)`, `theme.ts`,
+  sibling of `negativeSubtle`), `radii.lg`, `padding` 3, a `spacing(1)` vertical
+  margin, NO border and NO shadow — deliberately NOT the bordered `Card`, so it
+  reads as its own layer beside neighbouring cards (Apple HIG "Offering help":
+  a tip is a small transient view with a filled symbol; TipKit inline shape).
+  Leading decorative `lightbulb.fill` (`iconSizes.body`, `accent` tone, no
+  accessibility label; `<testID>-icon`), a `body` `textPrimary` message, then a
+  trailing icon-only `ghost`
   `compact` `xmark` close `Button` (44pt tap) labelled by `closeLabel`. Strings
   come in as props. **One `useTip` call per screen, from `@kiko/tips`**:
   `const { visible, dismiss } = useTip(TIP_ID, condition)`, then

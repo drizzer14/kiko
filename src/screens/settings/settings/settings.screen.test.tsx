@@ -575,7 +575,7 @@ describe('SettingsScreen — the categories tip', () => {
   it('shows the tip directly above the Categories card once there is a transaction', async () => {
     const { getByText, getAllByTestId } = await renderScreen();
 
-    const order = getAllByTestId(/^(tip-categories|settings-card-)/).map(
+    const order = getAllByTestId(/^(tip-categories$|settings-card-)/).map(
       (node) => node.props.testID as string,
     );
 

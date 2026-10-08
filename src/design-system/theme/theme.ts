@@ -175,6 +175,12 @@ export const darkTheme = {
     // solid raised pill. Over the true-black `background` it stays subtle while
     // keeping a `textPrimary` (white) label legible on it.
     neutralSubtle: 'rgba(118,118,128,0.24)',
+    // The systemBlue accent (#0A84FF) at 0.14 alpha — the flat "tinted callout"
+    // fill of `TipCard` (user-approved 2026-10-08), so a hint reads as its own
+    // layer beside the solid `surface` content cards. `textPrimary` on it stays
+    // far above WCAG AA over both the `background` and the `surface` it can sit
+    // on, and the `accent` glyph on it clears the 3:1 non-text floor.
+    accentSubtle: 'rgba(10,132,255,0.14)',
     border: '#38383A', // separator (dark)
     // The translucent-black dismiss scrim behind a modal/bottom-sheet
     // overlay (BottomSheet). NOT the opaque `background` token: a modal

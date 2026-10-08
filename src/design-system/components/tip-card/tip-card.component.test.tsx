@@ -9,15 +9,37 @@ const MESSAGE = 'Tap and hold a card to edit or delete it.';
 const CLOSE = 'Dismiss tip';
 
 describe('TipCard', () => {
-  it('renders the message on the shared solid Card surface', async () => {
-    const { getByText, getByTestId } = await render(
-      <TipCard message={MESSAGE} closeLabel={CLOSE} onClose={jest.fn()} testID="tip" />,
+  it('renders the message', async () => {
+    const { getByText } = await render(
+      <TipCard message={MESSAGE} closeLabel={CLOSE} onClose={jest.fn()} />,
     );
 
     expect(getByText(MESSAGE)).toBeTruthy();
+  });
 
+  it('paints the tinted accent fill, not the Card surface, with no border or shadow', async () => {
+    const { getByTestId } = await render(
+      <TipCard message={MESSAGE} closeLabel={CLOSE} onClose={jest.fn()} testID="tip" />,
+    );
     const style = StyleSheet.flatten(getByTestId('tip').props.style);
-    expect(style.backgroundColor).toBe(darkTheme.colors.surface);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors.accentSubtle);
+    expect(style.backgroundColor).not.toBe(darkTheme.colors.surface);
+    expect(style.borderWidth).toBeUndefined();
+    expect(style.borderColor).toBeUndefined();
+    expect(style.shadowOpacity).toBeUndefined();
+    expect(style.elevation).toBeUndefined();
+  });
+
+  it('leads with the filled lightbulb in the accent color, hidden from VoiceOver', async () => {
+    const { getByTestId } = await render(
+      <TipCard message={MESSAGE} closeLabel={CLOSE} onClose={jest.fn()} testID="tip" />,
+    );
+    const icon = getByTestId('tip-icon');
+
+    expect(icon.props.name).toBe('lightbulb.fill');
+    expect(icon.props.tintColor).toBe(darkTheme.colors.accent);
+    expect(icon.props.accessibilityLabel).toBeUndefined();
   });
 
   it('renders a close button with the given accessibility label', async () => {
