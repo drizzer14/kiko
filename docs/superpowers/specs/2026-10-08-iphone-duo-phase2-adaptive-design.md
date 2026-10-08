@@ -158,11 +158,14 @@ Release: a later build, archived with Xcode 27.1, before April 2027.
 - Prepare your app for iPhone Duo: https://developer.apple.com/iphone-duo/prepare/
 - Apple developer news: https://developer.apple.com/news/?id=kkphp5qo
 - App Store Connect screenshot specifications:
-  https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/
-- Tech Talks 111461, 111462, 111463, 111466:
-  https://developer.apple.com/videos/play/tech-talks/111461/ (and the same path with 111462,
-  111463, 111466)
-- SwiftUI `GeometryProxy.reservedRegions(kind:)`:
-  https://developer.apple.com/documentation/swiftui/geometryproxy/reservedregions(kind:)
-- UIKit `UIView.reservedRegions(kind:options:)`:
-  https://developer.apple.com/documentation/uikit/uiview/reservedregions(kind:options:)
+  https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/
+- Tech Talk, Prepare your app for iPhone Duo:
+  https://developer.apple.com/videos/play/tech-talks/111461/
+- Tech Talk, Raise the bar with iPhone Duo:
+  https://developer.apple.com/videos/play/tech-talks/111462/
+- Tech Talk, Strike a pose with adaptive layouts on iPhone Duo:
+  https://developer.apple.com/videos/play/tech-talks/111463/
+- Tech Talk, Design for iPhone Duo:
+  https://developer.apple.com/videos/play/tech-talks/111466/
+- SwiftUI reserved regions: https://developer.apple.com/documentation/swiftui/reservedregion
+- UIKit reserved regions: https://developer.apple.com/documentation/uikit/uiview/reservedregion
