@@ -177,11 +177,11 @@ export const darkTheme = {
     neutralSubtle: 'rgba(118,118,128,0.24)',
     border: '#38383A', // separator (dark)
     // The translucent-black dismiss scrim behind a modal/bottom-sheet
-    // overlay (BottomSheet). NOT the opaque `background` token: a modal
-    // scrim reads as a frosted dim over whatever screen is behind it — real
-    // blur via LiquidGlassView where iOS 26+ supports it, this flat
-    // translucent black as the scrim's own tint (layered under the glass
-    // material) and as the non-liquid-glass fallback's dim.
+    // overlay (BottomSheet) on iOS 26+. NOT the opaque `background` token: a
+    // modal scrim reads as a frosted dim over whatever screen is behind it —
+    // real blur via LiquidGlassView, with this translucent black as the
+    // scrim's own tint (layered under the glass material). Below iOS 26 the
+    // dim is `scrimFallback`.
     //
     // 0.4, not heavier: the sheet's own background is GlassSurface's
     // `material` (live-blur) variant, so its glass samples the LIVE content
@@ -197,8 +197,7 @@ export const darkTheme = {
     // The dismiss scrim for iOS < 26, where no Liquid Glass exists (BottomSheet's
     // non-glass branch). The 0.4 reasoning above is about a sheet that samples the
     // live scrim; the iOS < 26 sheet is opaque (`sheetBackground`), so nothing
-    // samples this dim and the pre-glass 0.55 returns, which is the look the user
-    // chose to restore on that tier (option A, 2026-10-08). The glass path keeps
+    // samples this dim and it can be the heavier 0.55. The glass path keeps
     // `scrim`.
     scrimFallback: 'rgba(0,0,0,0.55)',
     entityColors: entityColorsDark,

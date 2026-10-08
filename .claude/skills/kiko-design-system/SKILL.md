@@ -252,9 +252,10 @@ an entry (date + value) the moment the user approves a new visual.
   e.g. iOS 18.7) reads like the pre-glass app, and iOS 26/27 do not change
   by a pixel. Three parts: (1) the `BottomSheet` card is the opaque
   `theme.colors.sheetBackground` (#1C1C1E) through `sheetFallbackFill`, not
-  a `GlassSurface` (whose `bloom` fallback is the shared `Card` look, a
-  60%-alpha `surfaceTranslucent` that read as a flat black dim on a sheet,
-  and stays as it is for `Card`); (2) its scrim is
+  a `GlassSurface` (whose `material`/`bloom` fallback is a translucent
+  `surfaceTranslucent` fill, which reads as a flat black dim on a sheet;
+  the sheet's fallback look does not depend on that shared primitive);
+  (2) its scrim is
   `theme.colors.scrimFallback` (black 0.55), while `scrim` (0.4) stays the
   glass path's tint; (3) every large-title native stack takes
   `screenOptions={largeTitleScreenOptions}`
@@ -773,7 +774,8 @@ new component can land between reviews of this skill:
   the touch-and-hold context menu. Neither prop keeps the fully-live see-through material (no
   backdrop). A fourth variant, `material`, is `transparent`'s sibling for a
   surface whose backdrop is STATIC while shown (BottomSheet is the first
-  consumer): it keeps the fully-live see-through glass on the glass path
+  consumer, on iOS 26+ only: below iOS 26 the sheet bypasses `GlassSurface`
+  for an opaque fill): it keeps the fully-live see-through glass on the glass path
   (no backdrop at all, so the material samples the real content behind it —
   a true blur, not `transparent`'s partially-pinned sample) but, unlike a
   plain surface, still takes a TRANSLUCENT (not opaque) fallback fill on the
@@ -855,14 +857,13 @@ new component can land between reviews of this skill:
   corners. `GlassSurface`'s own `padding` prop is passed `0` on this
   layer — the card's EXISTING padding (`styles.sheet`'s
   `SHEET_PADDING_STEP`) stays the single inset, never stacked with a
-  second one. The sheet is still a GROUPED surface: this translucent
-  base (composited to ~rgb(17,17,18) over true-black — darker than
-  `surfaceHigh` #2C2C2E) sits one level BELOW the cards/controls on
+  second one. The sheet is a GROUPED surface: its base (the live glass
+  on iOS 26+, the opaque `sheetBackground` #1C1C1E below — both darker
+  than `surfaceHigh` #2C2C2E) sits one level BELOW the cards/controls on
   it, so a control reads as raised instead of blending into the sheet
   (a chip or segment on it uses the faint `neutralSubtle` fill — see
-  `ChipRow` and `SegmentedControl` below) — it used `surfaceHigh`
-  itself before, then a flat opaque `sheetBackground` token before this
-  glass pass. It caps
+  `ChipRow` and `SegmentedControl` below); a base at `surfaceHigh`
+  itself would swallow a selected pill. It caps
   its own height at a fixed 66%-of-window ceiling and takes an optional
   `maxHeight` prop that can only tighten that cap further, plus a
   `scrollable` prop (defaults `true`) that wraps `children` in a

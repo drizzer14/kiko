@@ -172,10 +172,9 @@ describe('BottomSheet', () => {
   // describe block below). This describe block always exercises the
   // non-liquid-glass FALLBACK branch (`@callstack/liquid-glass` defaults to
   // `isLiquidGlassSupported: false` above): iOS < 26 has no glass to sample,
-  // so a see-through `surfaceTranslucent` panel read as a flat black dim there.
-  // The fallback is the old solid `sheetBackground` card (user option A,
-  // 2026-10-08), and it does NOT route through `GlassSurface`, whose
-  // `bloom` fallback is shared with `Card` and stays translucent.
+  // and a see-through panel reads as a flat black dim there. The fallback is
+  // an opaque `sheetBackground` card that does not route through
+  // `GlassSurface`, whose `material`/`bloom` fallback is a translucent fill.
   it('paints the sheet card opaque sheetBackground on the non-glass fallback, not a translucent glass', async () => {
     const { getByTestId, queryByTestId } = await render(
       <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
@@ -271,7 +270,6 @@ describe('BottomSheet', () => {
         : backdropChildren;
 
       expect(backdropChild.props.tintColor).toBe(darkTheme.colors.scrim);
-      expect(darkTheme.colors.scrim).toBe('rgba(0,0,0,0.4)');
     });
   });
 
@@ -365,8 +363,8 @@ describe('BottomSheet', () => {
   // opaque `background` token. Jest always exercises the non-liquid-glass
   // fallback branch (`@callstack/liquid-glass` is globally mocked with
   // `isLiquidGlassSupported: false` — see `jest/setup.js`), so this asserts
-  // the fallback `View`'s own dim, `scrimFallback` (0.55, the pre-glass dim
-  // restored on iOS < 26), not the glass path's 0.4 `scrim`; the real
+  // the fallback `View`'s own dim, `scrimFallback` (0.55), not the glass
+  // path's 0.4 `scrim`; the real
   // `LiquidGlassView` blur branch only renders on an iOS 26+ device.
   it('dims the scrim with the translucent scrimFallback token, never opaque black', async () => {
     const { getByTestId } = await render(

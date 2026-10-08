@@ -1,8 +1,7 @@
 import { isValidElement, type ReactElement } from 'react';
 
-// The real screens wired into this stack pull in db/client, which opens a real
-// op-sqlite connection at module load. op-sqlite has no Jest binary, so stub it
-// the same way the other stack tests do.
+// The real screens wired into this stack build their themed styles at module
+// load, which needs the Unistyles theme registered first.
 import '@kiko/design-system/unistyles';
 
 import HomeStack from './home.stack';

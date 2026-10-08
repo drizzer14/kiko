@@ -103,8 +103,9 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  * `GlassSurface`'s `material` variant rather than a fork of its layering — the
  * live see-through Liquid Glass on iOS 26+ (no backdrop under it, so it
  * samples the actual content behind the sheet for a true blur, not a
- * color-pinned near-opaque panel), the same themed flat TRANSLUCENT fallback
- * elsewhere. A modal sheet's backdrop is static while it is open, so the
+ * color-pinned near-opaque panel). Below iOS 26 there is no glass, so the card
+ * is a plain opaque `sheetBackground` `View` instead (`styles.sheetFallbackFill`).
+ * A modal sheet's backdrop is static while it is open, so the
  * lightness-drift concern that motivates `transparent`'s partial-pin backdrop
  * for a scrolling CARD does not apply here — `material` is `transparent`'s
  * sibling variant for exactly this static-backdrop case (see
@@ -350,9 +351,9 @@ const BottomSheet: FC<BottomSheetProps> = ({
           testID={testID}
         >
           {/* Below iOS 26 there is no glass to sample, and GlassSurface's
-              `bloom` fallback (shared with Card) is a see-through panel that
-              read as a flat black dim on a sheet, so the sheet takes the old
-              opaque card there instead of a GlassSurface. */}
+              `material`/`bloom` fallback is a translucent fill, which reads as a
+              flat black dim on a sheet. The opaque fill is a plain View so the
+              sheet's fallback look does not depend on that shared primitive. */}
           {isLiquidGlassSupported ? (
             <GlassSurface
               material

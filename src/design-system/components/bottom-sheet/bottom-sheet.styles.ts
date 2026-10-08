@@ -126,8 +126,8 @@ export const styles = StyleSheet.create((theme) => ({
   // material is available without a new native dependency (see
   // `kiko-design-system` / the harness's dependency-age guard), so this
   // stays a flat translucent-black dim — `theme.colors.scrimFallback` (the
-  // pre-glass 0.55, since the opaque sheet on this tier samples nothing and
-  // the glass path's lighter `scrim` would read washed out), not the opaque
+  // 0.55, since the opaque sheet on this tier samples nothing and the glass
+  // path's lighter `scrim` would read washed out), not the opaque
   // `background` token — enough contrast for the sheet on top without ever
   // reading as solid black.
   backdropFallback: {
@@ -151,14 +151,13 @@ export const styles = StyleSheet.create((theme) => ({
   //
   // The sheet is a grouped surface: its base sits one level below the
   // cards/controls on it, so a selected pill (`surfaceHigh`) reads as raised
-  // rather than blending into the sheet. It used `surfaceHigh` itself before —
-  // the SAME tone as a selected pill — which the trend filter sheet blended
-  // into. The base fill itself now lives on `glassFill`'s
-  // `GlassSurface` (its `material` variant — a real live-blur on iOS 26+ that
-  // reads the true content behind the sheet, or the opaque `sheetBackground`
-  // #1C1C1E on the non-glass fallback (`sheetFallbackFill` below) — darker than
-  // `surfaceHigh` #2C2C2E, so the elevation split still holds), not a
-  // `backgroundColor` here. No in-sheet element uses
+  // rather than blending into the sheet; a base at the SAME tone as a selected
+  // pill (`surfaceHigh`) would swallow it. The base fill lives on `glassFill`
+  // (a `GlassSurface` `material` — a real live-blur on iOS 26+ that reads the
+  // true content behind the sheet) or, below iOS 26, on `sheetFallbackFill`
+  // (the opaque `sheetBackground` #1C1C1E, darker than `surfaceHigh` #2C2C2E,
+  // so the elevation split still holds), not a `backgroundColor` here. No
+  // in-sheet element uses
   // the `surface`/`surfaceTranslucent` tone for
   // its own chrome (it is `surfaceHigh`, `accent`, or transparent — the
   // icon-picker-modal's unselected tiles were moved from `surface` to
@@ -198,7 +197,7 @@ export const styles = StyleSheet.create((theme) => ({
     right: 0,
     bottom: -theme.radii.lg,
   },
-  // The iOS < 26 card background: the old opaque `sheetBackground` fill, on
+  // The iOS < 26 card background: the opaque `sheetBackground` fill, on
   // the same bounds as `glassFill` (composed with it in JSX) so the card's
   // `overflow: 'hidden'` clip gives the identical top-rounded, bottom-flush
   // silhouette on both tiers.
