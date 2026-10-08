@@ -10,6 +10,7 @@ import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
+import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
@@ -4649,5 +4650,171 @@ describe('TransactionFormScreen — the apply-to-all tip', () => {
     await waitFor(() => expect(mockSetCategory).toHaveBeenCalled());
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
     expect(mockDismissTip).not.toHaveBeenCalled();
+  });
+});
+
+describe('TransactionFormScreen — "Add holding" row in an empty holding picker', () => {
+  const WALLET: Account = { id: 'acc-1', name: 'Wallet', kind: 'cash' };
+  const SOURCE: Holding = {
+    id: 'only-cash',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Cash UAH',
+    accountId: 'acc-1',
+    sortOrder: 0,
+    createdAt: 1,
+  };
+  const DOLLARS = {
+    id: 'cash-usd',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Cash USD',
+    accountId: 'acc-1',
+    sortOrder: 1,
+  };
+  const EXPENSE: Transaction = {
+    id: 'expense',
+    holdingId: 'only-cash',
+    amountMinorUnits: -10_000,
+    time: 42,
+    description: 'Coffee',
+    source: 'manual',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('is absent from the Exchange "To" sheet while another destination exists', async () => {
+    setLiveData([SOURCE, { ...DOLLARS, createdAt: 2 }], undefined, CATEGORIES, [WALLET]);
+    const utils = await renderAddFromHolding('only-cash');
+
+    await pickType(utils, 'exchange');
+    await fireEvent.press(utils.getByLabelText('To'));
+
+    expect(utils.getByText('Cash USD')).toBeTruthy();
+    expect(utils.queryByTestId('holding-select-create-new')).toBeNull();
+  });
+
+  it('opens the holding form on the source holding\'s account from the Exchange "To" sheet', async () => {
+    setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+    const utils = await renderAddFromHolding('only-cash');
+
+    await pickType(utils, 'exchange');
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Add holding'));
+
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
+  });
+
+  it("opens the holding form on the payer's account from a return row with no option left", async () => {
+    setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+    const utils = await renderAddFromHolding('only-cash');
+
+    await pickType(utils, 'split');
+    // The only eligible holding is picked in row 1, so row 2 has none.
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+
+    expect(utils.queryByTestId('holding-select-create-new')).toBeNull();
+
+    await fireEvent.press(utils.getByText('Cash UAH'));
+    await fireEvent.press(utils.getByText('Add return'));
+    await fireEvent.press(utils.getByLabelText('Return to 2'));
+    await fireEvent.press(utils.getByText('Add holding'));
+
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
+  });
+
+  it("opens the holding form on the existing holding's account from the Convert counterpart sheet", async () => {
+    setLiveData([SOURCE], EXPENSE, CATEGORIES, [WALLET]);
+    const utils = await renderEdit('expense');
+
+    await fireEvent.press(utils.getByText('Exchange'));
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Add holding'));
+
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
+  });
+
+  describe('the global-add primary picker, which has no anchor holding', () => {
+    it('opens the holding form on the first account that can hold one', async () => {
+      const flats: Account = { id: 'flats', name: 'Property', kind: 'property' };
+
+      setLiveData([], undefined, CATEGORIES, [flats, WALLET]);
+      const utils = await renderEmptyCreate();
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
+    });
+
+    it.each([
+      ['no account', []],
+      ['only implicit accounts', [{ id: 'flats', name: 'Property', kind: 'property' }]],
+    ])('opens the account form with %s', async (_label, accounts) => {
+      setLiveData([], undefined, CATEGORIES, accounts);
+      const utils = await renderEmptyCreate();
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+    });
+  });
+
+  it('keeps the draft and selects the new holding when it appears after the round trip', async () => {
+    setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+    const utils = await renderAddFromHolding('only-cash');
+
+    await pickType(utils, 'exchange');
+    await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Add holding'));
+
+    // The holding form saved a USD cash holding and the user came back.
+    setLiveData([SOURCE, { ...DOLLARS, createdAt: Date.now() }], undefined, CATEGORIES, [WALLET]);
+    await utils.rerender(
+      <TransactionFormScreen
+        route={transactionFormRoute({ holdingId: 'only-cash' })}
+        navigation={navigationProp}
+      />,
+    );
+
+    expect(utils.getByLabelText('Value out').props.value).toBe('100');
+    expect(utils.getByLabelText('To')).toHaveTextContent(/Cash USD/);
+  });
+
+  it('selects nothing when a holding appears after the holding form was cancelled', async () => {
+    const { provide, fireFocus } = makeFocusNavigation();
+    const route = transactionFormRoute({ holdingId: 'only-cash' });
+
+    setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+    const utils = await render(
+      provide(<TransactionFormScreen route={route} navigation={navigationProp} />),
+    );
+
+    await pickType(utils, 'exchange');
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Add holding'));
+    // Back from the holding form with nothing saved.
+    await act(async () => {
+      fireFocus();
+    });
+
+    // A bank sync later adds a cash holding in another currency.
+    setLiveData([SOURCE, { ...DOLLARS, createdAt: Date.now() + 60_000 }], undefined, CATEGORIES, [
+      WALLET,
+    ]);
+    await utils.rerender(
+      provide(<TransactionFormScreen route={route} navigation={navigationProp} />),
+    );
+
+    expect(utils.getByLabelText('To')).toHaveTextContent('Select holding');
   });
 });

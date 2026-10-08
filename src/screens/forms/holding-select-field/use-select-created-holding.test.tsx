@@ -1,10 +1,6 @@
-import {
-  NavigationContext,
-  type NavigationProp,
-  type ParamListBase,
-} from '@react-navigation/native';
 import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react-native';
+import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
 
 import { useSelectCreatedHolding } from './use-select-created-holding';
 import type { HoldingSelectOption } from './holding-select-field.props';
@@ -24,41 +20,10 @@ const makeOption = (id: string, createdAt: number): HoldingSelectOption => ({
   createdAt,
 });
 
-// A minimal fake navigation whose only job is to let a test fire the `focus`
-// event the hook subscribes to, the way use-focus-refreshed-now.test.tsx does.
-const makeNavigation = (): {
-  navigation: NavigationProp<ParamListBase>;
-  fireFocus: () => void;
-} => {
-  const focusListeners = new Set<() => void>();
-
-  const navigation = {
-    addListener: (event: string, callback: () => void) => {
-      if (event === 'focus') {
-        focusListeners.add(callback);
-
-        return () => focusListeners.delete(callback);
-      }
-
-      return () => undefined;
-    },
-  } as unknown as NavigationProp<ParamListBase>;
-
-  const fireFocus = () => {
-    for (const callback of focusListeners) {
-      callback();
-    }
-  };
-
-  return { navigation, fireFocus };
-};
-
 const setup = async (initialOptions: readonly HoldingSelectOption[] = []) => {
   const onSelect = jest.fn();
-  const { navigation, fireFocus } = makeNavigation();
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <NavigationContext.Provider value={navigation}>{children}</NavigationContext.Provider>
-  );
+  const { provide, fireFocus } = makeFocusNavigation();
+  const wrapper = ({ children }: { children: ReactNode }) => provide(children);
   const hook = await renderHook(
     ({ options }: { options: readonly HoldingSelectOption[] }) =>
       useSelectCreatedHolding(options, onSelect),
