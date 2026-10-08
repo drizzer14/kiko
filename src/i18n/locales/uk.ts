@@ -184,6 +184,7 @@ export const uk: typeof en = {
   },
   forms: {
     fields: {
+      addHolding: 'Додати актив',
       amount: 'Сума',
       color: 'Колір',
       currency: 'Валюта',
