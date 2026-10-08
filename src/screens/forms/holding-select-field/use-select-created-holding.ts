@@ -13,7 +13,11 @@ type RoundTrip = {
 };
 
 // The `created_at` column holds whole seconds (rounded down), so a holding
-// saved in the same second as the press carries a stamp BEFORE the press.
+// saved in the same second as the press carries a stamp BEFORE the press. The
+// same precision limit applies at the window's end: a holding stamped up to
+// about one second after the user cancelled can still fall inside the window
+// and be selected. That is inherent to a whole-second stamp, and it only
+// preselects a visible form value; it writes no data.
 const floorToSecond = (instant: number): number =>
   Math.floor(instant / MILLISECONDS_PER_SECOND) * MILLISECONDS_PER_SECOND;
 
@@ -27,8 +31,9 @@ const wasCreatedDuring = (option: HoldingSelectOption, roundTrip: RoundTrip): bo
 // the screen regaining focus is then handed to `onSelect`, once. The window is
 // what keeps a holding that a sync adds after the user cancelled the create
 // form from being selected into the field. Focus is read from the screen's own
-// navigation when there is one, because the new option can reach this field
-// before or after the focus event.
+// navigation, because the new option can reach this field before or after the
+// focus event. Outside a navigator (only a test renders the field that way) the
+// window never closes, so the first option stamped after the press is selected.
 export const useSelectCreatedHolding = (
   options: readonly HoldingSelectOption[],
   onSelect: (id: string) => void,

@@ -16,8 +16,10 @@ import type { HoldingSelectFieldProps } from './holding-select-field.props';
 // `SelectableRow` — the shared single-select row, with its own leading
 // checkmark when selected. One choice; the sheet closes on pick. Mirrors
 // CategoryField's field-plus-sheet chrome so every form picker reads as one
-// family. Purely presentational — the caller (the exchange form) builds and
-// filters the option list; this component only renders what it is given.
+// family. The caller (the exchange form) builds and filters the option list;
+// this component only renders what it is given, and an empty list shows an
+// "Add holding" row (when `onCreateNew` is set) that selects the holding the
+// user creates through it.
 const HoldingSelectField = ({
   label,
   sheetTitle,
@@ -41,9 +43,9 @@ const HoldingSelectField = ({
     setOpen(false);
   };
 
-  const handleCreateNew = (): void => {
+  const handleCreateNew = (createNew: () => void): void => {
     startCreateRoundTrip();
-    onCreateNew?.();
+    createNew();
     setOpen(false);
   };
 
@@ -110,7 +112,7 @@ const HoldingSelectField = ({
         {onCreateNew && options.length === 0 && (
           <SelectableRow
             selected={false}
-            onPress={handleCreateNew}
+            onPress={() => handleCreateNew(onCreateNew)}
             label={t('forms.fields.addHolding')}
             icon="plus"
             testID="holding-select-create-new"

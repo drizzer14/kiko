@@ -37,7 +37,6 @@ import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -48,7 +47,18 @@ import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/curren
 
 import { useConnectReminder } from './use-connect-reminder';
 
-type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
+// This screen is registered in BOTH the Accounts and Home stacks (Home reaches it
+// from the transaction form's empty pickers), so it cannot bind its props to one
+// stack's param list. It declares exactly the navigation methods it calls,
+// structurally satisfied by either stack.
+type AccountFormScreenProps = {
+  route: { params: AccountsStackParamList['AccountForm'] };
+  navigation: {
+    goBack: () => void;
+    setOptions: (options: { title: string }) => void;
+    replace: (name: 'HoldingForm', params: AccountsStackParamList['HoldingForm']) => void;
+  };
+};
 
 // A crypto account is created like a bank account — no initial holding/currency
 // at creation; holdings are added later — so only cash needs the currency +

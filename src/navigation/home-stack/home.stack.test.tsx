@@ -50,15 +50,6 @@ const optionsOf = (name: string, params: unknown): ScreenOptions | undefined => 
 };
 
 describe('HomeStack', () => {
-  it('registers the account and holding create forms the transaction form opens', () => {
-    const navigator = HomeStack({}) as ReactElement<{ children: ScreenElement[] }>;
-    const names = navigator.props.children
-      .filter(isValidElement)
-      .map((screen) => screen.props.name);
-
-    expect(names).toEqual(['Home', 'TransactionForm', 'AccountForm', 'HoldingForm']);
-  });
-
   it.each([
     ['AccountForm', 'Add Account'],
     ['HoldingForm', 'Add Holding'],

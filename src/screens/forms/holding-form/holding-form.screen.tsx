@@ -15,7 +15,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import {
-  openCreateHolding,
+  type CreateHoldingRoute,
   resolveCreateHoldingTarget,
 } from '@kiko/screens/forms/create-holding-target';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -36,7 +36,6 @@ import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import HoldingTypeField from '@kiko/screens/forms/holding-type-field';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
-import { isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
@@ -45,12 +44,12 @@ import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
+import { type ImplicitAccountKind, isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
 import LoanFormBlock from './loan/loan-form-block';
 import LoanKindField from './loan/loan-kind-field';
@@ -208,7 +207,26 @@ const headerTitle = (
     .with({ debtAccount: true }, () => t('forms.holding.addLoanTitle'))
     .otherwise(() => undefined);
 
-type HoldingFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'HoldingForm'>;
+// This screen is registered in BOTH the Accounts and Home stacks (Home reaches it
+// from the transaction form's empty pickers), so it cannot bind its props to one
+// stack's param list. It declares exactly the navigation methods it calls,
+// structurally satisfied by either stack. `popTo` is only reached when a
+// `returnTo` is present, which only the Accounts stack's import screens set.
+type HoldingFormScreenProps = {
+  route: { params: AccountsStackParamList['HoldingForm'] };
+  navigation: {
+    goBack: () => void;
+    setOptions: (options: { title: string }) => void;
+    setParams: (params: { implicitKind: ImplicitAccountKind }) => void;
+    replace: (name: 'AccountForm', params: AccountsStackParamList['AccountForm']) => void;
+    push: (...route: CreateHoldingRoute) => void;
+    popTo: <Name extends 'StatementImport' | 'ColumnMapping'>(
+      name: Name,
+      params: AccountsStackParamList[Name],
+      options: { merge: true },
+    ) => void;
+  };
+};
 
 type HoldingFormNavigation = HoldingFormScreenProps['navigation'];
 
@@ -451,9 +469,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // changes this route's params, which would turn the loan form into the new
   // holding's form. A push leaves this one mounted underneath with its draft.
   const createPaymentHolding = (): void => {
-    openCreateHolding(resolveCreateHoldingTarget(undefined, allAccounts), (...route) =>
-      navigation.push(...route),
-    );
+    navigation.push(...resolveCreateHoldingTarget(undefined, allAccounts));
   };
 
   // The one place every holding type's own form behaviour is looked up —

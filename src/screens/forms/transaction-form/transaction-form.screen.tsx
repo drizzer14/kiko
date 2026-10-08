@@ -38,7 +38,6 @@ import HoldingSelectField, {
 } from '@kiko/screens/forms/holding-select-field';
 import {
   type CreateHoldingRoute,
-  openCreateHolding,
   resolveCreateHoldingTarget,
 } from '@kiko/screens/forms/create-holding-target';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -1742,9 +1741,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // so this form stays mounted underneath with its draft. A picker tied to this
   // form's own holding creates in that holding's account.
   const openCreateHoldingIn = (anchorAccountId: string | undefined) => (): void => {
-    openCreateHolding(resolveCreateHoldingTarget(anchorAccountId, accounts), (...route) =>
-      navigation.navigate(...route),
-    );
+    navigation.navigate(...resolveCreateHoldingTarget(anchorAccountId, accounts));
   };
 
   // The picker's eligible options (open, non-synced, transaction-eligible),

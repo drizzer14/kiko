@@ -23,7 +23,8 @@ const NONE_ICON = 'xmark.circle';
 // auto-link caption/Undo) so the loan form's own "Paid from" field — an
 // optional holding link with no auto-link state of its own — can reuse the
 // same picker chrome without carrying transaction-form-only props it would
-// never use. Purely presentational: the caller builds and filters `options`.
+// never use. The caller builds and filters `options`; an empty list shows an
+// "Add holding" row (when `onCreateNew` is set).
 const PaymentHoldingField = ({
   label,
   sheetTitle,
@@ -45,9 +46,9 @@ const PaymentHoldingField = ({
     setOpen(false);
   };
 
-  const handleCreateNew = (): void => {
+  const handleCreateNew = (createNew: () => void): void => {
     startCreateRoundTrip();
-    onCreateNew?.();
+    createNew();
     setOpen(false);
   };
 
@@ -102,7 +103,7 @@ const PaymentHoldingField = ({
         {onCreateNew && options.length === 0 && (
           <SelectableRow
             selected={false}
-            onPress={handleCreateNew}
+            onPress={() => handleCreateNew(onCreateNew)}
             label={t('forms.fields.addHolding')}
             icon="plus"
             testID={testID ? `${testID}-create-new` : undefined}
