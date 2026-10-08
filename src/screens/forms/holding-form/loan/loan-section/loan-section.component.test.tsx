@@ -37,6 +37,7 @@ const CARD_OPTION = {
   color: '#3366CC',
   currency: 'UAH' as const,
   accountName: 'Monobank',
+  createdAt: 0,
 };
 
 describe('LoanSection', () => {

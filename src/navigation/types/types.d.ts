@@ -51,6 +51,11 @@ export type FormDraft = { name: string; icon: string | null; color: string | nul
 export type HomeStackParamList = {
   Home: undefined;
   TransactionForm: TransactionFormParams;
+  // The two create forms an empty holding picker's "Add holding" row opens. They
+  // sit in this stack, not behind a switch to the Accounts tab, because leaving
+  // the tab resets its stack and the transaction form's draft would go with it.
+  AccountForm: AccountsStackParamList['AccountForm'];
+  HoldingForm: AccountsStackParamList['HoldingForm'];
 };
 
 export type AccountsStackParamList = {

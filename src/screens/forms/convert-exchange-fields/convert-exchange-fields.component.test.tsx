@@ -24,6 +24,7 @@ const options: HoldingSelectOption[] = [
     color: '#3366FF',
     currency: 'USD',
     accountName: 'Wallet',
+    createdAt: 0,
   },
 ];
 
