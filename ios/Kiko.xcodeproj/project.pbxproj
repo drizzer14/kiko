@@ -10,6 +10,8 @@
 		09FACA2736966ED378308585 /* KikoNotificationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE12D2C758379F41F4A4360B /* KikoNotificationDelegate.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		172FE3757FEBCA087CDF114A /* KikoRemindersCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F84C8312D8608C69CCC2C8 /* KikoRemindersCenter.swift */; };
+		5A1D3C7E9B2F4601A8C3D7E2 /* DisplayRegionsCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1D3C7E9B2F4601A8C3D7E1 /* DisplayRegionsCenter.swift */; };
+		5A1D3C7E9B2F4601A8C3D7E4 /* RCTDisplayRegions.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5A1D3C7E9B2F4601A8C3D7E3 /* RCTDisplayRegions.mm */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		846F14066B8C2CA6E5707F03 /* RCTKikoReminders.mm in Sources */ = {isa = PBXBuildFile; fileRef = E130C34F45D22CC8AC8844DF /* RCTKikoReminders.mm */; };
@@ -25,6 +27,9 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Kiko/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Kiko/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = Kiko/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		5A1D3C7E9B2F4601A8C3D7E1 /* DisplayRegionsCenter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DisplayRegionsCenter.swift; sourceTree = "<group>"; };
+		5A1D3C7E9B2F4601A8C3D7E3 /* RCTDisplayRegions.mm */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.cpp.objcpp; path = RCTDisplayRegions.mm; sourceTree = "<group>"; };
+		5A1D3C7E9B2F4601A8C3D7E5 /* RCTDisplayRegions.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = RCTDisplayRegions.h; sourceTree = "<group>"; };
 		6244C371759C2EAF185CB914 /* en */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.strings; name = en; path = Kiko/en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		6B9EA506C224646985930F8A /* Pods-Kiko.release-adhoc.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Kiko.release-adhoc.xcconfig"; path = "Target Support Files/Pods-Kiko/Pods-Kiko.release-adhoc.xcconfig"; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Kiko/AppDelegate.swift; sourceTree = "<group>"; };
@@ -65,6 +70,7 @@
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
 				B23A81201A6576C1474D2FB8 /* Kiko.entitlements */,
 				9278B2E61310F744B45A862E /* Reminders */,
+				5A1D3C7E9B2F4601A8C3D7E6 /* DisplayRegions */,
 			);
 			name = Kiko;
 			sourceTree = "<group>";
@@ -76,6 +82,17 @@
 				EB644446D98F6DD2E63A735C /* libPods-Kiko.a */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		5A1D3C7E9B2F4601A8C3D7E6 /* DisplayRegions */ = {
+			isa = PBXGroup;
+			children = (
+				5A1D3C7E9B2F4601A8C3D7E1 /* DisplayRegionsCenter.swift */,
+				5A1D3C7E9B2F4601A8C3D7E5 /* RCTDisplayRegions.h */,
+				5A1D3C7E9B2F4601A8C3D7E3 /* RCTDisplayRegions.mm */,
+			);
+			name = DisplayRegions;
+			path = Kiko/DisplayRegions;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -300,6 +317,8 @@
 				172FE3757FEBCA087CDF114A /* KikoRemindersCenter.swift in Sources */,
 				09FACA2736966ED378308585 /* KikoNotificationDelegate.swift in Sources */,
 				846F14066B8C2CA6E5707F03 /* RCTKikoReminders.mm in Sources */,
+				5A1D3C7E9B2F4601A8C3D7E2 /* DisplayRegionsCenter.swift in Sources */,
+				5A1D3C7E9B2F4601A8C3D7E4 /* RCTDisplayRegions.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
