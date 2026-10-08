@@ -25,7 +25,7 @@ type ImportResultSheetControls = {
     onDone: () => void;
     onClosed: () => void;
   };
-  show: (result: ImportResult) => void;
+  show: (result: ImportResult) => Promise<void>;
 };
 
 /**
@@ -62,7 +62,7 @@ export const useImportResultSheet = ({
   const show = async (shown: ImportResult): Promise<void> => {
     setResult(shown);
     setVisible(true);
-    await logOnFailure('tips.dismiss', () =>
+    await logOnFailure('[tips] dismiss failed', () =>
       settingsRepo.dismissTip('accountDetail.importStatement'),
     );
   };

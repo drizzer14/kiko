@@ -82,7 +82,7 @@ describe('useImportResultSheet', () => {
 
     expect(result.current.sheetProps.visible).toBe(true);
     expect(result.current.sheetProps.result).toBe(importResult);
-    expect(mockLogFailure).toHaveBeenCalledWith('tips.dismiss', expect.any(Error));
+    expect(mockLogFailure).toHaveBeenCalledWith('[tips] dismiss failed', expect.any(Error));
   });
 
   it('starts hidden with no result', async () => {

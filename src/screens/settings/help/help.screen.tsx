@@ -42,7 +42,7 @@ const HelpScreen: FC<HelpScreenProps> = ({ navigation }) => {
   };
 
   const handleShowTipsAgain = async (): Promise<void> => {
-    await logOnFailure('help.showTipsAgain', () => settingsRepo.resetTips());
+    await logOnFailure('[help] tips reset failed', () => settingsRepo.resetTips());
   };
 
   return (

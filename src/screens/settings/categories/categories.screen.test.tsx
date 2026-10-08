@@ -891,7 +891,7 @@ describe('CategoriesScreen — the categories tip', () => {
     const { getByDisplayValue } = await renderScreen();
 
     expect(getByDisplayValue(SEEDED_CATEGORIES[0].title)).toBeTruthy();
-    expect(warn).toHaveBeenCalledWith('tips.dismiss', expect.anything());
+    expect(warn).toHaveBeenCalledWith('[tips] dismiss failed', expect.anything());
 
     warn.mockRestore();
   });

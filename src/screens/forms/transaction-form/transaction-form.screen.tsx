@@ -2209,7 +2209,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       );
       // Applying a rule answers the tip; a failed dismiss only shows the tip once more, so it is
       // logged, not alerted, and never blocks leaving.
-      await logOnFailure('tips.dismiss', () => settingsRepo.dismissTip('transaction.applyToAll'));
+      await logOnFailure('[tips] dismiss failed', () =>
+        settingsRepo.dismissTip('transaction.applyToAll'),
+      );
       navigation.goBack();
     } catch {
       showSaveErrorAlert();

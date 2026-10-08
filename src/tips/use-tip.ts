@@ -17,7 +17,7 @@ export const useTip = (id: TipId, condition: boolean): Tip => {
   const dismissed = dismissedTipIds(data.at(0)?.dismissedTips ?? []);
   const visible = !isLoading && pickTip([{ id, condition }], dismissed) === id;
   const dismiss = useCallback(async (): Promise<void> => {
-    await logOnFailure('tips.dismiss', () => settingsRepo.dismissTip(id));
+    await logOnFailure('[tips] dismiss failed', () => settingsRepo.dismissTip(id));
   }, [id]);
 
   return { visible, dismiss };

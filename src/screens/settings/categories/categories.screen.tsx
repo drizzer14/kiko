@@ -390,8 +390,8 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   // write only means the tip shows once more, so it is logged, not alerted.
   useFocusEffect(
     useCallback(() => {
-      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
-      logOnFailure('tips.dismiss', () => settingsRepo.dismissTip('settings.categories'));
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
+      logOnFailure('[tips] dismiss failed', () => settingsRepo.dismissTip('settings.categories'));
     }, []),
   );
   const {
