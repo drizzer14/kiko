@@ -531,7 +531,11 @@ export const uk: typeof en = {
   },
   accounts: {
     addAccount: 'Додати рахунок',
-    emptyState: 'Ще немає рахунків',
+    empty: {
+      message:
+        'Рахунком може бути банківська картка, готівка, крипто чи майно. Рахунки Monobank, Binance і Bitcoin можуть синхронізуватися.',
+      title: 'Ще немає рахунків',
+    },
     icon: 'Іконка {{name}}',
     implicitName: {
       debt: 'Кредити',

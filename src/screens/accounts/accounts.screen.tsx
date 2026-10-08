@@ -1,6 +1,7 @@
 import { type FC, useMemo } from 'react';
 import {
   accountDisplayName,
+  hasNoAccounts,
   isImplicitAccount,
   type ImplicitAccountKind,
 } from '@kiko/holdings/implicit-account';
@@ -26,6 +27,7 @@ import SymbolIcon from '@kiko/design-system/components/symbol';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
+import EmptyState from '@kiko/design-system/components/empty-state';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
@@ -406,26 +408,42 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     );
   }
 
+  const isEmpty = hasNoAccounts(accounts, holdings);
+
   return (
     <Screen
       scroll
       scrollableRef={scrollableRef}
+      // The empty state carries its own Add account action, so the pinned
+      // footer would show the same button twice.
       footer={
-        <Box testID="add-account-footer" style={styles.addAccountButton}>
-          <Button
-            variant="primary"
-            onPress={() => navigation.navigate('AccountForm', {})}
-            icon={genericEntitySymbol.account}
-          >
-            {t('accounts.addAccount')}
-          </Button>
-        </Box>
+        isEmpty ? undefined : (
+          <Box testID="add-account-footer" style={styles.addAccountButton}>
+            <Button
+              variant="primary"
+              onPress={() => navigation.navigate('AccountForm', {})}
+              icon={genericEntitySymbol.account}
+            >
+              {t('accounts.addAccount')}
+            </Button>
+          </Box>
+        )
       }
     >
       <Box gap={4} style={styles.content}>
-        {mainAccounts.length === 0 && propertyHoldings.length === 0 && debtHoldings.length === 0 ? (
+        {isEmpty ? (
           <Box style={styles.empty}>
-            <Text tone="textSecondary">{t('accounts.emptyState')}</Text>
+            <EmptyState
+              icon={genericEntitySymbol.account}
+              title={t('accounts.empty.title')}
+              message={t('accounts.empty.message')}
+              action={{
+                label: t('accounts.addAccount'),
+                icon: genericEntitySymbol.account,
+                onPress: () => navigation.navigate('AccountForm', {}),
+              }}
+              testID="accounts-empty"
+            />
           </Box>
         ) : (
           <>

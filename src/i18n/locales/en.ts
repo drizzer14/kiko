@@ -606,7 +606,11 @@ export const en = {
   },
   accounts: {
     addAccount: 'Add account',
-    emptyState: 'No accounts yet',
+    empty: {
+      message:
+        'An account can be a bank card, cash, crypto, or property. Monobank, Binance, and Bitcoin accounts can sync.',
+      title: 'No accounts yet',
+    },
     icon: '{{name}} icon',
     // The display name of THE implicit Property / Loans account
     // (`accountDisplayName`, `src/holdings/implicit-account/`): at most one live
