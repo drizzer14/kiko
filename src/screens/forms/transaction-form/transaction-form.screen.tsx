@@ -1576,15 +1576,18 @@ const resolvePendingCategory = (
 // row, not by the form mode: an edit never reaches the exchange mode, and an untouched leg's
 // category change writes that row only, so the tip's promise would be false. The rules read
 // returns an empty list until its first load, so the tip waits for it. Module-level so its `&&`
-// chain stays out of the screen's cognitive-complexity budget.
+// chain stays out of the screen's cognitive-complexity budget. A row with a blank name is excluded
+// too: `resolveCategoryOverrideRequest` never opens the sheet for one, so the tip could not be
+// dismissed by its own gesture.
 const isApplyToAllTipEligible = (input: {
-  existing: Pick<TransactionRow, 'exchangeCounterpartHoldingId'> | undefined;
+  existing: Pick<TransactionRow, 'exchangeCounterpartHoldingId' | 'description'> | undefined;
   categoryCount: number;
   overrideRuleCount: number;
   overrideRulesLoading: boolean;
 }): boolean =>
   input.existing !== undefined &&
   input.existing.exchangeCounterpartHoldingId === null &&
+  normalizeTransactionName(input.existing.description) !== '' &&
   input.categoryCount > 0 &&
   !input.overrideRulesLoading &&
   input.overrideRuleCount === 0;

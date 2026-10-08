@@ -4545,6 +4545,13 @@ describe('TransactionFormScreen — the apply-to-all tip', () => {
     expect(queryByTestId('tip-apply-to-all')).toBeNull();
   });
 
+  it('hides the tip on a row with a blank name, which can never get an override rule', async () => {
+    setLiveData(HOLDINGS, { ...ROW, description: '' });
+    const { queryByTestId } = await renderEdit('txn-1');
+
+    expect(queryByTestId('tip-apply-to-all')).toBeNull();
+  });
+
   it('hides the tip when there is no category to change', async () => {
     setLiveData(HOLDINGS, ROW, []);
     const { queryByTestId } = await renderEdit('txn-1');
