@@ -233,13 +233,15 @@ string:
   Title Case for a screen title or a section heading the way English
   does; see the next section.
 
-A Settings row that opens a screen is the one exception to "menu items
-are sentence case": by user ruling 2026-10-08 its en label is Title Case
-and reads exactly like that screen's nav title — `help.rowLabel` =
-`help.title` ("Help & Tips"), `settings.dataExport.rowLabel` =
-`settings.dataExport.title` ("Export Data"), `settings.dataImport.rowLabel` =
-`settings.dataImport.title` ("Import Data"). Each row label is listed in
-`TITLE_KEYS`; uk stays sentence case, with the row label equal to its title.
+The exception is a CLOSED list: only the three Settings-tab ROOT rows
+(`help.rowLabel`, `settings.dataExport.rowLabel`,
+`settings.dataImport.rowLabel`, all listed in `TITLE_KEYS` in
+`src/i18n/locales/title-keys.ts`) are Title Case in en and read exactly
+like their nav titles, by user ruling 2026-10-08; uk stays sentence case
+with the row label equal to its title. Counter-example: the Help TOPIC
+rows (`help.topics.*.rowLabel`, `SettingsRows` in `help.screen.tsx` that
+also open a screen) stay sentence case ("Add an account" vs title "Add an
+Account"). It is not a rule for every row that opens a screen.
 
 A string used in TWO roles otherwise (a menu item or button doubling as
 a sheet title) still needs TWO keys, one per role, not one key reused —

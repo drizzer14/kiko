@@ -247,6 +247,14 @@ an entry (date + value) the moment the user approves a new visual.
   `accountKindSymbol` glyph in its resolved color, never an empty icon
   slot. The "All" row lines up under the glyph column:
   `filter-menu` reserves the icon slot when any option has an icon.
+- **TipCard is a tinted callout** (2026-10-08). Flat `accentSubtle` fill
+  (value in `theme.ts`; pinned by `theme.test.ts`), `radii.lg`, NO border,
+  NO shadow (not a `Card`), a leading decorative `lightbulb.fill` in the
+  accent tone, and a trailing `xmark` ghost compact close `Button`. Pinned
+  by `tip-card.component.test.tsx`; see TipCard under "Component set".
+- **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
+  tap via `SMALL_HIT_SLOP`, not full width, never the regular 50pt. Pinned
+  by `empty-state.component.test.tsx`.
 
 ## UX patterns
 
@@ -718,7 +726,9 @@ new component can land between reviews of this skill:
   `pasteButtonWrapper`) put the glyph 12pt from the input and 8pt from
   the row's end, while the `small` Button keeps its own 44pt-wide tap
   target (starting exactly at the input's edge, never overlapping it) —
-  the visual spacing shrinks, never the tap target.
+  the visual spacing shrinks, never the tap target. The `FieldError`
+  renders below the whole input/paste row, so the paste glyph stays
+  centered on the input (pinned by `clipboard-text-field.component.test.tsx`).
 - **Card** (`src/design-system/components/card/`) — the shared
   CONTENT-layer surface: a solid, opaque themed fill with a defined
   hairline border, no glass/blur material at all. Every content card,
@@ -1091,8 +1101,8 @@ new component can land between reviews of this skill:
 - **TipCard** (`src/design-system/components/tip-card/`) — a one-time,
   dismissible hint: inline and non-modal, never a warning tone. **LOCKED look
   (user-approved 2026-10-08, "tinted callout", pinned by the TipCard and theme
-  tests):** a flat `accentSubtle` fill (`rgba(10,132,255,0.14)`, `theme.ts`,
-  sibling of `negativeSubtle`), `radii.lg`, `padding` 3, a `spacing(1)` vertical
+  tests):** a flat `accentSubtle` fill (value in `theme.ts`,
+  sibling of `negativeSubtle`; read it there), `radii.lg`, `padding` 3, a `spacing(1)` vertical
   margin, NO border and NO shadow — deliberately NOT the bordered `Card`, so it
   reads as its own layer beside neighbouring cards (Apple HIG "Offering help":
   a tip is a small transient view with a filled symbol; TipKit inline shape).
@@ -1107,6 +1117,10 @@ new component can land between reviews of this skill:
   not dismissed`, so it is false while settings load and follows the caller's
   condition. Two `useTip` calls on one screen could show two tips (`pickTip` is
   the single picker), so a screen has one. Never hand-roll the dismissed state.
+  A tip or banner that APPEARS in response to a press is silent to VoiceOver:
+  pair it with `AccessibilityInfo.announceForAccessibility(t(...))` using the
+  same i18n string as the visible text (example: `handleShowTipsAgain` in
+  `help.screen.tsx`).
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
