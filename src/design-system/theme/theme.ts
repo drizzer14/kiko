@@ -13,6 +13,8 @@
 // The named entity-color and chart-series palettes live in ../palette
 // (entityColorsDark, chartSeriesDark); the theme references those sets.
 
+import { StyleSheet } from 'react-native';
+
 import { chartSeriesDark, entityColorsDark } from '../palette';
 
 const spacing = (multiplier: number) => multiplier * 4;
@@ -56,6 +58,10 @@ const iconSizes = {
   title: iconSize(typography.title.fontSize), // 28 -> 35
   display: iconSize(typography.display.fontSize), // 44 -> 55
 } as const;
+
+// Two-pane (Duo) layout: each pane's content is centred and capped at `paneMaxWidth` so a wide
+// pane never stretches a form line across the screen; `hairline` is the flat-window divider.
+const layout = { paneMaxWidth: 600, hairline: StyleSheet.hairlineWidth } as const;
 
 export const darkTheme = {
   colors: {
@@ -201,4 +207,5 @@ export const darkTheme = {
   radii,
   typography,
   iconSizes,
+  layout,
 } as const;
