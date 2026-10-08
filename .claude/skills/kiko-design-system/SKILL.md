@@ -1059,6 +1059,15 @@ new component can land between reviews of this skill:
   `Button` from `action: { label, icon?, onPress }`. Strings come in as
   props. `testID` gives `<testID>-icon` and `<testID>-action`. Gate it on
   `useDataReady`, never on `data.length === 0` alone.
+- **TipCard** (`src/design-system/components/tip-card/`) — a one-time,
+  dismissible hint, following the ReminderOfferCard precedent: inline and
+  non-modal, on the plain `Card` (solid `surface`, hairline border, `padding={3}`;
+  NOT `GlassSurface`, whatever "glass card" says elsewhere), never a warning
+  tone. A `body` `textPrimary` message, then a trailing icon-only `ghost`
+  `compact` `xmark` close `Button` (44pt tap) labelled by `closeLabel`. Strings
+  come in as props. **One per screen, through `useTip` from `@kiko/tips`**:
+  the screen renders it only while `useTip` says the tip is unseen, and
+  `onClose` is the hook's dismiss; never hand-roll the dismissed state.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
