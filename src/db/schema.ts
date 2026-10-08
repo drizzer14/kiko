@@ -529,6 +529,11 @@ export const settings = sqliteTable('settings', {
   // A restored backup without the key keeps the default `false`, so the
   // restore runs it again.
   lotsRecosted: integer('lots_recosted', { mode: 'boolean' }).notNull().default(false),
+  // The ids of the tips the user dismissed. An id this build does not know is
+  // kept and ignored, so a newer file's list survives a restore into an older
+  // build. Never a global "hide all tips" flag: "Show tips again" only clears
+  // this list. A restored backup without the key keeps the default `[]`.
+  dismissedTips: text('dismissed_tips', { mode: 'json' }).$type<string[]>().notNull().default([]),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

@@ -45,6 +45,10 @@ const DOCUMENTED_READERLESS_COLUMNS = [
   // does not emit a DROP that diverges from the migration snapshots — see the
   // comment on the column in schema.ts.
   'quoteQuota',
+  // Interim, not legacy: the dismissed tip ids (migration 0055). The tips
+  // repo that reads and writes it lands in a later onboarding task, which must
+  // remove this entry when it adds the first reader.
+  'dismissedTips',
 ];
 
 // What a `.kiko` restore does with each column (`restoreDataSnapshot`): the
@@ -71,6 +75,7 @@ const TAKEN_FROM_FILE_ON_RESTORE = [
   'reminderOfferDismissals',
   'lotsRecosted',
   'quoteQuota',
+  'dismissedTips',
 ];
 
 const SCHEMA_PATH = join(__dirname, 'schema.ts');

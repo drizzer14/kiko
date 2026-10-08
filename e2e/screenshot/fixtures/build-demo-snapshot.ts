@@ -91,6 +91,8 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     // Every demo lot list is one buy, so the one-time recost has nothing to
     // change: `true` skips it on import, the same as a recosted device.
     lotsRecosted: true,
+    // A fresh device has dismissed no tip, so the demo shows them all.
+    dismissedTips: [],
   },
 ];
 
