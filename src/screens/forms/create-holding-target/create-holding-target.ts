@@ -6,7 +6,7 @@ import { creatableHoldingTypesForAccount, type HoldingType } from '@kiko/holding
 // a caller's `navigate` or `push` is typed once for both screens.
 export type CreateHoldingRoute = ['HoldingForm', { accountId: string }] | ['AccountForm', object];
 
-export type CreateHoldingPicker = {
+type CreateHoldingPicker = {
   // The account of the form's own holding, tried before any other account.
   anchorAccountId: string | undefined;
   // Whether the picker would list a holding of this type once it exists.
