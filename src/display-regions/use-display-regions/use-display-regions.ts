@@ -7,7 +7,7 @@ import { type DisplayRegionsSnapshot, displayRegionsNative } from '../display-re
 const subscribe = (onStoreChange: () => void): (() => void) =>
   displayRegionsNative.subscribe(onStoreChange);
 
-// `getSnapshot` returns the same object while the native JSON is unchanged, which
-// `useSyncExternalStore` requires to avoid a render loop.
+// `getSnapshot` returns the wrapper's cached object, which `useSyncExternalStore` requires to
+// avoid a render loop and which keeps every render off the native main-thread hop.
 export const useDisplayRegions = (): DisplayRegionsSnapshot =>
   useSyncExternalStore(subscribe, displayRegionsNative.getSnapshot);

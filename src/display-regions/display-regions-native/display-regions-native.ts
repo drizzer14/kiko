@@ -85,21 +85,58 @@ const parseSnapshot = (payload: string | undefined): DisplayRegionsSnapshot => {
   return snapshot;
 };
 
+const readNative = (): DisplayRegionsSnapshot =>
+  parseSnapshot(bifoldr(eitherSync<unknown, string>(() => loadNativeModule().getSnapshot())));
+
+// What JS knows of the native side. Every read crosses to the main thread synchronously, so it is
+// taken once and then kept current from the `onChange` payloads; it is valid only while a
+// subscriber is listening, and dropped with the last one.
+const cache: { snapshot: DisplayRegionsSnapshot | undefined; subscriberCount: number } = {
+  snapshot: undefined,
+  subscriberCount: 0,
+};
+
 export const displayRegionsNative = {
-  // Read synchronously from the native side, so the first render already has the real layout. A
-  // module that is missing yields the fallback, never a throw.
-  getSnapshot: (): DisplayRegionsSnapshot =>
-    parseSnapshot(bifoldr(eitherSync<unknown, string>(() => loadNativeModule().getSnapshot()))),
+  // Read from the native side on first use only, so the first render already has the real layout
+  // and later renders cost nothing. A module that is missing yields the fallback, never a throw.
+  getSnapshot: (): DisplayRegionsSnapshot => {
+    cache.snapshot ??= readNative();
+
+    return cache.snapshot;
+  },
 
   // Returns the unsubscribe. Where the module is missing there is nothing to subscribe to, so the
   // unsubscribe does nothing.
   subscribe: (listener: (snapshot: DisplayRegionsSnapshot) => void): (() => void) => {
     const subscription = bifoldr(
       eitherSync<unknown, { remove: () => void }>(() =>
-        loadNativeModule().onChange((payload) => listener(parseSnapshot(payload))),
+        loadNativeModule().onChange((payload) => {
+          cache.snapshot = parseSnapshot(payload);
+          listener(cache.snapshot);
+        }),
       ),
     );
 
-    return () => subscription?.remove();
+    if (cache.subscriberCount === 0) {
+      // A change between the first read and this subscription raised no event.
+      const readBeforeSubscribing = cache.snapshot;
+
+      cache.snapshot = readNative();
+
+      if (readBeforeSubscribing !== undefined && readBeforeSubscribing !== cache.snapshot) {
+        listener(cache.snapshot);
+      }
+    }
+
+    cache.subscriberCount += 1;
+
+    return () => {
+      subscription?.remove();
+      cache.subscriberCount -= 1;
+
+      if (cache.subscriberCount === 0) {
+        cache.snapshot = undefined;
+      }
+    };
   },
 };

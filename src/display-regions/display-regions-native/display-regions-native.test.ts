@@ -1,18 +1,36 @@
 import type { Spec } from '@kiko/native-specs/NativeDisplayRegions';
 
-import { type DisplayRegionsSnapshot, displayRegionsNative, FALLBACK_SNAPSHOT } from '.';
+import type { DisplayRegionsSnapshot } from '.';
 
-// Read through the registry, not a value import: only the wrapper may load
-// the native module.
-const nativeModule = jest.mocked(
-  (jest.requireMock('@kiko/native-specs/NativeDisplayRegions') as { default: Spec }).default,
-);
+type DisplayRegionsNativeModule = typeof import('.');
 
 const duoSnapshot: DisplayRegionsSnapshot = {
   horizontalSizeClass: 'regular',
   verticalBarEdge: 'trailing',
   foldRegion: { x: 470, y: 0, width: 11, height: 669 },
 };
+
+const flatSnapshot: DisplayRegionsSnapshot = {
+  horizontalSizeClass: 'compact',
+  verticalBarEdge: 'none',
+  foldRegion: null,
+};
+
+// The wrapper keeps the last native snapshot in module state, so each test loads its own copy of
+// the wrapper together with the native mock that copy reads: a reset registry re-runs both module
+// factories, and the wrapper requires the native module lazily from that same registry. The mock
+// is read through the registry, not a value import: only the wrapper may load the native module.
+let displayRegionsNative: DisplayRegionsNativeModule['displayRegionsNative'];
+let FALLBACK_SNAPSHOT: DisplayRegionsNativeModule['FALLBACK_SNAPSHOT'];
+let nativeModule: jest.Mocked<Spec>;
+
+beforeEach(() => {
+  jest.resetModules();
+  ({ displayRegionsNative, FALLBACK_SNAPSHOT } = require('.') as DisplayRegionsNativeModule);
+  nativeModule = (
+    jest.requireMock('@kiko/native-specs/NativeDisplayRegions') as { default: jest.Mocked<Spec> }
+  ).default;
+});
 
 const captureEmitter = (): { emit: (payload: string) => void } => {
   const capture = { emit: (_payload: string): void => undefined };
@@ -34,24 +52,21 @@ describe('displayRegionsNative.getSnapshot', () => {
   });
 
   it('parses a flat snapshot with no fold region', () => {
-    const flatSnapshot: DisplayRegionsSnapshot = {
-      horizontalSizeClass: 'compact',
-      verticalBarEdge: 'none',
-      foldRegion: null,
-    };
     nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(flatSnapshot));
 
     expect(displayRegionsNative.getSnapshot()).toEqual(flatSnapshot);
   });
 
-  it('returns the same object while the native JSON is unchanged', () => {
-    nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(duoSnapshot));
-    nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(duoSnapshot));
+  it('reads the native module once, then hands back the cached object', () => {
+    nativeModule.getSnapshot.mockReturnValue(JSON.stringify(duoSnapshot));
 
     const first = displayRegionsNative.getSnapshot();
     const second = displayRegionsNative.getSnapshot();
+    const third = displayRegionsNative.getSnapshot();
 
+    expect(nativeModule.getSnapshot).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
+    expect(third).toBe(first);
   });
 
   it.each<[string, string]>([
@@ -76,16 +91,13 @@ describe('displayRegionsNative.getSnapshot', () => {
   });
 
   it('models an older system as a compact, bar-less, unfolded window', () => {
-    expect(FALLBACK_SNAPSHOT).toEqual({
-      horizontalSizeClass: 'compact',
-      verticalBarEdge: 'none',
-      foldRegion: null,
-    });
+    expect(FALLBACK_SNAPSHOT).toEqual(flatSnapshot);
   });
 });
 
 describe('displayRegionsNative.subscribe', () => {
   it('delivers the parsed payload of each native onChange event', () => {
+    nativeModule.getSnapshot.mockReturnValue(JSON.stringify(flatSnapshot));
     const capture = captureEmitter();
     const listener = jest.fn();
 
@@ -96,7 +108,21 @@ describe('displayRegionsNative.subscribe', () => {
     expect(listener).toHaveBeenCalledWith(duoSnapshot);
   });
 
+  it('keeps the cached snapshot current from the event payload, with no native read', () => {
+    nativeModule.getSnapshot.mockReturnValue(JSON.stringify(flatSnapshot));
+    const capture = captureEmitter();
+
+    displayRegionsNative.getSnapshot();
+    displayRegionsNative.subscribe(jest.fn());
+    nativeModule.getSnapshot.mockClear();
+    capture.emit(JSON.stringify(duoSnapshot));
+
+    expect(displayRegionsNative.getSnapshot()).toEqual(duoSnapshot);
+    expect(nativeModule.getSnapshot).not.toHaveBeenCalled();
+  });
+
   it('delivers the fallback snapshot for a malformed payload', () => {
+    nativeModule.getSnapshot.mockReturnValue(JSON.stringify(flatSnapshot));
     const capture = captureEmitter();
     const listener = jest.fn();
 
@@ -104,6 +130,57 @@ describe('displayRegionsNative.subscribe', () => {
     capture.emit('{not json');
 
     expect(listener).toHaveBeenCalledWith(FALLBACK_SNAPSHOT);
+  });
+
+  it('re-reads the native module once on subscribe and notifies a change since the first read', () => {
+    nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(flatSnapshot));
+    displayRegionsNative.getSnapshot();
+    nativeModule.getSnapshot.mockReturnValueOnce(JSON.stringify(duoSnapshot));
+    const listener = jest.fn();
+
+    displayRegionsNative.subscribe(listener);
+
+    expect(nativeModule.getSnapshot).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledWith(duoSnapshot);
+    expect(displayRegionsNative.getSnapshot()).toEqual(duoSnapshot);
+  });
+
+  it('stays quiet when the subscribe re-read finds nothing new', () => {
+    nativeModule.getSnapshot.mockReturnValue(JSON.stringify(duoSnapshot));
+    displayRegionsNative.getSnapshot();
+    const listener = jest.fn();
+
+    displayRegionsNative.subscribe(listener);
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('re-reads only for the first subscriber, since the cache is then kept current', () => {
+    nativeModule.getSnapshot.mockReturnValue(JSON.stringify(duoSnapshot));
+    displayRegionsNative.getSnapshot();
+
+    displayRegionsNative.subscribe(jest.fn());
+    displayRegionsNative.subscribe(jest.fn());
+
+    expect(nativeModule.getSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops the cache with the last subscriber, since nothing keeps it current any more', () => {
+    nativeModule.getSnapshot.mockReturnValue(JSON.stringify(flatSnapshot));
+    const unsubscribeFirst = displayRegionsNative.subscribe(jest.fn());
+    const unsubscribeSecond = displayRegionsNative.subscribe(jest.fn());
+    displayRegionsNative.getSnapshot();
+    nativeModule.getSnapshot.mockClear();
+
+    unsubscribeFirst();
+    displayRegionsNative.getSnapshot();
+
+    expect(nativeModule.getSnapshot).not.toHaveBeenCalled();
+
+    unsubscribeSecond();
+    nativeModule.getSnapshot.mockReturnValue(JSON.stringify(duoSnapshot));
+
+    expect(displayRegionsNative.getSnapshot()).toEqual(duoSnapshot);
   });
 
   it('removes the native subscription when the returned function is called', () => {

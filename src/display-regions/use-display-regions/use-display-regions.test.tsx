@@ -70,13 +70,28 @@ describe('useDisplayRegions', () => {
   it('renders once for an unchanged snapshot, with no render loop', async () => {
     let renderCount = 0;
 
-    const { result } = await renderHook(() => {
+    await renderHook(() => {
       renderCount += 1;
 
       return useDisplayRegions();
     });
 
     expect(renderCount).toBe(1);
-    expect(result.current).toBe(result.current);
+  });
+
+  it('makes one native read for the first render and one on subscribe, however often it renders', async () => {
+    const { rerender } = await renderHook(() => useDisplayRegions());
+
+    await rerender(undefined);
+    await rerender(undefined);
+    await rerender(undefined);
+
+    expect(nativeModule.getSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads the native module once for every consumer mounted together', async () => {
+    await renderHook(() => [useDisplayRegions(), useDisplayRegions(), useDisplayRegions()]);
+
+    expect(nativeModule.getSnapshot).toHaveBeenCalledTimes(2);
   });
 });
