@@ -4754,6 +4754,40 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
     });
 
+    it('skips a synced Monobank account, whose sync owns its ledgered holdings', async () => {
+      const monobank: Account = {
+        id: 'mono',
+        name: 'Monobank',
+        kind: 'bank',
+        institution: 'monobank',
+      };
+
+      setLiveData([], undefined, CATEGORIES, [monobank, WALLET]);
+      const utils = await renderEmptyCreate();
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
+    });
+
+    it('opens the account form when the only account is a synced Monobank one', async () => {
+      const monobank: Account = {
+        id: 'mono',
+        name: 'Monobank',
+        kind: 'bank',
+        institution: 'monobank',
+      };
+
+      setLiveData([], undefined, CATEGORIES, [monobank]);
+      const utils = await renderEmptyCreate();
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+    });
+
     it.each([
       ['no account', []],
       ['only implicit accounts', [{ id: 'flats', name: 'Property', kind: 'property' }]],

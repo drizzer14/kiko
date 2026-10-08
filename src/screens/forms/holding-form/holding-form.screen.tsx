@@ -5,6 +5,10 @@ import {
   holdingTypes,
   holdingTypesForAccountKind,
 } from '@kiko/holdings/holding-type';
+import {
+  holdingCurrencyOptions,
+  isCurrencyExpectedForHoldingType,
+} from '@kiko/holdings/holding-currency';
 import type { TFunction } from 'i18next';
 import {
   holdsOnlyDebts,
@@ -36,7 +40,6 @@ import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import HoldingTypeField from '@kiko/screens/forms/holding-type-field';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
-import { holdingCurrencyOptions } from '@kiko/holdings/holding-currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { useLiveQuery, type AccountRow, type HoldingRow } from '@kiko/db';
 import CurrencyField from '@kiko/design-system/components/currency-field';
@@ -468,8 +471,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // `push`, not `navigate`: `navigate` to this form's own route name only
   // changes this route's params, which would turn the loan form into the new
   // holding's form. A push leaves this one mounted underneath with its draft.
+  // The picker lists the holdings `buildPaymentHoldingOptions` keeps that can be
+  // created in the loan's currency.
   const createPaymentHolding = (): void => {
-    navigation.push(...resolveCreateHoldingTarget(undefined, allAccounts));
+    navigation.push(
+      ...resolveCreateHoldingTarget(
+        {
+          anchorAccountId: undefined,
+          accepts: (type) =>
+            !isLedgerlessHoldingType(type) && isCurrencyExpectedForHoldingType(type, currency),
+        },
+        allAccounts,
+      ),
+    );
   };
 
   // The one place every holding type's own form behaviour is looked up —

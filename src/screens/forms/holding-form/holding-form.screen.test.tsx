@@ -2989,6 +2989,18 @@ describe('HoldingFormScreen loan', () => {
       expect(navigation.navigate).not.toHaveBeenCalled();
     });
 
+    it('skips a crypto account, whose assets are created in a cryptocurrency', async () => {
+      const coins = { id: 'coins', name: 'Coins', kind: 'crypto', archivedAt: null };
+
+      mockAllAccounts = [coins, MONOBANK];
+      const screen = await renderScreen();
+
+      await openPaidFromSheet(screen);
+      await fireEvent.press(screen.getByTestId('loan-payment-holding-field-create-new'));
+
+      expect(navigation.push).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-2' });
+    });
+
     it('pushes the account form when no account can hold a payer', async () => {
       mockAllAccounts = [FLATS];
       const screen = await renderScreen();

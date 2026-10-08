@@ -2,7 +2,11 @@ import { currencyOptions, fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import { holdingTypes } from '../holding-type';
 
-import { holdingCurrencyOptions, isCurrencyAllowedForHoldingType } from './holding-currency';
+import {
+  holdingCurrencyOptions,
+  isCurrencyAllowedForHoldingType,
+  isCurrencyExpectedForHoldingType,
+} from './holding-currency';
 
 describe('holdingCurrencyOptions', () => {
   it('offers a cash holding fiat currencies only', () => {
@@ -26,5 +30,29 @@ describe('isCurrencyAllowedForHoldingType', () => {
   it('accepts a fiat cash holding and a crypto crypto_asset holding', () => {
     expect(isCurrencyAllowedForHoldingType('cash', 'EUR')).toBe(true);
     expect(isCurrencyAllowedForHoldingType('crypto_asset', 'BTC')).toBe(true);
+  });
+});
+
+describe('isCurrencyExpectedForHoldingType', () => {
+  it('expects a cash holding in a fiat currency only', () => {
+    expect(isCurrencyExpectedForHoldingType('cash', 'UAH')).toBe(true);
+    expect(isCurrencyExpectedForHoldingType('cash', 'BTC')).toBe(false);
+  });
+
+  it('expects a crypto asset in a cryptocurrency only, although a write accepts a fiat one', () => {
+    expect(isCurrencyExpectedForHoldingType('crypto_asset', 'BTC')).toBe(true);
+    expect(isCurrencyExpectedForHoldingType('crypto_asset', 'UAH')).toBe(false);
+    expect(isCurrencyAllowedForHoldingType('crypto_asset', 'UAH')).toBe(true);
+  });
+
+  it('expects every other type in either kind of currency', () => {
+    const otherTypes = holdingTypes.filter(
+      (candidate) => !['cash', 'crypto_asset'].includes(candidate),
+    );
+
+    for (const type of otherTypes) {
+      expect(isCurrencyExpectedForHoldingType(type, 'UAH')).toBe(true);
+      expect(isCurrencyExpectedForHoldingType(type, 'BTC')).toBe(true);
+    }
   });
 });

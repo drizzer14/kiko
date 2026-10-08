@@ -1009,6 +1009,14 @@ type ConvertView = {
   counterpartAmountLabel: string;
 };
 
+// The holding types the convert counterpart picker lists: an expense-sourced
+// convert picks a DESTINATION (wider: excludes bond/jar), an income-sourced one
+// picks a SOURCE (wider: cash/card only).
+const convertCounterpartType = (
+  direction: ExchangeConvertDirection | null,
+): ((type: HoldingRow['type']) => boolean) =>
+  direction === 'record-source' ? isExchangeSourceType : isExchangeDestinationType;
+
 const resolveConvertView = (
   existing: Pick<TransactionRow, 'amountMinorUnits'> | undefined,
   isEditing: boolean,
@@ -1032,8 +1040,7 @@ const resolveConvertView = (
     holding !== undefined &&
     canConvertToExchange(holding.type, existing.amountMinorUnits);
   const direction = existing ? exchangeConvertDirection(existing.amountMinorUnits) : null;
-  // An expense-sourced convert picks a DESTINATION (wider: excludes bond/jar);
-  // an income-sourced convert picks a SOURCE (wider: cash/card only). Excludes
+  // The counterpart picker's types are `convertCounterpartType`'s. Excludes
   // the existing holding, closed holdings, and a synced/syncable holding —
   // the counterpart is a NEW manual leg `save` writes, and a sync already
   // owns that holding's balance — and carries account names.
@@ -1043,7 +1050,7 @@ const resolveConvertView = (
     accountNameById,
     accountOrderById,
     holdingId,
-    direction === 'record-source' ? isExchangeSourceType : isExchangeDestinationType,
+    convertCounterpartType(direction),
   ).filter((option) => !syncableIds.has(option.id));
   // The fixed side's display value: the existing amount in the existing
   // holding's currency, formatted the same way the Amount input shows it.
@@ -1739,10 +1746,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const amountSuffix = holding ? currencySymbol[holding.currency] : '';
   // An empty picker's "Add holding" row opens the create form with `navigate`,
   // so this form stays mounted underneath with its draft. A picker tied to this
-  // form's own holding creates in that holding's account.
-  const openCreateHoldingIn = (anchorAccountId: string | undefined) => (): void => {
-    navigation.navigate(...resolveCreateHoldingTarget(anchorAccountId, accounts));
-  };
+  // form's own holding creates in that holding's account when that account can
+  // create a type the picker lists (`accepts`).
+  const openCreateHoldingIn =
+    (anchorAccountId: string | undefined, accepts: (type: HoldingRow['type']) => boolean) =>
+    (): void => {
+      navigation.navigate(...resolveCreateHoldingTarget({ anchorAccountId, accepts }, accounts));
+    };
 
   // The picker's eligible options (open, non-synced, transaction-eligible),
   // Accounts-ordered — also the fallback source when the user has no manual
@@ -2633,7 +2643,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             options: primaryOptions,
             selectedId: primaryHoldingId,
             onSelect: setPrimaryHoldingId,
-            onCreateNew: openCreateHoldingIn(undefined),
+            onCreateNew: openCreateHoldingIn(undefined, isTransactionEligibleType),
           })}
 
           {/* The transaction-TYPE selector, directly under the Holding select.
@@ -2656,7 +2666,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             convertView,
             counterpartHoldingId,
             onSelectCounterpart: selectCounterpart,
-            onCreateCounterpart: openCreateHoldingIn(holding?.accountId),
+            onCreateCounterpart: openCreateHoldingIn(
+              holding?.accountId,
+              convertCounterpartType(convertView.direction),
+            ),
             counterpartAmount,
             onChangeCounterpartAmount: (text) => setCounterpartAmount(groupAmount(text)),
             isExchange,
@@ -2669,7 +2682,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             destinationOptions,
             destinationHoldingId,
             onSelectDestination: setDestinationHoldingId,
-            onCreateDestination: openCreateHoldingIn(holding?.accountId),
+            onCreateDestination: openCreateHoldingIn(
+              holding?.accountId,
+              isExchangeCreateDestinationType,
+            ),
             valueIn,
             onChangeValueIn: (text) => setValueIn(groupAmount(text)),
             valueInSuffix: holdingSuffix(holdings, destinationHoldingId),
@@ -2743,7 +2759,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               returns: changeReturns,
               buildOptions: returnOptionsFor,
               onSelectHolding: selectReturnHolding,
-              onCreateHolding: openCreateHoldingIn(holding?.accountId),
+              onCreateHolding: openCreateHoldingIn(holding?.accountId, isTransactionEligibleType),
               onChangeAmount: changeReturnAmount,
               onRemove: removeReturn,
               onAdd: addReturn,
