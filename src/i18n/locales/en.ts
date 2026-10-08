@@ -852,7 +852,7 @@ export const en = {
     // The Home list's empty slot, shown only when the whole ledger is empty (not
     // when the picked date range merely excludes its rows).
     emptyLedgerHint:
-      'Add a transaction with "+", or import a bank statement from an account’s page.',
+      'Add a transaction with "+", or import a bank statement from a bank account’s page.',
     emptyTransactions: 'No transactions',
     filterAccounts: 'Accounts',
     filterAccountsSheetTitle: 'Accounts',
@@ -873,7 +873,7 @@ export const en = {
   emptyStates: {
     noAccounts: {
       message: 'Kiko totals your net worth from your accounts.',
-      title: 'Start with an account',
+      title: 'Start by creating an account',
     },
   },
   // One-time tips (`TipCard`, `src/tips/`): the close label is shared, each tip has its own
@@ -901,8 +901,8 @@ export const en = {
         rowLabel: 'Add an account',
         steps: {
           '1': 'On the "Accounts" tab, tap "Add account".',
-          '2': 'Choose the account type: bank, cash, crypto, property, metals, debt, or broker.',
-          '3': 'Enter a name. Cash needs a currency and a starting balance; a bank account needs its bank.',
+          '2': 'Choose the account kind: bank, cash, crypto, property, metals, debt, or broker.',
+          '3': 'Enter a name. Cash needs a currency and an initial value; a bank account needs its bank.',
           '4': 'Optional: connect Monobank with a token, Binance with an API key, or Bitcoin with a wallet address.',
           '5': 'For other banks, open the account, tap "Import statement", and choose a CSV or XLSX file from your bank.',
         },
