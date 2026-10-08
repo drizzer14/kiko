@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 
@@ -40,6 +41,23 @@ describe('EmptyState', () => {
     await fireEvent.press(getByText(ACTION));
 
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the action as the small button: a 34pt pill with a 44pt tap target', async () => {
+    const { getByTestId } = await render(
+      <EmptyState
+        icon="creditcard"
+        title={TITLE}
+        message={MESSAGE}
+        action={{ label: ACTION, onPress: jest.fn() }}
+        testID="empty"
+      />,
+    );
+    const button = getByTestId('empty-action');
+    const slop = button.props.hitSlop as { top: number; bottom: number };
+
+    expect(StyleSheet.flatten(button.props.style).minHeight).toBe(34);
+    expect(34 + slop.top + slop.bottom).toBeGreaterThanOrEqual(44);
   });
 
   it('passes the testID through to the root and the action', async () => {

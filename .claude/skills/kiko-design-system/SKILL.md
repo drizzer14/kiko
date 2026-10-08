@@ -1083,8 +1083,9 @@ new component can land between reviews of this skill:
   `textSecondary` symbol, a semibold `body` `textPrimary` title (sentence
   case, no final "."; never the `heading` variant, which would pull its keys
   into `TITLE_KEYS`), a centered `caption` `textSecondary` message (one or
-  two sentences, final "."), then an optional `primary` non-full-width
-  `Button` from `action: { label, icon?, onPress }`. Strings come in as
+  two sentences, final "."), then an optional `primary` `small` (34pt
+  pill, 44pt tap via `SMALL_HIT_SLOP`; user ruling 2026-10-08, the regular 50pt
+  read as disproportionately tall) non-full-width `Button` from `action: { label, icon?, onPress }`. Strings come in as
   props. `testID` gives `<testID>-icon` and `<testID>-action`. Gate it on
   `useDataReady`, never on `data.length === 0` alone.
 - **TipCard** (`src/design-system/components/tip-card/`) — a one-time,
