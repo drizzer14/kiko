@@ -30,14 +30,18 @@ Each fact names its source from the "Sources" list at the end.
 
 ## Goals
 
-- A full adaptive layout per pose for the Duo and the iPad, in one system.
+- A full adaptive layout per pose for the Duo now; the iPad later as its own track. The layout
+  rule is device-agnostic, so it will serve the iPad without change (user ruling 2026-10-08).
 - Continuity: what the outer display shows continues in the primary pane of the inner display.
-  State survives fold and unfold: one navigation tree, nothing remounts.
+  One navigation tree per tab. Screens remount on fold and unfold (user ruling 2026-10-08). What
+  survives: the navigation state, route params (including form drafts, so a half-filled form
+  survives), and the data cache. What does not survive: scroll position.
 
 ## Non-goals
 
 - Landscape on regular iPhones. They stay portrait-only and always single-pane.
 - Two copies of Kiko side by side in multitasking.
+- The iPad (layouts, captures, the iPad device family). It is a later, separate track.
 - Per-language-direction layouts. Apple keeps bars on the same side in RTL, and Kiko is en/uk.
 
 ## Section 1 - layout rule
@@ -45,15 +49,16 @@ Each fact names its source from the "Sources" list at the end.
 `useLayoutMode()` returns `single`, `columns`, or `rows` from the horizontal size class and the
 window shape. It never reads the device idiom (Apple: do not treat "regular width" as "iPad").
 
-- Compact width gives `single` (regular iPhones, the Duo outer display, a narrow iPad window in
-  Split View or Slide Over).
-- Regular width, wider than tall, gives `columns` (Duo inner landscape, iPad landscape).
-- Regular width, taller than wide, gives `rows` (Duo inner portrait, iPad portrait).
+The rule is device-agnostic: Duo now; the iPad later as its own track, with the same rule.
+
+- Compact width gives `single` (regular iPhones, the Duo outer display).
+- Regular width, wider than tall, gives `columns` (Duo inner landscape).
+- Regular width, taller than wide, gives `rows` (Duo inner portrait).
 
 The two panes are EQUAL halves, so the fold falls between them. When partly folded the panes
 keep a gap equal to the fold region frame. When flat (fold width 0) a hairline divider separates
 them. Inside each pane, lists and forms are centered with a maximum width of 600 pt (a proposal;
-the planner checks it against the iPad). Native bars stay where the system puts them. Panes
+the iPad track checks it against the iPad later). Native bars stay where the system puts them. Panes
 respect safe areas.
 
 ## Section 2 - pane mapping and navigation
@@ -83,7 +88,11 @@ it closes, that pane shows again what it showed before. Examples:
 
 Fold and unfold use one React Navigation state per tab:
 
-- Unfold: the list part goes to the companion pane and the top screen to the primary pane.
+- Unfold: the opposite-pane rule wins (user ruling 2026-10-08). The layout returns to what it
+  was before the fold: each screen goes back to its own pane (on the Home tab, the transaction
+  form on the left, Home on the right). A screen opened while folded takes the pane opposite to
+  the screen that opened it. An empty pane shows its default. (Was: the list part goes to the
+  companion pane and the top screen to the primary pane.)
 - Fold: the outer display shows the top screen with a back button (for example the transaction
   form, back to Home; an account page, back to the list).
 - A default selection the user did not tap (first account, Categories) does NOT survive a fold;
@@ -138,8 +147,8 @@ Unit tests:
 - the older-system path.
 
 Simulators: the Duo in all three poses (the user sets the pose in Device Hub; ops captures; the
-screenshots become the App Store Duo set), iPad landscape and portrait, and a regular iPhone
-regression. Known tooling limits: the Device Hub window shows a spinner on the inner display
+screenshots become the App Store Duo set) and a regular iPhone regression. iPad captures belong
+to the later iPad track. Known tooling limits: the Device Hub window shows a spinner on the inner display
 while the framebuffer is fine, and the CLI cannot navigate (Xcode 27.1 Duo simulator captures, 2026-10-08). A real Duo device check
 follows after 2026-10-23 if a device is available.
 
