@@ -168,46 +168,32 @@ describe('BottomSheet', () => {
   });
 
   // The sheet card's own background is a real translucent blur MATERIAL,
-  // reusing `GlassSurface`'s `material` variant rather than a flat
-  // `backgroundColor` on the card itself — see `bottom-sheet.component.tsx`'s
-  // doc comment and `styles.glassFill`. This describe block always exercises
-  // the non-liquid-glass FALLBACK branch (`@callstack/liquid-glass` defaults
-  // to `isLiquidGlassSupported: false` above), so `GlassSurface`'s own
-  // `-base` sublayer is the flat `View` that paints the `material` variant's
-  // translucent fallback fill; the glass-capable describe block below covers
-  // the real live-blur branch instead.
-  it('renders the sheet card background through GlassSurface, translucent on the non-glass fallback', async () => {
+  // reusing `GlassSurface`'s `material` variant on iOS 26+ (the glass-capable
+  // describe block below). This describe block always exercises the
+  // non-liquid-glass FALLBACK branch (`@callstack/liquid-glass` defaults to
+  // `isLiquidGlassSupported: false` above): iOS < 26 has no glass to sample,
+  // so a see-through `surfaceTranslucent` panel read as a flat black dim there.
+  // The fallback is the old solid `sheetBackground` card (user option A,
+  // 2026-10-08), and it does NOT route through `GlassSurface`, whose
+  // `bloom` fallback is shared with `Card` and stays translucent.
+  it('paints the sheet card opaque sheetBackground on the non-glass fallback, not a translucent glass', async () => {
     const { getByTestId, queryByTestId } = await render(
       <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
         <Text>sheet body</Text>
       </BottomSheet>,
     );
 
-    const glass = getByTestId(`${SHEET_TEST_ID}-glass`);
-    // `padding={0}` is the ONE inset for this layer — the card's own existing
-    // padding (`styles.sheet`) stays the single source, never stacked with a
-    // second one from `GlassSurface` itself. `GlassSurface` only writes a
-    // `padding` style member when its own `padding` prop is defined, so
-    // finding it present (and zero) on the rendered node confirms `0`, not
-    // `undefined`, was actually passed through.
-    const glassStyle = StyleSheet.flatten(glass.props.style);
-    expect(glassStyle.padding).toBe(0);
+    const fillStyle = StyleSheet.flatten(getByTestId(`${SHEET_TEST_ID}-fill`).props.style);
 
-    // No backdrop layer exists on the fallback path at all (see
-    // `glass-surface.component.tsx`'s comment: "The fallback (non-glass)
-    // branch needs no backdrop: its own base IS the flat themed fill") —
-    // this is what a translucent, never-muted fallback looks like.
-    expect(queryByTestId(`${SHEET_TEST_ID}-glass-backdrop`)).toBeNull();
+    expect(fillStyle.backgroundColor).toBe(darkTheme.colors.sheetBackground);
+    expect(fillStyle.backgroundColor).toBe('#1C1C1E');
+    // Same geometry as the glass fill, so the card's `overflow: hidden` clip
+    // gives the same top-rounded, bottom-flush silhouette on both tiers.
+    expect(fillStyle.position).toBe('absolute');
+    expect(fillStyle.bottom).toBe(-darkTheme.radii.lg);
 
-    const glassBaseStyle = StyleSheet.flatten(
-      getByTestId(`${SHEET_TEST_ID}-glass-base`).props.style,
-    );
-    expect(glassBaseStyle.backgroundColor).toBe(darkTheme.colors.surfaceTranslucent);
-    expect(glassBaseStyle.backgroundColor).not.toBe(darkTheme.colors.surfaceHigh);
-
-    // A tinted entity-card background never applies to a sheet, and the
-    // panel carries no color wash — it stays a neutral frosted panel.
-    expect(queryByTestId(`${SHEET_TEST_ID}-glass-wash`)).toBeNull();
+    expect(queryByTestId(`${SHEET_TEST_ID}-glass`)).toBeNull();
+    expect(queryByTestId(`${SHEET_TEST_ID}-glass-base`)).toBeNull();
   });
 
   // The real Liquid Glass branch (isLiquidGlassSupported === true), which the
@@ -260,6 +246,33 @@ describe('BottomSheet', () => {
 
       expect(getByTestId(`${SHEET_TEST_ID}-glass-base`).props.effect).toBe('clear');
     });
+
+    // The iOS 26+ look is user-approved and locked: the glass fill replaces
+    // the iOS < 26 opaque fill, never stacks with it, and the scrim keeps the
+    // 0.4 `scrim` token as the glass tint, not `scrimFallback`.
+    it('keeps the glass fill and the scrim token, with no opaque fallback fill', async () => {
+      const { getByTestId, queryByTestId } = await render(
+        <BottomSheet
+          visible
+          onDismiss={jest.fn()}
+          testID={SHEET_TEST_ID}
+          backdropTestID="sheet-backdrop"
+        >
+          <Text>sheet body</Text>
+        </BottomSheet>,
+      );
+
+      expect(queryByTestId(`${SHEET_TEST_ID}-fill`)).toBeNull();
+      expect(StyleSheet.flatten(getByTestId(`${SHEET_TEST_ID}-glass`).props.style).padding).toBe(0);
+
+      const backdropChildren = getByTestId('sheet-backdrop').props.children;
+      const backdropChild = Array.isArray(backdropChildren)
+        ? backdropChildren[0]
+        : backdropChildren;
+
+      expect(backdropChild.props.tintColor).toBe(darkTheme.colors.scrim);
+      expect(darkTheme.colors.scrim).toBe('rgba(0,0,0,0.4)');
+    });
   });
 
   // The scrim, grabber, and children all still render once the card routes
@@ -285,10 +298,10 @@ describe('BottomSheet', () => {
 
     // The glass background paints BEHIND the grabber and body — it is the
     // first child of the sheet card, in render order.
-    const glass = getByTestId(`${SHEET_TEST_ID}-glass`);
+    const fill = getByTestId(`${SHEET_TEST_ID}-fill`);
     const grabber = getByTestId(`${SHEET_TEST_ID}-grabber`);
     const scrollView = getByTestId(`${SHEET_TEST_ID}-scroll`);
-    expect(getByTestId(SHEET_TEST_ID).children).toEqual([glass, grabber, scrollView]);
+    expect(getByTestId(SHEET_TEST_ID).children).toEqual([fill, grabber, scrollView]);
   });
 
   it('labels the scrim as a dismiss button when a backdrop label is given', async () => {
@@ -348,13 +361,14 @@ describe('BottomSheet', () => {
     expect(sheetStyle.maxHeight).toBe(WINDOW_HEIGHT * MAX_HEIGHT_RATIO);
   });
 
-  // The scrim is a frosted dim, not opaque black: `theme.colors.scrim` (a
-  // translucent black), never the opaque `background` token. Jest always
-  // exercises the non-liquid-glass fallback branch (`@callstack/liquid-glass`
-  // is globally mocked with `isLiquidGlassSupported: false` — see
-  // `jest/setup.js`), so this asserts the fallback `View`'s own dim; the real
+  // The scrim is a dim, not opaque black: a translucent black, never the
+  // opaque `background` token. Jest always exercises the non-liquid-glass
+  // fallback branch (`@callstack/liquid-glass` is globally mocked with
+  // `isLiquidGlassSupported: false` — see `jest/setup.js`), so this asserts
+  // the fallback `View`'s own dim, `scrimFallback` (0.55, the pre-glass dim
+  // restored on iOS < 26), not the glass path's 0.4 `scrim`; the real
   // `LiquidGlassView` blur branch only renders on an iOS 26+ device.
-  it('dims the scrim with the translucent scrim token, never opaque black', async () => {
+  it('dims the scrim with the translucent scrimFallback token, never opaque black', async () => {
     const { getByTestId } = await render(
       <BottomSheet visible onDismiss={jest.fn()} backdropTestID="sheet-backdrop">
         <Text>sheet body</Text>
@@ -365,7 +379,8 @@ describe('BottomSheet', () => {
     const backdropChild = Array.isArray(backdropChildren) ? backdropChildren[0] : backdropChildren;
     const childStyle = StyleSheet.flatten(backdropChild.props.style);
 
-    expect(childStyle.backgroundColor).toBe(darkTheme.colors.scrim);
+    expect(childStyle.backgroundColor).toBe(darkTheme.colors.scrimFallback);
+    expect(childStyle.backgroundColor).not.toBe(darkTheme.colors.scrim);
     expect(childStyle.backgroundColor).not.toBe(darkTheme.colors.background);
   });
 
@@ -395,9 +410,9 @@ describe('BottomSheet', () => {
       // background, the top grabber handle, then the ScrollView body. The
       // sheet itself still never lays the call site's children out directly —
       // they live inside that ScrollView.
-      const glass = getByTestId(`${SHEET_TEST_ID}-glass`);
+      const fill = getByTestId(`${SHEET_TEST_ID}-fill`);
       const grabber = getByTestId(`${SHEET_TEST_ID}-grabber`);
-      expect(getByTestId(SHEET_TEST_ID).children).toEqual([glass, grabber, scrollView]);
+      expect(getByTestId(SHEET_TEST_ID).children).toEqual([fill, grabber, scrollView]);
     });
 
     it('applies the call-site gap to the ScrollView content container, not the sheet card', async () => {

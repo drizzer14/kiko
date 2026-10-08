@@ -21,6 +21,9 @@ describe('darkTheme iOS dark palette', () => {
     // GlassSurface's `material` (live-blur) variant — see the scrim doc
     // comment in theme.ts.
     expect(darkTheme.colors.scrim).toBe('rgba(0,0,0,0.4)');
+    // The iOS < 26 scrim keeps the pre-glass 0.55 dim (user option A,
+    // 2026-10-08); it must not leak into the glass path's `scrim`.
+    expect(darkTheme.colors.scrimFallback).toBe('rgba(0,0,0,0.55)');
     // Locks the onAccent value: a regression to black here would otherwise pass
     // every existing test.
     expect(darkTheme.colors.onAccent).toBe('#FFFFFF');

@@ -78,7 +78,7 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  *
  * The scrim itself is a frosted dim, not opaque black: a real Liquid Glass
  * blur (`LiquidGlassView`, `effect="regular"`, tinted with `theme.colors.scrim`)
- * on iOS 26+, a flat translucent-black `View` everywhere else, structurally
+ * on iOS 26+, a flat `scrimFallback` (0.55) black `View` everywhere else, structurally
  * branched on `isLiquidGlassSupported` the same way `GlassSurface` branches —
  * see `kiko-design-system`'s "GlassSurface `isLiquidGlassSupported` branch".
  * `LiquidGlassView` never blocks the dismiss tap: it is a non-interactive
@@ -349,14 +349,26 @@ const BottomSheet: FC<BottomSheetProps> = ({
           }}
           testID={testID}
         >
-          <GlassSurface
-            material
-            bloom
-            radius="lg"
-            padding={0}
-            style={styles.glassFill}
-            testID={testID && `${testID}-glass`}
-          />
+          {/* Below iOS 26 there is no glass to sample, and GlassSurface's
+              `bloom` fallback (shared with Card) is a see-through panel that
+              read as a flat black dim on a sheet, so the sheet takes the old
+              opaque card there instead of a GlassSurface. */}
+          {isLiquidGlassSupported ? (
+            <GlassSurface
+              material
+              bloom
+              radius="lg"
+              padding={0}
+              style={styles.glassFill}
+              testID={testID && `${testID}-glass`}
+            />
+          ) : (
+            <View
+              style={[styles.glassFill, styles.sheetFallbackFill]}
+              pointerEvents="none"
+              testID={testID && `${testID}-fill`}
+            />
+          )}
 
           {/* The grabber pill AND an optional `header` node share this one
               draggable region, so a drag anywhere across the header — not just

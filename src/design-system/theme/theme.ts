@@ -194,6 +194,13 @@ export const darkTheme = {
     // scrim — see `bottom-sheet.component.tsx`/`bottom-sheet.styles.ts` — so
     // changing it cannot affect any other surface).
     scrim: 'rgba(0,0,0,0.4)',
+    // The dismiss scrim for iOS < 26, where no Liquid Glass exists (BottomSheet's
+    // non-glass branch). The 0.4 reasoning above is about a sheet that samples the
+    // live scrim; the iOS < 26 sheet is opaque (`sheetBackground`), so nothing
+    // samples this dim and the pre-glass 0.55 returns, which is the look the user
+    // chose to restore on that tier (option A, 2026-10-08). The glass path keeps
+    // `scrim`.
+    scrimFallback: 'rgba(0,0,0,0.55)',
     entityColors: entityColorsDark,
     chartSeries: chartSeriesDark,
   },

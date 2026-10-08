@@ -247,6 +247,26 @@ an entry (date + value) the moment the user approves a new visual.
   `accountKindSymbol` glyph in its resolved color, never an empty icon
   slot. The "All" row lines up under the glyph column:
   `filter-menu` reserves the icon slot when any option has an icon.
+- **iOS < 26 fallback look: the old solid chrome** (2026-10-08, user option
+  A). A device without Liquid Glass (`isLiquidGlassSupported === false`,
+  e.g. iOS 18.7) reads like the pre-glass app, and iOS 26/27 do not change
+  by a pixel. Three parts: (1) the `BottomSheet` card is the opaque
+  `theme.colors.sheetBackground` (#1C1C1E) through `sheetFallbackFill`, not
+  a `GlassSurface` (whose `bloom` fallback is the shared `Card` look, a
+  60%-alpha `surfaceTranslucent` that read as a flat black dim on a sheet,
+  and stays as it is for `Card`); (2) its scrim is
+  `theme.colors.scrimFallback` (black 0.55), while `scrim` (0.4) stays the
+  glass path's tint; (3) every large-title native stack takes
+  `screenOptions={largeTitleScreenOptions}`
+  (`src/navigation/large-title-screen-options/`), which on this tier adds
+  `headerBlurEffect: 'systemChromeMaterialDark'` plus `headerLargeStyle:
+  { backgroundColor: 'transparent' }` (the at-rest large title stays
+  transparent, only the scrolled bar blurs), because react-native-screens
+  builds a transparent appearance with no background effect there. On
+  iOS 26+ it passes neither option. A new large-title stack, or a screen
+  that sets `headerLargeTitle` itself, spreads that helper rather than
+  setting `headerLargeTitle: true` inline. Device-confirm on an iOS 18
+  device, not in the simulator or Jest.
 
 ## UX patterns
 
@@ -805,10 +825,10 @@ new component can land between reviews of this skill:
   real translucent blur MATERIAL, reusing `GlassSurface`'s `material`
   variant — a live-sampling Liquid Glass on iOS 26+ (no color-pinning
   backdrop under it, so the sheet reads as an actual blur of the
-  content behind it, not a near-opaque flat panel), the same themed flat
-  translucent (`surfaceTranslucent`) fallback elsewhere — rather than
-  forking its layering — real glass/fallback branching, backdrop, and
-  base all stay owned by `GlassSurface` itself. `material` is
+  content behind it, not a near-opaque flat panel). Below iOS 26 the card
+  is instead the opaque `sheetBackground` (`sheetFallbackFill`, see "iOS <
+  26 fallback look" under Locked decisions) — real glass branching,
+  backdrop, and base stay owned by `GlassSurface` on the glass path. `material` is
   `transparent`'s sibling variant for a surface whose backdrop is STATIC
   while shown (a modal sheet): `transparent` instead pins a translucent
   backdrop under the glass to soften lightness drift on a scrolling
