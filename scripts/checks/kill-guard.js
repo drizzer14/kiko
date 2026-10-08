@@ -1434,7 +1434,7 @@ function readCopyMoveLongOption(word, next) {
   return {
     targetDirectory: name === '--target-directory' ? (value ?? next) : undefined,
     noTargetDirectory: name === '--no-target-directory',
-    recursive: name === '--recursive' || name === '--archive',
+    recursive: ['--recursive', '--archive'].some((full) => longOptionValue(word, full) !== null),
     skip: takesValue && value === undefined ? 1 : 0,
   };
 }

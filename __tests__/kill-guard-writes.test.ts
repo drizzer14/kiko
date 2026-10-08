@@ -254,6 +254,11 @@ const DENIED_COPY_MOVE: string[] = [
   'ls | xargs -I{} mv {} "$BK"/old/',
   'ls | xargs cp -a -t "$BK"',
   'ls | xargs cp --archive -t "$BK"',
+  // GNU reads an abbreviated long option.
+  'ls | xargs -I{} cp --recur {} "$BK"/',
+  'ls | xargs -I{} gcp --recur {} "$BK"/',
+  'ls | xargs -I{} gcp --arch {} "$BK"/',
+  'ls | xargs -I{} cp --recursive=x {} "$BK"/',
   'cp -r /tmp/src "$BK"/',
 ];
 

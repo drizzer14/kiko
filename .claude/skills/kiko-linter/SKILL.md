@@ -267,8 +267,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   at a worktree root, `ls | xargs -I{} cp -r {} .` deny. For a
   destination the text cannot resolve (`"$BK"/`, a glob, a span) the
   folder-name fills count only for a recursive copy (`-r`, `-R`, `-a`,
-  `--recursive`, `--archive`) or any `mv`, since a plain `cp` cannot
-  copy a folder: `ls | xargs -I{} cp {} "$BK"/` passes, `ls | xargs
+  `--recursive`, `--archive`, or a GNU abbreviation such as `--recur`)
+  or any `mv`, since a plain `cp` cannot copy a folder: `ls | xargs -I{} cp {} "$BK"/` passes, `ls | xargs
   -I{} cp -r {} "$BK"/` and `… mv {} "$BK"/old/` deny. Otherwise (no
   placeholder, so the input is appended last, or a destination holding
   the placeholder) it denies as a write of any file. `git mv` stays
