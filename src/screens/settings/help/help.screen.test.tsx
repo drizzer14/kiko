@@ -1,5 +1,5 @@
-import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
+import { AccessibilityInfo, StyleSheet } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -133,5 +133,93 @@ describe('HelpScreen', () => {
     const { getByText } = await renderScreen();
 
     expect(getByText('All your data stays on this device.')).toBeTruthy();
+  });
+
+  describe('tips reset confirmation', () => {
+    it('shows no confirmation tip before the button is pressed', async () => {
+      const { queryByTestId, queryByText } = await renderScreen();
+
+      expect(queryByTestId('help-tips-reset-tip')).toBeNull();
+      expect(queryByText('Tips will be shown again.')).toBeNull();
+    });
+
+    it('shows the confirmation tip above the button after a successful reset', async () => {
+      const { getByText, findByText, getAllByTestId } = await renderScreen();
+
+      await fireEvent.press(getByText('Show tips again'));
+
+      expect(await findByText('Tips will be shown again.')).toBeTruthy();
+      expect(
+        getAllByTestId(/^help-(tips-reset-tip|show-tips-again)$/).map(
+          (node) => node.props.testID as string,
+        ),
+      ).toEqual(['help-tips-reset-tip', 'help-show-tips-again']);
+    });
+
+    it('announces the confirmation to VoiceOver when it appears', async () => {
+      const announce = jest
+        .spyOn(AccessibilityInfo, 'announceForAccessibility')
+        .mockImplementation(() => undefined);
+      const { getByText, findByText } = await renderScreen();
+
+      await fireEvent.press(getByText('Show tips again'));
+      await findByText('Tips will be shown again.');
+
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith('Tips will be shown again.');
+      announce.mockRestore();
+    });
+
+    it('shows no confirmation tip and no announcement when the reset fails', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const announce = jest
+        .spyOn(AccessibilityInfo, 'announceForAccessibility')
+        .mockImplementation(() => undefined);
+      mockResetTips.mockRejectedValueOnce(new Error('boom'));
+      const { getByText, queryByTestId } = await renderScreen();
+
+      await fireEvent.press(getByText('Show tips again'));
+
+      expect(warn).toHaveBeenCalledWith('[help] tips reset failed', expect.anything());
+      expect(queryByTestId('help-tips-reset-tip')).toBeNull();
+      expect(announce).not.toHaveBeenCalled();
+      warn.mockRestore();
+      announce.mockRestore();
+    });
+
+    it('hides the confirmation tip when its close button is pressed', async () => {
+      const { getByText, findByTestId, getByRole, queryByTestId } = await renderScreen();
+
+      await fireEvent.press(getByText('Show tips again'));
+      await findByTestId('help-tips-reset-tip');
+      await fireEvent.press(getByRole('button', { name: 'Close tip' }));
+
+      expect(queryByTestId('help-tips-reset-tip')).toBeNull();
+    });
+
+    it('keeps a single confirmation tip when the button is pressed again', async () => {
+      const { getByText, findByTestId, getAllByTestId } = await renderScreen();
+
+      await fireEvent.press(getByText('Show tips again'));
+      await findByTestId('help-tips-reset-tip');
+      await fireEvent.press(getByText('Show tips again'));
+
+      expect(mockResetTips).toHaveBeenCalledTimes(2);
+      expect(getAllByTestId('help-tips-reset-tip')).toHaveLength(1);
+    });
+
+    it('reads the confirmation in Ukrainian under the uk language', async () => {
+      await i18n.changeLanguage('uk');
+      const { getByTestId, findByTestId } = await renderScreen();
+
+      await fireEvent.press(getByTestId('help-show-tips-again'));
+      await findByTestId('help-tips-reset-tip');
+
+      expect(getByTestId('help-tips-reset-tip')).toHaveTextContent(
+        i18n.t('help.tipsResetConfirmation'),
+      );
+      expect(i18n.t('help.tipsResetConfirmation')).not.toBe('Tips will be shown again.');
+      await i18n.changeLanguage('en');
+    });
   });
 });

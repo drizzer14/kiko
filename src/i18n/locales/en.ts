@@ -894,6 +894,7 @@ export const en = {
     privacy: 'All your data stays on this device.',
     rowLabel: 'Help & Tips',
     showTipsAgain: 'Show tips again',
+    tipsResetConfirmation: 'Tips will be shown again.',
     title: 'Help & Tips',
     topics: {
       addAccount: {
