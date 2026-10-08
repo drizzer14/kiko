@@ -7,14 +7,15 @@ import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { AccessibilityInfo } from 'react-native';
 import { logOnFailure } from '@kiko/diagnostics';
-import { type FC, Fragment, useState } from 'react';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import Card from '@kiko/design-system/components/card';
+import { useFocusEffect } from '@react-navigation/native';
 import Screen from '@kiko/design-system/components/screen';
 import Button from '@kiko/design-system/components/button';
 import Divider from '@kiko/design-system/components/divider';
 import TipCard from '@kiko/design-system/components/tip-card';
+import { type FC, Fragment, useCallback, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -31,6 +32,10 @@ const HelpScreen: FC<HelpScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const [resetConfirmed, setResetConfirmed] = useState(false);
+
+  // The confirmation answers a press on this screen, so it is gone once the user leaves it (a
+  // topic page keeps this screen mounted underneath).
+  useFocusEffect(useCallback(() => () => setResetConfirmed(false), []));
 
   // The same row padding and trailing divider inset as the Settings data-transfer card (see
   // `settings.screen.tsx`). These rows have no leading icon, so the divider starts at the row's

@@ -25,6 +25,25 @@ jest.mock('@kiko/settings/settings.repo', () => ({
   },
 }));
 
+// A standalone render has no navigator, so the focus effect runs once at mount, as it does when the
+// screen first gets focus. A test leaves the screen by running the cleanups collected here, as a
+// real blur does.
+const mockBlurCleanups = new Set<() => void>();
+
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useFocusEffect: (effect: () => void | (() => void)) =>
+    jest.requireActual('react').useEffect(() => {
+      const cleanup = effect();
+
+      if (typeof cleanup === 'function') {
+        mockBlurCleanups.add(cleanup);
+      }
+
+      return cleanup;
+    }, [effect]),
+}));
+
 const renderScreen = (navigation: NavigationSpy = navigationSpy()) =>
   render(
     <HelpScreen
@@ -36,6 +55,7 @@ const renderScreen = (navigation: NavigationSpy = navigationSpy()) =>
 describe('HelpScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockBlurCleanups.clear();
   });
 
   it('renders one row per topic in a single card group with a divider between rows', async () => {
@@ -206,6 +226,21 @@ describe('HelpScreen', () => {
 
       expect(mockResetTips).toHaveBeenCalledTimes(2);
       expect(getAllByTestId('help-tips-reset-tip')).toHaveLength(1);
+    });
+
+    it('is gone on return after a topic page was opened', async () => {
+      const { getByText, findByTestId, getByTestId, queryByTestId } = await renderScreen();
+
+      await fireEvent.press(getByText('Show tips again'));
+      await findByTestId('help-tips-reset-tip');
+      await fireEvent.press(getByTestId('help-row-manageCategories'));
+      await act(async () => {
+        for (const cleanup of mockBlurCleanups) {
+          cleanup();
+        }
+      });
+
+      expect(queryByTestId('help-tips-reset-tip')).toBeNull();
     });
 
     describe('with fake timers', () => {
