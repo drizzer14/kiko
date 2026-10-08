@@ -203,6 +203,32 @@ describe('LoanSection', () => {
     expect(onSelectPaymentHoldingId).toHaveBeenCalledWith('h1');
   });
 
+  it('forwards onCreatePaymentHolding to the empty Paid-from sheet', async () => {
+    const onCreatePaymentHolding = jest.fn();
+    const { getByLabelText, getByText } = await render(
+      <LoanSection {...baseProps} onCreatePaymentHolding={onCreatePaymentHolding} />,
+    );
+
+    await fireEvent.press(getByLabelText('Paid from'));
+    await fireEvent.press(getByText('Add holding'));
+
+    expect(onCreatePaymentHolding).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no "Add holding" row once the Paid-from sheet has a holding', async () => {
+    const { getByLabelText, queryByText } = await render(
+      <LoanSection
+        {...baseProps}
+        paymentHoldingOptions={[CARD_OPTION]}
+        onCreatePaymentHolding={jest.fn()}
+      />,
+    );
+
+    await fireEvent.press(getByLabelText('Paid from'));
+
+    expect(queryByText('Add holding')).toBeNull();
+  });
+
   it('reports the entered lender name and IBAN', async () => {
     const onChangeLenderName = jest.fn();
     const onChangeLenderIban = jest.fn();
