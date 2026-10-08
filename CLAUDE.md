@@ -338,7 +338,7 @@ and every other agent's output stay unaffected.
 ### Superpowers
 
 The plugin does not copy superpowers. Its skills
-(`harness-workflow`, `design-system`, `retrospect`, `ops`) and its
+(the folders under `harness/kiko/skills/`) and its
 agents point at superpowers skills directly (`superpowers:test-driven-development`,
 `superpowers:systematic-debugging`, `superpowers:using-git-worktrees`,
 `superpowers:requesting-code-review`, `superpowers:writing-skills`,
