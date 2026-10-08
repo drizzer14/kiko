@@ -41,10 +41,8 @@ const topicsById = {
   },
 } satisfies Record<HelpTopicId, HelpTopic>;
 
-// The list order is the row order on the Help page.
-export const HELP_TOPICS: readonly HelpTopic[] = [
-  topicsById.addAccount,
-  topicsById.manageCategories,
-];
+// Derived from the record so the visible list cannot drift from it. The order is the record's
+// insertion order, which is the row order on the Help page.
+export const HELP_TOPICS: readonly HelpTopic[] = Object.values(topicsById);
 
 export const helpTopicById = (id: HelpTopicId): HelpTopic => topicsById[id];

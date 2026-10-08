@@ -1,4 +1,5 @@
 import { en } from '@kiko/i18n/locales';
+import { TITLE_KEYS } from '@kiko/i18n/locales/title-keys';
 import { flattenCatalog } from '@kiko/i18n/locales/flatten-catalog';
 
 import { HELP_TOPICS, helpTopicById } from './help-topics';
@@ -20,6 +21,10 @@ describe('help topic registry', () => {
     for (const key of [topic.titleKey, topic.rowLabelKey, ...topic.stepKeys]) {
       expect(catalogPaths.has(key)).toBe(true);
     }
+  });
+
+  it.each(HELP_TOPICS)('has the title of $id in TITLE_KEYS', (topic) => {
+    expect(TITLE_KEYS.has(topic.titleKey)).toBe(true);
   });
 
   it('gives the add-account topic five steps and the manage-categories topic four', () => {
