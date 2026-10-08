@@ -2292,6 +2292,11 @@ what a change must keep.
 - **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
   params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
   (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.
+  The Home stack registers `HoldingForm` (`HoldingFormParams`, no `returnTo`) and `AccountForm` as
+  well as the Accounts stack, because leaving the tab resets its stack and would lose the
+  transaction form's draft; both take options from `src/navigation/swapped-form-options/`. A form
+  that stays mounted underneath uses `navigate`, but a `HoldingForm` opening another `HoldingForm`
+  uses `push` (navigate to its own name only changes params).
   `ReminderForm` is registered in BOTH the Accounts and Settings
   stacks, so its props type is structural (`route.params:
   ReminderFormParams` plus the `goBack`/`setOptions` it reads), not

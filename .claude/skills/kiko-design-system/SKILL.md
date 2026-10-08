@@ -1100,7 +1100,7 @@ new component can land between reviews of this skill:
   `useDataReady`, never on `data.length === 0` alone.
 - **TipCard** (`src/design-system/components/tip-card/`) — a one-time,
   dismissible hint: inline and non-modal, never a warning tone. **LOCKED look
-  (user-approved 2026-10-08, "tinted callout", pinned by the TipCard and theme
+  (user-approved, "tinted callout", pinned by the TipCard and theme
   tests):** a flat `accentSubtle` fill (value in `theme.ts`,
   sibling of `negativeSubtle`; read it there), `radii.lg`, `padding` 3, a `spacing(1)` vertical
   margin, NO border and NO shadow — deliberately NOT the bordered `Card`, so it
@@ -1120,7 +1120,9 @@ new component can land between reviews of this skill:
   A tip or banner that APPEARS in response to a press is silent to VoiceOver:
   pair it with `AccessibilityInfo.announceForAccessibility(t(...))` using the
   same i18n string as the visible text (example: `handleShowTipsAgain` in
-  `help.screen.tsx`).
+  `help.screen.tsx`). A confirmation tip tied to a press hides when the screen loses focus
+  (`useFocusEffect` cleanup in `help.screen.tsx`), and a result that resolves after the user left
+  (`navigation.isFocused()` false) must not show or announce it.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
@@ -1344,6 +1346,13 @@ new component can land between reviews of this skill:
   outside `src/screens/`. Enforced by `kiko-no-cross-screen-import`
   (`scripts/checks/screen-imports.js`, the guard and
   `check:screen-imports`).
+- **Empty holding picker.** An EMPTY holding picker (`HoldingSelectField`, `PaymentHoldingField`;
+  prop `onCreateNew`) shows an "Add holding" row (key `forms.fields.addHolding`). Its target comes
+  from `resolveCreateHoldingTarget` (`src/screens/forms/create-holding-target/`): the picker passes
+  `accepts(type)`, an optional `currency`, and `anchorAccountId`; the target is the anchor's own
+  account or the first live account that can create an accepted type, opened on that type/currency,
+  else `AccountForm`. `useSelectCreatedHolding` (`use-select-created-holding.ts`) selects only the
+  holding created between the tap and the return focus (a `createdAt` window), never after a cancel.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
 - **SummaryTable** (`src/design-system/components/summary-table/`) — the

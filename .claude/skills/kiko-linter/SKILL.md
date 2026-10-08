@@ -1510,12 +1510,12 @@ body": a `$I18N.changeLanguage(...)` call inside an `it(...)`, `test(...)`, `it.
 call may sit in an `act(...)` inside the body. `beforeEach`, `afterEach`, `beforeAll`, and
 `afterAll` are not test bodies, so the hook form never matches.
 
-**Severity WARNING (Class B), because the tree already holds findings.** `semgrep --metrics
-off --quiet --config rules/semgrep-prewrite.yml src --json` reports 136 findings in 58
-test files (the 2026-10-08 count, after the Help screen test was fixed): most set `uk` in
+**Severity WARNING (Class B), because the tree already holds findings.** The finding
+count is what `check:security` reports for this id (`semgrep --metrics off --quiet --config
+rules/semgrep-prewrite.yml src --json`); re-measure before quoting it. Most findings set `uk` in
 the body and reset in an `afterEach`, which is safe until an assertion throws between a
 body-level switch and its reset, and which the rule cannot tell apart from the unsafe form.
-Sweeping 136 sites is far past one dispatch, so the rule landed with no gate, as step 4 of
+Sweeping every site is far past one dispatch, so the rule landed with no gate, as step 4 of
 "Adding a pre-write guard rule" allows: `check:security` surfaces the findings without
 failing, and the pre-write guard denies a NEW `changeLanguage` call in a test body (the
 finding key is the call text, so a second `i18n.changeLanguage('uk')` in a file that
