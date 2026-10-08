@@ -90,11 +90,9 @@ export const en = {
       keyLabel: 'Encryption key',
       keyWarning:
         'Save this key somewhere safe — it will not be shown again, and it is the only way to unlock this file.',
-      // The Settings screen's own row label — a menu item, always sentence
-      // case — separate from `title` below, which is the nav header for the
-      // same screen (a screen title, Title Case); the two roles read the
-      // same string on the same screen otherwise, one casing wrong either way.
-      rowLabel: 'Export data',
+      // The Settings row that opens this screen. Title Case by user ruling
+      // 2026-10-08, so it reads the same as `title` below (the nav header).
+      rowLabel: 'Export Data',
       shareFile: 'Share file',
       title: 'Export Data',
     },
@@ -115,8 +113,8 @@ export const en = {
       keyTooShortError: 'The key looks too short — paste the full key from your export.',
       noFileError: 'Choose a file to import.',
       pasteKey: 'Paste key from clipboard',
-      // See `dataExport.rowLabel` above — same Settings-row-vs-nav-title split.
-      rowLabel: 'Import data',
+      // See `dataExport.rowLabel` above — Title Case, matching `title`.
+      rowLabel: 'Import Data',
       successMessage: 'Import complete — {{count}} accounts restored.',
       title: 'Import Data',
       wrongFileTypeError: 'Choose a Kiko export file (.kiko).',
@@ -894,7 +892,7 @@ export const en = {
       openCategories: 'Open categories',
     },
     privacy: 'All your data stays on this device.',
-    rowLabel: 'Help & tips',
+    rowLabel: 'Help & Tips',
     showTipsAgain: 'Show tips again',
     title: 'Help & Tips',
     topics: {

@@ -63,13 +63,13 @@ appId: com.dmytro-vasylkivskyi.kiko
     id: "accounts-empty"
 
 # ---------------------------------------------------------------------------
-# 2. Settings tab -> Help & tips -> both topic rows -> Show tips again
+# 2. Settings tab -> Help & Tips -> both topic rows -> Show tips again
 # ---------------------------------------------------------------------------
 - tapOn:
     id: "gear"
 - assertVisible:
     id: "settings-card-help"
-# The Help card's only row, `help.rowLabel` ("Help & tips").
+# The Help card's only row, `help.rowLabel` ("Help & Tips").
 - tapOn:
     id: "settings-row-help"
 

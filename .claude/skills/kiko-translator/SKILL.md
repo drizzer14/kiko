@@ -233,15 +233,20 @@ string:
   Title Case for a screen title or a section heading the way English
   does; see the next section.
 
-A string used in TWO roles (e.g. a Settings row's own label, which is
-a menu item, doubling as that screen's nav-header title) needs TWO
-keys, one per role, not one key reused — `settings.dataExport.title`
-(the nav title, Title Case: "Export Data") vs
-`settings.dataExport.rowLabel` (the same screen's Settings-row label,
-sentence case: "Export data") is the pattern; see
-`accountDetail.addBankSheetTitle` vs `accountDetail.addBankAction`,
-and `statementImport.chooseHoldingSheetTitle` vs
-`statementImport.chooseHolding`, for the other two instances. An
+A Settings row that opens a screen is the one exception to "menu items
+are sentence case": by user ruling 2026-10-08 its en label is Title Case
+and reads exactly like that screen's nav title — `help.rowLabel` =
+`help.title` ("Help & Tips"), `settings.dataExport.rowLabel` =
+`settings.dataExport.title` ("Export Data"), `settings.dataImport.rowLabel` =
+`settings.dataImport.title` ("Import Data"). Each row label is listed in
+`TITLE_KEYS`; uk stays sentence case, with the row label equal to its title.
+
+A string used in TWO roles otherwise (a menu item or button doubling as
+a sheet title) still needs TWO keys, one per role, not one key reused —
+`accountDetail.addBankSheetTitle` (Title Case) vs
+`accountDetail.addBankAction` (sentence case), and
+`statementImport.chooseHoldingSheetTitle` vs
+`statementImport.chooseHolding`, are the instances. An
 `Alert.alert` title (a key ending `errorTitle`) is an ERROR, not a
 screen/sheet title, even though the key name ends in `Title` — it
 stays sentence case ("Export failed", not "Export Failed").

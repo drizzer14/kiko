@@ -88,6 +88,11 @@ export const TITLE_KEYS = new Set([
   'forms.transaction.title',
   'forms.transaction.toSheetTitle',
   'forms.transaction.typeSheetTitle',
+  // `help.rowLabel`, `settings.dataExport.rowLabel` and `settings.dataImport.rowLabel` are
+  // Settings rows in Title Case by user ruling 2026-10-08, so each row matches the nav title
+  // of the screen it opens (`help.title`, `settings.dataExport.title`,
+  // `settings.dataImport.title`).
+  'help.rowLabel',
   'help.title',
   'help.topics.addAccount.title',
   'help.topics.manageCategories.title',
@@ -107,8 +112,10 @@ export const TITLE_KEYS = new Set([
   'reminders.title',
   'settings.baseCurrencySheetTitle',
   'settings.categories',
+  'settings.dataExport.rowLabel',
   'settings.dataExport.title',
   'settings.dataImport.confirmTitle',
+  'settings.dataImport.rowLabel',
   'settings.dataImport.title',
   'settings.system',
   'settings.title',

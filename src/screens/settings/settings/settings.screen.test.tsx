@@ -229,6 +229,17 @@ describe('SettingsScreen', () => {
     expect(rowOrder).toEqual(['settings-row-import-data', 'settings-row-export-data']);
   });
 
+  // User ruling 2026-10-08: a Settings row that opens a screen reads in Title Case, like that
+  // screen's nav title.
+  it('labels the Import and Export rows in Title Case', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const card = getByTestId('settings-card-data-transfer');
+
+    expect(within(card).getByText('Import Data')).toBeTruthy();
+    expect(within(card).getByText('Export Data')).toBeTruthy();
+  });
+
   it('separates Import and Export with a divider, between the two rows', async () => {
     const { getByTestId, getAllByTestId } = await renderScreen();
 
@@ -369,7 +380,7 @@ describe('SettingsScreen', () => {
 
     const card = getByTestId('settings-card-help');
 
-    expect(within(card).getByText('Help & tips')).toBeTruthy();
+    expect(within(card).getByText('Help & Tips')).toBeTruthy();
     expect(
       card.queryAll((node) => node.props.name === 'questionmark.circle').length,
     ).toBeGreaterThan(0);

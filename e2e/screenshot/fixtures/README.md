@@ -62,7 +62,7 @@ unchanged — that is expected, not a bug.
 
 ## Importing on a device
 
-Settings → Import data → pick the `.kiko` file → paste the key from
+Settings → Import Data → pick the `.kiko` file → paste the key from
 `kiko-demo.key` → Import → confirm the replace-everything warning → **cold
 relaunch the app** (kill it fully, then reopen) so `applyPersistedLanguage`
 (`src/migration/migrations-gate/migrations.gate.tsx`) picks up the imported

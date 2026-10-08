@@ -47,7 +47,7 @@ App Store screenshots by hand, following this checklist.
    66 transactions span roughly the 6 months ending there — every "last 30
    days" chart needs the device clock at or after `ANCHOR` to render full.
 3. **Data.** Fresh install (or wipe existing data), launch the app, go to
-   Settings → Import data, pick `e2e/screenshot/fixtures/kiko-demo-uk.kiko`,
+   Settings → Import Data, pick `e2e/screenshot/fixtures/kiko-demo-uk.kiko`,
    paste the key from `e2e/screenshot/fixtures/kiko-demo.key`, confirm the
    replace-everything warning, then **cold-relaunch** (kill the app fully,
    reopen) so the imported Ukrainian language setting takes effect on the
