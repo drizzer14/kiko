@@ -1747,11 +1747,21 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // An empty picker's "Add holding" row opens the create form with `navigate`,
   // so this form stays mounted underneath with its draft. A picker tied to this
   // form's own holding creates in that holding's account when that account can
-  // create a type the picker lists (`accepts`).
+  // create a type the picker lists (`accepts`). A picker that lists one currency
+  // only (a return row, in the payer's) passes it on, so the form opens in it.
   const openCreateHoldingIn =
-    (anchorAccountId: string | undefined, accepts: (type: HoldingRow['type']) => boolean) =>
+    (
+      anchorAccountId: string | undefined,
+      accepts: (type: HoldingRow['type']) => boolean,
+      pickerCurrency?: Currency,
+    ) =>
     (): void => {
-      navigation.navigate(...resolveCreateHoldingTarget({ anchorAccountId, accepts }, accounts));
+      navigation.navigate(
+        ...resolveCreateHoldingTarget(
+          { anchorAccountId, accepts, currency: pickerCurrency },
+          accounts,
+        ),
+      );
     };
 
   // The picker's eligible options (open, non-synced, transaction-eligible),
@@ -2759,7 +2769,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               returns: changeReturns,
               buildOptions: returnOptionsFor,
               onSelectHolding: selectReturnHolding,
-              onCreateHolding: openCreateHoldingIn(holding?.accountId, isTransactionEligibleType),
+              onCreateHolding: openCreateHoldingIn(
+                holding?.accountId,
+                isTransactionEligibleType,
+                holding?.currency,
+              ),
               onChangeAmount: changeReturnAmount,
               onRemove: removeReturn,
               onAdd: addReturn,

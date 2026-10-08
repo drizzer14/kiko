@@ -4,6 +4,7 @@ import { holdingTypes } from '../holding-type';
 
 import {
   holdingCurrencyOptions,
+  isCryptoHoldingType,
   isCurrencyAllowedForHoldingType,
   isCurrencyExpectedForHoldingType,
 } from './holding-currency';
@@ -30,6 +31,18 @@ describe('isCurrencyAllowedForHoldingType', () => {
   it('accepts a fiat cash holding and a crypto crypto_asset holding', () => {
     expect(isCurrencyAllowedForHoldingType('cash', 'EUR')).toBe(true);
     expect(isCurrencyAllowedForHoldingType('crypto_asset', 'BTC')).toBe(true);
+  });
+});
+
+describe('isCryptoHoldingType', () => {
+  it('is true for a crypto asset alone', () => {
+    expect(holdingTypes.filter(isCryptoHoldingType)).toEqual(['crypto_asset']);
+  });
+
+  it('is the type whose expected currency is never a fiat one', () => {
+    for (const type of holdingTypes) {
+      expect(isCryptoHoldingType(type)).toBe(!isCurrencyExpectedForHoldingType(type, 'UAH'));
+    }
   });
 });
 

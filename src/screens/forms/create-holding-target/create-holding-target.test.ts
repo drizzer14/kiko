@@ -1,7 +1,9 @@
 import type { AccountRow } from '@kiko/db';
+import type { Currency } from '@kiko/currency/currency';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import { isExchangeSourceType } from '@kiko/holdings/exchange-destination';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { isCurrencyExpectedForHoldingType } from '@kiko/holdings/holding-currency';
 
 import { resolveCreateHoldingTarget } from '.';
 
@@ -27,9 +29,10 @@ const syncedMonobank = (id: string): TargetAccount =>
 // manual ledger.
 const takesLedger = (type: HoldingType): boolean => !isLedgerlessHoldingType(type);
 
-const withoutAnchor = (accepts: (type: HoldingType) => boolean) => ({
+const withoutAnchor = (accepts: (type: HoldingType) => boolean, currency?: Currency) => ({
   anchorAccountId: undefined,
   accepts,
+  currency,
 });
 
 describe('resolveCreateHoldingTarget', () => {
@@ -38,7 +41,7 @@ describe('resolveCreateHoldingTarget', () => {
 
     expect(
       resolveCreateHoldingTarget({ anchorAccountId: 'anchor', accepts: takesLedger }, accounts),
-    ).toEqual(['HoldingForm', { accountId: 'anchor' }]);
+    ).toEqual(['HoldingForm', { accountId: 'anchor', initialType: 'cash' }]);
   });
 
   it('opens the holding form on the first account in the given order when there is no anchor', () => {
@@ -46,7 +49,7 @@ describe('resolveCreateHoldingTarget', () => {
 
     expect(resolveCreateHoldingTarget(withoutAnchor(takesLedger), accounts)).toEqual([
       'HoldingForm',
-      { accountId: 'first' },
+      { accountId: 'first', initialType: 'cash' },
     ]);
   });
 
@@ -55,7 +58,7 @@ describe('resolveCreateHoldingTarget', () => {
 
     expect(resolveCreateHoldingTarget(withoutAnchor(takesLedger), accounts)).toEqual([
       'HoldingForm',
-      { accountId: 'wallet' },
+      { accountId: 'wallet', initialType: 'cash' },
     ]);
   });
 
@@ -70,7 +73,7 @@ describe('resolveCreateHoldingTarget', () => {
 
     expect(resolveCreateHoldingTarget(withoutAnchor(takesLedger), accounts)).toEqual([
       'HoldingForm',
-      { accountId: 'import-only' },
+      { accountId: 'import-only', initialType: 'card' },
     ]);
   });
 
@@ -79,7 +82,7 @@ describe('resolveCreateHoldingTarget', () => {
 
     expect(resolveCreateHoldingTarget(withoutAnchor(takesLedger), accounts)).toEqual([
       'HoldingForm',
-      { accountId: 'wallet' },
+      { accountId: 'wallet', initialType: 'cash' },
     ]);
   });
 
@@ -91,7 +94,7 @@ describe('resolveCreateHoldingTarget', () => {
         { anchorAccountId: 'card-account', accepts: isExchangeSourceType },
         accounts,
       ),
-    ).toEqual(['HoldingForm', { accountId: 'wallet' }]);
+    ).toEqual(['HoldingForm', { accountId: 'wallet', initialType: 'cash' }]);
   });
 
   it('skips an account none of whose creatable types the picker accepts', () => {
@@ -102,7 +105,7 @@ describe('resolveCreateHoldingTarget', () => {
         withoutAnchor((type) => type === 'crypto_asset'),
         accounts,
       ),
-    ).toEqual(['HoldingForm', { accountId: 'coins' }]);
+    ).toEqual(['HoldingForm', { accountId: 'coins', initialType: 'crypto_asset' }]);
   });
 
   it('falls back to the other accounts when the anchor is not among them', () => {
@@ -110,7 +113,7 @@ describe('resolveCreateHoldingTarget', () => {
       resolveCreateHoldingTarget({ anchorAccountId: 'gone', accepts: takesLedger }, [
         accountOf('wallet', 'cash'),
       ]),
-    ).toEqual(['HoldingForm', { accountId: 'wallet' }]);
+    ).toEqual(['HoldingForm', { accountId: 'wallet', initialType: 'cash' }]);
   });
 
   it('skips the implicit property and debt accounts, which create only ledgerless types', () => {
@@ -122,7 +125,7 @@ describe('resolveCreateHoldingTarget', () => {
 
     expect(resolveCreateHoldingTarget(withoutAnchor(takesLedger), accounts)).toEqual([
       'HoldingForm',
-      { accountId: 'wallet' },
+      { accountId: 'wallet', initialType: 'cash' },
     ]);
   });
 
@@ -131,7 +134,7 @@ describe('resolveCreateHoldingTarget', () => {
 
     expect(resolveCreateHoldingTarget(withoutAnchor(takesLedger), accounts)).toEqual([
       'HoldingForm',
-      { accountId: 'wallet' },
+      { accountId: 'wallet', initialType: 'cash' },
     ]);
   });
 
@@ -146,5 +149,59 @@ describe('resolveCreateHoldingTarget', () => {
       'AccountForm',
       {},
     ]);
+  });
+
+  describe('the type the form opens on', () => {
+    it('is the first creatable type the picker accepts, not the account default', () => {
+      // A broker account creates a bond first, which a ledger picker does not list.
+      expect(
+        resolveCreateHoldingTarget(withoutAnchor(takesLedger), [accountOf('broker', 'broker')]),
+      ).toEqual(['HoldingForm', { accountId: 'broker', initialType: 'cash' }]);
+    });
+
+    it('is the first type in the account order when the picker accepts several', () => {
+      expect(
+        resolveCreateHoldingTarget(
+          withoutAnchor(() => true),
+          [accountOf('broker', 'broker')],
+        ),
+      ).toEqual(['HoldingForm', { accountId: 'broker', initialType: 'bond' }]);
+    });
+  });
+
+  describe('the currency the form opens in', () => {
+    it('is the picker currency when it requires one', () => {
+      expect(
+        resolveCreateHoldingTarget(withoutAnchor(takesLedger, 'USD'), [
+          accountOf('wallet', 'cash'),
+        ]),
+      ).toEqual([
+        'HoldingForm',
+        { accountId: 'wallet', initialType: 'cash', initialCurrency: 'USD' },
+      ]);
+    });
+
+    it('is left to the form when the picker requires none', () => {
+      const [, params] = resolveCreateHoldingTarget(withoutAnchor(takesLedger), [
+        accountOf('wallet', 'cash'),
+      ]);
+
+      expect(params).not.toHaveProperty('initialCurrency');
+    });
+
+    it('goes with a type the picker accepts in that currency', () => {
+      const accepts = (type: HoldingType): boolean =>
+        takesLedger(type) && isCurrencyExpectedForHoldingType(type, 'USD');
+
+      expect(
+        resolveCreateHoldingTarget(withoutAnchor(accepts, 'USD'), [
+          accountOf('coins', 'crypto'),
+          accountOf('wallet', 'cash'),
+        ]),
+      ).toEqual([
+        'HoldingForm',
+        { accountId: 'wallet', initialType: 'cash', initialCurrency: 'USD' },
+      ]);
+    });
   });
 });

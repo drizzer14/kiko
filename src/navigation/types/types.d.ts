@@ -1,6 +1,8 @@
 import type { AccountRow } from '@kiko/db';
 import type { HelpTopicId } from '@kiko/help';
+import type { Currency } from '@kiko/currency/currency';
 import type { ReminderKind } from '@kiko/reminders/schedule';
+import type { HoldingType } from '@kiko/holdings/holding-type';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
 import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
@@ -52,11 +54,14 @@ export type FormDraft = { name: string; icon: string | null; color: string | nul
  * What every entry to the holding form carries. `implicitKind` (instead of
  * `accountId`) opens the form in implicit create mode: the one property or debt
  * account is found or created on Save, and `draft` seeds the identity the
- * account form carried over. Without the Accounts stack's `returnTo`, so the
- * Home stack, which has no import screen to pop back to, cannot pass one.
+ * account form carried over. `initialType` and `initialCurrency` seed a create
+ * on a named account, once on mount, for an "Add holding" row whose picker lists
+ * only some holdings; the user can still change both. Without the Accounts
+ * stack's `returnTo`, so the Home stack, which has no import screen to pop back
+ * to, cannot pass one.
  */
 type HoldingFormParams = (
-  | { accountId: string }
+  | { accountId: string; initialType?: HoldingType; initialCurrency?: Currency }
   | { implicitKind: ImplicitAccountKind; draft?: FormDraft }
 ) & {
   holdingId?: string;

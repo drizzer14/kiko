@@ -14,6 +14,7 @@ import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
+import { resolveCreateHoldingTarget } from '@kiko/screens/forms/create-holding-target';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
@@ -31,6 +32,13 @@ jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockS
 // below can assert on the WIRING without depending on real
 // `measureLayout`/`measure` host-instance behavior under the test renderer.
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
+// Real behavior, with a spy on the picker each "Add holding" row hands over, so a test can read
+// which holding types that row's own picker lists.
+jest.mock('@kiko/screens/forms/create-holding-target', () => {
+  const actual = jest.requireActual('@kiko/screens/forms/create-holding-target');
+
+  return { ...actual, resolveCreateHoldingTarget: jest.fn(actual.resolveCreateHoldingTarget) };
+});
 
 type TransactionFormProps = ComponentProps<typeof TransactionFormScreen>;
 
@@ -4707,7 +4715,10 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
     await fireEvent.press(utils.getByText('Add holding'));
 
     expect(navigation.navigate).toHaveBeenCalledTimes(1);
-    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      initialType: 'cash',
+    });
   });
 
   it("opens the holding form on the payer's account from a return row with no option left", async () => {
@@ -4726,7 +4737,11 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
     await fireEvent.press(utils.getByText('Add holding'));
 
     expect(navigation.navigate).toHaveBeenCalledTimes(1);
-    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      initialType: 'cash',
+      initialCurrency: 'UAH',
+    });
   });
 
   it("opens the holding form on the existing holding's account from the Convert counterpart sheet", async () => {
@@ -4738,7 +4753,90 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
     await fireEvent.press(utils.getByText('Add holding'));
 
     expect(navigation.navigate).toHaveBeenCalledTimes(1);
-    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      initialType: 'cash',
+    });
+  });
+
+  describe('the holding types each picker lists', () => {
+    // The picker the last "Add holding" press handed over, read as the types it would list.
+    const listedTypes = () => {
+      const [picker] = jest.mocked(resolveCreateHoldingTarget).mock.calls.at(-1) ?? [];
+
+      return holdingTypes.filter((type) => picker?.accepts(type));
+    };
+    const withLedger = holdingTypes.filter((type) => !isLedgerlessHoldingType(type));
+    const INCOME: Transaction = { ...EXPENSE, id: 'income', amountMinorUnits: 10_000 };
+
+    it('lists only cash in the Exchange "To" sheet of a new exchange', async () => {
+      setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+      const utils = await renderAddFromHolding('only-cash');
+
+      await pickType(utils, 'exchange');
+      await fireEvent.press(utils.getByLabelText('To'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(listedTypes()).toEqual(['cash']);
+    });
+
+    it('lists every holding that takes a ledger in a return row', async () => {
+      setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+      const utils = await renderAddFromHolding('only-cash');
+
+      await pickType(utils, 'split');
+      await fireEvent.press(utils.getByLabelText('Return to 1'));
+      await fireEvent.press(utils.getByText('Cash UAH'));
+      await fireEvent.press(utils.getByText('Add return'));
+      await fireEvent.press(utils.getByLabelText('Return to 2'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(listedTypes()).toEqual(withLedger);
+    });
+
+    it('lists every Exchange destination type in the Convert "To" sheet of an expense', async () => {
+      setLiveData([SOURCE], EXPENSE, CATEGORIES, [WALLET]);
+      const utils = await renderEdit('expense');
+
+      await fireEvent.press(utils.getByText('Exchange'));
+      await fireEvent.press(utils.getByLabelText('To'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(listedTypes()).toEqual(['card', 'term_deposit', 'cash', 'crypto_asset']);
+    });
+
+    it('lists only the Exchange source types in the Convert "From" sheet of an income', async () => {
+      setLiveData([SOURCE], INCOME, CATEGORIES, [WALLET]);
+      const utils = await renderEdit('income');
+
+      await fireEvent.press(utils.getByText('Exchange'));
+      await fireEvent.press(utils.getByLabelText('From'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(listedTypes()).toEqual(['card', 'cash']);
+    });
+  });
+
+  describe('the currency a return row asks the holding form for', () => {
+    it("is the payer's", async () => {
+      const payer = { ...DOLLARS, createdAt: 1 };
+
+      setLiveData([payer], undefined, CATEGORIES, [WALLET]);
+      const utils = await renderAddFromHolding('cash-usd');
+
+      await pickType(utils, 'split');
+      await fireEvent.press(utils.getByLabelText('Return to 1'));
+      await fireEvent.press(utils.getByText('Cash USD'));
+      await fireEvent.press(utils.getByText('Add return'));
+      await fireEvent.press(utils.getByLabelText('Return to 2'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+        accountId: 'acc-1',
+        initialType: 'cash',
+        initialCurrency: 'USD',
+      });
+    });
   });
 
   describe('the global-add primary picker, which has no anchor holding', () => {
@@ -4751,7 +4849,10 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       await fireEvent.press(utils.getByLabelText('Holding'));
       await fireEvent.press(utils.getByText('Add holding'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+        accountId: 'acc-1',
+        initialType: 'cash',
+      });
     });
 
     it('skips a synced Monobank account, whose sync owns its ledgered holdings', async () => {
@@ -4768,7 +4869,10 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
       await fireEvent.press(utils.getByLabelText('Holding'));
       await fireEvent.press(utils.getByText('Add holding'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'acc-1' });
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+        accountId: 'acc-1',
+        initialType: 'cash',
+      });
     });
 
     it('opens the account form when the only account is a synced Monobank one', async () => {

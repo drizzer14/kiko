@@ -7,6 +7,7 @@ import {
 } from '@kiko/holdings/holding-type';
 import {
   holdingCurrencyOptions,
+  isCryptoHoldingType,
   isCurrencyExpectedForHoldingType,
 } from '@kiko/holdings/holding-currency';
 import type { TFunction } from 'i18next';
@@ -54,6 +55,12 @@ import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-s
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import { type ImplicitAccountKind, isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
+import {
+  type HoldingFormTarget,
+  holdingFormDraft,
+  holdingFormStart,
+  holdingFormTarget,
+} from './holding-form-target';
 import LoanFormBlock from './loan/loan-form-block';
 import LoanKindField from './loan/loan-kind-field';
 import BondFormBlock from './bond/bond-form-block';
@@ -70,7 +77,6 @@ import { usePropertyFields } from './property/use-property-fields';
 import type { ScrollTarget, HoldingTypeForm } from './holding-type-form';
 import TermDepositFormBlock from './term-deposit/term-deposit-form-block';
 import { useTermDepositFields } from './term-deposit/use-term-deposit-fields';
-import { type HoldingFormTarget, holdingFormDraft, holdingFormTarget } from './holding-form-target';
 
 // Fire-and-forget, only for a loan: the matcher backfills from the loan's
 // own start date, so a create OR an edit (principal/schedule/
@@ -278,12 +284,20 @@ const shownKind = (
   leavingKind: AccountRow['kind'] | undefined,
 ): AccountRow['kind'] => leavingKind ?? implicitKind;
 
+// At module scope to keep this branch out of HoldingFormScreen's own cognitive
+// complexity score.
+const startingType = (
+  hinted: HoldingType | undefined,
+  typeOptions: readonly HoldingType[],
+): HoldingType => hinted ?? typeOptions[0];
+
 const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) => {
   const { holdingId, returnTo } = route.params;
   // A named account, or the implicit one a create finds or makes on Save, and
   // the identity the account form carried over (an implicit create only).
   const target = holdingFormTarget(route.params);
   const draft = holdingFormDraft(route.params);
+  const start = holdingFormStart(route.params);
   const { t } = useTranslation();
   // Human display text for the id-like holding types (the select field
   // below still reports the underlying value on select). Built from the
@@ -370,7 +384,9 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // snaps it to the first CREATABLE type for the account's kind once the option
   // set is known — a bank create (where card/jar are sync-only and excluded)
   // lands on `term_deposit` — and an edit seeds the real type from the row.
-  const [type, setType] = useState<HoldingType>(typeOptions[0]);
+  // An "Add holding" row opens the form on a type its picker lists (`start.type`),
+  // which the snap below keeps while the account offers it.
+  const [type, setType] = useState<HoldingType>(startingType(start.type, typeOptions));
 
   // Reactive `PriceBook`, passed through `EditContext.book` to every hook's
   // own `saveEdit`: a loan edit that changes its schedule INTO `'none'`
@@ -385,7 +401,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   const { book: priceBook, isLoading: isPriceBookLoading } = useCurrentPriceBook(
     needsPriceBook(editingHolding?.type ?? type),
   );
-  const [currency, setCurrency] = useState<Currency>('UAH');
+  const [currency, setCurrency] = useState<Currency>(start.currency);
   // While the currency sheet's search field can be
   // focused, this screen's background ScrollView must NOT react to the
   // keyboard's frame change — it does not contain that responder, but
@@ -479,6 +495,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
       ...resolveCreateHoldingTarget(
         {
           anchorAccountId: undefined,
+          currency,
           accepts: (type) =>
             !isLedgerlessHoldingType(type) && isCurrencyExpectedForHoldingType(type, currency),
         },
@@ -844,7 +861,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
             selected={currency}
             onSelect={setCurrency}
             options={holdingCurrencyOptions(type)}
-            cryptoFirst={type === 'crypto_asset'}
+            cryptoFirst={isCryptoHoldingType(type)}
             disabled={isEdit}
             onOpenChange={setIsSearchSheetOpen}
             testID="holding-currency-field"
