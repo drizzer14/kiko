@@ -589,37 +589,55 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     }
   });
 
-  // kiko-no-native-reminders-module-import is not in RULE_IDS_WITH_FIXTURES:
-  // its negative fixture's type-only imports name the spec by a path the
-  // feature-import rule rejects at the src/probe target, and a relative path
-  // there would not type-check from rules/fixtures/. These probes sit inside
-  // the native feature itself, where a relative import is legal. The quoted
-  // specifier is joined in, so this file never holds a loading call itself.
-  const nativeSpecSpecifier = "'./NativeKikoReminders'";
+  // The two native-module import rules are not in RULE_IDS_WITH_FIXTURES:
+  // their negative fixtures' type-only imports name the spec by a relative
+  // path that the feature-import rule rejects at the src/probe target. These
+  // probes name the spec through the `@kiko/native-specs` alias, the only
+  // legal way in, from the spec folder `src/native-specs/` (the codegen
+  // `jsSrcsDir`). The quoted specifier is joined in, so this file never holds
+  // a loading call itself.
+  const nativeSpecProbes = [
+    {
+      ruleId: 'kiko-no-native-reminders-module-import',
+      specifier: "'@kiko/native-specs/NativeKikoReminders'",
+      binding: 'NativeKikoReminders',
+      wrapper: 'src/reminders/native/reminders-native.ts',
+      consumer: 'src/reminders/native/probe.ts',
+    },
+    {
+      ruleId: 'kiko-no-native-display-regions-module-import',
+      specifier: "'@kiko/native-specs/NativeDisplayRegions'",
+      binding: 'NativeDisplayRegions',
+      wrapper: 'src/display-regions/display-regions-native/display-regions-native.ts',
+      consumer: 'src/display-regions/use-display-regions/probe.ts',
+    },
+  ] as const;
 
-  it.each([
-    [
-      'denies a value import next to the spec',
-      'src/reminders/native/probe.ts',
-      'import NativeKikoReminders from '.concat(
-        nativeSpecSpecifier,
-        ';\n\nexport const probe = NativeKikoReminders;\n',
-      ),
-      2,
-    ],
-    [
-      'allows a type-only import next to the spec',
-      'src/reminders/native/probe.ts',
-      'import type { Spec } from '.concat(nativeSpecSpecifier, ';\n\nexport type Probe = Spec;\n'),
-      0,
-    ],
-    [
-      'allows the lazy require in the wrapper itself',
-      'src/reminders/native/reminders-native.ts',
-      'export const load = (): unknown => require('.concat(nativeSpecSpecifier, ').default;\n'),
-      0,
-    ],
-  ])('kiko-no-native-reminders-module-import %s', (_name, relativeTarget, content, status) => {
+  it.each(
+    nativeSpecProbes.flatMap(({ ruleId, specifier, binding, wrapper, consumer }) => [
+      [
+        ruleId,
+        'denies a value import of the spec',
+        consumer,
+        `import ${binding} from `.concat(specifier, `;\n\nexport const probe = ${binding};\n`),
+        2,
+      ] as const,
+      [
+        ruleId,
+        'allows a type-only import of the spec',
+        consumer,
+        'import type { Spec } from '.concat(specifier, ';\n\nexport type Probe = Spec;\n'),
+        0,
+      ] as const,
+      [
+        ruleId,
+        'allows the lazy require in the wrapper itself',
+        wrapper,
+        'export const load = (): unknown => require('.concat(specifier, ').default;\n'),
+        0,
+      ] as const,
+    ]),
+  )('%s %s', (ruleId, _name, relativeTarget, content, status) => {
     const project = mkdtempSync(join(tmpdir(), 'kiko-prewrite-native-module-'));
     try {
       const targetFile = join(project, ...relativeTarget.split('/'));
@@ -631,7 +649,7 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
 
       if (status === 2) {
         const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
-        expect(reason).toContain('kiko-no-native-reminders-module-import');
+        expect(reason).toContain(`rule ${ruleId} at `);
       }
     } finally {
       rmSync(project, { recursive: true, force: true });
