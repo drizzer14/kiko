@@ -247,9 +247,8 @@ describe('HelpScreen', () => {
         await findByTestId('help-tips-reset-tip');
 
         expect(getByTestId('help-tips-reset-tip')).toHaveTextContent(
-          i18n.t('help.tipsResetConfirmation'),
+          'Підказки буде показано знову.',
         );
-        expect(i18n.t('help.tipsResetConfirmation')).not.toBe('Tips will be shown again.');
       });
     });
   });

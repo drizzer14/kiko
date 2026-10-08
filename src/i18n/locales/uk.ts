@@ -755,7 +755,7 @@ export const uk: typeof en = {
     privacy: 'Усі ваші дані залишаються на цьому пристрої.',
     rowLabel: 'Довідка та підказки',
     showTipsAgain: 'Показати підказки знову',
-    tipsResetConfirmation: 'Підказки знову з’являтимуться.',
+    tipsResetConfirmation: 'Підказки буде показано знову.',
     title: 'Довідка та підказки',
     topics: {
       addAccount: {
