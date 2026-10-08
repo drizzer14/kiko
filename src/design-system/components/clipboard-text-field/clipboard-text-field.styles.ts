@@ -2,14 +2,16 @@ import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create((theme) => ({
   // `ClipboardTextField`'s own [input, paste button] row — the field's caption
-  // label renders OUTSIDE this row entirely (see the component's own doc
-  // comment for why: centering against a row that also contained the label
-  // was the root cause of two earlier failed attempts to center the button on
-  // the input). With no label inside it, this row's only two children are the
-  // bare `TextField` (a fixed 44pt input box, `flex: 1`) and the paste
-  // button's wrapper — both fixed-height boxes with nothing else contributing
-  // height, so `alignItems: 'center'` centers the button's box exactly on the
-  // input's box, with no coordinate to compute or get wrong.
+  // label and its error line render OUTSIDE this row entirely (see the
+  // component's own doc comment for why: centering against a row that also
+  // contained the label or the error was the root cause of the earlier failed
+  // attempts to center the button on the input, and of the button dropping
+  // below the input once an error appeared). With neither inside it, this
+  // row's only two children are the bare `TextField` (a fixed 44pt input box,
+  // `flex: 1`) and the paste button's wrapper — both fixed-height boxes with
+  // nothing else contributing height, so `alignItems: 'center'` centers the
+  // button's box exactly on the input's box, with no coordinate to compute or
+  // get wrong.
   inputRow: {
     alignItems: 'center',
   },
