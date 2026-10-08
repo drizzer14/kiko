@@ -13,6 +13,7 @@ import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import { dropCard, liftCard } from '@kiko/test-support/lift-grid-card';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import type { RemoveHoldingsPlan } from '@kiko/transactions/remove-notice';
@@ -305,11 +306,19 @@ const setLiveData = (data: {
     price_points: { data: [], isLoading: data.pricePointsIsLoading ?? false },
   };
 
-  mockUseLiveQuery.mockImplementation((_query: { __kind?: string }, tables: string[]) => {
-    return (
-      resultByTable[tables[0]] ?? { data: accounts, isLoading: data.accountsIsLoading ?? false }
-    );
-  });
+  // A disabled read is empty and never loading, as the real hook returns it; without this, a
+  // loading flag set for one read would also hold back a disabled read on the same table.
+  mockUseLiveQuery.mockImplementation(
+    (_query: { __kind?: string }, tables: string[], enabled = true) => {
+      if (!enabled) {
+        return { data: [], isLoading: false, isFresh: true };
+      }
+
+      return (
+        resultByTable[tables[0]] ?? { data: accounts, isLoading: data.accountsIsLoading ?? false }
+      );
+    },
+  );
 };
 
 const account = (overrides: Partial<Account> = {}): Account => ({
@@ -327,6 +336,18 @@ const account = (overrides: Partial<Account> = {}): Account => ({
 });
 
 type AccountDetailProps = ComponentProps<typeof AccountDetailScreen>;
+
+type SqlQuery = { toSQL: () => { sql: string; params: unknown[] } };
+type LiveCall = [SqlQuery, string[], boolean | undefined, unknown];
+
+// The live reads over the transactions and holdings tables: the import tip's "any transaction"
+// read and the price book's linked loan payments. Told apart by their query, not by order.
+const transactionsReadCalls = (): LiveCall[] =>
+  (mockUseLiveQuery.mock.calls as LiveCall[]).filter(
+    (call) => call[1].join(',') === 'transactions,holdings',
+  );
+const isAnyInAccountQuery = (query: SqlQuery): boolean =>
+  query.toSQL().sql === transactionsRepo.anyInAccountQuery('a').toSQL().sql;
 
 const route = asRouteProp<AccountDetailProps['route']>('AccountDetail', { accountId: 'a' });
 
@@ -2210,12 +2231,10 @@ describe('AccountDetailScreen — the price_points gate', () => {
   // Only a loan reads its linked payments, so a priced-only screen never
   // runs the linked-payments read.
   it('reads the linked loan payments only once a loan is present', async () => {
-    // The import tip's "any transaction" read subscribes to the same tables and is mounted
-    // first, so the linked-payments read is the last of the two.
+    // The import tip's "any transaction" read subscribes to the same tables, so the
+    // linked-payments read is the one that is not that query.
     const loanPaymentsCall = () =>
-      mockUseLiveQuery.mock.calls
-        .filter((call) => call[1].join(',') === 'transactions,holdings')
-        .at(-1);
+      transactionsReadCalls().find((call) => !isAnyInAccountQuery(call[0]));
     const holdingOfType = (type: string) => ({
       id: 'h1',
       name: 'Holding',
@@ -2630,12 +2649,10 @@ describe('AccountDetailScreen — the import statement tip', () => {
   it('reads whether the account has any transaction, over the transactions and holdings tables', async () => {
     await renderScreen();
 
-    expect(mockUseLiveQuery).toHaveBeenCalledWith(
-      expect.anything(),
-      ['transactions', 'holdings'],
-      true,
-      { cached: true },
-    );
+    const anyCall = transactionsReadCalls().find((call) => isAnyInAccountQuery(call[0]));
+
+    expect(anyCall?.slice(1)).toEqual([['transactions', 'holdings'], true, { cached: true }]);
+    expect(anyCall?.[0].toSQL().params).toContain('a');
   });
 
   it('records the dismissal of the tip when its close button is pressed', async () => {
