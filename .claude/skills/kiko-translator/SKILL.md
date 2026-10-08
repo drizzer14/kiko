@@ -219,9 +219,11 @@ string:
   Kiko/Кіко, Monobank, Binance; the closed set is `PROPER_NOUNS` in
   `en.casing-by-role.test.ts` for en and in `uk.casing.test.ts` for uk
   — read them there, add a new name to the right one). A uk word
-  missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence
-  (so «біткоїна», not «Біткоїна»). Latin "Bitcoin" vs «Біткоїн» in uk is
-  the user's call in the translation review, not a rule here. Also
+  missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence.
+  uk names the network «Біткоїн» with a capital (a proper noun beside
+  Monobank and Binance, decided in the 2026-10-09 translation review;
+  it is in the uk `PROPER_NOUNS`). The help step's wallet phrase reads
+  «гаманець біткоїна» in lowercase (uk onboarding help step 4). Also
   acronyms (ISIN, API, CSV, BTC, ISO codes), a unit in
   parentheses cases per the rule of the role it sits inside, and a
   capital letter standing for a user-chosen number ("Every N days" /
