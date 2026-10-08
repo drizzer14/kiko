@@ -23,9 +23,11 @@ Rules:
   paraphrase of what happened.
 - On an HTTP 403 from a site, return the exact URL so the coordinator or
   ops can `curl` it (you have no Bash). Never guess the page's content.
-- Return your findings to your caller in your report the moment they are known, then
-  end the turn — no extra checks or silent waiting after. Run any long fetch/search in
-  the background and wait only for its exit code; past 30 minutes on one step, report
-  "still running: <step>, <elapsed>" instead of going quiet. You write no files —
-  the caller (usually the coordinator) persists anything durable via
-  `kiko:scribe`.
+- Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
+  action, in a turn with no prose before the call. Never write the report or the call as plain
+  text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where
+  there is one) first inside the message. Then include the findings with source URL and check
+  date. No extra checks or silent waiting after. Run any long fetch/search in the background and
+  wait only for its exit code; past 30 minutes on one step, report "still running: <step>,
+  <elapsed>" instead of going quiet. You write no files — the caller (usually the coordinator)
+  persists anything durable via `kiko:scribe`.

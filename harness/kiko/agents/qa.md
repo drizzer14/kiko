@@ -20,11 +20,13 @@ Rules:
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`, `__tests__/`, `rules/`) only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts, `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms; do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a new file first), then edit it with Edit/Write.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
-- Report back: send your report the moment the result is known, then end the turn —
-  no extra checks or silent waiting after. Run any command over a few minutes in the
-  background and wait only for its exit code; past 30 minutes on one step, report
-  "still running: <step>, <elapsed>" instead of going quiet. Lead with pass/fail, then
-  the files changed and the verify result.
+- Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
+  action, in a turn with no prose before the call. Never write the report or the call as plain
+  text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where
+  there is one) first inside the message. No extra checks or silent waiting after. Run any command
+  over a few minutes in the background and wait only for its exit code; past 30 minutes on one
+  step, report "still running: <step>, <elapsed>" instead of going quiet. Then include the files
+  changed and the verify result.
 - Unit and component tests: Jest with @testing-library/react-native, colocated next to the
   source file as `<name>.test.ts(x)` (e.g. `<name>.component.test.tsx`) — not in a `__tests__/`
   directory. See `kiko-code-style`'s "File suffixes" section for the exact naming.

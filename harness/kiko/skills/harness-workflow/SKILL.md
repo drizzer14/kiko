@@ -28,6 +28,8 @@ Rules:
   it does not keep waiting silently. The coordinator is not the watchdog for role
   agents; each role agent's own "Report back" rule (see its agent file) is what makes
   it send its result the moment it is known instead of going quiet.
+  Do not add a SubagentStop hook to enforce the hand-back: the fatal malformed-call path
+  ("tool call could not be parsed") ends the agent without running any Stop hook.
 - "DEFAULT, pending user" means apply it now, not merely record the decision and leave the old behavior in place. A change that states a DEFAULT ruling must change the code in that same change — a later change should never have to circle back to actually apply a decision an earlier one only annotated.
 - A default applied as "DEFAULT, pending user" can leave a dangling state. Give each default's
   consequence a targeted re-review that checks both "what stays" and "what goes".
