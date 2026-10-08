@@ -853,6 +853,44 @@ list has no table to derive a column count from.
 have their own, older, pre-existing chunking — don't assume they use
 `chunkForTable` too; check before touching either.
 
+## Tips and Help
+
+- Dismissed tips live in `settings.dismissed_tips`, a JSON `string[]`
+  (migration 0055, `src/db/schema.ts`). `settingsRepo.dismissTip` reads
+  and updates inside one `write()` (read-modify-write), keeps ids it does
+  not know, and is a no-op without a settings row; `settingsRepo.resetTips`
+  sets `[]` (Help "Show tips again"). Never a global hide flag.
+- `src/tips/` (`tip-ids.ts`, `pick-tip.ts`, `use-tip.ts`): a tip id is
+  never reused — a removed one moves into `RETIRED_TIP_IDS`.
+  `dismissedTipIds` drops a stored id this build does not know
+  (`isTipId`). `useTip(id, condition)` is `visible` only once the
+  settings query has stopped loading; use one `useTip` per screen
+  (`pickTip` is the one-tip-per-screen place). A dismiss runs through
+  `logOnFailure('[tips] dismiss failed', …)`.
+- A tip condition or empty state that depends on a query must include
+  that query's loading state, the same as the `useDataReady` rule above;
+  otherwise it flashes while the query loads (the import/override-rules
+  tip did).
+- `transactionsRepo.anyQuery` / `anyInAccountQuery` are `LIMIT 1`
+  existence reads (the shape of `remindersRepo.hasAnyQuery`); the query
+  plan is pinned in `transactions.repo.any.test.ts`.
+- `hasNoAccounts` (`src/holdings/implicit-account/`) drives the
+  no-accounts empty state. `openAccountForm`
+  (`src/navigation/open-account-form/`) takes
+  `Pick<NavigationProp<TabParamList>, 'navigate'>` and makes one
+  cross-tab navigate; its test uses the real-router helper
+  `src/test-support/real-tab-navigator.tsx`.
+- `src/help/help-topics.ts`: one `topicsById` entry per topic;
+  `HELP_TOPICS` is derived from it.
+- A new `settings` column also needs: the demo `.kiko` fixtures
+  regenerated (`KIKO_REGEN_DEMO=1 npx jest
+  e2e/screenshot/fixtures/generate-demo-kiko.test.ts`, as in commit
+  62e7664b), the `migrationCount` in
+  `src/data-transfer/crypto/envelope.test.ts` bumped, and, until the
+  first `src/` reader lands, an interim entry in
+  `DOCUMENTED_READERLESS_COLUMNS` (`src/db/settings-columns.test.ts`)
+  that the task adding that reader removes.
+
 ## Repository module shape
 
 One functional module per entity: each `*.repo.ts` under `src/` ends

@@ -1,4 +1,5 @@
 import type { AccountRow } from '@kiko/db';
+import type { HelpTopicId } from '@kiko/help';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
@@ -211,6 +212,8 @@ export type SettingsStackParamList = {
   ImportData: undefined;
   Reminders: undefined;
   ReminderForm: ReminderFormParams;
+  Help: undefined;
+  HelpTopic: { topicId: HelpTopicId };
 };
 
 export type StatisticsStackParamList = {

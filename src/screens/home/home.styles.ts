@@ -70,4 +70,10 @@ export const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // The empty-ledger hint is a sentence that wraps, so its lines center under
+  // the "No transactions" line above it.
+  hint: {
+    textAlign: 'center',
+    paddingHorizontal: theme.spacing(6),
+  },
 }));

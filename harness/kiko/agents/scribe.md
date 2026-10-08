@@ -28,6 +28,9 @@ Rules:
   that changes often. Apply this whenever you write or edit a skill, and when retrospect
   flags drift (see the retrospect agent's standing verification job), fix it this way
   rather than just patching the stale value back to correct.
+- Before adding or renaming a skill, grep __tests__ for tests that READ skill text (for
+  example cited-paths.test.ts, skill-citations.test.ts), not only for tests that list
+  skills, and run them.
 - A skill states the RULE, never a survey of current usage: "always do X" or
   "never do Y", not "today every call site does X". Descriptive wording goes
   stale the moment one new call site breaks the pattern, and it still reads

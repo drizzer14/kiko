@@ -392,7 +392,7 @@ const StatementImportScreen: FC<StatementImportScreenProps> = ({ route, navigati
     setImporting(true);
 
     try {
-      showImportResult(await importStatement(input, selectedHoldingId));
+      await showImportResult(await importStatement(input, selectedHoldingId));
     } catch {
       // A translated Alert, never raw `error.message` rendered inline — see
       // `statementImport.importErrorTitle`'s own doc comment.

@@ -433,6 +433,67 @@ describe('AccountsScreen', () => {
     expect(getByText('No accounts yet')).toBeTruthy();
   });
 
+  describe('the empty state', () => {
+    const noLiveAccounts = () =>
+      setLiveData({
+        accounts: [{ id: 'b', name: 'Old Cash', kind: 'cash', archivedAt: 123 }],
+        holdings: [],
+        rates: [],
+        settings: [{ baseCurrency: 'UAH' }],
+      });
+
+    it('renders the shared EmptyState with its title and message', async () => {
+      noLiveAccounts();
+
+      const { getByTestId, getByText } = await renderAccounts();
+
+      expect(getByTestId('accounts-empty')).toBeTruthy();
+      expect(getByText('No accounts yet')).toBeTruthy();
+      expect(
+        getByText(
+          'An account can be a bank card, cash, crypto, or property. Monobank, Binance, and Bitcoin accounts can sync.',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('opens the account form from its Add account action', async () => {
+      noLiveAccounts();
+      const { getByTestId } = await renderAccounts();
+
+      expect(within(getByTestId('accounts-empty')).getByText('Add account')).toBeTruthy();
+
+      await fireEvent.press(getByTestId('accounts-empty-action'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+    });
+
+    it('drops the pinned footer, so Add account shows once', async () => {
+      noLiveAccounts();
+
+      const { queryByTestId, queryAllByText } = await renderAccounts();
+
+      expect(queryByTestId('add-account-footer')).toBeNull();
+      expect(queryAllByText('Add account')).toHaveLength(1);
+    });
+
+    it('shows the footer and no empty state once an account exists', async () => {
+      setLiveData({ accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }], holdings: [] });
+
+      const { getByTestId, queryByTestId } = await renderAccounts();
+
+      expect(getByTestId('add-account-footer')).toBeTruthy();
+      expect(queryByTestId('accounts-empty')).toBeNull();
+    });
+
+    it('is not rendered while a query is on its first load', async () => {
+      setLiveData({ accounts: [], holdings: [], isLoading: { accounts: true } });
+
+      const { queryByTestId } = await renderAccounts();
+
+      expect(queryByTestId('accounts-empty')).toBeNull();
+    });
+  });
+
   it('deletes a manual account via the themed deep-press delete confirm', async () => {
     setLiveData({ accounts: [{ id: 'a', name: 'Cash', kind: 'cash' }], holdings: [] });
     const { getByTestId, getByText } = await renderAccounts();
@@ -1859,7 +1920,7 @@ describe('AccountsScreen — loading gate', () => {
     const { getByTestId, queryByTestId, queryByText } = await renderAccounts();
 
     expect(getByTestId('accounts-loading')).toBeTruthy();
-    expect(queryByText(i18n.t('accounts.emptyState'))).toBeNull();
+    expect(queryByText(i18n.t('accounts.empty.title'))).toBeNull();
     expect(queryByTestId('accounts-grid')).toBeNull();
   });
 

@@ -7,6 +7,12 @@ export const styles = StyleSheet.create((theme) => ({
     flexWrap: 'wrap',
     alignItems: 'center',
   },
+  // The no-account empty state, centered in the page.
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   // A chart card's title sits above the chart itself; the card's own
   // GlassSurface padding frames the whole block.
   cardTitle: {

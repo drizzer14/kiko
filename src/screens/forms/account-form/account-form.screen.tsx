@@ -46,6 +46,8 @@ import HoldingIdentityField from '@kiko/design-system/components/holding-identit
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
 
+import { useConnectReminder } from './use-connect-reminder';
+
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
 // A crypto account is created like a bank account — no initial holding/currency
@@ -285,6 +287,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // it into view alongside its inline error, rather than leaving the reason
   // rendered off-screen above the fold. See scroll-to-field.ts.
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
+  // A Connect field holding typed input that was not connected turns the first Save press into a
+  // reminder under its Connect button (see `useConnectReminder`).
+  const { reminderFor, remindOnSave } = useConnectReminder(scrollTo);
   const nameFieldRef = useRef<FieldInstance>(null);
   // The name field's own inner TextInput, so a blocked Connect/Save can
   // focus it imperatively once it has scrolled into view (see `onSettled`
@@ -496,6 +501,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       setAttemptedSave(true);
       scrollTo(firstInvalid.ref, firstInvalid.focus);
 
+      return;
+    }
+
+    // Soft, unlike the fields above: it asks once, so a second Save press goes through.
+    if (remindOnSave()) {
       return;
     }
 
@@ -756,7 +766,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             </View>
 
             {!isEdit && bankId === 'monobank' && (
-              <MonobankConnectField onConnect={connectMonobank} />
+              <MonobankConnectField
+                onConnect={connectMonobank}
+                reminder={reminderFor('monobank')}
+              />
             )}
 
             {isSpecificBankId(bankId) && bankId !== 'monobank' && (
@@ -786,6 +799,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               accountId={pendingAccountId}
               onConnectWallet={connectWallet}
               onConnectBinance={connectBinance}
+              walletReminder={reminderFor('wallet')}
+              binanceReminder={reminderFor('binance')}
             />
           </Box>
         )}

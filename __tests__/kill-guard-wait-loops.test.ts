@@ -47,6 +47,8 @@ const DENIED_WAIT_LOOPS: string[] = [
   "timeout 600 bash -c 'until ! pgrep -f xcodebuild; do sleep 5; done'",
   '(while pgrep -afl jest; do sleep 1; done) &',
   'while pgrep --full stryker; do sleep 1; done',
+  'while pgrep -fu fred jest; do sleep 1; done',
+  'while pgrep -lfufred jest; do sleep 1; done',
   'npm run check:all & while pgrep -f check:all; do sleep 10; done',
   "until ! ps aux | egrep -q 'Make  Verify'; do sleep 1; done",
   'for i in 1 2; do until pgrep -f jest; do sleep 1; done; done',
@@ -90,6 +92,10 @@ const ALLOWED_WAIT_COMMANDS: string[] = [
   // pgrep without -f matches a process name, never the loop's own command line.
   'while pgrep -x xcodebuild; do sleep 5; done',
   'while pgrep jest; do sleep 5; done',
+  // An f in a value glued to its option (`-u fred`, `-G staff`) is no -f.
+  'while pgrep -ufred jest; do sleep 1; done',
+  'while pgrep -Gstaff jest; do sleep 1; done',
+  'while pgrep -lPfoo jest; do sleep 1; done',
   'while read name; do echo "$name"; done < names.txt',
   'while true; do ps -axo pid,etime | head -3; sleep 1; done',
   'echo "while pgrep -f jest; do sleep 1; done"',

@@ -34,19 +34,37 @@ jest.mock('react-i18next', () => ({
 
 import SettingsStack from './settings.stack';
 
-type ScreenElement = ReactElement<{ name: string; options?: { title?: string } }>;
+type ScreenOptions = { title?: string };
+
+type ScreenElement = ReactElement<{
+  name: string;
+  options?: ScreenOptions | ((args: { route: { params: unknown } }) => ScreenOptions);
+}>;
+
+const screenElements = (): ScreenElement[] => {
+  const navigator = SettingsStack({}) as ReactElement<{ children: ScreenElement[] }>;
+
+  return navigator.props.children.filter(isValidElement);
+};
+
+// A screen's options as the navigator resolves them for a route with these params.
+const optionsOf = (name: string, params?: unknown): ScreenOptions | undefined => {
+  const options = screenElements().find((screen) => screen.props.name === name)?.props.options;
+
+  return typeof options === 'function' ? options({ route: { params } }) : options;
+};
 
 // Walk the Stack.Screen children SettingsStack renders and read each screen's
 // name -> static options.title, so a test can assert both screens carry a
-// real, localized title rather than falling back to a raw route name.
-const titleByScreen = (): Record<string, string | undefined> => {
-  const navigator = SettingsStack({}) as ReactElement<{ children: ScreenElement[] }>;
-  const screens = navigator.props.children.filter(isValidElement);
-
-  return Object.fromEntries(
-    screens.map((screen) => [screen.props.name, screen.props.options?.title]),
+// real, localized title rather than falling back to a raw route name. A
+// screen whose title depends on its params (HelpTopic) is read in its own test.
+const titleByScreen = (): Record<string, string | undefined> =>
+  Object.fromEntries(
+    screenElements().map(({ props: { name, options } }) => [
+      name,
+      typeof options === 'function' ? undefined : options?.title,
+    ]),
   );
-};
 
 describe('SettingsStack', () => {
   it('gives the Settings, System, and Categories screens a static, localized title', () => {
@@ -62,5 +80,16 @@ describe('SettingsStack', () => {
     const titles = titleByScreen();
     expect(titles.Reminders).toBe('Reminders');
     expect(titles.ReminderForm).toBe('New Reminder');
+  });
+
+  it('registers the Help page with its title', () => {
+    expect(titleByScreen().Help).toBe('Help & Tips');
+  });
+
+  it('titles each Help topic page with its own topic title', () => {
+    expect(optionsOf('HelpTopic', { topicId: 'addAccount' })?.title).toBe('Add an Account');
+    expect(optionsOf('HelpTopic', { topicId: 'manageCategories' })?.title).toBe(
+      'Manage Categories',
+    );
   });
 });

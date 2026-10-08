@@ -268,9 +268,11 @@ periodically and pin the moment a fix ships.
 The Kiko agent harness is a local Claude Code plugin at
 `harness/kiko/` (`kiko` in the local
 `harness/.claude-plugin/marketplace.json`). It ships thirteen role agents,
-six project skills (four thin-wrap superpowers, plus a `release`
+seven project skills (four thin-wrap superpowers, plus a `release`
 skill that documents the release-publishing workflow and an
-`estimator` skill that states the duration-estimate rules), one
+`estimator` skill that states the duration-estimate rules, and a
+`harness-sync` skill for porting generic harness changes to the
+drizzer14/harness repo), one
 vendored review command, and the tier hooks documented above.
 
 A fresh checkout must run `npm install` before the harness hooks

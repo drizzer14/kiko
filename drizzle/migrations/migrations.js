@@ -56,6 +56,7 @@ import m0051 from './0051_monobank_accounts_bank_id.sql';
 import m0052 from './0052_add_exchange_pair_id.sql';
 import m0053 from './0053_add_loan_holding_id_index.sql';
 import m0054 from './0054_add_deleted_import_keys.sql';
+import m0055 from './0055_add_dismissed_tips.sql';
 
 export default {
   journal,
@@ -115,5 +116,6 @@ export default {
     m0052,
     m0053,
     m0054,
+    m0055,
   },
 };
