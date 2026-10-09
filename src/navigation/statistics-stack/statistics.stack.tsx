@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import type { StatisticsStackParamList } from '../types';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
+import { largeTitleScreenOptions } from '../large-title-screen-options';
 
 const Stack = createNativeStackNavigator<StatisticsStackParamList>();
 
@@ -13,10 +14,7 @@ const StatisticsStack: FC = () => {
   const { t } = useTranslation();
 
   return (
-    <Stack.Navigator
-      screenOptions={{ headerLargeTitle: true }}
-      screenListeners={resetTabStackOnBlur}
-    >
+    <Stack.Navigator screenOptions={largeTitleScreenOptions} screenListeners={resetTabStackOnBlur}>
       <Stack.Screen
         name="Statistics"
         component={StatisticsScreen}

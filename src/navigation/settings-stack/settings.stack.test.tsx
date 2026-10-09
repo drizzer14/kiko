@@ -82,6 +82,25 @@ describe('SettingsStack', () => {
     expect(titles.ReminderForm).toBe('New Reminder');
   });
 
+  // Jest pins `isLiquidGlassSupported` to false (jest/setup.js), the iOS < 26
+  // tier, where the scrolled bar needs the blur react-native-screens omits.
+  it('uses the shared large-title options, with the scrolled-bar blur below iOS 26', () => {
+    const navigator = SettingsStack({}) as ReactElement<{ screenOptions: object }>;
+
+    expect(navigator.props.screenOptions).toEqual({
+      headerLargeTitle: true,
+      headerBlurEffect: 'systemChromeMaterialDark',
+      headerLargeStyle: { backgroundColor: 'transparent' },
+    });
+  });
+
+  // The Help pages inherit the stack's header options, so their own options
+  // may carry only a title or they would override the shared blur.
+  it('leaves the header options of the Help pages to the stack', () => {
+    expect(Object.keys(optionsOf('Help') ?? {})).toEqual(['title']);
+    expect(Object.keys(optionsOf('HelpTopic', { topicId: 'addAccount' }) ?? {})).toEqual(['title']);
+  });
+
   it('registers the Help page with its title', () => {
     expect(titleByScreen().Help).toBe('Help & Tips');
   });

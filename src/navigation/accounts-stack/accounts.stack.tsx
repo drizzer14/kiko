@@ -18,6 +18,7 @@ import OwnershipChangeFormScreen from '@kiko/screens/forms/ownership-change-form
 
 import type { AccountsStackParamList } from '../types';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
+import { largeTitleScreenOptions } from '../large-title-screen-options';
 
 const Stack = createNativeStackNavigator<AccountsStackParamList>();
 
@@ -67,10 +68,7 @@ const AccountsStack: FC = () => {
   const { t } = useTranslation();
 
   return (
-    <Stack.Navigator
-      screenOptions={{ headerLargeTitle: true }}
-      screenListeners={resetTabStackOnBlur}
-    >
+    <Stack.Navigator screenOptions={largeTitleScreenOptions} screenListeners={resetTabStackOnBlur}>
       <Stack.Screen
         name="Accounts"
         component={AccountsScreen}

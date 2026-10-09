@@ -32,4 +32,24 @@ describe('StatisticsStack', () => {
   it('is rooted at the Statistics screen', () => {
     expect(screenNames()).toContain('Statistics');
   });
+
+  it('titles the Statistics screen with the translated statistics.title', () => {
+    const navigator = StatisticsStack({}) as ReactElement<{
+      children: ReactElement<{ options: { title: string } }>;
+    }>;
+
+    expect(navigator.props.children.props.options).toEqual({ title: 'statistics.title' });
+  });
+
+  // Jest pins `isLiquidGlassSupported` to false (jest/setup.js), the iOS < 26
+  // tier, where the scrolled bar needs the blur react-native-screens omits.
+  it('uses the shared large-title options, with the scrolled-bar blur below iOS 26', () => {
+    const navigator = StatisticsStack({}) as ReactElement<{ screenOptions: object }>;
+
+    expect(navigator.props.screenOptions).toEqual({
+      headerLargeTitle: true,
+      headerBlurEffect: 'systemChromeMaterialDark',
+      headerLargeStyle: { backgroundColor: 'transparent' },
+    });
+  });
 });

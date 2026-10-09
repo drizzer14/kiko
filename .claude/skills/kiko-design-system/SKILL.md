@@ -247,6 +247,27 @@ an entry (date + value) the moment the user approves a new visual.
   `accountKindSymbol` glyph in its resolved color, never an empty icon
   slot. The "All" row lines up under the glyph column:
   `filter-menu` reserves the icon slot when any option has an icon.
+- **iOS < 26 fallback look: the old solid chrome** (2026-10-08, user option
+  A). A device without Liquid Glass (`isLiquidGlassSupported === false`,
+  e.g. iOS 18.7) reads like the pre-glass app, and iOS 26/27 do not change
+  by a pixel. Three parts: (1) the `BottomSheet` card is the opaque
+  `theme.colors.sheetBackground` (#1C1C1E) through `sheetFallbackFill`, not
+  a `GlassSurface` (whose `material`/`bloom` fallback is a translucent
+  `surfaceTranslucent` fill, which reads as a flat black dim on a sheet;
+  the sheet's fallback look does not depend on that shared primitive);
+  (2) its scrim is
+  `theme.colors.scrimFallback` (black 0.55), while `scrim` (0.4) stays the
+  glass path's tint; (3) every large-title native stack takes
+  `screenOptions={largeTitleScreenOptions}`
+  (`src/navigation/large-title-screen-options/`), which on this tier adds
+  `headerBlurEffect: 'systemChromeMaterialDark'` plus `headerLargeStyle:
+  { backgroundColor: 'transparent' }` (the at-rest large title stays
+  transparent, only the scrolled bar blurs), because react-native-screens
+  builds a transparent appearance with no background effect there. On
+  iOS 26+ it passes neither option. A new large-title stack, or a screen
+  that sets `headerLargeTitle` itself, spreads that helper rather than
+  setting `headerLargeTitle: true` inline. Device-confirm on an iOS 18
+  device, not in the simulator or Jest.
 
 ## UX patterns
 
@@ -735,7 +756,7 @@ new component can land between reviews of this skill:
   (an entity card, e.g. the FAB) paints an OPAQUE `surface` backdrop
   and an entity-color wash — see "Entity color and tint" below. A
   `transparent` variant paints a TRANSLUCENT
-  `surfaceTranslucent` backdrop and no wash, so the screen behind reads
+  `surfaceTranslucent` backdrop (iOS 26+; below it the BottomSheet bypasses GlassSurface) and no wash, so the screen behind reads
   through while the drift/pop-in stays softened; a `tint` always wins
   over it. `transparent`/`bloom`/`material` are NAV-LAYER variants now
   — a new CONTENT surface (a settings row, a chart card, a summary, a
@@ -753,7 +774,8 @@ new component can land between reviews of this skill:
   the touch-and-hold context menu. Neither prop keeps the fully-live see-through material (no
   backdrop). A fourth variant, `material`, is `transparent`'s sibling for a
   surface whose backdrop is STATIC while shown (BottomSheet is the first
-  consumer): it keeps the fully-live see-through glass on the glass path
+  consumer, on iOS 26+ only: below iOS 26 the sheet bypasses `GlassSurface`
+  for an opaque fill): it keeps the fully-live see-through glass on the glass path
   (no backdrop at all, so the material samples the real content behind it —
   a true blur, not `transparent`'s partially-pinned sample) but, unlike a
   plain surface, still takes a TRANSLUCENT (not opaque) fallback fill on the
@@ -806,10 +828,10 @@ new component can land between reviews of this skill:
   real translucent blur MATERIAL, reusing `GlassSurface`'s `material`
   variant — a live-sampling Liquid Glass on iOS 26+ (no color-pinning
   backdrop under it, so the sheet reads as an actual blur of the
-  content behind it, not a near-opaque flat panel), the same themed flat
-  translucent (`surfaceTranslucent`) fallback elsewhere — rather than
-  forking its layering — real glass/fallback branching, backdrop, and
-  base all stay owned by `GlassSurface` itself. `material` is
+  content behind it, not a near-opaque flat panel). Below iOS 26 the card
+  is instead the opaque `sheetBackground` (`sheetFallbackFill`, see "iOS <
+  26 fallback look" under Locked decisions) — real glass branching,
+  backdrop, and base stay owned by `GlassSurface` on the glass path. `material` is
   `transparent`'s sibling variant for a surface whose backdrop is STATIC
   while shown (a modal sheet): `transparent` instead pins a translucent
   backdrop under the glass to soften lightness drift on a scrolling
@@ -822,7 +844,7 @@ new component can land between reviews of this skill:
   absolutely-positioned first child of the sheet card
   (`bottom-sheet.styles.ts`'s `glassFill`), painted BEHIND the grabber
   and body that follow it in JSX. Since this is the ONE shared
-  primitive, every sheet in the app gets the glass background from this
+  primitive, every sheet in the app gets the glass background on iOS 26+ from this
   single change point. `GlassSurface` only exposes a single ALL-corner
   `radius` (there is no top-only variant); the sheet still needs to read
   as top-rounded / bottom-flush (anchored to the screen's bottom edge),
@@ -835,14 +857,13 @@ new component can land between reviews of this skill:
   corners. `GlassSurface`'s own `padding` prop is passed `0` on this
   layer — the card's EXISTING padding (`styles.sheet`'s
   `SHEET_PADDING_STEP`) stays the single inset, never stacked with a
-  second one. The sheet is still a GROUPED surface: this translucent
-  base (composited to ~rgb(17,17,18) over true-black — darker than
-  `surfaceHigh` #2C2C2E) sits one level BELOW the cards/controls on
+  second one. The sheet is a GROUPED surface: its base (the live glass
+  on iOS 26+, the opaque `sheetBackground` #1C1C1E below — both darker
+  than `surfaceHigh` #2C2C2E) sits one level BELOW the cards/controls on
   it, so a control reads as raised instead of blending into the sheet
   (a chip or segment on it uses the faint `neutralSubtle` fill — see
-  `ChipRow` and `SegmentedControl` below) — it used `surfaceHigh`
-  itself before, then a flat opaque `sheetBackground` token before this
-  glass pass. It caps
+  `ChipRow` and `SegmentedControl` below); a base at `surfaceHigh`
+  itself would swallow a selected pill. It caps
   its own height at a fixed 66%-of-window ceiling and takes an optional
   `maxHeight` prop that can only tighten that cap further, plus a
   `scrollable` prop (defaults `true`) that wraps `children` in a
@@ -873,8 +894,9 @@ new component can land between reviews of this skill:
   a sheet's test hooks.
 
   The full-bleed dismiss SCRIM (a sibling of the sheet card, not the
-  card's own `glassFill` above) is a SEPARATE Liquid Glass layer with a
-  DEVICE BUG fix of its own: Liquid Glass draws a native specular rim at
+  card's own `glassFill` above) is, on iOS 26+, a SEPARATE Liquid Glass layer with a
+  DEVICE BUG fix of its own (below iOS 26 the scrim is a plain `scrimFallback` View with no rim to hide;
+  it shares `styles.backdropFill`'s sizing, so the overscan is harmless there, not a fix): Liquid Glass draws a native specular rim at
   the edge of whatever bounds it is given (a `UIGlassEffect` property,
   not a border/inset this app draws), which at the scrim's original
   exact-screen-size bounds landed on the screen edge and read as a sharp

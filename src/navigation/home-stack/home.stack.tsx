@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import type { HomeStackParamList } from '../types';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
+import { largeTitleScreenOptions } from '../large-title-screen-options';
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
 
@@ -21,7 +22,7 @@ const HomeStack: FC = () => (
     <Stack.Screen
       name="TransactionForm"
       component={TransactionFormScreen}
-      options={{ headerShown: true, headerLargeTitle: true }}
+      options={{ headerShown: true, ...largeTitleScreenOptions }}
     />
   </Stack.Navigator>
 );
