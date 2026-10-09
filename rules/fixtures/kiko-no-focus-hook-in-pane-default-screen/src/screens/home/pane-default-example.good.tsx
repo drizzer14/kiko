@@ -3,18 +3,16 @@
 import { useEffect } from 'react';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import type { useIsFocused as FocusHook } from '@react-navigation/native';
-import { type useFocusEffect as EffectHook } from '@react-navigation/native';
-import {
-  type useIsFocused as InlineFocusHook,
-  type NavigationProp,
-} from '@react-navigation/native';
 
-// A type-only import is erased, whether the whole statement or one specifier says so; it loads
-// no hook.
+// A type-only import is erased; it loads no hook.
 export type ScreenFocus = typeof FocusHook;
-export type ScreenEffect = typeof EffectHook;
-export type ScreenInlineFocus = typeof InlineFocusHook;
-export type ScreenNavigation = NavigationProp<Record<string, undefined>>;
+
+// An inline `type` on the specifier erases it the same way. This is a re-export, not an import,
+// because a second import of the module above would break the one-declaration-per-module rule.
+export {
+  type useFocusEffect as InlineEffectHook,
+  type useIsFocused as InlineFocusHook,
+} from '@react-navigation/native';
 
 export const PausesOnVisibility = () => {
   const isVisible = useIsScreenVisible();
