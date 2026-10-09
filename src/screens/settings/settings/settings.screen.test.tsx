@@ -83,9 +83,21 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
+// A row opens its page in the pane opposite the menu's (on one pane, a plain navigate), and on a
+// wide window the menu marks the row whose page the primary pane shows.
+const mockOpenInPane = jest.fn();
+const mockUsePrimaryPaneRoute = jest.fn(
+  (): { name: string; params?: object; isDefault: boolean } | null => null,
+);
+jest.mock('@kiko/navigation/pane-stack', () => ({
+  useOpenInPane: () => mockOpenInPane,
+  usePrimaryPaneRoute: () => mockUsePrimaryPaneRoute(),
+}));
+
 describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUsePrimaryPaneRoute.mockReturnValue(null);
     mockLiveQueryData = [{ baseCurrency: 'UAH' }];
     mockLiveQueryIsLoading = false;
     mockTransactionRows = [];
@@ -297,7 +309,8 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(getByTestId('settings-row-system'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('System');
+    expect(mockOpenInPane).toHaveBeenCalledWith('System');
+    expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
   it('navigates to the Reminders list from its own bell row', async () => {
@@ -312,7 +325,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(within(card).getByTestId('settings-row-reminders'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('Reminders');
+    expect(mockOpenInPane).toHaveBeenCalledWith('Reminders');
   });
 
   it('no longer renders the Language card (it moved to the System sub-screen)', async () => {
@@ -360,7 +373,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(getByTestId('settings-row-categories'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('Categories');
+    expect(mockOpenInPane).toHaveBeenCalledWith('Categories');
   });
 
   it('puts a questionmark.circle Help row in the last card, after Categories, and opens Help', async () => {
@@ -376,7 +389,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(within(card).getByTestId('settings-row-help'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('Help');
+    expect(mockOpenInPane).toHaveBeenCalledWith('Help');
   });
 
   it('navigates to the ExportData sub-screen when the Export Data row is pressed', async () => {
@@ -385,7 +398,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(await findByTestId('settings-row-export-data'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('ExportData');
+    expect(mockOpenInPane).toHaveBeenCalledWith('ExportData');
   });
 
   it('navigates to the ImportData sub-screen when the Import Data row is pressed', async () => {
@@ -394,7 +407,7 @@ describe('SettingsScreen', () => {
 
     await fireEvent.press(await findByTestId('settings-row-import-data'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('ImportData');
+    expect(mockOpenInPane).toHaveBeenCalledWith('ImportData');
   });
 
   it('calls setBaseCurrency when a currency option is pressed', async () => {
@@ -546,6 +559,75 @@ describe('SettingsScreen — loading gate', () => {
 
     expect(getByTestId('settings-card-base-currency')).toBeTruthy();
     expect(queryByTestId('settings-loading')).toBeNull();
+  });
+});
+
+// On a wide window the menu is one pane and the page of a row the other: the row whose page the
+// primary pane shows (Categories until another is opened) is marked. On one pane nothing is.
+describe('SettingsScreen — the selected row', () => {
+  // Import and Export share one card, so there the row is marked and the card is not.
+  const ROWS = [
+    ['System', 'settings-card-system', 'settings-row-system', true],
+    ['Reminders', 'settings-card-reminders', 'settings-row-reminders', true],
+    ['ImportData', 'settings-card-data-transfer', 'settings-row-import-data', false],
+    ['ExportData', 'settings-card-data-transfer', 'settings-row-export-data', false],
+    ['Categories', 'settings-card-categories', 'settings-row-categories', true],
+    ['Help', 'settings-card-help', 'settings-row-help', true],
+  ] as const;
+
+  const selectedRows = async () => {
+    const { getByTestId } = await renderScreen();
+
+    return ROWS.filter(
+      ([, , row]) => getByTestId(row).props.accessibilityState?.selected === true,
+    ).map(([route]) => route);
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLiveQueryData = [{ baseCurrency: 'UAH' }];
+    mockLiveQueryIsLoading = false;
+    mockTransactionRows = [];
+    mockTransactionsIsLoading = false;
+    mockUsePrimaryPaneRoute.mockReturnValue(null);
+  });
+
+  it('is none on one pane, where the primary pane is not shown', async () => {
+    expect(await selectedRows()).toEqual([]);
+  });
+
+  it('is Categories while the pane shows it as its default', async () => {
+    mockUsePrimaryPaneRoute.mockReturnValue({ name: 'Categories', isDefault: true });
+
+    expect(await selectedRows()).toEqual(['Categories']);
+  });
+
+  it.each(ROWS)('follows the primary pane to %s', async (route, cardId, rowId, marksCard) => {
+    mockUsePrimaryPaneRoute.mockReturnValue({ name: route, isDefault: false });
+    const { getByTestId } = await renderScreen();
+    const card = StyleSheet.flatten(getByTestId(cardId).props.style);
+    const row = StyleSheet.flatten(getByTestId(rowId).props.style);
+
+    expect(await selectedRows()).toEqual([route]);
+    expect(row.backgroundColor).toBe(darkTheme.colors.surfaceHigh);
+    expect(card.borderColor === darkTheme.colors.accent).toBe(marksCard);
+  });
+
+  it('marks the Categories card, and no other card, while its default shows', async () => {
+    mockUsePrimaryPaneRoute.mockReturnValue({ name: 'Categories', isDefault: true });
+    const { getByTestId } = await renderScreen();
+    const borderOf = (cardId: string) =>
+      StyleSheet.flatten(getByTestId(cardId).props.style).borderColor;
+
+    expect(borderOf('settings-card-categories')).toBe(darkTheme.colors.accent);
+    expect(borderOf('settings-card-help')).not.toBe(darkTheme.colors.accent);
+    expect(borderOf('settings-card-system')).not.toBe(darkTheme.colors.accent);
+  });
+
+  it('marks nothing for a page the menu has no row for', async () => {
+    mockUsePrimaryPaneRoute.mockReturnValue({ name: 'HelpTopic', isDefault: false });
+
+    expect(await selectedRows()).toEqual([]);
   });
 });
 

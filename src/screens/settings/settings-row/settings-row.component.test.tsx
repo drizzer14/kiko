@@ -13,6 +13,59 @@ describe('SettingsRow', () => {
     expect(getByText('Base currency')).toBeTruthy();
   });
 
+  describe('selected (the row whose page the other pane shows)', () => {
+    const rowStyle = (row: { props: { style?: unknown } }) =>
+      StyleSheet.flatten(
+        typeof row.props.style === 'function'
+          ? row.props.style({ pressed: false })
+          : row.props.style,
+      );
+
+    it('raises the row surface and tells a screen reader it is selected', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow testID="row" label="Categories" onPress={jest.fn()} selected />,
+      );
+      const row = getByTestId('row');
+
+      expect(rowStyle(row).backgroundColor).toBe(darkTheme.colors.surfaceHigh);
+      expect(row.props.accessibilityState).toEqual({ selected: true });
+    });
+
+    it('leaves the row as it was when not selected', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow testID="row" label="Categories" onPress={jest.fn()} />,
+      );
+      const row = getByTestId('row');
+
+      expect(rowStyle(row).backgroundColor).toBeUndefined();
+      expect(row.props.accessibilityState).toEqual({ selected: false });
+    });
+
+    it('keeps the style the screen gave the row', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow
+          testID="row"
+          label="Categories"
+          onPress={jest.fn()}
+          style={{ paddingVertical: 12 }}
+          selected
+        />,
+      );
+
+      expect(rowStyle(getByTestId('row')).paddingVertical).toBe(12);
+    });
+
+    it('reads as selected on a row with a body too', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow testID="row" label="Reminder" onPress={jest.fn()} selected>
+          <RNText>body</RNText>
+        </SettingsRow>,
+      );
+
+      expect(getByTestId('row').props.accessibilityState).toEqual({ selected: true });
+    });
+  });
+
   it('renders a trailing chevron only when the row navigates (onPress given)', async () => {
     const { queryByTestId } = await render(<SettingsRow label="Categories" onPress={jest.fn()} />);
     // The chevron is hidden from the a11y tree, so it is only reachable with

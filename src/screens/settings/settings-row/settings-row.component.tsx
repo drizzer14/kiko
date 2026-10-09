@@ -23,6 +23,8 @@ const SettingsRow: FC<SettingsRowProps> = ({
   onPress,
   trailing,
   children,
+  selected = false,
+  style,
   ...props
 }) => {
   const { theme } = useUnistyles();
@@ -73,7 +75,7 @@ const SettingsRow: FC<SettingsRowProps> = ({
 
   if (onPress === undefined) {
     return (
-      <Box gap={3} {...props}>
+      <Box gap={3} style={style} {...props}>
         {header}
         {children}
       </Box>
@@ -85,7 +87,13 @@ const SettingsRow: FC<SettingsRowProps> = ({
   // without a body keeps its first-line header layout.
   if (children !== undefined) {
     return (
-      <Pressable accessibilityRole="button" onPress={onPress} {...props}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        onPress={onPress}
+        style={[style, selected && styles.selected]}
+        {...props}
+      >
         <Box direction="row" style={styles.centeredEnd}>
           <Box gap={1} style={styles.body}>
             {lead}
@@ -100,7 +108,13 @@ const SettingsRow: FC<SettingsRowProps> = ({
   }
 
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} {...props}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[style, selected && styles.selected]}
+      {...props}
+    >
       {header}
     </Pressable>
   );

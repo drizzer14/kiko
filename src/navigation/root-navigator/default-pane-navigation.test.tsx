@@ -302,6 +302,60 @@ describe.each(STACKS.filter(({ defaults }) => defaults.length > 0))(
   },
 );
 
+// A page the user opened keeps its pane through a fold and an unfold; the pane assignment tests
+// pin the rule, and this is the Settings stack it is for: Help in the primary pane, and the topic
+// opened from it in the pane opposite.
+describe('the Settings stack across a fold and an unfold', () => {
+  const panesOfRoutes = () => {
+    const { routes, panes } = stackState();
+
+    return routes.map((route) => [route.name, panes[route.key]]);
+  };
+
+  it('keeps Help and the topic opened from it where they were', async () => {
+    await renderStack(SettingsStack);
+    await act(async () => {
+      navigationRef.navigate('Help');
+    });
+    await act(async () => {
+      navigationRef.navigate('HelpTopic', { topicId: 'addAccount' });
+    });
+
+    await act(async () => {
+      navigationRef.dispatch({ type: 'PANE_FOLD' });
+    });
+
+    expect(stackState().routes.map((route) => route.name)).toEqual([
+      'Settings',
+      'Help',
+      'HelpTopic',
+    ]);
+
+    await act(async () => {
+      navigationRef.dispatch({ type: 'PANE_UNFOLD' });
+    });
+
+    expect(panesOfRoutes()).toEqual([
+      ['Settings', 'companion'],
+      ['Help', 'primary'],
+      ['HelpTopic', 'companion'],
+    ]);
+  });
+
+  it('shows Categories again once Help is closed', async () => {
+    await renderStack(SettingsStack);
+    await act(async () => {
+      navigationRef.navigate('Help');
+    });
+    await act(async () => {
+      navigationRef.goBack();
+    });
+
+    expect(stackState().routes.map((route) => route.name)).toEqual(['Settings']);
+    expect(Object.keys(defaultNavigations())).toEqual(['pane-default:primary']);
+  });
+});
+
 describe('two stacks with a default each, as two tabs', () => {
   it('PINS React Navigation: each navigator has a placeholder navigation of its own', async () => {
     mockCapturedViews.length = 0;

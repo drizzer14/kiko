@@ -98,11 +98,11 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     dismissTip: (...args: unknown[]) => mockDismissTip(...args),
   },
 }));
-// A standalone screen render has no navigation context, so the focus effect runs once at mount,
-// as it does when the screen first gets focus.
-jest.mock('@react-navigation/native', () => ({
-  ...jest.requireActual('@react-navigation/native'),
-  useFocusEffect: (effect: () => void) => jest.requireActual('react').useEffect(effect, [effect]),
+// Categories is the Settings tab's primary default on a wide window: on screen, never focused.
+// A standalone render has no pane navigator, so visibility is a switch the test flips.
+const mockUseIsScreenVisible = jest.fn(() => true);
+jest.mock('@kiko/navigation/pane-stack', () => ({
+  useIsScreenVisible: () => mockUseIsScreenVisible(),
 }));
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) =>
@@ -864,10 +864,11 @@ describe('CategoriesScreen — the categories tip', () => {
     mockCategoriesIsLoading = false;
     mockCategoriesIsFresh = true;
     mockSettingsIsLoading = false;
+    mockUseIsScreenVisible.mockReturnValue(true);
     mockDismissTip.mockResolvedValue(undefined);
   });
 
-  it('dismisses the categories tip once when the screen gets focus', async () => {
+  it('dismisses the categories tip once when the screen is on screen', async () => {
     const { rerender } = await renderScreen();
 
     await act(async () => {
@@ -876,6 +877,20 @@ describe('CategoriesScreen — the categories tip', () => {
 
     expect(mockDismissTip).toHaveBeenCalledTimes(1);
     expect(mockDismissTip).toHaveBeenCalledWith('settings.categories');
+  });
+
+  it('leaves the tip alone while the screen is not on screen, and dismisses it once it is', async () => {
+    mockUseIsScreenVisible.mockReturnValue(false);
+    const { rerender } = await renderScreen();
+
+    expect(mockDismissTip).not.toHaveBeenCalled();
+
+    mockUseIsScreenVisible.mockReturnValue(true);
+    await act(async () => {
+      await rerender(screenElement());
+    });
+
+    expect(mockDismissTip).toHaveBeenCalledTimes(1);
   });
 
   it('dismisses the tip even while the categories are still loading', async () => {

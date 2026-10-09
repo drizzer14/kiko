@@ -7,10 +7,9 @@ import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
-import { useFocusEffect } from '@react-navigation/native';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
-import { type FC, useCallback, useRef, useState } from 'react';
+import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
@@ -20,6 +19,7 @@ import { type CategoryRow, useDataReady, useLiveQuery } from '@kiko/db';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
+import { type FC, useCallback, useEffect, useRef, useState } from 'react';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
@@ -386,14 +386,17 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   // in, and the form's Save/Cancel are the only ways out (both call
   // `collapseAddCategoryForm` below).
   const [addCategoryExpanded, setAddCategoryExpanded] = useState(false);
-  // Opening Categories answers the Settings tip that points here, so it never returns. A failed
-  // write only means the tip shows once more, so it is logged, not alerted.
-  useFocusEffect(
-    useCallback(() => {
+  // Showing Categories answers the Settings tip that points here, so it never returns. A failed
+  // write only means the tip shows once more, so it is logged, not alerted. On a wide window this
+  // screen is the Settings tab's default for the primary pane: on screen without ever being the
+  // focused route, so what it waits for is visibility, not focus.
+  const isVisible = useIsScreenVisible();
+  useEffect(() => {
+    if (isVisible) {
       // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
       logOnFailure('[tips] dismiss failed', () => settingsRepo.dismissTip('settings.categories'));
-    }, []),
-  );
+    }
+  }, [isVisible]);
   const {
     data: categories,
     isLoading: categoriesLoading,

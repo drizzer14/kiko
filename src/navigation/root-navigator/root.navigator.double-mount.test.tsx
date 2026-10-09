@@ -2,12 +2,14 @@
 // tabs (a root in one, a default in the other), so their live queries exist twice. This walks the
 // real RootNavigator, panes and visibility included, with a counting stand-in for `useLiveQuery`
 // that keeps its paused/dirty contract (kiko-architecture, "`paused` vs `enabled`"), and holds the
-// cost to three limits. A breach fails the change set.
+// cost to three limits. A breach fails the change set. The same walk checks the defaults the
+// Accounts and Settings tabs fill their primary pane with, which a focus-based screen would miss.
 import {
   createNavigationContainerRef,
   NavigationContainer,
   type ParamListBase,
 } from '@react-navigation/native';
+import { settingsRepo } from '@kiko/settings';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
@@ -256,6 +258,35 @@ describe('the double-mount gate', () => {
     expect(new Set(reads.map(({ instance }) => instance))).toEqual(
       new Set(['StatisticsTab/Statistics', 'StatisticsTab/Home']),
     );
+  });
+});
+
+// Categories is the Settings tab's default for the primary pane. It is on screen without being the
+// focused route, so the tip that points at it has to be answered by its visibility.
+describe('the Settings tab with Categories as its default', () => {
+  beforeEach(() => {
+    mockSubscriptions.clear();
+    mockReads = [];
+    mockRows = {};
+    mockLayoutMode = 'columns';
+  });
+
+  it('answers the categories tip once the tab shows it, and marks its row', async () => {
+    const dismissTip = jest.spyOn(settingsRepo, 'dismissTip').mockResolvedValue(undefined);
+    // The walk opens the Settings tab among the others and comes back to Home.
+    const { getByTestId } = await walkTabs();
+
+    expect(dismissTip).toHaveBeenCalledTimes(1);
+    expect(dismissTip).toHaveBeenCalledWith('settings.categories');
+
+    await goTo('SettingsTab');
+
+    expect(getByTestId('settings-row-categories').props.accessibilityState).toEqual({
+      selected: true,
+    });
+    expect(getByTestId('settings-row-help').props.accessibilityState).toEqual({ selected: false });
+
+    dismissTip.mockRestore();
   });
 });
 

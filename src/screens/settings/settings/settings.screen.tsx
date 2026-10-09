@@ -25,6 +25,7 @@ import CurrencyField from '@kiko/design-system/components/currency-field';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
 import { type Currency, fiatCurrencyOptions } from '@kiko/currency/currency';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useOpenInPane, usePrimaryPaneRoute } from '@kiko/navigation/pane-stack';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
 import pkg from '../../../../package.json';
@@ -54,7 +55,13 @@ const styles = StyleSheet.create(() => ({
   },
 }));
 
-const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
+const SettingsScreen: FC<SettingsScreenProps> = () => {
+  // Each row opens its page in the pane opposite the menu's (on one pane, a plain navigate), and
+  // the menu marks the row whose page the primary pane shows: Categories until another is opened.
+  const openInPane = useOpenInPane();
+  const primaryRoute = usePrimaryPaneRoute();
+  const isShown = (routeName: string): boolean => primaryRoute?.name === routeName;
+
   // Re-tapping the Settings tab while already on it returns this scrolling page
   // to the top (the standard iOS active-tab re-tap), driven off the native tab
   // navigator's `tabPress`.
@@ -189,21 +196,23 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         {/* The System sub-page groups system-level preferences (Language, Color
             Scheme, Face ID) away from the finance settings below. It sits at the
             very top as a navigating row that pushes the System screen. */}
-        <Card testID="settings-card-system" padding={3}>
+        <Card testID="settings-card-system" padding={3} selected={isShown('System')}>
           <SettingsRow
             testID="settings-row-system"
             icon="gearshape"
             label={t('settings.system')}
-            onPress={() => navigation.navigate('System')}
+            onPress={() => openInPane('System')}
+            selected={isShown('System')}
           />
         </Card>
 
-        <Card testID="settings-card-reminders" padding={3}>
+        <Card testID="settings-card-reminders" padding={3} selected={isShown('Reminders')}>
           <SettingsRow
             testID="settings-row-reminders"
             icon="bell"
             label={t('reminders.rowLabel')}
-            onPress={() => navigation.navigate('Reminders')}
+            onPress={() => openInPane('Reminders')}
+            selected={isShown('Reminders')}
           />
         </Card>
 
@@ -225,7 +234,8 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             testID="settings-row-import-data"
             icon="square.and.arrow.down"
             label={t('settings.dataImport.rowLabel')}
-            onPress={() => navigation.navigate('ImportData')}
+            onPress={() => openInPane('ImportData')}
+            selected={isShown('ImportData')}
             style={dataTransferRowStyle}
           />
 
@@ -235,7 +245,8 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             testID="settings-row-export-data"
             icon="square.and.arrow.up"
             label={t('settings.dataExport.rowLabel')}
-            onPress={() => navigation.navigate('ExportData')}
+            onPress={() => openInPane('ExportData')}
+            selected={isShown('ExportData')}
             style={dataTransferRowStyle}
           />
         </Card>
@@ -272,21 +283,23 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           />
         )}
 
-        <Card testID="settings-card-categories" padding={3}>
+        <Card testID="settings-card-categories" padding={3} selected={isShown('Categories')}>
           <SettingsRow
             testID="settings-row-categories"
             icon={genericEntitySymbol.category}
             label={t('settings.categories')}
-            onPress={() => navigation.navigate('Categories')}
+            onPress={() => openInPane('Categories')}
+            selected={isShown('Categories')}
           />
         </Card>
 
-        <Card testID="settings-card-help" padding={3}>
+        <Card testID="settings-card-help" padding={3} selected={isShown('Help')}>
           <SettingsRow
             testID="settings-row-help"
             icon="questionmark.circle"
             label={t('help.rowLabel')}
-            onPress={() => navigation.navigate('Help')}
+            onPress={() => openInPane('Help')}
+            selected={isShown('Help')}
           />
         </Card>
       </Box>
