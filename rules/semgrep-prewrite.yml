@@ -1167,12 +1167,15 @@ rules:
         - "src/screens/accounts/**"
         - "src/screens/statistics/**"
         - "src/screens/settings/categories/**"
-      exclude:
-        - "*.test.ts"
-        - "*.test.tsx"
     pattern-either:
       - pattern: useIsFocused(...)
       - pattern: useFocusEffect(...)
+      - pattern: $NS.useIsFocused(...)
+      - pattern: $NS.useFocusEffect(...)
+      # Any value import or re-export that names either hook, which covers an alias
+      # (`useIsFocused as focused`) and a local re-export file a screen then calls by another
+      # name. `import type` and `export type` are erased and never match.
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\b(?:useIsFocused|useFocusEffect)\b[^;'"]*?\bfrom\s*['"]
   # kiko-domain's "Dates": `jest.config.js` pins `process.env.TZ` to
   # Europe/Kyiv at config load, and Jest gives each test sandbox its own copy
   # of `process.env`, so an assignment in a test file, a `beforeAll`, or a

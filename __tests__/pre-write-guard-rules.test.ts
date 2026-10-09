@@ -199,6 +199,61 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     },
   );
 
+  // Two shapes kiko-no-pane-blind-bottom-clearance must leave alone cannot sit in its good
+  // fixture: the fixture is type-checked and guard-replayed, and the cross-feature import check
+  // denies a file that reaches into the Screen folder past its barrel. They are pinned here on an
+  // inline snippet, run through Semgrep alone so that check does not answer for the rule, with a
+  // control snippet that proves the same run does report the rule when it should.
+  describe('kiko-no-pane-blind-bottom-clearance on an inline snippet (Semgrep only)', () => {
+    const RULE_ID = 'kiko-no-pane-blind-bottom-clearance';
+    const CLEARANCE_MODULE = "'@kiko/design-system/components/screen/bottom-clearance'";
+
+    function findingsFor(content: string): string[] {
+      const directory = mkdtempSync(join(tmpdir(), 'kiko-clearance-snippet-'));
+      try {
+        const target = join(directory, 'snippet.ts');
+        writeFileSync(target, content);
+        const scan = spawnSync(
+          'semgrep',
+          [
+            '--metrics',
+            'off',
+            '--quiet',
+            '--json',
+            '--config',
+            join(REPOSITORY_ROOT, 'rules/semgrep-prewrite.yml'),
+            target,
+          ],
+          { encoding: 'utf8' },
+        );
+        const results: { check_id: string }[] = JSON.parse(scan.stdout).results;
+
+        return results.map(({ check_id }) => check_id.split('.').pop() ?? '');
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }
+
+    it('reports a value import of the function, which proves the scan runs the rule', () => {
+      expect(
+        findingsFor(`import { resolveBottomClearance } from ${CLEARANCE_MODULE};\n`),
+      ).toContain(RULE_ID);
+    });
+
+    it.each([
+      [
+        'a type-only import of the function, which is erased',
+        `import type { resolveBottomClearance } from ${CLEARANCE_MODULE};\nexport type Clearance = typeof resolveBottomClearance;\n`,
+      ],
+      [
+        'a path that only ends in the same words',
+        "import { useBottomClearance } from '@kiko/design-system/components/screen/use-bottom-clearance';\nexport const hook = useBottomClearance;\n",
+      ],
+    ])('leaves %s alone', (_name, content) => {
+      expect(findingsFor(content)).not.toContain(RULE_ID);
+    });
+  });
+
   // kiko-no-history-id-comment's own paths.exclude only names "__tests__/**"
   // and "e2e/**" (the legacy top-level test directories), never a bare
   // "*.test.tsx" — unlike kiko-no-raw-color-literal, which excludes every

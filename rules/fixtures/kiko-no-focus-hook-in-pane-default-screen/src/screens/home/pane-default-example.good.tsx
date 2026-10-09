@@ -2,6 +2,10 @@
 // `kiko-no-focus-hook-in-pane-default-screen` (and every other rule) MUST report zero findings.
 import { useEffect } from 'react';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
+import type { useIsFocused as FocusHook } from '@react-navigation/native';
+
+// A type-only import is erased; it loads no hook.
+export type ScreenFocus = typeof FocusHook;
 
 export const PausesOnVisibility = () => {
   const isVisible = useIsScreenVisible();
