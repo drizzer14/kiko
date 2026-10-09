@@ -576,6 +576,23 @@ describe('Screen', () => {
       },
     );
 
+    it('leaves a bleedBottom child the whole pane, to cap its own content', async () => {
+      const view = await renderInPane({ bleedBottom: true }, 'rows', 'primary');
+      const root = StyleSheet.flatten(rootOf(view, {})?.props.style);
+
+      expect(root.maxWidth).toBeUndefined();
+      expect(root.alignSelf).toBeUndefined();
+    });
+
+    it('caps the footer of a bleedBottom plain branch on its own, as its root is not capped', async () => {
+      const view = await renderInPane({ bleedBottom: true, footer: footerNode }, 'rows', 'primary');
+      const footer = StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style);
+
+      expect(footer.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      expect(footer.width).toBe('100%');
+      expect(footer.alignSelf).toBe('center');
+    });
+
     it('caps the footer of the plain branch through its root', async () => {
       const view = await renderInPane({ footer: footerNode }, 'rows', 'primary');
       const root = StyleSheet.flatten(rootOf(view, {})?.props.style);

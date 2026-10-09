@@ -27,7 +27,6 @@ import { activeHoldings } from '@kiko/rates/active-holdings';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
-import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -44,13 +43,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type DaySection, groupByDay } from '@kiko/transactions/group-by-day';
 import type { FilterOption } from '@kiko/design-system/components/filter-menu';
 import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
+import { useIsScreenVisible, useOpenInPane } from '@kiko/navigation/pane-stack';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
-import Screen, { useBottomClearance } from '@kiko/design-system/components/screen';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { type FC, type ReactElement, useCallback, useMemo, useRef, useState } from 'react';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '@kiko/rates/net-worth-view';
+import Screen, { useBottomClearance, useContentCap } from '@kiko/design-system/components/screen';
 
 import { styles } from './home.styles';
 import TransactionRow from './transaction-row';
@@ -117,6 +117,9 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // applies it because it opts out of Screen's own bottom handling with
   // `bleedBottom`. In a pane that is not at the window's bottom it is 0.
   const listBottomClearance = useBottomClearance();
+  // In a pane the list takes the whole pane, so its scroll indicator stays at the pane edge, and
+  // only what sits in it is capped and centred: the fixed header and the list's content.
+  const contentCap = useContentCap();
 
   // Re-tapping the Home tab while already on it returns this transaction list to
   // the top (the standard iOS active-tab re-tap), driven off the native tab
@@ -459,33 +462,34 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [filteredTransactions, todayStart, t],
   );
 
-  // Navigating to the shared Transaction form is stable across renders (it
-  // closes over `navigation` alone), so the memoized rows below never re-render
-  // just because a new press handler identity was created.
+  // The form opens in the pane opposite Home's own (on one pane, a plain navigate). Opening is
+  // stable across renders (`openInPane` is memoized on the route and the navigator), so the
+  // memoized rows below never re-render just because a new press handler identity was created.
+  const openInPane = useOpenInPane();
   const handleRowPress = useCallback(
     (transactionId: string): void => {
-      navigation.navigate('TransactionForm', { transactionId });
+      openInPane('TransactionForm', { transactionId });
     },
-    [navigation],
+    [openInPane],
   );
 
   // Duplicating a row opens the create form pre-filled from it, stateless
-  // via the `duplicateOfTransactionId` route param. Stable across renders (it
-  // closes over `navigation` alone), like `handleRowPress`, so the memoized
-  // rows never re-render on a new handler identity.
+  // via the `duplicateOfTransactionId` route param. Stable across renders,
+  // like `handleRowPress`, so the memoized rows never re-render on a new
+  // handler identity.
   const handleRowDuplicate = useCallback(
     (transactionId: string): void => {
-      navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId });
+      openInPane('TransactionForm', { duplicateOfTransactionId: transactionId });
     },
-    [navigation],
+    [openInPane],
   );
 
   // The global-add FAB (B) opens the create form with EMPTY params — no holding
   // fixed by navigation — so the form renders its own primary-leg holding
-  // picker. Stable across renders (closes over `navigation` alone).
+  // picker. Stable across renders, like `handleRowPress`.
   const handleAddTransaction = useCallback((): void => {
-    navigation.navigate('TransactionForm', {});
-  }, [navigation]);
+    openInPane('TransactionForm', {});
+  }, [openInPane]);
 
   // A stable `renderItem` identity is what lets the SectionList row bail-out
   // engage: the row body lives in the memoized `TransactionRow` component,
@@ -553,7 +557,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           <ScrollView
             testID="home-loading-scroll"
             style={styles.list}
-            contentContainerStyle={styles.listContent(listBottomClearance)}
+            contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
             // `syncAll` fans a job out over the `accounts` query's own data
             // (`useSyncAll(accounts)` above) — pulling before that query has
             // loaded would fan out over an empty list, syncing nothing while
@@ -600,59 +604,63 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     // to avoid double-counting the gap below the last transaction row.
     <Screen bleedBottom>
       <Box gap={4} testID="home-content" style={styles.content}>
-        <Card padding={4} radius="lg">
-          {/* The price book changes after the first ready: the first metal,
+        {/* The fixed header takes the pane cap as one block, with the same `gap(4)`
+            between its parts as the content column keeps around it. */}
+        <Box gap={4} testID="home-header" style={contentCap}>
+          <Card padding={4} radius="lg">
+            {/* The price book changes after the first ready: the first metal,
               share, property or loan holding turns its read on, and a day roll
               re-keys it. Until the read lands the book is empty (turned on
               again) or holds the earlier day's rows (a day roll), so a metal
               would drop to its cost or an old price and a loan would be valued
               without its payments: the headline and the breakdown wait for it,
               nothing else does. */}
-          {priceBookLoading ? (
-            <LoadingState testID="home-net-worth-loading" />
-          ) : (
-            <Box gap={1} style={styles.header}>
-              <Text variant="caption" tone="textSecondary">
-                {t('home.netWorth')}
-              </Text>
+            {priceBookLoading ? (
+              <LoadingState testID="home-net-worth-loading" />
+            ) : (
+              <Box gap={1} style={styles.header}>
+                <Text variant="caption" tone="textSecondary">
+                  {t('home.netWorth')}
+                </Text>
 
-              <MoneyText money={total} context="balance" style={styles.balance} />
+                <MoneyText money={total} context="balance" style={styles.balance} />
 
-              <Box style={styles.breakdown}>
-                <CurrencyBreakdown items={breakdown} />
+                <Box style={styles.breakdown}>
+                  <CurrencyBreakdown items={breakdown} />
+                </Box>
               </Box>
-            </Box>
+            )}
+          </Card>
+
+          {failures.length > 0 && (
+            <Text variant="body" tone="negative">
+              {t('home.syncFailedMessage', { accounts: failures.join(', ') })}
+            </Text>
           )}
-        </Card>
 
-        {failures.length > 0 && (
-          <Text variant="body" tone="negative">
-            {t('home.syncFailedMessage', { accounts: failures.join(', ') })}
-          </Text>
-        )}
-
-        {/* The divider and the filter row are grouped so the content column's
-            `gap(4)` lands only above the divider (net-worth card → divider). The
-            filter row keeps its own `marginTop(4)`, which now serves as the
-            divider → filters spacing — splitting the existing card-to-filter band
-            evenly around the rule instead of stacking a second, doubled gap. */}
-        <Box>
-          <Divider />
-          <Box style={styles.filterBar}>
-            <TransactionFilterBar
-              accounts={accountOptions}
-              categories={categoryOptions}
-              selectedAccount={visibleSelectedAccounts}
-              selectedCategory={selectedCategories}
-              onToggleAccount={(value) => setSelectedAccounts(toggleFilterValue(value))}
-              onToggleCategory={(value) => setSelectedCategories(toggleFilterValue(value))}
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              minDate={new Date(spanStart)}
-              maxDate={new Date(spanEnd)}
-              onApplyDates={applyDateRange}
-              onClearDates={clearDateRange}
-            />
+          {/* The divider and the filter row are grouped so the header's
+              `gap(4)` lands only above the divider (net-worth card → divider). The
+              filter row keeps its own `marginTop(4)`, which now serves as the
+              divider → filters spacing — splitting the existing card-to-filter band
+              evenly around the rule instead of stacking a second, doubled gap. */}
+          <Box>
+            <Divider />
+            <Box style={styles.filterBar}>
+              <TransactionFilterBar
+                accounts={accountOptions}
+                categories={categoryOptions}
+                selectedAccount={visibleSelectedAccounts}
+                selectedCategory={selectedCategories}
+                onToggleAccount={(value) => setSelectedAccounts(toggleFilterValue(value))}
+                onToggleCategory={(value) => setSelectedCategories(toggleFilterValue(value))}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                minDate={new Date(spanStart)}
+                maxDate={new Date(spanEnd)}
+                onApplyDates={applyDateRange}
+                onClearDates={clearDateRange}
+              />
+            </Box>
           </Box>
         </Box>
 
@@ -679,7 +687,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           renderSectionHeader={renderDayHeader}
           stickySectionHeadersEnabled={false}
           style={styles.list}
-          contentContainerStyle={styles.listContent(listBottomClearance)}
+          contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             transactionsLoading ? (

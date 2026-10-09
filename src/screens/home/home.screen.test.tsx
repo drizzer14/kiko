@@ -26,15 +26,18 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { holdCard } from '@kiko/test-support/hold-card';
 import { metalInstrument } from '@kiko/prices/instrument';
 import { formatDate, defaultDateRange } from '@kiko/dates';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Exposes the
 // resolved MoneyText `tone` via a testID — see the module for the full rationale.
 import mockTextTone from '@kiko/test-support/mock-text-tone';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { DUPLICATE_ACTION_TEST_ID } from '@kiko/design-system/components/card-context-menu';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HomeScreen from './home.screen';
@@ -125,8 +128,12 @@ jest.mock('@kiko/design-system/components/tip-card', () => {
 // Whether Home is on screen. A pane navigator's companion default is visible without being the
 // focused route, so `useIsFocused` would freeze it.
 const mockUseIsScreenVisible = jest.fn(() => true);
+// The form opens in the pane opposite Home's own; outside a pane navigator the real helper falls
+// back to `navigate` (its own test pins that).
+const mockOpenInPane = jest.fn();
 jest.mock('@kiko/navigation/pane-stack', () => ({
   useIsScreenVisible: () => mockUseIsScreenVisible(),
+  useOpenInPane: () => mockOpenInPane,
 }));
 
 // Never focused: Home is a companion default here, so only its visibility may decide a pause.
@@ -1669,13 +1676,50 @@ describe('HomeScreen', () => {
     expect(getByText('No transactions')).toBeTruthy();
   });
 
-  it('opens the transaction form for the tapped row, keyed by its id', async () => {
+  it('opens the transaction form in a pane for the tapped row, keyed by its id', async () => {
     seed({ transactions: [transaction({ id: 't-42', description: 'Coffee' })] });
     const { getByText } = await renderHome();
 
     await fireEvent.press(getByText('Coffee'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', { transactionId: 't-42' });
+    expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+    expect(mockOpenInPane).toHaveBeenCalledWith('TransactionForm', { transactionId: 't-42' });
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it('opens the pre-filled create form in a pane from a row’s Duplicate action', async () => {
+    seed({
+      transactions: [transaction({ id: 't-42', description: 'Coffee', source: 'manual' })],
+    });
+    const { getByTestId } = await render(
+      <HomeScreen
+        navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+        route={asRouteProp<HomeProps['route']>('Home')}
+      />,
+      { wrapper: GestureRootWrapper },
+    );
+
+    await holdCard();
+    await act(async () => {
+      await fireEvent.press(getByTestId(DUPLICATE_ACTION_TEST_ID));
+    });
+
+    expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+    expect(mockOpenInPane).toHaveBeenCalledWith('TransactionForm', {
+      duplicateOfTransactionId: 't-42',
+    });
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it('opens the empty create form in a pane from the add button', async () => {
+    seed({ transactions: [transaction({ id: 't-42', description: 'Coffee' })] });
+    const { getByLabelText } = await renderHome();
+
+    await fireEvent.press(getByLabelText(i18n.t('home.addTransaction')));
+
+    expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+    expect(mockOpenInPane).toHaveBeenCalledWith('TransactionForm', {});
+    expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
   it('groups the list by day with Today/Yesterday separators, newest day first', async () => {
@@ -1852,7 +1896,9 @@ describe('HomeScreen', () => {
   it('clears the tab bar without double-counting the safe-area inset', async () => {
     const { getByTestId } = await renderHome();
 
-    const listPadding = getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
+    const listPadding = StyleSheet.flatten(
+      getByTestId('home-transactions').props.contentContainerStyle,
+    ).paddingBottom;
 
     // This guards against Home passing the FULL tab-bar height as its own
     // clearance on top of the bottom inset Screen's SafeAreaView already
@@ -1876,8 +1922,11 @@ describe('HomeScreen', () => {
         </PaneContext.Provider>,
       );
 
+    const listContentOf = (view: Awaited<ReturnType<typeof render>>) =>
+      StyleSheet.flatten(view.getByTestId('home-transactions').props.contentContainerStyle);
+
     const listPaddingOf = (view: Awaited<ReturnType<typeof render>>): number =>
-      view.getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
+      listContentOf(view).paddingBottom;
 
     it('gives the list no tab-bar clearance in a pane above the other one', async () => {
       expect(listPaddingOf(await renderInPane('rows', 'companion'))).toBe(0);
@@ -1889,6 +1938,54 @@ describe('HomeScreen', () => {
 
     it('clears the tab bar in the pane at the bottom of the window', async () => {
       expect(listPaddingOf(await renderInPane('rows', 'primary'))).toBe(46);
+    });
+
+    // The list is its own scroll view, so it takes the whole pane and its content is capped and
+    // centred; capping the screen's root would pull the scroll indicator in from the pane edge.
+    it('caps and centres the list content, and leaves the list the whole pane', async () => {
+      const view = await renderInPane('rows', 'primary');
+      const content = listContentOf(view);
+      const list = StyleSheet.flatten(view.getByTestId('home-transactions').props.style);
+
+      expect(content.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      expect(content.width).toBe('100%');
+      expect(content.alignSelf).toBe('center');
+      expect(list.maxWidth).toBeUndefined();
+    });
+
+    it('caps and centres the fixed header above the list', async () => {
+      const view = await renderInPane('rows', 'primary');
+      const header = StyleSheet.flatten(view.getByTestId('home-header').props.style);
+
+      expect(header.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      expect(header.alignSelf).toBe('center');
+    });
+
+    it('leaves the screen root the whole pane', async () => {
+      const view = await renderInPane('rows', 'primary');
+      const root = StyleSheet.flatten(view.getByTestId('home-content').parent?.props.style);
+
+      expect(root.maxWidth).toBeUndefined();
+    });
+
+    it('caps the loading scroll view content the same way', async () => {
+      setLiveData({ isLoading: { accounts: true } });
+      const view = await renderInPane('rows', 'primary');
+      const content = StyleSheet.flatten(
+        view.getByTestId('home-loading-scroll').props.contentContainerStyle,
+      );
+
+      expect(content.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      expect(content.alignSelf).toBe('center');
+    });
+
+    it('caps nothing outside a pane', async () => {
+      const view = await renderHome();
+
+      expect(listContentOf(view).maxWidth).toBeUndefined();
+      expect(StyleSheet.flatten(view.getByTestId('home-header').props.style)?.maxWidth).toBe(
+        undefined,
+      );
     });
   });
 
@@ -1978,8 +2075,9 @@ describe('HomeScreen', () => {
 
       const { getByTestId, getByLabelText } = await renderHome();
 
-      const listPadding =
-        getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
+      const listPadding = StyleSheet.flatten(
+        getByTestId('home-transactions').props.contentContainerStyle,
+      ).paddingBottom;
 
       // Not 678 - 34 = 644 (the bug) — a vertical bar distrusts the tab-bar
       // height entirely.
@@ -2007,8 +2105,9 @@ describe('HomeScreen', () => {
 
       const { getByTestId, getByLabelText } = await renderHome();
 
-      const listPadding =
-        getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
+      const listPadding = StyleSheet.flatten(
+        getByTestId('home-transactions').props.contentContainerStyle,
+      ).paddingBottom;
       expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET);
 
       const fab = getByLabelText('Add transaction');

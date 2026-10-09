@@ -160,14 +160,23 @@ const Screen: FC<ScreenProps> = ({
   // beneath a short page's content. `bleedTop` returns above, so this branch is
   // always a headerless screen: it keeps the all-edges reservation, or in a
   // pane only the edges the pane touches. With no scroll view of its own, it
-  // takes the pane cap on its root.
+  // takes the pane cap on its root. A `bleedBottom` child is itself the
+  // scrollable surface, so a cap on the root would narrow its scroll indicator
+  // too: it caps its own content (`useContentCap()`), and only the footer is
+  // capped here.
   return (
-    <SafeAreaView edges={plainEdges} style={[styles.safeArea, contentCap]}>
+    <SafeAreaView
+      edges={plainEdges}
+      style={[styles.safeArea, bleedBottom ? undefined : contentCap]}
+    >
       <View testID="screen-content" style={styles.content(contentOwnsClearance, bottomClearance)}>
         {children}
       </View>
       {footer ? (
-        <View testID="screen-footer" style={styles.footer(bottomClearance)}>
+        <View
+          testID="screen-footer"
+          style={[styles.footer(bottomClearance), bleedBottom ? contentCap : undefined]}
+        >
           {footer}
         </View>
       ) : null}
