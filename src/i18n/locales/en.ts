@@ -1034,7 +1034,7 @@ export const en = {
   migrations: {
     error: 'Migration error: {{message}}',
     keyMissing:
-      'Kiko cannot read its encryption key, so your data stays locked. Nothing has been changed or deleted. Unlock your device, then close and reopen Kiko.',
+      'Kiko cannot read its encryption key, so your data stays locked. Nothing has been changed. Close and reopen Kiko. Do not delete the app: that would erase your data.',
     preparing: 'Preparing database…',
   },
   // The shared preview + target-holding screen

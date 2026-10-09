@@ -1550,14 +1550,22 @@ the kind of thing that can still change:
   the load-bearing fact: export first, persist the key second, delete
   the plaintext file last — a crash at any point leaves a resumable
   state rather than data loss. A missing Keychain key with an encrypted
-  file already on disk and no plaintext to migrate is never "fresh
-  install": a new key would not open that file and would brick it, so
-  `establishKey` throws `DatabaseKeyMissingError` (generates, stores and
-  deletes nothing) and `MigrationsGate` shows `migrations.keyMissing`;
-  the next launch retries. The only delete of an existing encrypted
-  file is in the populated-plaintext branch: the plaintext is removed
-  only after the key is stored, so plaintext + no key means the
-  encrypted file is a keyless leftover of an interrupted export.
+  file already on disk and no populated `kiko.db` beside it is never
+  "fresh install": a new key would not open that file and would brick it,
+  so `establishKey` probes both files BEFORE `migrateLegacyDatabase()`
+  (which would rebuild a populated `kiko.db` from a surviving `pff.db`
+  and hide the loss) and throws `DatabaseKeyMissingError` (no key
+  generated or stored, no file created or deleted); `MigrationsGate`
+  shows `migrations.keyMissing` and the next launch retries. "Encrypted
+  file exists" is a `react-native-fs` path check on op-sqlite's base
+  directory OR a keyless open, because a failed open cannot tell an
+  absent file from an unopenable one. The only delete of an existing
+  encrypted file is in the populated-`kiko.db` branch: `kiko.db` is
+  removed only after the key is stored, and with the probe above it can
+  be populated again only by an interrupted export, so a populated
+  `kiko.db` + no key means the file beside it is a keyless leftover.
+  With a key present, the key must open the encrypted file (first read)
+  before any plaintext residue is deleted.
 - `src/db/keys/db-key.ts` — the Keychain-backed SQLCipher key (service
   `'kiko.db.key'`), generated from SQLite's `randomblob()` rather than
   `Math.random` or a WebCrypto call Hermes doesn't have.

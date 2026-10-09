@@ -27,6 +27,12 @@ const mockIsSQLCipher = jest.fn(() => true);
 jest.mock('@op-engineering/op-sqlite', () => ({
   open: (...args: unknown[]) => mockOpen(...args),
   isSQLCipher: () => mockIsSQLCipher(),
+  IOS_LIBRARY_PATH: '/var/mobile/Containers/Data/Application/APP/Library',
+}));
+
+const mockExists = jest.fn<Promise<boolean>, [string]>();
+jest.mock('react-native-fs', () => ({
+  exists: (path: string) => mockExists(path),
 }));
 
 const mockReadDbKey = jest.fn<Promise<string | undefined>, []>();
@@ -78,6 +84,7 @@ beforeEach(() => {
   mockHandles.clear();
   mockIsSQLCipher.mockReturnValue(true);
   mockReadDbKey.mockResolvedValue(undefined);
+  mockExists.mockImplementation(async (path) => mockFiles.has(path.replace(`${LIBRARY_DIR}/`, '')));
   // Default: fresh install — migrateLegacyDatabase returns an empty kiko.db.
   mockMigrateLegacyDatabase.mockImplementation(() => handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 0));
   mockOpen.mockImplementation((options: { name: string; failOnCreate?: boolean }) => {
@@ -146,9 +153,55 @@ describe('openEncryptedDatabase', () => {
       expect(mockFiles.has(LIVE_PLAINTEXT_DATABASE_NAME)).toBe(false);
       expect(mockFiles.has(LEGACY_PLAINTEXT_DATABASE_NAME)).toBe(false);
     });
+
+    it('proves the stored key opens the encrypted file before it deletes any plaintext', async () => {
+      mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
+
+      await openEncryptedDatabase();
+
+      const proofIndex = mockOpen.mock.calls.findIndex(
+        ([options]) =>
+          options.name === ENCRYPTED_DATABASE_NAME && options.encryptionKey === RAW_KEY,
+      );
+      const proofHandle = handleFor(ENCRYPTED_DATABASE_NAME);
+      expect(orderOf(mockOpen, proofIndex)).toBeLessThan(
+        orderOf(handleFor(LIVE_PLAINTEXT_DATABASE_NAME).delete),
+      );
+      expect(proofHandle.executeSync).toHaveBeenCalledWith(
+        expect.stringContaining('sqlite_master'),
+      );
+      expect(orderOf(proofHandle.executeSync)).toBeLessThan(
+        orderOf(handleFor(LIVE_PLAINTEXT_DATABASE_NAME).delete),
+      );
+    });
+
+    it('keeps the plaintext and rejects when the stored key does not open the encrypted file', async () => {
+      mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
+      mockFiles.add(LEGACY_PLAINTEXT_DATABASE_NAME);
+      handleFor(ENCRYPTED_DATABASE_NAME).executeSync.mockImplementation(() => {
+        throw new Error('file is not a database');
+      });
+
+      await expect(openEncryptedDatabase()).rejects.toThrow('does not open the encrypted database');
+
+      expect(mockFiles.has(LIVE_PLAINTEXT_DATABASE_NAME)).toBe(true);
+      expect(mockFiles.has(LEGACY_PLAINTEXT_DATABASE_NAME)).toBe(true);
+      expect(handleFor(ENCRYPTED_DATABASE_NAME).close).toHaveBeenCalled();
+      expect(mockStoreDbKey).not.toHaveBeenCalled();
+    });
   });
 
   describe('fresh install: no key, empty plaintext', () => {
+    it('does not create the encrypted file just to probe for it', async () => {
+      await openEncryptedDatabase();
+
+      const probe = mockOpen.mock.calls.find(
+        ([options]) =>
+          options.name === ENCRYPTED_DATABASE_NAME && options.encryptionKey === undefined,
+      );
+      expect(probe?.[0].failOnCreate).toBe(true);
+    });
+
     it('stores a key and opens a new encrypted database without any export', async () => {
       const db = await openEncryptedDatabase();
 
@@ -197,25 +250,66 @@ describe('openEncryptedDatabase', () => {
     });
 
     it('never opens the encrypted file with a key and closes every handle it opened', async () => {
+      mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
+
       await expect(openEncryptedDatabase()).rejects.toThrow();
 
       expect(mockOpen.mock.calls.some(([options]) => options.encryptionKey !== undefined)).toBe(
         false,
       );
-      expect(handleFor(ENCRYPTED_DATABASE_NAME).close).toHaveBeenCalled();
-      expect(handleFor(LIVE_PLAINTEXT_DATABASE_NAME).close).toHaveBeenCalled();
+      expect(mockHandles.size).toBeGreaterThan(0);
+
+      for (const handle of mockHandles.values()) {
+        expect(handle.close).toHaveBeenCalled();
+      }
     });
 
-    it('does not create the encrypted file just to probe for it', async () => {
-      mockFiles.delete(ENCRYPTED_DATABASE_NAME);
-
-      await openEncryptedDatabase();
-
-      const probe = mockOpen.mock.calls.find(
-        ([options]) =>
-          options.name === ENCRYPTED_DATABASE_NAME && options.encryptionKey === undefined,
+    it('refuses without running the legacy migration, whatever pff.db holds', async () => {
+      // The real migration would rebuild a populated kiko.db from a surviving pff.db and
+      // hide the missing key behind it.
+      mockFiles.add(LEGACY_PLAINTEXT_DATABASE_NAME);
+      mockMigrateLegacyDatabase.mockImplementation(() =>
+        handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 5),
       );
-      expect(probe?.[0].failOnCreate).toBe(true);
+
+      await expect(openEncryptedDatabase()).rejects.toBeInstanceOf(DatabaseKeyMissingError);
+
+      expect(mockMigrateLegacyDatabase).not.toHaveBeenCalled();
+      expect(mockGenerateDbKey).not.toHaveBeenCalled();
+      expect(mockStoreDbKey).not.toHaveBeenCalled();
+
+      for (const deleteMock of everyDelete()) {
+        expect(deleteMock).not.toHaveBeenCalled();
+      }
+      expect(mockFiles.has(ENCRYPTED_DATABASE_NAME)).toBe(true);
+      expect(mockFiles.has(LEGACY_PLAINTEXT_DATABASE_NAME)).toBe(true);
+    });
+
+    it('also refuses when kiko.db exists but holds no tables', async () => {
+      mockFiles.add(LEGACY_PLAINTEXT_DATABASE_NAME);
+      mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
+      mockMigrateLegacyDatabase.mockImplementation(() =>
+        handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 5),
+      );
+
+      await expect(openEncryptedDatabase()).rejects.toBeInstanceOf(DatabaseKeyMissingError);
+
+      expect(mockMigrateLegacyDatabase).not.toHaveBeenCalled();
+      expect(mockStoreDbKey).not.toHaveBeenCalled();
+
+      for (const deleteMock of everyDelete()) {
+        expect(deleteMock).not.toHaveBeenCalled();
+      }
+    });
+
+    it('treats a file that exists but fails to open as existing, not as absent', async () => {
+      mockFiles.delete(ENCRYPTED_DATABASE_NAME);
+      mockExists.mockImplementation(async (path) => path.endsWith(ENCRYPTED_DATABASE_NAME));
+
+      await expect(openEncryptedDatabase()).rejects.toBeInstanceOf(DatabaseKeyMissingError);
+
+      expect(mockGenerateDbKey).not.toHaveBeenCalled();
+      expect(mockStoreDbKey).not.toHaveBeenCalled();
     });
 
     it('opens the existing database on a later launch once the key is readable again', async () => {
@@ -236,6 +330,8 @@ describe('openEncryptedDatabase', () => {
 
   describe('upgrade: no key, populated plaintext kiko.db', () => {
     beforeEach(() => {
+      // Cached first so the guard's keyless probe of kiko.db sees the same 5 tables.
+      handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 5);
       mockMigrateLegacyDatabase.mockImplementation(() =>
         handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 5),
       );
