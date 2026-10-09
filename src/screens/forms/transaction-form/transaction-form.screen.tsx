@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { match } from 'ts-pattern';
 import { useTip } from '@kiko/tips';
+import { maxOf } from '@kiko/numbers';
 import {
   canConvertToExchange,
   type ExchangeConvertDirection,
@@ -53,15 +54,16 @@ import TipCard from '@kiko/design-system/components/tip-card';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import CategoryField from '@kiko/screens/forms/category-field';
 import ExchangeFields from '@kiko/screens/forms/exchange-fields';
+import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldError from '@kiko/design-system/components/field-error';
-import type { TransactionFormParams } from '@kiko/navigation/types';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
@@ -76,6 +78,7 @@ import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo'
 import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import ModeSelectField, { type FormMode } from '@kiko/screens/forms/mode-select-field';
+import type { TransactionFormDraft, TransactionFormParams } from '@kiko/navigation/types';
 import { useLiveQuery, type AccountRow, type HoldingRow, type TransactionRow } from '@kiko/db';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
@@ -85,7 +88,11 @@ import { useLiveQuery, type AccountRow, type HoldingRow, type TransactionRow } f
 // satisfied by either stack's generated props.
 type TransactionFormScreenProps = {
   route: { params: TransactionFormParams };
-  navigation: { goBack: () => void; setOptions: (options: { title: string }) => void };
+  navigation: {
+    goBack: () => void;
+    setOptions: (options: { title: string }) => void;
+    setParams: (params: { draft: TransactionFormDraft }) => void;
+  };
 };
 
 type Sign = 'income' | 'expense';
@@ -843,6 +850,40 @@ const toAmountFields = (
     sign: amountMinorUnits < 0 ? 'expense' : 'income',
   };
 };
+
+// What the form's state opens with: the draft the route carries, else a blank add dated now. The
+// day is read here, not at module load, so a form opened tomorrow does not open on today.
+const openingOf = (draft: TransactionFormDraft | undefined): TransactionFormDraft =>
+  draft ?? {
+    primaryHoldingId: null,
+    mode: 'expense',
+    amount: '',
+    description: '',
+    changeReturns: [{ id: 0, holdingId: null, amount: '' }],
+    valueIn: '',
+    destinationHoldingId: null,
+    converting: false,
+    counterpartHoldingId: null,
+    counterpartAmount: '',
+    time: Date.now(),
+    selectedCategory: null,
+    userPickedCategory: false,
+    prefilledLabel: null,
+  };
+
+// The id the next appended return row takes: one past the highest a restored draft holds, so a
+// row added after a remount never shares a React key with one that came back. A user can remove
+// every row, which leaves nothing to count past.
+const nextReturnIdOf = (rows: readonly ChangeReturnRow[]): number =>
+  Math.max(0, maxOf(rows.map((row) => row.id)) + 1);
+
+// Whether a draft already holds every field, so the stored row (an edit, a duplicate) must not
+// seed over it. A global add that saved before its default holding was seated still needs that
+// one seat, which touches nothing else.
+const isDraftComplete = (
+  draft: TransactionFormDraft | undefined,
+  isEmptyCreate: boolean,
+): boolean => draft !== undefined && !(isEmptyCreate && draft.primaryHoldingId === null);
 
 // The three mutually-exclusive entry ids read once from the route params, so
 // the component body spends no `in`-check branch on any of them (the union
@@ -1644,6 +1685,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // add mode the by-id query runs against an empty id and returns nothing,
   // keeping the hook order stable without a conditional call.
   const { editingId, duplicateOfId, holdingParamId, isEmptyCreate } = readRouteEntry(route.params);
+  // A fold or unfold remounts this screen but keeps the route's params, so the fields the user
+  // filled come back from the draft the form saved there (see `useDraftAutosave`).
+  const { initialDraft, saveDraft } = useDraftParam<TransactionFormDraft>(navigation, route);
+  const [opening] = useState(() => openingOf(initialDraft));
   // ONE by-id subscription serves both the edit source and the duplicate source
   // (never both at once — the union keeps the params mutually exclusive).
   const { data: matchedTransactions } = useLiveQuery(
@@ -1710,7 +1755,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // holding-derived value (currency, amount suffix, category eligibility,
   // exchange rules) reads through it. Null on a plain add/edit, where
   // `holdingParamId`/`existing` supply the holding instead.
-  const [primaryHoldingId, setPrimaryHoldingId] = useState<string | null>(null);
+  const [primaryHoldingId, setPrimaryHoldingId] = useState<string | null>(opening.primaryHoldingId);
   const holdingId = existing?.holdingId ?? primaryHoldingId ?? holdingParamId ?? undefined;
   const holding = holdings.find((candidate) => candidate.id === holdingId);
   const currency: Currency = holding?.currency ?? 'UAH';
@@ -1804,9 +1849,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     t,
   );
 
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [mode, setMode] = useState<FormMode>('expense');
+  const [amount, setAmount] = useState(opening.amount);
+  const [description, setDescription] = useState(opening.description);
+  const [mode, setMode] = useState<FormMode>(opening.mode);
   const isExchange = mode === 'exchange';
   const applyToAllTip = useTip(
     'transaction.applyToAll',
@@ -1863,31 +1908,51 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // one picker when Split is entered. `nextReturnId` hands out a stable key per
   // appended row (the same pattern as the term-deposit contribution rows), so a
   // removed row never reshuffles React keys onto the wrong inputs.
-  const nextReturnId = useRef(1);
-  const [changeReturns, setChangeReturns] = useState<ChangeReturnRow[]>([
-    { id: 0, holdingId: null, amount: '' },
-  ]);
-  const [valueIn, setValueIn] = useState('');
-  const [destinationHoldingId, setDestinationHoldingId] = useState<string | null>(null);
-  const [converting, setConverting] = useState(false);
-  const [counterpartHoldingId, setCounterpartHoldingId] = useState<string | null>(null);
-  const [counterpartAmount, setCounterpartAmount] = useState('');
+  const nextReturnId = useRef(nextReturnIdOf(opening.changeReturns));
+  const [changeReturns, setChangeReturns] = useState<ChangeReturnRow[]>(opening.changeReturns);
+  const [valueIn, setValueIn] = useState(opening.valueIn);
+  const [destinationHoldingId, setDestinationHoldingId] = useState<string | null>(
+    opening.destinationHoldingId,
+  );
+  const [converting, setConverting] = useState(opening.converting);
+  const [counterpartHoldingId, setCounterpartHoldingId] = useState<string | null>(
+    opening.counterpartHoldingId,
+  );
+  const [counterpartAmount, setCounterpartAmount] = useState(opening.counterpartAmount);
   // The transaction's time, defaulting to now for a fresh add so a manual row
   // can be BACKDATED via the DateField below. Edit mode hydrates the existing
   // time; picking a day sets it to that day's local midnight.
-  const [time, setTime] = useState<number>(() => Date.now());
+  const [time, setTime] = useState<number>(opening.time);
   // The picked category key (a categories.key slug, lowercase). Null = no
   // category yet. Editing it ALWAYS propagates to every same-name transaction
   // via the override rule — there is no single-row-only category edit.
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(opening.selectedCategory);
   // Whether the user has explicitly picked a category through the picker. Gates
   // the description-blur auto-pick: once the user chooses, a later matching
   // blur must never overwrite that choice.
-  const [userPickedCategory, setUserPickedCategory] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
+  const [userPickedCategory, setUserPickedCategory] = useState(opening.userPickedCategory);
+  // A draft the route carries holds every field, so the stored row never seeds over it.
+  const [hydrated, setHydrated] = useState(isDraftComplete(initialDraft, isEmptyCreate));
   // Held from the seed rather than re-resolved at Save, so a counterpart
   // renamed mid-edit cannot turn the untouched label into stored text.
-  const [prefilledLabel, setPrefilledLabel] = useState<string | null>(null);
+  const [prefilledLabel, setPrefilledLabel] = useState<string | null>(opening.prefilledLabel);
+  const draft: TransactionFormDraft = {
+    primaryHoldingId,
+    mode,
+    amount,
+    description,
+    changeReturns,
+    valueIn,
+    destinationHoldingId,
+    converting,
+    counterpartHoldingId,
+    counterpartAmount,
+    time,
+    selectedCategory,
+    userPickedCategory,
+    prefilledLabel,
+  };
+  const onFieldBlur = useDraftAutosave(draft, saveDraft);
   const blankLabel = resolveBlankLabel({ existing, holding, holdings, t });
   // Whether the user has pressed Save at least once. Save is always enabled;
   // this latches the inline reason on so it only ever appears after a press
@@ -2587,6 +2652,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         scroll
         scrollableRef={scrollableRef}
         onContentSizeChange={onContentSizeChange}
+        onFieldBlur={onFieldBlur}
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
             <Button onPress={onSave} disabled={isSubmitting}>

@@ -4,6 +4,12 @@ import { act, fireEvent, render, waitFor, within } from '@testing-library/react-
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+  paramsAfter,
+} from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdingTypes } from '@kiko/holdings/holding-type';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
@@ -12,11 +18,11 @@ import type { TransactionFormParams } from '@kiko/navigation/types';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
+import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
-import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import TransactionFormScreen, { canSaveSplit } from './transaction-form.screen';
 
@@ -30,6 +36,9 @@ jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockS
 // below can assert on the WIRING without depending on real
 // `measureLayout`/`measure` host-instance behavior under the test renderer.
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
+jest.mock('@kiko/display-regions', () =>
+  require('@kiko/test-support/layout-mode-spy').layoutModeSpyModule(),
+);
 
 type TransactionFormProps = ComponentProps<typeof TransactionFormScreen>;
 
@@ -4649,5 +4658,375 @@ describe('TransactionFormScreen — the apply-to-all tip', () => {
     await waitFor(() => expect(mockSetCategory).toHaveBeenCalled());
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
     expect(mockDismissTip).not.toHaveBeenCalled();
+  });
+});
+
+describe('TransactionFormScreen — draft', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
+  });
+
+  afterEach(() => {
+    resetLayoutMode();
+  });
+
+  // The form opened again with the route params the first mount left behind.
+  const reopen = (opened: TransactionFormParams): ReturnType<typeof render> =>
+    render(
+      <TransactionFormScreen
+        route={transactionFormRoute(paramsAfter(navigation, opened) as TransactionFormParams)}
+        navigation={navigationProp}
+      />,
+    );
+
+  const savedTime = (): number => mockRecordManual.mock.calls[0][0].time;
+
+  it('brings back an expense as typed after a remount', async () => {
+    const first = await renderAdd();
+    await fireEvent.changeText(first.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(first.getByLabelText('Description'), 'Coffee');
+    await pickCategory(first, 'Groceries');
+    await pickDate(first, 2025, 2, 10);
+    await fireEvent(first.getByLabelText('Description'), 'blur');
+    await first.unmount();
+
+    const second = await reopen({ holdingId: 'h1' });
+
+    expect(second.getByLabelText('Amount').props.value).toBe('12.34');
+    expect(second.getByLabelText('Description').props.value).toBe('Coffee');
+    expect(second.getByLabelText('Category')).toHaveTextContent('Groceries', { exact: false });
+
+    await fireEvent.press(second.getByText('Save'));
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({
+        holdingId: 'h1',
+        amountMinorUnits: -1234,
+        description: 'Coffee',
+        category: 'groceries',
+      }),
+    );
+    expect(new Date(savedTime()).getMonth()).toBe(1);
+    expect(new Date(savedTime()).getDate()).toBe(10);
+  });
+
+  it('brings back an income chosen in the type sheet', async () => {
+    const first = await renderAdd();
+    await pickType(first, 'income');
+    await fireEvent.changeText(first.getByLabelText('Amount'), '5');
+    await fireEvent(first.getByLabelText('Amount'), 'blur');
+    await first.unmount();
+
+    const second = await reopen({ holdingId: 'h1' });
+    await pickCategory(second, 'Groceries');
+    await fireEvent.press(second.getByText('Save'));
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ holdingId: 'h1', amountMinorUnits: 500 }),
+    );
+  });
+
+  it('brings back an exchange with its destination and both amounts', async () => {
+    setLiveData(EXCHANGE_HOLDINGS);
+    const first = await renderAddFromHolding('cash-1');
+    await pickType(first, 'exchange');
+    await fireEvent.changeText(first.getByLabelText('Value out'), '100');
+    await fireEvent.press(first.getByLabelText('To'));
+    await fireEvent.press(first.getByText('Cash USD'));
+    await fireEvent.changeText(first.getByLabelText('Value in'), '2.5');
+    await fireEvent(first.getByLabelText('Value in'), 'blur');
+    await first.unmount();
+
+    const second = await reopen({ holdingId: 'cash-1' });
+
+    expect(second.getByLabelText('Value out').props.value).toBe('100');
+    expect(second.getByLabelText('Value in').props.value).toBe('2.5');
+    expect(second.getByLabelText('To')).toHaveTextContent('Cash USD', { exact: false });
+
+    await fireEvent.press(second.getByText('Save'));
+
+    expect(mockRecordExchange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceHoldingId: 'cash-1',
+        valueOutMinorUnits: 10_000,
+        destinationHoldingId: 'cash-usd-1',
+        valueInMinorUnits: 250,
+      }),
+    );
+  });
+
+  it('brings back a split payment with its returns, and keeps adding returns under new keys', async () => {
+    setLiveData(SPLIT_HOLDINGS, undefined, CATEGORIES, SPLIT_ACCOUNTS);
+    mockRecordManualWithReturns.mockResolvedValue(undefined);
+    const first = await renderAddFromHolding('payer');
+    await pickType(first, 'split');
+    await fireEvent.press(first.getByText('Add return'));
+    await fireEvent.press(first.getByLabelText('Return to 1'));
+    await fireEvent.press(first.getByText('Alice'));
+    await fireEvent.press(first.getByLabelText('Return to 2'));
+    await fireEvent.press(first.getByText('Bob'));
+    await fireEvent.changeText(first.getByLabelText('Return 1'), '0.20');
+    await fireEvent.changeText(first.getByLabelText('Return 2'), '0.08');
+    await fireEvent.changeText(first.getByLabelText('Amount'), '212.00');
+    await pickCategory(first, 'Groceries');
+    await fireEvent(first.getByLabelText('Amount'), 'blur');
+    await first.unmount();
+
+    const second = await reopen({ holdingId: 'payer' });
+
+    expect(second.getByLabelText('Return 1').props.value).toBe('0.20');
+    expect(second.getByLabelText('Return 2').props.value).toBe('0.08');
+    expect(second.getByLabelText('Return to 1')).toHaveTextContent('Alice', { exact: false });
+    expect(second.getByLabelText('Return to 2')).toHaveTextContent('Bob', { exact: false });
+
+    await fireEvent.press(second.getByText('Add return'));
+
+    expect(second.getByLabelText('Return 3')).toBeTruthy();
+
+    await fireEvent.press(second.getByLabelText('Remove return 3'));
+    await fireEvent.press(second.getByText('Save'));
+
+    await waitFor(() => expect(mockRecordManualWithReturns).toHaveBeenCalledTimes(1));
+    expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
+      expect.objectContaining({
+        returns: [
+          { holdingId: 'friend-a', amountMinorUnits: 20 },
+          { holdingId: 'friend-b', amountMinorUnits: 8 },
+        ],
+      }),
+    );
+  });
+
+  it('brings back the primary holding the user picked in a global add, not the default', async () => {
+    const holdings: Holding[] = [
+      {
+        id: 'h1',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        type: 'cash',
+        name: 'Wallet',
+        accountId: 'a1',
+      },
+      {
+        id: 'h2',
+        currency: 'USD',
+        balanceMinorUnits: 0,
+        type: 'card',
+        name: 'Card',
+        accountId: 'a2',
+      },
+    ];
+    setLiveData(
+      holdings,
+      undefined,
+      CATEGORIES,
+      [
+        { id: 'a1', name: 'Cash' },
+        { id: 'a2', name: 'Bank' },
+      ],
+      [],
+      [],
+      [],
+      'h2',
+    );
+    const first = await renderEmptyCreate();
+    await fireEvent.press(first.getByLabelText('Holding'));
+    await fireEvent.press(first.getByText('Wallet'));
+    await fireEvent.changeText(first.getByLabelText('Amount'), '7');
+    await fireEvent(first.getByLabelText('Amount'), 'blur');
+    await first.unmount();
+
+    const second = await reopen({});
+
+    expect(second.getByLabelText('Holding')).toHaveTextContent('Wallet', { exact: false });
+    expect(second.getByLabelText('Amount').props.value).toBe('7');
+  });
+
+  describe('an edit', () => {
+    beforeEach(() => {
+      setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
+        id: 'txn-1',
+        holdingId: 'h1',
+        amountMinorUnits: -1234,
+        time: 42,
+        description: 'Coffee',
+        source: 'manual',
+      });
+    });
+
+    it('lets the draft win over the stored row it was opened on', async () => {
+      const first = await renderEdit('txn-1');
+      await fireEvent.changeText(first.getByLabelText('Amount'), '99');
+      await fireEvent(first.getByLabelText('Amount'), 'blur');
+      await first.unmount();
+
+      const second = await reopen({ transactionId: 'txn-1' });
+
+      expect(second.getByLabelText('Amount').props.value).toBe('99');
+      expect(second.getByLabelText('Description').props.value).toBe('Coffee');
+
+      await fireEvent.press(second.getByText('Save'));
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ transactionId: 'txn-1', amountMinorUnits: -9900, time: 42 }),
+      );
+    });
+
+    it('keeps converting a row to an exchange across the remount', async () => {
+      setLiveData(
+        CONVERT_HOLDINGS,
+        CONVERT_TRANSACTIONS['expense-manual'],
+        CATEGORIES,
+        CONVERT_ACCOUNTS,
+      );
+      const first = await renderEdit('expense-manual');
+      await fireEvent.press(first.getByText('Exchange'));
+      await fireEvent.press(first.getByLabelText('To'));
+      await fireEvent.press(first.getByText('Cash USD'));
+      await fireEvent.changeText(first.getByLabelText('Value in'), '2.50');
+      await fireEvent(first.getByLabelText('Value in'), 'blur');
+      await first.unmount();
+
+      const second = await reopen({ transactionId: 'expense-manual' });
+
+      expect(second.getByLabelText('Value in').props.value).toBe('2.50');
+
+      await fireEvent.press(second.getByText('Save'));
+
+      await waitFor(() =>
+        expect(mockRecordExchangeCounterpart).toHaveBeenCalledWith(
+          expect.objectContaining({
+            counterpartHoldingId: 'cash-usd-1',
+            amountMinorUnits: 250,
+            existingTransactionId: 'expense-manual',
+          }),
+        ),
+      );
+    });
+
+    it('opens from the stored row when the route carries no draft', async () => {
+      const utils = await renderEdit('txn-1');
+
+      expect(utils.getByLabelText('Amount').props.value).toBe('12.34');
+    });
+  });
+
+  it('lets the draft of a duplicate win over the row it copies', async () => {
+    setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }], {
+      id: 'txn-1',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      source: 'manual',
+      category: 'groceries',
+    });
+    const first = await renderDuplicate('txn-1');
+    await fireEvent.changeText(first.getByLabelText('Description'), 'Tea');
+    await fireEvent(first.getByLabelText('Description'), 'blur');
+    await first.unmount();
+
+    const second = await reopen({ duplicateOfTransactionId: 'txn-1' });
+
+    expect(second.getByLabelText('Description').props.value).toBe('Tea');
+    expect(second.getByLabelText('Amount').props.value).toBe('12.34');
+  });
+
+  it('brings back the choices made since the last blur once the window changes shape', async () => {
+    const first = await renderAdd();
+    await fireEvent.changeText(first.getByLabelText('Amount'), '12');
+    await pickCategory(first, 'Groceries');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+
+    await emitLayoutMode('columns');
+    await first.unmount();
+
+    const second = await reopen({ holdingId: 'h1' });
+
+    expect(second.getByLabelText('Amount').props.value).toBe('12');
+    expect(second.getByLabelText('Category')).toHaveTextContent('Groceries', { exact: false });
+  });
+
+  it('keeps the draft to plain values, so the route params stay JSON', async () => {
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent(utils.getByLabelText('Amount'), 'blur');
+
+    const [[{ draft }]] = navigation.setParams.mock.calls;
+
+    expect(draft).toEqual({
+      primaryHoldingId: null,
+      mode: 'expense',
+      amount: '12.34',
+      description: '',
+      changeReturns: [{ id: 0, holdingId: null, amount: '' }],
+      valueIn: '',
+      destinationHoldingId: null,
+      converting: false,
+      counterpartHoldingId: null,
+      counterpartAmount: '',
+      time: expect.any(Number),
+      selectedCategory: null,
+      userPickedCategory: false,
+      prefilledLabel: null,
+    });
+    expect(JSON.parse(JSON.stringify(draft))).toEqual(draft);
+  });
+
+  it('writes the draft once per blur, never while typing', async () => {
+    const utils = await renderAdd();
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+
+    await fireEvent(utils.getByLabelText('Amount'), 'blur');
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing for a blur on a form the user has not changed', async () => {
+    const utils = await renderAdd();
+
+    await fireEvent(utils.getByLabelText('Amount'), 'blur');
+    await fireEvent(utils.getByLabelText('Description'), 'blur');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+  });
+
+  it('includes what the description blur itself chose, a category from the typed name', async () => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [{ normalizedName: 'coffee', category: 'dining' }],
+    );
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    await fireEvent(utils.getByLabelText('Description'), 'blur');
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+    expect(navigation.setParams).toHaveBeenCalledWith({
+      draft: expect.objectContaining({ description: 'Coffee', selectedCategory: 'dining' }),
+    });
+  });
+
+  it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
+    mockRecordManual.mockResolvedValue(undefined);
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent(utils.getByLabelText('Amount'), 'blur');
+    navigation.setParams.mockClear();
+
+    await fireEvent.press(utils.getByText('Save'));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
+    expect(navigation.setParams).not.toHaveBeenCalled();
   });
 });

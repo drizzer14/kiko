@@ -7,6 +7,7 @@ import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { OwnershipInput } from '@kiko/holdings/holding-metadata';
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
 import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
@@ -26,17 +27,38 @@ import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
  * the source. The union makes the entry points mutually exclusive so a caller
  * can never pass more than one. It is registered in both the Home and Accounts
  * stacks (Home lists every transaction; Accounts reaches it from a holding), so
- * both param lists carry the same shape. The final member — an EMPTY object
- * (`Record<string, never>`) — is the global-add entry (Bundle B): a create with
- * NO holding fixed by navigation, so the form renders its own primary-leg
- * holding picker. `Record<string, never>` admits `{}` alone, keeping every
- * member mutually exclusive (a caller can pass exactly one id, or none at all).
+ * both param lists carry the same shape. The final member — an object with no
+ * id — is the global-add entry (Bundle B): a create with NO holding fixed by
+ * navigation, so the form renders its own primary-leg holding picker. Every
+ * member may also carry the form's own `draft` (see `TransactionFormDraft`).
  */
 export type TransactionFormParams =
-  | { holdingId: string }
-  | { transactionId: string }
-  | { duplicateOfTransactionId: string }
-  | Record<string, never>;
+  | { holdingId: string; draft?: TransactionFormDraft }
+  | { transactionId: string; draft?: TransactionFormDraft }
+  | { duplicateOfTransactionId: string; draft?: TransactionFormDraft }
+  | { draft?: TransactionFormDraft };
+
+/**
+ * Every field the transaction form keeps in its state: a typed amount, the mode and the holdings
+ * picked for it, the day, the category and whether the user chose it. What the form seeds from a
+ * stored row (an edit, a duplicate) is in it too, as the user left it, so a draft wins over it.
+ */
+export type TransactionFormDraft = {
+  primaryHoldingId: string | null;
+  mode: FormMode;
+  amount: string;
+  description: string;
+  changeReturns: { id: number; holdingId: string | null; amount: string }[];
+  valueIn: string;
+  destinationHoldingId: string | null;
+  converting: boolean;
+  counterpartHoldingId: string | null;
+  counterpartAmount: string;
+  time: number;
+  selectedCategory: string | null;
+  userPickedCategory: boolean;
+  prefilledLabel: string | null;
+};
 
 /**
  * The reminder form edits a saved reminder by its id, or creates the one
