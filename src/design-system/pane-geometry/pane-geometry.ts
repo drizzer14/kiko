@@ -1,4 +1,4 @@
-import type { FoldRegion } from '@kiko/display-regions';
+import type { FoldRegion, LayoutMode } from '@kiko/display-regions';
 
 export type PaneFrame = { x: number; y: number; width: number; height: number };
 
@@ -10,84 +10,64 @@ type PaneGeometry = {
 };
 
 type Window = { width: number; height: number };
-type Span = { start: number; gap: number };
+type Fold = NonNullable<FoldRegion>;
+type SplitMode = Exclude<LayoutMode, 'single'>;
+
+type Axis = {
+  windowLength: (window: Window) => number;
+  foldStart: (fold: Fold) => number;
+  foldLength: (fold: Fold) => number;
+  // Whether the fold runs the full way across the axis the panes do not split, which is the only
+  // fold that can sit between two panes of this mode.
+  foldSpansCross: (window: Window, fold: Fold) => boolean;
+  frame: (window: Window, start: number, length: number) => PaneFrame;
+};
+
+const AXES: Record<SplitMode, Axis> = {
+  columns: {
+    windowLength: (window) => window.width,
+    foldStart: (fold) => fold.x,
+    foldLength: (fold) => fold.width,
+    foldSpansCross: (window, fold) => fold.height >= window.height,
+    frame: (window, start, length) => ({ x: start, y: 0, width: length, height: window.height }),
+  },
+  rows: {
+    windowLength: (window) => window.height,
+    foldStart: (fold) => fold.y,
+    foldLength: (fold) => fold.height,
+    foldSpansCross: (window, fold) => fold.width >= window.width,
+    frame: (window, start, length) => ({ x: 0, y: start, width: window.width, height: length }),
+  },
+};
 
 const clamp = (value: number, lowest: number, highest: number) =>
   Math.min(Math.max(value, lowest), highest);
 
-// The fold's own extent along the split axis, clamped into the window so a fold that overhangs
-// never makes a pane negative.
-const resolveFoldSpan = (length: number, foldStart: number, foldLength: number): Span => {
-  const start = clamp(foldStart, 0, length);
-
-  return { start, gap: clamp(foldStart + foldLength, start, length) - start };
-};
-
-const resolveSpan = (
-  mode: 'columns' | 'rows',
-  window: Window,
-  fold: NonNullable<FoldRegion>,
-): Span =>
-  mode === 'columns'
-    ? resolveFoldSpan(window.width, fold.x, fold.width)
-    : resolveFoldSpan(window.height, fold.y, fold.height);
-
-const placeAlongAxis = (mode: 'columns' | 'rows', window: Window, start: number, gap: number) => {
-  const end = start + gap;
-
-  if (mode === 'columns') {
-    const frame = (x: number, width: number): PaneFrame => ({
-      x,
-      y: 0,
-      width,
-      height: window.height,
-    });
-
-    return {
-      companion: frame(0, start),
-      divider: frame(start, gap),
-      primary: frame(end, window.width - end),
-    };
-  }
-
-  const frame = (y: number, height: number): PaneFrame => ({
-    x: 0,
-    y,
-    width: window.width,
-    height,
-  });
-
-  return {
-    companion: frame(0, start),
-    divider: frame(start, gap),
-    primary: frame(end, window.height - end),
-  };
-};
-
 // Pure pane geometry. Flat: equal halves around a hairline divider. Folded: each pane ends at the
-// fold edge and the divider collapses to nothing, so the panes are equal only when the fold is
-// centred.
+// fold edge, so the panes are equal only when the fold is centred; the divider is then the fold's
+// own gap, which the caller does not draw. A fold that does not span the mode's cross axis is a
+// transient from a rotation (the window and the fold arrive separately), so it counts as flat.
 export const resolvePaneGeometry = (
-  mode: 'columns' | 'rows',
+  mode: SplitMode,
   window: Window,
   fold: FoldRegion,
   hairline: number,
 ): PaneGeometry => {
-  if (fold === null) {
-    const length = mode === 'columns' ? window.width : window.height;
-
-    return {
-      ...placeAlongAxis(mode, window, (length - hairline) / 2, hairline),
-      isFolded: false,
-    };
-  }
-
-  const { start, gap } = resolveSpan(mode, window, fold);
-  const frames = placeAlongAxis(mode, window, start, gap);
+  const axis = AXES[mode];
+  const length = axis.windowLength(window);
+  const isFolded = fold !== null && axis.foldSpansCross(window, fold);
+  // The fold's extent is clamped into the window so a fold that overhangs never makes a pane
+  // negative.
+  const start = isFolded ? clamp(axis.foldStart(fold), 0, length) : (length - hairline) / 2;
+  const gap = isFolded
+    ? clamp(axis.foldStart(fold) + axis.foldLength(fold), start, length) - start
+    : hairline;
+  const end = start + gap;
 
   return {
-    ...frames,
-    divider: placeAlongAxis(mode, window, start, 0).divider,
-    isFolded: true,
+    companion: axis.frame(window, 0, start),
+    divider: axis.frame(window, start, gap),
+    primary: axis.frame(window, end, length - end),
+    isFolded,
   };
 };

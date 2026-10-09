@@ -59,8 +59,9 @@ const iconSizes = {
   display: iconSize(typography.display.fontSize), // 44 -> 55
 } as const;
 
-// Two-pane (Duo) layout: each pane's content is centred and capped at `paneMaxWidth` so a wide
-// pane never stretches a form line across the screen; `hairline` is the flat-window divider.
+// Two-pane (Duo) layout: a pane's screen content (lists and forms, never the native bars) is
+// centred and capped at `paneMaxWidth` so a wide pane never stretches a form line across the
+// screen; `hairline` is the flat-window divider.
 const layout = { paneMaxWidth: 600, hairline: StyleSheet.hairlineWidth } as const;
 
 export const darkTheme = {

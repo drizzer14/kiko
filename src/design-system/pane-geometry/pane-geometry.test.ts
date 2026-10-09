@@ -21,24 +21,42 @@ describe('resolvePaneGeometry', () => {
     expect(geometry.isFolded).toBe(false);
   });
 
-  it('ends the panes at the fold edges in columns and drops the divider', () => {
+  it('ends the panes at the fold edges in columns', () => {
     const fold = { x: 465, y: 0, width: 21, height: 669 };
     const geometry = resolvePaneGeometry('columns', { width: 951, height: 669 }, fold, HAIRLINE);
 
     expect(geometry.companion).toEqual({ x: 0, y: 0, width: 465, height: 669 });
     expect(geometry.primary).toEqual({ x: 486, y: 0, width: 465, height: 669 });
-    expect(geometry.divider.width).toBe(0);
     expect(geometry.isFolded).toBe(true);
   });
 
-  it('ends the panes at the fold edges in rows and drops the divider', () => {
+  it('ends the panes at the fold edges in rows', () => {
     const fold = { x: 0, y: 470, width: 669, height: 24 };
     const geometry = resolvePaneGeometry('rows', { width: 669, height: 951 }, fold, HAIRLINE);
 
     expect(geometry.companion).toEqual({ x: 0, y: 0, width: 669, height: 470 });
     expect(geometry.primary).toEqual({ x: 0, y: 494, width: 669, height: 457 });
-    expect(geometry.divider.height).toBe(0);
     expect(geometry.isFolded).toBe(true);
+  });
+
+  // A rotation while half open can pair the new mode with the old fold; that fold is a transient
+  // and must not collapse a pane.
+  it('treats a tall fold as flat in rows, so no pane collapses to zero size', () => {
+    const fold = { x: 455.5, y: 0, width: 40, height: 669 };
+    const geometry = resolvePaneGeometry('rows', { width: 669, height: 951 }, fold, 1 / 3);
+
+    expect(geometry.isFolded).toBe(false);
+    expect(geometry.companion).toEqual({ x: 0, y: 0, width: 669, height: (951 - 1 / 3) / 2 });
+    expect(geometry.primary.height).toBeCloseTo((951 - 1 / 3) / 2, 5);
+  });
+
+  it('treats a wide fold as flat in columns, so no pane collapses to zero size', () => {
+    const fold = { x: 0, y: 270, width: 951, height: 40 };
+    const geometry = resolvePaneGeometry('columns', { width: 951, height: 669 }, fold, 1 / 3);
+
+    expect(geometry.isFolded).toBe(false);
+    expect(geometry.companion).toEqual({ x: 0, y: 0, width: (951 - 1 / 3) / 2, height: 669 });
+    expect(geometry.primary.width).toBeCloseTo((951 - 1 / 3) / 2, 5);
   });
 
   it('measured Duo half-open: a centred 40 pt vertical fold gives equal halves', () => {

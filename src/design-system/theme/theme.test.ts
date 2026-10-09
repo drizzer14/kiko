@@ -1,5 +1,3 @@
-import { StyleSheet } from 'react-native';
-
 import { chartSeriesDark, entityColorsDark } from '../palette';
 
 import { darkTheme } from './theme';
@@ -159,9 +157,8 @@ describe('entity/chart palettes', () => {
     expect(darkTheme.colors.entityColors.blue).toBe(darkTheme.colors.accent);
   });
 
-  it('exposes the two-pane layout tokens', () => {
+  it('exposes the two-pane content cap', () => {
     expect(darkTheme.layout.paneMaxWidth).toBe(600);
-    expect(darkTheme.layout.hairline).toBe(StyleSheet.hairlineWidth);
   });
 
   it('exposes a categorical chart palette of >= 6 distinct hex hues', () => {

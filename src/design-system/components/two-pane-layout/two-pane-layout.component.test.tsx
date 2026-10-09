@@ -22,14 +22,7 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 const HAIRLINE = darkTheme.layout.hairline;
 const HALF = (951 - HAIRLINE) / 2;
 
-// The native SafeAreaView takes an edge-mode map, which the package mock passes through as given.
-const reservedEdges = (testID: string) =>
-  Object.entries(screen.getByTestId(testID).props.edges)
-    .filter(([, mode]) => mode === 'additive')
-    .map(([edge]) => edge)
-    .sort();
-
-const renderLayout = async () =>
+const renderLayout = () =>
   render(
     <TwoPaneLayout
       companion={<Text testID="companion-content">companion</Text>}
@@ -110,30 +103,24 @@ describe('TwoPaneLayout', () => {
     expect(frameOf('two-pane-primary').x).toBe(495.5);
   });
 
-  it('caps and centres each pane content at the layout token', async () => {
-    await renderLayout();
+  // Native bars span the whole pane: the content cap and the safe-area edges belong to the screen
+  // content, not to this component.
+  it.each(['columns', 'rows'] as const)(
+    'gives each %s pane child its whole frame, with no cap and no padding',
+    async (mode) => {
+      mockUseLayoutMode.mockReturnValue(mode);
+      await renderLayout();
 
-    for (const testID of ['two-pane-companion-content', 'two-pane-primary-content']) {
-      const style = StyleSheet.flatten(screen.getByTestId(testID).props.style);
+      for (const [paneId, contentId] of [
+        ['two-pane-companion', 'companion-content'],
+        ['two-pane-primary', 'primary-content'],
+      ]) {
+        const pane = screen.getByTestId(paneId);
+        const { left, top, width, height, ...rest } = StyleSheet.flatten(pane.props.style);
 
-      expect(style.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
-      expect(style.alignSelf).toBe('center');
-      expect(style.width).toBe('100%');
-    }
-  });
-
-  it('reserves the columns outer sides only', async () => {
-    await renderLayout();
-
-    expect(reservedEdges('two-pane-companion-safe-area')).toEqual(['bottom', 'left', 'top']);
-    expect(reservedEdges('two-pane-primary-safe-area')).toEqual(['bottom', 'right', 'top']);
-  });
-
-  it('reserves the rows outer sides: companion keeps the top, primary the bottom', async () => {
-    mockUseLayoutMode.mockReturnValue('rows');
-    await renderLayout();
-
-    expect(reservedEdges('two-pane-companion-safe-area')).toEqual(['left', 'right', 'top']);
-    expect(reservedEdges('two-pane-primary-safe-area')).toEqual(['bottom', 'left', 'right']);
-  });
+        expect(rest).toEqual({ position: 'absolute' });
+        expect(pane.children).toEqual([screen.getByTestId(contentId)]);
+      }
+    },
+  );
 });
