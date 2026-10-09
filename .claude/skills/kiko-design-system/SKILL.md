@@ -98,7 +98,8 @@ theme:
 
 ## Token categories
 
-Five token categories, defined once in a single theme module:
+The token categories, defined once in a single theme module (read
+`src/design-system/theme/theme.ts` for the full set):
 
 - **color** — background, surface (per elevation level), primary
   text, secondary text, accent(s), positive-money, negative-money.
@@ -117,6 +118,12 @@ Five token categories, defined once in a single theme module:
   current values; never restate the numbers here. A call site passes
   `theme.iconSizes.<step>` (for example `theme.iconSizes.caption` for a
   checkmark beside caption text), never an inline literal like `18`.
+- **layout** — `paneMaxWidth` caps a pane's SCREEN CONTENT (lists,
+  forms) and never native bars; `hairline` is the flat two-pane divider
+  width. Read `theme.ts` for the values; never restate them. Pane code
+  reads `theme.layout`, never an inline width literal or
+  `StyleSheet.hairlineWidth`. The divider keeps the ordinary hairline
+  rule.
 
 Components read tokens; they never hardcode a raw color, spacing,
 radius, or icon-size value inline. The same rule extends to layout: prefer a
@@ -533,6 +540,17 @@ real set — enumerated at `src/design-system/components/`; read that
 directory listing directly rather than trusting a copy of it here, a
 new component can land between reviews of this skill:
 
+- **TwoPaneLayout** — props `{ companion, primary }`. Single mode
+  renders only `primary`; columns/rows position two pane frames via
+  `resolvePaneGeometry` (`src/design-system/pane-geometry/pane-geometry.ts`).
+  Flat = a hairline divider; folded = the fold region is the gap.
+  Rule (user ruling R13, 2026-10-09): TwoPaneLayout POSITIONS PANE
+  FRAMES ONLY — no width cap, no safe-area padding; native bars span
+  the full pane; the `paneMaxWidth` cap and per-pane safe areas belong
+  to the screen content inside the pane. Frames are window coordinates,
+  so it mounts at the window origin at full window size. A fold that
+  does not span the mode's cross axis counts as flat (rotation
+  transient); the rule is in `pane-geometry.ts`.
 - **Screen** — the top-level screen container: true-black background,
   safe-area handling per mode (`scroll` drops the top safe-area edge
   under a large-title header), and a footer slot that clears the
