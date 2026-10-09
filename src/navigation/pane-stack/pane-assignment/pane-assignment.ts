@@ -70,7 +70,10 @@ export const routesOfPane = <Route extends RouteLike>(
   return routes.filter((_route, index) => resolved[index] === pane);
 };
 
-const defaultOf = (config: PaneConfig, pane: Pane): PaneDefault | null =>
+/**
+ * What a pane shows when it has no route, or null when it shows nothing.
+ */
+export const paneDefault = (config: PaneConfig, pane: Pane): PaneDefault | null =>
   (pane === 'companion' ? config.companionDefault : config.primaryDefault) ?? null;
 
 /**
@@ -82,8 +85,8 @@ export const visibleRoutes = <Route extends RouteLike>(
   config: PaneConfig,
 ): VisibleRoutes<Route> => ({
   companion:
-    routesOfPane(routes, panes, config, 'companion').at(-1) ?? defaultOf(config, 'companion'),
-  primary: routesOfPane(routes, panes, config, 'primary').at(-1) ?? defaultOf(config, 'primary'),
+    routesOfPane(routes, panes, config, 'companion').at(-1) ?? paneDefault(config, 'companion'),
+  primary: routesOfPane(routes, panes, config, 'primary').at(-1) ?? paneDefault(config, 'primary'),
 });
 
 /**
