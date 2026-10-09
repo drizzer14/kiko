@@ -247,11 +247,10 @@ an entry (date + value) the moment the user approves a new visual.
   `accountKindSymbol` glyph in its resolved color, never an empty icon
   slot. The "All" row lines up under the glyph column:
   `filter-menu` reserves the icon slot when any option has an icon.
-- **TipCard is a tinted callout** (2026-10-08). Flat `accentSubtle` fill
-  (value in `theme.ts`; pinned by `theme.test.ts`), `radii.lg`, NO border,
-  NO shadow (not a `Card`), a leading decorative `lightbulb.fill` in the
-  accent tone, and a trailing `xmark` ghost compact close `Button`. Pinned
-  by `tip-card.component.test.tsx`; see TipCard under "Component set".
+- **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
+  for now"). There is no `TipCard`, `useTip`, or `accentSubtle` token; do not bring back a hint
+  or callout, or its old look (tinted accent fill, lightbulb glyph, close button), without
+  asking the user first.
 - **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
   tap via `SMALL_HIT_SLOP`, not full width, never the regular 50pt. Pinned
   by `empty-state.component.test.tsx`.
@@ -1098,31 +1097,6 @@ new component can land between reviews of this skill:
   read as disproportionately tall) non-full-width `Button` from `action: { label, icon?, onPress }`. Strings come in as
   props. `testID` gives `<testID>-icon` and `<testID>-action`. Gate it on
   `useDataReady`, never on `data.length === 0` alone.
-- **TipCard** (`src/design-system/components/tip-card/`) — a one-time,
-  dismissible hint: inline and non-modal, never a warning tone. **LOCKED look
-  (user-approved, "tinted callout", pinned by the TipCard and theme
-  tests):** a flat `accentSubtle` fill (value in `theme.ts`,
-  sibling of `negativeSubtle`; read it there), `radii.lg`, `padding` 3, a `spacing(1)` vertical
-  margin, NO border and NO shadow — deliberately NOT the bordered `Card`, so it
-  reads as its own layer beside neighbouring cards (Apple HIG "Offering help":
-  a tip is a small transient view with a filled symbol; TipKit inline shape).
-  Leading decorative `lightbulb.fill` (`iconSizes.body`, `accent` tone, no
-  accessibility label; `<testID>-icon`), a `body` `textPrimary` message, then a
-  trailing icon-only `ghost`
-  `compact` `xmark` close `Button` (44pt tap) labelled by `closeLabel`. Strings
-  come in as props. **One `useTip` call per screen, from `@kiko/tips`**:
-  `const { visible, dismiss } = useTip(TIP_ID, condition)`, then
-  `{visible && <TipCard onClose={dismiss} … />}`. `useTip` takes one candidate
-  (`id: TipId`, `condition: boolean`); `visible` is `!isLoading && condition &&
-  not dismissed`, so it is false while settings load and follows the caller's
-  condition. Two `useTip` calls on one screen could show two tips (`pickTip` is
-  the single picker), so a screen has one. Never hand-roll the dismissed state.
-  A tip or banner that APPEARS in response to a press is silent to VoiceOver:
-  pair it with `AccessibilityInfo.announceForAccessibility(t(...))` using the
-  same i18n string as the visible text (example: `handleShowTipsAgain` in
-  `help.screen.tsx`). A confirmation tip tied to a press hides when the screen loses focus
-  (`useFocusEffect` cleanup in `help.screen.tsx`), and a result that resolves after the user left
-  (`navigation.isFocused()` false) must not show or announce it.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE

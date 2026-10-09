@@ -1,5 +1,5 @@
 # Functional flow for the onboarding surfaces on a FRESH install: the Accounts
-# empty state, its "Add account" action, and the Help & Tips page reached from
+# empty state, its "Add account" action, and the Help page reached from
 # Settings. NOT a screenshot-diff check — no `takeScreenshot` step, no baseline.
 #
 # DESTRUCTIVE: `launchApp` below passes `clearState: true` and
@@ -63,28 +63,21 @@ appId: com.dmytro-vasylkivskyi.kiko
     id: "accounts-empty"
 
 # ---------------------------------------------------------------------------
-# 2. Settings tab -> Help & Tips -> both topic rows -> Show tips again
+# 2. Settings tab -> Help -> both topic rows
 # ---------------------------------------------------------------------------
 - tapOn:
     id: "gear"
 - assertVisible:
     id: "settings-card-help"
-# The Help card's only row, `help.rowLabel` ("Help & Tips").
+# The Help card's only row, `help.rowLabel` ("Help").
 - tapOn:
     id: "settings-row-help"
 
 # Help screen nav title, `help.title`
 - assertVisible:
-    text: "Help & Tips"
+    text: "Help"
 # One row per topic in `src/help/help-topics.ts`.
 - assertVisible:
     id: "help-row-addAccount"
 - assertVisible:
     id: "help-row-manageCategories"
-
-# `help.showTipsAgain` only clears the dismissed-tip list; it shows no
-# confirmation, so the step proves the button is reachable and tappable.
-- tapOn:
-    id: "help-show-tips-again"
-- assertVisible:
-    id: "help-row-addAccount"
