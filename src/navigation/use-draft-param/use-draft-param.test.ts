@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react-native';
 
-import { useDraftParam } from '.';
+import { isSavedDraft, useDraftParam } from '.';
 
 type Draft = { amount: string; note: string };
 
@@ -16,6 +16,17 @@ const renderDraftParam = async (draft: Draft | undefined) => {
 
   return { setParams, ...hook };
 };
+
+describe('isSavedDraft', () => {
+  it('tells a draft marked saved from the identity a swap carries', () => {
+    expect(isSavedDraft({ saved: true, name: 'Wallet' })).toBe(true);
+    expect(isSavedDraft({ name: 'Wallet' })).toBe(false);
+  });
+
+  it('is false for no draft at all', () => {
+    expect(isSavedDraft(undefined)).toBe(false);
+  });
+});
 
 describe('useDraftParam', () => {
   it('reads the initial draft from the route params', async () => {

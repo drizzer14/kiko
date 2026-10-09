@@ -9,16 +9,22 @@ import {
   asRouteProp,
   type NavigationSpy,
   navigationSpy,
+  paramsAfter,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
+import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 
 import AccountFormScreen from './account-form.screen';
 
 type AccountFormProps = ComponentProps<typeof AccountFormScreen>;
+
+jest.mock('@kiko/display-regions', () =>
+  require('@kiko/test-support/layout-mode-spy').layoutModeSpyModule(),
+);
 
 const { entityColors } = darkTheme.colors;
 
@@ -2870,5 +2876,278 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
     expect(view.queryByTestId('monobank-reminder')).toBeNull();
     expect(mockUpdate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AccountFormScreen — draft', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAccounts = [];
+    mockCreate.mockResolvedValue('new-account-id');
+    mockCreateCashAccount.mockResolvedValue(undefined);
+    mockSetIcon.mockResolvedValue(undefined);
+    mockUpdate.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    resetLayoutMode();
+  });
+
+  const savedDraft = {
+    saved: true,
+    name: 'Wallet',
+    icon: 'giftcard',
+    iconIsDirty: true,
+    color: entityColors.violet,
+    kind: 'cash',
+    currency: 'EUR',
+    initialValue: '250.50',
+    bankId: null,
+    brokerId: null,
+    pendingAccountId: 'pending-1',
+    accountRowStarted: false,
+  } as const;
+
+  type View = Awaited<ReturnType<typeof renderForm>>;
+
+  const reopened = (view: View, opened: RouteParams = {}): Promise<View> =>
+    renderForm(paramsAfter(view.navigation, opened) as RouteParams);
+
+  it('brings back a half-filled cash account after a remount', async () => {
+    const first = await renderForm();
+    await fireEvent.changeText(first.getByLabelText('Name'), 'Wallet');
+    await selectKind(first.getByTestId, 'cash');
+    await fireEvent.changeText(first.getByLabelText('Initial value'), '250.50');
+    await fireEvent.press(first.getByTestId('account-currency-field'));
+    await fireEvent.changeText(first.getByPlaceholderText('Search by code or name'), 'EUR');
+    await fireEvent.press(first.getByTestId('currency-option-EUR'));
+    await fireEvent.press(first.getByLabelText('Color violet'));
+    await fireEvent(first.getByLabelText('Initial value'), 'blur');
+    await first.unmount();
+
+    const second = await reopened(first);
+
+    expect(second.getByLabelText('Name').props.value).toBe('Wallet');
+    expect(second.getByTestId('account-kind-field')).toHaveTextContent('Cash');
+    expect(second.getByLabelText('Initial value').props.value).toBe('250.50');
+    expect(second.getByTestId('account-currency-field')).toHaveTextContent('Euro', {
+      exact: false,
+    });
+    expect(second.getByLabelText('Color violet').props.accessibilityState.selected).toBe(true);
+
+    await fireEvent.press(second.getByText('Save'));
+
+    expect(mockCreateCashAccount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Wallet',
+        currency: 'EUR',
+        initialBalance: Money.of('EUR', 25050),
+        color: entityColors.violet,
+      }),
+    );
+  });
+
+  it('brings back a bank account with its picked bank and icon', async () => {
+    const first = await renderForm();
+    await fireEvent.changeText(first.getByLabelText('Name'), 'Savings');
+    await pickOtherBank(first.getByTestId);
+    await fireEvent.press(first.getByLabelText('Change Icon'));
+    await fireEvent.press(first.getByLabelText('Choose icon giftcard'));
+    await fireEvent(first.getByLabelText('Name'), 'blur');
+    await first.unmount();
+
+    const second = await reopened(first);
+
+    expect(second.getByLabelText('Name').props.value).toBe('Savings');
+    expect(second.getByTestId('account-kind-field')).toHaveTextContent('Bank');
+    expect(second.getByTestId('account-bank-type-field')).toHaveTextContent('Other bank');
+    expect(second.getByLabelText('Icon giftcard')).toBeTruthy();
+  });
+
+  it('brings back the choices made since the last blur once the window changes shape', async () => {
+    const first = await renderForm();
+    await fireEvent.changeText(first.getByLabelText('Name'), 'Wallet');
+    await selectKind(first.getByTestId, 'crypto');
+
+    expect(first.navigation.setParams).not.toHaveBeenCalled();
+
+    await emitLayoutMode('columns');
+    await first.unmount();
+
+    const second = await reopened(first);
+
+    expect(second.getByLabelText('Name').props.value).toBe('Wallet');
+    expect(second.getByTestId('account-kind-field')).toHaveTextContent('Crypto');
+  });
+
+  it('keeps the draft to plain values, so the route params stay JSON', async () => {
+    const view = await renderForm();
+    await fireEvent.changeText(view.getByLabelText('Name'), 'Savings');
+    await fireEvent(view.getByLabelText('Name'), 'blur');
+
+    const [[{ draft }]] = view.navigation.setParams.mock.calls;
+
+    expect(draft).toEqual({
+      saved: true,
+      name: 'Savings',
+      icon: accountKindSymbol.bank,
+      iconIsDirty: false,
+      color: null,
+      kind: 'bank',
+      currency: 'UAH',
+      initialValue: '',
+      bankId: null,
+      brokerId: null,
+      pendingAccountId: expect.any(String),
+      accountRowStarted: false,
+    });
+    expect(JSON.parse(JSON.stringify(draft))).toEqual(draft);
+  });
+
+  it('writes the draft once per blur, never while typing', async () => {
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'S');
+    await fireEvent.changeText(view.getByLabelText('Name'), 'Sa');
+
+    expect(view.navigation.setParams).not.toHaveBeenCalled();
+
+    await fireEvent(view.getByLabelText('Name'), 'blur');
+
+    expect(view.navigation.setParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing for a blur on a form the user has not changed', async () => {
+    const view = await renderForm();
+
+    await fireEvent(view.getByLabelText('Name'), 'blur');
+
+    expect(view.navigation.setParams).not.toHaveBeenCalled();
+  });
+
+  describe('beside the identity a swap between the account and holding forms carries', () => {
+    const carried = { name: 'Wallet', icon: 'giftcard', color: entityColors.violet };
+
+    it('writes nothing for a blur on a form that only holds what the swap carried', async () => {
+      const view = await renderForm({ initialKind: 'cash', draft: carried });
+
+      await fireEvent(view.getByLabelText('Name'), 'blur');
+
+      expect(view.navigation.setParams).not.toHaveBeenCalled();
+    });
+
+    it('writes the whole form over what the swap carried once the user changes a field', async () => {
+      const view = await renderForm({ initialKind: 'cash', draft: carried });
+      await fireEvent.changeText(view.getByLabelText('Name'), 'Wallet 2');
+      await fireEvent(view.getByLabelText('Name'), 'blur');
+
+      expect(view.navigation.setParams).toHaveBeenCalledTimes(1);
+      expect(view.navigation.setParams).toHaveBeenCalledWith({
+        draft: expect.objectContaining({
+          saved: true,
+          name: 'Wallet 2',
+          icon: 'giftcard',
+          iconIsDirty: true,
+          color: entityColors.violet,
+          kind: 'cash',
+        }),
+      });
+    });
+
+    it('opens on the saved draft, not on the initial kind the swap named', async () => {
+      const view = await renderForm({ initialKind: 'crypto', draft: savedDraft });
+
+      expect(view.getByTestId('account-kind-field')).toHaveTextContent('Cash');
+      expect(view.getByLabelText('Name').props.value).toBe('Wallet');
+    });
+
+    it('still swaps forward with the identity of the form as it stands', async () => {
+      const view = await renderForm({ draft: savedDraft });
+
+      await selectKind(view.getByTestId, 'property');
+
+      expect(view.navigation.replace).toHaveBeenCalledWith('HoldingForm', {
+        implicitKind: 'property',
+        draft: { name: 'Wallet', icon: 'giftcard', color: entityColors.violet },
+      });
+    });
+  });
+
+  describe('an edit', () => {
+    beforeEach(() => {
+      mockAccounts = [
+        {
+          id: 'acc-1',
+          name: 'Ukrsibbank Card',
+          kind: 'bank',
+          icon: 'banknote',
+          color: entityColors.violet,
+          bankId: null,
+        },
+      ];
+    });
+
+    it('lets the draft win over the stored account it was opened on', async () => {
+      const first = await renderForm({ accountId: 'acc-1' });
+      await fireEvent.changeText(first.getByLabelText('Name'), 'Renamed card');
+      await fireEvent(first.getByLabelText('Name'), 'blur');
+      await first.unmount();
+
+      const second = await reopened(first, { accountId: 'acc-1' });
+
+      expect(second.getByLabelText('Name').props.value).toBe('Renamed card');
+      expect(second.getByLabelText('Icon banknote')).toBeTruthy();
+
+      await fireEvent.press(second.getByText('Save'));
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'acc-1',
+        expect.objectContaining({ name: 'Renamed card' }),
+      );
+    });
+
+    it('opens from the stored account when the route carries no draft', async () => {
+      const view = await renderForm({ accountId: 'acc-1' });
+
+      expect(view.getByLabelText('Name').props.value).toBe('Ukrsibbank Card');
+    });
+  });
+
+  it('keeps the row a Connect already created, so the remount saves onto it and never creates a second', async () => {
+    mockMonobankSync.mockResolvedValue(true);
+    const first = await renderForm();
+    await fireEvent.changeText(first.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(first.getByLabelText('Bank type'));
+    await fireEvent.press(first.getByTestId('bank-type-option-monobank'));
+    await fireEvent.press(first.getByLabelText('monobank-field'));
+    await waitFor(() => expect(mockMonobankSync).toHaveBeenCalled());
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    await emitLayoutMode('columns');
+    await first.unmount();
+
+    const second = await reopened(first);
+
+    expect(isKindFieldDisabled(second.getByTestId)).toBe(true);
+
+    await fireEvent.press(second.getByText('Save'));
+
+    await waitFor(() => expect(second.navigation.goBack).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).toHaveBeenCalledWith(
+      createdId,
+      expect.objectContaining({ name: 'My Bank', bankId: 'monobank' }),
+    );
+  });
+
+  it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
+    const view = await renderForm({ draft: savedDraft });
+    await fireEvent.changeText(view.getByLabelText('Name'), 'Wallet 2');
+    await fireEvent(view.getByLabelText('Name'), 'blur');
+    view.navigation.setParams.mockClear();
+
+    await fireEvent.press(view.getByText('Save'));
+
+    await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+    expect(view.navigation.setParams).not.toHaveBeenCalled();
   });
 });

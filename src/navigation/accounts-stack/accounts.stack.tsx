@@ -16,6 +16,7 @@ import ContributionFormScreen from '@kiko/screens/forms/contribution-form';
 import AccountRemindersScreen from '@kiko/screens/settings/account-reminders';
 import OwnershipChangeFormScreen from '@kiko/screens/forms/ownership-change-form';
 
+import { isSavedDraft } from '../use-draft-param';
 import type { AccountsStackParamList } from '../types';
 import { createPaneStackNavigator } from '../pane-stack';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
@@ -27,9 +28,14 @@ const Stack = createPaneStackNavigator<AccountsStackParamList>();
 // the first account, or the empty pane while there is none.
 const PANE_CONFIG = { rootPane: 'companion' } as const;
 
-// A route swapped in from the other form carries a `draft`.
+// A route swapped in from the other form carries a `draft` of the identity to seed. A draft of the
+// form's own saved fields (see `useDraftParam`) is no swap.
 const carriesDraft = (params: object | undefined): boolean =>
-  params !== undefined && 'draft' in params && params.draft !== undefined;
+  params !== undefined &&
+  'draft' in params &&
+  typeof params.draft === 'object' &&
+  params.draft !== null &&
+  !isSavedDraft(params.draft);
 
 // A swapped-in form mounts with `animation: 'none'` so the swap is instant.
 // native-stack pops a screen with the animation it carries at that moment, so

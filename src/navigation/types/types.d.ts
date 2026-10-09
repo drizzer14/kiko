@@ -1,6 +1,9 @@
 import type { AccountRow } from '@kiko/db';
 import type { HelpTopicId } from '@kiko/help';
+import type { BrokerId } from '@kiko/brokers';
+import type { Currency } from '@kiko/currency/currency';
 import type { ReminderDraft } from '@kiko/reminders/rules';
+import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { OwnershipInput } from '@kiko/holdings/holding-metadata';
 import type { NavigatorScreenParams } from '@react-navigation/native';
@@ -52,6 +55,29 @@ export type ReminderFormParams = (
  * following the destination's own default.
  */
 export type FormDraft = { name: string; icon: string | null; color: string | null };
+
+/**
+ * The `draft` param of the account form and the holding form is one of two things. A `FormDraft`
+ * seeds a form that a swap between the two just opened. A draft marked `saved` is the form's own
+ * fields, kept so a fold or unfold, which remounts the screen, gives them back; it wins over a
+ * seed, and a form opened with one is not a swap (no instant transition).
+ */
+export type AccountFormDraft = {
+  saved: true;
+  name: string;
+  icon: string | null;
+  iconIsDirty: boolean;
+  color: string | null;
+  kind: AccountRow['kind'];
+  currency: Currency;
+  initialValue: string;
+  bankId: BankId | null;
+  brokerId: BrokerId | null;
+  // The id the form made for the account it may create, and whether a Connect already created
+  // that row: a remount must save onto it, not create a second account.
+  pendingAccountId: string;
+  accountRowStarted: boolean;
+};
 
 /**
  * What a form keeps in its route's `draft` param so a fold or unfold, which remounts every screen
@@ -122,7 +148,7 @@ export type AccountsStackParamList = {
   AccountForm: {
     accountId?: string;
     initialKind?: Exclude<AccountRow['kind'], ImplicitAccountKind>;
-    draft?: FormDraft;
+    draft?: FormDraft | AccountFormDraft;
   };
   // `returnTo` is the CREATE-only return channel for a "Create new holding"
   // launched from the statement-import preview or Map Columns: the caller's

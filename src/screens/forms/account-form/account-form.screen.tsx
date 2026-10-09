@@ -33,18 +33,20 @@ import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
-import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-catalog';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
+import type { AccountFormDraft, AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 
 import { useConnectReminder } from './use-connect-reminder';
 
@@ -62,13 +64,26 @@ type CreateSeed = {
   icon: string | null;
   iconIsDirty: boolean;
   color: string | null;
+  currency: Currency;
+  initialValue: string;
+  bankId: BankId | null;
+  brokerId: BrokerId | null;
 };
 
 // What a create form opens with: a plain create opens on the default kind with
 // that kind's glyph, and a swap back from the holding form carries the
 // identity the user already typed. A carried icon is a pick, so it stays one;
 // an absent one follows the opening kind's default like any untouched icon.
-const createSeed = (initialKind: Kind | undefined, draft: FormDraft | undefined): CreateSeed => {
+// A draft of the form's own saved fields comes back as it was, whatever kind
+// the swap named.
+const createSeed = (
+  initialKind: Kind | undefined,
+  draft: FormDraft | AccountFormDraft | undefined,
+): CreateSeed => {
+  if (isSavedDraft(draft)) {
+    return draft;
+  }
+
   const kind = initialKind ?? INITIAL_KIND;
 
   return {
@@ -77,6 +92,41 @@ const createSeed = (initialKind: Kind | undefined, draft: FormDraft | undefined)
     icon: draft?.icon ?? accountKindSymbol[kind],
     iconIsDirty: typeof draft?.icon === 'string',
     color: draft?.color ?? null,
+    currency: 'UAH',
+    initialValue: '',
+    bankId: null,
+    brokerId: null,
+  };
+};
+
+type Opening = CreateSeed & {
+  // The id the form made for the account it may create, and the promise of a row a Connect
+  // already created under it (a remount from a saved draft), else null.
+  pendingAccountId: string;
+  createdAccount: Promise<string> | null;
+  // Whether it opens on the form's own saved draft, which an edit must not overwrite from the
+  // stored account.
+  isSaved: boolean;
+};
+
+// Everything the form's state opens with, worked out once. An edit starts with no icon, to be
+// hydrated from the stored account; a saved draft has the icon as the user left it.
+const openingOf = (
+  isEdit: boolean,
+  initialKind: Kind | undefined,
+  draft: FormDraft | AccountFormDraft | undefined,
+): Opening => {
+  const seed = createSeed(initialKind, draft);
+  const isSaved = isSavedDraft(draft);
+  const pendingAccountId = isSavedDraft(draft) ? draft.pendingAccountId : id();
+
+  return {
+    ...seed,
+    icon: isEdit && !isSaved ? null : seed.icon,
+    pendingAccountId,
+    createdAccount:
+      isSavedDraft(draft) && draft.accountRowStarted ? Promise.resolve(pendingAccountId) : null,
+    isSaved,
   };
 };
 
@@ -190,31 +240,36 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // create form.
   const editId = route.params?.accountId;
   const isEdit = editId !== undefined;
-  const seed = createSeed(route.params?.initialKind, route.params?.draft);
 
   const { t } = useTranslation();
 
-  const [name, setName] = useState(seed.name);
-  const [kind, setKind] = useState<Kind>(seed.kind);
+  const { initialDraft, saveDraft } = useDraftParam<FormDraft | AccountFormDraft>(
+    navigation,
+    route,
+  );
+  const [opening] = useState(() => openingOf(isEdit, route.params?.initialKind, initialDraft));
+
+  const [name, setName] = useState(opening.name);
+  const [kind, setKind] = useState<Kind>(opening.kind);
   // The Property or Loan the user just picked, shown on the kind field until
   // the swap replaces this screen (see `handleSelectKind`).
   const [pickedImplicitKind, setPickedImplicitKind] = useState<Kind | undefined>(undefined);
-  const [currency, setCurrency] = useState<Currency>('UAH');
-  const [initialValue, setInitialValue] = useState('');
+  const [currency, setCurrency] = useState<Currency>(opening.currency);
+  const [initialValue, setInitialValue] = useState(opening.initialValue);
   // A create form seeds the icon with the initially-selected kind's default
   // glyph so it opens on a sensible symbol; the user can still override it in
   // the picker below. Edit mode starts null and is hydrated from the stored
   // row (below), so the seed never clobbers a saved icon.
-  const [icon, setIcon] = useState<string | null>(isEdit ? null : seed.icon);
+  const [icon, setIcon] = useState<string | null>(opening.icon);
   // Whether `icon` is the user's own pick rather than the kind's default, which
   // is all a swap to the holding form may carry: it re-derives its own default.
   // A kind switch resets the icon, so it resets this too.
-  const [iconIsDirty, setIconIsDirty] = useState(seed.iconIsDirty);
+  const [iconIsDirty, setIconIsDirty] = useState(opening.iconIsDirty);
   // Mirrors the icon's dirty pattern: null until the user taps a swatch. While
   // null, the effective color follows the selected kind's default
   // (defaultAccountColor[kind]) — the ColorPicker highlights that swatch and
   // switching kind moves it; once picked, the choice sticks.
-  const [color, setColor] = useState<string | null>(seed.color);
+  const [color, setColor] = useState<string | null>(opening.color);
   // The bank the user picked in the sync section's BankTypeField, tagging the
   // created row for later provider-specific handling (import, connect status).
   // null = nothing picked yet: a new bank account cannot Save until it is set
@@ -222,9 +277,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // auto-seeded on a fresh bank create (no auto-jump to Monobank). An existing
   // account saved before the pick was required can still hold null here, and
   // keeps it on edit.
-  const [bankId, setBankId] = useState<BankId | null>(null);
+  const [bankId, setBankId] = useState<BankId | null>(opening.bankId);
   // The broker picked in BrokerTypeField, the same shape as `bankId`.
-  const [brokerId, setBrokerId] = useState<BrokerId | null>(null);
+  const [brokerId, setBrokerId] = useState<BrokerId | null>(opening.brokerId);
   const catalogId = catalogIdFor(kind, bankId, brokerId);
   // `resolveEntityColor` — not a bare nullish-coalesce onto the kind default —
   // because `color`/`kind` here are seeded straight from a stored row
@@ -253,13 +308,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // write and first sync land on the row that Save then persists. Shared by both
   // the bank and crypto kinds — one create-first / one-shot-insert latch, not a
   // second copy.
-  const pendingAccountId = useMemo(() => id(), []);
+  const { pendingAccountId } = opening;
   // A one-shot create promise: whichever fires first (a field's own Connect or
   // the footer Save) inserts the row exactly once; every later caller reuses the
   // same promise, so a field Connect followed by Save can never produce a
   // DUPLICATE account (connect-first). On a REJECTED create the ref is reset to null
   // (see below) so a retry re-attempts and Save never silently no-ops.
-  const accountCreate = useRef<Promise<string> | null>(null);
+  const accountCreate = useRef<Promise<string> | null>(opening.createdAccount);
   // A render-visible mirror of "the row has been (or is being) inserted", used
   // only to DISABLE the kind switch and the bank picker once a source is
   // connected — switching kind afterwards would route Save down a branch that
@@ -267,7 +322,22 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // would make the connect-first Save overwrite the connected row's bank id. It is
   // state (not just the ref) because the disable must re-render; it follows the
   // ref, reset to false on a failed create so both re-enable when no row exists.
-  const [accountRowStarted, setAccountRowStarted] = useState(false);
+  const [accountRowStarted, setAccountRowStarted] = useState(opening.createdAccount !== null);
+  const draft: AccountFormDraft = {
+    saved: true,
+    name,
+    icon,
+    iconIsDirty,
+    color,
+    kind,
+    currency,
+    initialValue,
+    bankId,
+    brokerId,
+    pendingAccountId,
+    accountRowStarted,
+  };
+  const onFieldBlur = useDraftAutosave(draft, saveDraft);
   const isPickLocked = isEdit || accountRowStarted;
   // ONE shared attempted-submit flag for every validated field on this form
   // (kiko-code-style's form validation model), set true by a blocked Connect
@@ -432,8 +502,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // Seed the form once from the loaded account. `useLiveQuery` resolves
   // asynchronously, so the initial render precedes the data; a one-shot ref
   // guards against re-seeding (and clobbering the user's in-progress edits) on
-  // every subsequent live-query emission.
-  const hydrated = useRef(false);
+  // every subsequent live-query emission. A saved draft is the user's edits, so
+  // it starts the ref spent and the stored account never overwrites it.
+  const hydrated = useRef(opening.isSaved);
   useEffect(() => {
     if (!isEdit || hydrated.current || editingAccount === undefined) {
       return;
@@ -634,6 +705,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       scrollableRef={scrollableRef}
       automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       onContentSizeChange={onContentSizeChange}
+      onFieldBlur={onFieldBlur}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('common.save')}
