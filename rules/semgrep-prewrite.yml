@@ -1140,6 +1140,39 @@ rules:
     pattern-either:
       - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\bresolveBottomClearance\b[^;'"]*?\bfrom\s*['"]
       - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/bottom-clearance(?:\.ts)?['"]
+  # kiko-architecture's "Pane navigation": on a wide window a screen can be the default
+  # of a pane (Statistics and Home as each other's companion, Categories as the Settings
+  # primary), and the Accounts list sits under the default it fills the primary pane
+  # with. A default is on screen without being the focused route, so
+  # `useIsFocused()` is false and `useFocusEffect` never runs there: a screen
+  # that pauses its reads or answers a tip on focus freezes or goes silent.
+  # `useIsScreenVisible()` is the check that holds in both modes. `paths.include`
+  # names every folder of those four screens (their child components render under the
+  # same route), so the fixture pair is NESTED. ERROR from the start: no finding
+  # in the tree when the rule landed.
+  - id: kiko-no-focus-hook-in-pane-default-screen
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A default has no focus; use `useIsScreenVisible()`. In a pane default
+      `useIsFocused()` is false and `useFocusEffect` never runs, so a screen
+      that can render as one reads visibility from `@kiko/navigation/pane-stack`
+      instead.
+    metadata:
+      fix: "Use `useIsScreenVisible()` from `@kiko/navigation/pane-stack`; for work on becoming visible, an effect keyed on it."
+      skill: "kiko-architecture › Pane navigation"
+    paths:
+      include:
+        - "src/screens/home/**"
+        - "src/screens/accounts/**"
+        - "src/screens/statistics/**"
+        - "src/screens/settings/categories/**"
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+    pattern-either:
+      - pattern: useIsFocused(...)
+      - pattern: useFocusEffect(...)
   # kiko-domain's "Dates": `jest.config.js` pins `process.env.TZ` to
   # Europe/Kyiv at config load, and Jest gives each test sandbox its own copy
   # of `process.env`, so an assignment in a test file, a `beforeAll`, or a

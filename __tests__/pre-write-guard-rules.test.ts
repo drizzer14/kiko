@@ -78,6 +78,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-whole-price-points-read',
   'kiko-holding-delete-needs-cascade',
   'kiko-no-pane-blind-bottom-clearance',
+  'kiko-no-focus-hook-in-pane-default-screen',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -106,6 +107,8 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
     'kiko-no-source-text-read-in-test/src/test-support/source-read-example',
   'kiko-no-fixed-day-offset-on-real-clock-in-test':
     'kiko-no-fixed-day-offset-on-real-clock-in-test/src/test-support/day-offset-example',
+  'kiko-no-focus-hook-in-pane-default-screen':
+    'kiko-no-focus-hook-in-pane-default-screen/src/screens/home/pane-default-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -123,6 +126,7 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-device-zone-in-statement-import': 'src/statement-import',
   'kiko-no-source-text-read-in-test': 'src/test-support',
   'kiko-no-fixed-day-offset-on-real-clock-in-test': 'src/test-support',
+  'kiko-no-focus-hook-in-pane-default-screen': 'src/screens/home',
 };
 
 function fixturePrefix(ruleId: string): string {
