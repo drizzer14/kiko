@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { OnAccentContext, selectedSurfaceStyles } from '@kiko/design-system/selected-surface';
 
 import { styles } from './card.styles';
 import type { CardProps } from './card.props';
@@ -47,13 +48,15 @@ const Card: FC<CardProps> = ({
     padding !== undefined && { padding: theme.spacing(padding) },
   ];
 
+  // The selected look comes last, as in `SettingsRow`: its `onAccent` content is legible only on
+  // the accent fill, so a caller's style cannot take the fill away.
   return (
     <View
-      style={[styles.card, sizing, selected && styles.selected, style]}
+      style={[styles.card, sizing, style, selected && selectedSurfaceStyles.fill]}
       testID={testID}
       {...props}
     >
-      {children}
+      <OnAccentContext.Provider value={selected}>{children}</OnAccentContext.Provider>
     </View>
   );
 };

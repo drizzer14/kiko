@@ -2152,7 +2152,7 @@ describe('AccountsScreen — in one of two panes', () => {
     view
       .getAllByTestId('account-card')
       .filter(
-        (card) => StyleSheet.flatten(card.props.style).borderColor === darkTheme.colors.accent,
+        (card) => StyleSheet.flatten(card.props.style).backgroundColor === darkTheme.colors.accent,
       );
 
   beforeEach(() => {
@@ -2421,6 +2421,101 @@ describe('AccountsScreen — in one of two panes', () => {
 
       expect(rows).toHaveLength(1);
       expect(within(rows[0]).getByText('Monobank')).toBeTruthy();
+    });
+
+    // Every row that opens a page is marked when the primary pane shows that page.
+    describe('on every kind of row that opens a page', () => {
+      const shown = (name: string, params: object) =>
+        mockUsePrimaryPaneRoute.mockReturnValue({ name, params, isDefault: false });
+      const fillOf = (node: { props: { style?: unknown } }) =>
+        StyleSheet.flatten(node.props.style as never)?.backgroundColor;
+      const isFilled = (node: { props: { style?: unknown } }) =>
+        fillOf(node) === darkTheme.colors.accent;
+
+      const withSections = () =>
+        setLiveData({
+          accounts: [MONOBANK, propertyAccount(), debtAccount()],
+          holdings: [
+            propertyHolding(),
+            propertyHolding({ id: 'h2', name: 'Garage' }),
+            loanHolding(),
+          ],
+        });
+
+      it.each([
+        ['Apartment', 'h1'],
+        ['Garage', 'h2'],
+        ['Mortgage', 'l1'],
+      ])(
+        'marks the holding card %s while its page is shown, and no other card',
+        async (name, id) => {
+          withSections();
+          shown('HoldingDetail', { holdingId: id, name });
+
+          const { getAllByTestId } = await renderInPane();
+          const cards = getAllByTestId('holding-card');
+          const marked = cards.filter(isFilled);
+
+          expect(marked).toHaveLength(1);
+          expect(within(marked[0]).getByText(name)).toBeTruthy();
+          expect(getAllByTestId('account-card').filter(isFilled)).toHaveLength(0);
+        },
+      );
+
+      it('tells a screen reader which holding card is selected', async () => {
+        withSections();
+        shown('HoldingDetail', { holdingId: 'h2', name: 'Garage' });
+
+        const { getAllByRole } = await renderInPane();
+        const rows = getAllByRole('button').filter(
+          (row) => row.props.accessibilityState?.selected === true,
+        );
+
+        expect(rows).toHaveLength(1);
+        expect(within(rows[0]).getByText('Garage')).toBeTruthy();
+      });
+
+      it.each([
+        ['accounts-property-open', 'p', 'Properties'],
+        ['accounts-debts-open', 'd', 'Loans'],
+      ])(
+        'marks the section row %s while the page of its account is shown',
+        async (testID, id, name) => {
+          withSections();
+          shown('AccountDetail', { accountId: id, name });
+
+          const { getByTestId, getAllByTestId } = await renderInPane();
+          const other =
+            testID === 'accounts-property-open' ? 'accounts-debts-open' : 'accounts-property-open';
+
+          expect(isFilled(getByTestId(testID))).toBe(true);
+          expect(getByTestId(testID).props.accessibilityState).toEqual({ selected: true });
+          expect(isFilled(getByTestId(other))).toBe(false);
+          expect(getByTestId(other).props.accessibilityState).toEqual({ selected: false });
+          expect(getAllByTestId('holding-card').filter(isFilled)).toHaveLength(0);
+          expect(getAllByTestId('account-card').filter(isFilled)).toHaveLength(0);
+        },
+      );
+
+      it('marks no section row and no holding card for another account', async () => {
+        withSections();
+        shown('AccountDetail', { accountId: 'a', name: 'Monobank' });
+
+        const { getByTestId, getAllByTestId } = await renderInPane();
+
+        expect(isFilled(getByTestId('accounts-property-open'))).toBe(false);
+        expect(isFilled(getByTestId('accounts-debts-open'))).toBe(false);
+        expect(getAllByTestId('holding-card').filter(isFilled)).toHaveLength(0);
+      });
+
+      it('marks the property section row, not an account card, when the user has no other account', async () => {
+        setLiveData({ accounts: [propertyAccount()], holdings: [propertyHolding()] });
+        shown('AccountDetail', { accountId: 'p', name: 'Properties' });
+
+        const { getByTestId } = await renderInPane();
+
+        expect(isFilled(getByTestId('accounts-property-open'))).toBe(true);
+      });
     });
 
     it('is none on one pane, where the primary pane has no route to report', async () => {

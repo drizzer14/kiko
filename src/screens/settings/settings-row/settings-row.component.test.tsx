@@ -3,6 +3,7 @@ import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 import Card from '@kiko/design-system/components/card';
+import { useIsOnAccent } from '@kiko/design-system/selected-surface';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import SettingsRow from './settings-row.component';
@@ -21,14 +22,64 @@ describe('SettingsRow', () => {
           : row.props.style,
       );
 
-    it('raises the row surface and tells a screen reader it is selected', async () => {
+    it('fills the row with the accent and tells a screen reader it is selected', async () => {
       const { getByTestId } = await render(
         <SettingsRow testID="row" label="Categories" onPress={jest.fn()} selected />,
       );
       const row = getByTestId('row');
 
-      expect(rowStyle(row).backgroundColor).toBe(darkTheme.colors.surfaceHigh);
+      expect(rowStyle(row).backgroundColor).toBe(darkTheme.colors.accent);
+      expect(rowStyle(row).borderRadius).toBe(darkTheme.radii.md);
       expect(row.props.accessibilityState).toEqual({ selected: true });
+    });
+
+    // The selected card is already the marker of a single-row card, so its row adds none.
+    it('adds no fill of its own inside a selected card, and still tells a screen reader', async () => {
+      const { getByTestId } = await render(
+        <Card selected>
+          <SettingsRow testID="row" label="Categories" onPress={jest.fn()} selected />
+        </Card>,
+      );
+      const row = getByTestId('row');
+
+      expect(rowStyle(row).backgroundColor).toBeUndefined();
+      expect(row.props.accessibilityState).toEqual({ selected: true });
+    });
+
+    it('lets the selected fill win over the style the screen gave the row', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow
+          testID="row"
+          label="Categories"
+          onPress={jest.fn()}
+          style={{ backgroundColor: '#123456' }}
+          selected
+        />,
+      );
+
+      expect(rowStyle(getByTestId('row')).backgroundColor).toBe(darkTheme.colors.accent);
+    });
+
+    it('draws its content on the accent fill', async () => {
+      const Probe = () => <RNText>{useIsOnAccent() ? 'on accent' : 'on surface'}</RNText>;
+      const { getByText } = await render(
+        <SettingsRow label="Reminder" onPress={jest.fn()} selected>
+          <Probe />
+        </SettingsRow>,
+      );
+
+      expect(getByText('on accent')).toBeTruthy();
+    });
+
+    it('draws its content on the surface when not selected', async () => {
+      const Probe = () => <RNText>{useIsOnAccent() ? 'on accent' : 'on surface'}</RNText>;
+      const { getByText } = await render(
+        <SettingsRow label="Reminder" onPress={jest.fn()}>
+          <Probe />
+        </SettingsRow>,
+      );
+
+      expect(getByText('on surface')).toBeTruthy();
     });
 
     it('leaves the row as it was when not selected', async () => {

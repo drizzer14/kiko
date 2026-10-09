@@ -53,6 +53,26 @@ describe('HoldingCard', () => {
     expect(getByText(/1,000\.00 ₴/)).toBeTruthy();
   });
 
+  describe('selected (the holding whose page the other pane shows)', () => {
+    it('fills the card with the accent and tells a screen reader it is selected', async () => {
+      const { getByTestId, getByRole } = await renderCard({ selected: true });
+
+      expect(StyleSheet.flatten(getByTestId('holding-card').props.style).backgroundColor).toBe(
+        darkTheme.colors.accent,
+      );
+      expect(getByRole('button').props.accessibilityState).toEqual({ selected: true });
+    });
+
+    it('is the plain card otherwise', async () => {
+      const { getByTestId, getByRole } = await renderCard();
+
+      expect(StyleSheet.flatten(getByTestId('holding-card').props.style).backgroundColor).toBe(
+        darkTheme.colors.surface,
+      );
+      expect(getByRole('button').props.accessibilityState).toEqual({ selected: false });
+    });
+  });
+
   it('renders a row of a removed type with the generic holding glyph', async () => {
     const { getByText, getByLabelText } = await renderCard({
       holding: holding({ type: 'share' as unknown as HoldingRow['type'] }),

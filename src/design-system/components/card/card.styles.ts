@@ -16,10 +16,4 @@ export const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     overflow: 'hidden',
   },
-  // The row a list marks as the one its detail pane shows: a raised surface and the accent on
-  // the same border, which keeps its width so the content inside does not shift.
-  selected: {
-    backgroundColor: theme.colors.surfaceHigh,
-    borderColor: theme.colors.accent,
-  },
 }));

@@ -64,10 +64,9 @@ export const styles = StyleSheet.create((theme) => ({
     height: theme.iconSizes.body,
     justifyContent: 'center',
   },
-  // The row whose page the other pane shows: the raised surface the shared selected Card uses.
-  // Each row in a card with a divider carries its own padding, so the fill spans the card.
+  // The corners of the shared selected fill on a row of its own. Each row in a card with a divider
+  // carries its own padding, so the fill spans the card.
   selected: {
-    backgroundColor: theme.colors.surfaceHigh,
     borderRadius: theme.radii.md,
   },
   // A chevron right after a switch crowds it without a gutter; a chevron

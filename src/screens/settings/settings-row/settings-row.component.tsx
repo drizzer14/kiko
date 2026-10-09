@@ -1,5 +1,10 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
+import {
+  OnAccentContext,
+  selectedSurfaceStyles,
+  useIsOnAccent,
+} from '@kiko/design-system/selected-surface';
 import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
@@ -28,6 +33,12 @@ const SettingsRow: FC<SettingsRowProps> = ({
   ...props
 }) => {
   const { theme } = useUnistyles();
+  // A row in a selected card is already marked by the card's fill (a Settings card holds one row),
+  // so it adds none of its own; either way its content reads on the accent.
+  const isInSelectedSurface = useIsOnAccent();
+  const isFilled = selected && !isInSelectedSurface;
+  const selectedStyle = isFilled && [selectedSurfaceStyles.fill, styles.selected];
+  const isOnAccent = selected || isInSelectedSurface;
 
   const lead = (
     <Box direction="row" gap={3} style={styles.rowLead}>
@@ -91,18 +102,20 @@ const SettingsRow: FC<SettingsRowProps> = ({
         accessibilityRole="button"
         accessibilityState={{ selected }}
         onPress={onPress}
-        style={[style, selected && styles.selected]}
+        style={[style, selectedStyle]}
         {...props}
       >
-        <Box direction="row" style={styles.centeredEnd}>
-          <Box gap={1} style={styles.body}>
-            {lead}
+        <OnAccentContext.Provider value={isOnAccent}>
+          <Box direction="row" style={styles.centeredEnd}>
+            <Box gap={1} style={styles.body}>
+              {lead}
 
-            {children}
+              {children}
+            </Box>
+
+            {end}
           </Box>
-
-          {end}
-        </Box>
+        </OnAccentContext.Provider>
       </Pressable>
     );
   }
@@ -112,10 +125,10 @@ const SettingsRow: FC<SettingsRowProps> = ({
       accessibilityRole="button"
       accessibilityState={{ selected }}
       onPress={onPress}
-      style={[style, selected && styles.selected]}
+      style={[style, selectedStyle]}
       {...props}
     >
-      {header}
+      <OnAccentContext.Provider value={isOnAccent}>{header}</OnAccentContext.Provider>
     </Pressable>
   );
 };

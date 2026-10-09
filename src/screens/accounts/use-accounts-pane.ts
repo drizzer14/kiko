@@ -80,7 +80,10 @@ export const useAccountsPane = ({
   firstAccount,
   accounts,
   holdings,
-}: AccountsPaneInput): { selectedAccountId: string | undefined } => {
+}: AccountsPaneInput): {
+  selectedAccountId: string | undefined;
+  selectedHoldingId: string | undefined;
+} => {
   const { t } = useTranslation();
   const isInPane = usePaneContext() !== null;
   const primaryRoute = usePrimaryPaneRoute();
@@ -132,5 +135,8 @@ export const useAccountsPane = ({
     }
   }, [goneKey, closePaneRoute]);
 
-  return { selectedAccountId: accountIdOf(primaryRoute) };
+  return {
+    selectedAccountId: accountIdOf(primaryRoute),
+    selectedHoldingId: holdingIdOf(primaryRoute),
+  };
 };

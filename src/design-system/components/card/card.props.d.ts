@@ -10,7 +10,7 @@ export type CardProps = ViewProps & {
   children?: ReactNode;
   padding?: number;
   radius?: CardRadius;
-  // The row of a list that its detail pane shows, on a wide window only: raised surface and an
-  // accent border at the same width.
+  // The row of a list that its detail pane shows, on a wide window only: the shared selected look
+  // (`selected-surface`), the accent fill with `onAccent` content.
   selected?: boolean;
 };

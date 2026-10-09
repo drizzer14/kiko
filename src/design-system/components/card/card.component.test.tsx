@@ -3,6 +3,7 @@ import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 import Text from '@kiko/design-system/components/text';
+import { useIsOnAccent } from '@kiko/design-system/selected-surface';
 
 import Card from './card.component';
 
@@ -25,10 +26,10 @@ describe('Card', () => {
     expect(style.borderWidth).toBeGreaterThan(0);
   });
 
-  it('marks the row a pane shows selected with a raised surface and an accent border', async () => {
+  it('marks the row a pane shows selected with the accent fill, border included', async () => {
     const style = await cardStyle({ selected: true });
 
-    expect(style.backgroundColor).toBe(darkTheme.colors.surfaceHigh);
+    expect(style.backgroundColor).toBe(darkTheme.colors.accent);
     expect(style.borderColor).toBe(darkTheme.colors.accent);
   });
 
@@ -36,13 +37,42 @@ describe('Card', () => {
     expect((await cardStyle({ selected: true })).borderWidth).toBe((await cardStyle()).borderWidth);
   });
 
-  it('lets a caller style win over the selected look', async () => {
+  // The foreground is `onAccent` only on the accent fill, so a caller cannot change the fill.
+  it('lets the selected look win over a caller style', async () => {
     const { getByTestId } = await render(
-      <Card testID="card" selected style={{ backgroundColor: '#123456' }}>
+      <Card testID="card" selected style={{ backgroundColor: '#123456', borderRadius: 3 }}>
         <Text>content</Text>
       </Card>,
     );
+    const style = StyleSheet.flatten(getByTestId('card').props.style);
 
-    expect(StyleSheet.flatten(getByTestId('card').props.style).backgroundColor).toBe('#123456');
+    expect(style.backgroundColor).toBe(darkTheme.colors.accent);
+    expect(style.borderRadius).toBe(3);
+  });
+
+  describe('what it draws inside', () => {
+    const Probe = () => <Text>{useIsOnAccent() ? 'on accent' : 'on surface'}</Text>;
+
+    it('sits on the accent when selected', async () => {
+      const { getByText } = await render(
+        <Card selected>
+          <Probe />
+        </Card>,
+      );
+
+      expect(getByText('on accent')).toBeTruthy();
+    });
+
+    it('sits on the plain surface when not selected, even inside a selected card', async () => {
+      const { getByText } = await render(
+        <Card selected>
+          <Card>
+            <Probe />
+          </Card>
+        </Card>,
+      );
+
+      expect(getByText('on surface')).toBeTruthy();
+    });
   });
 });

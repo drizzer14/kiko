@@ -47,6 +47,7 @@ import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshe
 import { type AccountRow, type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { useCloseHoldingAction } from '@kiko/design-system/components/close-holding-sheet';
+import { OnAccentContext, selectedSurfaceStyles } from '@kiko/design-system/selected-surface';
 
 import { styles } from './accounts.styles';
 import { useAccountsPane } from './use-accounts-pane';
@@ -217,7 +218,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // wide window that pane is never left empty and this list marks the row it shows.
   const openInPane = useOpenInPane();
   const isEmpty = hasNoAccounts(accounts, holdings);
-  const { selectedAccountId } = useAccountsPane({
+  const { selectedAccountId, selectedHoldingId } = useAccountsPane({
     isReady,
     isFresh: accountsFresh && holdingsFresh,
     isVisible,
@@ -356,6 +357,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
         <Pressable
           testID={openTestID}
           accessibilityRole="button"
+          accessibilityState={{ selected: account.id === selectedAccountId }}
           onPress={() =>
             openInPane('AccountDetail', {
               accountId: account.id,
@@ -363,23 +365,35 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               kind: account.kind,
             })
           }
-          style={styles.sectionHeadingRow}
+          style={[
+            styles.sectionHeadingRow,
+            account.id === selectedAccountId && [
+              selectedSurfaceStyles.fill,
+              styles.sectionHeadingSelected,
+            ],
+          ]}
         >
-          <ImplicitAccountHeading account={account} testID={headingTestID} />
+          <OnAccentContext.Provider value={account.id === selectedAccountId}>
+            <ImplicitAccountHeading account={account} testID={headingTestID} />
 
-          <Box testID={totalTestID} style={styles.rowAmount}>
-            <MoneyText money={total} context="balance" />
-          </Box>
+            <Box testID={totalTestID} style={styles.rowAmount}>
+              <MoneyText money={total} context="balance" />
+            </Box>
 
-          {/* Decorative: the row's button role already says it navigates. */}
-          <Box
-            testID={chevronTestID}
-            style={styles.sectionChevron}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          >
-            <SymbolIcon name="chevron.right" size={theme.iconSizes.caption} tone="textSecondary" />
-          </Box>
+            {/* Decorative: the row's button role already says it navigates. */}
+            <Box
+              testID={chevronTestID}
+              style={styles.sectionChevron}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <SymbolIcon
+                name="chevron.right"
+                size={theme.iconSizes.caption}
+                tone="textSecondary"
+              />
+            </Box>
+          </OnAccentContext.Provider>
         </Pressable>
 
         <Box testID={gridTestID}>
@@ -403,6 +417,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
               >
                 <HoldingCard
                   holding={item}
+                  selected={item.id === selectedHoldingId}
                   now={now}
                   baseCurrency={baseCurrency}
                   rateTable={rateTable}

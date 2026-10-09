@@ -609,19 +609,20 @@ describe('SettingsScreen — the selected row', () => {
     const row = StyleSheet.flatten(getByTestId(rowId).props.style);
 
     expect(await selectedRows()).toEqual([route]);
-    expect(row.backgroundColor).toBe(darkTheme.colors.surfaceHigh);
-    expect(card.borderColor === darkTheme.colors.accent).toBe(marksCard);
+    // One marker per row: the card of a single-row card, the row itself in a shared one.
+    expect(card.backgroundColor === darkTheme.colors.accent).toBe(marksCard);
+    expect(row.backgroundColor === darkTheme.colors.accent).toBe(!marksCard);
   });
 
   it('marks the Categories card, and no other card, while its default shows', async () => {
     mockUsePrimaryPaneRoute.mockReturnValue({ name: 'Categories', isDefault: true });
     const { getByTestId } = await renderScreen();
-    const borderOf = (cardId: string) =>
-      StyleSheet.flatten(getByTestId(cardId).props.style).borderColor;
+    const fillOf = (cardId: string) =>
+      StyleSheet.flatten(getByTestId(cardId).props.style).backgroundColor;
 
-    expect(borderOf('settings-card-categories')).toBe(darkTheme.colors.accent);
-    expect(borderOf('settings-card-help')).not.toBe(darkTheme.colors.accent);
-    expect(borderOf('settings-card-system')).not.toBe(darkTheme.colors.accent);
+    expect(fillOf('settings-card-categories')).toBe(darkTheme.colors.accent);
+    expect(fillOf('settings-card-help')).not.toBe(darkTheme.colors.accent);
+    expect(fillOf('settings-card-system')).not.toBe(darkTheme.colors.accent);
   });
 
   it('marks nothing for a page the menu has no row for', async () => {
