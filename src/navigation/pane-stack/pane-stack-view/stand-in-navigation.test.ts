@@ -12,7 +12,7 @@ const refuse = () => {
 
 // What React Navigation hands a screen it renders without a route in the state: every action
 // helper, `dispatch` and `setOptions` throw.
-const placeholderNavigation = (): Navigation => ({
+const placeholderNavigation = (): Navigation & { getState: () => { routeNames: string[] } } => ({
   ...Object.fromEntries(
     [...Object.keys(CommonActions), ...Object.keys(StackActions), ...Object.keys(PaneActions)].map(
       (name) => [name, refuse],
@@ -21,6 +21,7 @@ const placeholderNavigation = (): Navigation => ({
   dispatch: refuse,
   setOptions: refuse,
   isFocused: () => false,
+  getState: () => ({ routeNames: ['Home', 'Form'] }),
 });
 
 const KEY = 'pane-default:companion';
@@ -80,6 +81,32 @@ describe('standInNavigation', () => {
     expect(() => call(standIn())).not.toThrow();
     expect(dispatch).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [
+      'navigate',
+      (navigation: Navigation) => navigation.navigate('AccountsTab', { screen: 'AccountForm' }),
+      CommonActions.navigate('AccountsTab', { screen: 'AccountForm' }),
+    ],
+    [
+      'push',
+      (navigation: Navigation) => navigation.push('AccountsTab'),
+      StackActions.push('AccountsTab'),
+    ],
+    [
+      'dispatched navigate',
+      (navigation: Navigation) => navigation.dispatch(CommonActions.navigate('AccountsTab')),
+      CommonActions.navigate('AccountsTab'),
+    ],
+  ])(
+    'hands the %s on to the navigator when none of its routes has that name',
+    (_label, call, sent) => {
+      call(standIn());
+
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(dispatch).toHaveBeenCalledWith(sent);
+    },
+  );
 
   it('leaves a navigate that names no route alone', () => {
     standIn().dispatch({ type: 'NAVIGATE', payload: {} });

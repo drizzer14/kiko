@@ -17,7 +17,7 @@ import type {
   NativeStackNavigationProp,
   NativeStackNavigatorProps,
 } from '@react-navigation/native-stack';
-import { useContext, useEffect, useRef } from 'react';
+import { useContext, useEffect, useInsertionEffect, useRef } from 'react';
 
 import PaneStackView from '../pane-stack-view';
 import { usePaneFold } from '../use-pane-fold';
@@ -66,7 +66,8 @@ function PaneStackNavigator({
   });
   const meta = useContext(NavigationMetaContext);
 
-  useEffect(() => {
+  // An insertion effect, so the ref is current before any child's effect in the same commit runs.
+  useInsertionEffect(() => {
     isSplitRef.current = isSplit;
   }, [isSplit]);
 

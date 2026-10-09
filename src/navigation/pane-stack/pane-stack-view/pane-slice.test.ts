@@ -1,5 +1,5 @@
 import type { PaneConfig } from '../pane-assignment';
-import { PaneActions, type PaneStackRoute, type PaneStackState } from '../pane-router';
+import type { PaneStackRoute, PaneStackState } from '../pane-router';
 
 import { paneSlice, withoutDefaultRoutes } from './pane-slice';
 import type { NativeStackViewProps } from './pane-stack-view.props';
@@ -87,26 +87,6 @@ describe('paneSlice', () => {
       'pane-default:companion': expect.objectContaining({ id: 'described-pane-default:companion' }),
     });
     expect(describeStandIn).toHaveBeenCalledWith(slice?.state.routes[0], true);
-  });
-
-  it('lets the default navigate: a navigate from it opens in the pane opposite its own', () => {
-    const slice = paneSlice(
-      stackState([route('home', 'Home')], { home: 'primary' }),
-      HOME,
-      'companion',
-      descriptors,
-      describeRoute,
-      dispatch,
-    );
-    const shown = slice?.descriptors['pane-default:companion'] as unknown as {
-      navigation: { navigate: (name: string) => void; goBack: () => void };
-    };
-
-    shown.navigation.goBack();
-    shown.navigation.navigate('Form');
-
-    expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(dispatch).toHaveBeenCalledWith(PaneActions.open('pane-default:companion', 'Form'));
   });
 
   it('has no slice for a pane with neither a route nor a default', () => {

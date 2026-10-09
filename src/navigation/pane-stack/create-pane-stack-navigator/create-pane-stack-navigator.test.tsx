@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import {
   createNavigationContainerRef,
   NavigationContainer,
@@ -7,6 +6,7 @@ import {
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
+import { useContext, useEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { LayoutMode } from '@kiko/display-regions';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -17,8 +17,8 @@ import '@kiko/design-system/unistyles';
 
 import { useOpenInPane } from '../open-in-pane';
 import type { PaneConfig } from '../pane-assignment';
-import { useIsScreenVisible } from '../pane-visibility';
 import { SETTLE_DELAY_MS } from '../use-settled-layout-mode';
+import { PaneVisibilityContext, useIsScreenVisible } from '../pane-visibility';
 
 import { createPaneStackNavigator } from '.';
 
@@ -62,6 +62,9 @@ const elapse = async (milliseconds: number): Promise<void> => {
 
 type StubParams = { opens?: string };
 
+// Whether every screen navigates the moment it finds itself in two panes.
+const navigatesWhenInTwoPanes = { current: false };
+
 // How many times each screen mounted: a transient frame must not remount anything.
 const mounts: Record<string, number | undefined> = {};
 
@@ -73,10 +76,18 @@ const StubScreen = () => {
   const openInPane = useOpenInPane();
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const { opens } = (route.params ?? {}) as StubParams;
+  const isInTwoPanes = useContext(PaneVisibilityContext) !== null;
 
   useEffect(() => {
     mounts[route.name] = (mounts[route.name] ?? 0) + 1;
   }, [route.name]);
+
+  // A child effect runs in the very commit that moves the navigator to two panes.
+  useEffect(() => {
+    if (navigatesWhenInTwoPanes.current && isInTwoPanes) {
+      navigation.navigate('Form');
+    }
+  }, [isInTwoPanes, navigation]);
 
   return (
     <View testID={`screen-${route.name}`}>
@@ -148,6 +159,7 @@ describe('createPaneStackNavigator', () => {
     jest.useFakeTimers();
     mockModeStore.mode = 'columns';
     dispatched.length = 0;
+    navigatesWhenInTwoPanes.current = false;
 
     for (const name of Object.keys(mounts)) {
       delete mounts[name];
@@ -240,6 +252,21 @@ describe('createPaneStackNavigator', () => {
       expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
       expect(screen.getByTestId('screen-Detail')).toBeTruthy();
       expect(screen.queryByTestId('screen-Accounts')).toBeNull();
+    });
+  });
+
+  describe('moving from one pane to two', () => {
+    it('routes what a screen asks for as it appears under the new mode, not the old one', async () => {
+      mockModeStore.mode = 'single';
+      await renderApp();
+      await press('open-Accounts');
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+
+      navigatesWhenInTwoPanes.current = true;
+      await emitMode('columns');
+      await elapse(SETTLE_DELAY_MS);
+
+      expect(stackRouteNames()).toEqual(['Accounts', 'Form']);
     });
   });
 
