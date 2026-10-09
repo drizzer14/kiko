@@ -2604,9 +2604,11 @@ in memory for the crash history this fixed.
   with a `UIHingeInteraction` (a change of hinge status reads at once; only
   `closed` and `fullyOpen` read as no fold, any other status including
   `unknown` leaves the region query to decide, and `UIScene.didActivate`
-  clears the last status; an angle tick with the same status only restarts the
-  settle reads), re-reads at 0.3 s and 1.2 s after every trigger because the
-  reserved region lands after the trigger and nothing reports it, emits under
+  clears the last status; an angle tick with the same status starts the settle
+  reads only when none are pending and never cancels a pending pair, so a tick
+  stream cannot postpone them past 1.2 s), re-reads at 0.3 s and 1.2 s after
+  every trigger because the reserved region lands after the trigger and nothing
+  reports it, emits under
   the emitter lock so no emit outlives `removeChangeEmitter`, and logs
   `os.Logger` `.debug` lines (category `DisplayRegions`; read them with
   `log stream --level debug`): one per emit, one per read

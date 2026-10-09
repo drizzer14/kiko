@@ -305,8 +305,10 @@ import os
   }
 
   // The hinge reports its angle continuously. A change of status reads at once. An angle tick with
-  // the same status only restarts the settle reads: the division region can turn active later than
-  // the status change, or with no status change at all, and only these ticks follow it.
+  // the same status only starts the settle reads when none are pending: the division region can
+  // turn active later than the status change, or with no status change at all, and only these
+  // ticks follow it. A pending pair is never restarted, so a stream of ticks cannot postpone the
+  // reads past 1.2 s.
   private func hingeDidUpdate(_ hinge: HingeState?, angle: Double?) {
     let status = hinge.map { String($0.status) } ?? "none"
     let angleText = angle.map { String($0) } ?? "none"
@@ -315,7 +317,10 @@ import os
       "hinge handler status=\(status, privacy: .public) angle=\(angleText, privacy: .public)")
 
     guard hinge != lastHinge else {
-      scheduleSettleReads()
+      if settleTask == nil {
+        scheduleSettleReads()
+      }
+
       return
     }
 
@@ -346,6 +351,14 @@ import os
 
         self?.refresh(.settle)
       }
+
+      // A cancelled task was replaced in the same main-actor turn, so only the current one
+      // reaches here uncancelled and clears the slot.
+      guard !Task.isCancelled else {
+        return
+      }
+
+      self?.settleTask = nil
     }
   }
 
