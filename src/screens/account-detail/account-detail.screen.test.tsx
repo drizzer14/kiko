@@ -48,6 +48,7 @@ const mockButtonProps: {
   children: ReactNode;
   icon?: string;
   fullWidth?: boolean;
+  testID?: string;
 }[] = [];
 
 jest.mock('@kiko/design-system/components/button', () => {
@@ -70,6 +71,7 @@ jest.mock('@kiko/design-system/components/button', () => {
         children: props.children,
         icon: props.icon,
         fullWidth: props.fullWidth,
+        testID: props.testID,
       });
 
       return (
@@ -2592,9 +2594,11 @@ describe('AccountDetailScreen — the empty holdings state', () => {
   it('keeps the Holdings heading above the empty state', async () => {
     setLiveData({ accounts: [account()], holdings: [] });
 
-    const { getByText } = await renderScreen();
+    const { toJSON } = await renderScreen();
+    const tree = JSON.stringify(toJSON());
 
-    expect(getByText('Holdings')).toBeTruthy();
+    expect(tree).toContain('"Holdings"');
+    expect(tree.indexOf('"Holdings"')).toBeLessThan(tree.indexOf('"No holdings yet"'));
   });
 
   it('opens the holding form for the account from the empty state action', async () => {
@@ -2606,14 +2610,40 @@ describe('AccountDetailScreen — the empty holdings state', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
   });
 
-  it('leads the empty state action with the generic holding glyph', async () => {
+  it('shows the generic holding glyph on the empty state and on its action', async () => {
     setLiveData({ accounts: [account()], holdings: [] });
 
-    await renderScreen();
+    const { getByTestId } = await renderScreen();
 
-    expect(mockButtonProps.find((props) => props.children === 'Add holding')?.icon).toBe(
+    expect(getByTestId('account-detail-holdings-empty-icon').props.name).toBe(
       'list.bullet.rectangle',
     );
+    expect(
+      mockButtonProps.find((props) => props.testID === 'account-detail-holdings-empty-action')
+        ?.icon,
+    ).toBe('list.bullet.rectangle');
+  });
+
+  it('swaps the footer Add holding for the empty state once the last holding closes', async () => {
+    setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [openHolding] });
+    const view = await renderScreen();
+
+    expect(within(view.getByTestId('screen-footer')).getByText('Add holding')).toBeTruthy();
+    expect(view.queryByTestId('account-detail-holdings-empty')).toBeNull();
+
+    setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [closedHolding] });
+    await act(async () => {
+      view.rerender(
+        <AccountDetailScreen
+          route={route}
+          navigation={asNavigationProp<AccountDetailProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    expect(view.getByTestId('account-detail-holdings-empty')).toBeTruthy();
+    expect(view.queryByTestId('screen-footer')).toBeNull();
+    expect(view.queryByTestId('holdings-grid')).toBeNull();
   });
 
   it('shows the empty state when only closed holdings remain', async () => {

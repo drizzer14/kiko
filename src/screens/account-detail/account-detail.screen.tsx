@@ -105,17 +105,23 @@ type FooterOptions = {
   onAddHolding: () => void;
 };
 
-// The empty holdings state carries its own Add holding action, so the pinned
-// footer drops that button rather than show it twice; with nothing else to
-// offer, there is no footer at all.
-const footerOf = ({
+// A function, not a component, and out of the screen body: inlined, the two
+// conditional buttons push the screen over biome's cognitive-complexity limit
+// (18 against 15). The empty holdings state carries its own Add holding action,
+// so the pinned footer drops that button rather than show it twice; with
+// nothing else to offer, there is no footer at all.
+const renderFooter = ({
   t,
   showsImportStatement,
   showsAddHolding,
   onImportStatement,
   onAddHolding,
-}: FooterOptions): ReactElement | undefined =>
-  showsImportStatement || showsAddHolding ? (
+}: FooterOptions): ReactElement | undefined => {
+  if (!(showsImportStatement || showsAddHolding)) {
+    return undefined;
+  }
+
+  return (
     <Box gap={2}>
       {showsImportStatement && (
         <Button variant="secondaryTonal" onPress={onImportStatement} icon="doc.badge.plus">
@@ -128,7 +134,8 @@ const footerOf = ({
         </Button>
       )}
     </Box>
-  ) : undefined;
+  );
+};
 
 const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }) => {
   const { accountId, name: initialName, kind: kindHint, reminderOffer, intent } = route.params;
@@ -404,16 +411,16 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   }
 
   const openHoldingForm = (): void => navigation.navigate('HoldingForm', { accountId });
-  const hasNoActiveHoldings = activeHoldings.length === 0;
+  const hasActiveHoldings = activeHoldings.length > 0;
 
   return (
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      footer={footerOf({
+      footer={renderFooter({
         t,
         showsImportStatement: canImportStatement,
-        showsAddHolding: !hasNoActiveHoldings,
+        showsAddHolding: hasActiveHoldings,
         onImportStatement: pickAndOpenStatement,
         onAddHolding: openHoldingForm,
       })}
@@ -461,20 +468,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         <Box gap={3}>
           <Text variant="heading">{t('accountDetail.holdingsHeading')}</Text>
 
-          {/* A single-column drag-and-drop list of wide holding row cards
-              (mirroring the accounts list). A plain tap opens the holding; a
-              touch-and-hold-still on a manual card opens the deep-press (haptic)
-              Close/Delete action list; a hold-and-move drags to reorder — see `CardContextMenu`
-              and `onGridDragEnd`. `overDrag="vertical"` keeps a dragged card on
-              its vertical axis (a single column has no horizontal move to make).
-              `scrollableRef` + `autoScrollActivationOffset` let a drag near an
-              edge scroll the parent list. `sortEnabled` is off until the
-              holdings query's own fresh read has applied — a drag persists
-              the order of the rows on screen, never the cached
-              (possibly one-read-old) order (kiko-architecture). A lone
-              holding stays enabled: it lifts on a hold and drops back, like
-              every other card. */}
-          {hasNoActiveHoldings ? (
+          {!hasActiveHoldings ? (
             <EmptyState
               icon={genericEntitySymbol.holding}
               title={t('accountDetail.emptyHoldings.title')}
@@ -487,6 +481,19 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
               testID="account-detail-holdings-empty"
             />
           ) : (
+            // A single-column drag-and-drop list of wide holding row cards
+            // (mirroring the accounts list). A plain tap opens the holding; a
+            // touch-and-hold-still on a manual card opens the deep-press (haptic)
+            // Close/Delete action list; a hold-and-move drags to reorder — see `CardContextMenu`
+            // and `onGridDragEnd`. `overDrag="vertical"` keeps a dragged card on
+            // its vertical axis (a single column has no horizontal move to make).
+            // `scrollableRef` + `autoScrollActivationOffset` let a drag near an
+            // edge scroll the parent list. `sortEnabled` is off until the
+            // holdings query's own fresh read has applied — a drag persists
+            // the order of the rows on screen, never the cached
+            // (possibly one-read-old) order (kiko-architecture). A lone
+            // holding stays enabled: it lifts on a hold and drops back, like
+            // every other card.
             <Box testID="holdings-grid">
               <Sortable.Grid
                 data={activeHoldings}
