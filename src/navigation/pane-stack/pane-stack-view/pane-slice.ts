@@ -7,8 +7,9 @@ import {
   paneDefault,
   routesOfPane,
 } from '../pane-assignment';
-import type { PaneStackRoute, PaneStackState } from '../pane-router';
+import type { PaneActionType, PaneStackRoute, PaneStackState } from '../pane-router';
 
+import { standInNavigation } from './stand-in-navigation';
 import type { NativeStackViewProps } from './pane-stack-view.props';
 
 type PaneSlice = {
@@ -34,6 +35,7 @@ export const paneSlice = (
   pane: Pane,
   descriptors: NativeStackViewProps['descriptors'],
   describe: NativeStackViewProps['describe'],
+  dispatch: (action: PaneActionType) => void,
 ): PaneSlice | null => {
   const routes = routesOfPane(state.routes, state.panes, config, pane);
 
@@ -52,7 +54,10 @@ export const paneSlice = (
 
       return {
         state: stateOf(state, [standIn]),
-        descriptors: { ...descriptors, [standIn.key]: describe(standIn, true) },
+        descriptors: {
+          ...descriptors,
+          [standIn.key]: standInNavigation(describe(standIn, true), dispatch),
+        },
       };
     }) ?? null
   );

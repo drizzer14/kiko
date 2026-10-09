@@ -23,10 +23,13 @@ const PaneStackView: FC<PaneStackViewProps> = ({
 }) => {
   const isTabFocused = useIsFocused();
   const isSplit = mode !== 'single';
+  const { dispatch } = navigation;
   const companion = isSplit
-    ? paneSlice(state, paneConfig, 'companion', descriptors, describe)
+    ? paneSlice(state, paneConfig, 'companion', descriptors, describe, dispatch)
     : null;
-  const primary = isSplit ? paneSlice(state, paneConfig, 'primary', descriptors, describe) : null;
+  const primary = isSplit
+    ? paneSlice(state, paneConfig, 'primary', descriptors, describe, dispatch)
+    : null;
   const companionTopKey = companion?.state.routes.at(-1)?.key ?? '';
   const primaryTopKey = primary?.state.routes.at(-1)?.key ?? '';
 
@@ -38,7 +41,7 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   );
 
   return (
-    <OpenInPaneContext.Provider value={navigation.dispatch}>
+    <OpenInPaneContext.Provider value={dispatch}>
       <PaneVisibilityContext.Provider value={visibility}>
         {isSplit ? (
           <TwoPaneLayout

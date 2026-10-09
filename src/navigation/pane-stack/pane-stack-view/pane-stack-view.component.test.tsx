@@ -65,7 +65,11 @@ const ACCOUNTS: PaneConfig = { rootPane: 'companion' };
 
 const navigation = { dispatch: jest.fn() } as never as NativeStackViewProps['navigation'];
 const descriptors = { shared: true } as never as NativeStackViewProps['descriptors'];
-const describeStandIn = jest.fn((standIn: PaneStackRoute) => ({ standIn }));
+const describeStandIn = jest.fn((standIn: PaneStackRoute) => ({
+  standIn,
+  route: standIn,
+  navigation: {},
+}));
 const describeRoute = describeStandIn as never as NativeStackViewProps['describe'];
 
 const renderView = (state: PaneStackState, paneConfig: PaneConfig, mode: LayoutMode = 'columns') =>

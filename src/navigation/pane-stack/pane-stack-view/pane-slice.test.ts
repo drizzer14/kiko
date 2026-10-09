@@ -1,5 +1,5 @@
 import type { PaneConfig } from '../pane-assignment';
-import type { PaneStackRoute, PaneStackState } from '../pane-router';
+import { PaneActions, type PaneStackRoute, type PaneStackState } from '../pane-router';
 
 import { paneSlice, withoutDefaultRoutes } from './pane-slice';
 import type { NativeStackViewProps } from './pane-stack-view.props';
@@ -33,12 +33,18 @@ const HOME: PaneConfig = {
 const descriptors = {
   accounts: { id: 'accounts-descriptor' },
 } as never as NativeStackViewProps['descriptors'];
-const describeStandIn = jest.fn((standIn: PaneStackRoute) => ({ id: `described-${standIn.key}` }));
+const describeStandIn = jest.fn((standIn: PaneStackRoute) => ({
+  id: `described-${standIn.key}`,
+  route: standIn,
+  navigation: {},
+}));
 const describeRoute = describeStandIn as never as NativeStackViewProps['describe'];
+const dispatch = jest.fn();
 
 describe('paneSlice', () => {
   beforeEach(() => {
     describeStandIn.mockClear();
+    dispatch.mockClear();
   });
 
   it('keeps the routes of the pane, in stack order, on the stack state', () => {
@@ -47,7 +53,7 @@ describe('paneSlice', () => {
       account: 'primary',
       form: 'companion',
     });
-    const slice = paneSlice(state, ACCOUNTS, 'companion', descriptors, describeRoute);
+    const slice = paneSlice(state, ACCOUNTS, 'companion', descriptors, describeRoute, dispatch);
 
     expect(slice?.state.routes.map((entry) => entry.key)).toEqual(['accounts', 'form']);
     expect(slice?.state.index).toBe(1);
@@ -64,6 +70,7 @@ describe('paneSlice', () => {
       'companion',
       descriptors,
       describeRoute,
+      dispatch,
     );
 
     expect(slice?.state.routes).toEqual([
@@ -77,14 +84,41 @@ describe('paneSlice', () => {
     expect(slice?.state.index).toBe(0);
     expect(slice?.descriptors).toEqual({
       ...descriptors,
-      'pane-default:companion': { id: 'described-pane-default:companion' },
+      'pane-default:companion': expect.objectContaining({ id: 'described-pane-default:companion' }),
     });
     expect(describeStandIn).toHaveBeenCalledWith(slice?.state.routes[0], true);
   });
 
+  it('lets the default navigate: a navigate from it opens in the pane opposite its own', () => {
+    const slice = paneSlice(
+      stackState([route('home', 'Home')], { home: 'primary' }),
+      HOME,
+      'companion',
+      descriptors,
+      describeRoute,
+      dispatch,
+    );
+    const shown = slice?.descriptors['pane-default:companion'] as unknown as {
+      navigation: { navigate: (name: string) => void; goBack: () => void };
+    };
+
+    shown.navigation.goBack();
+    shown.navigation.navigate('Form');
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith(PaneActions.open('pane-default:companion', 'Form'));
+  });
+
   it('has no slice for a pane with neither a route nor a default', () => {
     expect(
-      paneSlice(stackState([route('accounts')]), ACCOUNTS, 'primary', descriptors, describeRoute),
+      paneSlice(
+        stackState([route('accounts')]),
+        ACCOUNTS,
+        'primary',
+        descriptors,
+        describeRoute,
+        dispatch,
+      ),
     ).toBeNull();
   });
 });
