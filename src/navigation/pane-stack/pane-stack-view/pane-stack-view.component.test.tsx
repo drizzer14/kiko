@@ -217,6 +217,7 @@ describe('PaneStackView', () => {
         await renderView(state, ACCOUNTS);
 
         expect(primaryRouteOf()).toEqual({
+          key: 'account',
           name: 'AccountDetail',
           params: { accountId: 'a' },
           isDefault: false,
@@ -227,6 +228,7 @@ describe('PaneStackView', () => {
         await renderView(stackState([route('settings')], { settings: 'companion' }), SETTINGS);
 
         expect(primaryRouteOf()).toEqual({
+          key: 'pane-default:primary',
           name: 'Categories',
           params: undefined,
           isDefault: true,

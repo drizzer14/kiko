@@ -42,11 +42,12 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   const primaryRoute = useMemo(
     () =>
       foldMap(maybe(primaryName), (name) => ({
+        key: primaryTopKey,
         name,
         params: primaryParams,
         isDefault: isPrimaryDefault,
       })) ?? null,
-    [primaryName, primaryParams, isPrimaryDefault],
+    [primaryTopKey, primaryName, primaryParams, isPrimaryDefault],
   );
   const visibility = useMemo(
     () =>

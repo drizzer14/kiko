@@ -73,16 +73,19 @@ jest.mock('@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-n
 const mockUseIsScreenVisible = jest.fn(() => true);
 // A detail opens in the pane opposite the list's own; outside a pane navigator the real helper
 // falls back to `navigate` (its own test pins that). `mockUsePrimaryPaneRoute` is what the
-// primary pane shows, and `mockShowPaneDefault` what the list fills it with.
+// primary pane shows, `mockShowPaneDefault` what the list fills it with, and `mockClosePaneRoute`
+// how it closes the page of an entity that is gone.
 const mockOpenInPane = jest.fn();
 const mockShowPaneDefault = jest.fn();
+const mockClosePaneRoute = jest.fn();
 const mockUsePrimaryPaneRoute = jest.fn(
-  (): { name: string; params?: object; isDefault: boolean } | null => null,
+  (): { key?: string; name: string; params?: object; isDefault: boolean } | null => null,
 );
 jest.mock('@kiko/navigation/pane-stack', () => ({
   useIsScreenVisible: () => mockUseIsScreenVisible(),
   useOpenInPane: () => mockOpenInPane,
   useShowPaneDefault: () => mockShowPaneDefault,
+  useClosePaneRoute: () => mockClosePaneRoute,
   usePrimaryPaneRoute: () => mockUsePrimaryPaneRoute(),
 }));
 jest.mock('@react-navigation/native', () => ({
@@ -2266,6 +2269,110 @@ describe('AccountsScreen — in one of two panes', () => {
     });
   });
 
+  // A page the user opened stays in the pane until its entity goes; then the pane goes back to its
+  // default (the list fills it again once the page is closed).
+  describe('the page of an entity that is gone', () => {
+    const tapped = (name: string, params: object) =>
+      mockUsePrimaryPaneRoute.mockReturnValue({ key: 'page-key', name, params, isDefault: false });
+
+    it('is closed once its account is no longer in the list', async () => {
+      tapped('AccountDetail', { accountId: 'deleted' });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).toHaveBeenCalledTimes(1);
+      expect(mockClosePaneRoute).toHaveBeenCalledWith('page-key');
+    });
+
+    it('is closed once the last account is deleted', async () => {
+      tapped('AccountDetail', { accountId: 'a' });
+      setLiveData({ accounts: [], holdings: [] });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).toHaveBeenCalledWith('page-key');
+    });
+
+    it('is closed once its holding is no longer in the list', async () => {
+      tapped('HoldingDetail', { holdingId: 'deleted' });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).toHaveBeenCalledWith('page-key');
+    });
+
+    it('is left open while its account is in the list, archived or not', async () => {
+      setLiveData({
+        accounts: [MONOBANK, { id: 'z', name: 'Old', kind: 'bank', archivedAt: 1_700_000_000_000 }],
+        holdings: [],
+      });
+      tapped('AccountDetail', { accountId: 'z' });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+
+    it('is left open while its holding is in the list, closed or not', async () => {
+      setLiveData({
+        accounts: [propertyAccount()],
+        holdings: [propertyHolding({ closedAt: 1_700_000_000_000 })],
+      });
+      tapped('HoldingDetail', { holdingId: 'h1' });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a default, which the list replaces on its own', { isDefault: true }],
+      ['another screen', { name: 'AccountsEmptyPane' }],
+    ])('is not closed for %s', async (_label, over) => {
+      mockUsePrimaryPaneRoute.mockReturnValue({
+        key: 'page-key',
+        name: 'AccountDetail',
+        params: { accountId: 'deleted' },
+        isDefault: false,
+        ...over,
+      });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['the first load', { isLoading: { accounts: true } }],
+      ['a read that is still the cached one', { isStale: { accounts: true } }],
+      ['a holdings read that is still the cached one', { isStale: { holdings: true } }],
+    ])('waits for %s before judging the page gone', async (_label, flags) => {
+      tapped('AccountDetail', { accountId: 'deleted' });
+      setLiveData({ accounts: [MONOBANK], holdings: [], ...flags });
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+
+    it('waits until the tab is on screen', async () => {
+      tapped('AccountDetail', { accountId: 'deleted' });
+      mockUseIsScreenVisible.mockReturnValue(false);
+
+      await renderInPane();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+
+    it('is never closed on one pane', async () => {
+      tapped('AccountDetail', { accountId: 'deleted' });
+
+      await renderAccounts();
+
+      expect(mockClosePaneRoute).not.toHaveBeenCalled();
+    });
+  });
+
   describe('the selected row', () => {
     it('is the account whose page the primary pane shows', async () => {
       mockUsePrimaryPaneRoute.mockReturnValue({
@@ -2316,13 +2423,7 @@ describe('AccountsScreen — in one of two panes', () => {
       expect(within(rows[0]).getByText('Monobank')).toBeTruthy();
     });
 
-    it('is none on one pane, whatever the pane navigator reports', async () => {
-      mockUsePrimaryPaneRoute.mockReturnValue({
-        name: 'AccountDetail',
-        params: MONOBANK_PARAMS,
-        isDefault: false,
-      });
-
+    it('is none on one pane, where the primary pane has no route to report', async () => {
       expect(selectedCards(await renderAccounts())).toHaveLength(0);
     });
   });

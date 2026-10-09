@@ -40,7 +40,8 @@ export type PaneActionType =
       payload: { pane: Pane; route: PaneRoute };
       source?: string;
       target?: string;
-    };
+    }
+  | { type: 'PANE_CLOSE'; payload: { routeKey: string }; source?: string; target?: string };
 
 export const PaneActions = {
   open: (openerKey: string, name: string, params?: object) =>
@@ -49,6 +50,7 @@ export const PaneActions = {
   unfold: () => ({ type: 'PANE_UNFOLD' }) as const,
   showDefault: (pane: Pane, name: string, params?: object) =>
     ({ type: 'PANE_SHOW_DEFAULT', payload: { pane, route: { name, params } } }) as const,
+  close: (routeKey: string) => ({ type: 'PANE_CLOSE', payload: { routeKey } }) as const,
 } satisfies Record<string, (...args: never[]) => PaneActionType>;
 
 type StackState = StackNavigationState<ParamListBase>;
@@ -178,6 +180,21 @@ export const PaneRouter = ({
       panes: { ...retainPanes(panes, others), [next.route.key]: payload.pane },
     };
   };
+
+  // Closes one route and no other. A caller may send it after the route has already gone (the
+  // page and the list both notice a deleted entity), which must not close whatever is on top.
+  const close = (
+    state: PaneStackState,
+    routeKey: string,
+    config: RouterConfigOptions,
+  ): PaneStackState | null =>
+    state.routes.some((route) => route.key === routeKey)
+      ? standard(
+          { ...state, panes: unfoldAssignment(state.routes, state.panes, paneConfig) },
+          { ...StackActions.pop(), source: routeKey, target: state.key },
+          config,
+        )
+      : state;
 
   const fold = (state: PaneStackState): PaneStackState => {
     const folded = foldAssignment(state.routes, state.panes);
@@ -331,6 +348,7 @@ export const PaneRouter = ({
         .with({ type: 'PANE_FOLD' }, () => fold(state))
         .with({ type: 'PANE_UNFOLD' }, () => unfold(state))
         .with({ type: 'PANE_SHOW_DEFAULT' }, ({ payload }) => showDefault(state, payload, config))
+        .with({ type: 'PANE_CLOSE' }, ({ payload }) => close(state, payload.routeKey, config))
         .otherwise((standard) => delegate(state, standard, config)),
 
     actionCreators: { ...stack.actionCreators, ...PaneActions },

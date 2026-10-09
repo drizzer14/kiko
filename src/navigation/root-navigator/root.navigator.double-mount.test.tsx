@@ -74,6 +74,8 @@ type Subscription = {
   tables: string[];
   isPaused: boolean;
   isDirty: boolean;
+  // A read lands as a new render, with whatever `mockRows` holds by then.
+  rerender: () => void;
 };
 
 type Read = { id: string; instance: string };
@@ -103,12 +105,13 @@ const mockWrite = (table: string): void => {
       subscription.isDirty = true;
     } else {
       mockRead(id);
+      subscription.rerender();
     }
   }
 };
 
 jest.mock('@kiko/db/use-live-query', () => {
-  const { useContext, useEffect, useId, useRef } = jest.requireActual('react');
+  const { useContext, useEffect, useId, useRef, useState } = jest.requireActual('react');
   const native = jest.requireActual('@react-navigation/native');
 
   return {
@@ -125,6 +128,7 @@ jest.mock('@kiko/db/use-live-query', () => {
       const tablesKey = tables.join(',');
       const isPaused = options?.paused ?? false;
       const pausedRef = useRef(isPaused);
+      const [, setRenders] = useState(0);
 
       pausedRef.current = isPaused;
 
@@ -139,6 +143,7 @@ jest.mock('@kiko/db/use-live-query', () => {
           tables: tablesKey.split(','),
           isPaused: pausedRef.current,
           isDirty: false,
+          rerender: () => setRenders((count: number) => count + 1),
         });
         mockRead(id);
 
@@ -160,6 +165,7 @@ jest.mock('@kiko/db/use-live-query', () => {
         if (!isPaused && subscription.isDirty) {
           subscription.isDirty = false;
           mockRead(id);
+          subscription.rerender();
         }
       }, [id, isPaused]);
 
@@ -436,6 +442,83 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
         ['AccountForm', undefined],
       ]);
       expect(paneOf('AccountForm')).toBe('companion');
+    });
+  });
+
+  describe('when the entity behind the page the user opened is deleted', () => {
+    const SAVINGS = accountRow('c', 'Savings', 'cash');
+
+    it('returns the pane to the first account when a tapped account is deleted from the list', async () => {
+      mockRows = { accounts: [accountRow('a', 'Monobank', 'bank'), SAVINGS] };
+      const { getByTestId } = await walkTabs();
+      await goTo('AccountsTab');
+      await fireEvent.press(within(getByTestId('accounts-grid')).getByText('Savings'));
+
+      expect(accountsRoutes().at(-1)?.params).toMatchObject({ accountId: 'c' });
+
+      mockRows = { accounts: [accountRow('a', 'Monobank', 'bank')] };
+      await act(async () => {
+        mockWrite('accounts');
+      });
+
+      expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+        ['Accounts', undefined],
+        ['AccountDetail', true],
+      ]);
+      expect(accountsRoutes().at(-1)?.params).toMatchObject({ accountId: 'a' });
+    });
+
+    it('shows the empty pane when the last account is deleted', async () => {
+      mockRows = { accounts: [SAVINGS] };
+      const { getByTestId } = await walkTabs();
+      await goTo('AccountsTab');
+      await fireEvent.press(within(getByTestId('accounts-grid')).getByText('Savings'));
+
+      expect(accountsRoutes().at(-1)?.isDefault).toBeUndefined();
+
+      mockRows = {};
+      await act(async () => {
+        mockWrite('accounts');
+      });
+
+      expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+        ['Accounts', undefined],
+        ['AccountsEmptyPane', true],
+      ]);
+    });
+
+    it('returns the pane to its default when a tapped holding is deleted', async () => {
+      const property = { ...accountRow('p', 'Properties', 'property'), name: 'Properties' };
+      const apartment = {
+        id: 'h1',
+        name: 'Apartment',
+        icon: null,
+        color: null,
+        accountId: 'p',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        type: 'property_item',
+        closedAt: null,
+        metadata: {
+          category: 'real_estate',
+          lots: [{ day: 1000, quantityDelta: '1', costMinorUnits: 500_000 }],
+        },
+      };
+
+      mockRows = { accounts: [property, SAVINGS], holdings: [apartment] };
+      const { getByTestId } = await walkTabs();
+      await goTo('AccountsTab');
+      await fireEvent.press(within(getByTestId('accounts-property-grid')).getByText('Apartment'));
+
+      expect(accountsRoutes().at(-1)).toMatchObject({ name: 'HoldingDetail' });
+
+      mockRows = { accounts: [property, SAVINGS], holdings: [] };
+      await act(async () => {
+        mockWrite('holdings');
+      });
+
+      expect(accountsRoutes().map(({ name }) => name)).not.toContain('HoldingDetail');
+      expect(accountsRoutes().at(-1)).toMatchObject({ name: 'AccountDetail', isDefault: true });
     });
   });
 

@@ -219,13 +219,17 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const isEmpty = hasNoAccounts(accounts, holdings);
   const { selectedAccountId } = useAccountsPane({
     isReady,
+    isFresh: accountsFresh && holdingsFresh,
     isVisible,
     isEmpty,
-    mainAccounts,
-    sections: [
-      { account: propertyAccount, holdings: propertyHoldings },
-      { account: debtAccount, holdings: debtHoldings },
-    ],
+    firstAccount:
+      mainAccounts.at(0) ??
+      [
+        { account: propertyAccount, holdings: propertyHoldings },
+        { account: debtAccount, holdings: debtHoldings },
+      ].find((section) => section.holdings.length > 0)?.account,
+    accounts,
+    holdings,
   });
 
   // The parent ScrollView's animated ref, shared with the sortable grid so a

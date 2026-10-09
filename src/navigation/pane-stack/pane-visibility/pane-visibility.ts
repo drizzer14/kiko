@@ -3,6 +3,7 @@ import { useIsFocused, useRoute } from '@react-navigation/native';
 
 /** The route on top of the primary pane: what a list beside it shows as selected. */
 export type PrimaryPaneRoute = {
+  key: string;
   name: string;
   params: object | undefined;
   // Shown because nothing was tapped there, not because the user chose it.

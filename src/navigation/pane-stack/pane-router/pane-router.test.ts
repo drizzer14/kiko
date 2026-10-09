@@ -237,6 +237,43 @@ describe('PaneRouter', () => {
     });
   });
 
+  describe('PANE_CLOSE', () => {
+    it('closes the route named and leaves every other route in its pane', () => {
+      const detail = withDetail();
+      const form = run(detail, PaneActions.open(keyOf(detail, 'AccountDetail'), 'HoldingForm'));
+      const closed = run(form, PaneActions.close(keyOf(form, 'AccountDetail')));
+
+      expect(names(closed)).toEqual(['Accounts', 'HoldingForm']);
+      expect(closed.panes).toEqual({
+        [keyOf(closed, 'Accounts')]: 'companion',
+        [keyOf(closed, 'HoldingForm')]: 'companion',
+      });
+      expect(closed.index).toBe(1);
+    });
+
+    it('closes the route on top too', () => {
+      const detail = withDetail();
+      const closed = run(detail, PaneActions.close(keyOf(detail, 'AccountDetail')));
+
+      expect(names(closed)).toEqual(['Accounts']);
+      expect(closed.panes).toEqual({ [keyOf(closed, 'Accounts')]: 'companion' });
+    });
+
+    it('does nothing for a route that is already gone, rather than closing another one', () => {
+      const detail = withDetail();
+
+      expect(run(detail, PaneActions.close('a-route-that-closed'))).toBe(detail);
+    });
+
+    it('is not handled for the root, which the stack never closes', () => {
+      const detail = withDetail();
+
+      expect(
+        router.getStateForAction(detail, PaneActions.close(keyOf(detail, 'Accounts')), CONFIG),
+      ).toBeNull();
+    });
+  });
+
   describe('standard actions', () => {
     it('removes the pane of a route that goes back', () => {
       const detail = withDetail();

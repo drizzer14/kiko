@@ -13,7 +13,12 @@ jest.mock('@react-navigation/native', () => ({
 }));
 
 const VISIBLE_KEYS = new Set(['companion-route', 'primary-route']);
-const PRIMARY_ROUTE = { name: 'AccountDetail', params: { accountId: 'a' }, isDefault: false };
+const PRIMARY_ROUTE = {
+  key: 'primary-route',
+  name: 'AccountDetail',
+  params: { accountId: 'a' },
+  isDefault: false,
+};
 
 const renderInPanesWith = <Result,>(hook: () => Result, isTabFocused = true) =>
   renderHook(hook, {
