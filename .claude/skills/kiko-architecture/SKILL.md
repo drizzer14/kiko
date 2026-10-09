@@ -1560,22 +1560,28 @@ the kind of thing that can still change:
   file exists" is a `react-native-fs` path check on op-sqlite's base
   directory OR a keyless open, because a failed open cannot tell an
   absent file from an unopenable one. The only delete of an existing
-  encrypted file is in the populated-`kiko.db` branch: `kiko.db` is
-  removed only after the key is stored, and with the probe above it can
-  be populated again only by an interrupted export, so a populated
-  `kiko.db` + no key means the file beside it is a keyless leftover.
-  With a key present and the encrypted file on disk, the key must open
-  that file (first read, opened with `failOnCreate` so the proof can
-  never create an empty keyed file) before any plaintext residue is
-  deleted; a failure's message carries the cause's own message, because
-  `MigrationsGate` shows only `error.message`. With a key present and
-  the encrypted file GONE (for example a backup restored over the app),
-  the first-launch build path runs under the EXISTING key
-  (`buildEncryptedDatabase(storedKey)`): `migrateLegacyDatabase()`, then
-  a populated `kiko.db` is exported into a new encrypted file and the
-  copy is verified (the key opens it and it holds tables) before the
-  plaintext is deleted, while an empty one yields a fresh encrypted
-  database; the key is never stored again.
+  encrypted file is in the populated-plaintext branch: the plaintext is
+  removed only after the copy is verified (and a new key stored), and
+  the app opens the encrypted file only after that, so plaintext that
+  still holds data (`kiko.db` or `pff.db`) means the encrypted file
+  beside it never served the app. It is a partial, empty, or keyless
+  leftover of an interrupted export (a kill after `ATTACH` leaves an
+  empty file that even the stored key opens), never to be trusted, so
+  the build path deletes it and re-exports. That holds with or without
+  a stored key: `resolveDbKey` rebuilds whenever the encrypted file is
+  gone OR plaintext holds user tables
+  (`buildEncryptedDatabase(storedKey)`, the first-launch path under the
+  EXISTING key, which is never stored again): `migrateLegacyDatabase()`,
+  export, verify (the key opens the copy, it holds tables; its own
+  error text names the export, not the stored key), then delete the
+  plaintext. An empty plaintext yields a fresh encrypted database.
+  Only with a key present, the file on disk, and NO plaintext data does
+  the key just have to open that file (first read, opened with
+  `failOnCreate` so the proof can never create an empty keyed file)
+  before the plaintext residue is scrubbed; a 0-table file is accepted
+  there, because a fresh install killed before its migrations is
+  legitimately empty. A failure's message carries the cause's own
+  message, because `MigrationsGate` shows only `error.message`.
 - `src/db/keys/db-key.ts` — the Keychain-backed SQLCipher key (service
   `'kiko.db.key'`), generated from SQLite's `randomblob()` rather than
   `Math.random` or a WebCrypto call Hermes doesn't have.

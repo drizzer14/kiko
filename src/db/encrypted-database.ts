@@ -1,6 +1,6 @@
 import * as RNFS from 'react-native-fs';
-import { bifold, bifoldr, eitherSync, isLeft } from 'fnts/either';
 import { migrateLegacyDatabase } from '@kiko/migration/migrate-legacy-db';
+import { type Either, bifold, bifoldr, eitherSync, isLeft } from 'fnts/either';
 import { type DB, IOS_LIBRARY_PATH, isSQLCipher, open } from '@op-engineering/op-sqlite';
 
 import { DatabaseKeyMissingError } from './database-key-missing-error';
@@ -66,32 +66,35 @@ const encryptedDatabaseExists = async (): Promise<boolean> => {
   return existing !== undefined;
 };
 
-/** Whether kiko.db is on disk with user tables. Unreadable counts as no, so callers refuse. */
-const liveDatabaseHasUserTables = (): boolean => {
-  const live = openExisting(LIVE_PLAINTEXT_DATABASE_NAME);
+/** Whether the named file is on disk with user tables. Unreadable counts as no. */
+const databaseHasUserTables = (name: string): boolean => {
+  const existing = openExisting(name);
 
-  if (live === undefined) {
+  if (existing === undefined) {
     return false;
   }
 
-  const counted = eitherSync<unknown, number>(() => userTableCount(live));
-  live.close();
+  const counted = eitherSync<unknown, number>(() => userTableCount(existing));
+  existing.close();
 
   return (bifoldr(counted) ?? 0) > 0;
 };
+
+/** Whether kiko.db or the pre-rename pff.db still holds user data. */
+const plaintextHasUserTables = (): boolean =>
+  databaseHasUserTables(LIVE_PLAINTEXT_DATABASE_NAME) ||
+  databaseHasUserTables(LEGACY_PLAINTEXT_DATABASE_NAME);
 
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
 /**
- * Proves the key opens the existing encrypted file (a wrong key fails on the first read) before
- * anything irreversible happens, so a key that does not match keeps the plaintext residue, and
- * returns the file's user table count. `failOnCreate` keeps the proof from creating an empty keyed
- * file where none exists, which would pass and let the plaintext be deleted. The failure message
- * carries the cause's own message, since the launch gate shows only that.
+ * Reads the user table count of the existing encrypted file with the key (a wrong key fails on the
+ * first read). `failOnCreate` keeps the read from creating an empty keyed file where none exists,
+ * which would pass and let the plaintext be deleted.
  */
-const assertKeyOpensEncryptedFile = (keyHex: string): number => {
-  const proof = eitherSync<unknown, number>(() => {
+const readEncryptedTableCount = (keyHex: string): Either<unknown, number> =>
+  eitherSync<unknown, number>(() => {
     const probe = open({
       name: ENCRYPTED_DATABASE_NAME,
       encryptionKey: toSQLCipherRawKey(keyHex),
@@ -105,16 +108,24 @@ const assertKeyOpensEncryptedFile = (keyHex: string): number => {
     }
   });
 
+/**
+ * Throws `message` plus the cause's own message, since the launch gate shows only
+ * `error.message`; the cause stays attached.
+ */
+const failWithCause = (message: string, cause: unknown): never => {
+  throw new Error(`${message}: ${messageOf(cause)}`, { cause });
+};
+
+/**
+ * Proves the stored key opens the existing encrypted file before anything irreversible happens, so
+ * a key that does not match keeps the plaintext residue.
+ */
+const assertKeyOpensEncryptedFile = (keyHex: string): void => {
+  const proof = readEncryptedTableCount(keyHex);
+
   if (isLeft(proof)) {
-    const cause = bifold(proof);
-
-    throw new Error(
-      `The stored database key does not open the encrypted database: ${messageOf(cause)}`,
-      { cause },
-    );
+    failWithCause('The stored database key does not open the encrypted database', bifold(proof));
   }
-
-  return bifold(proof);
 };
 
 /** Deletes a plaintext DB file if it is on disk. No-op when absent. */
@@ -154,9 +165,15 @@ const exportPlaintextInto = async (
   await plaintext.execute(`DETACH DATABASE ${ATTACHED_ALIAS}`);
 };
 
-/** An export that left a keyed file with no tables did not copy the data: the plaintext stays. */
+/** An export that left a keyed file unreadable or without tables did not copy the data. */
 const assertExportHoldsTables = (keyHex: string): void => {
-  if (assertKeyOpensEncryptedFile(keyHex) === 0) {
+  const copied = readEncryptedTableCount(keyHex);
+
+  if (isLeft(copied)) {
+    failWithCause('The encrypted copy could not be read back', bifold(copied));
+  }
+
+  if (bifoldr(copied) === 0) {
     throw new Error('The encrypted copy holds no tables; the plaintext database was kept');
   }
 };
@@ -196,12 +213,14 @@ const buildEncryptedDatabase = async (storedKey: string | undefined): Promise<st
     return keyHex;
   }
 
-  // With no stored key, an encrypted file is present here only when kiko.db is
-  // populated. kiko.db is deleted only after the key is stored, so a populated
-  // kiko.db with no key means the file beside it was never keyed for good: a
-  // partial or keyless target of an interrupted export, which kiko.db still fully
-  // backs. It would also make the export fail on duplicate tables, so start from
-  // a clean file.
+  // An encrypted file is present here only beside plaintext that still holds data.
+  // The plaintext is deleted only after the copy is verified (and, for a new key,
+  // stored), and the app opens the encrypted file only after that, so such a file
+  // never served the app: it is a partial, empty, or keyless target of an
+  // interrupted export, which the plaintext still fully backs. A stored key does
+  // not make it trustworthy either: a kill after ATTACH leaves an empty file that
+  // key opens. It would also make the export fail on duplicate tables, so start
+  // from a clean file.
   openExisting(ENCRYPTED_DATABASE_NAME)?.delete();
   await exportPlaintextInto(plaintext, encryptedPathBeside(plaintext), toSQLCipherRawKey(keyHex));
   assertExportHoldsTables(keyHex);
@@ -220,7 +239,7 @@ const buildEncryptedDatabase = async (storedKey: string | undefined): Promise<st
  * key.
  */
 const establishKey = async (): Promise<string> => {
-  if ((await encryptedDatabaseExists()) && !liveDatabaseHasUserTables()) {
+  if ((await encryptedDatabaseExists()) && !databaseHasUserTables(LIVE_PLAINTEXT_DATABASE_NAME)) {
     throw new DatabaseKeyMissingError();
   }
 
@@ -234,7 +253,7 @@ const resolveDbKey = async (): Promise<string> => {
     return establishKey();
   }
 
-  if (!(await encryptedDatabaseExists())) {
+  if (!(await encryptedDatabaseExists()) || plaintextHasUserTables()) {
     return buildEncryptedDatabase(existingKey);
   }
 

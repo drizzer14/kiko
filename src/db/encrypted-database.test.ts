@@ -314,15 +314,17 @@ describe('openEncryptedDatabase', () => {
         expect(mockFiles.has(LEGACY_PLAINTEXT_DATABASE_NAME)).toBe(true);
       });
 
-      it('keeps the plaintext when the existing key does not open the exported file', async () => {
+      it('keeps the plaintext when the exported file cannot be read back, naming the export', async () => {
         handleFor(ENCRYPTED_DATABASE_NAME).executeSync.mockImplementation(() => {
           throw new Error('file is not a database');
         });
 
-        await expect(openEncryptedDatabase()).rejects.toThrow(
-          'does not open the encrypted database',
-        );
+        const failure = await openEncryptedDatabase().catch((caught: unknown) => caught);
 
+        expect((failure as Error).message).toBe(
+          'The encrypted copy could not be read back: file is not a database',
+        );
+        expect((failure as Error).cause).toEqual(new Error('file is not a database'));
         expect(plaintext.delete).not.toHaveBeenCalled();
         expect(mockFiles.has(LIVE_PLAINTEXT_DATABASE_NAME)).toBe(true);
       });
@@ -351,6 +353,90 @@ describe('openEncryptedDatabase', () => {
         expect(mockFiles.has(LIVE_PLAINTEXT_DATABASE_NAME)).toBe(false);
         expect(mockFiles.has(LEGACY_PLAINTEXT_DATABASE_NAME)).toBe(false);
       });
+    });
+  });
+
+  describe('key and encrypted file present, but plaintext still holds data', () => {
+    // A kill after ATTACH leaves a 0-byte keyed file that the key opens with 0 tables. The app
+    // never opens the encrypted file before the plaintext is deleted, so it never served it.
+    const modelKilledExport = (plaintext: FakeDb): void => {
+      mockReadDbKey.mockResolvedValue(HEX_KEY);
+      mockMigrateLegacyDatabase.mockImplementation(() => plaintext);
+      mockFiles.add(ENCRYPTED_DATABASE_NAME);
+      exportCreatesEncryptedFile(plaintext);
+    };
+
+    it('rebuilds the file from a populated kiko.db and deletes the plaintext only after verifying it', async () => {
+      const plaintext = handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 5);
+      mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
+      mockFiles.add(LEGACY_PLAINTEXT_DATABASE_NAME);
+      modelKilledExport(plaintext);
+
+      const db = await openEncryptedDatabase();
+
+      const encrypted = handleFor(ENCRYPTED_DATABASE_NAME);
+      expect(encrypted.delete).toHaveBeenCalledTimes(1);
+      expect(orderOf(encrypted.delete)).toBeLessThan(orderOf(plaintext.execute));
+      expect(plaintext.execute.mock.calls[0]).toEqual([
+        'ATTACH DATABASE ? AS encrypted KEY ?',
+        [ENCRYPTED_PATH, RAW_KEY],
+      ]);
+      expect(orderOf(encrypted.executeSync)).toBeLessThan(orderOf(plaintext.delete));
+      expect(mockFiles.has(ENCRYPTED_DATABASE_NAME)).toBe(true);
+      expect(mockFiles.has(LIVE_PLAINTEXT_DATABASE_NAME)).toBe(false);
+      expect(mockFiles.has(LEGACY_PLAINTEXT_DATABASE_NAME)).toBe(false);
+      expect(db).toBe(encrypted);
+      expect(mockStoreDbKey).not.toHaveBeenCalled();
+    });
+
+    it('rebuilds from a populated pff.db when kiko.db is empty', async () => {
+      const plaintext = handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 3);
+      handleFor(LEGACY_PLAINTEXT_DATABASE_NAME, 3);
+      mockFiles.add(LEGACY_PLAINTEXT_DATABASE_NAME);
+      modelKilledExport(plaintext);
+      mockMigrateLegacyDatabase.mockImplementation(() => {
+        mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
+
+        return plaintext;
+      });
+
+      await openEncryptedDatabase();
+
+      expect(plaintext.execute).toHaveBeenCalledTimes(3);
+      expect(orderOf(handleFor(ENCRYPTED_DATABASE_NAME).executeSync)).toBeLessThan(
+        orderOf(plaintext.delete),
+      );
+      expect(mockFiles.has(LIVE_PLAINTEXT_DATABASE_NAME)).toBe(false);
+      expect(mockFiles.has(LEGACY_PLAINTEXT_DATABASE_NAME)).toBe(false);
+    });
+
+    it('keeps the plaintext when the rebuilt export fails, so the next launch can redo it', async () => {
+      const plaintext = handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 5);
+      mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
+      modelKilledExport(plaintext);
+      plaintext.execute.mockImplementation(async (sql: string) => {
+        if (sql.includes('sqlcipher_export')) {
+          throw new Error('disk full');
+        }
+
+        return { rows: [], rowsAffected: 0 };
+      });
+
+      await expect(openEncryptedDatabase()).rejects.toThrow('disk full');
+
+      expect(plaintext.delete).not.toHaveBeenCalled();
+      expect(mockFiles.has(LIVE_PLAINTEXT_DATABASE_NAME)).toBe(true);
+    });
+
+    it('keeps trusting an encrypted file with no tables when no plaintext holds data', async () => {
+      mockReadDbKey.mockResolvedValue(HEX_KEY);
+      mockFiles.add(ENCRYPTED_DATABASE_NAME);
+      handleFor(ENCRYPTED_DATABASE_NAME, 0);
+
+      await openEncryptedDatabase();
+
+      expect(mockMigrateLegacyDatabase).not.toHaveBeenCalled();
+      expect(handleFor(ENCRYPTED_DATABASE_NAME).delete).not.toHaveBeenCalled();
     });
   });
 
