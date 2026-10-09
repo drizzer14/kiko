@@ -862,7 +862,8 @@ have their own, older, pre-existing chunking — don't assume they use
   unused: no reader and no writer. Migration 0055 already shipped and migrations are
   additive-only, so the column stays instead of a new migration dropping it. A backup still
   carries and restores it (`TAKEN_FROM_FILE_ON_RESTORE` in `src/db/settings-columns.test.ts`,
-  `restore-dismissed-tips.test.ts`), and `DOCUMENTED_READERLESS_COLUMNS` lists it. A new reader
+  `src/data-transfer/snapshot/restore-dismissed-tips.test.ts`), and
+  `DOCUMENTED_READERLESS_COLUMNS` lists it. A new reader
   of it needs the user's approval first.
 - Any condition or empty state that depends on a query must include that query's loading
   state, the same as the `useDataReady` rule above; otherwise it flashes while the query loads.
