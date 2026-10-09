@@ -10,7 +10,7 @@ import {
   StackRouter,
   type StackRouterOptions,
 } from '@react-navigation/native';
-import { match } from 'ts-pattern';
+import { match, P } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 
 import {
@@ -61,7 +61,12 @@ export type PaneStackState = Omit<StackState, 'routes'> & {
   panes: PaneMap;
 };
 
-export type PaneRouterOptions = StackRouterOptions & { paneConfig: PaneConfig };
+export type PaneRouterOptions = StackRouterOptions & {
+  paneConfig: PaneConfig;
+  // Whether the navigator shows two panes right now. With one, a covered route sends no action
+  // the user can reach, so the stack router's rules stay as they are.
+  isSplit: () => boolean;
+};
 
 export type PaneRouterAction = PaneActionType | CommonNavigationAction | StackActionType;
 
@@ -78,6 +83,7 @@ const hasSamePanes = (left: PaneMap, right: PaneMap): boolean =>
  */
 export const PaneRouter = ({
   paneConfig,
+  isSplit,
   ...stackOptions
 }: PaneRouterOptions): Router<PaneStackState, PaneRouterAction> => {
   const stack = StackRouter(stackOptions);
@@ -199,7 +205,7 @@ export const PaneRouter = ({
       : { ...settled, panes: { ...settled.panes, [settled.routes[replaced].key]: pane } };
   };
 
-  const delegate = (
+  const standard = (
     state: PaneStackState,
     action: CommonNavigationAction | StackActionType,
     config: RouterConfigOptions,
@@ -209,6 +215,53 @@ export const PaneRouter = ({
     return action.type === 'REPLACE' && settled !== null && settled !== state
       ? carryReplacedPane(settled, state)
       : settled;
+  };
+
+  // The route an action comes from when that route is on screen beside the focused one. The stack
+  // router takes the focused route to be the caller, which is only true of the route on top.
+  const bystanderOf = (
+    state: PaneStackState,
+    action: CommonNavigationAction | StackActionType,
+  ): string | undefined => {
+    const { source } = action;
+
+    if (!isSplit() || source === undefined || source === state.routes[state.index]?.key) {
+      return undefined;
+    }
+
+    return state.routes.some((route) => route.key === source) ? source : undefined;
+  };
+
+  const fromBystander = (
+    state: PaneStackState,
+    source: string,
+    action: CommonNavigationAction | StackActionType,
+    config: RouterConfigOptions,
+  ): PaneStackState | null =>
+    match(action)
+      .with({ type: P.union('NAVIGATE', 'PUSH') }, ({ payload }) =>
+        open(state, { openerKey: source, route: payload }, config),
+      )
+      .with({ type: P.union('GO_BACK', 'POP', 'POP_TO', 'REPLACE') }, () =>
+        // A route in the middle closing must not move the panes of the routes above it.
+        standard(
+          { ...state, panes: unfoldAssignment(state.routes, state.panes, paneConfig) },
+          { ...action, target: state.key },
+          config,
+        ),
+      )
+      .otherwise(() => standard(state, action, config));
+
+  const delegate = (
+    state: PaneStackState,
+    action: CommonNavigationAction | StackActionType,
+    config: RouterConfigOptions,
+  ): PaneStackState | null => {
+    const source = bystanderOf(state, action);
+
+    return source === undefined
+      ? standard(state, action, config)
+      : fromBystander(state, source, action, config);
   };
 
   return {

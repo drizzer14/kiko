@@ -1,16 +1,33 @@
 import { CommonActions, StackActions } from '@react-navigation/native';
 
+import { routesOfPane } from '../pane-assignment';
+
 import { PaneActions, PaneRouter, type PaneRouterAction, type PaneStackState } from '.';
 
-const ROUTE_NAMES = ['Accounts', 'AccountDetail', 'HoldingForm', 'Statement'];
+const ROUTE_NAMES = [
+  'Accounts',
+  'AccountDetail',
+  'HoldingForm',
+  'Statement',
+  'Home',
+  'TransactionForm',
+  'Settings',
+  'System',
+  'Reminders',
+  'ReminderForm',
+];
 const CONFIG = { routeNames: ROUTE_NAMES, routeParamList: {}, routeGetIdList: {} };
 
-const router = PaneRouter({ paneConfig: { rootPane: 'companion' } });
+const SPLIT = () => true;
+const SINGLE = () => false;
+
+const router = PaneRouter({ paneConfig: { rootPane: 'companion' }, isSplit: SPLIT });
 const homeRouter = PaneRouter({
   paneConfig: {
     rootPane: 'primary',
     companionDefault: { name: 'Statement', isDefault: true },
   },
+  isSplit: SPLIT,
 });
 
 const initial = (): PaneStackState => router.getInitialState(CONFIG);
@@ -255,6 +272,223 @@ describe('PaneRouter', () => {
 
     it('does not handle an action the stack router does not handle', () => {
       expect(router.getStateForAction(initial(), CommonActions.goBack(), CONFIG)).toBeNull();
+    });
+  });
+
+  describe('an action from a route under the focused one', () => {
+    const settingsConfig = {
+      rootPane: 'companion',
+      primaryDefault: { name: 'Statement', isDefault: true },
+    } as const;
+    const settingsRouter = PaneRouter({
+      paneConfig: settingsConfig,
+      initialRouteName: 'Settings',
+      isSplit: SPLIT,
+    });
+    const homeOnlyRouter = PaneRouter({
+      paneConfig: { rootPane: 'primary', companionDefault: { name: 'Statement', isDefault: true } },
+      initialRouteName: 'Home',
+      isSplit: SPLIT,
+    });
+    const runSettings = runWith(settingsRouter);
+    const runHomeOnly = runWith(homeOnlyRouter);
+
+    const from = <Action extends PaneRouterAction>(source: string, action: Action): Action => ({
+      ...action,
+      source,
+    });
+    const paneNames = (
+      state: PaneStackState,
+      pane: 'companion' | 'primary',
+      rootPane: 'companion' | 'primary' = 'companion',
+    ) => routesOfPane(state.routes, state.panes, { rootPane }, pane).map((route) => route.name);
+
+    // [Accounts, AccountDetail, HoldingForm, ReminderForm] with the form pushed by the form that
+    // is focused: no pane is stored for the last two.
+    const accountsWithTwoForms = (): PaneStackState => {
+      const list = initial();
+      const detail = run(
+        list,
+        from(
+          list.routes[0].key,
+          PaneActions.open(list.routes[0].key, 'AccountDetail', { accountId: 'a' }),
+        ),
+      );
+      const holding = run(
+        detail,
+        from(keyOf(detail, 'AccountDetail'), StackActions.push('HoldingForm')),
+      );
+
+      return run(holding, from(keyOf(holding, 'HoldingForm'), StackActions.push('ReminderForm')));
+    };
+
+    it('opens the route beside the caller instead of changing the params of the focused route', () => {
+      const root = homeOnlyRouter.getInitialState(CONFIG);
+      const rowA = runHomeOnly(
+        root,
+        from(root.routes[0].key, CommonActions.navigate('TransactionForm', { transactionId: 'a' })),
+      );
+      const rowB = runHomeOnly(
+        rowA,
+        from(root.routes[0].key, CommonActions.navigate('TransactionForm', { transactionId: 'b' })),
+      );
+
+      expect(names(rowB)).toEqual(['Home', 'TransactionForm']);
+      expect(rowB.routes[1].params).toEqual({ transactionId: 'b' });
+      expect(rowB.routes[1].key).not.toBe(rowA.routes[1].key);
+      expect(rowB.index).toBe(1);
+      expect(paneNames(rowB, 'companion', 'primary')).toEqual(['TransactionForm']);
+      expect(paneNames(rowB, 'primary', 'primary')).toEqual(['Home']);
+    });
+
+    it('opens a second reminder in place of the first, beside the list', () => {
+      const menu = settingsRouter.getInitialState(CONFIG);
+      const reminders = runSettings(menu, from(menu.routes[0].key, StackActions.push('Reminders')));
+      const first = runSettings(
+        reminders,
+        from(keyOf(reminders, 'Reminders'), StackActions.push('ReminderForm', { id: '1' })),
+      );
+      const second = runSettings(
+        first,
+        from(keyOf(first, 'Reminders'), StackActions.push('ReminderForm', { id: '2' })),
+      );
+
+      expect(names(second)).toEqual(['Settings', 'Reminders', 'ReminderForm']);
+      expect(second.routes[2].params).toEqual({ id: '2' });
+      expect(second.routes[2].key).not.toBe(first.routes[2].key);
+      expect(paneNames(second, 'companion')).toEqual(['Settings', 'ReminderForm']);
+      expect(paneNames(second, 'primary')).toEqual(['Reminders']);
+    });
+
+    it('opens what the Settings menu taps in the pane of the screen it replaces', () => {
+      const menu = settingsRouter.getInitialState(CONFIG);
+      const system = runSettings(menu, from(menu.routes[0].key, StackActions.push('System')));
+      const reminders = runSettings(
+        system,
+        from(menu.routes[0].key, CommonActions.navigate('Reminders')),
+      );
+
+      expect(names(reminders)).toEqual(['Settings', 'Reminders']);
+      expect(paneNames(reminders, 'primary')).toEqual(['Reminders']);
+      expect(paneNames(reminders, 'companion')).toEqual(['Settings']);
+      expect(reminders.index).toBe(1);
+    });
+
+    it('is not handled when the route to open is not one of the navigator’s', () => {
+      const state = accountsWithTwoForms();
+
+      expect(
+        router.getStateForAction(
+          state,
+          from(state.routes[0].key, CommonActions.navigate('Nowhere')),
+          CONFIG,
+        ),
+      ).toBeNull();
+    });
+
+    it('pops the caller, not the top route, on go back', () => {
+      const state = accountsWithTwoForms();
+      const back = run(state, from(keyOf(state, 'HoldingForm'), CommonActions.goBack()));
+
+      expect(names(back)).toEqual(['Accounts', 'AccountDetail', 'ReminderForm']);
+      expect(back.index).toBe(2);
+    });
+
+    it('keeps the pane of every route that stays when a route in the middle closes', () => {
+      const state = accountsWithTwoForms();
+      const back = run(state, from(keyOf(state, 'HoldingForm'), CommonActions.goBack()));
+
+      expect(paneNames(state, 'primary')).toEqual(['AccountDetail', 'ReminderForm']);
+      expect(paneNames(back, 'primary')).toEqual(['AccountDetail', 'ReminderForm']);
+      expect(paneNames(back, 'companion')).toEqual(['Accounts']);
+    });
+
+    it('pops the caller on pop', () => {
+      const state = accountsWithTwoForms();
+      const popped = run(state, from(keyOf(state, 'HoldingForm'), StackActions.pop()));
+
+      expect(names(popped)).toEqual(['Accounts', 'AccountDetail', 'ReminderForm']);
+    });
+
+    it('pops to a route below the caller on pop to', () => {
+      const state = accountsWithTwoForms();
+      const popped = run(state, from(keyOf(state, 'HoldingForm'), StackActions.popTo('Accounts')));
+
+      expect(names(popped)).toEqual(['Accounts']);
+    });
+
+    it('replaces the caller, in its own pane, not the top route', () => {
+      const state = accountsWithTwoForms();
+      const replaced = run(
+        state,
+        from(keyOf(state, 'HoldingForm'), StackActions.replace('Statement')),
+      );
+
+      expect(names(replaced)).toEqual(['Accounts', 'AccountDetail', 'Statement', 'ReminderForm']);
+      expect(paneNames(replaced, 'companion')).toEqual(['Accounts', 'Statement']);
+      expect(paneNames(replaced, 'primary')).toEqual(['AccountDetail', 'ReminderForm']);
+    });
+
+    it('leaves pop to top to the stack router, which closes everything above the root', () => {
+      const state = accountsWithTwoForms();
+      const popped = run(state, from(keyOf(state, 'HoldingForm'), StackActions.popToTop()));
+
+      expect(names(popped)).toEqual(['Accounts']);
+    });
+
+    it('does not handle a go back from the root route', () => {
+      const state = accountsWithTwoForms();
+
+      expect(
+        router.getStateForAction(state, from(state.routes[0].key, CommonActions.goBack()), CONFIG),
+      ).toBeNull();
+    });
+
+    it('leaves an action from the focused route to the stack router', () => {
+      const state = accountsWithTwoForms();
+      const back = run(state, from(keyOf(state, 'ReminderForm'), CommonActions.goBack()));
+      const pushed = run(state, from(keyOf(state, 'ReminderForm'), StackActions.push('Statement')));
+
+      expect(names(back)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
+      expect(names(pushed)).toEqual([
+        'Accounts',
+        'AccountDetail',
+        'HoldingForm',
+        'ReminderForm',
+        'Statement',
+      ]);
+    });
+
+    it('leaves an action with no source to the stack router', () => {
+      const state = accountsWithTwoForms();
+      const back = run(state, CommonActions.goBack());
+
+      expect(names(back)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
+    });
+
+    it('leaves an action from a route the stack does not have to the stack router', () => {
+      const state = accountsWithTwoForms();
+      const back = run(state, from('a-route-of-a-child-navigator', CommonActions.goBack()));
+
+      expect(names(back)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
+    });
+
+    it('leaves every action to the stack router while the navigator shows one pane', () => {
+      const single = PaneRouter({ paneConfig: { rootPane: 'companion' }, isSplit: SINGLE });
+      const state = single.getInitialState(CONFIG);
+      const pushed = runWith(single)(state, StackActions.push('AccountDetail', { id: 'a' }));
+      const navigated = runWith(single)(
+        pushed,
+        from(pushed.routes[0].key, CommonActions.navigate('AccountDetail', { id: 'b' })),
+      );
+      const back = runWith(single)(
+        runWith(single)(navigated, StackActions.push('HoldingForm')),
+        from(navigated.routes[1].key, CommonActions.goBack()),
+      );
+
+      expect(navigated.routes[1].key).toBe(pushed.routes[1].key);
+      expect(navigated.routes[1].params).toEqual({ id: 'b' });
+      expect(names(back)).toEqual(['Accounts', 'AccountDetail']);
     });
   });
 

@@ -2,7 +2,9 @@ import { useEffect } from 'react';
 import {
   createNavigationContainerRef,
   NavigationContainer,
+  type NavigationProp,
   type ParamListBase,
+  useNavigation,
   useRoute,
 } from '@react-navigation/native';
 import { Pressable, Text, View } from 'react-native';
@@ -69,6 +71,7 @@ const StubScreen = () => {
   const route = useRoute();
   const isVisible = useIsScreenVisible();
   const openInPane = useOpenInPane();
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const { opens } = (route.params ?? {}) as StubParams;
 
   useEffect(() => {
@@ -82,6 +85,9 @@ const StubScreen = () => {
       {opens !== undefined && (
         <Pressable testID={`open-${route.name}`} onPress={() => openInPane(opens)} />
       )}
+
+      <Pressable testID={`navigate-${route.name}`} onPress={() => navigation.navigate('Form')} />
+      <Pressable testID={`go-back-${route.name}`} onPress={() => navigation.goBack()} />
     </View>
   );
 };
@@ -191,6 +197,25 @@ describe('createPaneStackNavigator', () => {
       await press('open-Accounts');
 
       expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+    });
+
+    it('opens what a plain navigate from the screen beside the focused one asks for in the pane opposite it', async () => {
+      await renderApp();
+
+      await press('open-Accounts');
+      await press('navigate-Accounts');
+
+      expect(stackRouteNames()).toEqual(['Accounts', 'Form']);
+    });
+
+    it('goes back from the screen that asks, not from the focused one', async () => {
+      await renderApp();
+
+      await press('open-Accounts');
+      await press('open-Detail');
+      await press('go-back-Detail');
+
+      expect(stackRouteNames()).toEqual(['Accounts', 'Form']);
     });
   });
 

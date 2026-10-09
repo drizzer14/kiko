@@ -17,7 +17,7 @@ import type {
   NativeStackNavigationProp,
   NativeStackNavigatorProps,
 } from '@react-navigation/native-stack';
-import { useContext, useEffect } from 'react';
+import { useContext, useEffect, useRef } from 'react';
 
 import PaneStackView from '../pane-stack-view';
 import { usePaneFold } from '../use-pane-fold';
@@ -42,6 +42,10 @@ function PaneStackNavigator({
   paneConfig,
   ...rest
 }: PaneStackNavigatorProps) {
+  const mode = useSettledLayoutMode();
+  const isSplit = mode !== 'single';
+  // The router is built once, so it asks the latest settled mode when an action arrives.
+  const isSplitRef = useRef(isSplit);
   const { state, describe, descriptors, navigation, NavigationContent } = useNavigationBuilder<
     PaneStackState,
     PaneRouterOptions,
@@ -58,11 +62,15 @@ function PaneStackNavigator({
     screenOptions,
     screenLayout,
     paneConfig,
+    isSplit: () => isSplitRef.current,
   });
   const meta = useContext(NavigationMetaContext);
-  const mode = useSettledLayoutMode();
 
-  usePaneFold(navigation.dispatch, mode !== 'single');
+  useEffect(() => {
+    isSplitRef.current = isSplit;
+  }, [isSplit]);
+
+  usePaneFold(navigation.dispatch, isSplit);
 
   // Re-tapping the focused tab pops the stack to its root, as a native stack does.
   useEffect(() => {
