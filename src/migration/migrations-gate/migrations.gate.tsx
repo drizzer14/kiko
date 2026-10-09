@@ -1,4 +1,4 @@
-import { match, P } from 'ts-pattern';
+import { match } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
@@ -167,17 +167,12 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   }, []);
 
   return match(state)
-    .with({ status: 'error', error: P.instanceOf(DatabaseKeyMissingError) }, () => (
-      <Box testID="migrations-gate-error" style={styles.fill}>
-        <Text variant="body" tone="textSecondary">
-          {t('migrations.keyMissing')}
-        </Text>
-      </Box>
-    ))
     .with({ status: 'error' }, (errorState) => (
       <Box testID="migrations-gate-error" style={styles.fill}>
         <Text variant="body" tone="textSecondary">
-          {t('migrations.error', { message: errorState.error.message })}
+          {errorState.error instanceof DatabaseKeyMissingError
+            ? t('migrations.keyMissing')
+            : t('migrations.error', { message: errorState.error.message })}
         </Text>
       </Box>
     ))
