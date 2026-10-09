@@ -876,16 +876,7 @@ export const en = {
       title: 'Start by creating an account',
     },
   },
-  // One-time tips (`TipCard`, `src/tips/`): the close label is shared, each tip has its own
-  // message.
-  tips: {
-    applyToAll:
-      'Change the category and save: you can apply it to every transaction with the same name, now and in future imports.',
-    categories: 'Create your own categories and choose their icon and color.',
-    close: 'Close tip',
-    importStatement: 'Export a statement from your bank’s app as CSV or XLSX, then import it here.',
-  },
-  // The Help & Tips page (`src/help/`). Each topic has a nav title (Title Case) and a list-row
+  // The Help page (`src/help/`). Each topic has a nav title (Title Case) and a list-row
   // label (sentence case) as two keys, and numbered steps that each end with ".". The step keys
   // are quoted because i18next's typed keys skip a numeric property name.
   help: {
@@ -893,10 +884,8 @@ export const en = {
       openCategories: 'Open categories',
     },
     privacy: 'All your data stays on this device.',
-    rowLabel: 'Help & Tips',
-    showTipsAgain: 'Show tips again',
-    tipsResetConfirmation: 'Tips will be shown again.',
-    title: 'Help & Tips',
+    rowLabel: 'Help',
+    title: 'Help',
     topics: {
       addAccount: {
         rowLabel: 'Add an account',

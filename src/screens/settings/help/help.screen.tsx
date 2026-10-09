@@ -1,21 +1,15 @@
 import { HELP_TOPICS } from '@kiko/help';
+import { type FC, Fragment } from 'react';
 import SettingsRow, {
   chevronSize,
   chevronTrailingWhitespace,
 } from '@kiko/screens/settings/settings-row';
-import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
-import { AccessibilityInfo } from 'react-native';
-import { logOnFailure } from '@kiko/diagnostics';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import Card from '@kiko/design-system/components/card';
-import { useFocusEffect } from '@react-navigation/native';
 import Screen from '@kiko/design-system/components/screen';
-import Button from '@kiko/design-system/components/button';
 import Divider from '@kiko/design-system/components/divider';
-import TipCard from '@kiko/design-system/components/tip-card';
-import { type FC, Fragment, useCallback, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -31,11 +25,6 @@ const styles = StyleSheet.create(() => ({
 const HelpScreen: FC<HelpScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const [resetConfirmed, setResetConfirmed] = useState(false);
-
-  // The confirmation answers a press on this screen, so it is gone once the user leaves it (a
-  // topic page keeps this screen mounted underneath).
-  useFocusEffect(useCallback(() => () => setResetConfirmed(false), []));
 
   // The same row padding and trailing divider inset as the Settings data-transfer card (see
   // `settings.screen.tsx`). These rows have no leading icon, so the divider starts at the row's
@@ -47,18 +36,6 @@ const HelpScreen: FC<HelpScreenProps> = ({ navigation }) => {
   const dividerStyle = {
     marginLeft: theme.spacing(3),
     marginRight: theme.spacing(3) + chevronTrailingWhitespace(chevronSize(theme), theme),
-  };
-
-  const handleShowTipsAgain = async (): Promise<void> => {
-    const reset = await logOnFailure('[help] tips reset failed', () => settingsRepo.resetTips());
-
-    // The reset can resolve after the user opened a topic page; the focus cleanup above has run
-    // by then and would not run again, so the tip would be waiting on return.
-    if (reset && navigation.isFocused()) {
-      setResetConfirmed(true);
-      // A tip appearing above the pressed button is silent to VoiceOver without this.
-      AccessibilityInfo.announceForAccessibility(t('help.tipsResetConfirmation'));
-    }
   };
 
   return (
@@ -78,23 +55,6 @@ const HelpScreen: FC<HelpScreenProps> = ({ navigation }) => {
             </Fragment>
           ))}
         </Card>
-
-        {resetConfirmed && (
-          <TipCard
-            testID="help-tips-reset-tip"
-            message={t('help.tipsResetConfirmation')}
-            closeLabel={t('tips.close')}
-            onClose={() => setResetConfirmed(false)}
-          />
-        )}
-
-        <Button
-          testID="help-show-tips-again"
-          variant="secondaryTonal"
-          onPress={handleShowTipsAgain}
-        >
-          {t('help.showTipsAgain')}
-        </Button>
 
         <Text variant="caption" tone="textSecondary" style={styles.privacy}>
           {t('help.privacy')}

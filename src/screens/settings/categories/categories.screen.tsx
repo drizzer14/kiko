@@ -1,13 +1,11 @@
 import Sortable from 'react-native-sortables';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
-import { logOnFailure } from '@kiko/diagnostics';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
-import { useFocusEffect } from '@react-navigation/native';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { type FC, useCallback, useRef, useState } from 'react';
@@ -386,14 +384,6 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
   // in, and the form's Save/Cancel are the only ways out (both call
   // `collapseAddCategoryForm` below).
   const [addCategoryExpanded, setAddCategoryExpanded] = useState(false);
-  // Opening Categories answers the Settings tip that points here, so it never returns. A failed
-  // write only means the tip shows once more, so it is logged, not alerted.
-  useFocusEffect(
-    useCallback(() => {
-      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
-      logOnFailure('[tips] dismiss failed', () => settingsRepo.dismissTip('settings.categories'));
-    }, []),
-  );
   const {
     data: categories,
     isLoading: categoriesLoading,

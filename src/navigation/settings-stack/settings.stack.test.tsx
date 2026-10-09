@@ -83,7 +83,7 @@ describe('SettingsStack', () => {
   });
 
   it('registers the Help page with its title', () => {
-    expect(titleByScreen().Help).toBe('Help & Tips');
+    expect(titleByScreen().Help).toBe('Help');
   });
 
   it('titles each Help topic page with its own topic title', () => {

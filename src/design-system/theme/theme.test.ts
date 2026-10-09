@@ -31,7 +31,11 @@ describe('darkTheme iOS dark palette', () => {
   it('pins the native chip/segment selection tokens', () => {
     expect(darkTheme.colors.segmentSelected).toBe('#747478');
     expect(darkTheme.colors.neutralSubtle).toBe('rgba(118,118,128,0.24)');
-    expect(darkTheme.colors.accentSubtle).toBe('rgba(10,132,255,0.14)');
+  });
+
+  // Only the removed tip callout used the tinted accent fill.
+  it('has no accentSubtle token', () => {
+    expect(darkTheme.colors).not.toHaveProperty('accentSubtle');
   });
 });
 
