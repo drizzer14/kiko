@@ -66,8 +66,12 @@ const encryptedDatabaseExists = async (): Promise<boolean> => {
   return existing !== undefined;
 };
 
-/** Whether the named file is on disk with user tables. Unreadable counts as no. */
-const databaseHasUserTables = (name: string): boolean => {
+/**
+ * Whether the named file is on disk with user tables. `whenUnreadable` is the answer for a file
+ * whose table count cannot be read: the refusing guard wants no, so it refuses; the keyed path
+ * wants yes, so an unreadable kiko.db is never deleted as if it were empty.
+ */
+const databaseHasUserTables = (name: string, whenUnreadable: boolean): boolean => {
   const existing = openExisting(name);
 
   if (existing === undefined) {
@@ -77,13 +81,14 @@ const databaseHasUserTables = (name: string): boolean => {
   const counted = eitherSync<unknown, number>(() => userTableCount(existing));
   existing.close();
 
-  return (bifoldr(counted) ?? 0) > 0;
-};
+  if (isLeft(counted)) {
+    return whenUnreadable;
+  }
 
-/** Whether kiko.db or the pre-rename pff.db still holds user data. */
-const plaintextHasUserTables = (): boolean =>
-  databaseHasUserTables(LIVE_PLAINTEXT_DATABASE_NAME) ||
-  databaseHasUserTables(LEGACY_PLAINTEXT_DATABASE_NAME);
+  const tables: number = bifold(counted);
+
+  return tables > 0;
+};
 
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
@@ -133,10 +138,21 @@ const deletePlaintextFile = (name: string): void => {
   openExisting(name)?.delete();
 };
 
-/** Removes every plaintext residue. The encrypted DB is the only source of truth. */
-const removeLeftoverPlaintext = (): void => {
-  deletePlaintextFile(LIVE_PLAINTEXT_DATABASE_NAME);
-  deletePlaintextFile(LEGACY_PLAINTEXT_DATABASE_NAME);
+/**
+ * Removes every plaintext residue. The encrypted DB is the only source of truth. pff.db goes
+ * first: it is the older copy, so a kill between the two deletes leaves the newer kiko.db, which a
+ * later launch can still rebuild from. op-sqlite's remove ignores failures, and a surviving
+ * kiko.db would make that rebuild delete an encrypted database already in use, so a file still on
+ * disk stops the launch before the encrypted database is opened.
+ */
+const removeLeftoverPlaintext = async (): Promise<void> => {
+  for (const name of [LEGACY_PLAINTEXT_DATABASE_NAME, LIVE_PLAINTEXT_DATABASE_NAME]) {
+    deletePlaintextFile(name);
+
+    if (await RNFS.exists(`${IOS_LIBRARY_PATH}/${name}`)) {
+      throw new Error(`The plaintext database ${name} could not be removed`);
+    }
+  }
 };
 
 const assertSQLCipherBuild = (): void => {
@@ -208,16 +224,16 @@ const buildEncryptedDatabase = async (storedKey: string | undefined): Promise<st
   if (userTableCount(plaintext) === 0) {
     plaintext.close();
     await persistNewKey(keyHex, storedKey);
-    removeLeftoverPlaintext();
+    await removeLeftoverPlaintext();
 
     return keyHex;
   }
 
-  // An encrypted file is present here only beside plaintext that still holds data.
-  // The plaintext is deleted only after the copy is verified (and, for a new key,
-  // stored), and the app opens the encrypted file only after that, so such a file
-  // never served the app: it is a partial, empty, or keyless target of an
-  // interrupted export, which the plaintext still fully backs. A stored key does
+  // An encrypted file is present here only beside a populated kiko.db. kiko.db is
+  // deleted only after the copy is verified (and, for a new key, stored), and the
+  // app opens the encrypted file only after that, so such a file never served the
+  // app: it is a partial, empty, or keyless target of an interrupted export, which
+  // kiko.db still fully backs. A stored key does
   // not make it trustworthy either: a kill after ATTACH leaves an empty file that
   // key opens. It would also make the export fail on duplicate tables, so start
   // from a clean file.
@@ -226,7 +242,7 @@ const buildEncryptedDatabase = async (storedKey: string | undefined): Promise<st
   assertExportHoldsTables(keyHex);
   await persistNewKey(keyHex, storedKey);
   plaintext.close();
-  removeLeftoverPlaintext();
+  await removeLeftoverPlaintext();
 
   return keyHex;
 };
@@ -239,7 +255,10 @@ const buildEncryptedDatabase = async (storedKey: string | undefined): Promise<st
  * key.
  */
 const establishKey = async (): Promise<string> => {
-  if ((await encryptedDatabaseExists()) && !databaseHasUserTables(LIVE_PLAINTEXT_DATABASE_NAME)) {
+  if (
+    (await encryptedDatabaseExists()) &&
+    !databaseHasUserTables(LIVE_PLAINTEXT_DATABASE_NAME, false)
+  ) {
     throw new DatabaseKeyMissingError();
   }
 
@@ -253,12 +272,18 @@ const resolveDbKey = async (): Promise<string> => {
     return establishKey();
   }
 
-  if (!(await encryptedDatabaseExists()) || plaintextHasUserTables()) {
+  // Only kiko.db shows the encrypted file is untrusted: the export's ATTACH runs once kiko.db is
+  // populated and kiko.db is deleted only after the copy is verified. A pff.db beside a present
+  // encrypted file is always the older residue of a kill between the two deletes.
+  if (
+    !(await encryptedDatabaseExists()) ||
+    databaseHasUserTables(LIVE_PLAINTEXT_DATABASE_NAME, true)
+  ) {
     return buildEncryptedDatabase(existingKey);
   }
 
   assertKeyOpensEncryptedFile(existingKey);
-  removeLeftoverPlaintext();
+  await removeLeftoverPlaintext();
 
   return existingKey;
 };

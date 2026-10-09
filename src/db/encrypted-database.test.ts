@@ -389,25 +389,83 @@ describe('openEncryptedDatabase', () => {
       expect(mockStoreDbKey).not.toHaveBeenCalled();
     });
 
-    it('rebuilds from a populated pff.db when kiko.db is empty', async () => {
-      const plaintext = handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 3);
-      handleFor(LEGACY_PLAINTEXT_DATABASE_NAME, 3);
+    it('only proves the key and deletes a populated pff.db beside a complete file, never rebuilding from it', async () => {
+      // pff.db is the OLDER safety net: a kill between the two plaintext deletes leaves it beside
+      // a verified, complete encrypted file, and re-exporting it would replace newer data.
+      const plaintext = handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 0);
+      const legacy = handleFor(LEGACY_PLAINTEXT_DATABASE_NAME, 3);
       mockFiles.add(LEGACY_PLAINTEXT_DATABASE_NAME);
       modelKilledExport(plaintext);
-      mockMigrateLegacyDatabase.mockImplementation(() => {
-        mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
 
-        return plaintext;
+      const db = await openEncryptedDatabase();
+
+      const encrypted = handleFor(ENCRYPTED_DATABASE_NAME);
+      expect(mockMigrateLegacyDatabase).not.toHaveBeenCalled();
+      expect(plaintext.execute).not.toHaveBeenCalled();
+      expect(encrypted.delete).not.toHaveBeenCalled();
+      expect(orderOf(encrypted.executeSync)).toBeLessThan(orderOf(legacy.delete));
+      expect(mockFiles.has(LEGACY_PLAINTEXT_DATABASE_NAME)).toBe(false);
+      expect(mockFiles.has(ENCRYPTED_DATABASE_NAME)).toBe(true);
+      expect(db).toBe(encrypted);
+    });
+
+    it('treats an unreadable kiko.db as holding data: the rebuild fails before anything is deleted', async () => {
+      const plaintext = handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 5);
+      mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
+      modelKilledExport(plaintext);
+      plaintext.executeSync.mockImplementation(() => {
+        throw new Error('database disk image is malformed');
       });
+
+      await expect(openEncryptedDatabase()).rejects.toThrow('database disk image is malformed');
+
+      expect(plaintext.delete).not.toHaveBeenCalled();
+      expect(handleFor(ENCRYPTED_DATABASE_NAME).delete).not.toHaveBeenCalled();
+      expect(mockFiles.has(LIVE_PLAINTEXT_DATABASE_NAME)).toBe(true);
+      expect(mockFiles.has(ENCRYPTED_DATABASE_NAME)).toBe(true);
+    });
+
+    it('refuses to open when kiko.db survives its delete', async () => {
+      // op-sqlite's remove ignores failures. A surviving populated kiko.db would make a later
+      // launch delete the encrypted database the app is by then using.
+      mockReadDbKey.mockResolvedValue(HEX_KEY);
+      mockFiles.add(ENCRYPTED_DATABASE_NAME);
+      mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
+      handleFor(LIVE_PLAINTEXT_DATABASE_NAME).delete.mockImplementation(() => undefined);
+
+      await expect(openEncryptedDatabase()).rejects.toThrow(
+        `The plaintext database ${LIVE_PLAINTEXT_DATABASE_NAME} could not be removed`,
+      );
+      expect(mockExists).toHaveBeenCalledWith(`${LIBRARY_DIR}/${LIVE_PLAINTEXT_DATABASE_NAME}`);
+      expect(mockOpen).not.toHaveBeenLastCalledWith({
+        name: ENCRYPTED_DATABASE_NAME,
+        encryptionKey: RAW_KEY,
+      });
+    });
+
+    it('refuses to open when pff.db survives its delete', async () => {
+      mockReadDbKey.mockResolvedValue(HEX_KEY);
+      mockFiles.add(ENCRYPTED_DATABASE_NAME);
+      mockFiles.add(LEGACY_PLAINTEXT_DATABASE_NAME);
+      handleFor(LEGACY_PLAINTEXT_DATABASE_NAME).delete.mockImplementation(() => undefined);
+
+      await expect(openEncryptedDatabase()).rejects.toThrow(
+        `The plaintext database ${LEGACY_PLAINTEXT_DATABASE_NAME} could not be removed`,
+      );
+      expect(mockExists).toHaveBeenCalledWith(`${LIBRARY_DIR}/${LEGACY_PLAINTEXT_DATABASE_NAME}`);
+    });
+
+    it('deletes pff.db before kiko.db, so a kill between them leaves the newer copy', async () => {
+      mockReadDbKey.mockResolvedValue(HEX_KEY);
+      mockFiles.add(ENCRYPTED_DATABASE_NAME);
+      mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
+      mockFiles.add(LEGACY_PLAINTEXT_DATABASE_NAME);
 
       await openEncryptedDatabase();
 
-      expect(plaintext.execute).toHaveBeenCalledTimes(3);
-      expect(orderOf(handleFor(ENCRYPTED_DATABASE_NAME).executeSync)).toBeLessThan(
-        orderOf(plaintext.delete),
+      expect(orderOf(handleFor(LEGACY_PLAINTEXT_DATABASE_NAME).delete)).toBeLessThan(
+        orderOf(handleFor(LIVE_PLAINTEXT_DATABASE_NAME).delete),
       );
-      expect(mockFiles.has(LIVE_PLAINTEXT_DATABASE_NAME)).toBe(false);
-      expect(mockFiles.has(LEGACY_PLAINTEXT_DATABASE_NAME)).toBe(false);
     });
 
     it('keeps the plaintext when the rebuilt export fails, so the next launch can redo it', async () => {

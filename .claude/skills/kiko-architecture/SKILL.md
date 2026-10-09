@@ -1560,23 +1560,32 @@ the kind of thing that can still change:
   file exists" is a `react-native-fs` path check on op-sqlite's base
   directory OR a keyless open, because a failed open cannot tell an
   absent file from an unopenable one. The only delete of an existing
-  encrypted file is in the populated-plaintext branch: the plaintext is
+  encrypted file is in the populated-`kiko.db` branch: `kiko.db` is
   removed only after the copy is verified (and a new key stored), and
-  the app opens the encrypted file only after that, so plaintext that
-  still holds data (`kiko.db` or `pff.db`) means the encrypted file
-  beside it never served the app. It is a partial, empty, or keyless
-  leftover of an interrupted export (a kill after `ATTACH` leaves an
-  empty file that even the stored key opens), never to be trusted, so
-  the build path deletes it and re-exports. That holds with or without
-  a stored key: `resolveDbKey` rebuilds whenever the encrypted file is
-  gone OR plaintext holds user tables
+  the app opens the encrypted file only after that, so a populated
+  `kiko.db` (and ONLY `kiko.db`) means the encrypted file beside it
+  never served the app. It is a partial, empty, or keyless leftover of
+  an interrupted export (a kill after `ATTACH` leaves an empty file
+  that even the stored key opens), never to be trusted, so the build
+  path deletes it and re-exports. That holds with or without a stored
+  key: `resolveDbKey` rebuilds whenever the encrypted file is gone OR
+  `kiko.db` holds user tables, an UNREADABLE `kiko.db` count counting
+  as "holds data" there (the rebuild then fails safely, before any
+  delete; the no-key guard counts it as "no data" and refuses)
   (`buildEncryptedDatabase(storedKey)`, the first-launch path under the
   EXISTING key, which is never stored again): `migrateLegacyDatabase()`,
   export, verify (the key opens the copy, it holds tables; its own
   error text names the export, not the stored key), then delete the
   plaintext. An empty plaintext yields a fresh encrypted database.
-  Only with a key present, the file on disk, and NO plaintext data does
-  the key just have to open that file (first read, opened with
+  `pff.db` never decides this: it is the OLDER safety net, so beside a
+  present encrypted file it is residue of a kill between the two
+  deletes, and rebuilding from it would replace newer data.
+  `removeLeftoverPlaintext` therefore deletes `pff.db` BEFORE `kiko.db`,
+  and throws if either file is still on disk afterwards (op-sqlite's
+  remove ignores failures, and a surviving populated `kiko.db` would
+  make a later launch delete an encrypted database already in use).
+  With a key present, the file on disk, and no populated `kiko.db`, the
+  key just has to open that file (first read, opened with
   `failOnCreate` so the proof can never create an empty keyed file)
   before the plaintext residue is scrubbed; a 0-table file is accepted
   there, because a fresh install killed before its migrations is
