@@ -9,25 +9,18 @@ type PaneName = 'companion' | 'primary';
 // shares with the window, and only a pane at the bottom edge sits above the tab bar.
 type PaneEdges = { top: boolean; right: boolean; bottom: boolean; left: boolean };
 
-type PaneContextValue = { pane: PaneName; mode: SplitMode; edges: PaneEdges };
-
-const edgesOf = (top: boolean, right: boolean, bottom: boolean, left: boolean): PaneEdges => ({
-  top,
-  right,
-  bottom,
-  left,
-});
+type PaneContextValue = { edges: PaneEdges };
 
 // The companion is left in columns and top in rows; the primary is right and bottom. Both panes
 // run the whole length of the other axis.
 const PANES: Record<SplitMode, Record<PaneName, PaneContextValue>> = {
   columns: {
-    companion: { mode: 'columns', pane: 'companion', edges: edgesOf(true, false, true, true) },
-    primary: { mode: 'columns', pane: 'primary', edges: edgesOf(true, true, true, false) },
+    companion: { edges: { top: true, right: false, bottom: true, left: true } },
+    primary: { edges: { top: true, right: true, bottom: true, left: false } },
   },
   rows: {
-    companion: { mode: 'rows', pane: 'companion', edges: edgesOf(true, true, false, true) },
-    primary: { mode: 'rows', pane: 'primary', edges: edgesOf(false, true, true, true) },
+    companion: { edges: { top: true, right: true, bottom: false, left: true } },
+    primary: { edges: { top: false, right: true, bottom: true, left: true } },
   },
 };
 

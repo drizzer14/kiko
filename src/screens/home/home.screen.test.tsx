@@ -34,7 +34,7 @@ import mockTextTone from '@kiko/test-support/mock-text-tone';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
-import { resolveBottomClearance } from '@kiko/design-system/components/screen';
+import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HomeScreen from './home.screen';
@@ -1851,13 +1851,38 @@ describe('HomeScreen', () => {
     // clearance on top of the bottom inset Screen's SafeAreaView already
     // reserves (see `home.screen.tsx`), which would leave 130pt of dead space
     // under the last row instead of the 96pt every other screen has.
-    expect(listPadding).toBe(
-      resolveBottomClearance(MOCK_TAB_BAR_HEIGHT, MOCK_BOTTOM_INSET, 'none', 844),
-    );
+    expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET);
 
     // Total dead space under the last row must match every other screen's 96:
     // the SafeAreaView's 34 inset + Screen's own 16 base padding + this 46.
     expect(MOCK_BOTTOM_INSET + 16 + listPadding).toBe(96);
+  });
+
+  describe('in one of two panes', () => {
+    const renderInPane = (mode: 'columns' | 'rows', pane: 'companion' | 'primary') =>
+      render(
+        <PaneContext.Provider value={paneContextOf(mode, pane)}>
+          <HomeScreen
+            navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+            route={asRouteProp<HomeProps['route']>('Home')}
+          />
+        </PaneContext.Provider>,
+      );
+
+    const listPaddingOf = (view: Awaited<ReturnType<typeof render>>): number =>
+      view.getByTestId('home-transactions').props.contentContainerStyle.paddingBottom;
+
+    it('gives the list no tab-bar clearance in a pane above the other one', async () => {
+      expect(listPaddingOf(await renderInPane('rows', 'companion'))).toBe(0);
+    });
+
+    it('clears the tab bar in the left pane too, since both panes of columns reach the bottom', async () => {
+      expect(listPaddingOf(await renderInPane('columns', 'companion'))).toBe(46);
+    });
+
+    it('clears the tab bar in the pane at the bottom of the window', async () => {
+      expect(listPaddingOf(await renderInPane('rows', 'primary'))).toBe(46);
+    });
   });
 
   it('runs a full sync when the transaction list is pulled to refresh', async () => {

@@ -27,6 +27,7 @@ import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingDetailScreen from './holding-detail.screen';
@@ -514,6 +515,27 @@ describe('HoldingDetailScreen', () => {
     );
     expect(listContentStyle.paddingHorizontal).toBe(16);
     expect(listContentStyle.paddingTop).toBe(16);
+  });
+
+  it('caps and centres the ledger content in a pane, and leaves the list the whole pane', async () => {
+    seed(cashHolding);
+
+    const { getByTestId } = await render(
+      <PaneContext.Provider value={paneContextOf('rows', 'primary')}>
+        <HoldingDetailScreen
+          navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+          route={route}
+        />
+      </PaneContext.Provider>,
+      { wrapper: GestureRootWrapper },
+    );
+    const list = getByTestId('ledger-list');
+    const content = StyleSheet.flatten(list.props.contentContainerStyle);
+
+    expect(content.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+    expect(content.alignSelf).toBe('center');
+    expect(content.paddingHorizontal).toBe(16);
+    expect(StyleSheet.flatten(list.props.style)?.maxWidth).toBeUndefined();
   });
 
   it('renders a view-only header with no inline name, icon, or color editors', async () => {

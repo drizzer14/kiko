@@ -529,17 +529,37 @@ describe('Screen', () => {
       ['bleedTop', { bleedTop: true }],
     ] as const;
 
-    it.each(BRANCHES)(
-      'caps and centres the %s branch at the pane max width',
-      async (_name, props) => {
-        const view = await renderInPane(props, 'columns', 'primary');
-        const root = StyleSheet.flatten(rootOf(view, props)?.props.style);
+    it('caps and centres the plain branch at the pane max width', async () => {
+      const view = await renderInPane({}, 'columns', 'primary');
+      const root = StyleSheet.flatten(rootOf(view, {})?.props.style);
 
-        expect(root.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
-        expect(root.width).toBe('100%');
-        expect(root.alignSelf).toBe('center');
-      },
-    );
+      expect(root.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      expect(root.width).toBe('100%');
+      expect(root.alignSelf).toBe('center');
+    });
+
+    it('caps and centres the content of the scroll branch, and leaves the scroll view the whole pane', async () => {
+      const view = await renderInPane({ scroll: true }, 'rows', 'primary');
+      const root = StyleSheet.flatten(rootOf(view, { scroll: true })?.props.style);
+      const content = StyleSheet.flatten(
+        view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+      );
+
+      expect(root.maxWidth).toBeUndefined();
+      expect(root.alignSelf).toBeUndefined();
+      expect(content.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      expect(content.width).toBe('100%');
+      expect(content.alignSelf).toBe('center');
+      expect(content.padding).toBe(16);
+    });
+
+    it('leaves a bleedTop child the whole pane, to cap its own content', async () => {
+      const view = await renderInPane({ bleedTop: true }, 'rows', 'primary');
+      const root = StyleSheet.flatten(rootOf(view, { bleedTop: true })?.props.style);
+
+      expect(root.maxWidth).toBeUndefined();
+      expect(root.alignSelf).toBeUndefined();
+    });
 
     it.each(BRANCHES)('does not cap the %s branch outside a pane', async (_name, props) => {
       const view = await renderScreen(props);
@@ -547,6 +567,15 @@ describe('Screen', () => {
 
       expect(root.maxWidth).toBeUndefined();
       expect(root.alignSelf).toBeUndefined();
+
+      if ('scroll' in props) {
+        const content = StyleSheet.flatten(
+          view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+        );
+
+        expect(content.maxWidth).toBeUndefined();
+        expect(content.alignSelf).toBeUndefined();
+      }
     });
 
     it.each([

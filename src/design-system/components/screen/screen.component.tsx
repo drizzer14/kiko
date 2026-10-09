@@ -1,13 +1,11 @@
 import type { FC } from 'react';
-import { useVerticalBarEdge } from '@kiko/display-regions';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
-import { ScrollView, useWindowDimensions, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScrollView, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { styles } from './screen.styles';
 import { usePaneScreen } from './use-pane-screen';
 import type { ScreenProps } from './screen.props';
-import { resolveBottomClearance } from './bottom-clearance';
+import { useBottomClearance } from './use-bottom-clearance';
 
 const Screen: FC<ScreenProps> = ({
   children,
@@ -35,28 +33,17 @@ const Screen: FC<ScreenProps> = ({
   // global Jest manual mock returns 0 for standalone renders. Used by the
   // scroll branch's `footer` below and by the plain branch's `content` — never
   // both on one render, since `scroll` selects exactly one return path.
-  const tabBarHeight = useBottomTabBarHeight();
-  const insets = useSafeAreaInsets();
-  const windowHeight = useWindowDimensions().height;
-  // The ONE shared signal for "the system places the tab bar on a vertical
-  // edge, not at the bottom": the system's own trait, read by every consumer
-  // through `useVerticalBarEdge`.
-  const verticalBarEdge = useVerticalBarEdge();
-  // Both `SafeAreaView` branches below already reserve `insets.bottom`
-  // themselves as real padding — `edges` includes `'bottom'` in the scroll
-  // branch's explicit list, and in the plain branch's default (an unset
-  // `edges` prop reserves every edge). Adding the FULL tab-bar height again
-  // on top of that reservation double-counts the inset. See
-  // `bottom-clearance.ts` for the shared arithmetic (also used by every
-  // `bleedBottom` child, e.g. Home's transaction list) and its full
-  // rationale, including why a vertical bar makes the tab-bar height
-  // untrusted entirely.
-  // A pane that is not at the window's bottom has no tab bar over it, so
-  // `bottomClearanceFor` gives it none (see `use-pane-screen.ts`).
-  const { rootStyle, plainEdges, largeTitleEdges, bottomClearanceFor } = usePaneScreen();
-  const bottomClearance = bottomClearanceFor(
-    resolveBottomClearance(tabBarHeight, insets.bottom, verticalBarEdge, windowHeight),
-  );
+  //
+  // Every branch's `SafeAreaView` reserves `insets.bottom` itself when its
+  // edges include the bottom one (always outside a pane; in a pane only when
+  // the pane touches the window's bottom). Adding the FULL tab-bar height
+  // again on top of that reservation double-counts the inset. See
+  // `bottom-clearance.ts` for the shared arithmetic and `use-bottom-clearance.ts`
+  // for the hook every `bleedBottom` child, e.g. Home's transaction list, uses
+  // too: it also gives a pane that is not at the window's bottom no clearance,
+  // since no tab bar is over it.
+  const bottomClearance = useBottomClearance();
+  const { contentCap, plainEdges, largeTitleEdges } = usePaneScreen();
   // The plain branch's `content` reserves the clearance itself only when it is
   // both the screen's true bottom edge AND has nothing else claiming that job:
   // a `footer` (pinned below it, see the plain-branch return) or a
@@ -67,7 +54,7 @@ const Screen: FC<ScreenProps> = ({
 
   if (scroll) {
     return (
-      <SafeAreaView edges={largeTitleEdges} style={rootStyle}>
+      <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
         <ScrollView
           ref={scrollableRef}
           testID="screen-scroll-view"
@@ -117,7 +104,9 @@ const Screen: FC<ScreenProps> = ({
           // tap. "handled" fires a focusable/handled child on the first tap
           // while still dismissing the keyboard on taps to inert areas.
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent(footer !== undefined)}
+          // In a pane the content is capped and centred here, not on the scroll
+          // view, so the scroll view and its indicator span the whole pane.
+          contentContainerStyle={[styles.scrollContent(footer !== undefined), contentCap]}
         >
           {children}
         </ScrollView>
@@ -152,7 +141,7 @@ const Screen: FC<ScreenProps> = ({
   // sibling, with its own clearance, exactly as in the other two branches.
   if (bleedTop) {
     return (
-      <SafeAreaView edges={largeTitleEdges} style={rootStyle}>
+      <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
         {children}
         {footer ? (
           <View testID="screen-footer" style={styles.footer(bottomClearance)}>
@@ -168,9 +157,11 @@ const Screen: FC<ScreenProps> = ({
   // short page's footer still lands pinned to the screen's true bottom edge,
   // exactly like the scroll branch's footer, rather than floating directly
   // beneath a short page's content. `bleedTop` returns above, so this branch is
-  // always a headerless screen that keeps the default all-edges reservation.
+  // always a headerless screen: it keeps the all-edges reservation, or in a
+  // pane only the edges the pane touches. With no scroll view of its own, it
+  // takes the pane cap on its root.
   return (
-    <SafeAreaView edges={plainEdges} style={rootStyle}>
+    <SafeAreaView edges={plainEdges} style={[styles.safeArea, contentCap]}>
       <View testID="screen-content" style={styles.content(contentOwnsClearance, bottomClearance)}>
         {children}
       </View>

@@ -23,18 +23,16 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { useVerticalBarEdge } from '@kiko/display-regions';
 import { activeHoldings } from '@kiko/rates/active-holdings';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { openAccountForm } from '@kiko/navigation/open-account-form';
+import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
@@ -46,12 +44,11 @@ import type { FilterOption } from '@kiko/design-system/components/filter-menu';
 import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
+import Screen, { useBottomClearance } from '@kiko/design-system/components/screen';
 import { type CompositeScreenProps, useIsFocused } from '@react-navigation/native';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
-import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
 import { type FC, type ReactElement, useCallback, useMemo, useRef, useState } from 'react';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
-import { RefreshControl, ScrollView, SectionList, useWindowDimensions } from 'react-native';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '@kiko/rates/net-worth-view';
 
 import { styles } from './home.styles';
@@ -115,21 +112,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // `SafeAreaView` already reserves that inset natively around this content:
   // adding the full bar height on top of it double-counted the inset and left
   // 130pt of dead space under the last row, against 96pt everywhere else. One
-  // shared computation, in `resolveBottomClearance`.
-  const tabBarHeight = useBottomTabBarHeight();
-  const insets = useSafeAreaInsets();
-  const windowHeight = useWindowDimensions().height;
-  // The ONE shared signal Screen itself uses (`useVerticalBarEdge`) — Home
-  // computes its own clearance because it opts out of Screen's own bottom
-  // handling with `bleedBottom`, so it must key off the identical function,
-  // never re-derive the rule.
-  const verticalBarEdge = useVerticalBarEdge();
-  const listBottomClearance = resolveBottomClearance(
-    tabBarHeight,
-    insets.bottom,
-    verticalBarEdge,
-    windowHeight,
-  );
+  // shared computation, in `useBottomClearance`, which Screen itself uses: Home
+  // applies it because it opts out of Screen's own bottom handling with
+  // `bleedBottom`. In a pane that is not at the window's bottom it is 0.
+  const listBottomClearance = useBottomClearance();
 
   // Re-tapping the Home tab while already on it returns this transaction list to
   // the top (the standard iOS active-tab re-tap), driven off the native tab

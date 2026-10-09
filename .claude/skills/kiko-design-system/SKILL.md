@@ -540,10 +540,13 @@ real set — enumerated at `src/design-system/components/`; read that
 directory listing directly rather than trusting a copy of it here, a
 new component can land between reviews of this skill:
 
-- **TwoPaneLayout** — props `{ companion, primary }`. Single mode
-  renders only `primary`; columns/rows position two pane frames via
+- **TwoPaneLayout** — props `{ companion, primary, mode? }` (`mode` pins
+  the mode the caller has settled on; the default is `useLayoutMode`). Single
+  mode renders only `primary`; columns/rows position two pane frames via
   `resolvePaneGeometry` (`src/design-system/pane-geometry/pane-geometry.ts`).
-  Flat = a hairline divider; folded = the fold region is the gap.
+  Flat = a hairline divider; folded = the fold region is the gap. Each pane
+  child is given a `PaneContext` (`src/design-system/pane-context/`): the
+  window edges the pane touches, which a `Screen` inside it reads.
   Rule (user ruling R13, 2026-10-09): TwoPaneLayout POSITIONS PANE
   FRAMES ONLY — no width cap, no safe-area padding; native bars span
   the full pane; the `paneMaxWidth` cap and per-pane safe areas belong
@@ -557,12 +560,20 @@ new component can land between reviews of this skill:
   under a large-title header), and a footer slot that clears the
   native glass tab bar's measured height. A `bleedBottom` child that
   owns the screen's true bottom edge itself (e.g. a scrollable list)
-  must compute that same clearance with the shared
-  `resolveBottomClearance` helper in
-  `src/design-system/components/screen/bottom-clearance.ts` (read its
-  thresholds and signature there) — never re-derive it inline, or it
-  double-counts the bottom safe-area inset Screen's `SafeAreaView`
-  already reserves. The vertical-bar signal it consumes is
+  must take that same clearance from `useBottomClearance()`
+  (`src/design-system/components/screen/use-bottom-clearance.ts`, built
+  on `resolveBottomClearance` in `bottom-clearance.ts`; read its
+  thresholds there) — never re-derive it inline, or it double-counts
+  the bottom safe-area inset Screen's `SafeAreaView` already reserves.
+  The hook is pane-aware: a pane that is not at the window's bottom has
+  no tab bar over it and gets 0. `resolveBottomClearance` is pane-blind,
+  so nothing outside `src/design-system/components/screen/` may import
+  it (`kiko-no-pane-blind-bottom-clearance`). In a pane (a
+  `PaneContext` from `TwoPaneLayout`), a `scroll` Screen caps and
+  centres its content container at `theme.layout.paneMaxWidth` and the
+  ScrollView keeps the whole pane; a `bleedTop` child does the same on
+  its own content container with `useContentCap()`; the plain branch
+  caps its root. The vertical-bar signal it consumes is
   `useVerticalBarEdge` from `@kiko/display-regions`
   (`src/display-regions/`); `scroll-to-field` reads it through
   `@kiko/display-regions` too. Its `scroll`

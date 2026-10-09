@@ -34,10 +34,11 @@ export type ScreenProps = {
   // because the screen's child is itself the scrollable surface and applies
   // that clearance to its own content (e.g. Home's SectionList). Without this,
   // both Screen's `content` and the child's list padding would reserve the
-  // clearance and the gap below the last row would be counted twice. Only
-  // meaningful in the plain (non-scroll) branch when there is no `footer`
-  // (which already claims the bottom edge on its own); ignored in `scroll`
-  // mode.
+  // clearance and the gap below the last row would be counted twice. The child
+  // takes the amount from `useBottomClearance()`, which gives a pane that is
+  // not at the window's bottom none. Only meaningful in the plain (non-scroll)
+  // branch when there is no `footer` (which already claims the bottom edge on
+  // its own); ignored in `scroll` mode.
   bleedBottom?: boolean;
   // The plain-branch counterpart of `scroll` for a large-title screen whose
   // child is ITSELF the scrollable surface (a virtualized FlatList/SectionList
@@ -53,10 +54,12 @@ export type ScreenProps = {
   // `contentInsetAdjustmentBehavior="automatic"` and supply its own top content
   // padding (for the collapse), its own horizontal padding, AND — the
   // `bleedBottom` contract — its own floating tab-bar bottom clearance via
-  // `resolveBottomClearance` when it has no `footer` (e.g. HoldingDetail's
-  // ledger FlatList). A `footer` still pins below the child as a sibling with
-  // its own clearance. Only meaningful in the plain (non-scroll) branch; ignored
-  // in `scroll` mode (which already drops the top edge for its own ScrollView).
+  // `useBottomClearance()` when it has no `footer` (e.g. HoldingDetail's
+  // ledger FlatList). In a pane it also caps and centres its own content
+  // container with `useContentCap()`, so the list keeps the whole pane. A
+  // `footer` still pins below the child as a sibling with its own clearance.
+  // Only meaningful in the plain (non-scroll) branch; ignored in `scroll` mode
+  // (which already drops the top edge for its own ScrollView).
   bleedTop?: boolean;
   // Forwarded to the `scroll`-mode ScrollView's own `onContentSizeChange`, so
   // a caller resolving a Save-press scroll target (`scrollToField`, see

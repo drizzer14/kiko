@@ -26,6 +26,7 @@ import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { FlatList, Pressable } from 'react-native';
 import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
@@ -36,7 +37,6 @@ import type { Currency } from '@kiko/currency/currency';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { useVerticalBarEdge } from '@kiko/display-regions';
 import Button from '@kiko/design-system/components/button';
 import { isHoldingType } from '@kiko/holdings/holding-type';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
@@ -47,17 +47,14 @@ import { loanLedgerSummary } from '@kiko/holdings/loan-ledger';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { removeNotice } from '@kiko/transactions/remove-notice';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { holdingIdentity } from '@kiko/holdings/holding-identity';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
 import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import { startOfLocalDay, formatDate, formatTime } from '@kiko/dates';
-import { FlatList, Pressable, useWindowDimensions } from 'react-native';
 import { buildRateTable, canConvert } from '@kiko/rates/net-worth-view';
 import SummaryTable from '@kiko/design-system/components/summary-table';
 import LoadingState from '@kiko/design-system/components/loading-state';
@@ -70,12 +67,12 @@ import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
-import Screen, { resolveBottomClearance } from '@kiko/design-system/components/screen';
 import { genericEntitySymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/money-text';
 import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '@kiko/holdings/holding-value';
+import Screen, { useBottomClearance, useContentCap } from '@kiko/design-system/components/screen';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '@kiko/holdings/derived-entries';
 
 import {
@@ -944,17 +941,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // footer slot owns the floating tab-bar clearance and the list needs only a
   // plain gap above it; with NO footer (a bond or synced holding), the list is
   // the screen's true bottom edge and must clear the tab bar itself via the ONE
-  // shared arithmetic (the same computation Home's list uses). `useSafeAreaInsets`
-  // supplies the bottom inset the SafeAreaView already reserves, so the tab-bar
-  // height is not double-counted.
-  const tabBarHeight = useBottomTabBarHeight();
-  const insets = useSafeAreaInsets();
-  const windowHeight = useWindowDimensions().height;
-  const verticalBarEdge = useVerticalBarEdge();
-  const listBottomClearance =
-    footerAction === 'none'
-      ? resolveBottomClearance(tabBarHeight, insets.bottom, verticalBarEdge, windowHeight)
-      : 0;
+  // shared hook (the same one Home's list uses), which leaves the bottom inset
+  // to the SafeAreaView and gives a pane that is not at the window's bottom none.
+  const bottomClearance = useBottomClearance();
+  const listBottomClearance = footerAction === 'none' ? bottomClearance : 0;
+  // In a pane the list keeps the whole pane and its content is capped and centred.
+  const contentCap = useContentCap();
   // A term_deposit/bond event is day-granular (a contribution, coupon, or
   // redemption), so its ledger rows show the date only; every other holding
   // keeps the full date + HH:MM stamp.
@@ -1202,7 +1194,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         // setting the shared `Screen` scroll branch applies to its ScrollView.
         contentInsetAdjustmentBehavior="automatic"
         style={styles.list}
-        contentContainerStyle={styles.listContent(listBottomClearance)}
+        contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
       />
     </Screen>
   );
@@ -1226,7 +1218,7 @@ const styles = StyleSheet.create((theme) => ({
   //    still reaches the top edge for iOS's automatic large-title inset;
   //  - horizontal: `spacing(4)`, the screen's side gutter;
   //  - bottom: a `spacing(4)` gap plus the caller's `bottomClearance` — 0 when a
-  //    footer owns the floating tab-bar clearance, else `resolveBottomClearance`
+  //    footer owns the floating tab-bar clearance, else `useBottomClearance`
   //    so the last row clears the bar exactly once (see the screen component).
   // The `spacing(2)` gap sits between every child — the header block and the
   // first row, and each row and the next — the same rhythm a `<Box gap={2}>`

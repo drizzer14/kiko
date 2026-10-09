@@ -9,7 +9,7 @@ describe('paneContextOf', () => {
     ['rows', 'companion', { top: true, right: true, bottom: false, left: true }],
     ['rows', 'primary', { top: false, right: true, bottom: true, left: true }],
   ] as const)('puts the %s %s pane against the window edges %j', (mode, pane, edges) => {
-    expect(paneContextOf(mode, pane)).toEqual({ mode, pane, edges });
+    expect(paneContextOf(mode, pane)).toEqual({ edges });
   });
 
   it('hands out one object for a pane, so a consumer is not re-rendered by a new identity', () => {
