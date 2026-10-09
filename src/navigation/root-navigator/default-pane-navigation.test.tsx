@@ -178,7 +178,10 @@ describe.each(STACKS)('the $name stack in two panes', ({ Stack, defaults, target
   });
 
   // The stand-in changes the navigation object React Navigation made for the default in place,
-  // which is safe only while that object is none of a real route's.
+  // which is safe only while that object is none of a real route's. Identity says little (a
+  // helper the real object lost to the stand-in could still be a different function), so this
+  // pins what the opened route's own navigation does: its helpers act on the stack and its
+  // options reach the screen, where the stand-in makes both a no-op.
   it('PINS React Navigation: a route made after the stand-in has a navigation of its own', async () => {
     for (const standIn of Object.values(defaultNavigations())) {
       await act(async () => {
@@ -186,15 +189,27 @@ describe.each(STACKS)('the $name stack in two panes', ({ Stack, defaults, target
       });
 
       const opened = stackState().routes.at(-1);
-      const own = mockCapturedViews
-        .flatMap(({ descriptors }) => Object.entries(descriptors))
-        .filter(([key]) => key === opened?.key)
-        .at(-1)?.[1].navigation;
+      const descriptorOf = () =>
+        mockCapturedViews
+          .flatMap(({ descriptors }) => Object.entries(descriptors))
+          .filter(([key]) => key === opened?.key)
+          .at(-1)?.[1] as { navigation: Navigation; options: { title?: string } } | undefined;
+      const own = descriptorOf()?.navigation;
 
       expect(own).toBeDefined();
       expect(own).not.toBe(standIn);
-      expect(own?.navigate).not.toBe(standIn.navigate);
-      expect(own?.dispatch).not.toBe(standIn.dispatch);
+
+      await act(async () => {
+        own?.setOptions({ title: 'set by the opened route' });
+      });
+
+      expect(descriptorOf()?.options.title).toBe('set by the opened route');
+
+      await act(async () => {
+        own?.goBack();
+      });
+
+      expect(stackState().routes.map((route) => route.key)).not.toContain(opened?.key);
     }
   });
 

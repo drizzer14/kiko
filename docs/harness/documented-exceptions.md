@@ -822,8 +822,9 @@ verified usage, not dead weight:
   importing `resolveBottomClearance` (or its `bottom-clearance` module) so a
   `bleedBottom`/`bleedTop` child takes the pane-aware `useBottomClearance()`
   instead. The Screen folder is the one place that may: `use-bottom-clearance.ts`
-  imports the function, and `bottom-clearance.test.ts` tests it. A whole-folder exclude is right here because every file in it is
-  part of the sink; the rule still reaches every consumer (Home, HoldingDetail).
+  imports the function, and `bottom-clearance.test.ts` tests it. A whole-folder
+  exclude is right here because every file in it is part of the sink; the rule
+  still reaches every consumer (Home, HoldingDetail).
 
 - **`sf-symbols-typescript` — a transitive package read by path in a test,
   invisible to depcheck and Knip.** `__tests__/test-support/sf-symbol-catalogue.ts`
@@ -834,7 +835,8 @@ verified usage, not dead weight:
   `^2.1.0` and `react-native-bottom-tabs` `^2.0.0`), and `package-lock.json`
   locks it at 2.2.0. depcheck and Knip see no import of it, so neither
   reports it. A missing or reshaped file (a dependant dropped, the package
-  moved or its comments changed) fails `__tests__/symbol-deployment-target.test.tsx`,
-  `sf-symbol-catalogue.test.ts` and `deployment-target.test.ts` loudly, never silently. If a dependant
-  stops installing it, add it to `package.json` as an exact-pinned
-  devDependency instead.
+  moved or its comments changed) fails
+  `__tests__/symbol-deployment-target.test.tsx`, `sf-symbol-catalogue.test.ts`
+  and `deployment-target.test.ts` loudly, never silently. If a dependant stops
+  installing it, add it to `package.json` as an exact-pinned devDependency
+  instead.
