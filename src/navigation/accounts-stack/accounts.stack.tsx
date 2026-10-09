@@ -12,14 +12,19 @@ import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import PricePointFormScreen from '@kiko/screens/forms/price-point-form';
 import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
 import ContributionFormScreen from '@kiko/screens/forms/contribution-form';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AccountRemindersScreen from '@kiko/screens/settings/account-reminders';
 import OwnershipChangeFormScreen from '@kiko/screens/forms/ownership-change-form';
 
 import type { AccountsStackParamList } from '../types';
+import { createPaneStackNavigator } from '../pane-stack';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 
-const Stack = createNativeStackNavigator<AccountsStackParamList>();
+const Stack = createPaneStackNavigator<AccountsStackParamList>();
+
+// The list is the root and takes the companion pane; the account page opens in the primary pane,
+// which is where the outer display shows it. The primary default is set at runtime, from the
+// first account.
+const PANE_CONFIG = { rootPane: 'companion' } as const;
 
 // A route swapped in from the other form carries a `draft`.
 const carriesDraft = (params: object | undefined): boolean =>
@@ -68,6 +73,7 @@ const AccountsStack: FC = () => {
 
   return (
     <Stack.Navigator
+      paneConfig={PANE_CONFIG}
       screenOptions={{ headerLargeTitle: true }}
       screenListeners={resetTabStackOnBlur}
     >

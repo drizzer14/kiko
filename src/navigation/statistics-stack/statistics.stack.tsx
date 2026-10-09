@@ -1,19 +1,33 @@
 import type { FC } from 'react';
+import HomeScreen from '@kiko/screens/home';
 import { useTranslation } from 'react-i18next';
 import StatisticsScreen from '@kiko/screens/statistics';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
 
+import { createPaneStackNavigator } from '../pane-stack';
 import type { StatisticsStackParamList } from '../types';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 
-const Stack = createNativeStackNavigator<StatisticsStackParamList>();
+const Stack = createPaneStackNavigator<StatisticsStackParamList>();
 
-/** The Statistics tab's native stack, rooted at a large-title Statistics screen. */
+// Statistics is what the outer display shows, so it takes the primary pane; Home fills the
+// companion until something else opens there.
+const PANE_CONFIG = {
+  rootPane: 'primary',
+  companionDefault: { name: 'Home', isDefault: true },
+} as const;
+
+/**
+ * The Statistics tab's native stack, rooted at a large-title Statistics screen. Home and the
+ * Transaction form are registered for the panes of a wide window: Home as the companion, which
+ * owns no header, and the form that a transaction tapped in Home opens in the primary pane.
+ */
 const StatisticsStack: FC = () => {
   const { t } = useTranslation();
 
   return (
     <Stack.Navigator
+      paneConfig={PANE_CONFIG}
       screenOptions={{ headerLargeTitle: true }}
       screenListeners={resetTabStackOnBlur}
     >
@@ -21,6 +35,14 @@ const StatisticsStack: FC = () => {
         name="Statistics"
         component={StatisticsScreen}
         options={{ title: t('statistics.title') }}
+      />
+
+      <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+
+      <Stack.Screen
+        name="TransactionForm"
+        component={TransactionFormScreen}
+        options={{ title: t('forms.transaction.addTitle') }}
       />
     </Stack.Navigator>
   );

@@ -48,9 +48,13 @@ export type ReminderFormParams = { reminderId: string } | { accountId: string; k
  */
 export type FormDraft = { name: string; icon: string | null; color: string | null };
 
+// `Statistics` is the companion pane of the Home tab on a wide window, and Home with
+// `TransactionForm` are the same on the Statistics tab: each tab shows the other's root beside
+// its own.
 export type HomeStackParamList = {
   Home: undefined;
   TransactionForm: TransactionFormParams;
+  Statistics: undefined;
 };
 
 export type AccountsStackParamList = {
@@ -218,6 +222,8 @@ export type SettingsStackParamList = {
 
 export type StatisticsStackParamList = {
   Statistics: undefined;
+  Home: undefined;
+  TransactionForm: TransactionFormParams;
 };
 
 /**

@@ -10,12 +10,19 @@ import CategoriesScreen from '@kiko/screens/settings/categories';
 import ExportDataScreen from '@kiko/screens/settings/export-data';
 import ImportDataScreen from '@kiko/screens/settings/import-data';
 import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import type { SettingsStackParamList } from '../types';
+import { createPaneStackNavigator } from '../pane-stack';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 
-const Stack = createNativeStackNavigator<SettingsStackParamList>();
+const Stack = createPaneStackNavigator<SettingsStackParamList>();
+
+// The menu is the root and takes the companion pane; what it opens takes the primary pane, which
+// shows Categories until something else opens there.
+const PANE_CONFIG = {
+  rootPane: 'companion',
+  primaryDefault: { name: 'Categories', isDefault: true },
+} as const;
 
 /** The Settings tab's native stack, rooted at a large-title Settings screen. */
 const SettingsStack: FC = () => {
@@ -23,6 +30,7 @@ const SettingsStack: FC = () => {
 
   return (
     <Stack.Navigator
+      paneConfig={PANE_CONFIG}
       screenOptions={{ headerLargeTitle: true }}
       screenListeners={resetTabStackOnBlur}
     >
