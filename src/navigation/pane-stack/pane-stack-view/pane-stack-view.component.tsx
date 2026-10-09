@@ -1,4 +1,5 @@
 import { type FC, useMemo } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useIsFocused } from '@react-navigation/native';
 import { NativeStackView } from '@react-navigation/native-stack';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
@@ -31,13 +32,28 @@ const PaneStackView: FC<PaneStackViewProps> = ({
     ? paneSlice(state, paneConfig, 'primary', descriptors, describe, dispatch)
     : null;
   const companionTopKey = companion?.state.routes.at(-1)?.key ?? '';
-  const primaryTopKey = primary?.state.routes.at(-1)?.key ?? '';
+  const primaryTop = primary?.state.routes.at(-1);
+  const primaryTopKey = primaryTop?.key ?? '';
+  const primaryName = primaryTop?.name;
+  const primaryParams = primaryTop?.params;
+  const isPrimaryDefault = primaryTop?.isDefault === true;
 
   // The slices are new objects on every render; the context changes only when a top route does.
+  const primaryRoute = useMemo(
+    () =>
+      foldMap(maybe(primaryName), (name) => ({
+        name,
+        params: primaryParams,
+        isDefault: isPrimaryDefault,
+      })) ?? null,
+    [primaryName, primaryParams, isPrimaryDefault],
+  );
   const visibility = useMemo(
     () =>
-      isSplit ? { isTabFocused, visibleKeys: new Set([companionTopKey, primaryTopKey]) } : null,
-    [isSplit, isTabFocused, companionTopKey, primaryTopKey],
+      isSplit
+        ? { isTabFocused, visibleKeys: new Set([companionTopKey, primaryTopKey]), primaryRoute }
+        : null,
+    [isSplit, isTabFocused, companionTopKey, primaryTopKey, primaryRoute],
   );
 
   return (

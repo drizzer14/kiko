@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { renderHook } from '@testing-library/react-native';
 
-import { PaneVisibilityContext, useIsScreenVisible } from '.';
+import { PaneVisibilityContext, useIsScreenVisible, usePrimaryPaneRoute } from '.';
 
 let mockRouteKey = 'companion-route';
 let mockIsFocused = false;
@@ -13,15 +13,21 @@ jest.mock('@react-navigation/native', () => ({
 }));
 
 const VISIBLE_KEYS = new Set(['companion-route', 'primary-route']);
+const PRIMARY_ROUTE = { name: 'AccountDetail', params: { accountId: 'a' }, isDefault: false };
 
-const renderInPanes = (isTabFocused: boolean) =>
-  renderHook(() => useIsScreenVisible(), {
+const renderInPanesWith = <Result,>(hook: () => Result, isTabFocused = true) =>
+  renderHook(hook, {
     wrapper: ({ children }: { children: ReactNode }) => (
-      <PaneVisibilityContext.Provider value={{ isTabFocused, visibleKeys: VISIBLE_KEYS }}>
+      <PaneVisibilityContext.Provider
+        value={{ isTabFocused, visibleKeys: VISIBLE_KEYS, primaryRoute: PRIMARY_ROUTE }}
+      >
         {children}
       </PaneVisibilityContext.Provider>
     ),
   });
+
+const renderInPanes = (isTabFocused: boolean) =>
+  renderInPanesWith(() => useIsScreenVisible(), isTabFocused);
 
 describe('useIsScreenVisible', () => {
   beforeEach(() => {
@@ -71,5 +77,19 @@ describe('useIsScreenVisible', () => {
 
       expect(result.current).toBe(isFocused);
     });
+  });
+});
+
+describe('usePrimaryPaneRoute', () => {
+  it('hands over the route on top of the primary pane', async () => {
+    const { result } = await renderInPanesWith(() => usePrimaryPaneRoute());
+
+    expect(result.current).toBe(PRIMARY_ROUTE);
+  });
+
+  it('is null in one pane, where there is no primary pane', async () => {
+    const { result } = await renderHook(() => usePrimaryPaneRoute());
+
+    expect(result.current).toBeNull();
   });
 });

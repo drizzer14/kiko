@@ -23,7 +23,6 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import SymbolIcon from '@kiko/design-system/components/symbol';
-import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
@@ -43,12 +42,14 @@ import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import { useIsScreenVisible, useOpenInPane } from '@kiko/navigation/pane-stack';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { type AccountRow, type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { useCloseHoldingAction } from '@kiko/design-system/components/close-holding-sheet';
 
 import { styles } from './accounts.styles';
+import { useAccountsPane } from './use-accounts-pane';
 import ImplicitAccountHeading from './implicit-account-heading';
 
 type AccountsScreenProps = NativeStackScreenProps<AccountsStackParamList, 'Accounts'>;
@@ -212,6 +213,21 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { closeActionFor: closeDebtActionFor, closeSheet: closeDebtSheet } =
     useCloseHoldingAction(debtAccount);
 
+  // The detail opens in the pane opposite this list's (on one pane, a plain navigate), and on a
+  // wide window that pane is never left empty and this list marks the row it shows.
+  const openInPane = useOpenInPane();
+  const isEmpty = hasNoAccounts(accounts, holdings);
+  const { selectedAccountId } = useAccountsPane({
+    isReady,
+    isVisible,
+    isEmpty,
+    mainAccounts,
+    sections: [
+      { account: propertyAccount, holdings: propertyHoldings },
+      { account: debtAccount, holdings: debtHoldings },
+    ],
+  });
+
   // The parent ScrollView's animated ref, shared with the sortable grid so a
   // drag near the top/bottom edge auto-scrolls the list (the grid is nested
   // inside this Screen's ScrollView, so it cannot scroll it without the ref).
@@ -256,14 +272,16 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
         <Card
           testID="account-card"
           padding={4}
+          selected={item.id === selectedAccountId}
           // The card itself is the shared solid content-layer
           // surface — the entity color lives on the icon tile (see
           // `EntityIconTile`) instead of the whole card.
         >
           <Pressable
             accessibilityRole="button"
+            accessibilityState={{ selected: item.id === selectedAccountId }}
             onPress={openUnlessLifted(item.id, () =>
-              navigation.navigate('AccountDetail', {
+              openInPane('AccountDetail', {
                 accountId: item.id,
                 name: item.name,
                 kind: item.kind,
@@ -335,7 +353,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
           testID={openTestID}
           accessibilityRole="button"
           onPress={() =>
-            navigation.navigate('AccountDetail', {
+            openInPane('AccountDetail', {
               accountId: account.id,
               name: accountDisplayName(account, t),
               kind: account.kind,
@@ -386,7 +404,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
                   rateTable={rateTable}
                   priceBook={priceBook}
                   onOpen={openUnlessLifted(item.id, () =>
-                    navigation.navigate('HoldingDetail', { holdingId: item.id, name: item.name }),
+                    openInPane('HoldingDetail', { holdingId: item.id, name: item.name }),
                   )}
                 />
               </CardContextMenu>
@@ -409,8 +427,6 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       </Screen>
     );
   }
-
-  const isEmpty = hasNoAccounts(accounts, holdings);
 
   return (
     <Screen

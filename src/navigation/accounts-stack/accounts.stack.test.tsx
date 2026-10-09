@@ -36,7 +36,7 @@ jest.mock('react-i18next', () => ({
 
 import AccountsStack from './accounts.stack';
 
-type ScreenOptions = { title?: string; animation?: string };
+type ScreenOptions = { title?: string; animation?: string; headerShown?: boolean };
 
 type ScreenElement = ReactElement<{
   name: string;
@@ -107,6 +107,11 @@ describe('AccountsStack', () => {
 
   it('gives the reminder form the create title, which an edit replaces', () => {
     expect(titleByScreen().ReminderForm).toBe('New Reminder');
+  });
+
+  it('registers the empty pane of a wide window without a header', () => {
+    expect(screenElements().map((screen) => screen.props.name)).toContain('AccountsEmptyPane');
+    expect(optionsOf('AccountsEmptyPane', undefined)?.headerShown).toBe(false);
   });
 
   describe('the account form and the implicit holding form swap without an animation', () => {

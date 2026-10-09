@@ -200,6 +200,80 @@ describe('PaneStackView', () => {
       expect([...visibility.visibleKeys].sort()).toEqual(['home', 'pane-default:companion']);
     });
 
+    describe('the route on top of the primary pane', () => {
+      const SETTINGS: PaneConfig = {
+        rootPane: 'companion',
+        primaryDefault: { name: 'Categories', isDefault: true },
+      };
+
+      const primaryRouteOf = () => mockNativeStackView.mock.calls[0][1].primaryRoute;
+
+      it('is the tapped route, with its params', async () => {
+        const state = stackState(
+          [route('accounts'), route('account', 'AccountDetail', { params: { accountId: 'a' } })],
+          { accounts: 'companion', account: 'primary' },
+        );
+
+        await renderView(state, ACCOUNTS);
+
+        expect(primaryRouteOf()).toEqual({
+          name: 'AccountDetail',
+          params: { accountId: 'a' },
+          isDefault: false,
+        });
+      });
+
+      it('is the config default while the pane holds no route', async () => {
+        await renderView(stackState([route('settings')], { settings: 'companion' }), SETTINGS);
+
+        expect(primaryRouteOf()).toEqual({
+          name: 'Categories',
+          params: undefined,
+          isDefault: true,
+        });
+      });
+
+      it('is flagged a default for a runtime default route', async () => {
+        const state = stackState(
+          [
+            route('accounts'),
+            route('account', 'AccountDetail', { isDefault: true, params: { accountId: 'a' } }),
+          ],
+          { accounts: 'companion', account: 'primary' },
+        );
+
+        await renderView(state, ACCOUNTS);
+
+        expect(primaryRouteOf().isDefault).toBe(true);
+        expect(primaryRouteOf().name).toBe('AccountDetail');
+      });
+
+      it('is null while the pane has neither a route nor a default', async () => {
+        await renderView(stackState([route('accounts')], { accounts: 'companion' }), ACCOUNTS);
+
+        expect(primaryRouteOf()).toBeNull();
+      });
+
+      it('keeps one value while the route stays the same', async () => {
+        const state = stackState([route('accounts')], { accounts: 'companion' });
+        const view = await renderView(state, SETTINGS);
+        const first = primaryRouteOf();
+
+        await view.rerender(
+          <PaneStackView
+            mode="columns"
+            state={{ ...state }}
+            navigation={navigation}
+            descriptors={descriptors}
+            describe={describeRoute}
+            paneConfig={SETTINGS}
+          />,
+        );
+
+        expect(mockNativeStackView.mock.calls.at(-1)?.[1].primaryRoute).toBe(first);
+      });
+    });
+
     it('has no pane visibility in single mode, but still hands over the dispatch', async () => {
       await renderView(stackState([route('accounts')]), ACCOUNTS, 'single');
 

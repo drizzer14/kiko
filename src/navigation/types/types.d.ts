@@ -59,6 +59,8 @@ export type HomeStackParamList = {
 
 export type AccountsStackParamList = {
   Accounts: undefined;
+  // Fills the primary pane of a wide window while the user has no account to show there.
+  AccountsEmptyPane: undefined;
   // `name` is the entity's name captured at navigation time from the row the
   // user tapped, so the detail screen's native large title (and the back button
   // on any screen pushed from it) shows the name from the FIRST render — before

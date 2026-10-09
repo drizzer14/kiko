@@ -8,7 +8,8 @@ import {
   NavigationContainer,
   type ParamListBase,
 } from '@react-navigation/native';
-import { act, render, waitFor } from '@testing-library/react-native';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
@@ -79,6 +80,8 @@ type Read = { id: string; instance: string };
 // write landing on an unpaused subscription, or the one read after a pause a write made dirty.
 const mockSubscriptions = new Map<string, Subscription>();
 let mockReads: Read[] = [];
+// The rows a table answers with; none by default, so every screen is empty.
+let mockRows: Record<string, unknown[]> = {};
 
 const mockRead = (id: string): void => {
   const subscription = mockSubscriptions.get(id);
@@ -158,7 +161,7 @@ jest.mock('@kiko/db/use-live-query', () => {
         }
       }, [id, isPaused]);
 
-      return { data: [], isLoading: false, isFresh: true };
+      return { data: mockRows[tables[0]] ?? [], isLoading: false, isFresh: true };
     },
   };
 });
@@ -183,6 +186,7 @@ const walkTabs = async () => {
     <NavigationContainer ref={navigationRef}>
       <RootNavigator />
     </NavigationContainer>,
+    { wrapper: GestureRootWrapper },
   );
 
   await waitFor(() => expect(navigationRef.isReady()).toBe(true));
@@ -198,6 +202,7 @@ describe('the double-mount gate', () => {
   beforeEach(() => {
     mockSubscriptions.clear();
     mockReads = [];
+    mockRows = {};
     mockLayoutMode = 'columns';
   });
 
@@ -251,5 +256,100 @@ describe('the double-mount gate', () => {
     expect(new Set(reads.map(({ instance }) => instance))).toEqual(
       new Set(['StatisticsTab/Statistics', 'StatisticsTab/Home']),
     );
+  });
+});
+
+type StackRoute = { key: string; name: string; isDefault?: boolean; params?: object };
+
+// A manual account row, with what the account page reads from it.
+const accountRow = (id: string, name: string, kind: string) => ({
+  id,
+  name,
+  kind,
+  archivedAt: null,
+  institution: null,
+  bankId: null,
+});
+
+const accountsRoutes = (): StackRoute[] => {
+  const tab = navigationRef.getRootState()?.routes.find(({ name }) => name === 'AccountsTab');
+
+  return (tab?.state?.routes ?? []) as StackRoute[];
+};
+
+// The Accounts list fills the primary pane of a wide window with a runtime default, which moves
+// the stack's focus off the list; the list must stay live and the default must survive the tab
+// being left and entered again.
+describe('the Accounts tab with a runtime default in its primary pane', () => {
+  beforeEach(() => {
+    mockSubscriptions.clear();
+    mockReads = [];
+    mockRows = {};
+    mockLayoutMode = 'columns';
+  });
+
+  it('shows the empty pane while there is no account', async () => {
+    await walkTabs();
+    await goTo('AccountsTab');
+
+    expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+      ['Accounts', undefined],
+      ['AccountsEmptyPane', true],
+    ]);
+  });
+
+  it('shows the first account once there is one', async () => {
+    mockRows = { accounts: [accountRow('a', 'Monobank', 'bank')] };
+    await walkTabs();
+    await goTo('AccountsTab');
+
+    expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+      ['Accounts', undefined],
+      ['AccountDetail', true],
+    ]);
+  });
+
+  it('keeps the list reading a write while its default shows', async () => {
+    await walkTabs();
+    await goTo('AccountsTab');
+    mockReads = [];
+
+    await act(async () => {
+      mockWrite('accounts');
+    });
+
+    expect(mockReads.map(({ instance }) => instance)).toContain('AccountsTab/Accounts');
+  });
+
+  it('drops the default when the tab is left, and puts it back when the tab is entered again', async () => {
+    await walkTabs();
+    await goTo('AccountsTab');
+    await goTo('HomeTab');
+
+    // The blur pops the tab to its root, and the tab left behind must not fill it again.
+    expect(accountsRoutes().map(({ name }) => name)).toEqual(['Accounts']);
+
+    await goTo('AccountsTab');
+
+    expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+      ['Accounts', undefined],
+      ['AccountsEmptyPane', true],
+    ]);
+  });
+
+  it('leaves a row the user tapped alone', async () => {
+    mockRows = {
+      accounts: [accountRow('a', 'Monobank', 'bank'), accountRow('c', 'Savings', 'cash')],
+    };
+    const { getByTestId } = await walkTabs();
+    await goTo('AccountsTab');
+
+    await fireEvent.press(within(getByTestId('accounts-grid')).getByText('Savings'));
+
+    const routes = accountsRoutes();
+
+    expect(routes.map(({ name }) => name)).toEqual(['Accounts', 'AccountDetail']);
+    expect(routes.at(-1)?.isDefault).toBeUndefined();
+    expect(routes.at(-1)?.params).toMatchObject({ accountId: 'c' });
   });
 });

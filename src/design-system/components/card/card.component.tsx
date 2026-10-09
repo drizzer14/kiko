@@ -32,7 +32,15 @@ import type { CardProps } from './card.props';
 // entity-tinted content card reaches for its own explicit `style`
 // `backgroundColor` override (or a dedicated variant, added when a real
 // consumer needs one) rather than resurrecting glass-specific props here.
-const Card: FC<CardProps> = ({ children, style, padding, radius = 'md', testID, ...props }) => {
+const Card: FC<CardProps> = ({
+  children,
+  style,
+  padding,
+  radius = 'md',
+  selected = false,
+  testID,
+  ...props
+}) => {
   const { theme } = useUnistyles();
   const sizing = [
     { borderRadius: theme.radii[radius] },
@@ -40,7 +48,11 @@ const Card: FC<CardProps> = ({ children, style, padding, radius = 'md', testID, 
   ];
 
   return (
-    <View style={[styles.card, sizing, style]} testID={testID} {...props}>
+    <View
+      style={[styles.card, sizing, selected && styles.selected, style]}
+      testID={testID}
+      {...props}
+    >
       {children}
     </View>
   );
