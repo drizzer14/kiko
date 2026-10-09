@@ -1,5 +1,5 @@
 import * as RNFS from 'react-native-fs';
-import { bifold, eitherSync, isLeft, isRight } from 'fnts/either';
+import { bifold, eitherSync, isLeft } from 'fnts/either';
 import { migrateLegacyDatabase } from '@kiko/migration/migrate-legacy-db';
 import { type DB, IOS_LIBRARY_PATH, isSQLCipher, open } from '@op-engineering/op-sqlite';
 
@@ -77,7 +77,11 @@ const liveDatabaseHasUserTables = (): boolean => {
   const counted = eitherSync<unknown, number>(() => userTableCount(live));
   live.close();
 
-  return isRight(counted) && bifold(counted) > 0;
+  if (isLeft(counted)) {
+    return false;
+  }
+
+  return bifold(counted) > 0;
 };
 
 /**
