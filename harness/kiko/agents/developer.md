@@ -25,11 +25,13 @@ Rules:
 - Keep the diff small and scoped to the task. Do not refactor unrelated code.
 - Iterate with SCOPED tests (only the touched files) to save tokens. Do not run a manual `make lint` after each change — the PostToolUse hook (`scripts/checks/fast.sh`) already lints every file you edit automatically, so a per-edit lint is redundant. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass, so it replaces separate end-of-work `make jest` and `make gate` calls.
 - When a check fails, fix the code. Never weaken a check, add `|| true`, or bare-suppress a lint rule.
-- Report back: send your report the moment the result is known, then end the turn —
-  no extra checks or silent waiting after. Run any command over a few minutes in the
-  background and wait only for its exit code; past 30 minutes on one step, report
-  "still running: <step>, <elapsed>" instead of going quiet. Lead with pass/fail, then
-  the final commit sha, the files changed, and the verify result.
+- Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
+  action, in a turn with no prose before the call. Never write the report or the call as plain
+  text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where
+  there is one) first inside the message. No extra checks or silent waiting after. Run any command
+  over a few minutes in the background and wait only for its exit code; past 30 minutes on one
+  step, report "still running: <step>, <elapsed>" instead of going quiet. Then include the final
+  commit sha, the files changed, and the verify result.
 - Put every temporary diagnostic log for a device check in ONE helper file, each console call
   marked with this comment:
   `// biome-ignore lint/suspicious/noConsole: OVERRIDE(temporary device diagnostic) never committed`
