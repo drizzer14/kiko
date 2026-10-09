@@ -162,6 +162,12 @@ export const PaneRouter = ({
       return null;
     }
 
+    // With one pane there is nothing to fill, and a default would sit on top of what the user
+    // opened.
+    if (!isSplit()) {
+      return state;
+    }
+
     const panes = unfoldAssignment(state.routes, state.panes, paneConfig);
     const inPane = routesOfPane(state.routes, panes, paneConfig, payload.pane);
 

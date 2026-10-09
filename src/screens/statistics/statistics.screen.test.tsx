@@ -123,7 +123,7 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
 // useVisibleRefreshedNow is stood in with a `useState`-seeded read, STABLE
 // across an ordinary re-render (matching the real hook's own "only a return to
 // visible advances it" contract) but externally advanceable via
-// `advanceFocusedNow` (below) for the tests that simulate a return. The spy
+// `advanceVisibleNow` (below) for the tests that simulate a return. The spy
 // records which visibility the screen hands it.
 let mockNow = Date.now();
 const mockNowListeners = new Set<(value: number) => void>();
@@ -132,7 +132,7 @@ const mockRefreshedNowVisibility = jest.fn();
 // Simulates a return to visible's `setNow(Date.now())`: advances every
 // currently-mounted `useVisibleRefreshedNow` instance, wrapped in `act` by the
 // caller.
-const advanceFocusedNow = (value: number): void => {
+const advanceVisibleNow = (value: number): void => {
   mockNow = value;
   mockNowListeners.forEach((listener) => {
     listener(value);
@@ -2591,12 +2591,12 @@ describe('StatisticsScreen', () => {
 
     const { getByTestId, getByText } = await renderScreen();
 
-    // Not yet focus-refreshed past `now`: tomorrow's expense falls outside the
+    // Not yet refreshed past `now`: tomorrow's expense falls outside the
     // default range, so the donut shows its empty state.
     expect(getByTestId('category-pie-empty')).toBeTruthy();
 
     await act(async () => {
-      advanceFocusedNow(localDaysFrom(now, 1));
+      advanceVisibleNow(localDaysFrom(now, 1));
     });
 
     const centerTotal = within(getByTestId('category-pie-center-total'));
@@ -3042,12 +3042,13 @@ describe('StatisticsScreen — paused while hidden', () => {
   // pending write, if any, as a NEW reference, and otherwise (nothing
   // pending) also keeps the same reference — so a screen render downstream
   // of this stub only sees new data exactly when the real hook would have
-  // read one. `writeWhileHidden` simulates another tab's write landing
-  // while this table is paused, without itself forcing a render (a real
-  // write is a native-side event, never a React state update here).
+  // read one. `landWrite` simulates a write landing, whether this screen
+  // is paused (another tab's write) or visible, without itself forcing a
+  // render (a real write is a native-side event, never a React state
+  // update here).
   const createPausedAwareLiveQuery = (
     initial: LiveData,
-  ): { writeWhileHidden: (overrides: Record<string, unknown[]>) => void } => {
+  ): { landWrite: (overrides: Record<string, unknown[]>) => void } => {
     const committed = buildLiveDataByTable(initial);
     const pending = new Map<string, unknown[]>();
 
@@ -3065,7 +3066,7 @@ describe('StatisticsScreen — paused while hidden', () => {
     );
 
     return {
-      writeWhileHidden: (overrides: Record<string, unknown[]>): void => {
+      landWrite: (overrides: Record<string, unknown[]>): void => {
         for (const [table, rows] of Object.entries(overrides)) {
           pending.set(table, rows);
         }
@@ -3094,7 +3095,7 @@ describe('StatisticsScreen — paused while hidden', () => {
     // A write elsewhere while this tab is hidden: deferred, so a render that
     // is still paused must not pick it up — this is what would catch a
     // regression that reads eagerly regardless of `paused`.
-    stub.writeWhileHidden({
+    stub.landWrite({
       transactions: [
         ...TRANSACTIONS,
         { id: 't4', holdingId: 'h1', time: localDaysFrom(now, -1), amountMinorUnits: 25_00 },
@@ -3107,7 +3108,7 @@ describe('StatisticsScreen — paused while hidden', () => {
 
     // The return: the deferred write applies (a real focus's own read) AND
     // `now` refreshes (a real focus's own setNow) — together, ONE recompute.
-    advanceFocusedNow(localDaysFrom(now, 1));
+    advanceVisibleNow(localDaysFrom(now, 1));
     mockUseIsScreenVisible.mockReturnValue(true);
     await act(async () => {
       rerender(<StatisticsScreen />);
@@ -3129,7 +3130,7 @@ describe('StatisticsScreen — paused while hidden', () => {
     const { rerender } = await renderScreen();
     expect(mockBuildNetWorthSeries).toHaveBeenCalledTimes(1);
 
-    stub.writeWhileHidden({
+    stub.landWrite({
       transactions: [
         ...TRANSACTIONS,
         { id: 't4', holdingId: 'h1', time: localDaysFrom(now, -1), amountMinorUnits: 25_00 },
@@ -3151,7 +3152,7 @@ describe('StatisticsScreen — paused while hidden', () => {
       rerender(<StatisticsScreen />);
     });
 
-    advanceFocusedNow(localDaysFrom(now, 1));
+    advanceVisibleNow(localDaysFrom(now, 1));
     mockUseIsScreenVisible.mockReturnValue(true);
     await act(async () => {
       rerender(<StatisticsScreen />);

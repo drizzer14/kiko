@@ -235,6 +235,17 @@ describe('PaneRouter', () => {
         router.getStateForAction(initial(), PaneActions.showDefault('primary', 'Nowhere'), CONFIG),
       ).toBeNull();
     });
+
+    // One pane has no second pane to fill, and a default left in its stack would be a screen the
+    // user never opened, on top of the one they did.
+    it('leaves the stack as it is while the navigator shows one pane', () => {
+      const single = PaneRouter({ paneConfig: { rootPane: 'companion' }, isSplit: SINGLE });
+      const state = single.getInitialState(CONFIG);
+
+      expect(runWith(single)(state, PaneActions.showDefault('primary', 'AccountDetail'))).toBe(
+        state,
+      );
+    });
   });
 
   describe('PANE_CLOSE', () => {

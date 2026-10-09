@@ -1,14 +1,17 @@
 import {
   createNavigationContainerRef,
+  createNavigatorFactory,
   NavigationContainer,
   type NavigationProp,
   type ParamListBase,
+  TabRouter,
   useNavigation,
+  useNavigationBuilder,
   useRoute,
 } from '@react-navigation/native';
-import { useContext, useEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { LayoutMode } from '@kiko/display-regions';
+import { type ReactNode, useContext, useEffect } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { resetTabStackOnBlur } from '@kiko/navigation/reset-tab-stack-on-blur';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
@@ -349,6 +352,90 @@ describe('createPaneStackNavigator', () => {
       await elapse(SETTLE_DELAY_MS * 2);
 
       expect(paneActions()).toEqual([]);
+    });
+  });
+
+  describe('tapping the focused tab again', () => {
+    let pressTab: (() => void) | undefined;
+
+    // A tab navigator that hands the test a way to send the tab press.
+    const TabNavigator = ({ children }: { children: ReactNode }) => {
+      const { state, descriptors, navigation, NavigationContent } = useNavigationBuilder(
+        TabRouter,
+        { children },
+      );
+      const tabRouteKey = state.routes[0].key;
+
+      pressTab = () =>
+        navigation.emit({ type: 'tabPress', target: tabRouteKey, canPreventDefault: true });
+
+      return <NavigationContent>{descriptors[tabRouteKey]?.render()}</NavigationContent>;
+    };
+    const Tabs = createNavigatorFactory(TabNavigator)();
+
+    const renderTabs = async () => {
+      await render(
+        <NavigationContainer ref={navigationRef}>
+          <Tabs.Navigator>
+            <Tabs.Screen name="Tab" component={TabStack} />
+          </Tabs.Navigator>
+        </NavigationContainer>,
+      );
+    };
+
+    const stackKeys = (): (string | undefined)[] =>
+      (navigationRef.getRootState()?.routes[0]?.state?.routes ?? []).map((route) => route.key);
+
+    const tapTabAgain = async (): Promise<void> => {
+      await act(async () => {
+        pressTab?.();
+      });
+      await elapse(50);
+    };
+
+    const showDefault = async (): Promise<void> => {
+      await act(async () => {
+        navigationRef.dispatch({
+          type: 'PANE_SHOW_DEFAULT',
+          payload: { pane: 'primary', route: { name: 'Detail' } },
+        });
+      });
+    };
+
+    it('pops a page the user opened', async () => {
+      await renderTabs();
+      await press('open-Accounts');
+
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+
+      await tapTabAgain();
+
+      expect(stackRouteNames()).toEqual(['Accounts']);
+    });
+
+    // Popping a runtime default would only put it back under a new key, remounting its screen.
+    it('leaves a runtime default alone, so its screen does not remount', async () => {
+      await renderTabs();
+      await showDefault();
+      const before = stackKeys();
+
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+
+      await tapTabAgain();
+
+      expect(stackKeys()).toEqual(before);
+    });
+
+    it('pops a page the user opened above a runtime default too', async () => {
+      await renderTabs();
+      await showDefault();
+      await press('open-Detail');
+
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail', 'Form']);
+
+      await tapTabAgain();
+
+      expect(stackRouteNames()).toEqual(['Accounts']);
     });
   });
 

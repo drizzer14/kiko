@@ -19,11 +19,16 @@ import type {
 } from '@react-navigation/native-stack';
 import { useContext, useEffect, useInsertionEffect, useRef } from 'react';
 
+import {
+  PaneRouter,
+  type PaneRouterOptions,
+  type PaneStackRoute,
+  type PaneStackState,
+} from '../pane-router';
 import PaneStackView from '../pane-stack-view';
 import { usePaneFold } from '../use-pane-fold';
 import type { PaneConfig } from '../pane-assignment';
 import { useSettledLayoutMode } from '../use-settled-layout-mode';
-import { PaneRouter, type PaneRouterOptions, type PaneStackState } from '../pane-router';
 
 // The router is the pane router, so the stack router override a native stack takes has no use.
 type PaneStackNavigatorProps = Omit<NativeStackNavigatorProps, 'UNSTABLE_router'> & {
@@ -91,12 +96,13 @@ function PaneStackNavigator({
       // The next frame, so every listener has run and `preventDefault` is known.
       handle = requestAnimationFrame(() => {
         const currentState = navigation.getState();
+        // A runtime default above the root is not the user's: popping it only puts it back under a
+        // new key, which remounts its screen for a blank frame.
+        const hasPageToPop = currentState.routes.some(
+          (route, index) => index > 0 && (route as PaneStackRoute).isDefault !== true,
+        );
 
-        if (
-          isFocused &&
-          currentState.index > 0 &&
-          !(event as EventArg<'tabPress', true>).defaultPrevented
-        ) {
+        if (isFocused && hasPageToPop && !(event as EventArg<'tabPress', true>).defaultPrevented) {
           navigation.dispatch({ ...StackActions.popToTop(), target: currentState.key });
         }
       });

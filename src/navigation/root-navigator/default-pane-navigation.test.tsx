@@ -10,6 +10,7 @@ import {
 } from '@react-navigation/native';
 import { View } from 'react-native';
 import type { ComponentType, ReactNode } from 'react';
+import type { LayoutMode } from '@kiko/display-regions';
 import { act, render, waitFor } from '@testing-library/react-native';
 
 import '@kiko/design-system/unistyles';
@@ -21,11 +22,26 @@ import SettingsStack from '../settings-stack';
 import StatisticsStack from '../statistics-stack';
 import { openAccountForm } from '../open-account-form';
 
-jest.mock('@kiko/display-regions', () => ({
-  ...jest.requireActual('@kiko/display-regions'),
-  useLayoutMode: () => 'columns',
-  useFoldRegion: () => null,
-}));
+// The layout mode a test can change, as the native module reports it: through a subscription.
+const mockLayout = { mode: 'columns' as LayoutMode, listeners: new Set<() => void>() };
+
+jest.mock('@kiko/display-regions', () => {
+  const { useSyncExternalStore } = require('react');
+
+  return {
+    ...jest.requireActual('@kiko/display-regions'),
+    useLayoutMode: () =>
+      useSyncExternalStore(
+        (listener: () => void) => {
+          mockLayout.listeners.add(listener);
+
+          return () => mockLayout.listeners.delete(listener);
+        },
+        () => mockLayout.mode,
+      ),
+    useFoldRegion: () => null,
+  };
+});
 
 type Navigation = Record<string, (...args: unknown[]) => unknown>;
 type CapturedViewProps = { descriptors: Record<string, { navigation: Navigation }> };
@@ -312,6 +328,31 @@ describe('the Settings stack across a fold and an unfold', () => {
     return routes.map((route) => [route.name, panes[route.key]]);
   };
 
+  // The window settles on one pane and back, as it does when the device folds and unfolds; the
+  // navigator folds and unfolds itself (usePaneFold) once the mode has settled.
+  const settleTo = async (mode: LayoutMode): Promise<void> => {
+    await act(async () => {
+      mockLayout.mode = mode;
+
+      for (const listener of mockLayout.listeners) {
+        listener();
+      }
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockLayout.mode = 'columns';
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockLayout.mode = 'columns';
+  });
+
   it('keeps Help and the topic opened from it where they were', async () => {
     await renderStack(SettingsStack);
     await act(async () => {
@@ -321,9 +362,7 @@ describe('the Settings stack across a fold and an unfold', () => {
       navigationRef.navigate('HelpTopic', { topicId: 'addAccount' });
     });
 
-    await act(async () => {
-      navigationRef.dispatch({ type: 'PANE_FOLD' });
-    });
+    await settleTo('single');
 
     expect(stackState().routes.map((route) => route.name)).toEqual([
       'Settings',
@@ -331,9 +370,7 @@ describe('the Settings stack across a fold and an unfold', () => {
       'HelpTopic',
     ]);
 
-    await act(async () => {
-      navigationRef.dispatch({ type: 'PANE_UNFOLD' });
-    });
+    await settleTo('columns');
 
     expect(panesOfRoutes()).toEqual([
       ['Settings', 'companion'],
