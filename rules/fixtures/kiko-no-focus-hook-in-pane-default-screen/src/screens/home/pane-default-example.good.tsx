@@ -3,9 +3,18 @@
 import { useEffect } from 'react';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import type { useIsFocused as FocusHook } from '@react-navigation/native';
+import { type useFocusEffect as EffectHook } from '@react-navigation/native';
+import {
+  type useIsFocused as InlineFocusHook,
+  type NavigationProp,
+} from '@react-navigation/native';
 
-// A type-only import is erased; it loads no hook.
+// A type-only import is erased, whether the whole statement or one specifier says so; it loads
+// no hook.
 export type ScreenFocus = typeof FocusHook;
+export type ScreenEffect = typeof EffectHook;
+export type ScreenInlineFocus = typeof InlineFocusHook;
+export type ScreenNavigation = NavigationProp<Record<string, undefined>>;
 
 export const PausesOnVisibility = () => {
   const isVisible = useIsScreenVisible();

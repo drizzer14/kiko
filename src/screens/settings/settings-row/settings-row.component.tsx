@@ -14,6 +14,14 @@ import { styles } from './settings-row.styles';
 import { chevronSize } from './settings-row.chevron';
 import type { SettingsRowProps } from './settings-row.props';
 
+// The selection takes the colors and the screen keeps the shape of its row, as on `Card`: the
+// default radius sits below the screen's style, the fill above it.
+const withSelectedFill = (style: SettingsRowProps['style'], isFilled: boolean) => [
+  isFilled && styles.selected,
+  style,
+  isFilled && selectedSurfaceStyles.fill,
+];
+
 // A single full-width row inside a Settings GlassSurface card: an optional
 // leading icon, a label, an optional `trailing` control, a chevron on a
 // navigating row (e.g. the Categories row), and optional `children` as a body.
@@ -36,9 +44,7 @@ const SettingsRow: FC<SettingsRowProps> = ({
   // A row in a selected card is already marked by the card's fill (a Settings card holds one row),
   // so it adds none of its own; either way its content reads on the accent.
   const isInSelectedSurface = useIsOnAccent();
-  const isFilled = selected && !isInSelectedSurface;
-  const selectedStyle = isFilled && [selectedSurfaceStyles.fill, styles.selected];
-  const isOnAccent = selected || isInSelectedSurface;
+  const rowStyle = withSelectedFill(style, selected && !isInSelectedSurface);
 
   const lead = (
     <Box direction="row" gap={3} style={styles.rowLead}>
@@ -102,10 +108,10 @@ const SettingsRow: FC<SettingsRowProps> = ({
         accessibilityRole="button"
         accessibilityState={{ selected }}
         onPress={onPress}
-        style={[style, selectedStyle]}
+        style={rowStyle}
         {...props}
       >
-        <OnAccentContext.Provider value={isOnAccent}>
+        <OnAccentContext.Provider value={selected || isInSelectedSurface}>
           <Box direction="row" style={styles.centeredEnd}>
             <Box gap={1} style={styles.body}>
               {lead}
@@ -125,10 +131,12 @@ const SettingsRow: FC<SettingsRowProps> = ({
       accessibilityRole="button"
       accessibilityState={{ selected }}
       onPress={onPress}
-      style={[style, selectedStyle]}
+      style={rowStyle}
       {...props}
     >
-      <OnAccentContext.Provider value={isOnAccent}>{header}</OnAccentContext.Provider>
+      <OnAccentContext.Provider value={selected || isInSelectedSurface}>
+        {header}
+      </OnAccentContext.Provider>
     </Pressable>
   );
 };

@@ -8,6 +8,8 @@ import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import SettingsRow from './settings-row.component';
 
+const Probe = () => <RNText>{useIsOnAccent() ? 'on accent' : 'on surface'}</RNText>;
+
 describe('SettingsRow', () => {
   it('renders its label', async () => {
     const { getByText } = await render(<SettingsRow label="Base currency" />);
@@ -60,8 +62,23 @@ describe('SettingsRow', () => {
       expect(rowStyle(getByTestId('row')).backgroundColor).toBe(darkTheme.colors.accent);
     });
 
+    // As on `Card`: the selection takes the colors, the screen keeps the shape of its row.
+    it('keeps the corner radius the screen gave the row', async () => {
+      const { getByTestId } = await render(
+        <SettingsRow
+          testID="row"
+          label="Categories"
+          onPress={jest.fn()}
+          style={{ borderRadius: 3 }}
+          selected
+        />,
+      );
+
+      expect(rowStyle(getByTestId('row')).borderRadius).toBe(3);
+      expect(rowStyle(getByTestId('row')).backgroundColor).toBe(darkTheme.colors.accent);
+    });
+
     it('draws its content on the accent fill', async () => {
-      const Probe = () => <RNText>{useIsOnAccent() ? 'on accent' : 'on surface'}</RNText>;
       const { getByText } = await render(
         <SettingsRow label="Reminder" onPress={jest.fn()} selected>
           <Probe />
@@ -72,7 +89,6 @@ describe('SettingsRow', () => {
     });
 
     it('draws its content on the surface when not selected', async () => {
-      const Probe = () => <RNText>{useIsOnAccent() ? 'on accent' : 'on surface'}</RNText>;
       const { getByText } = await render(
         <SettingsRow label="Reminder" onPress={jest.fn()}>
           <Probe />

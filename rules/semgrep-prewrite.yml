@@ -1172,10 +1172,23 @@ rules:
       - pattern: useFocusEffect(...)
       - pattern: $NS.useIsFocused(...)
       - pattern: $NS.useFocusEffect(...)
-      # Any value import or re-export that names either hook, which covers an alias
-      # (`useIsFocused as focused`) and a local re-export file a screen then calls by another
-      # name. `import type` and `export type` are erased and never match.
-      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\b(?:useIsFocused|useFocusEffect)\b[^;'"]*?\bfrom\s*['"]
+      # The hook read off a namespace without a call, then called under another name, and the
+      # same read as a destructure (`const { useIsFocused: focused } = Navigation`). Semgrep
+      # resolves an import alias, so a `typeof` of a type-only alias inside a `type` declaration
+      # would match the bare read too; that one position is left out.
+      - patterns:
+          - pattern-either:
+              - pattern: $NS.useIsFocused
+              - pattern: $NS.useFocusEffect
+          - pattern-not-inside: "type $ALIAS = $TYPE"
+      - pattern: "const { useIsFocused: $LOCAL, ... } = $NS"
+      - pattern: "const { useFocusEffect: $LOCAL, ... } = $NS"
+      # Any value import or re-export that names either hook as a specifier of its own, which
+      # covers an alias (`useIsFocused as focused`) and a local re-export file a screen then calls
+      # by another name. The hook must open its specifier (right after `{` or `,`), so an inline
+      # `type` modifier (`import { type useIsFocused }`, erased like `import type`) and a name only
+      # aliased TO the hook (`foo as useIsFocused`) never match.
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?[{,]\s*(?:useIsFocused|useFocusEffect)\b[^;'"]*?\bfrom\s*['"]
   # kiko-domain's "Dates": `jest.config.js` pins `process.env.TZ` to
   # Europe/Kyiv at config load, and Jest gives each test sandbox its own copy
   # of `process.env`, so an assignment in a test file, a `beforeAll`, or a

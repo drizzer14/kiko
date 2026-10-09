@@ -53,4 +53,29 @@ export const AnswersOnFocusThroughANamespace = () => {
   return null;
 };
 
-export const aliases = [focusedNow, onFocus];
+// A hook that follows an inline `type` specifier is still a value import.
+// EXPECT-FINDING
+import { type NavigationProp, useIsFocused as focusedAfterType } from '@react-navigation/native';
+
+// The namespace read without a call, which a screen then calls under another name.
+// EXPECT-FINDING
+export const focusReference = Navigation.useIsFocused;
+
+// EXPECT-FINDING
+export const effectReference = Navigation.useFocusEffect;
+
+// A destructure of the namespace, aliased or not.
+// EXPECT-FINDING
+const { useIsFocused: focusedHere } = Navigation;
+
+// EXPECT-FINDING
+const { useFocusEffect: effectHere, ...restOfNavigation } = Navigation;
+
+export const aliases = [
+  focusedNow,
+  onFocus,
+  focusedAfterType,
+  focusedHere,
+  effectHere,
+  restOfNavigation,
+];
