@@ -694,6 +694,10 @@ export const en = {
         'This clears the connection and the stored API key. Your BTC holding stays as a manual snapshot.',
       wallet: 'This clears the connection. Your BTC holding stays as a manual snapshot.',
     },
+    emptyHoldings: {
+      message: 'Add a holding to start tracking the balance of this account.',
+      title: 'No holdings yet',
+    },
     holdingsHeading: 'Holdings',
     importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',

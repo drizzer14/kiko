@@ -1801,7 +1801,11 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+    // A holding keeps the footer's Add holding button; with none, the empty state carries it.
+    setLiveData({
+      accounts: [account({ bankId: 'monobank' })],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
     mockKeepLocalCopy.mockResolvedValue([
       { status: 'success', localUri: 'file:///cache/statement.csv' },
     ]);
@@ -1820,7 +1824,7 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
   it('offers no Import statement on an account a bank sync owns', async () => {
     setLiveData({
       accounts: [account({ bankId: 'monobank', institution: 'monobank' })],
-      holdings: [],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
     const { getByTestId } = await renderScreen();
 
@@ -2538,7 +2542,10 @@ describe('AccountDetailScreen — no import statement tip', () => {
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+    setLiveData({
+      accounts: [account({ bankId: 'monobank' })],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
   });
 
   it('shows only the Import statement and Add holding actions in the footer for a bank account with no transactions', async () => {
@@ -2550,5 +2557,155 @@ describe('AccountDetailScreen — no import statement tip', () => {
     expect(within(footer).getByText('Add holding')).toBeTruthy();
     expect(queryByTestId('tip-import-statement')).toBeNull();
     expect(queryByLabelText('Close tip')).toBeNull();
+  });
+});
+
+describe('AccountDetailScreen — the empty holdings state', () => {
+  const closedHolding = {
+    id: 'h-closed',
+    name: 'Closed jar',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    closedAt: 1,
+  };
+  const openHolding = { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockButtonProps.length = 0;
+    mockSync.mockResolvedValue(undefined);
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+  });
+
+  it('shows the empty state with its title, message and action when there is no holding', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+
+    const { getByTestId, getByText, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('account-detail-holdings-empty')).toBeTruthy();
+    expect(getByText('No holdings yet')).toBeTruthy();
+    expect(getByText('Add a holding to start tracking the balance of this account.')).toBeTruthy();
+    expect(
+      within(getByTestId('account-detail-holdings-empty')).getByText('Add holding'),
+    ).toBeTruthy();
+    expect(queryByTestId('holdings-grid')).toBeNull();
+  });
+
+  it('keeps the Holdings heading above the empty state', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Holdings')).toBeTruthy();
+  });
+
+  it('opens the holding form for the account from the empty state action', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+
+    const { getByTestId, navigation } = await renderScreen();
+    await fireEvent.press(getByTestId('account-detail-holdings-empty-action'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
+  });
+
+  it('leads the empty state action with the generic holding glyph', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+
+    await renderScreen();
+
+    expect(mockButtonProps.find((props) => props.children === 'Add holding')?.icon).toBe(
+      'list.bullet.rectangle',
+    );
+  });
+
+  it('shows the empty state when only closed holdings remain', async () => {
+    setLiveData({ accounts: [account()], holdings: [closedHolding] });
+
+    const { getByTestId, queryByText } = await renderScreen();
+
+    expect(getByTestId('account-detail-holdings-empty')).toBeTruthy();
+    expect(queryByText('Closed jar')).toBeNull();
+  });
+
+  it('shows the grid and no empty state when an active holding exists', async () => {
+    setLiveData({ accounts: [account()], holdings: [openHolding, closedHolding] });
+
+    const { getByTestId, getByText, queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('account-detail-holdings-empty')).toBeNull();
+    expect(getByTestId('holdings-grid')).toBeTruthy();
+    expect(getByText('Black card')).toBeTruthy();
+  });
+
+  it.each(['bank', 'cash', 'crypto', 'property', 'debt'] as const)(
+    'shows the empty state on a %s account with no holding',
+    async (kind) => {
+      setLiveData({ accounts: [account({ kind })], holdings: [] });
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('account-detail-holdings-empty')).toBeTruthy();
+    },
+  );
+
+  it('hides the footer Add holding while the empty state shows it', async () => {
+    setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [] });
+
+    const { getAllByText, queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('screen-footer')).toBeNull();
+    expect(getAllByText('Add holding')).toHaveLength(1);
+  });
+
+  it('keeps Import statement in the footer for an unsynced bank, without Add holding there', async () => {
+    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Import statement')).toBeTruthy();
+    expect(within(footer).queryByText('Add holding')).toBeNull();
+  });
+
+  it('brings the footer Add holding back once a holding exists', async () => {
+    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [openHolding] });
+
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Add holding')).toBeTruthy();
+    expect(within(footer).getByText('Import statement')).toBeTruthy();
+  });
+
+  it('shows no empty state while the holdings are still loading', async () => {
+    setLiveData({ accounts: [account()], holdings: [], holdingsIsLoading: true });
+
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('account-detail-holdings-empty')).toBeNull();
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('renders the empty state from the Ukrainian catalog', async () => {
+      setLiveData({ accounts: [account()], holdings: [] });
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Ще немає активів')).toBeTruthy();
+      expect(getByText('Додайте актив, щоб відстежувати баланс цього рахунку.')).toBeTruthy();
+      expect(queryByText('No holdings yet')).toBeNull();
+    });
   });
 });

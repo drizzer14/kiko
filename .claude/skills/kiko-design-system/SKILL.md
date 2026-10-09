@@ -1096,7 +1096,14 @@ new component can land between reviews of this skill:
   pill, 44pt tap via `SMALL_HIT_SLOP`; user ruling 2026-10-08, the regular 50pt
   read as disproportionately tall) non-full-width `Button` from `action: { label, icon?, onPress }`. Strings come in as
   props. `testID` gives `<testID>-icon` and `<testID>-action`. Gate it on
-  `useDataReady`, never on `data.length === 0` alone.
+  `useDataReady`, never on `data.length === 0` alone. Call sites: Home
+  (`home-empty`), Statistics (`statistics-empty`) and Accounts (`accounts-empty`)
+  fill the screen when there is no account; `AccountDetail`
+  (`account-detail-holdings-empty`) shows it inside the Holdings section, under
+  the kept "Holdings" heading, when the account has no ACTIVE holding (every
+  account kind; closed holdings do not count). Its action is the footer's Add
+  holding, so the footer drops that button while the empty state shows (the
+  Import statement button stays), as Accounts drops its footer.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
