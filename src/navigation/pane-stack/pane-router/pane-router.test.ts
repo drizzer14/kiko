@@ -546,6 +546,67 @@ describe('PaneRouter', () => {
       expect(navigated.routes[1].params).toEqual({ id: 'b' });
       expect(names(back)).toEqual(['Accounts', 'AccountDetail']);
     });
+
+    describe('from a default that is the focused route', () => {
+      // [Accounts(c), AccountDetail(p, default)]: the default is on top, so the stack router would
+      // take it for the focused caller and open the next screen in its own pane.
+      const withDefault = (): PaneStackState =>
+        run(initial(), PaneActions.showDefault('primary', 'AccountDetail', { accountId: 'first' }));
+
+      it('opens a navigate beside it and makes the default a real route in its pane', () => {
+        const shown = withDefault();
+        const form = run(
+          shown,
+          from(keyOf(shown, 'AccountDetail'), CommonActions.navigate('HoldingForm')),
+        );
+
+        expect(names(form)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
+        expect(form.routes.map((route) => route.isDefault)).toEqual([
+          undefined,
+          undefined,
+          undefined,
+        ]);
+        expect(paneNames(form, 'companion')).toEqual(['Accounts', 'HoldingForm']);
+        expect(paneNames(form, 'primary')).toEqual(['AccountDetail']);
+      });
+
+      it('opens a push beside it too', () => {
+        const shown = withDefault();
+        const form = run(
+          shown,
+          from(keyOf(shown, 'AccountDetail'), StackActions.push('HoldingForm')),
+        );
+
+        expect(paneNames(form, 'companion')).toEqual(['Accounts', 'HoldingForm']);
+        expect(paneNames(form, 'primary')).toEqual(['AccountDetail']);
+      });
+
+      it('keeps the page it opened from through a fold, and Back leads to it', () => {
+        const shown = withDefault();
+        const form = run(
+          shown,
+          from(keyOf(shown, 'AccountDetail'), CommonActions.navigate('HoldingForm')),
+        );
+        const folded = run(form, PaneActions.fold());
+        const back = run(folded, from(keyOf(folded, 'HoldingForm'), CommonActions.goBack()));
+
+        expect(names(folded)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
+        expect(names(back)).toEqual(['Accounts', 'AccountDetail']);
+        expect(back.routes[1].params).toEqual({ accountId: 'first' });
+      });
+
+      it.each([
+        ['go back', CommonActions.goBack()],
+        ['pop', StackActions.pop()],
+        ['pop of several', StackActions.pop(2)],
+      ])('does nothing on %s, and does not hand it to the parent navigator', (_label, action) => {
+        const shown = withDefault();
+
+        expect(
+          router.getStateForAction(shown, from(keyOf(shown, 'AccountDetail'), action), CONFIG),
+        ).toBe(shown);
+      });
+    });
   });
 
   describe('rehydration', () => {

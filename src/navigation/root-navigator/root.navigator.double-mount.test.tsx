@@ -308,6 +308,15 @@ const accountsRoutes = (): StackRoute[] => {
   return (tab?.state?.routes ?? []) as StackRoute[];
 };
 
+const accountsPanes = (): Record<string, string | undefined> => {
+  const tab = navigationRef.getRootState()?.routes.find(({ name }) => name === 'AccountsTab');
+  const state = (tab?.state ?? { panes: {} }) as unknown as {
+    panes: Record<string, string | undefined>;
+  };
+
+  return state.panes;
+};
+
 // The Accounts list fills the primary pane of a wide window with a runtime default, which moves
 // the stack's focus off the list; the list must stay live and the default must survive the tab
 // being left and entered again.
@@ -366,6 +375,68 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
       ['Accounts', undefined],
       ['AccountsEmptyPane', true],
     ]);
+  });
+
+  describe('what the default page opens', () => {
+    const paneOf = (name: string): string | undefined => {
+      const route = accountsRoutes().find((candidate) => candidate.name === name);
+
+      return accountsPanes()[route?.key ?? ''];
+    };
+
+    it('opens the holding form in the companion pane and keeps the account page in the primary', async () => {
+      mockRows = { accounts: [accountRow('a', 'Monobank', 'bank')] };
+      const { getByText } = await walkTabs();
+      await goTo('AccountsTab');
+
+      expect(accountsRoutes().at(-1)?.isDefault).toBe(true);
+
+      await fireEvent.press(getByText('Add holding'));
+
+      expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+        ['Accounts', undefined],
+        ['AccountDetail', undefined],
+        ['HoldingForm', undefined],
+      ]);
+      expect(paneOf('AccountDetail')).toBe('primary');
+      expect(paneOf('HoldingForm')).toBe('companion');
+    });
+
+    it('leads Back from the form to the account page after a fold', async () => {
+      mockRows = { accounts: [accountRow('a', 'Monobank', 'bank')] };
+      const { getByText } = await walkTabs();
+      await goTo('AccountsTab');
+      await fireEvent.press(getByText('Add holding'));
+
+      await act(async () => {
+        navigationRef.dispatch({ type: 'PANE_FOLD' });
+      });
+
+      expect(accountsRoutes().map(({ name }) => name)).toEqual([
+        'Accounts',
+        'AccountDetail',
+        'HoldingForm',
+      ]);
+
+      await act(async () => {
+        navigationRef.goBack();
+      });
+
+      expect(accountsRoutes().map(({ name }) => name)).toEqual(['Accounts', 'AccountDetail']);
+    });
+
+    it('opens the account form from the empty pane in the companion pane', async () => {
+      const { getByTestId } = await walkTabs();
+      await goTo('AccountsTab');
+      await fireEvent.press(within(getByTestId('accounts-empty-pane')).getByText('Add account'));
+
+      expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+        ['Accounts', undefined],
+        ['AccountsEmptyPane', undefined],
+        ['AccountForm', undefined],
+      ]);
+      expect(paneOf('AccountForm')).toBe('companion');
+    });
   });
 
   it('leaves a row the user tapped alone', async () => {

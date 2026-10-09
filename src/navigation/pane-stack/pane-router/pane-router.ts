@@ -228,6 +228,9 @@ export const PaneRouter = ({
     return isSplit() && state.routes.some((route) => route.key === source) ? source : undefined;
   };
 
+  const isDefaultRoute = (state: PaneStackState, key: string): boolean =>
+    state.routes.some((route) => route.key === key && route.isDefault === true);
+
   // A native back of several screens closes screens of the one pane that goes back; the stack
   // router would count them in stack order, across both panes. A pane keeps its first screen.
   const dismiss = (state: PaneStackState, source: string, count: number): PaneStackState | null => {
@@ -279,6 +282,14 @@ export const PaneRouter = ({
 
     if (source === undefined) {
       return standard(state, action, config);
+    }
+
+    // A default is on top, yet the user never acted on it: what it opens goes opposite it, and it
+    // is the pane's floor, so there is nothing for it to go back to.
+    if (isDefaultRoute(state, source)) {
+      return action.type === 'GO_BACK' || action.type === 'POP'
+        ? state
+        : fromBystander(state, source, action, config);
     }
 
     if (action.type === 'POP' && action.payload.count > 1) {
