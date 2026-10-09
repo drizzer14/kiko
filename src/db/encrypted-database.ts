@@ -274,7 +274,8 @@ const resolveDbKey = async (): Promise<string> => {
 
   // Only kiko.db shows the encrypted file is untrusted: the export's ATTACH runs once kiko.db is
   // populated and kiko.db is deleted only after the copy is verified. A pff.db beside a present
-  // encrypted file is always the older residue of a kill between the two deletes.
+  // encrypted file now comes only from the OLD delete order (kiko.db first) or a pff.db delete
+  // that throws.
   if (
     !(await encryptedDatabaseExists()) ||
     databaseHasUserTables(LIVE_PLAINTEXT_DATABASE_NAME, true)
