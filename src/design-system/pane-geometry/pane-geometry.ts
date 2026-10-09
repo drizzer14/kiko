@@ -17,9 +17,10 @@ type Axis = {
   windowLength: (window: Window) => number;
   foldStart: (fold: Fold) => number;
   foldLength: (fold: Fold) => number;
-  // Whether the fold runs the full way across the axis the panes do not split, which is the only
-  // fold that can sit between two panes of this mode.
-  foldSpansCross: (window: Window, fold: Fold) => boolean;
+  // Whether the fold runs along the axis the panes do not split, which is the only fold that can
+  // sit between two panes of this mode. Orientation alone decides it: the fold and the window
+  // arrive separately and a size comparison would flip on a fraction of a point.
+  foldSpansCross: (fold: Fold) => boolean;
   frame: (window: Window, start: number, length: number) => PaneFrame;
 };
 
@@ -28,14 +29,14 @@ const AXES: Record<SplitMode, Axis> = {
     windowLength: (window) => window.width,
     foldStart: (fold) => fold.x,
     foldLength: (fold) => fold.width,
-    foldSpansCross: (window, fold) => fold.height >= window.height,
+    foldSpansCross: (fold) => fold.height > fold.width,
     frame: (window, start, length) => ({ x: start, y: 0, width: length, height: window.height }),
   },
   rows: {
     windowLength: (window) => window.height,
     foldStart: (fold) => fold.y,
     foldLength: (fold) => fold.height,
-    foldSpansCross: (window, fold) => fold.width >= window.width,
+    foldSpansCross: (fold) => fold.width > fold.height,
     frame: (window, start, length) => ({ x: 0, y: start, width: window.width, height: length }),
   },
 };
@@ -55,7 +56,7 @@ export const resolvePaneGeometry = (
 ): PaneGeometry => {
   const axis = AXES[mode];
   const length = axis.windowLength(window);
-  const isFolded = fold !== null && axis.foldSpansCross(window, fold);
+  const isFolded = fold !== null && axis.foldSpansCross(fold);
   // The fold's extent is clamped into the window so a fold that overhangs never makes a pane
   // negative.
   const start = isFolded ? clamp(axis.foldStart(fold), 0, length) : (length - hairline) / 2;

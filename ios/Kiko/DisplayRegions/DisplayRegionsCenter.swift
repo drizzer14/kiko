@@ -26,8 +26,9 @@ import os
   // read never touches it: a read that updated it would hide the change from the observer that
   // follows, and the JS side would keep what it rendered before.
   private var lastObservedJson: String?
-  // What the hinge handler last reported, nil until it reported a hinge. Only a partially open
-  // hinge can have a fold, so any other status reads as no fold without asking for the region.
+  // What the hinge handler last reported, nil until it reported a hinge. Only a closed or fully
+  // open hinge is known to have no fold; any other status, `unknown` included, leaves the region
+  // query to decide, because the handler's first call can report `unknown` while a fold is active.
   private var lastHinge: HingeState?
   private var settleTask: Task<Void, Never>?
   private weak var observedWindow: UIWindow?
@@ -55,7 +56,7 @@ import os
 
   struct HingeState: Equatable {
     var status: Int
-    var isPartiallyOpen: Bool
+    var hidesFold: Bool
   }
 
   // Where a read came from, for the debug log.
@@ -122,7 +123,7 @@ import os
       horizontalSizeClass: window.traitCollection.horizontalSizeClass == .regular
         ? "regular" : "compact",
       verticalBarEdge: Self.verticalBarEdgeName(of: window),
-      foldRegion: lastHinge?.isPartiallyOpen == false ? nil : Self.foldRegion(of: window)
+      foldRegion: lastHinge?.hidesFold == true ? nil : Self.foldRegion(of: window)
     )
   }
 
@@ -166,18 +167,6 @@ import os
       return [UITraitHorizontalSizeClass.self] + UITraitCollection.systemTraitsAffectingVerticalBarEdge
     }
 
-    // What the debug log needs to tell a region that is missing from one that is inactive.
-    private static func divisionDiagnostics(of window: UIWindow) -> String {
-      guard #available(iOS 27.1, *) else {
-        return "unavailable"
-      }
-
-      let active = window.reservedRegions(kind: .division)
-      let all = window.reservedRegions(kind: .division, options: .includeInactive)
-
-      return "divisionRegions=\(active.count) includingInactive=\(all.count) isActive=\(all.map(\.isActive))"
-    }
-
     // The traits, the window geometry and the scene state do not move when a flat device starts to
     // fold, so the hinge is observed itself. Its handler also runs once on adding.
     private func makeHingeInteraction(for window: UIWindow) -> UIInteraction? {
@@ -189,7 +178,11 @@ import os
         let hinge = update.hinge
 
         self?.hingeDidUpdate(
-          hinge.map { HingeState(status: $0.status.rawValue, isPartiallyOpen: $0.status == .partiallyOpen) },
+          hinge.map {
+            HingeState(
+              status: $0.status.rawValue,
+              hidesFold: $0.status == .closed || $0.status == .fullyOpen)
+          },
           angle: hinge.map { Double($0.angle) }
         )
       }
@@ -198,10 +191,6 @@ import os
       return interaction
     }
   #else
-    private static func divisionDiagnostics(of window: UIWindow) -> String {
-      return "unavailable"
-    }
-
     private static func verticalBarEdgeName(of window: UIWindow) -> String {
       return "none"
     }
@@ -261,8 +250,16 @@ import os
     ]
     notificationObservers = names.map { name in
       NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
-        [weak self] _ in
+        [weak self] notification in
+        let isActivation = notification.name == UIScene.didActivateNotification
+
         MainActor.assumeIsolated {
+          // The region query decides until the new window's handler reports again, because the
+          // status it reported before the scene went away may no longer hold.
+          if isActivation {
+            self?.lastHinge = nil
+          }
+
           self?.attachToForegroundWindow()
           self?.trigger(.notification)
         }
@@ -307,20 +304,18 @@ import os
     }
   }
 
-  // The hinge reports its angle continuously, so only a change of status is a trigger. A status
-  // that is not partially open reads as no fold at once; the settle reads still run, because the
-  // region follows the hinge later.
+  // The hinge reports its angle continuously. A change of status reads at once. An angle tick with
+  // the same status only restarts the settle reads: the division region can turn active later than
+  // the status change, or with no status change at all, and only these ticks follow it.
   private func hingeDidUpdate(_ hinge: HingeState?, angle: Double?) {
     let status = hinge.map { String($0.status) } ?? "none"
     let angleText = angle.map { String($0) } ?? "none"
-    let bounds = observedWindow?.bounds ?? .zero
-    let diagnostics = observedWindow.map { Self.divisionDiagnostics(of: $0) } ?? "no window"
 
     Self.logger.debug(
-      "hinge handler status=\(status, privacy: .public) angle=\(angleText, privacy: .public) \(diagnostics, privacy: .public) windowBounds=\(bounds.width, privacy: .public)x\(bounds.height, privacy: .public)pt"
-    )
+      "hinge handler status=\(status, privacy: .public) angle=\(angleText, privacy: .public)")
 
     guard hinge != lastHinge else {
+      scheduleSettleReads()
       return
     }
 
@@ -333,7 +328,10 @@ import os
   // read that finds nothing new from emitting.
   private func trigger(_ source: ReadSource) {
     refresh(source)
+    scheduleSettleReads()
+  }
 
+  private func scheduleSettleReads() {
     settleTask?.cancel()
     settleTask = Task { [weak self] in
       let clock = ContinuousClock()

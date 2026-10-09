@@ -59,6 +59,15 @@ describe('resolvePaneGeometry', () => {
     expect(geometry.primary.width).toBeCloseTo((951 - 1 / 3) / 2, 5);
   });
 
+  it('still splits at a fold a fraction of a point shorter than the window', () => {
+    const fold = { x: 455.5, y: 0, width: 40, height: 668.9 };
+    const geometry = resolvePaneGeometry('columns', { width: 951, height: 669 }, fold, HAIRLINE);
+
+    expect(geometry.isFolded).toBe(true);
+    expect(geometry.companion.width).toBe(455.5);
+    expect(geometry.primary.x).toBe(495.5);
+  });
+
   it('measured Duo half-open: a centred 40 pt vertical fold gives equal halves', () => {
     const fold = { x: 455.5, y: 0, width: 40, height: 669 };
     const geometry = resolvePaneGeometry('columns', { width: 951, height: 669 }, fold, HAIRLINE);

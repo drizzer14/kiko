@@ -548,9 +548,10 @@ new component can land between reviews of this skill:
   FRAMES ONLY — no width cap, no safe-area padding; native bars span
   the full pane; the `paneMaxWidth` cap and per-pane safe areas belong
   to the screen content inside the pane. Frames are window coordinates,
-  so it mounts at the window origin at full window size. A fold that
-  does not span the mode's cross axis counts as flat (rotation
-  transient); the rule is in `pane-geometry.ts`.
+  so it mounts at the window origin at full window size. A fold counts
+  for columns when it is taller than wide and for rows when it is wider
+  than tall (no window-size comparison); any other fold is flat (rotation
+  transient). The rule is in `pane-geometry.ts`.
 - **Screen** — the top-level screen container: true-black background,
   safe-area handling per mode (`scroll` drops the top safe-area edge
   under a large-title header), and a footer slot that clears the
