@@ -1,5 +1,4 @@
 import { type FC, useMemo } from 'react';
-import { useLayoutMode } from '@kiko/display-regions';
 import { useIsFocused } from '@react-navigation/native';
 import { NativeStackView } from '@react-navigation/native-stack';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
@@ -20,8 +19,8 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   descriptors,
   describe,
   paneConfig,
+  mode,
 }) => {
-  const mode = useLayoutMode();
   const isTabFocused = useIsFocused();
   const isSplit = mode !== 'single';
   const companion = isSplit
@@ -43,6 +42,7 @@ const PaneStackView: FC<PaneStackViewProps> = ({
       <PaneVisibilityContext.Provider value={visibility}>
         {isSplit ? (
           <TwoPaneLayout
+            mode={mode}
             companion={
               companion && (
                 <NativeStackView

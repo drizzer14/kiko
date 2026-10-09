@@ -9,10 +9,10 @@ import type { PaneStackRoute, PaneStackState } from '../pane-router';
 import PaneStackView from '.';
 import type { NativeStackViewProps } from './pane-stack-view.props';
 
-const mockUseLayoutMode = jest.fn((): LayoutMode => 'columns');
+// The window reports one pane; the view is given the mode it shows, which wins.
 const mockUseFoldRegion = jest.fn((): FoldRegion => null);
 jest.mock('@kiko/display-regions', () => ({
-  useLayoutMode: () => mockUseLayoutMode(),
+  useLayoutMode: () => 'single',
   useFoldRegion: () => mockUseFoldRegion(),
 }));
 
@@ -68,9 +68,10 @@ const descriptors = { shared: true } as never as NativeStackViewProps['descripto
 const describeStandIn = jest.fn((standIn: PaneStackRoute) => ({ standIn }));
 const describeRoute = describeStandIn as never as NativeStackViewProps['describe'];
 
-const renderView = (state: PaneStackState, paneConfig: PaneConfig) =>
+const renderView = (state: PaneStackState, paneConfig: PaneConfig, mode: LayoutMode = 'columns') =>
   render(
     <PaneStackView
+      mode={mode}
       state={state}
       navigation={navigation}
       descriptors={descriptors}
@@ -87,15 +88,13 @@ const renderedProps = () =>
 describe('PaneStackView', () => {
   beforeEach(() => {
     mockNativeStackView.mockClear();
-    mockUseLayoutMode.mockReturnValue('columns');
     mockUseFoldRegion.mockReturnValue(null);
   });
 
   it('renders one native stack with the whole state in single mode', async () => {
-    mockUseLayoutMode.mockReturnValue('single');
     const state = stackState([route('accounts'), route('account')]);
 
-    await renderView(state, ACCOUNTS);
+    await renderView(state, ACCOUNTS, 'single');
 
     expect(renderedProps()).toHaveLength(1);
     expect(renderedProps()[0].state).toBe(state);
@@ -104,11 +103,10 @@ describe('PaneStackView', () => {
   });
 
   it('keeps a default route out of the single stack', async () => {
-    mockUseLayoutMode.mockReturnValue('single');
-
     await renderView(
       stackState([route('accounts'), route('first', 'AccountDetail', { isDefault: true })]),
       ACCOUNTS,
+      'single',
     );
 
     expect(renderedProps()[0].state.routes.map((entry) => entry.key)).toEqual(['accounts']);
@@ -117,14 +115,13 @@ describe('PaneStackView', () => {
   it.each(['columns', 'rows'] as const)(
     'renders one native stack for each pane, with that pane’s routes, in %s',
     async (mode) => {
-      mockUseLayoutMode.mockReturnValue(mode);
       const state = stackState([route('accounts'), route('account'), route('form')], {
         accounts: 'companion',
         account: 'primary',
         form: 'companion',
       });
 
-      await renderView(state, ACCOUNTS);
+      await renderView(state, ACCOUNTS, mode);
 
       expect(screen.getByTestId('two-pane-companion')).toBeTruthy();
       expect(screen.getByTestId('stack-accounts+form')).toBeTruthy();
@@ -200,9 +197,7 @@ describe('PaneStackView', () => {
     });
 
     it('has no pane visibility in single mode, but still hands over the dispatch', async () => {
-      mockUseLayoutMode.mockReturnValue('single');
-
-      await renderView(stackState([route('accounts')]), ACCOUNTS);
+      await renderView(stackState([route('accounts')]), ACCOUNTS, 'single');
 
       const [, visibility, dispatch] = mockNativeStackView.mock.calls[0];
 

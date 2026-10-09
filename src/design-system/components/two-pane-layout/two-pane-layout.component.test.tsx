@@ -88,6 +88,22 @@ describe('TwoPaneLayout', () => {
     });
   });
 
+  it('lays out the mode it is pinned to, whatever the window reports', async () => {
+    mockUseLayoutMode.mockReturnValue('single');
+    await render(
+      <TwoPaneLayout
+        mode="rows"
+        companion={<Text testID="companion-content">companion</Text>}
+        primary={<Text testID="primary-content">primary</Text>}
+      />,
+    );
+
+    const half = (669 - HAIRLINE) / 2;
+
+    expect(frameOf('two-pane-companion')).toEqual({ x: 0, y: 0, width: 951, height: half });
+    expect(frameOf('two-pane-primary').y).toBe(half + HAIRLINE);
+  });
+
   it('shows the hairline divider only when flat', async () => {
     await renderLayout();
 

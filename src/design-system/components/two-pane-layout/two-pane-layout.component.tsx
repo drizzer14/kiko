@@ -10,9 +10,10 @@ import type { TwoPaneLayoutProps } from './two-pane-layout.props';
 // The pane frames are in window coordinates (useWindowDimensions) and the root is never measured,
 // so this must mount at the window origin, at the full window size. It positions the panes and
 // nothing else: each pane child fills its frame, so native bars span the pane.
-const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({ companion, primary }) => {
+const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({ companion, primary, mode: pinnedMode }) => {
   const { theme } = useUnistyles();
-  const mode = useLayoutMode();
+  const windowMode = useLayoutMode();
+  const mode = pinnedMode ?? windowMode;
   const foldRegion = useFoldRegion();
   const window = useWindowDimensions();
 
