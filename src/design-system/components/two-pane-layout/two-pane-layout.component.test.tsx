@@ -2,6 +2,7 @@ import { StyleSheet, Text } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { render, screen } from '@testing-library/react-native';
 import type { FoldRegion, LayoutMode } from '@kiko/display-regions';
+import { paneContextOf, usePaneContext } from '@kiko/design-system/pane-context';
 
 import '@kiko/design-system/unistyles';
 
@@ -139,4 +140,55 @@ describe('TwoPaneLayout', () => {
       }
     },
   );
+
+  // The screen content in a pane sizes itself by the pane it is in; the layout only says which.
+  describe('the pane each child is rendered in', () => {
+    const PaneProbe = ({ name }: { name: string }) => (
+      <Text testID={`probe-${name}`}>{JSON.stringify(usePaneContext())}</Text>
+    );
+
+    it.each(['columns', 'rows'] as const)('is the %s companion and primary pane', async (mode) => {
+      mockUseLayoutMode.mockReturnValue(mode);
+      await render(
+        <TwoPaneLayout
+          companion={<PaneProbe name="companion" />}
+          primary={<PaneProbe name="primary" />}
+        />,
+      );
+
+      expect(screen.getByTestId('probe-companion').children).toEqual([
+        JSON.stringify(paneContextOf(mode, 'companion')),
+      ]);
+      expect(screen.getByTestId('probe-primary').children).toEqual([
+        JSON.stringify(paneContextOf(mode, 'primary')),
+      ]);
+    });
+
+    it('is the pinned mode, not the window one', async () => {
+      mockUseLayoutMode.mockReturnValue('columns');
+      await render(
+        <TwoPaneLayout
+          mode="rows"
+          companion={<PaneProbe name="companion" />}
+          primary={<PaneProbe name="primary" />}
+        />,
+      );
+
+      expect(screen.getByTestId('probe-primary').children).toEqual([
+        JSON.stringify(paneContextOf('rows', 'primary')),
+      ]);
+    });
+
+    it('is no pane at all in single mode, where the window is the screen', async () => {
+      mockUseLayoutMode.mockReturnValue('single');
+      await render(
+        <TwoPaneLayout
+          companion={<PaneProbe name="companion" />}
+          primary={<PaneProbe name="primary" />}
+        />,
+      );
+
+      expect(screen.getByTestId('probe-primary').children).toEqual(['null']);
+    });
+  });
 });

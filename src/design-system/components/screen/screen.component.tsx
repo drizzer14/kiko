@@ -5,16 +5,9 @@ import { ScrollView, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { styles } from './screen.styles';
+import { usePaneScreen } from './use-pane-screen';
 import type { ScreenProps } from './screen.props';
 import { resolveBottomClearance } from './bottom-clearance';
-
-// A large-title navigator header owns the top inset itself, so any branch whose
-// content sits under one drops the SafeAreaView's top edge — keeping it would
-// double-offset content beneath the header. Used by the always-scrolling
-// `scroll` branch AND by the plain branch's `bleedTop` opt-in (a large-title
-// screen whose child is itself the scrollable surface, e.g. HoldingDetail's
-// ledger FlatList).
-const LARGE_TITLE_SAFE_AREA_EDGES = ['left', 'right', 'bottom'] as const;
 
 const Screen: FC<ScreenProps> = ({
   children,
@@ -58,11 +51,11 @@ const Screen: FC<ScreenProps> = ({
   // `bleedBottom` child, e.g. Home's transaction list) and its full
   // rationale, including why a vertical bar makes the tab-bar height
   // untrusted entirely.
-  const bottomClearance = resolveBottomClearance(
-    tabBarHeight,
-    insets.bottom,
-    verticalBarEdge,
-    windowHeight,
+  // A pane that is not at the window's bottom has no tab bar over it, so
+  // `bottomClearanceFor` gives it none (see `use-pane-screen.ts`).
+  const { rootStyle, plainEdges, largeTitleEdges, bottomClearanceFor } = usePaneScreen();
+  const bottomClearance = bottomClearanceFor(
+    resolveBottomClearance(tabBarHeight, insets.bottom, verticalBarEdge, windowHeight),
   );
   // The plain branch's `content` reserves the clearance itself only when it is
   // both the screen's true bottom edge AND has nothing else claiming that job:
@@ -74,7 +67,7 @@ const Screen: FC<ScreenProps> = ({
 
   if (scroll) {
     return (
-      <SafeAreaView edges={LARGE_TITLE_SAFE_AREA_EDGES} style={styles.safeArea}>
+      <SafeAreaView edges={largeTitleEdges} style={rootStyle}>
         <ScrollView
           ref={scrollableRef}
           testID="screen-scroll-view"
@@ -159,7 +152,7 @@ const Screen: FC<ScreenProps> = ({
   // sibling, with its own clearance, exactly as in the other two branches.
   if (bleedTop) {
     return (
-      <SafeAreaView edges={LARGE_TITLE_SAFE_AREA_EDGES} style={styles.safeArea}>
+      <SafeAreaView edges={largeTitleEdges} style={rootStyle}>
         {children}
         {footer ? (
           <View testID="screen-footer" style={styles.footer(bottomClearance)}>
@@ -177,7 +170,7 @@ const Screen: FC<ScreenProps> = ({
   // beneath a short page's content. `bleedTop` returns above, so this branch is
   // always a headerless screen that keeps the default all-edges reservation.
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={plainEdges} style={rootStyle}>
       <View testID="screen-content" style={styles.content(contentOwnsClearance, bottomClearance)}>
         {children}
       </View>

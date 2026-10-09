@@ -2,7 +2,9 @@ import type { ComponentProps } from 'react';
 import { render, within } from '@testing-library/react-native';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
 
+import { darkTheme } from '@kiko/design-system/theme';
 import type { RenderedElement } from '@kiko/test-support/rendered-element';
+import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
 import '@kiko/design-system/unistyles';
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/screen`), not `./screen.component` directly, so
@@ -489,6 +491,124 @@ describe('Screen', () => {
       const footerStyle = StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style);
 
       expect(footerStyle.paddingHorizontal).toBe(16);
+    });
+  });
+
+  // One of two panes shares the window: its content is capped and centred, it keeps a safe-area
+  // inset only on an edge it shares with the window, and it clears the tab bar only when it sits
+  // at the window's bottom. Outside a pane (every test above) none of this applies.
+  describe('in a pane', () => {
+    type PaneOf = Parameters<typeof paneContextOf>;
+
+    const renderInPane = (props: ComponentProps<typeof Screen>, mode: PaneOf[0], pane: PaneOf[1]) =>
+      render(
+        <PaneContext.Provider value={paneContextOf(mode, pane)}>
+          <Screen {...props}>
+            <Text>content</Text>
+          </Screen>
+        </PaneContext.Provider>,
+      );
+
+    // The SafeAreaView is the root of every branch; its direct child is how a test reaches it.
+    const rootOf = (
+      view: Awaited<ReturnType<typeof renderInPane>>,
+      props: { scroll?: boolean; bleedTop?: boolean },
+    ) => {
+      if (props.scroll) {
+        return view.getByTestId(SCROLL_VIEW_TEST_ID).parent;
+      }
+
+      return props.bleedTop
+        ? view.getByText('content').parent
+        : view.getByTestId(CONTENT_TEST_ID).parent;
+    };
+
+    const BRANCHES = [
+      ['plain', {}],
+      ['scroll', { scroll: true }],
+      ['bleedTop', { bleedTop: true }],
+    ] as const;
+
+    it.each(BRANCHES)(
+      'caps and centres the %s branch at the pane max width',
+      async (_name, props) => {
+        const view = await renderInPane(props, 'columns', 'primary');
+        const root = StyleSheet.flatten(rootOf(view, props)?.props.style);
+
+        expect(root.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+        expect(root.width).toBe('100%');
+        expect(root.alignSelf).toBe('center');
+      },
+    );
+
+    it.each(BRANCHES)('does not cap the %s branch outside a pane', async (_name, props) => {
+      const view = await renderScreen(props);
+      const root = StyleSheet.flatten(rootOf(view, props)?.props.style);
+
+      expect(root.maxWidth).toBeUndefined();
+      expect(root.alignSelf).toBeUndefined();
+    });
+
+    it.each([
+      ['columns', 'companion', ['top', 'bottom', 'left']],
+      ['columns', 'primary', ['top', 'right', 'bottom']],
+      ['rows', 'companion', ['top', 'right', 'left']],
+      ['rows', 'primary', ['right', 'bottom', 'left']],
+    ] as const)(
+      'reserves a plain screen’s safe area only on the window edges the %s %s pane touches',
+      async (mode, pane, touched) => {
+        const view = await renderInPane({}, mode, pane);
+
+        expect(view.getByTestId(CONTENT_TEST_ID).parent?.props.edges).toEqual(touched);
+      },
+    );
+
+    it.each([
+      ['columns', 'companion', ['left', 'bottom']],
+      ['columns', 'primary', ['right', 'bottom']],
+      ['rows', 'companion', ['left', 'right']],
+      ['rows', 'primary', ['left', 'right', 'bottom']],
+    ] as const)(
+      'drops the top edge of a large-title screen and keeps only the edges the %s %s pane touches',
+      async (mode, pane, touched) => {
+        const scroll = await renderInPane({ scroll: true }, mode, pane);
+        const bleedTop = await renderInPane({ bleedTop: true }, mode, pane);
+
+        expect(scroll.getByTestId(SCROLL_VIEW_TEST_ID).parent?.props.edges).toEqual(touched);
+        expect(bleedTop.getByText('content').parent?.props.edges).toEqual(touched);
+      },
+    );
+
+    it('clears the tab bar in a pane that touches the window bottom', async () => {
+      const { getByTestId } = await renderInPane({ footer: footerNode }, 'columns', 'companion');
+
+      expect(StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style).paddingBottom).toBe(
+        FOOTER_GAP + BOTTOM_CLEARANCE,
+      );
+    });
+
+    it('keeps the tab-bar clearance out of the footer of a top pane in rows mode', async () => {
+      const { getByTestId } = await renderInPane({ footer: footerNode }, 'rows', 'companion');
+
+      expect(StyleSheet.flatten(getByTestId(FOOTER_TEST_ID).props.style).paddingBottom).toBe(
+        FOOTER_GAP,
+      );
+    });
+
+    it('keeps the tab-bar clearance out of the content edge of a top pane in rows mode', async () => {
+      const { getByTestId } = await renderInPane({}, 'rows', 'companion');
+
+      expect(StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style).paddingBottom).toBe(
+        FOOTER_GAP,
+      );
+    });
+
+    it('clears the tab bar in the bottom pane in rows mode', async () => {
+      const { getByTestId } = await renderInPane({}, 'rows', 'primary');
+
+      expect(StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style).paddingBottom).toBe(
+        FOOTER_GAP + BOTTOM_CLEARANCE,
+      );
     });
   });
 });
