@@ -429,6 +429,62 @@ describe('PaneRouter', () => {
       expect(paneNames(replaced, 'primary')).toEqual(['AccountDetail', 'ReminderForm']);
     });
 
+    // [Accounts(c), AccountDetail(p), HoldingForm(c), ReminderForm(p), Statement(c)]
+    const fiveRoutes = (): PaneStackState => {
+      const list = initial();
+      const detail = run(list, PaneActions.open(list.routes[0].key, 'AccountDetail'));
+      const holding = run(detail, PaneActions.open(keyOf(detail, 'AccountDetail'), 'HoldingForm'));
+      const reminder = run(
+        holding,
+        PaneActions.open(keyOf(holding, 'HoldingForm'), 'ReminderForm'),
+      );
+
+      return run(reminder, PaneActions.open(keyOf(reminder, 'ReminderForm'), 'Statement'));
+    };
+
+    it('closes the routes of the dismissed pane, not the ones beneath it in the stack, on a native back of several', () => {
+      const state = fiveRoutes();
+      const dismissed = run(state, from(keyOf(state, 'Statement'), StackActions.pop(2)));
+
+      expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'ReminderForm']);
+      expect(paneNames(dismissed, 'companion')).toEqual(['Accounts']);
+      expect(paneNames(dismissed, 'primary')).toEqual(['AccountDetail', 'ReminderForm']);
+      expect(dismissed.index).toBe(2);
+    });
+
+    it('never closes the first route of the pane', () => {
+      const state = fiveRoutes();
+      const dismissed = run(state, from(keyOf(state, 'Statement'), StackActions.pop(9)));
+
+      expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'ReminderForm']);
+    });
+
+    it('closes the routes of the pane of a route that is not the focused one', () => {
+      const state = fiveRoutes();
+      const dismissed = run(state, from(keyOf(state, 'ReminderForm'), StackActions.pop(2)));
+
+      expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm', 'Statement']);
+    });
+
+    it('closes the routes in stack order while the navigator shows one pane', () => {
+      const single = PaneRouter({ paneConfig: { rootPane: 'companion' }, isSplit: SINGLE });
+      const state = [
+        'AccountDetail',
+        'HoldingForm',
+        'ReminderForm',
+        'Statement',
+      ].reduce<PaneStackState>(
+        (stack, name) => runWith(single)(stack, StackActions.push(name)),
+        single.getInitialState(CONFIG),
+      );
+      const dismissed = runWith(single)(
+        state,
+        from(keyOf(state, 'Statement'), StackActions.pop(2)),
+      );
+
+      expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
+    });
+
     it('leaves pop to top to the stack router, which closes everything above the root', () => {
       const state = accountsWithTwoForms();
       const popped = run(state, from(keyOf(state, 'HoldingForm'), StackActions.popToTop()));

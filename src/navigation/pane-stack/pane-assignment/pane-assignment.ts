@@ -1,17 +1,17 @@
 import maybe, { foldMap } from 'fnts/maybe';
 
-import type {
-  Pane,
-  PaneConfig,
-  PaneDefault,
-  PaneMap,
-  RouteLike,
-  VisibleRoutes,
-} from './pane-assignment.types';
+import type { PaneConfig, PaneDefault, PaneMap, RouteLike } from './pane-assignment.types';
 
-const PANES: readonly Pane[] = ['companion', 'primary'];
+const PANES = ['companion', 'primary'] as const;
+
+export type Pane = (typeof PANES)[number];
 
 const OPPOSITE: Record<Pane, Pane> = { companion: 'primary', primary: 'companion' };
+
+const DEFAULT_OF: Record<Pane, 'companionDefault' | 'primaryDefault'> = {
+  companion: 'companionDefault',
+  primary: 'primaryDefault',
+};
 
 const oppositePane = (pane: Pane): Pane => OPPOSITE[pane];
 
@@ -75,20 +75,7 @@ export const routesOfPane = <Route extends RouteLike>(
  * What a pane shows when it has no route, or null when it shows nothing.
  */
 export const paneDefault = (config: PaneConfig, pane: Pane): PaneDefault | null =>
-  (pane === 'companion' ? config.companionDefault : config.primaryDefault) ?? null;
-
-/**
- * What each pane shows: its top route, or the pane's default when it has none.
- */
-export const visibleRoutes = <Route extends RouteLike>(
-  routes: readonly Route[],
-  panes: PaneMap,
-  config: PaneConfig,
-): VisibleRoutes<Route> => ({
-  companion:
-    routesOfPane(routes, panes, config, 'companion').at(-1) ?? paneDefault(config, 'companion'),
-  primary: routesOfPane(routes, panes, config, 'primary').at(-1) ?? paneDefault(config, 'primary'),
-});
+  config[DEFAULT_OF[pane]] ?? null;
 
 /**
  * Opens `next` in the pane opposite to the opener's: every route above the opener is closed first,
@@ -107,10 +94,7 @@ export const openFrom = <Route extends RouteLike>(
   const openerIndex = routes.findIndex((route) => route.key === openerKey);
   const openerPane = panes[openerKey] ?? paneOfDefaultKey(openerKey);
 
-  if (
-    openerPane === undefined ||
-    (openerIndex === -1 && paneOfDefaultKey(openerKey) === undefined)
-  ) {
+  if (openerPane === undefined) {
     return { routes, panes };
   }
 

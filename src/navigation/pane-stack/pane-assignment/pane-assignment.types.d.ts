@@ -1,4 +1,4 @@
-export type Pane = 'companion' | 'primary';
+import type { Pane } from './pane-assignment';
 
 // A pane for each route key. A key without an entry takes the pane opposite to the route below it.
 export type PaneMap = Readonly<Record<string, Pane | undefined>>;
@@ -18,9 +18,4 @@ export type PaneConfig = {
   rootPane: Pane;
   companionDefault?: PaneDefault;
   primaryDefault?: PaneDefault;
-};
-
-export type VisibleRoutes<Route extends RouteLike> = {
-  companion: Route | PaneDefault | null;
-  primary: Route | PaneDefault | null;
 };

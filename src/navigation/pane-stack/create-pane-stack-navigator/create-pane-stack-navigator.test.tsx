@@ -288,6 +288,21 @@ describe('createPaneStackNavigator', () => {
       expect(mounts).toEqual({ Accounts: 1, Statement: 1 });
     });
 
+    it('survives the burst of an outer display at rest: no unfold for the transient rows', async () => {
+      mockModeStore.mode = 'single';
+      await renderApp();
+
+      await emitMode('rows');
+      await elapse(40);
+      await emitMode('single');
+      await elapse(SETTLE_DELAY_MS * 2);
+
+      expect(paneActions()).toEqual([]);
+      expect(screen.getByTestId('screen-Accounts')).toBeTruthy();
+      expect(screen.queryByTestId('screen-Statement')).toBeNull();
+      expect(mounts).toEqual({ Accounts: 1 });
+    });
+
     it('dispatches nothing for a rotation between the two split modes', async () => {
       await renderApp();
 

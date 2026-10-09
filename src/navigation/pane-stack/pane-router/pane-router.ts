@@ -217,19 +217,38 @@ export const PaneRouter = ({
       : settled;
   };
 
-  // The route an action comes from when that route is on screen beside the focused one. The stack
-  // router takes the focused route to be the caller, which is only true of the route on top.
-  const bystanderOf = (
+  // The route an action comes from, when the navigator shows two panes and has that route. The
+  // stack router takes the focused route to be the caller, which is only true of the route on top.
+  const sourceOf = (
     state: PaneStackState,
     action: CommonNavigationAction | StackActionType,
   ): string | undefined => {
     const { source } = action;
 
-    if (!isSplit() || source === undefined || source === state.routes[state.index]?.key) {
-      return undefined;
+    return isSplit() && state.routes.some((route) => route.key === source) ? source : undefined;
+  };
+
+  // A native back of several screens closes screens of the one pane that goes back; the stack
+  // router would count them in stack order, across both panes. A pane keeps its first screen.
+  const dismiss = (state: PaneStackState, source: string, count: number): PaneStackState | null => {
+    const panes = unfoldAssignment(state.routes, state.panes, paneConfig);
+    const closing =
+      foldMap(maybe(panes[source]), (pane) => {
+        const own = routesOfPane(state.routes, panes, paneConfig, pane);
+        const at = own.findIndex((route) => route.key === source);
+
+        return own.slice(Math.max(at - count + 1, 1), at + 1);
+      }) ?? [];
+
+    if (closing.length === 0) {
+      return null;
     }
 
-    return state.routes.some((route) => route.key === source) ? source : undefined;
+    const routes = state.routes.filter((route) => !closing.includes(route));
+
+    const closed: PaneStackState = { ...state, routes, index: routes.length - 1, panes };
+
+    return settle(closed, state);
   };
 
   const fromBystander = (
@@ -257,9 +276,17 @@ export const PaneRouter = ({
     action: CommonNavigationAction | StackActionType,
     config: RouterConfigOptions,
   ): PaneStackState | null => {
-    const source = bystanderOf(state, action);
+    const source = sourceOf(state, action);
 
-    return source === undefined
+    if (source === undefined) {
+      return standard(state, action, config);
+    }
+
+    if (action.type === 'POP' && action.payload.count > 1) {
+      return dismiss(state, source, action.payload.count);
+    }
+
+    return source === state.routes[state.index]?.key
       ? standard(state, action, config)
       : fromBystander(state, source, action, config);
   };

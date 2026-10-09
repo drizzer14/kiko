@@ -2,13 +2,14 @@ import {
   defaultRouteKey,
   foldAssignment,
   openFrom,
+  type Pane,
   type PaneConfig,
+  paneDefault,
   type PaneMap,
   paneOfDefaultKey,
   type RouteLike,
   routesOfPane,
   unfoldAssignment,
-  visibleRoutes,
 } from '.';
 
 const route = (key: string, name = key, extra: Partial<RouteLike> = {}): RouteLike => ({
@@ -26,15 +27,14 @@ const HOME_TAB: PaneConfig = { rootPane: 'primary', companionDefault: STATISTICS
 const STATISTICS_TAB: PaneConfig = { rootPane: 'primary', companionDefault: HOME_DEFAULT };
 const ACCOUNTS_TAB: PaneConfig = { rootPane: 'companion' };
 
-// What a pane shows, as a name for a route or a default.
-const shown = (routes: RouteLike[], panes: PaneMap, config: PaneConfig) => {
-  const visible = visibleRoutes(routes, panes, config);
+// What a pane shows, as a name for its top route, or for its default when it has no route.
+const shownIn = (routes: RouteLike[], panes: PaneMap, config: PaneConfig, pane: Pane) =>
+  (routesOfPane(routes, panes, config, pane).at(-1) ?? paneDefault(config, pane))?.name ?? null;
 
-  return {
-    companion: visible.companion?.name ?? null,
-    primary: visible.primary?.name ?? null,
-  };
-};
+const shown = (routes: RouteLike[], panes: PaneMap, config: PaneConfig) => ({
+  companion: shownIn(routes, panes, config, 'companion'),
+  primary: shownIn(routes, panes, config, 'primary'),
+});
 
 describe('pane assignment', () => {
   it('(a) opens the form from Home (primary) in the companion, in place of Statistics', () => {
@@ -53,9 +53,10 @@ describe('pane assignment', () => {
       companion: 'Statistics',
       primary: 'Home',
     });
-    expect(visibleRoutes([route('home', 'Home')], { home: 'primary' }, HOME_TAB).companion).toBe(
-      STATISTICS_DEFAULT,
-    );
+    expect(
+      routesOfPane([route('home', 'Home')], { home: 'primary' }, HOME_TAB, 'companion'),
+    ).toEqual([]);
+    expect(paneDefault(HOME_TAB, 'companion')).toBe(STATISTICS_DEFAULT);
   });
 
   it('(c) opens a transaction from the Home companion (Statistics tab) in primary, in place of Statistics', () => {
@@ -218,9 +219,14 @@ describe('pane assignment', () => {
 
     expect(keys(folded.routes)).toEqual(['accounts']);
     expect(
-      visibleRoutes(folded.routes, unfoldAssignment(folded.routes, folded.panes, config), config)
-        .primary,
-    ).toBe(config.primaryDefault);
+      routesOfPane(
+        folded.routes,
+        unfoldAssignment(folded.routes, folded.panes, config),
+        config,
+        'primary',
+      ),
+    ).toEqual([]);
+    expect(paneDefault(config, 'primary')).toBe(config.primaryDefault);
   });
 
   it('(m) unfolds a state without a pane map by alternation from the root pane', () => {
