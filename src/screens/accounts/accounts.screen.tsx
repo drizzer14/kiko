@@ -16,7 +16,6 @@ import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
-import { useIsFocused } from '@react-navigation/native';
 import type { Currency } from '@kiko/currency/currency';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
@@ -24,6 +23,7 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import SymbolIcon from '@kiko/design-system/components/symbol';
+import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import { Pressable, type ScrollViewInstance } from 'react-native';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
@@ -43,7 +43,7 @@ import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
-import { useFocusRefreshedNow } from '@kiko/design-system/use-focus-refreshed-now';
+import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { type AccountRow, type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { useCloseHoldingAction } from '@kiko/design-system/components/close-holding-sheet';
@@ -67,8 +67,10 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   // read and no re-render, and returning to it runs one read per dirty query
   // (`enabled: false` would unsubscribe and drop every card to empty; see
   // kiko-architecture's `paused` vs `enabled`).
-  const isFocused = useIsFocused();
-  const liveOptions = { cached: true, paused: !isFocused } as const;
+  // Visibility, not focus: while a runtime default shows in the other pane the stack's focused
+  // route is that default, and the list is still on screen.
+  const isVisible = useIsScreenVisible();
+  const liveOptions = { cached: true, paused: !isVisible } as const;
   const {
     data: accounts,
     isLoading: accountsLoading,
@@ -91,10 +93,10 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     true,
     liveOptions,
   );
-  // Stable across a re-render, refreshed only on focus — a bare `Date.now()`
-  // here recomputed `debtsTotal`'s (and every card's) time-dependent value on
-  // EVERY render, not just when the screen actually regains focus.
-  const now = useFocusRefreshedNow();
+  // Stable across a re-render, refreshed only when the screen becomes visible — a bare
+  // `Date.now()` here recomputed `debtsTotal`'s (and every card's) time-dependent value on
+  // EVERY render, not just when the screen actually returns.
+  const now = useVisibleRefreshedNow(isVisible);
   // kiko-architecture: skip the price_points read while nothing rendered on
   // this screen ever reads it — a holding whose type carries no priced spec
   // and is not a loan (`needsPriceBook`) never touches `price_points`. It

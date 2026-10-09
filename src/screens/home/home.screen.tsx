@@ -27,11 +27,13 @@ import { activeHoldings } from '@kiko/rates/active-holdings';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
+import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { openAccountForm } from '@kiko/navigation/open-account-form';
+import type { CompositeScreenProps } from '@react-navigation/native';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
@@ -45,7 +47,6 @@ import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
 import Screen, { useBottomClearance } from '@kiko/design-system/components/screen';
-import { type CompositeScreenProps, useIsFocused } from '@react-navigation/native';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { type FC, type ReactElement, useCallback, useMemo, useRef, useState } from 'react';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
@@ -151,9 +152,10 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // only marks each query dirty — hiding Home costs no read and no re-render,
   // and returning to it runs one read per dirty query (`enabled: false` would
   // unsubscribe and drop every list to empty; see kiko-architecture's
-  // `paused` vs `enabled`).
-  const isFocused = useIsFocused();
-  const liveOptions = { cached: true, paused: !isFocused } as const;
+  // `paused` vs `enabled`). Visibility, not focus: in two panes Home can be the
+  // companion default of the Statistics tab, which is on screen and never focused.
+  const isVisible = useIsScreenVisible();
+  const liveOptions = { cached: true, paused: !isVisible } as const;
 
   const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
     accountsRepo.listQuery(),

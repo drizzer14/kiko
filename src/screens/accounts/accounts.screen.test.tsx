@@ -57,22 +57,25 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
-// useFocusRefreshedNow also reads the navigation context (useFocusEffect) via
-// the same real-context requirement as the hook above; stand it in the same
-// way statistics.screen.test.tsx does — a `Date.now()` taken once at mount
-// and held STABLE across re-renders (no focus event fires in a standalone
-// screen render), so a re-render test can prove the screen does not read
-// its own fresh `Date.now()` per render.
-jest.mock('@kiko/design-system/use-focus-refreshed-now/use-focus-refreshed-now', () => {
+// useVisibleRefreshedNow is stood in the same way statistics.screen.test.tsx
+// does — a `Date.now()` taken once at mount and held STABLE across re-renders
+// (no visibility change fires in a standalone screen render), so a re-render
+// test can prove the screen does not read its own fresh `Date.now()` per render.
+jest.mock('@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-now', () => {
   const { useState } = jest.requireActual('react');
 
-  return { useFocusRefreshedNow: () => useState(() => Date.now())[0] };
+  return { useVisibleRefreshedNow: () => useState(() => Date.now())[0] };
 });
 
-const mockUseIsFocused = jest.fn(() => true);
+// Whether the list is on screen. While a runtime default shows, the stack's focused route is that
+// default, so `useIsFocused` is mocked false for the whole file: only visibility may decide.
+const mockUseIsScreenVisible = jest.fn(() => true);
+jest.mock('@kiko/navigation/pane-stack', () => ({
+  useIsScreenVisible: () => mockUseIsScreenVisible(),
+}));
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
-  useIsFocused: () => mockUseIsFocused(),
+  useIsFocused: () => false,
 }));
 
 const mockUseLiveQuery = jest.fn();
@@ -2011,15 +2014,15 @@ describe('AccountsScreen — paused while hidden', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
   });
 
   afterEach(() => {
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
   });
 
-  it('pauses every live query while unfocused, keeping the cache option and the enabled argument', async () => {
-    mockUseIsFocused.mockReturnValue(false);
+  it('pauses every live query while not on screen, keeping the cache option and the enabled argument', async () => {
+    mockUseIsScreenVisible.mockReturnValue(false);
     setLiveData({
       accounts: [BANK],
       holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 0, type: 'metal' }],
@@ -2038,7 +2041,7 @@ describe('AccountsScreen — paused while hidden', () => {
     );
   });
 
-  it('leaves every live query unpaused while focused', async () => {
+  it('leaves every live query unpaused while on screen, focused or not', async () => {
     setLiveData({ accounts: [BANK] });
 
     await renderAccounts();
@@ -2091,7 +2094,7 @@ describe('AccountsScreen — paused while hidden', () => {
     });
     expect(getByText('Monobank')).toBeTruthy();
 
-    mockUseIsFocused.mockReturnValue(false);
+    mockUseIsScreenVisible.mockReturnValue(false);
     await act(async () => {
       await rerender(element());
     });
@@ -2102,7 +2105,7 @@ describe('AccountsScreen — paused while hidden', () => {
     });
     expect(queryByText('Savings')).toBeNull();
 
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
     await act(async () => {
       await rerender(element());
     });

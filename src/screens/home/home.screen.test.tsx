@@ -122,10 +122,17 @@ jest.mock('@kiko/design-system/components/tip-card', () => {
   return { __esModule: true, default: () => createElement(View, { testID: 'mock-tip-card' }) };
 });
 
-const mockUseIsFocused = jest.fn(() => true);
+// Whether Home is on screen. A pane navigator's companion default is visible without being the
+// focused route, so `useIsFocused` would freeze it.
+const mockUseIsScreenVisible = jest.fn(() => true);
+jest.mock('@kiko/navigation/pane-stack', () => ({
+  useIsScreenVisible: () => mockUseIsScreenVisible(),
+}));
+
+// Never focused: Home is a companion default here, so only its visibility may decide a pause.
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
-  useIsFocused: () => mockUseIsFocused(),
+  useIsFocused: () => false,
 }));
 
 const mockUseLiveQuery = jest.fn();
@@ -2355,7 +2362,7 @@ describe('HomeScreen — localization', () => {
 describe('HomeScreen — empty states', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
     mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
     mockUseSyncStatus.mockReturnValue(false);
     mockRefreshing.mockReturnValue(false);
@@ -2458,18 +2465,18 @@ describe('HomeScreen — empty states', () => {
 describe('HomeScreen — paused while hidden', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
     mockUseSyncAll.mockReturnValue({ failures: [], syncAll: mockSyncAll });
     mockUseSyncStatus.mockReturnValue(false);
     mockRefreshing.mockReturnValue(false);
   });
 
   afterEach(() => {
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
   });
 
-  it('pauses every live query while unfocused, keeping the cache option and the enabled argument', async () => {
-    mockUseIsFocused.mockReturnValue(false);
+  it('pauses every live query while not on screen, keeping the cache option and the enabled argument', async () => {
+    mockUseIsScreenVisible.mockReturnValue(false);
     seed({ holdings: [{ ...UAH_HOLDING, type: 'metal' }] });
 
     await renderHome();
@@ -2485,7 +2492,8 @@ describe('HomeScreen — paused while hidden', () => {
     );
   });
 
-  it('leaves every live query unpaused while focused', async () => {
+  // A companion default is visible but never the focused route; `useIsFocused` is mocked false.
+  it('leaves every live query unpaused while on screen, focused or not', async () => {
     seed();
 
     await renderHome();
@@ -2520,7 +2528,7 @@ describe('HomeScreen — paused while hidden', () => {
     );
 
     return {
-      writeWhileHidden: (next: LiveData): void => {
+      write: (next: LiveData): void => {
         pending = next;
       },
     };
@@ -2544,12 +2552,12 @@ describe('HomeScreen — paused while hidden', () => {
     const { getByText, queryByText, rerender } = await render(element());
     expect(getByText('Coffee')).toBeTruthy();
 
-    mockUseIsFocused.mockReturnValue(false);
+    mockUseIsScreenVisible.mockReturnValue(false);
     await act(async () => {
       await rerender(element());
     });
 
-    stub.writeWhileHidden({
+    stub.write({
       ...base,
       transactions: [
         transaction({ id: 't1', description: 'Coffee' }),
@@ -2561,11 +2569,41 @@ describe('HomeScreen — paused while hidden', () => {
     });
     expect(queryByText('Tea')).toBeNull();
 
-    mockUseIsFocused.mockReturnValue(true);
+    mockUseIsScreenVisible.mockReturnValue(true);
     await act(async () => {
       await rerender(element());
     });
     expect(getByText('Tea')).toBeTruthy();
     expect(getByText('Coffee')).toBeTruthy();
+  });
+
+  it('shows a transaction written while visible as the companion, without being focused', async () => {
+    const base: LiveData = {
+      accounts: [MONOBANK],
+      holdings: [UAH_HOLDING],
+      transactions: [transaction({ id: 't1', description: 'Coffee' })],
+    };
+    const stub = pausedAwareLiveData(base);
+    const element = () => (
+      <HomeScreen
+        navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+        route={asRouteProp<HomeProps['route']>('Home')}
+      />
+    );
+
+    const { getByText, rerender } = await render(element());
+
+    stub.write({
+      ...base,
+      transactions: [
+        transaction({ id: 't1', description: 'Coffee' }),
+        transaction({ id: 't2', description: 'Tea', time: Date.now() + 1 }),
+      ],
+    });
+    await act(async () => {
+      await rerender(element());
+    });
+
+    expect(getByText('Tea')).toBeTruthy();
   });
 });
