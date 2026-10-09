@@ -341,6 +341,31 @@ describe('reminder tap routing (real router)', () => {
     ).toEqual(keysBefore);
   });
 
+  // On a wide window the Accounts list fills its primary pane with a page flagged `isDefault`. The
+  // user never opened it, so the rebuilt stack leaves it out instead of making it a page they did.
+  it('leaves a runtime default of the tab out of the stack it rebuilds', async () => {
+    await renderApp();
+    await act(async () => {
+      navigationRef.navigate('AccountsTab', {
+        state: {
+          routes: [
+            { name: 'Accounts' },
+            { name: 'AccountDetail', params: { accountId: 'bank', name: 'Mono' }, isDefault: true },
+          ],
+          index: 1,
+        },
+      } as never);
+    });
+    expect(accountsStack()).toHaveLength(2);
+
+    await route([tap('add-cash')]);
+
+    expect(accountsStack()).toEqual([
+      onStack('Accounts'),
+      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
+    ]);
+  });
+
   it('gives the implicit account’s page, already on top, the new params in place', async () => {
     await renderApp();
     await openAccount('properties', 'Properties');

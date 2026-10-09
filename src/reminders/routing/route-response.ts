@@ -76,14 +76,18 @@ type TabNavigationRef = NavigationContainerRef<TabParamList>;
 
 type StackRoute = { key?: string; name: string; params?: object };
 
-// The Accounts stack as it is now, or its root while the tab has not mounted.
+// The Accounts stack as it is now, or its root while the tab has not mounted. On a wide window the
+// list fills its primary pane with a route flagged `isDefault`; the user never opened it, and
+// carried into this rebuild it would become a page they did, sitting beneath the reminder's.
 const accountsStackRoutes = (navigationRef: TabNavigationRef): StackRoute[] => {
   const tabs = navigationRef.getRootState()?.routes ?? [];
-  const routes = tabs.find(({ name }) => name === 'AccountsTab')?.state?.routes ?? [];
+  const routes = (tabs.find(({ name }) => name === 'AccountsTab')?.state?.routes ??
+    []) as (StackRoute & { isDefault?: boolean })[];
+  const opened = routes.filter(({ isDefault }) => isDefault !== true);
 
-  return routes.length === 0
+  return opened.length === 0
     ? [{ name: 'Accounts' }]
-    : routes.map(({ key, name, params }) => ({ key, name, params }));
+    : opened.map(({ key, name, params }) => ({ key, name, params }));
 };
 
 // The page of the tapped account already on top takes the new params in

@@ -9,7 +9,11 @@ import {
   NavigationContainer,
   type ParamListBase,
 } from '@react-navigation/native';
+import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { remindersRepo } from '@kiko/reminders/repo';
+import { routeLatestResponse } from '@kiko/reminders/routing';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
@@ -323,6 +327,12 @@ const accountsPanes = (): Record<string, string | undefined> => {
   return state.panes;
 };
 
+const paneOf = (name: string): string | undefined => {
+  const route = accountsRoutes().find((candidate) => candidate.name === name);
+
+  return accountsPanes()[route?.key ?? ''];
+};
+
 // The Accounts list fills the primary pane of a wide window with a runtime default, which moves
 // the stack's focus off the list; the list must stay live and the default must survive the tab
 // being left and entered again.
@@ -384,12 +394,6 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
   });
 
   describe('what the default page opens', () => {
-    const paneOf = (name: string): string | undefined => {
-      const route = accountsRoutes().find((candidate) => candidate.name === name);
-
-      return accountsPanes()[route?.key ?? ''];
-    };
-
     it('opens the holding form in the companion pane and keeps the account page in the primary', async () => {
       mockRows = { accounts: [accountRow('a', 'Monobank', 'bank')] };
       const { getByText } = await walkTabs();
@@ -442,6 +446,51 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
         ['AccountForm', undefined],
       ]);
       expect(paneOf('AccountForm')).toBe('companion');
+    });
+  });
+
+  // The tap rebuilds the whole stack with one navigate; the account the list put in the pane is
+  // not the user's, so it must not come through that rebuild as a page the user opened.
+  describe('when a reminder tap opens another account', () => {
+    const SAVINGS = accountRow('c', 'Savings', 'cash');
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('replaces the default with the account of the reminder, beside the list', async () => {
+      jest
+        .spyOn(remindersRepo, 'byIdQuery')
+        .mockResolvedValue([{ id: 'r', accountId: 'c', kind: 'add_transactions' }] as never);
+      jest.spyOn(accountsRepo, 'byIdQuery').mockResolvedValue([SAVINGS] as never);
+      jest.spyOn(holdingsRepo, 'listByAccountQuery').mockResolvedValue([]);
+      mockRows = { accounts: [accountRow('a', 'Monobank', 'bank'), SAVINGS] };
+      const { getAllByRole } = await walkTabs();
+      await goTo('AccountsTab');
+
+      expect(accountsRoutes().at(-1)).toMatchObject({ isDefault: true });
+
+      await act(async () => {
+        await routeLatestResponse(
+          [{ reminderId: 'r', requestIdentifier: 'r', action: 'open', respondedAt: 1 }],
+          navigationRef as unknown as Parameters<typeof routeLatestResponse>[1],
+        );
+      });
+
+      expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+        ['Accounts', undefined],
+        ['AccountDetail', undefined],
+      ]);
+      expect(accountsRoutes().at(-1)?.params).toMatchObject({ accountId: 'c' });
+
+      // The pane assignment is derived, not stored: the list marks the row of the primary pane's
+      // top route, so Savings is there and the list is still the companion's.
+      const selected = getAllByRole('button').filter(
+        (row) => row.props.accessibilityState?.selected === true,
+      );
+
+      expect(selected).toHaveLength(1);
+      expect(within(selected[0]).getByText('Savings')).toBeTruthy();
     });
   });
 
