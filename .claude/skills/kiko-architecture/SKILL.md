@@ -2601,9 +2601,13 @@ in memory for the crash history this fixed.
   (`DisplayRegionsCenter.swift`, `RCTDisplayRegions.h`/`.mm`). Swift guards the
   iOS 27.1 symbols with a compile-time SDK check plus `#available(iOS 27.1, *)`
   (read the exact guard in `DisplayRegionsCenter.swift`), observes the hinge
-  with a `UIHingeInteraction`, and logs one `os.Logger` `.debug` line per
-  emitted snapshot (category `DisplayRegions`; read it with `log stream
-  --level debug`). The JS wrapper reads native once, keeps its cache current
+  with a `UIHingeInteraction` (a change of hinge status is the trigger; a
+  status other than partially open reads as no fold at once), re-reads at 0.3 s
+  and 1.2 s after every trigger because the reserved region lands after the
+  trigger and nothing reports it, emits under the emitter lock so no emit
+  outlives `removeChangeEmitter`, and logs `os.Logger` `.debug` lines (category
+  `DisplayRegions`; read them with `log stream --level debug`): one per emit,
+  one per read (`read source=… changed=…`), one per hinge update. The JS wrapper reads native once, keeps its cache current
   from `onChange`, and falls back to `FALLBACK_SNAPSHOT` when the module is
   missing.
 - **`KikoReminders` also carries the one non-reminder read:

@@ -16,8 +16,9 @@ import os
     subsystem: Bundle.main.bundleIdentifier ?? "", category: "DisplayRegions")
 
   // The emitter points into the JS runtime and is set and removed from the TurboModule's own
-  // threads, so it sits behind a lock instead of the main actor: `removeChangeEmitter` must have
-  // taken effect before it returns, or a queued refresh could still emit into a torn-down runtime.
+  // threads, so it sits behind a lock instead of the main actor. An emit runs under the same lock,
+  // so no emit starts after `removeChangeEmitter` took the lock and none is still running when it
+  // returns; a queued refresh can never emit into a torn-down runtime.
   private nonisolated let emitterLock = NSLock()
   nonisolated(unsafe) private var changeEmitter: ((String) -> Void)?
   nonisolated(unsafe) private weak var changeEmitterOwner: AnyObject?
@@ -25,6 +26,10 @@ import os
   // read never touches it: a read that updated it would hide the change from the observer that
   // follows, and the JS side would keep what it rendered before.
   private var lastObservedJson: String?
+  // What the hinge handler last reported, nil until it reported a hinge. Only a partially open
+  // hinge can have a fold, so any other status reads as no fold without asking for the region.
+  private var lastHinge: HingeState?
+  private var settleTask: Task<Void, Never>?
   private weak var observedWindow: UIWindow?
   private var traitRegistration: UITraitChangeRegistration?
   private var geometryObservation: NSKeyValueObservation?
@@ -47,6 +52,20 @@ import os
     var verticalBarEdge: String
     var foldRegion: CGRect?
   }
+
+  struct HingeState: Equatable {
+    var status: Int
+    var isPartiallyOpen: Bool
+  }
+
+  // Where a read came from, for the debug log.
+  private enum ReadSource: String {
+    case hinge, geometry, trait, notification, settle
+  }
+
+  // How long after a trigger the settle reads run. The reserved region reaches the window as its
+  // own update, later than the hinge, the traits and the geometry, and no API reports it.
+  private static let settleOffsets: [Duration] = [.milliseconds(300), .milliseconds(1200)]
 
   static let fallbackSnapshot = Snapshot(
     horizontalSizeClass: "compact",
@@ -103,7 +122,7 @@ import os
       horizontalSizeClass: window.traitCollection.horizontalSizeClass == .regular
         ? "regular" : "compact",
       verticalBarEdge: Self.verticalBarEdgeName(of: window),
-      foldRegion: Self.foldRegion(of: window)
+      foldRegion: lastHinge?.isPartiallyOpen == false ? nil : Self.foldRegion(of: window)
     )
   }
 
@@ -147,22 +166,42 @@ import os
       return [UITraitHorizontalSizeClass.self] + UITraitCollection.systemTraitsAffectingVerticalBarEdge
     }
 
+    // What the debug log needs to tell a region that is missing from one that is inactive.
+    private static func divisionDiagnostics(of window: UIWindow) -> String {
+      guard #available(iOS 27.1, *) else {
+        return "unavailable"
+      }
+
+      let active = window.reservedRegions(kind: .division)
+      let all = window.reservedRegions(kind: .division, options: .includeInactive)
+
+      return "divisionRegions=\(active.count) includingInactive=\(all.count) isActive=\(all.map(\.isActive))"
+    }
+
     // The traits, the window geometry and the scene state do not move when a flat device starts to
-    // fold, so the hinge is observed itself. Its handler also runs once on adding, which `refresh`
-    // finds unchanged.
+    // fold, so the hinge is observed itself. Its handler also runs once on adding.
     private func makeHingeInteraction(for window: UIWindow) -> UIInteraction? {
       guard #available(iOS 27.1, *) else {
         return nil
       }
 
-      let interaction = UIHingeInteraction { [weak self] _, _ in
-        self?.refreshAfterLayout()
+      let interaction = UIHingeInteraction { [weak self] _, update in
+        let hinge = update.hinge
+
+        self?.hingeDidUpdate(
+          hinge.map { HingeState(status: $0.status.rawValue, isPartiallyOpen: $0.status == .partiallyOpen) },
+          angle: hinge.map { Double($0.angle) }
+        )
       }
       window.addInteraction(interaction)
 
       return interaction
     }
   #else
+    private static func divisionDiagnostics(of window: UIWindow) -> String {
+      return "unavailable"
+    }
+
     private static func verticalBarEdgeName(of window: UIWindow) -> String {
       return "none"
     }
@@ -209,13 +248,6 @@ import os
     }
   }
 
-  private nonisolated func currentChangeEmitter() -> ((String) -> Void)? {
-    emitterLock.lock()
-    defer { emitterLock.unlock() }
-
-    return changeEmitterOwner == nil ? nil : changeEmitter
-  }
-
   private func startObserving() {
     guard notificationObservers.isEmpty else {
       attachToForegroundWindow()
@@ -232,7 +264,7 @@ import os
         [weak self] _ in
         MainActor.assumeIsolated {
           self?.attachToForegroundWindow()
-          self?.refresh()
+          self?.trigger(.notification)
         }
       }
     }
@@ -259,41 +291,84 @@ import os
     }
 
     observedWindow = window
+    lastHinge = nil
     traitRegistration = window.registerForTraitChanges(Self.observedTraits()) {
       [weak self] (_: UIWindow, _) in
-      self?.refresh()
+      self?.trigger(.trait)
     }
     hingeInteraction = makeHingeInteraction(for: window)
     geometryObservation = window.windowScene?.observe(\.effectiveGeometry, options: []) {
       [weak self] _, _ in
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
-          self?.refresh()
+          self?.trigger(.geometry)
         }
       }
     }
   }
 
-  // UIKit finishes the layout pass that a hinge change starts after the callback returns, so the
-  // reserved region is read on the next turn of the main queue.
-  private func refreshAfterLayout() {
-    DispatchQueue.main.async {
-      MainActor.assumeIsolated {
-        self.refresh()
+  // The hinge reports its angle continuously, so only a change of status is a trigger. A status
+  // that is not partially open reads as no fold at once; the settle reads still run, because the
+  // region follows the hinge later.
+  private func hingeDidUpdate(_ hinge: HingeState?, angle: Double?) {
+    let status = hinge.map { String($0.status) } ?? "none"
+    let angleText = angle.map { String($0) } ?? "none"
+    let bounds = observedWindow?.bounds ?? .zero
+    let diagnostics = observedWindow.map { Self.divisionDiagnostics(of: $0) } ?? "no window"
+
+    Self.logger.debug(
+      "hinge handler status=\(status, privacy: .public) angle=\(angleText, privacy: .public) \(diagnostics, privacy: .public) windowBounds=\(bounds.width, privacy: .public)x\(bounds.height, privacy: .public)pt"
+    )
+
+    guard hinge != lastHinge else {
+      return
+    }
+
+    lastHinge = hinge
+    trigger(.hinge)
+  }
+
+  // Every trigger reads at once and again twice later, restarting the later reads, because the
+  // reserved region lands after the trigger and nothing reports when. `lastObservedJson` keeps a
+  // read that finds nothing new from emitting.
+  private func trigger(_ source: ReadSource) {
+    refresh(source)
+
+    settleTask?.cancel()
+    settleTask = Task { [weak self] in
+      let clock = ContinuousClock()
+      let start = clock.now
+
+      for offset in Self.settleOffsets {
+        try? await clock.sleep(until: start + offset)
+
+        guard !Task.isCancelled else {
+          return
+        }
+
+        self?.refresh(.settle)
       }
     }
   }
 
-  private func refresh() {
+  private func refresh(_ source: ReadSource) {
     let json = snapshotJson()
+    let changed = json != lastObservedJson
 
-    guard json != lastObservedJson else {
+    Self.logger.debug(
+      "read source=\(source.rawValue, privacy: .public) changed=\(changed, privacy: .public)")
+
+    guard changed else {
       return
     }
 
     lastObservedJson = json
 
-    guard let emitter = currentChangeEmitter() else {
+    // The emit runs under the lock, so `removeChangeEmitter` cannot return while it is in flight.
+    emitterLock.lock()
+    defer { emitterLock.unlock() }
+
+    guard changeEmitterOwner != nil, let emitter = changeEmitter else {
       return
     }
 
@@ -301,9 +376,9 @@ import os
     emitter(json)
   }
 
-  // One line per emit, never per read, so a Release build can be checked with
-  // `log stream --level debug --predicate 'category == "DisplayRegions"'`. The payload is public
-  // because it holds only layout numbers.
+  // One line per emit, beside one per read and one per hinge update, so a Release build can be
+  // checked with `log stream --level debug --predicate 'category == "DisplayRegions"'`. The payload
+  // is public because it holds only layout numbers.
   private func logEmitted(_ json: String) {
     let bounds = foregroundWindow()?.bounds ?? .zero
     let scale = foregroundWindow()?.traitCollection.displayScale ?? 0

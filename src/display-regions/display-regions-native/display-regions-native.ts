@@ -59,9 +59,9 @@ const isSnapshot = (candidate: unknown): candidate is DisplayRegionsSnapshot => 
   );
 };
 
-// The last payload and what it parsed to, so `getSnapshot` hands back one object for as long as
-// the native side reports the same JSON. `useSyncExternalStore` needs that: a fresh object on
-// every call would re-render forever.
+// The last payload and what it parsed to, so a payload equal to the last one parses to the same
+// object. `subscribe` compares the snapshot it read before subscribing with the one it reads after
+// by identity, and an unchanged payload must not look like a change.
 const lastParse: { payload: string | undefined; snapshot: DisplayRegionsSnapshot } = {
   payload: undefined,
   snapshot: FALLBACK_SNAPSHOT,

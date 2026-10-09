@@ -40,7 +40,8 @@ RCT_EXPORT_MODULE(DisplayRegions)
 }
 
 // The callback points into the JS runtime being torn down, so it must never
-// fire after invalidation.
+// fire after invalidation: the center emits under the lock this call takes, so
+// an emit in flight finishes first and none starts after it.
 - (void)invalidate
 {
   [DisplayRegionsCenter.shared removeChangeEmitterForOwner:self];
