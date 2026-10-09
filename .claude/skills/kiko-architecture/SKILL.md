@@ -2548,6 +2548,67 @@ what a change must keep.
   `coalesce(max(col, v), col, v)` (see `latest()` in
   `reminders.repo.ts`).
 
+## Pane navigation
+
+On a wide window (a `LayoutMode` other than `single`, from `@kiko/display-regions`) a tab's
+stack shows two panes (`companion`, `primary`); on a narrow one it is one native stack. The code is
+the `src/navigation/pane-stack/` feature; its barrel (`index.ts`) exports `useOpenInPane`,
+`useIsScreenVisible` and `createPaneStackNavigator`, and nothing else is public. Units, one folder
+each: `pane-assignment` (pure pane maths), `pane-router` (`PaneRouter`, a `StackRouter` wrapper),
+`create-pane-stack-navigator`, `pane-stack-view`, `open-in-pane`, `pane-visibility`,
+`use-pane-fold`, `use-settled-layout-mode`. The four tab stacks (`src/navigation/*-stack/*.stack.tsx`)
+are built with `createPaneStackNavigator`.
+
+- **The one rule: open a screen in the pane opposite its opener** (`useOpenInPane`, or a plain
+  `navigate` from a screen; both become `PANE_OPEN`). `openFrom` in `pane-assignment.ts` first
+  pops every route above the opener, so a second tap replaces the first instead of stacking.
+- **`state.panes` is keyed by route key.** A stored pane wins; otherwise `resolvePanes` gives a
+  route the pane opposite the route below it, and the root takes `rootPane`. A default is never
+  "the route below" (a fold drops it, and routes above it must not change pane). `retainPanes`
+  drops the entry of every closed route; the router calls it after every action.
+- **Per-tab config.** Each stack file declares its own `PANE_CONFIG` (`rootPane`, and optionally
+  `companionDefault` / `primaryDefault` as `{ name, isDefault: true }`). Read it there, not here;
+  at the time of writing Home and Statistics are root `primary` with a `companion` default
+  (Statistics, Home), Settings is root `companion` with a `primary` default (Categories), and
+  Accounts is root `companion` with none.
+- **Static defaults are not in the state.** An empty pane shows its config default as a synthetic
+  route keyed `pane-default:<pane>` that `pane-slice.ts` describes without materializing it.
+  React Navigation hands such a screen one shared per-navigator placeholder navigation whose
+  every helper throws; `standInNavigation` (in `pane-stack-view/`) mutates that object in place:
+  `navigate`/`push` of a name of this stack becomes `PANE_OPEN` from the default, a name the
+  stack lacks goes on to the parent (a tab, say), and every other helper is a no-op. Two tests
+  pin React Navigation assumptions (the two `PINS React Navigation` cases in
+  `src/navigation/root-navigator/default-pane-navigation.test.tsx`); re-check them on every React
+  Navigation upgrade.
+- **Screen rule for anything that can be a default.** In a default `useIsFocused()` is false and
+  `useFocusEffect` never runs, so such a screen uses `useIsScreenVisible()` (two panes: the top
+  route of either pane while the tab is focused; one pane: `useIsFocused`). The "paused vs
+  enabled" rule above is written in terms of `useIsFocused`; this hook is what a screen shown in
+  a pane passes to `paused`.
+- **Runtime defaults.** `PANE_SHOW_DEFAULT` inserts a route flagged `isDefault` right above the
+  root and moves `index`; it is a no-op when the pane already holds a tapped route. `PANE_OPEN`
+  from an `isDefault` route clears the flag (materializes it).
+- **While split, the action's source is not the focused route.** The router reads `isSplit` from
+  a ref that `createPaneStackNavigator` sets in `useInsertionEffect` (current before any child's
+  effect). With a source route present and not on top: `NAVIGATE`/`PUSH` = `PANE_OPEN` from the
+  source; `GO_BACK`/`POP`/`POP_TO`/`REPLACE` act on the source (REPLACE keeps the replaced
+  route's pane); `POP_TO_TOP` is standard; a `POP` with count above 1 closes that many routes of
+  the source pane's own stack (a pane keeps its first). In single mode, or with a focused or
+  absent source, it is the plain `StackRouter`.
+- **Fold and unfold.** `useSettledLayoutMode` delays a change between `single` and split by
+  `SETTLE_DELAY_MS` (a pose change reports a burst of snapshots) and applies a rotation between
+  split modes at once. `usePaneFold` dispatches `PANE_FOLD` / `PANE_UNFOLD` when `isSplit`
+  changes (nothing on mount). `PANE_FOLD` drops `isDefault` routes and keeps every tapped route's
+  pane. Screens remount when the mode crosses single/split (ruling 3A); `TwoPaneLayout` takes the
+  settled mode through its `mode` prop instead of reading the live one.
+- **`resetTabStackOnBlur`** (`src/navigation/reset-tab-stack-on-blur/`) is unchanged and every
+  tab stack still passes it as `screenListeners`. It dispatches `popToTop` when the parent tab
+  is not focused and the state's `index > 0`; in a split navigator that is the router's standard
+  `POP_TO_TOP`, and `retainPanes` then clears the closed routes' panes. A default does not
+  count: a static one is not in the state.
+- **Cost.** Home and Statistics are each mounted in two tabs on a wide window (a root in one, a
+  default in the other), so their live queries run twice.
+
 ## Native iOS shell
 
 `ios/Kiko/AppDelegate.swift` + `ios/Kiko/SceneDelegate.swift` implement the

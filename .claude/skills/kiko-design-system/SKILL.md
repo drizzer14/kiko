@@ -569,7 +569,10 @@ new component can land between reviews of this skill:
   no tab bar over it and gets 0. `resolveBottomClearance` is pane-blind,
   so nothing outside `src/design-system/components/screen/` may import
   it (`kiko-no-pane-blind-bottom-clearance`). In a pane (a
-  `PaneContext` from `TwoPaneLayout`), a `scroll` Screen caps and
+  `PaneContext` from `TwoPaneLayout`), the `SafeAreaView` keeps only the
+  window edges the pane touches (`use-pane-screen.ts`), a footer is
+  capped like content (it takes the same cap as the content container,
+  or sits inside the capped root), and a `scroll` Screen caps and
   centres its content container at `theme.layout.paneMaxWidth` and the
   ScrollView keeps the whole pane; a `bleedTop` child does the same on
   its own content container with `useContentCap()`; the plain branch
