@@ -1,8 +1,9 @@
-import type { ComponentProps } from 'react';
+import { type ComponentProps, useContext } from 'react';
 import { render, within } from '@testing-library/react-native';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
 
 import { darkTheme } from '@kiko/design-system/theme';
+import { FieldBlurContext } from '@kiko/design-system/field-blur';
 import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
 import '@kiko/design-system/unistyles';
@@ -218,6 +219,46 @@ describe('Screen', () => {
     // a second tap. "handled" fires the child's onPress/focus on the first tap
     // while still dismissing the keyboard on taps to inert areas.
     expect(getByTestId(SCROLL_VIEW_TEST_ID).props.keyboardShouldPersistTaps).toBe('handled');
+  });
+
+  describe('onFieldBlur', () => {
+    const received: { current: (() => void) | undefined } = { current: undefined };
+
+    const Probe = () => {
+      received.current = useContext(FieldBlurContext);
+
+      return null;
+    };
+
+    beforeEach(() => {
+      received.current = undefined;
+    });
+
+    it.each([
+      ['scroll', { scroll: true }],
+      ['plain', {}],
+      ['bleedTop', { bleedTop: true }],
+    ])('hands it to the fields inside the %s layout', async (_layout, layoutProps) => {
+      const onFieldBlur = jest.fn();
+
+      await render(
+        <Screen {...layoutProps} onFieldBlur={onFieldBlur}>
+          <Probe />
+        </Screen>,
+      );
+
+      expect(received.current).toBe(onFieldBlur);
+    });
+
+    it('leaves the fields with no listener when it is omitted', async () => {
+      await render(
+        <Screen scroll>
+          <Probe />
+        </Screen>,
+      );
+
+      expect(received.current).toBeUndefined();
+    });
   });
 
   it('renders a footer outside the ScrollView when scroll and footer are set', async () => {

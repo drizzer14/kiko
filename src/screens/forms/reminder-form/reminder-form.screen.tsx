@@ -25,12 +25,14 @@ import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import WeekdayField from '@kiko/screens/forms/weekday-field';
+import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import type { ReminderFormParams } from '@kiko/navigation/types';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import FieldLabel from '@kiko/design-system/components/field-label';
 import { useNotificationPreAlert } from '@kiko/reminders/permission';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
@@ -43,7 +45,11 @@ import NotificationPreAlertSheet from '@kiko/design-system/components/notificati
 // what the form reads, which either stack's props satisfy.
 type ReminderFormScreenProps = {
   route: { params: ReminderFormParams };
-  navigation: { goBack: () => void; setOptions: (options: { title: string }) => void };
+  navigation: {
+    goBack: () => void;
+    setOptions: (options: { title: string }) => void;
+    setParams: (params: { draft: ReminderDraft }) => void;
+  };
 };
 
 type ReminderFrequency = ReminderSchedule['frequency'];
@@ -104,10 +110,12 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
   const savedReminder = saved.at(0);
   const kind: ReminderKind | undefined = 'kind' in params ? params.kind : savedReminder?.kind;
 
-  const [draft, setDraft] = useState<ReminderDraft>(() =>
-    defaultDraft('kind' in params ? params.kind : 'add_transactions'),
+  const { initialDraft, saveDraft } = useDraftParam<ReminderDraft>(navigation, route);
+  const [draft, setDraft] = useState<ReminderDraft>(
+    () => initialDraft ?? defaultDraft('kind' in params ? params.kind : 'add_transactions'),
   );
   const [attemptedSave, setAttemptedSave] = useState(false);
+  const onFieldBlur = useDraftAutosave(draft, saveDraft);
 
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const weekdaysFieldRef = useRef<FieldInstance>(null);
@@ -122,7 +130,8 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
     }
   }, [navigation, isEdit, t]);
 
-  // Seeded once: a later live-query emission must not clobber the user's edits.
+  // Seeded once: a later live-query emission must not clobber the user's edits. A draft the route
+  // carries is the user's edits, so it wins over the stored schedule.
   const hydrated = useRef(false);
   useEffect(() => {
     if (hydrated.current || savedReminder === undefined) {
@@ -130,6 +139,10 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
     }
 
     hydrated.current = true;
+
+    if (initialDraft !== undefined) {
+      return;
+    }
 
     const schedule: unknown = savedReminder.schedule;
 
@@ -140,7 +153,7 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
         ? draftFromSchedule(savedReminder.kind, schedule)
         : defaultDraft(savedReminder.kind),
     );
-  }, [savedReminder]);
+  }, [savedReminder, initialDraft]);
 
   const errors = fieldErrors(draft, attemptedSave, t);
 
@@ -234,6 +247,7 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
         scroll
         scrollableRef={scrollableRef}
         onContentSizeChange={onContentSizeChange}
+        onFieldBlur={onFieldBlur}
         footer={
           <Button onPress={onSave} disabled={isSubmitting}>
             {t('common.save')}

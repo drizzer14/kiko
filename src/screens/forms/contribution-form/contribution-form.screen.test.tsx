@@ -3,9 +3,14 @@ import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+  paramsAfter,
+} from '@kiko/test-support/navigation-props';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
-import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import ContributionFormScreen from './contribution-form.screen';
 
@@ -35,11 +40,11 @@ const seed = (holding: unknown = depositHolding): void => {
   mockUseLiveQuery.mockImplementation(() => ({ data: [holding] }));
 };
 
-const renderScreen = () =>
+const renderScreen = (openedRoute: ContributionFormProps['route'] = route) =>
   render(
     <ContributionFormScreen
       navigation={asNavigationProp<ContributionFormProps['navigation']>(navigation)}
-      route={route}
+      route={openedRoute}
     />,
   );
 
@@ -267,6 +272,89 @@ describe('ContributionFormScreen', () => {
     await waitFor(() => expect(alertSpy).toHaveBeenCalled());
     expect(navigation.goBack).not.toHaveBeenCalled();
     alertSpy.mockRestore();
+  });
+});
+
+describe('ContributionFormScreen — draft', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    seed();
+  });
+
+  const reopened = () =>
+    asRouteProp<ContributionFormProps['route']>(
+      'ContributionForm',
+      paramsAfter(navigation, { holdingId: 'h-1' }),
+    );
+
+  it('brings back the typed amount and the picked date after a remount', async () => {
+    const first = await renderScreen();
+    await fireEvent.changeText(first.getByLabelText('Amount'), '1000');
+    await pickDate(first, 2025, 6, 1);
+    await fireEvent(first.getByLabelText('Amount'), 'blur');
+    await first.unmount();
+
+    const second = await renderScreen(reopened());
+
+    expect(second.getByLabelText('Amount').props.value).toBe('1 000');
+
+    await fireEvent.press(second.getByText('Save contribution'));
+
+    expect(holdingsRepo.appendDepositContribution).toHaveBeenCalledWith('h-1', {
+      amountMinorUnits: 100_000,
+      date: new Date(2025, 5, 1).getTime(),
+    });
+  });
+
+  it('keeps the draft to plain values, so the route params stay JSON', async () => {
+    const utils = await renderScreen();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1000');
+    await fireEvent(utils.getByLabelText('Amount'), 'blur');
+
+    expect(navigation.setParams).toHaveBeenCalledWith({
+      draft: { amount: '1 000', date: today() },
+    });
+  });
+
+  it('writes the draft once per blur, never while typing', async () => {
+    const utils = await renderScreen();
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '123');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+
+    await fireEvent(utils.getByLabelText('Amount'), 'blur');
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing for a blur that changed nothing', async () => {
+    const utils = await renderScreen();
+
+    await fireEvent(utils.getByLabelText('Amount'), 'blur');
+    await fireEvent(utils.getByLabelText('Amount'), 'blur');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+  });
+
+  it('opens blank when the route carries no draft', async () => {
+    const utils = await renderScreen();
+
+    expect(utils.getByLabelText('Amount').props.value).toBe('');
+  });
+
+  it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
+    const utils = await renderScreen();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1000');
+    await fireEvent(utils.getByLabelText('Amount'), 'blur');
+    navigation.setParams.mockClear();
+
+    await fireEvent.press(utils.getByText('Save contribution'));
+
+    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    expect(navigation.setParams).not.toHaveBeenCalled();
   });
 });
 

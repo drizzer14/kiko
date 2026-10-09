@@ -4,6 +4,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
+import { FieldBlurContext } from '@kiko/design-system/field-blur';
+
 import TextField from '.';
 
 const mockFieldLabel = jest.fn();
@@ -173,6 +175,34 @@ describe('TextField', () => {
     expect(input.props.onBlur).toBeDefined();
     input.props.onBlur();
     expect(onBlur).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells a form that listens when the input loses focus, after its own onBlur', async () => {
+    const calls: string[] = [];
+    const listener = jest.fn(() => calls.push('form'));
+    const onBlur = jest.fn(() => calls.push('field'));
+    const { getByLabelText } = await render(
+      <FieldBlurContext.Provider value={listener}>
+        <TextField label="Name" value="Jane" onChangeText={jest.fn()} onBlur={onBlur} />
+      </FieldBlurContext.Provider>,
+    );
+
+    getByLabelText('Name').props.onBlur();
+
+    expect(calls).toEqual(['field', 'form']);
+  });
+
+  it('tells a form that listens even when the field has no onBlur of its own', async () => {
+    const listener = jest.fn();
+    const { getByLabelText } = await render(
+      <FieldBlurContext.Provider value={listener}>
+        <TextField label="Name" value="Jane" onChangeText={jest.fn()} />
+      </FieldBlurContext.Provider>,
+    );
+
+    getByLabelText('Name').props.onBlur();
+
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('leaves the underlying input without an onBlur when omitted', async () => {

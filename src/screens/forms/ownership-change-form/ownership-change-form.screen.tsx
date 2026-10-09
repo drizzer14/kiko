@@ -12,14 +12,16 @@ import Screen from '@kiko/design-system/components/screen';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { asPropertyMeta } from '@kiko/holdings/holding-metadata';
 import OwnershipField from '@kiko/screens/forms/ownership-field';
+import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
-import type { AccountsStackParamList } from '@kiko/navigation/types';
+import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { dayKeyOf, localMidnightOfDayKey } from '@kiko/prices/price-book';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { WHOLE_SHARE, type OwnershipShare } from '@kiko/holdings/ownership';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { AccountsStackParamList, OwnershipChangeFormDraft } from '@kiko/navigation/types';
 
 type OwnershipChangeFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
@@ -37,18 +39,24 @@ const OwnershipChangeFormScreen: FC<OwnershipChangeFormScreenProps> = ({ route, 
   const change = meta?.ownership?.find((candidate) => candidate.day === day);
   const input = meta?.ownershipInput ?? 'percent';
 
-  const [entry, setEntry] = useState<OwnershipEntry>(() =>
-    ownershipEntryOf('percent', WHOLE_SHARE),
+  const { initialDraft, saveDraft } = useDraftParam<OwnershipChangeFormDraft>(navigation, route);
+  const [entry, setEntry] = useState<OwnershipEntry>(
+    () => initialDraft?.entry ?? ownershipEntryOf('percent', WHOLE_SHARE),
   );
   const [current, setCurrent] = useState<OwnershipShare>(WHOLE_SHARE);
-  const [effectiveDate, setEffectiveDate] = useState(() => localMidnightOfDayKey(day));
+  const [effectiveDate, setEffectiveDate] = useState(
+    () => initialDraft?.effectiveDate ?? localMidnightOfDayKey(day),
+  );
   const [attemptedSave, setAttemptedSave] = useState(false);
+  const onFieldBlur = useDraftAutosave({ entry, effectiveDate }, saveDraft);
 
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const fieldRef = useRef<FieldInstance>(null);
   const inputRef = useRef<TextInputInstance>(null);
 
-  // Seeded once: a later live-query emission must not clobber what the user typed.
+  // Seeded once: a later live-query emission must not clobber what the user typed. The share in
+  // effect is always read, since Save compares the typed share to it; a draft the route carries
+  // is what the user typed, so it wins over the stored share in the fields.
   const hydrated = useRef(false);
   useEffect(() => {
     if (hydrated.current || change === undefined) {
@@ -57,8 +65,11 @@ const OwnershipChangeFormScreen: FC<OwnershipChangeFormScreenProps> = ({ route, 
     hydrated.current = true;
     const share = { numerator: change.numerator, denominator: change.denominator };
     setCurrent(share);
-    setEntry(ownershipEntryOf(input, share));
-  }, [change, input]);
+
+    if (initialDraft === undefined) {
+      setEntry(ownershipEntryOf(input, share));
+    }
+  }, [change, input, initialDraft]);
 
   const share = enteredShare(entry, current);
 
@@ -103,6 +114,7 @@ const OwnershipChangeFormScreen: FC<OwnershipChangeFormScreenProps> = ({ route, 
       scroll
       scrollableRef={scrollableRef}
       onContentSizeChange={onContentSizeChange}
+      onFieldBlur={onFieldBlur}
       footer={
         <Button onPress={onSave} disabled={isSubmitting}>
           {t('common.save')}

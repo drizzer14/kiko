@@ -1,6 +1,8 @@
 import type { AccountRow } from '@kiko/db';
 import type { HelpTopicId } from '@kiko/help';
+import type { ReminderDraft } from '@kiko/reminders/rules';
 import type { ReminderKind } from '@kiko/reminders/schedule';
+import type { OwnershipInput } from '@kiko/holdings/holding-metadata';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
 import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
@@ -38,7 +40,10 @@ export type TransactionFormParams =
  * reminder of `kind` an account can have. The union keeps the two entry points
  * mutually exclusive.
  */
-export type ReminderFormParams = { reminderId: string } | { accountId: string; kind: ReminderKind };
+export type ReminderFormParams = (
+  | { reminderId: string }
+  | { accountId: string; kind: ReminderKind }
+) & { draft?: ReminderDraft };
 
 /**
  * The identity the account form and the implicit holding form carry across the
@@ -47,6 +52,27 @@ export type ReminderFormParams = { reminderId: string } | { accountId: string; k
  * following the destination's own default.
  */
 export type FormDraft = { name: string; icon: string | null; color: string | null };
+
+/**
+ * What a form keeps in its route's `draft` param so a fold or unfold, which remounts every screen
+ * but keeps route params, gives it back its unsaved fields. Each draft holds the raw field values
+ * the form keeps (typed text, ids, day timestamps): route params must stay JSON.
+ */
+export type ContributionFormDraft = { amount: string; date: number };
+
+export type PricePointFormDraft = { value: string; date: number };
+
+export type OwnershipChangeFormDraft = {
+  entry: { mode: OwnershipInput; percent: string; numerator: string; denominator: string };
+  effectiveDate: number;
+};
+
+export type LotFormDraft = {
+  direction: 'buy' | 'sell';
+  quantity: string;
+  cost: string;
+  date: number;
+};
 
 // `Statistics` is the companion pane of the Home tab on a wide window, and Home with
 // `TransactionForm` are the same on the Statistics tab: each tab shows the other's root beside
@@ -133,25 +159,25 @@ export type AccountsStackParamList = {
   // Add a top-up ("contribution") to a term deposit, reached from the holding's
   // detail screen. Bonds record a contribution as a plain TransactionForm entry
   // instead; only deposits take a dedicated contribution form.
-  ContributionForm: { holdingId: string };
+  ContributionForm: { holdingId: string; draft?: ContributionFormDraft };
   // Record a new `manual` price point for a priced holding (property_item,
   // metal), reached from the holding-detail screen's
   // "Update value" footer action. A dedicated form, mirroring
   // ContributionForm's shape, rather than a plain TransactionForm entry: a
   // revaluation moves no ledger balance, only the holding's `price_points`
   // series (kiko-domain).
-  PricePointForm: { holdingId: string };
+  PricePointForm: { holdingId: string; draft?: PricePointFormDraft };
   // Record a buy or sell lot against a lot-form-eligible holding (`metal` —
   // kiko-pricing), reached from the holding-detail screen's "Add
   // lot" footer action; with `lotIndex`, edit that stored lot, reached from
   // its row's long-press menu. Writes `metadata.lots` through
   // `holdingsRepo.changeLots`, which re-reads the lots inside its write;
   // unlike ContributionForm/PricePointForm it never touches a price series.
-  LotForm: { holdingId: string; lotIndex?: number };
+  LotForm: { holdingId: string; lotIndex?: number; draft?: LotFormDraft };
   // Edit one stored share change of a property, reached from the holding
   // detail's Share changes list. `day` is the change's `dayKeyOf` key; the
   // repo re-reads the list inside its write rather than trusting a row.
-  OwnershipChangeForm: { holdingId: string; day: number };
+  OwnershipChangeForm: { holdingId: string; day: number; draft?: OwnershipChangeFormDraft };
   // The account's own reminders page, reached from the bell in the account
   // detail header.
   AccountReminders: { accountId: string };

@@ -85,4 +85,7 @@ export type ScreenProps = {
   // `true` once it closes. Only meaningful in `scroll` mode; ignored
   // otherwise.
   automaticallyAdjustKeyboardInsets?: boolean;
+  // Called whenever a text field inside loses focus (`useFieldBlur`). A form that keeps a draft of
+  // its fields in its route params saves it here, so it passes no blur handler to each field.
+  onFieldBlur?: () => void;
 };

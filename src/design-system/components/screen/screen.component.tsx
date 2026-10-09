@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { FieldBlurContext } from '@kiko/design-system/field-blur';
 
 import { styles } from './screen.styles';
 import type { ScreenProps } from './screen.props';
@@ -16,7 +17,13 @@ const Screen: FC<ScreenProps> = ({
   scrollableRef,
   onContentSizeChange,
   automaticallyAdjustKeyboardInsets = true,
+  onFieldBlur,
 }) => {
+  // The fields' way to report a blur to the screen; every layout below renders them.
+  const fields = (
+    <FieldBlurContext.Provider value={onFieldBlur}>{children}</FieldBlurContext.Provider>
+  );
+
   // The native glass tab bar floats over the screen's bottom edge, so any
   // content that reaches the screen's true bottom edge must clear it —
   // universally, from this one place — rather than each screen re-solving it.
@@ -109,7 +116,7 @@ const Screen: FC<ScreenProps> = ({
           // view, so the scroll view and its indicator span the whole pane.
           contentContainerStyle={[styles.scrollContent(footer !== undefined), contentCap]}
         >
-          {children}
+          {fields}
         </ScrollView>
         {footer ? (
           <View testID="screen-footer" style={[styles.footer(bottomClearance), contentCap]}>
@@ -143,7 +150,7 @@ const Screen: FC<ScreenProps> = ({
   if (bleedTop) {
     return (
       <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
-        {children}
+        {fields}
         {footer ? (
           <View testID="screen-footer" style={[styles.footer(bottomClearance), contentCap]}>
             {footer}
@@ -170,7 +177,7 @@ const Screen: FC<ScreenProps> = ({
       style={[styles.safeArea, bleedBottom ? undefined : contentCap]}
     >
       <View testID="screen-content" style={styles.content(contentOwnsClearance, bottomClearance)}>
-        {children}
+        {fields}
       </View>
       {footer ? (
         <View

@@ -3,11 +3,17 @@ import type { ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+  paramsAfter,
+} from '@kiko/test-support/navigation-props';
 import { remindersRepo } from '@kiko/reminders/repo';
 import { remindersNative } from '@kiko/reminders/native';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
+import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { localDayOf, type ReminderSchedule, weekdayOf } from '@kiko/reminders/schedule';
-import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import ReminderFormScreen from '.';
 
@@ -15,6 +21,10 @@ type ReminderFormProps = ComponentProps<typeof ReminderFormScreen>;
 
 const mockUseLiveQuery = jest.fn();
 const mockSyncReminders = jest.fn();
+
+jest.mock('@kiko/display-regions', () =>
+  require('@kiko/test-support/layout-mode-spy').layoutModeSpyModule(),
+);
 
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
@@ -53,18 +63,21 @@ const savedReminder = (schedule: ReminderSchedule) => ({
 
 let navigation = navigationSpy();
 
-const renderCreate = (kind: 'statement_import' | 'add_transactions' = 'add_transactions') => {
+const renderCreate = (
+  kind: 'statement_import' | 'add_transactions' = 'add_transactions',
+  params: object = { accountId: 'a-1', kind },
+) => {
   mockUseLiveQuery.mockReturnValue({ data: [], isLoading: false, isFresh: true });
 
   return render(
     <ReminderFormScreen
       navigation={asNavigationProp<ReminderFormProps['navigation']>(navigation)}
-      route={asRouteProp<ReminderFormProps['route']>('ReminderForm', { accountId: 'a-1', kind })}
+      route={asRouteProp<ReminderFormProps['route']>('ReminderForm', params)}
     />,
   );
 };
 
-const renderEdit = (schedule: ReminderSchedule) => {
+const renderEdit = (schedule: ReminderSchedule, params: object = { reminderId: 'r-1' }) => {
   mockUseLiveQuery.mockReturnValue({
     data: [savedReminder(schedule)],
     isLoading: false,
@@ -74,7 +87,7 @@ const renderEdit = (schedule: ReminderSchedule) => {
   return render(
     <ReminderFormScreen
       navigation={asNavigationProp<ReminderFormProps['navigation']>(navigation)}
-      route={asRouteProp<ReminderFormProps['route']>('ReminderForm', { reminderId: 'r-1' })}
+      route={asRouteProp<ReminderFormProps['route']>('ReminderForm', params)}
     />,
   );
 };
@@ -553,5 +566,163 @@ describe('ReminderFormScreen — edit', () => {
     const editing = await renderEdit({ frequency: 'daily', minuteOfDay: 8 * 60 });
 
     expect(editing.queryByText('Delete reminder')).toBeNull();
+  });
+});
+
+describe('ReminderFormScreen — draft', () => {
+  const CREATED = { accountId: 'a-1', kind: 'add_transactions' } as const;
+  const EDITED = { reminderId: 'r-1' };
+
+  afterEach(() => {
+    resetLayoutMode();
+  });
+
+  it('brings back a weekly schedule with its days and time after a fold, with no blur before it', async () => {
+    const first = await renderCreate();
+    await fireEvent.press(first.getByText('Weekly'));
+    const otherDay = weekdayOf(today) === 3 ? 'Thu' : 'Wed';
+    const otherWeekday = otherDay === 'Thu' ? 4 : 3;
+    await fireEvent.press(first.getByText(otherDay));
+    await pickTime(first, 9, 30);
+    const pickedDays = selectedDayNames(first);
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+
+    await emitLayoutMode('columns');
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+
+    await first.unmount();
+
+    const second = await renderCreate('add_transactions', paramsAfter(navigation, CREATED));
+
+    expect(selectedDayNames(second)).toEqual(pickedDays);
+    expect(within(second.getByLabelText('Time')).getByText('09:30')).toBeTruthy();
+
+    await save(second);
+
+    expect(remindersRepo.create).toHaveBeenCalledWith({
+      accountId: 'a-1',
+      kind: 'add_transactions',
+      schedule: {
+        frequency: 'weekly',
+        minuteOfDay: 9 * 60 + 30,
+        weekdays: [weekdayOf(today), otherWeekday].sort((left, right) => left - right),
+      },
+    });
+  });
+
+  it('brings back a typed interval after the field blurs', async () => {
+    const first = await renderCreate();
+    await fireEvent.press(first.getByText('Every N days'));
+    await fireEvent.changeText(first.getByLabelText('Repeat every'), '14');
+    await fireEvent(first.getByLabelText('Repeat every'), 'blur');
+    await first.unmount();
+
+    const second = await renderCreate('add_transactions', paramsAfter(navigation, CREATED));
+
+    expect(second.getByLabelText('Repeat every').props.value).toBe('14');
+
+    await save(second);
+
+    expect(remindersRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schedule: { frequency: 'interval', minuteOfDay: 20 * 60, everyDays: 14, anchorDay: today },
+      }),
+    );
+  });
+
+  it('keeps the draft to plain values, so the route params stay JSON', async () => {
+    const screen = await renderCreate();
+    await fireEvent.press(screen.getByText('Every N days'));
+    await fireEvent.changeText(screen.getByLabelText('Repeat every'), '14');
+    await fireEvent(screen.getByLabelText('Repeat every'), 'blur');
+
+    const [[{ draft }]] = navigation.setParams.mock.calls;
+
+    expect(draft).toEqual(
+      expect.objectContaining({ frequency: 'interval', everyDaysText: '14', minuteOfDay: 20 * 60 }),
+    );
+    expect(JSON.parse(JSON.stringify(draft))).toEqual(draft);
+  });
+
+  it('writes the draft once per blur, never while typing', async () => {
+    const screen = await renderCreate();
+    await fireEvent.press(screen.getByText('Every N days'));
+
+    await fireEvent.changeText(screen.getByLabelText('Repeat every'), '1');
+    await fireEvent.changeText(screen.getByLabelText('Repeat every'), '14');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+
+    await fireEvent(screen.getByLabelText('Repeat every'), 'blur');
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing when the window changes over a form the user has not changed', async () => {
+    await renderCreate();
+
+    await emitLayoutMode('columns');
+    await emitLayoutMode('single');
+
+    expect(navigation.setParams).not.toHaveBeenCalled();
+  });
+
+  it('lets the draft of an edit win over the stored schedule it was opened on', async () => {
+    const first = await renderEdit({ frequency: 'daily', minuteOfDay: 8 * 60 });
+    await pickTime(first, 9, 30);
+    await emitLayoutMode('columns');
+    await first.unmount();
+
+    const second = await renderEdit(
+      { frequency: 'daily', minuteOfDay: 8 * 60 },
+      paramsAfter(navigation, EDITED),
+    );
+
+    expect(within(second.getByLabelText('Time')).getByText('09:30')).toBeTruthy();
+
+    await save(second);
+
+    expect(remindersRepo.update).toHaveBeenCalledWith('r-1', {
+      frequency: 'daily',
+      minuteOfDay: 9 * 60 + 30,
+    });
+  });
+
+  it('keeps the saved interval anchor of an edit across the remount', async () => {
+    const anchorDay = { year: 2026, month: 1, day: 5 };
+    const stored = {
+      frequency: 'interval',
+      minuteOfDay: 8 * 60,
+      everyDays: 10,
+      anchorDay,
+    } as const;
+    const first = await renderEdit(stored);
+    await pickTime(first, 9, 30);
+    await emitLayoutMode('columns');
+    await first.unmount();
+
+    const second = await renderEdit(stored, paramsAfter(navigation, EDITED));
+    await save(second);
+
+    expect(remindersRepo.update).toHaveBeenCalledWith('r-1', {
+      frequency: 'interval',
+      minuteOfDay: 9 * 60 + 30,
+      everyDays: 10,
+      anchorDay,
+    });
+  });
+
+  it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
+    const screen = await renderCreate();
+    await pickTime(screen, 9, 30);
+    await emitLayoutMode('columns');
+    navigation.setParams.mockClear();
+
+    await save(screen);
+
+    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    expect(navigation.setParams).not.toHaveBeenCalled();
   });
 });
