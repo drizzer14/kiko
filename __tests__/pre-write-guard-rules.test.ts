@@ -77,6 +77,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-local-day-length-constant',
   'kiko-no-whole-price-points-read',
   'kiko-holding-delete-needs-cascade',
+  'kiko-no-pane-blind-bottom-clearance',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (

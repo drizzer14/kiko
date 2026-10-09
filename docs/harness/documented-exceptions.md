@@ -817,6 +817,15 @@ verified usage, not dead weight:
   (`rules/semgrep-prewrite.yml`) deny any other value import. Add another
   `Native*` spec only for a new app TurboModule.
 
+- **`src/design-system/components/screen/**` — the owner folder of
+  `kiko-no-pane-blind-bottom-clearance`'s `paths.exclude`.** The rule denies
+  importing `resolveBottomClearance` (or its `bottom-clearance` module) so a
+  `bleedBottom`/`bleedTop` child takes the pane-aware `useBottomClearance()`
+  instead. The Screen folder is the one place that may: `use-bottom-clearance.ts`
+  and `screen.component.tsx` import the function, and `bottom-clearance.test.ts`
+  tests it. A whole-folder exclude is right here because every file in it is
+  part of the sink; the rule still reaches every consumer (Home, HoldingDetail).
+
 - **`sf-symbols-typescript` — a transitive package read by path in a test,
   invisible to depcheck and Knip.** `__tests__/test-support/sf-symbol-catalogue.ts`
   reads `node_modules/sf-symbols-typescript/dist/index.d.ts` as text, because

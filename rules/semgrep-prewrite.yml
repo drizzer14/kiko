@@ -1115,6 +1115,31 @@ rules:
     patterns:
       - pattern-regex: |-
           (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"](?:[^'"]*/)?NativeDisplayRegions(?:\.tsx?)?['"]
+  # kiko-design-system's Screen: `resolveBottomClearance` is the pane-BLIND
+  # arithmetic behind `useBottomClearance`. A bleedBottom/bleedTop child that
+  # calls it directly puts a tab-bar clearance under the last row of a pane
+  # that is not at the bottom of the window (the top pane of rows mode). Only
+  # the Screen folder may import it; every other consumer calls the hook. Two
+  # arms: a value import or re-export that names the function, and a value
+  # import, re-export, require or dynamic import of a module file named
+  # `bottom-clearance`. `import type` and prose never match.
+  - id: kiko-no-pane-blind-bottom-clearance
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `resolveBottomClearance` ignores which pane a screen is in, so a list
+      that applies it sits above a tab bar that is not over its pane. Call
+      `useBottomClearance()` from `@kiko/design-system/components/screen`
+      instead; only the Screen folder imports the function.
+    metadata:
+      fix: "Use `const clearance = useBottomClearance();` from `@kiko/design-system/components/screen`; never import `resolveBottomClearance` or `bottom-clearance`."
+      skill: "kiko-design-system › Component set"
+    paths:
+      exclude:
+        - "src/design-system/components/screen/**"
+    pattern-either:
+      - pattern-regex: (?m)^[ \t]*(?:import|export)(?!\s+type\b)\s+[^;'"]*?\bresolveBottomClearance\b[^;'"]*?\bfrom\s*['"]
+      - pattern-regex: (?m)(?:^[ \t]*import(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*export(?!\s+type\b)\s+[^;'"]*?\bfrom\s*|^[ \t]*import\s*|\b(?:require|import)\s*\(\s*)['"][^'"]*/bottom-clearance(?:\.ts)?['"]
   # kiko-domain's "Dates": `jest.config.js` pins `process.env.TZ` to
   # Europe/Kyiv at config load, and Jest gives each test sandbox its own copy
   # of `process.env`, so an assignment in a test file, a `beforeAll`, or a
